@@ -106,19 +106,23 @@ end
 % ===================== the fold ============================================
 
 function testNgridFoldsToASampledBodyBesideAnImageObservation(testCase)
-% 1 -> 4: the term_observation this migrator already emitted, the
-% image_observation the team named, the sampled_body carrying the grid, and the
-% shared session anchor.
+% INVERTED 2026-10-21. Decided by Jess Haley, 2026-10-21 [ontology image is an
+% observation of its region] (did-schema V_eta_spatial_transcriptomics_plan.md):
+% the raster is ONE observation, and "this replaces item 51's separate term
+% observation for ontologyImage". So 1 -> 3, not 1 -> 4: the intensity
+% observation, the sampled_body carrying the grid, and the session anchor. The
+% term observation this asserted present is now asserted ABSENT.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
 names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 4, ...
-    sprintf('expected 4 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyEqual(testCase, numel(out), 3, ...
+    sprintf('expected 3 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 % UPDATED 2026-10-21 for did-schema #88 and #73 review item 51: the raster is
 % an `observation` with the `intensity` value kind (its pixels are an ordinary
 % numeric image), the region an `observation` with the `term` value kind --
 % each a DIRECTION class plus ONE value-kind mixin, never a leaf name -- and the
 % anchor #88's one time-reference class.
-verifyTrue(testCase, ismember('observation+term', names));
+verifyFalse(testCase, ismember('observation+term', names), ...
+    'the separate term observation (item 51) is gone');
 verifyTrue(testCase, ismember('observation+intensity', names));
 verifyTrue(testCase, ismember('sampled_body', names));
 verifyTrue(testCase, ismember('relative_time_reference', names));
@@ -134,19 +138,29 @@ imgObs = pickKind(out, 'observation', 'intensity');
 body   = pick(out, 'sampled_body');
 % #88: the body names its owner by `owner_id` (was `statement`)
 verifyEqual(testCase, depValueOf(body, 'owner_id'), imgObs.base.id);
-verifyNotEqual(testCase, depValueOf(body, 'owner_id'), ...
-    pickKind(out, 'observation', 'term').base.id);
+% INVERTED 2026-10-21: there is no term sibling to point at by mistake any more
+% ([ontology image is an observation of its region]); the owner is the ONE
+% statement emitted.
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
+verifyFalse(testCase, ismember('observation+term', names));
 end
 
-function testTheSourceIdStaysOnTheTermObservationAndTheImageObsGetsAFreshOne(testCase)
+function testTheSourceIdNowLandsOnTheImageObservation(testCase)
 % The primary/sibling convention: an inbound edge naming the source document has
 % to land on EXACTLY ONE emitted body, or a follower cannot tell which is which.
 % ontology_table_row.m pays for this rule directly (its fan-out gave every body a
 % fresh id and stranded every edge pointing at the row).
+%
+% INVERTED 2026-10-21 (was ...StaysOnTheTermObservationAndTheImageObsGetsAFreshOne):
+% the term observation no longer exists ([ontology image is an observation of
+% its region]), so the source id moves to the one observation that does. The
+% rule itself is unchanged: exactly one body carries it.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-verifyEqual(testCase, pickKind(out, 'observation', 'term').base.id, 'oi_fold');
-verifyNotEqual(testCase, pickKind(out, 'observation', 'intensity').base.id, 'oi_fold');
+verifyEqual(testCase, pickKind(out, 'observation', 'intensity').base.id, 'oi_fold');
 verifyNotEqual(testCase, pick(out, 'sampled_body').base.id, 'oi_fold');
+ids = cellfun(@(b) char(b.base.id), out, 'UniformOutput', false);
+verifyEqual(testCase, nnz(strcmp(ids, 'oi_fold')), 1, ...
+    'exactly one emitted body carries the source id');
 end
 
 function testDataDimBecomesOneAxisEntryPerDimension(testCase)
@@ -284,15 +298,60 @@ verifyEmpty(testCase, fieldnames(imgObs.intensity.value));
 verifyFalse(testCase, isfield(imgObs.interaction, 'sample_time'));
 end
 
-function testTheDepictedTermIsTheVariableRatherThanAPlaceholder(testCase)
-% The one thing this fold can do that image_stack cannot. image_stack.m:328-331
-% emits `{node:'', name:'image'}` and defers to a second-pass join, because the
-% ontology label lives on ANOTHER document. Here the term is on the document
-% being migrated, so there is nothing to defer.
+function testTheVariableIsImagingSignalIntensityAndTheAreaIsASiteCondition(testCase)
+% INVERTED 2026-10-21 (was testTheDepictedTermIsTheVariableRatherThanAPlaceholder,
+% which pinned variable = uberon:0002436 "primary visual cortex"). Decided by
+% Jess Haley, 2026-10-21 [ontology image is an observation of its region]: the
+% variable is NCIT:C221750 "Imaging Signal Intensity", and an anatomical area
+% makes the area's REGION PART the entity. Pass 1 cannot mint the part, so the
+% area rides as an NCIT:C13717 "Anatomic Site" condition for NDI's second pass
+% (ndi.migrate.internal.pathSPromotion) to promote; the observation stays about
+% the subject until then. What did NOT change: the depicted term is on the
+% document, so it is carried, never a placeholder.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-v = pickKind(out, 'observation', 'intensity').statement.variable;
-verifyEqual(testCase, v.node, 'uberon:0002436');
-verifyEqual(testCase, v.name, 'primary visual cortex');
+obs = pickKind(out, 'observation', 'intensity');
+v = obs.statement.variable;
+verifyEqual(testCase, v.node, 'NCIT:C221750');
+verifyEqual(testCase, v.name, 'Imaging Signal Intensity');
+c = obs.statement.conditions;
+verifyEqual(testCase, numel(c), 1, 'one condition: the area');
+verifyEqual(testCase, c(1).variable.node, 'NCIT:C13717');
+verifyEqual(testCase, c(1).term.node, 'uberon:0002436');
+verifyEqual(testCase, c(1).term.name, 'primary visual cortex');
+verifyEqual(testCase, depValueOf(obs, 'entity_id'), 'elem_9', ...
+    'until the second pass promotes it, the observation is about the subject');
+end
+
+function testAnUpperCaseUberonNodeIsStillAnArea(testCase)
+% The UBERON test is case-insensitive: NDI writes `uberon:`, the registry
+% `UBERON:`. A case-sensitive check would quietly send every upper-case area to
+% the non-area arm, where pathSPromotion would never find it.
+v1 = foldableOntologyImage();
+v1.ontology_image.ontology_name = 'UBERON:0002436';
+obs = pickKind(did2.convert.migrators_j.ontology_image(v1), 'observation', 'intensity');
+verifyEqual(testCase, obs.statement.conditions(1).variable.node, 'NCIT:C13717');
+end
+
+function testANonAreaNodeIsAConditionThatIsNotAnAnatomicSite(testCase)
+% THE OTHER DIRECTION. "Any non-area node is a condition on the same
+% observation" ([ontology image is an observation of its region]). A guard that
+% labelled every node an Anatomic Site would pass the test above and hand
+% pathSPromotion a cell type to mint a region part for.
+v1 = foldableOntologyImage();
+v1.ontology_image.ontology_name = 'CL:0000540';
+v1.ontology_image.ontology_region = 'neuron';
+out = did2.convert.migrators_j.ontology_image(v1);
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
+verifyEqual(testCase, numel(out), 3, strjoin(names, ', '));
+obs = pickKind(out, 'observation', 'intensity');
+verifyEqual(testCase, obs.statement.variable.node, 'NCIT:C221750');
+c = obs.statement.conditions;
+verifyEqual(testCase, numel(c), 1);
+% a label variable (jLabel) carries no `node` at all
+verifyFalse(testCase, isfield(c(1).variable, 'node') ...
+    && strcmpi(char(c(1).variable.node), 'NCIT:C13717'));
+verifyEqual(testCase, c(1).variable.name, 'depicted term');
+verifyEqual(testCase, c(1).term.node, 'CL:0000540');
 end
 
 function testTheImageObservationIsNeverEmittedWithAnEmptySubjectEdge(testCase)
@@ -332,8 +391,10 @@ for k = 1:numel(out)
         statements{end+1} = out{k}; %#ok<AGROW>
     end
 end
-verifyEqual(testCase, numel(statements), 2, ...
-    'expected the term and the intensity observations to be statements');
+% INVERTED 2026-10-21: 1, not 2 -- the term observation is gone ([ontology
+% image is an observation of its region]).
+verifyEqual(testCase, numel(statements), 1, ...
+    'expected the intensity observation to be the one statement');
 for k = 1:numel(statements)
     verifyNotEmpty(testCase, depValueOf(statements{k}, 'entity_id'), ...
         sprintf('%s carries an empty entity_id', ...
@@ -472,16 +533,16 @@ function testDefaultIndexCoordinatesFoldBecauseTheyAreRecoverable(testCase)
 v1 = foldableOntologyImage();
 v1.ngrid.coordinates = defaultCoords([4 4]);
 out = did2.convert.migrators_j.ontology_image(v1);
-verifyEqual(testCase, numel(out), 4);
+verifyEqual(testCase, numel(out), 3);   % 4 before 2026-10-21: no term observation
 end
 
 function testAbsentAndEmptyCoordinatesBothFold(testCase)
 % Nothing to drop in either case.
 v1 = foldableOntologyImage();
 v1.ngrid.coordinates = [];
-verifyEqual(testCase, numel(did2.convert.migrators_j.ontology_image(v1)), 4);
+verifyEqual(testCase, numel(did2.convert.migrators_j.ontology_image(v1)), 3);
 v1.ngrid = rmfield(v1.ngrid, 'coordinates');
-verifyEqual(testCase, numel(did2.convert.migrators_j.ontology_image(v1)), 4);
+verifyEqual(testCase, numel(did2.convert.migrators_j.ontology_image(v1)), 3);
 end
 
 function testANearMissCoordinateVectorIsRefusedRatherThanAssumedDefault(testCase)
@@ -517,7 +578,7 @@ function testTheFoldedSetVALIDATESThroughTheDispatcher(testCase)
 out = did2.convert.v1_to_v2(foldableOntologyImage(), ...
     'Validate', true, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
-verifyEqual(testCase, out.summary.migrated_count, 4);
+verifyEqual(testCase, out.summary.migrated_count, 3);   % was 4: no term observation
 end
 
 function testTheProductionShapeStillPassesThroughUnderValidation(testCase)

@@ -24,6 +24,14 @@ function v2Body = ontology_image(preBody)
 %   subject passes through whole (#88 requires `entity_id`). Vintage B still
 %   passes through; the subject-bearing raster arm is unchanged in reach.
 %
+%   2026-10-21, [ontology image is an observation of its region] (Jess Haley):
+%   the raster arm no longer emits the term observation. It is ONE intensity
+%   observation (variable NCIT:C221750, the source id) carrying the ontology
+%   node as a condition (NCIT:C13717 for a UBERON area, for pathSPromotion to
+%   promote onto the region part), plus its sampled_body and the anchor: 1 -> 3.
+%   Text below that says "term_observation + image_observation", "1 -> 4" or
+%   "the term says what the picture depicts" is history.
+%
 %   ---------------------------------------------------------------------
 %   WHY THIS MIGRATOR IS VINTAGE-AWARE, AND WHY ONE VINTAGE IS DEFERRED
 %   ---------------------------------------------------------------------
@@ -271,29 +279,46 @@ if isempty(subjectId)
     return;
 end
 anchor = jSessionAnchor(preBody, 'during');
-% The region: an `observation` with the `term` value kind. It keeps the source
-% id, so an inbound edge naming the source lands on exactly one body.
-obs = jStatement(preBody, 'observation', subjectId, ...
-    jLabel('imaged region'), jOntologyTerm(node, regionName), ...
-    'ValueKind', 'term', ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id));
-v2Body = {obs, anchor};
 if ~(isfield(preBody, 'ngrid') && isstruct(preBody.ngrid))
+    % No raster: the vintage-A term observation, unchanged. [ontology image is
+    % an observation of its region] decides the RASTER's shape only.
+    obs = jStatement(preBody, 'observation', subjectId, ...
+        jLabel('imaged region'), jOntologyTerm(node, regionName), ...
+        'ValueKind', 'term', ...
+        'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id));
+    v2Body = {obs, anchor};
     return;
 end
 
-% THE RASTER (#73 review item 51, decided target recorded in did-schema's
-% V_eta_migration_targets.json `ontology_image` row and V_eta_OPEN_WORK.md
-% row #47): the pixels are an ordinary numeric image (NDI imageDocMaker.m:
-% `image` is "a numeric matrix"), so the raster is an `observation` with the
-% `intensity` value kind, its value BODY-BACKED (data_body true, the plain
-% array's element type on the statement's `data_type`), and the bytes a
+% THE RASTER. Decided by Jess Haley, 2026-10-21 [ontology image is an
+% observation of its region] (did-schema V_eta_spatial_transcriptomics_plan.md,
+% search that marker): "a migrated v1 ontologyImage raster is one observation
+% with the `intensity` value kind and variable NCIT:C221750 "Imaging Signal
+% Intensity"; when its ontology node is an anatomical area, the observation's
+% entity is that area's region part (per [region parts]), and any non-area node
+% is a condition on the same observation. This replaces item 51's separate term
+% observation for ontologyImage."
+%
+% So 1 -> 3: the intensity observation (it KEEPS the source id, so an inbound
+% edge naming the source lands on exactly one body), its sampled_body, and the
+% anchor. The ontology node rides as ONE condition on that observation:
+%
+%   - an anatomical (UBERON) area -> variable NCIT:C13717 "Anatomic Site". Pass 1
+%     cannot mint the region part (the part is keyed per parent, region and side
+%     across the whole session, which a one-document migrator cannot see), so
+%     the observation stays about the subject here and NDI's second pass
+%     (ndi.migrate.internal.pathSPromotion) mints or finds the part, retargets
+%     the observation onto it and drops the condition. Until that pass runs the
+%     document is Bar-1 shape, not the decided final shape.
+%   - any other node -> variable 'depicted term' (a label, NOT a registered
+%     term: no registered variable fits; flagged for the team).
+%
+% The raster itself (#73 review item 51): an ordinary numeric image (NDI
+% imageDocMaker.m: `image` is "a numeric matrix"), body-backed (data_body true,
+% the plain array's element type on the statement's `data_type`), the bytes a
 % `sampled_body` whose keys are the ngrid's dimensions (jNgridBody: data_dim ->
-% one key per dimension; coordinates carried or refused, never dropped). The
-% ontology terms stay the term observation above. 1 -> 4.
-% `variable` is the depicted term, as the fold's tests have always pinned: the
-% term is on this document, so nothing is deferred.
-imgId = did.ido.unique_id();
+% one key per dimension; coordinates carried or refused, never dropped).
+imgId = char(preBody.base.id);
 % Keys per #73 review item 51: a raster is keyed [y, x, (channel)]. The ngrid's
 % data_dim is MATLAB's size(image) (mat2ngrid), so dimension 1 is rows (y),
 % 2 columns (x), 3 the channel.
@@ -304,12 +329,22 @@ imgId = did.ido.unique_id();
 % do: renaming it would cut it from the bytes NDI stores under that name
 if isfield(preBody, 'files'); imgBody.files = preBody.files; end
 if isfield(preBody, 'file');  imgBody.file  = preBody.file;  end
+nodeTerm = jOntologyTerm(node, regionName);
+if isAnatomicalArea(node)
+    cond = did2.build.condition( ...
+        did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), ...
+        'Term', nodeTerm);
+else
+    cond = did2.build.condition(jLabel('depicted term'), 'Term', nodeTerm);
+end
 imgObs = jStatement(preBody, 'observation', subjectId, ...
-    jOntologyTerm(node, regionName), struct(), ...
+    did2.convert.registeredTerm('NCIT:C221750', 'Imaging Signal Intensity'), ...
+    struct(), ...
     'ValueKind', 'intensity', ...
     'DataBody', true, 'DatumType', dataType, 'SourceDatumType', sourceDataType, ...
+    'Conditions', cond, ...
     'TimeReferenceIds', {anchor.base.id}, 'Id', imgId);
-v2Body = {obs, imgObs, imgBody, anchor};
+v2Body = {imgObs, imgBody, anchor};
 end
 
 function v = subjectOf(preBody)
@@ -361,6 +396,12 @@ end
 end
 
 % ===================== local helpers ===================================
+
+function tf = isAnatomicalArea(node)
+%ISANATOMICALAREA True for a UBERON CURIE ([region anatomy is UBERON], Jess
+%   Haley 2026-10-21). Case-insensitive: NDI writes `uberon:` lower case.
+tf = strncmpi(strtrim(char(node)), 'uberon:', 7);
+end
 
 function id = sourceId(preBody)
 %SOURCEID The document's own id, for a diagnosable message. '<no base.id>' is
