@@ -375,6 +375,26 @@ for k = 1:numel(out)
 end
 end
 
+function testTheImpliedMethodIsReportedDropped(testCase)
+% reverse_correlation.method ('Hartley') is implied by the method term
+% ndi.calc.vis.hartley and is not carried, and its drop is in the migration
+% report, per document (Jess Haley, 2026-10-21, "a"): one
+% did2.convert.reportNote('field_dropped', 'hartley_calc', <id>,
+% 'reverse_correlation.method').
+v1 = hartleyCalcV1();
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.hartley_calc(v1);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+assertTrue(testCase, numel(out) > 1, 'the document folded');
+assertTrue(testCase, isfield(notes, 'field_dropped'), 'no field_dropped note was left');
+n = notes.field_dropped;
+hit = strcmp(n.details, 'reverse_correlation.method');
+verifyEqual(testCase, sum(hit), 1, 'the implied method is reported dropped, once');
+verifyEqual(testCase, n.ids(hit), {char(v1.base.id)}, 'per document: the source id');
+verifyTrue(testCase, isfield(n.by_class, 'hartley_calc'));
+end
+
 function testTheStimulusSequenceIsCARRIEDRatherThanDropped(testCase)
 % `frame_times` + `hartley_numbers` are parallel 3,360-vectors naming which
 % basis function was shown on each frame. Their signed home (the

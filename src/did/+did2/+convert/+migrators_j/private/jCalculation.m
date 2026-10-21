@@ -57,6 +57,7 @@ arguments
     opts.DataBody = []           % true: the value lives in bodies (receptive field)
     opts.DatumType = ''
     opts.SourceDatumType = ''
+    opts.Dropped = {}            % more dropped v1 field paths, reported verbatim
 end
 
 srcBlk = struct();
@@ -137,6 +138,10 @@ end
 for k = 1:numel(dropped)
     did2.convert.reportNote('field_dropped', className, ...
         char(preBody.base.id), [sourceBlock '.' dropped{k}]);
+end
+for k = 1:numel(opts.Dropped)   % the caller's own drops, full paths
+    did2.convert.reportNote('field_dropped', className, ...
+        char(preBody.base.id), char(opts.Dropped{k}));
 end
 end
 

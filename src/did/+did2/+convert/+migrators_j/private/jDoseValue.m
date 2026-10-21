@@ -1,4 +1,4 @@
-function [value, chemicals, conflicts] = jDoseValue(chemicals)
+function [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals)
 %JDOSEVALUE A migrated dose's `value`: the amount the source gave, else NaN.
 %
 %   [VALUE, CHEMICALS] = jDoseValue(CHEMICALS). CHEMICALS is the struct array
@@ -24,11 +24,14 @@ function [value, chemicals, conflicts] = jDoseValue(chemicals)
 %   in CONFLICTS (a cellstr, one line each) for the caller to report
 %   (jTreatmentBodies: reportNote 'dose_amount_conflict'). Either way it is
 %   taken off its row.
-%   INTERIM, per-body-mass: the decision puts an amount per body mass on the
-%   ingredient (`formulation.value.ingredients[k].amount_per_body_mass`);
-%   that field is not in the did-schema #88 tree yet (the dose agent is
-%   landing it), so until it is, the amount stays in the dose's
-%   `amount_per_body_mass` slot as before.
+%   AN AMOUNT PER BODY MASS IS ONE INGREDIENT'S (Jess Haley, 2026-10-21
+%   [dose per ingredient], did-schema 959e6d5): Hunsberger's "1 mg/kg" is of
+%   the alprazolam, not of the solution. Such a row becomes an entry of the
+%   dose's `value.ingredients` ({amount_per_body_mass}), and INGREDIENTROWS
+%   lists the CHEMICALS rows those entries describe, in order -- the caller
+%   adds one `ingredient_id` edge per row to that row's chemical
+%   (rule ingredients_match_edges). The top level then states the whole
+%   formulation's amount; unrecorded, it is NaN in volume.liters.
 %   No such row: the amount is unrecorded and is written as NaN in the
 %   dose's volume:
 %   `value.volume.liters = NaN` ("An unrecorded amount is written as NaN in
@@ -60,6 +63,8 @@ for k = 1:numel(chemicals)
 end
 
 conflicts = {};
+ingredientRows = [];
+ingredients = struct('amount_per_body_mass', {});
 if ~isempty(hits)
     v = struct();
     firstSpelled = struct();   % the first row's unit spelling, per slot
@@ -77,6 +82,12 @@ if ~isempty(hits)
         q.source_unit = unitTerm(c.source_unit);
         chemicals(k).source_value = [];
         chemicals(k).source_unit = [];
+        if strcmp(slot, 'amount_per_body_mass')
+            % one ingredient's own amount, not the formulation's
+            ingredients(end+1) = struct('amount_per_body_mass', q); %#ok<AGROW>
+            ingredientRows(end+1) = k; %#ok<AGROW>
+            continue;
+        end
         if ~isfield(v, slot)
             v.(slot) = q;
             firstSpelled.(slot) = spelled;
@@ -94,6 +105,14 @@ if ~isempty(hits)
                 num2str(first.source_value, 17), firstSpelled.(slot), ...
                 num2str(sv, 17), spelled); %#ok<AGROW>
         end
+    end
+    if isempty(fieldnames(v))
+        % only per-ingredient amounts: the whole formulation's amount is
+        % unrecorded, NaN at the top level (did-schema dose.json example)
+        v.volume = struct('liters', NaN);
+    end
+    if ~isempty(ingredients)
+        v.ingredients = ingredients;
     end
     value = did2.build.composite('dose', 'value', v);
 elseif isempty(hits) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1)))

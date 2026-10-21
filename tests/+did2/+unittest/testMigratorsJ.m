@@ -815,8 +815,11 @@ function testTreatmentDrugIntraperitonealTakesTheSourcesAmount(testCase)
 % Hunsberger writes alprazolam as a treatment_drug at Intraperitoneal
 % (SNOMED:783351009) with a mixture row `0.25 mg/kg` (SNOMED:396163008)
 % (+hunsberger/TreatmentCreator.m). A body site -> a dose "with the source's
-% amount when it has one": the mg/kg row is the dose's amount per body mass,
-% taken off the ingredient entry (it is not a concentration).
+% amount when it has one": the mg/kg row is the amount per body mass OF THE
+% ALPRAZOLAM, not of the solution (Jess Haley, 2026-10-21 [dose per
+% ingredient]): a `value.ingredients` entry with an `ingredient_id` edge to the
+% alprazolam chemical, taken off the formulation's ingredient entry (it is not a
+% concentration). The whole solution's injected volume is unrecorded: NaN.
 v1 = treatmentDrugDoc('td_ip', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
     'SNOMED:783351009', 'Intraperitoneal');
@@ -826,12 +829,17 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 5);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
-a = d.get('dose.value').amount_per_body_mass;
+dv = d.get('dose.value');
+verifyTrue(testCase, isnan(dv.volume.liters), 'the solution''s volume is unrecorded');
+assertEqual(testCase, numel(dv.ingredients), 1, 'one per-ingredient amount');
+a = dv.ingredients(1).amount_per_body_mass;
 verifyEqual(testCase, a.source_value, 0.25);
 verifyEqual(testCase, a.grams_per_gram, 0.25e-6, 'AbsTol', 1e-15);
 verifyEqual(testCase, a.source_unit.node, 'SNOMED:396163008');
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'alprazolam');
+verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
+    'the ingredient_id edge names the alprazolam chemical');
 % the per-body-mass amount is the dose's, not the ingredient's concentration:
 % the ingredient's own amount is unrecorded, NaN (a blank entry would leave the
 % formulation's value empty, which value_inline_or_body refuses)

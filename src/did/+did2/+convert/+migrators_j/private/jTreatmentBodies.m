@@ -69,7 +69,7 @@ switch route
             variable, [], 'TimeReferenceIds', {anchorId}, 'ValueId', formulationId, ...
             'Id', id, extra{:});
     otherwise
-        [value, chemicals, conflicts] = jDoseValue(chemicals);
+        [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals);
         % two rows of one amount kind that disagree: the first is the dose's,
         % the rest are reported (Jess Haley, 2026-10-21, "a")
         for k = 1:numel(conflicts)
@@ -77,9 +77,17 @@ switch route
                 char(preBody.document_class.class_name), id, conflicts{k});
         end
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
+        % one ingredient_id edge per value.ingredients entry, to that row's
+        % chemical (jDoseBodies emits the chemicals first, in row order)
+        edges = struct('formulation_id', formulationId);
+        if ~isempty(ingredientRows)
+            ingIds = cellfun(@(r) char(parts{r}.base.id), num2cell(ingredientRows), ...
+                'UniformOutput', false);
+            edges.ingredient_id = ingIds;
+        end
         manip = jStatement(preBody, 'dose_manipulation', jSubjectOf(preBody), ...
             variable, value, 'TimeReferenceIds', {anchorId}, ...
-            'Edges', struct('formulation_id', formulationId), 'Id', id, extra{:});
+            'Edges', edges, 'Id', id, extra{:});
         if strcmp(route, 'unknown')
             did2.convert.reportNote('route_unknown', ...
                 char(preBody.document_class.class_name), id);

@@ -323,13 +323,21 @@ inputs = {};
 if ~isempty(presentationId)
     inputs = {presentationId};
 end
+% reverse_correlation.method ('Hartley') is implied by the method term
+% ndi.calc.vis.hartley and is not carried; its drop is REPORTED per document
+% (Jess Haley, 2026-10-21, "a"), through jCalculation's field_dropped notes.
+dropped = {};
+if isfield(rc, 'method') && ~isempty(rc.method)
+    dropped{end+1} = 'reverse_correlation.method';
+end
 bodies = jCalculation(preBody, 'receptive_field_calculation', 'rf', ...
     'hartley_calc', 'receptive field', 'ndi.calc.vis.hartley', ...
     'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
-    'DatumType', datumType, 'SourceDatumType', sourceDatumType);
+    'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+    'Dropped', dropped);
 leaf = bodies{1};
 if isscalar(bodies) && strcmp(leaf.document_class.class_name, 'hartley_calc')
-    return;     % passed through (no subject or no operating system): no bodies
+    return;     % passed through (no subject): no bodies
 end
 for k = 1:numel(planeBodies)
     bodies{end+1} = planeBodies{k}; %#ok<AGROW>
