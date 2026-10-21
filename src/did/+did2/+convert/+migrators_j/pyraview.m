@@ -105,6 +105,9 @@ nativeRt = numScalar(fieldByNormalisedName(blk, 'nativerate'), 0.0);
 % pyraview with no epoch string is anchored "during the session".
 epochStr = getCharField(getBlock(preBody, 'epochid'), 'epochid');
 epochClk = getCharField(getBlock(preBody, 'epochclocktimes'), 'clocktype');
+if isempty(epochClk)
+    epochClk = charOf(fieldByNormalisedName(getBlock(preBody, 'epochclocktimes'), 'epochclock'));
+end
 epochDocId = jEpochDocId(preBody);
 if ~isempty(epochStr) && isempty(epochDocId)
     % DEFER (the stimulus_bath pattern): the #88 pyraview tombstone does not
@@ -119,7 +122,17 @@ end
 % Read the extent by its NORMALISED name: universalRenames' snake_case pass may
 % respell `t0_t1` (digits next to underscores), and a missed spelling here
 % passes the whole document through (corpus run 39555306048, PRED).
-epochSpan = numVec(fieldByNormalisedName(getBlock(preBody, 'epochclocktimes'), 't0t1'));
+ect = getBlock(preBody, 'epochclocktimes');
+epochSpan = numVec(fieldByNormalisedName(ect, 't0t1'));
+if numel(epochSpan) < 2
+    % universalRenames reshapes the v1 block to {epoch_clock, t0, t1}
+    % (corpus run 39556010131, PRED): read the two ends separately.
+    a = numVec(fieldByNormalisedName(ect, 't0'));
+    b = numVec(fieldByNormalisedName(ect, 't1'));
+    if isscalar(a) && isscalar(b)
+        epochSpan = [a b];
+    end
+end
 epochDur  = NaN;
 if numel(epochSpan) >= 2 && all(isfinite(epochSpan(1:2)))
     epochDur = double(epochSpan(2)) - double(epochSpan(1));
