@@ -109,13 +109,13 @@ arguments
     blk (1,1) struct
 end
 
-entries = struct('variable', {}, 'source_unit', {}, 'quantity', {});
+entries = {};
 other = blk;
 
 % --- refractory period -------------------------------------------------------
 v = numField(blk, 'refractory_time');
 if ~isempty(v)
-    entries(end+1) = jParameterEntry('refractory period', v, '', ...
+    entries{end+1} = jParameterEntry('refractory period', v, '', ...
         rawText(blk, 'refractory_time'));
     other = dropField(other, 'refractory_time');
 end
@@ -124,13 +124,13 @@ end
 startT = numField(blk, 'spike_start_time');
 endT   = numField(blk, 'spike_end_time');
 if ~isempty(startT)
-    entries(end+1) = jParameterEntry('waveform window start', startT, '', ...
+    entries{end+1} = jParameterEntry('waveform window start', startT, '', ...
         rawText(blk, 'spike_start_time'));
     other = dropField(other, 'spike_start_time');
     if ~isempty(endT)
         % source_value is EMPTY on purpose: v1 recorded an end, not a duration,
         % so there is no source spelling of this number to keep verbatim.
-        entries(end+1) = jParameterEntry('waveform window duration', ...
+        entries{end+1} = jParameterEntry('waveform window duration', ...
             endT - startT, '', '');
         other = dropField(other, 'spike_end_time');
     end
@@ -148,7 +148,7 @@ if ~isempty(param)
             variableName = 'absolute voltage threshold';
     end
     if ~isempty(variableName)
-        entries(end+1) = jParameterEntry(variableName, param, '', ...
+        entries{end+1} = jParameterEntry(variableName, param, '', ...
             rawText(blk, 'threshold_parameter'));
         other = dropField(other, 'threshold_parameter');
         other = dropField(other, 'threshold_method');

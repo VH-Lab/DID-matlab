@@ -46,9 +46,11 @@ arguments
     sourceValue char = ''
 end
 
-e = struct();
-e.variable = jOntologyTerm('', variableName);
-e.source_unit = sourceUnit;
-e.quantity = struct('value', canonicalValue, ...
-    'source_value', sourceValue);
+% did-schema #88: one entry {variable, unit, source_unit, approximate,
+% quantity {value, source_value}} (data_body AMENDMENT 3), built by
+% did2.build.parameter. SOURCEUNIT, given as text, becomes a term (jSourceUnit).
+args = {'Value', canonicalValue};
+if ~isempty(sourceValue); args = [args, {'SourceValue', sourceValue}]; end
+if ~isempty(sourceUnit); args = [args, {'SourceUnit', jSourceUnit(sourceUnit)}]; end
+e = did2.build.parameter(did2.build.label(variableName), args{:});
 end

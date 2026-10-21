@@ -81,96 +81,75 @@ function bodies = jMethodParameters(preBody, entries, other, opts)
 
 arguments
     preBody (1,1) struct
-    entries struct
+    entries   % a cell of parameter entries (did2.build.parameter), or a struct array
     other (1,1) struct
     % `char` without a size spec: the default '' is 0-by-0 and would fail a
     % `(1,:) char` constraint.
     opts.DerivedFromSrc char = ''
 end
 
-TV = 'V_eta';
-
-% ---------------------------------------------------------------- app/software
-% CONSOLIDATED 2026-08-10 (#25, software dedup): this used to be a LOCAL
-% softwareEntity() below, a third copy of the app -> software fold that did not
-% write `local_identifier` -- so the deferred corpus-wide dedup pass would have
-% had to special-case the entities minted here. private/jSoftwareFromApp.m is
-% now the one reader of an `app` block and private/jSoftware.m the one builder
-% of a `software` body. RequireSession preserves this class's guard exactly
-% (see below); the 4th output preserves the parking.
-[software, softwareId, execEnv, appLeftover] = ...
+% did-schema #88 (V_eta_method_plan.md, Jess 2026-10-21): the standalone
+% class `method_parameters` is `method` {name, term, parameters}, scoped by
+% `entity_id` (`subject_id` before) and `epoch_id`, with `software_id`.
+% ENTRIES are the mapped knobs. OTHER, the settings with no mapped entry
+% (and, before #88, the parked epoch string and execution environment), has
+% no block of its own on #88: each of its leaves becomes one more parameter
+% (jParameterList), so nothing is dropped -- a CONSERVATIVE CHOICE, recorded.
+% The run environment is not a method's (the software edge is) and is
+% dropped, reported. The epoch STRING is parked as a parameter named
+% 'epochid' (text); did2.convert.epochMint stamps the `epoch_id` edge from it
+% and removes the entry.
+[software, softwareId, ~, appLeftover] = ...
     jSoftwareFromApp(preBody, 'RequireSession', true);
-if ~isempty(fieldnames(execEnv))
-    other.execution_environment = execEnv;
-end
 if ~isempty(fieldnames(appLeftover))
     other.app = appLeftover;
 end
-
-% ---------------------------------------------------------------- epoch scope
-% The did_v1 `epochid` block is a bare string ('t00001'); V_eta replaces it with
-% an `epoch_id` EDGE. jEpochDocId is the switch: until the epoch pass mints the
-% documents it answers '', so the edge is omitted and the string is parked so
-% the second pass can resolve it. Dropping it would lose the only record that
-% these settings were scoped to one epoch -- and for
-% spike_extraction_parameters_modification that scope is the WRITER's, not the
-% template's (spikeextractor.m:310 sets 'epochid.epochid' on a class whose
-% template declares only base + app), so it is exactly the kind of fact the
-% ground-truth rule exists to protect.
 epochDocId = jEpochDocId(preBody);
 epochString = '';
 if isfield(preBody, 'epochid') && isstruct(preBody.epochid)
     epochString = jGetChar(preBody.epochid, 'epochid');
 end
+if isfield(other, 'epochid'); other = rmfield(other, 'epochid'); end
+if isfield(other, 'execution_environment')
+    other = rmfield(other, 'execution_environment');
+end
+
+params = {};
+if iscell(entries)
+    params = reshape(entries, 1, []);
+elseif ~isempty(entries)
+    params{end+1} = entries;
+end
+rest = jParameterList(other);
+if ~isempty(rest)
+    params{end+1} = rest;
+end
 if isempty(epochDocId) && ~isempty(epochString)
-    other.epochid = epochString;
+    params{end+1} = did2.build.parameter(did2.build.label('epochid'), 'Text', epochString);
+end
+f = struct();
+nm = baseName(preBody);
+if ~isempty(nm); f.name = nm; end
+if ~isempty(params)
+    f.parameters = did2.build.list(params{:});
 end
 
-% ---------------------------------------------------------------- the document
-mp = struct();
-mp.document_class = struct('class_name', 'method_parameters', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', TV);
-
-deps = struct('name', {}, 'value', {});
+edges = struct();
 subjectId = firstDepValue(preBody, {'element_id', 'subject_id'});
-if ~isempty(subjectId)
-    deps(end+1) = struct('name', 'subject_id', 'value', subjectId);
-end
-if ~isempty(epochDocId)
-    deps(end+1) = struct('name', 'epoch_id', 'value', epochDocId);
-end
+if ~isempty(subjectId); edges.entity_id = subjectId; end
+if ~isempty(epochDocId); edges.epoch_id = epochDocId; end
 if ~isempty(opts.DerivedFromSrc)
     derivedId = firstDepValue(preBody, {opts.DerivedFromSrc});
     if ~isempty(derivedId)
-        deps(end+1) = struct('name', 'derived_from_id', 'value', derivedId);
+        % a modification is a variant of the protocol it names (lineage only)
+        edges.parent_id = derivedId;
     end
 end
-if ~isempty(softwareId)
-    deps(end+1) = struct('name', 'software_id', 'value', softwareId);
+if ~isempty(softwareId); edges.software_id = softwareId; end
+o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
+mp = did2.build.document('method', f, o{:});
+bodies = [{mp}, software];
 end
-mp.depends_on = deps;
-
-% base VERBATIM: base.id keeps the three inbound edges resolving, and base.name
-% keeps the two by-name queries answerable.
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    mp.base = preBody.base;
-end
-
-blk = struct();
-blk.name = baseName(preBody);
-blk.method_parameters = entries;
-blk.other = other;
-mp.method_parameters = blk;
-
-bodies = {mp};
-if ~isempty(software)
-    bodies{end+1} = software;
-end
-end
-
-% ===================== helpers =============================================
 
 function n = baseName(preBody)
 n = '';

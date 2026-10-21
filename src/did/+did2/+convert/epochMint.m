@@ -22,7 +22,7 @@ function [result, report] = epochMint(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested,
-%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping
+%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping, pyraview
 %   BATCH-PASS-EMITS: epochid -> document: epoch
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
@@ -39,6 +39,10 @@ function [result, report] = epochMint(result, options)
 %       which is the failure the `-> nothing` form exists to prevent, and is
 %       why arming a migrator is NOT the same shape as `acquisition_epoch`
 %       below, where this pass mints the document itself.
+%   BATCH-PASS-EMITS: pyraview -> nothing: SAME REASON (did-schema #88). The
+%       fourth armed loop stamps `epoch_id` onto the passed-through pyraview
+%       and re-runs +migrators_j/pyraview, which mints the voltage observation,
+%       its bodies and the epoch-scoped relative_time_reference.
 %   BATCH-PASS-EMITS: syncrule_mapping -> nothing: SAME REASON, the third time.
 %       The third armed loop stamps `epoch_id_1` / `epoch_id_2` onto the
 %       passed-through mapping and re-runs +migrators_j/syncrule_mapping; the
@@ -504,6 +508,13 @@ report = struct( ...
     ... % relative_reference bodies; `edges_stamped` counts the source documents
     ... % whose BOTH endpoints resolved, not the individual edges.
     'syncrule_seen',                       0, ...
+    'pyraview_seen',                       0, ...
+    'pyraview_refused_no_epoch_string',    0, ...
+    'pyraview_refused_no_epoch_document',  0, ...
+    'pyraview_refused_migrator_declined',  0, ...
+    'pyraview_refused_unsafe_output',      0, ...
+    'pyraview_folds_emitted',              0, ...
+    'pyraview_folds_withheld',             0, ...
     'syncrule_already_folded',             0, ...
     'syncrule_edges_stamped',              0, ...
     'syncrule_folds_emitted',              0, ...
@@ -965,6 +976,22 @@ for k = 1:n
     % The parked string leaves in the same step the edge arrives. Leaving both
     % would store one fact twice with nothing saying which is authoritative --
     % the defect open item #69 exists for.
+    if isfield(b, 'method') && isstruct(b.method) && isscalar(b.method) ...
+            && isfield(b.method, 'parameters') && isstruct(b.method.parameters)
+        % #88: the parked string is the 'epochid' parameter entry; the edge
+        % now says it, so the entry goes
+        ps = b.method.parameters;
+        keepP = true(1, numel(ps));
+        for ii = 1:numel(ps)
+            keepP(ii) = ~(isfield(ps(ii), 'variable') && isstruct(ps(ii).variable) ...
+                && isfield(ps(ii).variable, 'name') ...
+                && strcmp(char(ps(ii).variable.name), 'epochid'));
+        end
+        b.method.parameters = ps(keepP);
+        if isempty(b.method.parameters)
+            b.method = rmfield(b.method, 'parameters');
+        end
+    end
     if isfield(b, 'method_parameters') && isstruct(b.method_parameters) ...
             && isfield(b.method_parameters, 'other') ...
             && isstruct(b.method_parameters.other) ...
@@ -1469,6 +1496,99 @@ for k = 1:n
     changedArming(end+1)    = numel(armings);       %#ok<AGROW>
 end
 
+% ---- the fourth armed fold: pyraview (did-schema #88) -----------------------
+% On #88 a pyraview's epoch-scoped time is a relative_time_reference onto the
+% EPOCH ENTITY this pass mints, so +migrators_j/pyraview passes a pyraview with
+% an epoch string through pass 1. Here the `epoch_id` edge is stamped and the
+% migrator re-run, exactly as for syncrule_mapping; the primary body is the
+% voltage observation, id preserved.
+for k = 1:n
+    if strcmp(rows(k).class_name, 'voltage_observation') ...
+            && isstruct(bodies{k}) && isfield(bodies{k}, 'pyraview')
+        continue;
+    end
+    if ~strcmp(rows(k).class_name, 'pyraview'); continue; end
+    report.pyraview_seen = report.pyraview_seen + 1;
+    es = valueForSource(epochValues{k}, epochSources{k}, 'epochid');
+    if isempty(es)
+        report.pyraview_refused_no_epoch_string = ...
+            report.pyraview_refused_no_epoch_string + 1;
+        continue;
+    end
+    key = pairKey(rows(k).session_id, es);
+    if ~isKey(epochIdByKey, key)
+        report.pyraview_refused_no_epoch_document = ...
+            report.pyraview_refused_no_epoch_document + 1;
+        continue;
+    end
+    b = setDep(bodies{k}, 'epoch_id', epochIdByKey(key));
+    migrator = armingMigratorFor(armingMigrators, 'pyraview');
+    offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    nOffered = numel(offered);
+    report.arming_calls          = report.arming_calls + 1;
+    report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
+    report.arming_extra_bodies_offered = ...
+        report.arming_extra_bodies_offered + max(0, nOffered - 1);
+    if nOffered > report.arming_max_bodies_per_call
+        report.arming_max_bodies_per_call = nOffered;
+    end
+    if nOffered > 1
+        report.arming_calls_returning_multiple = ...
+            report.arming_calls_returning_multiple + 1;
+    end
+    [safe, why, unchecked] = armingIsSafe(offered, ...
+        'voltage_observation', rows(k).doc_id, ...
+        checkEdgeDeclaration, edgeIndex, edgeMemo);
+    report.arming_edge_declaration_unchecked = ...
+        report.arming_edge_declaration_unchecked + unchecked;
+    if ~safe
+        switch why
+            case 'declined'
+                report.pyraview_refused_migrator_declined = ...
+                    report.pyraview_refused_migrator_declined + 1;
+                report.arming_bodies_dropped_declined = ...
+                    report.arming_bodies_dropped_declined + nOffered;
+            case 'id_not_preserved'
+                report.pyraview_refused_unsafe_output = ...
+                    report.pyraview_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_id_not_preserved = ...
+                    report.arming_bodies_dropped_id_not_preserved + nOffered;
+            case 'undeclared_edge'
+                report.pyraview_refused_unsafe_output = ...
+                    report.pyraview_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_undeclared_edge = ...
+                    report.arming_bodies_dropped_undeclared_edge + nOffered;
+            otherwise
+                error('did2:convert:epochMint:unknownRefusal', ...
+                    ['armingIsSafe returned refusal "%s", which no counter ' ...
+                     'names. Add the counter; do not widen an existing ' ...
+                     'one.'], why);
+        end
+        report.pyraview_folds_withheld = report.pyraview_folds_withheld + 1;
+        continue;
+    end
+    bodies{k} = offered{1};
+    extraIds  = cell(1, nOffered - 1);
+    for e = 2:nOffered
+        extraBodies{end+1} = offered{e};        %#ok<AGROW>
+        extraIds{e-1}      = baseIdOf(offered{e});
+    end
+    armEntry = struct();
+    armEntry.index            = k;
+    armEntry.primary_id       = baseIdOf(offered{1});
+    armEntry.extra_ids        = extraIds;
+    armEntry.body_count       = nOffered;
+    armEntry.epoch_id         = epochIdByKey(key);
+    armEntry.is_metadata_fold = false;
+    armEntry.is_response_fold = false;
+    armEntry.is_syncrule_fold = false;
+    armEntry.is_pyraview_fold = true;
+    armings{end+1} = armEntry;                      %#ok<AGROW>
+    changedIdx(end+1)       = k;                    %#ok<AGROW>
+    changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
+    changedArming(end+1)    = numel(armings);       %#ok<AGROW>
+end
+
 report.arming_vacuous = (report.arming_calls == 0);
 report.metadata_refused_total = report.metadata_refused_no_epoch_string ...
     + report.metadata_refused_no_epoch_document ...
@@ -1796,7 +1916,9 @@ tbl = struct( ...
     'stimulus_response_scalar', ...
         @did2.convert.migrators_j.stimulus_response_scalar, ...
     'syncrule_mapping', ...
-        @did2.convert.migrators_j.syncrule_mapping);
+        @did2.convert.migrators_j.syncrule_mapping, ...
+    'pyraview', ...
+        @did2.convert.migrators_j.pyraview);
 end
 
 function fcn = armingMigratorFor(tbl, sourceClass)

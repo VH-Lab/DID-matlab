@@ -53,6 +53,6 @@ end
 
 % The tail is the whole block, by subtraction from nothing: a field NDI adds
 % later survives instead of being dropped by an allow-list.
-entries = struct('variable', {}, 'source_unit', {}, 'quantity', {});
+entries = {};
 bodies = jMethodParameters(preBody, entries, blk);
 end

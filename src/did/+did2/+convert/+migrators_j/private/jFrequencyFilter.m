@@ -154,8 +154,8 @@ ripple = readNumScalar(params, {'passBandRipple', 'pass_band_ripple', ...
 attenuation = readNumScalar(params, {'stopbandAttentuation', 'stopband_attentuation', ...
     'stopbandAttenuation', 'stopband_attenuation'});
 
-block = struct('algorithm', jOntologyTerm('', algorithm), ...
-    'band', jOntologyTerm('', band));
+% names: the builder completes each from its field's bound value set
+block = struct('algorithm', algorithm, 'band', band);
 
 passband = struct();
 switch band
@@ -185,27 +185,9 @@ if ~isempty(attenuation)
     block.stopband_attenuation = decibels(attenuation);
 end
 
-sessionId = '';
-ds = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        ds = preBody.base.datestamp;
-    end
-end
-
-ff = struct();
-ff.document_class = struct('class_name', 'frequency_filter', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-ff.depends_on = struct('name', {}, 'value', {});
-% A FRESH ID. The filter is a SIBLING document split off the carrier, not the
-% carrier itself -- the carrier keeps its own id (pyraview's observation does),
-% so nothing dangles.
-ff.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_frequency_filter', 'datestamp', ds);
-ff.frequency_filter = block;
+% did-schema #88: built through did2.build.document.
+o = jOpts(preBody);
+ff = did2.build.document('frequency_filter', block, o{:});
 end
 
 % ===================== small helpers =======================================
@@ -239,12 +221,12 @@ end
 end
 
 function c = hz(v)
-c = struct('hertz', double(v), 'source_unit', 'Hz', ...
+c = struct('hertz', double(v), 'source_unit', jSourceUnit('Hz'), ...
     'source_value', double(v), 'approximate', false);
 end
 
 function c = decibels(v)
-c = struct('decibels', double(v), 'source_unit', 'dB', ...
+c = struct('decibels', double(v), 'source_unit', jSourceUnit('dB'), ...
     'source_value', double(v), 'approximate', false);
 end
 

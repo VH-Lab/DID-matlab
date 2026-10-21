@@ -151,7 +151,22 @@ if isfield(body, 'epochfiles_ingested') && isstruct(body.epochfiles_ingested) ..
     end
 end
 
-% ---- 3. the parked string on a migrated method_parameters -----------------
+% ---- 3. the parked string on a migrated method -----------------------------
+% did-schema #88: the standalone class is `method`, and the parked string is a
+% `method.parameters` entry {variable 'epochid', text} (migrators_j
+% jMethodParameters). The pre-#73 `method_parameters.other.epochid` is read too.
+if isfield(body, 'method') && isstruct(body.method) && isscalar(body.method) ...
+        && isfield(body.method, 'parameters') && isstruct(body.method.parameters)
+    ps = body.method.parameters;
+    for k = 1:numel(ps)
+        if isfield(ps(k), 'variable') && isstruct(ps(k).variable) ...
+                && isfield(ps(k).variable, 'name') ...
+                && strcmp(char(ps(k).variable.name), 'epochid') ...
+                && isfield(ps(k), 'text') && ~isempty(ps(k).text)
+            hits(end+1) = struct('source', 'method_parameters', 'value', char(ps(k).text)); %#ok<AGROW>
+        end
+    end
+end
 if isfield(body, 'method_parameters') && isstruct(body.method_parameters) ...
         && isscalar(body.method_parameters) ...
         && isfield(body.method_parameters, 'other') ...
