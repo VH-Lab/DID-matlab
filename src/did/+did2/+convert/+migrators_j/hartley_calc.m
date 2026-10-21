@@ -248,6 +248,19 @@ arguments
     preBody (1,1) struct
 end
 
+% did-schema #88 CANNOT EXPRESS THIS DOCUMENT, so it passes through on its v1
+% tombstone (Jess Haley, 2026-10-21: per class, never invent a shape). The
+% leaf's value composite `receptive_field` declares `value` as a REQUIRED
+% non-empty structure with NO sub-fields (the volume moved onto the plane
+% bodies, #73 audit 2 D11), so no document can satisfy it: corpus run
+% 39550766416 quarantined all 210 of 20211116's hartley_calc documents with
+% 'Field "receptive_field.value" is required to be non-empty.' The fold below
+% is kept for the day the composite gains a field; it is not reached.
+if ~foldExpressible()
+    bodies = {preBody};
+    return;
+end
+
 % The eight keys the referenced stimulus_presentation's generator spec
 % supplies, and therefore the eight this document may drop. Named here, once,
 % because the guard and the census must agree on the SAME list -- two lists
@@ -668,5 +681,22 @@ id = '<no base.id>';
 if isfield(preBody, 'base') && isstruct(preBody.base) ...
         && isfield(preBody.base, 'id') && ~isempty(preBody.base.id)
     id = char(preBody.base.id);
+end
+end
+
+function tf = foldExpressible()
+% True when the loaded schema's receptive_field.value declares a sub-field a
+% document could fill. On did-schema #88 it declares none.
+tf = false;
+try
+    c = did2.schema.cache.shared().getClass('receptive_field');
+    for k = 1:numel(c.fields)
+        f = c.fields(k);
+        if iscell(c.fields); f = c.fields{k}; end
+        if strcmp(f.name, 'value') && isfield(f, 'fields') && ~isempty(f.fields)
+            tf = true; return;
+        end
+    end
+catch
 end
 end

@@ -233,7 +233,7 @@ pos = cell(1, n);
 for i = 1:n
     parts = cell(1, numel(cols));
     for d = 1:numel(cols)
-        parts{d} = sprintf('%s %.17g', strrep(names{d}, '_', ' '), M(i, d));
+        parts{d} = sprintf('%s %s', strrep(names{d}, '_', ' '), shortestText(M(i, d)));
     end
     pos{i} = strjoin(parts, ', ');
 end
@@ -401,4 +401,15 @@ end
 
 function c = prefixed(p, names)
 c = cellfun(@(n) [p n], reshape(names, 1, []), 'UniformOutput', false);
+end
+
+function t = shortestText(x)
+% The shortest decimal text that reads back as exactly X (0.04, not
+% 0.040000000000000001), so a label stays lossless and readable.
+for p = 1:17
+    t = sprintf('%.*g', p, x);
+    if str2double(t) == x
+        return;
+    end
+end
 end
