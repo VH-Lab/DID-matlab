@@ -13,12 +13,16 @@ function checkTerm(def, t, path)
 %     - a schema with no term registry (did-schema main);
 %     - a field whose binding lists its own values (entity.type, a
 %       relation, a clock): that list already governs it;
-%     - a statement's own value (term.value, a chemical's substance): that is
-%       what the data says, not the vocabulary it is said in;
 %     - a model fit's coefficient names (model_fit ... coefficients.variable):
 %       a coefficient is named by its symbol in the model's equation ('a',
 %       'b'), which tells the fit's own coefficients apart; its node still
 %       says what kind of coefficient it is.
+%
+%   A statement's own value term (term.value, a chemical's substance) IS
+%   checked, like a variable (Jess Haley, 2026-10-20: value terms are
+%   registered too; DID-schema V_eta_term_registry_plan.md, open item 1). A term with no node is checked the same way
+%   for every slot: it passes only when its name is registered as a STAGED
+%   term (no node); see did2.schema.termRegistered.
 
 arguments
     def struct
@@ -31,8 +35,7 @@ collecting = did2.build.unregisteredTerms('-collecting');
 if ~armed && ~collecting
     return;
 end
-if hasValueSet(def) || ~isempty(regexp(path, ...
-        '^(term\.value|chemical\.value\.substance)(\(\d+\))?$', 'once')) ...
+if hasValueSet(def) ...
         || ~isempty(regexp(path, '\.coefficients(\(\d+\))?\.variable$', 'once'))
     return;
 end

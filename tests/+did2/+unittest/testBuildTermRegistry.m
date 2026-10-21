@@ -87,6 +87,53 @@ L = did2.build.unregisteredTerms();
 verifyTrue(testCase, any(strcmp({L.name}, 'a variable nobody registered')));
 end
 
+function testTheBuilderRefusesAnUnregisteredValueTerm(testCase)
+% A statement's own value term is registered too (Jess Haley, 2026-10-20;
+% DID-schema V_eta_term_registry_plan.md, open item 1): term.value and a
+% chemical's substance are checked like a variable.
+ix = needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', true);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+verifyError(testCase, @() did2.build.composite('term', 'value', ...
+    did2.build.term('', 'a value nobody registered')), 'did2:build:unregisteredTerm');
+verifyError(testCase, @() did2.build.composite('term', 'value', ...
+    did2.build.term('EMPTY:9999999', 'a value nobody registered')), ...
+    'did2:build:unregisteredTerm');
+verifyError(testCase, @() did2.build.composite('chemical', 'value', ...
+    struct('substance', did2.build.term('', 'a substance nobody registered'))), ...
+    'did2:build:unregisteredTerm');
+% a registered term passes in either slot
+e = firstWithNode(ix);
+verifyWarningFree(testCase, @() did2.build.composite('term', 'value', ...
+    did2.build.term(e.node, e.name)));
+verifyWarningFree(testCase, @() did2.build.composite('chemical', 'value', ...
+    struct('substance', did2.build.term(e.node, e.name))));
+end
+
+function testDisarmedAndCollectingItRecordsAnUnregisteredValueTerm(testCase)
+ix = needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+prevC = did2.build.unregisteredTerms('-collect', true);
+testCase.addTeardown(@() did2.build.unregisteredTerms('-collect', prevC));
+did2.build.unregisteredTerms('-reset');
+testCase.addTeardown(@() did2.build.unregisteredTerms('-reset'));
+e = firstWithNode(ix);
+did2.build.composite('term', 'value', did2.build.term('', 'a value nobody registered'));
+did2.build.composite('chemical', 'value', ...
+    struct('substance', did2.build.term('', 'a substance nobody registered')));
+did2.build.composite('term', 'value', did2.build.term(e.node, e.name));
+did2.build.composite('chemical', 'value', struct('substance', did2.build.term(e.node, e.name)));
+L = did2.build.unregisteredTerms();
+verifyNumElements(testCase, L, 2, 'only the two unregistered terms are recorded');
+v = L(strcmp({L.name}, 'a value nobody registered'));
+verifyNumElements(testCase, v, 1);
+verifyTrue(testCase, startsWith(v.field, 'term.value'));
+c = L(strcmp({L.name}, 'a substance nobody registered'));
+verifyNumElements(testCase, c, 1);
+verifyEqual(testCase, c.field, 'chemical.value.substance');
+end
+
 % ===================== helpers ==============================================
 
 function ix = needRegistry(testCase)
