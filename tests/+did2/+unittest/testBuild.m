@@ -496,6 +496,52 @@ did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
     'ValueId', newId(), common{:});
 end
 
+function testAnUnrecordedAmountIsNaNAndCountsAsStated(testCase)
+% Jess Haley, 2026-10-21 (did-schema V_eta_go_forward_class_audit.md): an
+% unrecorded amount is written as NaN in its quantity (e.g. a dose's
+% volume.liters: NaN), and V2 stores NaN the way V1 does. So a NaN-valued
+% dose is a STATED value under value_inline_or_body, and it survives a
+% did2.database.sqlitedb write and read (did2.document/toJSON writes the
+% literal NaN; plain jsonencode wrote null, which read back as []).
+if ~valueRuleDeclared() || ~composes() || ~did2.schema.cache.shared().hasClass('dose')
+    assumeFail(testCase, 'the loaded schema has no value rule, no value kinds or no dose');
+end
+sid = testCase.TestData.sid;
+edges = struct('entity_id', newId(), 'time_reference_id', newId());
+unknown = struct('volume', did2.build.valueCell('volume', NaN));
+doc = did2.build.document('manipulation', ...
+    struct('variable', did2.build.term('', 'dose'), 'value', unknown), ...
+    'ValueKind', 'dose', 'SessionId', sid, 'Edges', edges);
+verifyTrue(testCase, isnan(doc.dose.value.volume.liters));
+% the rule is in force for dose: an empty value is refused
+verifyError(testCase, @() did2.build.document('manipulation', ...
+    struct('variable', did2.build.term('', 'dose'), 'value', struct()), ...
+    'ValueKind', 'dose', 'SessionId', sid, 'Edges', edges), ...
+    'did2:build:ruleViolated');
+if isempty(which('mksqlite'))
+    return;   % the database half needs mksqlite
+end
+f = [tempname() '.sqlite'];
+db = did2.database.sqlitedb(f);
+cleanup = onCleanup(@() closeAndDelete(db, f)); %#ok<NASGU>
+d = did2.document(doc);
+db.add(d);
+back = db.get(d.get('base.id'));
+verifyTrue(testCase, isnan(back.get('dose.value.volume.liters')), ...
+    'the unrecorded amount must read back as NaN, not []');
+back.validate();
+end
+
+function closeAndDelete(db, f)
+try
+    db.close();
+catch
+end
+if isfile(f)
+    delete(f);
+end
+end
+
 function tf = valueRuleDeclared()
 tf = false;
 c = did2.schema.cache.shared().getClass('value');

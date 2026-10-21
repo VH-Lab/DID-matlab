@@ -854,7 +854,8 @@ if ischar(rawBody) || (isstring(rawBody) && isscalar(rawBody))
     text = char(rawBody);
 elseif isstruct(rawBody)
     try
-        text = jsonencode(rawBody);
+        % the v1 body as V1 wrote it: NaN / Infinity kept (jsonencodenan)
+        text = jsonencode(rawBody, 'ConvertInfAndNaN', false);
     catch
         text = '';
     end

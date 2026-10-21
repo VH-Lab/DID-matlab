@@ -913,7 +913,9 @@ classdef sqlitedb < handle
             % document has, holding what json_extract(body, path) gave the
             % old generated column: text as text, a number or logical as a
             % number, anything else (an array, a struct, empty) as its JSON.
-            % A non-finite number is JSON null, so it has no row.
+            % NaN is written as the literal NaN, which json_extract reads as
+            % JSON null, so it has no row; Infinity / -Infinity read as a
+            % real infinity and have one (did2.document/toJSON).
             arguments
                 obj (1,1) did2.database.sqlitedb
                 docId {mustBeText}
@@ -1618,7 +1620,9 @@ classdef sqlitedb < handle
             % What json_extract(body, '$.path') returns for a field whose
             % MATLAB value is X, in the body as jsonencode writes it:
             % text, a number (a logical as 1/0), or the JSON of anything
-            % else. A non-finite number is written as null: ISNULL.
+            % else. NaN is written as the literal NaN (did2.document/toJSON),
+            % which json_extract reads as JSON null: ISNULL. Infinity and
+            % -Infinity read as a real infinity, so they are values.
             arguments
                 x % any MATLAB value of a body field
             end
@@ -1630,7 +1634,7 @@ classdef sqlitedb < handle
                 v = char(x);
             elseif (isnumeric(x) || islogical(x)) && isscalar(x)
                 v = double(x);
-                isNull = ~isfinite(v);
+                isNull = isnan(v);
             else
                 v = jsonencode(x);
             end
