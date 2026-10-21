@@ -183,7 +183,7 @@ verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
 verifyEqual(testCase, doc.get('document_class.class_name'), 'subject');
 verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
-verifyEqual(testCase, doc.get('subject.local_identifier'), 'cohortA');
+verifyEqual(testCase, doc.get('entity.local_identifier'), 'cohortA');
 % bare identity: is_group / is_biological must NOT be present in V_eta
 sub = doc.get('subject');
 verifyFalse(testCase, isfield(sub, 'is_group'));
@@ -202,7 +202,7 @@ v1.base = struct('id', 'grp_noname', 'session_id', 'aa_99', ...
 v1.subject_group = struct('group_name', '', 'description', '');
 out = runJ(v1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('subject.local_identifier'), 'grp_noname');
+verifyEqual(testCase, doc.get('entity.local_identifier'), 'grp_noname');
 end
 
 function testSubjectCarryForwardFillsLocalId(testCase)
@@ -218,7 +218,7 @@ v1.subject = struct('local_identifier', '', 'description', '');
 out = runJ(v1);
 doc = out.migrated{1};
 verifyEqual(testCase, doc.get('document_class.class_name'), 'subject');
-verifyEqual(testCase, doc.get('subject.local_identifier'), 'sub_bare');
+verifyEqual(testCase, doc.get('entity.local_identifier'), 'sub_bare');
 end
 
 function testSubjectCarryForwardPreservesLocalId(testCase)
@@ -232,7 +232,7 @@ v1.base = struct('id', 'sub_named', 'session_id', 'sess_09', ...
 v1.subject = struct('local_identifier', 'mouse_42@lab', 'description', '');
 out = runJ(v1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('subject.local_identifier'), 'mouse_42@lab');
+verifyEqual(testCase, doc.get('entity.local_identifier'), 'mouse_42@lab');
 end
 
 function testSubjectGroupMintsMemberRelations(testCase)
@@ -289,7 +289,7 @@ verifyEqual(testCase, numel(out.migrated), 1);
 a = out.migrated{1};
 verifyEqual(testCase, a.get('document_class.class_name'), 'term_assertion');
 % the entity type -> the asserted variable; the ontology id + label -> the value
-verifyEqual(testCase, a.get('subject_statement.variable').name, 'species');
+verifyEqual(testCase, a.get('statement.variable').name, 'species');
 verifyEqual(testCase, a.get('term.value').node, 'NCBITaxon:6239');
 verifyEqual(testCase, a.get('term.value').name, 'Caenorhabditis elegans');
 verifyEqual(testCase, depVal(a, 'subject_id'), 'subj_007');
@@ -309,7 +309,7 @@ v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Geneti
     'fields', struct('name', 'knockout', 'ontologyIdentifier', 'X:1'));
 out = runJ(v1);
 a = out.migrated{1};
-verifyEqual(testCase, a.get('subject_statement.variable').name, 'genetic strain type');
+verifyEqual(testCase, a.get('statement.variable').name, 'genetic strain type');
 verifyEqual(testCase, a.get('term.value').node, 'X:1');
 end
 
@@ -344,7 +344,7 @@ function testElementDerivedBecomesSubjectDerivedFrom(testCase)
 out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
 sub = firstOfClassJ(out.migrated, 'subject');
 verifyEqual(testCase, sub.get('base.id'), 'el_1');                 % id preserved
-verifyEqual(testCase, sub.get('subject.local_identifier'), 'unit3 (ref 1)');
+verifyEqual(testCase, sub.get('entity.local_identifier'), 'unit3 (ref 1)');
 % type + ndi_element_class preserved as term_assertions (no silent drop)
 verifyEqual(testCase, out.summary.by_class.term_assertion, 2);
 % lineage: derived_from the underlying element (safe computational lineage)
@@ -427,7 +427,7 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference')
 act = out.migrated{1};
 % recipient is the patient; the material term is the value AND the variable
 verifyEqual(testCase, depVal(act, 'subject_id'), 'rec_001');
-verifyEqual(testCase, act.get('subject_statement.variable').name, 'embryonic tissue');
+verifyEqual(testCase, act.get('statement.variable').name, 'embryonic tissue');
 verifyEqual(testCase, act.get('term.value').name, 'embryonic tissue');
 verifyEqual(testCase, act.get('subject_interaction.method').name, 'transplantation');
 
@@ -512,7 +512,7 @@ out = runJ(tableRow());
 mass = out.migrated{1};   % BodyWeight -> mass_observation
 verifyEqual(testCase, mass.get('document_class.class_name'), 'mass_observation');
 % identity is on the spine variable (subject_statement), value on the mass leaf
-verifyEqual(testCase, mass.get('subject_statement.variable').name, 'body weight');
+verifyEqual(testCase, mass.get('statement.variable').name, 'body weight');
 verifyEqual(testCase, mass.get('mass.value').source_value, 24.3);
 verifyEqual(testCase, mass.get('subject_statement.storage_mode'), 'inline');
 % the spine: subject_id carried, shared time anchor wired on
@@ -555,7 +555,7 @@ verifyEqual(testCase, numel(out.migrated), 2);   % manip + anchor
 m = out.migrated{1};
 verifyEqual(testCase, m.get('document_class.class_name'), 'temperature_manipulation');
 verifyEqual(testCase, m.get('temperature.value').source_value, 4.0);
-verifyEqual(testCase, m.get('subject_statement.variable').name, 'cold exposure');
+verifyEqual(testCase, m.get('statement.variable').name, 'cold exposure');
 verifyEqual(testCase, depVal(m, 'subject_id'), 'subj_007');
 % shared session anchor wired on as the time_reference
 verifyEqual(testCase, depVal(m, 'time_reference_1'), out.migrated{2}.get('base.id'));
@@ -570,7 +570,7 @@ verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
 % the source numeric_value is carried as the dose amount (not dropped)
 verifyEqual(testCase, chem(1).amount.source_value, 2.5);
 % the substance is BOTH the spine identity and the dose chemical
-verifyEqual(testCase, m.get('subject_statement.variable').node, 'chebi:28001');
+verifyEqual(testCase, m.get('statement.variable').node, 'chebi:28001');
 end
 
 function testTreatmentProcedureIsTermManipulation(testCase)
@@ -588,7 +588,7 @@ verifyEqual(testCase, numel(out.migrated), 3);   % dose manip + site obs + ancho
 verifyTrue(testCase, isfield(out.summary.by_class, 'dose_manipulation'));
 verifyTrue(testCase, isfield(out.summary.by_class, 'term_observation'));
 % " Target Location" stripped from the manipulation's spine variable
-verifyEqual(testCase, out.migrated{1}.get('subject_statement.variable').name, 'muscimol');
+verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
 site = out.migrated{2};
 verifyEqual(testCase, site.get('document_class.class_name'), 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
@@ -612,7 +612,7 @@ verifyEqual(testCase, d.get('document_class.class_name'), 'dose_manipulation');
 chem = d.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
 verifyEqual(testCase, chem(1).amount.source_value, 5);
-verifyEqual(testCase, d.get('subject_statement.variable').name, 'haloperidol');
+verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
 % the site node survives the universalRenames snake-casing (location_ontologyNode
 % -> location_ontology_node)
 site = out.migrated{2};
@@ -637,7 +637,7 @@ verifyEqual(testCase, d.get('document_class.class_name'), 'dose_manipulation');
 chem = d.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chem(1).substance.name, 'AAV-ChR2');
 verifyEqual(testCase, chem(1).amount.source_value, 1000);
-verifyEqual(testCase, d.get('subject_statement.variable').node, 'addgene:26973');
+verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
 site = out.migrated{2};
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
@@ -810,7 +810,7 @@ verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
 % dtype comes from the parameters block, never guessed from the pixels
 verifyEqual(testCase, obs.get('image.value').dtype, 'uint8');
 % nothing is left carrying the class name `image`, which is the whole point
-names = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
     'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'image')));
 end
@@ -1436,7 +1436,7 @@ verifyEqual(testCase, numel(out.migrated), 5);
 ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
 verifyEqual(testCase, sum(strcmp(ids, 'otr_plate_1')), 1, ...
     'the referent id must survive migration on exactly one document');
-classes = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+classes = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
     'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(classes, 'ontology_table_row')), ...
     'a real ontologyTableRow has no subject_id, so it passes through');
@@ -1652,7 +1652,7 @@ verifyEqual(testCase, sub.get('base.id'), 'otr_patch');
 % premise as the code cannot catch the code, and this one had been pinning the
 % collision rather than the fix: `patchID` is 1:numPatch WITHIN a plate
 % (doImport.m:275), so '0001' recurs on every plate in one session.
-verifyEqual(testCase, sub.get('subject.local_identifier'), ...
+verifyEqual(testCase, sub.get('entity.local_identifier'), ...
     'plate/0061/patch/0017', ...
     ['the patch handle must carry its plate; the experiment number is not a ' ...
      'column of this table and is added by did2.convert.resolveLawnPlateSubjects']);
@@ -1680,7 +1680,7 @@ function testAPatchSubjectIsNeverLabelledJustThePatchNumber(testCase)
 %   the document id instead -- unique by construction -- and never to the number.
 out = runJ(patchGeometryRow());
 sub = firstOfClassJ(out.migrated, 'subject');
-handle = sub.get('subject.local_identifier');
+handle = sub.get('entity.local_identifier');
 verifyNotEmpty(testCase, handle, 'local_identifier is REQUIRED on a subject');
 verifyEmpty(testCase, regexp(handle, '^\d+$', 'once'), ...
     sprintf('the patch is labelled with the bare number %s', handle));
@@ -1689,7 +1689,7 @@ verifyEqual(testCase, handle, 'plate/0061/patch/0017');
 noPlate = dropColumnJ(patchGeometryRow(), 'BacterialPlateIdentifier');
 out2 = runJ(noPlate);
 sub2 = firstOfClassJ(out2.migrated, 'subject');
-handle2 = sub2.get('subject.local_identifier');
+handle2 = sub2.get('entity.local_identifier');
 % DENOMINATOR FIRST: the map must still have dispatched, or this asserts nothing
 % about the handle at all -- a row that fell through to the passthrough would
 % mint no subject and firstOfClassJ would have failed instead.
@@ -1934,7 +1934,7 @@ verifyNotEmpty(testCase, dose);
 verifyEqual(testCase, depVal(dose, 'subject_id'), subjId);
 verifyNotEmpty(testCase, depVal(dose, 'time_reference_1'));
 % the primary chemical is the spine identity and seeds the dose formulation
-verifyEqual(testCase, dose.get('subject_statement.variable').name, 'muscimol');
+verifyEqual(testCase, dose.get('statement.variable').name, 'muscimol');
 chems = dose.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chems(1).substance.name, 'muscimol');
 % the anchor is an ordinal session_relative_reference
@@ -2748,7 +2748,7 @@ verifyEqual(testCase, blk.units.node, 'NCIT:C48367');
 verifyFalse(testCase, isfield(blk, 'ontologyNode_A'));
 verifyFalse(testCase, isfield(blk, 'ontology_node_a'));
 % NOT a length_observation and no endpoint relation minted (single-doc)
-names = cellfun(@(d) d.className(), out.migrated, 'UniformOutput', false);
+names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, 'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'length_observation')));
 verifyFalse(testCase, any(strcmp(names, 'directed_relation')));
 end
@@ -2791,7 +2791,7 @@ body.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
 
 out = did2.convert.migrators_j.pyraview(body);
 verifyClass(testCase, out, 'cell');
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'voltage_observation')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 % ONE sampled_body per stored level (2 here) -> 1 obs + 2 bodies + 1 anchor
@@ -2801,8 +2801,8 @@ verifyEqual(testCase, numel(sbods), 2);
 obs = out{find(strcmp(names, 'voltage_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'pv_1');
 verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
-verifyEqual(testCase, obs.subject_statement.variable.name, 'lfp');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_7');
+verifyEqual(testCase, obs.statement.variable.name, 'lfp');
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_7');
 % every level body shares the statement (the observation) and owns one file;
 % levels are told apart by dt (native 1/1000 vs decimated 1/500)
 for j = 1:numel(sbods)
@@ -2998,14 +2998,14 @@ body.contrast_tuning = struct( ...
 
 out = did2.convert.migrators_j.contrast_tuning(body);
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'contrasttuning_calc')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));   % not decomposed
 leaf = out{find(strcmp(names, 'contrasttuning_calc'), 1)};
 verifyEqual(testCase, leaf.base.id, 'ct_1');                          % id preserved
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'sub_8');
-verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.contrast');
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'sub_8');
+verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.contrast');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_1');
 % V_eta tuning_curve.value renamed response_mean -> mean
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [2 5 9 12]);
@@ -3036,7 +3036,7 @@ body.orientation_direction_tuning = struct( ...
 
 out = did2.convert.migrators_j.orientation_direction_tuning(body);
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'oridirtuning_calc')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 % NOT decomposed into observations any more (calculators are composite leafs now)
@@ -3045,8 +3045,8 @@ verifyFalse(testCase, any(strcmp(names, 'angle_observation')));
 
 leaf = out{find(strcmp(names, 'oridirtuning_calc'), 1)};
 verifyEqual(testCase, leaf.base.id, 'odt_1');                               % id preserved
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_1');           % neuron carried
-verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.oridir');
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_1');           % neuron carried
+verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.oridir');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_1');           % provenance
 verifyNotEmpty(testCase, depValue(leaf, 'time_reference_1'));              % session anchor
 verifyEqual(testCase, leaf.subject_statement.storage_mode, 'inline');
@@ -3086,11 +3086,11 @@ body.orientation_direction_tuning = struct( ...
 out = did2.convert.migrators_j.oridirtuning_calc(body);
 % leaf + session anchor + software entity + runtime_environment entity
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'oridirtuning_calc')));
 leaf = out{find(strcmp(names, 'oridirtuning_calc'), 1)};
 verifyEqual(testCase, leaf.base.id, 'oc_1');                                % id preserved
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_9');
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_9');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_9');
 % input_parameters -> method_parameters
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.independent_variable, ...
@@ -3137,13 +3137,13 @@ body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
 out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
 % leaf + session anchor + software entity + runtime_environment entity
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'contrast_sensitivity_calculation')));
 leaf = out{find(strcmp(names, 'contrast_sensitivity_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'cs_1');                                % id preserved
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_cs');          % element_id -> subject
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_cs');          % element_id -> subject
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_cs');
-verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.contrast_sensitivity');
+verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.contrast_sensitivity');
 % input_parameters -> method_parameters, and stripped from the composite block
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.threshold, 1);
 verifyFalse(testCase, isfield(leaf.contrast_sensitivity, 'input_parameters'));
@@ -3204,13 +3204,13 @@ body.tuningcurve_calc = struct('log', 'ok', ...
 out = did2.convert.migrators_j.tuningcurve_calc(body);
 % leaf + session anchor + software entity + runtime_environment entity
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'tuningcurve_calc')));
 leaf = out{find(strcmp(names, 'tuningcurve_calc'), 1)};
 verifyEqual(testCase, leaf.base.id, 'tcc_1');                          % id preserved
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_tc');      % element_id -> subject
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_tc');      % element_id -> subject
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_tc');
-verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.stimulus.tuningcurve');
+verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.stimulus.tuningcurve');
 % input_parameters (on the calc block) -> method_parameters
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.best_algorithm, 'empirical_maximum');
 % V_eta tuning_curve.value renames response_mean -> mean
@@ -3246,13 +3246,13 @@ body.stimulus_tuningcurve = struct( ...
 
 out = did2.convert.migrators_j.stimulus_tuningcurve(body);
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'tuningcurve_calc')));
 leaf = out{find(strcmp(names, 'tuningcurve_calc'), 1)};
 verifyEqual(testCase, leaf.base.id, 'stc_1');                          % id preserved
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_rt');      % element_id -> subject
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_rt');      % element_id -> subject
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_rt');
-verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.app.stimulus.tuning_response');
+verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.app.stimulus.tuning_response');
 % V_eta tuning_curve.value renames response_mean -> mean
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 % no calculator provenance on a raw doc -> empty method_parameters. PR #68's
@@ -3273,7 +3273,7 @@ d = [];
 for k = 1:numel(migrated)
     m = migrated{k};
     if isfield(m, 'subject_statement') && isfield(m.subject_statement, 'variable') ...
-            && strcmp(m.subject_statement.variable.name, varName)
+            && strcmp(m.statement.variable.name, varName)
         d = m; return;
     end
 end
@@ -3296,13 +3296,13 @@ body.speed_tuning = struct( ...
 
 out = did2.convert.migrators_j.speed_tuning(body);
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'speedtuning_calc')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
 leaf = out{find(strcmp(names, 'speedtuning_calc'), 1)};
 verifyEqual(testCase, leaf.base.id, 'sp_1');
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'sub_s');
-verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.speed');
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'sub_s');
+verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.speed');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [5 8 6]);
 end
 
@@ -3377,10 +3377,10 @@ out = did2.convert.migrators_j.ontology_image(ontologyImageVintageA());
 verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, o.document_class.class_name, 'term_observation');
-verifyEqual(testCase, o.subject_statement.variable.name, 'imaged region');
+verifyEqual(testCase, o.statement.variable.name, 'imaged region');
 verifyEqual(testCase, o.term.value.node, 'uberon:0002436');
 verifyEqual(testCase, o.term.value.name, 'primary visual cortex');
-verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_9');
+verifyEqual(testCase, depValue(o, 'entity_id'), 'elem_9');
 end
 
 function testOntologyImageVintageBPassesThroughForSecondPass(testCase)
@@ -3454,7 +3454,7 @@ verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, o.document_class.class_name, 'voltage_observation');
 verifyEqual(testCase, o.subject_statement.storage_mode, 'inline');
-verifyEqual(testCase, depValue(o, 'subject_id'), 'probe_7');
+verifyEqual(testCase, depValue(o, 'entity_id'), 'probe_7');
 % a single reading, expressed as a length-1 array
 vals = o.voltage.value;
 verifyEqual(testCase, numel(vals), 1);
@@ -3522,10 +3522,10 @@ out = did2.convert.migrators_j.openminds_element(body);
 verifyEqual(testCase, numel(out), 1);
 a = out{1};
 verifyEqual(testCase, a.document_class.class_name, 'term_assertion');
-verifyEqual(testCase, a.subject_statement.variable.name, 'species');
+verifyEqual(testCase, a.statement.variable.name, 'species');
 verifyEqual(testCase, a.term.value.node, 'NCBITaxon:6239');
 verifyEqual(testCase, a.term.value.name, 'Caenorhabditis elegans');
-verifyEqual(testCase, depValue(a, 'subject_id'), 'elem_9');
+verifyEqual(testCase, depValue(a, 'entity_id'), 'elem_9');
 supers = a.document_class.superclasses;
 verifyEqual(testCase, supers(1).class_name, 'subject_assertion');
 end
@@ -3600,14 +3600,14 @@ body.files = struct('file_list', {{'clusters.mat'}});
 
 out = did2.convert.migrators_j.jrclust_clusters(body);
 verifyEqual(testCase, numel(out), 3);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'count_observation')));
 verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 
 obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_8');
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_8');
 
 sbod = out{find(strcmp(names, 'sampled_body'), 1)};
 verifyEqual(testCase, depValue(sbod, 'statement'), obs.base.id);   % == 'jc_1'
@@ -3653,7 +3653,7 @@ out = did2.convert.migrators_j.kilosort_clusters(body);
 % bodies that declares software_id (via subject_observation ->
 % subject_interaction); the opaque_body and the anchor do not.
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'count_observation')));
 verifyTrue(testCase, any(strcmp(names, 'opaque_body')));
 verifyTrue(testCase, any(strcmp(names, 'software')), ...
@@ -3663,8 +3663,8 @@ verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'ks_1');                            % id preserved
 verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
-verifyEqual(testCase, obs.subject_interaction.method.name, 'kilosort');% method = algorithm
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_ks');
+verifyEqual(testCase, obs.interaction.method.term.name, 'kilosort');% method = algorithm
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_ks');
 
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, depValue(ob, 'statement'), 'ks_1');             % body -> the obs
@@ -3689,12 +3689,12 @@ out = did2.convert.migrators_j.kiasort_clusters(body);
 % 3 -> 4: the app block now becomes a `software` entity instead of being
 % dropped -- see the sibling kilosort test above for why this arity moved.
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'software')), ...
     'the app block must become a software entity, not vanish');
 obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'ka_1');
-verifyEqual(testCase, obs.subject_interaction.method.name, 'kiasort');
+verifyEqual(testCase, obs.interaction.method.term.name, 'kiasort');
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, ob.data_body.filename, 'ka_out/session1');
 end
@@ -3765,13 +3765,13 @@ v1.probe_geometry = struct( ...
     'probe_model', 'linear', 'manufacturer', 'acme');
 
 out = did2.convert.migrators_j.probe_geometry(v1);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 % two populated axes -> two observations; depth is empty so it is NOT emitted
 verifyEqual(testCase, sum(strcmp(names, 'length_observation')), 2);
 vars = {};
 for k = 1:numel(out)
     if strcmp(out{k}.document_class.class_name, 'length_observation')
-        vars{end+1} = out{k}.subject_statement.variable.name; %#ok<AGROW>
+        vars{end+1} = out{k}.statement.variable.name; %#ok<AGROW>
     end
 end
 verifyTrue(testCase, any(strcmp(vars, 'site location (left-right)')));
@@ -3779,14 +3779,14 @@ verifyTrue(testCase, any(strcmp(vars, 'site location (front-back)')));
 verifyFalse(testCase, any(strcmp(vars, 'site location (depth)')));
 
 lr = out{find(strcmp(names, 'length_observation'), 1)};
-verifyEqual(testCase, depValue(lr, 'subject_id'), 'probe_5');
+verifyEqual(testCase, depValue(lr, 'entity_id'), 'probe_5');
 verifyEqual(testCase, numel(lr.length.value), 2);
 verifyEqual(testCase, lr.length.value(2).source_value, 20, 'AbsTol', 1e-9);
 verifyEqual(testCase, lr.length.value(1).source_unit, 'um');
 
 % probe_model, not the invented probe_type
 assertion = out{find(strcmp(names, 'term_assertion'), 1)};
-verifyEqual(testCase, assertion.subject_statement.variable.name, 'probe model');
+verifyEqual(testCase, assertion.statement.variable.name, 'probe model');
 verifyEqual(testCase, assertion.term.value.name, 'linear');
 end
 
@@ -3861,8 +3861,8 @@ verifyEqual(testCase, numel(bodies), 2);              % obs + anchor
 obs = bodies{1};
 verifyEqual(testCase, obs.document_class.class_name, 'term_observation');
 verifyEqual(testCase, obs.term.value.node, 'EMPTY:0000200');
-verifyEqual(testCase, obs.subject_statement.variable.name, 'position');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'pos_elem_7');
+verifyEqual(testCase, obs.statement.variable.name, 'position');
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'pos_elem_7');
 anchor = bodies{2};
 verifyEqual(testCase, anchor.document_class.class_name, 'session_relative_reference');
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
@@ -3892,15 +3892,15 @@ body.spatial_frequency_tuning = struct( ...
 
 out = did2.convert.migrators_j.spatial_frequency_tuning(body);
 verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'spatial_frequency_tuning_calc')));
 verifyFalse(testCase, any(strcmp(names, 'score_observation')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
 leaf = out{find(strcmp(names, 'spatial_frequency_tuning_calc'), 1)};
 verifyEqual(testCase, leaf.base.id, 'sf_1');
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_2');
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_2');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_2');
-verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.spatialfrequency');
+verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.spatialfrequency');
 % V_eta lifts significance + model_fit off tuning_curve.value onto
 % tuning_curve_calculation. interpolated_values are dropped from the emitted
 % shape (per-family scalars belong on the concrete class in a follow-up).
@@ -4056,7 +4056,7 @@ out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuning
 
 assertEqual(testCase, numel(out), 4, ...
     'expected {leaf, session anchor, minimal software, minimal runtime_environment}');
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 assertTrue(testCase, any(strcmp(names, 'temporal_frequency_tuning_calc')), ...
     'no temporal_frequency_tuning_calc leaf was emitted');
 assertTrue(testCase, any(strcmp(names, 'session_relative_reference')), ...
@@ -4072,7 +4072,7 @@ anchor = out{find(strcmp(names, 'session_relative_reference'), 1)};
 % ---- the fold's contract: id preserved, edges re-pointed, nothing minted ----
 verifyEqual(testCase, leaf.base.id, 'tft_1');            % downstream refs must resolve
 verifyEqual(testCase, leaf.base.session_id, 'sess_09');
-verifyEqual(testCase, depValue(leaf, 'subject_id'), 'tf_elem_3');    % element_id ->
+verifyEqual(testCase, depValue(leaf, 'entity_id'), 'tf_elem_3');    % element_id ->
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_tf_9');  % the consumed curve
 verifyEqual(testCase, depValue(leaf, 'time_reference_1'), anchor.base.id);
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
@@ -4080,8 +4080,8 @@ verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 superNames = {leaf.document_class.superclasses.class_name};
 verifyTrue(testCase, any(strcmp(superNames, 'tuning_curve_calculation')));
 verifyTrue(testCase, any(strcmp(superNames, 'temporal_frequency_tuning')));
-verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.temporalfrequency');
-verifyEqual(testCase, leaf.subject_statement.variable.name, 'temporal frequency tuning');
+verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.temporalfrequency');
+verifyEqual(testCase, leaf.statement.variable.name, 'temporal frequency tuning');
 
 % ---- input_parameters -> method_parameters ----
 % A BARE result document has none.
@@ -4161,7 +4161,7 @@ body.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
     'number_of_channels', 4);
 
 out = did2.convert.migrators_j.neuron_extracellular(body);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 5, ...
     sprintf('expected 5 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyTrue(testCase, any(strcmp(names, 'subject')));
@@ -4180,7 +4180,7 @@ verifyEqual(testCase, depValue(rel, 'parent'), 'rec_sub_1');
 verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
 % the quality observation is about the minted unit
 qobs = out{find(strcmp(names, 'score_observation'), 1)};
-verifyEqual(testCase, depValue(qobs, 'subject_id'), neuron.base.id);
+verifyEqual(testCase, depValue(qobs, 'entity_id'), neuron.base.id);
 verifyEqual(testCase, qobs.score.value.value, 3, 'AbsTol', 1e-9);
 end
 
@@ -4245,13 +4245,13 @@ body.base = struct('id', 'fc_1', 'session_id', 'sess_09', 'name', 'fc', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.fitcurve = struct('fit_equation', 'gaussian', 'fit_sse', 12.5);
 out = did2.convert.migrators_j.fitcurve(body);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'score_observation')));
 obs = out{find(strcmp(names, 'score_observation'), 1)};
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_9');
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_9');
 verifyEqual(testCase, obs.score.value.value, 12.5, 'AbsTol', 1e-9);
-verifyEqual(testCase, obs.subject_interaction.method.name, 'gaussian');
-verifyEqual(testCase, obs.subject_statement.variable.name, 'residual sum of squares');
+verifyEqual(testCase, obs.interaction.method.term.name, 'gaussian');
+verifyEqual(testCase, obs.statement.variable.name, 'residual sum of squares');
 % the false 0..1 bounds must NOT be asserted on an unbounded residual
 verifyFalse(testCase, isfield(obs.score.value, 'scale_min'));
 verifyFalse(testCase, isfield(obs.score.value, 'scale_max'));
@@ -4284,7 +4284,7 @@ out = did2.convert.migrators_j.fitcurve(body);
 
 verifyEqual(testCase, numel(out), 1, ...
     'a subject-less fitcurve must pass through as exactly one document');
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'score_observation')), ...
     'must NOT emit an observation with no subject');
 verifyEqual(testCase, names{1}, 'fitcurve');
@@ -4325,11 +4325,11 @@ body.base = struct('id', 'vf_1', 'session_id', 'sess_09', 'name', 'vf', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.vmspikefit = struct('fit_equation', 'exp2', 'fit_sse', 3.25);
 out = did2.convert.migrators_j.vmspikefit(body);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 obs = out{find(strcmp(names, 'score_observation'), 1)};
 verifyEqual(testCase, obs.score.value.value, 3.25, 'AbsTol', 1e-9);
-verifyEqual(testCase, obs.subject_interaction.method.name, 'exp2');
-verifyEqual(testCase, obs.subject_statement.variable.name, 'residual sum of squares');
+verifyEqual(testCase, obs.interaction.method.term.name, 'exp2');
+verifyEqual(testCase, obs.statement.variable.name, 'residual sum of squares');
 verifyFalse(testCase, isfield(obs.score.value, 'scale_min'));
 verifyFalse(testCase, isfield(obs.score.value, 'scale_max'));
 end

@@ -678,7 +678,7 @@ function v = tuningValue(out)
 %   class (oridirtuning_calc / contrasttuning_calc / spatial_frequency_tuning_calc
 %   / temporal_frequency_tuning_calc / speedtuning_calc / tuningcurve_calc), not
 %   the abstract tuning_curve_calculation. This helper accepts any of them.
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 concrete = {'oridirtuning_calc', 'contrasttuning_calc', ...
     'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc', ...
     'speedtuning_calc', 'tuningcurve_calc'};

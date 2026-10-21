@@ -87,7 +87,7 @@ function testTheFoldEmitsTheLeafTheTwoPlanesAndTheSpikeInput(testCase)
 % shape-2 os/interpreter provenance as a standalone entity), TWO plane bodies
 % and ONE input body.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 7, ...
     sprintf('expected 7 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1);
@@ -109,7 +109,7 @@ leaf = pick(out, 'receptive_field_calculation');
 supers = {leaf.document_class.superclasses.class_name};
 verifyTrue(testCase, ismember('subject_calculation', supers));
 verifyTrue(testCase, ismember('receptive_field', supers));
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyFalse(testCase, any(contains(names, 'hartley')), ...
     'the method must not appear in any emitted class name (T11)');
 verifyFalse(testCase, any(contains(names, 'spike_triggered')));

@@ -361,7 +361,7 @@ function testStimManipulationCarriesTheStimulatorType(testCase)
 [~, ~, manips] = stimDecompose();
 assertNotEmpty(testCase, manips);
 m = manips{1};
-verifyEqual(testCase, char(m.subject_statement.variable.name), 'stimulator');
+verifyEqual(testCase, char(m.statement.variable.name), 'stimulator');
 verifyEqual(testCase, char(m.subject_statement.storage_mode), 'inline');
 verifyEqual(testCase, char(m.term.value.name), 'stimulator');
 end
@@ -582,7 +582,7 @@ out = {};
 for k = 1:numel(result.migrated)
     b = result.migrated{k}.toStruct();
     if isfield(b, 'document_class') && isfield(b.document_class, 'class_name') ...
-            && strcmp(char(b.document_class.class_name), className)
+            && strcmp(char(did2.unittest.helpers.leafName(b)), className)
         out{end+1} = b; %#ok<AGROW>
     end
 end

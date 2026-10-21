@@ -387,7 +387,7 @@ verifyEqual(testCase, depValueOf(cidx, 'subject_id'), neuron.base.id);
 verifyEqual(testCase, cidx.count.value.value, 7);
 verifyEmpty(testCase, cidx.count.value.unit.name, ...
     'a label counts nothing -- an invented unit here would read as a cardinality');
-verifyEqual(testCase, cidx.subject_statement.variable.name, ...
+verifyEqual(testCase, cidx.statement.variable.name, ...
     'spike sorter cluster index');
 verifyEqual(testCase, cidx.subject_statement.storage_mode, 'inline');
 % the name is still there too -- the assertion is an addition, not a move
@@ -512,7 +512,7 @@ end
 % ===================== small helpers =======================================
 
 function names = classNames(out)
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 end
 
 function b = pick(out, className)

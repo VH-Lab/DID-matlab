@@ -57,7 +57,7 @@ end
 function d = findClass(testCase, out, className)
 d = [];
 for k = 1:numel(out.migrated)
-    if strcmp(char(out.migrated{k}.get('document_class.class_name')), className)
+    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
         d = out.migrated{k};
         return;
     end

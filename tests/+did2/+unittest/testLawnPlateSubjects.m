@@ -194,7 +194,7 @@ for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
     if ~any(strcmp(b.document_class.class_name, obsClasses)); continue; end
     nChecked = nChecked + 1;
-    verifyNotEmpty(testCase, documentById(out, depValue(b, 'subject_id')), ...
+    verifyNotEmpty(testCase, documentById(out, depValue(b, 'entity_id')), ...
         'an observation whose subject is not in the batch is an orphan');
 end
 verifyEqual(testCase, nChecked, 12, ...
@@ -737,7 +737,7 @@ function found = findClass(out, className)
 found = {};
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
-    if strcmp(b.document_class.class_name, className)
+    if strcmp(did2.unittest.helpers.leafName(b), className)
         found{end+1} = b; %#ok<AGROW>
     end
 end

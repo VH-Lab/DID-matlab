@@ -83,7 +83,7 @@ end
 end
 
 function names = classNames(out)
-names = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
     'UniformOutput', false);
 end
 
@@ -157,12 +157,12 @@ ref = docOfClass(testCase, out, 'absolute_reference');
 
 % subject_id CARRIES OVER, and the source id is PRESERVED (dissolving a
 % referenced document without keeping its id is the 11,448-orphan mistake).
-verifyEqual(testCase, depValue(obs.toStruct(), 'subject_id'), 'sub_42');
+verifyEqual(testCase, depValue(obs.toStruct(), 'entity_id'), 'sub_42');
 verifyEqual(testCase, obs.get('base.id'), 'sm_1');
 
 % `measurement` becomes the statement's variable. Free text, so no CURIE.
-verifyEqual(testCase, obs.get('subject_statement.variable.name'), 'age');
-verifyEqual(testCase, obs.get('subject_statement.variable.node'), '');
+verifyEqual(testCase, obs.get('statement.variable.name'), 'age');
+verifyEqual(testCase, obs.get('statement.variable.node'), '');
 
 % `value` becomes the value. NO UNIT is asserted -- the class carries none.
 % THE BLOCK NAME IS THE LEAF STEM, so [time dtype] moved it too: the class is
@@ -380,7 +380,7 @@ out = runJ(v1);
 obs = docOfClass(testCase, out, 'mass_observation');
 verifyEqual(testCase, obs.get('mass.value.source_value'), 22.5);
 verifyEqual(testCase, obs.get('mass.value.source_unit'), '');
-verifyEqual(testCase, obs.get('subject_statement.variable.node'), 'PATO:0000128');
+verifyEqual(testCase, obs.get('statement.variable.node'), 'PATO:0000128');
 % `measurement` keeps the ORDINAL session anchor -- only subjectmeasurement has
 % an instant to anchor to.
 verifyTrue(testCase, any(strcmp(classNames(out), 'session_relative_reference')));
@@ -434,7 +434,7 @@ verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'high_pass');
 % and the direct call (no superclass pass, so the block still says `type`)
 % resolves the same band -- both spellings are live, exactly as for depends_on.
 bodies = did2.convert.migrators_j.pyraview(pyraviewBody(predFilterBlock()));
-names = cellfun(@(b) b.document_class.class_name, bodies, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), bodies, 'UniformOutput', false);
 idx = find(strcmp(names, 'frequency_filter'), 1);
 assertNotEmpty(testCase, idx);
 verifyEqual(testCase, bodies{idx}.frequency_filter.band.name, 'high_pass');

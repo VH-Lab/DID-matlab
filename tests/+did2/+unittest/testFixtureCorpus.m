@@ -589,7 +589,7 @@ function cn = classOf(migrated, docId)
 cn = '';
 for k = 1:numel(migrated)
     if strcmp(char(migrated{k}.get('base.id')), docId)
-        cn = char(migrated{k}.className());
+        cn = char(did2.unittest.helpers.leafName(migrated{k}));
         return;
     end
 end

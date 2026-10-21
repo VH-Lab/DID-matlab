@@ -412,7 +412,7 @@ v1.orientation_direction_tuning = struct('vector', struct('orientation_preferenc
 end
 
 function names = classNames(out)
-names = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
     'UniformOutput', false);
 end
 

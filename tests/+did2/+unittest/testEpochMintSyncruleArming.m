@@ -56,7 +56,7 @@ end
 function docs = ofClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(char(out.migrated{k}.get('document_class.class_name')), className)
+    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
@@ -145,7 +145,7 @@ verifyNumElements(testCase, align, 1);
 % epoch local_identifier -> minted epoch document id
 epochId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 for e = ofClass(out, 'epoch')
-    epochId(char(e{1}.get('epoch.local_identifier'))) = char(e{1}.get('base.id'));
+    epochId(char(e{1}.get('entity.local_identifier'))) = char(e{1}.get('base.id'));
 end
 verifyTrue(testCase, isKey(epochId, 't00001') && isKey(epochId, 't00002'), ...
     'both endpoint epochs must have been minted');

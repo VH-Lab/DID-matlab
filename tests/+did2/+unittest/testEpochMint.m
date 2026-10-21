@@ -75,14 +75,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = char(out.migrated{k}.get('document_class.class_name'));
+    names{k} = char(did2.unittest.helpers.leafName(out.migrated{k}));
 end
 end
 
 function docs = ofClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(char(out.migrated{k}.get('document_class.class_name')), className)
+    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
@@ -505,7 +505,7 @@ verifyEqual(testCase, rep.epochs_minted, 2, ...
     'one epoch-id string under two sessions is TWO epochs, never one');
 epochs = ofClass(out, 'epoch');
 verifyEqual(testCase, numel(epochs), 2);
-lids = sort(cellfun(@(d) char(d.get('epoch.local_identifier')), epochs, ...
+lids = sort(cellfun(@(d) char(d.get('entity.local_identifier')), epochs, ...
     'UniformOutput', false));
 verifyEqual(testCase, lids, {'t00070', 't00070'}, ...
     'both keep the v1 handle -- 30 live NDI sites match that string');
@@ -562,7 +562,7 @@ function testTheIngestedManifestIsAKeySource(testCase)
 verifyEqual(testCase, rep.documents_with_epoch_id, 1);
 verifyEqual(testCase, rep.epochs_minted, 1);
 epochs = ofClass(out, 'epoch');
-verifyEqual(testCase, char(epochs{1}.get('epoch.local_identifier')), 't00070');
+verifyEqual(testCase, char(epochs{1}.get('entity.local_identifier')), 't00070');
 end
 
 % ===================== the refusals, each counted ======================
@@ -795,7 +795,7 @@ verifyEqual(testCase, rep.mint_quarantined, 0, ...
 verifyEqual(testCase, rep.epochs_minted, 1);
 epochs = ofClass(out, 'epoch');
 d = epochs{1};
-verifyEqual(testCase, char(d.get('epoch.local_identifier')), 't00069');
+verifyEqual(testCase, char(d.get('entity.local_identifier')), 't00069');
 verifyEqual(testCase, depValue(d.toStruct(), 'session_id'), did2.unittest.helpers.sessionDocumentId('sd_A', 'sess_A'));
 end
 
@@ -948,7 +948,7 @@ function testTheFoldedFilePointsAtTheEpochThatWasMinted(testCase)
 epochs = ofClass(out, 'epoch');
 verifyNumElements(testCase, epochs, 1);
 epochDocId = char(epochs{1}.get('base.id'));
-verifyEqual(testCase, char(epochs{1}.get('epoch.local_identifier')), 't00001');
+verifyEqual(testCase, char(epochs{1}.get('entity.local_identifier')), 't00001');
 
 folded = ofClass(out, 'acquisition_metadata_file');
 s = folded{1}.toStruct();

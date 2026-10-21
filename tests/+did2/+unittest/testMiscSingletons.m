@@ -129,7 +129,7 @@ function d = onlyClass(testCase, out, className)
 d = [];
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
         d = out.migrated{k};
         n = n + 1;
     end
@@ -522,7 +522,7 @@ verifyFalse(testCase, schemaSaysAbstract(body), ...
 verifyTrue(testCase, depIsRequired(statement, 'subject_id'), ...
     'subject_statement.subject_id stopped being mustBeNonEmpty');
 verifyTrue(testCase, ~isempty(fieldDecl(statement, 'variable')), ...
-    'subject_statement.variable has gone');
+    'statement.variable has gone');
 end
 
 % ---- helpers for the schema read -----------------------------------------

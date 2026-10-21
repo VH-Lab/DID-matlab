@@ -644,14 +644,14 @@ end
 function doc = findClass(testCase, out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
 end
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
+    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
 end
 % assertFail, not verifyFail: verifyFail records the failure and CONTINUES, and
 % the caller would then dereference an empty doc and report a MATLAB error

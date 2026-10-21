@@ -82,7 +82,7 @@ function testPyramidCarriesSubjectIdFromV1DependsOn(testCase)
 % subject_id dep; the migrator must NOT drop it and must NOT invent it.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-verifyEqual(testCase, depValue(pyr, 'subject_id'), 'subj_stereoseq_1');
+verifyEqual(testCase, depValue(pyr, 'entity_id'), 'subj_stereoseq_1');
 end
 
 function testPyramidBindsVariableToGeneExpression(testCase)
@@ -92,8 +92,8 @@ function testPyramidBindsVariableToGeneExpression(testCase)
 % `variable.name: gene expression`). The migrator writes exactly that.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-verifyEqual(testCase, pyr.subject_statement.variable.node, 'NCIT:C16608');
-verifyEqual(testCase, pyr.subject_statement.variable.name, 'gene expression');
+verifyEqual(testCase, pyr.statement.variable.node, 'NCIT:C16608');
+verifyEqual(testCase, pyr.statement.variable.name, 'gene expression');
 end
 
 function testPyramidCarriesTimeReferenceEdgeAtTheAnchor(testCase)
@@ -492,7 +492,7 @@ end
 % ===================== small helpers =======================================
 
 function names = classNames(out)
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 end
 
 function b = pick(out, className)

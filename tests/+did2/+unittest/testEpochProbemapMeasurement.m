@@ -314,14 +314,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = char(out.migrated{k}.get('document_class.class_name'));
+    names{k} = char(did2.unittest.helpers.leafName(out.migrated{k}));
 end
 end
 
 function d = firstOfClass(out, className)
 d = [];
 for k = 1:numel(out.migrated)
-    if strcmp(char(out.migrated{k}.get('document_class.class_name')), className)
+    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
         d = out.migrated{k};
         return;
     end

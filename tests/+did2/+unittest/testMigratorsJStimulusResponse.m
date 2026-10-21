@@ -189,7 +189,7 @@ out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 b    = leaf.toStruct();
 
-verifyEqual(testCase, depValue(b, 'subject_id'),           'elem_9c027e');
+verifyEqual(testCase, depValue(b, 'entity_id'),           'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
 verifyEqual(testCase, depValue(b, 'derived_from_1'),       'pres_b671ff');
 verifyEqual(testCase, depValue(b, 'derived_from_2'),       'ctrl_20e84c');
@@ -249,13 +249,13 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 verifyEqual(testCase, leaf.get('subject_statement.storage_mode'), 'inline');
-verifyEqual(testCase, leaf.get('subject_interaction.method.name'), ...
+verifyEqual(testCase, leaf.get('interaction.method.term.name'), ...
     'ndi.app.stimulus.tuning_response');
 % OPEN 1/OPEN 2 of the plan are not closed: the quantity actually measured is not
 % recorded anywhere in this family, so `variable` is the v1-level label and the
 % resolver must refine it from the migrated element. Pinned so a change is
 % deliberate rather than incidental.
-verifyEqual(testCase, leaf.get('subject_statement.variable.name'), 'stimulus response');
+verifyEqual(testCase, leaf.get('statement.variable.name'), 'stimulus response');
 end
 
 function testInlineMethodParametersStaysEmptyBesideTheEdge(testCase)
@@ -589,14 +589,14 @@ end
 function doc = findClass(testCase, out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
 end
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
+    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
 end
 % assertFail, not verifyFail: verifyFail records the failure and CONTINUES, and
 % the caller would then dereference an empty doc and report a MATLAB error

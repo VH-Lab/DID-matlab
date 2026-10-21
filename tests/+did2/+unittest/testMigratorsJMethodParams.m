@@ -52,7 +52,7 @@ function d = onlyClass(testCase, out, className)
 d = [];
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
         d = out.migrated{k};
         n = n + 1;
     end
@@ -485,7 +485,7 @@ d = onlyClass(testCase, out, 'method_parameters');
 verifyEqual(testCase, d.get('base.id'), 'sepm_1');
 verifyEqual(testCase, d.get('method_parameters.name'), 'default');
 verifyEqual(testCase, depValue(d, 'derived_from_id'), 'sep_1');
-verifyEqual(testCase, depValue(d, 'subject_id'), 'elem_9');
+verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'waveform window start', ...
     'waveform window duration', 'standard-deviation threshold'}));
@@ -516,7 +516,7 @@ function testModificationOmitsLineageWhenTheSourceEdgeIsEmpty(testCase)
 v1 = modificationBody('sepm_3', 'default', 'sess_A', '', 'elem_9', 't00042');
 d = onlyClass(testCase, runJ(v1), 'method_parameters');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'derived_from_id')));
-verifyEqual(testCase, depValue(d, 'subject_id'), 'elem_9');
+verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
 end
 
 % ===================== sorting_parameters ==================================
@@ -559,7 +559,7 @@ out = runJ(vmspikeBody('vm_1', 'sess_A', 'elem_1', 't00001', ''));
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method_parameters');
 verifyEqual(testCase, d.get('base.id'), 'vm_1');
-verifyEqual(testCase, depValue(d, 'subject_id'), 'elem_1');
+verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_1');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'absolute voltage threshold'}));
 end

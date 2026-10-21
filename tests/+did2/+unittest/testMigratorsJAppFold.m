@@ -149,7 +149,7 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
+    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
 end
 end
 
@@ -157,7 +157,7 @@ function d = onlyClass(testCase, out, className)
 d = [];
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
         d = out.migrated{k};
         n = n + 1;
     end
@@ -319,7 +319,7 @@ verifyEqual(testCase, sw.get('base.session_id'), 'sess_09');
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'srt_1');            % id still preserved
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'rec_sub_1');
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'rec_sub_1');
 end
 
 function testKilosortExecutionEnvironmentIsCarried(testCase)
@@ -355,7 +355,7 @@ verifyEmpty(testCase, out.quarantine);
 sw  = onlyClass(testCase, out, 'software');
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
-verifyEqual(testCase, obs.get('subject_interaction.method.name'), 'kiasort');
+verifyEqual(testCase, obs.get('interaction.method.term.name'), 'kiasort');
 end
 
 function testSorterWithoutAnAppBlockIsUnchanged(testCase)
@@ -482,7 +482,7 @@ sw  = onlyClass(testCase, out, 'software');
 obs = onlyClass(testCase, out, 'score_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('score.value.value'), 3.25, 'AbsTol', 1e-9);
-verifyEqual(testCase, obs.get('subject_interaction.method.name'), 'exp2');
+verifyEqual(testCase, obs.get('interaction.method.term.name'), 'exp2');
 verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter_version'), ...
     '9.13');
 end

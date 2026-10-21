@@ -103,7 +103,7 @@ function testNgridFoldsToASampledBodyBesideAnImageObservation(testCase)
 % image_observation the team named, the sampled_body carrying the grid, and the
 % shared session anchor.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 4, ...
     sprintf('expected 4 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyTrue(testCase, ismember('term_observation', names));
@@ -255,7 +255,7 @@ function testTheDepictedTermIsTheVariableRatherThanAPlaceholder(testCase)
 % ontology label lives on ANOTHER document. Here the term is on the document
 % being migrated, so there is nothing to defer.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-v = pick(out, 'image_observation').subject_statement.variable;
+v = pick(out, 'image_observation').statement.variable;
 verifyEqual(testCase, v.node, 'uberon:0002436');
 verifyEqual(testCase, v.name, 'primary visual cortex');
 end
@@ -347,7 +347,7 @@ function testABlankSubjectEdgeIsTreatedAsNoSubject(testCase)
 v1 = foldableOntologyImage();
 v1.depends_on(1).value = '';
 out = did2.convert.migrators_j.ontology_image(v1);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 2, strjoin(names, ', '));
 verifyFalse(testCase, ismember('image_observation', names));
 verifyFalse(testCase, ismember('sampled_body', names));
@@ -369,7 +369,7 @@ function testATableRowEdgeIsNotAcceptedAsASubject(testCase)
 v1 = foldableOntologyImage();
 v1.depends_on = struct('name', {'ontology_table_row_id'}, 'value', {'otr_3'});
 out = did2.convert.migrators_j.ontology_image(v1);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyFalse(testCase, ismember('image_observation', names), ...
     'a table row must not be accepted as the subject of an observation');
 verifyFalse(testCase, ismember('sampled_body', names), ...
@@ -393,7 +393,7 @@ verifyEqual(testCase, numel(shapes), 2, ...
     'DENOMINATOR: both NDI-reachable ontologyImage shapes are checked');
 for k = 1:numel(shapes)
     out = did2.convert.migrators_j.ontology_image(shapes{k});
-    names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+    names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
     verifyFalse(testCase, ismember('sampled_body', names), ...
         sprintf(['shape %d reached the raster fold. No NDI writer emits an ' ...
                  'ontologyImage with both a raster and a subject -- if that ' ...
@@ -560,7 +560,7 @@ function b = pick(bodies, className)
 %   several -- a silent first-match would hide a duplicate emission.
 hits = {};
 for k = 1:numel(bodies)
-    if strcmp(bodies{k}.document_class.class_name, className)
+    if strcmp(did2.unittest.helpers.leafName(bodies{k}), className)
         hits{end+1} = bodies{k}; %#ok<AGROW>
     end
 end
