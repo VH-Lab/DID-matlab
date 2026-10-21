@@ -1744,12 +1744,31 @@ verifyEqual(testCase, depVal(dose, 'entity_id'), subjId);
 verifyNotEmpty(testCase, depVal(dose, 'time_reference_id'));
 % the primary chemical is the spine identity and seeds the dose formulation
 verifyEqual(testCase, dose.get('statement.variable').name, 'muscimol');
-chems = dose.get('dose.value').formulation.chemicals;
-verifyEqual(testCase, chems(1).substance.name, 'muscimol');
-% the anchor is an ordinal session_relative_reference
-anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
+% #88: the dose names a `formulation` document, whose ingredients are
+% `chemical` documents reached by `ingredient_id`.
+formId = depVal(dose, 'formulation_id');
+verifyNotEmpty(testCase, formId, 'the dose must name its formulation');
+form = []; chem = [];
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('base.id'), formId); form = out.migrated{k}; end
+end
+verifyNotEmpty(testCase, form);
+if ~isempty(form)
+    chemId = depVal(form, 'ingredient_id');
+    for k = 1:numel(out.migrated)
+        if strcmp(out.migrated{k}.get('base.id'), chemId); chem = out.migrated{k}; end
+    end
+end
+verifyNotEmpty(testCase, chem, 'the formulation must name its chemical');
+if ~isempty(chem)
+    verifyEqual(testCase, chem.get('chemical.value').substance.name, 'muscimol');
+end
+% the anchor is an ordinal relative_time_reference (#88; it was a
+% session_relative_reference with relation 'during')
+anchor = firstOfClassJ(out.migrated, 'relative_time_reference');
 verifyNotEmpty(testCase, anchor);
-verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+rel = anchor.get('relative_time_reference.value').relation;
+verifyEqual(testCase, rel.name, 'intervalDuring');
 % the bath location is carried as a term_observation (not dropped)
 locObs = firstOfClassJ(out.migrated, 'term_observation');
 verifyNotEmpty(testCase, locObs);
@@ -2418,7 +2437,7 @@ for k = 1:numel(out)
 end
 % The implementation class is not LOST by dissolving -- it is the software
 % entity's name, which is where the signed decision puts it.
-verifyEqual(testCase, software.software.local_identifier, ...
+verifyEqual(testCase, software.entity.name, ...   % #88: the one entity class
     'ndi.daq.reader.mfdaq.ndr');
 end
 
@@ -2593,7 +2612,7 @@ for j = 1:numel(sbods)
     verifyEqual(testCase, depValue(sbods{j}, 'owner_id'), 'pv_1');   % #88: owner_id
     % `datum` collapsed (signed sec.5); the encoding is on the STATEMENT now,
     % normalised -- 'int16' is already canonical, so no source spelling is kept.
-    verifyFalse(testCase, isfield(sbods{j}.sampled_body, 'datum'));
+    verifyFalse(testCase, isfield(sbods{j}.data, 'datum'));   % #88: the `data` block
     verifyEqual(testCase, numel(sbods{j}.files.file_list), 1);
 end
 % THE AXES ARE POSITIONAL, AND THIS IS THE ASSERTION THAT SAYS SO. The schema's
@@ -2606,7 +2625,7 @@ end
 % premise as the code cannot catch the code, in its weaker form: there was no
 % test, so there was no premise to be wrong about.
 for j = 1:numel(sbods)
-    ax = sbods{j}.sampled_body.axes;
+    ax = sbods{j}.data.keys;   % #88: `axes` became `data.keys`
     verifyEqual(testCase, numel(ax), 2, ...
         'both dimensions or neither -- a positional list has no partial mode');
     verifyEqual(testCase, ax(1).variable.name, 'time');
@@ -2617,15 +2636,15 @@ end
 % Levels are told apart by the TIME axis spacing now, not by sample_time.dt --
 % that block is no longer written here (step 5 of the signed build order), and
 % writing the cadence into both would store one fact twice.
-dts = sort(arrayfun(@(k) sbods{k}.sampled_body.axes(1).spacing.source_value, ...
+dts = sort(arrayfun(@(k) sbods{k}.data.keys(1).spacing.source_value, ...
     1:numel(sbods)));
 verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
 % and by extent: 10 s at 1000 Hz and at 500 Hz. `n` was hardcoded 0 on every
 % body until this change, on bodies with real bytes attached.
-ns = sort(arrayfun(@(k) sbods{k}.sampled_body.axes(1).n, 1:numel(sbods)));
+ns = sort(arrayfun(@(k) sbods{k}.data.keys(1).n, 1:numel(sbods)));
 verifyEqual(testCase, ns, [5000 10000]);
-verifyFalse(testCase, isfield(sbods{1}.sampled_body, 'sample_time') ...
-    && ~isempty(fieldnames(sbods{1}.sampled_body.sample_time)));
+verifyFalse(testCase, isfield(sbods{1}, 'sampled_body') ...
+    && isfield(sbods{1}.sampled_body, 'sample_time'));
 end
 
 function body = spikewavesBody()
