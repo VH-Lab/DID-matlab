@@ -270,82 +270,81 @@ end
 % ===================== the schema-side guard ===============================
 
 function testSoftwareIdIsDeclaredWhereWeHangIt(testCase)
-% THE ANTI-INVENTION GUARD. Read from the built schema at run time, so this
-% cannot drift out of step with a comment. The edge lives on subject_interaction
-% and nowhere else in these chains -- adding it to a body whose chain does not
-% include subject_interaction is the invented-empty-edge pattern.
+% software_id is declared on #88's `interaction` (observation, manipulation,
+% calculation), and on nothing the sorter folds hang it off besides that.
+% UPDATED for #88: the class names are interaction / observation / data bodies /
+% time references / entity / directed_relation.
 cache = did2.schema.cache.shared();
-for c = {'count_observation', 'score_observation'}
+for c = {'observation', 'calculation'}
     chain = [c, cache.superclasses(c{1})];
-    verifyTrue(testCase, any(strcmp(chain, 'subject_interaction')), ...
-        sprintf('%s must reach subject_interaction to carry software_id', c{1}));
+    verifyTrue(testCase, any(strcmp(chain, 'interaction')), ...
+        sprintf('%s must reach interaction to carry software_id', c{1}));
 end
-for c = {'sampled_body', 'opaque_body', 'session_relative_reference', ...
-         'subject', 'directed_relation'}
+for c = {'sampled_body', 'opaque_body', 'relative_time_reference', ...
+         'entity', 'directed_relation'}
     chain = [c, cache.superclasses(c{1})];
-    verifyFalse(testCase, any(strcmp(chain, 'subject_interaction')), ...
+    verifyFalse(testCase, any(strcmp(chain, 'interaction')), ...
         sprintf('%s does NOT declare software_id; nothing may hang it there', c{1}));
 end
-% jsondecode returns a CELL of structs when the depends_on entries do not all
-% carry the same keys (subject_interaction's do not -- only `time_reference_#`
-% has `multiple`/`min_count`), and a STRUCT ARRAY when they do. Handle both, or
-% this guard breaks the next time a key is added and reads as a schema failure.
-si = cache.getClass('subject_interaction');
+si = cache.getClass('interaction');
 deps = si.depends_on;
 if ~iscell(deps); deps = num2cell(deps); end
 found = false;
 for k = 1:numel(deps)
     if strcmp(char(deps{k}.name), 'software_id'); found = true; end
 end
-verifyTrue(testCase, found, 'subject_interaction must declare software_id');
+verifyTrue(testCase, found, 'interaction must declare software_id');
 end
+
 
 % ===================== kilosort / kiasort (via jSorterOutput) ==============
 
 function testKilosortAppBecomesASoftwareEntityAndEdge(testCase)
-% The whole fold in one document. Note `local_identifier`: jSoftware writes
-% NAME@VERSION as the handle the deferred corpus-wide dedup pass reads, and two
-% of the three historical software builders omitted it.
+% UPDATED for #88: the software is an `entity` of type software whose version
+% is a text_assertion about it (`version number`), so the fold is 5 bodies.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 4);   % obs + opaque_body + anchor + software
-
+verifyEqual(testCase, numel(out.migrated), 5);   % obs + opaque_body + anchor + software + version
 sw = onlyClass(testCase, out, 'software');
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
-verifyEqual(testCase, sw.get('software.version'), '1.4.2');
-verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.app.spikesorter@1.4.2');
-verifyEqual(testCase, sw.get('base.session_id'), 'sess_09');
-
+verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.app.spikesorter@1.4.2');
+ver = onlyClass(testCase, out, 'text_assertion');
+verifyEqual(testCase, depValue(ver, 'entity_id'), sw.get('base.id'));
+verifyEqual(testCase, ver.get('statement.variable').name, 'version number');
+verifyEqual(testCase, ver.get('text.value').text, '1.4.2');
+verifyEqual(testCase, depValue(sw, 'session_id'), 'sess_09');
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'srt_1');            % id still preserved
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'rec_sub_1');
 end
 
+
 function testKilosortExecutionEnvironmentIsCarried(testCase)
-% The per-run os/interpreter is provenance of THIS EXECUTION, distinct from the
-% software's identity, and it has its own typed slot on subject_interaction.
-% These four field names are already snake_case, so universalRenames leaves them
-% alone -- which is why the old fold populated them while minting no entity.
+% INVERTED for #88. The app's os / interpreter rode on the observation's
+% `subject_interaction.execution_environment`. #88 names an operating system
+% and interpreter only on a CALCULATION (operating_system_id / interpreter_id);
+% an observation has no slot for them, so on a sorter observation they are not
+% carried. Recorded in the port report as a loss on non-calculation statements.
+% This asserts nothing invents a home for them.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 obs = onlyClass(testCase, out, 'count_observation');
-verifyEqual(testCase, obs.get('subject_interaction.execution_environment.os'), 'GLNXA64');
-verifyEqual(testCase, obs.get('subject_interaction.execution_environment.os_version'), '5.15.0');
-verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter'), 'MATLAB');
-verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter_version'), '9.13');
+verifyEmpty(testCase, depValue(obs, 'operating_system_id'));
+verifyEmpty(testCase, depValue(obs, 'interpreter_id'));
+verifyFalse(testCase, hasClass(out, 'runtime_environment'));
+s = obs.toStruct();
+verifyFalse(testCase, isfield(s, 'interaction') && isfield(s.interaction, 'execution_environment'));
 end
 
+
 function testKilosortUrlRidesOnTheEntityGlobalIdentifier(testCase)
-% app.url is the repository/homepage; jSoftware puts it on
-% entity.global_identifier with scheme 'URL' (matching openMINDS
-% SoftwareVersion.homepage/repository), not on a bespoke field.
+% UPDATED for #88: a global identifier is a plain string (the URL itself).
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 sw  = onlyClass(testCase, out, 'software');
-gid = sw.get('entity.global_identifier');
-verifyEqual(testCase, numel(gid), 1);
-verifyEqual(testCase, gid(1).scheme, 'URL');
-verifyEqual(testCase, gid(1).value, 'https://github.com/VH-Lab/NDI-matlab');
+gid = cellstr(sw.get('entity.global_identifier'));
+verifyEqual(testCase, gid, {'https://github.com/VH-Lab/NDI-matlab'});
 end
+
 
 function testKiasortFoldsTheSameWay(testCase)
 % Sibling class, same helper (private/jSorterOutput.m). Asserted separately
@@ -359,55 +358,51 @@ verifyEqual(testCase, obs.get('interaction.method.term.name'), 'kiasort');
 end
 
 function testSorterWithoutAnAppBlockIsUnchanged(testCase)
-% The fold must be free when there is nothing to fold: no entity, no edge, and
-% NO empty execution_environment field manufactured on the observation
-% (absence is how V_eta spells unset).
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', false));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3);
 verifyFalse(testCase, hasClass(out, 'software'));
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEmpty(testCase, depValue(obs, 'software_id'));
-verifyFalse(testCase, isfield(obs.get('subject_interaction'), 'execution_environment'));
 end
+
 
 function testNoSessionMintsNoSoftware(testCase)
-% RequireSession = true. `base.session_id` is mustBeNonEmpty, and v1_to_v2
-% quarantines the SOURCE when a body it produced fails -- so minting an entity
-% that cannot validate would turn a clean fold into a loss. Nothing is taken
-% away: the observation, the body and the anchor all carry the same empty
-% session_id and fail on their own account under a validating run.
+% UPDATED for #88: every V_eta document carries a session_id edge and the
+% statement needs a session time reference, so a sorter document with NO
+% session id cannot fold at all. It is QUARANTINED with the reason named
+% (jSessionAnchor), not emitted with an invented session -- and no software is
+% minted for it.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true, ''));
 verifyFalse(testCase, hasClass(out, 'software'));
-obs = onlyClass(testCase, out, 'count_observation');
-verifyEmpty(testCase, depValue(obs, 'software_id'));
+verifyEmpty(testCase, out.migrated);
+verifyEqual(testCase, numel(out.quarantine), 1);
+verifyNotEmpty(testCase, regexp(out.quarantine(1).reason, 'no session id', 'once'));
 end
 
+
 function testKilosortFoldValidates(testCase)
-% The bodies are only worth emitting if they get through the validator.
 out = runJValidated(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 4);
+verifyEqual(testCase, numel(out.migrated), 5);
 end
+
 
 % ===================== jrclust_clusters ====================================
 
 function testJrclustAppBecomesASoftwareEntityAndEdge(testCase)
-% Same family, different body type (attached res.mat bytes -> sampled_body
-% rather than an external directory -> opaque_body). The software fold is
-% identical; only the payload differs.
+% UPDATED for #88: the .mat is an opaque body; the software carries a version
+% assertion; os/interpreter have no slot on an observation (see above).
 out = runJ(jrclustBody(true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 4);
-verifyTrue(testCase, hasClass(out, 'sampled_body'));
-
+verifyEqual(testCase, numel(out.migrated), 5);
+verifyTrue(testCase, hasClass(out, 'opaque_body'));
 sw  = onlyClass(testCase, out, 'software');
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'jc_1');             % id still preserved
-verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter'), ...
-    'MATLAB');
 end
+
 
 function testJrclustWithoutAnAppBlockIsUnchanged(testCase)
 out = runJ(jrclustBody(false));
@@ -418,32 +413,22 @@ end
 % ===================== neuron_extracellular ================================
 
 function testNeuronExtracellularHangsSoftwareOnTheQualityObservation(testCase)
-% Of the bodies this migrator emits, only the observations reach
-% subject_interaction, so that is where the edge goes. The derived subject, the
-% derived_from relation and the cluster-index ASSERTION get NOTHING --
-% deliberately: `subject_assertion` does not pass through subject_interaction,
-% so `count_assertion` declares no `software_id` either.
-%
-% ARITY WAS 5 UNTIL 2026-08-17; the sixth body is the `count_assertion` carrying
-% `cluster_index`. This fixture has no `mean_waveform`, so the score_observation
-% is still the ONLY software carrier here.
+% UPDATED for #88: the unit is a cell entity, the software has a version
+% assertion (7 bodies), and only the observation names the software.
 out = runJ(neuronBody(true, true));
 verifyEmpty(testCase, out.quarantine);
-% subject + relation + anchor + count_assertion + score_observation + software
-verifyEqual(testCase, numel(out.migrated), 6);
-
+verifyEqual(testCase, numel(out.migrated), 7);
 sw   = onlyClass(testCase, out, 'software');
 qobs = onlyClass(testCase, out, 'score_observation');
 verifyEqual(testCase, depValue(qobs, 'software_id'), sw.get('base.id'));
-verifyEqual(testCase, qobs.get('subject_interaction.execution_environment.os'), 'GLNXA64');
-
-neuron = onlyClass(testCase, out, 'subject');
+neuron = onlyClass(testCase, out, 'cell');
 verifyEmpty(testCase, depValue(neuron, 'software_id'));
 rel = onlyClass(testCase, out, 'directed_relation');
 verifyEmpty(testCase, depValue(rel, 'software_id'));
 cidx = onlyClass(testCase, out, 'count_assertion');
 verifyEmpty(testCase, depValue(cidx, 'software_id'));
 end
+
 
 function testNeuronExtracellularWithoutQualityStillHasNowhereToPutItsSoftware(testCase)
 % A RESIDUAL LOSS, ASSERTED AS ONE -- AND IT IS SMALLER THAN IT WAS. Without
@@ -471,38 +456,47 @@ end
 % ===================== vmspikefit ==========================================
 
 function testVmspikefitHangsSoftwareOnTheResidualObservation(testCase)
-% This class is where the software identity matters most: its own field-name
-% repair turned on WHICH program wrote the fit (fit_sse, not r_squared), and the
-% answer was being thrown away with the block.
+% INVERTED for #88 (the function name is kept for history). A vmspikefit is a
+% FIT, so on #88 it is a model_fit_calculation (#73 item 68), id preserved: the
+% equation and the SSE ride on its model_fit value, and as a calculation it
+% names its software, operating system and interpreter -- three software
+% entities, each with a version assertion.
 out = runJ(vmspikefitBody(true, true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 3);   % obs + anchor + software
-
-sw  = onlyClass(testCase, out, 'software');
-obs = onlyClass(testCase, out, 'score_observation');
-verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
-verifyEqual(testCase, obs.get('score.value.value'), 3.25, 'AbsTol', 1e-9);
-verifyEqual(testCase, obs.get('interaction.method.term.name'), 'exp2');
-verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter_version'), ...
-    '9.13');
+verifyEqual(testCase, numel(out.migrated), 8);   % calc + anchor + 3 software + 3 versions
+calc = onlyClass(testCase, out, 'model_fit_calculation');
+verifyEqual(testCase, calc.get('base.id'), 'vf_1');
+v = calc.get('model_fit.value');
+verifyEqual(testCase, v.equation, 'exp2');
+verifyEqual(testCase, v.goodness.sse, 3.25, 'AbsTol', 1e-9);
+ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
+names = cellfun(@(d) entityNameOf(d), out.migrated, 'UniformOutput', false);
+verifyEqual(testCase, depValue(calc, 'software_id'), ids{strcmp(names, 'ndi.app.spikesorter')});
+verifyEqual(testCase, depValue(calc, 'operating_system_id'), ids{strcmp(names, 'GLNXA64')});
+verifyEqual(testCase, depValue(calc, 'interpreter_id'), ids{strcmp(names, 'MATLAB')});
 end
+
 
 function testVmspikefitWithoutSseStillHasNowhereToPutItsSoftware(testCase)
-% The second RESIDUAL LOSS, asserted as one. No fit_sse -> no score_observation
-% -> only a bare session anchor, which declares no software_id. INVERT when the
-% team gives it a home; do not patch.
+% INVERTED for #88: with no SSE the fit is still a fit -- the equation is the
+% value -- so it folds to the model_fit_calculation without a goodness block,
+% rather than emitting nothing.
 out = runJ(vmspikefitBody(true, false));
 verifyEmpty(testCase, out.quarantine);
+calc = onlyClass(testCase, out, 'model_fit_calculation');
+v = calc.get('model_fit.value');
+verifyEqual(testCase, v.equation, 'exp2');
+verifyFalse(testCase, isfield(v, 'goodness') && ~isempty(v.goodness));
 verifyFalse(testCase, hasClass(out, 'score_observation'));
-verifyFalse(testCase, hasClass(out, 'software'));
-verifyEqual(testCase, numel(out.migrated), 1);
 end
+
 
 function testVmspikefitFoldValidates(testCase)
 out = runJValidated(vmspikefitBody(true, true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 3);
+verifyEqual(testCase, numel(out.migrated), 8);
 end
+
 
 % ===================== the rename trap, pinned =============================
 
@@ -521,4 +515,12 @@ verifyFalse(testCase, isfield(renamed.app, 'name'));
 out = runJ(v1);
 sw  = onlyClass(testCase, out, 'software');
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
+end
+
+function n = entityNameOf(d)
+n = '';
+if strcmp(d.get('document_class.class_name'), 'entity')
+    e = d.get('entity');
+    if isfield(e, 'name'); n = char(e.name); end
+end
 end
