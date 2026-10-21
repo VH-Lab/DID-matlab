@@ -21,7 +21,9 @@ function p = parameter(variable, options)
 %                    (char, so "1e-3" or "auto" survive exactly)
 %     'Unit'         canonical unit (a term or a name) for a numeric knob
 %                    (#73 audit 2 D4); absent for a unitless or non-numeric knob
-%     'SourceUnit'   the unit as the source gave it
+%     'SourceUnit'   the unit as the source gave it: its registered term
+%                    where the schema declares source_unit a term, text
+%                    where it declares char (see did2.build.valueCell)
 %     'Approximate'  logical, for the whole knob
 %     'Term'         a term (or a name)
 %     'Count'        an integer

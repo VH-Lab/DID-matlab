@@ -24,7 +24,16 @@ function cells = valueCell(typeName, canonical, options)
 %                    (concentration: 'molar', 'grams_per_liter', ...).
 %     'SourceValue'  what the source wrote, one per cell (numeric array, or a
 %                    cellstr when the type's source_value is text).
-%     'SourceUnit'   the source's unit: one char for all cells, or a cellstr.
+%     'SourceUnit'   the source's unit: one for all cells, or one per cell.
+%                    Where the schema declares `source_unit` an ontology_term
+%                    (did-schema V_eta_source_unit_plan.md) it is the unit's
+%                    registered term, did2.build.term(NODE, NAME) or a
+%                    {node, name} struct (a 1xN struct array or a cell of
+%                    terms for one per cell); text is then an error,
+%                    did2:build:sourceUnitNotATerm. Where it is char
+%                    (did-schema main) it is text, and a term given there
+%                    writes its name. did2.schema.cache/sourceUnitIsTerm
+%                    says which shape the schema in use has.
 %     'Approximate'  logical, scalar (all cells) or one per cell.
 %     'Tolerance'    [minus plus] in the canonical unit: the cell's bound (the
 %                    true value lies in [value - minus, value + plus]); one
@@ -42,7 +51,7 @@ function cells = valueCell(typeName, canonical, options)
 %
 %   Example:
 %     v = did2.build.valueCell('voltage', [0.012 0.013], ...
-%         'SourceValue', [12 13], 'SourceUnit', 'mV');
+%         'SourceValue', [12 13], 'SourceUnit', did2.build.term('om:millivolt', 'millivolt'));
 %
 %   See also did2.build.composite, did2.build.term.
 

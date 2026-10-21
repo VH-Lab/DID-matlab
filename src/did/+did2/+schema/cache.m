@@ -118,6 +118,8 @@ classdef cache < handle
     %       getClass            - resolved class definition for a name.
     %       sessionIdIsEdge     - does `base` declare session_id as an edge
     %                             (did-schema, 2026-10-20) or as the field?
+    %       sourceUnitIsTerm    - is a value's `source_unit` an ontology_term
+    %                             (did-schema, 2026-10-21) or char?
     %       requiredDependencies - depends_on names declared mustBeNonEmpty
     %                             anywhere in a class chain (#37).
     %       unpopulatedRequiredDependencies - which of those a given body
@@ -593,6 +595,53 @@ classdef cache < handle
                 if isstruct(d) && isfield(d, 'name') && strcmp(char(d.name), 'session_id')
                     tf = true;
                     return;
+                end
+            end
+        end
+
+        function tf = sourceUnitIsTerm(obj)
+            % sourceUnitIsTerm - true when a dimensioned value's `source_unit`
+            %   is declared an `ontology_term` rather than char.
+            %
+            %   did-schema V_eta_source_unit_plan.md (signed 2026-10-21):
+            %   every `source_unit` became a bound term {node, name}, the
+            %   unit's registered term with its label as the name. did-schema
+            %   `main` (and the pinned v_eta-pre73) still declare char. The
+            %   builders read each field's own declaration (fillField), so
+            %   this is for a CALLER that has to decide what to pass or how to
+            %   read a stored value, as sessionIdIsEdge is for the session id.
+            %
+            %   ASKED OF THE SCHEMA: the `value.source_unit` of the first of a
+            %   few dimensioned value classes the schema has (time, length,
+            %   mass, voltage, duration). The plan changed every declaration
+            %   at once, so one answers for all. False when none is readable.
+            arguments
+                obj
+            end
+            tf = false;
+            for c = {'time', 'length', 'mass', 'voltage', 'duration'}
+                if ~obj.hasClass(c{1})
+                    continue;
+                end
+                s = obj.getClass(c{1});
+                if ~isfield(s, 'fields') || isempty(s.fields)
+                    continue;
+                end
+                fields = did2.schema.cache.asCellOfDefs(s.fields);
+                for k = 1:numel(fields)
+                    f = fields{k};
+                    if ~(isstruct(f) && isfield(f, 'name') && strcmp(char(f.name), 'value') ...
+                            && isfield(f, 'fields') && ~isempty(f.fields))
+                        continue;
+                    end
+                    sub = did2.schema.cache.asCellOfDefs(f.fields);
+                    for j = 1:numel(sub)
+                        d = sub{j};
+                        if isstruct(d) && isfield(d, 'name') && strcmp(char(d.name), 'source_unit')
+                            tf = isfield(d, 'type') && strcmp(char(d.type), 'ontology_term');
+                            return;
+                        end
+                    end
                 end
             end
         end

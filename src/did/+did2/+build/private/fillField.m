@@ -26,6 +26,15 @@ function out = fillField(def, value, path)
 %   A `structure` with no declared sub-fields cannot be checked and is passed
 %   through as given (it must still be a struct).
 %
+%   A value's `source_unit` is read by the shape the schema declares
+%   (DID-schema V_eta_source_unit_plan.md, 2026-10-21): where it is an
+%   ontology_term it must be given as a term ({node, name}, e.g.
+%   did2.build.term('om:millimetre', 'millimetre')) -- text is refused
+%   (did2:build:sourceUnitNotATerm), because a spelling such as 'mm' is not
+%   the unit's registered term and the builder does not guess one; where it
+%   is char (did-schema main), text is written as given and a term writes its
+%   name. So one caller can pass terms on either schema.
+%
 %   The binding constraint (T8) is NOT checked here; it is the schema cache's
 %   (strictMode 'BindingConformance'). An ontology_term IS checked against the
 %   term registry (checkTerm; strictMode 'TermRegistry', tenet T19).
@@ -33,6 +42,9 @@ function out = fillField(def, value, path)
 subDefs = asDefs(getOr(def, 'fields', []));
 fieldType = char(getOr(def, 'type', ''));
 isArray = ~logical(getOr(def, 'mustBeScalar', true));
+if strcmp(char(getOr(def, 'name', '')), 'source_unit')
+    value = sourceUnitValue(value, fieldType, path);
+end
 
 if isempty(subDefs)
     if strcmp(fieldType, 'structure')
@@ -75,6 +87,38 @@ end
 end
 
 % -------------------------------------------------------------------------
+
+function value = sourceUnitValue(value, fieldType, path)
+%SOURCEUNITVALUE A `source_unit` in the shape the schema declares for it.
+%   On the term shape text is an error; on the char shape a term is its name
+%   (its node when it has no name).
+arguments
+    value
+    fieldType (1,:) char
+    path (1,:) char
+end
+isText = ischar(value) || (isstring(value) && isscalar(value));
+if strcmp(fieldType, 'ontology_term')
+    if isText || iscellstr(value) || isstring(value)
+        error('did2:build:sourceUnitNotATerm', ...
+            ['"%s" is a term on the schema in use (DID-schema ' ...
+             'V_eta_source_unit_plan.md): give the unit''s registered term, ' ...
+             'did2.build.term(NODE, NAME), not the text "%s". The builder does ' ...
+             'not guess a term from a spelling.'], path, strjoin(cellstr(value), '", "'));
+    end
+    if iscell(value) && any(cellfun(@(x) ischar(x) || isstring(x), value))
+        error('did2:build:sourceUnitNotATerm', ...
+            ['"%s" is a term on the schema in use (DID-schema ' ...
+             'V_eta_source_unit_plan.md): give each unit as a term, ' ...
+             'did2.build.term(NODE, NAME), not as text.'], path);
+    end
+elseif isstruct(value) && isscalar(value) && (isfield(value, 'name') || isfield(value, 'node'))
+    name = '';
+    if isfield(value, 'name'); name = strtrim(char(value.name)); end
+    if isempty(name) && isfield(value, 'node'); name = strtrim(char(value.node)); end
+    value = name;
+end
+end
 
 function s = fillStruct(subDefs, names, given, fieldType, path)
 given = given(1);

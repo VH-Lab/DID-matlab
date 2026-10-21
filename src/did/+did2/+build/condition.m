@@ -25,7 +25,9 @@ function c = condition(variable, options)
 %     'Count'          an integer
 %     'Text'           char
 %     'Unit'           canonical unit (a term or a name); absent when categorical
-%     'SourceUnit'     the unit as the source gave it
+%     'SourceUnit'     the unit as the source gave it: its registered term
+%                      where the schema declares source_unit a term, text
+%                      where it declares char (see did2.build.valueCell)
 %     'Approximate'    logical, for the whole condition
 %     'SchemaCache'    a did2.schema.cache; default the shared one.
 %

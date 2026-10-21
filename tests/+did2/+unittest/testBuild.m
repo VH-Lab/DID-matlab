@@ -64,6 +64,19 @@ function id = newId()
 id = did.ido.unique_id();
 end
 
+function [given, written] = sourceUnit(node, name, spelling)
+% A source unit in the shape the schema in use declares (did-schema
+% V_eta_source_unit_plan.md): the unit's term where `source_unit` is an
+% ontology_term, the source's spelling where it is char; and what the builder
+% writes for it. testBuildSourceUnit pins both shapes whatever is loaded.
+if did2.schema.cache.shared().sourceUnitIsTerm()
+    given = did2.build.term(node, name);
+else
+    given = spelling;
+end
+written = given;
+end
+
 % ===================== document ============================================
 
 function testDocumentBuildsASubject(testCase)
@@ -230,13 +243,14 @@ end
 % ===================== valueCell ===========================================
 
 function testValueCellVoltage(testCase)
+[mV, written] = sourceUnit('om:millivolt', 'millivolt', 'mV');
 v = did2.build.valueCell('voltage', [0.012 0.013], 'SourceValue', [12 13], ...
-    'SourceUnit', 'mV', 'Approximate', false);
+    'SourceUnit', mV, 'Approximate', false);
 verifyEqual(testCase, size(v), [1 2]);
 verifyEqual(testCase, fieldnames(v)', {'volts', 'source_unit', 'source_value', 'approximate'}, ...
     'cell fields come out in the schema''s declared order');
 verifyEqual(testCase, [v.volts], [0.012 0.013]);
-verifyEqual(testCase, {v.source_unit}, {'mV', 'mV'});
+verifyEqual(testCase, {v.source_unit}, {written, written});
 end
 
 function testValueCellLeavesOutWhatWasNotGiven(testCase)
@@ -268,7 +282,7 @@ end
 
 function testValueCellPicksANamedCanonical(testCase)
 c = did2.build.valueCell('concentration', 0.5, 'Canonical', 'grams_per_liter', ...
-    'SourceValue', 500, 'SourceUnit', 'mg/L');
+    'SourceValue', 500, 'SourceUnit', sourceUnit('om:milligramPerLitre', 'milligram per litre', 'mg/L'));
 verifyEqual(testCase, c.grams_per_liter, 0.5);
 verifyFalse(testCase, isfield(c, 'molar'));
 verifyError(testCase, @() did2.build.valueCell('concentration', 1, 'Canonical', 'ppm'), ...
@@ -596,7 +610,8 @@ end
 function testRelativeTimeReference(testCase)
 sid = testCase.TestData.sid;
 ref = did2.build.relativeTimeReference(newId(), 'Clock', 'dev_local_time', ...
-    'Start', 12.5, 'StartSourceValue', 12500, 'StartSourceUnit', 'ms', ...
+    'Start', 12.5, 'StartSourceValue', 12500, ...
+    'StartSourceUnit', sourceUnit('om:millisecond-Time', 'millisecond', 'ms'), ...
     'Duration', 2, 'SessionId', sid);
 verifyEqual(testCase, ref.relative_time_reference.value.clock.name, 'dev_local_time');
 verifyEqual(testCase, ref.relative_time_reference.value.start.seconds, 12.5);

@@ -21,7 +21,9 @@ function k = key(variable, n, options)
 %   Options:
 %     'Unit'           canonical unit of origin/spacing/values: a term, or a
 %                      name. Absent for a categorical key. Angles are DEGREES.
-%     'SourceUnit'     the unit as the source gave it (char)
+%     'SourceUnit'     the unit as the source gave it: its registered term
+%                      where the schema declares source_unit a term, text
+%                      where it declares char (see did2.build.valueCell)
 %     'Approximate'    logical
 %     'Origin','Spacing'              canonical, in 'Unit'
 %     'SourceOrigin','SourceSpacing'  what the source wrote, in 'SourceUnit'

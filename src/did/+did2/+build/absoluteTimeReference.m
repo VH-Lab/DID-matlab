@@ -17,7 +17,9 @@ function doc = absoluteTimeReference(utc, options)
 %                        true unless given or both are 0
 %     'DurationTolerance', 'EndTolerance'   the same, for the duration / end
 %     'Duration'         seconds, canonical ('DurationSourceValue',
-%                        'DurationSourceUnit', 'DurationApproximate')
+%                        'DurationSourceUnit', 'DurationApproximate'; the
+%                        unit a term or text as the schema declares
+%                        source_unit, see did2.build.valueCell)
 %     'End'              the END: an ISO-8601 UTC instant like the start
 %                        ('EndSourceValue', 'EndSourceTimezone',
 %                        'EndSourceUtcOffset', 'EndApproximate'). Its own
