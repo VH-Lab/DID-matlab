@@ -3937,7 +3937,16 @@ verifyFalse(testCase, isfield(obs.value, 'data_type') && ~isempty(obs.value.data
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, depValue(ob, 'owner_id'), 'ks_1');              % body -> the obs
 verifyEqual(testCase, ob.data_body.filename, 'ks_out/session1');    % directory preserved
-verifyTrue(testCase, contains(ob.data_body.description, 'd41d8cd9'));% MD5 noted
+% Jess Haley, 2026-10-21 ("a"): the directory BY LOCATION (body_data_0, not
+% ingested) and the curated MD5 as the body's checksum, not in the description
+verifyEqual(testCase, ob.files.file_info(1).name, 'body_data_0');
+verifyEqual(testCase, ob.files.file_info(1).locations.location, 'ks_out/session1');
+verifyEqual(testCase, double(ob.files.file_info(1).locations.ingest), 0);
+verifyEqual(testCase, ob.data_body.content_hash, 'd41d8cd98f00b204e9800998ecf8427e');
+verifyEqual(testCase, ob.data_body.hash_algorithm, 'MD5');
+verifyFalse(testCase, contains(ob.data_body.description, 'd41d8cd9'), ...
+    'the MD5 is the checksum, not free text');
+verifyEqual(testCase, ob.data_body.format.name, 'directory');
 end
 
 function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)

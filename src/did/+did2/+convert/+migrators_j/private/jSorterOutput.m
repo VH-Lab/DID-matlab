@@ -101,16 +101,35 @@ obs = jStatement(preBody, 'count_observation', ...
     jLabel('spike cluster assignment'), [], ...
     'Fields', struct('method', jMethod(sorterName)), 'DataBody', true, ...
     'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', char(preBody.base.id));
+% Jess Haley, 2026-10-21 ("a"): the output directory is recorded BY LOCATION,
+% as resolveEpochProbemap records an epoch's files -- body_data_0's location is
+% the directory path, nothing ingested -- and the curated-output MD5 is the
+% body's checksum (content_hash, hash_algorithm MD5), not free text.
 descr = sprintf('%s sorter output directory', sorterName);
-if ~isempty(md5)
-    descr = sprintf('%s (curated_output_md5_checksum: %s)', descr, md5);
-end
 f = struct();
 if ~isempty(directory); f.filename = directory; end
+if ~isempty(md5)
+    f.content_hash = lower(strtrim(md5));
+    f.hash_algorithm = 'MD5';
+end
 o = jOpts(preBody, 'Description', descr, 'Fields', f);
 body = did2.build.opaqueBody(obs.base.id, ...
-    did2.build.formatTerm(struct('node', '', 'name', 'directory')), o{:});
-if isfield(preBody, 'files'); body.files = preBody.files; end
-if isfield(preBody, 'file');  body.file  = preBody.file;  end
+    did2.build.formatTerm(SORTER_DIRECTORY_FORMAT()), o{:});
+if ~isempty(directory)
+    body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
+        'delete_original', 0, 'uid', did.ido.unique_id(), 'location', directory, ...
+        'parameters', '', 'location_type', 'file', 'ingest', 0));
+else
+    if isfield(preBody, 'files'); body.files = preBody.files; end
+    if isfield(preBody, 'file');  body.file  = preBody.file;  end
+end
 bodies = [{obs, body, anchor}, software];
+end
+
+function t = SORTER_DIRECTORY_FORMAT()
+%SORTER_DIRECTORY_FORMAT The `format` of a sorter's output-directory body: the
+%   EMPTY term "directory" (Jess Haley, 2026-10-21), being minted in
+%   empty-ontology #22 and registered in did-schema. ITS NODE IS NOT YET KNOWN:
+%   this is the ONE place to put it when it is reported; until then a label.
+t = struct('node', '', 'name', 'directory');
 end
