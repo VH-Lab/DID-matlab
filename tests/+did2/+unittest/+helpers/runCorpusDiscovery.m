@@ -619,6 +619,22 @@ catch erErr
     fprintf('entity requires census skipped: %s\n', erErr.message);
 end
 
+% DOSE `ingredient_in_formulation`, a batch census (Jess Haley, 2026-10-21
+% [dose per ingredient]): every dose with its formulation run through
+% did2.build.checkDoseIngredients. Counts, denominator first; best-effort.
+try
+    result.dose_ingredients = did2.validate.doseIngredients(result.migrated);
+    di = result.dose_ingredients;
+    fprintf(['dose ingredient_in_formulation: %d doc(s) inspected, %d dose(s) ' ...
+             '(%d with ingredient_id), %d formulation not in batch, %d checked, ' ...
+             '%d violation(s)\n'], di.docs_inspected, di.doses_inspected, ...
+        di.doses_with_ingredients, di.formulation_not_in_batch, di.doses_checked, ...
+        di.violations);
+catch diErr
+    result.dose_ingredients = struct('audit_failed', diErr.message);
+    fprintf('dose ingredient census skipped: %s\n', diErr.message);
+end
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 

@@ -2334,6 +2334,30 @@ def _edge_arity_verdict(ea, out, indent="      "):
         p("%s*** and it is the independent way of seeing it." % indent)
 
 
+def render_dose_ingredients(r, out):
+    """The dose `ingredient_in_formulation` batch census (Jess Haley,
+    2026-10-21 [dose per ingredient]). Denominator first; absent is NOT
+    MEASURED, never a zero."""
+    p = out.append if isinstance(out, list) else out
+    di = r.get("dose_ingredients")
+    if not isinstance(di, dict) or "audit_failed" in di:
+        why = ("audit failed (%s)" % di.get("audit_failed")) if isinstance(di, dict) \
+            else "this report carries no dose_ingredients block"
+        p("    dose ingredient_in_formulation: NOT MEASURED -- %s" % why)
+        return
+    p("    dose ingredient_in_formulation: %s doc(s) inspected, %s dose(s) "
+      "(%s with ingredient_id), %s formulation not in batch (not checked), "
+      "%s checked, %s violation(s)"
+      % (di.get("docs_inspected", "?"), di.get("doses_inspected", "?"),
+         di.get("doses_with_ingredients", "?"), di.get("formulation_not_in_batch", "?"),
+         di.get("doses_checked", "?"), di.get("violations", "?")))
+    ex = di.get("violation_examples") or []
+    if isinstance(ex, dict):
+        ex = [ex]
+    for e in ex:
+        p("      %s: %s" % (e.get("id", "?"), e.get("message", "?")))
+
+
 def render_entity_requires(r, out):
     """The entity-type `requires` census, REPORT-ONLY (Jess Haley, 2026-10-21,
     "b"): per entity type and required field, entities inspected and missing.
@@ -5931,6 +5955,7 @@ def render_report(r, out):
     # wide question came to be recorded as unmeasured.
     render_edge_arity(r, out)
     render_entity_requires(r, out)
+    render_dose_ingredients(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the

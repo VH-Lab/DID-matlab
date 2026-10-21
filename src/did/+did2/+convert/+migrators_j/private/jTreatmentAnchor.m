@@ -10,13 +10,18 @@ function anchor = jTreatmentAnchor(preBody, block)
 %   `start.utc` only for a UTC ISO-8601 string). Only when none is recorded
 %   does it fall back to "during the session" (jSessionAnchor).
 %
+%   A v1 virus_injection's onset is its `virus_AdministrationDate` (snake-cased
+%   by universalRenames to `virus_administration_date`; both spellings read):
+%   Jess Haley, 2026-10-21 ("a") [virus injection onset].
+%
 %   Decided by Jess Haley, 2026-10-21 ("a"): every treatment route --
 %   immersion, exposure, dose, the Babu heat pulse -- is anchored at the
 %   recorded onset, and at the session only when there is none.
 
 anchor = [];
 if isstruct(block) && isscalar(block)
-    onset = jGetCharAny(block, {'administration_onset_time', 'administrationOnsetTime'});
+    onset = jGetCharAny(block, {'administration_onset_time', 'administrationOnsetTime', ...
+        'virus_administration_date', 'virus_AdministrationDate', 'virusAdministrationDate'});
     anchor = jAbsoluteReference(preBody, onset);
 end
 if isempty(anchor)
