@@ -167,187 +167,157 @@ end
 % ===================== syncrule -> clock_alignment_configuration ===========
 
 function testSyncruleFansOutToConfigurationChannelsAndSoftware(testCase)
+% INVERTED for did-schema #88. A CHANNEL-BASED rule (two named DAQ systems with
+% channels) used to fan out to a configuration + two acquisition_channels +
+% software. On #88 `acquisition_channels` names the system its channels are on
+% only by an `acquisition_system_id` EDGE, while the v1 rule names its systems by
+% NAME; resolving a name to the system's id needs the batch, and the pre-#73
+% shape carried the name on base.name, which V_eta no longer writes. Folding
+% here would drop which device each channel group is on, so the rule passes
+% through unchanged (Jess's rule: pass through and list, never invent) and the
+% resolution is an NDI second-pass need, listed in the port report.
 out = runJ(syncruleFixture('ctoe'));
-verifyEqual(testCase, numel(out.migrated), 4);
 verifyEmpty(testCase, out.quarantine);
-cfg = findClass(testCase, out, 'clock_alignment_configuration');
-% base.id PRESERVED -- the signature says so, and syncgraph's syncrule_id_# and
-% syncrule_mapping's syncrule_id both resolve through it.
-verifyEqual(testCase, cfg.get('base.id'), 'rule_ctoe');
-verifyEqual(testCase, cfg.get('document_class.schema_version'), 'V_eta');
-verifyEqual(testCase, countClass(out, 'acquisition_channels'), 2);
-verifyEqual(testCase, countClass(out, 'software'), 1);
+verifyEqual(testCase, numel(out.migrated), 1);
+doc = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'syncrule');
+verifyEqual(testCase, doc.get('base.id'), 'rule_ctoe');
+verifyEqual(testCase, out.summary.unconverted_by_class.syncrule, 1);
+verifyEqual(testCase, countClass(out, 'acquisition_channels'), 0);
+verifyEqual(testCase, countClass(out, 'clock_alignment_configuration'), 0);
 end
+
 
 function testConfigurationCarriesExactlyTwoAcquisitionChannelEdges(testCase)
-% EXACTLY 2 and UNORDERED. The rule is symmetric
-% (commonTriggersOverlappingEpochs.m:110-115 accepts the pair in either order
-% and normalises afterwards), so the edges are a `_#` family, not from_/to_.
+% UPDATED for #88 (channel-based rules pass through, see above): the passthrough
+% keeps BOTH device names and BOTH channel specs verbatim, so the second pass
+% has everything the fold would have needed.
 out = runJ(syncruleFixture('ctoe'));
-cfg = findClass(testCase, out, 'clock_alignment_configuration');
-id1 = depVal(cfg, 'acquisition_channels_1');
-id2 = depVal(cfg, 'acquisition_channels_2');
-verifyNotEmpty(testCase, id1);
-verifyNotEmpty(testCase, id2);
-verifyNotEqual(testCase, id1, id2);
-verifyEmpty(testCase, depVal(cfg, 'acquisition_channels_3'));
-% ...and both point at documents this same fold emitted.
-verifyTrue(testCase, ismember(id1, emittedIds(out, 'acquisition_channels')));
-verifyTrue(testCase, ismember(id2, emittedIds(out, 'acquisition_channels')));
+p = out.migrated{1}.get('syncrule.parameters');
+verifyEqual(testCase, p.daqsystem1_name, 'vhtaste_sync');
+verifyEqual(testCase, p.daqsystem2_name, 'vhtaste_bpod');
+verifyEqual(testCase, p.daqsystem_ch1, 'dep1');
+verifyEqual(testCase, p.daqsystem_ch2, 'mk1');
 end
+
 
 function testChannelSpecDecomposesTheWayNdiParsesIt(testCase)
-% 'dep1' -> type 'dep', numbers 1 -- the same split
-% commonTriggersOverlappingEpochs.m:369-377 performs, and the device NAME rides
-% on base.name because a syncrule stores a name, not a document id.
-out = runJ(syncruleFixture('ctoe'));
-ch = channelsNamed(testCase, out, 'vhtaste_sync');
-block = ch.get('acquisition_channels');
-verifyEqual(testCase, numel(block.channels), 1);
-verifyEqual(testCase, block.channels(1).type.name, 'dep');
-verifyEqual(testCase, block.channels(1).type.node, '');
-verifyEqual(testCase, block.channels(1).numbers, 1);
+% UPDATED for #88: a channel-based rule of ANY implementation class passes
+% through -- randomPulses as well as commonTriggersOverlappingEpochs -- and
+% nothing is emitted half-built (no software, no channels).
+out = runJ(syncruleFixture('randomPulses'));
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncrule');
+verifyEqual(testCase, countClass(out, 'software'), 0);
 end
+
 
 function testAcquisitionSystemEdgeIsOmittedNotBlank(testCase)
-% The edge is OPTIONAL and cannot be filled by a single-document migrator: the
-% source stores a device NAME and must_refer needs a document ID. Emitting it
-% blank would add another 100%-empty edge to the census for no gain.
+% No document anywhere in the output carries a blank acquisition_system_id.
+% UPDATED for #88: the channel rule passes through, so none is emitted at all.
 out = runJ(syncruleFixture('ctoe'));
-ch = channelsNamed(testCase, out, 'vhtaste_sync');
-verifyEmpty(testCase, depVal(ch, 'acquisition_system_id'));
-deps = depsOf(ch);
-verifyFalse(testCase, any(strcmp({deps.name}, 'acquisition_system_id')));
+for k = 1:numel(out.migrated)
+    deps = depsOf(out.migrated{k});
+    verifyFalse(testCase, any(strcmp({deps.name}, 'acquisition_system_id')));
+end
 end
 
+
 function testDeclaredParametersReplaceTheBag(testCase)
-% "parameters GONE. Not a bag -- the union of four closed sets, so all three
-% surviving fields are DECLARED and queryable" (repair 4), and errorOnFailure is
-% DROPPED (repair 5): throw-or-return-quietly is runtime behaviour.
-out = runJ(syncruleFixture('ctoe'));
+% A FILE-BASED rule folds, and its settings are the configuration's inline
+% method.parameters (did-schema #88 V_eta_method_plan.md: one method shape);
+% the v1 parameter bag is not carried. UPDATED for #88 (was asserted on the
+% channel rule, which now passes through).
+out = runJ(syncruleFixture('filematch'));
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
 block = cfg.get('clock_alignment_configuration');
 verifyFalse(testCase, isfield(block, 'parameters'));
 verifyFalse(testCase, isfield(block, 'errorOnFailure'));
-verifyFalse(testCase, isfield(block, 'error_on_failure'));
-verifyEqual(testCase, block.minimum_embedded_file_overlap, 1);
-% ontology_term, STAGED with an empty node (#67/#70) -- did_clocktype's own
-% value_set carries "node": "" for all four terms.
-verifyEqual(testCase, block.clock.name, 'dev_local_time');
-verifyEqual(testCase, block.clock.node, '');
+p = block.method.parameters;
+verifyEqual(testCase, numel(p), 1);
+verifyEqual(testCase, p(1).variable.name, 'minimum matching file paths');
+verifyEqual(testCase, p(1).count, 2);
 end
+
 
 function testFilefindNamesDevicesWithNoChannels(testCase)
-% filefind.m:32 stores daqsystem1/daqsystem2 (the OTHER spelling) and no channel
-% strings at all. Both devices still become acquisition_channels documents --
-% the device identity is the fact -- with an empty channels list.
+% filefind names two DAQ systems (with no channels). UPDATED for #88: a rule
+% that names its devices passes through for the same reason a channel rule does
+% (the system name cannot be turned into an acquisition_system_id here); its
+% file criterion stays on the passthrough.
 out = runJ(syncruleFixture('filefind'));
-cfg = findClass(testCase, out, 'clock_alignment_configuration');
-verifyNotEmpty(testCase, depVal(cfg, 'acquisition_channels_1'));
-verifyNotEmpty(testCase, depVal(cfg, 'acquisition_channels_2'));
-ch = channelsNamed(testCase, out, 'mydaq1');
-chBlock = ch.get('acquisition_channels');
-verifyEmpty(testCase, chBlock.channels);
-block = cfg.get('clock_alignment_configuration');
-verifyEqual(testCase, block.sync_file_name, 'syncfile.txt');
-verifyEqual(testCase, block.minimum_matching_file_paths, 1);
-% filefind has no epochclocktype, so `clock` is OMITTED rather than emitted as
-% an all-blank ontology_term (the vacuous value silentLoss:322 names).
-verifyFalse(testCase, isfield(block, 'clock'));
+verifyEqual(testCase, numel(out.migrated), 1);
+doc = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'syncrule');
+p = doc.get('syncrule.parameters');
+verifyEqual(testCase, p.daqsystem1, 'mydaq1');
+verifyEqual(testCase, p.syncfilename, 'syncfile.txt');
+verifyEqual(testCase, p.number_fullpath_matches, 1);
 end
 
+
 function testFilematchBecomesAChannellessConfiguration(testCase)
-% INVERTED 2026-08-18, NOT patched. This was
-% `testFilematchPassesThroughRatherThanBreakingCardinality` and asserted a v1
-% `syncrule` passthrough with `unconverted_count == 1`. That was written from
-% the same premise as the guard it tested -- "a filematch rule has no channels,
-% so it cannot be a configuration" -- and TEAM-SIGN-OFF [sync configuration
-% amendment 1] retires that premise: `acquisition_channels_#` relaxed to {0,2},
-% and a file-based rule becomes a `clock_alignment_configuration` with ZERO
-% channels carrying its file criterion. So the assertion is reversed.
-%
-% filematch's ENTIRE parameter set is number_fullpath_matches (filematch.m:25),
-% so the config carries that as `minimum_matching_file_paths`, no channels, and
-% the software entity for its rule class.
+% A filematch rule (no devices, a file criterion) folds to a channel-less
+% configuration + its software entity. UPDATED for #88: the criterion is a
+% method.parameters entry.
 out = runJ(syncruleFixture('filematch'));
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
-% base.id PRESERVED, so syncgraph's syncrule_id_# still resolves.
 verifyEqual(testCase, cfg.get('base.id'), 'rule_filematch');
-% ZERO acquisition_channels -- the whole point of the amendment.
 verifyEqual(testCase, countClass(out, 'acquisition_channels'), 0);
-verifyEmpty(testCase, depVal(cfg, 'acquisition_channels_1'));
-% the file criterion is carried, not bagged.
-block = cfg.get('clock_alignment_configuration');
-verifyEqual(testCase, block.minimum_matching_file_paths, 2);
-% the rule class becomes a software entity, edged from the config.
+verifyEmpty(testCase, depVal(cfg, 'acquisition_channels_id'));
+p = cfg.get('clock_alignment_configuration.method').parameters;
+verifyEqual(testCase, p(1).count, 2);
 verifyEqual(testCase, countClass(out, 'software'), 1);
 verifyNotEmpty(testCase, depVal(cfg, 'software_id'));
-% and it is NO LONGER an unconverted passthrough.
 verifyEqual(testCase, out.summary.unconverted_count, 0);
 verifyEqual(testCase, countClass(out, 'syncrule'), 0);
 end
 
+
 function testSoftwareCarriesTheImplementationClass(testCase)
-% R1: v1's `ndi_syncrule_class` is the only thing on the document that says WHICH
-% strategy this is. Dropping it without a software entity would lose it.
-out = runJ(syncruleFixture('randomPulses'));
+% The configuration's software entity is named by the rule's implementation
+% class. UPDATED for #88: shown on the folding (file-based) rule.
+out = runJ(syncruleFixture('filematch'));
 sw = findClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('entity.name'), 'ndi.time.syncrule.randomPulses');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.time.syncrule.filematch');
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
 verifyEqual(testCase, depVal(cfg, 'software_id'), sw.get('base.id'));
 end
 
+
 % ===================== syncgraph -> clock_alignment_policy =================
 
 function testSyncgraphPassesThroughUntilTheSessionDocumentResolves(testCase)
-% INVERTED 2026-08-10 BY A CORPUS RUN. This asserted
-% `depVal(policy,'session_id') == 'sess_0001'` -- and that assertion WAS THE
-% DEFECT. `clock_alignment_policy.session_id` is
-% `must_refer_to_document_class: session`, so it must name a session DOCUMENT's
-% `base.id`; `base.session_id` is a different id space entirely
-% (ndi.document.m:57 mints base.id from a fresh ido; ndi.session.m:215 sets
-% base.session_id separately). The edge therefore dangled every time.
-%
-% MEASURED, corpus run 31438980133 (20211116): 1 orphan of 2814 edges, and the
-% corpus holds exactly one syncgraph -- 100% of the class. The orphan gate is
-% the reason this was caught at all: it is the one instrument that resolves
-% edges against the real migrated set, which no unit fixture does.
-%
-% This test could never have caught it, because the fixture and the migrator
-% shared the premise. That is the recorded lesson arriving through the DATA
-% this time rather than through the code.
+% INVERTED for did-schema #88. The policy's session edge named the session
+% DOCUMENT, which pass 1 could not resolve, so a graph passed through until the
+% batch pass stamped it. On #88 the session entity's id IS the session id and
+% `session_id` is base.session_id as an edge (V_eta_relation_inheritance_plan),
+% so pass 1 has everything it needs and the graph folds immediately, id
+% preserved.
 out = runJ(syncgraphFixture({'rule_a', 'rule_b', 'rule_c'}));
-verifyEqual(testCase, numel(out.migrated), 1, ...
-    'a did_v1 syncgraph must pass through -- no session document can be resolved in pass 1');
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncgraph');
-verifyEqual(testCase, out.migrated{1}.get('base.id'), 'graph_0001', ...
+policy = findClass(testCase, out, 'clock_alignment_policy');
+verifyEqual(testCase, policy.get('base.id'), 'graph_0001', ...
     'base.id must survive, or syncrule_mapping.syncgraph_id and the live NDI query break');
+verifyEqual(testCase, depVal(policy, 'session_id'), 'sess_0001');
 end
 
+
 function testSyncgraphFoldsWhenTheSessionResolves(testCase)
-% THE DEAD BRANCH, driven deliberately. jSessionDocId answers '' for every
-% did_v1 document, so this shape cannot occur today -- it occurs the moment a
-% batch pass stamps `session_document_id` onto the body, exactly as
-% jEpochDocId un-gates syncrule_mapping's fold.
-%
-% Keeping it alive is the point: when that wiring lands, the fold is already
-% tested, and every assertion the old test made about MEMBERSHIP still holds.
+% UPDATED for #88: the rules are the repeated `clock_alignment_configuration_id`
+% edge (one per rule, in order), not a numbered family.
 v1 = syncgraphFixture({'rule_a', 'rule_b', 'rule_c'});
 v1.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
 out = runJ(v1);
 policy = findClass(testCase, out, 'clock_alignment_policy');
 verifyEqual(testCase, policy.get('base.id'), 'graph_0001');
-% on the edge shape base's own `session_id` edge is this edge, and the session
-% DOCUMENT's id IS the session id, so the field is what it carries
 verifyEqual(testCase, depVal(policy, 'session_id'), ...
     did2.unittest.helpers.sessionDocumentId('sessdoc_1', 'sess_0001'), ...
     'the edge must name the session DOCUMENT, never base.session_id');
-verifyEqual(testCase, depVal(policy, 'clock_alignment_configuration_1'), 'rule_a');
-verifyEqual(testCase, depVal(policy, 'clock_alignment_configuration_2'), 'rule_b');
-verifyEqual(testCase, depVal(policy, 'clock_alignment_configuration_3'), 'rule_c');
-% the v1 edge name must not survive alongside the new one
+verifyEqual(testCase, depVals(policy, 'clock_alignment_configuration_id'), ...
+    {'rule_a', 'rule_b', 'rule_c'});
 verifyEmpty(testCase, depVal(policy, 'syncrule_id_1'));
 end
+
 
 function testRuleLessGraphEmitsNoConfigurationEdgeAtAll(testCase)
 % Repair 3: syncrule_id_# was never invented -- V_eta TIGHTENED NDI's
@@ -500,63 +470,57 @@ verifyEqual(testCase, countClass(out, 'relative_time_reference'), 2);
 end
 
 function testPolynomialKeepsTheSourceOrderAndChecksItsDegree(testCase)
-% syncrule_mapping_schema.json: "[1xN] coefficients of a polynomial, high
-% exponents first". polynomial.json: "HIGHEST ORDER FIRST". Same convention, so
-% this is a rename -- nothing is reversed. {slope, intercept} would have been
-% LOSSY (ndi.time.timemapping is a polynomial by its own docstring).
 out = runJ(mappingFixture(true));
 align = findClass(testCase, out, 'clock_alignment');
 coeffs = align.get('polynomial.value.coefficients');
 verifyEqual(testCase, coeffs, [1.0002 -0.5]);
 verifyEqual(testCase, align.get('polynomial.value.degree'), numel(coeffs) - 1);
 verifyEqual(testCase, align.get('clock_alignment.cost'), 1);
-% STAGED with an empty node (gate 2): "temporally aligned with" is a MAPPING
-% predicate, not an OWL-Time interval relation, so it cannot reuse
-% relative_reference's binding and needs an NDIC term (#67 / #70).
 rel = align.get('clock_alignment.relation');
 verifyEqual(testCase, rel.name, 'temporally aligned with');
-verifyEqual(testCase, rel.node, '');
+verifyFalse(testCase, isfield(rel, 'node') && ~isempty(rel.node), ...
+    'no CURIE is invented for the relation');
 end
 
+
 function testAllFourRequiredEdgesAreFilled(testCase)
+% UPDATED for #88: the endpoints are input_id / output_id.
 out = runJ(mappingFixture(true));
 align = findClass(testCase, out, 'clock_alignment');
-for name = {'from_reference', 'to_reference', ...
+for name = {'input_id', 'output_id', ...
         'clock_alignment_configuration_id', 'clock_alignment_policy_id'}
     verifyNotEmpty(testCase, depVal(align, name{1}), ...
         sprintf('required edge %s is empty', name{1}));
 end
-% syncgraph_id RESTORED as the policy edge; syncrule_id as the configuration
-% edge. Both target documents preserve base.id, so both resolve.
 verifyEqual(testCase, depVal(align, 'clock_alignment_policy_id'), 'graph_0001');
 verifyEqual(testCase, depVal(align, 'clock_alignment_configuration_id'), 'rule_ctoe');
 end
 
+
 function testEndpointsBecomeDirectedReferencesThatKeepObjectname(testCase)
-% The rule is symmetric but its OUTPUT is directed (apply() returns its mapping
-% only after fixing which system is 1), hence named endpoints rather than a
-% `_#` family. objectname rides on base.name: it is string-matched at eight live
-% NDI sites and is otherwise recoverable ONLY via epoch.instrument_id, which the
-% epoch pass does not carry yet.
+% The rule is symmetric but its OUTPUT is directed. UPDATED for #88: the
+% endpoints are relative_time_reference documents on input_id / output_id, each
+% anchored at its epoch (referent_id), extent = start + duration in seconds with
+% the source unit as a registry term. The endpoint objectname rode on base.name,
+% which V_eta no longer writes, and a time reference has no other slot for it:
+% on a FOLDED mapping it is not carried (it stays on every passthrough mapping,
+% testPassthroughKeepsEverythingTheLiveNdiQueryReads). Recorded in the port
+% report as an NDI reader need.
 out = runJ(mappingFixture(true));
 align = findClass(testCase, out, 'clock_alignment');
-fromRef = docWithId(testCase, out, depVal(align, 'from_reference'));
-toRef   = docWithId(testCase, out, depVal(align, 'to_reference'));
-verifyEqual(testCase, did2.unittest.helpers.leafName(fromRef), 'relative_reference');
-verifyEqual(testCase, fromRef.get('base.name'), 'vhtaste_sync');
-verifyEqual(testCase, toRef.get('base.name'), 'vhtaste_bpod');
-verifyEqual(testCase, depVal(fromRef, 'relative_to'), 'epochdoc_a');
-verifyEqual(testCase, depVal(toRef, 'relative_to'), 'epochdoc_b');
-val = fromRef.get('relative_reference.value');
+fromRef = docWithId(testCase, out, depVal(align, 'input_id'));
+toRef   = docWithId(testCase, out, depVal(align, 'output_id'));
+verifyEqual(testCase, did2.unittest.helpers.leafName(fromRef), 'relative_time_reference');
+verifyEqual(testCase, depVal(fromRef, 'referent_id'), 'epochdoc_a');
+verifyEqual(testCase, depVal(toRef, 'referent_id'), 'epochdoc_b');
+val = fromRef.get('relative_time_reference.value');
 verifyEqual(testCase, val.clock.name, 'dev_local_time');
 verifyEqual(testCase, val.start.seconds, 0);
-% INVERTED for #65 increment 2 (CHANGE 1): `value.end` no longer exists on
-% relative_reference -- the extent is `value.duration` = t1 - t0. The endpoint
-% still runs 0 .. 101 s; `end` stays exactly recoverable as start + duration.
 verifyFalse(testCase, isfield(val, 'end'));
 verifyEqual(testCase, val.duration.seconds, 101);
-verifyEqual(testCase, val.start.source_unit, 's');
+verifyEqual(testCase, val.start.source_unit.name, 'second');
 end
+
 
 function testNoTimeClockYieldsNoConversionAtAll(testCase)
 % NO TIMES => NO REFERENCE. A reference whose extent is NaN is a hollow
@@ -621,11 +585,10 @@ end
 % ===================== validation ==========================================
 
 function testConfigurationAndPolicyValidateAgainstTheRealVEtaSchema(testCase)
-% The only tests here that prove the migrators and the schema agree. The others
-% would pass just as happily against classes that do not exist. Needs the
-% assembled V_eta set on DID_SCHEMA_PATH (stable + draft + deprecated) -- the
-% quick gate builds exactly that, and all four target classes are in the DRAFT
-% tier, so a stable-only schema path fails here rather than skipping.
+% The migrators and the schema agree under validation. UPDATED for #88: the
+% channel rule passes through (1 body), the filematch rule folds (config +
+% software), the graph folds (policy + software), the mapping passes through:
+% 6 documents, 0 quarantined.
 graph = syncgraphFixture({'rule_ctoe'});
 graph.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
 out = did2.convert.v1_to_v2( ...
@@ -636,24 +599,20 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
-% 4 (ctoe fold) + 2 (filematch fold: config + software) + 2 (policy + software)
-% + 1 (mapping). The filematch rule now FOLDS to a channel-less configuration
-% (amendment 1) rather than passing through, so it contributes 2 bodies, not 1,
-% and no `syncrule` survives. The graph carries a `session_document_id` stamp so
-% the policy branch runs; without it the graph passes through and the count is 8.
-verifyEqual(testCase, numel(out.migrated), 9);
-verifyEqual(testCase, countClass(out, 'clock_alignment_configuration'), 2);
+verifyEqual(testCase, numel(out.migrated), 6);
+verifyEqual(testCase, countClass(out, 'clock_alignment_configuration'), 1);
 verifyEqual(testCase, countClass(out, 'clock_alignment_policy'), 1);
-verifyEqual(testCase, countClass(out, 'syncrule'), 0);
+verifyEqual(testCase, countClass(out, 'syncrule'), 1);
 verifyEqual(testCase, countClass(out, 'syncrule_mapping'), 1);
 if isfield(out, 'silent_loss') && isfield(out.silent_loss, 'total_docs')
-    verifyEqual(testCase, out.silent_loss.total_docs, 9);
+    verifyEqual(testCase, out.silent_loss.total_docs, 6);
     verifyEqual(testCase, out.silent_loss.skipped_docs, 0);
     verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
     verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
     verifyEqual(testCase, out.silent_loss.family_violation_count, 0);
 end
 end
+
 
 function testTheAlignmentFoldValidatesWhenTheGateIsOpen(testCase)
 % The conversion branch, against the real schema. It is deliberately a SEPARATE
@@ -784,4 +743,13 @@ for k = 1:numel(out.migrated)
     end
 end
 assertFail(testCase, sprintf('no migrated document with base.id "%s"', id));
+end
+
+function v = depVals(doc, name)
+% every value of a repeated edge, in order
+v = {};
+deps = depsOf(doc);
+for k = 1:numel(deps)
+    if strcmp(deps(k).name, name); v{end+1} = deps(k).value; end %#ok<AGROW>
+end
 end

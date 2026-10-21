@@ -188,8 +188,13 @@ end
 [bareClock, toleranceSeconds] = deEncodeApprox(clockName);
 
 % did-schema #88: a relative_time_reference onto the epoch (`referent_id`),
-% built through did2.build. The endpoint's object name was its base.name
-% before; V_eta documents write no base.name, and the v1 mapping keeps it.
+% built through did2.build. The endpoint's object name (the DAQ system name,
+% `epochnode_[ab].objectname`) was its base.name before; V_eta documents write
+% no base.name (#73 item 54) and a time reference has no other slot for it, so
+% on a FOLDED mapping the name is not carried. It stays on every mapping that
+% passes through (branch 2 of syncrule_mapping.m). Reported in the port report
+% as an NDI reader need: NDI's syncgraph query matches objectname by
+% exact_string, so the reader must reach the system through the configuration.
 sec = struct('node', 'om:second-Time', 'name', 'second');
 try
 ref = did2.build.relativeTimeReference(epochDocId, 'Clock', bareClock, ...
