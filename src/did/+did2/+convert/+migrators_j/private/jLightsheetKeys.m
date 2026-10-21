@@ -135,7 +135,7 @@ for k = 1:nAx
         elseif factor == 1 && strcmp(units{k}, canonical)
             opts = {'Unit', unitTerm(canonical), 'Origin', translation(k), 'Spacing', scale(k)};
         else
-            opts = {'Unit', unitTerm(canonical), 'SourceUnit', units{k}, ...
+            opts = {'Unit', unitTerm(canonical), 'SourceUnit', sourceUnitOf(units{k}), ...
                 'Origin', translation(k) * factor, 'Spacing', scale(k) * factor, ...
                 'SourceOrigin', translation(k), 'SourceSpacing', scale(k)};
         end
@@ -163,6 +163,25 @@ if isempty(k)
     t = struct('node', '', 'name', name);
 else
     t = struct('node', table{k, 2}, 'name', name);
+end
+end
+
+function u = sourceUnitOf(spelling)
+%SOURCEUNITOF The source's unit in the shape the schema declares source_unit.
+%   char (did-schema main, v_eta-pre73): the spelling, as before. A term
+%   (DID-schema V_eta_source_unit_plan.md, signed 2026-10-21; did2.build
+%   refuses text there): the spelling's term as unitTerm maps it, else the
+%   spelling as the name with an empty node -- the plan's item 4 for a
+%   migrated spelling, which the term registry check then reports.
+arguments
+    spelling {mustBeText}
+end
+
+spelling = strtrim(char(spelling));
+if did2.schema.cache.shared().sourceUnitIsTerm()
+    u = unitTerm(spelling);
+else
+    u = spelling;
 end
 end
 

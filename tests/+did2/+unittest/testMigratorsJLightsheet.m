@@ -358,7 +358,12 @@ b = onlyBody(testCase, out);
 keys = keyList(b.data.keys);
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 z = keys{strcmp(names, 'z')};
-verifyEqual(testCase, z.source_unit, 'micrometer', 'the level''s own unit is kept');
+% the source's spelling, or on a schema where source_unit is a term
+% (V_eta_source_unit_plan.md) that spelling's term
+verifyEqual(testCase, termOrText(z.source_unit), 'micrometer', 'the level''s own unit is kept');
+if did2.schema.cache.shared().sourceUnitIsTerm()
+    verifyEqual(testCase, z.source_unit.node, 'UO:0000017', 'the unit table''s term for micrometer');
+end
 end
 
 function testALevelWhosePyramidIsAbsentKeepsItsKeysAndIsCounted(testCase)
@@ -1228,4 +1233,16 @@ v1.fileReference = struct( ...
     'fileSize', 0, ...
     'checksum', '0123456789abcdef0123456789abcdef', ...
     'checksumAlgorithm', 'MD5');
+end
+
+function n = termOrText(u)
+% a source_unit's name: the text itself (char shape) or the term's name
+arguments
+    u
+end
+if isstruct(u)
+    n = char(u.name);
+else
+    n = char(u);
+end
 end
