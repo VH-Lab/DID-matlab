@@ -859,18 +859,13 @@
 %         resolves.
 %     spatial_gene_expression_pyramid
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionPyramid -> V_eta
-%         spatial_gene_expression_pyramid (⊂ [base, gene_expression,
-%         subject_observation]) + the shared session anchor. Carries the observation
-%         direction: `variable` bound to NCIT:C16608 "gene expression" per the
-%         DID-schema binding registry; `subject_id` carried from v1 depends_on onto
-%         the inherited subject_statement slot; `time_reference_1` pointing at a
-%         session_relative_reference `during` anchor (the smallest legitimate anchor
-%         for a static spatial-transcriptomics section -- see the PROVISIONAL SHAPES
-%         block below); the pyramid's own block fields (chip_serial, pipeline_version,
-%         bin geometry, byte_order, ...) and the gene_expression mixin fields (assay,
-%         count_type, count_units) carry through verbatim. base.id is preserved so a
-%         Cells / Tiles / file_reference row's `spatial_gene_expression_pyramid_id`
-%         edge still resolves.
+%         spatial_gene_expression_pyramid, PASSED THROUGH. did-schema #88 restates the
+%         class as its v1 shape (base + gene_expression, with the v1 `subject_id` /
+%         `geneList_id` edges), so the document validates under its own class and
+%         nothing is reshaped: no statement, no bound `variable` (the "Gene
+%         Expression" binding belongs to the #70 reshape, which #88 does not carry),
+%         no session anchor. base.id is preserved so a Cells / Tiles / file_reference
+%         row's `spatial_gene_expression_pyramid_id` edge still resolves.
 %     spatial_gene_expression_tiles
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionTiles -> V_eta
 %         spatial_gene_expression_tiles, an id-preserving 1:1 passthrough. The class

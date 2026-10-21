@@ -43,6 +43,11 @@ function checkRules(cache, className, doc, chain)
 %        require_inherited        a class's `require_inherited` list: an
 %                                 inherited optional field or edge the class
 %                                 makes required
+%        value_in_set             binding_registry_meta.json: a variable whose
+%                                 row lists `values` takes its term value
+%                                 from that closed list (Jess Haley,
+%                                 2026-10-21); did2:build:valueOutsideSet,
+%                                 armed with strictMode('TermRegistry')
 
 arguments
     cache (1,1) did2.schema.cache
@@ -210,6 +215,37 @@ for c = 1:numel(chain)
                 'class "%s" requires the inherited `%s`, which was not given.', chain{c}, name));
         end
     end
+end
+
+valueInClosedSet(cache, doc, blocks, className);
+end
+
+function valueInClosedSet(cache, doc, blocks, className)
+% value_in_set: a statement whose variable's binding row lists `values` (a
+% CLOSED list; DID-schema binding_registry_meta.json, Jess Haley
+% 2026-10-21) takes its term value from that list. Armed with the term
+% registry check (strictMode 'TermRegistry'); a migration disarms both.
+variable = findField(doc, blocks, 'variable');
+if ~isstruct(variable) || ~did2.schema.cache.strictMode('TermRegistry')
+    return;
+end
+value = [];
+for b = 1:numel(blocks)
+    block = doc.(blocks{b});
+    if isstruct(block) && isscalar(block) && isfield(block, 'value') ...
+            && isstruct(block.value) && isfield(block.value, 'node')
+        value = block.value;
+        break;
+    end
+end
+if isempty(value)
+    return;
+end
+[tf, reason] = did2.schema.valueInSet(variable, value, cache.bindingRegistry);
+if ~tf
+    error('did2:build:valueOutsideSet', ...
+        ['value_in_set (%s): %s. A closed value list is changed in DID-schema''s ' ...
+         'binding_registry_meta.json, through review.'], className, reason);
 end
 end
 
