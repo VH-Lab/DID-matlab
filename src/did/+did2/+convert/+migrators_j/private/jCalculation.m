@@ -59,6 +59,19 @@ srcBlk = struct();
 if isfield(preBody, sourceBlock) && isstruct(preBody.(sourceBlock))
     srcBlk = preBody.(sourceBlock);
 end
+% did-schema #88: a calculation REQUIRES an entity (its subject) and an
+% operating_system_id. A source that names neither cannot be stated as one, so
+% it PASSES THROUGH on its v1 tombstone, rather than quarantining or having an
+% operating system invented for it (Jess Haley, 2026-10-21: what #88 cannot
+% express passes through, per class).
+subjectId = jSubjectOf(preBody, {'element_id', 'subject_id'});
+[software, swId, execEnv] = jSoftwareFromApp(preBody);
+[runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
+if isempty(subjectId) || isempty(osId)
+    bodies = {preBody};
+    return;
+end
+
 leafFields = struct();
 if strcmp(family, 'csf')
     [value, keys] = jContrastSensitivityValue(srcBlk);
@@ -71,11 +84,9 @@ else
 end
 
 anchor = jSessionAnchor(preBody, 'during');
-[software, swId, execEnv] = jSoftwareFromApp(preBody);
 if isempty(swId)
     [software, swId] = jSoftware(methodName, '', '', jSid(preBody), jStamp(preBody));
 end
-[runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
 
 inputs = [inputIds(preBody), reshape(opts.ExtraInputs, 1, [])];
 f = leafFields;
@@ -89,7 +100,7 @@ if ~isempty(opts.ExtraParameters)
 end
 f.method = jMethod(methodName, params);
 if isempty(fieldnames(value)) && ~strcmp(family, 'rf'); value = []; end
-leaf = jStatement(preBody, leafClass, jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
+leaf = jStatement(preBody, leafClass, subjectId, ...
     jLabel(variableName), value, ...
     'Keys', keys, ...
     'TimeReferenceIds', {anchor.base.id}, ...

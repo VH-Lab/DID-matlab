@@ -283,7 +283,9 @@ end
 % documents write no base.name). The caller's own body fields arrive in
 % opts.BodyOptions.
 axesArray = ngridAxes(dataDim, axisLabels, axisCoords);
-o = jOpts(preBody, opts.BodyOptions{:});
+% DATUM ORDER 'F': an ngrid's bytes are a MATLAB array written with fwrite, so
+% column-major -- unless the caller states otherwise in opts.BodyOptions.
+o = jOpts(preBody, 'DatumOrder', 'F', opts.BodyOptions{:});
 body = did2.build.sampledBody(char(statementId), axesArray, o{:});
 end
 

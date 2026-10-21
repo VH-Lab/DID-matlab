@@ -314,6 +314,9 @@ bodies = jCalculation(preBody, 'receptive_field_calculation', 'rf', ...
     'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
     'DatumType', datumType, 'SourceDatumType', sourceDatumType);
 leaf = bodies{1};
+if isscalar(bodies) && strcmp(leaf.document_class.class_name, 'hartley_calc')
+    return;     % passed through (no subject or no operating system): no bodies
+end
 for k = 1:numel(planeBodies)
     bodies{end+1} = planeBodies{k}; %#ok<AGROW>
 end

@@ -532,6 +532,7 @@ end
 rebuilt    = {};      % the new bodies, statement and body interleaved
 changedIdx = [];      % index into docs of the source each PAIR replaces
 pairBodyId = {};      % the fresh opaque_body id of each pair
+pairAnchorId = {};    % the session time reference each statement names (#88)
 fileIds = genericIdx.keys();
 for f = 1:numel(fileIds)
     id  = fileIds{f};
@@ -574,10 +575,13 @@ for f = 1:numel(fileIds)
     end
 
     bodyId = did.ido.unique_id();
-    rebuilt{end+1} = makeStatement(b, node, subjectId);       %#ok<AGROW>
+    [stmt, anchor] = makeStatement(b, node, subjectId);
+    rebuilt{end+1} = stmt;                                    %#ok<AGROW>
     rebuilt{end+1} = makeOpaqueBody(b, blk, bodyId, id);      %#ok<AGROW>
+    rebuilt{end+1} = anchor;                                  %#ok<AGROW>
     changedIdx(end+1) = k;                                    %#ok<AGROW>
     pairBodyId{end+1} = bodyId;                               %#ok<AGROW>
+    pairAnchorId{end+1} = anchor.base.id;                     %#ok<AGROW>
     if ~isempty(charField(blk, {'date_created'})) ...
             || ~isempty(charField(blk, {'date_updated'})) ...
             || isNumericField(blk, 'date_created') ...
@@ -620,13 +624,16 @@ appended = {};
 for j = 1:numel(changedIdx)
     stmtId = docIds{changedIdx(j)};      % PRESERVED: the source's own id
     bodyId = pairBodyId{j};
-    if isempty(stmtId) || ~isKey(produced, stmtId) || ~isKey(produced, bodyId)
+    anchorId = pairAnchorId{j};
+    if isempty(stmtId) || ~isKey(produced, stmtId) || ~isKey(produced, bodyId) ...
+            || ~isKey(produced, anchorId)
         % Degrade to "not folded": the ORIGINAL stays in the batch.
         report.fold_quarantined = report.fold_quarantined + 1;
         continue;
     end
     docs{changedIdx(j)} = produced(stmtId);
     appended{end+1} = produced(bodyId); %#ok<AGROW>
+    appended{end+1} = produced(anchorId); %#ok<AGROW>
     report.files_folded = report.files_folded + 1;
 end
 
@@ -1396,21 +1403,26 @@ end
 
 % ===================== the two bodies ==================================
 
-function body = makeStatement(src, node, subjectId)
+function [body, anchor] = makeStatement(src, node, subjectId)
 %MAKESTATEMENT The term_observation, WITH THE SOURCE'S OWN base.id.
 %   did-schema #88: built by did2.build.statement. `variable` is the label's
 %   node (the team's instruction, verbatim); the term value restates it,
 %   because the node is the only term the source carries. Both go through the
 %   term registry (T19) so a registered node carries its registered label.
 %
-%   NO time reference: it is optional, and the only times the source carries
-%   are filesystem datenums, which are not an anchor. The bytes are named by
+%   An #88 observation REQUIRES a time reference, and the only times the
+%   source carries are filesystem datenums, which are not an anchor, so the
+%   statement is "during the session": a relative_time_reference onto the
+%   session (ANCHOR, returned for the caller to validate). The bytes are named by
 %   the opaque_body's owner_id edge; the statement does not set `data_body`
 %   (the same conservative choice as jSorterOutput: a data_body statement
 %   requires a `data_type` the source does not state).
 term = did2.convert.registeredTerm(char(node), '');
 [sid, ds] = sessionAndTime(src);
+anchor = did2.build.relativeTimeReference(sid, 'Relation', 'intervalDuring', ...
+    'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 body = did2.build.statement('term_observation', char(subjectId), term, term, ...
+    'TimeReferenceIds', {anchor.base.id}, ...
     'Id', baseField(src, 'id'), 'SessionId', sid, 'CreationTimestamp', ds, ...
     'Validate', false);
 % NOTHING from the source `generic_file` block reaches the statement: filename,

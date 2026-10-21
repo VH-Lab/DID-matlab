@@ -991,15 +991,26 @@ end
 % orphan; a `member_of` whose parent was never minted would be the same. Both
 % are refused and counted instead.
 statementBodies = {};
+statementAnchor = {};    % the session anchor each observation names ('' for a relation)
+anchorBySession = containers.Map('KeyType', 'char', 'ValueType', 'any');
 statementKind = [];      % 1 plate observation, 3 lawn observation, 0 relation
 for j = 1:numel(subjectMeta)
     if ~isKey(liveSubject, subjectMeta(j).docId); continue; end
     obs = pendingObs{j};
     for i = 1:numel(obs)
         entry = obs{i};
-        statementBodies{end+1} = makeObservation(bodies{subjectMeta(j).idx}, ...
-            entry{1}, entry{2}, entry{3}, entry{4}, subjectMeta(j).docId); %#ok<AGROW>
+        src = bodies{subjectMeta(j).idx};
+        [sidA, dsA] = sessionAndTime(src);
+        if ~isKey(anchorBySession, sidA)
+            a = did2.build.relativeTimeReference(sidA, 'Relation', 'intervalDuring', ...
+                'SessionId', sidA, 'CreationTimestamp', dsA, 'Validate', false);
+            anchorBySession(sidA) = a;
+        end
+        a = anchorBySession(sidA);
+        statementBodies{end+1} = makeObservation(src, ...
+            entry{1}, entry{2}, entry{3}, entry{4}, subjectMeta(j).docId, a.base.id); %#ok<AGROW>
         statementKind(end+1) = subjectMeta(j).kind; %#ok<AGROW>
+        statementAnchor{end+1} = a.base.id; %#ok<AGROW>
     end
 end
 for j = 1:numel(subjectMeta)
@@ -1018,10 +1029,13 @@ for j = 1:numel(subjectMeta)
     statementBodies{end+1} = makeMemberOf(bodies{subjectMeta(j).idx}, ...
         subjectMeta(j).docId, plateSubjectId(plateKey)); %#ok<AGROW>
     statementKind(end+1) = 0; %#ok<AGROW>
+    statementAnchor{end+1} = ''; %#ok<AGROW>
 end
 
 if ~isempty(statementBodies)
-    [survivedB, quarantinedB] = validateBodies(statementBodies, options);
+    anchorBodies = anchorBySession.values;
+    [survivedB, quarantinedB] = validateBodies([statementBodies, anchorBodies(:)'], options);
+    anchorUsed = containers.Map('KeyType', 'char', 'ValueType', 'logical');
     report.statements_quarantined = numel(quarantinedB);
     if ~isempty(quarantinedB)
         result = appendQuarantine(result, quarantinedB);
@@ -1031,6 +1045,14 @@ if ~isempty(statementBodies)
     for i = 1:numel(statementBodies)
         id = statementBodies{i}.base.id;
         if ~isKey(survivedB, id); continue; end
+        aid = statementAnchor{i};
+        if ~isempty(aid)
+            if ~isKey(survivedB, aid); continue; end   % its anchor did not validate
+            if ~isKey(anchorUsed, aid)
+                anchorUsed(aid) = true;
+                appended{end+1} = survivedB(aid); %#ok<AGROW>
+            end
+        end
         appended{end+1} = survivedB(id); %#ok<AGROW>
         switch statementKind(i)
             case 1
@@ -1327,11 +1349,12 @@ body = did2.build.document('entity', ...
     'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
-function body = makeObservation(srcBody, leafClass, shapeClass, variable, num, subjectId)
+function body = makeObservation(srcBody, leafClass, shapeClass, variable, num, subjectId, anchorId)
 %MAKEOBSERVATION One typed observation of one subject (did-schema #88).
-%   NO time reference: it is optional and there is no time to put in one --
-%   see the header. The value carries the source value with no unit, as the
-%   table cell gives none.
+%   An #88 observation REQUIRES a time reference and the table gives no time,
+%   so it names ANCHORID, a "during the session" relative_time_reference the
+%   caller mints once per session. The value carries the source value with no
+%   unit, as the table cell gives none.
 if strcmp(shapeClass, 'score')
     v = did2.build.composite('score', 'value', struct('score', double(num), ...
         'approximate', false));
@@ -1341,7 +1364,7 @@ else
 end
 [sid, ds] = sessionAndTime(srcBody);
 body = did2.build.statement(leafClass, char(subjectId), variable, v, ...
-    'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
+    'TimeReferenceIds', {char(anchorId)}, 'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
 function rel = makeMemberOf(srcBody, lawnId, plateId)

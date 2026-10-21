@@ -236,7 +236,9 @@ if ~isempty(tableRowId)
     % and gives an observation no edge for it; the row is the NDI second
     % pass's to resolve. Reported.
 end
-o = jOpts(preBody);
+% DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
+% column-major (a judgment call, recorded in the port report).
+o = jOpts(preBody, 'DatumOrder', 'F');
 body = did2.build.sampledBody(stackId, imageKeys(dimOrder, dimSize, params), o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end

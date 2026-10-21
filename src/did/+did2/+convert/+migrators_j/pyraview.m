@@ -194,7 +194,10 @@ for k = 1:numel(fileList)
     else
         keys = did2.build.list(timeAxis, channelAxis);
     end
-    o = jOpts(preBody, 'FilterId', filterId);
+    % DATUM ORDER 'C': a pyraview level file interleaves the channels within
+    % each sample (the channel key varies fastest) -- a conservative reading
+    % of the writer, recorded as a judgment call in the port report.
+    o = jOpts(preBody, 'FilterId', filterId, 'DatumOrder', 'C');
     b = did2.build.sampledBody(obsId, keys, o{:});
     b.files = struct('file_list', {fileList(k)});
     bodies{end+1} = b; %#ok<AGROW>
