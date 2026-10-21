@@ -106,7 +106,7 @@ verifyEqual(testCase, numel(out), 7, ...
     sprintf('expected 7 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyEqual(testCase, sum(strcmp(names, 'subject')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'directed_relation')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'session_relative_reference')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'count_assertion')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'voltage_observation')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'score_observation')), 1);
@@ -145,7 +145,7 @@ wobs   = pick(out, 'voltage_observation');
 verifyEqual(testCase, depValueOf(wobs, 'subject_id'), neuron.base.id);
 verifyNotEqual(testCase, depValueOf(wobs, 'subject_id'), 'rec_sub_1');
 verifyEqual(testCase, depValueOf(wobs, 'time_reference_1'), ...
-    pick(out, 'session_relative_reference').base.id, ...
+    pick(out, 'relative_time_reference').base.id, ...
     'the waveform shares the one session anchor, it does not mint a second');
 end
 

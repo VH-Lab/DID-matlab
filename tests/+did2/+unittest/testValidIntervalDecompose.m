@@ -360,7 +360,7 @@ verifyEqual(testCase, rep.references_emitted, 0);
 verifyEqual(testCase, rep.intervals_decomposed, 0);
 verifyEqual(testCase, rep.documents_appended, 0);
 verifyEmpty(testCase, docsOfClass(result, 'logical_observation'));
-verifyEmpty(testCase, docsOfClass(result, 'relative_reference'));
+verifyEmpty(testCase, docsOfClass(result, 'relative_time_reference'));
 verifyEqual(testCase, numel(result.migrated), before, ...
     'the dormant pass changed the batch');
 end

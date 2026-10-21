@@ -496,7 +496,7 @@ out = runJ(mappingFixture(true));
 verifyEqual(testCase, numel(out.migrated), 3);
 align = findClass(testCase, out, 'clock_alignment');
 verifyEqual(testCase, align.get('base.id'), 'map_0001');       % PRESERVED
-verifyEqual(testCase, countClass(out, 'relative_reference'), 2);
+verifyEqual(testCase, countClass(out, 'relative_time_reference'), 2);
 end
 
 function testPolynomialKeepsTheSourceOrderAndChecksItsDegree(testCase)

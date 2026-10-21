@@ -120,7 +120,7 @@ verifyEqual(testCase, sw.get('software.version'), '2.1');
 verifyEqual(testCase, sw.get('software.local_identifier'), ...
     'ndi.app.spikeextractor@2.1');
 
-mp = firstOfClass(testCase, out, 'method_parameters');
+mp = firstOfClass(testCase, out, 'method');
 verifyEqual(testCase, depValue(mp.toStruct(), 'software_id'), sw.get('base.id'));
 % base.id PRESERVED: three templates point at it
 % (spike_extraction_parameters_modification / spikewaves / spike_clusters, all
@@ -149,7 +149,7 @@ function testSettingsExecutionEnvironmentIsParkedNotDropped(testCase)
 % (Unchanged by the consolidation; pinned because the parking now happens on the
 % far side of a shared helper, where it is easier to lose.)
 out = runJ(extractionParamsBody('ndi.app.spikeextractor', '2.1'));
-mp = firstOfClass(testCase, out, 'method_parameters');
+mp = firstOfClass(testCase, out, 'method');
 env = mp.get('method_parameters.other.execution_environment');
 verifyEqual(testCase, env.interpreter, 'MATLAB');
 verifyEqual(testCase, env.os, 'Linux');
@@ -179,7 +179,7 @@ out = runJ(v1);
 names = classNames(out);
 verifyFalse(testCase, any(strcmp(names, 'software')));
 
-mp = firstOfClass(testCase, out, 'method_parameters');
+mp = firstOfClass(testCase, out, 'method');
 verifyEqual(testCase, depValue(mp.toStruct(), 'software_id'), '');
 other = mp.get('method_parameters.other');
 verifyTrue(testCase, isfield(other, 'app'));
@@ -206,7 +206,7 @@ names = classNames(out);
 % A minimal software is always minted now (methodName-keyed) so the required
 % edge always resolves.
 verifyTrue(testCase, any(strcmp(names, 'software')));
-leaf = out.migrated{find(~strcmp(names, 'session_relative_reference') ...
+leaf = out.migrated{find(~strcmp(names, 'relative_time_reference') ...
     & ~strcmp(names, 'software') & ~strcmp(names, 'runtime_environment'), 1)};
 verifyEqual(testCase, ...
     leaf.get('subject_interaction.execution_environment.os'), 'Linux');

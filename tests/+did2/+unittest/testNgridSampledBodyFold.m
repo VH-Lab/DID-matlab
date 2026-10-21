@@ -118,7 +118,7 @@ function testTheBodyIsBoundToTheImageObservationNotTheTermObservation(testCase)
 % real documents, so the edge resolves and no orphan is reported. The body IS
 % the picture; the term says what the picture depicts.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-imgObs = pick(out, 'image_observation');
+imgObs = pick(out, 'intensity_observation');
 body   = pick(out, 'sampled_body');
 verifyEqual(testCase, depValueOf(body, 'statement'), imgObs.base.id);
 verifyNotEqual(testCase, depValueOf(body, 'statement'), ...
@@ -132,7 +132,7 @@ function testTheSourceIdStaysOnTheTermObservationAndTheImageObsGetsAFreshOne(tes
 % fresh id and stranded every edge pointing at the row).
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
 verifyEqual(testCase, pick(out, 'term_observation').base.id, 'oi_fold');
-verifyNotEqual(testCase, pick(out, 'image_observation').base.id, 'oi_fold');
+verifyNotEqual(testCase, pick(out, 'intensity_observation').base.id, 'oi_fold');
 verifyNotEqual(testCase, pick(out, 'sampled_body').base.id, 'oi_fold');
 end
 
@@ -191,14 +191,14 @@ body = pick(out, 'sampled_body');
 %   shape -> [axes.n] in array order, asserted above as [4 4]
 % NOT A WEAKENING: 'ubit1' still reaches the document, now as the SOURCE
 % spelling beside its canonical 'bool', which is more than the old block said.
-obs = pick(out, 'image_observation');
+obs = pick(out, 'intensity_observation');
 verifyEqual(testCase, obs.subject_statement.datum_type, 'bool');
 verifyEqual(testCase, obs.subject_statement.source_datum_type, 'ubit1');
 verifyFalse(testCase, isfield(body.sampled_body, 'data_size'));
 verifyFalse(testCase, isfield(body.sampled_body, 'datum'));
 % and the dtype is ALSO explicit on the composite -- R6 decision 4, because a
 % dtype is not recoverable from a raster
-verifyEqual(testCase, pick(out, 'image_observation').image.value.dtype, 'ubit1');
+verifyEqual(testCase, pick(out, 'intensity_observation').image.value.dtype, 'ubit1');
 end
 
 function testAnNgridHasNoTimeAxisSoTheBodyIsOneDatum(testCase)
@@ -234,7 +234,7 @@ body = pick(out, 'sampled_body');
 verifyTrue(testCase, isfield(body, 'file'));
 verifyEqual(testCase, body.file(1).name, 'ontologyImage.ngrid');
 % and the bytes do NOT stay on a statement -- a body-backed value has one home
-verifyFalse(testCase, isfield(pick(out, 'image_observation'), 'file'));
+verifyFalse(testCase, isfield(pick(out, 'intensity_observation'), 'file'));
 end
 
 function testStorageModeIsBodyAndTheStatementCarriesNoCadence(testCase)
@@ -243,7 +243,7 @@ function testStorageModeIsBodyAndTheStatementCarriesNoCadence(testCase)
 % sample_time (jStartInteraction seeds the inline single-point cadence, which is
 % the wrong half here).
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-imgObs = pick(out, 'image_observation');
+imgObs = pick(out, 'intensity_observation');
 verifyEqual(testCase, imgObs.subject_statement.storage_mode, 'body');
 verifyEmpty(testCase, imgObs.image.value.pixels);
 verifyFalse(testCase, isfield(imgObs.subject_interaction, 'sample_time'));
@@ -255,7 +255,7 @@ function testTheDepictedTermIsTheVariableRatherThanAPlaceholder(testCase)
 % ontology label lives on ANOTHER document. Here the term is on the document
 % being migrated, so there is nothing to defer.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-v = pick(out, 'image_observation').statement.variable;
+v = pick(out, 'intensity_observation').statement.variable;
 verifyEqual(testCase, v.node, 'uberon:0002436');
 verifyEqual(testCase, v.name, 'primary visual cortex');
 end
@@ -279,7 +279,7 @@ function testTheImageObservationIsNeverEmittedWithAnEmptySubjectEdge(testCase)
 v1 = foldableOntologyImage();
 v1.depends_on = struct('name', {'element_id'}, 'id', {'elem_9'});
 out = did2.convert.migrators_j.ontology_image(v1);
-imgObs = pick(out, 'image_observation');
+imgObs = pick(out, 'intensity_observation');
 verifyEqual(testCase, depValueOf(imgObs, 'subject_id'), 'elem_9', ...
     ['the fold guarded on a subject it then failed to write -- an ' ...
      'image_observation with an empty required edge validates clean']);
@@ -311,7 +311,7 @@ function testTheImageObservationIsAboutTheElementSubject(testCase)
 % +migrators_j/element.m promotes elements to subjects with ids PRESERVED. This
 % is a recurring trap in this repo, so it is asserted rather than remembered.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-verifyEqual(testCase, depValueOf(pick(out, 'image_observation'), 'subject_id'), ...
+verifyEqual(testCase, depValueOf(pick(out, 'intensity_observation'), 'subject_id'), ...
     'elem_9');
 end
 

@@ -234,7 +234,7 @@ out = runJ(b);
 verifyEmpty(testCase, out.quarantine);
 
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'absolute_reference')));
+verifyFalse(testCase, any(strcmp(names, 'absolute_time_reference')));
 anchor = docOfClass(testCase, out, 'session_relative_reference');
 obs = docOfClass(testCase, out, 'time_observation');
 verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_1'), ...
@@ -546,7 +546,7 @@ function testPyraviewWithNoFilterBlockIsUnchanged(testCase)
 out = runJ(pyraviewBody());
 names = classNames(out);
 verifyTrue(testCase, any(strcmp(names, 'voltage_observation')));
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 2);
 verifyFalse(testCase, any(strcmp(names, 'frequency_filter')));
 end

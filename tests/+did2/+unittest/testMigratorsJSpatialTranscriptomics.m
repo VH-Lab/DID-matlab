@@ -63,7 +63,7 @@ verifyEqual(testCase, numel(out), 2, ...
     sprintf('expected 2 bodies (pyramid + anchor), got %d', numel(out)));
 names = classNames(out);
 verifyEqual(testCase, sum(strcmp(names, 'spatial_gene_expression_pyramid')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'session_relative_reference')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
 end
 
 function testPyramidPreservesBaseId(testCase)
@@ -101,7 +101,7 @@ function testPyramidCarriesTimeReferenceEdgeAtTheAnchor(testCase)
 % must point at the anchor body we emit alongside.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-anchor = pick(out, 'session_relative_reference');
+anchor = pick(out, 'relative_time_reference');
 verifyEqual(testCase, depValue(pyr, 'time_reference_1'), anchor.base.id);
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 end

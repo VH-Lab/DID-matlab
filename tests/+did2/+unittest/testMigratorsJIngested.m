@@ -377,7 +377,7 @@ out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0; 10]), 'epoch_d
 verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
 
-refs = docsOfClass(out, 'relative_reference');
+refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
 ref = refs{1};
 verifyEqual(testCase, depVal(ref, 'relative_to'), 'epoch_doc_1');
@@ -428,7 +428,7 @@ out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time', 'exp_global_time'}, t0t1), 'epoch_doc_1'));
 verifyEqual(testCase, numel(out.migrated), 3);
 
-refs = docsOfClass(out, 'relative_reference');
+refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 2);
 byClock = containers.Map();
 for k = 1:numel(refs)
@@ -448,7 +448,7 @@ function testReaderIngestedAcceptsTheDegenerateVectorT0T1(testCase)
 % to-json, from-json, to-json conversion problem"): with one clock the 2x1
 % column comes back as a bare 2-element vector.
 out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0 10]), 'epoch_doc_1'));
-refs = docsOfClass(out, 'relative_reference');
+refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
 val = refs{1}.get('relative_reference.value');
 verifyEqual(testCase, val.start.seconds, 0);
@@ -462,7 +462,7 @@ function testNoTimeClockEmitsNoReference(testCase)
 % migrators_i/image_stack.m:182 does the same.
 out = runJ(withEpochEdge(readerIngestedV1({'no_time'}, [0; 0]), 'epoch_doc_1'));
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEmpty(testCase, docsOfClass(out, 'relative_reference'));
+verifyEmpty(testCase, docsOfClass(out, 'relative_time_reference'));
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
@@ -473,7 +473,7 @@ function testNaNIntervalEmitsNoReference(testCase)
 out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time'}, [NaN; NaN]), 'epoch_doc_1'));
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEmpty(testCase, docsOfClass(out, 'relative_reference'));
+verifyEmpty(testCase, docsOfClass(out, 'relative_time_reference'));
 end
 
 function testMixedClocksDropOnlyTheUninterpretableOne(testCase)
@@ -482,7 +482,7 @@ function testMixedClocksDropOnlyTheUninterpretableOne(testCase)
 t0t1 = [0 0; 10 0];
 out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time', 'no_time'}, t0t1), 'epoch_doc_1'));
-refs = docsOfClass(out, 'relative_reference');
+refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'dev_local_time');
 end
@@ -496,7 +496,7 @@ function testApproxClockDeEncodesToAClockToleranceNotABoolean(testCase)
 % the bare clock plus an explicit tolerance on the ROOT -- and the four-term
 % vocabulary has no `approx_utc` member for the clock term to have carried.
 out = runJ(withEpochEdge(readerIngestedV1({'approx_utc'}, [0; 10]), 'epoch_doc_1'));
-refs = docsOfClass(out, 'relative_reference');
+refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'utc');
 verifyEqual(testCase, refs{1}.get('time_reference.clock_tolerance.seconds'), 5);
@@ -510,7 +510,7 @@ function testReferenceOmitsRelationWhenItHasAMetric(testCase)
 % `relation` is the qualitative Allen relation used when there is NO metric
 % offset. Emitting both would assert the same fact twice, in two vocabularies.
 out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0; 10]), 'epoch_doc_1'));
-refs = docsOfClass(out, 'relative_reference');
+refs = docsOfClass(out, 'relative_time_reference');
 val = refs{1}.get('relative_reference.value');
 verifyFalse(testCase, isfield(val, 'relation'));
 end
@@ -539,7 +539,7 @@ function testMfdaqIngestedDelegatesTheEpochLift(testCase)
 out = runJ(withEpochEdge(mfdaqIngestedV1(), 'epoch_doc_1'));
 verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
-refs = docsOfClass(out, 'relative_reference');
+refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'dev_local_time');
 % the de-encode still happened
@@ -583,7 +583,7 @@ function testImageIngestedLiftsTheInheritedEpochTable(testCase)
 % (+ndi/+daq/+reader/image.m:187-188, 216-219) -- not on the image header.
 out = runJ(withEpochEdge(imageIngestedV1(), 'epoch_doc_7'));
 verifyEqual(testCase, numel(out.migrated), 2);
-refs = docsOfClass(out, 'relative_reference');
+refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, depVal(refs{1}, 'relative_to'), 'epoch_doc_7');
 % INVERTED for #65 increment 2: `value.end` is gone, the extent is
@@ -603,7 +603,7 @@ function testImageIngestedEmitsNoSubjectlessObservation(testCase)
 % this asserts the same shape is not rebuilt one class over.
 out = runJ(withEpochEdge(imageIngestedV1(), 'epoch_doc_7'));
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'image_observation')));
+verifyFalse(testCase, any(strcmp(names, 'intensity_observation')));
 verifyFalse(testCase, any(strcmp(names, 'sampled_body')));
 end
 
@@ -816,7 +816,7 @@ assumeVEtaSchemas(testCase);
 out = runJValidated(withEpochEdge( ...
     readerIngestedV1({'dev_local_time'}, [0; 10]), 'epoch_doc_1'));
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
-verifyEqual(testCase, numel(docsOfClass(out, 'relative_reference')), 1);
+verifyEqual(testCase, numel(docsOfClass(out, 'relative_time_reference')), 1);
 end
 
 function testTheFoldLeavesNoEmptyRequiredEdgeAndNoFragment(testCase)

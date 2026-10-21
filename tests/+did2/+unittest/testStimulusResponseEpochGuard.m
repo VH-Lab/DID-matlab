@@ -208,7 +208,7 @@ out = runJ(responseFixture(''));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
-anchor = findClass(testCase, out, 'session_relative_reference');
+anchor = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
     char(anchor.get('base.id')));
 end
@@ -231,7 +231,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % anchors on one interaction would be #52's undefined-meaning case.
 out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
-ref  = findClass(testCase, out, 'relative_reference');
+ref  = findClass(testCase, out, 'relative_time_reference');
 verifyFalse(testCase, anyClass(out, 'session_relative_reference'));
 
 rb = ref.toStruct();
@@ -253,7 +253,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % alone is asserted". A zero offset would assert the response began exactly at
 % the epoch boundary, which the writer never said.
 out = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
-ref = findClass(testCase, out, 'relative_reference');
+ref = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, char(ref.get('relative_reference.value.relation.node')), ...
     'time:intervalDuring');
 verifyEqual(testCase, char(ref.get('relative_reference.value.clock.name')), ...

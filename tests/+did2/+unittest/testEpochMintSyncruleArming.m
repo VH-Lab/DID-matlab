@@ -128,7 +128,7 @@ verifyEqual(testCase, char(align{1}.get('base.id')), 'map_0001', ...
 % ...and the two relative_reference endpoints appear. The epoch sources here are
 % passthrough manifests that emit no references of their own, so the two are the
 % ONLY relative_references in the batch.
-refs = ofClass(out, 'relative_reference');
+refs = ofClass(out, 'relative_time_reference');
 verifyNumElements(testCase, refs, 2, ...
     'branch 1 emits exactly two endpoint references');
 end

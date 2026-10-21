@@ -241,7 +241,7 @@ verifyEqual(testCase, numel(gid), 1);
 verifyEqual(testCase, gid(1).scheme, 'URL');
 
 leaf = out.migrated{find(~strcmp(names, 'software') & ...
-    ~strcmp(names, 'session_relative_reference'), 1)};
+    ~strcmp(names, 'relative_time_reference'), 1)};
 verifyEqual(testCase, depValue(leaf.toStruct(), 'software_id'), sw.get('base.id'));
 % run-specific details go to execution_environment on the interaction, NOT onto
 % the software entity (the software's identity is name+version; the os it
@@ -276,7 +276,7 @@ out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
 verifyTrue(testCase, any(strcmp(names, 'software')));
-leaf = out.migrated{find(~strcmp(names, 'session_relative_reference') ...
+leaf = out.migrated{find(~strcmp(names, 'relative_time_reference') ...
     & ~strcmp(names, 'software') & ~strcmp(names, 'runtime_environment'), 1)};
 verifyNotEmpty(testCase, depValue(leaf.toStruct(), 'software_id'));
 end

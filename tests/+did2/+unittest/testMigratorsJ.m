@@ -1444,7 +1444,7 @@ verifyTrue(testCase, any(strcmp(classes, 'ontology_table_row')), ...
 % NON-VACUITY: the observation really is carrying the edge that is about to be
 % graded. A zero orphan count over a batch that emitted no such edge is not a
 % result, it is an empty denominator.
-obs = out.migrated{find(strcmp(classes, 'image_observation'), 1)};
+obs = out.migrated{find(strcmp(classes, 'intensity_observation'), 1)};
 verifyEqual(testCase, depVal(obs, 'ontology_table_row_id'), 'otr_plate_1');
 
 rep = did2.validate.references(out.migrated, ...
@@ -2793,7 +2793,7 @@ out = did2.convert.migrators_j.pyraview(body);
 verifyClass(testCase, out, 'cell');
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'voltage_observation')));
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 % ONE sampled_body per stored level (2 here) -> 1 obs + 2 bodies + 1 anchor
 sbods = out(strcmp(names, 'sampled_body'));
 verifyEqual(testCase, numel(sbods), 2);
@@ -3000,7 +3000,7 @@ out = did2.convert.migrators_j.contrast_tuning(body);
 verifyEqual(testCase, numel(out), 4);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'contrasttuning_calc')));
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));   % not decomposed
 leaf = out{find(strcmp(names, 'contrasttuning_calc'), 1)};
 verifyEqual(testCase, leaf.base.id, 'ct_1');                          % id preserved
@@ -3038,7 +3038,7 @@ out = did2.convert.migrators_j.orientation_direction_tuning(body);
 verifyEqual(testCase, numel(out), 4);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'oridirtuning_calc')));
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 % NOT decomposed into observations any more (calculators are composite leafs now)
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
 verifyFalse(testCase, any(strcmp(names, 'angle_observation')));
@@ -3603,7 +3603,7 @@ verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'count_observation')));
 verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
 obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
@@ -3658,7 +3658,7 @@ verifyTrue(testCase, any(strcmp(names, 'count_observation')));
 verifyTrue(testCase, any(strcmp(names, 'opaque_body')));
 verifyTrue(testCase, any(strcmp(names, 'software')), ...
     'the app block must become a software entity, not vanish');
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
 obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'ks_1');                            % id preserved
@@ -4059,7 +4059,7 @@ assertEqual(testCase, numel(out), 4, ...
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 assertTrue(testCase, any(strcmp(names, 'temporal_frequency_tuning_calc')), ...
     'no temporal_frequency_tuning_calc leaf was emitted');
-assertTrue(testCase, any(strcmp(names, 'session_relative_reference')), ...
+assertTrue(testCase, any(strcmp(names, 'relative_time_reference')), ...
     'no session anchor was emitted');
 % R2/R3 collapse is reversed: the abstract tuning_curve_calculation is no
 % longer the class_name of the leaf; nothing is decomposed to scalars either.
@@ -4067,7 +4067,7 @@ verifyFalse(testCase, any(strcmp(names, 'tuning_curve_calculation')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
 
 leaf   = out{find(strcmp(names, 'temporal_frequency_tuning_calc'), 1)};
-anchor = out{find(strcmp(names, 'session_relative_reference'), 1)};
+anchor = out{find(strcmp(names, 'relative_time_reference'), 1)};
 
 % ---- the fold's contract: id preserved, edges re-pointed, nothing minted ----
 verifyEqual(testCase, leaf.base.id, 'tft_1');            % downstream refs must resolve

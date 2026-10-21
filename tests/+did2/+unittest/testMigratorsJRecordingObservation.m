@@ -108,7 +108,7 @@ verifyEqual(testCase, obs.get('statement.variable').name, 'voltage');
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
 % timing: the shared session 'during' anchor (the epoch join is the second pass)
 verifyNotEmpty(testCase, depValue(obs, 'time_reference_1'));
-anchor = firstOfClass(out, 'session_relative_reference');
+anchor = firstOfClass(out, 'relative_time_reference');
 verifyNotEmpty(testCase, anchor);
 verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
 end
@@ -254,7 +254,7 @@ verifyEqual(testCase, obs.get('statement.variable').name, 'spike');
 % element document does not carry -- the same reason the voltage case says so.
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
 % and it is anchored, like every other observation this assembler emits
-anchor = firstOfClass(out, 'session_relative_reference');
+anchor = firstOfClass(out, 'relative_time_reference');
 verifyNotEmpty(testCase, anchor);
 verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
 % NOT the unresolved path. `spikes` has a signature; it must never surface on
@@ -323,7 +323,7 @@ function testImagingProbeBecomesImageObservation(testCase)
 % PROBE-TYPES.md _Imaging_; probetype2object.json registers all four imaging
 % types to ndi.probe.image.
 out = runJ(elementDoc('camera', 'wide-field-imaging', 'ndi.probe.image', 1, 'specimen_1', ''));
-obs = firstOfClass(out, 'image_observation');
+obs = firstOfClass(out, 'intensity_observation');
 verifyNotEmpty(testCase, obs);
 verifyEqual(testCase, obs.get('statement.variable').name, 'image');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');

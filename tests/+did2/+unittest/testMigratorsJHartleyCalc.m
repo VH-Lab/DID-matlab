@@ -93,7 +93,7 @@ verifyEqual(testCase, numel(out), 7, ...
 verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 3, ...
     'two planes plus the spike-time input body');
-verifyEqual(testCase, sum(strcmp(names, 'session_relative_reference')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'software')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'runtime_environment')), 1);
 end

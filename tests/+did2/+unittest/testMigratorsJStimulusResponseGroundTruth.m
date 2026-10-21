@@ -231,7 +231,7 @@ verifyEmpty(testCase, fieldnames(s.subject_interaction.method_parameters));
 % a substitute for an epoch-relative reference; that is exactly what has been
 % fixed, so the session anchor must now be ABSENT.
 verifyFalse(testCase, anyClass(out, 'session_relative_reference'));
-ref = findClass(testCase, out, 'relative_reference');
+ref = findClass(testCase, out, 'relative_time_reference');
 a   = ref.toStruct();
 verifyEqual(testCase, depValue(a, 'relative_to'), epochDocId());
 verifyEqual(testCase, depValue(s, 'time_reference_1'), a.base.id);
@@ -282,7 +282,7 @@ for k = 1:numel(out.migrated)
         out.migrated{k}.get('document_class.class_name'));
 end
 % and the epoch that IS carried is carried by REFERENCE, to the element's epoch
-ref = findClass(testCase, out, 'relative_reference');
+ref = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(ref.toStruct(), 'relative_to'), epochDocId());
 end
 

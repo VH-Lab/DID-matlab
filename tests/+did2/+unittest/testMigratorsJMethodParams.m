@@ -262,7 +262,7 @@ function testExtractionFoldsToMethodParametersPreservingIdAndName(testCase)
 % moved either would break consumers that pass through untouched in pass 1.
 out = runJ(extractionBody('sep_1', 'default', 'sess_A'));
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'method_parameters');
+d = onlyClass(testCase, out, 'method');
 verifyEqual(testCase, d.get('document_class.schema_version'), 'V_eta');
 verifyEqual(testCase, d.get('base.id'), 'sep_1');
 verifyEqual(testCase, d.get('base.name'), 'default');
@@ -431,7 +431,7 @@ function testExtractionAppBecomesASoftwareEntityWithAResolvingEdge(testCase)
 % at a document MINTED IN THE SAME BATCH, so it cannot orphan.
 out = runJ(extractionBody('sep_12', 'default', 'sess_A'));
 verifyEqual(testCase, numel(out.migrated), 2);
-mp = onlyClass(testCase, out, 'method_parameters');
+mp = onlyClass(testCase, out, 'method');
 sw = onlyClass(testCase, out, 'software');
 verifyEqual(testCase, sw.get('software.name'), 'ndi_app_spikeextractor');
 verifyEqual(testCase, sw.get('software.version'), '1.2.3');
@@ -465,7 +465,7 @@ function testNoSoftwareIsMintedWithoutASessionToHangItOn(testCase)
 v1 = extractionBody('sep_14', 'default', '');
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-d = onlyClass(testCase, out, 'method_parameters');
+d = onlyClass(testCase, out, 'method');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'software_id')));
 b = bag(d);
 verifyEqual(testCase, b.app.app_name, 'ndi_app_spikeextractor');
@@ -481,7 +481,7 @@ function testModificationCarriesLineageScopeAndTheSamePayload(testCase)
 %   element_id               -> subject_id       (D2: element ids are preserved)
 out = runJ(modificationBody('sepm_1', 'default', 'sess_A', 'sep_1', 'elem_9', 't00042'));
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'method_parameters');
+d = onlyClass(testCase, out, 'method');
 verifyEqual(testCase, d.get('base.id'), 'sepm_1');
 verifyEqual(testCase, d.get('method_parameters.name'), 'default');
 verifyEqual(testCase, depValue(d, 'derived_from_id'), 'sep_1');
@@ -529,7 +529,7 @@ function testSortingFoldsWithAnEmptyParameterListAndAFullBag(testCase)
 % field survives in `other`. Promoting min/max_clusters is a team call.
 out = runJ(sortingBody('sp_1', 'default', 'sess_A'));
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'method_parameters');
+d = onlyClass(testCase, out, 'method');
 verifyEmpty(testCase, d.get('method_parameters.method_parameters'));
 b = bag(d);
 verifyEqual(testCase, b.graphical_mode, 1);
@@ -557,7 +557,7 @@ function testVmspikeFoldsWhenSpiketimesIsEmpty(testCase)
 % The template's own `spiketimes` value is "", so a settings-only document folds.
 out = runJ(vmspikeBody('vm_1', 'sess_A', 'elem_1', 't00001', ''));
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'method_parameters');
+d = onlyClass(testCase, out, 'method');
 verifyEqual(testCase, d.get('base.id'), 'vm_1');
 verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_1');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...

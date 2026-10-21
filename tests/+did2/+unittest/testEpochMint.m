@@ -134,7 +134,7 @@ out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
 epochs = ofClass(out, 'epoch');
 verifyEqual(testCase, numel(epochs), 1, 'one epoch for one epoch-id string');
-refs = ofClass(out, 'relative_reference');
+refs = ofClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1, 'one reference for the one clock');
 
 % THE EDGE DIRECTION IS THE DECISION, so it is asserted in both directions
@@ -184,7 +184,7 @@ out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2'), ...
     elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3')});
 verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1);
-verifyEqual(testCase, numel(ofClass(out, 'relative_reference')), 1, ...
+verifyEqual(testCase, numel(ofClass(out, 'relative_time_reference')), 1, ...
     'three documents, one epoch, one clock -> ONE reference');
 [~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1'), ...
@@ -218,7 +218,7 @@ function testNoTimesMeansNoReference(testCase)
 v1 = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
 v1.element_epoch.epoch_clock = 'no_time';
 [out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), v1});
-verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
 verifyEqual(testCase, rep.epoch_extent_skipped_no_time, 1);
 verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, ...
     'it was SEEN and refused -- not invisible');
@@ -737,7 +737,7 @@ function testMethodParametersGetsItsEpochEdge(testCase)
 verifyEqual(testCase, rep.epochs_minted, 1);
 verifyEqual(testCase, rep.method_parameters_seen, 1);
 verifyEqual(testCase, rep.method_parameters_edges_filled, 1);
-mp = ofClass(out, 'method_parameters');
+mp = ofClass(out, 'method');
 verifyEqual(testCase, numel(mp), 1);
 epochs = ofClass(out, 'epoch');
 epochDocId = char(epochs{1}.get('base.id'));
@@ -752,7 +752,7 @@ function testTheParkedStringLeavesWhenTheEdgeArrives(testCase)
 out = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     extractionModificationBody('sepm_1', 'sess_A', 't00069', 'el_1')});
-mp = ofClass(out, 'method_parameters');
+mp = ofClass(out, 'method');
 other = mp{1}.get('method_parameters.other');
 verifyFalse(testCase, isstruct(other) && isfield(other, 'epochid'), ...
     'the parked string must not survive alongside its edge');
@@ -767,7 +767,7 @@ function testAnUnresolvableEpochLeavesTheStringParked(testCase)
 verifyEqual(testCase, rep.epochs_minted, 0);
 verifyEqual(testCase, rep.method_parameters_edges_filled, 0);
 verifyEqual(testCase, rep.method_parameters_unresolved, 1);
-mp = ofClass(out, 'method_parameters');
+mp = ofClass(out, 'method');
 s = mp{1}.toStruct();
 verifyFalse(testCase, hasDep(s, 'epoch_id'), ...
     'an edge that cannot be filled must not be declared empty');
@@ -830,7 +830,7 @@ verifyFalse(testCase, hasDep(s, 'instrument_id'), ...
 % enough; the document it names has to be in the batch.
 verifyTrue(testCase, hasDep(s, 'time_reference_1'));
 target = depValueOf(epochs{1}, 'time_reference_1');
-refIds = cellfun(@(d) char(d.get('base.id')), ofClass(out, 'relative_reference'), ...
+refIds = cellfun(@(d) char(d.get('base.id')), ofClass(out, 'relative_time_reference'), ...
     'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(refIds, target)), ...
     'the epoch names a relative_reference that is NOT in the batch -- a dangling edge');
@@ -1328,7 +1328,7 @@ verifyNumElements(testCase, ofClass(out, 'acquisition_metadata_file'), 1, ...
     'body 1 still takes the source document''s slot');
 verifyEmpty(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), ...
     'the source class must not survive alongside the fold');
-verifyNumElements(testCase, ofClass(out, 'relative_reference'), 2, ...
+verifyNumElements(testCase, ofClass(out, 'relative_time_reference'), 2, ...
     'bodies 2..N must be APPENDED -- the half that did not exist before');
 end
 
@@ -1337,7 +1337,7 @@ function testTheMintedReferencesAreTheEmittersOwnAndKeepTheirIds(testCase)
 % built must be the bodies that landed, id for id, or the batch holds something
 % nobody minted.
 [out, ~] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(2));
-landed = ofClass(out, 'relative_reference');
+landed = ofClass(out, 'relative_time_reference');
 ids = sort(cellfun(@(d) char(d.get('base.id')), landed, 'UniformOutput', false));
 verifyNumElements(testCase, unique(ids), 2, ...
     'two distinct reference documents, not one document counted twice');
@@ -1414,7 +1414,7 @@ verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 1);
 verifyEqual(testCase, rep.metadata_refused_unsafe_output, 1);
 verifyNumElements(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), 1, ...
     'the ORIGINAL passthrough stays in the batch; nothing is lost');
-verifyEmpty(testCase, ofClass(out, 'relative_reference'), ...
+verifyEmpty(testCase, ofClass(out, 'relative_time_reference'), ...
     'and the extras minted for it do not land');
 end
 
@@ -1473,7 +1473,7 @@ verifyGreaterThan(testCase, rep.mint_quarantined, 0, ...
     'the bad extra is quarantined loudly, on a 0-quarantine gate');
 verifyNumElements(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), 1, ...
     'the ORIGINAL passthrough stays -- valid under its own restored tombstone');
-verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
 end
 
 function bodies = foldPlusUnreferencedExtent(b)

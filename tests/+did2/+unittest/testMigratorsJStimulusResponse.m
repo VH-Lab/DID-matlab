@@ -200,7 +200,7 @@ verifyEqual(testCase, depValue(b, 'method_parameters_id'), 'param_77c19b');
 % is still 'during' -- spelled as the OWL-Time CURIE the field's value_set
 % binding requires. The session-anchor spelling of the same assertion lives in
 % testWithNoEpochStringTheAnchorIsStillTheDuringSessionReference.
-anchor = findClass(testCase, out, 'relative_reference');
+anchor = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(b, 'time_reference_1'), anchor.get('base.id'));
 verifyEqual(testCase, char(anchor.get('relative_reference.value.relation.node')), ...
     'time:intervalDuring');
@@ -405,7 +405,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 
 leaf   = findClass(testCase, out, 'harmonic_component_calculation');
-anchor = findClass(testCase, out, 'session_relative_reference');
+anchor = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
     anchor.get('base.id'));
 verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
