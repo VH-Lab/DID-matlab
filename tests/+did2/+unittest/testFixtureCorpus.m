@@ -805,7 +805,12 @@ d.document_class = struct('class_name','vmspikefit','class_version','1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
 d.depends_on = struct('name','element_id','value','vf_sub');
 d.base = struct('id','vf_01','session_id','sess_09','name','vf','datestamp','2024-06-01T12:00:00.000Z');
-d.vmspikefit = struct('fit_function','exp2','r_squared',0.88);
+% The NDI template's fields (fit_equation, fit_sse) and its epochid superclass:
+% with no app block this passes through on did-schema #88, so the fixture must
+% be what a real document is (the old fit_function/r_squared never existed).
+d.document_class.superclasses(end+1) = struct('class_name','epochid','class_version','1.0.0');
+d.epochid = struct('epochid','t00001');
+d.vmspikefit = struct('fit_equation','exp2','fit_sse',3.25);
 batch = { sub, d };
 end
 
@@ -896,7 +901,9 @@ d.document_class = struct('class_name','fitcurve','class_version','1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
 d.depends_on = struct('name','element_id','value','fc_sub');
 d.base = struct('id','fc_01','session_id','sess_09','name','fc','datestamp','2024-06-01T12:00:00.000Z');
-d.fitcurve = struct('fit_function','gaussian','goodness_of_fit',0.94);
+% The NDI template's fields: fit_equation and fit_sse (fit_function and
+% goodness_of_fit never existed; a #88 passthrough exposes them).
+d.fitcurve = struct('fit_equation','gaussian','fit_sse',0.94);
 batch = { sub, d };
 end
 
@@ -932,6 +939,7 @@ d.document_class = struct('class_name','contrast_tuning','class_version','1.0.0'
 d.depends_on = [ struct('name','element_id','value','ct_sub'), ...
                  struct('name','stimulus_tuningcurve_id','value','ct_tc') ];
 d.base = struct('id','ct_01','session_id','sess_09','name','ct','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.calc.vis.fixture','version','1.0','os','GLNXA64','os_version','6.1','interpreter','MATLAB','interpreter_version','24.2');   % #88: a calculation names its OS
 d.contrast_tuning = struct( ...
     'properties', struct('response_units','spikes/s','response_type','mean'), ...
     'tuning_curve', struct('contrast',[0 0.25 0.5 1],'mean',[2 5 9 12]));
@@ -948,6 +956,7 @@ d.document_class = struct('class_name','orientation_direction_tuning','class_ver
 d.depends_on = [ struct('name','element_id','value','od_sub'), ...
                  struct('name','stimulus_tuningcurve_id','value','od_tc') ];
 d.base = struct('id','od_01','session_id','sess_09','name','od','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.calc.vis.fixture','version','1.0','os','GLNXA64','os_version','6.1','interpreter','MATLAB','interpreter_version','24.2');   % #88: a calculation names its OS
 d.orientation_direction_tuning = struct( ...
     'properties', struct('response_units','spikes/s'), ...
     'tuning_curve', struct('direction',[0 90 180 270],'mean',[10 2 9 3]));
@@ -1041,6 +1050,7 @@ d.document_class = struct('class_name','stimulus_tuningcurve','class_version','1
 d.depends_on = [ struct('name','element_id','value','rtx_sub'), ...
                  struct('name','stimulus_response_scalar_id','value','rtx_resp') ];
 d.base = struct('id','rtx_1','session_id','sess_09','name','rawtc','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.calc.vis.fixture','version','1.0','os','GLNXA64','os_version','6.1','interpreter','MATLAB','interpreter_version','24.2');   % #88: a calculation names its OS
 d.stimulus_tuningcurve = struct( ...
     'independent_variable_label','direction', ...
     'independent_variable_value',[0 90 180 270], ...
@@ -1056,6 +1066,7 @@ d.document_class = struct('class_name','speed_tuning','class_version','1.0.0', .
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
 d.depends_on = struct('name','element_id','value','sp_sub');
 d.base = struct('id','sp_01','session_id','sess_09','name','sp','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.calc.vis.fixture','version','1.0','os','GLNXA64','os_version','6.1','interpreter','MATLAB','interpreter_version','24.2');   % #88: a calculation names its OS
 d.speed_tuning = struct( ...
     'properties', struct('response_units','spikes/s'), ...
     'tuning_curve', struct('spatial_frequency',[0.5 0.5 1], ...
@@ -1073,6 +1084,7 @@ d.document_class = struct('class_name','spatial_frequency_tuning','class_version
 d.depends_on = [ struct('name','element_id','value','sf_sub'), ...
                  struct('name','stimulus_tuningcurve_id','value','sf_tc') ];
 d.base = struct('id','sf_01','session_id','sess_09','name','sf','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.calc.vis.fixture','version','1.0','os','GLNXA64','os_version','6.1','interpreter','MATLAB','interpreter_version','24.2');   % #88: a calculation names its OS
 d.spatial_frequency_tuning = struct( ...
     'properties', struct('response_units','spikes/s'), ...
     'tuning_curve', struct('spatial_frequency',[0.05 0.1 0.2 0.5],'mean',[2 8 5 1]), ...
