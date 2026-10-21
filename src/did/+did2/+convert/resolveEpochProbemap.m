@@ -550,7 +550,7 @@ for j = 1:numel(newBodies)
     % manipulations (#66 increment 3). Count each into its own counter, by the
     % base.name the mint sites set, so a manipulation is never counted as an
     % observation. Both are survivor-counts (post-validation).
-    if strcmp(newBodies{j}.base.name, 'migrated_probemap_manipulation')
+    if strcmp(newBodies{j}.document_class.class_name, 'manipulation')
         report.manipulations_emitted = report.manipulations_emitted + 1;
     else
         report.observations_emitted = report.observations_emitted + 1;
@@ -607,7 +607,7 @@ if ~isempty(anchorCandKeys)
         % find the anchor document in the existing set and confirm its marker
         idx = findDocById(docIds, aid);
         if idx == 0; continue; end
-        if ~strcmp(baseField(bodies{idx}, 'name'), 'migrated_session_anchor')
+        if ~isSessionAnchor(bodies{idx}, sessionIds{idx})
             continue;
         end
         if ~isKey(referenced, aid)
@@ -659,7 +659,6 @@ obs = did2.build.statement(entry.class, char(subjectId), ...
     'AcquisitionChannelsId', char(acId), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
-obs.base.name = 'migrated_probemap_observation';
 end
 
 function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
@@ -674,7 +673,6 @@ m = did2.build.statement('term_manipulation', char(subjectId), typeTerm, typeTer
     'AcquisitionChannelsId', char(acId), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
-m.base.name = 'migrated_probemap_manipulation';
 end
 
 function anchor = mkEpochAnchor(epochDocId, sessionId, datestamp)
@@ -682,7 +680,6 @@ function anchor = mkEpochAnchor(epochDocId, sessionId, datestamp)
 anchor = did2.build.relativeTimeReference(char(epochDocId), 'Relation', 'intervalDuring', ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
-anchor.base.name = 'migrated_probemap_epoch_anchor';
 end
 
 function ac = mkAcquisitionChannels(acqSystemId, channels, sessionId, datestamp)
@@ -1023,13 +1020,67 @@ end
 
 function tf = isRecording30Observation(body)
 %ISRECORDING30OBSERVATION True for a #30 observation, by its assembler's stamp
-%   (jRecordingObservation sets base.name = 'migrated_recording_observation').
+%   On did-schema #88 there is no base.name to stamp (#73 item 54), so the
+%   observation is recognised by its SHAPE, which only jRecordingObservation
+%   produces: an `observation` of a recording value kind, naming an
+%   instrument_id, and carrying NO value (the samples live in the recording,
+%   not on the statement). A pre-#88 body is still recognised by its stamp.
 tf = false;
-if ~isstruct(body) || ~isfield(body, 'base') || ~isstruct(body.base) ...
-        || ~isfield(body.base, 'name')
+if ~isstruct(body) || ~isfield(body, 'document_class')
     return;
 end
-tf = strcmp(char(body.base.name), 'migrated_recording_observation');
+if isfield(body, 'base') && isstruct(body.base) && isfield(body.base, 'name') ...
+        && strcmp(char(body.base.name), 'migrated_recording_observation')
+    tf = true;
+    return;
+end
+if ~strcmp(char(body.document_class.class_name), 'observation')
+    return;
+end
+hasInstrument = false;
+if isfield(body, 'depends_on') && isstruct(body.depends_on)
+    hasInstrument = any(strcmp({body.depends_on.name}, 'instrument_id'));
+end
+if ~hasInstrument
+    return;
+end
+kinds = {'voltage', 'current', 'time', 'acceleration', 'temperature', 'intensity'};
+for k = 1:numel(kinds)
+    if isfield(body, kinds{k})
+        blk = body.(kinds{k});
+        if isstruct(blk) && isfield(blk, 'value') && ~isempty(blk.value)
+            return;     % a value: a measurement, not a recording's statement
+        end
+        tf = true;
+        return;
+    end
+end
+superNames = {};
+try
+    sc = body.document_class.superclasses;
+    if isstruct(sc); superNames = {sc.class_name}; end
+catch
+end
+tf = any(ismember(kinds, superNames));
+end
+
+function tf = isSessionAnchor(body, sessionId)
+%ISSESSIONANCHOR A "during the session" anchor: a pre-#88 body by its stamp, a
+%   #88 relative_time_reference by its shape -- its referent is the session
+%   and it states no start (no base.name is written on #88, item 54).
+tf = false;
+if ~isstruct(body); return; end
+if strcmp(baseField(body, 'name'), 'migrated_session_anchor')
+    tf = true; return;
+end
+if ~strcmp(classNameOf(body), 'relative_time_reference'); return; end
+if isempty(sessionId) || ~strcmp(depValueOf(body, 'referent_id'), sessionId); return; end
+v = struct();
+if isfield(body, 'relative_time_reference') && isstruct(body.relative_time_reference) ...
+        && isfield(body.relative_time_reference, 'value')
+    v = body.relative_time_reference.value;
+end
+tf = ~(isstruct(v) && isfield(v, 'start') && ~isempty(v.start));
 end
 
 function cn = classNameOf(b)

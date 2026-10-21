@@ -2557,15 +2557,48 @@ end
 
 function tf = isRecordingObservation(body)
 %ISRECORDINGOBSERVATION True for a #30 observation, by its assembler's own stamp.
-%   jRecordingObservation sets obs.base.name = 'migrated_recording_observation'
-%   at exactly one site; matching on it needs no modality-class list and cannot
-%   drift as modalities are added.
+%   On did-schema #88 there is no base.name to stamp (#73 item 54), so the
+%   observation is recognised by its SHAPE, which only jRecordingObservation
+%   produces: an `observation` of a recording value kind, naming an
+%   instrument_id, and carrying NO value (the samples live in the recording,
+%   not on the statement). A pre-#88 body is still recognised by its stamp.
 tf = false;
-if ~isstruct(body) || ~isfield(body, 'base') || ~isstruct(body.base) ...
-        || ~isfield(body.base, 'name')
+if ~isstruct(body) || ~isfield(body, 'document_class')
     return;
 end
-tf = strcmp(char(body.base.name), 'migrated_recording_observation');
+if isfield(body, 'base') && isstruct(body.base) && isfield(body.base, 'name') ...
+        && strcmp(char(body.base.name), 'migrated_recording_observation')
+    tf = true;
+    return;
+end
+if ~strcmp(char(body.document_class.class_name), 'observation')
+    return;
+end
+hasInstrument = false;
+if isfield(body, 'depends_on') && isstruct(body.depends_on)
+    hasInstrument = any(strcmp({body.depends_on.name}, 'instrument_id'));
+end
+if ~hasInstrument
+    return;
+end
+kinds = {'voltage', 'current', 'time', 'acceleration', 'temperature', 'intensity'};
+for k = 1:numel(kinds)
+    if isfield(body, kinds{k})
+        blk = body.(kinds{k});
+        if isstruct(blk) && isfield(blk, 'value') && ~isempty(blk.value)
+            return;     % a value: a measurement, not a recording's statement
+        end
+        tf = true;
+        return;
+    end
+end
+superNames = {};
+try
+    sc = body.document_class.superclasses;
+    if isstruct(sc); superNames = {sc.class_name}; end
+catch
+end
+tf = any(ismember(kinds, superNames));
 end
 
 function tf = referenceIsEpochScoped(refBody, classById)

@@ -1325,7 +1325,6 @@ body = did2.build.document('entity', ...
     struct('type', did2.build.term('', type), ...
            'local_identifier', char(localId), 'description', description), ...
     'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
-body.base.name = 'migrated_lawn_plate_subject';
 end
 
 function body = makeObservation(srcBody, leafClass, shapeClass, variable, num, subjectId)
@@ -1343,7 +1342,6 @@ end
 [sid, ds] = sessionAndTime(srcBody);
 body = did2.build.statement(leafClass, char(subjectId), variable, v, ...
     'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
-body.base.name = 'migrated_lawn_plate_measure';
 end
 
 function rel = makeMemberOf(srcBody, lawnId, plateId)
@@ -1354,7 +1352,6 @@ function rel = makeMemberOf(srcBody, lawnId, plateId)
 [sid, ds] = sessionAndTime(srcBody);
 rel = did2.build.directedRelation(char(lawnId), char(plateId), 'member_of', ...
     'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
-rel.base.name = 'migrated_lawn_plate_membership';
 end
 
 function [sid, ds] = sessionAndTime(srcBody)
