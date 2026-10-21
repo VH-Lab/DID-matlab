@@ -873,6 +873,9 @@ end
 
 m = blockField(obs, 'method');
 if iscell(m); m = m{1}; end
+if isstruct(m) && isfield(m, 'term')
+    m = m.term;   % did-schema #88: method {term, parameters}; NDI queries method.term.node
+end
 verifyTrue(testCase, isstruct(m) && isfield(m, 'node'), [msg ': no method']);
 if ~(isstruct(m) && isfield(m, 'node')); return; end
 verifyEqual(testCase, m.node, 'FBbi:00000369', msg);
