@@ -26,10 +26,11 @@ function [result, report] = epochMint(result, options)
 %   BATCH-PASS-EMITS: epochid -> document: epoch
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
-%       at :727 only STAMPS the `epoch_id` edge onto the body and re-runs the
-%       ARMED per-class migrator. The `acquisition_metadata_file` document is
-%       minted there, in +migrators_j, and is credited to that migrator -- not
-%       to this pass. Declaring it here would count one emission twice.
+%       only STAMPS the `epoch_id` edge onto the body and re-runs the ARMED
+%       per-class migrator, which on did-schema #88 declines (its target
+%       `acquisition_metadata_file` is retired, #73 item 61). The opaque_body
+%       it becomes is minted by did2.convert.resolveEpochProbemap and declared
+%       there.
 %   BATCH-PASS-EMITS: stimulus_response_scalar -> nothing: SAME REASON, exactly.
 %       The second armed loop stamps the `epoch_id` edge and re-runs
 %       +migrators_j/stimulus_response_scalar; the

@@ -26,7 +26,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   DID-schema tools/coverage.py, which credits the completion ladder from it.
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
-%   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview
+%   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview,
+%       daqmetadatareader_epochdata_ingested
 %   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
@@ -34,6 +35,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       recording observation and its separate observation retired; nothing
 %       new is minted for it here, so crediting it would count epochMint's
 %       emission twice.
+%   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> document: opaque_body
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)
@@ -247,6 +249,12 @@ report = struct( ...
     'archive_files_unowned',          0, ...
     'archive_kept_referenced',        0, ...
     'archive_dangling_references',    0, ...
+    'metadata_archives_inspected',    0, ...
+    'metadata_archives_to_body',      0, ...
+    'metadata_archive_owner_links',   0, ...
+    'metadata_archives_kept_no_owner',0, ...
+    'metadata_archives_kept_no_bytes',0, ...
+    'metadata_archives_quarantined',  0, ...
     'pyraview_observations_seen',     0, ...
     'pyraview_levels_repointed',      0, ...
     'pyraview_observations_retired',  0, ...
@@ -338,12 +346,29 @@ derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acqEpochIdx = [];
 sampledIdx = [];
 archiveIdxAll = [];
+% (g) #73 review item 61: each v1 `daqmetadatareader_epochdata_ingested` (the
+%     epoch's parsed stimulus parameters, one .nbf.tgz as `data.bin`) by
+%     (session, metadata reader, epoch string), and each acquisition system's
+%     epoch parameter readers (the v1 daqmetadatareaders, ids preserved by
+%     +migrators_j/daqsystem.m) by its file pattern (the v1 filenavigator).
+metaArchiveIdxByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
+paramReadersByNavId = containers.Map('KeyType', 'char', 'ValueType', 'any');
+metaArchiveIdxAll = [];
 for k = 1:n
     if isempty(bodies{k}); continue; end
     b = bodies{k};
     if strcmp(classOf{k}, 'acquisition_epoch'); acqEpochIdx(end+1) = k; end %#ok<AGROW>
     if strcmp(classOf{k}, 'sampled_body'); sampledIdx(end+1) = k; end %#ok<AGROW>
     if isArchiveClass(classOf{k}); archiveIdxAll(end+1) = k; end %#ok<AGROW>
+    if strcmp(classOf{k}, 'daqmetadatareader_epochdata_ingested')
+        metaArchiveIdxAll(end+1) = k; %#ok<AGROW>
+        mrd = depValueOf(b, 'daqmetadatareader_id');
+        mep = archiveEpochOf(b);
+        if ~isempty(mrd) && ~isempty(mep)
+            mk = archiveKey(sessionIds{k}, mrd, mep);
+            if ~isKey(metaArchiveIdxByKey, mk); metaArchiveIdxByKey(mk) = k; end
+        end
+    end
     if isElementTypeAssertion(b, 'spikes')
         eid = depValueOf(b, 'entity_id');
         if ~isempty(eid); spikeElements(eid) = true; end
@@ -374,6 +399,10 @@ for k = 1:n
             rdrId = depValueOf(b, 'reader_id');
             if ~isempty(navId) && ~isempty(rdrId) && ~isKey(readerIdByNavId, navId)
                 readerIdByNavId(navId) = rdrId;
+            end
+            prIds = depValuesOf(b, 'epoch_parameter_reader_id');
+            if ~isempty(navId) && ~isempty(prIds) && ~isKey(paramReadersByNavId, navId)
+                paramReadersByNavId(navId) = prIds;
             end
         case 'directed_relation'
             if strcmp(relationNameOf(b), 'derived_from')
@@ -449,6 +478,9 @@ newGroupAc = {};     % acquisition_channels base.id each new body points at ('' 
 % observations that survived.
 epochSpecs = struct('src', {}, 'obsIds', {}, 'sid', {}, 'datestamp', {}, ...
     'epochString', {}, 'navId', {});
+% #73 review item 61: per epochfiles_ingested document, the stimulator
+% manipulations it minted -- the owners of that epoch's metadata archive.
+stimSpecs = struct('manipIds', {}, 'sid', {}, 'epochString', {}, 'navId', {});
 obsPairById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 recByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'char');
 spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'double');  % obs id -> acquisition_epoch idx
@@ -477,6 +509,7 @@ for k = 1:n
     % v1 document as a passthrough, so the row is never silently dropped.
     rowsWithoutHome = 0;
     specObsIds = {};
+    specManipIds = {};
     pm = probemapCharOf(b);
     rowsPM = [];
     if ~isempty(pm); rowsPM = parseProbemapRows(pm); end
@@ -583,6 +616,7 @@ for k = 1:n
             newBodies{end+1} = manip;              %#ok<AGROW>
             newGroupAnchor{end+1} = anchorId;      %#ok<AGROW>
             newGroupAc{end+1} = acId;              %#ok<AGROW>
+            specManipIds{end+1} = manip.base.id;   %#ok<AGROW>
             if isempty(instrumentId)
                 report.instrument_omitted = report.instrument_omitted + 1;
             else
@@ -641,6 +675,10 @@ for k = 1:n
         epochSpecs(end+1) = struct('src', k, 'obsIds', {specObsIds}, ...
             'sid', sid, 'datestamp', datestamp, 'epochString', es, ...
             'navId', fnId); %#ok<AGROW>
+    end
+    if ~isempty(specManipIds)
+        stimSpecs(end+1) = struct('manipIds', {specManipIds}, 'sid', sid, ...
+            'epochString', es, 'navId', fnId); %#ok<AGROW>
     end
 
     if isempty(fnId)
@@ -709,6 +747,7 @@ for i = 1:numel(acqEpochIdx)
 end
 
 report.archive_docs_inspected = numel(archiveIdxAll);
+report.metadata_archives_inspected = numel(metaArchiveIdxAll);
 pyraviewOwners = pyraviewOwnerIndex(bodies, classOf, kindOf, docIds, sampledIdx);
 report.pyraview_observations_seen = double(pyraviewOwners.Count);
 
@@ -737,6 +776,7 @@ if isempty(newBodies) && isempty(renameBodies)
     % recording observation to move to -- both kept, and counted as such
     report.archive_docs_kept_unowned_files = report.archive_docs_inspected;
     report.archive_files_unowned = countArchiveFiles(bodies, archiveIdxAll);
+    report.metadata_archives_kept_no_owner = report.metadata_archives_inspected;
     report.pyraview_kept_no_recording_observation = report.pyraview_observations_seen;
     report.sorter_input_fallback_entity = report.sorter_calculations_seen;
     result.epoch_probemap_fold = report;
@@ -869,6 +909,21 @@ report.spike_bodies = numel(spikeBodies);
 report.spike_bodies_quarantined = numel(spikeQ);
 appended = [appended, spikeBodies];
 newQuarantine = [newQuarantine, spikeQ];
+
+% ---- #73 review item 61: the epoch's metadata archive -> an opaque_body ----
+% "data.bin (a .nbf.tgz of the epoch's parsed stimulus parameters, written by
+% NDI metadatareader.ingest_epochfiles) becomes an opaque_body owned by the
+% stimulator's term_manipulation for that epoch". The stimulator manipulations
+% are the ones minted above from the same epochfiles_ingested document; the
+% archive is the one whose metadata reader is an epoch parameter reader of the
+% acquisition system that document's file pattern belongs to, at the same
+% epoch string. The body KEEPS the archive's base.id and takes its place, so
+% the v1 document is retired only when its one file has a new owner (Jess
+% Haley, 2026-10-21 [ingested epoch documents retired]); no owner, no bytes or
+% a quarantined body keeps the v1 document, counted.
+[metaReplace, metaQ, report] = mkMetadataArchiveBodies(stimSpecs, ...
+    emittedNewIds, bodies, paramReadersByNavId, metaArchiveIdxByKey, options, report);
+newQuarantine = [newQuarantine, metaQ];
 
 % ---- pyraview levels move to the recording observation -------------------
 % (Jess Haley, 2026-10-21, "a"; the signed plan): each pyraview level is a
@@ -1177,6 +1232,10 @@ for k = 1:n
     end
     if ~isempty(id) && isKey(sorterReplace, id)
         kept{end+1} = sorterReplace(id); %#ok<AGROW>
+        continue;
+    end
+    if ~isempty(id) && isKey(metaReplace, id)
+        kept{end+1} = metaReplace(id); %#ok<AGROW>
         continue;
     end
     if ~isempty(id) && isKey(renameBodyBySrcId, id)
@@ -1825,6 +1884,120 @@ function n = countArchiveFiles(bodies, idx)
 n = 0;
 for i = 1:numel(idx)
     n = n + numel(archiveFileNames(bodies{idx(i)}));
+end
+end
+
+function [replace, quarantine, report] = mkMetadataArchiveBodies(specs, ...
+        emittedIds, bodies, paramReadersByNavId, metaArchiveIdxByKey, options, report)
+%MKMETADATAARCHIVEBODIES #73 review item 61: one opaque_body per v1
+%   daqmetadatareader_epochdata_ingested whose epoch has a surviving stimulator
+%   manipulation, owned by it (owner_id repeats when the epoch has several,
+%   T15). The body keeps the archive's base.id, so it REPLACES the v1 document
+%   (REPLACE: archive id -> validated body). Its one file, `data.bin`, is
+%   carried as attached (locations verbatim) as body_data_0. Format: the
+%   registered EDAM:format_2333 "Binary format", as the ingested recording
+%   archives use; compression per [archive compression] (Jess Haley,
+%   2026-10-21): 'gzip' when the file's name or stored location ends in
+%   .tgz/.gz (NDI metadatareader.ingest_epochfiles attaches
+%   [metadatafile '.nbf.tgz']), else left empty. No data_type: Jess Haley,
+%   2026-10-21 [data_type only for plain arrays].
+replace = containers.Map('KeyType', 'char', 'ValueType', 'any');
+quarantine = [];
+ownersByIdx = containers.Map('KeyType', 'double', 'ValueType', 'any');
+for s = 1:numel(specs)
+    sp = specs(s);
+    owners = {};
+    for i = 1:numel(sp.manipIds)
+        if isKey(emittedIds, sp.manipIds{i}); owners{end+1} = sp.manipIds{i}; end %#ok<AGROW>
+    end
+    if isempty(owners) || isempty(sp.navId) || ~isKey(paramReadersByNavId, sp.navId)
+        continue;
+    end
+    prIds = paramReadersByNavId(sp.navId);
+    for r = 1:numel(prIds)
+        mk = archiveKey(sp.sid, prIds{r}, sp.epochString);
+        if ~isKey(metaArchiveIdxByKey, mk); continue; end
+        idx = metaArchiveIdxByKey(mk);
+        prev = {};
+        if isKey(ownersByIdx, idx); prev = ownersByIdx(idx); end
+        ownersByIdx(idx) = unique([prev, owners], 'stable');
+    end
+end
+idxs = ownersByIdx.keys;
+pending = {};
+for i = 1:numel(idxs)
+    idx = idxs{i};
+    ab = bodies{idx};
+    infos = fileInfos(ab);
+    fi = [];
+    for j = 1:numel(infos)
+        if isstruct(infos{j}) && isfield(infos{j}, 'name') ...
+                && strcmp(char(infos{j}.name), 'data.bin')
+            fi = infos{j};
+            break;
+        end
+    end
+    if isempty(fi)
+        report.metadata_archives_kept_no_bytes = report.metadata_archives_kept_no_bytes + 1;
+        continue;
+    end
+    loc = struct();
+    if isfield(fi, 'locations'); loc = fi.locations; end
+    flds = struct('filename', 'data.bin');
+    comp = compressionOf('data.bin');
+    if isempty(comp); comp = compressionOf(firstLocation(loc)); end
+    if ~isempty(comp); flds.compression = comp; end
+    owners = ownersByIdx(idx);
+    sid = did2.schema.cache.sessionIdOf(ab);
+    ds = baseField(ab, 'creation_timestamp');
+    if isempty(ds); ds = baseField(ab, 'datestamp'); end
+    if isempty(ds); ds = '2024-01-01T00:00:00.000Z'; end
+    try
+        body = did2.build.opaqueBody(owners, binaryFormat(), ...
+            'Id', char(baseField(ab, 'id')), 'Fields', flds, ...
+            'Description', sprintf(['The parsed stimulus parameters of epoch %s, ' ...
+                'as NDI''s metadata reader stored them (v1 ' ...
+                'daqmetadatareader_epochdata_ingested data.bin, carried as attached).'], ...
+                archiveEpochOf(ab)), ...
+            'SessionId', char(sid), 'CreationTimestamp', char(ds), 'Validate', false);
+    catch err
+        report.body_build_refused = report.body_build_refused + 1;
+        if isempty(report.body_build_first_error)
+            report.body_build_first_error = sprintf('%s: %s', err.identifier, err.message);
+        end
+        continue;
+    end
+    body.files.file_info = struct('name', 'body_data_0', 'locations', {loc});
+    pending{end+1} = body; %#ok<AGROW>
+    report.metadata_archive_owner_links = report.metadata_archive_owner_links + numel(owners);
+end
+if ~isempty(pending)
+    res = did2.convert.v1_to_v2(pending, ...
+        'Validate',      options.Validate, ...
+        'SchemaCache',   options.SchemaCache, ...
+        'TargetVersion', options.TargetVersion);
+    quarantine = res.quarantine;
+    report.metadata_archives_quarantined = numel(res.quarantine);
+    for i = 1:numel(res.migrated)
+        try
+            bid = char(res.migrated{i}.get('base.id'));
+        catch
+            continue;
+        end
+        replace(bid) = res.migrated{i};
+    end
+end
+report.metadata_archives_to_body = double(replace.Count);
+report.metadata_archives_kept_no_owner = report.metadata_archives_inspected ...
+    - double(ownersByIdx.Count);
+end
+
+function s = firstLocation(loc)
+% the first stored location string of a file_info `locations` value, '' if none
+s = '';
+if iscell(loc) && ~isempty(loc); loc = loc{1}; end
+if isstruct(loc) && ~isempty(loc) && isfield(loc, 'location')
+    s = char(loc(1).location);
 end
 end
 
