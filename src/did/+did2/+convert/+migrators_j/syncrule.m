@@ -154,21 +154,24 @@ implClass = jGetCharAny(block, {'ndi_syncrule_class', 'ndiSyncruleClass'});
 % A file-based rule: a clock_alignment_configuration whose settings are its
 % inline `method.parameters` (did-schema #88, V_eta_method_plan.md: one method
 % shape; the three settings were their own fields before).
-params = [];
+entries = {};
 minPaths = readNumber(params0(block), {'number_fullpath_matches', 'numberFullpathMatches'});
 if ~isempty(minPaths)
-    params = [params, did2.build.parameter(did2.build.label('minimum matching file paths'), ...
-        'Count', minPaths)];
+    entries{end+1} = did2.build.parameter(did2.build.label('minimum matching file paths'), ...
+        'Count', minPaths);
 end
 syncFile = jGetCharAny(params0(block), {'syncfilename', 'syncFilename', 'sync_filename'});
 if ~isempty(syncFile)
-    params = did2.build.list(params, did2.build.parameter( ...
-        did2.build.label('sync file name'), 'Text', syncFile));
+    entries{end+1} = did2.build.parameter(did2.build.label('sync file name'), 'Text', syncFile);
 end
 minOverlap = readNumber(params0(block), {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'});
 if ~isempty(minOverlap)
-    params = did2.build.list(params, did2.build.parameter( ...
-        did2.build.label('minimum embedded file overlap'), 'Value', minOverlap));
+    entries{end+1} = did2.build.parameter( ...
+        did2.build.label('minimum embedded file overlap'), 'Value', minOverlap);
+end
+params = [];
+if ~isempty(entries)
+    params = did2.build.list(entries{:});
 end
 f = struct();
 clockName = jGetCharAny(params0(block), {'epochclocktype', 'epochClockType', 'epoch_clock_type'});

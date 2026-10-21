@@ -191,6 +191,7 @@ arguments
     %                   VERIFIED against `ngrid.coordinates` before it is used.
     opts.DataDim         = []
     opts.AxisCoordinates = {}
+    opts.BodyOptions     = {}   % more did2.build.sampledBody name-value pairs
 end
 
 if ~isfield(preBody, 'ngrid') || ~isstruct(preBody.ngrid)
@@ -277,15 +278,13 @@ end
 % Three of its four sub-fields were placeholders, and the fourth restated a
 % cardinality the axes below already carry. The signed model retires the block
 % (step 5); this writer had nothing in it to migrate.
-body = jSampledBody(char(statementId), baseField(preBody, 'session_id', ''), ...
-    baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'), ...
-    char(name));
-
-% Assigned in its own statement, NOT inside struct(...): a non-scalar struct
-% value passed to struct() would distribute into a struct ARRAY of bodies
-% instead of becoming one field. image_stack.m documents the same trap.
+% did-schema #88: the body is built through did2.build.sampledBody, its
+% `keys` the ngrid's axes (NAME, the pre-#73 base.name, is not written: V_eta
+% documents write no base.name). The caller's own body fields arrive in
+% opts.BodyOptions.
 axesArray = ngridAxes(dataDim, axisLabels, axisCoords);
-body.sampled_body.axes = axesArray;
+o = jOpts(preBody, opts.BodyOptions{:});
+body = did2.build.sampledBody(char(statementId), axesArray, o{:});
 end
 
 % ===================== the coordinates test ================================
@@ -466,8 +465,7 @@ end
 % yields `axes = <0x0 struct>` rather than `[]`. Built by emptying a real entry
 % rather than by naming the ten fields again -- a second list of them would be a
 % second thing to keep in step with the signed axis entry.
-ax = jAxis(jOntologyTerm('', 'axis_0'), 0);
-ax(:) = [];
+entries = {};
 for k = 1:numel(dataDim)
     nm = sprintf('axis_%d', k);
     if k <= numel(labels) && ~isempty(labels{k})
@@ -492,8 +490,9 @@ for k = 1:numel(dataDim)
             'regular', false, ...
             'quantity', struct('value', v, 'source_value', v));
     end
-    ax(end+1) = entry; %#ok<AGROW>
+    entries{end+1} = entry; %#ok<AGROW>
 end
+ax = did2.build.list(entries{:});
 end
 
 function tf = isDefaultIndexVector(v)
