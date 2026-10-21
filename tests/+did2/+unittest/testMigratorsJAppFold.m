@@ -301,19 +301,24 @@ end
 
 function testKilosortAppBecomesASoftwareEntityAndEdge(testCase)
 % UPDATED for #88: the software is an `entity` of type software whose version
-% is a text_assertion about it (`version number`), so the fold is 5 bodies.
+% is a text_assertion about it (`version number`).
+% UPDATED 2026-10-21: the sorter output is a calculation with the `label` value
+% kind (TEAM-SIGN-OFF [spike-sorter output] 2026-09-29; built after Jess
+% Haley's [sorter input] / [sorter keys], 2026-10-21). A calculation also names
+% the run's operating system and interpreter, so the app block yields THREE
+% software entities (app, OS, interpreter), each with a version assertion:
+% 9 bodies = calc + body + anchor + 3 software + 3 versions.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 5);   % obs + opaque_body + anchor + software + version
-sw = onlyClass(testCase, out, 'software');
+verifyEqual(testCase, numel(out.migrated), 9);
+sw = softwareNamed(testCase, out, 'ndi.app.spikesorter');
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
 verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.app.spikesorter@1.4.2');
-ver = onlyClass(testCase, out, 'assertion+text');
-verifyEqual(testCase, depValue(ver, 'entity_id'), sw.get('base.id'));
+ver = versionOf(testCase, out, sw.get('base.id'));
 verifyEqual(testCase, ver.get('statement.variable').name, 'version number');
 verifyEqual(testCase, ver.get('text.value').text, '1.4.2');
 verifyEqual(testCase, depValue(sw, 'session_id'), 'sess_09');
-obs = onlyClass(testCase, out, 'observation+count');
+obs = onlyClass(testCase, out, 'calculation+label');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'srt_1');            % id still preserved
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'rec_sub_1');
@@ -321,16 +326,18 @@ end
 
 
 function testKilosortExecutionEnvironmentIsCarried(testCase)
-% INVERTED for #88. The app's os / interpreter rode on the observation's
-% `subject_interaction.execution_environment`. #88 names an operating system
-% and interpreter only on a CALCULATION (operating_system_id / interpreter_id);
-% an observation has no slot for them, so on a sorter observation they are not
-% carried. Recorded in the port report as a loss on non-calculation statements.
-% This asserts nothing invents a home for them.
+% INVERTED AGAIN 2026-10-21. On #88 an operating system and interpreter have a
+% slot only on a CALCULATION (operating_system_id / interpreter_id); while the
+% sorter output was an observation they were not carried, and this asserted
+% their absence. The sorter output is now a calculation (TEAM-SIGN-OFF
+% [spike-sorter output] 2026-09-29), so the loss closes: both are software
+% entities named by the run's edges. Still nothing invents a third home.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
-obs = onlyClass(testCase, out, 'observation+count');
-verifyEmpty(testCase, depValue(obs, 'operating_system_id'));
-verifyEmpty(testCase, depValue(obs, 'interpreter_id'));
+obs = onlyClass(testCase, out, 'calculation+label');
+verifyEqual(testCase, depValue(obs, 'operating_system_id'), ...
+    softwareNamed(testCase, out, 'GLNXA64').get('base.id'));
+verifyEqual(testCase, depValue(obs, 'interpreter_id'), ...
+    softwareNamed(testCase, out, 'MATLAB').get('base.id'));
 verifyFalse(testCase, hasClass(out, 'runtime_environment'));
 s = obs.toStruct();
 verifyFalse(testCase, isfield(s, 'interaction') && isfield(s.interaction, 'execution_environment'));
@@ -340,7 +347,7 @@ end
 function testKilosortUrlRidesOnTheEntityGlobalIdentifier(testCase)
 % UPDATED for #88: a global identifier is a plain string (the URL itself).
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
-sw  = onlyClass(testCase, out, 'software');
+sw  = softwareNamed(testCase, out, 'ndi.app.spikesorter');
 gid = cellstr(sw.get('entity.global_identifier'));
 verifyEqual(testCase, gid, {'https://github.com/VH-Lab/NDI-matlab'});
 end
@@ -351,8 +358,8 @@ function testKiasortFoldsTheSameWay(testCase)
 % because "the sibling is covered by the other test" is how a divergence hides.
 out = runJ(sorterBody('kiasort_clusters', 'kiasort_directory', true));
 verifyEmpty(testCase, out.quarantine);
-sw  = onlyClass(testCase, out, 'software');
-obs = onlyClass(testCase, out, 'observation+count');
+sw  = softwareNamed(testCase, out, 'ndi.app.spikesorter');
+obs = onlyClass(testCase, out, 'calculation+label');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('interaction.method.term.name'), 'kiasort');
 end
@@ -364,20 +371,28 @@ function testSorterObservationValueIsInItsOpaqueBody(testCase)
 % 2026-10-21).
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 verifyEmpty(testCase, out.quarantine);
-obs = onlyClass(testCase, out, 'observation+count');
+obs = onlyClass(testCase, out, 'calculation+label');
 verifyTrue(testCase, logical(obs.get('value.data_body')));
 s = obs.toStruct();
 verifyFalse(testCase, isfield(s.value, 'data_type') && ~isempty(s.value.data_type));
 onlyClass(testCase, out, 'opaque_body');
 end
 
-function testSorterWithoutAnAppBlockIsUnchanged(testCase)
+function testSorterWithoutAnAppBlockNamesTheSorterAsItsSoftware(testCase)
+% INVERTED 2026-10-21 (was testSorterWithoutAnAppBlockIsUnchanged: 3 bodies, no
+% software). A calculation REQUIRES its calculator (`software_id`, rule
+% require_inherited), so with no app block the software is the sorter by name,
+% as jCalculation does for any calculator with no app block -- no version, no
+% OS, no interpreter invented. 4 bodies: calc + body + anchor + software.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', false));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 3);
-verifyFalse(testCase, hasClass(out, 'software'));
-obs = onlyClass(testCase, out, 'observation+count');
-verifyEmpty(testCase, depValue(obs, 'software_id'));
+verifyEqual(testCase, numel(out.migrated), 4);
+sw = softwareNamed(testCase, out, 'kilosort');
+obs = onlyClass(testCase, out, 'calculation+label');
+verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
+verifyEmpty(testCase, depValue(obs, 'operating_system_id'));
+verifyEmpty(testCase, depValue(obs, 'interpreter_id'));
+verifyFalse(testCase, hasClass(out, 'assertion+text'), 'no version is invented');
 end
 
 
@@ -398,7 +413,7 @@ end
 function testKilosortFoldValidates(testCase)
 out = runJValidated(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 5);
+verifyEqual(testCase, numel(out.migrated), 9);   % 5 before 2026-10-21: see above
 end
 
 
@@ -409,19 +424,24 @@ function testJrclustAppBecomesASoftwareEntityAndEdge(testCase)
 % assertion; os/interpreter have no slot on an observation (see above).
 out = runJ(jrclustBody(true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 5);
+verifyEqual(testCase, numel(out.migrated), 9);   % 5 before 2026-10-21: + OS, interpreter
 verifyTrue(testCase, hasClass(out, 'opaque_body'));
-sw  = onlyClass(testCase, out, 'software');
-obs = onlyClass(testCase, out, 'observation+count');
+sw  = softwareNamed(testCase, out, 'ndi.app.spikesorter');
+obs = onlyClass(testCase, out, 'calculation+label');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'jc_1');             % id still preserved
 end
 
 
-function testJrclustWithoutAnAppBlockIsUnchanged(testCase)
+function testJrclustWithoutAnAppBlockNamesJrclustAsItsSoftware(testCase)
+% INVERTED 2026-10-21 (was testJrclustWithoutAnAppBlockIsUnchanged): a
+% calculation requires its software; with no app block it is 'jrclust'.
 out = runJ(jrclustBody(false));
-verifyEqual(testCase, numel(out.migrated), 3);
-verifyFalse(testCase, hasClass(out, 'software'));
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 4);
+sw = softwareNamed(testCase, out, 'jrclust');
+verifyEqual(testCase, depValue(onlyClass(testCase, out, 'calculation+label'), 'software_id'), ...
+    sw.get('base.id'));
 end
 
 % ===================== neuron_extracellular ================================
@@ -527,8 +547,37 @@ verifyTrue(testCase, isfield(renamed.app, 'app_name'), ...
 verifyFalse(testCase, isfield(renamed.app, 'name'));
 
 out = runJ(v1);
-sw  = onlyClass(testCase, out, 'software');
+sw  = softwareNamed(testCase, out, 'ndi.app.spikesorter');
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
+end
+
+function d = softwareNamed(testCase, out, name)
+%SOFTWARENAMED The one software entity named NAME (several software entities
+%   are normal on a calculation: its program, OS and interpreter).
+d = [];
+k = 0;
+for i = 1:numel(out.migrated)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{i}), 'software') ...
+            && strcmp(entityNameOf(out.migrated{i}), name)
+        d = out.migrated{i};
+        k = k + 1;
+    end
+end
+assertEqual(testCase, k, 1, sprintf('expected exactly one software named %s', name));
+end
+
+function d = versionOf(testCase, out, entityId)
+%VERSIONOF The one text assertion about ENTITYID.
+d = [];
+k = 0;
+for i = 1:numel(out.migrated)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{i}), 'assertion+text') ...
+            && strcmp(depValue(out.migrated{i}, 'entity_id'), entityId)
+        d = out.migrated{i};
+        k = k + 1;
+    end
+end
+assertEqual(testCase, k, 1, 'expected exactly one version assertion');
 end
 
 function n = entityNameOf(d)

@@ -621,6 +621,14 @@ POST_PASSES = [
         ("pyraview_anchor_to_time_key", "  anchor differs from the epoch: start carried by the time key"),
         ("pyraview_anchor_not_comparable_to_time_key", "  anchor NOT COMPARABLE (epoch states no extent): start carried by the time key"),
         ("pyraview_kept_start_conflict", "  KEPT: anchor start is not the levels' time origin"),
+        # [sorter input] (Jess Haley, 2026-10-21): a sorter calculation's
+        # input is its electrode's per-epoch recording observations, else
+        # the electrode entity (its entity_id; no input_id).
+        ("sorter_calculations_seen", "sorter calculations seen  <- SORTER DENOMINATOR"),
+        ("sorter_inputs_linked", "  input_id to the electrode's recording observations"),
+        ("sorter_input_edges", "    input_id edges added"),
+        ("sorter_input_fallback_entity", "  FALLBACK: no recording observation, the electrode entity"),
+        ("sorter_link_quarantined", "  link QUARANTINED (kept as it was)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # run knobs move inline onto the calculation whose value kind is

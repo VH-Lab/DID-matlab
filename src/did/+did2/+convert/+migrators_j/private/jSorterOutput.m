@@ -93,14 +93,33 @@ md5 = jGetCharAny(blk, {'curated_output_md5_checksum', 'curated_output_MD5_check
 % then `data_body` was left unset to avoid a byte `data_type` the directory
 % does not have.)
 anchor = jSessionAnchor(preBody, 'during');
-[software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
-swOpt = {};
-if ~isempty(swId); swOpt = {'SoftwareId', swId}; end
-obs = jStatement(preBody, 'observation', ...
+[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
+% a calculation names the run's operating system and interpreter
+% (operating_system_id / interpreter_id), as jCalculation does
+[runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
+if isempty(swId)
+    % a calculation requires its calculator (`software_id`, rule
+    % require_inherited); with no v1 `app` block it is the sorter by name, as
+    % jCalculation does for a calculator with no app block
+    [software, swId] = jSoftware(sorterName, '', '', jSid(preBody), jStamp(preBody), ...
+        'RequireSession', true);
+end
+swOpt = {'OperatingSystemId', osId, 'InterpreterId', interpreterId};
+if ~isempty(swId); swOpt = [swOpt, {'SoftwareId', swId}]; end
+% 2026-10-21: a CALCULATION with the `label` value kind (TEAM-SIGN-OFF
+% [spike-sorter output] 2026-09-29: "migrate to label_calculation", and a
+% cluster number is a label local to one run, not a count), about the sorted
+% electrode. Decided by Jess Haley, 2026-10-21 [sorter input]: its input is the
+% electrode's per-epoch recording observations when they exist -- those are
+% minted by did2.convert.resolveEpochProbemap, which adds the `input_id` edges
+% -- else the electrode entity (this entity_id). [sorter keys]: kilosort and
+% kiasort carry NO keys; the output folder is the value as-is (this
+% opaque_body, which has none).
+obs = jStatement(preBody, 'calculation', ...
     jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
     jLabel('spike cluster assignment'), [], ...
     'Fields', struct('method', jMethod(sorterName)), 'DataBody', true, ...
-    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', char(preBody.base.id), 'ValueKind', 'count');
+    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', char(preBody.base.id), 'ValueKind', 'label');
 % Jess Haley, 2026-10-21 ("a"): the output directory is recorded BY LOCATION,
 % as resolveEpochProbemap records an epoch's files -- body_data_0's location is
 % the directory path, nothing ingested -- and the curated-output MD5 is the
@@ -123,7 +142,7 @@ else
     if isfield(preBody, 'files'); body.files = preBody.files; end
     if isfield(preBody, 'file');  body.file  = preBody.file;  end
 end
-bodies = [{obs, body, anchor}, software];
+bodies = [{obs, body, anchor}, software, runDocs];
 end
 
 function t = SORTER_DIRECTORY_FORMAT()

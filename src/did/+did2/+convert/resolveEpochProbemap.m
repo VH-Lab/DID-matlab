@@ -259,6 +259,11 @@ report = struct( ...
     'pyraview_anchor_to_time_key',    0, ...
     'pyraview_anchor_not_comparable_to_time_key', 0, ...
     'pyraview_kept_start_conflict',   0, ...
+    'sorter_calculations_seen',       0, ...
+    'sorter_inputs_linked',           0, ...
+    'sorter_input_edges',             0, ...
+    'sorter_input_fallback_entity',   0, ...
+    'sorter_link_quarantined',        0, ...
     'ran',                            false);
 result.epoch_probemap_fold = report;
 
@@ -707,6 +712,25 @@ report.archive_docs_inspected = numel(archiveIdxAll);
 pyraviewOwners = pyraviewOwnerIndex(bodies, classOf, kindOf, docIds, sampledIdx);
 report.pyraview_observations_seen = double(pyraviewOwners.Count);
 
+% [sorter input] (Jess Haley, 2026-10-21; did-schema
+% V_eta_go_forward_class_audit.md): a spike-sorter output -- the calculation
+% with the `label` value kind and variable 'spike cluster assignment' that
+% +migrators_j/jrclust_clusters and jSorterOutput emit, about the sorted
+% electrode -- "takes as its input the per-epoch recording observations of
+% the electrode it sorted, when they exist, falling back to the electrode
+% entity when they do not". Those observations are emitted HERE (the electrode
+% is their instrument), so the input edges are added here; the fallback is the
+% calculation's own entity_id (the electrode), with no input_id, because
+% `input_id` is typed to statements, never an entity (calculation.json).
+sorterIdx = [];
+for k = 1:n
+    if strcmp(classOf{k}, 'calculation') && strcmp(kindOf{k}, 'label') ...
+            && isSorterVariable(bodies{k})
+        sorterIdx(end+1) = k; %#ok<AGROW>
+    end
+end
+report.sorter_calculations_seen = numel(sorterIdx);
+
 renameBodies = renameBodyBySrcId.values;
 if isempty(newBodies) && isempty(renameBodies)
     % nothing emitted: no archive file has a new owner, and no pyraview has a
@@ -714,6 +738,7 @@ if isempty(newBodies) && isempty(renameBodies)
     report.archive_docs_kept_unowned_files = report.archive_docs_inspected;
     report.archive_files_unowned = countArchiveFiles(bodies, archiveIdxAll);
     report.pyraview_kept_no_recording_observation = report.pyraview_observations_seen;
+    report.sorter_input_fallback_entity = report.sorter_calculations_seen;
     result.epoch_probemap_fold = report;
     return;
 end
@@ -786,6 +811,7 @@ anchorHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 acHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 
 emittedNewIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+recIdsByInstr = containers.Map('KeyType', 'char', 'ValueType', 'any');   % electrode -> its recording observations
 appended = {};
 for j = 1:numel(newBodies)
     id = newBodies{j}.base.id;
@@ -805,6 +831,14 @@ for j = 1:numel(newBodies)
         report.spike_trains_emitted = report.spike_trains_emitted + 1;
     else
         report.observations_emitted = report.observations_emitted + 1;
+        instr = depValueOf(newBodies{j}, 'instrument_id');
+        if ~isempty(instr)
+            if isKey(recIdsByInstr, instr)
+                recIdsByInstr(instr) = [recIdsByInstr(instr), {id}];
+            else
+                recIdsByInstr(instr) = {id};
+            end
+        end
     end
     emittedNewIds(id) = true;
     anchorHasSurvivor(aid) = true;
@@ -1097,6 +1131,34 @@ if ~isempty(anchorCandKeys)
     end
 end
 
+% ---- [sorter input]: the sorted electrode's recording observations ------
+sorterReplace = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for i = 1:numel(sorterIdx)
+    sb = bodies{sorterIdx(i)};
+    el = depValueOf(sb, 'entity_id');
+    if isempty(el) || ~isKey(recIdsByInstr, el)
+        report.sorter_input_fallback_entity = report.sorter_input_fallback_entity + 1;
+        continue;
+    end
+    ins = recIdsByInstr(el);
+    for m = 1:numel(ins)
+        sb = addEdge(sb, 'input_id', ins{m});
+    end
+    res = did2.convert.v1_to_v2({sb}, ...
+        'Validate',      options.Validate, ...
+        'SchemaCache',   options.SchemaCache, ...
+        'TargetVersion', options.TargetVersion);
+    if ~isempty(res.quarantine) || ~isscalar(res.migrated)
+        % kept as it was (the electrode fallback), and counted
+        report.sorter_link_quarantined = report.sorter_link_quarantined + 1;
+        report.sorter_input_fallback_entity = report.sorter_input_fallback_entity + 1;
+        continue;
+    end
+    sorterReplace(docIds{sorterIdx(i)}) = res.migrated{1};
+    report.sorter_inputs_linked = report.sorter_inputs_linked + 1;
+    report.sorter_input_edges = report.sorter_input_edges + numel(ins);
+end
+
 % --- rebuild the migrated set: drop retired obs + removable anchors, append -
 % and REPLACE each renamed epochfiles_ingested with its ingestion_manifest
 % (increment 3), id-preserved. A manifest that quarantined leaves the source
@@ -1111,6 +1173,10 @@ for k = 1:n
     end
     if ~isempty(id) && isKey(levelReplace, id)
         kept{end+1} = levelReplace(id); %#ok<AGROW>
+        continue;
+    end
+    if ~isempty(id) && isKey(sorterReplace, id)
+        kept{end+1} = sorterReplace(id); %#ok<AGROW>
         continue;
     end
     if ~isempty(id) && isKey(renameBodyBySrcId, id)
@@ -1942,6 +2008,30 @@ for k = 1:numel(deps)
     elseif isfield(d, 'document_id') && ~isempty(d.document_id); x = char(d.document_id); end
     if ~isempty(x); v{end+1} = x; end %#ok<AGROW>
 end
+end
+
+function tf = isSorterVariable(b)
+% the spike-sorter output's variable, 'spike cluster assignment'
+tf = false;
+if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
+        || ~isfield(b.statement, 'variable'); return; end
+v = b.statement.variable;
+if isstruct(v) && isfield(v, 'name')
+    tf = strcmpi(strtrim(char(v.name)), 'spike cluster assignment');
+end
+end
+
+function b = addEdge(b, name, id)
+% B with one more NAME edge to ID, spelled as B's own edges are spelled
+deps = b.depends_on;
+if iscell(deps); deps = [deps{:}]; end
+d = deps(1);
+fn = fieldnames(d);
+for f = 1:numel(fn); d.(fn{f}) = ''; end
+d.name = name;
+if isfield(d, 'value'); d.value = char(id); end
+if isfield(d, 'document_id'); d.document_id = char(id); end
+b.depends_on = [deps(:)', d];
 end
 
 function b = setOwner(b, ownerId)

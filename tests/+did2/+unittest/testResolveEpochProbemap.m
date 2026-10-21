@@ -609,6 +609,68 @@ for i = 1:numel(levels)
 end
 end
 
+% ===================== [sorter input] (Jess Haley, 2026-10-21) ===========
+% did-schema V_eta_go_forward_class_audit.md: spike-sorter output "takes as its
+% input the per-epoch recording observations of the electrode it sorted, when
+% they exist, falling back to the electrode entity when they do not".
+
+function v1 = jrclustV1(docId, sessionId, elementId)
+%JRCLUSTV1 A did_v1 jrclust_clusters as NDI's writer makes it
+%   (+ndi/+fun/+probe/+import/+jrclust/probe.m: element_id = the probe, the
+%   res.mat MD5, no attached file).
+v1 = struct();
+v1.document_class = struct('class_name', 'jrclust_clusters', 'class_version', '1.0.0', ...
+    'superclasses', [struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                     struct('class_name', 'app', 'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {elementId});
+v1.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', 'jc', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.jrclust_clusters = struct('res_mat_md5_checksum', 'd41d8cd98f00b204e9800998ecf8427e');
+end
+
+function testASorterTakesTheElectrodesRecordingObservationsAsInput(testCase)
+subj = subjectBody('specimen_js', 'sess_js', 'L');
+el   = elementBody('el_js', 'sess_js', 'tet', '1', 'n-trode', 1, 'specimen_js');
+ingA = ingestedWithRows('ing_jsa', 'sess_js', 't00jsa', {{'tet', '1', 'n-trode', 'L'}});
+ingB = ingestedWithRows('ing_jsb', 'sess_js', 't00jsb', {{'tet', '1', 'n-trode', 'L'}});
+jc   = jrclustV1('jc_s', 'sess_js', 'el_js');
+[out, rep] = decompose({sessionBody('sd_js', 'sess_js', 'ref'), subj, el, ingA, ingB, jc});
+verifyEqual(testCase, rep.sorter_calculations_seen, 1, 'DENOMINATOR');
+verifyEqual(testCase, rep.sorter_inputs_linked, 1);
+verifyEqual(testCase, rep.sorter_input_edges, 2, 'one recording observation per epoch');
+verifyEqual(testCase, rep.sorter_input_fallback_entity, 0);
+calc = docById(out, 'jc_s');
+assertNotEmpty(testCase, calc);
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(calc)), 'calculation+label');
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+recIds = {};
+for i = 1:numel(obs)
+    if strcmp(depVal(obs{i}, 'instrument_id'), 'el_js'); recIds{end+1} = char(obs{i}.base.id); end %#ok<AGROW>
+end
+verifyEqual(testCase, numel(recIds), 2);
+verifyEqual(testCase, sort(depVals(calc, 'input_id')), sort(recIds));
+verifyEqual(testCase, depVal(calc, 'entity_id'), 'el_js', 'still about the electrode');
+end
+
+function testASorterWithNoRecordingObservationFallsBackToTheElectrode(testCase)
+% THE OTHER DIRECTION: no probemap row for the electrode, so no recording
+% observation; the calculation keeps the electrode as its entity and gets NO
+% input_id (input_id is typed to statements, never an entity). Counted.
+subj = subjectBody('specimen_jf', 'sess_jf', 'L');
+el   = elementBody('el_jf', 'sess_jf', 'tet', '1', 'n-trode', 1, 'specimen_jf');
+elO  = elementBody('el_jo', 'sess_jf', 'oth', '1', 'n-trode', 1, 'specimen_jf');
+ing  = ingestedWithRows('ing_jf', 'sess_jf', 't00jf', {{'oth', '1', 'n-trode', 'L'}});
+jc   = jrclustV1('jc_f', 'sess_jf', 'el_jf');
+[out, rep] = decompose({sessionBody('sd_jf', 'sess_jf', 'ref'), subj, el, elO, ing, jc});
+verifyEqual(testCase, rep.sorter_calculations_seen, 1, 'DENOMINATOR');
+verifyEqual(testCase, rep.sorter_inputs_linked, 0);
+verifyEqual(testCase, rep.sorter_input_fallback_entity, 1);
+calc = docById(out, 'jc_f');
+assertNotEmpty(testCase, calc);
+verifyEmpty(testCase, depVals(calc, 'input_id'));
+verifyEqual(testCase, depVal(calc, 'entity_id'), 'el_jf');
+end
+
 % ===================== an unresolvable subject emits nothing ===========
 
 function testAnUnresolvableSubjectstringEmitsNoObservation(testCase)

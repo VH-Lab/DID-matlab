@@ -4074,14 +4074,17 @@ body.jrclust_clusters = struct('res_mat_md5_checksum', 'd41d8cd98f00b204e9800998
 body.files = struct('file_list', {{'clusters.mat'}});
 
 out = did2.convert.migrators_j.jrclust_clusters(body);
-verifyEqual(testCase, numel(out), 3);
+% UPDATED 2026-10-21: a calculation with the `label` value kind (TEAM-SIGN-OFF
+% [spike-sorter output] 2026-09-29), which requires its software; this fixture
+% has no app block, so the software is 'jrclust' by name. 3 -> 4.
+verifyEqual(testCase, numel(out), 4);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'observation+count')));
+verifyTrue(testCase, any(strcmp(names, 'calculation+label')));
 % #88: the .mat is an OPAQUE body (format EDAM:format_2333), not a sampled one
 verifyTrue(testCase, any(strcmp(names, 'opaque_body')));
 verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
-obs = out{find(strcmp(names, 'observation+count'), 1)};
+obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_8');
 
 % #88: the .mat payload is an OPAQUE body owned by the observation; it states no
@@ -4125,13 +4128,13 @@ out = did2.convert.migrators_j.kilosort_clusters(body);
 % subject_interaction); the opaque_body and the anchor do not.
 verifyEqual(testCase, numel(out), 5);   % #88: + the software version text_assertion
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'observation+count')));
+verifyTrue(testCase, any(strcmp(names, 'calculation+label')));
 verifyTrue(testCase, any(strcmp(names, 'opaque_body')));
 verifyTrue(testCase, any(strcmp(names, 'software')), ...
     'the app block must become a software entity, not vanish');
 verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
-obs = out{find(strcmp(names, 'observation+count'), 1)};
+obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, obs.base.id, 'ks_1');                            % id preserved
 verifyEqual(testCase, obs.interaction.method.term.name, 'kilosort');% method = algorithm
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_ks');
@@ -4153,6 +4156,11 @@ verifyEqual(testCase, ob.data_body.hash_algorithm, 'MD5');
 verifyFalse(testCase, contains(ob.data_body.description, 'd41d8cd9'), ...
     'the MD5 is the checksum, not free text');
 verifyEqual(testCase, ob.data_body.format.node, 'EMPTY:0000315');   % "directory of files"
+% Decided by Jess Haley, 2026-10-21 [sorter keys]: kilosort carries NO keys --
+% the output folder is the value as-is
+verifyFalse(testCase, isfield(obs, 'statement') && isfield(obs.statement, 'keys') ...
+    && ~isempty(obs.statement.keys));
+verifyFalse(testCase, isfield(ob, 'data') && isfield(ob.data, 'keys') && ~isempty(ob.data.keys));
 end
 
 function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
@@ -4175,11 +4183,14 @@ verifyEqual(testCase, numel(out), 5);   % #88: + the software version text_asser
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'software')), ...
     'the app block must become a software entity, not vanish');
-obs = out{find(strcmp(names, 'observation+count'), 1)};
+obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, obs.base.id, 'ka_1');
 verifyEqual(testCase, obs.interaction.method.term.name, 'kiasort');
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, ob.data_body.filename, 'ka_out/session1');
+% [sorter keys] (Jess Haley, 2026-10-21): no keys on kiasort either
+verifyFalse(testCase, isfield(obs, 'statement') && isfield(obs.statement, 'keys') ...
+    && ~isempty(obs.statement.keys));
 end
 
 function body = sortingOutputsBody()

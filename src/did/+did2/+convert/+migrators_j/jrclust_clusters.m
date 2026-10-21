@@ -79,12 +79,30 @@ obsId     = baseField(preBody, 'id', did.ido.unique_id());
 % Haley, 2026-10-21: an opaque_body's `format` term is its encoding). See
 % jSorterOutput.
 anchor = jSessionAnchor(preBody, 'during');
-[software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
-swOpt = {};
-if ~isempty(swId); swOpt = {'SoftwareId', swId}; end
-obs = jStatement(preBody, 'observation', subjectId, ...
+[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
+% a calculation names the run's operating system and interpreter
+% (operating_system_id / interpreter_id), as jCalculation does
+[runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
+if isempty(swId)
+    % a calculation requires its calculator (`software_id`, rule
+    % require_inherited); with no v1 `app` block it is the sorter by name, as
+    % jCalculation does for a calculator with no app block
+    [software, swId] = jSoftware('jrclust', '', '', jSid(preBody), jStamp(preBody), ...
+        'RequireSession', true);
+end
+swOpt = {'OperatingSystemId', osId, 'InterpreterId', interpreterId};
+if ~isempty(swId); swOpt = [swOpt, {'SoftwareId', swId}]; end
+% 2026-10-21: a CALCULATION with the `label` value kind (TEAM-SIGN-OFF
+% [spike-sorter output] 2026-09-29), about the sorted electrode; its input
+% edges are added by did2.convert.resolveEpochProbemap ([sorter input], Jess
+% Haley 2026-10-21). [sorter keys] says "keys [spike]" applies where the bytes
+% are an array; NDI's writer (+ndi/+fun/+probe/+import/+jrclust/probe.m)
+% attaches NO file to this document -- only res_mat_MD5_checksum of an
+% external jrclust_res.mat -- so there is no array here to key, and no spike
+% count to size a key with. The body stays an opaque_body; raised, not decided.
+obs = jStatement(preBody, 'calculation', subjectId, ...
     jLabel('spike cluster assignment'), [], 'DataBody', true, ...
-    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', obsId, 'ValueKind', 'count');
+    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', obsId, 'ValueKind', 'label');
 md5 = jGetCharAny(blk, {'res_mat_md5_checksum', 'res_mat_MD5_checksum'});
 o = jOpts(preBody);
 if ~isempty(md5)
@@ -93,7 +111,7 @@ end
 body = did2.build.opaqueBody(obs.base.id, did2.build.formatTerm('EDAM:format_2333'), o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
-bodies = [{obs, body, anchor}, software];
+bodies = [{obs, body, anchor}, software, runDocs];
 end
 
 % ===================== small helpers =======================================
