@@ -175,11 +175,12 @@ verifyEqual(testCase, numel(axes), 2, 'data_dim [4 4] is two dimensions');
 % composites.
 verifyEqual(testCase, [axes.n], [4 4]);                       % was `.length`
 % `variable` is now one of the two mustBeNonEmpty sub-fields (with `n`), so a
-% blank would still quarantine the body it describes. Positional variables when
-% no labels are given, exactly as before.
+% blank would still quarantine the body it describes.
+% UPDATED 2026-10-21: keyed as #73 review item 51 records for a raster,
+% [y, x, (channel)] -- data_dim is size(image), rows first -- not positionally.
 verifyEqual(testCase, ...
     arrayfun(@(a) a.variable.name, axes, 'UniformOutput', false), ...
-    {'axis_1', 'axis_2'});                                    % was `.name`
+    {'y', 'x'});                                              % was `.name`
 verifyEqual(testCase, [axes.regular], [true true]);           % was `.regularity`
 % `origin` is NEW and is required when regular. 1 is not a default: the
 % coordinates guard has already established they are MATLAB's default index
@@ -187,6 +188,20 @@ verifyEqual(testCase, [axes.regular], [true true]);           % was `.regularity
 % could only be assumed by convention -- the gap the signed entry closes.
 verifyEqual(testCase, arrayfun(@(a) a.origin.value, axes), [1 1]);
 verifyEqual(testCase, arrayfun(@(a) a.spacing.value, axes), [1 1]);  % was `.spacing`
+end
+
+function testAColourRasterIsKeyedYXChannel(testCase)
+% #73 review item 51: a raster is keyed [y, x, (channel)]. A third dimension
+% is the channel, in mat2ngrid's data_dim order (size(image)).
+v1 = foldableOntologyImage();
+v1.ngrid.data_dim = [4 4 3];
+v1.ngrid.coordinates = defaultCoords([4 4 3]);
+out = did2.convert.migrators_j.ontology_image(v1);
+axes = pick(out, 'sampled_body').data.keys;
+verifyEqual(testCase, [axes.n], [4 4 3]);
+verifyEqual(testCase, ...
+    arrayfun(@(a) a.variable.name, axes, 'UniformOutput', false), ...
+    {'y', 'x', 'channel'});
 end
 
 function testDtypeIsCarriedVerbatimAndDataSizeIsDropped(testCase)

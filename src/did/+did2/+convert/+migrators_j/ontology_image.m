@@ -294,8 +294,12 @@ end
 % `variable` is the depicted term, as the fold's tests have always pinned: the
 % term is on this document, so nothing is deferred.
 imgId = did.ido.unique_id();
+% Keys per #73 review item 51: a raster is keyed [y, x, (channel)]. The ngrid's
+% data_dim is MATLAB's size(image) (mat2ngrid), so dimension 1 is rows (y),
+% 2 columns (x), 3 the channel.
 [imgBody, dataType, sourceDataType] = ...
-    jNgridBody(preBody, imgId, 'migrated_ontology_image_raster');
+    jNgridBody(preBody, imgId, 'migrated_ontology_image_raster', ...
+    {'y', 'x', 'channel'});
 % the v1 file rides as written (name and locations), as hartley_calc's bodies
 % do: renaming it would cut it from the bytes NDI stores under that name
 if isfield(preBody, 'files'); imgBody.files = preBody.files; end
