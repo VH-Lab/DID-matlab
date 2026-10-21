@@ -465,7 +465,7 @@ POST_PASSES = [
         ("pyraview_refused_unsafe_output", "  pyraview: refused, unsafe output"),
         # #88: a pyraview cannot pass through pass 1 (its tombstone lacks the v1
         # epochclocktimes block), so it DEFERS into the quarantine and is folded
-        # here; an unresolved deferral stays quarantined and fails Bar-1 loudly.
+        # here; an unresolved deferral stays quarantined and fails the integrity check loudly.
         ("pyraview_deferred_seen", "pyraview DEFERRED from pass 1 (in the quarantine)"),
         ("pyraview_deferred_resolved", "  deferred pyraview FOLDED (left the quarantine)"),
         ("pyraview_deferred_unresolved", "  deferred pyraview UNRESOLVED (stays quarantined)"),
@@ -562,7 +562,7 @@ POST_PASSES = [
         ("manifests_renamed", "ingestion_manifests renamed (epochfiles_ingested consumed)"),
         ("rename_skipped_no_filenavigator", "  rename SKIPPED: no filenavigator_id (tombstone kept)"),
         ("rename_skipped_no_epoch", "  rename SKIPPED: no resolved epoch (tombstone kept)"),
-        ("rename_quarantined", "  rename QUARANTINED (tombstone kept, Bar-1 fallback)"),
+        ("rename_quarantined", "  rename QUARANTINED (tombstone kept, integrity fallback)"),
         # did-schema #88 (#73 item 39): no serialized probemap on the manifest,
         # so a document with ANY row that did not decompose keeps its tombstone.
         ("rename_skipped_rows_without_home", "  rename SKIPPED: a probemap row has no home (tombstone kept)"),

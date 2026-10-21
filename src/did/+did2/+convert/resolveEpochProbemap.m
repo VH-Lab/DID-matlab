@@ -615,8 +615,9 @@ if ~isempty(newBodies)
 end
 
 % --- validate the RENAMES SEPARATELY: a manifest quarantine is NOT a gate ---
-% failure. Renaming epochfiles_ingested -> ingestion_manifest is a Bar-2 step;
-% the source tombstone is a valid Bar-1 fallback, so a manifest that cannot
+% failure. Renaming epochfiles_ingested -> ingestion_manifest is a step toward
+% done (formerly "Bar-2"); the source tombstone is a valid integrity fallback
+% (formerly "Bar-1"), so a manifest that cannot
 % validate leaves the source unchanged (guarded) and is counted
 % (rename_quarantined), never added to result.quarantine. Same idiom as every
 % guarded passthrough (fitcurve, openminds_stimulus, image_stack).
