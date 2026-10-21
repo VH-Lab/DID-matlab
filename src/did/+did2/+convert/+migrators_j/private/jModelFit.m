@@ -35,7 +35,7 @@ end
 
 v = struct();
 nm = charOf(blk, 'fit_name');
-if ~isempty(nm); v.model = did2.build.label(nm); end
+if ~isempty(nm); v.model = jLabel(nm); end
 eq = charOf(blk, 'fit_equation');
 if ~isempty(eq); v.equation = eq; end
 p = numOf(blk, 'fit_parameters');
@@ -45,18 +45,18 @@ if ~isempty(p)
     for k = 1:numel(p)
         label = sprintf('parameter %d', k);
         if k <= numel(names); label = names{k}; end
-        c{k} = struct('variable', did2.build.label(label), 'value', p(k));
+        c{k} = struct('variable', jLabel(label), 'value', p(k));
     end
     v.coefficients = did2.build.list(c{:});
 end
 ind = splitNames(charOf(blk, 'fit_independent_variable_names'));
 if ~isempty(ind)
-    c = cellfun(@(n) struct('variable', did2.build.label(n)), ind, 'UniformOutput', false);
+    c = cellfun(@(n) struct('variable', jLabel(n)), ind, 'UniformOutput', false);
     v.independent_variables = did2.build.list(c{:});
 end
 dep = splitNames(charOf(blk, 'fit_dependent_variable_names'));
 if ~isempty(dep)
-    v.dependent_variable = struct('variable', did2.build.label(dep{1}));
+    v.dependent_variable = struct('variable', jLabel(dep{1}));
 end
 cons = {};
 if isfield(blk, 'fit_constraints') && isstruct(blk.fit_constraints)
@@ -64,7 +64,7 @@ if isfield(blk, 'fit_constraints') && isstruct(blk.fit_constraints)
         cn = charOf(blk.fit_constraints(k), 'fit_constraint_name');
         cv = numOf(blk.fit_constraints(k), 'fit_constraint_value');
         if ~isempty(cn) && isscalar(cv)
-            cons{end+1} = struct('variable', did2.build.label(cn), 'value', cv); %#ok<AGROW>
+            cons{end+1} = struct('variable', jLabel(cn), 'value', cv); %#ok<AGROW>
         end
     end
 end
@@ -93,7 +93,7 @@ if isempty(swId)
     [software, swId] = jSoftware(char(jFirst(nm, 'curve fit')), '', '', jSid(preBody), jStamp(preBody));
 end
 calc = jStatement(preBody, 'model_fit_calculation', subjectId, ...
-    did2.build.label('model fit'), value, ...
+    jLabel('model fit'), value, ...
     'TimeReferenceIds', {anchor.base.id}, 'InputIds', inputs, ...
     'SoftwareId', swId, 'OperatingSystemId', osId, 'InterpreterId', interpreterId, ...
     'Id', char(preBody.base.id));

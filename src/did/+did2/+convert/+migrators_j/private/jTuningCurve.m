@@ -64,7 +64,7 @@ end
 props = sub(srcBlk, 'properties');
 value = putUnit(value, getf(props, {'response_units', 'responseUnits'}));
 rt = getf(props, {'response_type', 'responseType'});
-if ischar(rt) && ~isempty(rt); value.response_type = did2.build.label(rt); end
+if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
 co = getf(props, {'coordinates'});
 if ischar(co) && ~isempty(co); value.coordinates = co; end
 
@@ -220,7 +220,7 @@ if isempty(cols)
 end
 if isscalar(cols)
     v = cols{1};
-    keys = did2.build.key(did2.build.label(strrep(names{1}, '_', ' ')), numel(v), 'Values', v');
+    keys = did2.build.key(jLabel(strrep(names{1}, '_', ' ')), numel(v), 'Values', v');
     return;
 end
 n = numel(cols{1});
@@ -237,7 +237,7 @@ for i = 1:n
     end
     pos{i} = strjoin(parts, ', ');
 end
-keys = did2.build.key(did2.build.label(label), n, 'Labels', pos);
+keys = did2.build.key(jLabel(label), n, 'Labels', pos);
 end
 
 function [entries, dropped] = fitEntries(blk, blockName)
@@ -290,13 +290,13 @@ dropped = [dropped, prefixed([blockName '.'], fn(~claimed))];
 end
 
 function [e, dropped] = oneFit(s, model)
-e = struct('model', did2.build.label(strrep(model, '_', ' ')));
+e = struct('model', jLabel(strrep(model, '_', ' ')));
 used = {};
 p = getf(s, {'parameters'});
 if isnumeric(p) && ~isempty(p)
     c = cell(1, numel(p));
     for k = 1:numel(p)
-        c{k} = struct('variable', did2.build.label(sprintf('%s parameter %d', ...
+        c{k} = struct('variable', jLabel(sprintf('%s parameter %d', ...
             strrep(model, '_', ' '), k)), 'value', double(p(k)));
     end
     e.coefficients = did2.build.list(c{:});
@@ -359,7 +359,7 @@ end
 function v = putUnit(v, u)
 if isstring(u) && isscalar(u); u = char(u); end
 if ischar(u) && ~isempty(strtrim(u))
-    v.response_unit = did2.build.label(strtrim(u));
+    v.response_unit = jLabel(strtrim(u));
 end
 end
 

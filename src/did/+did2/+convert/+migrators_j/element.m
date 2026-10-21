@@ -178,7 +178,7 @@ end
 
 function a = kindAssertion(preBody, subjectId, variableName, valueName)
 a = jStatement(preBody, 'term_assertion', subjectId, ...
-    did2.build.label(variableName), did2.build.label(valueName));
+    jLabel(variableName), jLabel(valueName));
 end
 
 function rel = lineageRelation(preBody, childId, parentId, relationName)

@@ -36,7 +36,7 @@ for k = 1:numel(fn)
     if isempty(v)
         continue;
     end
-    var = did2.build.label(strrep(name, '_', ' '));
+    var = jLabel(strrep(name, '_', ' '));
     if (isnumeric(v) || islogical(v)) && isscalar(v)
         e = did2.build.parameter(var, 'Value', double(v), 'SourceValue', num2str(double(v), 17));
     elseif ischar(v) && (isrow(v) || isempty(v))

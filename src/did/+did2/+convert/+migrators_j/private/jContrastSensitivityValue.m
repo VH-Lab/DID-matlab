@@ -35,11 +35,11 @@ dropped = {};
 if ~isstruct(block) || ~isscalar(block); return; end
 sf = getf(block, {'spatial_frequencies'});
 if isnumeric(sf) && ~isempty(sf)
-    keys = did2.build.key(did2.build.label('spatial frequency'), numel(sf), 'Values', double(sf(:))');
+    keys = did2.build.key(jLabel('spatial frequency'), numel(sf), 'Values', double(sf(:))');
 end
 rt = getf(block, {'response_type'});
 if isstring(rt) && isscalar(rt); rt = char(rt); end
-if ischar(rt) && ~isempty(rt); value.response_type = did2.build.label(rt); end
+if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
 c50 = getf(block, {'fitless_interpolated_c50'});
 if isnumeric(c50) && ~isempty(c50); value.interpolated_values = struct('c50', double(c50)); end
 sig = struct();
@@ -71,14 +71,14 @@ metrics  = {'sensitivity', 'relative_max_gain', 'empirical_c50', 'saturation_ind
 for i = 1:numel(variants)
     v = variants{i};
     model = ['naka rushton ' upper(v)];
-    entry = struct('model', did2.build.label(model));
+    entry = struct('model', jLabel(model));
     present = false;
     coeff = getf(block, {['parameters_' v]});
     if isnumeric(coeff) && ~isempty(coeff)
         c = {};
         for j = 1:size(coeff, 2)
             for k = 1:size(coeff, 1)
-                c{end+1} = struct('variable', did2.build.label(sprintf( ...
+                c{end+1} = struct('variable', jLabel(sprintf( ...
                     '%s parameter %d, spatial frequency %d', model, k, j)), ...
                     'value', double(coeff(k, j))); %#ok<AGROW>
             end

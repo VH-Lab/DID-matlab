@@ -52,5 +52,5 @@ end
 args = {'Value', canonicalValue};
 if ~isempty(sourceValue); args = [args, {'SourceValue', sourceValue}]; end
 if ~isempty(sourceUnit); args = [args, {'SourceUnit', jSourceUnit(sourceUnit)}]; end
-e = did2.build.parameter(did2.build.label(variableName), args{:});
+e = did2.build.parameter(jLabel(variableName), args{:});
 end

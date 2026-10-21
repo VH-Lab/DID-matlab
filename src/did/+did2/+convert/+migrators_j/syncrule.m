@@ -157,17 +157,17 @@ implClass = jGetCharAny(block, {'ndi_syncrule_class', 'ndiSyncruleClass'});
 entries = {};
 minPaths = readNumber(params0(block), {'number_fullpath_matches', 'numberFullpathMatches'});
 if ~isempty(minPaths)
-    entries{end+1} = did2.build.parameter(did2.build.label('minimum matching file paths'), ...
+    entries{end+1} = did2.build.parameter(jLabel('minimum matching file paths'), ...
         'Count', minPaths);
 end
 syncFile = jGetCharAny(params0(block), {'syncfilename', 'syncFilename', 'sync_filename'});
 if ~isempty(syncFile)
-    entries{end+1} = did2.build.parameter(did2.build.label('sync file name'), 'Text', syncFile);
+    entries{end+1} = did2.build.parameter(jLabel('sync file name'), 'Text', syncFile);
 end
 minOverlap = readNumber(params0(block), {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'});
 if ~isempty(minOverlap)
     entries{end+1} = did2.build.parameter( ...
-        did2.build.label('minimum embedded file overlap'), 'Value', minOverlap);
+        jLabel('minimum embedded file overlap'), 'Value', minOverlap);
 end
 params = [];
 if ~isempty(entries)

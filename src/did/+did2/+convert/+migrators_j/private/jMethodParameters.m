@@ -125,7 +125,7 @@ if ~isempty(rest)
     params{end+1} = rest;
 end
 if isempty(epochDocId) && ~isempty(epochString)
-    params{end+1} = did2.build.parameter(did2.build.label('epochid'), 'Text', epochString);
+    params{end+1} = did2.build.parameter(jLabel('epochid'), 'Text', epochString);
 end
 f = struct();
 nm = baseName(preBody);

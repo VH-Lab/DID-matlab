@@ -11,7 +11,7 @@ end
 m = struct();
 if ~isempty(term)
     if ischar(term) || isstring(term)
-        term = did2.build.label(char(term));
+        term = jLabel(char(term));
     end
     m.term = term;
 end

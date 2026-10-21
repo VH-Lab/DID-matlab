@@ -84,95 +84,13 @@ arguments
     preBody (1,1) struct
 end
 
-TV = 'V_eta';
-CLASS = 'spatial_gene_expression_pyramid';
-
-% ---------------------------------------------------------------------
-% THE ANCHOR -- smallest legitimate time_reference_# (open question 1).
-% ---------------------------------------------------------------------
-anchor = jSessionAnchor(preBody, 'during');
-
-% ---------------------------------------------------------------------
-% THE PYRAMID BODY.
-% ---------------------------------------------------------------------
-pyramid = preBody;
-
-% depends_on: carry every edge the v1 body had (gene_list_id required,
-% source_file_id optional, plus any subject_id the v1 source declared)
-% and add the new time_reference_1 edge to the anchor. Copying the v1
-% depends_on first, THEN appending, preserves the source's own edge set
-% and its ordering.
-if ~isfield(pyramid, 'depends_on') || ~isstruct(pyramid.depends_on)
-    pyramid.depends_on = struct('name', {}, 'value', {});
+% did-schema #88 restates `spatial_gene_expression_pyramid` as its v1 shape
+% (base + gene_expression, with the v1 `subject_id` / `geneList_id` edges):
+% the statement reshape built on did-schema main (#70) is not part of #88. So
+% the document PASSES THROUGH and validates under its own class; nothing is
+% reshaped. Reported.
+bodies = {preBody};
 end
-
-% Make sure subject_id is present -- required-via-inheritance on
-% subject_statement (mustBeNonEmpty: true). If the v1 source carried it
-% under a different edge name, jCarrySubject will hand its value back;
-% otherwise the emitted `subject_id` entry stays empty (which is what
-% RequiredDependencies quarantines on -- a loud failure, not a silent
-% husk). Deliberately not invented.
-if ~hasDep(pyramid, 'subject_id')
-    subjDep = jCarrySubject(preBody, {'subject_id'});
-    pyramid = appendDep(pyramid, subjDep.name, subjDep.value);
-end
-
-pyramid = appendDep(pyramid, 'time_reference_1', anchor.base.id);
-
-% document_class: universalRenames has snake_cased the class name; the
-% superclasses list is rebuilt by ensureClassBlocks against the V_eta
-% schema chain, so nothing to do here. Stamp the schema_version anyway
-% (v1_to_v2 also stamps it on the way out; done here too so tests that
-% call the migrator directly see the tag).
-if ~isfield(pyramid, 'document_class') || ~isstruct(pyramid.document_class)
-    pyramid.document_class = struct();
-end
-pyramid.document_class.class_name = CLASS;
-pyramid.document_class.schema_version = TV;
-
-% base.id preserved: pyramid = preBody already copied it. No mutation.
-
-% gene_expression mixin: keep whatever the v1 source had. When absent,
-% ensureClassBlocks will pad an empty block; the schema's fields all
-% default to empty char, so validation stays green either way.
-
-% Own block: pyramid.spatial_gene_expression_pyramid already carries
-% every property field via the preBody copy; no reshape needed.
-
-% subject_statement (inherited): variable is REQUIRED and BOUND. This is
-% the one place the migrator states a fact the source did not carry --
-% but the fact is the class's identity (this document is a spatial gene
-% expression pyramid), not a value invented for it, and the binding
-% registry entry that made it callable was signed on the same commit
-% that landed the schemas.
-pyramid.subject_statement = struct( ...
-    'variable',     jOntologyTerm('NCIT:C16608', 'gene expression'), ...
-    'storage_mode', 'inline');
-
-% subject_interaction (inherited): time_reference_# is carried on the
-% depends_on above; the fields here are what remain on the block itself.
-% `method` is OMITTED (not written empty) by design -- an empty
-% ontology_term would trip did-schema's unminted-term ratchet (#70), and
-% the pyramid's method decision is still open (see open question 2).
-% Absence is a legal state per the schema (method.mustBeNonEmpty: false),
-% and it is the honest one: this migrator has no method to report.
-% method_parameters stays an empty struct; sample_time.kind = 'point' --
-% the pyramid describes a single fixed moment (a captured section), not
-% a cadence.
-pyramid.subject_interaction = struct( ...
-    'method_parameters', struct(), ...
-    'sample_time',       struct('kind', 'point'));
-
-% subject_observation (inherited): derived_from_# stays empty -- the
-% pyramid is primary data, not a computation over another statement.
-% Left as an empty struct so ensureClassBlocks does not re-add it under a
-% wrong shape (it manufactures a bare struct(), which is what we want).
-pyramid.subject_observation = struct();
-
-bodies = {pyramid, anchor};
-end
-
-% ===================== helpers =============================================
 
 function tf = hasDep(body, name)
 tf = false;

@@ -273,7 +273,7 @@ for k = 1:numel(entries)
     if hasInstrument
         extra = [extra, {'InstrumentId', instrumentId}]; %#ok<AGROW>   % T7
     end
-    obs = jStatement(preBody, e.class, subjectId, did2.build.label(e.variable), [], ...
+    obs = jStatement(preBody, e.class, subjectId, jLabel(e.variable), [], ...
         extra{:});
     bodies{end+1} = obs;  %#ok<AGROW>
 end

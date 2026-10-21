@@ -220,9 +220,9 @@ switch key
     case {'wide-field-imaging', 'two-photon-imaging', ...
           'one-photon-imaging', 'brightfield-imaging'}
         % did-schema #88 retired the `image` value kind and image_observation
-        % (#73 review item 51) and the image model (#24) is unbuilt, so an
-        % imaging element has no observation to become: Guard A, reported.
-        return;
+        % (#73 review item 51, decided 2026-09-25): "a raster goes by what its
+        % pixels measure ... camera frames are an intensity_observation".
+        entries = mk('intensity_observation', 'intensity', 'intensity', false);
 
     % --- the one DERIVED type with a signed shape ---------------------------
     % TEAM-SIGN-OFF [spike train leaf], V_eta_ensemble_plan.md:218,

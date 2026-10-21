@@ -93,7 +93,7 @@ for k = 1:numel(names)
     end
     node = '';
     if isfield(variableNodes, f); node = variableNodes.(f); end
-    variable = did2.build.term(node, strrep(f, '_', ' '));
+    variable = did2.convert.registeredTerm(node, strrep(f, '_', ' '));
     o = opts(preBody);
     if any(strcmp(f, terms))
         if strcmp(f, 'license') && (ischar(v) || (isstring(v) && isscalar(v)))
@@ -191,9 +191,9 @@ if isstruct(v)
     return;
 end
 c = cellstr(string(v));
-t = did2.build.label(c{1});
+t = did2.convert.registeredTerm('', c{1});
 for k = 2:numel(c)
-    t(k) = did2.build.label(c{k});
+    t(k) = did2.convert.registeredTerm('', c{k});
 end
 end
 
