@@ -18,11 +18,47 @@ concurrency:
   # false: a push queues behind a run in progress instead of cancelling it.
   cancel-in-progress: false
 
-# Badges are copied to the dedicated `badges` branch under `<source-ref>/`
-# rather than committed onto the working branch; see
-# .github/actions/push-badges-to-branch.
+# SPLIT INTO FOUR JOBS (2026-10-22). This was ONE job running the unit suite and
+# all six corpora serially. Run 39745771053 (1371c3c) spent 4h49m of its 4h51m
+# "Run tests" step in the corpora -- JH 2h00m and Soph 2h22m alone -- so the
+# serial sum was heading for the 6-hour job limit as migration grew. Now:
+#
+#   plan       lists tests/+did2/+unittest/testCorpus*.m (tools/corpus_matrix.py)
+#              and emits the corpus matrix. Nothing hand-kept.
+#   unit       the did2.unittest suite MINUS every did2.unittest.testCorpus*
+#              test, plus check-code, badges and Codecov. Minutes.
+#   corpus     one job per big corpus (JH, Soph), one job for the rest;
+#              fail-fast: false; each uploads corpus-report-<group>.
+#   aggregate  needs everything, if: always(); downloads every report and runs
+#              the census digest, the CORPUS-PROVEN rung and the per-corpus done
+#              report exactly as the single job did. It FAILS when any expected
+#              corpus has no report (expected vs found printed first), so a
+#              corpus that dropped out of the fan-out is loud, not absent.
+#
+# The concurrency group above is unchanged: it is workflow-level, so it still
+# serialises whole runs per ref and still never cancels one in progress.
+
 jobs:
-  test-code:
+  plan:
+    name: "plan corpus jobs"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Derive the corpus matrix from testCorpus*.m
+        id: pick
+        # JH and Soph get a job each: they are 2h00m and 2h22m of run
+        # 39745771053's corpus time. 20211116 (1.5m), B (8m), Dab (16.5m) and
+        # PRED (1s) share one job -- ~26 minutes, so four MATLAB setups would
+        # cost more runner time than they save wall time. Every other
+        # testCorpus*.m, including one added later, lands in `others`
+        # automatically; a name below with no test file fails this step.
+        run: python3 tools/corpus_matrix.py matrix --alone JH,Soph --github-output "$GITHUB_OUTPUT"
+
+  unit:
     # Flat workflow modeled on NDI-matlab/.github/workflows/run-tests.yml.
     # Order matters: check-code runs immediately after install-matbox,
     # before any other step touches the MATLAB path. An earlier ordering
@@ -31,6 +67,12 @@ jobs:
     # release: latest. installRequirements is moved after check-code
     # since the tests need mksqlite + vhlab-toolbox-matlab but the
     # static analysis does not.
+    #
+    # The corpus tests (did2.unittest.testCorpus*) do NOT run here; they run in
+    # the `corpus` matrix below. The filter prints how many it excluded.
+    # The check name is KEPT from the single job ("Analyse and test code") in
+    # case anything requires it by name; classic branch protection is not
+    # readable from here (403), so that could not be ruled out.
     name: Analyse and test code
     runs-on: ubuntu-latest
     env:
@@ -212,14 +254,9 @@ jobs:
             addpath(genpath("tools"));
             matbox.installRequirements(didtools.projectdir());
 
-      - name: Run tests
+      - name: Run unit tests (every did2.unittest test except testCorpus*)
         uses: matlab-actions/run-command@v2
         if: always()
-        env:
-          # Opt in to the ~446 MB Soph corpus (the largest fixture, ~101k v1
-          # docs). It is skipped by default to keep PR runs cheap; the full
-          # test-code run validates the entire corpus at V_eta, so include it.
-          DID_RUN_SOPH_TEST: '1'
         with:
           command: |
             addpath(genpath("src"));
@@ -233,6 +270,20 @@ jobs:
             % files and any future +abstract base classes. Mirrors the
             % discovery pattern in test-symmetry.yml.
             suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
+            % The corpus tests run in the `corpus` matrix job, one runner per
+            % big corpus. Excluded by the SAME prefix tools/corpus_matrix.py
+            % derives that matrix from, and counted, so the split is visible.
+            names = string({suite.Name});
+            isCorpus = startsWith(names, "did2.unittest.testCorpus");
+            corpusFiles = unique(extractBefore(names(isCorpus), "/"));
+            excludedList = "(none)";
+            if ~isempty(corpusFiles)
+                excludedList = strjoin(corpusFiles, " ");
+            end
+            fprintf("UNIT SUITE: %d test(s) discovered; %d corpus test(s) from %d file(s) EXCLUDED (run in the corpus matrix): %s; running %d\n", ...
+                numel(suite), nnz(isCorpus), numel(corpusFiles), ...
+                excludedList, nnz(~isCorpus));
+            suite = suite(~isCorpus);
             results = runner.run(suite);
             disp(table(results));
             % The verdict block prints LAST so a red run is readable from a log
@@ -242,7 +293,7 @@ jobs:
             verdict = struct('n_run', numel(results), ...
                 'n_failed', sum([results.Failed]));
             try
-                verdict = did2.unittest.helpers.reportVerdict(results, "full test suite");
+                verdict = did2.unittest.helpers.reportVerdict(results, "unit test suite (testCorpus* excluded)");
             catch verdictErr
                 fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
                     verdictErr.message);
@@ -253,9 +304,310 @@ jobs:
                 sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
                     verdict.n_failed));
 
+      - name: Upload unit-suite corpus reports (if any)
+        # testFailureFixtures runs the corpus harness over each folder under
+        # tests/+did2/fixtures/corpus_failures/ and writes fixture-<name>
+        # reports. In the single job the digest saw them, so they still reach
+        # the aggregate. Usually there are none (no fixture folders), hence
+        # `ignore`; the aggregate's check lists them as OTHER, never as a corpus.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-report-unit
+          path: |
+            corpus-reports/
+            tests/corpus-reports/
+          if-no-files-found: ignore
+
+      - name: Push SVG badges to badges branch
+        if: always() && env.SHOULD_PUSH_BADGES == 'true'
+        uses: ./.github/actions/push-badges-to-branch
+        with:
+          source-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+
+      - name: Upload code coverage report to Codecov
+        uses: codecov/codecov-action@v4
+        if: ${{ env.CODECOV_TOKEN != '' }}
+        with:
+          token: ${{ env.CODECOV_TOKEN }}
+          files: docs/reports/codecoverage.xml
+
+  corpus:
+    needs: plan
+    name: "corpus: ${{ matrix.group }}"
+    runs-on: ubuntu-latest
+    strategy:
+      # One corpus failing must not cancel the others -- every corpus's numbers
+      # must reach the aggregate in one pass.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out did-schema (sibling, for V_eta validation)
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          # did-schema #64 merged the V_eta (Brainstorm-J) tree into did-schema
+          # `main` on 2026-09-23 and deleted the shared topic branch, so the
+          # full V_eta schema tree (schemas/V_eta/, tools/bar2_gap.py, the plan
+          # docs) now lives on main. Validate against main.
+          # PINNED to the did-schema #88 branch: the migrators were ported from the
+          # pre-#73 tag `v_eta-pre73` to #88's shape (approved by Jess Haley,
+          # 2026-10-21). Move to `main` when #88 merges.
+          ref: claude/ecstatic-pascal-md91fw
+          path: did-schema
+
+      - name: Assemble V_eta schema set (stable + draft)
+        # V_eta (Brainstorm J) is the migration/validation target. The schema
+        # cache loads a single flat dir of *.json; the Brainstorm-J classes live
+        # in V_eta/stable and the genomics/dataseries data-format families in
+        # V_eta/draft (class names are disjoint across tiers), so combine both
+        # tiers into one directory for DID_SCHEMA_PATH.
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
+          # of the go-forward MODEL. Those are two different questions and they
+          # were conflated here until 2026-08-10.
+          #
+          # `deprecated/` holds exactly the v1 shapes that DELIBERATELY pass
+          # through unmodelled -- projectvar, stimulus_parameter_table,
+          # image_stack(+_parameters). A passthrough's whole contract is that the
+          # document reaches the validator under its own class, so omitting the
+          # tier means every one of them QUARANTINES. The tier was doing nothing.
+          #
+          # It went unnoticed because three of the four have never appeared in a
+          # tested corpus. The fourth did: corpus run 31421715133 turned 4,563 JH
+          # `image_stack` documents into `No schema file for class "image_stack"`
+          # the moment the guard made them passthroughs instead of subject-less
+          # observations. Trading silent husks for loud quarantines was the point
+          # of the guard; losing them at validation was not.
+          #
+          # Safe to copy: no filename collides across tiers (checked, 245 files).
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+
+      - name: Export DID_SCHEMA_PATH
+        run: |
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" \
+            >> "$GITHUB_ENV"
+
+      - name: Add swap (guarded; Soph peaked at 14.4 GB RSS + 5 GB swap in NDI's run)
+        # A hosted ubuntu-latest runner has 16 GB RAM and a 4 GB /swapfile.
+        # NDI-matlab's Soph workflow needed more than that, so give the big
+        # corpora headroom. continue-on-error: a runner image that changes
+        # /mnt must cost us the headroom, not the corpus. Prints before/after.
+        continue-on-error: true
+        run: |
+          free -h
+          avail_g=$(df --output=avail -BG /mnt 2>/dev/null | tail -1 | tr -dc '0-9')
+          echo "/mnt free: ${avail_g:-?} GB"
+          if [ "${avail_g:-0}" -ge 24 ]; then
+            sudo fallocate -l 12G /mnt/did-extra-swap
+            sudo chmod 600 /mnt/did-extra-swap
+            sudo mkswap /mnt/did-extra-swap
+            sudo swapon /mnt/did-extra-swap
+            echo "added 12 GB swap at /mnt/did-extra-swap"
+          else
+            echo "NOT adding swap: /mnt has < 24 GB free"
+          fi
+          free -h
+          swapon --show
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+          products: Statistics_and_Machine_Learning_Toolbox
+
+      - name: Install MatBox
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: ehennestad/matbox-actions/install-matbox@v1
+
+      - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+
+      - name: "Run corpus tests: ${{ matrix.corpora }}"
+        uses: matlab-actions/run-command@v2
+        env:
+          # Opt in to the ~446 MB Soph corpus (the largest fixture, ~101k v1
+          # docs). It is skipped by default to keep PR runs cheap; the full
+          # test-code run validates the entire corpus at V_eta, so include it.
+          DID_RUN_SOPH_TEST: '1'
+          CORPORA: ${{ matrix.corpora }}
+          GROUP: ${{ matrix.group }}
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            runner = TestRunner.withTextOutput;
+            corpora = split(strtrim(string(getenv("CORPORA"))));
+            corpora = corpora(corpora ~= "");
+            assert(~isempty(corpora), "CORPORA is empty -- this matrix entry would run nothing");
+            suite = matlab.unittest.Test.empty;
+            for k = 1:numel(corpora)
+                f = fullfile("tests", "+did2", "+unittest", "testCorpus" + corpora(k) + ".m");
+                assert(isfile(f), "corpus %s: no test file %s", corpora(k), f);
+                suite = [suite, TestSuite.fromFile(char(f))]; %#ok<AGROW>
+            end
+            fprintf("CORPUS JOB %s: %d corpus file(s) [%s], %d test(s)\n", ...
+                getenv("GROUP"), numel(corpora), strjoin(corpora, " "), numel(suite));
+            results = runner.run(suite);
+            disp(table(results));
+            verdict = struct('n_run', numel(results), ...
+                'n_failed', sum([results.Failed]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(results, "corpus job " + getenv("GROUP"));
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_run > 0, ...
+                "the suite selected NO tests -- that is a broken filter, not a pass");
+            assert(verdict.n_failed == 0, ...
+                sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
+                    verdict.n_failed));
+
+      - name: "Upload corpus reports: ${{ matrix.group }}"
+        # BOTH PATHS, and `warn`: MATLAB's pwd during these corpora is `tests/`,
+        # so reports land in `tests/corpus-reports/`. The aggregate's check is
+        # what turns a missing report red; `warn` only annotates here.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-report-${{ matrix.group }}
+          path: |
+            corpus-reports/
+            tests/corpus-reports/
+          if-no-files-found: warn
+
+  aggregate:
+    name: Corpus census, CORPUS-PROVEN rung, done report
+    needs: [plan, unit, corpus]
+    # always(): the census must report on whatever corpora finished, and a
+    # missing one must be NAMED here rather than the job being skipped.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out did-schema (sibling, for V_eta validation)
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          # did-schema #64 merged the V_eta (Brainstorm-J) tree into did-schema
+          # `main` on 2026-09-23 and deleted the shared topic branch, so the
+          # full V_eta schema tree (schemas/V_eta/, tools/bar2_gap.py, the plan
+          # docs) now lives on main. Validate against main.
+          # PINNED to the did-schema #88 branch: the migrators were ported from the
+          # pre-#73 tag `v_eta-pre73` to #88's shape (approved by Jess Haley,
+          # 2026-10-21). Move to `main` when #88 merges.
+          ref: claude/ecstatic-pascal-md91fw
+          path: did-schema
+
+      # ---------------------------------------------------------------
+      # MIRRORED FROM test-migrators-quick.yml, DELIBERATELY NOT SHARED.
+      # This workflow runs the SAME `did2.unittest` package, so it runs
+      # testBatchPassWiring too -- and without NDI-matlab that test's
+      # cross-repo half SKIPS. A skip inside a MATLAB log reads as a pass,
+      # so the full suite was quietly measuring less than the fast gate.
+      # GitHub Actions has no include for step lists; a composite action
+      # would be the DRY fix and is a bigger change than closing the hole.
+      # If you edit one copy, edit both -- the confirm step below prints
+      # PRESENT/ABSENT either way, so a divergence is visible in the log.
+      # ---------------------------------------------------------------
+      - name: Resolve the NDI-matlab ref (falls back to main)
+        id: ndi-ref
+        # Same fallback as the unit job's step of the same name. Here NDI is
+        # read only by coverage.py (via the rung step), which reads NDI
+        # templates from `origin/main` and fetches it below when absent.
+        env:
+          WANT: ${{ github.head_ref || github.ref_name }}
+        run: |
+          want="$WANT"
+          if git ls-remote --exit-code --heads \
+               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
+            echo "NDI-matlab HAS branch '$want' -- reading it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out NDI-matlab (sibling, read by coverage.py)
+        uses: actions/checkout@v4
+        # The same shallow, sparse checkout the single job made, so the rung
+        # step below behaves exactly as it did there (it fetches the tip of
+        # main into this clone when origin/main is absent). continue-on-error
+        # as before: a missing NDI makes the rung step's universe check FAULT,
+        # loudly, rather than this step hiding it.
+        continue-on-error: true
+        with:
+          repository: VH-Lab/NDI-matlab
+          ref: ${{ steps.ndi-ref.outputs.ref }}
+          path: NDI-matlab
+          fetch-depth: 1
+          sparse-checkout: src/ndi/+ndi/+migrate
+          sparse-checkout-cone-mode: true
+
+      - name: Download every corpus report
+        # merge-multiple into one tree. upload-artifact roots each zip at the
+        # least common ancestor of its two search paths (the repo root), so the
+        # reports land at corpus-reports/tests/corpus-reports/; every reader
+        # below searches recursively. continue-on-error: zero artifacts must
+        # reach the check below and fail THERE, by name.
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: corpus-report-*
+          merge-multiple: true
+          path: corpus-reports
+
+      - name: Every expected corpus reported (expected vs found)
+        # THE SPLIT'S OWN GATE. The single job could not lose a corpus between
+        # running it and digesting it; a fan-out can (a matrix entry that died,
+        # an artifact that did not upload, a skipped test). Expected comes from
+        # tests/+did2/+unittest/testCorpus*.m, found from the downloaded
+        # reports; any expected corpus without a <NAME>-summary.json fails the
+        # job. The steps below still run (always()) so the evidence survives.
+        if: always()
+        run: python3 tools/corpus_matrix.py check corpus-reports tests/corpus-reports
+
       - name: Corpus census digest (END OF LOG -- reachable by a log tail)
-        # The corpus tests already print every number below, but they run FIRST
-        # in a ~1700-line, 2.5-hour log, so the census is unreachable by a log
+        # The corpus tests already print every number below, but inside their
+        # own jobs' multi-hour logs, so the census is unreachable by a log
         # tail and effectively write-only: reading it meant downloading the
         # artifact. This step re-prints the same figures from the saved JSON at
         # the very END, where `get_job_logs --tail` lands.
@@ -267,26 +619,22 @@ jobs:
         # quarantines and block the 0-quarantine gate.
         #
         # BOTH ROOTS. MATLAB's pwd during these corpora is `tests/`, so the
-        # reports land in `tests/corpus-reports/` and this step -- which named
-        # only the repo-root path -- has been printing NO REPORTS FOUND while
-        # exiting 0. The digest now fails loudly when it aggregates nothing.
+        # reports land in `tests/corpus-reports/`; here they arrive by download
+        # under `corpus-reports/` (see above). The digest searches recursively
+        # and fails loudly when it aggregates nothing.
         if: always()
         run: python3 tools/census_digest.py corpus-reports tests/corpus-reports
 
       - name: V_eta CORPUS-PROVEN rung (feed the did-schema coverage ladder)
         # THE ONLY RUNG THAT CAN HONESTLY SAY A CLASS IS DONE, and until this
         # step it read `0 yes / 0 no / 102 NOT MEASURED` for one reason: the
-        # reports that answer it are written HERE, by the corpus tests above,
+        # reports that answer it are written by the corpus jobs above,
         # and the tool that reads them lives in did-schema. Both halves were
         # already written. Nothing carried the evidence across.
         #
-        # THE TWO THINGS IT NEEDS ARE IN THIS JOB, WHICH IS WHY THE STEP IS
-        # HERE AND NOT IN test-corpus.yml. `test-code` is a SINGLE job: the
-        # did-schema checkout is made at the top of it (`path: did-schema`) and
-        # the corpus reports are on disk by the time the digest above runs.
-        # test-corpus.yml is two jobs -- `corpus` checks out did-schema, and
-        # `census` downloads the reports -- so over there the reports and the
-        # tool never coexist and this step could not run as written.
+        # THE TWO THINGS IT NEEDS ARE IN THIS JOB: the did-schema checkout is
+        # made at the top of it (`path: did-schema`) and the corpus reports are
+        # downloaded from every corpus job above.
         #
         # IT INVOKES, IT DOES NOT REIMPLEMENT. The verdict is coverage.py's
         # `corpus_verdict()`; this step finds the reports, hands them over,
@@ -355,13 +703,6 @@ jobs:
           python3 did-schema/tools/bar2_gap.py \
               corpus-reports tests/corpus-reports || true
 
-      - name: Push SVG badges to badges branch
-        if: always() && env.SHOULD_PUSH_BADGES == 'true'
-        uses: ./.github/actions/push-badges-to-branch
-        with:
-          source-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload corpus discovery reports
         # Discovery-mode corpus tests (e.g., testCorpus20211116) write
         # JSON summaries into corpus-reports/. Upload them as a CI
@@ -384,10 +725,3 @@ jobs:
             tests/corpus-reports/
             corpus-proven/
           if-no-files-found: warn
-
-      - name: Upload code coverage report to Codecov
-        uses: codecov/codecov-action@v4
-        if: ${{ env.CODECOV_TOKEN != '' }}
-        with:
-          token: ${{ env.CODECOV_TOKEN }}
-          files: docs/reports/codecoverage.xml
