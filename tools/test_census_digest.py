@@ -2336,7 +2336,7 @@ class TestLawnPlateRendering(ThreePassCase):
             "refused_no_image_row": 0, "refused_image_row_ambiguous": 0,
             "refused_image_row_has_no_plate_key": 0, "refused_no_plate_row": 0,
             "refused_plate_row_ambiguous": 0, "refused_lawn_no_exp_id": 0,
-            "member_of_relations_emitted": 28,
+            "contained_in_relations_emitted": 28,
             "withheld_plate_tier_not_minted": 0,
             "withheld_lawn_tier_not_minted": 2, "refused_total": 0,
             "celegans_patch_subjects_seen": 40,
@@ -2360,7 +2360,7 @@ class TestLawnPlateRendering(ThreePassCase):
         self.assertEqual(failed, [])
         self.assertIn("did2.convert.resolveLawnPlateSubjects", text)
         self.assertIn("SUBJECTS minted", text)
-        self.assertIn("member_of EDGES emitted", text)
+        self.assertIn("contained_in EDGES emitted", text)
 
     def test_the_denominator_prints_first_and_unconditionally(self):
         self._corpus("A", lawn_plate_subjects=self._lp())
@@ -2441,7 +2441,8 @@ class TestLawnPlateRendering(ThreePassCase):
         text, _ = self.run_digest()
         self.assertIn("COLUMNS matched by key (not rows)", text)
         self.assertIn("SESSIONS holding any of those", text)
-        self.assertIn("member_of EDGES emitted (edges, not rows)", text)
+        self.assertIn("contained_in EDGES emitted (edges, not rows)", text)
+        self.assertNotIn("member_of EDGES emitted", text)
 
     def test_a_missing_counter_prints_absent_not_zero(self):
         rep = self._lp()

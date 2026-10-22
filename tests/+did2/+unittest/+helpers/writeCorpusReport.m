@@ -355,7 +355,7 @@ if isfield(result, 'response_parameters_fold')
 end
 
 % did2.convert.resolveLawnPlateSubjects -- the E. coli lawn/plate subject tiers,
-% their `member_of` join and the (experiment, plate, patch) identifier (team,
+% their `contained_in` join and the (experiment, plate, patch) identifier (team,
 % 2026-08-11). Persisted for the reasons the passes above are, plus three that
 % are specific to it:
 % (1) FOUR STATES THAT MUST NOT BE SUMMED. "no E. coli tables in this corpus",

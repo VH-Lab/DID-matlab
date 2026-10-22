@@ -202,7 +202,7 @@ def blank_report():
         refused_no_image_row=0, refused_image_row_ambiguous=0,
         refused_image_row_has_no_plate_key=0, refused_no_plate_row=0,
         refused_plate_row_ambiguous=0, refused_lawn_no_exp_id=0,
-        member_of_relations_emitted=0,
+        contained_in_relations_emitted=0,
         withheld_plate_tier_not_minted=0, withheld_lawn_tier_not_minted=0,
         celegans_patch_subjects_seen=0, celegans_patch_subjects_relabelled=0,
         celegans_patch_subjects_already_triple=0,
@@ -425,13 +425,13 @@ def run(batch):
         if m['kind'] != 3:
             continue
         if m['plate_key'] not in plate_subject:
-            if 'M_EMIT_DANGLING_MEMBER_OF' not in MUT:
+            if 'M_EMIT_DANGLING_CONTAINED_IN' not in MUT:
                 rep['withheld_plate_tier_not_minted'] += 1
                 continue
-            rep['member_of_relations_emitted'] += 1
+            rep['contained_in_relations_emitted'] += 1
             appended += 1
             continue
-        rep['member_of_relations_emitted'] += 1
+        rep['contained_in_relations_emitted'] += 1
         appended += 1
     rep['documents_appended'] = appended
     return rep, minted
@@ -618,7 +618,7 @@ def c_two_tiers():
     assert rep['plate_subjects_minted'] == 1, rep
     assert rep['lawn_subjects_minted'] == 1, rep
     assert rep['chains_resolved'] == 1, rep
-    assert rep['member_of_relations_emitted'] == 1, rep
+    assert rep['contained_in_relations_emitted'] == 1, rep
     assert rep['plate_observations_emitted'] == 4, rep
     assert rep['lawn_observations_emitted'] == 8, rep
     assert rep['documents_appended'] == 15, rep
@@ -653,7 +653,7 @@ def c_plate_no_measures():
     assert rep['plate_rows_with_no_values_at_all'] == 0, rep
     assert rep['plate_subjects_minted'] == 0, rep
     assert rep['lawn_subjects_minted'] == 1, rep
-    assert rep['member_of_relations_emitted'] == 0, rep
+    assert rep['contained_in_relations_emitted'] == 0, rep
     assert rep['withheld_plate_tier_not_minted'] == 1, rep
 
 
@@ -778,10 +778,10 @@ def c_no_plate_row_refuses():
 
 
 check('token rule (5 corpus-proven pairs)', c_token_rule)
-check('two tiers + member_of', c_two_tiers)
+check('two tiers + contained_in', c_two_tiers)
 check('the (exp, plate, patch) triple', c_triple)
 check('no expID -> no mint', c_no_exp_no_mint)
-check('plate with no measures -> no subject, member_of withheld',
+check('plate with no measures -> no subject, contained_in withheld',
       c_plate_no_measures)
 check('"no values" and "untypable values" stay apart', c_two_empty_states_apart)
 check('the join is session-scoped', c_session_scope)

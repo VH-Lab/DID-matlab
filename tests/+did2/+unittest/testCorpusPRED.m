@@ -192,7 +192,7 @@ result = did2.unittest.helpers.runBatchPass(result, ...
         'TargetVersion', 'V_eta'));
 
 % TEAM DECISION 2026-08-11: the E. coli lawns and plates are subjects in two
-% tiers joined by `member_of`, minted only where a tier has measurements, and a
+% tiers joined by `contained_in`, minted only where a tier has measurements, and a
 % patch subject's `local_identifier` is the (experiment, plate, patch) triple.
 % Kept in step with runCorpusDiscovery and testFixtureCorpus, in the SAME ORDER,
 % for the same reason as the three passes above: a post-pass wired into some

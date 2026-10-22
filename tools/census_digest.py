@@ -780,7 +780,7 @@ POST_PASSES = [
         ("refused_no_plate_row", "  refused: no plate row"),
         ("refused_plate_row_ambiguous", "  refused: two plate rows claim the key"),
         ("refused_lawn_no_exp_id", "  refused: no expID for that plate"),
-        ("member_of_relations_emitted", "  member_of EDGES emitted (edges, not rows)"),
+        ("contained_in_relations_emitted", "  contained_in EDGES emitted (edges, not rows)"),
         ("withheld_plate_tier_not_minted", "  edge withheld: plate tier not minted"),
         ("withheld_lawn_tier_not_minted", "  edge withheld: lawn tier not minted"),
         # EXCLUDES the C. elegans relabel refusals below -- totalRefusals()
@@ -817,7 +817,7 @@ POST_PASSES = [
         ("local_identifier_collisions_across_sessions_only", "  of them ACROSS sessions only"),
         ("local_identifier_collisions_unclassifiable_no_session_id", "  of them UNCLASSIFIABLE (no session id)"),
         ("subjects_quarantined", "QUARANTINED: subjects"),
-        ("statements_quarantined", "QUARANTINED: observations + member_of"),
+        ("statements_quarantined", "QUARANTINED: observations + contained_in"),
         ("documents_appended", "documents appended"),
         # NOT consumed, deliberately: the typed measures are stored twice until
         # a separate verify-before-delete step says otherwise.
@@ -4972,7 +4972,7 @@ def _render_lawn_plate_reading(rep, p):
     withheld_plate = _int_or_none(rep.get("withheld_plate_tier_not_minted")) or 0
     withheld_lawn = _int_or_none(rep.get("withheld_lawn_tier_not_minted")) or 0
     if withheld_plate or withheld_lawn:
-        p("          %8d  member_of edge(s) WITHHELD (%d plate tier, %d lawn"
+        p("          %8d  contained_in edge(s) WITHHELD (%d plate tier, %d lawn"
           % (withheld_plate + withheld_lawn, withheld_plate, withheld_lawn))
         p("                    tier). THIS IS NOT A LOSS AND NOT A REFUSAL. The")
         p("                    team's refinement makes a tier CONDITIONAL ON THE")
@@ -5003,7 +5003,7 @@ def _render_lawn_plate_reading(rep, p):
     if any(v for _k, v in quar):
         p("          *** %s. A QUARANTINED SUBJECT TAKES ITS"
           % ", ".join("%s=%d" % (k, v) for k, v in quar))
-        p("          *** OBSERVATIONS AND ITS member_of WITH IT: the pass emits")
+        p("          *** OBSERVATIONS AND ITS contained_in WITH IT: the pass emits")
         p("          *** nothing that points at a body which did not survive")
         p("          *** validation, so an observation count that looks short is")
         p("          *** explained here rather than upstream.")

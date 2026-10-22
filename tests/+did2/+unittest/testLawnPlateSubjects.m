@@ -1,6 +1,6 @@
 function tests = testLawnPlateSubjects
 %TESTLAWNPLATESUBJECTS did2.convert.resolveLawnPlateSubjects -- the E. coli
-%   lawn/plate subject tiers, their `member_of` join, and the
+%   lawn/plate subject tiers, their `contained_in` join, and the
 %   (experiment, plate, patch) identifier.
 %
 %   STATUS: WRITTEN 2026-08-11 in a container with no MATLAB and no Octave, and
@@ -29,9 +29,12 @@ function tests = testLawnPlateSubjects
 %   property that a test written from the same premise as the code would not
 %   catch:
 %
-%     1. TWO TIERS + `member_of`. The failure to catch is an edge that dangles,
-%        so `testTheTwoTiersAndTheMemberOfEdge` asserts the edge VALUES resolve
-%        to documents that are in the batch, not merely that an edge exists.
+%     1. TWO TIERS + `contained_in` (lawn in its plate; was `member_of` until
+%        did-schema V_eta_relation_inheritance_plan.md [lawn in plate], Jess
+%        Haley 2026-10-22). The failure to catch is an edge that dangles, so
+%        `testTheTwoTiersAndTheContainedInEdge` asserts the edge VALUES resolve
+%        to documents that are in the batch, not merely that an edge exists,
+%        and that the relation is contained_in BY NODE and is NOT member_of.
 %     2. A TIER IS MINTED ONLY WHERE IT HAS MEASUREMENTS. The failure to catch
 %        is a subject with nothing attached -- so the tests assert BOTH that no
 %        subject was minted AND that the three "why not" states are counted
@@ -149,8 +152,8 @@ end
 
 % ===================== the decision itself =================================
 
-function testTheTwoTiersAndTheMemberOfEdge(testCase)
-%TESTTHETWOTIERSANDTHEMEMBEROFEDGE The happy path, asserted at the edge VALUES.
+function testTheTwoTiersAndTheContainedInEdge(testCase)
+%TESTTHETWOTIERSANDTHECONTAINEDINEDGE The happy path, asserted at the edge VALUES.
 %
 %   Not "a directed_relation exists": that would pass for an edge pointing at
 %   nothing, which is a gating orphan and the one outcome this pass may not
@@ -165,7 +168,9 @@ verifyEqual(testCase, rep.plate_subjects_minted, 1);
 verifyEqual(testCase, rep.lawn_subjects_minted, 1);
 verifyEqual(testCase, rep.chains_attempted, 1);
 verifyEqual(testCase, rep.chains_resolved, 1);
-verifyEqual(testCase, rep.member_of_relations_emitted, 1);
+verifyEqual(testCase, rep.contained_in_relations_emitted, 1);
+verifyFalse(testCase, isfield(rep, 'member_of_relations_emitted'), ...
+    'the edge is contained_in (did-schema [lawn in plate]); no member_of counter');
 verifyEqual(testCase, rep.withheld_plate_tier_not_minted, 0);
 verifyEqual(testCase, rep.withheld_lawn_tier_not_minted, 0);
 
@@ -174,15 +179,25 @@ verifyEqual(testCase, rep.withheld_lawn_tier_not_minted, 0);
 verifyEqual(testCase, rep.plate_observations_emitted, 4);
 verifyEqual(testCase, rep.lawn_observations_emitted, 8);
 
+verifyNumElements(testCase, findClass(out, 'directed_relation'), 1, ...
+    'one edge: the lawn in its plate');
 rel = firstOfClass(testCase, out, 'directed_relation');
-verifyEqual(testCase, rel.directed_relation.relation.name, 'member_of');
-verifyEqual(testCase, rel.directed_relation.relation.node, 'RO:0002350');
+% did-schema [lawn in plate] (Jess Haley 2026-10-22): a lawn is contained_in
+% its plate, NOT member_of it. Matched BY NODE, as code compares relations
+% ([vocabulary nodes]); the stored name is whatever the schema's row says.
+verifyEqual(testCase, rel.directed_relation.relation.node, 'RO:0001025');
+verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, ...
+    'relation', 'contained_in'), 'the lawn-plate edge is contained_in');
+verifyFalse(testCase, did2.build.isVocabulary(rel.directed_relation.relation, ...
+    'relation', 'member_of'), 'a plate is a material, not a group: no member_of');
+verifyNotEmpty(testCase, rel.directed_relation.relation.name, ...
+    'the builder completes the name from the binding row');
 
 % THE ASSERTION THAT MATTERS: both ends resolve, and to the RIGHT tiers.
 child  = documentById(out, depValue(rel, 'child_id'));
 parent = documentById(out, depValue(rel, 'parent_id'));
-verifyNotEmpty(testCase, child,  'the member end dangles -- a gating orphan');
-verifyNotEmpty(testCase, parent, 'the group end dangles -- a gating orphan');
+verifyNotEmpty(testCase, child,  'the contained end dangles -- a gating orphan');
+verifyNotEmpty(testCase, parent, 'the container end dangles -- a gating orphan');
 verifyEqual(testCase, child.entity.description,  'bacterial lawn (a bacterial patch)');
 verifyEqual(testCase, parent.entity.description, 'bacterial plate (a plate of lawns)');
 
@@ -246,7 +261,7 @@ plate = dropColumn(plate, 'ExperimentSessionIdentifier');
 verifyEqual(testCase, rep.chains_attempted, 1, 'denominator: the chain was tried');
 verifyEqual(testCase, rep.refused_lawn_no_exp_id, 1);
 verifyEqual(testCase, rep.lawn_subjects_minted, 0);
-verifyEqual(testCase, rep.member_of_relations_emitted, 0);
+verifyEqual(testCase, rep.contained_in_relations_emitted, 0);
 % and the PLATE tier is refused for the same reason and counted on its own line
 verifyEqual(testCase, rep.plate_rows_refused_no_exp_id, 1);
 verifyEqual(testCase, rep.plate_subjects_minted, 0);
@@ -256,13 +271,13 @@ verifyEqual(testCase, rep.lawn_rows_with_measurements, 1);
 verifyEmpty(testCase, subjectsOf(out), 'no subject may be minted unnamed');
 end
 
-function testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsMemberOf(testCase)
-%TESTAPLATEWITHNOMEASUREMENTSMINTSNOSUBJECTANDWITHHOLDSMEMBEROF The refinement:
+function testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsContainedIn(testCase)
+%TESTAPLATEWITHNOMEASUREMENTSMINTSNOSUBJECTANDWITHHOLDSCONTAINEDIN The refinement:
 %   "It's only necessary to make all subjects if we take measurements of both".
 %
 %   The plate row keeps its identity and its timestamps but loses all four
 %   typed measures. The LAWN still mints (it has its own measurements and the
-%   chain still resolves through the plate ROW for expID), and the `member_of`
+%   chain still resolves through the plate ROW for expID), and the `contained_in`
 %   is withheld because both ends must exist.
 plate = ecoliPlateRow();
 for name = {'BacterialOD600Measurement', 'BacterialOD600TargetAtSeeding', ...
@@ -278,8 +293,8 @@ verifyEqual(testCase, rep.plate_rows_with_no_values_at_all, 0);
 verifyEqual(testCase, rep.plate_subjects_minted, 0);
 verifyEqual(testCase, rep.lawn_subjects_minted, 1);
 verifyEqual(testCase, rep.chains_resolved, 1);
-verifyEqual(testCase, rep.member_of_relations_emitted, 0, ...
-    'both ends must exist -- a one-ended member_of is a gating orphan');
+verifyEqual(testCase, rep.contained_in_relations_emitted, 0, ...
+    'both ends must exist -- a one-ended contained_in is a gating orphan');
 verifyEqual(testCase, rep.withheld_plate_tier_not_minted, 1, ...
     'and WHICH tier was missing is a counter, not a silence');
 verifyEmpty(testCase, findClass(out, 'directed_relation'));
@@ -653,7 +668,7 @@ end
 function testTheMintedDocumentsValidateAgainstTheRealVEtaSchema(testCase)
 %TESTTHEMINTEDDOCUMENTSVALIDATEAGAINSTTHEREALVETASCHEMA The only test here that
 %   proves the pass and the schema agree; every other one would pass just as
-%   happily against a `member_of` shape the validator rejects. Needs the
+%   happily against a `contained_in` shape the validator rejects. Needs the
 %   assembled V_eta set on DID_SCHEMA_PATH, which the quick gate builds.
 %
 %   THE 0-QUARANTINE GATE IS THE POINT. This pass appends documents to a corpus
@@ -673,9 +688,9 @@ verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 verifyEqual(testCase, rep.subjects_quarantined, 0);
 verifyEqual(testCase, rep.statements_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, rep.member_of_relations_emitted, 1);
+verifyEqual(testCase, rep.contained_in_relations_emitted, 1);
 verifyEqual(testCase, rep.documents_appended, 16, ...
-    '2 entities + 12 observations + 1 member_of + 1 session time reference (#88: an observation needs one)');
+    '2 entities + 12 observations + 1 contained_in + 1 session time reference (#88: an observation needs one)');
 % and the whole batch is reference-clean, which is the gate that actually runs.
 % #88: `base.session_id` is the `session_id` EDGE, and a session time reference
 % names the session as its referent, so both name the session document -- which

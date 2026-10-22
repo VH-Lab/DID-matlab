@@ -1,7 +1,7 @@
 function [result, report] = resolveLawnPlateSubjects(result, options)
 %RESOLVELAWNPLATESUBJECTS Mint the bacterial LAWN and PLATE subject tiers, join
-%   them with `member_of`, and give every patch subject the (experiment, plate,
-%   patch) identifier the team asked for.
+%   them with `contained_in` (lawn in its plate), and give every patch subject
+%   the (experiment, plate, patch) identifier the team asked for.
 %
 %   [RESULT, REPORT] = did2.convert.resolveLawnPlateSubjects(RESULT) takes the
 %   struct did2.convert.v1_to_v2 returns (after the sibling post-passes) and
@@ -64,8 +64,22 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %        subject where each lawn is a member of it"
 %
 %           lawn  (a bacterial patch)  -> subject
-%           plate (a plate of lawns)   -> subject, the GROUP
-%           lawn --member_of--> plate
+%           plate (a plate of lawns)   -> subject
+%           lawn --contained_in--> plate
+%
+%   THE EDGE WAS `member_of` UNTIL 2026-10-22. did-schema
+%   schemas/V_eta_relation_inheritance_plan.md, verbatim:
+%
+%       "Decided by Jess Haley, 2026-10-22 [lawn in plate]: a bacterial lawn
+%        is `contained_in` its plate, not `member_of` it: a plate is a
+%        material, not a group, so [member_of endpoints] rejects it, and
+%        [contained_in endpoints] already allows material to material"
+%
+%   So the edge is `contained_in` (RO:0001025): child the lawn (`culture`),
+%   parent the plate (`material`), both in the binding row's child_types /
+%   parent_types. The plate's statements pass to the lawn as `context` (the
+%   row's `passes`), not `distributive`. The relation's node and name are the
+%   schema's binding row's (see makeContainedIn).
 %
 %   The refinement of the same day, verbatim:
 %
@@ -76,7 +90,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   subject is minted only where that tier actually has something measured about
 %   it; a subject with nothing attached is the hollow document
 %   did2.validate.isFragment exists to catch, and this pass must not manufacture
-%   them. Where only one tier is minted there is no `member_of` to emit -- BOTH
+%   them. Where only one tier is minted there is no `contained_in` to emit -- BOTH
 %   ENDS MUST EXIST -- and the withholding is COUNTED, by tier.
 %
 %   And the identifier directive of the same day, verbatim:
@@ -105,7 +119,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %
 %   The patch row carries NEITHER `plateID` NOR `expID`. So the triple is not
 %   available to any single-document migrator, and it is produced by the SAME
-%   two-hop chain the membership needs:
+%   two-hop chain the containment edge needs:
 %
 %       patch --imageID--> image row --plateID--> plate row --> expID
 %
@@ -184,7 +198,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   ---------------------------------------------------------------------
 %   WHY IT IS A BATCH POST-PASS AND NOT A MIGRATOR
 %   ---------------------------------------------------------------------
-%   Both the membership and the identifier need documents a single-document
+%   Both the containment edge and the identifier need documents a single-document
 %   migrator cannot see, and they need only documents ALREADY IN THE MIGRATED
 %   BATCH -- no session, no database, no file bytes -- which is the same
 %   criterion that put `epochMint` and `resolveSessionAnchors` DID-side.
@@ -420,7 +434,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %       REFERENCE" rule names. Pass-1 code is not changed on that point.
 %     * NO IMAGE SUBJECT. An image is not a subject; the image rows are read as
 %       the JOIN TABLE they are and are left exactly as pass 1 emitted them.
-%     * NO EDGE IT CANNOT RESOLVE. Every `member_of` is emitted only after BOTH
+%     * NO EDGE IT CANNOT RESOLVE. Every `contained_in` is emitted only after BOTH
 %       endpoint subjects have been minted AND have survived validation into
 %       `migrated`. A refusal is a no-op; a dangling edge is a gating orphan.
 %
@@ -482,7 +496,7 @@ report = struct( ...
     'lawn_rows_refused_no_identity_keys',        0, ...
     'lawn_subjects_minted',                      0, ...
     'lawn_observations_emitted',                 0, ...
-    ... % --- the two-hop chain, which produces BOTH the triple and the group
+    ... % --- the two-hop chain, which produces BOTH the triple and the plate
     'chains_attempted',                          0, ...
     'chains_resolved',                           0, ...
     'refused_no_image_row',                      0, ...
@@ -491,7 +505,7 @@ report = struct( ...
     'refused_no_plate_row',                      0, ...
     'refused_plate_row_ambiguous',               0, ...
     'refused_lawn_no_exp_id',                    0, ...
-    'member_of_relations_emitted',               0, ...
+    'contained_in_relations_emitted',            0, ...
     'withheld_plate_tier_not_minted',            0, ...
     'withheld_lawn_tier_not_minted',             0, ...
     'refused_total',                             0, ...
@@ -784,7 +798,7 @@ for k = 1:n
         localId = plateHandle(expId, plateId);
         description = 'bacterial plate (a plate of lawns)';
     else
-        % THE TWO-HOP CHAIN, which produces the triple AND the group. Refusals
+        % THE TWO-HOP CHAIN, which produces the triple AND the plate. Refusals
         % are per-hop so a failure says WHICH hop.
         report.chains_attempted = report.chains_attempted + 1;
         imageKey = joinKey(sessions{k}, idVals{1});
@@ -846,7 +860,7 @@ for k = 1:n
     pendingObs{end+1} = obs; %#ok<AGROW>
 end
 
-% A lawn row that was never minted has no member end, so its edge is withheld
+% A lawn row that was never minted has no contained end, so its edge is withheld
 % too. Counted from the lawn side so the two tiers stay separable, which is what
 % the refinement asked for.
 report.withheld_lawn_tier_not_minted = ...
@@ -991,11 +1005,11 @@ for j = 1:numel(subjectMeta)
 end
 
 % ==========================================================================
-% STAGE D -- the observations and the member_of edges.
+% STAGE D -- the observations and the contained_in edges.
 % ==========================================================================
 % Everything built here carries an EDGE, so it is built only for subjects that
 % actually landed. An observation whose subject quarantined would be a gating
-% orphan; a `member_of` whose parent was never minted would be the same. Both
+% orphan; a `contained_in` whose parent was never minted would be the same. Both
 % are refused and counted instead.
 statementBodies = {};
 statementAnchor = {};    % the session anchor each observation names ('' for a relation)
@@ -1027,13 +1041,13 @@ for j = 1:numel(subjectMeta)
     if ~isKey(plateSubjectId, plateKey)
         % The chain resolved -- the lawn could not have been minted otherwise --
         % so the plate ROW exists. The plate tier simply had nothing measured
-        % about it, so no group subject was warranted. BOTH ENDS MUST EXIST, so
+        % about it, so no plate subject was warranted. BOTH ENDS MUST EXIST, so
         % no relation, and the withholding is named by tier.
         report.withheld_plate_tier_not_minted = ...
             report.withheld_plate_tier_not_minted + 1;
         continue;
     end
-    statementBodies{end+1} = makeMemberOf(bodies{subjectMeta(j).idx}, ...
+    statementBodies{end+1} = makeContainedIn(bodies{subjectMeta(j).idx}, ...
         subjectMeta(j).docId, plateSubjectId(plateKey)); %#ok<AGROW>
     statementKind(end+1) = 0; %#ok<AGROW>
     statementAnchor{end+1} = ''; %#ok<AGROW>
@@ -1069,8 +1083,8 @@ if ~isempty(statementBodies)
                 report.lawn_observations_emitted = ...
                     report.lawn_observations_emitted + 1;
             otherwise
-                report.member_of_relations_emitted = ...
-                    report.member_of_relations_emitted + 1;
+                report.contained_in_relations_emitted = ...
+                    report.contained_in_relations_emitted + 1;
         end
     end
 end
@@ -1385,13 +1399,22 @@ body = did2.build.statement(direction, char(subjectId), variable, v, ...
     'TimeReferenceIds', {char(anchorId)}, 'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
-function rel = makeMemberOf(srcBody, lawnId, plateId)
-%MAKEMEMBEROF lawn --member_of--> plate.
-%   `member_of` (RO:0002350) on `directed_relation`: child the member (the
-%   lawn), parent the group (the plate). NO time reference: a lawn's
-%   membership of its plate is a standing structural fact, not an event.
+function rel = makeContainedIn(srcBody, lawnId, plateId)
+%MAKECONTAINEDIN lawn --contained_in--> plate.
+%   `contained_in` (RO:0001025) on `directed_relation`: child the contained
+%   (the lawn), parent the container (the plate) -- did-schema
+%   V_eta_relation_inheritance_plan.md [lawn in plate], Jess Haley 2026-10-22.
+%   The term carries the node did2.build.vocabulary reads from the loaded
+%   schema's binding row, and the builder completes the NAME from the field's
+%   bound value set by that node (fillField>completeFromValueSet), so the
+%   document carries the schema's node and label, not a spelling held here.
+%   NO time reference, as before: the row is `timed: true`, which declares
+%   that a contained_in MAY carry one (did-schema V_eta_study_plan.md,
+%   "contained_in is timed"; nothing enforces it), and the source table gives
+%   no window for a lawn on its plate.
 [sid, ds] = sessionAndTime(srcBody);
-rel = did2.build.directedRelation(char(lawnId), char(plateId), 'member_of', ...
+relation = did2.build.term(did2.build.vocabulary('relation', 'contained_in'), 'contained_in');
+rel = did2.build.directedRelation(char(lawnId), char(plateId), relation, ...
     'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
