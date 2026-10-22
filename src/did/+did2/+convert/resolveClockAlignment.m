@@ -1,5 +1,5 @@
 function [result, report] = resolveClockAlignment(result, options)
-%RESOLVECLOCKALIGNMENT V_eta second pass: un-gate the `syncgraph` fold.
+%RESOLVECLOCKALIGNMENT V_eta second pass: the `syncgraph` and `filefind` syncrule folds.
 %
 %   [RESULT, REPORT] = did2.convert.resolveClockAlignment(RESULT) takes the
 %   struct returned by did2.convert.v1_to_v2 (after the sibling post-passes) and
@@ -13,15 +13,38 @@ function [result, report] = resolveClockAlignment(result, options)
 %   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
 %   DID-schema tools/coverage.py.
 %
-%   BATCH-PASS-CONSUMES: syncgraph
+%   BATCH-PASS-CONSUMES: syncgraph, syncrule
 %   BATCH-PASS-EMITS: syncgraph -> document: clock_alignment_policy
+%   BATCH-PASS-EMITS: syncrule -> document: clock_alignment_configuration, acquisition_channels
 %
-%   NO ROW FOR `syncrule`. A file-based `syncrule` (a filematch rule) reaches its
-%   `clock_alignment_configuration` in PASS 1 -- `clock_alignment_configuration`
-%   declares no `session_id`, so its migrator needs no session lookup and no
-%   batch pass. Only `syncgraph` gates on the session, because
-%   `clock_alignment_policy.session_id` is REQUIRED and names the session
-%   DOCUMENT's base.id, which a single-document migrator cannot resolve.
+%   `syncrule`: ONLY the `ndi.time.syncrule.filefind` rule is consumed here. A
+%   file-based `filematch` rule reaches its `clock_alignment_configuration` in
+%   PASS 1 (it names no device). A filefind rule names its two acquisition
+%   systems BY NAME (parameters daqsystem1 / daqsystem2, filefind.m:32, matched
+%   by string against epochnode objectname at filefind.m:133-134), and
+%   `acquisition_channels` names its system only by an `acquisition_system_id`
+%   EDGE, so pass 1 passes it through (+migrators_j/syncrule.m). This pass
+%   resolves each name, WITHIN THE RULE'S OWN SESSION, against the migrated
+%   `acquisition_system.name` (v1 daqsystem base.name, preserved by
+%   +migrators_j/daqsystem.m), stamps the two ids as transient
+%   `resolved_acquisition_system_id` deps and re-runs +migrators_j/syncrule,
+%   which emits the [sync configuration] shape: the configuration (base.id
+%   preserved, number_fullpath_matches and syncfilename as declared
+%   method.parameters), two `acquisition_channels` (each with its resolved
+%   `acquisition_system_id`) as the UNORDERED `acquisition_channels_id` pair,
+%   and the `software` entity. The channel-based rules (commonTriggers /
+%   randomPulses, which also carry channel strings) are NOT consumed here and
+%   stay passthroughs, counted as `syncrule_not_filefind`.
+%
+%   REFUSAL, NOT INVENTION, FOR THE RULE TOO. A name that resolves to ZERO
+%   systems in the session, or to MORE THAN ONE, leaves the rule a passthrough
+%   and is counted (syncrule_refused_name_missing / _name_ambiguous, per rule;
+%   syncrule_names_missing / _names_ambiguous, per name). No system is minted
+%   for a missing name and no first match is taken for an ambiguous one. A rule
+%   on the empty-session sentinel ("applies in any session") has no session to
+%   resolve within and is refused as syncrule_refused_no_session_id. A fold is
+%   ALL OR NOTHING: if any of its bodies quarantines on re-validation, the
+%   original rule is kept and none of the fold's bodies is appended.
 %
 %   ---------------------------------------------------------------------
 %   WHY A BATCH PASS, AND WHY THIS ONE RATHER THAN A ROW IN epochMint
@@ -91,6 +114,24 @@ report = struct( ...
     'policies_folded',              0, ...
     'extra_bodies_emitted',         0, ...
     'fold_quarantined',             0, ...
+    ... % the filefind syncrule arm. syncrules_seen is every `syncrule` still
+    ... % in the batch after pass 1 (a passthrough); read the folds beside it.
+    'acquisition_systems_indexed',          0, ...
+    'syncrules_seen',                       0, ...
+    'syncrule_filefind_seen',               0, ...
+    'syncrule_not_filefind',                0, ...
+    'syncrule_refused_no_session_id',       0, ...
+    'syncrule_refused_no_system_name',      0, ...
+    'syncrule_refused_name_missing',        0, ...
+    'syncrule_refused_name_ambiguous',      0, ...
+    'syncrule_names_missing',               0, ...
+    'syncrule_names_ambiguous',             0, ...
+    'syncrule_refused_migrator_declined',   0, ...
+    'syncrule_refused_total',               0, ...
+    'syncrule_configurations_folded',       0, ...
+    'syncrule_channels_emitted',            0, ...
+    'syncrule_software_emitted',            0, ...
+    'syncrule_fold_quarantined',            0, ...
     'ran',                          false);
 result.clock_alignment_fold = report;
 
@@ -141,6 +182,23 @@ for k = 1:n
         sessionDocCount(sid) = 1;
         sessionDocId(sid) = docId{k};
     end
+end
+
+% --- the filefind syncrule arm ----------------------------------------------
+% Swaps a folded rule into its own slot and APPENDS its other bodies, so the
+% indices 1..n the syncgraph arm below reads are unchanged.
+[docs, report, ruleQuarantine] = foldFilefindRules(docs, bodies, classes, ...
+    sessionId, docId, report, options);
+if ~isempty(ruleQuarantine)
+    if isfield(result, 'quarantine') && ~isempty(result.quarantine)
+        result.quarantine = [result.quarantine, ruleQuarantine];
+    else
+        result.quarantine = ruleQuarantine;
+    end
+end
+if report.syncrule_configurations_folded > 0
+    result.migrated = docs;
+    result.summary = recountSummary(result);
 end
 
 % --- fold every syncgraph whose session resolves ---------------------------
@@ -250,6 +308,188 @@ result.summary = recountSummary(result);
 result.clock_alignment_fold = report;
 end
 
+% ===================== the filefind syncrule arm ===========================
+
+function [docs, report, quarantine] = foldFilefindRules(docs, bodies, classes, ...
+        sessionId, docId, report, options)
+%FOLDFILEFINDRULES Resolve each filefind rule's two system NAMES and re-run the migrator.
+quarantine = {};
+n = numel(bodies);
+
+% (session id, acquisition_system.name) -> every acquisition_system id that
+% claims it. A cell of ids, not one id: the count is what tells a resolved
+% name from an ambiguous one.
+systemIds = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:n
+    if ~strcmp(classes{k}, 'acquisition_system'); continue; end
+    report.acquisition_systems_indexed = report.acquisition_systems_indexed + 1;
+    nm = '';
+    b = bodies{k};
+    if isfield(b, 'acquisition_system') && isstruct(b.acquisition_system) ...
+            && isfield(b.acquisition_system, 'name')
+        nm = char(b.acquisition_system.name);
+    end
+    if isempty(nm) || isempty(sessionId{k}) || isempty(docId{k}); continue; end
+    key = systemKey(sessionId{k}, nm);
+    if isKey(systemIds, key)
+        systemIds(key) = [systemIds(key), docId(k)];
+    else
+        systemIds(key) = docId(k);
+    end
+end
+
+rebuilt = {};        % every body of every attempted fold, in order
+groupOf = [];        % per rebuilt body: which attempted fold it belongs to
+slotOf  = [];        % per attempted fold: index into docs of the rule
+idsOf   = {};        % per attempted fold: base.id of each of its bodies
+for k = 1:n
+    if ~strcmp(classes{k}, 'syncrule'); continue; end
+    report.syncrules_seen = report.syncrules_seen + 1;
+    b = bodies{k};
+    block = struct();
+    if isfield(b, 'syncrule') && isstruct(b.syncrule); block = b.syncrule; end
+    impl = '';
+    if isfield(block, 'ndi_syncrule_class'); impl = char(block.ndi_syncrule_class); end
+    if ~strcmp(impl, 'ndi.time.syncrule.filefind')
+        report.syncrule_not_filefind = report.syncrule_not_filefind + 1;
+        continue;
+    end
+    report.syncrule_filefind_seen = report.syncrule_filefind_seen + 1;
+
+    sid = sessionId{k};
+    if isempty(sid) || isEmptySessionSentinel(sid)
+        report.syncrule_refused_no_session_id = report.syncrule_refused_no_session_id + 1;
+        continue;
+    end
+    params = struct();
+    if isfield(block, 'parameters') && isstruct(block.parameters) && isscalar(block.parameters)
+        params = block.parameters;
+    end
+    names = {charParam(params, 'daqsystem1'), charParam(params, 'daqsystem2')};
+    if isempty(names{1}) || isempty(names{2})
+        report.syncrule_refused_no_system_name = report.syncrule_refused_no_system_name + 1;
+        continue;
+    end
+    resolved = cell(1, 2);
+    nMissing = 0;
+    nAmbiguous = 0;
+    for j = 1:2
+        key = systemKey(sid, names{j});
+        if ~isKey(systemIds, key)
+            nMissing = nMissing + 1;
+            continue;
+        end
+        ids = systemIds(key);
+        if numel(ids) > 1
+            nAmbiguous = nAmbiguous + 1;
+            continue;
+        end
+        resolved{j} = ids{1};
+    end
+    report.syncrule_names_missing = report.syncrule_names_missing + nMissing;
+    report.syncrule_names_ambiguous = report.syncrule_names_ambiguous + nAmbiguous;
+    if nMissing > 0
+        report.syncrule_refused_name_missing = report.syncrule_refused_name_missing + 1;
+        continue;
+    end
+    if nAmbiguous > 0
+        report.syncrule_refused_name_ambiguous = report.syncrule_refused_name_ambiguous + 1;
+        continue;
+    end
+
+    stamped = b;
+    for j = 1:2
+        stamped = stampEdge(stamped, 'resolved_acquisition_system_id', resolved{j});
+    end
+    folded = did2.convert.migrators_j.syncrule(lendSessionIdField(stamped));
+    if isscalar(folded) && strcmp(classNameOf(folded{1}), 'syncrule')
+        report.syncrule_refused_migrator_declined = ...
+            report.syncrule_refused_migrator_declined + 1;
+        continue;
+    end
+    slotOf(end+1) = k; %#ok<AGROW>
+    ids = cell(1, numel(folded));
+    for j = 1:numel(folded)
+        rebuilt{end+1} = folded{j}; %#ok<AGROW>
+        groupOf(end+1) = numel(slotOf); %#ok<AGROW>
+        ids{j} = baseField(folded{j}, 'id');
+    end
+    idsOf{end+1} = ids; %#ok<AGROW>
+end
+
+report.syncrule_refused_total = report.syncrule_refused_no_session_id ...
+    + report.syncrule_refused_no_system_name ...
+    + report.syncrule_refused_name_missing ...
+    + report.syncrule_refused_name_ambiguous ...
+    + report.syncrule_refused_migrator_declined;
+
+if isempty(slotOf)
+    return;
+end
+
+out = did2.convert.v1_to_v2(rebuilt, ...
+    'Validate',      options.Validate, ...
+    'SchemaCache',   options.SchemaCache, ...
+    'TargetVersion', options.TargetVersion);
+quarantine = out.quarantine;
+
+producedById = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for j = 1:numel(out.migrated)
+    try
+        producedById(char(out.migrated{j}.get('base.id'))) = j;
+    catch
+    end
+end
+for g = 1:numel(slotOf)
+    ids = idsOf{g};
+    complete = ~isempty(ids);
+    for j = 1:numel(ids)
+        if isempty(ids{j}) || ~isKey(producedById, ids{j})
+            complete = false;
+            break;
+        end
+    end
+    if ~complete
+        % ALL OR NOTHING: the rule stays the passthrough it was, and nothing
+        % of this fold is appended (a lone acquisition_channels or a
+        % configuration missing one of its pair would be a fragment).
+        report.syncrule_fold_quarantined = report.syncrule_fold_quarantined + 1;
+        continue;
+    end
+    docs{slotOf(g)} = out.migrated{producedById(ids{1})};   % the configuration, rule's id
+    for j = 2:numel(ids)
+        d = out.migrated{producedById(ids{j})};
+        docs{end+1} = d; %#ok<AGROW>
+        switch char(d.get('document_class.class_name'))
+            case 'acquisition_channels'
+                report.syncrule_channels_emitted = report.syncrule_channels_emitted + 1;
+            otherwise
+                report.syncrule_software_emitted = report.syncrule_software_emitted + 1;
+        end
+    end
+    report.syncrule_configurations_folded = report.syncrule_configurations_folded + 1;
+end
+end
+
+function k = systemKey(sessionId, name)
+k = [char(sessionId) char(0) char(name)];
+end
+
+function v = charParam(params, name)
+v = '';
+if isstruct(params) && isfield(params, name) && ischar(params.(name))
+    v = strtrim(params.(name));
+end
+end
+
+function tf = isEmptySessionSentinel(sid)
+%ISEMPTYSESSIONSENTINEL ndi.session.empty_id(): every character '0' except '_'.
+%   The same test +migrators_j/syncgraph.m applies: the sentinel means "applies
+%   in any session", so there is no one session to resolve a name within.
+sid = char(sid);
+tf = ~isempty(sid) && all(sid == '0' | sid == '_') && any(sid == '_');
+end
+
 % ===================== helpers =============================================
 
 function b = stampSessionDocument(body, sessionDocumentId)
@@ -259,9 +499,17 @@ function b = stampSessionDocument(body, sessionDocumentId)
 %   sets `clock_alignment_policy.session_id` BY NAME from the resolved id and
 %   never copies preBody.depends_on wholesale, so this transient stamp does not
 %   reach the emitted policy -- it is read and discarded.
+b = stampEdge(body, 'session_document_id', sessionDocumentId);
+end
+
+function b = stampEdge(body, edgeName, targetId)
+%STAMPEDGE Append one transient dep (EDGENAME -> TARGETID) for a migrator to read.
+%   Used for `session_document_id` (syncgraph) and, twice per rule, for
+%   `resolved_acquisition_system_id` (filefind syncrule). Neither migrator copies
+%   preBody.depends_on, so the stamp never reaches an emitted document.
 b = body;
 if ~isfield(b, 'depends_on') || isempty(b.depends_on) || ~isstruct(b.depends_on)
-    b.depends_on = struct('name', 'session_document_id', 'value', sessionDocumentId);
+    b.depends_on = struct('name', edgeName, 'value', targetId);
     return;
 end
 % APPEND, preserving every existing edge INTACT. The existing deps came through
@@ -278,12 +526,12 @@ newdep = struct();
 for i = 1:numel(fn)
     newdep.(fn{i}) = '';
 end
-newdep.name = 'session_document_id';
+newdep.name = edgeName;
 if any(strcmp(fn, 'document_id'))
-    newdep.document_id = sessionDocumentId;
+    newdep.document_id = targetId;
 end
 if any(strcmp(fn, 'value'))
-    newdep.value = sessionDocumentId;
+    newdep.value = targetId;
 end
 d(end+1) = newdep;
 b.depends_on = d;
