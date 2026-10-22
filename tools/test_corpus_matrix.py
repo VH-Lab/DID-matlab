@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Tests for tools/corpus_matrix.py and its wiring in test-code.yml.
+"""Tests for tools/corpus_matrix.py and its wiring in test-code.yml, and the
+NDI-matlab ref fallback of test-code.yml and test-migrators-quick.yml.
 
     python3 tools/test_corpus_matrix.py
 """
@@ -146,6 +147,80 @@ class TestWorkflowWiring(unittest.TestCase):
         needs = doc["jobs"]["aggregate"]["needs"]
         self.assertIn("corpus", needs)
         self.assertFalse(doc["jobs"]["corpus"]["strategy"]["fail-fast"])
+
+
+class TestNdiRefFallback(unittest.TestCase):
+    """[NDI ref fallback] (Jess Haley, 2026-10-22, did-schema
+    V_eta_go_forward_class_audit.md): EVERY "Resolve the NDI-matlab ref" step
+    of test-code.yml (all of its jobs) and test-migrators-quick.yml tries the
+    same-name branch, then claude/v2-object-layer, then V2, then main, prints
+    the ref it took and says FALLBACK when it is not the same-name branch."""
+
+    ORDER = '"$want" claude/v2-object-layer V2 main'
+    FILES = ("test-code.yml", "test-migrators-quick.yml")
+
+    def steps(self, name):
+        path = os.path.join(REPO, ".github", "workflows", name)
+        with open(path) as fh:
+            lines = fh.read().split("\n")
+        out = []
+        for i, ln in enumerate(lines):
+            if re.match(r"^\s*- name: Resolve the NDI-matlab ref", ln):
+                ind = len(ln) - len(ln.lstrip())
+                e = next((j for j in range(i + 1, len(lines))
+                          if lines[j].strip() and
+                          len(lines[j]) - len(lines[j].lstrip()) <= ind),
+                         len(lines))
+                out.append("\n".join(x for x in lines[i:e]
+                                     if not x.lstrip().startswith("#")))
+        return out
+
+    def test_every_step_uses_the_decided_order(self):
+        total = 0
+        for name in self.FILES:
+            steps = self.steps(name)
+            self.assertGreater(len(steps), 0, "%s: no resolve step found" % name)
+            total += len(steps)
+            for st in steps:
+                self.assertIn("for ref in %s; do" % self.ORDER, st, name)
+                self.assertIn("FALLBACK", st, name)
+                self.assertIn('echo "ref=$chosen" >> "$GITHUB_OUTPUT"', st, name)
+                self.assertNotIn('echo "ref=main" >> "$GITHUB_OUTPUT"\n          fi', st,
+                                 "%s: the old straight-to-main fallback" % name)
+        # DENOMINATOR: test-code.yml has the unit and aggregate jobs' steps,
+        # test-migrators-quick.yml one.
+        print("\n--- NDI ref fallback: %d resolve step(s) checked in %d file(s) ---"
+              % (total, len(self.FILES)))
+        self.assertEqual(total, 3)
+
+    def test_the_resolver_runs_and_falls_back_in_order(self):
+        """Run one step's script with git ls-remote stubbed: only V2 and main
+        exist, so the same-name branch and the integration branch are tried
+        first and V2 is taken, printed as a FALLBACK."""
+        import subprocess
+        st = self.steps("test-code.yml")[0]
+        body = st.split("run: |", 1)[1]
+        script = "\n".join(x[10:] if x.startswith(" " * 10) else x.strip()
+                            for x in body.split("\n"))
+        script = script.replace("${{ github.head_ref || github.ref_name }}",
+                                "feature-x")
+        d = tempfile.mkdtemp()
+        stub = os.path.join(d, "git")
+        with open(stub, "w") as fh:
+            fh.write('#!/bin/sh\nfor a in "$@"; do last="$a"; done\n'
+                     'case "$last" in V2|main) exit 0;; esac\nexit 2\n')
+        os.chmod(stub, 0o755)
+        out_file = os.path.join(d, "out")
+        env = dict(os.environ, PATH=d + os.pathsep + os.environ["PATH"],
+                   GITHUB_OUTPUT=out_file)
+        p = subprocess.run(["bash", "-c", script], env=env,
+                           capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        with open(out_file) as fh:
+            self.assertEqual(fh.read().strip(), "ref=V2")
+        self.assertIn("NO branch 'feature-x'", p.stdout)
+        self.assertIn("NO branch 'claude/v2-object-layer'", p.stdout)
+        self.assertIn("FALLBACK to 'V2'", p.stdout)
 
 
 if __name__ == "__main__":

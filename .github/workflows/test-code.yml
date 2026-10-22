@@ -108,7 +108,7 @@ jobs:
       # If you edit one copy, edit both -- the confirm step below prints
       # PRESENT/ABSENT either way, so a divergence is visible in the log.
       # ---------------------------------------------------------------
-      - name: Resolve the NDI-matlab ref (falls back to main)
+      - name: Resolve the NDI-matlab ref (same name, claude/v2-object-layer, V2, main)
         id: ndi-ref
         # did2.unittest.testBatchPassWiring asserts that every batch post-pass
         # diverging between the corpus gate and PRODUCTION
@@ -116,7 +116,10 @@ jobs:
         # with a reason. It cannot do that without the file, and when the file
         # is missing it SKIPS -- loudly, but it skips.
         #
-        # THE REF FALLS BACK RATHER THAN FAILING THE JOB. Most DID-side
+        # THE REF FALLS BACK RATHER THAN FAILING THE JOB, in the decided order
+        # (same name, claude/v2-object-layer, V2, main; [NDI ref fallback]):
+        # `main` has no +ndi/+migrate, so falling straight back to it skipped
+        # the divergence check. Most DID-side
         # branches have no NDI-side twin, and a fast gate that goes red
         # because a sibling repository does not carry the same branch name is
         # a gate people delete. The chosen ref is PRINTED either way, so a run
@@ -125,14 +128,30 @@ jobs:
         # main" are different claims and must not print the same.
         run: |
           want="${{ github.head_ref || github.ref_name }}"
-          if git ls-remote --exit-code --heads \
-               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
-            echo "NDI-matlab HAS branch '$want' -- comparing against it."
-            echo "ref=$want" >> "$GITHUB_OUTPUT"
-          else
-            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
-            echo "ref=main" >> "$GITHUB_OUTPUT"
+          # Jess Haley, 2026-10-22 [NDI ref fallback] (did-schema
+          # V_eta_go_forward_class_audit.md): the same-name branch, then
+          # claude/v2-object-layer (NDI #1021's head, until #1021 merges),
+          # then V2, then main. The integration branch is removed from this
+          # list in the first commit after the merge.
+          chosen=""
+          for ref in "$want" claude/v2-object-layer V2 main; do
+            if git ls-remote --exit-code --heads \
+                 https://github.com/VH-Lab/NDI-matlab.git "$ref" >/dev/null 2>&1; then
+              chosen="$ref"
+              break
+            fi
+            echo "NDI-matlab has NO branch '$ref'."
+          done
+          if [ -z "$chosen" ]; then
+            echo "NDI-matlab: none of '$want', claude/v2-object-layer, V2, main answered -- using main."
+            chosen=main
           fi
+          if [ "$chosen" = "$want" ]; then
+            echo "NDI-matlab HAS branch '$want' -- comparing against it."
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLBACK to '$chosen'."
+          fi
+          echo "ref=$chosen" >> "$GITHUB_OUTPUT"
 
       - name: Check out NDI-matlab (sibling, for the cross-repo wiring gate)
         uses: actions/checkout@v4
@@ -548,23 +567,40 @@ jobs:
       # If you edit one copy, edit both -- the confirm step below prints
       # PRESENT/ABSENT either way, so a divergence is visible in the log.
       # ---------------------------------------------------------------
-      - name: Resolve the NDI-matlab ref (falls back to main)
+      - name: Resolve the NDI-matlab ref (same name, claude/v2-object-layer, V2, main)
         id: ndi-ref
-        # Same fallback as the unit job's step of the same name. Here NDI is
+        # Same fallback, in the same order, as the unit job's step of the
+        # same name ([NDI ref fallback]). Here NDI is
         # read only by coverage.py (via the rung step), which reads NDI
         # templates from `origin/main` and fetches it below when absent.
         env:
           WANT: ${{ github.head_ref || github.ref_name }}
         run: |
           want="$WANT"
-          if git ls-remote --exit-code --heads \
-               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
-            echo "NDI-matlab HAS branch '$want' -- reading it."
-            echo "ref=$want" >> "$GITHUB_OUTPUT"
-          else
-            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
-            echo "ref=main" >> "$GITHUB_OUTPUT"
+          # Jess Haley, 2026-10-22 [NDI ref fallback] (did-schema
+          # V_eta_go_forward_class_audit.md): the same-name branch, then
+          # claude/v2-object-layer (NDI #1021's head, until #1021 merges),
+          # then V2, then main. The integration branch is removed from this
+          # list in the first commit after the merge.
+          chosen=""
+          for ref in "$want" claude/v2-object-layer V2 main; do
+            if git ls-remote --exit-code --heads \
+                 https://github.com/VH-Lab/NDI-matlab.git "$ref" >/dev/null 2>&1; then
+              chosen="$ref"
+              break
+            fi
+            echo "NDI-matlab has NO branch '$ref'."
+          done
+          if [ -z "$chosen" ]; then
+            echo "NDI-matlab: none of '$want', claude/v2-object-layer, V2, main answered -- using main."
+            chosen=main
           fi
+          if [ "$chosen" = "$want" ]; then
+            echo "NDI-matlab HAS branch '$want' -- reading it."
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLBACK to '$chosen'."
+          fi
+          echo "ref=$chosen" >> "$GITHUB_OUTPUT"
 
       - name: Check out NDI-matlab (sibling, read by coverage.py)
         uses: actions/checkout@v4
