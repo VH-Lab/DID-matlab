@@ -218,6 +218,7 @@ report = struct( ...
     'device_strings_seen',            0, ...
     'device_acqsystem_resolved',      0, ...
     'device_acqsystem_unresolved',    0, ...
+    'rigs_without_daqsystem',         0, ...
     'device_channels_parsed',         0, ...
     'device_channels_unparsable',     0, ...
     'epoch_anchors_minted',           0, ...
@@ -343,6 +344,7 @@ subjectIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
 %     resolves that name to the migrated document id. base.name is the join key
 %     the live NDI query uses too (system.m:229 / syncgraph.m:404-408).
 acqSystemIdByName = containers.Map('KeyType', 'char', 'ValueType', 'char');
+rigsWithoutSystem = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 % (d) #30 observations keyed by the (subject_id, instrument_id, class_name)
 %     TRIPLE -- NOT instrument_id alone. jRecordingObservation stamps
 %     base.name = 'migrated_recording_observation'; but a single probe (instrument)
@@ -596,8 +598,17 @@ for k = 1:n
                     report.device_acqsystem_resolved = ...
                         report.device_acqsystem_resolved + 1;
                 else
+                    % [rig minting with edges] (Jess Haley 2026-10-22, 2a): a
+                    % system is only ever the one migrated from the rig's v1
+                    % daqsystem, with its reader_id and epoch_file_pattern_id;
+                    % a rig with no daqsystem document gets NO system (never a
+                    % name-only one) and is counted, once per (session, rig)
                     report.device_acqsystem_unresolved = ...
                         report.device_acqsystem_unresolved + 1;
+                    if ~isKey(rigsWithoutSystem, dk)
+                        rigsWithoutSystem(dk) = true;
+                        report.rigs_without_daqsystem = report.rigs_without_daqsystem + 1;
+                    end
                 end
             end
         end

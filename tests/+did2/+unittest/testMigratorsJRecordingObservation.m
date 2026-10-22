@@ -561,7 +561,7 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if ~strcmp(d.get('document_class.class_name'), 'directed_relation'); continue; end
     r = d.get('directed_relation.relation');
-    if strcmp(r.name, relationName); tf = true; return; end
+    if did2.build.isVocabulary(r, 'relation', relationName); tf = true; return; end   % by node (L1)
 end
 end
 

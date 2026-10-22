@@ -2,7 +2,8 @@ function [node, handles] = vocabulary(kind, handle)
 %VOCABULARY The node of a relation or entity-type handle, and matching by node.
 %
 %   NODE = did2.build.vocabulary(KIND, HANDLE) returns the ontology node the
-%   handle HANDLE names in vocabulary KIND -- 'relation' (directed and
+%   handle HANDLE names in vocabulary KIND, read FIRST from the loaded
+%   schema's bound row whose name is the handle, then from the table below -- 'relation' (directed and
 %   undirected relation names), 'entity_type' (entity.type) -- or '' when
 %   the handle names no node (culture; a relation with no published term) or
 %   is not a handle of KIND. HANDLE is the snake_case handle code has always
@@ -37,7 +38,6 @@ switch kind
             'included_in',              'schema:isPartOf'
             'contained_in',             'RO:0001025'
             'member_of',                'RO:0002350'
-            'derived_from',             'RO:0001000'
             'derives_from_part_of',     'ENVO:01003004'
             'sample_of',                'ENVO:01003004'
             'encountered',              'RO:0002437'
@@ -92,9 +92,64 @@ key = normalize(handle);
 if isempty(key)
     return;
 end
+% 1. the LOADED schema's own row whose name is the handle (snake_case or
+%    label): its node. The schema is the truth for a node, so a node it
+%    changes (derived_from RO:0001000 -> prov:wasDerivedFrom, Jess Haley
+%    2026-10-22 [derived from general]) needs no change here.
+rows = schemaRows(kind);
+for k = 1:size(rows, 1)
+    if strcmp(normalize(rows{k, 1}), key) && ~isempty(rows{k, 2})
+        node = rows{k, 2};
+        return;
+    end
+end
+% 2. the handle table, for a handle the schema's label no longer spells
+%    ('sample_of' once the row is "derives from part of", 'funding' once it
+%    is "Grant")
 hit = find(strcmp(cellfun(@normalize, handles(:, 1), 'UniformOutput', false), key), 1);
 if ~isempty(hit)
     node = handles{hit, 2};
+end
+end
+
+function rows = schemaRows(kind)
+% {name, node} of every member of the loaded schema's bound value list(s) for
+% KIND, memoised per schema path
+persistent memo
+if isempty(memo); memo = containers.Map('KeyType', 'char', 'ValueType', 'any'); end
+rows = cell(0, 2);
+try
+    c = did2.schema.cache.shared();
+    mk = [char(c.schemaPath) '|' kind];
+    if isKey(memo, mk); rows = memo(mk); return; end
+    switch kind
+        case 'relation'
+            spec = {'directed_relation', 'relation'; 'undirected_relation', 'relation'; ...
+                'clock_alignment', 'relation'};
+        otherwise
+            spec = {'entity', 'type'};
+    end
+    for s = 1:size(spec, 1)
+        if ~c.hasClass(spec{s, 1}); continue; end
+        cls = c.getClass(spec{s, 1});
+        f = cls.fields;
+        if isstruct(f); f = num2cell(f); end
+        hit = f(cellfun(@(d) strcmp(char(d.name), spec{s, 2}), f));
+        if isempty(hit) || ~isfield(hit{1}, 'constraints') || ~isstruct(hit{1}.constraints) ...
+                || ~isfield(hit{1}.constraints, 'binding') ...
+                || ~isfield(hit{1}.constraints.binding, 'values')
+            continue;
+        end
+        vals = hit{1}.constraints.binding.values;
+        if isstruct(vals); vals = num2cell(vals); end
+        for v = 1:numel(vals)
+            nd = '';
+            if isfield(vals{v}, 'node'); nd = char(vals{v}.node); end
+            rows(end+1, :) = {char(vals{v}.name), nd}; %#ok<AGROW>
+        end
+    end
+    memo(mk) = rows;
+catch
 end
 end
 

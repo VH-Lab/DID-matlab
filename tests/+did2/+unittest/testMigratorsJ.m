@@ -353,7 +353,7 @@ verifyEqual(testCase, sub.get('entity.local_identifier'), 'unit3 (ref 1)');
 verifyEqual(testCase, nLeafJ(out.migrated, 'assertion+term'), 2);
 % lineage: derived_from the underlying element (safe computational lineage)
 rel = firstOfClassJ(out.migrated, 'directed_relation');
-verifyEqual(testCase, rel.get('directed_relation.relation').name, 'derived_from');
+verifyTrue(testCase, did2.build.isVocabulary(rel.get('directed_relation.relation'), 'relation', 'derived_from'));   % by node (L1)
 verifyEqual(testCase, depVal(rel, 'child_id'), 'el_1');
 verifyEqual(testCase, depVal(rel, 'parent_id'), 'probe_1');
 end
@@ -470,7 +470,7 @@ verifyEqual(testCase, act.get('interaction.method').term.name, 'transplantation'
 rel = out.migrated{2};
 verifyEqual(testCase, depVal(rel, 'child_id'), 'rec_001');
 verifyEqual(testCase, depVal(rel, 'parent_id'), 'don_002');
-verifyEqual(testCase, rel.get('directed_relation.relation').name, 'derived_from');
+verifyTrue(testCase, did2.build.isVocabulary(rel.get('directed_relation.relation'), 'relation', 'derived_from'));   % by node (L1)
 
 anchor = out.migrated{3};
 verifyEqual(testCase, anchor.get('relative_time_reference.value').relation.name, 'intervalDuring');
@@ -4839,7 +4839,7 @@ rel = out{find(strcmp(names, 'directed_relation'), 1)};
 % derived_from: unit (child) <- recording subject (parent)
 verifyEqual(testCase, depValue(rel, 'child_id'), neuron.base.id);
 verifyEqual(testCase, depValue(rel, 'parent_id'), 'rec_sub_1');
-verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
+verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, 'relation', 'derived_from'));   % by node (L1)
 % the quality observation is about the minted unit
 qobs = out{find(strcmp(names, 'calculation+score'), 1)};
 verifyEqual(testCase, depValue(qobs, 'entity_id'), neuron.base.id);

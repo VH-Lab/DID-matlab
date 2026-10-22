@@ -11,7 +11,7 @@ function bodies = neuron_extracellular(preBody)
 %       entity (cell)      the sorted unit (local_identifier
 %                          'unit_<cluster_index>'; id fresh).
 %       directed_relation  derived_from: the unit (child) <- the recording
-%                          element (parent). RO:0001000.
+%                          element (parent). derived_from (node from the schema row).
 %       calculation+label  `cluster_index` (a nominal label, not a count).
 %       calculation+label  `quality_label` ('multi' / 'single'), variable
 %                          'spike sort quality'.
@@ -322,7 +322,7 @@ end
 neuronId = did.ido.unique_id();
 neuron = jEntity(preBody, 'cell', struct('local_identifier', unitName, ...
     'description', 'spike-sorted extracellular unit (derived)'), 'Id', neuronId);
-rel = jEntityRelation(preBody, neuronId, recordingSubjectId, 'derived_from', '', 'RO:0001000');
+rel = jEntityRelation(preBody, neuronId, recordingSubjectId, 'derived_from');   % node from the schema's row (did2.build.vocabulary)
 anchor = jSessionAnchor(preBody, 'during');
 anchorId = anchor.base.id;
 

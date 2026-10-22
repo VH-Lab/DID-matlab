@@ -573,6 +573,7 @@ POST_PASSES = [
         ("acquisition_channels_minted", "acquisition_channels documents minted"),
         ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no channels doc)"),
         ("channels_derived_read_mode", "  channel groups naming a derived read mode (dep, den, dimp, ...; not a channel type)"),
+        ("rigs_without_daqsystem", "  rigs a devicestring names with no daqsystem document (no system minted)"),
         ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
         # 2026-10-21 (Jess Haley, did-schema V_eta_recording_observation_plan.md):
         # each recording observation is `data_body` true and the epoch's files

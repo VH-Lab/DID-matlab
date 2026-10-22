@@ -939,6 +939,22 @@ verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), ...
     'daqmetadatareader_epochdata_ingested');
 end
 
+function testARigWithNoDaqsystemGetsNoSystemAndIsCounted(testCase)
+% Jess Haley 2026-10-22 [rig minting with edges] (2a): a system is the one
+% migrated from the rig's v1 daqsystem, with reader_id and
+% epoch_file_pattern_id; a devicestring naming a rig with no daqsystem gets no
+% system (never a name-only one) and is counted once per (session, rig).
+subj = subjectBody('spec_n', 'sess_n', 'L');
+ing  = ingestedWithDeviceRows('ing_n', 'sess_n', 't0n', { ...
+    {'p', '', 'n-trode', 'ghostrig:ai1', 'L'}, {'q', '', 'n-trode', 'ghostrig:ai2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_n', 'sess_n', 'ref'), subj, ing});
+verifyEqual(testCase, rep.device_strings_seen, 2, 'denominator');
+verifyEqual(testCase, rep.device_acqsystem_resolved, 0);
+verifyEqual(testCase, rep.device_acqsystem_unresolved, 2);
+verifyEqual(testCase, rep.rigs_without_daqsystem, 1);
+verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_system'), 'no name-only system');
+end
+
 function testADerivedReadModeIsNotAChannelTypeAndIsCounted(testCase)
 % Jess Haley 2026-10-22 [channel types]: NDI's eight derived read modes (dep,
 % den, dimp, dimn, aep, aen, aimp, aimn) are not channel types and get no term.

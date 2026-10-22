@@ -51,7 +51,7 @@ anchor = jTreatmentAnchor(preBody, block);   % the recorded timestamp, else the 
 act = jStatement(preBody, 'manipulation', recipientId, material, material, ...
     'TimeReferenceIds', {anchor.base.id}, ...
     'Fields', struct('method', jMethod(methodName)), 'Id', char(preBody.base.id), 'ValueKind', 'term');
-rel = jEntityRelation(preBody, recipientId, donorId, 'derived_from', '', 'RO:0001000');
+rel = jEntityRelation(preBody, recipientId, donorId, 'derived_from');   % node from the schema's row (did2.build.vocabulary)
 
 v2Body = {act, rel, anchor};
 end

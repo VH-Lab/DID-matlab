@@ -780,11 +780,10 @@ if elementsWritten.Count > 0
     for k = 1:n
         if ~strcmp(classes{k}, 'directed_relation'); continue; end
         blk = blockOf(bodies{k}, 'directed_relation');
-        rel = '';
-        if isstruct(blk) && isfield(blk, 'relation') && isstruct(blk.relation)
-            rel = charField(blk.relation, {'name'});
+        if ~(isstruct(blk) && isfield(blk, 'relation') && isstruct(blk.relation) ...
+                && did2.build.isVocabulary(blk.relation, 'relation', 'derived_from'))   % by node (L1)
+            continue;
         end
-        if ~strcmp(rel, 'derived_from'); continue; end
         parent = depValue(bodies{k}, 'parent');
         if ~isempty(parent) && isKey(elementsWritten, parent)
             report.inheritance_candidates = report.inheritance_candidates + 1;

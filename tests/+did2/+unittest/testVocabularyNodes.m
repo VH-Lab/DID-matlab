@@ -25,7 +25,11 @@ verifyEqual(testCase, did2.build.vocabulary('relation', 'member_of'), 'RO:000235
 verifyEqual(testCase, did2.build.vocabulary('relation', 'member of'), 'RO:0002350');
 verifyEqual(testCase, did2.build.vocabulary('relation', 'contained_in'), 'RO:0001025');   % K1
 verifyEqual(testCase, did2.build.vocabulary('relation', 'sample_of'), 'ENVO:01003004');   % K5
-verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), 'RO:0001000');   % K2
+% derived_from: no node in code ([derived from general], Jess Haley
+% 2026-10-22: RO:0001000 -> prov:wasDerivedFrom); it is the schema row's
+verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), ...
+    boundNodeNamed(did2.schema.cache.shared(), 'directed_relation', 'relation', 'derived_from'));
+verifyNotEmpty(testCase, did2.build.vocabulary('relation', 'derived_from'));
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'epoch'), 'EMPTY:0000383');    % L3
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'Data Set'), 'NCIT:C47824');
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'culture'), '');               % no node
@@ -108,6 +112,35 @@ verifyEqual(testCase, rel.directed_relation.relation.node, 'RO:0002350');
 verifyEqual(testCase, rel.directed_relation.relation.name, 'member of');
 end
 
+function testANodeTheSchemaChangesIsFollowed(testCase)
+% [derived from general] (Jess Haley 2026-10-22): the schema moves
+% derived_from from RO:0001000 to prov:wasDerivedFrom. Code holds no node for
+% it, so writers and comparisons follow the schema. Simulated on a copy.
+src = testCase.TestData.schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+f = fullfile(tmp, 'directed_relation.json');
+txt = fileread(f);
+if ~contains(txt, '"RO:0001000"')
+    assumeFail(testCase, 'the loaded schema no longer binds derived_from to RO:0001000');
+end
+txt = strrep(txt, '"RO:0001000"', '"prov:wasDerivedFrom"');
+txt = strrep(txt, '"name": "derived_from"', '"name": "derived from"');
+fid = fopen(f, 'w'); fwrite(fid, txt); fclose(fid);
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), 'prov:wasDerivedFrom');
+rel = did2.build.directedRelation(did.ido.unique_id(), did.ido.unique_id(), 'derived_from', ...
+    'SessionId', testCase.TestData.sid, 'Validate', false);
+verifyEqual(testCase, rel.directed_relation.relation.node, 'prov:wasDerivedFrom');
+verifyEqual(testCase, rel.directed_relation.relation.name, 'derived from');
+verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, 'relation', 'derived_from'));
+verifyFalse(testCase, did2.build.isVocabulary(struct('node', 'RO:0001000', 'name', 'derived_from'), ...
+    'relation', 'derived_from'));
+end
+
 % ===================== helpers =============================================
 
 function nodes = boundNodes(c, className, fieldName)
@@ -115,6 +148,15 @@ vals = boundValues(c, className, fieldName);
 nodes = cellfun(@(v) char(v.node), vals, 'UniformOutput', false);
 nodes = nodes(~cellfun(@isempty, nodes));
 nodes = reshape(nodes, 1, []);
+end
+
+function node = boundNodeNamed(c, className, fieldName, name)
+node = '';
+vals = boundValues(c, className, fieldName);
+norm = @(x) lower(regexprep(char(x), '[\s_\-]', ''));
+for k = 1:numel(vals)
+    if strcmp(norm(vals{k}.name), norm(name)); node = char(vals{k}.node); return; end
+end
 end
 
 function name = boundName(c, className, fieldName, node)
