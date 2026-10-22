@@ -11,15 +11,22 @@ function checkRules(cache, className, doc, chain)
 %      a builder that silently ignores a new rule would emit documents it has
 %      not checked while appearing to have checked them.
 %
+%      The data_body AMENDMENT 6 rules (covariate_one_value_form,
+%      covariate_along, covariate_single_dimension_forms, covariate_cyclic,
+%      dimension_chunk_sampled_only) are checked in part 2 by
+%      checkDimensionsCovariates, for every document, under those names.
+%
 %   2. BUILDER CHECKS that the schema states only in a field's documentation
 %      (not as a machine-readable rule). Each cites where it is stated:
 %        conditions_one_value     statement.conditions: "{variable, unit,
 %                                 source_unit, approximate} plus exactly ONE
 %                                 value form", holding one value
-%        variable_once            statement.conditions: "a variable
-%                                 appears at most once across a statement's
-%                                 keys and conditions"; data.keys: variable
-%                                 "UNIQUE within the list"
+%        variable_once            did-schema data_body AMENDMENT 6: "A
+%                                 variable appears at most once across a
+%                                 statement's conditions, its value's
+%                                 covariates, and any one of its bodies'
+%                                 covariates" -- per document, its
+%                                 conditions and covariates
 %        parameter_one_form       interaction.method.parameters (and the
 %                                 standalone method's): the same entry --
 %                                 exactly one of `term`, `quantity`, `count`,
@@ -34,12 +41,15 @@ function checkRules(cache, className, doc, chain)
 %                                 [method_id], NEVER BOTH" (before #88:
 %                                 inline `method_parameters` OR
 %                                 `method_parameters_id`)
-%        key_n_matches            data.keys: n is the length of the dimension,
-%                                 so it equals the number of positions in
-%                                 `quantity.value` or `term`
-%        datum_order_multikey     datum_order (on `data` since did-schema
-%                                 #88, on sampled_body before): "REQUIRED in
-%                                 practice whenever there is more than one key"
+%        covariate_shape          AMENDMENT 6: "Shape: the extents of the
+%                                 `along` dimensions, in that order; for
+%                                 `matrix`, those extents followed by the
+%                                 array's own shape" (was key_n_matches)
+%        datum_order_multidimension  datum_order (on `data` since did-schema
+%                                 #88, on sampled_body before): stated by a
+%                                 writer with more than one dimension; the
+%                                 builder requires it on a sampled_body
+%                                 (was datum_order_multikey)
 %        require_inherited        a class's `require_inherited` list: an
 %                                 inherited optional field or edge the class
 %                                 makes required
@@ -78,14 +88,15 @@ for c = 1:numel(chain)
     for r = 1:numel(rules)
         ruleName = char(rules{r}.name);
         switch ruleName
-            case 'key_regular_origin_spacing'
-                forEachKey(doc, blocks, @keyRegularOriginSpacing);
-            case 'key_positions_one_form'
-                forEachKey(doc, blocks, @keyPositionsOneForm);
-            case 'key_chunk_sampled_only'
-                if ~any(strcmp(chain, 'sampled_body'))
-                    forEachKey(doc, blocks, @keyNoChunk);
-                end
+            case {'covariate_one_value_form', 'covariate_along', ...
+                    'covariate_single_dimension_forms', 'covariate_cyclic', ...
+                    'dimension_chunk_sampled_only'}
+                % did-schema data_body AMENDMENT 6 (Jess Haley, 2026-10-22
+                % [covariates]). Every rule on `dimensions` / `covariates`
+                % is checked, whether or not the schema names it, by
+                % checkDimensionsCovariates below (part 2), so a schema
+                % that names one adds no second check here.
+                continue;
             case {'datum_type_when_bytes', 'data_type_when_bytes'}
                 % `data_type_when_bytes` since 2026-10-08 (the field renamed).
                 % Jess Haley, 2026-10-21 (did-schema data_body AMENDMENT 5):
@@ -189,15 +200,10 @@ for c = 1:numel(chain)
 end
 
 % ---- 2. builder checks ----------------------------------------------------
-keys = findField(doc, blocks, 'keys');
+dims = findField(doc, blocks, 'dimensions');
+covs = findField(doc, blocks, 'covariates');
 conditions = findField(doc, blocks, 'conditions');
-seen = {};
-if isstruct(keys)
-    for k = 1:numel(keys)
-        seen{end+1} = termKey(keys(k).variable); %#ok<AGROW>
-        keyNMatches(keys(k), k, className);
-    end
-end
+seen = checkDimensionsCovariates(dims, covs, any(strcmp(chain, 'sampled_body')), className);
 if isstruct(conditions)
     for k = 1:numel(conditions)
         given = valueForms(conditions(k));
@@ -209,7 +215,7 @@ if isstruct(conditions)
         n = valueCount(conditions(k), given{1});
         if n ~= 1
             violated('conditions_one_value', className, sprintf( ...
-                'condition %d carries %d values; a condition is ONE value true of the whole statement (use a key for more).', k, n));
+                'condition %d carries %d values; a condition is ONE value true of the whole statement (use a covariate along a dimension for more).', k, n));
         end
         seen{end+1} = termKey(conditions(k).variable); %#ok<AGROW>
     end
@@ -217,7 +223,7 @@ end
 dup = duplicates(seen);
 if ~isempty(dup)
     violated('variable_once', className, sprintf( ...
-        'variable(s) %s appear more than once across keys and conditions.', strjoin(dup, ', ')));
+        'variable(s) %s appear more than once across covariates and conditions.', strjoin(dup, ', ')));
 end
 
 hasMethodEdge = any(ismember(edgeNames, {'method_id', 'method_parameters_id'}));
@@ -258,10 +264,10 @@ for b = 1:numel(blocks)
     end
 end
 
-if any(strcmp(chain, 'sampled_body')) && isstruct(keys) && numel(keys) > 1 ...
+if any(strcmp(chain, 'sampled_body')) && isstruct(dims) && numel(dims) > 1 ...
         && isAbsent(findField(doc, blocks, 'datum_order'))
-    violated('datum_order_multikey', className, sprintf( ...
-        'the body has %d keys, so `datum_order` (''C'' or ''F'') must be given.', numel(keys)));
+    violated('datum_order_multidimension', className, sprintf( ...
+        'the body has %d dimensions, so `datum_order` (''C'' or ''F'') must be given.', numel(dims)));
 end
 
 for c = 1:numel(chain)
@@ -382,60 +388,129 @@ for b = 1:numel(blocks)
 end
 end
 
-function forEachKey(doc, blocks, fn)
-keys = findField(doc, blocks, 'keys');
-if ~isstruct(keys)
-    return;
-end
-for k = 1:numel(keys)
-    fn(keys(k), k);
-end
-end
-
-function keyRegularOriginSpacing(key, k)
-regular = isfield(key, 'regular') && isTrue(key.regular);
-hasOrigin = isfield(key, 'origin') && ~isAbsent(key.origin);
-hasSpacing = isfield(key, 'spacing') && ~isAbsent(key.spacing);
-if regular ~= hasOrigin || regular ~= hasSpacing
-    violated('key_regular_origin_spacing', sprintf('key %d', k), ...
-        'a key carries `origin` and `spacing` if and only if `regular` is true.');
-end
-end
-
-function keyPositionsOneForm(key, k)
-regular = isfield(key, 'regular') && isTrue(key.regular);
-forms = {'quantity', 'term', 'positions_from'};
-given = forms(cellfun(@(f) isfield(key, f) && ~isAbsent(key.(f)), forms));
-if regular && ~isempty(given)
-    violated('key_positions_one_form', sprintf('key %d', k), ...
-        sprintf('a regular key carries none of quantity/term/positions_from; got %s.', strjoin(given, ', ')));
-elseif ~regular && numel(given) ~= 1
-    violated('key_positions_one_form', sprintf('key %d', k), ...
-        sprintf('a key that is not regular carries exactly one of quantity, term, positions_from; got %d.', numel(given)));
-end
-end
-
-function keyNoChunk(key, k)
-if isfield(key, 'chunk') && ~isAbsent(key.chunk)
-    violated('key_chunk_sampled_only', sprintf('key %d', k), ...
-        '`chunk` is set only on the keys of a sampled_body.');
-end
-end
-
-function keyNMatches(key, k, className)
-n = key.n;
-if isfield(key, 'quantity') && ~isAbsent(key.quantity)
-    for f = {'value', 'source_value'}
-        if isfield(key.quantity, f{1}) && ~isAbsent(key.quantity.(f{1})) ...
-                && numel(key.quantity.(f{1})) ~= n
-            violated('key_n_matches', className, sprintf( ...
-                'key %d has n = %d but %d quantity.%s.', k, n, numel(key.quantity.(f{1})), f{1}));
+function seen = checkDimensionsCovariates(dims, covs, isSampledBody, className)
+%CHECKDIMENSIONSCOVARIATES did-schema data_body AMENDMENT 6 (Jess Haley,
+%   2026-10-22 [covariates], [along by index], [matrix covariate]): the rules
+%   on a value's `dimensions` and `covariates`. Returns the covariates'
+%   variable identities, for variable_once.
+seen = {};
+nDims = 0;
+extents = [];
+if isstruct(dims)
+    nDims = numel(dims);
+    extents = zeros(1, nDims);
+    for k = 1:nDims
+        extents(k) = double(dims(k).n);
+        if ~isSampledBody && isfield(dims, 'chunk') && ~isAbsent(dims(k).chunk)
+            violated('dimension_chunk_sampled_only', sprintf('%s dimension %d', className, k - 1), ...
+                '`chunk` is set only on the dimensions of a sampled_body.');
         end
     end
 end
-if isfield(key, 'term') && ~isAbsent(key.term) && numel(key.term) ~= n
-    violated('key_n_matches', className, sprintf( ...
-        'key %d has n = %d but %d terms.', k, n, numel(key.term)));
+if ~isstruct(covs)
+    return;
+end
+for k = 1:numel(covs)
+    c = covs(k);
+    where = sprintf('%s covariate %d', className, k - 1);
+    along = [];
+    if isfield(c, 'along'); along = c.along; end
+    if iscell(along); along = cell2mat(along); end
+    along = double(reshape(along, 1, []));
+    if isempty(along)
+        violated('covariate_along', where, ...
+            'a covariate runs along at least one dimension; a fact true of the whole value is a condition.');
+    end
+    if numel(unique(along)) ~= numel(along)
+        violated('covariate_along', where, sprintf('`along` repeats a dimension: %s.', mat2str(along)));
+    end
+    if any(along < 0 | along ~= round(along) | along >= nDims)
+        violated('covariate_along', where, sprintf( ...
+            '`along` %s names a dimension the value does not have (it has %d; indices are 0-based).', ...
+            mat2str(along), nDims));
+    end
+    hasOrigin = isfield(c, 'origin') && ~isAbsent(c.origin);
+    hasSpacing = isfield(c, 'spacing') && ~isAbsent(c.spacing);
+    if hasOrigin ~= hasSpacing
+        violated('covariate_one_value_form', where, '`origin` and `spacing` are given together or not at all.');
+    end
+    given = {};
+    if hasOrigin && hasSpacing; given{end+1} = 'origin+spacing'; end
+    for f = {'quantity', 'count', 'term', 'text', 'logical', 'matrix', 'document'}
+        if isfield(c, f{1}) && ~isAbsent(c.(f{1})) ...
+                && ~(strcmp(f{1}, 'document') && isequal(c.document, -1))   % -1: the blank, not used
+            given{end+1} = f{1}; %#ok<AGROW>
+        end
+    end
+    if numel(given) ~= 1
+        violated('covariate_one_value_form', where, sprintf( ...
+            'carries %d value forms (%s); exactly one of origin+spacing, quantity, count, term, text, logical, matrix, document.', ...
+            numel(given), strjoin(given, ', ')));
+    end
+    form = given{1};
+    if any(strcmp(form, {'origin+spacing', 'document'})) && numel(along) ~= 1
+        violated('covariate_single_dimension_forms', where, sprintf( ...
+            'a covariate given by %s runs along exactly one dimension; `along` has %d.', form, numel(along)));
+    end
+    if isfield(c, 'cyclic') && isTrue(c.cyclic) ...
+            && ~(any(strcmp(form, {'origin+spacing', 'quantity', 'count', 'matrix'})) && numel(along) == 1)
+        violated('covariate_cyclic', where, ...
+            '`cyclic` applies only to a numeric covariate along exactly one dimension.');
+    end
+    covariateShape(c, form, extents(along + 1), where);
+    seen{end+1} = termKey(c.variable); %#ok<AGROW>
+end
+end
+
+function covariateShape(c, form, ext, where)
+% Shape: the extents of the `along` dimensions, in that order; for `matrix`,
+% those extents followed by the array's own shape (AMENDMENT 6).
+switch form
+    case {'origin+spacing', 'document'}
+        return;   % generated, or n entries of another document (a batch check)
+    case 'quantity'
+        for f = {'value', 'source_value'}
+            if isfield(c.quantity, f{1}) && ~isAbsent(c.quantity.(f{1}))
+                shapeMatches(c.quantity.(f{1}), ext, false, sprintf('quantity.%s', f{1}), where);
+            end
+        end
+    case 'matrix'
+        shapeMatches(c.matrix, ext, true, 'matrix', where);
+    otherwise
+        shapeMatches(c.(form), ext, false, form, where);
+end
+end
+
+function shapeMatches(v, ext, isMatrix, what, where)
+if isMatrix
+    sz = size(v);
+    sz(end+1:numel(ext)) = 1;
+    if numel(ext) == 1 && ext == 1 && sz(1) ~= 1
+        % one position: JSON may drop the leading length-1 axis of the array
+        return;
+    end
+    if ~isequal(sz(1:numel(ext)), ext)
+        violated('covariate_shape', where, sprintf( ...
+            '`%s` has leading shape %s, but the `along` dimensions'' extents are %s.', ...
+            what, mat2str(sz(1:numel(ext))), mat2str(ext)));
+    end
+    return;
+end
+if numel(v) ~= prod(ext)
+    violated('covariate_shape', where, sprintf( ...
+        '`%s` has %d value(s), but the `along` dimensions'' extents are %s (%d positions).', ...
+        what, numel(v), mat2str(ext), prod(ext)));
+end
+if numel(ext) > 1 && ~isvector(v)
+    % along several dimensions the array keeps their shape (a flat list of
+    % the right count -- a struct array the builder flattened -- is accepted)
+    sz = size(v);
+    sz(end+1:numel(ext)) = 1;
+    if ~isequal(sz(1:numel(ext)), ext)
+        violated('covariate_shape', where, sprintf( ...
+            '`%s` has shape %s, but the `along` dimensions'' extents are %s.', ...
+            what, mat2str(size(v)), mat2str(ext)));
+    end
 end
 end
 

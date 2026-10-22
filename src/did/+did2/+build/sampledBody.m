@@ -1,11 +1,15 @@
-function doc = sampledBody(ownerId, keys, options)
+function doc = sampledBody(ownerId, varargin)
 %SAMPLEDBODY A sampled_body document: an N-D array of samples, in bytes.
 %
-%   DOC = did2.build.sampledBody(OWNERID, KEYS, 'SessionId', SID, ...) builds
-%   a body holding the value of the statement (or standalone data_type
-%   document) OWNERID. KEYS describes THIS body's array, one key per dimension
-%   (did2.build.key / list); a sampled_body requires them (require_inherited).
-%   The element type is NOT on the body: it is the owner's `datum_type` ("extent
+%   DOC = did2.build.sampledBody(OWNERID, DIMENSIONS, 'SessionId', SID, ...)
+%   DOC = did2.build.sampledBody(OWNERID, 'Dimensions', DIMENSIONS, 'SessionId', SID, ...)
+%   builds a body holding the value of the statement (or standalone data_type
+%   document) OWNERID. DIMENSIONS are THIS body's array axes, in array order
+%   (did2.build.dimension / list; did-schema data_body AMENDMENT 6, `keys`
+%   until 2026-10-22); a sampled_body requires them (require_inherited). They
+%   may be given positionally or as 'Dimensions'. What is known along them
+%   (sample times, channel names) is 'Covariates' (did2.build.covariate).
+%   The element type is NOT on the body: it is the owner's `data_type` ("extent
 %   is per-body, type is per-statement"), and the owner sets `data_body` true.
 %
 %   OWNERID may be a cellstr of several ids: `owner_id` repeats (did-schema
@@ -19,23 +23,24 @@ function doc = sampledBody(ownerId, keys, options)
 %   default. 'Chunks' N names members 0..N-1; 'Files' names them outright.
 %
 %   Options (fields):
-%     'DatumOrder'    'C' (row-major, last key fastest) or 'F' (column-major,
-%                     MATLAB's layout). Required when there is more than one key.
-%                     Written to the block the schema declares it on: `data`,
-%                     beside `keys`, since did-schema #88 (D-5); `sampled_body`
-%                     before (did2.schema.cache/datumOrderBlock).
+%     'Covariates'    what is known along THIS body's dimensions
+%     'DatumOrder'    'C' (row-major, last dimension fastest) or 'F'
+%                     (column-major, MATLAB's layout). Required when there is
+%                     more than one dimension. Written to the block the schema
+%                     declares it on: `data`, beside `dimensions`, since
+%                     did-schema #88 (D-5); `sampled_body` before
+%                     (did2.schema.cache/datumOrderBlock).
 %     'ByteOrder'     'little' or 'big'; give it for any multi-byte datum type
-%     'FillValue'     char literal read by the owner's datum_type ("NaN",
-%                     "-32768"): what a missing chunk holds when 'Complete' is true
-%     'Complete'      logical: dense (every position has a value)
+%     'FillValue'     char literal read by the owner's data_type ("NaN",
+%                     "-32768"): what a missing chunk holds
 %     'Conditions'    one-value facts true of THIS body only
 %     'Format'        an ontology term: {node, name} or a CURIE (formatTerm)
 %     'Compression', 'ContentHash', 'HashAlgorithm', 'Description'
 %     'Fields'        any other declared field, as a struct
 %   Options (edges):
 %     'FilterId'      the frequency filter these samples passed through
-%     'KeyIds'        cellstr: data_type documents a key takes its positions
-%                     from (a key's `positions_from` indexes them)
+%     'KeyIds'        cellstr: value documents a covariate takes its positions
+%                     from (a covariate's `document` indexes them)
 %     'Edges'         any other declared edge
 %   Options (document):
 %     'Chunks' (default 1), 'Files', 'SessionId' (required),
@@ -46,20 +51,34 @@ function doc = sampledBody(ownerId, keys, options)
 %
 %   Example:
 %     body = did2.build.sampledBody(obsId, ...
-%         did2.build.list(did2.build.key('time', 30000, 'Unit', 'second', ...
-%             'Origin', 0, 'Spacing', 1/30000), ...
-%             did2.build.key('channel', 4, 'Labels', {'A1','A2','A3','A4'})), ...
+%         did2.build.list(did2.build.dimension('time', 30000), ...
+%                         did2.build.dimension('channel', 4)), ...
+%         'Covariates', did2.build.list( ...
+%             did2.build.covariate('time', 0, 'Unit', 'second', 'Origin', 0, 'Spacing', 1/30000), ...
+%             did2.build.covariate('channel', 1, 'Term', {'A1','A2','A3','A4'})), ...
 %         'DatumOrder', 'F', 'ByteOrder', 'little', 'SessionId', sessionId);
 %
-%   See also did2.build.opaqueBody, did2.build.key, did2.build.statement.
+%   See also did2.build.opaqueBody, did2.build.dimension, did2.build.covariate,
+%   did2.build.statement.
 
+% DIMENSIONS positionally (an odd count of the remaining arguments) or as the
+% name-value 'Dimensions' (an even count): both reach buildBody() below.
+if mod(numel(varargin), 2) == 1
+    doc = buildBody(ownerId, varargin{1}, varargin{2:end});
+else
+    doc = buildBody(ownerId, [], varargin{:});
+end
+end
+
+function doc = buildBody(ownerId, dimensions, options)
 arguments
     ownerId {mustBeText} % one owner id, or a cellstr of several (owner_id repeats)
-    keys
+    dimensions
+    options.Dimensions = []
+    options.Covariates = []
     options.DatumOrder = ''
     options.ByteOrder = ''
     options.FillValue = ''
-    options.Complete = []
     options.Conditions = []
     options.Format = ''
     options.Compression = ''
@@ -79,9 +98,15 @@ arguments
     options.SchemaCache = []
 end
 
-fields = struct('keys', {keys}, ...
+if ~isAbsent(dimensions) && ~isAbsent(options.Dimensions)
+    error('did2:build:ambiguousField', ...
+        'Give the dimensions positionally or as ''Dimensions'', not both.');
+elseif isAbsent(dimensions)
+    dimensions = options.Dimensions;
+end
+fields = struct('dimensions', {dimensions}, 'covariates', {options.Covariates}, ...
     'datum_order', options.DatumOrder, 'byte_order', options.ByteOrder, ...
-    'fill_value', options.FillValue, 'complete', options.Complete, ...
+    'fill_value', options.FillValue, ...
     'conditions', {options.Conditions}, 'format', did2.build.formatTerm(options.Format, options.SchemaCache), ...
     'compression', options.Compression, 'content_hash', options.ContentHash, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);

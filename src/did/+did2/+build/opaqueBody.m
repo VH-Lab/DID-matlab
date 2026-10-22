@@ -21,8 +21,12 @@ function doc = opaqueBody(ownerId, format, options)
 %   is the single member `body_data_0`.
 %
 %   Options (fields):
-%     'Keys'          optional: the array as FORMAT presents it
-%     'Complete', 'Conditions', 'Compression', 'ContentHash',
+%     'Dimensions'    optional: the array as FORMAT presents it
+%                     (did2.build.dimension / list; `keys` until 2026-10-22)
+%     'Covariates'    what is known along those dimensions
+%                     (did2.build.covariate / list)
+%     'DatumOrder'    'C' or 'F', when there is more than one dimension
+%     'Conditions', 'Compression', 'ContentHash',
 %     'HashAlgorithm' ('MD5','SHA-1','SHA-256','SHA-512'), 'Description'
 %     'Fields'        any other declared field, as a struct
 %   Options (edges):
@@ -34,13 +38,14 @@ function doc = opaqueBody(ownerId, format, options)
 %                     id of the source document this body migrates from. ''
 %                     (the default) mints a new id.
 %
-%   See also did2.build.sampledBody.
+%   See also did2.build.sampledBody, did2.build.dimension, did2.build.covariate.
 
 arguments
     ownerId {mustBeText} % one owner id, or a cellstr of several (owner_id repeats)
     format
-    options.Keys = []
-    options.Complete = []
+    options.Dimensions = []
+    options.Covariates = []
+    options.DatumOrder = ''
     options.Conditions = []
     options.Compression = ''
     options.ContentHash = ''
@@ -63,8 +68,9 @@ if isempty(format) || (isstruct(format) && isempty(format.node) && isempty(forma
     error('did2:build:missingField', ...
         'An opaque_body requires `format` (an ontology term: {node, name} or a CURIE).');
 end
-fields = struct('format', format, 'keys', {options.Keys}, ...
-    'complete', options.Complete, 'conditions', {options.Conditions}, ...
+fields = struct('format', format, 'dimensions', {options.Dimensions}, ...
+    'covariates', {options.Covariates}, 'datum_order', options.DatumOrder, ...
+    'conditions', {options.Conditions}, ...
     'compression', options.Compression, 'content_hash', options.ContentHash, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);

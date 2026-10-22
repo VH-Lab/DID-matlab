@@ -8,14 +8,17 @@ function out = list(varargin)
 %   function reads as "not given". Field order follows the first entry that
 %   carries each field.
 %
-%   Use it to assemble `keys`, `conditions`, a method's `parameters`, a fit's
-%   `coefficients`, ... from entries made by did2.build.key, .condition,
-%   .parameter, etc. With no arguments it returns a 0x0 struct.
+%   Use it to assemble `dimensions`, `covariates`, `conditions`, a method's
+%   `parameters`, a fit's `coefficients`, ... from entries made by
+%   did2.build.dimension, .covariate, .condition, .parameter, etc. With no
+%   arguments it returns a 0x0 struct.
 %
 %   Example:
-%     keys = did2.build.list( ...
-%         did2.build.key('time', 1000, 'Origin', 0, 'Spacing', 0.001, 'Unit', 's'), ...
-%         did2.build.key('channel', 4, 'Labels', {'A','B','C','D'}));
+%     dims = did2.build.list(did2.build.dimension('time', 1000), ...
+%                            did2.build.dimension('channel', 4));
+%     covs = did2.build.list( ...
+%         did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 0.001, 'Unit', 's'), ...
+%         did2.build.covariate('channel', 1, 'Term', {'A','B','C','D'}));
 
 elems = {};
 names = {};

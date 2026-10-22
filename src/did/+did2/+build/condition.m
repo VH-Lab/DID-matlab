@@ -13,7 +13,7 @@ function c = condition(variable, options)
 %   VARIABLE is a term or a name (arm direction, OD600, trial type). Exactly ONE
 %   value form is given, and it is ONE value: "a one-value fact true of EVERY
 %   value of the statement" (statement.conditions). A fact with several values
-%   is a key, not a condition. The entry is the same as a method parameter's
+%   is a covariate along a dimension, not a condition. The entry is the same as a method parameter's
 %   (data_body AMENDMENT 3): {variable, unit, source_unit, approximate} plus
 %   one of `term`, `quantity` {value, source_value}, `count`, `text` or
 %   `matrix` (data_body AMENDMENT 4), so it takes the same options as
@@ -37,9 +37,10 @@ function c = condition(variable, options)
 %     'SchemaCache'    a did2.schema.cache; default the shared one.
 %
 %   Join several with did2.build.list. A variable appears at most once across
-%   a statement's keys and conditions (checked when the document is built).
+%   a statement's conditions and its value's covariates (checked when the
+%   document is built).
 %
-%   See also did2.build.key, did2.build.parameter, did2.build.statement.
+%   See also did2.build.covariate, did2.build.parameter, did2.build.statement.
 
 arguments
     variable

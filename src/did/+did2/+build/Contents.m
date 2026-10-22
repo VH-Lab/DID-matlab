@@ -25,7 +25,11 @@
 %
 %   Parts of documents
 %     valueCell              a data_type's `value` cells (volts, seconds, count, ...)
-%     key                    one dimension of a value (`keys` entry)
+%     dimension              one axis of a value's array (`dimensions` entry;
+%                            `keys` until did-schema data_body AMENDMENT 6)
+%     covariate              what is known along one or more dimensions
+%                            (`covariates` entry): origin+spacing, quantity,
+%                            count, term, text, logical, matrix or document
 %     condition              one whole-statement qualifier (`conditions` entry)
 %     parameter              one algorithm setting (a `method.parameters` entry);
 %                            the same entry as a condition: one `term`,
@@ -48,11 +52,12 @@
 %     ingredient_in_formulation is known but needs the formulation, see
 %     checkDoseIngredients) -- an UNKNOWN rule is an error,
 %     not a skip; `require_inherited`; conditions carry one value; variables are
-%     unique across keys and conditions; parameters carry one form and are
-%     unique; an inline `method` and a `method_id` edge are never both given;
-%     key n matches its positions; a multi-key sampled_body names datum_order.
+%     unique across covariates and conditions; parameters carry one form and
+%     are unique; an inline `method` and a `method_id` edge are never both
+%     given; a covariate runs along existing dimensions and its shape matches
+%     their extents; a multi-dimension array names datum_order.
 %   And every ontology term in a vocabulary slot (a variable, method, unit,
-%   condition, parameter or key) and every value term (term.value, a
+%   condition, parameter, dimension or covariate) and every value term (term.value, a
 %   chemical's substance) must be in the schema's term registry (tenet T19;
 %   strictMode 'TermRegistry', armed): did2:build:unregisteredTerm. A model
 %   fit's coefficient names are the fit's own and are not checked.
@@ -71,6 +76,8 @@
 %         'ValueKind', 'voltage', 'DataBody', true, 'DatumType', did2.build.datumType('int16'), ...
 %         'TimeReferenceIds', {ref.base.id}, 'SessionId', sid);
 %     body = did2.build.sampledBody(obs.base.id, did2.build.list( ...
-%             did2.build.key('time', 1800000, 'Unit', 'second', 'Origin', 0, 'Spacing', 1/30000), ...
-%             did2.build.key('channel', 32, 'Values', 1:32)), ...
+%             did2.build.dimension('time', 1800000), did2.build.dimension('channel', 32)), ...
+%         'Covariates', did2.build.list( ...
+%             did2.build.covariate('time', 0, 'Unit', 'second', 'Origin', 0, 'Spacing', 1/30000), ...
+%             did2.build.covariate('channel', 1, 'Count', 1:32)), ...
 %         'DatumOrder', 'F', 'ByteOrder', 'little', 'SessionId', sid);

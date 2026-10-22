@@ -17,7 +17,13 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %   leaf declares is accepted.
 %
 %   Fields:
-%     'Keys'              the value's dimensions (did2.build.key / list)
+%     'Dimensions'        the axes of the INLINE value, in array order
+%                         (did2.build.dimension / list; did-schema data_body
+%                         AMENDMENT 6, `keys` until 2026-10-22)
+%     'Covariates'        what is known along those axes
+%                         (did2.build.covariate / list)
+%     'DatumOrder'        'C' or 'F': the order of the inline array's values
+%                         when it has more than one dimension
 %     'Conditions'        one-value qualifiers (did2.build.condition / list)
 %     'Method'            the technique: a term (or a name)
 %     'MethodParameters'  the settings it ran with (did2.build.parameter /
@@ -49,8 +55,9 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %     'AcquisitionChannelsId'
 %     'ValueId'           a standalone data_type document holding the value
 %     'InputIds'          cellstr: a calculation's inputs (ordered)
-%     'KeyIds'            cellstr: data_type documents a key takes its
-%                         positions from (a key's `positions_from` indexes them)
+%     'KeyIds'            cellstr: value documents a covariate takes its
+%                         positions from (a covariate's `document` indexes
+%                         them)
 %     'InterpreterId', 'OperatingSystemId'   a calculation's run environment
 %     'Edges'             any other declared edge (see did2.build.document)
 %   Document:
@@ -63,14 +70,17 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %         'SessionId', sessionId, 'TimeReferenceIds', {timeRefId}, ...
 %         'InstrumentId', electrodeId, 'ValueKind', 'voltage');
 %
-%   See also did2.build.document, did2.build.valueCell, did2.build.key.
+%   See also did2.build.document, did2.build.valueCell, did2.build.dimension,
+%   did2.build.covariate.
 
 arguments
     leafClass (1,:) char
     subjectId (1,:) char
     variable
     value
-    options.Keys = []
+    options.Dimensions = []
+    options.Covariates = []
+    options.DatumOrder = ''
     options.Conditions = []
     options.Method = []
     options.MethodParameters = []
@@ -103,7 +113,9 @@ end
 fields = struct();
 fields.variable = variable;
 fields.value = value;
-fields.keys = options.Keys;
+fields.dimensions = options.Dimensions;
+fields.covariates = options.Covariates;
+fields.datum_order = options.DatumOrder;
 fields.conditions = options.Conditions;
 fields = methodFields(fields, options.Method, options.MethodParameters, options.SchemaCache);
 [~, entityEdge, dataTypeField] = vetaNames(options.SchemaCache);   % `subject_id` / `datum_type` before 2026-10-08
