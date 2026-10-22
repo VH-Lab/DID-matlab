@@ -151,11 +151,11 @@ if ~isnan(gplScale)
     return;
 end
 if isMassFractionUnit(unitName)
-    c.mass_fraction = value;
+    c.grams_per_gram = value;   % `mass_fraction` until 2026-10-22 (Jess Haley [ratio slots named by unit])
     return;
 end
 if isVolumeFractionUnit(unitName)
-    c.volume_fraction = value;
+    c.liters_per_liter = value;   % `volume_fraction` until 2026-10-22 ([ratio slots named by unit])
     return;
 end
 % Unknown unit: leave canonicals absent; source-only.

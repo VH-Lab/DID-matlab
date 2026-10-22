@@ -179,8 +179,8 @@ out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyEqual(testCase, numel(ax), 2);
 verifyEqual(testCase, [ax.n], [21 32]);
-verifyEqual(testCase, arrayfun(@(a) a.term.name, ax, 'UniformOutput', false), ...
-    {'time', 'channel'});
+verifyEqual(testCase, arrayfun(@(a) lower(a.term.name), ax, 'UniformOutput', false), ...
+    {'time', 'channel'});   % the registry's label (NCIT:C44170 'Channel', did-schema 34a15e2 [channel types])
 % the mechanical port of a key: the covariate along a dimension names the
 % same term as the dimension. The channel dimension is bare since 2026-10-22
 % (its 1..N only repeated the positions; Jess Haley, 6.2a and "yes" to 1..n).
@@ -226,7 +226,7 @@ function testTheChannelAxisIsABareDimension(testCase)
 % 1..n). The dimension stays, n 32; the time covariate stays.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
-verifyEqual(testCase, ax(2).term.name, 'channel');
+verifyEqual(testCase, lower(ax(2).term.name), 'channel');   % the registry's label (NCIT:C44170 'Channel', did-schema 34a15e2 [channel types])
 verifyEqual(testCase, ax(2).n, 32);
 verifyEqual(testCase, ax(2).nCov, 0, 'no covariate along the channel dimension');
 verifyEqual(testCase, ax(1).nCov, 1, 'the time covariate is kept');

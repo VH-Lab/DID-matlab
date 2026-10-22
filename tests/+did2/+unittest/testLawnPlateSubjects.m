@@ -190,15 +190,26 @@ verifyEqual(testCase, parent.entity.description, 'bacterial plate (a plate of la
 obsClasses = {'observation+concentration', 'observation+volume', ...
     'observation+length', 'observation+score', 'observation+intensity'};
 nChecked = 0;
+nOD = 0;
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
     if ~any(strcmp(did2.unittest.helpers.classKey(b), obsClasses)); continue; end   % #88 leaf names
     nChecked = nChecked + 1;
     verifyNotEmpty(testCase, documentById(out, depValue(b, 'entity_id')), ...
         'an observation whose subject is not in the batch is an orphan');
+    % an OD600 column is an optical density, its source unit the OD600 term
+    % (Jess Haley 2026-10-22 [ratio slots named by unit])
+    if strcmp(did2.unittest.helpers.classKey(b), 'observation+concentration') ...
+            && contains(b.statement.variable.name, 'OD600')
+        nOD = nOD + 1;
+        verifyTrue(testCase, isfield(b.concentration.value, 'optical_density'));
+        verifyFalse(testCase, isfield(b.concentration.value, 'od600'));
+        verifyEqual(testCase, b.concentration.value.source_unit.node, 'MCO:0000059');
+    end
 end
 verifyEqual(testCase, nChecked, 12, ...
     'the denominator: 4 plate + 8 lawn observations were actually examined');
+verifyEqual(testCase, nOD, 2, 'the two OD600 columns were examined');
 end
 
 function testTheLawnIdentifierIsTheExperimentPlatePatchTriple(testCase)

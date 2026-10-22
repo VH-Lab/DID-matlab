@@ -17,7 +17,8 @@ function [value, valueAxes, dropped] = jContrastSensitivityValue(block)
 %
 %   did-schema #88 (contrast_sensitivity.value, the #73 audit-2 amendment):
 %   VALUE {model_fit[] {model, coefficients[] {variable, value}, goodness,
-%   sensitivity, relative_max_gain, empirical_c50, saturation_index},
+%   sensitivity, relative_max_gain, c50 (v1 empirical_c50; empirical_c50 until
+%   2026-10-22), saturation_index},
 %   interpolated_values {c50}, significance {...}, response_type (a bound
 %   term)}; AXES {dimensions, covariates}: one `spatial frequency` dimension
 %   the per-SF arrays are indexed by, the frequencies a quantity covariate
@@ -92,7 +93,9 @@ for i = 1:numel(variants)
     for m = 1:numel(metrics)
         mv = getf(block, {[metrics{m} '_' v]});
         if isnumeric(mv) && ~isempty(mv)
-            entry.(metrics{m}) = double(mv);
+            % v1 empirical_c50_<variant> -> c50 (Jess Haley 2026-10-22
+            % [significance with results])
+            entry.(strrep(metrics{m}, 'empirical_c50', 'c50')) = double(mv);
             present = true;
         end
     end

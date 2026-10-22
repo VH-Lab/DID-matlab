@@ -714,7 +714,7 @@ for k = 1:n
         [ok, num] = scalarNumber(c{1}.value);
         if ~ok; continue; end
         obs{end+1} = {measures{m, 2}, measures{m, 3}, ...
-            variableTerm(c{1}), num}; %#ok<AGROW>
+            variableTerm(c{1}), num, measures{m, 1}}; %#ok<AGROW>
     end
     if isempty(obs)
         % THE THREE STATES, KEPT APART. "row present, no values at all" and
@@ -1015,7 +1015,7 @@ for j = 1:numel(subjectMeta)
         end
         a = anchorBySession(sidA);
         statementBodies{end+1} = makeObservation(src, ...
-            entry{1}, entry{2}, entry{3}, entry{4}, subjectMeta(j).docId, a.base.id); %#ok<AGROW>
+            entry{1}, entry{2}, entry{3}, entry{4}, subjectMeta(j).docId, a.base.id, entry{5}); %#ok<AGROW>
         statementKind(end+1) = subjectMeta(j).kind; %#ok<AGROW>
         statementAnchor{end+1} = a.base.id; %#ok<AGROW>
     end
@@ -1356,16 +1356,25 @@ body = did2.build.document('entity', ...
     'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
-function body = makeObservation(srcBody, direction, shapeClass, variable, num, subjectId, anchorId)
+function body = makeObservation(srcBody, direction, shapeClass, variable, num, subjectId, anchorId, token)
 %MAKEOBSERVATION One typed observation of one subject (did-schema #88): the
 %   direction DIRECTION with the value-kind mixin SHAPECLASS.
 %   An #88 observation REQUIRES a time reference and the table gives no time,
 %   so it names ANCHORID, a "during the session" relative_time_reference the
 %   caller mints once per session. The value carries the source value with no
 %   unit, as the table cell gives none.
+%   An OD600 column is an optical density: the number fills the canonical
+%   `optical_density` and the source unit is the registered OD600 term, which
+%   says the wavelength (Jess Haley 2026-10-22 [ratio slots named by unit];
+%   source value only until then).
+if nargin < 8; token = ''; end
 if strcmp(shapeClass, 'score')
     v = did2.build.composite('score', 'value', struct('score', double(num), ...
         'approximate', false));
+elseif strcmp(shapeClass, 'concentration') && contains(token, 'od600')
+    v = did2.build.composite(shapeClass, 'value', ...
+        struct('optical_density', double(num), 'source_value', double(num), ...
+        'source_unit', did2.build.term('MCO:0000059', 'OD600'), 'approximate', false));
 else
     v = did2.build.composite(shapeClass, 'value', ...
         struct('source_value', double(num), 'approximate', false));

@@ -44,8 +44,10 @@ function [value, valueAxes, leafFields, dropped] = jTuningCurve(srcBlk, family)
 %       gone. No corpus holds such a curve (34,690 tuning curves in the six
 %       corpora, all over one variable; [tuning grid]), so both paths are
 %       proven on synthetic fixtures only (testTuningCurveLevels).
-%     LEAFFIELDS   the named calculation's blocks: `significance` and
-%       `model_fit[]` (tuning_curve_calculation); `circular_statistics`
+%     VALUE also carries `significance` and `model_fit[]` on a fitted curve
+%       (Jess Haley 2026-10-22 [significance with results], [one fit entry];
+%       on tuning_curve_calculation until then).
+%     LEAFFIELDS   the named calculation's blocks: `circular_statistics`
 %       (orientation/direction, v1 `vector`); `interpolated_values`
 %       (contrast, SF, TF, v1 `fitless`). Field names per the #73 naming pass.
 %     DROPPED   cellstr naming every v1 field this mapping has no home for
@@ -131,7 +133,11 @@ for f = {'visual_response_anova_p', 'across_stimuli_anova_p'}
     x = getf(sig, f);
     if isnumeric(x) && isscalar(x); s.(f{1}) = double(x); end
 end
-if ~isempty(fieldnames(s)); leafFields.significance = s; end
+if ~isempty(fieldnames(s))
+    % in the value, beside the fits (Jess Haley 2026-10-22 [significance
+    % with results]; tuning_curve_calculation.significance until then)
+    value.significance = s;
+end
 
 % ---- circular statistics (orientation / direction: v1 `vector`) -----------
 vec = sub(srcBlk, 'vector');
@@ -178,7 +184,9 @@ for k = 1:numel(names)
     dropped = [dropped, d]; %#ok<AGROW>
 end
 if ~isempty(fits)
-    leafFields.model_fit = did2.build.list(fits{:});
+    % one fit entry, in the curve's value (Jess Haley 2026-10-22 [one fit
+    % entry]; tuning_curve_calculation.model_fit until then)
+    value.model_fit = did2.build.list(fits{:});
 end
 
 known = [{'properties', 'tuning_curve', 'significance', 'vector', 'fitless'}, ...

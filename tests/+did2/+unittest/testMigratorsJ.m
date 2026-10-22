@@ -3523,7 +3523,7 @@ for j = 1:numel(sbods)
     verifyEqual(testCase, numel(ax), 2, ...
         'both dimensions or neither -- a positional list has no partial mode');
     verifyEqual(testCase, ax(1).term.name, 'time');
-    verifyEqual(testCase, ax(2).term.name, 'channel');
+    verifyEqual(testCase, lower(ax(2).term.name), 'channel');   % the registry's label (NCIT:C44170 'Channel', did-schema 34a15e2 [channel types])
     verifyEqual(testCase, ax(2).n, 4);          % the `channels` field
     % the channel's 1..4 numbering only repeated the positions: a bare
     % dimension (Jess Haley 2026-10-22, 6.2a and "yes" to 1..n)
@@ -3743,12 +3743,12 @@ verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.oridir');
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
-verifyEqual(testCase, leaf.tuning_curve_calculation.significance.visual_response_anova_p, ...
+verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
     0.002, 'AbsTol', 1e-9);
 cs = leaf.orientation_direction_tuning_calculation.circular_statistics;
 verifyEqual(testCase, cs.orientation_preference, 47.5, 'AbsTol', 1e-9);
 verifyEqual(testCase, cs.circular_variance, 0.3, 'AbsTol', 1e-9);
-mf = leaf.tuning_curve_calculation.model_fit;
+mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
 verifyEqual(testCase, numel(mf), 1);
 verifyEqual(testCase, mf(1).metrics.half_width_at_half_maximum, 22.0, 'AbsTol', 1e-9);
 end
@@ -3839,7 +3839,7 @@ verifyEmpty(testCase, find(endsWith(models, ' rbn'), 1));
 assertNotEmpty(testCase, rbAt);
 rb = csv.model_fit(rbAt);
 verifyEqual(testCase, rb.sensitivity, [10 20 15 5]);       % metric rides INSIDE its fit
-verifyEqual(testCase, rb.empirical_c50, [0.2 0.3 0.4 0.5]);
+verifyEqual(testCase, rb.c50, [0.2 0.3 0.4 0.5]);
 verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
 verifyEqual(testCase, csv.interpolated_values.c50, [0.21 0.31 0.41 0.51]);
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
@@ -4589,12 +4589,12 @@ verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
 leaf = calcLeafJ(testCase, out, 'spatial_frequency_tuning_calculation', 'sf_1', 'neuron_2');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_2');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.spatial_frequency_tuning');
-mf = leaf.tuning_curve_calculation.model_fit;
+mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
 verifyEqual(testCase, numel(mf), 1);
 verifyEqual(testCase, lower(char(mf(1).model.name)), 'dog');
 verifyEqual(testCase, mf(1).goodness.r2, 0.95, 'AbsTol', 1e-9);
 verifyEqual(testCase, mf(1).metrics.preferred_value, 0.13, 'AbsTol', 1e-9);
-verifyEqual(testCase, leaf.tuning_curve_calculation.significance.visual_response_anova_p, ...
+verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
     0.01, 'AbsTol', 1e-9);
 iv = leaf.spatial_frequency_tuning_calculation.interpolated_values;
 verifyEqual(testCase, iv.preferred_value, 0.12, 'AbsTol', 1e-9);
@@ -4768,14 +4768,14 @@ verifyEqual(testCase, v.stddev, [0.1; 0.2; 0.3; 0.4]);
 verifyEqual(testCase, v.stderr, [0.05; 0.1; 0.15; 0.2]);
 verifyEqual(testCase, size(v.individual), [4 2]);   % #88 D3: stimuli x trials
 verifyEqual(testCase, v.control.mean, [0.5; 0.5; 0.5; 0.5]);
-verifyEqual(testCase, leaf.tuning_curve_calculation.significance.visual_response_anova_p, ...
+verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
     0.002, 'AbsTol', 1e-12);
-verifyEqual(testCase, leaf.tuning_curve_calculation.significance.across_stimuli_anova_p, ...
+verifyEqual(testCase, leaf.tuning_curve.value.significance.across_stimuli_anova_p, ...
     0.031, 'AbsTol', 1e-12);
 iv = leaf.temporal_frequency_tuning_calculation.interpolated_values;
 verifyEqual(testCase, iv.preferred_value, 4.2, 'AbsTol', 1e-12);
 
-mf = leaf.tuning_curve_calculation.model_fit;
+mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
 assertEqual(testCase, numel(mf), 5, ...
     ['the TF family carries five co-existing fits (dog, movshon, movshon_c, ' ...
      'spline, gausslog); a single model_fit means the array collapsed']);

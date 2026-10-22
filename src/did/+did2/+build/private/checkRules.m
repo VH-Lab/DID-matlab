@@ -295,7 +295,8 @@ end
 % ---- 2. builder checks ----------------------------------------------------
 % Only the blocks that declare AMENDMENT 6's pair: `data` (and every value
 % class under it) and `acquisition_epoch`. coordinate_system has its own,
-% unrelated `dimensions` field ({axis, positive_direction, spacing}).
+% unrelated list of axes ({axis, positive_direction, spacing}; `axes` since
+% Jess Haley 2026-10-22 [coordinate system names], `dimensions` before).
 a6Blocks = blocks(ismember(blocks, {'data', 'acquisition_epoch'}));
 dims = findField(doc, a6Blocks, 'dimensions');
 covs = findField(doc, a6Blocks, 'covariates');

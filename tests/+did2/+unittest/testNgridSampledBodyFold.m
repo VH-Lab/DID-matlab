@@ -213,8 +213,8 @@ out = did2.convert.migrators_j.ontology_image(v1);
 axes = did2.unittest.helpers.axesOf(pick(out, 'sampled_body'));
 verifyEqual(testCase, [axes.n], [4 4 3]);
 verifyEqual(testCase, ...
-    arrayfun(@(a) a.term.name, axes, 'UniformOutput', false), ...
-    {'y', 'x', 'channel'});
+    arrayfun(@(a) lower(a.term.name), axes, 'UniformOutput', false), ...
+    {'y', 'x', 'channel'});   % the registry's label (NCIT:C44170 'Channel', did-schema 34a15e2 [channel types])
 end
 
 function testDtypeIsCarriedVerbatimAndDataSizeIsDropped(testCase)
