@@ -406,6 +406,50 @@ verifyEqual(testCase, sum(strcmp({b.depends_on.name}, 'input_id')), 1);
 verifyEqual(testCase, inputSet(b), {'pres_b671ff'});
 end
 
+function testDroppedControlEdgesAreCountedWithTheirDenominator(testCase)
+% Jess Haley 2026-10-22 [covariate rules named], answer "A" to 6.4: migration
+% reports count the v1 `stimulus_control_id` edges dropped by [control as
+% covariate]. One note per CONVERTED response document (the denominator),
+% 'dropped' when its edge named a document, 'none' when it was absent; a
+% document that passes through (no epoch stamp) is not converted and keeps
+% its edge, so it is not counted at all.
+withCtl = withEpochEdge(responseFixture('F1'));
+noCtl = withEpochEdge(responseFixture('F1'));
+noCtl.base.id = 'resp_nocontrol';
+noCtl.depends_on = noCtl.depends_on(~strcmp({noCtl.depends_on.name}, 'stimulus_control_id'));
+unstamped = responseFixture('F1');
+unstamped.base.id = 'resp_unstamped';
+out = runJ({withCtl, noCtl, unstamped});
+verifyEmpty(testCase, out.quarantine);
+n = out.summary.migration_notes.stimulus_control_id;
+verifyEqual(testCase, n.count, 2, 'DENOMINATOR: the two converted response documents');
+verifyEqual(testCase, n.by_class.stimulus_response_scalar, 2);
+[d, order] = sort(n.distinct_details);
+verifyEqual(testCase, d, {'dropped', 'none'});
+c = n.distinct_detail_counts(order);
+verifyEqual(testCase, c(:).', [1 1], 'one edge dropped, one document had none');
+txt = evalc('did2.convert.v1_to_v2({withCtl, noCtl, unstamped}, ''Validate'', false, ''TargetVersion'', ''V_eta'', ''Verbose'', true);');
+verifySubstring(testCase, txt, ...
+    'stimulus_control_id edges dropped: 1 of 2 converted stimulus response document(s)');
+end
+
+function testDimensionTermsWithNoNodeAreCountedPerClass(testCase)
+% Jess Haley 2026-10-22 [covariate details], answer "B" to 5.4: pass 1 counts
+% the dimensions whose term has no node, per class, with its denominators.
+% The response's one `stimulus` dimension is a label (no node).
+v1 = withEpochEdge(responseFixture('F1'));
+out = runJ(v1);
+d = out.summary.dimension_terms;
+verifyEqual(testCase, d.documents_inspected, numel(out.migrated), ...
+    'DENOMINATOR: every migrated document is inspected');
+verifyEqual(testCase, d.dimensions_written, 1, 'the stimulus dimension, and no other');
+verifyEqual(testCase, d.without_node, 1);
+verifyEqual(testCase, d.by_class.calculation, ...
+    struct('dimensions_written', 1, 'without_node', 1));
+txt = evalc('did2.convert.v1_to_v2(v1, ''Validate'', false, ''TargetVersion'', ''V_eta'', ''Verbose'', true);');
+verifySubstring(testCase, txt, 'dimension terms: 1 of 1 dimension(s) written have a term with no node');
+end
+
 function testTheUnstampedFixtureIsSuppressedNotFolded(testCase)
 % THE OTHER SIDE OF EVERY `withEpochEdge` ABOVE, and the branch every did_v1
 % document in every corpus takes today: the writer sets `element_epochid`

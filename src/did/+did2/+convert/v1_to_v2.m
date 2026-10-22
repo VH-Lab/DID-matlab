@@ -164,6 +164,17 @@ fragIds = {};
 % migrated, not quarantined, not unconverted and not a fragment.
 emptyNames = {};
 emptyValues = [];
+% DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
+% answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
+% each corpus report counts the dimensions whose term has no node, so the move
+% to `required` (with variables, OPEN_WORK #129) rests on a measured number.
+% Per emitted class: dimensions written (the denominator) and how many of
+% them have a term with an empty node. Counted on every migrated document's
+% `data` and `acquisition_epoch` blocks, the two that declare AMENDMENT 6's
+% `dimensions`.
+dimTermClasses = {};
+dimTermWritten = [];
+dimTermNoNode = [];
 % THE LEGACY IDENTITY BLOCK (`ndi_document` -> `base`). DENOMINATOR FIRST AND
 % UNCONDITIONALLY (Operating Rule 5): this struct is complete before the loop
 % starts and is attached to the summary whether or not any body carries the
@@ -327,6 +338,18 @@ for k = 1:numel(bodies)
             end
             [classCountNames, classCountValues] = bumpClassCounter( ...
                 classCountNames, classCountValues, outName);
+            [nDim, nNoNode] = dimensionTermCounts(outBody);
+            if nDim > 0
+                ix = find(strcmp(dimTermClasses, outName), 1);
+                if isempty(ix)
+                    dimTermClasses{end+1} = outName; %#ok<AGROW>
+                    dimTermWritten(end+1) = 0; %#ok<AGROW>
+                    dimTermNoNode(end+1) = 0; %#ok<AGROW>
+                    ix = numel(dimTermClasses);
+                end
+                dimTermWritten(ix) = dimTermWritten(ix) + nDim;
+                dimTermNoNode(ix) = dimTermNoNode(ix) + nNoNode;
+            end
         end
     catch err
         did2.convert.reportNote('truncate', noteMark);
@@ -398,6 +421,8 @@ result.summary = struct( ...
     'emitted_nothing_count',    sum(emptyValues), ...
     'emitted_nothing_by_class', buildByClassTable(emptyNames, emptyValues), ...
     'legacy_ndi_document', legacy, ...
+    'dimension_terms', dimensionTermSummary(numel(migrated), ...
+        dimTermClasses, dimTermWritten, dimTermNoNode), ...
     'migration_notes', did2.convert.reportNote('collect'));
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
@@ -940,10 +965,91 @@ fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
 printUnconverted(result);
 printFragments(result);
 printEmittedNothing(result);
+printDimensionTerms(result);
+printStimulusControlEdges(result);
 printMigrationNotes(result);
 printLegacyNdiDocument(result);
 printSilentLoss(result);
 printQuarantine(result);
+end
+
+function [n, noNode] = dimensionTermCounts(body)
+%DIMENSIONTERMCOUNTS The dimensions BODY writes (in its `data` and
+%   `acquisition_epoch` blocks) and how many of them have a term with no node.
+n = 0;
+noNode = 0;
+for b = {'data', 'acquisition_epoch'}
+    if ~isfield(body, b{1}) || ~isstruct(body.(b{1})) || ~isscalar(body.(b{1})) ...
+            || ~isfield(body.(b{1}), 'dimensions')
+        continue;
+    end
+    d = body.(b{1}).dimensions;
+    if iscell(d)
+        d = d(cellfun(@isstruct, d));
+    elseif isstruct(d)
+        d = num2cell(d);
+    else
+        continue;
+    end
+    for k = 1:numel(d)
+        n = n + 1;
+        t = [];
+        if isfield(d{k}, 'term'); t = d{k}.term; end
+        if iscell(t) && ~isempty(t); t = t{1}; end
+        node = '';
+        if isstruct(t) && ~isempty(t) && isfield(t, 'node'); node = t(1).node; end
+        if isempty(node) || (isstring(node) && strlength(node) == 0)
+            noNode = noNode + 1;
+        end
+    end
+end
+end
+
+function s = dimensionTermSummary(nDocs, classes, written, noNode)
+%DIMENSIONTERMSUMMARY summary.dimension_terms: DENOMINATORS FIRST
+%   (documents_inspected, dimensions_written), then without_node, then per
+%   class {dimensions_written, without_node}. A class that writes no
+%   dimension has no row; documents_inspected says how many were looked at.
+byClass = struct();
+for k = 1:numel(classes)
+    byClass.(matlab.lang.makeValidName(classes{k})) = struct( ...
+        'dimensions_written', written(k), 'without_node', noNode(k));
+end
+s = struct('documents_inspected', nDocs, ...
+    'dimensions_written', sum(written), ...
+    'without_node', sum(noNode), ...
+    'by_class', byClass);
+end
+
+function printDimensionTerms(result)
+%PRINTDIMENSIONTERMS [covariate details] 5.4: dimensions whose term has no node.
+if ~isfield(result.summary, 'dimension_terms'); return; end
+d = result.summary.dimension_terms;
+fprintf(['  dimension terms: %d of %d dimension(s) written have a term with ' ...
+    'no node (%d migrated document(s) inspected)\n'], d.without_node, ...
+    d.dimensions_written, d.documents_inspected);
+cls = fieldnames(d.by_class);
+for j = 1:numel(cls)
+    r = d.by_class.(cls{j});
+    fprintf('      %-40s %d of %d\n', cls{j}, r.without_node, r.dimensions_written);
+end
+end
+
+function printStimulusControlEdges(result)
+%PRINTSTIMULUSCONTROLEDGES [covariate rules named] 6.4: the v1
+%   `stimulus_control_id` edges the response migrators drop ([control as
+%   covariate]), against the response documents they converted.
+dropped = 0;
+total = 0;
+if isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'stimulus_control_id')
+    n = result.summary.migration_notes.stimulus_control_id;
+    total = n.count;
+    hit = strcmp(n.distinct_details, 'dropped');
+    if any(hit); dropped = n.distinct_detail_counts(hit); end
+end
+fprintf(['  stimulus_control_id edges dropped: %d of %d converted stimulus ' ...
+    'response document(s)\n'], dropped, total);
 end
 
 function printMigrationNotes(result)

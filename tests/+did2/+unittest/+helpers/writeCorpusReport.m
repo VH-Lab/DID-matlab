@@ -160,6 +160,29 @@ end
 if isfield(result, 'summary') && isfield(result.summary, 'legacy_ndi_document')
     report.legacy_ndi_document = result.summary.legacy_ndi_document;
 end
+% DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
+% answer "B" to 5.4): pass 1's count of the dimensions whose term has no node,
+% per class, with its denominators (documents_inspected, dimensions_written).
+% It is what moves dimension terms from `preferred` to `required` with the
+% variables (OPEN_WORK #129) after the merge, so it is persisted, not left in
+% the log. Absent is not zero: written only when v1_to_v2 produced it.
+if isfield(result, 'summary') && isfield(result.summary, 'dimension_terms')
+    report.dimension_terms = result.summary.dimension_terms;
+end
+% THE DROPPED v1 `stimulus_control_id` EDGES ([covariate rules named], 6.4
+% "A"; [control as covariate]): converted response documents (the
+% denominator) and how many of them carried an edge that was dropped.
+% Absent when no response migrator ran: "not measured", never 0 of 0 by
+% default.
+if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'stimulus_control_id')
+    n = result.summary.migration_notes.stimulus_control_id;
+    hit = strcmp(n.distinct_details, 'dropped');
+    report.stimulus_control_id_edges = struct( ...
+        'response_documents_converted', n.count, ...
+        'edges_dropped', sum(n.distinct_detail_counts(hit)), ...
+        'by_class', n.by_class);
+end
 
 % The V1 SOURCE census: three pre-build measurements that exist nowhere else
 % (epoch-id shape and its grouping hazard, session-document presence,

@@ -200,6 +200,20 @@ if ~isempty(charAny(sr, {'stimulator_epochid', 'stimulatorEpochid'}))
     did2.convert.reportNote('field_dropped', 'stimulus_response_scalar', ...
         char(preBody.base.id), 'stimulus_response.stimulator_epochid');
 end
+
+% The v1 `stimulus_control_id` edge is not carried ([control as covariate],
+% above). Counted, with its denominator, as Jess Haley 2026-10-22 decided
+% ([covariate rules named], answer "A" to 6.4: "migration reports count the
+% v1 `stimulus_control_id` edges dropped"): ONE note per response document
+% this migrator converts, its DETAIL 'dropped' (the edge named a document) or
+% 'none' (the edge was empty), so the note count is the denominator and
+% v1_to_v2's report prints both.
+controlEdge = 'none';
+if ~isempty(jDependency(preBody, 'stimulus_control_id'))
+    controlEdge = 'dropped';
+end
+did2.convert.reportNote('stimulus_control_id', 'stimulus_response_scalar', ...
+    char(preBody.base.id), controlEdge);
 end
 
 % ===================== helpers =============================================

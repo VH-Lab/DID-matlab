@@ -64,6 +64,14 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     jTuningCurve / jContrastSensitivityValue) has no home for
 %                     on did-schema #88; DETAIL is its path in the source
 %                     document ('<block>.<field>'). One note per field.
+%     stimulus_control_id  ONE note per v1 stimulus response document a
+%                     response migrator (stimulus_response_scalar) converts:
+%                     DETAIL 'dropped' when its `stimulus_control_id` edge
+%                     named a document, which the V2 calculation does not
+%                     carry ([control as covariate]), 'none' when the edge was
+%                     empty. The count is the denominator (Jess Haley,
+%                     2026-10-22 [covariate rules named], 6.4 "A"); v1_to_v2
+%                     prints "dropped of converted".
 %     non_area_ontology_node  a migrated ontologyImage raster whose ontology
 %                     node is not an anatomical (UBERON) area: kept as a
 %                     condition with the label variable 'ontology node';
