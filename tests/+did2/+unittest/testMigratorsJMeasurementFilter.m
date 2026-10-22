@@ -636,11 +636,19 @@ for b = 1:size(bands, 1)
         assertEqual(testCase, numel(edge), 1, sprintf('%s: %s', bands{b, 1}, e{1}));
         side = strtok(strrep(e{1}, 'passband ', ''));
         verifyEqual(testCase, edge.variable.node, edgeNodes.(side), e{1});
+        verifyEqual(testCase, edge.unit.node, 'om:hertz', e{1});
     end
     verifyEqual(testCase, p(strcmp(vars, 'filter order')).variable.node, 'EMPTY:0000394');
-    verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).variable.node, 'EMPTY:0000395');
+    % [units bound] (V_eta_data_body_model_plan.md): a parameter's canonical
+    % unit is a registered term, om:decibel for ripple and attenuation
+    rip = p(strcmp(vars, 'passband ripple'));
+    verifyEqual(testCase, rip.variable.node, 'EMPTY:0000395');
+    verifyEqual(testCase, rip.unit.node, 'om:decibel');
+    verifyEqual(testCase, rip.unit.name, 'decibel');
     att = p(strcmp(vars, 'stopband attenuation'));
     verifyEqual(testCase, att.variable.node, 'EMPTY:0000396');
+    verifyEqual(testCase, att.unit.node, 'om:decibel');
+    verifyEqual(testCase, att.unit.name, 'decibel');
     verifyEqual(testCase, att.source_unit.node, 'om:decibel');
 end
 end
