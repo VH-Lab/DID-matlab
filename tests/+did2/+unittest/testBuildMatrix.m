@@ -36,6 +36,17 @@ end
 
 function setupOnce(testCase)
 did2.unittest.helpers.installSchemaPath(testCase, 'skipping did2.build matrix tests');
+% The term registry check (tenet T19, strictMode 'TermRegistry') is OFF for
+% this file, whatever DID_ENFORCE_TERM_REGISTRY says: these tests build from
+% made-up terms ('voltage', 'colour palette', a bare {name:'time'}) to test the
+% builder's mechanics. test-builder.yml and test-migrators-quick.yml set
+% DID_ENFORCE_TERM_REGISTRY=0 for that reason; test-code.yml does not, so once
+% this file stopped filtering itself there (AMENDMENT 6's dimensions.n), every
+% made-up term was refused (run 39745771053). The registry check itself is
+% tested with the switch ARMED in testBuildTermRegistry, testBuildSourceUnit,
+% testBuildValueSet and testBuildMatrix/testTermChecksStillCoverVariableAndUnit.
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry));
 cache = did2.schema.cache.shared();
 if ~hasMatrix(cache)
     assumeFail(testCase, sprintf(['the loaded schema (%s) declares no `matrix` ' ...
