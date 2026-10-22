@@ -1192,6 +1192,21 @@ end
 
 % ===================== relations ===========================================
 
+function testCoordinateSystemDimensionsAreNotAmendment6s(testCase)
+% coordinate_system has its own `dimensions` ({axis, positive_direction,
+% spacing}); the AMENDMENT 6 checks read only the `data` and
+% `acquisition_epoch` blocks (NDI #1021 V2 import stages, run 39739660924:
+% 'Unrecognized field name "n"' from the Haley geometry import).
+step = did2.build.valueCell('length', 1e-5);
+cs = did2.build.document('coordinate_system', struct( ...
+    'origin', did2.build.term('', 'image upper-left corner'), ...
+    'dimensions', did2.build.list( ...
+        struct('axis', did2.build.term('', 'x-axis'), ...
+            'positive_direction', did2.build.term('', 'image right'), 'spacing', step))), ...
+    'SessionId', testCase.TestData.sid, 'Edges', struct('referent_id', newId()));
+verifyEqual(testCase, numel(cs.coordinate_system.dimensions), 1);
+end
+
 function testDirectedRelation(testCase)
 child = newId(); parent = newId();
 rel = did2.build.directedRelation(child, parent, did2.build.term('', 'part_of'), ...

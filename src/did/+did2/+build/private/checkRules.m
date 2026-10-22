@@ -200,8 +200,12 @@ for c = 1:numel(chain)
 end
 
 % ---- 2. builder checks ----------------------------------------------------
-dims = findField(doc, blocks, 'dimensions');
-covs = findField(doc, blocks, 'covariates');
+% Only the blocks that declare AMENDMENT 6's pair: `data` (and every value
+% class under it) and `acquisition_epoch`. coordinate_system has its own,
+% unrelated `dimensions` field ({axis, positive_direction, spacing}).
+a6Blocks = blocks(ismember(blocks, {'data', 'acquisition_epoch'}));
+dims = findField(doc, a6Blocks, 'dimensions');
+covs = findField(doc, a6Blocks, 'covariates');
 conditions = findField(doc, blocks, 'conditions');
 seen = checkDimensionsCovariates(dims, covs, any(strcmp(chain, 'sampled_body')), className);
 if isstruct(conditions)
