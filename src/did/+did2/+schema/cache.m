@@ -2716,7 +2716,10 @@ classdef cache < handle
                             'Field "%s" must be boolean.', qualifiedName);
                     end
                 case 'integer'
-                    if ~isnumeric(value) || any(mod(value(:), 1) ~= 0)
+                    % a whole number or NaN, a missing position stored as a
+                    % literal NaN (Jess Haley 2026-10-22 [missing integers],
+                    % O4a); a field's mustNotHaveNaN still refuses NaN
+                    if ~isnumeric(value) || any(mod(value(~isnan(value)), 1) ~= 0)
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be integer.', qualifiedName);
                     end

@@ -5,6 +5,7 @@ function p = parameter(variable, options)
 %   P = did2.build.parameter(VARIABLE, 'Term', T)               categorical knob
 %   P = did2.build.parameter(VARIABLE, 'Count', N)              integer knob
 %   P = did2.build.parameter(VARIABLE, 'Text', S)               free-string knob
+%   P = did2.build.parameter(VARIABLE, 'Logical', TF)           on/off knob ([logical entries])
 %   P = did2.build.parameter(VARIABLE, 'Matrix', A, 'Unit', U)  numeric array knob
 %
 %   VARIABLE says WHAT knob this is: a term, or a name when the knob has no
@@ -57,10 +58,11 @@ arguments
     options.Count = []
     options.Text = ''
     options.Matrix = []
+    options.Logical = []
     options.SchemaCache = []
 end
 
-s = oneValueEntry(variable, {'Value', 'Term', 'Count', 'Text', 'Matrix'}, options, ...
+s = oneValueEntry(variable, {'Value', 'Term', 'Count', 'Text', 'Matrix', 'Logical'}, options, ...
     'parameter_one_form');
 shape = methodShape(options.SchemaCache);
 p = did2.build.composite(shape.docClass, shape.listPath, s, ...

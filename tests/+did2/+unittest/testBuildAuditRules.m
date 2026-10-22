@@ -196,3 +196,59 @@ doc = did2.build.statement('tuning_curve_calculation', newId(), 'response', v, .
     'Covariates', did2.build.covariate('direction', 0, 'Unit', 'degree', 'Value', [0 90 180 270]), ...
     'TimeReferenceIds', {newId()}, 'SessionId', testCase.TestData.sid);
 end
+
+% ===================== [missing integers] (O4a) =============================
+
+function testAnIntegerSlotTakesNaNForAMissingValue(testCase)
+% Jess Haley 2026-10-22 [missing integers]: an integer slot accepts NaN for a
+% missing position, stored as a literal NaN; the validator accepts a whole
+% number or NaN, and still refuses a fraction.
+doc = did2.build.statement('observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), ...
+    'MethodParameters', did2.build.parameter('filter order', 'Count', NaN), ...
+    'TimeReferenceIds', {newId()}, 'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage');
+verifyTrue(testCase, isnan(doc.interaction.method.parameters.count));
+did2.schema.cache.shared().validateDocument(doc);
+verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), ...
+    'MethodParameters', did2.build.parameter('filter order', 'Count', 1.5), ...
+    'TimeReferenceIds', {newId()}, 'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage'), ...
+    'did2:build:typeMismatch');
+end
+
+% ===================== [logical entries] (F2a) ==============================
+
+function testConditionsAndParametersTakeALogical(testCase)
+% Jess Haley 2026-10-22 [logical entries]: the `logical` form on conditions
+% and method parameters
+c = did2.build.condition('control condition', 'Logical', true);
+verifyEqual(testCase, c.logical, true);
+p = did2.build.parameter('notch enabled', 'Logical', false);
+verifyEqual(testCase, p.logical, false);
+doc = did2.build.statement('observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), 'Conditions', c, ...
+    'MethodParameters', p, 'TimeReferenceIds', {newId()}, ...
+    'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage');
+verifyEqual(testCase, doc.statement.conditions.logical, true);
+verifyEqual(testCase, doc.interaction.method.parameters.logical, false);
+% one value, and only one form
+verifyError(testCase, @() did2.build.condition('x', 'Logical', [true false]), ...
+    'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.condition('x', 'Logical', true, 'Count', 1), ...
+    'did2:build:ruleViolated');
+end
+
+% ===================== variable_once on a body ([audit mechanical fixes 2]) ==
+
+function testABodysConditionsAndCovariatesShareNoVariable(testCase)
+% Jess Haley 2026-10-22 [audit mechanical fixes 2]: rule variable_once covers
+% a body's conditions -- a variable appears once across one body's conditions
+% and its covariates
+sid = testCase.TestData.sid;
+dims = did2.build.dimension('time', 3);
+cov = did2.build.covariate('time', 0, 'Unit', 'second', 'Value', [0 1 2]);
+did2.build.sampledBody(newId(), dims, 'Covariates', cov, ...
+    'Conditions', did2.build.condition('temperature', 'Value', 20), 'SessionId', sid);
+verifyRule(testCase, @() did2.build.sampledBody(newId(), dims, 'Covariates', cov, ...
+    'Conditions', did2.build.condition('time', 'Value', 1), 'SessionId', sid), 'variable_once');
+end

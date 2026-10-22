@@ -11,6 +11,8 @@ function s = oneValueEntry(variable, forms, opts, ruleName)
 %     count      an integer                          OPTS.Count
 %     text       char                                OPTS.Text
 %     matrix     a numeric N-D array, as ONE value   OPTS.Matrix
+%     logical    true / false                        OPTS.Logical (Jess Haley
+%                2026-10-22 [logical entries], F2a)
 %
 %   MATRIX (data_body AMENDMENT 4, did-schema #88) holds a whole numeric
 %   array -- a colour palette n x 3, a weight vector, a 35-number seed -- as
@@ -64,6 +66,11 @@ switch form
                 '%s: ''Matrix'' is a real numeric array.', ruleName);
         end
         isOne = true;
+    case 'Logical'
+        if ~(islogical(one) || (isnumeric(one) && all(one(:) == 0 | one(:) == 1)))
+            error('did2:build:typeMismatch', '%s: ''Logical'' is true or false.', ruleName);
+        end
+        isOne = isscalar(one);
     case 'Text'
         isOne = (ischar(one) && size(one, 1) <= 1) || (isstring(one) && isscalar(one));
         if ~isOne
@@ -112,6 +119,8 @@ switch form
         s.text = char(one);
     case 'Matrix'
         s.matrix = double(one);
+    case 'Logical'
+        s.logical = logical(one);
     otherwise
         q = struct('value', one);
         if ~isAbsent(opts.SourceValue)

@@ -199,8 +199,10 @@ switch fieldType
             error('did2:build:typeMismatch', '"%s" must be true/false, got %s.', path, class(value));
         end
     case 'integer'
-        if ~(isnumeric(value) && isreal(value) && all(mod(value(:), 1) == 0))
-            error('did2:build:typeMismatch', '"%s" must be an integer.', path);
+        % a whole number or NaN for a missing position (Jess Haley 2026-10-22
+        % [missing integers], O4a)
+        if ~(isnumeric(value) && isreal(value) && all(mod(value(~isnan(value)), 1) == 0))
+            error('did2:build:typeMismatch', '"%s" must be an integer (or NaN for a missing one).', path);
         end
         value = double(value);
     case 'double'

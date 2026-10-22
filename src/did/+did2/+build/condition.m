@@ -7,6 +7,9 @@ function c = condition(variable, options)
 %                                                       the same option)
 %   C = did2.build.condition(VARIABLE, 'Count', N)      integer
 %   C = did2.build.condition(VARIABLE, 'Text', S)       free string
+%   C = did2.build.condition(VARIABLE, 'Logical', TF)   true / false (Jess
+%                                                       Haley 2026-10-22
+%                                                       [logical entries])
 %   C = did2.build.condition(VARIABLE, 'Matrix', A)     a numeric array, as
 %                                                       ONE value
 %
@@ -51,13 +54,14 @@ arguments
     options.Count = []
     options.Text = ''
     options.Matrix = []
+    options.Logical = []
     options.Unit = []
     options.SourceUnit = ''
     options.Approximate = []
     options.SchemaCache = []
 end
 
-s = oneValueEntry(variable, {'Term', 'Value', 'Quantity', 'Count', 'Text', 'Matrix'}, options, ...
+s = oneValueEntry(variable, {'Term', 'Value', 'Quantity', 'Count', 'Text', 'Matrix', 'Logical'}, options, ...
     'conditions_one_value');
 statementClass = vetaNames(options.SchemaCache);   % `subject_statement` before 2026-10-08
 c = did2.build.composite(statementClass, 'conditions', s, ...

@@ -324,7 +324,7 @@ if isstruct(conditions)
         given = valueForms(conditions(k));
         if numel(given) ~= 1
             violated('conditions_one_value', className, sprintf( ...
-                'condition %d carries %d value forms (%s); exactly one of term, quantity, count, text, matrix.', ...
+                'condition %d carries %d value forms (%s); exactly one of term, quantity, count, text, matrix, logical.', ...
                 k, numel(given), strjoin(given, ', ')));
         end
         n = valueCount(conditions(k), given{1});
@@ -367,7 +367,7 @@ for b = 1:numel(blocks)
         given = valueForms(params(k));
         if numel(given) ~= 1
             violated('parameter_one_form', className, sprintf( ...
-                'parameter %d carries %d value forms (%s); exactly one of term, quantity, count, text, matrix.', ...
+                'parameter %d carries %d value forms (%s); exactly one of term, quantity, count, text, matrix, logical.', ...
                 k, numel(given), strjoin(given, ', ')));
         end
         if valueCount(params(k), given{1}) ~= 1
@@ -685,7 +685,8 @@ arguments
 end
 
 given = {};
-for f = {'term', 'quantity', 'count', 'text', 'matrix'}
+% `logical` since Jess Haley 2026-10-22 [logical entries] (F2a)
+for f = {'term', 'quantity', 'count', 'text', 'matrix', 'logical'}
     if isfield(entry, f{1}) && ~isAbsent(entry.(f{1}))
         given{end+1} = f{1}; %#ok<AGROW>
     end
@@ -706,6 +707,8 @@ switch form
         if isstruct(v) && isfield(v, 'value'); n = numel(v.value); end
     case 'matrix'
         n = double(~isAbsent(v));   % the whole array is ONE value (AMENDMENT 4)
+    case 'logical'
+        n = numel(v);
     case 'text'
         n = double(~isAbsent(v));
         if ischar(v) && size(v, 1) > 1; n = size(v, 1); end
