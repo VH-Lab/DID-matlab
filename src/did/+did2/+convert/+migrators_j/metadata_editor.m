@@ -17,9 +17,16 @@ function v2Body = metadata_editor(preBody)
 %                     description<-Description, how_to_cite<-HowToCite,
 %                     license<-License, release_date<-ReleaseDate, keyword<-Keyword,
 %                     support_channel<-SupportChannel, and the openMINDS controlled-term
-%                     fields accessibility<-Accessibility, ethics_assessment<-
-%                     EthicsAssessment (ontology_terms, open node until the openMINDS
-%                     IRI is resolved). (id preserved from base.id.) These openMINDS
+%                     fields accessibility<-Accessibility (an ontology_term, open
+%                     node until the openMINDS IRI is resolved), and
+%                     EthicsAssessment, handed to entityDoc as `ethics_assessment`
+%                     and written by did2.convert.ethicsJurisdiction as an `ethics
+%                     jurisdiction` (EMPTY:0000359) assertion: "EU compliant" /
+%                     "EU compliant +" -> European Union (the "+" a note), "US
+%                     compliant" -> United States, any other value -> no
+%                     statement, counted (Jess Haley 2026-10-22 [ethics assessment
+%                     to jurisdiction]; the obsolete EMPTY:0000355 is not
+%                     written). (id preserved from base.id.) These openMINDS
 %                     DatasetVersion properties have field homes (full-field parity),
 %                     so they are stored, not dropped. experimental_approach is the
 %                     exception -- see bucket 2 (it is a per-subject projection).
@@ -161,7 +168,7 @@ datasetBlock = struct( ...
     'how_to_cite',        getChar(ms, 'HowToCite'), ...
     'license',            getChar(ms, 'License'), ...
     'accessibility',      termOrBlank(getChar(ms, 'Accessibility')), ...
-    'ethics_assessment',  termOrBlank(getChar(ms, 'EthicsAssessment')), ...
+    'ethics_assessment',  termOrBlank(getChar(ms, 'EthicsAssessment')), ...  % -> EMPTY:0000359 via did2.convert.ethicsJurisdiction (entityDoc)
     'release_date',       getChar(ms, 'ReleaseDate'));
 % Repeatable fields (empty -> conventional empty list).
 datasetBlock.keyword         = getStrList(ms, 'Keyword');

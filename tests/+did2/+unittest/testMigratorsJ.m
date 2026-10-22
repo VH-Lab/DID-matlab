@@ -1751,6 +1751,7 @@ verifyEqual(testCase, keys(3).cov.source_unit.name, 'second');
 verifyEqual(testCase, keys(1).cov.spacing.value, 1.5);
 verifyEqual(testCase, keys(3).cov.spacing.value, 0.2);
 end
+end
 
 
 function testImageStackAxisWithNoRecordedScaleIsABareDimension(testCase)
@@ -2698,6 +2699,53 @@ kw = textAboutJ(out.migrated, id, 'Keyword');
 verifyEqual(testCase, sort(kw), {'calcium imaging', 'worm'});
 % bucket-2 projections are not stored
 verifyEmpty(testCase, assertionAboutJ(out.migrated, id, 'experimental approach'));
+end
+
+
+function testMetadataEditorEthicsAssessmentIsTheJurisdiction(testCase)
+% Jess Haley 2026-10-22 [ethics assessment to jurisdiction]
+% (V_eta_term_registry_plan.md): the editor's EthicsAssessment becomes an
+% `ethics jurisdiction` (EMPTY:0000359) assertion about the dataset, through
+% did2.convert.ethicsJurisdiction; the obsolete EMPTY:0000355 `ethics
+% assessment` is never written. "EU compliant +" is the European Union with the
+% "+" kept as a note; "US compliant" the United States; "not required" (and
+% any other value) makes no statement.
+values = {'EU compliant', 'EU compliant +', 'US compliant', 'not required'};
+nodes = {'wikidata:Q458', 'wikidata:Q458', 'wikidata:Q30', ''};
+for k = 1:numel(values)
+    v1 = metadataEditorDoc();
+    v1.metadata_editor.metadata_structure.EthicsAssessment = values{k};
+    out = runJ(v1);
+    m = out.migrated;
+    id = firstOfClassJ(m, 'dataset').get('base.id');
+    hits = {};
+    for j = 1:numel(m)
+        d = m{j};
+        txt = jsonencode(d.toStruct());
+        verifyFalse(testCase, contains(txt, 'EMPTY:0000355'), ...
+            sprintf('%s: the obsolete ethics assessment term is written', values{k}));
+        if strcmp(d.get('document_class.class_name'), 'assertion') ...
+                && strcmp(depVal(d, 'entity_id'), id)
+            var = d.get('statement.variable');
+            verifyFalse(testCase, strcmpi(char(var.name), 'ethics assessment'), values{k});
+            if strcmp(termNodeJ(var), 'EMPTY:0000359')
+                hits{end+1} = d; %#ok<AGROW>
+            end
+        end
+    end
+    if isempty(nodes{k})
+        verifyEmpty(testCase, hits, sprintf('%s: no statement', values{k}));
+        verifyEqual(testCase, out.summary.by_class.assertion, 11, ...
+            sprintf('%s: the assertions of metadataEditorDoc alone', values{k}));
+        continue;
+    end
+    assertEqual(testCase, numel(hits), 1, sprintf('%s: one jurisdiction', values{k}));
+    verifyEqual(testCase, hits{1}.get('term.value').node, nodes{k}, values{k});
+    if contains(values{k}, '+')
+        verifySubstring(testCase, hits{1}.get('statement.notes'), ...
+            'additional ethics assessment');
+    end
+end
 end
 
 
@@ -5521,6 +5569,14 @@ for k = 1:numel(migrated)
         end
     end
 end
+end
+
+
+function n = termNodeJ(t)
+% A term's node; '' when the term carries none (the builder leaves an empty
+% node out).
+n = '';
+if isstruct(t) && isfield(t, 'node') && ~isempty(t.node); n = char(t.node); end
 end
 
 
