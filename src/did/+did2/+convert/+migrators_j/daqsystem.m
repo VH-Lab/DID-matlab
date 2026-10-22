@@ -1,10 +1,11 @@
 function bodies = daqsystem(preBody)
 %DAQSYSTEM Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
-%   (configuration off `base` on did-schema #88; `<- entity` in the signed
-%   2026-08-08 text quoted below) + a `software` entity for its own
-%   implementation class.
+%   (configuration off `base`) + a `software` entity for its own
+%   implementation class. 1 -> 2, or 1 -> 1 when there is no class name.
+%   base.id AND base.name PRESERVED on the acquisition_system.
 %
-%   CURRENT SHAPE (did-schema #88; Jess Haley 2026-10-22 [audit mechanical
+%   CURRENT SHAPE (did-schema #88; the signed 2026-08-08 text further down
+%   says `<- entity`; Jess Haley 2026-10-22 [audit mechanical
 %   fixes 2] retired the stale names below, [required acquisition edges] H2a):
 %       acquisition_system   base.id PRESERVED   name "intan1"
 %          depends_on: software_id                -> software entity
@@ -14,8 +15,6 @@ function bodies = daqsystem(preBody)
 %   A v1 daqsystem without its daqreader or filenavigator is quarantined (the
 %   v1 template requires both too). The quoted text below keeps the 2026-08
 %   names (`<- entity`, `acquisition_metadata_reader_#`) as the record.
-%   1 -> 2, or 1 -> 1 when there is no class name. base.id AND base.name
-%   PRESERVED on the acquisition_system.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %

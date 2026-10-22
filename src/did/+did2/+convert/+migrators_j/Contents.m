@@ -619,10 +619,10 @@
 %         it from this line. The daqreader superclass chain is rebuilt by
 %         ensureClassBlocks after this.
 %     daqsystem
-%         Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system` (<- entity)
-%         + a `software` entity for its own implementation class. 1 -> 2, or 1 -> 1
-%         when there is no class name. base.id AND base.name PRESERVED on the
-%         acquisition_system.
+%         Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
+%         (configuration off `base`) + a `software` entity for its own implementation
+%         class. 1 -> 2, or 1 -> 1 when there is no class name. base.id AND base.name
+%         PRESERVED on the acquisition_system.
 %     dataset_remote
 %         Brainstorm-J migrator: did_v1 dataset_remote -> the remote copy as a
 %         first-class relation. A dataset_remote records that a local dataset is
