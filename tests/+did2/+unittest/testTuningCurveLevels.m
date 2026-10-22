@@ -502,29 +502,38 @@ did2.convert.reportNote('reset');
 assertTrue(testCase, isfield(notes, 'field_dropped'), ...
     'no field_dropped note: the dropped-fields list was discarded again');
 n = notes.field_dropped;
-verifyEqual(testCase, numel(n.ids), n.count, 'one id per note');
-verifyEqual(testCase, numel(n.details), n.count, 'one detail per note');
+% ids/details are a SAMPLE (reportNote keeps the first sample_cap_per_class
+% notes of each class); the counts and distinct_details are exact. Presence
+% and absence of a field are therefore read from distinct_details: an absence
+% read from a sample would pass whenever the sample stopped short.
+verifyEqual(testCase, numel(n.ids), n.sample_kept, 'one id per sampled note');
+verifyEqual(testCase, numel(n.details), n.sample_kept, 'one detail per sampled note');
+verifyEqual(testCase, n.sample_kept, min(n.count, n.sample_cap_per_class), ...
+    'one class: the sample is the first sample_cap_per_class notes');
+verifyEqual(testCase, sum(n.distinct_detail_counts), n.count, ...
+    'every field_dropped note names its field, and each is counted once');
 verifyTrue(testCase, all(strcmp(n.ids, 'lvl_doc_1')), 'notes name the source id');
 verifyTrue(testCase, isfield(n.by_class, 'spatial_frequency_tuning'), ...
     'notes are attributed to the v1 class');
-verifyTrue(testCase, any(strcmp(n.details, 'spatial_frequency_tuning.abs')), ...
+verifyTrue(testCase, any(strcmp(n.distinct_details, 'spatial_frequency_tuning.abs')), ...
     'the abs block is dropped and must be reported');
 for f = {'control_mean_stddev', 'control_mean_stderr'}
-    verifyFalse(testCase, any(strcmp(n.details, ...
+    verifyFalse(testCase, any(strcmp(n.distinct_details, ...
         ['spatial_frequency_tuning.tuning_curve.' f{1}])), ...
         sprintf('tuning_curve.%s is mapped to control.pooled, not dropped', f{1}));
 end
 % nothing that WAS mapped is reported dropped
-verifyFalse(testCase, any(strcmp(n.details, ...
+verifyFalse(testCase, any(strcmp(n.distinct_details, ...
     'spatial_frequency_tuning.tuning_curve.control_mean')), ...
     'control_mean was mapped, not dropped');
 end
 
 function d = droppedDetails()
+% EXACT: every distinct dropped field, not the capped per-note sample
 notes = did2.convert.reportNote('collect');
 d = {};
 if isfield(notes, 'field_dropped')
-    d = notes.field_dropped.details;
+    d = notes.field_dropped.distinct_details;
 end
 end
 

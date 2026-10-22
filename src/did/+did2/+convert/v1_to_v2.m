@@ -958,13 +958,26 @@ for k = 1:numel(kinds)
     for j = 1:numel(cls)
         fprintf('      %-40s %d\n', cls{j}, n.by_class.(cls{j}));
     end
-    % what the notes name (field_dropped: the field path), distinct, counted
-    if isfield(n, 'details')
+    % what the notes name (field_dropped: the field path), distinct, counted.
+    % distinct_details is exact over every note; ids/details are a sample
+    % (did2.convert.reportNote), so the sample is stated, never passed off
+    % as the whole list.
+    if isfield(n, 'distinct_details')
+        [u, order] = sort(n.distinct_details);
+        c = n.distinct_detail_counts(order);
+        for j = 1:numel(u)
+            fprintf('        %-38s %d\n', u{j}, c(j));
+        end
+    elseif isfield(n, 'details')
         d = n.details(~cellfun(@isempty, n.details));
         [u, ~, ix] = unique(d);
         for j = 1:numel(u)
             fprintf('        %-38s %d\n', u{j}, sum(ix == j));
         end
+    end
+    if isfield(n, 'sample_kept')
+        fprintf('      ids held: %d of %d note(s) (a sample: the first %d per class)\n', ...
+            n.sample_kept, n.count, n.sample_cap_per_class);
     end
 end
 end

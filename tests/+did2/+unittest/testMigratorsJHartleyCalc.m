@@ -394,9 +394,13 @@ did2.convert.reportNote('reset');
 assertTrue(testCase, numel(out) > 1, 'the document folded');
 assertTrue(testCase, isfield(notes, 'field_dropped'), 'no field_dropped note was left');
 n = notes.field_dropped;
-hit = strcmp(n.details, 'reverse_correlation.method');
-verifyEqual(testCase, sum(hit), 1, 'the implied method is reported dropped, once');
-verifyEqual(testCase, n.ids(hit), {char(v1.base.id)}, 'per document: the source id');
+% counted from distinct_details (exact); ids are a capped sample, and every
+% sampled note of this one-document run names its source id
+hit = strcmp(n.distinct_details, 'reverse_correlation.method');
+verifyEqual(testCase, sum(n.distinct_detail_counts(hit)), 1, ...
+    'the implied method is reported dropped, once');
+verifyNotEmpty(testCase, n.ids, 'the sample holds no note');
+verifyTrue(testCase, all(strcmp(n.ids, char(v1.base.id))), 'per document: the source id');
 verifyTrue(testCase, isfield(n.by_class, 'hartley_calc'));
 end
 
