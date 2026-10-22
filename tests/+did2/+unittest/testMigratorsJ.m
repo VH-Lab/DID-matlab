@@ -1756,11 +1756,20 @@ end
 function testRegisteredSourceUnitsCarryTheirNode(testCase)
 % jSourceUnit: a unit spelling the term registry holds is written with the
 % registry's node and name (V_eta_source_unit_plan.md item 4): degree, radian
-% and hertz are om:degree, om:radian, om:hertz. A unit the registry does not
-% hold (kilohertz) is not decided and stays {node '', name SPELLING}.
+% and hertz are om:degree, om:radian, om:hertz; volt, millivolt, microvolt,
+% kilogram, kilohertz, ampere, milliampere, microampere, nanoampere and
+% picoampere are their om: terms. A spelling the table does not know stays
+% {node '', name SPELLING}. (The micro-sign spelling of microvolt is in the
+% table too; it is not exercised here because Octave, which runs these tests
+% in session tooling, rejects char(181) as invalid UTF-8 in regexp.)
 cases = { ...
     'degrees,radians,Hz', {'om:degree', 'degree'; 'om:radian', 'radian'; 'om:hertz', 'hertz'}; ...
-    'deg,rad,kHz',        {'om:degree', 'degree'; 'om:radian', 'radian'; '', 'kHz'}};
+    'deg,rad,kHz',        {'om:degree', 'degree'; 'om:radian', 'radian'; 'om:kilohertz', 'kilohertz'}; ...
+    'V,mV,uV',            {'om:volt', 'volt'; 'om:millivolt', 'millivolt'; 'om:microvolt', 'microvolt'}; ...
+    'volts,millivolt,microvolt', {'om:volt', 'volt'; 'om:millivolt', 'millivolt'; 'om:microvolt', 'microvolt'}; ...
+    'volt,microvolt,kg',  {'om:volt', 'volt'; 'om:microvolt', 'microvolt'; 'om:kilogram', 'kilogram'}; ...
+    'A,mA,uA',            {'om:ampere', 'ampere'; 'om:milliampere', 'milliampere'; 'om:microampere', 'microampere'}; ...
+    'nA,pA,furlong',      {'om:nanoampere', 'nanoampere'; 'om:picoampere', 'picoampere'; '', 'furlong'}};
 for c = 1:size(cases, 1)
     v1 = behaviourImageStack();
     v1.image_stack_parameters.dimension_scale_units = cases{c, 1};
@@ -4194,7 +4203,9 @@ verifyEqual(testCase, depValue(o, 'entity_id'), 'probe_7');
 vals = o.voltage.value;
 verifyEqual(testCase, numel(vals), 1);
 verifyEqual(testCase, vals(1).source_value, 0.5, 'AbsTol', 1e-9);
-verifyEqual(testCase, vals(1).source_unit.name, 'V');   % #88: a bound term
+% #88: a bound term; 'V' is the registry's om:volt 'volt' (jSourceUnit)
+verifyEqual(testCase, vals(1).source_unit.node, 'om:volt');
+verifyEqual(testCase, vals(1).source_unit.name, 'volt');
 verifyEqual(testCase, vals(1).volts, 0.5, 'AbsTol', 1e-9);
 % temperature qualifies the SAME statement rather than becoming its own doc
 c = o.statement.conditions;   % #88: conditions live on `statement`

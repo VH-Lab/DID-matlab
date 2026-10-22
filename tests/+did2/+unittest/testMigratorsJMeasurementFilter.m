@@ -424,10 +424,9 @@ verifyFalse(testCase, isfield(ff.get('frequency_filter.passband'), 'high'));
 % TYPED gain field, not a coefficients bag: `b` and `a` ARE the filter
 % coefficients, so that word is taken. cheby1's Rp is in decibels.
 verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.decibels'), 0.8);
-verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.source_unit').name, 'dB');
-dbUnit = ff.get('frequency_filter.passband_ripple.source_unit');
-verifyTrue(testCase, ~isfield(dbUnit, 'node') || isempty(dbUnit.node), ...
-    'decibel is not in the term registry: not decided, kept as the spelling');
+% 'dB' is the registry's om:decibel 'decibel' (jSourceUnit)
+verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.source_unit').node, 'om:decibel');
+verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.source_unit').name, 'decibel');
 end
 
 function testBandComesFromFilterTypeAfterTheSuperclassRename(testCase)
@@ -478,7 +477,8 @@ blk.parameters.stopbandAttentuation = 40;
 out = runJ(pyraviewBody(blk));
 ff = docOfClass(testCase, out, 'frequency_filter');
 verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.decibels'), 40);
-verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.source_unit').name, 'dB');
+verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.source_unit').node, 'om:decibel');
+verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.source_unit').name, 'decibel');
 % chebyshev_2 has no passband ripple -- the NaN must not have been carried
 verifyFalse(testCase, isfield(ff.get('frequency_filter'), 'passband_ripple'));
 end
