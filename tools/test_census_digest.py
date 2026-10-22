@@ -5350,6 +5350,58 @@ class TestEdgeArity(DigestCase):
         self.assertEqual(table["c.e"]["total"], 13)
 
 
+class TestDimensionTermsAndControlEdges(unittest.TestCase):
+    """dimension_terms ([covariate details] 5.4) and stimulus_control_id_edges
+    ([covariate rules named] 6.4), persisted per corpus by writeCorpusReport:
+    denominators first, absent is NOT MEASURED, never a zero."""
+
+    def test_dimension_terms_absent_is_not_measured(self):
+        out = []
+        census_digest.render_dimension_terms({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_dimension_terms_prints_denominators_then_classes(self):
+        out = []
+        census_digest.render_dimension_terms({"dimension_terms": {
+            "documents_inspected": 120, "dimensions_written": 40,
+            "without_node": 31, "by_class": {
+                "sampled_body": {"dimensions_written": 30, "without_node": 30},
+                "calculation": {"dimensions_written": 10, "without_node": 1}}}}, out)
+        self.assertIn("120 doc(s) inspected, 40 dimension(s) written, "
+                      "31 without a node", out[0])
+        self.assertIn("calculation", out[1])
+        self.assertIn("1 of", out[1].replace("     ", " ").replace("  ", " "))
+        self.assertIn("sampled_body", out[2])
+
+    def test_dimension_terms_zero_written_is_called_vacuous(self):
+        out = []
+        census_digest.render_dimension_terms({"dimension_terms": {
+            "documents_inspected": 5, "dimensions_written": 0,
+            "without_node": 0, "by_class": {}}}, out)
+        self.assertTrue(any("vacuous" in x for x in out))
+
+    def test_control_edges_absent_is_not_measured(self):
+        out = []
+        census_digest.render_stimulus_control_edges({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_control_edges_print_dropped_of_converted(self):
+        out = []
+        census_digest.render_stimulus_control_edges({"stimulus_control_id_edges": {
+            "response_documents_converted": 11440, "edges_dropped": 11000,
+            "by_class": {"stimulus_response_scalar": 11440}}}, out)
+        self.assertIn("11000 of 11440 converted", out[0])
+        self.assertIn("stimulus_response_scalar", out[1])
+
+    def test_both_reach_the_per_corpus_digest(self):
+        import inspect
+        src = inspect.getsource(census_digest)
+        self.assertIn("    render_dimension_terms(r, out)\n", src)
+        self.assertIn("    render_stimulus_control_edges(r, out)\n", src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

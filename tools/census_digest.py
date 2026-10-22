@@ -2419,6 +2419,50 @@ def render_dose_ingredients(r, out):
         p("      %s: %s" % (e.get("id", "?"), e.get("message", "?")))
 
 
+def render_dimension_terms(r, out):
+    """Pass 1's count of dimensions whose term has no node (Jess Haley,
+    2026-10-22 [covariate details], answer "B" to 5.4): it is what moves
+    dimension terms from `preferred` to `required` (OPEN_WORK #129).
+    Denominators first (documents inspected, dimensions written); an absent
+    block is NOT MEASURED, never a zero."""
+    p = out.append if isinstance(out, list) else out
+    d = r.get("dimension_terms")
+    if not isinstance(d, dict):
+        p("    dimension terms with no node: NOT MEASURED -- this report carries "
+          "no dimension_terms block")
+        return
+    p("    dimension terms with no node: %s doc(s) inspected, %s dimension(s) "
+      "written, %s without a node"
+      % (d.get("documents_inspected", "?"), d.get("dimensions_written", "?"),
+         d.get("without_node", "?")))
+    if d.get("dimensions_written") == 0:
+        p("      (no dimension written: the count is vacuous, not clean)")
+    rows = d.get("by_class") or {}
+    for cls in sorted(rows):
+        row = rows[cls] if isinstance(rows[cls], dict) else {}
+        p("      %-40s %6s of %6s without a node"
+          % (cls, row.get("without_node", "?"), row.get("dimensions_written", "?")))
+
+
+def render_stimulus_control_edges(r, out):
+    """The v1 `stimulus_control_id` edges dropped by [control as covariate]
+    (Jess Haley, 2026-10-22 [covariate rules named], answer "A" to 6.4), of
+    the response documents converted. Absent is NOT MEASURED (no response
+    migrator ran), never 0 of 0."""
+    p = out.append if isinstance(out, list) else out
+    e = r.get("stimulus_control_id_edges")
+    if not isinstance(e, dict):
+        p("    stimulus_control_id edges dropped: NOT MEASURED -- this report "
+          "carries no stimulus_control_id_edges block")
+        return
+    p("    stimulus_control_id edges dropped: %s of %s converted stimulus "
+      "response document(s)"
+      % (e.get("edges_dropped", "?"), e.get("response_documents_converted", "?")))
+    rows = e.get("by_class") or {}
+    for cls in sorted(rows):
+        p("      %-40s %6s converted" % (cls, rows[cls]))
+
+
 def render_entity_requires(r, out):
     """The entity-type `requires` census, REPORT-ONLY (Jess Haley, 2026-10-21,
     "b"): per entity type and required field, entities inspected and missing.
@@ -6026,6 +6070,8 @@ def render_report(r, out):
     render_edge_arity(r, out)
     render_entity_requires(r, out)
     render_dose_ingredients(r, out)
+    render_dimension_terms(r, out)
+    render_stimulus_control_edges(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the
