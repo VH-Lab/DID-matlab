@@ -1980,8 +1980,15 @@ if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
 % string. Its `session_id` edge names the session entity, whose base.id IS
 % the session id (V_eta_relation_inheritance_plan.md item 4), so
 % SESSIONDOCUMENTID and SESSIONID are the same id on #88.
+% The type is written with its registered node, EMPTY:0000383 "recording
+% epoch" (Jess Haley 2026-10-22 [vocabulary nodes] L3; did2.build.vocabulary
+% holds the node), not as a bare name. did2.build.document then writes the
+% node and name of the schema's entity.type value-set member for that node
+% ({EMPTY:0000383, "epoch"} on did-schema #88).
+epochType = did2.convert.registeredTerm( ...
+    did2.build.vocabulary('entity_type', 'epoch'), 'recording epoch');
 body = did2.build.document('entity', ...
-    struct('type', did2.build.term('', 'epoch'), 'local_identifier', epochString), ...
+    struct('type', epochType, 'local_identifier', epochString), ...
     'SessionId', sessionId, 'CreationTimestamp', datestamp, 'Validate', false);
 if ~strcmp(sessionDocumentId, sessionId) && ~did2.schema.cache.shared().sessionIdIsEdge()
     body = setDep(body, 'session_id', sessionDocumentId);

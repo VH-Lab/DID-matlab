@@ -515,6 +515,22 @@ verifyEqual(testCase, sessEdges, {did2.unittest.helpers.sessionDocumentId('sd_A'
     'each epoch points at ITS session document');
 end
 
+function testTheMintedEpochTypeCarriesItsRegisteredNode(testCase)
+% [vocabulary nodes] L3 (Jess Haley 2026-10-22): the epoch entity type is
+% EMPTY:0000383 ("recording epoch" in the term registry). The mint writes the
+% node, never a bare `epoch` name with an empty node; the stored name is the
+% one the schema's entity.type value set gives that node.
+[out, rep] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    elementEpochBody('ee_1', 'sess_A', 't00070', 'el_1')});
+verifyEqual(testCase, rep.epochs_minted, 1);
+epochs = ofClass(out, 'epoch');
+assertEqual(testCase, numel(epochs), 1);
+t = epochs{1}.get('entity.type');
+verifyEqual(testCase, char(t.node), 'EMPTY:0000383');
+verifyNotEmpty(testCase, char(t.name));
+end
+
 function testKeyingOnTheStringAloneWouldHaveFused(testCase)
 % THE LOAD-BEARING TEST OF THIS FILE.
 %
