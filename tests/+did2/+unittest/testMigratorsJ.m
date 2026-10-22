@@ -1751,6 +1751,30 @@ verifyEqual(testCase, keys(3).cov.source_unit.name, 'second');
 verifyEqual(testCase, keys(1).cov.spacing.value, 1.5);
 verifyEqual(testCase, keys(3).cov.spacing.value, 0.2);
 end
+
+
+function testRegisteredSourceUnitsCarryTheirNode(testCase)
+% jSourceUnit: a unit spelling the term registry holds is written with the
+% registry's node and name (V_eta_source_unit_plan.md item 4): degree, radian
+% and hertz are om:degree, om:radian, om:hertz. A unit the registry does not
+% hold (kilohertz) is not decided and stays {node '', name SPELLING}.
+cases = { ...
+    'degrees,radians,Hz', {'om:degree', 'degree'; 'om:radian', 'radian'; 'om:hertz', 'hertz'}; ...
+    'deg,rad,kHz',        {'om:degree', 'degree'; 'om:radian', 'radian'; '', 'kHz'}};
+for c = 1:size(cases, 1)
+    v1 = behaviourImageStack();
+    v1.image_stack_parameters.dimension_scale_units = cases{c, 1};
+    out = runJ(v1);
+    sb = firstOfClassJ(out.migrated, 'sampled_body');
+    keys = did2.unittest.helpers.axesOf(sb.toStruct());
+    assertEqual(testCase, numel(keys), 3, cases{c, 1});
+    want = cases{c, 2};
+    for k = 1:3
+        u = keys(k).cov.source_unit;
+        verifyEqual(testCase, termNodeJ(u), want{k, 1}, sprintf('%s axis %d node', cases{c, 1}, k));
+        verifyEqual(testCase, char(u.name), want{k, 2}, sprintf('%s axis %d name', cases{c, 1}, k));
+    end
+end
 end
 
 

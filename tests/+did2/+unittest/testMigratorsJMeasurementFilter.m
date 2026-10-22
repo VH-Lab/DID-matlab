@@ -416,13 +416,18 @@ verifyEqual(testCase, ff.get('frequency_filter.order'), 4);
 % BAND EDGES, NOT A CUTOFF. A high-pass has a LOW edge and no high edge -- an
 % absent edge means open.
 verifyEqual(testCase, ff.get('frequency_filter.passband.low.hertz'), 300);
-verifyEqual(testCase, ff.get('frequency_filter.passband.low.source_unit').name, 'Hz');   % #88: a bound term
+% #88: a bound term; 'Hz' is the registry's om:hertz 'hertz' (jSourceUnit)
+verifyEqual(testCase, ff.get('frequency_filter.passband.low.source_unit').node, 'om:hertz');
+verifyEqual(testCase, ff.get('frequency_filter.passband.low.source_unit').name, 'hertz');
 verifyFalse(testCase, isfield(ff.get('frequency_filter.passband'), 'high'));
 
 % TYPED gain field, not a coefficients bag: `b` and `a` ARE the filter
 % coefficients, so that word is taken. cheby1's Rp is in decibels.
 verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.decibels'), 0.8);
 verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.source_unit').name, 'dB');
+dbUnit = ff.get('frequency_filter.passband_ripple.source_unit');
+verifyTrue(testCase, ~isfield(dbUnit, 'node') || isempty(dbUnit.node), ...
+    'decibel is not in the term registry: not decided, kept as the spelling');
 end
 
 function testBandComesFromFilterTypeAfterTheSuperclassRename(testCase)
