@@ -511,6 +511,56 @@ end
 verifyEqual(testCase, sum(strcmp(names, 'frequency_filter')), 1);
 end
 
+function testAFilterIsAMethodOnceTheBodyTakesMethodId(testCase)
+% Jess Haley 2026-10-22 [filters are methods] (N1a): frequency_filter is
+% deleted; the filter is a `method` document (term the design; parameters the
+% band, the passband edges in Hz, the order as a count, ripple / attenuation
+% in dB) and a body's filter_id becomes method_id. The migrator follows the
+% LOADED schema, so this runs on a copy of it whose sampled_body declares
+% method_id (the did-schema change that lands after this one).
+src = did2.schema.cache.shared().schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+f = fullfile(tmp, 'sampled_body.json');
+txt = fileread(f);
+if ~contains(txt, '"filter_id"')
+    assumeFail(testCase, 'the loaded sampled_body declares no filter_id to rename');
+end
+txt = strrep(txt, '"name": "filter_id"', '"name": "method_id"');
+txt = strrep(txt, '"must_refer_to_document_class": "frequency_filter"', ...
+    '"must_refer_to_document_class": "method"');
+fid = fopen(f, 'w'); fwrite(fid, txt); fclose(fid);
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+
+out = runJ(pyraviewBody(predFilterBlock()));
+verifyEmpty(testCase, out.quarantine);
+names = classNames(out);
+verifyEqual(testCase, sum(strcmp(names, 'frequency_filter')), 0, 'no frequency_filter');
+verifyEqual(testCase, sum(strcmp(names, 'method')), 1, 'one method document');
+m = out.migrated{strcmp(names, 'method')}.toStruct();
+verifyEqual(testCase, m.method.term.name, 'Chebyshev type I filter');
+p = m.method.parameters;
+vars = arrayfun(@(x) char(x.variable.name), p, 'UniformOutput', false);
+verifyEqual(testCase, p(strcmp(vars, 'filter band')).term.name, 'high-pass');
+low = p(strcmp(vars, 'passband low edge'));
+verifyEqual(testCase, low.quantity.value, 300);
+verifyEqual(testCase, lower(char(low.unit.name)), 'hertz');
+verifyFalse(testCase, any(strcmp(vars, 'passband high edge')), 'a high-pass is open above');
+verifyEqual(testCase, p(strcmp(vars, 'filter order')).count, 4);
+verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).quantity.value, 0.8);
+verifyFalse(testCase, any(strcmp(vars, 'stopband attenuation')), 'NaN is absent');
+bodies = out.migrated(strcmp(names, 'sampled_body'));
+verifyEqual(testCase, numel(bodies), 2);
+for k = 1:numel(bodies)
+    sb = bodies{k}.toStruct();
+    verifyEqual(testCase, depValue(sb, 'method_id'), m.base.id);
+    verifyEmpty(testCase, depValue(sb, 'filter_id'));
+end
+end
+
 function testAllPassEmitsNoFilterAndNoEdge(testCase)
 % filterData.m:34-42: an all-pass records type 'none' and algorithm 'none'. The
 % model's `band` and `algorithm` are both mustBeNonEmpty with value_sets that

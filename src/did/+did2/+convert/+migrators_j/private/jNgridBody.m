@@ -287,7 +287,11 @@ end
 [dims, covs] = jDimCov(ngridAxes(dataDim, axisLabels, axisCoords));
 % DATUM ORDER 'F': an ngrid's bytes are a MATLAB array written with fwrite, so
 % column-major -- unless the caller states otherwise in opts.BodyOptions.
-o = jOpts(preBody, 'DatumOrder', 'F', opts.BodyOptions{:});
+% Only with more than one dimension: a one-dimensional body leaves it empty
+% (rule datum_order_multidimensional, Jess Haley 2026-10-22 6.3a).
+orderOpt = {};
+if numel(dims) > 1; orderOpt = {'DatumOrder', 'F'}; end
+o = jOpts(preBody, orderOpt{:}, opts.BodyOptions{:});
 body = did2.build.sampledBody(char(statementId), dims, 'Covariates', covs, o{:});
 end
 

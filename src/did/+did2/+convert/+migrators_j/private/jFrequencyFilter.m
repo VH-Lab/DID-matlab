@@ -1,8 +1,20 @@
-function ff = jFrequencyFilter(preBody)
-%JFREQUENCYFILTER Build a V_eta `frequency_filter` document from a did_v1
-%   `filter` superclass block. Returns [] when the block describes no filter
-%   this model can represent, in which case the caller emits nothing and adds no
-%   `filter_id` edge -- an unresolvable design must never become a guessed one.
+function [ff, edgeName] = jFrequencyFilter(preBody)
+%JFREQUENCYFILTER Build the document a did_v1 `filter` superclass block
+%   becomes, and name the edge a body points at it by. Returns [] when the
+%   block describes no filter this model can represent, in which case the
+%   caller emits nothing and adds no edge -- an unresolvable design must never
+%   become a guessed one.
+%
+%   FILTERS ARE METHODS (Jess Haley 2026-10-22 [filters are methods], N1a,
+%   V_eta_frequency_filter_model_plan.md): `frequency_filter` is deleted (a V2
+%   invention; 0 occurrences in NDI's ground truth) and the filter is a
+%   `method` document -- term the filter design, parameters the band, the
+%   passband edges in Hz, the filter order (a count), the passband ripple and
+%   stopband attenuation in dB -- and a body's `filter_id` becomes `method_id`.
+%   Which is built follows the LOADED schema: when sampled_body declares
+%   `method_id`, a `method` document and EDGENAME 'method_id'; while it still
+%   declares `filter_id`, the `frequency_filter` below and 'filter_id'. The
+%   field-by-field reading of the source is the same for both.
 %
 %   TEAM-SIGN-OFF (jess, 2026-07-30, V_eta_frequency_filter_model_plan.md):
 %   "Approved the frequency_filter model as written below: a referenced document
@@ -107,6 +119,7 @@ function ff = jFrequencyFilter(preBody)
 %   Shared helper for the Brainstorm-J (+migrators_j) split migrators.
 
 ff = [];
+edgeName = '';
 
 blk = struct();
 if isfield(preBody, 'filter') && isstruct(preBody.filter) && isscalar(preBody.filter)
@@ -185,9 +198,71 @@ if ~isempty(attenuation)
     block.stopband_attenuation = decibels(attenuation);
 end
 
-% did-schema #88: built through did2.build.document.
 o = jOpts(preBody);
+if bodyTakesMethod()
+    ff = filterMethod(block, preBody);
+    edgeName = 'method_id';
+    return;
+end
+% did-schema #88 before [filters are methods]: built through did2.build.document.
 ff = did2.build.document('frequency_filter', block, o{:});
+edgeName = 'filter_id';
+end
+
+function tf = bodyTakesMethod()
+% true when the loaded schema's sampled_body (its chain) declares method_id
+tf = false;
+try
+    c = did2.schema.cache.shared();
+    chain = c.classChain('sampled_body');
+    for k = 1:numel(chain)
+        s = c.getClass(chain{k});
+        if ~isfield(s, 'depends_on') || isempty(s.depends_on); continue; end
+        d = s.depends_on;
+        if isstruct(d); d = num2cell(d); end
+        if any(cellfun(@(x) strcmp(char(x.name), 'method_id'), d))
+            tf = true;
+            return;
+        end
+    end
+catch
+end
+end
+
+function m = filterMethod(block, preBody)
+%FILTERMETHOD The filter as a `method` document ([filters are methods]): term
+%   the design (its algorithm), parameters the band, the passband edges (Hz),
+%   the order (a count) and the ripple / attenuation (dB). Labels where no term
+%   is registered (the registry check is off while migrating; the unregistered
+%   terms are counted by the migration report).
+designs = struct('chebyshev_1', 'Chebyshev type I filter', ...
+    'chebyshev_2', 'Chebyshev type II filter', 'butterworth', 'Butterworth filter', ...
+    'elliptic', 'elliptic filter', 'bessel', 'Bessel filter', 'fir', 'finite impulse response filter');
+bands = struct('high_pass', 'high-pass', 'low_pass', 'low-pass', 'band_pass', 'band-pass');
+p = {did2.build.parameter('filter band', 'Term', did2.build.term('', bands.(block.band)))};
+if isfield(block, 'passband')
+    for e = {'low', 'high'}
+        if isfield(block.passband, e{1})
+            p{end+1} = did2.build.parameter(sprintf('passband %s edge', e{1}), ...
+                'Value', block.passband.(e{1}).hertz, 'Unit', did2.convert.registeredTerm('om:hertz', 'hertz'), ...
+                'SourceValue', num2str(block.passband.(e{1}).source_value), 'SourceUnit', jSourceUnit('Hz')); %#ok<AGROW>
+        end
+    end
+end
+if isfield(block, 'order')
+    p{end+1} = did2.build.parameter('filter order', 'Count', block.order);
+end
+dbNames = {'passband_ripple', 'passband ripple'; 'stopband_attenuation', 'stopband attenuation'};
+for k = 1:size(dbNames, 1)
+    if isfield(block, dbNames{k, 1})
+        v = block.(dbNames{k, 1});
+        p{end+1} = did2.build.parameter(dbNames{k, 2}, 'Value', v.decibels, ...
+            'Unit', 'decibel', 'SourceValue', num2str(v.source_value), ...
+            'SourceUnit', jSourceUnit('dB')); %#ok<AGROW>
+    end
+end
+m = did2.build.method(did2.build.term('', designs.(block.algorithm)), did2.build.list(p{:}), ...
+    'SessionId', jSid(preBody), 'CreationTimestamp', jStamp(preBody), 'Validate', false);
 end
 
 % ===================== small helpers =======================================

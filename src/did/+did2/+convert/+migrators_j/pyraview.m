@@ -149,10 +149,17 @@ if ~isfinite(epochDur)
         strjoin(fieldnamesOf(getBlock(preBody, 'epochclocktimes')), ', '));
 end
 
-filterDoc = jFrequencyFilter(preBody);
-filterId = '';
+% the filter: a `method` document named by each body's method_id once the
+% schema declares it (Jess Haley 2026-10-22 [filters are methods]); a
+% frequency_filter by filter_id before
+[filterDoc, filterEdge] = jFrequencyFilter(preBody);
+filterOpt = {};
 if ~isempty(filterDoc)
-    filterId = filterDoc.base.id;
+    if strcmp(filterEdge, 'method_id')
+        filterOpt = {'MethodId', filterDoc.base.id};
+    else
+        filterOpt = {'FilterId', filterDoc.base.id};
+    end
 end
 
 if ~isempty(epochDocId)
@@ -229,7 +236,11 @@ for k = 1:numel(fileList)
     % DATUM ORDER 'C': a pyraview level file interleaves the channels within
     % each sample (the channel dimension varies fastest) -- a conservative reading
     % of the writer, recorded as a judgment call in the port report.
-    o = jOpts(preBody, 'FilterId', filterId, 'DatumOrder', 'C');
+    % DatumOrder only with more than one dimension (rule
+    % datum_order_multidimensional: empty with one)
+    orderOpt = {};
+    if numel(dims) > 1; orderOpt = {'DatumOrder', 'C'}; end
+    o = jOpts(preBody, filterOpt{:}, orderOpt{:});
     b = did2.build.sampledBody(obsId, dims, 'Covariates', covs, o{:});
     b.files = struct('file_list', {fileList(k)});
     bodies{end+1} = b; %#ok<AGROW>
