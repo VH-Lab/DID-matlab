@@ -125,6 +125,169 @@ verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), countOf(result, 'c
 verifyEqual(testCase, countOf(out, 'syncgraph'), countOf(result, 'syncgraph'));
 end
 
+% ===================== the filefind syncrule arm ===========================
+% A v1 `ndi.time.syncrule.filefind` names its two acquisition systems by NAME
+% (filefind.m:32: number_fullpath_matches, syncfilename, daqsystem1,
+% daqsystem2). Pass 1 passes it through; this pass resolves both names within
+% the rule's session and re-runs the migrator. Fixtures are the writer's shape
+% (syncrule.m:183-187 + filefind.m:32), stored after session.database_add has
+% replaced the empty session id with the real one (session.m:267-275).
+
+function testFilefindRuleFoldsWhenBothSystemsResolve(testCase)
+result = migrate({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')});
+verifyEqual(testCase, countOf(result, 'syncrule'), 1);   % pass 1: passthrough
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.acquisition_systems_indexed, 2);
+verifyEqual(testCase, rep.syncrules_seen, 1);
+verifyEqual(testCase, rep.syncrule_filefind_seen, 1);
+verifyEqual(testCase, rep.syncrule_refused_total, 0);
+verifyEqual(testCase, rep.syncrule_configurations_folded, 1);
+verifyEqual(testCase, rep.syncrule_channels_emitted, 2);
+verifyEqual(testCase, rep.syncrule_software_emitted, 1);
+verifyEqual(testCase, countOf(out, 'syncrule'), 0);
+verifyEqual(testCase, countOf(out, 'clock_alignment_configuration'), 1);
+verifyEqual(testCase, countOf(out, 'acquisition_channels'), 2);
+
+cfg = firstOf(out, 'clock_alignment_configuration');
+verifyEqual(testCase, cfg.get('base.id'), 'rule_ff');      % base.id PRESERVED
+chIds = depValues(cfg, 'acquisition_channels_id');
+verifyEqual(testCase, numel(chIds), 2);
+verifyNotEmpty(testCase, depValue(cfg, 'software_id'));
+verifyEmpty(testCase, depValue(cfg, 'resolved_acquisition_system_id'));
+% Each channel group names its system by the resolved EDGE; together they are
+% the two systems the rule named, as a set (the pair is UNORDERED).
+sysIds = {};
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if ~strcmp(d.get('document_class.class_name'), 'acquisition_channels'); continue; end
+    verifyTrue(testCase, any(strcmp(chIds, d.get('base.id'))));
+    sysIds{end+1} = depValue(d, 'acquisition_system_id'); %#ok<AGROW>
+end
+verifyEqual(testCase, sort(sysIds), {'sys_1', 'sys_2'});
+% number_fullpath_matches and syncfilename are DECLARED method.parameters.
+m = cfg.get('clock_alignment_configuration.method');
+names = arrayfun(@(e) char(e.variable.name), m.parameters, 'UniformOutput', false);
+verifyEqual(testCase, sort(names), sort({'minimum matching file paths', 'sync file name'}));
+for k = 1:numel(m.parameters)
+    e = m.parameters(k);
+    switch char(e.variable.name)
+        case 'minimum matching file paths'
+            verifyEqual(testCase, double(e.count), 1);
+        case 'sync file name'
+            verifyEqual(testCase, char(e.text), 'syncfile.txt');
+    end
+end
+end
+
+
+function testFilefindFoldValidatesAgainstTheSchema(testCase)
+% The transform test above cannot tell whether the fold and the schema agree;
+% this one validates every body, in pass 1 and in the fold.
+result = did2.convert.v1_to_v2({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')}, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveClockAlignment(result, 'Validate', true);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrule_fold_quarantined, 0);
+verifyEqual(testCase, rep.syncrule_configurations_folded, 1);
+verifyEqual(testCase, countOf(out, 'clock_alignment_configuration'), 1);
+verifyEqual(testCase, countOf(out, 'acquisition_channels'), 2);
+verifyEqual(testCase, countOf(out, 'syncrule'), 0);
+end
+
+
+function testFilefindWithAMissingNameStaysPassthroughAndIsCounted(testCase)
+% mydaq2 is not a system in sess_A: nothing is minted for it, and no half pair.
+result = migrate({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')});
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrule_refused_name_missing, 1);
+verifyEqual(testCase, rep.syncrule_names_missing, 1);
+verifyEqual(testCase, rep.syncrule_refused_total, 1);
+verifyEqual(testCase, rep.syncrule_configurations_folded, 0);
+verifyEqual(testCase, countOf(out, 'syncrule'), 1);
+verifyEqual(testCase, countOf(out, 'clock_alignment_configuration'), 0);
+verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
+verifyEqual(testCase, firstOf(out, 'syncrule').get('base.id'), 'rule_ff');
+end
+
+
+function testFilefindNameInAnotherSessionDoesNotResolve(testCase)
+% Resolution is WITHIN the rule's session: a same-named system elsewhere is a
+% different device.
+result = migrate({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_B', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')});
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrule_refused_name_missing, 1);
+verifyEqual(testCase, countOf(out, 'syncrule'), 1);
+verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
+end
+
+
+function testFilefindWithAnAmbiguousNameStaysPassthroughAndIsCounted(testCase)
+% Two systems in sess_A are both called mydaq2: no first match is taken.
+result = migrate({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    daqsystemFixture('sys_3', 'sess_A', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')});
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrule_refused_name_ambiguous, 1);
+verifyEqual(testCase, rep.syncrule_names_ambiguous, 1);
+verifyEqual(testCase, rep.syncrule_refused_name_missing, 0);
+verifyEqual(testCase, rep.syncrule_refused_total, 1);
+verifyEqual(testCase, countOf(out, 'syncrule'), 1);
+verifyEqual(testCase, countOf(out, 'clock_alignment_configuration'), 0);
+verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
+end
+
+
+function testFilefindOnTheEmptySessionSentinelIsRefused(testCase)
+sentinel = '0000000000000000_0000000000000000';
+result = migrate({ ...
+    daqsystemFixture('sys_1', sentinel, 'mydaq1'), ...
+    daqsystemFixture('sys_2', sentinel, 'mydaq2'), ...
+    filefindFixture('rule_ff', sentinel, 'mydaq1', 'mydaq2')});
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrule_refused_no_session_id, 1);
+verifyEqual(testCase, countOf(out, 'syncrule'), 1);
+end
+
+
+function testAChannelBasedRuleIsNotConsumed(testCase)
+% commonTriggersOverlappingEpochs also names systems, but with channel strings;
+% this arm is the filefind arm, and the channel rule is counted, not folded.
+v1 = filefindFixture('rule_ct', 'sess_A', 'mydaq1', 'mydaq2');
+v1.syncrule = struct('ndi_syncrule_class', ...
+    'ndi.time.syncrule.commonTriggersOverlappingEpochs', ...
+    'parameters', struct('daqsystem1_name', 'mydaq1', 'daqsystem2_name', 'mydaq2', ...
+        'daqsystem_ch1', 'dep1', 'daqsystem_ch2', 'mk1', ...
+        'epochclocktype', 'dev_local_time', ...
+        'minEmbeddedFileOverlap', 1, 'errorOnFailure', true));
+result = migrate({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), v1});
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrules_seen, 1);
+verifyEqual(testCase, rep.syncrule_not_filefind, 1);
+verifyEqual(testCase, rep.syncrule_filefind_seen, 0);
+verifyEqual(testCase, countOf(out, 'syncrule'), 1);
+end
+
 % ===================== fixtures & helpers ==================================
 
 function result = migrate(fixtures)
@@ -191,5 +354,44 @@ for k = 1:numel(deps)
         v = char(deps(k).value);
     end
     return;
+end
+end
+
+function v1 = daqsystemFixture(id, sessionId, name)
+%DAQSYSTEMFIXTURE A did_v1 daqsystem (+ndi/+daq/system.m:485-497); its base.name
+%   is the name a filefind rule's daqsystem1 / daqsystem2 matches.
+v1 = struct();
+v1.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.base = struct('id', id, 'session_id', sessionId, ...
+    'name', name, 'datestamp', '2024-05-01T00:00:00.000Z');
+v1.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, 'id', {'', ''});
+end
+
+function v1 = filefindFixture(id, sessionId, name1, name2)
+%FILEFINDFIXTURE A did_v1 syncrule as syncrule.m:183-187 writes a filefind
+%   rule, with filefind.m:32's parameter set.
+v1 = struct();
+v1.document_class = struct('class_name', 'syncrule', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', id, 'session_id', sessionId, ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.syncrule = struct('ndi_syncrule_class', 'ndi.time.syncrule.filefind', ...
+    'parameters', struct('number_fullpath_matches', 1, ...
+        'syncfilename', 'syncfile.txt', 'daqsystem1', name1, 'daqsystem2', name2));
+end
+
+function v = depValues(doc, name)
+v = {};
+deps = doc.get('depends_on');
+for k = 1:numel(deps)
+    if ~strcmp(deps(k).name, name); continue; end
+    if isfield(deps(k), 'document_id') && ~isempty(deps(k).document_id)
+        v{end+1} = char(deps(k).document_id); %#ok<AGROW>
+    elseif isfield(deps(k), 'value') && ~isempty(deps(k).value)
+        v{end+1} = char(deps(k).value); %#ok<AGROW>
+    end
 end
 end

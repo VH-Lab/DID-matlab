@@ -143,17 +143,61 @@ isFileBased = ~isempty(minPaths);
 % needs the batch, which a single-document migrator does not have. The
 % pre-#73 shape kept the name in base.name, which V_eta no longer writes, so
 % folding here would drop which device each channel group is on. Reported.
+%
+% THE BATCH SEAM (did2.convert.resolveClockAlignment, the filefind arm). A
+% `filefind` rule names its two systems by NAME and no channels
+% (filefind.m:32). The batch pass resolves each name, within the rule's own
+% session, to exactly one migrated `acquisition_system` and STAMPS the two ids
+% here as transient `resolved_acquisition_system_id` deps, then re-runs this
+% migrator. With exactly two stamps, two names and no channel string, the rule
+% becomes the device-pair configuration the [sync configuration] sign-off
+% decided: two `acquisition_channels` documents, each carrying the resolved
+% `acquisition_system_id` edge (the device's name then lives in one place, on
+% the system), as the configuration's UNORDERED `acquisition_channels_id` pair.
+% The stamp is read and discarded: every edge below is set BY NAME. Without the
+% stamp (pass 1, or a name the pass could not resolve to exactly one system) the
+% rule passes through exactly as before. A channel-based rule (daqsystem_ch1 /
+% _ch2 present) is NOT folded here even when stamped: its channel strings would
+% need the channel parse this branch does not do.
+resolved = stampedSystemIds(preBody);
+if numel(resolved) == 2 && ~isempty(name1) && ~isempty(name2) ...
+        && isempty(ch1) && isempty(ch2)
+    channelDocs = cell(1, 2);
+    channelIds  = cell(1, 2);
+    for k = 1:2
+        co = jOpts(preBody, 'Edges', struct('acquisition_system_id', resolved{k}));
+        channelDocs{k} = did2.build.document('acquisition_channels', struct(), co{:});
+        channelIds{k}  = char(channelDocs{k}.base.id);
+    end
+    [cfg, software] = configuration(preBody, block, channelIds);
+    bodies = [{cfg}, channelDocs, software];
+    return;
+end
+
 if ~(haveNeither && isFileBased)
     bodies = {preBody};
     return;
 end
 
+[cfg, software] = configuration(preBody, block, {});
+bodies = [{cfg}, software];
+end
+
+function [cfg, software] = configuration(preBody, block, channelIds)
+%CONFIGURATION The `clock_alignment_configuration` both folding branches emit.
+%   One builder for the file-based (filematch) branch and the resolved
+%   device-pair (filefind) branch, so the two cannot drift: base.id preserved,
+%   the declared parameters as inline `method.parameters`, the implementation
+%   class as a `software` entity, and CHANNELIDS (0 or 2) as the unordered
+%   `acquisition_channels_id` edges.
 implClass = jGetCharAny(block, {'ndi_syncrule_class', 'ndiSyncruleClass'});
 [software, swId] = jSyncSoftware(preBody, implClass);
 
-% A file-based rule: a clock_alignment_configuration whose settings are its
-% inline `method.parameters` (did-schema #88, V_eta_method_plan.md: one method
-% shape; the three settings were their own fields before).
+% The rule's settings are its inline `method.parameters` (did-schema #88,
+% V_eta_method_plan.md: one method shape; the three settings were their own
+% fields before). A filefind rule carries two of them (number_fullpath_matches,
+% syncfilename); its daqsystem1 / daqsystem2 NAMES are the channel edges, not
+% entries.
 entries = {};
 minPaths = readNumber(params0(block), {'number_fullpath_matches', 'numberFullpathMatches'});
 if ~isempty(minPaths)
@@ -183,9 +227,34 @@ if ~isempty(params)
 end
 edges = struct();
 if ~isempty(swId); edges.software_id = swId; end
+if ~isempty(channelIds); edges.acquisition_channels_id = channelIds; end
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
 cfg = did2.build.document('clock_alignment_configuration', f, o{:});
-bodies = [{cfg}, software];
+end
+
+function ids = stampedSystemIds(preBody)
+%STAMPEDSYSTEMIDS The `resolved_acquisition_system_id` deps the batch pass stamps.
+%   Read tolerantly, as jSessionDocId reads its stamp: a raw body spells the
+%   target `value`, a body through universalRenames `document_id`, an
+%   unconverted v1 body `id`. {} when there is no stamp (every pass-1 body).
+ids = {};
+if ~isfield(preBody, 'depends_on') || ~isstruct(preBody.depends_on)
+    return;
+end
+deps = preBody.depends_on;
+for k = 1:numel(deps)
+    d = deps(k);
+    if ~isfield(d, 'name') || ~strcmp(char(d.name), 'resolved_acquisition_system_id')
+        continue;
+    end
+    for key = {'document_id', 'value', 'id'}
+        f = key{1};
+        if isfield(d, f) && ~isempty(d.(f))
+            ids{end+1} = char(d.(f)); %#ok<AGROW>
+            break;
+        end
+    end
+end
 end
 
 function p = params0(block)
