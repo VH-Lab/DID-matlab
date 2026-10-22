@@ -546,16 +546,25 @@ names = classNames(out);
 verifyEqual(testCase, sum(strcmp(names, 'frequency_filter')), 0, 'no frequency_filter');
 verifyEqual(testCase, sum(strcmp(names, 'method')), 1, 'one method document');
 m = out.migrated{strcmp(names, 'method')}.toStruct();
+verifyEqual(testCase, m.method.term.node, 'EMPTY:0000387');
 verifyEqual(testCase, m.method.term.name, 'Chebyshev type I filter');
 p = m.method.parameters;
 vars = arrayfun(@(x) char(x.variable.name), p, 'UniformOutput', false);
-verifyEqual(testCase, p(strcmp(vars, 'filter band')).term.name, 'high-pass');
+% registry terms (V_eta_frequency_filter_model_plan.md [filter terms from
+% Wikidata], [passband edges paired])
+band = p(strcmp(vars, 'filter band'));
+verifyEqual(testCase, band.variable.node, 'EMPTY:0000389');
+verifyEqual(testCase, band.term.node, 'wikidata:Q262754');
+verifyEqual(testCase, band.term.name, 'high-pass filter');
 low = p(strcmp(vars, 'passband low edge'));
+verifyEqual(testCase, low.variable.node, 'EMPTY:0000390');
 verifyEqual(testCase, low.quantity.value, 300);
 verifyEqual(testCase, lower(char(low.unit.name)), 'hertz');
 verifyFalse(testCase, any(strcmp(vars, 'passband high edge')), 'a high-pass is open above');
 verifyEqual(testCase, p(strcmp(vars, 'filter order')).count, 4);
+verifyEqual(testCase, p(strcmp(vars, 'filter order')).variable.node, 'EMPTY:0000394');
 verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).quantity.value, 0.8);
+verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).variable.node, 'EMPTY:0000395');
 verifyFalse(testCase, any(strcmp(vars, 'stopband attenuation')), 'NaN is absent');
 bodies = out.migrated(strcmp(names, 'sampled_body'));
 verifyEqual(testCase, numel(bodies), 2);
@@ -564,6 +573,84 @@ for k = 1:numel(bodies)
     verifyEqual(testCase, depValue(sb, 'method_id'), m.base.id);
     verifyEmpty(testCase, depValue(sb, 'filter_id'));
 end
+end
+
+function testFilterMethodTermsAreTheRegistryTerms(testCase)
+% V_eta_frequency_filter_model_plan.md, Jess Haley 2026-10-22 [filter terms from
+% Wikidata] and [passband edges paired]: every design, band value and parameter
+% variable the filter method writes is the term registry's node and name.
+% Same schema copy as testAFilterIsAMethodOnceTheBodyTakesMethodId.
+src = did2.schema.cache.shared().schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+f = fullfile(tmp, 'sampled_body.json');
+txt = fileread(f);
+if ~contains(txt, '"filter_id"')
+    assumeFail(testCase, 'the loaded sampled_body declares no filter_id to rename');
+end
+txt = strrep(txt, '"name": "filter_id"', '"name": "method_id"');
+txt = strrep(txt, '"must_refer_to_document_class": "frequency_filter"', ...
+    '"must_refer_to_document_class": "method"');
+fid = fopen(f, 'w'); fwrite(fid, txt); fclose(fid);
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+
+designs = { ...
+    'chebyshev_1', 'EMPTY:0000387', 'Chebyshev type I filter'; ...
+    'chebyshev_2', 'EMPTY:0000388', 'Chebyshev type II filter'; ...
+    'butterworth', 'wikidata:Q1018162', 'Butterworth filter'; ...
+    'elliptic', 'wikidata:Q1051541', 'elliptic filter'; ...
+    'bessel', 'wikidata:Q830123', 'Bessel filter'; ...
+    'fir', 'wikidata:Q117785', 'Finite Impulse Response filter'};
+for d = 1:size(designs, 1)
+    blk = predFilterBlock();
+    blk.algorithm = designs{d, 1};
+    m = filterMethodOf(testCase, blk);
+    verifyEqual(testCase, m.method.term.node, designs{d, 2}, designs{d, 1});
+    verifyEqual(testCase, m.method.term.name, designs{d, 3}, designs{d, 1});
+end
+
+% band values, and the edge variables each band writes
+bands = { ...
+    'high', 300, 'wikidata:Q262754', 'high-pass filter', {'passband low edge'}; ...
+    'low', 300, 'wikidata:Q918242', 'low-pass filter', {'passband high edge'}; ...
+    'bandpass', [300 3000], 'wikidata:Q2718101', 'band-pass filter', ...
+        {'passband low edge', 'passband high edge'}};
+edgeNodes = struct('low', 'EMPTY:0000390', 'high', 'EMPTY:0000391');
+for b = 1:size(bands, 1)
+    blk = predFilterBlock();
+    blk.type = bands{b, 1};
+    blk.parameters.filterFrequency = bands{b, 2};
+    blk.parameters.stopbandAttentuation = 40;
+    m = filterMethodOf(testCase, blk);
+    p = m.method.parameters;
+    vars = arrayfun(@(x) char(x.variable.name), p, 'UniformOutput', false);
+    band = p(strcmp(vars, 'filter band'));
+    verifyEqual(testCase, band.variable.node, 'EMPTY:0000389', bands{b, 1});
+    verifyEqual(testCase, band.term.node, bands{b, 3}, bands{b, 1});
+    verifyEqual(testCase, band.term.name, bands{b, 4}, bands{b, 1});
+    for e = bands{b, 5}
+        edge = p(strcmp(vars, e{1}));
+        assertEqual(testCase, numel(edge), 1, sprintf('%s: %s', bands{b, 1}, e{1}));
+        side = strtok(strrep(e{1}, 'passband ', ''));
+        verifyEqual(testCase, edge.variable.node, edgeNodes.(side), e{1});
+    end
+    verifyEqual(testCase, p(strcmp(vars, 'filter order')).variable.node, 'EMPTY:0000394');
+    verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).variable.node, 'EMPTY:0000395');
+    att = p(strcmp(vars, 'stopband attenuation'));
+    verifyEqual(testCase, att.variable.node, 'EMPTY:0000396');
+    verifyEqual(testCase, att.source_unit.node, 'om:decibel');
+end
+end
+
+function m = filterMethodOf(testCase, blk)
+out = runJ(pyraviewBody(blk));
+verifyEmpty(testCase, out.quarantine);
+names = classNames(out);
+assertEqual(testCase, sum(strcmp(names, 'method')), 1, 'one method document');
+m = out.migrated{strcmp(names, 'method')}.toStruct();
 end
 
 function testAllPassEmitsNoFilterAndNoEdge(testCase)
