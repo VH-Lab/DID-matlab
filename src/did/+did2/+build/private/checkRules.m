@@ -13,19 +13,28 @@ function checkRules(cache, className, doc, chain)
 %
 %      The data_body AMENDMENT 6 rules (covariate_one_value_form,
 %      covariate_along, covariate_single_dimension_forms, covariate_cyclic,
-%      dimension_chunk_sampled_only) are checked in part 2 by
-%      checkDimensionsCovariates, for every document, under those names.
+%      dimension_chunk_sampled_only, covariate_shape, variable_once) are
+%      checked in part 2 by checkDimensionsCovariates, for every document,
+%      under those names. covariate_shape and variable_once were builder-only
+%      checks until did-schema named them schema rules (Jess Haley 2026-10-22
+%      [covariate rules named], 6.1a); their names were already the schema's.
+%      covariate_cyclic: `cyclic` only on an `origin`+`spacing` or a
+%      `quantity` covariate along one dimension (Jess Haley 2026-10-22
+%      [covariate details], 5.1a; numeric `count` and `matrix` before).
+%      dimension_chunk_sampled_only also refuses a `chunk` on an
+%      acquisition_epoch's dimensions ([covariate details], 5.3a).
 %
 %   2. BUILDER CHECKS that the schema states only in a field's documentation
 %      (not as a machine-readable rule). Each cites where it is stated:
 %        conditions_one_value     statement.conditions: "{variable, unit,
 %                                 source_unit, approximate} plus exactly ONE
 %                                 value form", holding one value
-%        variable_once            did-schema data_body AMENDMENT 6: "A
-%                                 variable appears at most once across a
-%                                 statement's conditions, its value's
-%                                 covariates, and any one of its bodies'
-%                                 covariates" -- per document, its
+%        variable_once            (a schema rule since 2026-10-22, part 1
+%                                 above; checked here) did-schema data_body
+%                                 AMENDMENT 6: "A variable appears at most
+%                                 once across a statement's conditions, its
+%                                 value's covariates, and any one of its
+%                                 bodies' covariates" -- per document, its
 %                                 conditions and covariates
 %        parameter_one_form       interaction.method.parameters (and the
 %                                 standalone method's): the same entry --
@@ -41,7 +50,8 @@ function checkRules(cache, className, doc, chain)
 %                                 [method_id], NEVER BOTH" (before #88:
 %                                 inline `method_parameters` OR
 %                                 `method_parameters_id`)
-%        covariate_shape          AMENDMENT 6: "Shape: the extents of the
+%        covariate_shape          (a schema rule since 2026-10-22, part 1
+%                                 above; checked here) AMENDMENT 6: "Shape: the extents of the
 %                                 `along` dimensions, in that order; for
 %                                 `matrix`, those extents followed by the
 %                                 array's own shape" (was key_n_matches)
@@ -90,7 +100,8 @@ for c = 1:numel(chain)
         switch ruleName
             case {'covariate_one_value_form', 'covariate_along', ...
                     'covariate_single_dimension_forms', 'covariate_cyclic', ...
-                    'dimension_chunk_sampled_only'}
+                    'dimension_chunk_sampled_only', 'covariate_shape', ...
+                    'variable_once'}
                 % did-schema data_body AMENDMENT 6 (Jess Haley, 2026-10-22
                 % [covariates]). Every rule on `dimensions` / `covariates`
                 % is checked, whether or not the schema names it, by
@@ -208,6 +219,23 @@ dims = findField(doc, a6Blocks, 'dimensions');
 covs = findField(doc, a6Blocks, 'covariates');
 conditions = findField(doc, blocks, 'conditions');
 seen = checkDimensionsCovariates(dims, covs, any(strcmp(chain, 'sampled_body')), className);
+% [covariate details] 5.3a (Jess Haley 2026-10-22): an acquisition_epoch's
+% dimensions carry no `chunk`. Checked on that block by name, so a document
+% carrying both blocks cannot hide it behind the first one findField reads.
+if isfield(doc, 'acquisition_epoch') && isstruct(doc.acquisition_epoch) ...
+        && isscalar(doc.acquisition_epoch) && isfield(doc.acquisition_epoch, 'dimensions')
+    eDims = doc.acquisition_epoch.dimensions;
+    if iscell(eDims); eDims = [eDims{:}]; end
+    if isstruct(eDims) && isfield(eDims, 'chunk')
+        for k = 1:numel(eDims)
+            if ~isAbsent(eDims(k).chunk)
+                violated('dimension_chunk_sampled_only', ...
+                    sprintf('%s acquisition_epoch dimension %d', className, k - 1), ...
+                    'an acquisition_epoch''s dimensions carry no `chunk`; `chunk` is a sampled_body''s.');
+            end
+        end
+    end
+end
 if isstruct(conditions)
     for k = 1:numel(conditions)
         given = valueForms(conditions(k));
@@ -457,9 +485,11 @@ for k = 1:numel(covs)
             'a covariate given by %s runs along exactly one dimension; `along` has %d.', form, numel(along)));
     end
     if isfield(c, 'cyclic') && isTrue(c.cyclic) ...
-            && ~(any(strcmp(form, {'origin+spacing', 'quantity', 'count', 'matrix'})) && numel(along) == 1)
-        violated('covariate_cyclic', where, ...
-            '`cyclic` applies only to a numeric covariate along exactly one dimension.');
+            && ~(any(strcmp(form, {'origin+spacing', 'quantity'})) && numel(along) == 1)
+        % Jess Haley 2026-10-22 [covariate details], 5.1a
+        violated('covariate_cyclic', where, sprintf( ...
+            ['`cyclic` applies only to an origin+spacing or a quantity covariate ' ...
+             'along exactly one dimension (this one is %s along %d).'], form, numel(along)));
     end
     covariateShape(c, form, extents(along + 1), where);
     seen{end+1} = termKey(c.variable); %#ok<AGROW>

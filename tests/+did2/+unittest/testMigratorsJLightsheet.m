@@ -385,11 +385,15 @@ t = keys{strcmp(names, 'time')};
 verifyFalse(testCase, isfield(t, 'unit') && ~isempty(t.unit), 'nothing to complete it from');
 end
 
-function testAnAxisWithNoScaleIsRegularIndicesWithNoUnit(testCase)
-% Jess 2026-10-15: a space or time axis with no voxel size is regular, origin
-% 0, spacing 1, no unit -- the indices 0..n-1 in the smaller form -- not
-% `quantity`. The channel axis stays categorical. Through the batch pass too:
-% a level with no unit on z/y/x must not count as a unit disagreement.
+function testAnAxisWithOnlyIndexPositionsHasNoCovariate(testCase)
+% INVERTED 2026-10-22 (was testAnAxisWithNoScaleIsRegularIndicesWithNoUnit,
+% which asserted origin 0, spacing 1, no unit -- Jess 2026-10-15 -- and the
+% channel's quantity 0..n-1). Jess Haley 2026-10-22 [covariate rules named],
+% 6.2a: "a covariate that only repeats its dimension's positions 0..n-1 is not
+% written". A space or time axis with no voxel size, and a channel axis with
+% no names, are BARE dimensions: the five dimensions stay, no covariate runs
+% along them. Through the batch pass too: a level with no unit on z/y/x must
+% not count as a unit disagreement.
 assumeCompositionSchema(testCase);
 p = pyramidV1();
 p.lightsheetZarrPyramid.voxel_size_level0 = [];
@@ -397,33 +401,35 @@ p.lightsheetZarrPyramid.channel_names = '';
 out = runJ(p);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 obs = pickById(out, 'pyr_ls_1');
-keys = axisList(obsAxes(obs));
-names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
-verifyEqual(testCase, names, {'time', 'channel', 'z', 'y', 'x'});
-for i = [1 3 4 5]
-    k = keys{i};
-    verifyTrue(testCase, isRegular(k), [names{i} ': regular']);
-    verifyEqual(testCase, double(k.origin.value), 0, [names{i} ': origin 0']);
-    verifyEqual(testCase, double(k.spacing.value), 1, [names{i} ': spacing 1']);
-    verifyFalse(testCase, isfield(k, 'unit') && ~isempty(k.unit) ...
-        && ~(isstruct(k.unit) && isempty(k.unit.name)), [names{i} ': no unit']);
-    verifyFalse(testCase, isfield(k, 'quantity') && ~isempty(k.quantity), [names{i} ': no quantity']);
-end
-c = keys{2};
-verifyFalse(testCase, isRegular(c), 'channel stays categorical');
-verifyEqual(testCase, double(c.quantity.value(:).'), [0 1], 'two channels, no names: index positions');
+ax = did2.unittest.helpers.axesOf(obsAxes(obs));
+names = arrayfun(@(a) char(a.term.name), ax, 'UniformOutput', false);
+verifyEqual(testCase, names, {'time', 'channel', 'z', 'y', 'x'}, 'every dimension is still written');
+verifyEqual(testCase, [ax.nCov], zeros(1, 5), 'no covariate repeats 0..n-1');
+verifyTrue(testCase, isempty(blockField(obs, 'covariates')), 'no covariates at all');
 
 lvl = levelV1(0, 'none', 'raw', 4, 'manifest');
 lvl.lightsheetZarrLevel.voxel_size = [];
 [out, rep] = runWithPass({p, lvl});
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, rep.level_unit_disagreements, 0, ...
-    'unit-less regular axes must not trip the z/y/x unit check');
+    'unit-less index axes must not trip the z/y/x unit check');
 b = onlyBody(testCase, out);
-lk = axisList(b.data);
-z = lk{3};
-verifyTrue(testCase, isRegular(z));
-verifyEqual(testCase, double(z.spacing.value), 1);
+lax = did2.unittest.helpers.axesOf(b.data);
+verifyEqual(testCase, numel(lax), 5);
+verifyEqual(testCase, [lax.nCov], zeros(1, 5), 'the level''s axes are bare too');
+end
+
+function testANamedChannelAxisKeepsItsNamesAndAScaledAxisItsSpacing(testCase)
+% The other side of 6.2a: positions that say more than 0..n-1 are written.
+assumeCompositionSchema(testCase);
+out = runJ(pyramidV1());
+obs = pickById(out, 'pyr_ls_1');
+ax = did2.unittest.helpers.axesOf(obsAxes(obs));
+names = arrayfun(@(a) char(a.term.name), ax, 'UniformOutput', false);
+c = ax(strcmp(names, 'channel'));
+verifyEqual(testCase, labelNames(c.cov.term), {'GCaMP6s', 'tdTomato'});
+z = ax(strcmp(names, 'z'));
+verifyTrue(testCase, isRegular(z.cov), 'z: origin + spacing from the voxel size');
 end
 
 function testTheObservationsVariableIsFluorescenceIntensity(testCase)

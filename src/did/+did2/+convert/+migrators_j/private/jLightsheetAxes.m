@@ -5,8 +5,9 @@ function [dims, covs] = jLightsheetAxes(axesOrder, shape, scale, translation, un
 %   CHANNELNAMES, CHUNKS) builds one did2.build.dimension per character of
 %   AXESORDER (NDI's lightsheet writers store it as the axis names joined,
 %   'tczyx' or 'czyx': makePyramid.m joinAxisNames), in that order, so
-%   dimensions[k] IS array axis k, and one did2.build.covariate along each,
-%   holding that axis's positions (did-schema data_body AMENDMENT 6, Jess
+%   dimensions[k] IS array axis k, and one did2.build.covariate along each
+%   that has positions beyond its index (below), holding them (did-schema
+%   data_body AMENDMENT 6, Jess
 %   Haley 2026-10-22 [covariates]; one `keys` entry per axis until then: the
 %   key's variable is the dimension's term AND the covariate's variable). A
 %   dimension the store does not have is not written (#73 lightsheet L1 rule
@@ -44,13 +45,15 @@ function [dims, covs] = jLightsheetAxes(axesOrder, shape, scale, translation, un
 %   writes `t` and `c` with empty units: fromSPIM.m axesDesc.)
 %
 %   A space/time axis with no scale has no physical spacing to state, so its
-%   positions are the integer indices 0..n-1, written in the REGULAR form:
-%   origin 0, spacing 1, NO unit (Jess 2026-10-15: the same
-%   positions as `quantity` 0..n-1, in the smaller form; the absent unit says
-%   they are indices, not a measured extent). The translation is not used
-%   there: with no scale it has no unit to be read in. The `c` axis is
-%   categorical: its names when the source gives one per channel, else the
-%   indices 0..n-1 (`quantity`).
+%   positions are only the integer indices 0..n-1, and a channel axis without
+%   one name per channel has only its indices too. Such an axis is a BARE
+%   dimension with NO covariate (Jess Haley 2026-10-22 [covariate rules
+%   named], 6.2a: "a covariate that only repeats its dimension's positions
+%   0..n-1 is not written"; [bare dimension]). Until then they were written
+%   as origin 0, spacing 1, no unit (Jess 2026-10-15) and as `quantity`
+%   0..n-1 (the channel). The translation is not used there: with no scale it
+%   has no unit to be read in. The `c` axis with names is categorical: its
+%   names, as `term`.
 %
 %   Shared helper for the lightsheet migrators (+migrators_j).
 
@@ -100,7 +103,7 @@ if numel(units) < nAx
 end
 
 dimList = cell(1, nAx);
-covList = cell(1, nAx);
+covList = {};
 for k = 1:nAx
     n = shape(k);
     opts = {};
@@ -122,12 +125,10 @@ for k = 1:nAx
     if strcmp(kind, 'channel')
         if numel(channelNames) == n && n > 0
             opts = {'Term', reshape(channelNames, 1, [])};
-        else
-            opts = {'Value', 0:(n - 1)};
-        end
+        end   % else only the indices 0..n-1: no covariate (6.2a)
     elseif isempty(scale)
-        % index positions 0..n-1, regular and unit-less (Jess 2026-10-15)
-        opts = {'Origin', 0, 'Spacing', 1};
+        % only the indices 0..n-1 (Jess 2026-10-15): no covariate (6.2a)
+        opts = {};
     else
         [factor, canonical] = canonicalUnit(units{k}, kind);
         if isempty(canonical) && ~isempty(strtrim(char(units{k})))
@@ -151,10 +152,20 @@ for k = 1:nAx
         dimOpts = {'Chunk', chunks(k)};
     end
     dimList{k} = did2.build.dimension(variable, n, dimOpts{:});
-    covList{k} = did2.build.covariate(variable, k - 1, opts{:});
+    % An axis WITH a voxel size keeps its covariate even when it reads 0, 1,
+    % ... with no unit (scale 1, no translation): the source stated that
+    % spacing, and its unit may be stated elsewhere -- a level's `t` takes
+    % the pyramid's `second` (point 8, foldGenericFiles). Only the axes with
+    % no stated positions at all are bare.
+    if ~isempty(opts)
+        covList{end+1} = did2.build.covariate(variable, k - 1, opts{:}); %#ok<AGROW>
+    end
 end
 dims = did2.build.list(dimList{:});
-covs = did2.build.list(covList{:});
+covs = [];
+if ~isempty(covList)
+    covs = did2.build.list(covList{:});
+end
 end
 
 function t = unitTerm(name)

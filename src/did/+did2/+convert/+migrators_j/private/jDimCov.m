@@ -17,7 +17,9 @@ function [dims, covs] = jDimCov(axes)
 %   This is the mechanical port of a former `keys` list: the key's variable
 %   becomes BOTH the dimension's term and its covariate's variable, and the
 %   key's positions become the covariate. An axis with no positions gives a
-%   bare dimension and no covariate. Both lists are built through
+%   bare dimension and no covariate; so does an axis whose positions only
+%   repeat 0..n-1 with no unit (jIndexOnly; Jess Haley 2026-10-22 [covariate
+%   rules named], 6.2a: such a covariate is not written). Both lists are built through
 %   did2.build.dimension and did2.build.composite('data', 'covariates', ...),
 %   so they are checked against the loaded schema; empty AXES gives [] and [].
 %
@@ -60,7 +62,7 @@ for k = 1:numel(axes)
         positioned = true;
     end
     if has(a, 'cyclic'); c.cyclic = a.cyclic; end
-    if positioned
+    if positioned && ~jIndexOnly(c, a.n)
         covList{end+1} = did2.build.composite('data', 'covariates', c); %#ok<AGROW>
     end
 end

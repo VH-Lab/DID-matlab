@@ -37,8 +37,10 @@ function c = covariate(variable, along, options)
 %     'SourceUnit'     the unit as the source gave it
 %     'Approximate'    logical, for the whole covariate
 %     'Cyclic'         logical: after the last position comes the first. Only
-%                      on a numeric covariate ('Origin'/'Spacing', 'Value',
-%                      'Count', 'Matrix') along exactly one dimension.
+%                      on an 'Origin'/'Spacing' or a 'Value' (quantity)
+%                      covariate along exactly one dimension (Jess Haley
+%                      2026-10-22 [covariate details], 5.1a: not 'Count' or
+%                      'Matrix').
 %     'SchemaCache'    a did2.schema.cache; default the shared one.
 %
 %   Join several with did2.build.list. A variable appears at most once across
@@ -132,9 +134,11 @@ if (~isAbsent(options.Unit) || ~isAbsent(options.SourceUnit)) && ~(numeric || st
         '''Unit''/''SourceUnit'' apply only to a number, a count or a matrix.');
 end
 if ~isAbsent(options.Cyclic) && isTrue(options.Cyclic) ...
-        && ~((numeric || strcmp(form, 'Matrix')) && numel(along) == 1)
+        && ~(any(strcmp(form, {'Origin+Spacing', 'Value'})) && numel(along) == 1)
     error('did2:build:ruleViolated', ...
-        'covariate_cyclic: ''Cyclic'' applies only to a numeric covariate along exactly one dimension.');
+        ['covariate_cyclic: ''Cyclic'' applies only to an ''Origin''+''Spacing'' or a ' ...
+         '''Value'' (quantity) covariate along exactly one dimension; got ''%s'' along %d.'], ...
+        form, numel(along));
 end
 
 % ---- the entry -----------------------------------------------------------

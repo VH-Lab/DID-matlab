@@ -967,9 +967,11 @@ end
 function [lvl, changed, disagreements] = completeLevelKeys(lvl, pyramidKeys)
 %COMPLETELEVELKEYS Point 8 (Jess 2026-10-14): a v1 level carries only
 %   voxel_size_units, so its `t` covariate has no unit and its `c` covariate
-%   only index positions. The pyramid's have both. Copy the t unit (scaling the
-%   level's raw origin/spacing exactly as the pyramid's were scaled), name the
-%   c positions by channel when the counts agree, and CHECK z/y/x units --
+%   no covariate (its positions are only 0..n-1, not written since Jess Haley
+%   2026-10-22 [covariate rules named], 6.2a). The pyramid's have both. Copy
+%   the t unit (scaling the level's raw origin/spacing exactly as the
+%   pyramid's were scaled), name the c positions by channel when the counts
+%   agree (a new covariate along the level's channel dimension), and CHECK z/y/x units --
 %   a disagreement is counted, never overwritten.
 %
 %   did-schema data_body AMENDMENT 6 (`keys` until 2026-10-22): an axis is
@@ -993,6 +995,18 @@ pNames = cellfun(@(a) a.name, pa, 'UniformOutput', false);
 for i = 1:numel(la)
     name = la{i}.name;
     j = find(strcmp(pNames, name), 1);
+    if ~isempty(j) && strcmp(name, 'channel') && isempty(la{i}.cov) ...
+            && ~isempty(pa{j}.cov) && isfield(pa{j}.cov, 'term') && ~isempty(pa{j}.cov.term) ...
+            && numel(labelList(pa{j}.cov.term)) == double(la{i}.n)
+        % The level's channel axis is a bare dimension: its positions were
+        % only 0..n-1, which is not written (Jess Haley 2026-10-22
+        % [covariate rules named], 6.2a). The pyramid's channel names become
+        % its covariate, along this dimension.
+        lc{end+1} = struct('variable', pa{j}.cov.variable, 'along', i - 1, ...
+            'term', pa{j}.cov.term); %#ok<AGROW>
+        changed = true;
+        continue;
+    end
     if isempty(j) || isempty(la{i}.cov) || isempty(pa{j}.cov); continue; end
     P = pa{j}.cov;
     L = la{i}.cov;

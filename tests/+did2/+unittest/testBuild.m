@@ -232,6 +232,54 @@ verifyError(testCase, @() did2.build.document(cls, fields, ...
     'SessionId', testCase.TestData.sid), 'did2:build:unknownRule');
 end
 
+function testCovariateShapeAndVariableOnceAreKnownSchemaRules(testCase)
+% Jess Haley 2026-10-22 [covariate rules named], 6.1a: did-schema declares
+% covariate_shape and variable_once as schema rules. A class that names them
+% must build (they are checked in checkRules part 2 for every document), not
+% raise did2:build:unknownRule as an unimplemented rule would.
+src = testCase.TestData.schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+[cls, fields] = subjectSpec('m1');
+subjectFile = fullfile(tmp, [cls '.json']);
+jsonText = fileread(subjectFile);
+brace = find(jsonText == '{', 1);
+jsonText = [jsonText(1:brace) ...
+    '"rules": [{"name": "covariate_shape", "fields": ["local_identifier"], ' ...
+    '"statement": "named for this test"}, {"name": "variable_once", ' ...
+    '"fields": ["local_identifier"], "statement": "named for this test"}], ' ...
+    jsonText(brace+1:end)];
+fid = fopen(subjectFile, 'w');
+fwrite(fid, jsonText);
+fclose(fid);
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+doc = did2.build.document(cls, fields, 'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, doc.document_class.class_name, cls);
+end
+
+function testCyclicCountCovariateIsRefusedOnTheDocument(testCase)
+% [covariate details] 5.1a, checked where the document is built too: a
+% covariate handed in as a plain struct (not through did2.build.covariate)
+% with `cyclic` on a `count` is refused as covariate_cyclic.
+sid = testCase.TestData.sid;
+v = did2.build.valueCell('voltage', zeros(1, 3));
+dims = did2.build.dimension('time', 3);
+cov = struct('variable', struct('node', '', 'name', 'sample number'), ...
+    'along', 0, 'count', [1 2 3], 'cyclic', true);
+try
+    did2.build.statement('observation', newId(), 'voltage', v, ...
+        'Dimensions', dims, 'Covariates', cov, 'TimeReferenceIds', {newId()}, ...
+        'SessionId', sid, 'ValueKind', 'voltage');
+    verifyFail(testCase, 'a cyclic count covariate was accepted');
+catch err
+    verifyEqual(testCase, err.identifier, 'did2:build:ruleViolated');
+    verifySubstring(testCase, err.message, 'covariate_cyclic');
+end
+end
+
 % ===================== term / label / datumType ============================
 
 function testTermAndLabel(testCase)
@@ -365,12 +413,20 @@ verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Origin', 0, 'Spacing
     'did2:build:ruleViolated');
 verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Document', 0), ...
     'did2:build:ruleViolated');
-% cyclic only on a numeric covariate along one dimension
+% cyclic only on an origin+spacing or a quantity covariate along one
+% dimension (Jess Haley 2026-10-22 [covariate details], 5.1a: not on a count
+% or a matrix, which a numeric covariate along one dimension could be before)
 verifyError(testCase, @() did2.build.covariate('x', 0, 'Term', {'a'}, 'Cyclic', true), ...
     'did2:build:ruleViolated');
 verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Value', ones(2), 'Cyclic', true), ...
     'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate('x', 0, 'Count', [1 2 3], 'Cyclic', true), ...
+    'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate('x', 0, 'Matrix', ones(3, 2), 'Cyclic', true), ...
+    'did2:build:ruleViolated');
 c = did2.build.covariate('direction', 0, 'Value', [0 90 180 270], 'Unit', 'degree', 'Cyclic', true);
+verifyTrue(testCase, c.cyclic);
+c = did2.build.covariate('phase', 0, 'Origin', 0, 'Spacing', 90, 'Unit', 'degree', 'Cyclic', true);
 verifyTrue(testCase, c.cyclic);
 % a unit only on a number, a count or a matrix
 verifyError(testCase, @() did2.build.covariate('x', 0, 'Term', {'a'}, 'Unit', 'second'), ...
