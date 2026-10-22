@@ -31,7 +31,9 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %                         written as ONE block, `method: {term, parameters}`
 %                         (DID-schema V_eta_method_plan.md, 2026-10-21);
 %                         before it, as `method` and `method_parameters`.
-%                         An inline method OR 'MethodId', never both.
+%                         Beside 'MethodId' an inline block only ADDS
+%                         settings, with no term (rule method_shared_and_own,
+%                         Jess Haley 2026-10-22); never both before it.
 %     'DatumType'         value.data_type (value.datum_type before 2026-10-08;
 %                         did2.build.datumType)
 %     'SourceDatumType'   the source's own type name

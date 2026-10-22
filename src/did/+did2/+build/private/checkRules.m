@@ -24,6 +24,20 @@ function checkRules(cache, className, doc, chain)
 %      dimension_chunk_sampled_only also refuses a `chunk` on an
 %      acquisition_epoch's dimensions ([covariate details], 5.3a).
 %
+%      The 2026-10-22 tenet-audit rules (did-schema #88, Jess Haley):
+%        method_shared_and_own        [method shared plus own]: beside a
+%                                     `method_id`, the inline method's term is
+%                                     empty (the shared-variable half is
+%                                     did2.build.checkMethodSharedAndOwn);
+%                                     replaces parameters_not_both
+%        assertion_no_time_dimension  [rules and clock_alignment tenet]: no
+%                                     time dimension or time covariate on an
+%                                     assertion
+%        datum_order_multidimensional [covariate rules named] 6.3a: part 2
+%        fit_metric_unit              [calculator units]: a fit's independent
+%                                     variable and the curve's covariate along
+%                                     it agree on the unit
+%
 %   2. BUILDER CHECKS that the schema states only in a field's documentation
 %      (not as a machine-readable rule). Each cites where it is stated:
 %        conditions_one_value     statement.conditions: "{variable, unit,
@@ -49,17 +63,19 @@ function checkRules(cache, className, doc, chain)
 %                                 the inline `method` block OR this edge
 %                                 [method_id], NEVER BOTH" (before #88:
 %                                 inline `method_parameters` OR
-%                                 `method_parameters_id`)
+%                                 `method_parameters_id`); only on a schema that
+%                                 does not declare method_shared_and_own
 %        covariate_shape          (a schema rule since 2026-10-22, part 1
 %                                 above; checked here) AMENDMENT 6: "Shape: the extents of the
 %                                 `along` dimensions, in that order; for
 %                                 `matrix`, those extents followed by the
 %                                 array's own shape" (was key_n_matches)
-%        datum_order_multidimension  datum_order (on `data` since did-schema
-%                                 #88, on sampled_body before): stated by a
-%                                 writer with more than one dimension; the
-%                                 builder requires it on a sampled_body
-%                                 (was datum_order_multikey)
+%        datum_order_multidimensional  datum_order (on `data` since did-schema
+%                                 #88, on sampled_body before): required on a
+%                                 sampled_body of more than one dimension;
+%                                 left empty with one or none once the schema
+%                                 names the rule (was datum_order_multidimension,
+%                                 datum_order_multikey before)
 %        require_inherited        a class's `require_inherited` list: an
 %                                 inherited optional field or edge the class
 %                                 makes required
@@ -200,6 +216,72 @@ for c = 1:numel(chain)
                 % caller that holds both documents (a migrator, an import)
                 % runs did2.build.checkDoseIngredients(dose, formulation).
                 continue;
+            case 'method_shared_and_own'
+                % did-schema interaction.json (Jess Haley 2026-10-22 [method
+                % shared plus own], [rules and clock_alignment tenet]; it
+                % replaces "never both", team 2026-08-09): a statement with
+                % `method_id` may ALSO carry an inline `method` whose
+                % `parameters` add settings only this run had -- its `term`
+                % empty, and no parameter variable one of the shared method
+                % document's. The term half is checked here. The variable half
+                % needs the shared method document, which did2.build never has
+                % at hand; a caller holding both runs
+                % did2.build.checkMethodSharedAndOwn(statement, method).
+                if hasEdge(doc, 'method_id') || hasEdge(doc, 'method_parameters_id')
+                    for b = 1:numel(blocks)
+                        block = doc.(blocks{b});
+                        if isstruct(block) && isscalar(block) && isfield(block, 'method') ...
+                                && isstruct(block.method) && isscalar(block.method) ...
+                                && isfield(block.method, 'term') && ~isBlankValue(block.method.term)
+                            violated(ruleName, className, sprintf( ...
+                                ['a `method_id` names the shared method, so the inline ' ...
+                                 '`method` only adds settings: its `term` must be empty ' ...
+                                 '(got "%s").'], termKey(block.method.term)));
+                        end
+                    end
+                end
+            case 'assertion_no_time_dimension'
+                % did-schema assertion.json (Jess Haley 2026-10-22 [rules and
+                % clock_alignment tenet]; T2 [T2 time-varying property]): an
+                % assertion is a timeless fact, so no dimension of its value is
+                % time and no covariate is a time along one. Checked on the
+                % document's own `dimensions` / `covariates`; a body that points
+                % up at an assertion is a separate document (a batch check).
+                % A time is recognised BY NODE (om:Time time, EMPTY:0000368
+                % onset time, EMPTY:0000369 offset time, EMPTY:0000140
+                % encounter onset time) or, for a term with no node, by those
+                % labels -- writers name the time axis {name: 'time'}.
+                a6 = blocks(ismember(blocks, {'data', 'acquisition_epoch'}));
+                tDims = findField(doc, a6, 'dimensions');
+                if isstruct(tDims) && isfield(tDims, 'term')
+                    for k = 1:numel(tDims)
+                        if isTimeTerm(tDims(k).term)
+                            violated(ruleName, sprintf('%s dimension %d', className, k - 1), ...
+                                ['an assertion has no time dimension; what varies in ' ...
+                                 'time is stated by an interaction (T2).']);
+                        end
+                    end
+                end
+                tCovs = findField(doc, a6, 'covariates');
+                if isstruct(tCovs) && isfield(tCovs, 'variable')
+                    for k = 1:numel(tCovs)
+                        if isTimeTerm(tCovs(k).variable)
+                            violated(ruleName, sprintf('%s covariate %d', className, k - 1), sprintf( ...
+                                ['an assertion has no time along a dimension (covariate ' ...
+                                 '"%s"); what varies in time is stated by an interaction (T2).'], ...
+                                termKey(tCovs(k).variable)));
+                        end
+                    end
+                end
+            case 'datum_order_multidimensional'
+                % did-schema sampled_body.json (Jess Haley 2026-10-22
+                % [covariate rules named] 6.3a; named by [audit mechanical
+                % fixes 2]). Checked in part 2 under this name, both halves:
+                % required with more than one dimension, empty with one or
+                % none.
+                continue;
+            case 'fit_metric_unit'
+                fitMetricUnit(doc, blocks, ruleName, className);
             otherwise
                 error('did2:build:unknownRule', ...
                     ['Class "%s" declares rule "%s", which did2.build does ' ...
@@ -259,13 +341,18 @@ if ~isempty(dup)
 end
 
 hasMethodEdge = any(ismember(edgeNames, {'method_id', 'method_parameters_id'}));
+% "never both" (team 2026-08-09) holds until the schema declares
+% method_shared_and_own (Jess Haley 2026-10-22 [method shared plus own]),
+% which replaces it: then an inline block beside `method_id` is allowed and
+% part 1 checks its term is empty.
+sharedPlusOwn = chainDeclaresRule(cache, chain, 'method_shared_and_own');
 for b = 1:numel(blocks)
     block = doc.(blocks{b});
     if ~isstruct(block) || ~isscalar(block)
         continue;
     end
     [params, inline] = parametersOf(blocks{b}, block);
-    if inline && hasMethodEdge
+    if inline && hasMethodEdge && ~sharedPlusOwn
         violated('parameters_not_both', className, ...
             ['an inline `method` (its term or parameters) and a `method_id` edge ' ...
              'were both given (`method_parameters` / `method_parameters_id` before ' ...
@@ -296,10 +383,26 @@ for b = 1:numel(blocks)
     end
 end
 
-if any(strcmp(chain, 'sampled_body')) && isstruct(dims) && numel(dims) > 1 ...
-        && isAbsent(findField(doc, blocks, 'datum_order'))
-    violated('datum_order_multidimension', className, sprintf( ...
-        'the body has %d dimensions, so `datum_order` (''C'' or ''F'') must be given.', numel(dims)));
+% datum_order_multidimensional (did-schema sampled_body.json; Jess Haley
+% 2026-10-22 [covariate rules named] 6.3a): a sampled body of more than one
+% dimension states `datum_order`; with one dimension or none it is left empty.
+% The builder checked the first half as `datum_order_multidimension` before
+% the schema named the rule; the empty half is checked once the schema
+% declares the rule.
+if any(strcmp(chain, 'sampled_body'))
+    nBodyDims = 0;
+    if isstruct(dims); nBodyDims = numel(dims); end
+    datumOrder = findField(doc, blocks, 'datum_order');
+    if nBodyDims > 1 && isAbsent(datumOrder)
+        violated('datum_order_multidimensional', className, sprintf( ...
+            'the body has %d dimensions, so `datum_order` (''C'' or ''F'') must be given.', nBodyDims));
+    end
+    if nBodyDims <= 1 && ~isAbsent(datumOrder) ...
+            && chainDeclaresRule(cache, chain, 'datum_order_multidimensional')
+        violated('datum_order_multidimensional', className, sprintf( ...
+            ['the body has %d dimension(s), so `datum_order` is meaningless and ' ...
+             'left empty (got ''%s'').'], nBodyDims, char(datumOrder)));
+    end
 end
 
 for c = 1:numel(chain)
@@ -676,6 +779,109 @@ for k = 1:numel(doc.depends_on)
             || (isfield(d, 'value') && ~isAbsent(d.value)))
         tf = true;
         return;
+    end
+end
+end
+
+function tf = chainDeclaresRule(cache, chain, ruleName)
+tf = false;
+for c = 1:numel(chain)
+    s = cache.getClass(chain{c});
+    if ~isfield(s, 'rules') || isempty(s.rules)
+        continue;
+    end
+    rules = asDefs(s.rules);
+    for r = 1:numel(rules)
+        if strcmp(char(rules{r}.name), ruleName)
+            tf = true;
+            return;
+        end
+    end
+end
+end
+
+function tf = isTimeTerm(term)
+% A time, by node; a term with no node, by its label (case-insensitive).
+tf = false;
+if ~isstruct(term) || ~isscalar(term)
+    return;
+end
+node = '';
+if isfield(term, 'node') && ~isAbsent(term.node); node = char(term.node); end
+if ~isempty(node)
+    tf = any(strcmp(node, {'om:Time', 'EMPTY:0000368', 'EMPTY:0000369', 'EMPTY:0000140'}));
+    return;
+end
+if isfield(term, 'name') && ~isAbsent(term.name)
+    tf = any(strcmpi(strtrim(char(term.name)), ...
+        {'time', 'onset time', 'offset time', 'encounter onset time'}));
+end
+end
+
+function fitMetricUnit(doc, blocks, ruleName, className)
+%FITMETRICUNIT did-schema tuning_curve.json rule `fit_metric_unit` (Jess Haley
+%   2026-10-22 [calculator units]): a fit metric with no fixed unit
+%   (preferred_value, half_maximum_below, half_maximum_above, bandwidth) is in
+%   the `unit` of the curve's covariate along the tuned dimension. The metrics
+%   carry no unit of their own, so what one document can show is that the fit
+%   and the curve agree on it: a fit stating any of those metrics whose
+%   `independent_variables` entry names a covariate's variable (by node, else
+%   label) must give that covariate's `unit` (both blank for a unitless
+%   variable). The fixed units (degrees, cycles per degree, hertz) have no
+%   field to check.
+metricNames = {'preferred_value', 'half_maximum_below', 'half_maximum_above', 'bandwidth'};
+a6 = blocks(ismember(blocks, {'data', 'acquisition_epoch'}));
+covs = findField(doc, a6, 'covariates');
+if ~isstruct(covs) || ~isfield(covs, 'variable')
+    return;
+end
+for b = 1:numel(blocks)
+    block = doc.(blocks{b});
+    if ~isstruct(block) || ~isscalar(block) || ~isfield(block, 'value') ...
+            || ~isstruct(block.value) || ~isscalar(block.value) || ~isfield(block.value, 'model_fit')
+        continue;
+    end
+    fits = block.value.model_fit;
+    if iscell(fits); fits = [fits{:}]; end
+    if ~isstruct(fits)
+        continue;
+    end
+    for f = 1:numel(fits)
+        fit = fits(f);
+        if ~isfield(fit, 'metrics') || ~isstruct(fit.metrics) || ~isscalar(fit.metrics)
+            continue;
+        end
+        stated = false;
+        for m = metricNames
+            if isfield(fit.metrics, m{1}) && ~isAbsent(fit.metrics.(m{1}))
+                stated = true;
+            end
+        end
+        if ~stated || ~isfield(fit, 'independent_variables') || ~isstruct(fit.independent_variables)
+            continue;
+        end
+        iv = fit.independent_variables;
+        for k = 1:numel(iv)
+            if ~isfield(iv, 'variable')
+                continue;
+            end
+            key = termKey(iv(k).variable);
+            for c = 1:numel(covs)
+                if isempty(key) || ~strcmp(termKey(covs(c).variable), key)
+                    continue;
+                end
+                ivUnit = '';
+                covUnit = '';
+                if isfield(iv, 'unit'); ivUnit = termKey(iv(k).unit); end
+                if isfield(covs, 'unit'); covUnit = termKey(covs(c).unit); end
+                if ~strcmp(ivUnit, covUnit)
+                    violated(ruleName, sprintf('%s model_fit %d', className, f - 1), sprintf( ...
+                        ['the fit''s independent variable "%s" is in "%s", but the curve''s ' ...
+                         'covariate along it is in "%s"; a fit metric is in the covariate''s unit.'], ...
+                        key, ivUnit, covUnit));
+                end
+            end
+        end
     end
 end
 end

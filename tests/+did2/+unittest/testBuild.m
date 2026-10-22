@@ -617,10 +617,18 @@ did2.build.statement('observation', newId(), 'voltage', ...
     'Dimensions', did2.build.list(did2.build.dimension('channel', 2), did2.build.dimension('channel', 2)), ...
     'Covariates', did2.build.covariate('channel', 0, 'Term', {'A', 'B'}), ...
     'DatumOrder', 'F', common{:}, 'ValueKind', 'voltage');
-% inline parameters AND a method_parameters_id
-verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
-    v, 'MethodParameters', did2.build.parameter('gain', 'Value', 1), ...
-    'MethodParametersId', newId(), common{:}, 'ValueKind', 'voltage'), 'did2:build:ruleViolated');
+% inline parameters AND a method_parameters_id: never both, until did-schema
+% declares method_shared_and_own (Jess Haley 2026-10-22 [method shared plus
+% own]), which allows settings only this run had beside the shared method
+if schemaDeclaresRule('interaction', 'method_shared_and_own')
+    did2.build.statement('observation', newId(), 'voltage', ...
+        v, 'MethodParameters', did2.build.parameter('gain', 'Value', 1), ...
+        'MethodParametersId', newId(), common{:}, 'ValueKind', 'voltage');
+else
+    verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
+        v, 'MethodParameters', did2.build.parameter('gain', 'Value', 1), ...
+        'MethodParametersId', newId(), common{:}, 'ValueKind', 'voltage'), 'did2:build:ruleViolated');
+end
 % the same knob twice
 verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
     v, 'MethodParameters', did2.build.list(did2.build.parameter('gain', 'Value', 1), ...
@@ -949,8 +957,11 @@ verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage'
 end
 
 function testInlineMethodOrMethodIdNeverBoth(testCase)
-% "A statement carries the inline `method` block OR this edge, NEVER BOTH" --
-% on #88 the inline term alone counts
+% "A statement carries the inline `method` block OR this edge, NEVER BOTH"
+% (team 2026-08-09) -- on #88 the inline term alone counts. did-schema's rule
+% method_shared_and_own (Jess Haley 2026-10-22 [method shared plus own])
+% replaces it: beside `method_id` an inline block may ADD settings, with an
+% empty term. An inline TERM beside method_id is refused either way.
 if ~methodIsABlock()
     return;
 end
@@ -958,9 +969,33 @@ common = {'TimeReferenceIds', {newId()}, 'SessionId', testCase.TestData.sid};
 v = did2.build.valueCell('voltage', 0.01);
 verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
     v, 'Method', 'refrigeration', 'MethodId', newId(), common{:}, 'ValueKind', 'voltage'), 'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
-    v, 'MethodParameters', did2.build.parameter('gain', 'Value', 1), ...
-    'MethodId', newId(), common{:}, 'ValueKind', 'voltage'), 'did2:build:ruleViolated');
+if schemaDeclaresRule('interaction', 'method_shared_and_own')
+    doc = did2.build.statement('observation', newId(), 'voltage', ...
+        v, 'MethodParameters', did2.build.parameter('gain', 'Value', 1), ...
+        'MethodId', newId(), common{:}, 'ValueKind', 'voltage');
+    verifyEqual(testCase, doc.interaction.method.parameters.variable.name, 'gain');
+    verifyTrue(testCase, any(strcmp({doc.depends_on.name}, 'method_id')));
+else
+    verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
+        v, 'MethodParameters', did2.build.parameter('gain', 'Value', 1), ...
+        'MethodId', newId(), common{:}, 'ValueKind', 'voltage'), 'did2:build:ruleViolated');
+end
+end
+
+function tf = schemaDeclaresRule(className, ruleName)
+% true when the loaded schema's CLASSNAME declares RULENAME in its `rules`
+c = did2.schema.cache.shared();
+tf = false;
+if ~c.hasClass(className)
+    return;
+end
+s = c.getClass(className);
+if ~isfield(s, 'rules') || isempty(s.rules)
+    return;
+end
+r = s.rules;
+if isstruct(r); r = num2cell(r); end
+tf = any(cellfun(@(x) strcmp(char(x.name), ruleName), r));
 end
 
 function testRelationMethodIsTheSameBlock(testCase)
