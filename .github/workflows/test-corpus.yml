@@ -451,22 +451,40 @@ jobs:
           ref: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
           path: did-schema
 
-      - name: Resolve the NDI-matlab ref
+      - name: Resolve the NDI-matlab ref (same name, claude/v2-object-layer, V2, main)
         id: ndi-ref
-        # Same fallback as test-code.yml:78-88, and the reason is the same: most
+        # Same fallback, in the same order, as test-code.yml's steps of the same
+        # name ([NDI ref fallback]), and the reason is the same: most
         # DID-side branches have no NDI-side twin, and the chosen ref is PRINTED
         # either way -- "we read production" and "we read main" are different
         # claims and must not look alike in a log.
         run: |
           want="${{ github.head_ref || github.ref_name }}"
-          if git ls-remote --exit-code --heads \
-               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
-            echo "NDI-matlab HAS branch '$want' -- reading it."
-            echo "ref=$want" >> "$GITHUB_OUTPUT"
-          else
-            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
-            echo "ref=main" >> "$GITHUB_OUTPUT"
+          # Jess Haley, 2026-10-22 [NDI ref fallback] (did-schema
+          # V_eta_go_forward_class_audit.md), extended to this workflow by her
+          # 2026-10-22 answer: the same-name branch, then
+          # claude/v2-object-layer (NDI #1021's head, until #1021 merges),
+          # then V2, then main. The integration branch is removed from this
+          # list in the first commit after the merge.
+          chosen=""
+          for ref in "$want" claude/v2-object-layer V2 main; do
+            if git ls-remote --exit-code --heads \
+                 https://github.com/VH-Lab/NDI-matlab.git "$ref" >/dev/null 2>&1; then
+              chosen="$ref"
+              break
+            fi
+            echo "NDI-matlab has NO branch '$ref'."
+          done
+          if [ -z "$chosen" ]; then
+            echo "NDI-matlab: none of '$want', claude/v2-object-layer, V2, main answered -- using main."
+            chosen=main
           fi
+          if [ "$chosen" = "$want" ]; then
+            echo "NDI-matlab HAS branch '$want' -- reading it."
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLBACK to '$chosen'."
+          fi
+          echo "ref=$chosen" >> "$GITHUB_OUTPUT"
 
       - name: Check out NDI-matlab (sibling, required by coverage.py)
         # WITHOUT THIS THE RUNG MEASURES NOTHING, and run 31572667236 proved it:

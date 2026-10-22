@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for tools/corpus_matrix.py and its wiring in test-code.yml, and the
-NDI-matlab ref fallback of test-code.yml and test-migrators-quick.yml.
+NDI-matlab ref fallback of test-code.yml, test-migrators-quick.yml and
+test-corpus.yml.
 
     python3 tools/test_corpus_matrix.py
 """
@@ -151,13 +152,14 @@ class TestWorkflowWiring(unittest.TestCase):
 
 class TestNdiRefFallback(unittest.TestCase):
     """[NDI ref fallback] (Jess Haley, 2026-10-22, did-schema
-    V_eta_go_forward_class_audit.md): EVERY "Resolve the NDI-matlab ref" step
-    of test-code.yml (all of its jobs) and test-migrators-quick.yml tries the
+    V_eta_go_forward_class_audit.md; test-corpus.yml added by her answer of
+    the same day): EVERY "Resolve the NDI-matlab ref" step of test-code.yml
+    (all of its jobs), test-migrators-quick.yml and test-corpus.yml tries the
     same-name branch, then claude/v2-object-layer, then V2, then main, prints
     the ref it took and says FALLBACK when it is not the same-name branch."""
 
     ORDER = '"$want" claude/v2-object-layer V2 main'
-    FILES = ("test-code.yml", "test-migrators-quick.yml")
+    FILES = ("test-code.yml", "test-migrators-quick.yml", "test-corpus.yml")
 
     def steps(self, name):
         path = os.path.join(REPO, ".github", "workflows", name)
@@ -188,10 +190,10 @@ class TestNdiRefFallback(unittest.TestCase):
                 self.assertNotIn('echo "ref=main" >> "$GITHUB_OUTPUT"\n          fi', st,
                                  "%s: the old straight-to-main fallback" % name)
         # DENOMINATOR: test-code.yml has the unit and aggregate jobs' steps,
-        # test-migrators-quick.yml one.
+        # test-migrators-quick.yml and test-corpus.yml one each.
         print("\n--- NDI ref fallback: %d resolve step(s) checked in %d file(s) ---"
               % (total, len(self.FILES)))
-        self.assertEqual(total, 3)
+        self.assertEqual(total, 4)
 
     def test_the_resolver_runs_and_falls_back_in_order(self):
         """Run one step's script with git ls-remote stubbed: only V2 and main
