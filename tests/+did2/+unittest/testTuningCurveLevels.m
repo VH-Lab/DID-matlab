@@ -746,6 +746,131 @@ verifyFalse(testCase, isfield(v, 'response_unit'), ...
     'response_unit must be absent when the writer leaves response_units []');
 end
 
+% ===================== [tuning grid] =======================================
+% Jess Haley 2026-10-22 [tuning grid] (did-schema V_eta_data_body_model_plan.md,
+% answer "4c"): a curve over several independent variables whose conditions
+% form a FULL GRID has one dimension per variable, each with its covariate, and
+% the response an array over them; otherwise ONE `stimulus condition` dimension
+% with a covariate per variable (XCO:0000000 "experimental condition", [stimulus
+% condition term]). No corpus holds such a curve (34,690 tuning
+% curves, all over one variable), so these synthetic fixtures are the proof.
+
+function tc = gridRawCurve(sf, tf)
+%GRIDRAWCURVE A flat raw curve over spatial x temporal frequency, conditions in
+%   the order given. Response k is 10*sf + tf (so a misplaced cell shows), the
+%   trials are k + [0 0.1 0.2] (real) and k/100 (imaginary), and the control is
+%   response/10.
+sf = sf(:); tf = tf(:);
+r = 10 * sf + tf;
+tc = struct();
+tc.independent_variable_label = {'spatial_frequency, temporal_frequency'};
+tc.independent_variable_value = [sf tf];
+tc.response_mean   = r.';
+tc.response_stddev = (r / 2).';
+tc.response_stderr = (r / 4).';
+tc.individual_responses_real      = (r + [0 0.1 0.2]).';   % trials x points
+tc.individual_responses_imaginary = repmat(r / 100, 1, 3).';
+tc.control_response_mean   = (r / 10).';
+tc.control_response_stddev = (r / 20).';
+tc.control_response_stderr = (r / 40).';
+tc.control_individual_responses_real = repmat(r / 10, 1, 3).';
+tc.response_units = 'spikes/s';
+end
+
+function testAFullGridCurveHasOneDimensionPerVariable(testCase)
+% 2 spatial x 3 temporal frequencies, all 6 combinations once, in a shuffled
+% order: two dimensions (n 2 and 3), each variable's levels a covariate along
+% its own dimension, datum_order 'F', and every per-condition array reshaped
+% so that cell (i, j) is the condition (sf_i, tf_j).
+[S, T] = ndgrid([0.1 0.2], [1 2 4]);
+order = [5 2 6 1 4 3];
+sf = S(order); tf = T(order);
+leaf = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve( ...
+    flatRawBody(gridRawCurve(sf, tf))));
+ax = did2.unittest.helpers.axesOf(leaf);
+assertEqual(testCase, numel(ax), 2, 'one dimension per variable');
+verifyEqual(testCase, {ax(1).term.name, ax(2).term.name}, ...
+    {'spatial frequency', 'temporal frequency'}, 'each dimension''s term is its variable');
+verifyEqual(testCase, [ax.n], [2 3]);
+verifyEqual(testCase, ax(1).cov.variable.name, 'spatial frequency');
+verifyEqual(testCase, reshape(ax(1).cov.quantity.value, 1, []), [0.1 0.2], 'AbsTol', 1e-12);
+verifyEqual(testCase, ax(2).cov.variable.name, 'temporal frequency');
+verifyEqual(testCase, reshape(ax(2).cov.quantity.value, 1, []), [1 2 4], 'AbsTol', 1e-12);
+verifyEqual(testCase, [ax.nCov], [1 1], 'one covariate along each, nothing else');
+verifyEqual(testCase, numel(leaf.data.covariates), 2);
+verifyEqual(testCase, leaf.data.datum_order, 'F', 'the grid states its order');
+v = leaf.tuning_curve.value;
+expect = 10 * S + T;
+verifyEqual(testCase, v.mean, expect, 'AbsTol', 1e-12, 'mean(i, j) is condition (sf_i, tf_j)');
+verifyEqual(testCase, v.stddev, expect / 2, 'AbsTol', 1e-12);
+verifyEqual(testCase, v.stderr, expect / 4, 'AbsTol', 1e-12);
+verifyEqual(testCase, size(v.individual), [2 3 3 2], 'sf x tf x trials x [real, imaginary]');
+verifyEqual(testCase, v.individual(:, :, 2, 1), expect + 0.1, 'AbsTol', 1e-12);
+verifyEqual(testCase, v.individual(:, :, 3, 2), expect / 100, 'AbsTol', 1e-12);
+verifyEqual(testCase, v.control.mean, expect / 10, 'AbsTol', 1e-12);
+verifyEqual(testCase, v.control.stderr, expect / 40, 'AbsTol', 1e-12);
+verifyEqual(testCase, size(v.control.individual), [2 3 3]);
+verifyEqual(testCase, v.control.individual(:, :, 1), expect / 10, 'AbsTol', 1e-12);
+end
+
+function testACurveThatIsNotAFullGridHasOneStimulusConditionDimension(testCase)
+% 5 of the 6 combinations: not a grid. ONE dimension of 5 conditions, its term
+% XCO:0000000 "experimental condition" (Jess Haley 2026-10-22 [stimulus
+% condition term]), with one covariate PER VARIABLE along it; the arrays keep their
+% one condition axis, in the source's order. The joined 'a x b' label is gone.
+[S, T] = ndgrid([0.1 0.2], [1 2 4]);
+order = [5 2 6 1 4];
+sf = S(order); tf = T(order);
+leaf = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve( ...
+    flatRawBody(gridRawCurve(sf, tf))));
+ax = did2.unittest.helpers.axesOf(leaf);
+assertEqual(testCase, numel(ax), 1);
+verifyEqual(testCase, ax(1).term.name, 'experimental condition');
+verifyEqual(testCase, ax(1).term.node, 'XCO:0000000');
+verifyEqual(testCase, ax(1).n, 5);
+verifyEqual(testCase, ax(1).nCov, 2, 'one covariate per variable along the one dimension');
+covs = leaf.data.covariates;
+verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
+    {'spatial frequency', 'temporal frequency'});
+verifyEqual(testCase, reshape(covs(1).quantity.value, 1, []), reshape(sf, 1, []), 'AbsTol', 1e-12);
+verifyEqual(testCase, reshape(covs(2).quantity.value, 1, []), reshape(tf, 1, []), 'AbsTol', 1e-12);
+verifyTrue(testCase, ~isfield(leaf.data, 'datum_order') || isempty(leaf.data.datum_order), ...
+    'one dimension: no order to state');
+v = leaf.tuning_curve.value;
+verifyEqual(testCase, v.mean, reshape(10 * sf + tf, 1, []), 'AbsTol', 1e-12);
+verifyEqual(testCase, size(v.individual), [5 3 2], 'conditions x trials x [real, imaginary]');
+end
+
+function testARepeatedConditionIsNotAGrid(testCase)
+% 6 conditions, as many as a 2 x 3 grid holds, but one combination twice and
+% one missing: the count alone must not make a grid.
+[S, T] = ndgrid([0.1 0.2], [1 2 4]);
+order = [1 2 3 4 5 5];
+leaf = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve( ...
+    flatRawBody(gridRawCurve(S(order), T(order)))));
+ax = did2.unittest.helpers.axesOf(leaf);
+assertEqual(testCase, numel(ax), 1);
+verifyEqual(testCase, ax(1).term.node, 'XCO:0000000');
+verifyEqual(testCase, ax(1).n, 6);
+end
+
+function testAFittedCurveOverAFullGridIsReshapedToo(testCase)
+% The fitted composites take the same path: a speed_tuning curve whose 4
+% conditions are the full 2 x 2 grid of its spatial and temporal frequencies.
+tc = speedCurve();
+tc.spatial_frequency = [0.1; 0.2; 0.1; 0.2];
+tc.temporal_frequency = [1; 1; 2; 2];
+tc = rmfield(tc, 'individual');
+leaf = tuningLeaf(did2.convert.migrators_j.speed_tuning( ...
+    tuningBody('speed_tuning', tc, emptyUnitsProperties())));
+ax = did2.unittest.helpers.axesOf(leaf);
+assertEqual(testCase, numel(ax), 2);
+verifyEqual(testCase, {ax(1).term.name, ax(2).term.name}, {'spatial frequency', 'temporal frequency'});
+verifyEqual(testCase, [ax.n], [2 2]);
+verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 9; 5 3], 'AbsTol', 1e-12);
+verifyEqual(testCase, leaf.data.datum_order, 'F');
+end
+
 % ===================== helpers =============================================
 
 function a = calcApp(name)

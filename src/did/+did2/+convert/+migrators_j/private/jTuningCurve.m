@@ -18,21 +18,32 @@ function [value, valueAxes, leafFields, dropped] = jTuningCurve(srcBlk, family)
 %       Per-trial arrays take the stimulus dimension FIRST and the trial
 %       dimension last (audit 2, D3: "individual / raw_individual add one
 %       trailing trial dimension"); v1 stored them trials x stimuli.
-%     AXES   struct {dimensions, covariates} of the stimulus dimension, or []
-%       (audit 2, D3: `independent_variables[]` is dropped, the dimensions
-%       are the value's; did-schema data_body AMENDMENT 6, Jess Haley
-%       2026-10-22 [covariates], `keys` before). One independent variable:
-%       one dimension, its term the variable, and one `quantity` covariate
-%       along it holding the values. SEVERAL (a tuningcurve over spatial x
-%       temporal frequency, a speed tuning): the curve is sampled at n points
-%       of a d-dimensional space, which is ONE array dimension of length n
-%       (its term a label naming the d variables, 'spatial frequency x
-%       temporal frequency', as the former key's variable did), with ONE
-%       `quantity` covariate PER VARIABLE along it -- the long format
-%       AMENDMENT 6 gives sparse data. Until 2026-10-22 the schema had no
-%       multi-variable key, so the n points were n LABELS ('spatial frequency
-%       0.05, temporal frequency 1'); the covariates keep the same numbers as
-%       numbers.
+%     AXES   struct {dimensions, covariates, datum_order} of the stimulus
+%       dimensions, or [] (audit 2, D3: `independent_variables[]` is dropped,
+%       the dimensions are the value's; did-schema data_body AMENDMENT 6, Jess
+%       Haley 2026-10-22 [covariates], `keys` before). One independent
+%       variable: one dimension, its term the variable, and one `quantity`
+%       covariate along it holding the values. SEVERAL (a tuningcurve over
+%       spatial x temporal frequency, a speed tuning), per Jess Haley
+%       2026-10-22 [tuning grid] (answer "4c"):
+%         - the conditions form a FULL GRID (every combination of the
+%           variables' distinct values present exactly once): one dimension
+%           PER VARIABLE, in the order v1 lists the variables, its term the
+%           variable and its n the number of distinct values, with one
+%           `quantity` covariate along its own dimension holding those values
+%           (ascending). Every per-condition array (mean, stddev, stderr,
+%           individual, raw_individual, the control's) is reshaped from one
+%           condition axis to the grid; the grid is laid out column-major
+%           (`datum_order` 'F', the first variable fastest), which AXES states.
+%         - otherwise: ONE dimension of n conditions, its term XCO:0000000
+%           "experimental condition" (Jess Haley 2026-10-22 [stimulus
+%           condition term]), with one `quantity` covariate
+%           PER VARIABLE along it (the long format AMENDMENT 6 gives sparse
+%           data); the arrays keep their one condition axis.
+%       The joined 'a x b' label the dimension carried until 2026-10-22 is
+%       gone. No corpus holds such a curve (34,690 tuning curves in the six
+%       corpora, all over one variable; [tuning grid]), so both paths are
+%       proven on synthetic fixtures only (testTuningCurveLevels).
 %     LEAFFIELDS   the named calculation's blocks: `significance` and
 %       `model_fit[]` (tuning_curve_calculation); `circular_statistics`
 %       (orientation/direction, v1 `vector`); `interpolated_values`
@@ -110,6 +121,7 @@ pooled = struct();
 [pooled, used] = takeArr(pooled, used, 'stderr', tc, {'control_mean_stderr'}, false);
 if ~isempty(fieldnames(pooled)); ctl.pooled = pooled; end
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
+value = toGrid(value, valueAxes);
 dropped = [dropped, prefixed('tuning_curve.', setdiff(fieldnames(tc), used))];
 
 % ---- significance (tuning_curve_calculation) -----------------------------
@@ -217,6 +229,7 @@ ctl = struct();
 [ctl, used] = takeTrials(ctl, used, 'individual', st, ...
     {'control_individual_responses_real'}, {'control_individual_responses_imaginary'});
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
+value = toGrid(value, valueAxes);
 [u, nm] = getfn(st, {'response_units'}); used{end+1} = nm;
 value = putUnit(value, u);
 used = used(~cellfun(@isempty, used));
@@ -225,10 +238,14 @@ dropped = prefixed('stimulus_tuningcurve.', reshape(rest, 1, []));
 end
 
 function valueAxes = makeAxes(names, cols)
-%MAKEAXES The value's stimulus dimension and the covariates along it.
+%MAKEAXES The value's stimulus dimension(s) and the covariates along them.
 %   One column: dimension term = the variable, one quantity covariate.
-%   Several columns of one length n: ONE dimension of n points (its term the
-%   variables joined, 'a x b'), one quantity covariate per variable along it.
+%   Several columns of one length n (Jess Haley 2026-10-22 [tuning grid]):
+%     a FULL GRID -> one dimension per variable (n_d = its distinct values),
+%       one quantity covariate along each, `datum_order` 'F', and the field
+%       `grid` (the column-major position of each condition) for toGrid;
+%     otherwise -> ONE 'experimental condition' (XCO:0000000) dimension of n, one quantity
+%       covariate per variable along it.
 %   Ragged columns: no honest dimension; the values stay, without one.
 valueAxes = [];
 if isempty(cols)
@@ -240,16 +257,110 @@ if any(cellfun(@numel, cols) ~= n)
 end
 labels = cellfun(@(nm) strrep(nm, '_', ' '), names, 'UniformOutput', false);
 if isscalar(cols)
-    dimTerm = jLabel(labels{1});
-else
-    dimTerm = jLabel(strjoin(labels, ' x '));
+    valueAxes = struct('dimensions', did2.build.dimension(jLabel(labels{1}), n), ...
+        'covariates', did2.build.covariate(jLabel(labels{1}), 0, ...
+            'Value', reshape(cols{1}, 1, [])));
+    return;
 end
-covs = cell(1, numel(cols));
-for d = 1:numel(cols)
+[isGrid, levels, position] = fullGrid(cols);
+k = numel(cols);
+if isGrid
+    dims = cell(1, k);
+    covs = cell(1, k);
+    for d = 1:k
+        dims{d} = did2.build.dimension(jLabel(labels{d}), numel(levels{d}));
+        covs{d} = did2.build.covariate(jLabel(labels{d}), d - 1, ...
+            'Value', reshape(levels{d}, 1, []));
+    end
+    valueAxes = struct('dimensions', did2.build.list(dims{:}), ...
+        'covariates', did2.build.list(covs{:}), 'datum_order', 'F', ...
+        'grid', struct('extents', cellfun(@numel, levels), 'position', position));
+    return;
+end
+% The `stimulus condition` dimension of [tuning grid] is XCO:0000000
+% "experimental condition" (Jess Haley 2026-10-22 [stimulus condition term],
+% did-schema V_eta_data_body_model_plan.md, answer "A").
+covs = cell(1, k);
+for d = 1:k
     covs{d} = did2.build.covariate(jLabel(labels{d}), 0, 'Value', reshape(cols{d}, 1, []));
 end
-valueAxes = struct('dimensions', did2.build.dimension(dimTerm, n), ...
+valueAxes = struct('dimensions', did2.build.dimension( ...
+    struct('node', 'XCO:0000000', 'name', 'experimental condition'), n), ...
     'covariates', did2.build.list(covs{:}));
+end
+
+function [tf, levels, position] = fullGrid(cols)
+%FULLGRID Do the n conditions (one row per condition across COLS) form a full
+%   grid: every combination of the columns' distinct values present exactly
+%   once? LEVELS{d} are column d's distinct values, ascending; POSITION(i) is
+%   condition i's column-major (first variable fastest) linear index in the
+%   grid of extents numel(LEVELS{d}).
+k = numel(cols);
+n = numel(cols{1});
+levels = cell(1, k);
+subs = zeros(n, k);
+for d = 1:k
+    c = double(cols{d}(:));
+    if any(isnan(c))
+        tf = false; position = []; return;
+    end
+    [levels{d}, ~, subs(:, d)] = unique(c);
+    levels{d} = levels{d}(:);
+end
+ext = cellfun(@numel, levels);
+position = zeros(n, 1);
+stride = 1;
+for d = 1:k
+    position = position + (subs(:, d) - 1) * stride;
+    stride = stride * ext(d);
+end
+position = position + 1;
+tf = prod(ext) == n && numel(unique(position)) == n;
+if ~tf
+    position = [];
+end
+end
+
+function value = toGrid(value, valueAxes)
+%TOGRID Reshape every per-condition array of VALUE from one condition axis to
+%   the grid makeAxes found ([tuning grid]); a no-op without one. An array is
+%   per-condition when it is a vector of n (mean, stddev, stderr, the
+%   control's) or has n rows (individual, raw_individual: n x trials, then
+%   [real, imaginary]); anything else (a pooled scalar) is left as it is.
+if ~isstruct(valueAxes) || ~isfield(valueAxes, 'grid')
+    return;
+end
+g = valueAxes.grid;
+for f = {'mean', 'stddev', 'stderr', 'individual', 'raw_individual'}
+    if isfield(value, f{1}); value.(f{1}) = gridArray(value.(f{1}), g); end
+end
+if isfield(value, 'control') && isstruct(value.control)
+    for f = {'mean', 'stddev', 'stderr', 'individual'}
+        if isfield(value.control, f{1})
+            value.control.(f{1}) = gridArray(value.control.(f{1}), g);
+        end
+    end
+end
+end
+
+function y = gridArray(x, g)
+n = numel(g.position);
+if ~isnumeric(x) || isempty(x)
+    y = x;
+    return;
+end
+if isvector(x) && numel(x) == n
+    y = zeros(g.extents);
+    y(g.position) = x(:);
+elseif size(x, 1) == n
+    sz = size(x);
+    flat = reshape(x, n, []);
+    out = zeros(prod(g.extents), size(flat, 2));
+    out(g.position, :) = flat;
+    y = reshape(out, [g.extents, sz(2:end)]);
+else
+    y = x;
+end
 end
 
 function [entries, dropped] = fitEntries(blk, blockName)

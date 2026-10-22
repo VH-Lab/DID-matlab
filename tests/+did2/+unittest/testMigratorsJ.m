@@ -3951,12 +3951,15 @@ verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
 leaf = calcLeafJ(testCase, out, 'speed_tuning_calculation', 'sp_1', 'sub_s');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.speed');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [5 8 6]);
-% AMENDMENT 6: ONE dimension of the 3 sampled points (its term naming both
-% variables), with one quantity covariate PER VARIABLE along it -- no longer
-% one key whose positions were 3 labels
+% AMENDMENT 6, [tuning grid] (Jess Haley 2026-10-22): the 3 sampled points
+% are not a full grid of the 2 x 2 frequencies, so ONE dimension of 3, its term
+% XCO:0000000 "experimental condition" ([stimulus condition term]; no longer
+% the joined 'spatial frequency x temporal frequency'), with one quantity
+% covariate PER VARIABLE along it
 verifyEqual(testCase, numel(leaf.data.dimensions), 1);
 verifyEqual(testCase, leaf.data.dimensions(1).n, 3);
-verifyEqual(testCase, leaf.data.dimensions(1).term.name, 'spatial frequency x temporal frequency');
+verifyEqual(testCase, leaf.data.dimensions(1).term.node, 'XCO:0000000');
+verifyEqual(testCase, leaf.data.dimensions(1).term.name, 'experimental condition');
 covs = leaf.data.covariates;
 verifyEqual(testCase, numel(covs), 2);
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
