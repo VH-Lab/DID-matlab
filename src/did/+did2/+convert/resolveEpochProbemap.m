@@ -430,13 +430,13 @@ for k = 1:n
                 paramReadersByNavId(navId) = prIds;
             end
         case 'directed_relation'
-            if strcmp(relationNameOf(b), 'derived_from')
+            if did2.build.isVocabulary(relationOf(b), 'relation', 'derived_from')   % by node (L1)
                 ch = depValueOf(b, 'child_id');
                 if ~isempty(ch) && ~isKey(derivedParent, ch)
                     derivedParent(ch) = depValueOf(b, 'parent_id');
                 end
             end
-            if strcmp(relationNameOf(b), 'observes')
+            if did2.build.isVocabulary(relationOf(b), 'relation', 'observes')   % a pass-1 handle with no node
                 pk = [depValueOf(b, 'child_id') '|' depValueOf(b, 'parent_id')];
                 if isKey(observesIdxByPair, pk)
                     observesIdxByPair(pk) = [observesIdxByPair(pk), k];
@@ -2486,15 +2486,20 @@ elseif isstring(v); c = cellstr(v(:)');
 end
 end
 
-function r = relationNameOf(b)
-r = '';
+function r = relationOf(b)
+% the relation term, {node, name} (a bare name from an older writer as {'', name})
+r = struct('node', '', 'name', '');
 if ~isfield(b, 'directed_relation') || ~isstruct(b.directed_relation) ...
         || ~isfield(b.directed_relation, 'relation')
     return;
 end
 v = b.directed_relation.relation;
-if isstruct(v) && isfield(v, 'name'); r = char(v.name);
-elseif ischar(v) || isstring(v); r = char(v); end
+if isstruct(v) && isscalar(v)
+    if isfield(v, 'node'); r.node = char(v.node); end
+    if isfield(v, 'name'); r.name = char(v.name); end
+elseif ischar(v) || isstring(v)
+    r.name = char(v);
+end
 end
 
 % ===================== small readers ===================================

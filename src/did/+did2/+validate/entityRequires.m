@@ -52,12 +52,18 @@ if isempty(rows)
 end
 report.registry_rows = numel(rows);
 requiresByType = containers.Map('KeyType', 'char', 'ValueType', 'any');
+typeByNode = containers.Map('KeyType', 'char', 'ValueType', 'char');
 for r = 1:numel(rows)
     req = {};
     if isfield(rows{r}, 'requires') && ~isempty(rows{r}.requires)
         req = cellstr(rows{r}.requires);
     end
     requiresByType(lower(char(rows{r}.type))) = req(:)';
+    % the row's node too: an entity is matched BY NODE (Jess Haley 2026-10-22
+    % [vocabulary nodes] L2), its stored name being the ontology label
+    if isfield(rows{r}, 'node') && ~isempty(strtrim(char(rows{r}.node)))
+        typeByNode(lower(strtrim(char(rows{r}.node)))) = lower(char(rows{r}.type));
+    end
 end
 
 idx = containers.Map('KeyType', 'char', 'ValueType', 'double');   % type|field -> row
@@ -70,7 +76,10 @@ for k = 1:numel(bodies)
     end
     report.entities_inspected = report.entities_inspected + 1;
     t = '';
-    if isfield(b.entity, 'type') && isstruct(b.entity.type) && isfield(b.entity.type, 'name')
+    if isfield(b.entity, 'type') && isstruct(b.entity.type) && isfield(b.entity.type, 'node') ...
+            && isKey(typeByNode, lower(strtrim(char(b.entity.type.node))))
+        t = typeByNode(lower(strtrim(char(b.entity.type.node))));
+    elseif isfield(b.entity, 'type') && isstruct(b.entity.type) && isfield(b.entity.type, 'name')
         t = lower(strtrim(char(b.entity.type.name)));
     end
     if isempty(t)
