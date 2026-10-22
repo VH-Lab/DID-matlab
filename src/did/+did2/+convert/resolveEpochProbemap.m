@@ -232,6 +232,7 @@ report = struct( ...
     'rename_skipped_rows_without_home',0, ...
     'acquisition_channels_minted',    0, ...
     'channels_unbindable_type',       0, ...
+    'channels_derived_read_mode',     0, ...
     'fold_quarantined',               0, ...
     'epochs_with_observations',       0, ...
     'epochs_from_archive',            0, ...
@@ -622,6 +623,8 @@ for k = 1:n
                 end
             else
                 report.channels_unbindable_type = report.channels_unbindable_type + 1;
+                report.channels_derived_read_mode = ...
+                    report.channels_derived_read_mode + derivedReadModes(channels);
             end
         end
 
@@ -1428,11 +1431,27 @@ ac = did2.build.document('acquisition_channels', fields, 'Edges', edges, ...
 end
 
 function tf = channelsBindable(channels)
-% acquisition_channels.channels.type is bound REQUIRED to ai | ao | di | do.
+% acquisition_channels.channels.type is bound REQUIRED to the ten channel
+% types (did-schema #88, Jess Haley 2026-10-22 [channel types]; ai | ao | di |
+% do before). did2.convert.channelType gives a node to exactly those, so a
+% type is bindable when it has a node: compared BY NODE ([vocabulary nodes]
+% L2), never by label.
 tf = true;
 for i = 1:numel(channels)
-    if ~any(strcmp(char(channels(i).type.name), {'ai', 'ao', 'di', 'do'}))
+    if isempty(char(channels(i).type.node))
         tf = false; return;
+    end
+end
+end
+
+function n = derivedReadModes(channels)
+% how many channel groups name one of NDI's eight derived read modes, which
+% are not channel types ([channel types])
+n = 0;
+for i = 1:numel(channels)
+    [~, kind] = did2.convert.channelType(char(channels(i).type.name));
+    if isempty(char(channels(i).type.node)) && strcmp(kind, 'derived')
+        n = n + 1;
     end
 end
 end
@@ -1440,7 +1459,10 @@ end
 function k = channelsKey(sessionId, acqSystemId, channels)
 parts = {char(sessionId), char(acqSystemId)};
 for i = 1:numel(channels)
-    parts{end+1} = [char(channels(i).type.name) sprintf('%d,', channels(i).numbers)]; %#ok<AGROW>
+    t = channels(i).type;
+    key = char(t.node);
+    if isempty(key); key = char(t.name); end
+    parts{end+1} = [key sprintf('%d,', channels(i).numbers)]; %#ok<AGROW>
 end
 k = strjoin(parts, char(0));
 end
@@ -1535,7 +1557,10 @@ for g = 1:numel(groups)
     if isempty(tok); ok = false; continue; end
     [nums, numsOk] = parseNumberSpec(tok{2});
     if ~numsOk; ok = false; end
-    channels(end+1) = struct('type', mkOntologyTerm('', tok{1}), ...
+    % the v1 prefix -> its channel type term (Jess Haley 2026-10-22 [channel
+    % types]); a derived read mode or an unknown prefix stays a bare label,
+    % which channelsBindable refuses and the caller counts
+    channels(end+1) = struct('type', did2.convert.channelType(tok{1}), ...
         'numbers', nums); %#ok<AGROW>
 end
 end

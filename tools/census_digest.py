@@ -571,7 +571,8 @@ POST_PASSES = [
         ("rename_skipped_rows_without_home", "  rename SKIPPED: a probemap row has no home (tombstone kept)"),
         # #73 item 56: one shared acquisition_channels document per (rig, channels).
         ("acquisition_channels_minted", "acquisition_channels documents minted"),
-        ("channels_unbindable_type", "  rows whose channel type is outside ai/ao/di/do (no channels doc)"),
+        ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no channels doc)"),
+        ("channels_derived_read_mode", "  channel groups naming a derived read mode (dep, den, dimp, ...; not a channel type)"),
         ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
         # 2026-10-21 (Jess Haley, did-schema V_eta_recording_observation_plan.md):
         # each recording observation is `data_body` true and the epoch's files

@@ -504,20 +504,19 @@ verifyEqual(testCase, sys.get('base.id'), 'system_id_1');
 verifyNotEqual(testCase, sw.get('base.id'), 'system_id_1');
 end
 
-function testDaqsystemWithAClassNameAndNoEdgesStillConverts(testCase)
-% BEFORE 2026-08-12 THIS BODY PASSED THROUGH: a class name was not
-% something-to-declare (it had no home), so a daqsystem with nothing but a class
-% name fell into the "nothing to declare" branch. It now carries a document on
-% its own, via software_id, so the branch had to learn about implClass. The
-% companion assertion -- that a body with NEITHER a class name NOR edges still
-% passes through -- is testDaqsystemWithNoEdgesAtAllPassesThrough below.
+function testDaqsystemWithAClassNameAndNoEdgesIsRefused(testCase)
+% INVERTED 2026-10-22 (was testDaqsystemWithAClassNameAndNoEdgesStillConverts):
+% acquisition_system.reader_id and epoch_file_pattern_id are REQUIRED (Jess
+% Haley 2026-10-22 [required acquisition edges]: ndi.daq.system cannot be
+% built without them; the v1 daqsystem template requires filenavigator_id and
+% daqreader_id too). A daqsystem with a class name and no edges no longer
+% becomes an acquisition_system: it is quarantined, naming the edge.
 v1 = daqsystemV1('ndi.daq.system.image', {});
 v1.depends_on = struct('name', {}, 'id', {});
 out = runJ(v1);
-verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
-sys = firstOfClass(out, 'acquisition_system');
-verifyNotEqual(testCase, depValue(sys, 'software_id'), '');
-verifyFalse(testCase, hasDependency(sys, 'reader_id'));
+verifyFalse(testCase, any(strcmp(classNames(out), 'acquisition_system')));
+verifyEqual(testCase, numel(out.quarantine), 1);
+verifySubstring(testCase, out.quarantine(1).reason, '_id');
 end
 
 function testDaqsystemFoldsTheThreeEdges(testCase)
@@ -571,13 +570,16 @@ verifyFalse(testCase, hasDependency(sys, 'daqmetadatareader_id'));
 end
 
 function testDaqsystemOmitsAnEdgeItCannotFill(testCase)
+% UPDATED 2026-10-22: reader_id is REQUIRED ([required acquisition edges]), so
+% a daqsystem with no daqreader is not written with the edge left out; it is
+% quarantined, naming reader_id, rather than emitted half-built.
 v1 = daqsystemV1('', {});
 v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
                        'id',   {'nav_id_1',         ''});
 out = runJ(v1);
-sys = out.migrated{1};
-verifyEqual(testCase, depValue(sys, 'epoch_file_pattern_id'), 'nav_id_1');
-verifyFalse(testCase, hasDependency(sys, 'reader_id'));
+verifyFalse(testCase, any(strcmp(classNames(out), 'acquisition_system')));
+verifyEqual(testCase, numel(out.quarantine), 1);
+verifySubstring(testCase, out.quarantine(1).reason, 'reader_id');
 end
 
 function testDaqsystemWithNoEdgesAtAllPassesThrough(testCase)

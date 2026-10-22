@@ -366,7 +366,10 @@ v1.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', 
 v1.base = struct('id', id, 'session_id', sessionId, ...
     'name', name, 'datestamp', '2024-05-01T00:00:00.000Z');
 v1.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
-v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, 'id', {'', ''});
+% reader_id and epoch_file_pattern_id are REQUIRED on acquisition_system (Jess
+% Haley 2026-10-22 [required acquisition edges]); a real v1 daqsystem names both.
+v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'id', {['nav_' id], ['rdr_' id]});
 end
 
 function v1 = filefindFixture(id, sessionId, name1, name2)

@@ -125,7 +125,9 @@ for i = 1:numel(obs)
     end
     ch = channelsOf(out, b);
     verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
-    verifyEqual(testCase, char(ch(1).type.name), 'ai');
+    % the v1 prefix is its channel type term, compared by node (Jess Haley
+    % 2026-10-22 [channel types])
+    verifyEqual(testCase, char(ch(1).type.node), 'EMPTY:0000370');   % ai
     verifyEqual(testCase, double(ch(1).numbers(:))', [11 12 13 14]);
 end
 verifyEqual(testCase, withInstrument, 1);
@@ -937,6 +939,22 @@ verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), ...
     'daqmetadatareader_epochdata_ingested');
 end
 
+function testADerivedReadModeIsNotAChannelTypeAndIsCounted(testCase)
+% Jess Haley 2026-10-22 [channel types]: NDI's eight derived read modes (dep,
+% den, dimp, dimn, aep, aen, aimp, aimn) are not channel types and get no term.
+% A devicestring naming one mints no acquisition_channels document (the type
+% is bound REQUIRED) and is counted, as the unbindable row and as a read mode.
+subj = subjectBody('spec_r', 'sess_r', 'L');
+daq  = daqsystemBody('acqsys_r', 'sess_r', 'intan1');
+ing  = ingestedWithDeviceRows('ing_r', 'sess_r', 't0r', { ...
+    {'p', '', 'n-trode', 'intan1:dep1;ai3', 'L'}});
+[~, rep] = decompose({sessionBody('sd_r', 'sess_r', 'ref'), subj, daq, ing});
+verifyEqual(testCase, rep.device_strings_seen, 1, 'denominator');
+verifyEqual(testCase, rep.acquisition_channels_minted, 0);
+verifyEqual(testCase, rep.channels_unbindable_type, 1);
+verifyEqual(testCase, rep.channels_derived_read_mode, 1);
+end
+
 function testDeviceStringResolvesAcqSystemAndParsesGroupedChannels(testCase)
 % UPDATED for #88: the system is named on the acquisition_channels document the
 % observation names (acquisition_system_id), and the grouped channels live there.
@@ -956,9 +974,9 @@ chDoc = docById(out, depVal(obs{1}, 'acquisition_channels_id'));
 verifyEqual(testCase, depVal(chDoc, 'acquisition_system_id'), 'acqsys_d');
 ch = chDoc.acquisition_channels.channels;
 verifyEqual(testCase, numel(ch), 2);
-verifyEqual(testCase, char(ch(1).type.name), 'ai');
+verifyEqual(testCase, char(ch(1).type.node), 'EMPTY:0000370');   % ai ([channel types])
 verifyEqual(testCase, double(ch(1).numbers(:))', [27 28 45]);
-verifyEqual(testCase, char(ch(2).type.name), 'di');
+verifyEqual(testCase, char(ch(2).type.node), 'EMPTY:0000372');   % di
 verifyEqual(testCase, double(ch(2).numbers(:))', [0 1 2]);
 % every row decomposed, so the source is renamed to the manifest
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
@@ -1105,8 +1123,11 @@ v1.base = struct('id', docId, 'session_id', sessionId, ...
 % fixture never becomes an acquisition_system. A real class name takes the
 % software-fold path and PRESERVES base.id + base.name onto the acquisition_system.
 v1.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+% acquisition_system.reader_id and epoch_file_pattern_id are REQUIRED (Jess
+% Haley 2026-10-22 [required acquisition edges]); a real v1 daqsystem always
+% names both (its template requires them), so the fixture does too.
 v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
-    'id', {'', ''});
+    'id', {['nav_' docId], ['rdr_' docId]});
 end
 
 function v1 = ingestedWithDeviceRows(docId, sessionId, epochId, rows, files)
