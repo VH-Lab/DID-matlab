@@ -614,6 +614,15 @@ POST_PASSES = [
         ("acquisition_epoch_kept_no_file", "  KEPT: no epoch_binary_data.vhsb named"),
         ("acquisition_epoch_kept_clock", "  KEPT: not exactly one dev_local_time clock"),
         ("acquisition_epoch_kept_not_rebuilt", "  KEPT: observation, anchor or body did not validate"),
+        ("acquisition_epoch_kept_no_subject", "  KEPT: JH element with no worm (derived_from parent)"),
+        ("acquisition_epoch_kept_ensemble_unverified", "  KEPT: ensemble combined bytes, members' trains not verified"),
+        # 2026-10-22 (Jess Haley, [JH position and distance])
+        ("position_calculations_emitted", "  JH position calculations emitted"),
+        ("distance_calculations_emitted", "  JH signed-distance calculations emitted"),
+        ("nearest_patch_calculations_emitted", "  JH nearest-patch calculations emitted"),
+        ("coordinate_systems_minted", "    pixel coordinate systems minted"),
+        ("distance_without_position", "    distance statements with no position input"),
+        ("nearest_patch_without_patches", "    nearest-patch statements with no item_id"),
         # 2026-10-21 (Jess Haley, "a"): a v1 daqreader_*_epochdata_ingested is
         # retired only when every file it holds has a new per-epoch owner.
         ("archive_docs_inspected", "v1 ingested archives inspected  <- ARCHIVE DENOMINATOR"),
