@@ -38,7 +38,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview, element,
 %       daqmetadatareader_epochdata_ingested
 %   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity
-%   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_reference
+%   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
 %       +migrators_j/pyraview through epochMint) are RE-POINTED to the epoch's
 %       recording observation and its separate observation retired; nothing
@@ -253,6 +253,15 @@ report = struct( ...
     'spike_instrument_resolved',      0, ...
     'spike_bodies',                   0, ...
     'spike_bodies_quarantined',       0, ...
+    'acquisition_epoch_seen',         0, ...
+    'acquisition_epoch_dissolved',    0, ...
+    'acquisition_epoch_kept_type_undecided', 0, ...
+    'acquisition_epoch_kept_types',   '', ...
+    'acquisition_epoch_kept_no_epoch', 0, ...
+    'acquisition_epoch_kept_no_file', 0, ...
+    'acquisition_epoch_kept_clock',   0, ...
+    'acquisition_epoch_kept_not_rebuilt', 0, ...
+    'element_epoch_anchors_minted',   0, ...
     'archive_docs_inspected',         0, ...
     'archive_docs_retired',           0, ...
     'archive_docs_kept_unowned_files',0, ...
@@ -351,7 +360,9 @@ obs30ByTriple = containers.Map('KeyType', 'char', 'ValueType', 'any');
 readerIdByNavId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 archiveIdxByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
 observesIdxByPair = containers.Map('KeyType', 'char', 'ValueType', 'any');
-spikeElements = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+% element entity id -> its v1 element `type` (the `element type` assertion of
+% +migrators_j/element.m). The element_epoch dissolution keys on it.
+elementTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acqEpochIdx = [];
 sampledIdx = [];
@@ -379,9 +390,12 @@ for k = 1:n
             if ~isKey(metaArchiveIdxByKey, mk); metaArchiveIdxByKey(mk) = k; end
         end
     end
-    if isElementTypeAssertion(b, 'spikes')
+    et = elementTypeOfAssertion(b);
+    if ~isempty(et)
         eid = depValueOf(b, 'entity_id');
-        if ~isempty(eid); spikeElements(eid) = true; end
+        if ~isempty(eid) && ~isKey(elementTypeById, eid)
+            elementTypeById(eid) = et;
+        end
     end
     switch classOf{k}
         case 'epoch'
@@ -494,6 +508,7 @@ stimSpecs = struct('manipIds', {}, 'sid', {}, 'epochString', {}, 'navId', {});
 obsPairById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 recByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'char');
 spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'double');  % obs id -> acquisition_epoch idx
+spikeAnchorByObs = containers.Map('KeyType', 'char', 'ValueType', 'char');  % obs id -> its own anchor id
 
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
@@ -703,54 +718,102 @@ for k = 1:n
     end
 end
 
-% ---- spike trains (Jess Haley, 2026-10-21, "a") ------------------------
-% A spike-sorted neuron (a `spikes` element) gets ONE observation per epoch:
-% entity = the neuron subject (ids preserved by +migrators_j/element.m),
-% instrument = the element it was sorted from (its `derived_from` parent),
-% value kind time (spike times), `data_body` true, and the epoch's
-% `epoch_binary_data.vhsb` file (on its element_epoch, now acquisition_epoch)
-% as an opaque_body owned by it -- the pattern of the raw recording bodies
-% above. No file named -> no observation (counted), never a bodiless one.
+% ---- the element_epoch dissolution (F1, D2) -----------------------------
+% Decided by Jess Haley, 2026-10-22 [epoch dissolution before merge] (F1,
+% did-schema V_eta_epoch_plan.md, building TEAM-SIGN-OFF [epoch] 2026-08-08 /
+% 2026-08-17 and its AMENDMENT 1), with [spike trains as epoch bodies] and
+% [spike train variable] (Jess Haley, 2026-10-21,
+% V_eta_recording_observation_plan.md). A v1 element_epoch (here
+% acquisition_epoch, its interim name) is ONE element's slice of one epoch: its
+% own clock extent and its own .vhsb payload. It DISSOLVES into
+%   - ONE observation per (element, epoch), base.id PRESERVED (the v1
+%     element_epoch id, so `ensemble.element_epoch_id` and any other inbound
+%     edge keeps resolving), entity = the element entity, instrument = the
+%     element it was derived from (its `derived_from` parent), `data_body` true;
+%   - its OWN relative_time_reference onto the minted `epoch` entity, built
+%     from the v1 t0_t1 + epoch_clock (clock, start t0, end t1): the spike
+%     times in the body are readings of that clock;
+%   - the .vhsb, carried as attached, as the observation's data body
+%     (opaque_body, `body_data_0`; the NDI second pass,
+%     ndi.migrate.internal.epochSeriesBodies, re-describes it as a sampled_body
+%     with complete extents when the bytes are on the computer doing the
+%     migration -- a document-only corpus never has them).
+% and the acquisition_epoch LEAVES the batch once all three survived
+% validation. One statement per epoch, not one per element: the
+% time_reference_id family on an interaction names ONE extent (interaction.json),
+% so twelve epochs cannot share one statement's anchor.
+%
+% KEYED ON THE ELEMENT `type`, never on spikes (AMENDMENT 1: the .vhsb is a
+% generic (timepoints, datapoints) series). derivedSeriesKind is the one table;
+% a type with no decided row keeps its acquisition_epoch, counted by type.
 for i = 1:numel(acqEpochIdx)
     k = acqEpochIdx(i);
     b = bodies{k};
+    report.acquisition_epoch_seen = report.acquisition_epoch_seen + 1;
     elId = depValueOf(b, 'element_id');
-    if isempty(elId) || ~isKey(spikeElements, elId); continue; end
-    report.spike_epochs_seen = report.spike_epochs_seen + 1;
+    elType = '';
+    if ~isempty(elId) && isKey(elementTypeById, elId); elType = elementTypeById(elId); end
+    kind = derivedSeriesKind(elType);
+    if isempty(kind)
+        report.acquisition_epoch_kept_type_undecided = ...
+            report.acquisition_epoch_kept_type_undecided + 1;
+        report.acquisition_epoch_kept_types = tallyName( ...
+            report.acquisition_epoch_kept_types, firstNonEmptyChar(elType, 'no-element-type'));
+        continue;
+    end
+    if strcmp(elType, 'spikes')
+        report.spike_epochs_seen = report.spike_epochs_seen + 1;
+    end
     sid = sessionIds{k};
     es = archiveEpochOf(b);
     if isempty(es) || ~isKey(epochIdByKey, epochKey(sid, es))
         report.spike_refused_no_epoch = report.spike_refused_no_epoch + 1;
+        report.acquisition_epoch_kept_no_epoch = report.acquisition_epoch_kept_no_epoch + 1;
         continue;
     end
     if isempty(vhsbFileInfo(b))
         report.spike_epochs_no_file = report.spike_epochs_no_file + 1;
+        report.acquisition_epoch_kept_no_file = report.acquisition_epoch_kept_no_file + 1;
+        continue;
+    end
+    [clk, t0, t1] = singleEpochClock(b);
+    if isempty(clk)
+        % several clocks (or none, or a clock that is not the epoch's own
+        % local clock): an offset "from the epoch" is defined only on the
+        % epoch's own clock, and choosing among clocks would drop the rest
+        report.acquisition_epoch_kept_clock = report.acquisition_epoch_kept_clock + 1;
         continue;
     end
     epochDocId = epochIdByKey(epochKey(sid, es));
     datestamp = baseField(b, 'creation_timestamp');
     if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
     if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
-    if isKey(anchorByEpochId, epochDocId)
-        anchorId = anchorByEpochId(epochDocId);
-    else
-        anchor = mkEpochAnchor(epochDocId, sid, datestamp);
-        anchorId = anchor.base.id;
-        anchorByEpochId(epochDocId) = anchorId;
-        anchorBodyById(anchorId) = anchor;
-        report.epoch_anchors_minted = report.epoch_anchors_minted + 1;
-    end
+    sec = struct('node', 'om:second-Time', 'name', 'second');
+    anchor = did2.build.relativeTimeReference(char(epochDocId), 'Clock', clk, ...
+        'Start', t0, 'StartSourceValue', t0, 'StartSourceUnit', sec, ...
+        'StartApproximate', false, ...
+        'End', t1, 'EndSourceValue', t1, 'EndSourceUnit', sec, ...
+        'EndApproximate', false, ...
+        'SessionId', char(sid), 'CreationTimestamp', char(datestamp), ...
+        'Validate', false);
+    anchorId = anchor.base.id;
+    % keyed per train (its own extent), so the group carry below treats it as
+    % any other anchor: alive only if validated, emitted only if referenced
+    anchorByEpochId(['element_epoch|' docIds{k}]) = anchorId;
+    anchorBodyById(anchorId) = anchor;
+    report.element_epoch_anchors_minted = report.element_epoch_anchors_minted + 1;
     instrumentId = '';
     if isKey(derivedParent, elId); instrumentId = derivedParent(elId); end
-    obs = did2.build.statement('observation', char(elId), SPIKE_TRAIN_VARIABLE(), ...
+    obs = did2.build.statement(kind.className, char(elId), kind.variable, ...
         [], 'DataBody', true, 'TimeReferenceIds', {anchorId}, ...
-        'InstrumentId', char(instrumentId), ...
+        'InstrumentId', char(instrumentId), 'Id', char(docIds{k}), ...
         'SessionId', char(sid), 'CreationTimestamp', char(datestamp), ...
-        'Validate', false, 'ValueKind', 'time');
+        'Validate', false, 'ValueKind', kind.valueKind);
     newBodies{end+1} = obs;              %#ok<AGROW>
     newGroupAnchor{end+1} = anchorId;    %#ok<AGROW>
     newGroupAc{end+1} = '';              %#ok<AGROW>
     spikeObsIds(obs.base.id) = k;
+    spikeAnchorByObs(obs.base.id) = anchorId;
     if ~isempty(instrumentId)
         report.spike_instrument_resolved = report.spike_instrument_resolved + 1;
     end
@@ -919,6 +982,48 @@ report.spike_bodies = numel(spikeBodies);
 report.spike_bodies_quarantined = numel(spikeQ);
 appended = [appended, spikeBodies];
 newQuarantine = [newQuarantine, spikeQ];
+% THE DISSOLUTION COMMITS PER TRAIN, ALL OR NOTHING: the observation, its own
+% anchor and its body all survived -> the acquisition_epoch leaves (the
+% observation carries its id). Any one missing -> the observation and its
+% anchor are withdrawn and the acquisition_epoch stays, counted, so an id is
+% never held by two documents and no observation claims bytes it has no body for.
+bodyOwners = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for j = 1:numel(spikeBodies)
+    try
+        sb = spikeBodies{j};
+        if isa(sb, 'did2.document'); sb = sb.toStruct(); end
+        ow = depValuesOf(sb, 'owner_id');
+        for m = 1:numel(ow); bodyOwners(ow{m}) = true; end
+    catch
+    end
+end
+acqEpochRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+withdraw = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+trainIds = spikeObsIds.keys;
+for j = 1:numel(trainIds)
+    tid = trainIds{j};
+    if isKey(emittedNewIds, tid) && isKey(bodyOwners, tid)
+        acqEpochRetire(tid) = true;
+        report.acquisition_epoch_dissolved = report.acquisition_epoch_dissolved + 1;
+        continue;
+    end
+    report.acquisition_epoch_kept_not_rebuilt = report.acquisition_epoch_kept_not_rebuilt + 1;
+    if isKey(emittedNewIds, tid)
+        withdraw(tid) = true;
+        report.spike_trains_emitted = report.spike_trains_emitted - 1;
+        remove(emittedNewIds, tid);
+    end
+    if isKey(spikeAnchorByObs, tid); withdraw(spikeAnchorByObs(tid)) = true; end
+end
+if withdraw.Count > 0
+    keepA = true(1, numel(appended));
+    for j = 1:numel(appended)
+        a = appended{j};
+        if isa(a, 'did2.document'); aid = char(a.get('base.id')); else; aid = char(a.base.id); end
+        keepA(j) = ~isKey(withdraw, aid);
+    end
+    appended = appended(keepA);
+end
 
 % ---- #73 review item 61: the epoch's metadata archive -> an opaque_body ----
 % "data.bin (a .nbf.tgz of the epoch's parsed stimulus parameters, written by
@@ -1235,6 +1340,9 @@ for k = 1:n
             || isKey(observesRetire, id) || isKey(archiveRetire, id) ...
             || isKey(pyraviewRetire, id))
         continue;
+    end
+    if ~isempty(id) && isKey(acqEpochRetire, id) && strcmp(classOf{k}, 'acquisition_epoch')
+        continue;   % dissolved: its observation (same id) is in `appended`
     end
     if ~isempty(id) && isKey(levelReplace, id)
         kept{end+1} = levelReplace(id); %#ok<AGROW>
@@ -1831,9 +1939,10 @@ function t = SPIKE_TRAIN_VARIABLE()
 t = struct('node', 'GO:0001508', 'name', 'action potential');
 end
 
-function tf = isElementTypeAssertion(b, typeName)
-% +migrators_j/element.m's `element type` term assertion, valued TYPENAME.
-tf = false;
+function t = elementTypeOfAssertion(b)
+% The value of +migrators_j/element.m's `element type` term assertion (the v1
+% element.type, e.g. 'spikes'), lower-cased; '' for any other document.
+t = '';
 if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
         || ~isfield(b.statement, 'variable'); return; end
 v = b.statement.variable;
@@ -1842,12 +1951,73 @@ fn = fieldnames(b);
 for i = 1:numel(fn)
     x = b.(fn{i});
     if isstruct(x) && isscalar(x) && isfield(x, 'value') && isstruct(x.value) ...
-            && isscalar(x.value) && isfield(x.value, 'name') ...
-            && strcmpi(strtrim(char(x.value.name)), typeName)
-        tf = true;
+            && isscalar(x.value) && isfield(x.value, 'name') && ~isempty(x.value.name)
+        t = lower(strtrim(char(x.value.name)));
         return;
     end
 end
+end
+
+function kind = derivedSeriesKind(elementType)
+%DERIVEDSERIESKIND What a derived element's per-epoch series (its v1
+%   element_epoch .vhsb) becomes, by the element's v1 `type` -- THE ONE TABLE
+%   (F1 AMENDMENT 1: key on type, never assume spikes). [] when no row is
+%   decided: that element_epoch is kept as acquisition_epoch and counted by
+%   type (acquisition_epoch_kept_types).
+%     spikes   observation + time, variable GO:0001508 "action potential"
+%              (Jess Haley, 2026-10-21 [spike train variable]; [spike train
+%              leaf], V_eta_ensemble_plan.md: the spike times are the value)
+%   Rows NOT decided, measured in the corpora: `position` and `distance`
+%   (JH, ndi.element.timeseries, 2,078 each). A row needs its value kind and
+%   variable from the team.
+kind = [];
+switch lower(strtrim(char(elementType)))
+    case 'spikes'
+        kind = struct('className', 'observation', 'valueKind', 'time', ...
+            'variable', SPIKE_TRAIN_VARIABLE());
+end
+end
+
+function [clk, t0, t1] = singleEpochClock(b)
+% The ONE clock record of an acquisition_epoch (`clocks`: {name, t0, t1}),
+% when there is exactly one and it is the epoch's own local clock
+% (dev_local_time); '' otherwise.
+clk = ''; t0 = []; t1 = [];
+if ~isfield(b, 'acquisition_epoch') || ~isstruct(b.acquisition_epoch) ...
+        || ~isfield(b.acquisition_epoch, 'clocks'); return; end
+c = b.acquisition_epoch.clocks;
+if iscell(c)
+    if numel(c) ~= 1; return; end
+    c = c{1};
+end
+if ~isstruct(c) || numel(c) ~= 1 || ~isfield(c, 'name') || ~isfield(c, 't0') ...
+        || ~isfield(c, 't1'); return; end
+name = char(c.name);
+if ~strcmp(name, 'dev_local_time'); return; end
+a = double(c.t0); z = double(c.t1);
+if ~isscalar(a) || ~isscalar(z) || ~isfinite(a) || ~isfinite(z) || z < a; return; end
+clk = name; t0 = a; t1 = z;
+end
+
+function s = tallyName(s, name)
+% "name=count; ..." -- a by-name tally kept as text in a scalar report field
+parts = regexp(s, '([^=;\s]+)=(\d+)', 'tokens');
+names = cellfun(@(p) p{1}, parts, 'UniformOutput', false);
+counts = cellfun(@(p) str2double(p{2}), parts);
+hit = find(strcmp(names, name), 1);
+if isempty(hit)
+    names{end+1} = name; counts(end+1) = 1;
+else
+    counts(hit) = counts(hit) + 1;
+end
+items = cell(1, numel(names));
+for i = 1:numel(names); items{i} = sprintf('%s=%d', names{i}, counts(i)); end
+s = strjoin(items, '; ');
+end
+
+function s = firstNonEmptyChar(a, b)
+s = char(a);
+if isempty(s); s = char(b); end
 end
 
 function k = recKey(instrumentId, epochDocId, className, valueKind)

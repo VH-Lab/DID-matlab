@@ -599,6 +599,19 @@ POST_PASSES = [
         ("spike_bodies_quarantined", "  spike-train bodies QUARANTINED"),
         ("spike_refused_no_epoch", "  refused: no epoch document"),
         ("spike_epochs_no_file", "  refused: no epoch_binary_data.vhsb named"),
+        # 2026-10-22 (Jess Haley, F1 [epoch dissolution before merge]): every
+        # acquisition_epoch (v1 element_epoch) dissolves into its per-epoch
+        # observation + own anchor + body, keyed on the element type; the
+        # kept rows say why one did not. TARGET: kept rows 0.
+        ("acquisition_epoch_seen", "acquisition_epoch seen  <- DISSOLUTION DENOMINATOR"),
+        ("acquisition_epoch_dissolved", "  DISSOLVED (observation + own anchor + body, id kept)"),
+        ("element_epoch_anchors_minted", "  per-train epoch anchors minted"),
+        ("acquisition_epoch_kept_type_undecided", "  KEPT: element type has no decided row"),
+        ("acquisition_epoch_kept_types", "    kept, by element type"),
+        ("acquisition_epoch_kept_no_epoch", "  KEPT: no epoch document"),
+        ("acquisition_epoch_kept_no_file", "  KEPT: no epoch_binary_data.vhsb named"),
+        ("acquisition_epoch_kept_clock", "  KEPT: not exactly one dev_local_time clock"),
+        ("acquisition_epoch_kept_not_rebuilt", "  KEPT: observation, anchor or body did not validate"),
         # 2026-10-21 (Jess Haley, "a"): a v1 daqreader_*_epochdata_ingested is
         # retired only when every file it holds has a new per-epoch owner.
         ("archive_docs_inspected", "v1 ingested archives inspected  <- ARCHIVE DENOMINATOR"),

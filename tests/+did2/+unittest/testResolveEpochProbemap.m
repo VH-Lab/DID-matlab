@@ -429,6 +429,57 @@ end
 assertEqual(testCase, numel(b), 1, 'the spike train owns exactly one body');
 verifyEqual(testCase, char(b{1}.data_body.filename), 'epoch_binary_data.vhsb');
 verifyEqual(testCase, char(b{1}.files.file_info(1).locations.location), '/data/t00sp/neuron.vhsb');
+% F1 (Jess Haley, 2026-10-22 [epoch dissolution before merge]): the observation
+% IS the v1 element_epoch, id preserved, and the acquisition_epoch is gone
+verifyEqual(testCase, char(o.base.id), 'ee_1', 'the element_epoch id is preserved on its observation');
+verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'), 'the acquisition_epoch dissolved');
+verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
+verifyEqual(testCase, rep.acquisition_epoch_dissolved, 1);
+end
+
+function testTheTrainIsAnchoredToItsEpochWithItsOwnExtent(testCase)
+% F1: the relative reference is built from the v1 t0_t1 + epoch_clock and
+% points at the minted `epoch` entity -- not a shared 'during' anchor.
+% No epochfiles_ingested here: a non-ingested session (20211116's shape).
+subj = subjectBody('specimen_sx', 'sess_sx', 'L');
+elP  = elementBody('el_probe_x', 'sess_sx', 'tet', '1', 'n-trode', 1, 'specimen_sx');
+elN  = derivedElementBody('el_neuron_x', 'sess_sx', 'n1', 'spikes', 'el_probe_x');
+ee   = elementEpochBody('ee_x', 'sess_sx', 'el_neuron_x', 't00sx', true);
+ee.element_epoch.t0_t1 = [2 579.85];
+[out, rep] = decompose({sessionBody('sd_sx', 'sess_sx', 'ref'), subj, elP, elN, ee});
+verifyEqual(testCase, rep.acquisition_epoch_dissolved, 1);
+verifyEqual(testCase, rep.element_epoch_anchors_minted, 1);
+o = docById(out, 'ee_x');
+assertNotEmpty(testCase, o, 'the train observation carries the element_epoch id');
+ref = docById(out, depVal(o, 'time_reference_id'));
+assertNotEmpty(testCase, ref, 'its time reference is in the batch');
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(ref)), 'relative_time_reference');
+ep = docById(out, depVal(ref, 'referent_id'));
+assertNotEmpty(testCase, ep, 'the referent is in the batch');
+verifyEqual(testCase, char(ep.entity.type.name), 'epoch');
+verifyEqual(testCase, char(ep.entity.local_identifier), 't00sx');
+verifyEqual(testCase, char(ref.relative_time_reference.value.clock.name), 'dev_local_time');
+verifyEqual(testCase, ref.relative_time_reference.value.start.seconds, 2, 'AbsTol', 1e-12);
+verifyEqual(testCase, ref.relative_time_reference.value.end.seconds, 579.85, 'AbsTol', 1e-9);
+verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+verifyEmpty(testCase, out.quarantine);
+end
+
+function testAnUndecidedElementTypeKeepsItsAcquisitionEpochCounted(testCase)
+% F1 AMENDMENT 1: key on the element `type`. A type with no decided row (JH's
+% `position` / `distance`) keeps its acquisition_epoch, counted by type --
+% never given a spike-shaped home.
+subj = subjectBody('specimen_sp2', 'sess_sp2', 'W');
+elP  = elementBody('el_probe_p', 'sess_sp2', 'cam', '1', 'camera', 1, 'specimen_sp2');
+elN  = derivedElementBody('el_pos', 'sess_sp2', 'w1_position', 'position', 'el_probe_p');
+ee   = elementEpochBody('ee_p', 'sess_sp2', 'el_pos', 't00sp2', true);
+[out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee});
+verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
+verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
+verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided, 1);
+verifyEqual(testCase, rep.acquisition_epoch_kept_types, 'position=1');
+verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 1);
+verifyEqual(testCase, rep.spike_epochs_seen, 0);
 end
 
 function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)
@@ -444,6 +495,8 @@ verifyEqual(testCase, rep.spike_epochs_seen, 1);
 verifyEqual(testCase, rep.spike_epochs_no_file, 1);
 verifyEqual(testCase, rep.spike_trains_emitted, 0);
 verifyEqual(testCase, rep.spike_bodies, 0);
+verifyEqual(testCase, rep.acquisition_epoch_kept_no_file, 1, ...
+    'no file: the acquisition_epoch is kept, counted');
 end
 
 % ===================== pyraview levels (2026-10-21) =====================
