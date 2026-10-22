@@ -1791,26 +1791,63 @@ v1.image_stack_parameters = struct('data_type', 'logical', ...
     'dimension_scale_units', 'micrometer,micrometer', 'data_limits', [0 1]);
 end
 
-function testImageStackMaskBecomesALabelCalculationWithNoInventedSoftware(testCase)
-% #73 review item 51: "a mask or label map -> label_calculation". BUILT
-% 2026-10-22 (was a passthrough). The Haley writer records no software, and
-% did-schema fd83a6c makes calculation.software_id optional
-% ([calculation-software-optional], Proposed (not decided), built ahead of
-% decision at Jess Haley's instruction): so NO software_id and no software
-% entity are emitted -- nothing invented.
+function testImageStackMaskIsALogicalCalculationOfItsRegion(testCase)
+% INVERTED 2026-10-22 (was ...BecomesALabelCalculationWithNoInventedSoftware,
+% label value kind, variable 'pixel label'). Decided by Jess Haley, 2026-10-22
+% [migrated masks are logical]: a calculation with the `logical` value kind,
+% its variable the region it marks, as the native Haley import names it
+% ('arena region'); no method; no software, because the source records none
+% ([calculation-software-optional decided]).
 out = did2.convert.migrators_j.image_stack(arenaMaskImageStack());
 names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
-verifyEqual(testCase, sort(names), sort({'calculation+label', 'sampled_body', ...
+verifyEqual(testCase, sort(names), sort({'calculation+logical', 'sampled_body', ...
     'relative_time_reference'}), strjoin(names, ', '));
-calc = out{strcmp(names, 'calculation+label')};
+calc = out{strcmp(names, 'calculation+logical')};
 verifyEqual(testCase, calc.base.id, 'is_mask_01', 'id preserved');
+verifyEqual(testCase, calc.statement.variable.name, 'arena region');
 verifyEqual(testCase, depValue(calc, 'entity_id'), 'subjgrp_7');
 verifyEmpty(testCase, depValue(calc, 'software_id'));
 verifyFalse(testCase, ismember('software', names));
+verifyFalse(testCase, isfield(calc, 'interaction') && isfield(calc.interaction, 'method') ...
+    && ~isempty(calc.interaction.method), 'no method is recorded');
 verifyTrue(testCase, logical(calc.value.data_body));
 body = out{strcmp(names, 'sampled_body')};
 verifyEqual(testCase, depValue(body, 'owner_id'), 'is_mask_01');
 verifyEqual(testCase, numel(body.data.keys), 2, 'keyed Y, X');
+end
+
+function testABacterialPatchMaskMarksTheBacterialLawnRegion(testCase)
+% NDI's EMPTY:0000131 definition, as the writer stores it in the label.
+v1 = arenaMaskImageStack();
+v1.image_stack.label = ['A binary image mask (logical matrix) representing the ' ...
+    'union of all individually detected bacterial patch areas on an assay ' ...
+    'plate. This mask defines all food-containing regions.'];
+out = did2.convert.migrators_j.image_stack(v1);
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
+calc = out{strcmp(names, 'calculation+logical')};
+verifyEqual(testCase, calc.statement.variable.name, 'bacterial lawn region');
+end
+
+function testAClosestPatchMapIsNotAMaskAndStaysALabel(testCase)
+% THE OTHER DIRECTION. EMPTY:0000132's map ("each pixel's value is the
+% identifier of the bacterial patch closest ...") is not a mask; the mask
+% decision does not cover it, so it stays the `label` calculation.
+v1 = arenaMaskImageStack();
+v1.image_stack.label = ['An image or map where each pixel''s value is the ' ...
+    'identifier of the bacterial patch closest to that pixel''s location.'];
+out = did2.convert.migrators_j.image_stack(v1);
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
+verifyTrue(testCase, ismember('calculation+label', names));
+verifyFalse(testCase, ismember('calculation+logical', names));
+end
+
+function testAMaskWhoseRegionCannotBeReadPassesThrough(testCase)
+% No region is invented for a mask whose label does not name one.
+v1 = arenaMaskImageStack();
+v1.image_stack.label = 'a mask';
+out = did2.convert.migrators_j.image_stack(v1);
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, did2.unittest.helpers.classKey(out{1}), 'image_stack');
 end
 
 function testImageStackMaskValidatesWithoutSoftware(testCase)
@@ -3146,6 +3183,11 @@ hits = out.migrated(strcmp(ids, 'dsid_1'));
 assertEqual(testCase, numel(hits), 1);
 verifyEqual(testCase, char(hits{1}.get('entity.type').name), 'dataset');
 verifyEqual(testCase, rep.session_entities_dropped_dataset_id, 1);
+% Decided by Jess Haley, 2026-10-22 [dataset session reference]: the dropped
+% session's reference becomes the dataset entity's local_identifier
+verifyEqual(testCase, char(hits{1}.get('entity.local_identifier')), 'the_dataset_session');
+verifyEqual(testCase, rep.dataset_local_identifier_from_session, 1);
+verifyEqual(testCase, rep.dataset_local_identifier_conflicts, 0);
 % and no relation is left pointing from that id to itself
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
@@ -3154,6 +3196,31 @@ for k = 1:numel(out.migrated)
             'a relation from the dataset to itself');
     end
 end
+end
+
+
+function testADifferentDatasetLocalIdentifierIsKeptAndCounted(testCase)
+% [dataset session reference], the other direction: "if the dataset already
+% has a different `local_identifier`, nothing is overwritten and the conflict
+% is counted". Two v1 session documents stored with the dataset: the first
+% reference fills the slot, the second differs and is counted, not written.
+mk = @(id, ref) struct('document_class', struct('class_name', 'session', ...
+        'class_version', '1.0.0', 'superclasses', struct('class_name', {'base'}, ...
+        'class_version', {'1.0.0'})), ...
+    'base', struct('id', id, 'session_id', 'dsid_1', 'name', 'ts', ...
+        'datestamp', '2024-06-01T12:00:00.000Z'), ...
+    'session', struct('reference', ref));
+batch = {jsonencode(datasetRemoteDoc()), jsonencode(mk('s_a', 'first_ref')), ...
+    jsonencode(mk('s_b', 'second_ref'))};
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, rep.session_entities_dropped_dataset_id, 2, 'DENOMINATOR');
+verifyEqual(testCase, rep.dataset_local_identifier_from_session, 1);
+verifyEqual(testCase, rep.dataset_local_identifier_conflicts, 1);
+ds = allOfClassJ(out.migrated, 'dataset');
+assertEqual(testCase, numel(ds), 1);
+verifyEqual(testCase, char(ds{1}.get('entity.local_identifier')), 'first_ref', ...
+    'the first reference is kept; the second does not overwrite it');
 end
 
 
@@ -4715,8 +4782,9 @@ function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
 % recording. neuron_extracellular -> entity (cell) + derived_from relation (unit <-
 % the recording element) + anchor + CALCULATIONS about the unit (#73 review item
-% 48, 2026-10-21): cluster_index as a label, quality_number as a score, with the
-% calculator's software (no app block here: named by the fallback). 1 -> 6.
+% 48, 2026-10-21): cluster_index as a label, quality_number as a score. No app
+% block here, so NO software (Decided by Jess Haley, 2026-10-22 [sorter
+% software]; it was the invented 'spike sorter' fallback until then). 1 -> 5.
 %
 % WAS 4 UNTIL 2026-08-17. The fifth body is the `count_assertion` carrying
 % `cluster_index`, which until then survived only as text inside
@@ -4734,13 +4802,13 @@ body.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
 
 out = did2.convert.migrators_j.neuron_extracellular(body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 6, ...
-    sprintf('expected 6 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyEqual(testCase, numel(out), 5, ...
+    sprintf('expected 5 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyTrue(testCase, any(strcmp(names, 'cell')));   % #88: the unit is an entity of type cell
 verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
 verifyTrue(testCase, any(strcmp(names, 'calculation+score')));
 verifyTrue(testCase, any(strcmp(names, 'calculation+label')));
-verifyTrue(testCase, any(strcmp(names, 'software')));
+verifyFalse(testCase, any(strcmp(names, 'software')), 'no software is invented');
 verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')), ...
     'no mean_waveform in this fixture -- a calculation here would be a husk');
 

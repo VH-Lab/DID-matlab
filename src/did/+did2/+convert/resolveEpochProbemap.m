@@ -1905,11 +1905,9 @@ function [replace, quarantine, report] = mkMetadataArchiveBodies(specs, ...
 %   T15). The body keeps the archive's base.id, so it REPLACES the v1 document
 %   (REPLACE: archive id -> validated body). Its one file, `data.bin`, is
 %   carried as attached (locations verbatim) as body_data_0. Format: the
-%   registered EDAM:format_2333 "Binary format", as the ingested recording
-%   archives use; compression per [archive compression] (Jess Haley,
-%   2026-10-21): 'gzip' when the file's name or stored location ends in
-%   .tgz/.gz (NDI metadatareader.ingest_epochfiles attaches
-%   [metadatafile '.nbf.tgz']), else left empty. No data_type: Jess Haley,
+%   staged term "NDI binary format" (Jess Haley, 2026-10-22 [NDI binary
+%   format]; no node yet), compression gzip (NDI metadatareader.ingest_epochfiles
+%   attaches [metadatafile '.nbf.tgz']). No data_type: Jess Haley,
 %   2026-10-21 [data_type only for plain arrays].
 replace = containers.Map('KeyType', 'char', 'ValueType', 'any');
 quarantine = [];
@@ -1953,17 +1951,18 @@ for i = 1:numel(idxs)
     end
     loc = struct();
     if isfield(fi, 'locations'); loc = fi.locations; end
-    flds = struct('filename', 'data.bin');
-    comp = compressionOf('data.bin');
-    if isempty(comp); comp = compressionOf(firstLocation(loc)); end
-    if ~isempty(comp); flds.compression = comp; end
+    % Decided by Jess Haley, 2026-10-22 [NDI binary format]: the archive is
+    % NDI's own `.nbf.tgz` (NDI-compress write_ndibinary: a gzip-compressed tar
+    % of an .nbh header and an .nbf data file), so it is compressed gzip
+    % whatever its stored name says.
+    flds = struct('filename', 'data.bin', 'compression', 'gzip');
     owners = ownersByIdx(idx);
     sid = did2.schema.cache.sessionIdOf(ab);
     ds = baseField(ab, 'creation_timestamp');
     if isempty(ds); ds = baseField(ab, 'datestamp'); end
     if isempty(ds); ds = '2024-01-01T00:00:00.000Z'; end
     try
-        body = did2.build.opaqueBody(owners, binaryFormat(), ...
+        body = did2.build.opaqueBody(owners, ndiBinaryFormat(), ...
             'Id', char(baseField(ab, 'id')), 'Fields', flds, ...
             'Description', sprintf(['The parsed stimulus parameters of epoch %s, ' ...
                 'as NDI''s metadata reader stored them (v1 ' ...
@@ -2238,6 +2237,13 @@ n = lower(strtrim(char(name)));
 if endsWith(n, '.tgz') || endsWith(n, '.gz')
     c = 'gzip';
 end
+end
+
+function f = ndiBinaryFormat()
+%NDIBINARYFORMAT The staged term "NDI binary format" (did-schema term registry,
+%   status staged; Jess Haley, 2026-10-22 [NDI binary format]). It has no node
+%   until empty-ontology mints one, so it is written by name alone.
+f = struct('name', 'NDI binary format');
 end
 
 function f = binaryFormat()

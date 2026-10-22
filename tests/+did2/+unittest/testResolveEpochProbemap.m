@@ -856,7 +856,11 @@ d = docById(out, 'mda_m');
 assertNotEmpty(testCase, d, 'the body keeps the archive''s id');
 verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), 'opaque_body');
 verifyEqual(testCase, depVals(d, 'owner_id'), {char(manips{1}.base.id)});
-verifyEqual(testCase, char(d.data_body.format.node), 'EDAM:format_2333');
+% UPDATED 2026-10-22, Decided by Jess Haley [NDI binary format]: the staged
+% term "NDI binary format", written by name with no node until empty-ontology
+% mints one (was EDAM:format_2333 "Binary format").
+verifyEqual(testCase, char(d.data_body.format.name), 'NDI binary format');
+verifyTrue(testCase, ~isfield(d.data_body.format, 'node') || isempty(d.data_body.format.node));
 verifyEqual(testCase, char(d.data_body.filename), 'data.bin');
 verifyEqual(testCase, char(d.data_body.compression), 'gzip');
 verifyFalse(testCase, isfield(d, 'value'), 'an opaque body carries no data_type');

@@ -322,6 +322,23 @@ verifyEqual(testCase, depValueOf(obs, 'entity_id'), 'elem_9', ...
     'until the second pass promotes it, the observation is about the subject');
 end
 
+function testANonAreaNodeIsCountedThroughTheDispatcher(testCase)
+% [non-area image node, revisited]: "kept on the observation as a condition
+% with a plain label variable ... and counted". The count is the migration
+% note the dispatcher collects; an UBERON node is not counted.
+v1 = foldableOntologyImage();
+v1.ontology_image.ontology_name = 'CL:0000540';
+v1.ontology_image.ontology_region = 'neuron';
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'non_area_ontology_node'));
+verifyEqual(testCase, notes.non_area_ontology_node.count, 1);
+verifyEqual(testCase, notes.non_area_ontology_node.details, {'CL:0000540'});
+area = did2.convert.v1_to_v2(foldableOntologyImage(), 'Validate', true, 'TargetVersion', 'V_eta');
+verifyFalse(testCase, isfield(area.summary.migration_notes, 'non_area_ontology_node'));
+end
+
 function testAnUpperCaseUberonNodeIsStillAnArea(testCase)
 % The UBERON test is case-insensitive: NDI writes `uberon:`, the registry
 % `UBERON:`. A case-sensitive check would quietly send every upper-case area to
@@ -347,12 +364,11 @@ obs = pickKind(out, 'observation', 'intensity');
 verifyEqual(testCase, obs.statement.variable.node, 'NCIT:C221750');
 c = obs.statement.conditions;
 verifyEqual(testCase, numel(c), 1);
-verifyNotEqual(testCase, char(c(1).variable.node), 'NCIT:C13717');
-% Decided by Jess Haley, 2026-10-21 [non-area image node]: an existing ontology
-% term, not a new EMPTY term; the node itself is proposed (NCIT:C211970,
-% registered). Was the label 'depicted term'.
-verifyEqual(testCase, c(1).variable.node, 'NCIT:C211970');
-verifyEqual(testCase, c(1).variable.name, 'Image Annotation');
+% UPDATED 2026-10-22, Decided by Jess Haley [non-area image node, revisited]:
+% NOT decided; NCIT:C211970 is not used. The node is a condition with the plain
+% label variable 'ontology node' (no node), and the case is counted.
+verifyFalse(testCase, isfield(c(1).variable, 'node') && ~isempty(c(1).variable.node));
+verifyEqual(testCase, c(1).variable.name, 'ontology node');
 verifyEqual(testCase, c(1).term.node, 'CL:0000540');
 end
 

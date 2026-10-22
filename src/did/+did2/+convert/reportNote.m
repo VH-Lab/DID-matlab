@@ -41,6 +41,12 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     jTuningCurve / jContrastSensitivityValue) has no home for
 %                     on did-schema #88; DETAIL is its path in the source
 %                     document ('<block>.<field>'). One note per field.
+%     non_area_ontology_node  a migrated ontologyImage raster whose ontology
+%                     node is not an anatomical (UBERON) area: kept as a
+%                     condition with the label variable 'ontology node';
+%                     DETAIL is the node. Counted so the real values can be
+%                     seen (Jess Haley, 2026-10-22 [non-area image node,
+%                     revisited], not decided).
 
 persistent notes
 if isempty(notes)

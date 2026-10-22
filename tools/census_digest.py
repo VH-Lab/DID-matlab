@@ -166,6 +166,8 @@ POST_PASSES = [
         ("membership_dropped_child_absent", "  DROPPED, child absent  <- upper bound if any doc was unreadable"),
         ("membership_dropped_no_child_edge", "  DROPPED, no child edge at all"),
         ("session_entities_dropped_dataset_id", "SESSION ENTITY under a dataset's own id: dropped (the dataset is that id's entity)"),
+        ("dataset_local_identifier_from_session", "  its reference became the dataset's local_identifier"),
+        ("dataset_local_identifier_conflicts", "  CONFLICT: the dataset already had a different local_identifier (kept)"),
         ("migrated_before", "migrated before"),
         ("migrated_after", "  after"),
         ("documents_removed", "documents REMOVED"),

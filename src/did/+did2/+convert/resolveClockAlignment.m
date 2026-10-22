@@ -15,7 +15,11 @@ function [result, report] = resolveClockAlignment(result, options)
 %
 %   BATCH-PASS-CONSUMES: syncgraph, syncrule
 %   BATCH-PASS-EMITS: syncgraph -> document: clock_alignment_policy
-%   BATCH-PASS-EMITS: syncrule -> document: clock_alignment_configuration, acquisition_channels
+%   BATCH-PASS-EMITS: syncrule -> nothing: this pass only stamps the
+%       resolved acquisition-system edges onto a filefind rule and re-runs the
+%       ARMED per-class migrator (+migrators_j/syncrule), which mints the
+%       clock_alignment_configuration and acquisition_channels and is credited
+%       there; crediting them here would count that emission twice.
 %
 %   `syncrule`: ONLY the `ndi.time.syncrule.filefind` rule is consumed here. A
 %   file-based `filematch` rule reaches its `clock_alignment_configuration` in

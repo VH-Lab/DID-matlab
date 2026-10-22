@@ -350,18 +350,13 @@ inputId = dependencyValue(preBody, 'spike_clusters_id');
 inputOpt = {};
 if ~isempty(inputId); inputOpt = {'InputIds', {inputId}}; end
 
-% THE SOFTWARE. A calculation requires its calculator (`software_id`, rule
-% require_inherited on did-schema `calculation`), and names the run's OS and
-% interpreter (operating_system_id / interpreter_id), as jCalculation and
-% jSorterOutput do. Every NDI writer sets the `app` block. With none, the
-% calculator is recorded by the only name the document gives it -- PROPOSED
-% (not decided), the jCalculation / jSorterOutput fallback shape.
+% THE SOFTWARE: the `app` block's, with the run's OS and interpreter
+% (operating_system_id / interpreter_id), as jCalculation and jSorterOutput do.
+% Decided by Jess Haley, 2026-10-22 [sorter software]: "a sorted unit
+% (`neuron_extracellular`) with no software record has no `software_id` (per
+% [calculation-software-optional decided]), not an invented 'spike sorter'".
 [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
 [runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
-if isempty(swId)
-    [software, swId] = jSoftware('spike sorter', '', '', jSid(preBody), jStamp(preBody), ...
-        'RequireSession', true);
-end
 calcOpt = [{'TimeReferenceIds', {anchorId}, 'OperatingSystemId', osId, ...
     'InterpreterId', interpreterId}, inputOpt];
 if ~isempty(swId); calcOpt = [calcOpt, {'SoftwareId', swId}]; end

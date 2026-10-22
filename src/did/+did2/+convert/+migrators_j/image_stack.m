@@ -201,8 +201,29 @@ end
 % optional], Proposed (not decided), built ahead of decision at Jess Haley's
 % instruction) -- nothing is invented. An `app` block, if a document ever has
 % one, is carried as the software.
+%
+% 2026-10-22, Decided by Jess Haley [migrated masks are logical] (did-schema
+% V_eta_go_forward_class_audit.md): "a migrated v1 imageStack mask is a
+% calculation with the `logical` value kind (one per mask, 1 = inside), its
+% variable the region it marks, as the native Haley import writes masks ...;
+% no method, because none is recorded. Replaces the label value kind and the
+% 'pixel label' variable." The region is read from the label (the definition
+% NDI's writer looked up: EMPTY:0000130 arena, :0000131 bacterial patches) and
+% named as the native import names it (ndi.setup.conv.haley.geometryDocuments:
+% `arena region`, `bacterial lawn region`, `reference mark region`). A mask
+% whose region cannot be read passes through rather than being given one.
+% A MAP (each pixel an identifier, EMPTY:0000132) is not a mask: it stays a
+% `label` calculation; that decision does not cover it.
 label = getCharField(getBlock(preBody, 'image_stack'), 'label');
 isMask = isMaskOrMap(label);
+maskRegion = '';
+if isMask && contains(lower(label), 'mask')
+    maskRegion = maskRegionOf(label);
+    if isempty(maskRegion)
+        bodies = {preBody};
+        return;
+    end
+end
 
 stackId   = baseField(preBody, 'id', did.ido.unique_id());
 dataType = getCharField(params, 'data_type');
@@ -232,12 +253,19 @@ if isMask
     [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
     [runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
     software = [software, runDocs];
+    if ~isempty(maskRegion)
+        variable = jLabel(maskRegion);
+        kind = 'logical';
+    else
+        variable = jLabel('pixel label');   % a map; not covered by the mask decision
+        kind = 'label';
+    end
     obs = jStatement(preBody, 'calculation', subjectId, ...
-        jLabel('pixel label'), [], ...
+        variable, [], ...
         'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
         'Conditions', conds, 'Notes', label, ...
         'SoftwareId', swId, 'OperatingSystemId', osId, 'InterpreterId', interpreterId, ...
-        'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'label');
+        'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', kind);
 else
     obs = jStatement(preBody, 'observation', subjectId, ...
         jLabel('image intensity'), [], ...
@@ -258,6 +286,23 @@ body = did2.build.sampledBody(stackId, imageKeys(dimOrder, dimSize, params), o{:
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software];
+end
+
+function r = maskRegionOf(label)
+%MASKREGIONOF The region a mask marks, named as the native Haley import names
+%   it; '' when the label does not say. Read from NDI's own definitions:
+%   EMPTY:0000130 "...pixels within the experimental arena ... This mask ...",
+%   EMPTY:0000131 "...the union of all individually detected bacterial patch
+%   areas ...". 'reference mark' is the native import's third mask (refMask).
+l = lower(label);
+r = '';
+if contains(l, 'arena') && ~contains(l, 'bacteria')
+    r = 'arena region';
+elseif contains(l, 'bacteria') || contains(l, 'lawn')
+    r = 'bacterial lawn region';
+elseif contains(l, 'reference mark')
+    r = 'reference mark region';
+end
 end
 
 function tf = isMaskOrMap(label)

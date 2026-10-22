@@ -177,6 +177,8 @@ report = struct( ...
     'membership_dropped_child_absent',    0, ...
     'membership_dropped_no_child_edge',   0, ...
     'session_entities_dropped_dataset_id', 0, ...
+    'dataset_local_identifier_from_session', 0, ...
+    'dataset_local_identifier_conflicts', 0, ...
     'documents_removed',                  0, ...
     'documents_removed_unattributed',     0, ...
     'migrated_before',                    0, ...
@@ -249,9 +251,12 @@ report.distinct_dataset_ids = double(bestDatasetIdx.Count);
 % entities with one id (NDI e2e run 39688367871, NDI:migrate:duplicateIds).
 % did-schema base.json `session_id` names "the `entity` document of type session
 % or dataset" a document is stored with, so that id's entity is the dataset; the
-% session entity is dropped, and counted. Its `local_identifier` (the v1 session
-% reference) has no slot on the dataset entity and goes with it -- counted, not
-% silent.
+% session entity is dropped, and counted. Decided by Jess Haley, 2026-10-22
+% [dataset session reference] (did-schema V_eta_entity_composition_plan.md):
+% its `reference` (the session entity's local_identifier) "becomes the dataset
+% entity's `local_identifier`, the same slot a session's reference takes; if
+% the dataset already has a different `local_identifier`, nothing is
+% overwritten and the conflict is counted".
 for k = 1:n
     if ~keep(k); continue; end
     try
@@ -265,6 +270,20 @@ for k = 1:n
         keep(k) = false;
         report.session_entities_dropped_dataset_id = ...
             report.session_entities_dropped_dataset_id + 1;
+        ref = entityLocalIdentifier(docs{k});
+        if ~isempty(ref)
+            ds = docs{bestDatasetIdx(id)};
+            have = entityLocalIdentifier(ds);
+            if isempty(have)
+                ds.set('entity.local_identifier', ref);
+                docs{bestDatasetIdx(id)} = ds;
+                report.dataset_local_identifier_from_session = ...
+                    report.dataset_local_identifier_from_session + 1;
+            elseif ~strcmp(have, ref)
+                report.dataset_local_identifier_conflicts = ...
+                    report.dataset_local_identifier_conflicts + 1;
+            end
+        end
     end
 end
 
@@ -324,6 +343,16 @@ try
     tf = isstruct(t) && isfield(t, 'name') && strcmpi(char(t.name), 'dataset');
 catch
     tf = false;
+end
+end
+
+function v = entityLocalIdentifier(doc)
+% the entity's local_identifier, '' when absent or blank
+v = '';
+try
+    x = doc.get('entity.local_identifier');
+    if ischar(x) || (isstring(x) && isscalar(x)); v = strtrim(char(x)); end
+catch
 end
 end
 

@@ -457,6 +457,22 @@ verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
 verifyEqual(testCase, numel(out), 3, 'the unit, its derived_from and the anchor');
 end
 
+function testAUnitWithNoAppBlockNamesNoSoftware(testCase)
+% Decided by Jess Haley, 2026-10-22 [sorter software]: a sorted unit with no
+% software record has no `software_id` -- not an invented "spike sorter"
+% (which this migrator minted until then).
+v1 = neuronExtracellularV1();
+if isfield(v1, 'app'); v1 = rmfield(v1, 'app'); end
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+names = classNames(out);
+verifyFalse(testCase, any(strcmp(names, 'software')), 'no software entity is invented');
+idx = find(strncmp(names, 'calculation+', 12));
+verifyNotEmpty(testCase, idx, 'DENOMINATOR: the unit still has its calculations');
+for k = idx
+    verifyEmpty(testCase, depValueOf(out{k}, 'software_id'));
+end
+end
+
 % ===================== the fixture =========================================
 
 function v1 = neuronExtracellularV1()
