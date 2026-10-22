@@ -196,17 +196,11 @@ verifyEqual(testCase, [axes.n], [4 4]);                       % was `.length`
 verifyEqual(testCase, ...
     arrayfun(@(a) a.term.name, axes, 'UniformOutput', false), ...
     {'y', 'x'});                                              % was `.name`, then `.variable`
-verifyEqual(testCase, ...
-    arrayfun(@(a) a.cov.variable.name, axes, 'UniformOutput', false), ...
-    {'y', 'x'});
-verifyEqual(testCase, arrayfun(@(a) isfield(a.cov, 'origin') && ~isempty(a.cov.origin), axes), ...
-    [true true]);                                             % was `.regularity`, then `.regular`
-% `origin` is NEW and is required when regular. 1 is not a default: the
-% coordinates guard has already established they are MATLAB's default index
-% vector, which starts at 1. The old shape had no origin at all, so this fact
-% could only be assumed by convention -- the gap the signed entry closes.
-verifyEqual(testCase, arrayfun(@(a) a.cov.origin.value, axes), [1 1]);
-verifyEqual(testCase, arrayfun(@(a) a.cov.spacing.value, axes), [1 1]);  % was `.spacing`
+% INVERTED 2026-10-22 (asserted origin 1, spacing 1 on each): the coordinates
+% are MATLAB's default index vector, which only repeats the dimensions'
+% positions, and such a covariate is not written (Jess Haley 2026-10-22
+% [covariate rules named] 6.2a, and "yes" to 1..n). Two bare dimensions.
+verifyEqual(testCase, [axes.nCov], [0 0], 'no covariate repeats the positions');
 end
 
 function testAColourRasterIsKeyedYXChannel(testCase)

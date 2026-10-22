@@ -259,13 +259,14 @@ end
 
 function testTheLagAxisCarriesItsValuesRatherThanASpacing(testCase)
 % THE COORDINATE CARRY. The lag covariate is a `quantity` of the stored
-% doubles; the two index covariates stay origin+spacing because their
-% coordinates ARE 1..200 and `n` already says so. NOT A STYLISTIC CHOICE: 6 of
-% the 36 stored lags differ at the ulp from -0.1 + k*0.01.
+% doubles. NOT A STYLISTIC CHOICE: 6 of the 36 stored lags differ at the ulp
+% from -0.1 + k*0.01. UPDATED 2026-10-22: the two spatial axes' coordinates
+% ARE 1..200, which only repeats their positions, so they are bare
+% dimensions with no covariate (Jess Haley 2026-10-22 [covariate rules
+% named] 6.2a, and "yes" to 1..n; origin 1 + spacing 1 until then).
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
-regular = arrayfun(@(a) isfield(a.cov, 'origin') && ~isempty(a.cov.origin), ax);
-verifyEqual(testCase, regular, [true true false]);
+verifyEqual(testCase, [ax.nCov], [0 0 1], 'only the lag has a covariate');
 verifyEqual(testCase, ax(3).cov.quantity.value(:), realLagVector());
 end
 
@@ -279,9 +280,10 @@ ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
 verifyEqual(testCase, ...
     arrayfun(@(a) char(a.term.name), ax, 'UniformOutput', false), ...
     {'axis_1', 'axis_2', 'lag'});
-verifyEqual(testCase, ...
-    arrayfun(@(a) char(a.cov.variable.name), ax, 'UniformOutput', false), ...
-    {'axis_1', 'axis_2', 'lag'});
+% the spatial dimensions are bare (1..200 only repeated their positions); the
+% lag's covariate names the same term as its dimension
+verifyEqual(testCase, char(ax(3).cov.variable.name), 'lag');
+verifyEqual(testCase, [ax(1:2).nCov], [0 0]);
 end
 
 function testBothPlanesNameTheSourceFileAndSayWhichPlaneTheyAre(testCase)

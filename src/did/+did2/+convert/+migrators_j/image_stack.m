@@ -330,9 +330,10 @@ for k = 1:numel(dimOrder)
             'origin',  struct('value', 0, 'source_value', 0), ...
             'spacing', struct('value', sp, 'source_value', sp)); %#ok<AGROW>
     else
-        entries{end+1} = jAxis(jOntologyTerm('', nm), dimSize(k), ...
-            'origin',  struct('value', 1, 'source_value', 1), ...
-            'spacing', struct('value', 1, 'source_value', 1)); %#ok<AGROW>
+        % no recorded scale: only the dimension's positions, so a bare
+        % dimension (Jess Haley 2026-10-22, 6.2a and "yes" to 1..n; origin 1 +
+        % spacing 1 until then). A recorded scale, even 1, is kept above.
+        entries{end+1} = jAxis(jOntologyTerm('', nm), dimSize(k)); %#ok<AGROW>
     end
 end
 [dims, covs] = jDimCov(entries);

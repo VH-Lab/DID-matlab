@@ -18,8 +18,9 @@ function [dims, covs] = jDimCov(axes)
 %   becomes BOTH the dimension's term and its covariate's variable, and the
 %   key's positions become the covariate. An axis with no positions gives a
 %   bare dimension and no covariate; so does an axis whose positions only
-%   repeat 0..n-1 with no unit (jIndexOnly; Jess Haley 2026-10-22 [covariate
-%   rules named], 6.2a: such a covariate is not written). Both lists are built through
+%   repeat 0..n-1 (or 1..n) with no unit (jIndexOnly; Jess Haley 2026-10-22
+%   [covariate rules named], 6.2a, and her "yes" to 1..n the same day: such a
+%   covariate is not written). Both lists are built through
 %   did2.build.dimension and did2.build.composite('data', 'covariates', ...),
 %   so they are checked against the loaded schema; empty AXES gives [] and [].
 %

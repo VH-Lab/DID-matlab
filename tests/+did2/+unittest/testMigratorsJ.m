@@ -1753,23 +1753,20 @@ verifyEqual(testCase, keys(3).cov.spacing.value, 0.2);
 end
 
 
-function testImageStackAxisWithNoRecordedScaleIsAnIndexAxis(testCase)
-% A dimension with no recorded scale is an index key: regular, origin 1,
-% spacing 1, no unit. UPDATED for #88: read off the sampled_body's data.keys.
+function testImageStackAxisWithNoRecordedScaleIsABareDimension(testCase)
+% INVERTED 2026-10-22 (was testImageStackAxisWithNoRecordedScaleIsAnIndexAxis:
+% origin 1, spacing 1, no unit). A dimension with no recorded scale has only
+% its own positions, and a covariate that only repeats them (0..n-1 or 1..n)
+% is not written (Jess Haley 2026-10-22 [covariate rules named] 6.2a, and
+% "yes" to 1..n): three bare dimensions. A recorded scale, even 1, is still a
+% covariate (testImageStackBecomesBodyBackedObservation).
 v1 = behaviourImageStack();
 v1.image_stack_parameters.dimension_scale = [];        % nothing recorded
 v1.image_stack_parameters.dimension_scale_units = '';
 out = runJ(v1);
 keys = did2.unittest.helpers.axesOf(firstOfClassJ(out.migrated, 'sampled_body').toStruct());
-verifyEqual(testCase, numel(keys), 3);
-for k = 1:3
-    verifyTrue(testCase, ~isempty(keys(k).cov.origin));
-    verifyEqual(testCase, keys(k).cov.spacing.value, 1);
-    verifyEqual(testCase, keys(k).cov.origin.value, 1, 'an index axis starts at 1, not at 0');
-    verifyTrue(testCase, ~isfield(keys(k).cov, 'source_unit') || isempty(keys(k).cov.source_unit) ...
-        || (isstruct(keys(k).cov.source_unit) && isempty(keys(k).cov.source_unit.name)), ...
-        'an index axis carries no unit');
-end
+verifyEqual(testCase, numel(keys), 3, 'every dimension is still written');
+verifyEqual(testCase, [keys.nCov], [0 0 0], 'no covariate repeats the positions');
 end
 
 
@@ -3528,6 +3525,9 @@ for j = 1:numel(sbods)
     verifyEqual(testCase, ax(1).term.name, 'time');
     verifyEqual(testCase, ax(2).term.name, 'channel');
     verifyEqual(testCase, ax(2).n, 4);          % the `channels` field
+    % the channel's 1..4 numbering only repeated the positions: a bare
+    % dimension (Jess Haley 2026-10-22, 6.2a and "yes" to 1..n)
+    verifyEqual(testCase, ax(2).nCov, 0, 'no index covariate along channel');
     verifyNotEmpty(testCase, ax(1).cov.origin, 'the time covariate is origin + spacing');
 end
 % Levels are told apart by the TIME axis spacing now, not by sample_time.dt --

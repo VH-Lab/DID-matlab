@@ -437,11 +437,16 @@ function ax = ngridAxes(dataDim, axisLabels, axisCoords)
 %                    name; `unit` is now a bound ontology_term and an index axis
 %                    has none, so it is left absent rather than blank.
 %
-%   `origin` IS NEW AND IS REQUIRED WHEN REGULAR, and 1 is the honest value: the
-%   guard has established the coordinates are MATLAB's default index vector,
-%   which starts at 1. The old shape could not say this at all -- it had no
-%   origin -- so a reader had to assume it by convention. That gap is exactly
-%   what the signed entry closes.
+%   SUPERSEDED 2026-10-22 for the default index vector: an axis with no stored
+%   positions, or with exactly 1..n, is now a BARE dimension with no covariate
+%   (Jess Haley 2026-10-22 [covariate rules named] 6.2a, and her "yes" to
+%   1..n): such a covariate only repeated the dimension's positions. The
+%   mapping above (spacing 1 -> origin 1, spacing 1) is the history; position
+%   k along a dimension is 0-based, MATLAB index k + 1.
+%
+%   (Until then: `origin` IS NEW AND IS REQUIRED WHEN REGULAR, and 1 is the
+%   honest value: the guard has established the coordinates are MATLAB's
+%   default index vector, which starts at 1.)
 %
 %   THE COORDINATE CARRY IS DONE, 2026-08-17. The sentence that stood here
 %   ("THE COORDINATE CARRY IS STILL NOT DONE ... Folding real positions without
@@ -478,12 +483,12 @@ for k = 1:numel(dataDim)
     v = [];
     if k <= numel(axisCoords); v = axisCoords{k}; end
     if isempty(v) || isDefaultIndexVector(v)
-        % REGULAR. `origin` 1 is the honest value and not a default: either
-        % there are no stored positions at all, or they have been checked to be
-        % MATLAB's default index vector, which starts at 1.
-        entry = jAxis(jOntologyTerm('', nm), dataDim(k), ...
-            'origin',  struct('value', 1, 'source_value', 1), ...
-            'spacing', struct('value', 1, 'source_value', 1));
+        % BARE. Either there are no stored positions at all, or they are
+        % MATLAB's default index vector 1..n: only the dimension's positions,
+        % so no covariate is written (Jess Haley 2026-10-22 [covariate rules
+        % named] 6.2a, and "yes" to 1..n; origin 1 + spacing 1 until then).
+        % Position k (0-based) is MATLAB index k + 1.
+        entry = jAxis(jOntologyTerm('', nm), dataDim(k));
     else
         % IRREGULAR. `values` is REQUIRED iff not regular; origin/spacing stay
         % blank, because a stored vector that is not an arithmetic progression

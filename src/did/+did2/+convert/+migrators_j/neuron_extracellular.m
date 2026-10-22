@@ -476,15 +476,14 @@ else
         'quantity',    struct('value', t, 'source_value', t));
 end
 
-% ---- the channel axis: an INDEX axis, no unit -------------------------------
-% The convention pyraview.m:370 and jNgridBody both use: origin 1, spacing 1 and
-% no unit. The document records no channel identities -- `site2channelmap` and
-% `probe_geometry` are where those live -- so numbering them 1..N is the only
-% thing this document actually says, and naming them would be a guess in a
-% queryable field.
-channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
-    'origin',  struct('value', 1, 'source_value', 1), ...
-    'spacing', struct('value', 1, 'source_value', 1));
+% ---- the channel axis: a BARE dimension -------------------------------------
+% The document records no channel identities -- `site2channelmap` and
+% `probe_geometry` are where those live -- so the only thing it says about a
+% channel is its position. That is the dimension's own (0-based) position, and
+% a covariate that only repeats it (1..N here until 2026-10-22) is not written
+% (Jess Haley 2026-10-22 [covariate rules named] 6.2a, and "yes" to 1..N).
+% MATLAB's channel number is position + 1.
+channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels);
 
 % time and channel dimensions, each with its positions as a covariate along
 % it (data_body AMENDMENT 6; the former `time` and `channel` keys)

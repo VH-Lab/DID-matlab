@@ -1,6 +1,6 @@
 function tf = jIndexOnly(c, n)
 %JINDEXONLY True when the covariate C only repeats its dimension's positions
-%   0..N-1, so it is not written (did-schema data_body plan, Jess Haley
+%   0..N-1 or 1..N, so it is not written (did-schema data_body plan, Jess Haley
 %   2026-10-22 [covariate rules named], 6.2a: "a covariate that only repeats
 %   its dimension's positions 0..n-1 is not written"; [bare dimension]: a
 %   dimension may have no covariate, a plain index).
@@ -8,16 +8,21 @@ function tf = jIndexOnly(c, n)
 %   C is a covariate struct (or a jAxis spec), N the dimension's extent. True
 %   only for a covariate with NO unit and NO source unit (a unit says the
 %   numbers are a measurement, not positions) whose positions are LISTED as
-%   exactly 0, 1, ..., N-1 (`quantity` or `count`), and never one marked
-%   `cyclic`. 1..N (MATLAB's numbering, which several migrators write for a
-%   channel axis) is NOT 0..N-1 and is kept: the decision names 0..n-1.
+%   exactly 0, 1, ..., N-1 or 1, 2, ..., N (`quantity` or `count`), and never
+%   one marked `cyclic`. 1..N is MATLAB's numbering of the same positions
+%   (Jess Haley 2026-10-22, "yes to all three": 1..N index covariates are
+%   dropped too). A dimension's positions are 0-based (`along` and the
+%   dimension's own indexing); a reader that wants MATLAB's channel number
+%   adds 1.
 %
-%   NOT the regular form origin 0 + spacing 1: the migrators write it from a
-%   RECORDED scale of 1 (image_stack's dimension_scale, a lightsheet voxel
+%   NOT the regular form (origin 0 or 1 + spacing 1): the migrators write it
+%   from a RECORDED scale of 1 (image_stack's dimension_scale, a lightsheet voxel
 %   size), and testMigratorsJ's image_stack test records that such an axis is
 %   "calibrated, not an index axis" -- its unit may be stated elsewhere (a
 %   lightsheet level's t takes its pyramid's second). Callers that hold no
-%   positions at all write no covariate (jLightsheetAxes).
+%   recorded positions give the axis no positions at all, so it is bare
+%   (jLightsheetAxes, image_stack, jNgridBody, neuron_extracellular,
+%   pyraview).
 
 tf = false;
 if ~isstruct(c) || ~isscalar(c)
@@ -38,7 +43,8 @@ end
 for f = {'quantity', 'count'}
     if isfield(c, f{1}) && given(c.(f{1}))
         v = num(c.(f{1}));
-        tf = isnumeric(v) && numel(v) == numel(idx) && isequal(double(v(:).'), idx);
+        tf = isnumeric(v) && numel(v) == numel(idx) ...
+            && (isequal(double(v(:).'), idx) || isequal(double(v(:).'), idx + 1));
         return;
     end
 end

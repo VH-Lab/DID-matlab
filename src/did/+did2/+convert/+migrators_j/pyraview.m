@@ -188,9 +188,9 @@ starts = numVec(fieldByNormalisedName(blk, 'decimationstarttimes'));
 nChannels   = numScalar(channels, 0);
 channelAxis = [];
 if nChannels > 0
-    channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
-        'origin',  struct('value', 1, 'source_value', 1), ...
-        'spacing', struct('value', 1, 'source_value', 1));
+    % a BARE dimension: its 1..N numbering only repeated the positions (Jess
+    % Haley 2026-10-22, 6.2a and "yes" to 1..N); channel number = position + 1
+    channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels);
 end
 
 bodies = {obs};

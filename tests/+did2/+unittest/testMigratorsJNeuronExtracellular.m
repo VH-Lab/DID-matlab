@@ -182,10 +182,10 @@ verifyEqual(testCase, [ax.n], [21 32]);
 verifyEqual(testCase, arrayfun(@(a) a.term.name, ax, 'UniformOutput', false), ...
     {'time', 'channel'});
 % the mechanical port of a key: the covariate along a dimension names the
-% same term as the dimension
-verifyEqual(testCase, arrayfun(@(a) a.cov.variable.name, ax, 'UniformOutput', false), ...
-    {'time', 'channel'});
-verifyEqual(testCase, [ax.nCov], [1 1]);
+% same term as the dimension. The channel dimension is bare since 2026-10-22
+% (its 1..N only repeated the positions; Jess Haley, 6.2a and "yes" to 1..n).
+verifyEqual(testCase, ax(1).cov.variable.name, 'time');
+verifyEqual(testCase, [ax.nCov], [1 0]);
 end
 
 
@@ -218,15 +218,18 @@ verifyFalse(testCase, isfield(ax(1).cov, 'origin') && ~isempty(ax(1).cov.origin)
 end
 
 
-function testTheChannelAxisIsAnIndexAxisWithNoUnit(testCase)
+function testTheChannelAxisIsABareDimension(testCase)
+% INVERTED 2026-10-22 (was testTheChannelAxisIsAnIndexAxisWithNoUnit: origin
+% 1, spacing 1). The document names no channel, so its channel covariate only
+% repeated the dimension's positions as 1..N, and such a covariate is not
+% written (Jess Haley 2026-10-22 [covariate rules named] 6.2a, and "yes" to
+% 1..n). The dimension stays, n 32; the time covariate stays.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
+verifyEqual(testCase, ax(2).term.name, 'channel');
 verifyEqual(testCase, ax(2).n, 32);
-verifyNotEmpty(testCase, ax(2).cov.origin);
-verifyEqual(testCase, ax(2).cov.origin.value, 1);
-verifyEqual(testCase, ax(2).cov.spacing.value, 1);
-verifyTrue(testCase, ~isfield(ax(2).cov, 'unit') || isempty(ax(2).cov.unit));
-verifyTrue(testCase, ~isfield(ax(2).cov, 'source_unit') || isempty(ax(2).cov.source_unit));
+verifyEqual(testCase, ax(2).nCov, 0, 'no covariate along the channel dimension');
+verifyEqual(testCase, ax(1).nCov, 1, 'the time covariate is kept');
 end
 
 
