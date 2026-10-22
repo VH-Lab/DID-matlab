@@ -192,16 +192,17 @@ end
 % 2026-09-25): "a raster goes by what its pixels measure, keyed [y, x,
 % (channel)]: JH's microscopy images -> intensity_observation, its masks /
 % closest-patch maps -> label_calculation, chosen from the document's label".
-% A mask or a map PASSES THROUGH (its v1 tombstone, deprecated/image_stack,
-% validates it) -- reported -- because no label_calculation fold has been
-% built on #88. (It used to say the reason was the calculation's required
-% operating_system_id; that is optional since Jess Haley, 2026-10-21
-% [calculation-os-optional], so the unbuilt fold is the only reason left.)
+% BUILT 2026-10-22: a mask or a map is a `calculation` with the `label`
+% value kind (its pixels are identifiers local to the image), body-backed by
+% the same sampled_body and keys as an intensity image. NDI's Haley writer
+% (+setup/+conv/+haley/doImport.m, the arena and bacteria masks) records no
+% software and no input, so the calculation carries neither: did-schema
+% fd83a6c makes calculation.software_id optional ([calculation-software-
+% optional], Proposed (not decided), built ahead of decision at Jess Haley's
+% instruction) -- nothing is invented. An `app` block, if a document ever has
+% one, is carried as the software.
 label = getCharField(getBlock(preBody, 'image_stack'), 'label');
-if isMaskOrMap(label)
-    bodies = {preBody};
-    return;
-end
+isMask = isMaskOrMap(label);
 
 stackId   = baseField(preBody, 'id', did.ido.unique_id());
 dataType = getCharField(params, 'data_type');
@@ -226,11 +227,24 @@ if isnumeric(ts) && isscalar(ts) && isfinite(ts)
 end
 extra = {};
 tableRowId = dependencyValue(preBody, 'document_id');
-obs = jStatement(preBody, 'observation', subjectId, ...
-    jLabel('image intensity'), [], ...
-    'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-    'Conditions', conds, 'Notes', label, ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
+software = {};
+if isMask
+    [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
+    [runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
+    software = [software, runDocs];
+    obs = jStatement(preBody, 'calculation', subjectId, ...
+        jLabel('pixel label'), [], ...
+        'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+        'Conditions', conds, 'Notes', label, ...
+        'SoftwareId', swId, 'OperatingSystemId', osId, 'InterpreterId', interpreterId, ...
+        'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'label');
+else
+    obs = jStatement(preBody, 'observation', subjectId, ...
+        jLabel('image intensity'), [], ...
+        'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+        'Conditions', conds, 'Notes', label, ...
+        'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
+end
 if ~isempty(tableRowId)
     % the v1 `document_id` (the ontologyTableRow this image belongs to): #88
     % dropped image_observation's `ontology_table_row_id` edge (#73 item 42)
@@ -243,7 +257,7 @@ o = jOpts(preBody, 'DatumOrder', 'F');
 body = did2.build.sampledBody(stackId, imageKeys(dimOrder, dimSize, params), o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
-bodies = {obs, body, anchor};
+bodies = [{obs, body, anchor}, software];
 end
 
 function tf = isMaskOrMap(label)

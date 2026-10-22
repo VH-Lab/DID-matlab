@@ -1773,6 +1773,64 @@ end
 end
 
 
+function v1 = arenaMaskImageStack()
+%ARENAMASKIMAGESTACK The JH arena mask, as NDI's writer builds it
+%   (+setup/+conv/+haley/doImport.m, "Arena mask imageStack"): YX, logical,
+%   label = the definition ndi.ontology.lookup('EMPTY:0000130') returns,
+%   document_id = the plate row, subject_id = the subject group, no app block.
+v1 = behaviourImageStack();
+v1.base.id = 'is_mask_01';
+v1.image_stack = struct('format_ontology', 'NCIT:C85437', 'label', ...
+    ['A binary image (logical matrix) where pixels within the experimental ' ...
+     'arena for C. elegans are marked (true) and pixels outside are unmarked ' ...
+     '(false). This mask defines the region of interest for worm tracking ' ...
+     'and behavioral analysis.']);
+v1.image_stack_parameters = struct('data_type', 'logical', ...
+    'dimension_order', 'YX', 'dimension_labels', 'height,width', ...
+    'dimension_size', [1024 1024], 'dimension_scale', [1.5 1.5], ...
+    'dimension_scale_units', 'micrometer,micrometer', 'data_limits', [0 1]);
+end
+
+function testImageStackMaskBecomesALabelCalculationWithNoInventedSoftware(testCase)
+% #73 review item 51: "a mask or label map -> label_calculation". BUILT
+% 2026-10-22 (was a passthrough). The Haley writer records no software, and
+% did-schema fd83a6c makes calculation.software_id optional
+% ([calculation-software-optional], Proposed (not decided), built ahead of
+% decision at Jess Haley's instruction): so NO software_id and no software
+% entity are emitted -- nothing invented.
+out = did2.convert.migrators_j.image_stack(arenaMaskImageStack());
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
+verifyEqual(testCase, sort(names), sort({'calculation+label', 'sampled_body', ...
+    'relative_time_reference'}), strjoin(names, ', '));
+calc = out{strcmp(names, 'calculation+label')};
+verifyEqual(testCase, calc.base.id, 'is_mask_01', 'id preserved');
+verifyEqual(testCase, depValue(calc, 'entity_id'), 'subjgrp_7');
+verifyEmpty(testCase, depValue(calc, 'software_id'));
+verifyFalse(testCase, ismember('software', names));
+verifyTrue(testCase, logical(calc.value.data_body));
+body = out{strcmp(names, 'sampled_body')};
+verifyEqual(testCase, depValue(body, 'owner_id'), 'is_mask_01');
+verifyEqual(testCase, numel(body.data.keys), 2, 'keyed Y, X');
+end
+
+function testImageStackMaskValidatesWithoutSoftware(testCase)
+% Validation ON: the calculation's require_inherited is read from the schema
+% (did2.build checkRules), so this is red against a did-schema that still
+% requires software_id and green once it does not.
+out = did2.convert.v1_to_v2(arenaMaskImageStack(), 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+verifyEqual(testCase, out.summary.migrated_count, 3);
+end
+
+function testAnIntensityImageStackIsStillAnObservation(testCase)
+% THE OTHER DIRECTION: the behaviour video is not a mask.
+out = did2.convert.migrators_j.image_stack(behaviourImageStack());
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
+verifyTrue(testCase, ismember('observation+intensity', names));
+verifyFalse(testCase, ismember('calculation+label', names));
+end
+
 function v1 = behaviourImageStack()
 %BEHAVIOURIMAGESTACK The JH C. elegans behaviour-plate imageStack, as NDI's own
 %   writer builds it: +setup/+conv/+haley/doImport.m:421-441.
