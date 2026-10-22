@@ -1904,9 +1904,9 @@ function [replace, quarantine, report] = mkMetadataArchiveBodies(specs, ...
 %   manipulation, owned by it (owner_id repeats when the epoch has several,
 %   T15). The body keeps the archive's base.id, so it REPLACES the v1 document
 %   (REPLACE: archive id -> validated body). Its one file, `data.bin`, is
-%   carried as attached (locations verbatim) as body_data_0. Format: the
-%   staged term "NDI binary format" (Jess Haley, 2026-10-22 [NDI binary
-%   format]; no node yet), compression gzip (NDI metadatareader.ingest_epochfiles
+%   carried as attached (locations verbatim) as body_data_0. Format:
+%   EMPTY:0000367 "NDI binary format" (Jess Haley, 2026-10-22 [NDI binary
+%   format]), compression gzip (NDI metadatareader.ingest_epochfiles
 %   attaches [metadatafile '.nbf.tgz']). No data_type: Jess Haley,
 %   2026-10-21 [data_type only for plain arrays].
 replace = containers.Map('KeyType', 'char', 'ValueType', 'any');
@@ -2240,10 +2240,10 @@ end
 end
 
 function f = ndiBinaryFormat()
-%NDIBINARYFORMAT The staged term "NDI binary format" (did-schema term registry,
-%   status staged; Jess Haley, 2026-10-22 [NDI binary format]). It has no node
-%   until empty-ontology mints one, so it is written by name alone.
-f = struct('name', 'NDI binary format');
+%NDIBINARYFORMAT EMPTY:0000367 "NDI binary format" (Jess Haley, 2026-10-22
+%   [NDI binary format]; minted in empty-ontology draft PR #23, registered in
+%   did-schema dad8567).
+f = struct('node', 'EMPTY:0000367', 'name', 'NDI binary format');
 end
 
 function f = binaryFormat()
