@@ -25,11 +25,13 @@ verifyEqual(testCase, did2.build.vocabulary('relation', 'member_of'), 'RO:000235
 verifyEqual(testCase, did2.build.vocabulary('relation', 'member of'), 'RO:0002350');
 verifyEqual(testCase, did2.build.vocabulary('relation', 'contained_in'), 'RO:0001025');   % K1
 verifyEqual(testCase, did2.build.vocabulary('relation', 'sample_of'), 'ENVO:01003004');   % K5
-% derived_from: no node in code ([derived from general], Jess Haley
-% 2026-10-22: RO:0001000 -> prov:wasDerivedFrom); it is the schema row's
-verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), ...
-    boundNodeNamed(did2.schema.cache.shared(), 'directed_relation', 'relation', 'derived_from'));
-verifyNotEmpty(testCase, did2.build.vocabulary('relation', 'derived_from'));
+% derived_from ([derived from general], [derived from label], Jess Haley
+% 2026-10-22): the schema row named derived_from wins while there is one
+% ({RO:0001000, "derived_from"}); once the row is {prov:wasDerivedFrom,
+% "wasDerivedFrom"} no row spells the handle and the table's node is used
+want = boundNodeNamed(did2.schema.cache.shared(), 'directed_relation', 'relation', 'derived_from');
+if isempty(want); want = 'prov:wasDerivedFrom'; end
+verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), want);
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'epoch'), 'EMPTY:0000383');    % L3
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'Data Set'), 'NCIT:C47824');
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'culture'), '');               % no node
@@ -50,7 +52,21 @@ for spec = {{'directed_relation', 'relation', 'relation'}, {'entity', 'type', 'e
         assumeFail(testCase, sprintf('the loaded schema binds %s.%s to no nodes', s{1}, s{2}));
     end
     [~, h] = did2.build.vocabulary(s{3});
-    nodes = unique(h(:, 2));
+    % a handle the schema spells as a row name resolves to THAT row's node
+    % (vocabulary step 1), never to the table's: the table row is the
+    % fallback for when the row's name changes (derived_from's table node
+    % prov:wasDerivedFrom while the schema still binds RO:0001000). Its
+    % effective node must be bound; the table's own node is checked only
+    % when it is the one used.
+    names = boundRowNames(c, s{1}, s{2});
+    if strcmp(s{1}, 'directed_relation')
+        names = [names, boundRowNames(c, 'undirected_relation', 'relation')];
+    end
+    norm = @(x) lower(regexprep(char(x), '[\s_\-]', ''));
+    shadowed = ismember(cellfun(norm, h(:, 1), 'UniformOutput', false), ...
+        cellfun(norm, names, 'UniformOutput', false));
+    eff = cellfun(@(x) did2.build.vocabulary(s{3}, x), h(shadowed, 1), 'UniformOutput', false);
+    nodes = unique([h(~shadowed, 2); eff(:)]);
     if strcmp(s{1}, 'directed_relation')
         und = boundNodes(c, 'undirected_relation', 'relation');
         bound = [bound, und];
@@ -113,9 +129,64 @@ verifyEqual(testCase, rel.directed_relation.relation.name, 'member of');
 end
 
 function testANodeTheSchemaChangesIsFollowed(testCase)
-% [derived from general] (Jess Haley 2026-10-22): the schema moves
-% derived_from from RO:0001000 to prov:wasDerivedFrom. Code holds no node for
-% it, so writers and comparisons follow the schema. Simulated on a copy.
+% [derived from general], [derived from label] (Jess Haley 2026-10-22): the
+% schema's derived_from row becomes {prov:wasDerivedFrom, "wasDerivedFrom"}
+% (PROV-O's rdfs:label). Writers keep saying 'derived_from' and write the
+% row's node and label; comparisons follow the node. Simulated on a copy.
+flipDerivedFrom(testCase);
+verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), 'prov:wasDerivedFrom');
+rel = did2.build.directedRelation(did.ido.unique_id(), did.ido.unique_id(), 'derived_from', ...
+    'SessionId', testCase.TestData.sid, 'Validate', false);
+verifyEqual(testCase, rel.directed_relation.relation.node, 'prov:wasDerivedFrom');
+verifyEqual(testCase, rel.directed_relation.relation.name, 'wasDerivedFrom');
+verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, 'relation', 'derived_from'));
+verifyFalse(testCase, did2.build.isVocabulary(struct('node', 'RO:0001000', 'name', 'derived_from'), ...
+    'relation', 'derived_from'));
+end
+
+function testDerivedFromResolvesByTheTableWhenTheRowIsWasDerivedFrom(testCase)
+% [derived from label]: "wasDerivedFrom" does not normalise to derived_from,
+% so step 1 (the schema row by name) cannot find it; the handle table's row
+% derived_from -> prov:wasDerivedFrom is what resolves it.
+flipDerivedFrom(testCase);
+c = did2.schema.cache.shared();
+verifyEmpty(testCase, boundNodeNamed(c, 'directed_relation', 'relation', 'derived_from'), ...
+    'the flipped copy must have no row spelling the handle, or this test proves nothing');
+verifyEqual(testCase, boundNodeNamed(c, 'directed_relation', 'relation', 'wasDerivedFrom'), ...
+    'prov:wasDerivedFrom');
+[~, h] = did2.build.vocabulary('relation');
+verifyEqual(testCase, h(strcmp(h(:, 1), 'derived_from'), 2), {'prov:wasDerivedFrom'});
+verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), 'prov:wasDerivedFrom');
+verifyEqual(testCase, did2.build.vocabulary('relation', 'wasDerivedFrom'), 'prov:wasDerivedFrom');
+% a node-less name, either spelling, still matches by node
+verifyTrue(testCase, did2.build.isVocabulary(struct('node', '', 'name', 'wasDerivedFrom'), ...
+    'relation', 'derived_from'));
+verifyTrue(testCase, did2.build.isVocabulary('derived_from', 'relation', 'derived_from'));
+end
+
+function testDerivedFromWritesTheCurrentRowWhileTheSchemaHasIt(testCase)
+% did-schema flips the row AFTER this repository: while the loaded schema's
+% row is still {RO:0001000, "derived_from"}, that row (step 1) wins over the
+% table and a writer saying 'derived_from' writes it unchanged.
+c = did2.schema.cache.shared();
+cur = boundNodeNamed(c, 'directed_relation', 'relation', 'derived_from');
+if isempty(cur)
+    assumeFail(testCase, 'the loaded schema has no row named derived_from (flipped already)');
+end
+verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), cur);
+rel = did2.build.directedRelation(did.ido.unique_id(), did.ido.unique_id(), 'derived_from', ...
+    'SessionId', testCase.TestData.sid, 'Validate', false);
+verifyEqual(testCase, rel.directed_relation.relation.node, cur);
+verifyEqual(testCase, rel.directed_relation.relation.name, ...
+    boundName(c, 'directed_relation', 'relation', cur));
+verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, 'relation', 'derived_from'));
+end
+
+% ===================== helpers =============================================
+
+function flipDerivedFrom(testCase)
+% load a copy of the schema whose derived_from row is {prov:wasDerivedFrom,
+% "wasDerivedFrom"}; a schema already flipped is used as it is
 src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
@@ -123,25 +194,21 @@ copyfile(fullfile(src, '*.json'), tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 f = fullfile(tmp, 'directed_relation.json');
 txt = fileread(f);
-if ~contains(txt, '"RO:0001000"')
-    assumeFail(testCase, 'the loaded schema no longer binds derived_from to RO:0001000');
+if contains(txt, '"RO:0001000"')
+    txt = strrep(txt, '"RO:0001000"', '"prov:wasDerivedFrom"');
+    txt = strrep(txt, '"name": "derived_from"', '"name": "wasDerivedFrom"');
+elseif ~contains(txt, '"prov:wasDerivedFrom"')
+    assumeFail(testCase, 'the loaded schema binds derived_from to neither RO:0001000 nor prov:wasDerivedFrom');
 end
-txt = strrep(txt, '"RO:0001000"', '"prov:wasDerivedFrom"');
-txt = strrep(txt, '"name": "derived_from"', '"name": "derived from"');
 fid = fopen(f, 'w'); fwrite(fid, txt); fclose(fid);
 did2.schema.cache.setSchemaPath(tmp);
 testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
-verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), 'prov:wasDerivedFrom');
-rel = did2.build.directedRelation(did.ido.unique_id(), did.ido.unique_id(), 'derived_from', ...
-    'SessionId', testCase.TestData.sid, 'Validate', false);
-verifyEqual(testCase, rel.directed_relation.relation.node, 'prov:wasDerivedFrom');
-verifyEqual(testCase, rel.directed_relation.relation.name, 'derived from');
-verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, 'relation', 'derived_from'));
-verifyFalse(testCase, did2.build.isVocabulary(struct('node', 'RO:0001000', 'name', 'derived_from'), ...
-    'relation', 'derived_from'));
 end
 
-% ===================== helpers =============================================
+function names = boundRowNames(c, className, fieldName)
+vals = boundValues(c, className, fieldName);
+names = reshape(cellfun(@(v) char(v.name), vals, 'UniformOutput', false), 1, []);
+end
 
 function nodes = boundNodes(c, className, fieldName)
 vals = boundValues(c, className, fieldName);

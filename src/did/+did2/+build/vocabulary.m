@@ -38,6 +38,7 @@ switch kind
             'included_in',              'schema:isPartOf'
             'contained_in',             'RO:0001025'
             'member_of',                'RO:0002350'
+            'derived_from',             'prov:wasDerivedFrom'
             'derives_from_part_of',     'ENVO:01003004'
             'sample_of',                'ENVO:01003004'
             'encountered',              'RO:0002437'
@@ -93,9 +94,9 @@ if isempty(key)
     return;
 end
 % 1. the LOADED schema's own row whose name is the handle (snake_case or
-%    label): its node. The schema is the truth for a node, so a node it
-%    changes (derived_from RO:0001000 -> prov:wasDerivedFrom, Jess Haley
-%    2026-10-22 [derived from general]) needs no change here.
+%    label): its node. The schema is the truth for a node, so while its row
+%    is still {RO:0001000, "derived_from"} that row wins over the table's
+%    prov:wasDerivedFrom below (Jess Haley 2026-10-22 [derived from general]).
 rows = schemaRows(kind);
 for k = 1:size(rows, 1)
     if strcmp(normalize(rows{k, 1}), key) && ~isempty(rows{k, 2})
@@ -105,7 +106,10 @@ for k = 1:size(rows, 1)
 end
 % 2. the handle table, for a handle the schema's label no longer spells
 %    ('sample_of' once the row is "derives from part of", 'funding' once it
-%    is "Grant")
+%    is "Grant", 'derived_from' once the row is {prov:wasDerivedFrom,
+%    "wasDerivedFrom"}, PROV-O's label: did-schema
+%    V_eta_relation_inheritance_plan.md [derived from label], Jess Haley
+%    2026-10-22)
 hit = find(strcmp(cellfun(@normalize, handles(:, 1), 'UniformOutput', false), key), 1);
 if ~isempty(hit)
     node = handles{hit, 2};
