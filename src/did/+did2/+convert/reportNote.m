@@ -72,6 +72,13 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     empty. The count is the denominator (Jess Haley,
 %                     2026-10-22 [covariate rules named], 6.4 "A"); v1_to_v2
 %                     prints "dropped of converted".
+%     tuning_response_variable  ONE note per tuning / contrast-sensitivity
+%                     calculator document jCalculation folds: DETAIL 'neural
+%                     firing rate' or 'dF/F' when `variable` was set from v1
+%                     `response_units`, 'not stated' when the source gives none,
+%                     'unrecognised: <spelling>' otherwise (Jess Haley
+%                     2026-10-22 [response variable], [dF/F as variable]).
+%                     The count is the denominator; v1_to_v2 prints it first.
 %     non_area_ontology_node  a migrated ontologyImage raster whose ontology
 %                     node is not an anatomical (UBERON) area: kept as a
 %                     condition with the label variable 'ontology node';

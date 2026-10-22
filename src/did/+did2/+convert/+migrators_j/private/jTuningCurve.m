@@ -1,9 +1,9 @@
-function [value, valueAxes, leafFields, dropped] = jTuningCurve(srcBlk, family)
+function [value, valueAxes, leafFields, dropped, response] = jTuningCurve(srcBlk, family)
 %JTUNINGCURVE A v1 tuning-curve result block as did-schema #88's
 %   `tuning_curve` value, its dimensions and covariates, and the named
 %   calculation's own blocks.
 %
-%   [VALUE, AXES, LEAFFIELDS, DROPPED] = jTuningCurve(SRCBLK, FAMILY)
+%   [VALUE, AXES, LEAFFIELDS, DROPPED, RESPONSE] = jTuningCurve(SRCBLK, FAMILY)
 %
 %   SRCBLK is the v1 result block (`orientation_direction_tuning`,
 %   `contrast_tuning`, `spatial_frequency_tuning`, `temporal_frequency_tuning`,
@@ -15,6 +15,10 @@ function [value, valueAxes, leafFields, dropped] = jTuningCurve(srcBlk, family)
 %     VALUE (`tuning_curve.value`)   mean, stddev, stderr, individual,
 %       raw_individual, control {mean, stddev, stderr, individual},
 %       response_unit (a term), response_type (a bound term), coordinates.
+%       response_unit is the PLAIN unit read from v1 `response_units`
+%       (jResponseVariable): om:hertz for a spike rate, om:one for dF/F; any
+%       other non-empty spelling is kept as its label, as before; an empty
+%       one leaves the field out.
 %       Per-trial arrays take the stimulus dimension FIRST and the trial
 %       dimension last (audit 2, D3: "individual / raw_individual add one
 %       trailing trial dimension"); v1 stored them trials x stimuli.
@@ -59,6 +63,12 @@ function [value, valueAxes, leafFields, dropped] = jTuningCurve(srcBlk, family)
 %   last) when v1 carries the *_imaginary half, keys x trials otherwise (Jess
 %   Haley, 2026-10-21, "a1").
 %
+%   RESPONSE   struct {variable, outcome}: what the response measured, from
+%     the same `response_units` (Jess Haley 2026-10-22 [response variable],
+%     [dF/F as variable], [response variable nodes]; jResponseVariable).
+%     VARIABLE is the registered term for the statement's `variable`, or []
+%     when the source does not say; OUTCOME names the case for the report.
+%
 %   Fit coefficients are a vector in v1 with no names; each becomes a
 %   `{variable, value}` entry named '<model> parameter k' (a label) -- a
 %   CONSERVATIVE CHOICE, recorded.
@@ -72,18 +82,19 @@ value = struct();
 valueAxes = [];
 leafFields = struct();
 dropped = {};
+response = struct('variable', [], 'outcome', 'not stated');
 if ~isstruct(srcBlk) || ~isscalar(srcBlk)
     return;
 end
 
 if strcmp(family, 'stimulus')
-    [value, valueAxes, dropped] = rawCurve(srcBlk);
+    [value, valueAxes, dropped, response] = rawCurve(srcBlk);
     return;
 end
 
 % ---- properties -----------------------------------------------------------
 props = sub(srcBlk, 'properties');
-value = putUnit(value, getf(props, {'response_units', 'responseUnits'}));
+[value, response] = putUnit(value, getf(props, {'response_units', 'responseUnits'}));
 rt = getf(props, {'response_type', 'responseType'});
 if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
 co = getf(props, {'coordinates'});
@@ -198,7 +209,7 @@ end
 
 % =============================================================================
 
-function [value, valueAxes, dropped] = rawCurve(st)
+function [value, valueAxes, dropped, response] = rawCurve(st)
 % v1 `stimulus_tuningcurve` (tuningcurve_calc, and the raw pre-calculator curve)
 value = struct();
 labels = getf(st, {'independent_variable_label'});
@@ -239,7 +250,7 @@ ctl = struct();
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
 value = toGrid(value, valueAxes);
 [u, nm] = getfn(st, {'response_units'}); used{end+1} = nm;
-value = putUnit(value, u);
+[value, response] = putUnit(value, u);
 used = used(~cellfun(@isempty, used));
 rest = setdiff(fieldnames(st), used);
 dropped = prefixed('stimulus_tuningcurve.', reshape(rest, 1, []));
@@ -487,9 +498,18 @@ for k = 1:size(map, 1)
 end
 end
 
-function v = putUnit(v, u)
+function [v, response] = putUnit(v, u)
+% The plain unit and the response variable, both from v1 `response_units`
+% (jResponseVariable). A recognised spelling writes the registered unit
+% (om:hertz, om:one); any other non-empty spelling keeps its label, as before;
+% an empty one writes nothing.
 if isstring(u) && isscalar(u); u = char(u); end
-if ischar(u) && ~isempty(strtrim(u))
+[variable, unit, outcome] = jResponseVariable(u);
+response = struct('variable', [], 'outcome', outcome);
+response.variable = variable;
+if ~isempty(unit)
+    v.response_unit = unit;
+elseif ischar(u) && ~isempty(strtrim(u))
     v.response_unit = jLabel(strtrim(u));
 end
 end

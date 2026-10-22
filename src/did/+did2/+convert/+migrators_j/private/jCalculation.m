@@ -17,8 +17,25 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %               (the tuning value, jTuningCurve) or 'csf'
 %               (jContrastSensitivityValue).
 %   SOURCEBLOCK the v1 block holding the result.
-%   VARIABLENAME the statement's variable (a label); METHODNAME the
-%               calculator, the inline `method.term` (a label).
+%   VARIABLENAME the statement's variable (a label) when the source does
+%               not say what was measured; METHODNAME the calculator, the
+%               inline `method.term` (a label).
+%
+%   THE RESPONSE VARIABLE (tuning families and 'csf'; Jess Haley 2026-10-22
+%   [response variable], [dF/F as variable], [response variable nodes],
+%   did-schema V_eta_data_body_model_plan.md): `variable` names what the
+%   response measured, read from v1 `response_units` by jTuningCurve /
+%   jResponseVariable -- wikidata:Q71762818 "neural firing rate" for a
+%   spikes-per-second spelling, EMPTY:0000397 "dF/F" for a dF/F spelling.
+%   Where the source does not say (empty response_units, an unrecognised
+%   spelling, and every contrast_sensitivity_calc, which carries no
+%   response_units), nothing is guessed: `variable` stays the VARIABLENAME
+%   label it was before, because `statement.variable` is mustBeNonEmpty and an
+%   all-blank term is refused (did2:validation:vacuousField, NonVacuousFields
+%   armed), which would quarantine the document. Every folded document of
+%   these families leaves ONE did2.convert.reportNote('tuning_response_variable',
+%   <v1 class>, <id>, <outcome>): the count is the denominator, the DETAIL
+%   'neural firing rate' | 'dF/F' | 'not stated' | 'unrecognised: <spelling>'.
 %
 %   What the calculation carries (did-schema #88):
 %     entity_id          the element (v1 element_id; subject_id as fallback)
@@ -83,14 +100,22 @@ end
 
 leafFields = struct();
 dropped = {};
+response = [];   % no response variable read (receptive field)
 if strcmp(family, 'csf')
     [value, valueAxes, dropped] = jContrastSensitivityValue(srcBlk);
+    % contrast_sensitivity_calc carries no response_units (NDIcalc-vis mock):
+    % the source does not say what the response measured
+    response = struct('variable', [], 'outcome', 'not stated');
 elseif strcmp(family, 'rf')
     % receptive_field.value declares no sub-fields: the volume is in bodies
     value = struct();
     valueAxes = [];
 else
-    [value, valueAxes, leafFields, dropped] = jTuningCurve(srcBlk, family);
+    [value, valueAxes, leafFields, dropped, response] = jTuningCurve(srcBlk, family);
+end
+variable = jLabel(variableName);
+if isstruct(response) && isstruct(response.variable)
+    variable = response.variable;   % [response variable]: what was measured
 end
 
 anchor = jSessionAnchor(preBody, 'during');
@@ -118,7 +143,7 @@ if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
     return;
 end
 leaf = jStatement(preBody, leafClass, subjectId, ...
-    jLabel(variableName), value, ...
+    variable, value, ...
     'Dimensions', axisPart(valueAxes, 'dimensions'), ...
     'Covariates', axisPart(valueAxes, 'covariates'), ...
     'DatumOrder', datumOrderOf(valueAxes), ...
@@ -146,6 +171,11 @@ end
 for k = 1:numel(opts.Dropped)   % the caller's own drops, full paths
     did2.convert.reportNote('field_dropped', className, ...
         char(preBody.base.id), char(opts.Dropped{k}));
+end
+% the response variable: one note per folded document, the denominator
+if isstruct(response)
+    did2.convert.reportNote('tuning_response_variable', className, ...
+        char(preBody.base.id), response.outcome);
 end
 end
 

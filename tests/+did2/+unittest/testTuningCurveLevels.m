@@ -543,9 +543,9 @@ function testResponseUnitsAreReadFromProperties(testCase)
 % DEFECT B, all five families. The units live under `properties`, never on the block.
 % A real unit is used here so the test distinguishes "found the right level" from
 % "guarded a bad type" -- the empty case is a separate test below.
-% #88: the unit is a TERM, `value.response_unit` (#73 item 57). A name the term
-% registry holds comes back as its registered term, so the check accepts the bare
-% label or a registered term whose name matches ignoring case.
+% #88: the unit is a TERM, `value.response_unit` (#73 item 57). 'Hz' is a
+% spikes-per-second spelling, so the unit is the plain om:hertz (Jess Haley
+% 2026-10-22 [response variable]); it named the bare label 'Hz' before.
 fam = familyTable();
 props = struct('response_type', 'mean', 'response_units', 'Hz');
 inspected = 0;
@@ -557,8 +557,8 @@ for k = 1:numel(fam)
         ['%s: value.response_unit is missing. It must come from ' ...
          'properties.response_units (the writer sets it there and nowhere else)'], ...
         fam(k).className));
-    verifyTrue(testCase, isUnitNamed(v.response_unit, 'Hz'), sprintf( ...
-        '%s: value.response_unit does not name ''Hz''', fam(k).className));
+    verifyTrue(testCase, isTerm(v.response_unit, 'om:hertz', 'hertz'), sprintf( ...
+        '%s: value.response_unit is not om:hertz "hertz"', fam(k).className));
 end
 verifyEqual(testCase, inspected, 5, 'the sweep must cover all five families');
 end
@@ -610,8 +610,13 @@ leaf = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve(body));
 v = leaf.tuning_curve.value;
 assertTrue(testCase, isfield(v, 'response_unit'), ...
     'the flat raw curve carries its units at BLOCK level and must keep resolving');
-verifyTrue(testCase, isUnitNamed(v.response_unit, 'Spikes/s'), ...
-    'value.response_unit does not name ''Spikes/s''');
+% 'Spikes/s' is a spikes-per-second spelling: the plain unit om:hertz and the
+% variable "neural firing rate" (Jess Haley 2026-10-22 [response variable]); the
+% unit named the bare label 'Spikes/s' before
+verifyTrue(testCase, isTerm(v.response_unit, 'om:hertz', 'hertz'), ...
+    'value.response_unit is not om:hertz "hertz"');
+verifyTrue(testCase, isTerm(leaf.statement.variable, 'wikidata:Q71762818', 'neural firing rate'), ...
+    'statement.variable is not wikidata:Q71762818 "neural firing rate"');
 verifyEqual(testCase, keyValues(leaf), [0.1 0.2 0.4 0.8], 'AbsTol', 1e-12);
 end
 
@@ -869,6 +874,148 @@ verifyEqual(testCase, {ax(1).term.name, ax(2).term.name}, {'spatial frequency', 
 verifyEqual(testCase, [ax.n], [2 2]);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 9; 5 3], 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.data.datum_order, 'F');
+end
+
+% ===================== THE RESPONSE VARIABLE ===============================
+% did-schema V_eta_data_body_model_plan.md, Jess Haley 2026-10-22:
+% [response variable] what a tuning response measures goes in the statement's
+% `variable`, `response_unit` is the plain unit (om:hertz for a spike rate);
+% [dF/F as variable] dF/F is the variable, the unit om:one; [response variable
+% nodes] wikidata:Q71762818 "neural firing rate", EMPTY:0000397 "dF/F".
+% Every family (the five fitted composites and the raw curve) is driven through
+% its own migrator; the counts below are the denominators.
+
+function testSpikeRateSpellingsMakeTheVariableNeuralFiringRate(testCase)
+spellings = {'Hz', 'hz', 'Spikes/s', 'spikes/s', 'sp/s', 'SP/S', '1/s', ...
+    'spikes/sec', 'Spikes per second', ' spikes/s '};
+inspected = 0;
+for j = 1:numel(spellings)
+    for leaf = responseLeaves(spellings{j})
+        L = leaf{1};
+        inspected = inspected + 1;
+        verifyTrue(testCase, isTerm(L.statement.variable, 'wikidata:Q71762818', ...
+            'neural firing rate'), sprintf('%s, ''%s'': variable is not neural firing rate', ...
+            L.document_class.class_name, spellings{j}));
+        verifyTrue(testCase, isTerm(L.tuning_curve.value.response_unit, 'om:hertz', 'hertz'), ...
+            sprintf('%s, ''%s'': response_unit is not om:hertz', ...
+            L.document_class.class_name, spellings{j}));
+    end
+end
+verifyEqual(testCase, inspected, 6 * numel(spellings), ...
+    'every spelling through all six tuning migrators');
+end
+
+function testDffSpellingsMakeTheVariableDff(testCase)
+spellings = {'dF/F', 'df/f', 'DF/F', 'ΔF/F', 'deltaF/F', 'dff', 'dFF'};
+inspected = 0;
+for j = 1:numel(spellings)
+    for leaf = responseLeaves(spellings{j})
+        L = leaf{1};
+        inspected = inspected + 1;
+        verifyTrue(testCase, isTerm(L.statement.variable, 'EMPTY:0000397', 'dF/F'), ...
+            sprintf('%s, ''%s'': variable is not EMPTY:0000397 dF/F', ...
+            L.document_class.class_name, spellings{j}));
+        verifyTrue(testCase, isTerm(L.tuning_curve.value.response_unit, 'om:one', 'one'), ...
+            sprintf('%s, ''%s'': response_unit is not om:one', ...
+            L.document_class.class_name, spellings{j}));
+    end
+end
+verifyEqual(testCase, inspected, 6 * numel(spellings), ...
+    'every spelling through all six tuning migrators');
+end
+
+function testEmptyUnitsSetNoResponseVariable(testCase)
+% The writers' real value is EMPTY (response_units is declared in NDI-matlab
+% tuning_response.m's emptystruct and never assigned). Nothing is guessed: the
+% variable is not a measured quantity (no node; the calculator label the
+% migrator always wrote, because statement.variable is mustBeNonEmpty and an
+% all-blank term is refused), and response_unit stays out.
+inspected = 0;
+for u = {[], '', '   ', "", 7}
+    for leaf = responseLeaves(u{1})
+        L = leaf{1};
+        inspected = inspected + 1;
+        verifyEmpty(testCase, L.statement.variable.node, sprintf( ...
+            '%s: a variable node was written although the source gives no unit', ...
+            L.document_class.class_name));
+        verifyFalse(testCase, any(strcmpi(char(L.statement.variable.name), ...
+            {'neural firing rate', 'dF/F'})), sprintf( ...
+            '%s: a response variable was guessed', L.document_class.class_name));
+        verifyFalse(testCase, isfield(L.tuning_curve.value, 'response_unit'), sprintf( ...
+            '%s: response_unit written although the source gives none', ...
+            L.document_class.class_name));
+    end
+end
+verifyEqual(testCase, inspected, 6 * 5, 'five empty forms through all six migrators');
+end
+
+function testAnUnknownSpellingIsNotGuessed(testCase)
+% A spelling the decisions do not name ('mV', 'Spikes', 'a.u.') sets no variable;
+% the unit keeps the source's own label, as it did before the decision.
+inspected = 0;
+for u = {'mV', 'Spikes', 'a.u.', 'F/F0'}
+    for leaf = responseLeaves(u{1})
+        L = leaf{1};
+        inspected = inspected + 1;
+        verifyEmpty(testCase, L.statement.variable.node, sprintf( ...
+            '%s, ''%s'': a variable node was guessed', L.document_class.class_name, u{1}));
+        verifyFalse(testCase, any(strcmpi(char(L.statement.variable.name), ...
+            {'neural firing rate', 'dF/F'})), sprintf( ...
+            '%s, ''%s'': a response variable was guessed', L.document_class.class_name, u{1}));
+        verifyTrue(testCase, isUnitNamed(L.tuning_curve.value.response_unit, u{1}), ...
+            sprintf('%s, ''%s'': the source spelling of the unit was lost', ...
+            L.document_class.class_name, u{1}));
+    end
+end
+verifyEqual(testCase, inspected, 6 * 4, 'four spellings through all six migrators');
+end
+
+function testTheResponseVariableIsCountedInTheReport(testCase)
+% One 'tuning_response_variable' note per folded document, its DETAIL the
+% outcome: the count is the denominator the migration report prints first.
+did2.convert.reportNote('reset');
+responseLeaves('Spikes/s');
+responseLeaves('dF/F');
+responseLeaves([]);
+responseLeaves('mV');
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+assertTrue(testCase, isfield(notes, 'tuning_response_variable'), ...
+    'no tuning_response_variable note was left');
+n = notes.tuning_response_variable;
+verifyEqual(testCase, n.count, 4 * 6, 'one note per folded document');
+expect = {'neural firing rate', 'dF/F', 'not stated', 'unrecognised: mV'};
+for j = 1:numel(expect)
+    hit = strcmp(n.distinct_details, expect{j});
+    assertTrue(testCase, any(hit), sprintf('no ''%s'' note', expect{j}));
+    verifyEqual(testCase, n.distinct_detail_counts(hit), 6, ...
+        sprintf('''%s'': one note per migrator', expect{j}));
+end
+verifyEqual(testCase, sum(n.distinct_detail_counts), n.count, 'every note names its outcome');
+end
+
+function leaves = responseLeaves(units)
+%RESPONSELEAVES The emitted leaves of all six tuning migrators (the five fitted
+%   families through `properties.response_units`, the raw curve through its
+%   block-level `response_units`) for one source `response_units` value.
+leaves = {};
+fam = familyTable();
+for k = 1:numel(fam)
+    props = struct('response_type', 'mean');
+    props.response_units = units;
+    mk = fam(k).curve;
+    fn = str2func(['did2.convert.migrators_j.' fam(k).className]);
+    leaves{end+1} = tuningLeaf(fn(tuningBody(fam(k).className, mk(), props))); %#ok<AGROW>
+end
+tc = flatRawCurve();
+tc.response_units = units;
+leaves{end+1} = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve(flatRawBody(tc)));
+end
+
+function tf = isTerm(term, node, name)
+%ISTERM True when TERM is exactly {NODE, NAME}.
+tf = isstruct(term) && isfield(term, 'node') && isfield(term, 'name') ...
+    && strcmp(char(term.node), node) && strcmp(char(term.name), name);
 end
 
 % ===================== helpers =============================================

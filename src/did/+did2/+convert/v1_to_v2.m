@@ -967,6 +967,7 @@ printFragments(result);
 printEmittedNothing(result);
 printDimensionTerms(result);
 printStimulusControlEdges(result);
+printTuningResponseVariable(result);
 printMigrationNotes(result);
 printLegacyNdiDocument(result);
 printSilentLoss(result);
@@ -1050,6 +1051,31 @@ if isfield(result.summary, 'migration_notes') ...
 end
 fprintf(['  stimulus_control_id edges dropped: %d of %d converted stimulus ' ...
     'response document(s)\n'], dropped, total);
+end
+
+function printTuningResponseVariable(result)
+%PRINTTUNINGRESPONSEVARIABLE [response variable] / [dF/F as variable]: the
+%   folded tuning documents (jCalculation, one 'tuning_response_variable' note
+%   each), DENOMINATOR FIRST, then how many had `variable` set from v1
+%   `response_units` and how many did not (the source did not say).
+total = 0;
+names = {'neural firing rate', 'dF/F', 'not stated'};
+counts = zeros(1, numel(names));
+other = 0;
+if isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'tuning_response_variable')
+    n = result.summary.migration_notes.tuning_response_variable;
+    total = n.count;
+    for j = 1:numel(names)
+        hit = strcmp(n.distinct_details, names{j});
+        if any(hit); counts(j) = n.distinct_detail_counts(hit); end
+    end
+    other = total - sum(counts);
+end
+fprintf(['  tuning response variable: %d folded tuning document(s); set from ' ...
+    'response_units: %d (neural firing rate %d, dF/F %d); not set: %d ' ...
+    '(not stated %d, unrecognised %d)\n'], total, counts(1) + counts(2), ...
+    counts(1), counts(2), counts(3) + other, counts(3), other);
 end
 
 function printMigrationNotes(result)
