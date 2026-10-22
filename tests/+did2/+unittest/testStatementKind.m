@@ -8,6 +8,15 @@ end
 
 function setupOnce(testCase)
 did2.unittest.helpers.installSchemaPath(testCase);
+% The term registry check (tenet T19, strictMode 'TermRegistry') is OFF for
+% this file, whatever DID_ENFORCE_TERM_REGISTRY says: testTheDirectionAndItsMixin
+% builds a statement from the made-up variable 'voltage' to test how
+% statementKind reads the class, not the registry. test-code.yml arms the
+% registry, where it was refused ("voltage" is not in the term registry), as
+% testBuild and testBuildMatrix were before 7a49a9f. The registry check is
+% tested ARMED in testBuildTermRegistry and its siblings.
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry));
 end
 
 function teardownOnce(testCase)
