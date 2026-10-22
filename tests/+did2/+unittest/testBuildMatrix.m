@@ -6,7 +6,9 @@ function tests = testBuildMatrix
 %   shared by `conditions` and `method.parameters` gains a fifth value form,
 %   `matrix` -- a numeric N-D array that is ONE value of the entry's
 %   `variable`, in the entry's `unit`, with no `source_value`, stored
-%   row-major as JSON nested arrays. Keys do NOT get it.
+%   row-major as JSON nested arrays. A dimension does NOT get it; a covariate
+%   does, as a whole array at EACH position (data_body AMENDMENT 6,
+%   [matrix covariate]; keys before AMENDMENT 6 did not).
 %
 %   The case that prompted it is a noise stimulus as a `method` document: a
 %   colour palette (n x 3, in NCIT:C75765 Arbitrary Unit), colour weights, a
@@ -14,7 +16,7 @@ function tests = testBuildMatrix
 %   Random Seed) and a bit depth (a count, 8).
 %
 %   What is pinned here: the builder writes the form and its checks (exactly
-%   one form; no SourceValue; a key refuses it); the document validates
+%   one form; no SourceValue; a dimension refuses it); the document validates
 %   against the #88 schema; and the arrays come back IDENTICAL -- values,
 %   class AND orientation -- through did2's JSON writer and reader and
 %   through a did2 sqlite database. Orientation is the part plain
@@ -99,19 +101,28 @@ verifyError(testCase, @() did2.build.parameter('x', 'Matrix', {1, 2}), ...
     'did2:build:typeMismatch');
 end
 
-function testAKeyHasNoMatrix(testCase)
-% the key builder has no 'Matrix' option ...
+function testADimensionHasNoMatrix(testCase)
+% the dimension builder has no 'Matrix' option ...
 threw = false;
 try
-    did2.build.key('colour', 3, 'Matrix', palette());
+    did2.build.dimension('colour', 3, 'Matrix', palette());
 catch
     threw = true;
 end
-verifyTrue(testCase, threw, 'did2.build.key accepted a ''Matrix'' option.');
-% ... and the schema declares none on a key (AMENDMENT 4: keys excluded)
-verifyError(testCase, @() did2.build.composite('data', 'keys', ...
-    struct('variable', struct('name', 'colour'), 'n', 3, 'matrix', palette())), ...
+verifyTrue(testCase, threw, 'did2.build.dimension accepted a ''Matrix'' option.');
+% ... and the schema declares none on a dimension (AMENDMENT 6: a dimension
+% is {term, n, chunk}; what varies along it is a covariate)
+verifyError(testCase, @() did2.build.composite('data', 'dimensions', ...
+    struct('term', struct('name', 'colour'), 'n', 3, 'matrix', palette())), ...
     'did2:build:unknownField');
+end
+
+function testACovariateMatrixIsAnArrayAtEachPosition(testCase)
+% [matrix covariate] (Jess Haley, 2026-10-22): along a `colour` dimension of
+% 4, each position holds a 1 x 3 RGB triple: shape [4 3], the dimension's
+% extent first, then the array's own shape.
+c = did2.build.covariate('rgb', 0, 'Matrix', palette(), 'Unit', arbitraryUnit());
+verifyEqual(testCase, c.matrix, palette());
 end
 
 function testTermChecksStillCoverVariableAndUnit(testCase)

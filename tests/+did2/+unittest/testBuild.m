@@ -25,7 +25,8 @@ cache = did2.schema.cache.shared();
 testCase.TestData.schemaPath = cache.schemaPath;
 if ~isPost73(cache)
     assumeFail(testCase, sprintf(['did2.build targets the #73 V_eta schema; ' ...
-        'the loaded schema (%s) predates it (no data.keys.n or no ' ...
+        'the loaded schema (%s) predates it (no data.dimensions.n -- ' ...
+        'data_body AMENDMENT 6 -- or no ' ...
         'base.creation_timestamp). test-builder.yml runs these tests ' ...
         'against did-schema main.'], cache.schemaPath));
 end
@@ -47,7 +48,9 @@ if ~any(strcmp(baseNames, 'creation_timestamp'))
 end
 dataFields = cache.ownFields('data');
 for k = 1:numel(dataFields)
-    if strcmp(char(dataFields{k}.name), 'keys') && isfield(dataFields{k}, 'fields')
+    % data_body AMENDMENT 6 (2026-10-22): `dimensions` {term, n, chunk}
+    % replaced `keys`; the builder writes only the new shape
+    if strcmp(char(dataFields{k}.name), 'dimensions') && isfield(dataFields{k}, 'fields')
         sub = dataFields{k}.fields;
         if isstruct(sub)
             names = {sub.name};
@@ -291,66 +294,143 @@ verifyError(testCase, @() did2.build.valueCell('concentration', 1, 'Canonical', 
     'did2:build:unknownField');
 end
 
-% ===================== key / list ==========================================
+% ===================== dimension / covariate / list ========================
+% did-schema data_body AMENDMENT 6 (Jess Haley, 2026-10-22 [covariates],
+% [along by index], [matrix covariate], [bare dimension]).
 
-function testRegularKey(testCase)
-k = did2.build.key('time', 1000, 'Unit', 'second', 'Origin', 0, 'Spacing', 0.001);
-verifyTrue(testCase, k.regular);
-verifyEqual(testCase, k.origin.value, 0);
-verifyEqual(testCase, k.spacing.value, 0.001);
-verifyEqual(testCase, k.unit.name, 'second');
-verifyFalse(testCase, isfield(k, 'quantity') || isfield(k, 'term'));
+function testDimension(testCase)
+d = did2.build.dimension('time', 1000);
+verifyEqual(testCase, d.term.name, 'time');
+verifyEqual(testCase, d.n, 1000);
+verifyFalse(testCase, isfield(d, 'chunk'), 'no Chunk given, no chunk written');
+d = did2.build.dimension('time', 1000, 'Chunk', 100);
+verifyEqual(testCase, d.chunk, 100);
+verifyError(testCase, @() did2.build.dimension({'a', 'b'}, 2), 'did2:build:typeMismatch');
 end
 
-function testKeyRules(testCase)
-verifyError(testCase, @() did2.build.key('time', 10, 'Origin', 0), 'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.key('x', 2, 'Values', [1 2], 'Labels', {'a', 'b'}), ...
+function testRegularCovariate(testCase)
+c = did2.build.covariate('time', 0, 'Unit', 'second', 'Origin', 0, 'Spacing', 0.001);
+verifyEqual(testCase, c.along, 0);
+verifyEqual(testCase, c.origin.value, 0);
+verifyEqual(testCase, c.spacing.value, 0.001);
+verifyEqual(testCase, c.unit.name, 'second');
+verifyFalse(testCase, isfield(c, 'quantity') || isfield(c, 'term') || isfield(c, 'regular') ...
+    || isfield(c, 'n'), 'AMENDMENT 6 removed `regular` and the entry''s `n`');
+end
+
+function testCovariateValueForms(testCase)
+c = did2.build.covariate('channel', 1, 'Term', {'A1', 'A2'});
+verifyEqual(testCase, {c.term.name}, {'A1', 'A2'});
+c = did2.build.covariate('depth', 0, 'Value', [1 2 3], 'SourceValue', [1000 2000 3000], 'Unit', 'meter');
+verifyEqual(testCase, c.quantity.value, [1 2 3]);
+verifyEqual(testCase, c.quantity.source_value, [1000 2000 3000]);
+c = did2.build.covariate('trial number', 0, 'Count', [1 2 3]);
+verifyEqual(testCase, c.count, [1 2 3]);
+c = did2.build.covariate('note', 0, 'Text', {'a', 'b'});
+verifyEqual(testCase, cellstr(c.text), {'a', 'b'});
+c = did2.build.covariate('control condition', 0, 'Logical', [true false true]);
+verifyEqual(testCase, c.logical, [true false true]);
+verifyClass(testCase, c.logical, 'logical');
+c = did2.build.covariate('encounter', 0, 'Document', 0);
+verifyEqual(testCase, c.document, 0);
+c = did2.build.covariate('colour', 0, 'Matrix', ones(4, 3));
+verifyEqual(testCase, c.matrix, ones(4, 3));
+end
+
+function testCovariateRules(testCase)
+% exactly one value form
+verifyError(testCase, @() did2.build.covariate('x', 0, 'Value', [1 2], 'Term', {'a', 'b'}), ...
     'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.key('x', 2), 'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.key('x', 3, 'Values', [1 2]), 'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.key('x', 2, 'Labels', {'a'}), 'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.key('x', 2, 'Origin', 0, 'Spacing', 1, 'Values', [1 2]), ...
+verifyError(testCase, @() did2.build.covariate('x', 0), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate('time', 0, 'Origin', 0), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate('x', 0, 'Origin', 0, 'Spacing', 1, 'Value', [1 2]), ...
     'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.key({'a', 'b'}, 2, 'Values', [1 2]), ...
+% along: non-empty, distinct, 0-based
+verifyError(testCase, @() did2.build.covariate('x', [], 'Value', 1), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate('x', [0 0], 'Value', 1), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate('x', -1, 'Value', 1), 'did2:build:ruleViolated');
+% origin+spacing and document run along ONE dimension
+verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Origin', 0, 'Spacing', 1), ...
+    'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Document', 0), ...
+    'did2:build:ruleViolated');
+% cyclic only on a numeric covariate along one dimension
+verifyError(testCase, @() did2.build.covariate('x', 0, 'Term', {'a'}, 'Cyclic', true), ...
+    'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Value', ones(2), 'Cyclic', true), ...
+    'did2:build:ruleViolated');
+c = did2.build.covariate('direction', 0, 'Value', [0 90 180 270], 'Unit', 'degree', 'Cyclic', true);
+verifyTrue(testCase, c.cyclic);
+% a unit only on a number, a count or a matrix
+verifyError(testCase, @() did2.build.covariate('x', 0, 'Term', {'a'}, 'Unit', 'second'), ...
+    'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.covariate({'a', 'b'}, 0, 'Value', [1 2]), ...
     'did2:build:typeMismatch');
 end
 
-function testKeyLabelsFromNames(testCase)
-k = did2.build.key('channel', 2, 'Labels', {'A1', 'A2'});
-verifyFalse(testCase, k.regular);
-verifyEqual(testCase, {k.term.name}, {'A1', 'A2'});
+function testCovariatesAreCheckedAgainstTheDimensions(testCase)
+% covariate_along (an index past the dimensions) and covariate_shape (the
+% extents of the along dimensions; a matrix: those, then its own shape) are
+% checked where the dimensions are: when the document is built.
+sid = testCase.TestData.sid;
+v = did2.build.valueCell('voltage', zeros(1, 6));
+common = {'TimeReferenceIds', {newId()}, 'SessionId', sid, 'ValueKind', 'voltage'};
+dims = did2.build.list(did2.build.dimension('time', 3), did2.build.dimension('channel', 2));
+build = @(covs) did2.build.statement('observation', newId(), 'voltage', v, ...
+    'Dimensions', dims, 'Covariates', covs, 'DatumOrder', 'F', common{:});
+% along out of range
+verifyError(testCase, @() build(did2.build.covariate('x', 2, 'Value', [1 2])), ...
+    'did2:build:ruleViolated');
+% one dimension: n values
+verifyError(testCase, @() build(did2.build.covariate('time', 0, 'Value', [1 2])), ...
+    'did2:build:ruleViolated');
+build(did2.build.covariate('time', 0, 'Value', [0 1 2]));
+% two dimensions: their extents, in `along`'s order
+doc = build(did2.build.covariate('good', [0 1], 'Logical', true(3, 2)));
+verifyEqual(testCase, size(doc.data.covariates.logical), [3 2]);
+verifyError(testCase, @() build(did2.build.covariate('good', [1 0], 'Logical', true(3, 2))), ...
+    'did2:build:ruleViolated');
+build(did2.build.covariate('good', [1 0], 'Logical', true(2, 3)));
+% matrix: a whole array at each position -- leading extents, then its shape
+doc = build(did2.build.covariate('rgb', 1, 'Matrix', ones(2, 3)));
+verifyEqual(testCase, size(doc.data.covariates.matrix), [2 3]);
+verifyError(testCase, @() build(did2.build.covariate('rgb', 1, 'Matrix', ones(3, 3))), ...
+    'did2:build:ruleViolated');
+% document: along one dimension (n checked against the other document in batch)
+build(did2.build.covariate('encounter', 0, 'Document', 0));
+% a bare dimension (no covariate) is allowed
+did2.build.statement('observation', newId(), 'voltage', v, 'Dimensions', dims, ...
+    'DatumOrder', 'F', common{:});
 end
 
-function testKeyPositionsFromAnotherDocument(testCase)
-% did-schema 2026-10-05: a key takes its positions from a data_type document
-% through `key_id`, chosen by the key's `positions_from` (was key_labels_id /
-% labels_from). Position k is entry k of that document's value.
-k = did2.build.key('encounter', 3, 'PositionsFrom', 0);
-verifyFalse(testCase, k.regular);
-verifyEqual(testCase, k.positions_from, 0);
-verifyError(testCase, @() did2.build.key('encounter', 3, 'PositionsFrom', 0, ...
-    'Values', [1 2 3]), 'did2:build:ruleViolated');
+function testCovariateDocumentPositionsFromAnotherDocument(testCase)
+% A covariate takes its positions from a value document through `key_id`,
+% chosen by its `document` (was a key's `positions_from`). Position k is
+% entry k of that document's value.
 cache = did2.schema.cache.shared();
 data = jsondecode(fileread(fullfile(cache.schemaPath, 'data.json')));
 assumeTrue(testCase, any(strcmp({data.depends_on.name}, 'key_id')), ...
-    'the loaded schema predates key_id (did-schema 2026-10-05)');
+    'the loaded schema has no key_id edge');
 list = newId();
 doc = did2.build.statement('observation', newId(), 'voltage', ...
-    did2.build.valueCell('voltage', [0.01 0.02 0.03]), 'Keys', k, ...
+    did2.build.valueCell('voltage', [0.01 0.02 0.03]), ...
+    'Dimensions', did2.build.dimension('encounter', 3), ...
+    'Covariates', did2.build.covariate('encounter', 0, 'Document', 0), ...
     'KeyIds', {list}, 'TimeReferenceIds', {newId()}, ...
     'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage');
 hit = doc.depends_on(strcmp({doc.depends_on.name}, 'key_id'));
 verifyEqual(testCase, {hit.document_id}, {list});
+verifyEqual(testCase, doc.data.covariates.document, 0);
 end
 
 function testListMergesRaggedEntries(testCase)
-keys = did2.build.list( ...
-    did2.build.key('time', 10, 'Origin', 0, 'Spacing', 1, 'Unit', 'second'), ...
-    did2.build.key('channel', 2, 'Values', [1 2]));
-verifyEqual(testCase, size(keys), [1 2]);
-verifyEmpty(testCase, keys(2).origin, 'absent fields are [] -- the schema cache''s absent marker');
-verifyEmpty(testCase, keys(1).quantity);
-verifyEqual(testCase, keys(2).quantity.value, [1 2]);
+covs = did2.build.list( ...
+    did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 1, 'Unit', 'second'), ...
+    did2.build.covariate('channel', 1, 'Value', [1 2]));
+verifyEqual(testCase, size(covs), [1 2]);
+verifyEmpty(testCase, covs(2).origin, 'absent fields are [] -- the schema cache''s absent marker');
+verifyEmpty(testCase, covs(1).quantity);
+verifyEqual(testCase, covs(2).quantity.value, [1 2]);
 verifyEqual(testCase, size(did2.build.list()), [0 0]);
 end
 
@@ -425,7 +505,8 @@ function testStatementValidates(testCase)
 sid = testCase.TestData.sid;
 doc = did2.build.statement('observation', newId(), 'voltage', ...
     did2.build.valueCell('voltage', [0.01 0.02 0.03]), ...
-    'Keys', did2.build.key('time', 3, 'Unit', 'second', 'Origin', 0, 'Spacing', 0.1), ...
+    'Dimensions', did2.build.dimension('time', 3), ...
+    'Covariates', did2.build.covariate('time', 0, 'Unit', 'second', 'Origin', 0, 'Spacing', 0.1), ...
     'Conditions', did2.build.condition('temperature', 'Quantity', 22, 'Unit', 'celsius'), ...
     'MethodParameters', did2.build.parameter('gain', 'Value', 100), ...
     'TimeReferenceIds', {newId()}, 'InstrumentId', newId(), 'SessionId', sid, 'ValueKind', 'voltage');
@@ -450,11 +531,25 @@ function testStatementCrossFieldChecks(testCase)
 sid = testCase.TestData.sid;
 v = did2.build.valueCell('voltage', 0.01);
 common = {'TimeReferenceIds', {newId()}, 'SessionId', sid};
-% one variable used as both a key and a condition
+% one variable used as both a covariate and a condition (variable_once)
 verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
-    v, 'Keys', did2.build.key('time', 1, 'Values', 0), ...
+    v, 'Dimensions', did2.build.dimension('time', 1), ...
+    'Covariates', did2.build.covariate('time', 0, 'Value', 0), ...
     'Conditions', did2.build.condition('time', 'Quantity', 1), common{:}, 'ValueKind', 'voltage'), ...
     'did2:build:ruleViolated');
+% ... or twice among the covariates
+verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
+    v, 'Dimensions', did2.build.dimension('time', 1), ...
+    'Covariates', did2.build.list(did2.build.covariate('time', 0, 'Value', 0), ...
+    did2.build.covariate('time', 0, 'Count', 0)), common{:}, 'ValueKind', 'voltage'), ...
+    'did2:build:ruleViolated');
+% a dimension's term may repeat (a channel x channel matrix), and a
+% covariate's variable may be its dimension's term
+did2.build.statement('observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', zeros(1, 4)), ...
+    'Dimensions', did2.build.list(did2.build.dimension('channel', 2), did2.build.dimension('channel', 2)), ...
+    'Covariates', did2.build.covariate('channel', 0, 'Term', {'A', 'B'}), ...
+    'DatumOrder', 'F', common{:}, 'ValueKind', 'voltage');
 % inline parameters AND a method_parameters_id
 verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
     v, 'MethodParameters', did2.build.parameter('gain', 'Value', 1), ...
@@ -463,9 +558,9 @@ verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage'
 verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
     v, 'MethodParameters', did2.build.list(did2.build.parameter('gain', 'Value', 1), ...
     did2.build.parameter('gain', 'Value', 2)), common{:}, 'ValueKind', 'voltage'), 'did2:build:ruleViolated');
-% `chunk` belongs to a sampled_body's keys only
+% `chunk` belongs to a sampled_body's dimensions only
 verifyError(testCase, @() did2.build.statement('observation', newId(), 'voltage', ...
-    v, 'Keys', did2.build.key('time', 1, 'Values', 0, 'Chunk', 1), common{:}, 'ValueKind', 'voltage'), ...
+    v, 'Dimensions', did2.build.dimension('time', 1, 'Chunk', 1), common{:}, 'ValueKind', 'voltage'), ...
     'did2:build:ruleViolated');
 % data_type only for plain-array bytes (Jess Haley, 2026-10-21): data_body
 % true alone does not need one (the body may be an opaque_body, whose format
@@ -900,15 +995,24 @@ end
 
 function testSampledBody(testCase)
 sid = testCase.TestData.sid;
-keys = did2.build.list( ...
-    did2.build.key('time', 100, 'Unit', 'second', 'Origin', 0, 'Spacing', 0.01, 'Chunk', 50), ...
-    did2.build.key('channel', 2, 'Labels', {'A1', 'A2'}));
-body = did2.build.sampledBody(newId(), keys, 'DatumOrder', 'F', 'ByteOrder', 'little', ...
-    'Chunks', 2, 'SessionId', sid);
+dims = did2.build.list(did2.build.dimension('time', 100, 'Chunk', 50), ...
+    did2.build.dimension('channel', 2));
+covs = did2.build.list( ...
+    did2.build.covariate('time', 0, 'Unit', 'second', 'Origin', 0, 'Spacing', 0.01), ...
+    did2.build.covariate('channel', 1, 'Term', {'A1', 'A2'}));
+body = did2.build.sampledBody(newId(), dims, 'Covariates', covs, 'DatumOrder', 'F', ...
+    'ByteOrder', 'little', 'Chunks', 2, 'SessionId', sid);
+% the dimensions may also be given by name
+same = did2.build.sampledBody(newId(), 'Dimensions', dims, 'Covariates', covs, ...
+    'DatumOrder', 'F', 'ByteOrder', 'little', 'Chunks', 2, 'SessionId', sid);
+verifyEqual(testCase, same.data, body.data);
+verifyError(testCase, @() did2.build.sampledBody(newId(), dims, 'Dimensions', dims, ...
+    'DatumOrder', 'F', 'SessionId', sid), 'did2:build:ambiguousField');
 verifyEqual(testCase, body.document_class.class_name, 'sampled_body');
 verifyEqual(testCase, body.files.file_list, {'body_data_0', 'body_data_1'});
 % `datum_order` sits on the block the schema declares it on: `data`, beside
-% `keys`, since did-schema #88 (D-5); `sampled_body` before. The other block
+% `dimensions` (`keys` before AMENDMENT 6), since did-schema #88 (D-5);
+% `sampled_body` before. The other block
 % does not carry it. Both shapes: testBuildDatumOrder.
 where = did2.schema.cache.shared().datumOrderBlock();
 verifyNotEmpty(testCase, where, 'the loaded schema declares datum_order nowhere');
@@ -916,13 +1020,15 @@ verifyEqual(testCase, body.(where).datum_order, 'F');
 other = setdiff({'data', 'sampled_body'}, {where});
 verifyFalse(testCase, isfield(body.(other{1}), 'datum_order'), ...
     sprintf('datum_order is declared on `%s`, so `%s` must not carry it', where, other{1}));
-verifyEqual(testCase, numel(body.data.keys), 2);
+verifyEqual(testCase, numel(body.data.dimensions), 2);
+verifyEqual(testCase, numel(body.data.covariates), 2);
+verifyEqual(testCase, [body.data.covariates.along], [0 1]);
+verifyFalse(testCase, isfield(body.data, 'keys') || isfield(body.data, 'complete'));
 end
 
 function testSampledBodyChecks(testCase)
 sid = testCase.TestData.sid;
-twoKeys = did2.build.list(did2.build.key('time', 2, 'Values', [0 1]), ...
-    did2.build.key('channel', 1, 'Values', 1));
+twoKeys = did2.build.list(did2.build.dimension('time', 2), did2.build.dimension('channel', 1));
 verifyError(testCase, @() did2.build.sampledBody(newId(), twoKeys, 'SessionId', sid), ...
     'did2:build:ruleViolated');
 verifyError(testCase, @() did2.build.sampledBody(newId(), [], 'SessionId', sid), ...
@@ -951,13 +1057,23 @@ verifyTrue(testCase, ~isfield(body.data_body.format, 'name') || isempty(body.dat
 verifyEqual(testCase, body.files.file_list, {'body_data_0'});
 verifyError(testCase, @() did2.build.opaqueBody(newId(), '', 'SessionId', testCase.TestData.sid), ...
     'did2:build:missingField');
+% optional: the array as the format presents it (dimensions + covariates)
+body = did2.build.opaqueBody(newId(), 'EDAM:format_3591', ...
+    'Dimensions', did2.build.list(did2.build.dimension('y', 4), did2.build.dimension('x', 5)), ...
+    'Covariates', did2.build.covariate('x', 1, 'Origin', 0, 'Spacing', 1), ...
+    'DatumOrder', 'C', 'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, numel(body.data.dimensions), 2);
+verifyEqual(testCase, body.data.covariates.along, 1);
+verifyError(testCase, @() did2.build.opaqueBody(newId(), 'EDAM:format_3591', ...
+    'Dimensions', did2.build.dimension('y', 4, 'Chunk', 2), 'SessionId', testCase.TestData.sid), ...
+    'did2:build:ruleViolated');
 end
 
 function testBodiesKeepAGivenIdAndMintOneOtherwise(testCase)
 % Lightsheet point 11: a body can keep the id of the source document it
 % migrates from ('Id', as did2.build.document's); '' mints a new one.
 sid = testCase.TestData.sid;
-keys = did2.build.list(did2.build.key('time', 10, 'Unit', 'second', 'Origin', 0, 'Spacing', 1));
+keys = did2.build.dimension('time', 10);
 id = newId();
 body = did2.build.sampledBody(newId(), keys, 'SessionId', sid, 'Id', id);
 verifyEqual(testCase, body.base.id, id);

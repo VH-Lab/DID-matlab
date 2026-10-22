@@ -57,9 +57,10 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %                          DECIDED below). Empty label: no notes.
 %        data_type      <- dtype (jDatumType), source_data_type its spelling
 %        data_body      true: the values are in bodies, never inline
-%      The keys are NOT on the observation. did-schema `data.keys`: "with
-%      `data_body` true, each body carries the keys of its own array". They
-%      go on the store body here and on each level's sampled_body.
+%      The dimensions are NOT on the observation. did-schema `data.dimensions`:
+%      "with `data_body` true, each body carries the dimensions of its own
+%      array" (`keys` until data_body AMENDMENT 6). They go on the store body
+%      here and on each level's sampled_body.
 %   2. THE SOFTWARE ENTITY, `entity` with type `software`, named for the
 %      program that writes every v1 pyramid (point 5), always; plus a
 %      `text_assertion` 'version' about it carrying pipeline_version when that
@@ -79,13 +80,14 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %                       join (the resolveResponseParameters pattern: the
 %                       migrator re-homes the v1 edge, the pass follows it
 %                       and removes it).
-%        data.keys      the full-resolution array's keys (axes / shape /
+%        data.dimensions + data.covariates  the full-resolution array's
+%                       axes and their positions (axes / shape /
 %                       voxel size / translation / units / channel names
 %                       from this document), which only this document has.
 %                       Carried for EVERY pyramid (point 8, Jess 2026-10-14):
 %                       the pass copies the `t` unit and the channel names
-%                       onto each level's sampled_body keys, and checks the
-%                       z/y/x units. They become the store body's keys only
+%                       onto each level's sampled_body covariates, and checks
+%                       the z/y/x units. They become the store body's only
 %                       for an OME-Zarr source.
 %        the TAIL of statement.notes  for the store body's description:
 %                       the NGFF multiscales name, appended to the label
@@ -97,15 +99,15 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %                       transient; only the tail is.
 %      The edge and the notes tail are carried whenever the pyramid names a
 %      source (the tail only when pyramid_name is non-empty).
-%      The keys reach the STORE BODY only when its dtype is an NGFF typestring -- the
+%      The dimensions reach the STORE BODY only when its dtype is an NGFF typestring -- the
 %      writer-grounded sign that the source IS an OME-Zarr store. A SmartSPIM
 %      pyramid's source is a folder of raw TIFF slices; point 4 (Jess
 %      2026-10-14) makes it an unheld opaque_body of the observation too, in
-%      the same fold, with format TIFF (EDAM:format_3591), no keys and
+%      the same fold, with format TIFF (EDAM:format_3591), no dimensions and
 %      `redundant` false. The pass tells the two apart by the same NGFF rule,
 %      read off the observation's value.source_data_type.
 %      WITHOUT THE PASS (a bare v1_to_v2 call) the three stay on the
-%      observation: the source_file_id edge, the keys, and notes reading
+%      observation: the source_file_id edge, the dimensions and covariates, and notes reading
 %      '<label><newline>-- store body: NGFF multiscales name "<name>"'.
 %      Every DID-side harness and ndi.migrate.local run the pass.
 %
@@ -214,20 +216,21 @@ carried = {};
 if ~isempty(notes)
     carried = {'Notes', notes};
 end
-% The full-resolution keys are carried for EVERY pyramid (point 8): they hold
+% The full-resolution dimensions + covariates are carried for EVERY pyramid
+% (point 8): they hold
 % the per-axis units (the `t` unit among them) and the channel names, which no
-% level document has, and the batch pass copies them onto each level's keys.
+% level document has, and the batch pass copies them onto each level's covariates.
 % They reach the store body only for an OME-Zarr source (point 4). A pyramid
 % whose axes, shape and voxel size do not agree carries none rather than
-% failing: the keys are a convenience for the pass, not the observation.
+% failing: they are a convenience for the pass, not the observation.
 axesOrder = char(field(blk, 'axes_order', ''));
 try
     units = splitList(field(blk, 'axes_units', ''), numel(axesOrder));
     units = defaultSpaceUnits(units, axesOrder, char(field(blk, 'voxel_size_units', '')));
-    keys = jLightsheetKeys(axesOrder, field(blk, 'shape_level0', []), ...
+    [dims, covs] = jLightsheetAxes(axesOrder, field(blk, 'shape_level0', []), ...
         field(blk, 'voxel_size_level0', []), field(blk, 'translation_level0', []), ...
         units, splitList(field(blk, 'channel_names', ''), 0), []);
-    carried = [carried, {'Keys', keys}];
+    carried = [carried, {'Dimensions', dims, 'Covariates', covs}];
 catch
 end
 

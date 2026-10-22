@@ -117,7 +117,8 @@ verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0, ...
     'the pyramid migrator must not make a store body of its own');
 obs = pickById(out, v1.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), 'fref_store_1');
-verifyFalse(testCase, isempty(blockField(obs, 'keys')), 'the keys are carried');
+verifyFalse(testCase, isempty(blockField(obs, 'dimensions')), 'the dimensions are carried');
+verifyFalse(testCase, isempty(blockField(obs, 'covariates')), 'the covariates are carried');
 end
 
 function testTheStoreRecordBecomesTheObservationsUnheldBody(testCase)
@@ -183,7 +184,7 @@ if iscell(loc); loc = loc{1}; end
 verifyEqual(testCase, loc(1).location, '/data/stores/brain7.ome.zarr');
 verifyEqual(testCase, double(loc(1).ingest), 0);
 % the full-resolution keys moved onto the body
-keys = keyList(b.data.keys);
+keys = axisList(b.data);
 verifyEqual(testCase, cellfun(@(k) k.variable.name, keys, 'UniformOutput', false), ...
     {'time', 'channel', 'z', 'y', 'x'});
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 400 2048 2048]);
@@ -191,7 +192,7 @@ verifyEqual(testCase, labelNames(keys{2}.term), {'GCaMP6s', 'tdTomato'});
 % nothing transient left on the observation; the label stays as its notes
 obs = pickById(out, p.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), '');
-verifyTrue(testCase, isempty(blockField(obs, 'keys')));
+verifyTrue(testCase, isempty(blockField(obs, 'dimensions')));
 verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared', ...
     'Jess 2026-10-15: the label is the observation''s notes, permanently');
 ref = did2.validate.references(out.migrated, 'KnownIds', [{'subj_ls_1', 'elem_scope_1'}, ...
@@ -230,8 +231,8 @@ verifyEqual(testCase, edge(b, 'owner_id'), p.base.id);
 verifyEqual(testCase, b.data_body.format.node, 'EDAM:format_3591');
 verifyEqual(testCase, b.data_body.format.name, 'TIFF');
 verifyTrue(testCase, isfield(b.data_body, 'redundant') && isequal(b.data_body.redundant, false));
-verifyTrue(testCase, ~isfield(b, 'data') || ~isfield(b.data, 'keys') || isempty(b.data.keys), ...
-    'a TIFF folder body carries no keys');
+verifyTrue(testCase, ~isfield(b, 'data') || ~isfield(b.data, 'dimensions') || isempty(b.data.dimensions), ...
+    'a TIFF folder body carries no dimensions');
 verifyTrue(testCase, contains(b.data_body.description, 'folder of raw TIFF slices'));
 verifyTrue(testCase, contains(b.data_body.description, 'NGFF multiscales name "mean"'));
 info = b.files.file_info;
@@ -330,7 +331,7 @@ verifyEqual(testCase, rep.level_bodies_seen, 1);
 verifyEqual(testCase, rep.level_bodies_completed, 1);
 verifyEqual(testCase, rep.level_unit_disagreements, 0);
 b = onlyBody(testCase, out);
-keys = keyList(b.data.keys);
+keys = axisList(b.data);
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 t = keys{strcmp(names, 'time')};
 % units are OM terms (Jess 2026-10-21), node and English label from om-2.0.rdf
@@ -345,7 +346,8 @@ verifyEqual(testCase, labelNames(c.term), {'GCaMP6s', 'tdTomato'});
 verifyFalse(testCase, isfield(c, 'quantity') && ~isempty(c.quantity), ...
     'named positions replace the index positions');
 obs = pickById(out, 'pyr_ls_1');
-verifyTrue(testCase, isempty(blockField(obs, 'keys')), 'the carried keys are removed');
+verifyTrue(testCase, isempty(blockField(obs, 'dimensions')), 'the carried dimensions are removed');
+verifyTrue(testCase, isempty(blockField(obs, 'covariates')), 'the carried covariates are removed');
 end
 
 function testAZUnitMismatchBetweenLevelAndPyramidIsCountedNotOverwritten(testCase)
@@ -357,7 +359,7 @@ verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, rep.level_unit_disagreements, 1, ...
     'z: the pyramid says millimeter, the level micrometer');
 b = onlyBody(testCase, out);
-keys = keyList(b.data.keys);
+keys = axisList(b.data);
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 z = keys{strcmp(names, 'z')};
 % the source's spelling, or on a schema where source_unit is a term
@@ -377,7 +379,7 @@ verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, rep.level_bodies_seen, 0);
 verifyEqual(testCase, rep.level_bodies_without_pyramid, 1);
 b = onlyBody(testCase, out);
-keys = keyList(b.data.keys);
+keys = axisList(b.data);
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 t = keys{strcmp(names, 'time')};
 verifyFalse(testCase, isfield(t, 'unit') && ~isempty(t.unit), 'nothing to complete it from');
@@ -395,12 +397,12 @@ p.lightsheetZarrPyramid.channel_names = '';
 out = runJ(p);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 obs = pickById(out, 'pyr_ls_1');
-keys = keyList(blockField(obs, 'keys'));
+keys = axisList(obsAxes(obs));
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 verifyEqual(testCase, names, {'time', 'channel', 'z', 'y', 'x'});
 for i = [1 3 4 5]
     k = keys{i};
-    verifyTrue(testCase, isequal(k.regular, true), [names{i} ': regular']);
+    verifyTrue(testCase, isRegular(k), [names{i} ': regular']);
     verifyEqual(testCase, double(k.origin.value), 0, [names{i} ': origin 0']);
     verifyEqual(testCase, double(k.spacing.value), 1, [names{i} ': spacing 1']);
     verifyFalse(testCase, isfield(k, 'unit') && ~isempty(k.unit) ...
@@ -408,7 +410,7 @@ for i = [1 3 4 5]
     verifyFalse(testCase, isfield(k, 'quantity') && ~isempty(k.quantity), [names{i} ': no quantity']);
 end
 c = keys{2};
-verifyFalse(testCase, isfield(c, 'regular') && isequal(c.regular, true), 'channel stays categorical');
+verifyFalse(testCase, isRegular(c), 'channel stays categorical');
 verifyEqual(testCase, double(c.quantity.value(:).'), [0 1], 'two channels, no names: index positions');
 
 lvl = levelV1(0, 'none', 'raw', 4, 'manifest');
@@ -418,9 +420,9 @@ verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, rep.level_unit_disagreements, 0, ...
     'unit-less regular axes must not trip the z/y/x unit check');
 b = onlyBody(testCase, out);
-lk = keyList(b.data.keys);
+lk = axisList(b.data);
 z = lk{3};
-verifyTrue(testCase, isequal(z.regular, true));
+verifyTrue(testCase, isRegular(z));
 verifyEqual(testCase, double(z.spacing.value), 1);
 end
 
@@ -456,7 +458,7 @@ p.lightsheetZarrPyramid.axes_units = 'millisecond,,nanometer,millimeter,centimet
 out = runJ(p);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 obs = pickById(out, 'pyr_ls_1');
-keys = keyList(blockField(obs, 'keys'));
+keys = axisList(obsAxes(obs));
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 expect = {'time', 'om:second-Time', 'second', 'millisecond', 'om:millisecond-Time', 'millisecond'; ...
           'z',    'om:metre',       'metre',  'nanometer',   'om:nanometre',        'nanometre'; ...
@@ -546,7 +548,7 @@ verifyEqual(testCase, rep.store_carriers_stripped, 1);
 verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0);
 obs = pickById(out, 'pyr_ls_1');
 verifyEqual(testCase, edge(obs, 'source_file_id'), '');
-verifyTrue(testCase, isempty(blockField(obs, 'keys')));
+verifyTrue(testCase, isempty(blockField(obs, 'dimensions')));
 end
 
 function testASmartSpimPyramidHasNoStoreBody(testCase)
@@ -562,7 +564,7 @@ verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0);
 obs = pickById(out, v1.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), 'fref_store_1', ...
     'point 4: a SmartSPIM source is joined too (its TIFF folder)');
-verifyFalse(testCase, isempty(blockField(obs, 'keys')), ...
+verifyFalse(testCase, isempty(blockField(obs, 'dimensions')), ...
     'point 8: the keys ride along (transient) so the pass can complete the levels');
 verifyEqual(testCase, obs.value.data_type, 'uint16');
 verifyFalse(testCase, isfield(obs.value, 'source_data_type') ...
@@ -646,13 +648,15 @@ verifyEqual(testCase, edge(b, 'owner_id'), 'pyr_ls_1');
 verifyEqual(testCase, b.(did2.schema.cache.shared().datumOrderBlock()).datum_order, 'C');
 verifyEqual(testCase, b.sampled_body.byte_order, 'little');
 verifyEqual(testCase, b.sampled_body.fill_value, '0');
-verifyTrue(testCase, isequal(b.data.complete, true));
+% `complete` was removed by data_body AMENDMENT 6 [no complete]: a level is
+% a dense grid, and says so by having no row dimension
+verifyFalse(testCase, isfield(b.data, 'complete'));
 verifyFalse(testCase, isfield(b.data_body, 'compression') && ~isempty(b.data_body.compression), ...
     'codec raw means no compression');
 verifyFalse(testCase, isfield(b.data_body, 'redundant') && isequal(b.data_body.redundant, true), ...
     'level 0 is the measurement, not redundant');
 verifyFalse(testCase, isfield(b.data_body, 'conditions') && ~isempty(b.data_body.conditions));
-keys = keyList(b.data.keys);
+keys = axisList(b.data);
 verifyEqual(testCase, cellfun(@(k) double(k.chunk), keys), [1 1 64 256 256]);
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 400 2048 2048]);
 end
@@ -1066,13 +1070,35 @@ s = did2.build.document('entity', struct('type', 'session', 'local_identifier', 
     'SessionId', 'sess_ls_1', 'Validate', false);
 end
 
-function keys = keyList(k)
-arguments
-    k % keys as a struct array or a cell
+function keys = axisList(blk)
+%AXISLIST One entry per dimension of BLK (a `data` block), in array order:
+%   the covariate along exactly that dimension (data_body AMENDMENT 6; the
+%   former key's positions), with the dimension's own `n`, `chunk` and term
+%   (`dimTerm`) added. A dimension with no covariate gives {variable: its
+%   term, n, chunk}. jLightsheetAxes writes one covariate per dimension, its
+%   variable the dimension's term, so `variable.name` names the axis.
+ax = did2.unittest.helpers.axesOf(blk);
+keys = cell(1, numel(ax));
+for i = 1:numel(ax)
+    k = ax(i).cov;
+    if isempty(k); k = struct('variable', ax(i).term); end
+    k.n = ax(i).n;
+    k.chunk = ax(i).chunk;
+    k.dimTerm = ax(i).term;
+    keys{i} = k;
+end
 end
 
-if isstruct(k); keys = num2cell(k); else; keys = k; end
-keys = reshape(keys, 1, []);
+function blk = obsAxes(obs)
+%OBSAXES The carried dimensions + covariates of a pyramid observation, as a block.
+blk = struct('dimensions', {blockField(obs, 'dimensions')}, ...
+    'covariates', {blockField(obs, 'covariates')});
+end
+
+function tf = isRegular(k)
+%ISREGULAR origin + spacing present (AMENDMENT 6 removed `regular`; their
+%   presence says it).
+tf = isfield(k, 'origin') && ~isempty(k.origin) && isfield(k, 'spacing') && ~isempty(k.spacing);
 end
 
 function names = labelNames(labels)

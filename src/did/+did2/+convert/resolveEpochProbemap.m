@@ -2159,18 +2159,23 @@ end
 end
 
 function o = timeKeyOrigin(b)
-% the origin (seconds) of a body's `time` key, [] when it has none
+% the origin (seconds) of a body's time axis, [] when it has none.
+% did-schema data_body AMENDMENT 6 (`keys` until 2026-10-22): found as the
+% COVARIATE WHOSE VARIABLE is 'time' and that carries `origin` (pyraview's
+% regular time covariate, along its time dimension); the dimension itself is
+% not consulted, since the origin lives only on the covariate.
 o = [];
-if ~isstruct(b) || ~isfield(b, 'data') || ~isstruct(b.data) || ~isfield(b.data, 'keys'); return; end
-ks = b.data.keys;
-if iscell(ks); ks = [ks{:}]; end
-for k = 1:numel(ks)
-    v = ks(k).variable;
+if ~isstruct(b) || ~isfield(b, 'data') || ~isstruct(b.data) || ~isfield(b.data, 'covariates'); return; end
+cs = b.data.covariates;
+if iscell(cs); cs = [cs{:}]; end
+for k = 1:numel(cs)
+    if ~isfield(cs(k), 'variable'); continue; end
+    v = cs(k).variable;
     nm = '';
     if isstruct(v) && isfield(v, 'name'); nm = char(v.name); end
-    if strcmpi(nm, 'time') && isfield(ks(k), 'origin') && isstruct(ks(k).origin) ...
-            && isfield(ks(k).origin, 'value') && ~isempty(ks(k).origin.value)
-        o = double(ks(k).origin.value);
+    if strcmpi(nm, 'time') && isfield(cs(k), 'origin') && isstruct(cs(k).origin) ...
+            && isfield(cs(k).origin, 'value') && ~isempty(cs(k).origin.value)
+        o = double(cs(k).origin.value);
         return;
     end
 end

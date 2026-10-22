@@ -1,8 +1,11 @@
 function bodies = control_stimulus_ids(preBody)
 %CONTROL_STIMULUS_IDS Brainstorm-J migrator: did_v1 control_stimulus_ids ->
-%   `control_designation` (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus]
-%   2026-08-08). A DERIVED annotation of WHICH presented trials are the control
-%   reference, computed by the tuning_response app. It is NOT baked into the
+%   NO V2 DOCUMENT (passed through for NDI's second pass, which folds it into
+%   the presentation's `control condition` covariate; [control as covariate],
+%   Jess Haley 2026-10-22). HISTORY: `control_designation`
+%   (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08). A
+%   DERIVED annotation of WHICH presented trials are the control reference,
+%   computed by the tuning_response app. It is NOT baked into the
 %   immutable stimulus body: it REFERENCES the presentation (the timed_sequence
 %   body-of-record, id-preserved through the second-pass decompose, so the edge
 %   resolves either way) and carries the derivation method; marked derived_from
@@ -97,11 +100,18 @@ blk = struct();
 if isfield(preBody, 'control_stimulus_ids') && isstruct(preBody.control_stimulus_ids)
     blk = preBody.control_stimulus_ids;
 end
-% did-schema #88 deleted `control_designation` (#73 review item 67): the
-% control stimulus is said by the item the presentation becomes, in NDI's
-% second pass (`value.control_item`). There is no pass-1 target, so the
-% document PASSES THROUGH under its v1 tombstone (stable/control_stimulus_ids)
-% for that pass to consume -- as `stimulus_presentation` does. Reported.
+% Decided by Jess Haley, 2026-10-22 [control as covariate] (did-schema
+% V_eta_stimulus_response_model_plan.md; supersedes item 67's
+% `value.control_item`, and [control record is a calculation]): a v1
+% control_stimulus_ids document becomes NO V2 DOCUMENT. Its content is the
+% `control condition` covariate (XCO:0000099, `logical`, true where the
+% presentation was a control; an all-NaN record gives all false) along the
+% presentation dimension of the item value the presentation becomes, and that
+% fold is NDI's second pass, which has the presentation in hand. Pass 1 has
+% no target, so the document PASSES THROUGH under its v1 tombstone
+% (stable/control_stimulus_ids) for that pass to consume and remove -- as
+% `stimulus_presentation` does. The responses that named it no longer do:
+% stimulus_response_scalar puts only the presentation in `input_id`.
 bodies = {preBody};
 end
 

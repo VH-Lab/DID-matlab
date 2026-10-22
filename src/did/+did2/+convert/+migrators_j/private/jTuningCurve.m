@@ -1,8 +1,9 @@
-function [value, keys, leafFields, dropped] = jTuningCurve(srcBlk, family)
+function [value, valueAxes, leafFields, dropped] = jTuningCurve(srcBlk, family)
 %JTUNINGCURVE A v1 tuning-curve result block as did-schema #88's
-%   `tuning_curve` value, its `keys`, and the named calculation's own blocks.
+%   `tuning_curve` value, its dimensions and covariates, and the named
+%   calculation's own blocks.
 %
-%   [VALUE, KEYS, LEAFFIELDS, DROPPED] = jTuningCurve(SRCBLK, FAMILY)
+%   [VALUE, AXES, LEAFFIELDS, DROPPED] = jTuningCurve(SRCBLK, FAMILY)
 %
 %   SRCBLK is the v1 result block (`orientation_direction_tuning`,
 %   `contrast_tuning`, `spatial_frequency_tuning`, `temporal_frequency_tuning`,
@@ -17,17 +18,21 @@ function [value, keys, leafFields, dropped] = jTuningCurve(srcBlk, family)
 %       Per-trial arrays take the stimulus dimension FIRST and the trial
 %       dimension last (audit 2, D3: "individual / raw_individual add one
 %       trailing trial dimension"); v1 stored them trials x stimuli.
-%     KEYS   the stimulus dimensions (audit 2, D3: `independent_variables[]`
-%       is dropped, the dimensions are the value's keys). One independent
-%       variable: one key, its positions the values. SEVERAL (a tuningcurve
-%       over spatial x temporal frequency, a speed tuning): the curve is
-%       sampled at n points of a d-dimensional space, which is ONE array
-%       dimension of length n, so ONE key whose variable names the d
-%       variables and whose positions are n LABELS, each naming its point
-%       ('spatial frequency 0.05, temporal frequency 1') -- a CONSERVATIVE
-%       CHOICE recorded with the port: the schema has no multi-variable key
-%       and `quantity.value` must hold exactly n numbers, so labels are the
-%       one form that keeps every position.
+%     AXES   struct {dimensions, covariates} of the stimulus dimension, or []
+%       (audit 2, D3: `independent_variables[]` is dropped, the dimensions
+%       are the value's; did-schema data_body AMENDMENT 6, Jess Haley
+%       2026-10-22 [covariates], `keys` before). One independent variable:
+%       one dimension, its term the variable, and one `quantity` covariate
+%       along it holding the values. SEVERAL (a tuningcurve over spatial x
+%       temporal frequency, a speed tuning): the curve is sampled at n points
+%       of a d-dimensional space, which is ONE array dimension of length n
+%       (its term a label naming the d variables, 'spatial frequency x
+%       temporal frequency', as the former key's variable did), with ONE
+%       `quantity` covariate PER VARIABLE along it -- the long format
+%       AMENDMENT 6 gives sparse data. Until 2026-10-22 the schema had no
+%       multi-variable key, so the n points were n LABELS ('spatial frequency
+%       0.05, temporal frequency 1'); the covariates keep the same numbers as
+%       numbers.
 %     LEAFFIELDS   the named calculation's blocks: `significance` and
 %       `model_fit[]` (tuning_curve_calculation); `circular_statistics`
 %       (orientation/direction, v1 `vector`); `interpolated_values`
@@ -51,7 +56,7 @@ arguments
 end
 
 value = struct();
-keys = [];
+valueAxes = [];
 leafFields = struct();
 dropped = {};
 if ~isstruct(srcBlk) || ~isscalar(srcBlk)
@@ -59,7 +64,7 @@ if ~isstruct(srcBlk) || ~isscalar(srcBlk)
 end
 
 if strcmp(family, 'stimulus')
-    [value, keys, dropped] = rawCurve(srcBlk);
+    [value, valueAxes, dropped] = rawCurve(srcBlk);
     return;
 end
 
@@ -86,7 +91,7 @@ for k = 1:numel(axesNames)
         used{end+1} = nm; %#ok<AGROW>
     end
 end
-keys = makeKeys(present, cols);
+valueAxes = makeAxes(present, cols);
 [value, used] = takeArr(value, used, 'mean', tc, {'mean'}, false);
 [value, used] = takeArr(value, used, 'stddev', tc, {'stddev'}, false);
 [value, used] = takeArr(value, used, 'stderr', tc, {'stderr'}, false);
@@ -173,7 +178,7 @@ end
 
 % =============================================================================
 
-function [value, keys, dropped] = rawCurve(st)
+function [value, valueAxes, dropped] = rawCurve(st)
 % v1 `stimulus_tuningcurve` (tuningcurve_calc, and the raw pre-calculator curve)
 value = struct();
 labels = getf(st, {'independent_variable_label'});
@@ -196,7 +201,7 @@ if numel(names) < numel(cols)
         names{d} = sprintf('independent variable %d', d);
     end
 end
-keys = makeKeys(names(1:numel(cols)), cols);
+valueAxes = makeAxes(names(1:numel(cols)), cols);
 used = {};   % the field names AS SPELLED in the document (snake or camelCase)
 [~, nm] = getfn(st, {'independent_variable_label'}); used{end+1} = nm;
 [~, nm] = getfn(st, {'independent_variable_value'}); used{end+1} = nm;
@@ -219,31 +224,32 @@ rest = setdiff(fieldnames(st), used);
 dropped = prefixed('stimulus_tuningcurve.', reshape(rest, 1, []));
 end
 
-function keys = makeKeys(names, cols)
-keys = [];
+function valueAxes = makeAxes(names, cols)
+%MAKEAXES The value's stimulus dimension and the covariates along it.
+%   One column: dimension term = the variable, one quantity covariate.
+%   Several columns of one length n: ONE dimension of n points (its term the
+%   variables joined, 'a x b'), one quantity covariate per variable along it.
+%   Ragged columns: no honest dimension; the values stay, without one.
+valueAxes = [];
 if isempty(cols)
-    return;
-end
-if isscalar(cols)
-    v = cols{1};
-    keys = did2.build.key(jLabel(strrep(names{1}, '_', ' ')), numel(v), 'Values', v');
     return;
 end
 n = numel(cols{1});
 if any(cellfun(@numel, cols) ~= n)
-    return;   % ragged: no honest key; the values stay, unkeyed
+    return;   % ragged: no honest dimension; the values stay, without one
 end
-M = [cols{:}];
-label = strjoin(strrep(names, '_', ' '), ' x ');
-pos = cell(1, n);
-for i = 1:n
-    parts = cell(1, numel(cols));
-    for d = 1:numel(cols)
-        parts{d} = sprintf('%s %s', strrep(names{d}, '_', ' '), shortestText(M(i, d)));
-    end
-    pos{i} = strjoin(parts, ', ');
+labels = cellfun(@(nm) strrep(nm, '_', ' '), names, 'UniformOutput', false);
+if isscalar(cols)
+    dimTerm = jLabel(labels{1});
+else
+    dimTerm = jLabel(strjoin(labels, ' x '));
 end
-keys = did2.build.key(jLabel(label), n, 'Labels', pos);
+covs = cell(1, numel(cols));
+for d = 1:numel(cols)
+    covs{d} = did2.build.covariate(jLabel(labels{d}), 0, 'Value', reshape(cols{d}, 1, []));
+end
+valueAxes = struct('dimensions', did2.build.dimension(dimTerm, n), ...
+    'covariates', did2.build.list(covs{:}));
 end
 
 function [entries, dropped] = fitEntries(blk, blockName)

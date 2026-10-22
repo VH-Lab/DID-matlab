@@ -575,7 +575,10 @@
 %         [tuning_curve_calculation, contrast_tuning]) + a session anchor + minted
 %         `software` and `runtime_environment` entities.
 %     control_stimulus_ids
-%         Brainstorm-J migrator: did_v1 control_stimulus_ids -> `control_designation`
+%         Brainstorm-J migrator: did_v1 control_stimulus_ids -> no V2 document
+%         (passed through; NDI's second pass folds it into the presentation's
+%         `control condition` covariate, [control as covariate] 2026-10-22).
+%         HISTORY: -> `control_designation`
 %         (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08). A
 %         DERIVED annotation of WHICH presented trials are the control reference,
 %         computed by the tuning_response app. It is NOT baked into the immutable

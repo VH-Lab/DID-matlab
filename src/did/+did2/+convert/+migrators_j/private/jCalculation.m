@@ -32,7 +32,9 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %     operating_system_id / interpreter_id   from the same `app` block
 %                        (jRunEntities; REQUIRED / optional)
 %     method             {term: METHODNAME, parameters: v1 input_parameters}
-%     value, keys        the result (jTuningCurve / jContrastSensitivityValue)
+%     value, dimensions, covariates   the result (jTuningCurve /
+%                        jContrastSensitivityValue; `keys` until data_body
+%                        AMENDMENT 6)
 %     + the named class's own blocks (significance, model_fit[],
 %       circular_statistics, interpolated_values)
 %
@@ -82,13 +84,13 @@ end
 leafFields = struct();
 dropped = {};
 if strcmp(family, 'csf')
-    [value, keys, dropped] = jContrastSensitivityValue(srcBlk);
+    [value, valueAxes, dropped] = jContrastSensitivityValue(srcBlk);
 elseif strcmp(family, 'rf')
     % receptive_field.value declares no sub-fields: the volume is in bodies
     value = struct();
-    keys = [];
+    valueAxes = [];
 else
-    [value, keys, leafFields, dropped] = jTuningCurve(srcBlk, family);
+    [value, valueAxes, leafFields, dropped] = jTuningCurve(srcBlk, family);
 end
 
 anchor = jSessionAnchor(preBody, 'during');
@@ -117,7 +119,8 @@ if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
 end
 leaf = jStatement(preBody, leafClass, subjectId, ...
     jLabel(variableName), value, ...
-    'Keys', keys, ...
+    'Dimensions', axisPart(valueAxes, 'dimensions'), ...
+    'Covariates', axisPart(valueAxes, 'covariates'), ...
     'TimeReferenceIds', {anchor.base.id}, ...
     'InputIds', inputs, ...
     'SoftwareId', swId, ...
@@ -171,5 +174,13 @@ for i = 1:numel(fns)
 end
 if isfield(preBody, 'input_parameters') && isstruct(preBody.input_parameters)
     p = preBody.input_parameters;
+end
+end
+
+function v = axisPart(valueAxes, name)
+%AXISPART AXES.(NAME), or [] when the result has no dimension.
+v = [];
+if isstruct(valueAxes) && isfield(valueAxes, name)
+    v = valueAxes.(name);
 end
 end

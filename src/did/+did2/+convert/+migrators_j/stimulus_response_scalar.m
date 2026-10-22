@@ -27,12 +27,15 @@ function bodies = stimulus_response_scalar(preBody)
 %   MAPPING (the signed mapping, with its three revisions, in #88's names)
 %     element_id                     -> entity_id (element.m keeps ids)
 %     stimulator_id                  -> instrument_id
-%     stimulus_presentation_id,
-%     stimulus_control_id            -> input_id, both, UNORDERED (#88
-%                                       declares `ordered: false`). No separate
-%                                       control edge: readers tell the two apart
-%                                       by the referenced document's kind
-%                                       (Decided by Jess Haley, 2026-10-21, "a").
+%     stimulus_presentation_id       -> input_id, the ONLY input
+%     stimulus_control_id            -> NOT CARRIED: the control record
+%                                       (v1 control_stimulus_ids) becomes no
+%                                       V2 document; its content is the
+%                                       presentation's `control condition`
+%                                       covariate, folded by NDI's second pass
+%                                       ([control as covariate], Jess Haley,
+%                                       2026-10-22, superseding [control input
+%                                       told apart by its document])
 %     stimulus_response_scalar_parameters_id
 %                                    -> method_id (see THE PARAMETERS below)
 %     response_type                  -> value.harmonic ('mean' 0, 'F<n>' n)
@@ -44,9 +47,11 @@ function bodies = stimulus_response_scalar(preBody)
 %                                       tuning's). Both parts of both pairs are
 %                                       kept: migration is lossless for complex
 %                                       responses (Jess Haley, 2026-10-21).
-%     responses.stimid               -> keys[1]: variable 'stimulus' (a label),
-%                                       n readings, positions the stimid values
-%                                       (revision 1: an axis, not a condition)
+%     responses.stimid               -> dimension 0: term 'stimulus' (a label),
+%                                       n readings; the stimid values a
+%                                       `stimulus` covariate along it (revision
+%                                       1: an axis, not a condition; data_body
+%                                       AMENDMENT 6, a key before)
 %     stimulus_response.element_epochid -> the time anchor (revision 2): a
 %                                       relative_time_reference onto the epoch
 %                                       document when one exists
@@ -78,8 +83,8 @@ function bodies = stimulus_response_scalar(preBody)
 %        -> folding would drop the string. This is the live branch on every
 %        did_v1 document until did2.convert.epochMint stamps `epoch_id`
 %        (epochMint arms this family and re-calls this migrator).
-%     5. `stimid` present with a length other than the readings' -> the key
-%        would misdescribe the value.
+%     5. `stimid` present with a length other than the readings' -> the
+%        dimension would misdescribe the value.
 %   With no epoch string at all, the fold runs on the 'during' session anchor.
 %
 %   1 -> 3 (calculation + anchor + software entity).
@@ -109,7 +114,7 @@ if ~isempty(epochString) && isempty(epochDocId)
     return;
 end
 
-% GUARD 5 -- the reading key must describe the value it indexes.
+% GUARD 5 -- the reading dimension must describe the value it indexes.
 stimid = numAny(resp, {'stimid'});
 if ~isempty(stimid) && numel(stimid) ~= numel(realPart)
     bodies = {preBody};
@@ -130,10 +135,13 @@ if ~isempty(ci); control.imaginary = ci; end
 if ~isempty(fieldnames(control)); value.control = control; end
 if isempty(value.imaginary); value = rmfield(value, 'imaginary'); end
 
-keys = [];
+% one `stimulus` dimension over the readings, the stimid values a covariate
+% along it (data_body AMENDMENT 6; the former `stimulus` key)
+dims = [];
+covs = [];
 if ~isempty(stimid)
-    keys = did2.build.key(jLabel('stimulus'), numel(stimid), ...
-        'Values', double(stimid(:))');
+    dims = did2.build.dimension(jLabel('stimulus'), numel(stimid));
+    covs = did2.build.covariate(jLabel('stimulus'), 0, 'Value', double(stimid(:))');
 end
 
 % The time anchor: the epoch (revision 2) when its document exists, else the
@@ -153,11 +161,15 @@ if isempty(swId)
     [software, swId] = jSoftware(RESPONSE_METHOD, '', '', jSid(preBody), jStamp(preBody));
 end
 
+% The presentation ONLY. Decided by Jess Haley, 2026-10-22 [control as
+% covariate] (did-schema V_eta_stimulus_response_model_plan.md): a v1
+% control_stimulus_ids document becomes no V2 document -- NDI's second pass
+% folds it into the presentation's `control condition` covariate -- and
+% "responses point at the presentation only". The v1 `stimulus_control_id`
+% edge is therefore not carried (it named the control record, which is gone).
 inputs = {};
-for nm = {'stimulus_presentation_id', 'stimulus_control_id'}
-    v = jDependency(preBody, nm{1});
-    if ~isempty(v); inputs{end+1} = v; end %#ok<AGROW>
-end
+v = jDependency(preBody, 'stimulus_presentation_id');
+if ~isempty(v); inputs{end+1} = v; end
 
 methodId = jDependency(preBody, 'stimulus_response_scalar_parameters_id');
 methodOpt = {};
@@ -170,7 +182,7 @@ end
 calc = jStatement(preBody, 'calculation', subjectId, ...
     jLabel('stimulus response'), value, ...
     'ValueKind', 'harmonic_component', ...
-    'Keys', keys, ...
+    'Dimensions', dims, 'Covariates', covs, ...
     'TimeReferenceIds', {anchor.base.id}, ...
     'InstrumentId', jDependency(preBody, 'stimulator_id'), ...
     'InputIds', inputs, ...

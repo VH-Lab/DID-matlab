@@ -196,16 +196,24 @@ end
 
 function testTheFiveV1EdgesAreAllRehomed(testCase)
 % The point of the repair: V_eta dropped stimulator_id and stimulus_control_id
-% and inverted the parameters edge. All five come back, under J names.
+% and inverted the parameters edge. Four come back, under J names; the fifth,
+% the control record, does NOT: [control as covariate] (Jess Haley,
+% 2026-10-22) makes a v1 control_stimulus_ids document no V2 document, and
+% "responses point at the presentation only".
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findHarmonicCalc(testCase, out);
 b    = leaf.toStruct();
 
 verifyEqual(testCase, depValue(b, 'entity_id'),           'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
-% BOTH the presentation and the control record, in the UNORDERED input_id
-% (Jess Haley, 2026-10-21, "a"): compared as a set, no position claimed.
-verifyEqual(testCase, inputSet(b), sort({'pres_b671ff', 'ctrl_20e84c'}));
+% INVERTED 2026-10-22: ONLY the presentation in input_id. Until then both
+% the presentation and the control record ([control input told apart by its
+% document], Jess Haley 2026-10-21, "a"); superseded by [control as
+% covariate]: the control record becomes no document, so nothing may point
+% at it.
+verifyEqual(testCase, inputSet(b), {'pres_b671ff'});
+verifyFalse(testCase, ismember('ctrl_20e84c', inputSet(b)), ...
+    'the control record is not an input: it becomes no V2 document');
 verifyEqual(testCase, depValue(b, 'method_id'), 'param_77c19b');
 
 % the anchor is a real sibling document, not a dangling string. With the epoch
@@ -305,13 +313,15 @@ function testStimidIsTheReadingKeyNotACondition(testCase)
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findHarmonicCalc(testCase, out);
 s    = leaf.toStruct();
-k = s.data.keys;
+% data_body AMENDMENT 6: the reading DIMENSION (term 'stimulus', n the
+% reading count) with the stimid values a `stimulus` covariate along it
+k = did2.unittest.helpers.axesOf(s);
 verifyEqual(testCase, numel(k), 1);
-verifyEqual(testCase, k.variable.name, 'stimulus');
+verifyEqual(testCase, k.term.name, 'stimulus');
 verifyEqual(testCase, k.n, 6);
 verifyEqual(testCase, numel(s.harmonic_component.value.real), 6);
-verifyFalse(testCase, k.regular);
-verifyEqual(testCase, k.quantity.value(:)', [1 2 3 1 2 3]);
+verifyEqual(testCase, k.cov.variable.name, 'stimulus');
+verifyEqual(testCase, k.cov.quantity.value(:)', [1 2 3 1 2 3]);
 verifyFalse(testCase, isfield(s.data, 'conditions') && ~isempty(s.data.conditions));
 % the presentation is still the first input
 verifyTrue(testCase, ismember('pres_b671ff', inputSet(s)));
@@ -535,7 +545,7 @@ verifyEmpty(testCase, out.quarantine);
 % than fabricated into the batch. It is listed SEPARATELY here so that a reader
 % can see it is our own second pass's product and not an NDI-side id.
 report = did2.validate.references(out.migrated, 'KnownIds', ...
-    [{'elem_9c027e', 'stim_5daa03', 'pres_b671ff', 'ctrl_20e84c'}, {epochDocId()}, ...
+    [{'elem_9c027e', 'stim_5daa03', 'pres_b671ff'}, {epochDocId()}, ...
      {'sess_0001'}]);
 % ('sess_0001' is the session document: #88 gives every document a required
 % `session_id` edge, and the session migrates in its own right like the element.)

@@ -282,11 +282,13 @@ end
 % `keys` the ngrid's axes (NAME, the pre-#73 base.name, is not written: V_eta
 % documents write no base.name). The caller's own body fields arrive in
 % opts.BodyOptions.
-axesArray = ngridAxes(dataDim, axisLabels, axisCoords);
+% did-schema data_body AMENDMENT 6: each axis is a dimension, its positions a
+% covariate along it (the former keys).
+[dims, covs] = jDimCov(ngridAxes(dataDim, axisLabels, axisCoords));
 % DATUM ORDER 'F': an ngrid's bytes are a MATLAB array written with fwrite, so
 % column-major -- unless the caller states otherwise in opts.BodyOptions.
 o = jOpts(preBody, 'DatumOrder', 'F', opts.BodyOptions{:});
-body = did2.build.sampledBody(char(statementId), axesArray, o{:});
+body = did2.build.sampledBody(char(statementId), dims, 'Covariates', covs, o{:});
 end
 
 % ===================== the coordinates test ================================
@@ -480,7 +482,6 @@ for k = 1:numel(dataDim)
         % there are no stored positions at all, or they have been checked to be
         % MATLAB's default index vector, which starts at 1.
         entry = jAxis(jOntologyTerm('', nm), dataDim(k), ...
-            'regular', true, ...
             'origin',  struct('value', 1, 'source_value', 1), ...
             'spacing', struct('value', 1, 'source_value', 1));
     else
@@ -489,12 +490,11 @@ for k = 1:numel(dataDim)
         % has neither. `source_values` repeats them: nothing was converted, and
         % saying so explicitly is cheaper than a reader wondering.
         entry = jAxis(jOntologyTerm('', nm), dataDim(k), ...
-            'regular', false, ...
             'quantity', struct('value', v, 'source_value', v));
     end
     entries{end+1} = entry; %#ok<AGROW>
 end
-ax = did2.build.list(entries{:});
+ax = entries;   % axis specs, in array order (jDimCov builds them)
 end
 
 function tf = isDefaultIndexVector(v)

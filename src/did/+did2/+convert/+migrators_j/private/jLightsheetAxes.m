@@ -1,13 +1,17 @@
-function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, channelNames, chunks)
-%JLIGHTSHEETKEYS The `keys` of a lightsheet array, one per axis it HAS.
+function [dims, covs] = jLightsheetAxes(axesOrder, shape, scale, translation, units, channelNames, chunks)
+%JLIGHTSHEETAXES The `dimensions` and `covariates` of a lightsheet array.
 %
-%   KEYS = jLightsheetKeys(AXESORDER, SHAPE, SCALE, TRANSLATION, UNITS,
-%   CHANNELNAMES, CHUNKS) builds one did2.build.key per character of AXESORDER
-%   (NDI's lightsheet writers store it as the axis names joined, 'tczyx' or
-%   'czyx': makePyramid.m joinAxisNames), in that order, so keys[k] IS array
-%   dimension k (did-schema `data.keys`). A dimension the store does not have
-%   gets no key (#73 lightsheet L1 rule 1): the key list is read off the axes
-%   the document names, never padded to five.
+%   [DIMS, COVS] = jLightsheetAxes(AXESORDER, SHAPE, SCALE, TRANSLATION, UNITS,
+%   CHANNELNAMES, CHUNKS) builds one did2.build.dimension per character of
+%   AXESORDER (NDI's lightsheet writers store it as the axis names joined,
+%   'tczyx' or 'czyx': makePyramid.m joinAxisNames), in that order, so
+%   dimensions[k] IS array axis k, and one did2.build.covariate along each,
+%   holding that axis's positions (did-schema data_body AMENDMENT 6, Jess
+%   Haley 2026-10-22 [covariates]; one `keys` entry per axis until then: the
+%   key's variable is the dimension's term AND the covariate's variable). A
+%   dimension the store does not have is not written (#73 lightsheet L1 rule
+%   1): the list is read off the axes the document names, never padded to
+%   five. (jLightsheetKeys until 2026-10-22.)
 %
 %   SHAPE        per-axis extent, in AXESORDER (the writer's `shape_level0` /
 %                `shape`). Must have one entry per axis, or this errors.
@@ -17,10 +21,10 @@ function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, cha
 %                is the NGFF default for an absent translation -- the format's
 %                own rule, not a value invented here.
 %   UNITS        cellstr, one unit name per axis ('' when the source gives none).
-%   CHANNELNAMES cellstr of channel names; used as the `c` key's `term` only
-%                when there is exactly one per channel.
-%   CHUNKS       per-axis chunk extent, or [] (a sampled_body's keys only:
-%                did-schema rule key_chunk_sampled_only).
+%   CHANNELNAMES cellstr of channel names; used as the `c` covariate's `term`
+%                only when there is exactly one per channel.
+%   CHUNKS       per-axis chunk extent, or [] (a sampled_body's dimensions
+%                only: did-schema rule dimension_chunk_sampled_only).
 %
 %   THE VARIABLES ARE NAMES WITH NO NODE: 'time', 'channel', 'z', 'y', 'x' --
 %   the proposed names of DID-schema review/73/veta_term_worksheet_73.csv rows
@@ -41,7 +45,7 @@ function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, cha
 %
 %   A space/time axis with no scale has no physical spacing to state, so its
 %   positions are the integer indices 0..n-1, written in the REGULAR form:
-%   `regular` true, origin 0, spacing 1, NO unit (Jess 2026-10-15: the same
+%   origin 0, spacing 1, NO unit (Jess 2026-10-15: the same
 %   positions as `quantity` 0..n-1, in the smaller form; the absent unit says
 %   they are indices, not a measured extent). The translation is not used
 %   there: with no scale it has no unit to be read in. The `c` axis is
@@ -66,7 +70,7 @@ shape = double(shape(:).');
 if nAx == 0 || numel(shape) ~= nAx
     error('did2:migrators_j:lightsheet:badAxes', ...
         ['The axes "%s" and the shape %s do not match: one extent per ' ...
-         'axis is needed to state the array''s keys.'], axesOrder, mat2str(shape));
+         'axis is needed to state the array''s dimensions.'], axesOrder, mat2str(shape));
 end
 scale = double(scale(:).');
 translation = double(translation(:).');
@@ -95,7 +99,8 @@ if numel(units) < nAx
     units(end+1:nAx) = {''};
 end
 
-entries = cell(1, nAx);
+dimList = cell(1, nAx);
+covList = cell(1, nAx);
 for k = 1:nAx
     n = shape(k);
     opts = {};
@@ -116,9 +121,9 @@ for k = 1:nAx
     end
     if strcmp(kind, 'channel')
         if numel(channelNames) == n && n > 0
-            opts = {'Labels', reshape(channelNames, 1, [])};
+            opts = {'Term', reshape(channelNames, 1, [])};
         else
-            opts = {'Values', 0:(n - 1)};
+            opts = {'Value', 0:(n - 1)};
         end
     elseif isempty(scale)
         % index positions 0..n-1, regular and unit-less (Jess 2026-10-15)
@@ -141,12 +146,15 @@ for k = 1:nAx
                 'SourceOrigin', translation(k), 'SourceSpacing', scale(k)};
         end
     end
+    dimOpts = {};
     if ~isempty(chunks)
-        opts = [opts, {'Chunk', chunks(k)}]; %#ok<AGROW>
+        dimOpts = {'Chunk', chunks(k)};
     end
-    entries{k} = did2.build.key(variable, n, opts{:});
+    dimList{k} = did2.build.dimension(variable, n, dimOpts{:});
+    covList{k} = did2.build.covariate(variable, k - 1, opts{:});
 end
-keys = did2.build.list(entries{:});
+dims = did2.build.list(dimList{:});
+covs = did2.build.list(covList{:});
 end
 
 function t = unitTerm(name)

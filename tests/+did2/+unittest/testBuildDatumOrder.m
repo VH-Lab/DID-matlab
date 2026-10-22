@@ -2,8 +2,9 @@ function tests = testBuildDatumOrder
 %TESTBUILDDATUMORDER Which block declares `datum_order`, as the schema says.
 %
 %   did-schema PR #88 (Haley audit D-5, signed 2026-10-20) moved `datum_order`
-%   from `sampled_body` up to `data`, beside `keys`: it describes whichever
-%   array the keys do, an inline value or a body's own; empty means F.
+%   from `sampled_body` up to `data`, beside `keys` (`dimensions` since
+%   data_body AMENDMENT 6): it describes whichever array the dimensions do, an
+%   inline value or a body's own; empty means F.
 %   did-schema `main` and the pinned v_eta-pre73 still declare it on
 %   `sampled_body`. did2.build places a field by its declaration, so
 %   sampledBody is unchanged; a caller that writes or reads the block directly
@@ -55,7 +56,7 @@ end
 
 function useShape(testCase, where)
 % Point the shared schema cache at a throwaway directory holding `data`
-% (declaring `keys`) and `sampled_body` (declaring `byte_order`), with
+% (declaring `dimensions`) and `sampled_body` (declaring `byte_order`), with
 % `datum_order` declared on WHERE ('data', 'sampled_body' or 'none').
 arguments
     testCase
@@ -68,7 +69,7 @@ leaf = @(name, type) struct('name', name, 'type', type, 'mustBeNonEmpty', false,
     'mustBeScalar', true, 'blank_value', '', 'default_value', '', 'constraints', struct());
 order = leaf('datum_order', 'char');
 order.constraints = struct('enum', {{'C', 'F'}});
-dataFields = {leaf('keys', 'structure')};
+dataFields = {leaf('dimensions', 'structure')};
 bodyFields = {leaf('byte_order', 'char')};
 switch where
     case 'data'

@@ -282,7 +282,8 @@ end
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).
 o = jOpts(preBody, 'DatumOrder', 'F');
-body = did2.build.sampledBody(stackId, imageKeys(dimOrder, dimSize, params), o{:});
+[dims, covs] = imageAxes(dimOrder, dimSize, params);
+body = did2.build.sampledBody(stackId, dims, 'Covariates', covs, o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software];
@@ -311,7 +312,9 @@ tf = contains(l, 'mask') || contains(l, 'each pixel''s value is the identifier')
     || contains(l, 'label map');
 end
 
-function keys = imageKeys(dimOrder, dimSize, params)
+function [dims, covs] = imageAxes(dimOrder, dimSize, params)
+% One dimension per stack axis, its positions (origin + spacing) a covariate
+% along it (data_body AMENDMENT 6; the former keys).
 unitList = splitScaleUnits(getCharField(params, 'dimension_scale_units'));
 names = splitScaleUnits(getCharField(params, 'dimension_labels'));
 entries = {};
@@ -323,17 +326,16 @@ for k = 1:numel(dimOrder)
         u = '';
         if k <= numel(unitList); u = unitList{k}; end
         entries{end+1} = jAxis(jOntologyTerm('', nm), dimSize(k), ...
-            'regular', true, 'source_unit', u, ...
+            'source_unit', u, ...
             'origin',  struct('value', 0, 'source_value', 0), ...
             'spacing', struct('value', sp, 'source_value', sp)); %#ok<AGROW>
     else
         entries{end+1} = jAxis(jOntologyTerm('', nm), dimSize(k), ...
-            'regular', true, ...
             'origin',  struct('value', 1, 'source_value', 1), ...
             'spacing', struct('value', 1, 'source_value', 1)); %#ok<AGROW>
     end
 end
-keys = did2.build.list(entries{:});
+[dims, covs] = jDimCov(entries);
 end
 
 function r = axisResolution(params, axisChar)

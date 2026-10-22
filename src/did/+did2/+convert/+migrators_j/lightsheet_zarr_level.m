@@ -42,16 +42,18 @@ function bodies = lightsheet_zarr_level(preBody)
 %     owner_id       <- lightsheetZarrPyramid_id (the pyramid's id, which
 %                       lightsheet_zarr_pyramid.m PRESERVES on its
 %                       observation)
-%     keys           one per axis of axes_order, each with its `chunk`
-%                       (jLightsheetKeys); the level's own shape, voxel size
-%                       and translation
+%     dimensions     one per axis of axes_order, each with its `chunk`,
+%     covariates     and one covariate along each holding its positions
+%                       (jLightsheetAxes; `keys` until data_body AMENDMENT 6);
+%                       the level's own shape, voxel size and translation
 %     datum_order    chunk_order ('C': the chunk bytes are C-order,
 %                       makePyramid.m readStoredChunk / padPermuteBytes)
 %     byte_order     the level's byte_order -- or the dtype typestring's own
 %                       ('<' / '>') where they disagree, which is reported by
 %                       an error rather than chosen; '' for one-byte types
 %     fill_value     the level's fill_value, as the literal the owner's
-%                       data_type reads; complete true (a dense grid)
+%                       data_type reads (a dense grid; `complete` was
+%                       removed by AMENDMENT 6)
 %     compression    'blosc' for codec 'blosc' / 'blosc-zstd'; absent for
 %                       'raw'; codec_params DROPPED (L4: write-time settings;
 %                       a Blosc chunk header records shuffle and typesize)
@@ -84,18 +86,19 @@ function bodies = lightsheet_zarr_level(preBody)
 %     (V_eta) document to the bytes chunk.bin_1 named on the v1 one.
 %   * THE t UNIT AND THE CHANNEL NAMES -- DECIDED (Jess 2026-10-14, lightsheet
 %     point 8). The level document carries only `voxel_size_units`
-%     (hard-coded 'micrometer'), so this migrator still writes the `t` key
-%     with no unit and the `c` key with index positions. The pyramid has the
+%     (hard-coded 'micrometer'), so this migrator still writes the `t`
+%     covariate with no unit and the `c` covariate with index positions. The pyramid has the
 %     per-axis `axes_units` and the `channel_names`; lightsheet_zarr_pyramid
-%     carries them on its observation (as its full-resolution keys, transient)
-%     and did2.convert.foldGenericFiles copies them onto the keys of EVERY
+%     carries them on its observation (as its full-resolution dimensions and
+%     covariates, transient) and did2.convert.foldGenericFiles copies them
+%     onto the covariates of EVERY
 %     sampled_body this level's owner_id names: `t` gets its unit, `c`'s
 %     positions are named by channel, and z/y/x units are CHECKED against the
 %     pyramid's -- a disagreement is counted (`level_unit_disagreements`), not
-%     overwritten. A level whose pyramid is not in the batch keeps its keys and
+%     overwritten. A level whose pyramid is not in the batch keeps its own and
 %     is counted (`level_bodies_without_pyramid`).
 %   * label, level (the index), chunk_grid, n_chunks_stored,
-%     chunk_index_origin are not carried: each is derivable (from the keys and
+%     chunk_index_origin are not carried: each is derivable (from the dimensions and
 %     the series) or was a write-time aid. subject_id and source_file_id are
 %     not carried either -- the owner observation names the subject.
 %
@@ -153,7 +156,7 @@ for k = 1:numel(axesOrder)
         units{k} = char(field(blk, 'voxel_size_units', ''));
     end
 end
-keys = jLightsheetKeys(axesOrder, field(blk, 'shape', []), ...
+[dims, covs] = jLightsheetAxes(axesOrder, field(blk, 'shape', []), ...
     field(blk, 'voxel_size', []), field(blk, 'translation', []), ...
     units, {}, field(blk, 'chunks', []));
 
@@ -166,7 +169,6 @@ isMeasurement = double(field(blk, 'level', 0)) == 0;
 
 opts = {'DatumOrder', char(field(blk, 'chunk_order', 'C')), ...
         'FillValue', fillLiteral(field(blk, 'fill_value', [])), ...
-        'Complete', true, ...
         'SessionId', sessionId, 'CreationTimestamp', created, ...
         'Id', baseId(preBody), ...   % the level's own id (point 11)
         'Validate', false};
@@ -185,7 +187,7 @@ if ~isMeasurement
     end
 end
 
-body = did2.build.sampledBody(ownerId, keys, opts{:});
+body = did2.build.sampledBody(ownerId, dims, 'Covariates', covs, opts{:});
 body.files = files;      % the level's own files, renamed (see header)
 bodies = {body};
 end

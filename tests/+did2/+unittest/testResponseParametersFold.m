@@ -222,13 +222,14 @@ end
 
 function testTheOtherFourEdgesAreUntouched(testCase)
 % This pass removes exactly ONE edge. The four the migrator RECOVERED --
-% instrument_id (the stimulator, T7) and derived_from_1/_2 (presentation and
-% control), plus subject_id -- must survive it, or the resolver has undone the
-% repair the migrator exists for.
+% instrument_id (the stimulator, T7) and the input (the presentation ONLY,
+% since [control as covariate], Jess Haley 2026-10-22: the control record
+% becomes no document), plus subject_id -- must survive it, or the resolver
+% has undone the repair the migrator exists for.
 [~, leaf] = foldPair(testCase, 'F1');
 verifyEqual(testCase, depValue(leaf, 'entity_id'),      'elem_9c027e');
 verifyEqual(testCase, depValue(leaf, 'instrument_id'),  'stim_5daa03');
-verifyEqual(testCase, inputSet(leaf), sort({'pres_b671ff', 'ctrl_20e84c'}));
+verifyEqual(testCase, inputSet(leaf), {'pres_b671ff'});
 verifyNotEmpty(testCase, depValue(leaf, 'time_reference_id'));
 end
 

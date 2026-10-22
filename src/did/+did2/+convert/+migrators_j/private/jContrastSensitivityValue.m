@@ -1,4 +1,4 @@
-function [value, keys, dropped] = jContrastSensitivityValue(block)
+function [value, valueAxes, dropped] = jContrastSensitivityValue(block)
 %JCONTRASTSENSITIVITYVALUE Reshape the v1 contrast_sensitivity_calc result bag into the
 %   `contrast_sensitivity` value cell. Sibling of jTuningCurveValue; same principle,
 %   different independent axis.
@@ -19,8 +19,9 @@ function [value, keys, dropped] = jContrastSensitivityValue(block)
 %   VALUE {model_fit[] {model, coefficients[] {variable, value}, goodness,
 %   sensitivity, relative_max_gain, empirical_c50, saturation_index},
 %   interpolated_values {c50}, significance {...}, response_type (a bound
-%   term)}; KEYS one key along the spatial frequencies the per-SF arrays are
-%   indexed by; DROPPED the v1 fields with no home (`is_modulated_response`).
+%   term)}; AXES {dimensions, covariates}: one `spatial frequency` dimension
+%   the per-SF arrays are indexed by, the frequencies a quantity covariate
+%   along it (data_body AMENDMENT 6; one key before); DROPPED the v1 fields with no home (`is_modulated_response`).
 %   A Naka-Rushton variant's v1 parameters are a parameters x SF matrix; each
 %   element is one coefficient entry named '<model> parameter k, spatial
 %   frequency j' -- every number kept, a CONSERVATIVE CHOICE recorded.
@@ -30,12 +31,14 @@ arguments
 end
 
 value = struct();
-keys = [];
+valueAxes = [];
 dropped = {};
 if ~isstruct(block) || ~isscalar(block); return; end
 sf = getf(block, {'spatial_frequencies'});
 if isnumeric(sf) && ~isempty(sf)
-    keys = did2.build.key(jLabel('spatial frequency'), numel(sf), 'Values', double(sf(:))');
+    valueAxes = struct( ...
+        'dimensions', did2.build.dimension(jLabel('spatial frequency'), numel(sf)), ...
+        'covariates', did2.build.covariate(jLabel('spatial frequency'), 0, 'Value', double(sf(:))'));
 end
 rt = getf(block, {'response_type'});
 if isstring(rt) && isscalar(rt); rt = char(rt); end

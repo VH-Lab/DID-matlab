@@ -556,10 +556,12 @@ verifyEqual(testCase, rep.pyraview_observations_retired, 1);
 levels = bodiesOfClass(out, 'sampled_body');
 verifyEqual(testCase, numel(levels), 2);
 for i = 1:numel(levels)
-    k = levels{i}.data.keys;
-    names = arrayfun(@(a) char(a.variable.name), k, 'UniformOutput', false);
+    % data_body AMENDMENT 6: the time dimension, found by its term; the start
+    % is the origin of the covariate along it
+    k = did2.unittest.helpers.axesOf(levels{i});
+    names = arrayfun(@(a) char(a.term.name), k, 'UniformOutput', false);
     t = k(strcmp(names, 'time'));
-    verifyEqual(testCase, double(t.origin.value), 2, 'the start offset is the time key origin');
+    verifyEqual(testCase, double(t.cov.origin.value), 2, 'the start offset is the time covariate''s origin');
 end
 end
 

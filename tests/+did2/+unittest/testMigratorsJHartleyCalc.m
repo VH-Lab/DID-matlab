@@ -245,38 +245,42 @@ function testEachPlaneBodyDescribesOnePlaneAndNotTheStack(testCase)
 % THE ARITHMETIC THE SIGNATURE TURNS ON: data_dim is [200 200 36 2] and sums to
 % 438, while `coordinates` has 436 values -- so the length-2 dimension has NO
 % coordinates, which is the writer saying in the data that it is not an axis.
-% Two bodies of three keys each, never one body with a fourth key of length 2.
+% Two bodies of three dimensions each, never one body with a fourth of length 2.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 planes = planeBodies(out);
 verifyEqual(testCase, numel(planes), 2);
 for k = 1:numel(planes)
-    ax = planes{k}.data.keys;
+    ax = did2.unittest.helpers.axesOf(planes{k});
     verifyEqual(testCase, numel(ax), 3, ...
-        'three keys per plane -- the trailing 2 is a plane count, not a key');
+        'three dimensions per plane -- the trailing 2 is a plane count, not a dimension');
     verifyEqual(testCase, [ax.n], [200 200 36]);
 end
 end
 
 function testTheLagAxisCarriesItsValuesRatherThanASpacing(testCase)
-% THE COORDINATE CARRY. The lag key is `regular = false` with the stored
-% doubles in `quantity`; the two index keys stay regular because their
+% THE COORDINATE CARRY. The lag covariate is a `quantity` of the stored
+% doubles; the two index covariates stay origin+spacing because their
 % coordinates ARE 1..200 and `n` already says so. NOT A STYLISTIC CHOICE: 6 of
 % the 36 stored lags differ at the ulp from -0.1 + k*0.01.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-ax = planeBodies(out); ax = ax{1}.data.keys;
-verifyEqual(testCase, logical([ax.regular]), [true true false]);
-verifyEqual(testCase, ax(3).quantity.value(:), realLagVector());
+ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
+regular = arrayfun(@(a) isfield(a.cov, 'origin') && ~isempty(a.cov.origin), ax);
+verifyEqual(testCase, regular, [true true false]);
+verifyEqual(testCase, ax(3).cov.quantity.value(:), realLagVector());
 end
 
 function testTheLagAxisIsNamedAndTheTwoSpatialAxesAreNotGuessed(testCase)
-% The lag key is named on POSITIVE EVIDENCE (its coordinates equal
+% The lag dimension is named on POSITIVE EVIDENCE (its coordinates equal
 % `hartley_calc.input_parameters.T` in 210 of 210). Nothing distinguishes X
 % from Y, so they stay positional: a guess recorded in a queryable `variable`
 % is a guess recorded as a fact.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-ax = planeBodies(out); ax = ax{1}.data.keys;
+ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
 verifyEqual(testCase, ...
-    arrayfun(@(a) char(a.variable.name), ax, 'UniformOutput', false), ...
+    arrayfun(@(a) char(a.term.name), ax, 'UniformOutput', false), ...
+    {'axis_1', 'axis_2', 'lag'});
+verifyEqual(testCase, ...
+    arrayfun(@(a) char(a.cov.variable.name), ax, 'UniformOutput', false), ...
     {'axis_1', 'axis_2', 'lag'});
 end
 
@@ -326,14 +330,15 @@ out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 sb = spikeBody(out);
 assertNotEmpty(testCase, sb);
 verifyEqual(testCase, depValueOf(sb, 'owner_id'), 'hc_1');
-ax = sb.data.keys;
+ax = did2.unittest.helpers.axesOf(sb);
 verifyEqual(testCase, numel(ax), 1);
-verifyEqual(testCase, char(ax.variable.name), 'time');
-verifyFalse(testCase, logical(ax.regular));
+verifyEqual(testCase, char(ax.term.name), 'time');
+verifyEqual(testCase, char(ax.cov.variable.name), 'time');
+verifyTrue(testCase, ~isfield(ax.cov, 'origin') || isempty(ax.cov.origin));
 verifyEqual(testCase, ax.n, 5);
-verifyEqual(testCase, ax.quantity.value(:), [0.106; 0.31; 0.55; 0.9; 1.4]);
+verifyEqual(testCase, ax.cov.quantity.value(:), [0.106; 0.31; 0.55; 0.9; 1.4]);
 % FINDING, 2026-10-21, NOT FIXED HERE: the spike train has no bytes -- the
-% times ARE the key's positions -- yet did2.build.sampledBody declares its
+% times ARE the time covariate's positions -- yet did2.build.sampledBody declares its
 % default file series member `body_data_0` on every body (bodyFiles.m), so
 % this body names a file nothing will ever hold. Pinned as it is, so a change
 % either way is seen; whether a keys-only body should declare no file is a

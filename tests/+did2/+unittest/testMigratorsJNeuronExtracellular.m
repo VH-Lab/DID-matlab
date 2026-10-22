@@ -173,13 +173,19 @@ end
 % ===================== the axes ============================================
 
 function testTheAxesAreBothPresentAndInSourceDimensionOrder(testCase)
-% UPDATED for #88: the axes are the statement's data.keys.
+% UPDATED for #88: the axes are the statement's data.keys; data_body
+% AMENDMENT 6: its data.dimensions, each with a covariate along it.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'calculation+voltage').data.keys;
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyEqual(testCase, numel(ax), 2);
 verifyEqual(testCase, [ax.n], [21 32]);
-verifyEqual(testCase, arrayfun(@(a) a.variable.name, ax, 'UniformOutput', false), ...
+verifyEqual(testCase, arrayfun(@(a) a.term.name, ax, 'UniformOutput', false), ...
     {'time', 'channel'});
+% the mechanical port of a key: the covariate along a dimension names the
+% same term as the dimension
+verifyEqual(testCase, arrayfun(@(a) a.cov.variable.name, ax, 'UniformOutput', false), ...
+    {'time', 'channel'});
+verifyEqual(testCase, [ax.nCov], [1 1]);
 end
 
 
@@ -187,15 +193,15 @@ function testTheTimeAxisIsRegularWithTheMeasuredOriginAndSpacing(testCase)
 % UPDATED for #88: the time key's source unit is the registry term for 's'
 % (om:second-Time, 'second'); no canonical unit is stated.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'calculation+voltage').data.keys;
-verifyTrue(testCase, logical(ax(1).regular));
-verifyEqual(testCase, ax(1).origin.value,         -0.00025, 'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).origin.source_value,  -0.00025, 'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).spacing.value,         5e-05,   'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).spacing.source_value,  5e-05,   'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).source_unit.name, 'second');
-verifyFalse(testCase, isfield(ax(1), 'quantity') && ~isempty(ax(1).quantity), ...
-    'a regular key stores no coordinates -- origin+spacing generate them');
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
+verifyNotEmpty(testCase, ax(1).cov.origin, 'regular: origin + spacing (AMENDMENT 6 removed `regular`)');
+verifyEqual(testCase, ax(1).cov.origin.value,         -0.00025, 'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.origin.source_value,  -0.00025, 'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.spacing.value,         5e-05,   'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.spacing.source_value,  5e-05,   'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.source_unit.name, 'second');
+verifyFalse(testCase, isfield(ax(1).cov, 'quantity') && ~isempty(ax(1).cov.quantity), ...
+    'a regular covariate stores no coordinates -- origin+spacing generate them');
 end
 
 
@@ -204,23 +210,23 @@ v1 = neuronExtracellularV1();
 jitter = [0; 0; 0.0004; zeros(18, 1)];       % one sample displaced
 v1.neuron_extracellular.waveform_sample_times = realTimebase() + jitter;
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'calculation+voltage').data.keys;
-verifyFalse(testCase, logical(ax(1).regular));
-verifyEqual(testCase, ax(1).quantity.value(:), realTimebase() + jitter);
-verifyFalse(testCase, isfield(ax(1), 'origin') && ~isempty(ax(1).origin), ...
-    'an irregular key has no origin -- it has a quantity');
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
+verifyTrue(testCase, ~isfield(ax(1).cov, 'origin') || isempty(ax(1).cov.origin));
+verifyEqual(testCase, ax(1).cov.quantity.value(:), realTimebase() + jitter);
+verifyFalse(testCase, isfield(ax(1).cov, 'origin') && ~isempty(ax(1).cov.origin), ...
+    'an irregular covariate has no origin -- it has a quantity');
 end
 
 
 function testTheChannelAxisIsAnIndexAxisWithNoUnit(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'calculation+voltage').data.keys;
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyEqual(testCase, ax(2).n, 32);
-verifyTrue(testCase, logical(ax(2).regular));
-verifyEqual(testCase, ax(2).origin.value, 1);
-verifyEqual(testCase, ax(2).spacing.value, 1);
-verifyTrue(testCase, ~isfield(ax(2), 'unit') || isempty(ax(2).unit));
-verifyTrue(testCase, ~isfield(ax(2), 'source_unit') || isempty(ax(2).source_unit));
+verifyNotEmpty(testCase, ax(2).cov.origin);
+verifyEqual(testCase, ax(2).cov.origin.value, 1);
+verifyEqual(testCase, ax(2).cov.spacing.value, 1);
+verifyTrue(testCase, ~isfield(ax(2).cov, 'unit') || isempty(ax(2).cov.unit));
+verifyTrue(testCase, ~isfield(ax(2).cov, 'source_unit') || isempty(ax(2).cov.source_unit));
 end
 
 
@@ -233,7 +239,7 @@ verifyEqual(testCase, numel(value), 672, ...
     'DENOMINATOR: 21 time samples x 32 channels; a short array is a silent drop');
 verifyEqual(testCase, [value.source_value], 1:672, ...
     'column-major -- reshape(values,[21 32]) must invert w(:)');
-ax = pick(out, 'calculation+voltage').data.keys;
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyEqual(testCase, prod([ax.n]), numel(value));
 end
 
@@ -304,7 +310,7 @@ v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'number_of_channels', 'number_of_samples_per_channel'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'calculation+voltage').data.keys;
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyEqual(testCase, [ax.n], [21 32]);
 end
 

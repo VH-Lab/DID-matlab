@@ -283,7 +283,8 @@ out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
 b    = findHarmonicCalc(testCase, out).toStruct();
 verifyEqual(testCase, depValue(b, 'entity_id'),            'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
-verifyEqual(testCase, inputSet(b), sort({'pres_b671ff', 'ctrl_20e84c'}));   % unordered
+% the presentation only: [control as covariate] (Jess Haley, 2026-10-22)
+verifyEqual(testCase, inputSet(b), {'pres_b671ff'});
 verifyEqual(testCase, depValue(b, 'method_id'), 'param_77c19b');
 end
 

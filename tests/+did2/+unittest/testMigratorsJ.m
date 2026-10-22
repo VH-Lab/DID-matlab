@@ -1696,17 +1696,17 @@ sb = out.migrated{2};
 verifyEqual(testCase, did2.unittest.helpers.classKey(sb), 'sampled_body');
 verifyEqual(testCase, depVal(sb, 'owner_id'), obs.get('base.id'));
 verifyEqual(testCase, sb.get('data.datum_order'), 'F');
-keys = sb.get('data.keys');
+keys = did2.unittest.helpers.axesOf(sb.toStruct());   % AMENDMENT 6: dimensions + covariates
 verifyEqual(testCase, numel(keys), 5);               % YXCZT
-verifyEqual(testCase, keys(1).variable.name, 'y');
+verifyEqual(testCase, keys(1).term.name, 'y');
 verifyEqual(testCase, keys(1).n, 512);
-verifyTrue(testCase, logical(keys(1).regular));
-verifyEqual(testCase, keys(1).spacing.value, 0.5);
-verifyEqual(testCase, keys(1).origin.value, 0);
+verifyTrue(testCase, ~isempty(keys(1).cov.origin));
+verifyEqual(testCase, keys(1).cov.spacing.value, 0.5);
+verifyEqual(testCase, keys(1).cov.origin.value, 0);
 % C/Z/T carry a recorded scale of 1, so they are calibrated, not index axes
-verifyEqual(testCase, keys(3).spacing.value, 1);
-verifyEqual(testCase, keys(3).origin.value, 0);
-verifyEqual(testCase, keys(5).variable.name, 't');
+verifyEqual(testCase, keys(3).cov.spacing.value, 1);
+verifyEqual(testCase, keys(3).cov.origin.value, 0);
+verifyEqual(testCase, keys(5).term.name, 't');
 verifyEqual(testCase, keys(5).n, 10);
 end
 
@@ -1741,15 +1741,15 @@ function testImageStackScaleUnitsAreSplitPerAxis(testCase)
 % registry's om:micrometre 'micrometre'; 'second' is om:second-Time).
 out = runJ(behaviourImageStack());
 sb = firstOfClassJ(out.migrated, 'sampled_body');
-keys = sb.get('data.keys');
-verifyEqual(testCase, numel(keys), 3, 'dimension_order YXT is three keys');
-verifyEqual(testCase, keys(1).variable.name, 'y');
-verifyEqual(testCase, keys(3).variable.name, 't');
-verifyEqual(testCase, keys(1).source_unit.name, 'micrometre');
-verifyEqual(testCase, keys(2).source_unit.name, 'micrometre');
-verifyEqual(testCase, keys(3).source_unit.name, 'second');
-verifyEqual(testCase, keys(1).spacing.value, 1.5);
-verifyEqual(testCase, keys(3).spacing.value, 0.2);
+keys = did2.unittest.helpers.axesOf(sb.toStruct());   % AMENDMENT 6: dimensions + covariates
+verifyEqual(testCase, numel(keys), 3, 'dimension_order YXT is three dimensions');
+verifyEqual(testCase, keys(1).term.name, 'y');
+verifyEqual(testCase, keys(3).term.name, 't');
+verifyEqual(testCase, keys(1).cov.source_unit.name, 'micrometre');
+verifyEqual(testCase, keys(2).cov.source_unit.name, 'micrometre');
+verifyEqual(testCase, keys(3).cov.source_unit.name, 'second');
+verifyEqual(testCase, keys(1).cov.spacing.value, 1.5);
+verifyEqual(testCase, keys(3).cov.spacing.value, 0.2);
 end
 
 
@@ -1760,14 +1760,14 @@ v1 = behaviourImageStack();
 v1.image_stack_parameters.dimension_scale = [];        % nothing recorded
 v1.image_stack_parameters.dimension_scale_units = '';
 out = runJ(v1);
-keys = firstOfClassJ(out.migrated, 'sampled_body').get('data.keys');
+keys = did2.unittest.helpers.axesOf(firstOfClassJ(out.migrated, 'sampled_body').toStruct());
 verifyEqual(testCase, numel(keys), 3);
 for k = 1:3
-    verifyTrue(testCase, logical(keys(k).regular));
-    verifyEqual(testCase, keys(k).spacing.value, 1);
-    verifyEqual(testCase, keys(k).origin.value, 1, 'an index axis starts at 1, not at 0');
-    verifyTrue(testCase, ~isfield(keys(k), 'source_unit') || isempty(keys(k).source_unit) ...
-        || (isstruct(keys(k).source_unit) && isempty(keys(k).source_unit.name)), ...
+    verifyTrue(testCase, ~isempty(keys(k).cov.origin));
+    verifyEqual(testCase, keys(k).cov.spacing.value, 1);
+    verifyEqual(testCase, keys(k).cov.origin.value, 1, 'an index axis starts at 1, not at 0');
+    verifyTrue(testCase, ~isfield(keys(k).cov, 'source_unit') || isempty(keys(k).cov.source_unit) ...
+        || (isstruct(keys(k).cov.source_unit) && isempty(keys(k).cov.source_unit.name)), ...
         'an index axis carries no unit');
 end
 end
@@ -1813,7 +1813,7 @@ verifyFalse(testCase, isfield(calc, 'interaction') && isfield(calc.interaction, 
 verifyTrue(testCase, logical(calc.value.data_body));
 body = out{strcmp(names, 'sampled_body')};
 verifyEqual(testCase, depValue(body, 'owner_id'), 'is_mask_01');
-verifyEqual(testCase, numel(body.data.keys), 2, 'keyed Y, X');
+verifyEqual(testCase, numel(body.data.dimensions), 2, 'dimensions Y, X');
 end
 
 function testABacterialPatchMaskMarksTheBacterialLawnRegion(testCase)
@@ -3520,23 +3520,25 @@ end
 % premise as the code cannot catch the code, in its weaker form: there was no
 % test, so there was no premise to be wrong about.
 for j = 1:numel(sbods)
-    ax = sbods{j}.data.keys;   % #88: `axes` became `data.keys`
+    % #88: `axes` became `data.keys`; AMENDMENT 6: `data.dimensions`, each
+    % with its positions as a covariate along it
+    ax = did2.unittest.helpers.axesOf(sbods{j});
     verifyEqual(testCase, numel(ax), 2, ...
         'both dimensions or neither -- a positional list has no partial mode');
-    verifyEqual(testCase, ax(1).variable.name, 'time');
-    verifyEqual(testCase, ax(2).variable.name, 'channel');
+    verifyEqual(testCase, ax(1).term.name, 'time');
+    verifyEqual(testCase, ax(2).term.name, 'channel');
     verifyEqual(testCase, ax(2).n, 4);          % the `channels` field
-    verifyTrue(testCase, ax(1).regular);
+    verifyNotEmpty(testCase, ax(1).cov.origin, 'the time covariate is origin + spacing');
 end
 % Levels are told apart by the TIME axis spacing now, not by sample_time.dt --
 % that block is no longer written here (step 5 of the signed build order), and
 % writing the cadence into both would store one fact twice.
-dts = sort(arrayfun(@(k) sbods{k}.data.keys(1).spacing.source_value, ...
+dts = sort(arrayfun(@(k) sbods{k}.data.covariates(1).spacing.source_value, ...
     1:numel(sbods)));
 verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
 % and by extent: 10 s at 1000 Hz and at 500 Hz. `n` was hardcoded 0 on every
 % body until this change, on bodies with real bytes attached.
-ns = sort(arrayfun(@(k) sbods{k}.data.keys(1).n, 1:numel(sbods)));
+ns = sort(arrayfun(@(k) sbods{k}.data.dimensions(1).n, 1:numel(sbods)));
 verifyEqual(testCase, ns, [5000 10000]);
 verifyFalse(testCase, isfield(sbods{1}, 'sampled_body') ...
     && isfield(sbods{1}.sampled_body, 'sample_time'));
@@ -3704,8 +3706,8 @@ leaf = calcLeafJ(testCase, out, 'contrast_tuning_calculation', 'ct_1', 'sub_8');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.contrast');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [2 5 9 12]);
-verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0 0.25 0.5 1]);
-verifyEqual(testCase, lower(leaf.data.keys(1).variable.name), 'contrast');
+verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
+verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'contrast');
 end
 
 
@@ -3739,7 +3741,7 @@ verifyFalse(testCase, any(strcmp(names, 'observation+angle')));
 leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'odt_1', 'neuron_1');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.oridir');
-verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0 90 180 270]);
+verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 verifyEqual(testCase, leaf.tuning_curve_calculation.significance.visual_response_anova_p, ...
     0.002, 'AbsTol', 1e-9);
@@ -3790,7 +3792,7 @@ os = entityByNameJ(out, 'Linux');
 verifyEqual(testCase, depValue(leaf, 'operating_system_id'), os.base.id);
 it = entityByNameJ(out, 'MATLAB');
 verifyEqual(testCase, depValue(leaf, 'interpreter_id'), it.base.id);
-verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0 90 180 270]);
+verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
 end
 
 
@@ -3827,7 +3829,7 @@ leaf = calcLeafJ(testCase, out, 'contrast_sensitivity_calculation', 'cs_1', 'neu
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_cs');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, paramValueJ(leaf, 'threshold'), 1);
-verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0.5 1 2 4]);
+verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0.5 1 2 4]);
 csv = leaf.contrast_sensitivity.value;
 verifyEqual(testCase, numel(csv.model_fit), 2);            % rb and rbns, not rbn
 models = arrayfun(@(e) lower(char(e.model.name)), csv.model_fit, 'UniformOutput', false);
@@ -3878,7 +3880,7 @@ verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_tc');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.stimulus.tuningcurve');
 verifyEqual(testCase, paramTextJ(leaf, 'best algorithm'), 'empirical_maximum');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
-verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0 0.25 0.5 1]);
+verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
 sw = entityByNameJ(out, 'ndi.calc.stimulus.tuningcurve');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 os = entityByNameJ(out, 'Linux');
@@ -3949,7 +3951,19 @@ verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
 leaf = calcLeafJ(testCase, out, 'speed_tuning_calculation', 'sp_1', 'sub_s');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.speed');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [5 8 6]);
-verifyEqual(testCase, leaf.data.keys(1).n, 3);
+% AMENDMENT 6: ONE dimension of the 3 sampled points (its term naming both
+% variables), with one quantity covariate PER VARIABLE along it -- no longer
+% one key whose positions were 3 labels
+verifyEqual(testCase, numel(leaf.data.dimensions), 1);
+verifyEqual(testCase, leaf.data.dimensions(1).n, 3);
+verifyEqual(testCase, leaf.data.dimensions(1).term.name, 'spatial frequency x temporal frequency');
+covs = leaf.data.covariates;
+verifyEqual(testCase, numel(covs), 2);
+verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
+    {'spatial frequency', 'temporal frequency'});
+verifyEqual(testCase, [covs.along], [0 0]);
+verifyEqual(testCase, covs(1).quantity.value, [0.5 0.5 1]);
+verifyEqual(testCase, covs(2).quantity.value, [2 4 4]);
 end
 
 
@@ -4332,7 +4346,9 @@ verifyEqual(testCase, ob.data_body.format.node, 'EMPTY:0000315');   % "directory
 % the output folder is the value as-is
 verifyFalse(testCase, isfield(obs, 'statement') && isfield(obs.statement, 'keys') ...
     && ~isempty(obs.statement.keys));
-verifyFalse(testCase, isfield(ob, 'data') && isfield(ob.data, 'keys') && ~isempty(ob.data.keys));
+% (keys became dimensions + covariates on `data`, data_body AMENDMENT 6)
+verifyFalse(testCase, isfield(obs, 'data') && isfield(obs.data, 'dimensions') && ~isempty(obs.data.dimensions));
+verifyFalse(testCase, isfield(ob, 'data') && isfield(ob.data, 'dimensions') && ~isempty(ob.data.dimensions));
 end
 
 function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
@@ -4363,6 +4379,8 @@ verifyEqual(testCase, ob.data_body.filename, 'ka_out/session1');
 % [sorter keys] (Jess Haley, 2026-10-21): no keys on kiasort either
 verifyFalse(testCase, isfield(obs, 'statement') && isfield(obs.statement, 'keys') ...
     && ~isempty(obs.statement.keys));
+% (keys became dimensions + covariates on `data`, data_body AMENDMENT 6)
+verifyFalse(testCase, isfield(obs, 'data') && isfield(obs.data, 'dimensions') && ~isempty(obs.data.dimensions));
 end
 
 function body = sortingOutputsBody()
@@ -4739,8 +4757,8 @@ verifyEqual(testCase, lower(leaf.interaction.method.term.name), ...
 verifyEqual(testCase, nParamsJ(leaf), 0, ...
     'a bare temporal_frequency_tuning document carries no input_parameters to carry');
 
-verifyEqual(testCase, leaf.data.keys(1).quantity.value, [1 2 4 8]);
-verifyEqual(testCase, lower(leaf.data.keys(1).variable.name), 'temporal frequency');
+verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [1 2 4 8]);
+verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'temporal frequency');
 v = leaf.tuning_curve.value;
 verifyEqual(testCase, v.mean, [1; 5; 9; 3]);
 verifyEqual(testCase, v.stddev, [0.1; 0.2; 0.3; 0.4]);

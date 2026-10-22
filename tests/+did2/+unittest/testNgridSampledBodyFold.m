@@ -166,8 +166,9 @@ end
 function testDataDimBecomesOneAxisEntryPerDimension(testCase)
 % V_eta_image_model_plan.md R4: "ngrid.data_dim -> one axis entry per dimension".
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-% #88: a body's axes are its `keys`, on the `data` block
-axes = pick(out, 'sampled_body').data.keys;
+% #88: a body's axes are on the `data` block; data_body AMENDMENT 6: its
+% `dimensions`, each with the covariate along it (`keys` before)
+axes = did2.unittest.helpers.axesOf(pick(out, 'sampled_body'));
 verifyEqual(testCase, numel(axes), 2, 'data_dim [4 4] is two dimensions');
 % UPDATED 2026-08-14 for the signed axis entry (DID-schema TEAM-SIGN-OFF
 % [data_body] + AMENDMENT 1). The old shape {name, kind, length, regularity,
@@ -193,15 +194,19 @@ verifyEqual(testCase, [axes.n], [4 4]);                       % was `.length`
 % UPDATED 2026-10-21: keyed as #73 review item 51 records for a raster,
 % [y, x, (channel)] -- data_dim is size(image), rows first -- not positionally.
 verifyEqual(testCase, ...
-    arrayfun(@(a) a.variable.name, axes, 'UniformOutput', false), ...
-    {'y', 'x'});                                              % was `.name`
-verifyEqual(testCase, [axes.regular], [true true]);           % was `.regularity`
+    arrayfun(@(a) a.term.name, axes, 'UniformOutput', false), ...
+    {'y', 'x'});                                              % was `.name`, then `.variable`
+verifyEqual(testCase, ...
+    arrayfun(@(a) a.cov.variable.name, axes, 'UniformOutput', false), ...
+    {'y', 'x'});
+verifyEqual(testCase, arrayfun(@(a) isfield(a.cov, 'origin') && ~isempty(a.cov.origin), axes), ...
+    [true true]);                                             % was `.regularity`, then `.regular`
 % `origin` is NEW and is required when regular. 1 is not a default: the
 % coordinates guard has already established they are MATLAB's default index
 % vector, which starts at 1. The old shape had no origin at all, so this fact
 % could only be assumed by convention -- the gap the signed entry closes.
-verifyEqual(testCase, arrayfun(@(a) a.origin.value, axes), [1 1]);
-verifyEqual(testCase, arrayfun(@(a) a.spacing.value, axes), [1 1]);  % was `.spacing`
+verifyEqual(testCase, arrayfun(@(a) a.cov.origin.value, axes), [1 1]);
+verifyEqual(testCase, arrayfun(@(a) a.cov.spacing.value, axes), [1 1]);  % was `.spacing`
 end
 
 function testAColourRasterIsKeyedYXChannel(testCase)
@@ -211,10 +216,10 @@ v1 = foldableOntologyImage();
 v1.ngrid.data_dim = [4 4 3];
 v1.ngrid.coordinates = defaultCoords([4 4 3]);
 out = did2.convert.migrators_j.ontology_image(v1);
-axes = pick(out, 'sampled_body').data.keys;
+axes = did2.unittest.helpers.axesOf(pick(out, 'sampled_body'));
 verifyEqual(testCase, [axes.n], [4 4 3]);
 verifyEqual(testCase, ...
-    arrayfun(@(a) a.variable.name, axes, 'UniformOutput', false), ...
+    arrayfun(@(a) a.term.name, axes, 'UniformOutput', false), ...
     {'y', 'x', 'channel'});
 end
 
@@ -263,8 +268,9 @@ out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
 body = pick(out, 'sampled_body');
 verifyFalse(testCase, isfield(body.sampled_body, 'sample_time') ...
     && ~isempty(fieldnames(body.sampled_body.sample_time)));
-verifyTrue(testCase, isfield(body.data, 'keys'));     % #88: keys, on `data`
-verifyTrue(testCase, numel(body.data.keys) >= 1);
+verifyTrue(testCase, isfield(body.data, 'dimensions'));   % AMENDMENT 6: dimensions, on `data`
+verifyTrue(testCase, numel(body.data.dimensions) >= 1);
+verifyFalse(testCase, isfield(body.data, 'keys'));
 end
 
 function testTheRasterBytesMoveToTheBodyUnderNDIsOwnFileName(testCase)

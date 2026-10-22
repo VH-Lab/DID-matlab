@@ -152,7 +152,9 @@ function tests = testTuningCurveLevels
 %                                 -> value.response_unit, a TERM, ABSENT when the
 %                                    source gives none (did2.build never writes a
 %                                    blank for an optional field)
-%       independent_values        -> the leaf's data.keys(1).quantity.value
+%       independent_values        -> the leaf's data.covariates(1).quantity.value
+%                                    (along data.dimensions(1); data.keys(1) before
+%                                    data_body AMENDMENT 6)
 %       control_mean_stddev / control_mean_stderr
 %                                 -> NO #88 slot (value.control declares only
 %                                    mean/stddev/stderr/individual): see
@@ -785,14 +787,15 @@ error('did2:test:noLeaf', ...
 end
 
 function x = keyValues(leaf)
-%KEYVALUES The positions of the leaf's first key (the stimulus dimension), as a row.
+%KEYVALUES The positions along the leaf's first dimension (the stimulus
+%   dimension), as a row: the covariate along it (data_body AMENDMENT 6; the
+%   first key's positions before).
 x = [];
-if isfield(leaf, 'data') && isfield(leaf.data, 'keys') && ~isempty(leaf.data.keys)
-    k1 = leaf.data.keys(1);
-    if iscell(leaf.data.keys); k1 = leaf.data.keys{1}; end
-    if isfield(k1, 'quantity') && isfield(k1.quantity, 'value')
-        x = reshape(k1.quantity.value, 1, []);
-    end
+ax = did2.unittest.helpers.axesOf(leaf);
+if isempty(ax) || isempty(ax(1).cov); return; end
+k1 = ax(1).cov;
+if isfield(k1, 'quantity') && isfield(k1.quantity, 'value')
+    x = reshape(k1.quantity.value, 1, []);
 end
 end
 

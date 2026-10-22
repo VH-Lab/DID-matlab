@@ -274,8 +274,9 @@ function [result, report] = foldGenericFiles(result, options)
 %
 %   THE JOIN. +migrators_j/lightsheet_zarr_pyramid.m keeps the pyramid's id
 %   on its observation and CARRIES three things there, all TRANSIENT: the v1
-%   `source_file_id` edge verbatim, the full-resolution array's keys in
-%   `data.keys` (OME-Zarr only), and the pyramid's NGFF multiscales name as
+%   `source_file_id` edge verbatim, the full-resolution array's axes in
+%   `data.dimensions` + `data.covariates` (OME-Zarr only; `keys` until
+%   data_body AMENDMENT 6), and the pyramid's NGFF multiscales name as
 %   the TAIL of `statement.notes`: notes is the pyramid's label (which STAYS
 %   on the observation, Jess 2026-10-15), then NOTES_SEPARATOR, then
 %   'NGFF multiscales name "..."'. pyramid_type is not carried (dropped, Jess
@@ -711,9 +712,10 @@ end
 
 % --- the carriers: what the pyramid migrator left on its observation --------
 % A STORE carrier names a record through `source_file_id`; a KEY carrier holds
-% the full-resolution keys (point 8: they carry the pyramid's axes_units and
-% channel_names to its levels). Only lightsheet_zarr_pyramid writes an
-% observation with `data_body` true AND keys, so the rule cannot reach another
+% the full-resolution dimensions + covariates (point 8: they carry the
+% pyramid's axes_units and channel_names to its levels; `keys` until did-schema
+% data_body AMENDMENT 6). Only lightsheet_zarr_pyramid writes an observation
+% with `data_body` true AND dimensions, so the rule cannot reach another
 % class's documents.
 carriers = [];
 keyCarrier = false(1, n);
@@ -744,9 +746,12 @@ strip = unique([carriers, find(keyCarrier)]);
 % --- THE LEVELS (point 8): every sampled_body owned by a key carrier ---------
 pyramidKeys = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = find(keyCarrier)
-    pyramidKeys(docIds{k}) = blockFieldOf(bodies{k}, 'keys');
+    pyramidKeys(docIds{k}) = struct( ...
+        'dimensions', {blockFieldOf(bodies{k}, 'dimensions')}, ...
+        'covariates', {blockFieldOf(bodies{k}, 'covariates')});
     % Point 10: a unit with no unambiguous OM mapping stays name-only; COUNT it.
-    pk = keyCells(pyramidKeys(docIds{k}));
+    carried = pyramidKeys(docIds{k});   % a Map value is indexed one level at a time
+    pk = keyCells(carried.covariates);
     for i = 1:numel(pk)
         if isfield(pk{i}, 'unit') && isstruct(pk{i}.unit) ...
                 && (~isfield(pk{i}.unit, 'node') || isempty(pk{i}.unit.node)) ...
@@ -763,7 +768,7 @@ for k = 1:n
     if isKey(pyramidKeys, owner)
         levelIdx(end+1) = k; %#ok<AGROW>
     elseif ~isKey(idIdx, owner) && isLightsheetLevelBody(bodies{k})
-        % its pyramid is not in this batch: the level keeps its own keys
+        % its pyramid is not in this batch: the level keeps its own axes
         report.level_bodies_without_pyramid = report.level_bodies_without_pyramid + 1;
     end
 end
@@ -783,7 +788,7 @@ for c = 1:numel(strip)
     [obsStripped, keys, notes] = stripCarrier(obs);
     recIdx = 0;
     if isempty(target)
-        % a key carrier only: nothing to fold, its transient keys go
+        % a key carrier only: nothing to fold, its transient axes go
     elseif ~isKey(idIdx, target)
         report.store_refused_not_in_batch = report.store_refused_not_in_batch + 1;
     elseif ~strcmp(classes{idIdx(target)}, 'file_reference')
@@ -928,7 +933,8 @@ end
 
 function tf = carriesKeys(obs)
 %CARRIESKEYS An observation holding its value in bodies (data_body true) that
-%   still carries keys: the pyramid migrator's transient carry (point 8).
+%   still carries `dimensions` (`keys` until data_body AMENDMENT 6): the
+%   pyramid migrator's transient carry (point 8).
 arguments
     obs (1,1) struct
 end
@@ -936,51 +942,60 @@ end
 tf = false;
 v = blockFieldOf(obs, 'data_body');
 if ~(islogical(v) || isnumeric(v)) || isempty(v) || ~v(1); return; end
-k = blockFieldOf(obs, 'keys');
+k = blockFieldOf(obs, 'dimensions');
 tf = ~isempty(k);
 end
 
 function tf = isLightsheetLevelBody(b)
-%ISLIGHTSHEETLEVELBODY A level body's keys name t/c/z/y/x-style axes; used
-%   only to count levels whose pyramid is out of the batch (a sampled_body of
-%   another family is not a lightsheet level and is not counted).
+%ISLIGHTSHEETLEVELBODY A level body's dimensions name t/c/z/y/x-style axes;
+%   used only to count levels whose pyramid is out of the batch (a
+%   sampled_body of another family is not a lightsheet level and is not
+%   counted). An axis is found by its DIMENSION'S TERM name (data_body
+%   AMENDMENT 6; the key's variable before).
 arguments
     b (1,1) struct
 end
 
 tf = false;
-keys = keyCells(blockFieldOf(b, 'keys'));
-if isempty(keys); return; end
-names = cellfun(@keyName, keys, 'UniformOutput', false);
+dims = keyCells(blockFieldOf(b, 'dimensions'));
+if isempty(dims); return; end
+names = cellfun(@dimensionName, dims, 'UniformOutput', false);
 tf = all(ismember(names, {'time', 'channel', 'z', 'y', 'x'})) ...
     && any(ismember(names, {'z', 'y', 'x'}));
 end
 
 function [lvl, changed, disagreements] = completeLevelKeys(lvl, pyramidKeys)
 %COMPLETELEVELKEYS Point 8 (Jess 2026-10-14): a v1 level carries only
-%   voxel_size_units, so its `t` key has no unit and its `c` key only index
-%   positions. The pyramid's keys have both. Copy the t unit (scaling the
+%   voxel_size_units, so its `t` covariate has no unit and its `c` covariate
+%   only index positions. The pyramid's have both. Copy the t unit (scaling the
 %   level's raw origin/spacing exactly as the pyramid's were scaled), name the
 %   c positions by channel when the counts agree, and CHECK z/y/x units --
 %   a disagreement is counted, never overwritten.
+%
+%   did-schema data_body AMENDMENT 6 (`keys` until 2026-10-22): an axis is
+%   FOUND BY ITS DIMENSION'S TERM name ('time', 'channel', 'z', ...), and what
+%   is read and completed is the COVARIATE along exactly that dimension
+%   (jLightsheetAxes writes one per axis, its variable the same term).
 arguments
     lvl (1,1) struct
-    pyramidKeys % the pyramid's keys: a struct array, a cell of structs, or empty
+    pyramidKeys % struct {dimensions, covariates} of the pyramid's full-resolution array
 end
 
 changed = false;
 disagreements = 0;
-[blockName, raw] = blockWith(lvl, 'keys');
-lk = keyCells(raw);
-pk = keyCells(pyramidKeys);
-if isempty(lk) || isempty(pk); return; end
-pNames = cellfun(@keyName, pk, 'UniformOutput', false);
-for i = 1:numel(lk)
-    name = keyName(lk{i});
+[blockName, rawDims] = blockWith(lvl, 'dimensions');
+if isempty(rawDims); return; end
+lc = keyCells(blockFieldOf(lvl, 'covariates'));
+la = axisCells(rawDims, lc);
+pa = axisCells(pyramidKeys.dimensions, keyCells(pyramidKeys.covariates));
+if isempty(la) || isempty(pa); return; end
+pNames = cellfun(@(a) a.name, pa, 'UniformOutput', false);
+for i = 1:numel(la)
+    name = la{i}.name;
     j = find(strcmp(pNames, name), 1);
-    if isempty(j); continue; end
-    P = pk{j};
-    L = lk{i};
+    if isempty(j) || isempty(la{i}.cov) || isempty(pa{j}.cov); continue; end
+    P = pa{j}.cov;
+    L = la{i}.cov;
     switch name
         case 'time'
             if ~hasUnit(L) && hasUnit(P)
@@ -997,16 +1012,16 @@ for i = 1:numel(lk)
                             'source_value', L.spacing.value);
                     end
                 end
-                lk{i} = L;
+                lc{la{i}.covIdx} = L;
                 changed = true;
             end
         case 'channel'
             if isfield(P, 'term') && ~isempty(P.term) ...
                     && (~isfield(L, 'term') || isempty(L.term)) ...
-                    && numel(labelList(P.term)) == double(L.n)
+                    && numel(labelList(P.term)) == double(la{i}.n)
                 if isfield(L, 'quantity'); L.quantity = []; end
                 L.term = P.term;
-                lk{i} = L;
+                lc{la{i}.covIdx} = L;
                 changed = true;
             end
         case {'z', 'y', 'x'}
@@ -1020,8 +1035,42 @@ for i = 1:numel(lk)
     end
 end
 if changed
-    lvl.(blockName).keys = packKeys(lk);
+    lvl.(blockName).covariates = packKeys(lc);
 end
+end
+
+function a = axisCells(dims, covs)
+%AXISCELLS Each dimension with the covariate that runs along it ALONE.
+%   A = axisCells(DIMS, COVS): one struct per dimension, {name (its term's
+%   name), n, cov (the covariate whose `along` is exactly this dimension's
+%   0-based index, or []), covIdx (its position in COVS)}. Finding an axis by
+%   its dimension's term, and its positions in the covariate along it, is how
+%   a former key (variable + positions) is read on the AMENDMENT 6 shape.
+arguments
+    dims % struct array or cell of dimensions, or empty
+    covs {mustBeA(covs, 'cell')}
+end
+
+d = keyCells(dims);
+a = cell(1, numel(d));
+for k = 1:numel(d)
+    a{k} = struct('name', dimensionName(d{k}), 'n', fieldOrEmpty(d{k}, 'n'), ...
+        'cov', [], 'covIdx', 0);
+    for c = 1:numel(covs)
+        al = fieldOrEmpty(covs{c}, 'along');
+        if iscell(al); al = cell2mat(al); end
+        if isnumeric(al) && isscalar(al) && double(al) == k - 1
+            a{k}.cov = covs{c};
+            a{k}.covIdx = c;
+            break;
+        end
+    end
+end
+end
+
+function v = fieldOrEmpty(s, name)
+v = [];
+if isstruct(s) && isfield(s, name); v = s.(name); end
 end
 
 function f = scaleOf(P)
@@ -1104,14 +1153,15 @@ elseif ischar(u) || isstring(u)
 end
 end
 
-function n = keyName(K)
+function n = dimensionName(D)
+%DIMENSIONNAME The name of a dimension's `term` (the axis is found by its term).
 arguments
-    K % a key; anything that is not a struct names nothing
+    D % a dimension; anything that is not a struct names nothing
 end
 
 n = '';
-if ~isstruct(K) || ~isfield(K, 'variable'); return; end
-v = K.variable;
+if ~isstruct(D) || ~isfield(D, 'term'); return; end
+v = D.term;
 if iscell(v); v = v{1}; end
 if isstruct(v) && isfield(v, 'name'); n = char(v.name);
 elseif ischar(v) || isstring(v); n = char(v); end
@@ -1140,9 +1190,9 @@ if iscell(labels); L = labels; else; L = num2cell(labels); end
 end
 
 function k = packKeys(c)
-%PACKKEYS One struct array, as the validator requires (`data.keys` must be a
-%   struct): the union of the keys' fields, a field a key lacks set to [] --
-%   exactly how did2.build's mergeRagged packs a ragged key list.
+%PACKKEYS One struct array, as the validator requires (`data.covariates` must
+%   be a struct): the union of the entries' fields, a field an entry lacks set
+%   to [] -- exactly how did2.build's mergeRagged packs a ragged list.
 arguments
     c {mustBeA(c, 'cell')}
 end
@@ -1193,6 +1243,8 @@ end
 end
 
 function [obs, keys, notes] = stripCarrier(obs)
+%   KEYS is struct {dimensions, covariates} of the full-resolution array (the
+%   carried axes; `keys` until data_body AMENDMENT 6), or [] when none.
 %STRIPCARRIER Remove the three transient things the pyramid migrator carried.
 %   NOTES is the transient TAIL of statement.notes (after the LAST
 %   NOTES_SEPARATOR); the label before it stays on the observation, and
@@ -1217,9 +1269,11 @@ for k = 1:numel(names)
     if ~isstruct(blk) || ~isscalar(blk) || any(strcmp(names{k}, {'base', 'document_class', 'files'}))
         continue;
     end
-    if isfield(blk, 'keys')
-        keys = blk.keys;
-        obs.(names{k}) = rmfield(blk, 'keys');
+    if isfield(blk, 'dimensions')
+        covs = [];
+        if isfield(blk, 'covariates'); covs = blk.covariates; end
+        keys = struct('dimensions', {blk.dimensions}, 'covariates', {covs});
+        obs.(names{k}) = rmfield(blk, intersect({'dimensions', 'covariates'}, fieldnames(blk)));
         blk = obs.(names{k});
     end
     if isfield(blk, 'notes')
@@ -1262,14 +1316,14 @@ end
 function [body, hadChecksum, sizeKnown] = makeStoreBody(rec, blk, location, ...
     ownerId, keys, notes, isOmeZarr)
 %MAKESTOREBODY The UNHELD opaque_body, with the fileReference's own id.
-%   ISOMEZARR: an OME-Zarr store (keys, OME-Zarr format) or a SmartSPIM folder
-%   of raw TIFF slices (no keys, TIFF, `redundant` false).
+%   ISOMEZARR: an OME-Zarr store (dimensions + covariates, OME-Zarr format) or
+%   a SmartSPIM folder of raw TIFF slices (none, TIFF, `redundant` false).
 arguments
     rec (1,1) struct
     blk struct
     location {mustBeText}
     ownerId {mustBeText}
-    keys % the pyramid's keys, or [] when the carrier held none
+    keys % the pyramid's {dimensions, covariates}, or [] when the carrier held none
     notes {mustBeText}
     isOmeZarr (1,1) logical
 end
@@ -1317,9 +1371,12 @@ body = did2.build.opaqueBody(ownerId, format, ...
     'Files', {'body_data_0'}, ...
     'Id', recId, 'SessionId', sessionId, 'CreationTimestamp', created, ...
     'Validate', false);
-if isOmeZarr && ~isempty(keys)
+if isOmeZarr && ~isempty(keys) && ~isempty(keys.dimensions)
     if ~isfield(body, 'data') || ~isstruct(body.data); body.data = struct(); end
-    body.data.keys = keys;
+    body.data.dimensions = keys.dimensions;
+    if ~isempty(keys.covariates)
+        body.data.covariates = keys.covariates;
+    end
 end
 % NOT HELD: the one member is recorded BY LOCATION, ingest 0, exactly as
 % ndi.document/add_file records a file it does not take in.

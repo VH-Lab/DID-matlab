@@ -189,7 +189,6 @@ nChannels   = numScalar(channels, 0);
 channelAxis = [];
 if nChannels > 0
     channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
-        'regular', true, ...
         'origin',  struct('value', 1, 'source_value', 1), ...
         'spacing', struct('value', 1, 'source_value', 1));
 end
@@ -217,20 +216,21 @@ for k = 1:numel(fileList)
             k, numel(fileList), rate_k, epochDur, nativeRt, strjoin(fieldnamesOf(blk), ', '));
     end
     timeAxis = jAxis(jOntologyTerm('', 'time'), n_k, ...
-        'regular',     true, ...
         'source_unit', 's', ...
         'origin',      struct('value', t0_k, 'source_value', t0_k), ...
         'spacing',     struct('value', dt_k, 'source_value', dt_k));
+    % time (and channel) dimensions, each with its positions as a covariate
+    % along it (data_body AMENDMENT 6; the former keys)
     if isempty(channelAxis)
-        keys = timeAxis;
+        [dims, covs] = jDimCov({timeAxis});
     else
-        keys = did2.build.list(timeAxis, channelAxis);
+        [dims, covs] = jDimCov({timeAxis, channelAxis});
     end
     % DATUM ORDER 'C': a pyraview level file interleaves the channels within
-    % each sample (the channel key varies fastest) -- a conservative reading
+    % each sample (the channel dimension varies fastest) -- a conservative reading
     % of the writer, recorded as a judgment call in the port report.
     o = jOpts(preBody, 'FilterId', filterId, 'DatumOrder', 'C');
-    b = did2.build.sampledBody(obsId, keys, o{:});
+    b = did2.build.sampledBody(obsId, dims, 'Covariates', covs, o{:});
     b.files = struct('file_list', {fileList(k)});
     bodies{end+1} = b; %#ok<AGROW>
 end
