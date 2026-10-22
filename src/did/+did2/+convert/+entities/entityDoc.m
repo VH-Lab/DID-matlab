@@ -11,8 +11,11 @@ function docs = entityDoc(preBody, className, docId, blockStruct, gids, fresh)
 %     identity      name (`full_name` / `title` / given+family for a person),
 %                   local_identifier, description, global_identifier (GIDS:
 %                   CURIEs or IRIs, did2.convert.entities.buildGids)
-%     term          license (spdx:<id>), accessibility, ethics_assessment,
-%                   experimental_approach -> term_assertion
+%     term          license (spdx:<id>), accessibility,
+%                   experimental_approach -> term_assertion; ethics_assessment
+%                   -> an `ethics jurisdiction` (EMPTY:0000359) term assertion
+%                   (did2.convert.ethicsJurisdiction, Jess Haley 2026-10-22
+%                   [ethics assessment to jurisdiction]; EMPTY:0000355 before)
 %     date          release_date -> date_assertion
 %     text          short_name, version, version_innovation, how_to_cite,
 %                   support_channel, keyword, given_name, family_name, email
@@ -82,7 +85,7 @@ identity = {'full_name', 'name', 'title', 'label', 'local_identifier', 'descript
 variableNodes = struct('accessibility', 'NCIT:C175887', 'given_name', 'IAO:0020016', ...
     'family_name', 'IAO:0020017', 'email', 'NCIT:C42775', 'keyword', 'EDAM:data_0968', ...
     'license', 'NCIT:C43611', 'short_name', 'NCIT:C42610', 'version', 'IAO:0000129', ...
-    'release_date', 'EMPTY:0000346', 'ethics_assessment', 'EMPTY:0000355', ...
+    'release_date', 'EMPTY:0000346', ...
     'experimental_approach', 'EMPTY:0000356');
 names = setdiff(fieldnames(blockStruct), identity, 'stable');
 for k = 1:numel(names)
@@ -95,6 +98,13 @@ for k = 1:numel(names)
     if isfield(variableNodes, f); node = variableNodes.(f); end
     variable = did2.convert.registeredTerm(node, strrep(f, '_', ' '));
     o = opts(preBody);
+    if strcmp(f, 'ethics_assessment')
+        % [ethics assessment to jurisdiction] (Jess Haley 2026-10-22, S3b): not
+        % the obsolete EMPTY:0000355 but the ethics jurisdiction EMPTY:0000359;
+        % "not required" and any other value make no statement and a note
+        docs = [docs, ethicsStatements(preBody, className, docId, v, o)]; %#ok<AGROW>
+        continue;
+    end
     if any(strcmp(f, terms))
         if strcmp(f, 'license') && (ischar(v) || (isstring(v) && isscalar(v)))
             v = did2.build.term(['spdx:' strtrim(char(v))], strtrim(char(v)));
@@ -120,6 +130,28 @@ end
 end
 
 % -----------------------------------------------------------------------------
+
+function docs = ethicsStatements(preBody, className, docId, v, o)
+docs = {};
+variable = did2.convert.registeredTerm('EMPTY:0000359', 'ethics jurisdiction');
+tv = v;
+if ~isstruct(tv); tv = asTerms(v); end
+for j = 1:numel(tv)
+    [t, note] = did2.convert.ethicsJurisdiction(tv(j));
+    srcId = '';
+    if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+        srcId = char(preBody.base.id);
+    end
+    if isempty(t)
+        did2.convert.reportNote('ethics_assessment_no_statement', className, srcId, note);
+        continue;
+    end
+    extra = {};
+    if ~isempty(note); extra = {'Notes', note}; end
+    docs{end+1} = did2.build.statement('assertion', docId, variable, t, o{:}, ...
+        extra{:}, 'ValueKind', 'term'); %#ok<AGROW>
+end
+end
 
 function d = jEntityDoc(preBody, type, ent, docId)
 ent.type = did2.build.term('', type);
