@@ -45,77 +45,15 @@ methodName = getCharField(block, 'method_name');
 if isempty(methodName); methodName = 'transfer'; end
 
 % ---- 1. the transfer act: a term_manipulation on the recipient ----
-act = struct();
-act.document_class = struct( ...
-    'class_name', 'term_manipulation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'subject_manipulation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-act.depends_on = struct('name', 'subject_id', 'value', recipientId);
-if isfield(preBody, 'base'); act.base = preBody.base; end
-act.subject_statement  = struct('variable', material, 'storage_mode', 'inline');
-act.subject_interaction = struct('method', ontologyTerm('', methodName), ...
-    'sample_time', struct('kind', 'point'));
-act.subject_manipulation = struct('notes', '');
-act.term = struct('value', material);   % the imposed material term
-
-% ---- 2. the provenance relation: recipient material derived_from donor ----
-rel = struct();
-rel.document_class = struct( ...
-    'class_name', 'directed_relation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'relation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',  'value', recipientId), ...
-    struct('name', 'parent', 'value', donorId)];
-relBase = struct('id', did.ido.unique_id(), 'name', 'migrated_transfer_provenance', ...
-    'session_id', '', 'datestamp', '2024-01-01T00:00:00.000Z');
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); relBase.session_id = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        relBase.datestamp = preBody.base.datestamp;
-    end
-end
-rel.base = relBase;
-% `relation` (renamed from subject_relation) is abstract with no fields -> no block.
-rel.directed_relation = struct('relation', ontologyTerm('ro:0001000', 'derived_from'));
-
-% ---- 3. the shared session anchor; wire it onto the act ----
-anchor = makeSessionAnchor(preBody, 'during');
-act.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
+% did-schema #88: built through did2.build. The act on the recipient (id
+% preserved), the recipient <- donor provenance relation, and the session anchor.
+anchor = jTreatmentAnchor(preBody, block);   % the recorded timestamp, else the session
+act = jStatement(preBody, 'manipulation', recipientId, material, material, ...
+    'TimeReferenceIds', {anchor.base.id}, ...
+    'Fields', struct('method', jMethod(methodName)), 'Id', char(preBody.base.id), 'ValueKind', 'term');
+rel = jEntityRelation(preBody, recipientId, donorId, 'derived_from');   % node from the schema's row (did2.build.vocabulary)
 
 v2Body = {act, rel, anchor};
-end
-
-% ===================== shared helpers ==================================
-
-function anchor = makeSessionAnchor(preBody, relation)
-sessionId = '';
-ds = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        ds = preBody.base.datestamp;
-    end
-end
-anchor = struct();
-% PASS-1 HANDLE, NOT AN UNMIGRATED CLASS. The signed model retires this class in
-% favour of `relative_reference`, but the same plan makes the change impossible
-% here: `relative_to` is REQUIRED and is not fillable in pass 1 (this body holds
-% base.session_id; the edge needs the session DOCUMENT's base.id). Emitting the
-% new class with an empty required edge would be ~106k husks that validate clean.
-% did2.convert.resolveSessionAnchors folds it in a batch pass, id PRESERVED. Full
-% reasoning in +migrators_j/private/jSessionAnchor.m; the seam is pinned by
-% tests/+did2/+unittest/testSessionAnchorEmitterContract.m.
-anchor.document_class = struct('class_name', 'session_relative_reference', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-% Session identity rides on base.session_id; no redundant session_id edge.
-anchor.depends_on = struct('name', {}, 'value', {});
-anchor.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'datestamp', ds);
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', relation);
 end
 
 function val = namedDep(preBody, name)

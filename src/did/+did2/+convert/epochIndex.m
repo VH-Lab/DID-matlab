@@ -299,7 +299,7 @@ classdef epochIndex < handle
                 end
             end
             [epochDocumentId, why] = obj.resolve( ...
-                did2.convert.epochIndex.baseField(b, 'session_id'), epochString);
+                did2.schema.cache.sessionIdOf(b), epochString);
         end
 
         function tf = classDeclaresEpochEdge(obj, className)
@@ -468,7 +468,7 @@ classdef epochIndex < handle
                         obj.report.carriers_edge_already_populated + 1;
                     continue;
                 end
-                sid = did2.convert.epochIndex.baseField(b, 'session_id');
+                sid = did2.schema.cache.sessionIdOf(b);
                 resolved = false;
                 for j = 1:numel(hits)
                     if ~isempty(obj.resolve(sid, hits(j).value))
@@ -511,12 +511,23 @@ classdef epochIndex < handle
             localIds = {};
             for k = 1:numel(bodies)
                 b = bodies{k};
-                if ~strcmp(did2.convert.epochIndex.classNameOf(b), 'epoch'); continue; end
+                % did-schema #88: an epoch is an `entity` of type epoch (its
+                % local_identifier on the entity block); before #88 it was its
+                % own class `epoch`. Both are read.
+                cn = did2.convert.epochIndex.classNameOf(b);
+                isEntityEpoch = strcmp(cn, 'entity') && isfield(b, 'entity') ...
+                    && isstruct(b.entity) && isscalar(b.entity) ...
+                    && isfield(b.entity, 'type') && isstruct(b.entity.type) ...
+                    && did2.build.isVocabulary(b.entity.type, 'entity_type', 'epoch');   % by node (L2)
+                if ~strcmp(cn, 'epoch') && ~isEntityEpoch; continue; end
                 obj.report.epoch_documents_seen = obj.report.epoch_documents_seen + 1;
                 docId = did2.convert.epochIndex.baseField(b, 'id');
-                sid   = did2.convert.epochIndex.baseField(b, 'session_id');
+                sid   = did2.schema.cache.sessionIdOf(b);
                 lid   = '';
-                if isfield(b, 'epoch') && isstruct(b.epoch) && isscalar(b.epoch)
+                if isEntityEpoch
+                    lid = did2.convert.epochIndex.charField(b.entity, ...
+                        {'local_identifier'});
+                elseif isfield(b, 'epoch') && isstruct(b.epoch) && isscalar(b.epoch)
                     lid = did2.convert.epochIndex.charField(b.epoch, ...
                         {'local_identifier'});
                 end

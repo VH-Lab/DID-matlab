@@ -93,10 +93,14 @@ for k = 1:size(axisMap, 1)
     vals = numericArray(blk, axisMap{k, 1});
     if isempty(vals); continue; end
     % the first emitted body keeps the source id; later ones are siblings
-    obs = jStartInteraction(preBody, 'length_observation', 'subject_observation', ...
-        {'length'}, jOntologyTerm('', axisMap{k, 2}), subjectSrc, ~isempty(obsBodies));
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-    obs.length = struct('value', jMeasureArray(vals, unit));
+    % the first observation keeps the source id (its references resolve); the
+    % others are fresh
+    idOpt = {};
+    if isempty(obsBodies); idOpt = {'Id', char(preBody.base.id)}; end
+    obs = jStatement(preBody, 'observation', jSubjectOf(preBody, subjectSrc), ...
+        jLabel(axisMap{k, 2}), ...
+        jQuantity('length', vals, unit, 'approximate', false), ...
+        'TimeReferenceIds', {anchor.base.id}, idOpt{:}, 'ValueKind', 'length');
     obsBodies{end+1} = obs; %#ok<AGROW>
 end
 
@@ -109,19 +113,8 @@ bodies = obsBodies;
 if ~isempty(probeModel)
     % Optional probe-model assertion: a timeless subject_assertion leaf (no
     % interaction), a secondary sibling body so it mints a fresh base id.
-    assertion = struct();
-    assertion.document_class = struct('class_name', 'term_assertion', ...
-        'class_version', '1.0.0', ...
-        'superclasses', struct('class_name', 'subject_assertion', 'class_version', '1.0.0'), ...
-        'schema_version', 'V_eta');
-    assertion.depends_on = jCarrySubject(preBody, subjectSrc);
-    if isfield(preBody, 'base') && isstruct(preBody.base)
-        assertion.base = preBody.base;
-        assertion.base.id = did.ido.unique_id();
-    end
-    assertion.subject_statement = struct('variable', jOntologyTerm('', 'probe model'), ...
-        'storage_mode', 'inline');
-    assertion.term = struct('value', jOntologyTerm('', probeModel));
+    assertion = jStatement(preBody, 'assertion', jSubjectOf(preBody, subjectSrc), ...
+        jLabel('probe model'), jLabel(probeModel), 'ValueKind', 'term');
     bodies{end+1} = assertion;
 end
 bodies{end+1} = anchor;

@@ -101,7 +101,7 @@ function d = onlyClass(testCase, out, className)
 d = [];
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         d = out.migrated{k};
         n = n + 1;
     end
@@ -333,38 +333,36 @@ verifyTrue(testCase, any(strcmp(chain, 'image_stack_parameters')), ...
 end
 
 function testTheBuiltPathStillReadsARealTimestamp(testCase)
-% The superclass migrator runs BEFORE the concrete one (v1_to_v2.m:156 then
-% :165), so it must not disturb the FOLD either. With a subject present,
-% image_stack builds its observation triple and clockFromParams reads the
-% timestamp into the body's t0. A real value must still get there.
+% A real v1 timestamp survives the built path. UPDATED for did-schema #88: the
+% acquisition timestamp is a whole-statement CONDITION on the intensity
+% observation (a datenum on a named clock, kept as written), not the origin of a
+% time axis on the body.
 v1 = imageStackBody(739038.5);
 v1.depends_on(1).value = 'sub_1';          % give it a subject -> the built path
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-names = cell(1, numel(out.migrated));
-for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
-end
-verifyTrue(testCase, any(strcmp(names, 'image_observation')));
-body = out.migrated{find(strcmp(names, 'sampled_body'), 1)};
-verifyEqual(testCase, body.get('sampled_body.axes').origin.source_value, ...
-    739038.5, 'AbsTol', 1e-9);
+names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...
+    'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'observation+intensity')));
+obs = out.migrated{find(strcmp(names, 'observation+intensity'), 1)};
+c = obs.get('statement.conditions');
+verifyEqual(testCase, c.quantity.value, 739038.5, 'AbsTol', 1e-9);
+verifyTrue(testCase, startsWith(c.variable.name, 'acquisition timestamp'));
 end
 
+
 function testTheBuiltPathSurvivesTheDroppedPlaceholder(testCase)
-% And with the placeholder dropped, the fold must still work -- image_stack.m
-% reads the timestamp through a guarded getField, so an ABSENT field yields the
-% same t0 = 0 it used to get from []. If this goes red the two repairs are
-% fighting.
+% An empty timestamp placeholder is dropped, not turned into a zero. UPDATED for
+% #88: with no timestamp the statement carries no condition at all.
 v1 = imageStackBody([]);
 v1.depends_on(1).value = 'sub_1';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-names = cell(1, numel(out.migrated));
-for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
-end
-body = out.migrated{find(strcmp(names, 'sampled_body'), 1)};
-verifyEqual(testCase, body.get('sampled_body.axes').origin.source_value, 0, ...
-    'AbsTol', 1e-12);
+names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...
+    'UniformOutput', false);
+obs = out.migrated{find(strcmp(names, 'observation+intensity'), 1)};
+s = obs.toStruct();
+verifyFalse(testCase, isfield(s.statement, 'conditions') && ~isempty(s.statement.conditions), ...
+    'an absent timestamp must not become a condition (a 0 would read as a real datenum)');
+verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
 end

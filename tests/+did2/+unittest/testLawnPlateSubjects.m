@@ -1,6 +1,6 @@
 function tests = testLawnPlateSubjects
 %TESTLAWNPLATESUBJECTS did2.convert.resolveLawnPlateSubjects -- the E. coli
-%   lawn/plate subject tiers, their `member_of` join, and the
+%   lawn/plate subject tiers, their `contained_in` join, and the
 %   (experiment, plate, patch) identifier.
 %
 %   STATUS: WRITTEN 2026-08-11 in a container with no MATLAB and no Octave, and
@@ -29,9 +29,12 @@ function tests = testLawnPlateSubjects
 %   property that a test written from the same premise as the code would not
 %   catch:
 %
-%     1. TWO TIERS + `member_of`. The failure to catch is an edge that dangles,
-%        so `testTheTwoTiersAndTheMemberOfEdge` asserts the edge VALUES resolve
-%        to documents that are in the batch, not merely that an edge exists.
+%     1. TWO TIERS + `contained_in` (lawn in its plate; was `member_of` until
+%        did-schema V_eta_relation_inheritance_plan.md [lawn in plate], Jess
+%        Haley 2026-10-22). The failure to catch is an edge that dangles, so
+%        `testTheTwoTiersAndTheContainedInEdge` asserts the edge VALUES resolve
+%        to documents that are in the batch, not merely that an edge exists,
+%        and that the relation is contained_in BY NODE and is NOT member_of.
 %     2. A TIER IS MINTED ONLY WHERE IT HAS MEASUREMENTS. The failure to catch
 %        is a subject with nothing attached -- so the tests assert BOTH that no
 %        subject was minted AND that the three "why not" states are counted
@@ -107,11 +110,11 @@ end
 
 function testItIsANoOpOnANonVEtaTarget(testCase)
 % `subject` v3.0.0 and the observation leaves exist only in V_eta, and this pass
-% is wired into harnesses that also run V_delta/V_zeta. `ran` FALSE with every
+% is wired into harnesses that also run V_delta. `ran` FALSE with every
 % counter 0 is the off-target reading, distinct from the empty-batch one above.
 r = emptyResult();
 [out, rep] = did2.convert.resolveLawnPlateSubjects(r, ...
-    'Validate', false, 'TargetVersion', 'V_zeta');
+    'Validate', false, 'TargetVersion', 'V_delta');
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, out.migrated, {});
@@ -149,8 +152,8 @@ end
 
 % ===================== the decision itself =================================
 
-function testTheTwoTiersAndTheMemberOfEdge(testCase)
-%TESTTHETWOTIERSANDTHEMEMBEROFEDGE The happy path, asserted at the edge VALUES.
+function testTheTwoTiersAndTheContainedInEdge(testCase)
+%TESTTHETWOTIERSANDTHECONTAINEDINEDGE The happy path, asserted at the edge VALUES.
 %
 %   Not "a directed_relation exists": that would pass for an edge pointing at
 %   nothing, which is a gating orphan and the one outcome this pass may not
@@ -165,7 +168,9 @@ verifyEqual(testCase, rep.plate_subjects_minted, 1);
 verifyEqual(testCase, rep.lawn_subjects_minted, 1);
 verifyEqual(testCase, rep.chains_attempted, 1);
 verifyEqual(testCase, rep.chains_resolved, 1);
-verifyEqual(testCase, rep.member_of_relations_emitted, 1);
+verifyEqual(testCase, rep.contained_in_relations_emitted, 1);
+verifyFalse(testCase, isfield(rep, 'member_of_relations_emitted'), ...
+    'the edge is contained_in (did-schema [lawn in plate]); no member_of counter');
 verifyEqual(testCase, rep.withheld_plate_tier_not_minted, 0);
 verifyEqual(testCase, rep.withheld_lawn_tier_not_minted, 0);
 
@@ -174,31 +179,52 @@ verifyEqual(testCase, rep.withheld_lawn_tier_not_minted, 0);
 verifyEqual(testCase, rep.plate_observations_emitted, 4);
 verifyEqual(testCase, rep.lawn_observations_emitted, 8);
 
+verifyNumElements(testCase, findClass(out, 'directed_relation'), 1, ...
+    'one edge: the lawn in its plate');
 rel = firstOfClass(testCase, out, 'directed_relation');
-verifyEqual(testCase, rel.directed_relation.relation.name, 'member_of');
-verifyEqual(testCase, rel.directed_relation.relation.node, 'RO:0002350');
+% did-schema [lawn in plate] (Jess Haley 2026-10-22): a lawn is contained_in
+% its plate, NOT member_of it. Matched BY NODE, as code compares relations
+% ([vocabulary nodes]); the stored name is whatever the schema's row says.
+verifyEqual(testCase, rel.directed_relation.relation.node, 'RO:0001025');
+verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, ...
+    'relation', 'contained_in'), 'the lawn-plate edge is contained_in');
+verifyFalse(testCase, did2.build.isVocabulary(rel.directed_relation.relation, ...
+    'relation', 'member_of'), 'a plate is a material, not a group: no member_of');
+verifyNotEmpty(testCase, rel.directed_relation.relation.name, ...
+    'the builder completes the name from the binding row');
 
 % THE ASSERTION THAT MATTERS: both ends resolve, and to the RIGHT tiers.
-child  = documentById(out, depValue(rel, 'child'));
-parent = documentById(out, depValue(rel, 'parent'));
-verifyNotEmpty(testCase, child,  'the member end dangles -- a gating orphan');
-verifyNotEmpty(testCase, parent, 'the group end dangles -- a gating orphan');
-verifyEqual(testCase, child.subject.description,  'bacterial lawn (a bacterial patch)');
-verifyEqual(testCase, parent.subject.description, 'bacterial plate (a plate of lawns)');
+child  = documentById(out, depValue(rel, 'child_id'));
+parent = documentById(out, depValue(rel, 'parent_id'));
+verifyNotEmpty(testCase, child,  'the contained end dangles -- a gating orphan');
+verifyNotEmpty(testCase, parent, 'the container end dangles -- a gating orphan');
+verifyEqual(testCase, child.entity.description,  'bacterial lawn (a bacterial patch)');
+verifyEqual(testCase, parent.entity.description, 'bacterial plate (a plate of lawns)');
 
 % every observation points at a subject that is in the batch
-obsClasses = {'concentration_observation', 'volume_observation', ...
-    'length_observation', 'score_observation', 'intensity_observation'};
+obsClasses = {'observation+concentration', 'observation+volume', ...
+    'observation+length', 'observation+score', 'observation+intensity'};
 nChecked = 0;
+nOD = 0;
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
-    if ~any(strcmp(b.document_class.class_name, obsClasses)); continue; end
+    if ~any(strcmp(did2.unittest.helpers.classKey(b), obsClasses)); continue; end   % #88 leaf names
     nChecked = nChecked + 1;
-    verifyNotEmpty(testCase, documentById(out, depValue(b, 'subject_id')), ...
+    verifyNotEmpty(testCase, documentById(out, depValue(b, 'entity_id')), ...
         'an observation whose subject is not in the batch is an orphan');
+    % an OD600 column is an optical density, its source unit the OD600 term
+    % (Jess Haley 2026-10-22 [ratio slots named by unit])
+    if strcmp(did2.unittest.helpers.classKey(b), 'observation+concentration') ...
+            && contains(b.statement.variable.name, 'OD600')
+        nOD = nOD + 1;
+        verifyTrue(testCase, isfield(b.concentration.value, 'optical_density'));
+        verifyFalse(testCase, isfield(b.concentration.value, 'od600'));
+        verifyEqual(testCase, b.concentration.value.source_unit.node, 'MCO:0000059');
+    end
 end
 verifyEqual(testCase, nChecked, 12, ...
     'the denominator: 4 plate + 8 lawn observations were actually examined');
+verifyEqual(testCase, nOD, 2, 'the two OD600 columns were examined');
 end
 
 function testTheLawnIdentifierIsTheExperimentPlatePatchTriple(testCase)
@@ -213,10 +239,10 @@ function testTheLawnIdentifierIsTheExperimentPlatePatchTriple(testCase)
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()});
 verifyEqual(testCase, rep.lawn_subjects_minted, 1, 'denominator');
 lawn = subjectByDescription(testCase, out, 'bacterial lawn (a bacterial patch)');
-verifyEqual(testCase, lawn.subject.local_identifier, ...
+verifyEqual(testCase, lawn.entity.local_identifier, ...
     'exp/0007/plate/0061/patch/0003');
 plate = subjectByDescription(testCase, out, 'bacterial plate (a plate of lawns)');
-verifyEqual(testCase, plate.subject.local_identifier, 'exp/0007/plate/0061');
+verifyEqual(testCase, plate.entity.local_identifier, 'exp/0007/plate/0061');
 verifyEqual(testCase, rep.local_identifier_collisions_within_batch, 0);
 verifyEqual(testCase, rep.local_identifier_fallback_to_document_id, 0);
 end
@@ -235,7 +261,7 @@ plate = dropColumn(plate, 'ExperimentSessionIdentifier');
 verifyEqual(testCase, rep.chains_attempted, 1, 'denominator: the chain was tried');
 verifyEqual(testCase, rep.refused_lawn_no_exp_id, 1);
 verifyEqual(testCase, rep.lawn_subjects_minted, 0);
-verifyEqual(testCase, rep.member_of_relations_emitted, 0);
+verifyEqual(testCase, rep.contained_in_relations_emitted, 0);
 % and the PLATE tier is refused for the same reason and counted on its own line
 verifyEqual(testCase, rep.plate_rows_refused_no_exp_id, 1);
 verifyEqual(testCase, rep.plate_subjects_minted, 0);
@@ -245,13 +271,13 @@ verifyEqual(testCase, rep.lawn_rows_with_measurements, 1);
 verifyEmpty(testCase, subjectsOf(out), 'no subject may be minted unnamed');
 end
 
-function testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsMemberOf(testCase)
-%TESTAPLATEWITHNOMEASUREMENTSMINTSNOSUBJECTANDWITHHOLDSMEMBEROF The refinement:
+function testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsContainedIn(testCase)
+%TESTAPLATEWITHNOMEASUREMENTSMINTSNOSUBJECTANDWITHHOLDSCONTAINEDIN The refinement:
 %   "It's only necessary to make all subjects if we take measurements of both".
 %
 %   The plate row keeps its identity and its timestamps but loses all four
 %   typed measures. The LAWN still mints (it has its own measurements and the
-%   chain still resolves through the plate ROW for expID), and the `member_of`
+%   chain still resolves through the plate ROW for expID), and the `contained_in`
 %   is withheld because both ends must exist.
 plate = ecoliPlateRow();
 for name = {'BacterialOD600Measurement', 'BacterialOD600TargetAtSeeding', ...
@@ -267,8 +293,8 @@ verifyEqual(testCase, rep.plate_rows_with_no_values_at_all, 0);
 verifyEqual(testCase, rep.plate_subjects_minted, 0);
 verifyEqual(testCase, rep.lawn_subjects_minted, 1);
 verifyEqual(testCase, rep.chains_resolved, 1);
-verifyEqual(testCase, rep.member_of_relations_emitted, 0, ...
-    'both ends must exist -- a one-ended member_of is a gating orphan');
+verifyEqual(testCase, rep.contained_in_relations_emitted, 0, ...
+    'both ends must exist -- a one-ended contained_in is a gating orphan');
 verifyEqual(testCase, rep.withheld_plate_tier_not_minted, 1, ...
     'and WHICH tier was missing is a counter, not a silence');
 verifyEmpty(testCase, findClass(out, 'directed_relation'));
@@ -310,7 +336,7 @@ verifyEqual(testCase, repFlag.lawn_rows_with_values_but_none_emittable, 1);
 verifyEqual(testCase, repFlag.lawn_rows_with_no_values_at_all, 0);
 verifyEqual(testCase, repFlag.lawn_subjects_minted, 0);
 verifyEqual(testCase, repFlag.lawn_observations_emitted, 0);
-verifyEmpty(testCase, findClass(out, 'score_observation'), ...
+verifyEmpty(testCase, findClass(out, 'observation+score'), ...
     'a logical must not be laundered into a numeric observation');
 end
 
@@ -340,7 +366,7 @@ verifyEqual(testCase, rep.refused_plate_row_ambiguous, 0);
 verifyEqual(testCase, rep.chains_resolved, 1);
 verifyEqual(testCase, rep.lawn_subjects_minted, 1);
 lawn = subjectByDescription(testCase, out, 'bacterial lawn (a bacterial patch)');
-verifyEqual(testCase, lawn.subject.local_identifier, ...
+verifyEqual(testCase, lawn.entity.local_identifier, ...
     'exp/0007/plate/0061/patch/0003', ...
     'the other session''s expID 9999 must not reach this lawn');
 end
@@ -508,7 +534,7 @@ verifyEqual(testCase, rep.celegans_patch_subjects_refused_no_exp_id, 0);
 verifyEqual(testCase, rep.celegans_patch_subjects_unparseable_handle, 0);
 
 patch = subjectByDescription(testCase, out, 'bacterial patch');
-verifyEqual(testCase, patch.subject.local_identifier, ...
+verifyEqual(testCase, patch.entity.local_identifier, ...
     'exp/0001/plate/0017/patch/0017');
 % THE RELABEL IS THE SECOND SITE THAT FORMS A HANDLE, so it must reach the
 % collision split too -- a split that only saw the mint site would under-report
@@ -533,7 +559,7 @@ verifyEqual(testCase, rep.celegans_patch_subjects_seen, 1, 'denominator');
 verifyEqual(testCase, rep.celegans_patch_subjects_relabelled, 0);
 verifyEqual(testCase, rep.celegans_patch_subjects_refused_no_exp_id, 1);
 patch = subjectByDescription(testCase, out, 'bacterial patch');
-verifyEqual(testCase, patch.subject.local_identifier, 'plate/0017/patch/0017');
+verifyEqual(testCase, patch.entity.local_identifier, 'plate/0017/patch/0017');
 end
 
 function testNoSubjectAnywhereIsLabelledJustAPatchNumber(testCase)
@@ -557,7 +583,7 @@ for b = 1:numel(batches)
     subs = subjectsOf(out);
     for k = 1:numel(subs)
         nSubjects = nSubjects + 1;
-        handle = subs{k}.subject.local_identifier;
+        handle = subs{k}.entity.local_identifier;
         verifyNotEmpty(testCase, handle, 'local_identifier is REQUIRED');
         verifyEmpty(testCase, regexp(handle, '^\d+$', 'once'), ...
             sprintf(['subject %s is labelled with a bare number -- the ' ...
@@ -642,7 +668,7 @@ end
 function testTheMintedDocumentsValidateAgainstTheRealVEtaSchema(testCase)
 %TESTTHEMINTEDDOCUMENTSVALIDATEAGAINSTTHEREALVETASCHEMA The only test here that
 %   proves the pass and the schema agree; every other one would pass just as
-%   happily against a `member_of` shape the validator rejects. Needs the
+%   happily against a `contained_in` shape the validator rejects. Needs the
 %   assembled V_eta set on DID_SCHEMA_PATH, which the quick gate builds.
 %
 %   THE 0-QUARANTINE GATE IS THE POINT. This pass appends documents to a corpus
@@ -662,11 +688,19 @@ verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 verifyEqual(testCase, rep.subjects_quarantined, 0);
 verifyEqual(testCase, rep.statements_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, rep.member_of_relations_emitted, 1);
-verifyEqual(testCase, rep.documents_appended, 15, ...
-    '2 subjects + 12 observations + 1 member_of');
-% and the whole batch is reference-clean, which is the gate that actually runs
-refRep = did2.validate.references(out.migrated);
+verifyEqual(testCase, rep.contained_in_relations_emitted, 1);
+verifyEqual(testCase, rep.documents_appended, 16, ...
+    '2 entities + 12 observations + 1 contained_in + 1 session time reference (#88: an observation needs one)');
+% and the whole batch is reference-clean, which is the gate that actually runs.
+% #88: `base.session_id` is the `session_id` EDGE, and a session time reference
+% names the session as its referent, so both name the session document -- which
+% these table-row fixtures do not carry (a corpus does). The session id is
+% passed as known, and every OTHER edge must still resolve inside the batch.
+refRep = did2.validate.references(out.migrated, 'KnownIds', {'sess_ecoli'});
+for k = 1:numel(refRep.orphans)
+    o = refRep.orphans(k);
+    testCase.log(1, sprintf('orphan: %s', jsonencode(o)));
+end
 verifyEqual(testCase, refRep.orphan_count, 0, ...
     sprintf('%d orphan edge(s) of %d examined', refRep.orphan_count, ...
         refRep.edges_examined));
@@ -730,14 +764,15 @@ out = s(keep);
 end
 
 function subs = subjectsOf(out)
-subs = findClass(out, 'subject');
+% #88: the plate is a `material` entity, the lawn/patch a `culture` entity
+subs = [findClass(out, 'material'), findClass(out, 'culture'), findClass(out, 'organism')];
 end
 
 function found = findClass(out, className)
 found = {};
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
-    if strcmp(b.document_class.class_name, className)
+    if strcmp(did2.unittest.helpers.classKey(b), className)
         found{end+1} = b; %#ok<AGROW>
     end
 end
@@ -752,10 +787,10 @@ b = found{1};
 end
 
 function b = subjectByDescription(testCase, out, description)
-subs = findClass(out, 'subject');
+subs = subjectsOf(out);
 b = struct();
 for k = 1:numel(subs)
-    if strcmp(subs{k}.subject.description, description); b = subs{k}; return; end
+    if strcmp(subs{k}.entity.description, description); b = subs{k}; return; end
 end
 assertFail(testCase, sprintf('no subject described "%s"', description));
 end

@@ -68,54 +68,65 @@ end
 
 % ===================== the repair ===========================================
 
+% PORTED TO did-schema #88 (2026-10-21). The defect was found on
+% `entity.global_identifier`, a non-scalar `structure` {scheme, value} on the
+% pre-#88 `software` class. #88 has ONE `entity` class (software is its `type`)
+% and its `global_identifier` is a list of strings, not of structures, so that
+% field can no longer carry the shape under test. rehydrate's repair is about
+% ANY non-scalar `structure` field, so these tests drive the one the #88 schema
+% declares with the plainest subfields: `acquisition_channels.channels`
+% {type, numbers}. The round trip below keeps the entity, as the writer emits it.
+
 function testRehydrateRestoresAnEmptyStructArrayField(testCase)
 cache = localCache(testCase);
-s = localSoftwareBody(testCase, cache, '');
-s.entity.global_identifier = [];          % what jsondecode hands back
+s = localStructArrayBody(testCase, cache);
+s.acquisition_channels.channels = [];     % what jsondecode hands back
 
 out = cache.rehydrate(s);
 
-verifyTrue(testCase, isstruct(out.entity.global_identifier), sprintf( ...
-    ['rehydrate left entity.global_identifier a %s. That is the exact ' ...
+verifyTrue(testCase, isstruct(out.acquisition_channels.channels), sprintf( ...
+    ['rehydrate left acquisition_channels.channels a %s. That is the exact ' ...
      'shape that made seven documents unreadable.'], ...
-    class(out.entity.global_identifier)));
-verifyEqual(testCase, numel(out.entity.global_identifier), 0, ...
+    class(out.acquisition_channels.channels)));
+verifyEqual(testCase, numel(out.acquisition_channels.channels), 0, ...
     'An empty field must rehydrate to ZERO elements, not one blank one.');
-verifyEqual(testCase, sort(fieldnames(out.entity.global_identifier)), ...
-    {'scheme'; 'value'}, ...
+verifyEqual(testCase, sort(fieldnames(out.acquisition_channels.channels)), ...
+    {'numbers'; 'type'}, ...
     'The declared subfield names come from the schema, not from the data.');
 end
 
 function testRehydrateRestoresARaggedArrayToAStructArray(testCase)
 cache = localCache(testCase);
-s = localSoftwareBody(testCase, cache, '');
-s.entity.global_identifier = { struct('scheme', 'URL'), ...
-                               struct('value',  'x') };
+s = localStructArrayBody(testCase, cache);
+ai = struct('node', '', 'name', 'ai');
+s.acquisition_channels.channels = { struct('type', ai), ...
+                                    struct('numbers', [1 2]) };
 
 out = cache.rehydrate(s);
 
-g = out.entity.global_identifier;
+g = out.acquisition_channels.channels;
 verifyTrue(testCase, isstruct(g), sprintf( ...
     'A ragged array stayed a %s after rehydrate.', class(g)));
 verifyEqual(testCase, numel(g), 2);
-verifyEqual(testCase, g(1).scheme, 'URL');
-verifyEmpty(testCase, g(1).value, ...
+verifyEqual(testCase, g(1).type, ai);
+verifyEmpty(testCase, g(1).numbers, ...
     'A key absent from one JSON object must fill as [], not vanish.');
-verifyEmpty(testCase, g(2).scheme);
-verifyEqual(testCase, g(2).value, 'x');
+verifyEmpty(testCase, g(2).type);
+verifyEqual(testCase, g(2).numbers, [1 2]);
 end
 
 function testRehydrateLeavesAPopulatedFieldAlone(testCase)
 % The repair must be a no-op on documents that were already fine.
 cache = localCache(testCase);
-s = localSoftwareBody(testCase, cache, 'https://example.org/tool');
+s = localStructArrayBody(testCase, cache);
+ai = struct('node', '', 'name', 'ai');
+s.acquisition_channels.channels = struct('type', ai, 'numbers', [27 28]);
 
 out = cache.rehydrate(s);
 
-verifyEqual(testCase, numel(out.entity.global_identifier), 1);
-verifyEqual(testCase, out.entity.global_identifier(1).scheme, 'URL');
-verifyEqual(testCase, out.entity.global_identifier(1).value, ...
-    'https://example.org/tool');
+verifyEqual(testCase, numel(out.acquisition_channels.channels), 1);
+verifyEqual(testCase, out.acquisition_channels.channels(1).type, ai);
+verifyEqual(testCase, out.acquisition_channels.channels(1).numbers, [27 28]);
 end
 
 function testRehydrateDoesNotInventAnAbsentField(testCase)
@@ -124,12 +135,14 @@ function testRehydrateDoesNotInventAnAbsentField(testCase)
 % rehydrator that helpfully materialised missing fields would answer it
 % silently and wrongly.
 cache = localCache(testCase);
-s = localSoftwareBody(testCase, cache, '');
-s.entity = rmfield(s.entity, 'global_identifier');
+s = localStructArrayBody(testCase, cache);
+if isfield(s.acquisition_channels, 'channels')
+    s.acquisition_channels = rmfield(s.acquisition_channels, 'channels');
+end
 
 out = cache.rehydrate(s);
 
-verifyFalse(testCase, isfield(out.entity, 'global_identifier'), ...
+verifyFalse(testCase, isfield(out.acquisition_channels, 'channels'), ...
     'rehydrate materialised a field the document did not carry.');
 end
 
@@ -138,12 +151,12 @@ function testRehydrateLeavesARealTypeErrorForTheValidator(testCase)
 % would turn a type error into a silent reshape -- the failure mode this
 % repair exists to remove, reintroduced by the repair.
 cache = localCache(testCase);
-s = localSoftwareBody(testCase, cache, '');
-s.entity.global_identifier = 42;
+s = localStructArrayBody(testCase, cache);
+s.acquisition_channels.channels = 42;
 
 out = cache.rehydrate(s);
 
-verifyEqual(testCase, out.entity.global_identifier, 42, ...
+verifyEqual(testCase, out.acquisition_channels.channels, 42, ...
     'rehydrate silently reshaped a value that is genuinely wrong.');
 end
 
@@ -236,7 +249,7 @@ try
     dbCleanup = onCleanup(@() localClose(db)); %#ok<NASGU>
 
     step = 'build the fixture body';
-    body = localSoftwareBody(testCase, cache, '');
+    body = localSoftwareBody(testCase, cache, 'https://example.org/tool');
 
     step = 'construct did2.document';
     doc = did2.document(body);
@@ -266,11 +279,21 @@ end
 fprintf('DENOMINATOR: 1 document written and read back, class "%s"\n', ...
     readBack.className());
 
+% #88: `entity.global_identifier` is a list of strings (pre-#88 it was a
+% {scheme, value} structure array, which is what the 2026-08-14 defect broke).
+% The value written must be the value read back, in a shape `cellstr` accepts.
 gids = readBack.get('entity.global_identifier');
-verifyTrue(testCase, isstruct(gids), sprintf( ...
-    ['A document that validated on write came back with ' ...
-     'entity.global_identifier as a %s. That is the defect verbatim.'], ...
+readOk = (iscell(gids) || ischar(gids) || isstring(gids));
+verifyTrue(testCase, readOk, sprintf( ...
+    'entity.global_identifier came back as a %s, not a list of strings.', ...
     class(gids)));
+if readOk
+    verifyEqual(testCase, cellstr(gids(:)'), {'https://example.org/tool'}, ...
+        'entity.global_identifier did not survive the database round trip.');
+end
+typ = readBack.get('entity.type');
+verifyEqual(testCase, char(typ.name), 'software', ...
+    'entity.type did not survive the database round trip.');
 
 % AND IT MUST RE-VALIDATE. `isstruct` passing is necessary and not
 % sufficient: the original failure was raised BY the validator, so the
@@ -291,61 +314,48 @@ end
 % ===================== helpers ==============================================
 
 function s = localSoftwareBody(testCase, cache, url)
-% The SCAFFOLD comes from the schema (`blank` gets the class chain and the
-% block layout right, which a hand-written body cannot be trusted to do);
-% the FIELD UNDER TEST comes from the writer. That split matters: the
-% ground-truth rule is that the writer is the truth, and the defect is
-% specifically about the writer's 0x0-struct-array idiom.
+% A did-schema #88 `entity` of type software, built the way the migrators'
+% jEntity builds it (did2.build.document('entity', ...) with a bare-name
+% `type` term), so the WRITER is the truth and the schema supplies the
+% chain, the block layout and the session edge. Built UNVALIDATED here: the
+% write below is where validation is under test.
+fields = struct('type', did2.build.term('', 'software'), ...
+    'name', 'round-trip-fixture', 'local_identifier', 'round-trip-fixture');
+if ~isempty(url)
+    fields.global_identifier = {url};
+end
 try
-    doc = did2.document.blank('software', 'SchemaCache', cache);
+    s = did2.build.document('entity', fields, ...
+        'SessionId', did.ido.unique_id(), ...
+        'CreationTimestamp', '2024-01-01T00:00:00.000Z', ...
+        'Validate', false, 'SchemaCache', cache);
 catch err
     assumeFail(testCase, sprintf( ...
-        'Cannot build a blank `software` document here: %s', err.message));
+        'Cannot build an `entity` (type software) document here: %s', err.message));
 end
+end
+
+function s = localStructArrayBody(testCase, cache)
+% A blank `acquisition_channels`: the #88 class whose `channels` is a
+% non-scalar `structure` with plain subfields {type, numbers}. rehydrate is
+% called directly on it; nothing here is validated.
+if ~cache.hasClass('acquisition_channels')
+    assumeFail(testCase, ...
+        'acquisition_channels is not in this schema set; nothing to check.');
+end
+doc = did2.document.blank('acquisition_channels', 'SchemaCache', cache);
 s = doc.toStruct();
-
-s.base.id = did.ido.unique_id();
-% NOT '' -- `base.session_id` is mustBeNonEmpty and the write rejects it:
-%     did2:validation:emptyField
-%     Field "base.session_id" is required to be non-empty.
-% jSoftware passes '' here quite legitimately (its RequireSession option
-% exists for exactly the no-session case, and it RETURNS EARLY rather than
-% emitting), so copying that literal into a fixture that then WRITES was
-% the mistake -- the writer never reaches the database with an empty one.
-s.base.session_id = did.ido.unique_id();
-s.base.name = 'round-trip-fixture';
-% THE CREATION-TIME FIELD IS MID-RENAME ACROSS TWO REPOSITORIES, so it is
-% written to whichever name the SCHEMA produced rather than to a literal.
-% `base.datestamp` -> `base.creation_timestamp` is signed and implemented
-% DID-side (v1_to_v2/renameOutboundBaseFields strips the old key from every
-% V_eta body; sqlitedb/requireCreationTimestamp accepts either), while the
-% did-schema half is not built yet. Hard-coding either spelling would make
-% this test fail on the day the other one lands -- and fail for a reason
-% that has nothing to do with what it is testing.
-for stamp = {'creation_timestamp', 'datestamp'}
-    if isfield(s.base, stamp{1})
-        s.base.(stamp{1}) = '2024-01-01T00:00:00.000Z';
-    end
-end
-
-gids = struct('scheme', {}, 'value', {});   % jSoftware.m:120, verbatim
-if ~isempty(url)
-    gids(end+1) = struct('scheme', 'URL', 'value', url);
-end
-s.entity.global_identifier = gids;
-
-s.software.name = 'round-trip-fixture';
 end
 
 function c = localCache(testCase)
 p = getenv('DID_SCHEMA_PATH');
-if isempty(p) || ~isfile(fullfile(p, 'software.json'))
+if isempty(p) || ~isfile(fullfile(p, 'entity.json'))
     % ASSUMPTION FAILURE, NOT A TEST FAILURE. "no assembled V_eta schema
     % set here" and "the round trip is broken" are different findings and
     % must not print alike.
     assumeFail(testCase, ...
         ['DID_SCHEMA_PATH does not point at an assembled V_eta schema ' ...
-         'set (no software.json beside it), so the round trip cannot ' ...
+         'set (no entity.json beside it), so the round trip cannot ' ...
          'be checked here.']);
 end
 % setSchemaPath, not shared(p): `shared` only honours its argument when no

@@ -111,9 +111,18 @@ classdef cache < handle
     %       resetSingleton  - drop the cached singleton (test helper).
     %       strictMode      - read/set the #32, #37 and #38 enforcement
     %                         switches.
+    %       sessionIdOf     - a body's session id: the base.session_id field,
+    %                         else the session_id edge.
     %
     %   did2.schema.cache Methods:
     %       getClass            - resolved class definition for a name.
+    %       sessionIdIsEdge     - does `base` declare session_id as an edge
+    %                             (did-schema, 2026-10-20) or as the field?
+    %       sourceUnitIsTerm    - is a value's `source_unit` an ontology_term
+    %                             (did-schema, 2026-10-21) or char?
+    %       datumOrderBlock     - which block declares `datum_order`:
+    %                             `data` (did-schema #88, 2026-10-20) or
+    %                             `sampled_body`?
     %       requiredDependencies - depends_on names declared mustBeNonEmpty
     %                             anywhere in a class chain (#37).
     %       unpopulatedRequiredDependencies - which of those a given body
@@ -140,6 +149,23 @@ classdef cache < handle
         schemaPath (1,:) char = ''
         loadedClasses
         curieRegistry struct = struct()
+        termRegistry struct = struct()
+        bindingRegistry struct = struct()
+    end
+
+    properties (Access = private)
+        % Per-class results of superclasses() and resolvePlacement(),
+        % computed once per class for the life of this instance. Both are
+        % pure functions of the loaded schemas, which only ever grow here
+        % (getClass caches every file it reads; a new schema path makes a
+        % new instance), so a remembered answer cannot go stale. Every
+        % document read used to recompute them: listing the 10,536 Haley V2
+        % subjects called getClass 900,580 times.
+        superclassMemo
+        placementMemo
+        % Per class (and value kind): where the class declares a `matrix`
+        % field (matrixFieldPaths). Pure in the loaded schemas, as above.
+        matrixPathMemo
     end
 
     methods (Access = private)
@@ -150,6 +176,9 @@ classdef cache < handle
             end
             obj.schemaPath = schemaPath;
             obj.loadedClasses = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.superclassMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.placementMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.matrixPathMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.loadRegistry();
         end
     end
@@ -192,6 +221,10 @@ classdef cache < handle
                 obj
                 className (1,:) char
             end
+            if isKey(obj.superclassMemo, className)
+                names = obj.superclassMemo(className);
+                return;
+            end
             names = {};
             visited = containers.Map('KeyType', 'char', 'ValueType', 'logical');
             visited(className) = true;
@@ -221,6 +254,7 @@ classdef cache < handle
                     queue{end+1} = parentName; %#ok<AGROW>
                 end
             end
+            obj.superclassMemo(className) = names;
         end
 
         function chain = classChain(obj, className)
@@ -231,6 +265,159 @@ classdef cache < handle
                 className (1,:) char
             end
             chain = [fliplr(obj.superclasses(className)), {className}];
+        end
+
+        function rule = valueKindRule(obj, className)
+            % valueKindRule - the `value_kind` composition rule CLASSNAME
+            %   declares or inherits, or [] when none does.
+            %
+            %   A statement direction (observation, assertion, ...) declares
+            %   `document_class.value_kind = {root, count}`: a document of it
+            %   lists, after its own chain, the chain of `count` concrete
+            %   descendants of `root` (its value kind). did-schema
+            %   V_eta_entity_composition_plan.md sec. 1 (2026-10-08, a
+            %   proposal built ahead of signature).
+            arguments
+                obj
+                className (1,:) char
+            end
+            rule = [];
+            chain = obj.classChain(className);
+            for k = numel(chain):-1:1
+                s = obj.getClass(chain{k});
+                if isstruct(s) && isfield(s, 'document_class') ...
+                        && isfield(s.document_class, 'value_kind') ...
+                        && ~isempty(s.document_class.value_kind)
+                    rule = s.document_class.value_kind;
+                    return;
+                end
+            end
+        end
+
+        function kind = documentValueKind(obj, className, declaredAncestors)
+            % documentValueKind - the value kind a document of CLASSNAME
+            %   names in its superclasses, or '' when its class takes none.
+            %
+            %   A class takes a kind when it carries a `value_kind` rule and
+            %   its own chain does not already hold a descendant of the
+            %   rule's root (a named calculator such as
+            %   tuning_curve_calculation does). The kind is the first name
+            %   after the class's own ancestors in DECLAREDANCESTORS.
+            %   Raises did2:validation:missingValueKind when a kind is
+            %   needed and none is listed, and did2:validation:badValueKind
+            %   when the listed name is not a concrete descendant of root.
+            arguments
+                obj
+                className (1,:) char
+                declaredAncestors cell
+            end
+            kind = '';
+            rule = obj.valueKindRule(className);
+            if isempty(rule)
+                return;
+            end
+            root = char(rule.root);
+            own = obj.superclasses(className);
+            if any(strcmp(own, root))
+                return;
+            end
+            if numel(declaredAncestors) <= numel(own)
+                error('did2:validation:missingValueKind', ...
+                    ['Class "%s" takes exactly one value kind (a concrete ' ...
+                     'descendant of "%s") in its superclasses, after its own ' ...
+                     'chain {%s}; the document lists none.'], ...
+                    className, root, strjoin(own, ', '));
+            end
+            kind = char(declaredAncestors{numel(own) + 1});
+            if ~obj.hasClass(kind) || ~any(strcmp(obj.superclasses(kind), root))
+                error('did2:validation:badValueKind', ...
+                    '"%s" is not a value kind: it does not descend from "%s".', ...
+                    kind, root);
+            end
+            ks = obj.getClass(kind);
+            if isfield(ks.document_class, 'abstract') && isequal(ks.document_class.abstract, true)
+                error('did2:validation:badValueKind', ...
+                    'Value kind "%s" is abstract; name a concrete one.', kind);
+            end
+        end
+
+        function names = documentAncestors(obj, className, kind)
+            % documentAncestors - the superclasses a document of CLASSNAME
+            %   with value kind KIND lists: the class's own, then KIND and
+            %   its ancestors that the class's chain does not already hold.
+            %   KIND '' gives superclasses(CLASSNAME).
+            arguments
+                obj
+                className (1,:) char
+                kind (1,:) char = ''
+            end
+            names = obj.superclasses(className);
+            if isempty(kind)
+                return;
+            end
+            extra = [{kind}, obj.superclasses(kind)];
+            for j = 1:numel(extra)
+                if ~any(strcmp(names, extra{j}))
+                    names{end+1} = extra{j}; %#ok<AGROW>
+                end
+            end
+        end
+
+        function chain = documentChain(obj, className, kind)
+            % documentChain - root-first chain of a document of CLASSNAME
+            %   with value kind KIND: classChain(CLASSNAME), then the kind's
+            %   own chain without the classes already in it.
+            arguments
+                obj
+                className (1,:) char
+                kind (1,:) char = ''
+            end
+            chain = obj.classChain(className);
+            if isempty(kind)
+                return;
+            end
+            extra = obj.classChain(kind);
+            for j = 1:numel(extra)
+                if ~any(strcmp(chain, extra{j}))
+                    chain{end+1} = extra{j}; %#ok<AGROW>
+                end
+            end
+        end
+
+        function info = resolvePlacementFor(obj, className, kind)
+            % resolvePlacementFor - resolvePlacement(CLASSNAME), plus the
+            %   blocks and fields of value kind KIND when one is named. The
+            %   two memoised maps are COPIED, never modified.
+            arguments
+                obj
+                className (1,:) char
+                kind (1,:) char = ''
+            end
+            info = obj.resolvePlacement(className);
+            if isempty(kind)
+                return;
+            end
+            ik = obj.resolvePlacement(kind);
+            merged = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            sources = {info.fieldsByBlock, ik.fieldsByBlock};
+            for m = 1:numel(sources)
+                src = sources{m};
+                ks = keys(src);
+                for j = 1:numel(ks)
+                    if ~isKey(merged, ks{j})
+                        merged(ks{j}) = src(ks{j});
+                    end
+                end
+            end
+            blocks = info.blocksContributed;
+            for j = 1:numel(ik.blocksContributed)
+                if ~any(strcmp(blocks, ik.blocksContributed{j}))
+                    blocks{end+1} = ik.blocksContributed{j}; %#ok<AGROW>
+                end
+            end
+            info.blocksContributed = blocks;
+            info.fieldsByBlock = merged;
+            info.chain = obj.documentChain(className, kind);
         end
 
         function s = rehydrate(obj, s)
@@ -298,8 +485,10 @@ classdef cache < handle
             %      outcome while no writer is known to do it, and the
             %      wrong one the moment one does.
             %
-            %   2. COST. `resolvePlacement` is recomputed per document and
-            %      is not memoised, so this roughly doubles the schema
+            %   2. COST. [RESOLVED 2026-10-06: resolvePlacement and
+            %      superclasses are now memoised per class; see
+            %      placementMemo.] `resolvePlacement` was recomputed per
+            %      document and was not memoised, so this roughly doubles the schema
             %      walking a read already pays for (validateDocument makes
             %      the same call). Measured at nothing so far: the sessions
             %      this was found on hold tens of documents, and no corpus
@@ -326,7 +515,16 @@ classdef cache < handle
                     s.depends_on, {'name', 'value'});
             end
 
-            info = obj.resolvePlacement(className);
+            kind = '';
+            if isfield(s, 'document_class') && isfield(s.document_class, 'superclasses')
+                try
+                    kind = obj.documentValueKind(className, ...
+                        obj.superclassClassNames(s.document_class.superclasses));
+                catch
+                    kind = '';   % validateDocument reports a bad kind; rehydrate only reshapes
+                end
+            end
+            info = obj.resolvePlacementFor(className, kind);
             for k = 1:numel(info.blocksContributed)
                 blockName = info.blocksContributed{k};
                 if ~isfield(s, blockName) || ~isstruct(s.(blockName))
@@ -354,6 +552,74 @@ classdef cache < handle
             end
         end
 
+        function paths = matrixFieldPaths(obj, s)
+            % matrixFieldPaths - where S's class declares a `matrix` field.
+            %
+            %   PATHS = obj.matrixFieldPaths(S) returns a cell of paths, each a
+            %   cellstr of field names from the document root (block first),
+            %   to every field of type `matrix` in S's class and value kind --
+            %   e.g. {'method','parameters','matrix'}. A step through an
+            %   array of structures is a step through each of its elements.
+            %   Empty when the class is unknown here or declares none.
+            %
+            %   WHY: did2.document/toJSON writes a `matrix` value with every
+            %   dimension present (data_body AMENDMENT 4, did-schema #88:
+            %   "row-major as JSON nested arrays"), because `jsonencode`
+            %   writes a 1xN row and an Nx1 column alike as a flat array and
+            %   `jsondecode` reads every flat array back as a COLUMN -- so a
+            %   row would come back transposed. The writer needs the schema to
+            %   know which values are matrices, as rehydrate needs it to know
+            %   which are arrays of structures. Class and kind are resolved
+            %   exactly as rehydrate resolves them.
+            arguments
+                obj
+                s (1,1) struct
+            end
+            paths = {};
+            className = '';
+            if isfield(s, 'document_class') && isstruct(s.document_class) ...
+                    && isfield(s.document_class, 'class_name')
+                className = char(s.document_class.class_name);
+            end
+            if isempty(className)
+                return;
+            end
+            unknownKey = ['?' className];
+            if isKey(obj.matrixPathMemo, unknownKey)
+                return;
+            end
+            if ~obj.hasClass(className)
+                obj.matrixPathMemo(unknownKey) = {};
+                return;
+            end
+            kind = '';
+            if isfield(s.document_class, 'superclasses')
+                try
+                    kind = obj.documentValueKind(className, ...
+                        obj.superclassClassNames(s.document_class.superclasses));
+                catch
+                    kind = '';   % validateDocument reports a bad kind
+                end
+            end
+            memoKey = [className '|' kind];
+            if isKey(obj.matrixPathMemo, memoKey)
+                paths = obj.matrixPathMemo(memoKey);
+                return;
+            end
+            info = obj.resolvePlacementFor(className, kind);
+            for k = 1:numel(info.blocksContributed)
+                blockName = info.blocksContributed{k};
+                if ~isKey(info.fieldsByBlock, blockName)
+                    continue;
+                end
+                entries = info.fieldsByBlock(blockName);
+                found = did2.schema.cache.matrixPathsIn( ...
+                    {entries.fieldDef}, {blockName});
+                paths = [paths, found]; %#ok<AGROW>
+            end
+            obj.matrixPathMemo(memoKey) = paths;
+        end
+
         function tf = hasClass(obj, className)
             % hasClass - true when a schema file for CLASSNAME is readable.
             %   Asked rather than caught: `getClass` errors on a missing
@@ -368,6 +634,125 @@ classdef cache < handle
                 return;
             end
             tf = isfile(fullfile(obj.schemaPath, [className '.json']));
+        end
+
+        function tf = sessionIdIsEdge(obj)
+            % sessionIdIsEdge - true when `base` declares `session_id` as a
+            %   depends_on EDGE rather than as a field.
+            %
+            %   did-schema V_eta_relation_inheritance_plan.md (2026-10-20,
+            %   built ahead of signature): `base.session_id` became one
+            %   required edge, `session_id`, to the session or dataset
+            %   `entity` a document is stored with; that entity's base.id IS
+            %   its session id. did-schema `main` (and the pinned
+            %   v_eta-pre73) still declare the field. Every caller that writes
+            %   or moves a session id asks here rather than assuming, as the
+            %   builders ask which statement class the schema spells
+            %   (+build/private/vetaNames.m), so one code base writes valid
+            %   documents against either until every repository has moved.
+            %
+            %   ASKED OF THE SCHEMA, NOT INFERRED FROM A DOCUMENT: a v1 body
+            %   carries the field whatever the target is. False when no
+            %   `base` schema is readable (the field is the historical shape).
+            arguments
+                obj
+            end
+            tf = false;
+            if ~obj.hasClass('base')
+                return;
+            end
+            s = obj.getClass('base');
+            if ~isfield(s, 'depends_on') || isempty(s.depends_on)
+                return;
+            end
+            deps = did2.schema.cache.asCellOfDefs(s.depends_on);
+            for k = 1:numel(deps)
+                d = deps{k};
+                if isstruct(d) && isfield(d, 'name') && strcmp(char(d.name), 'session_id')
+                    tf = true;
+                    return;
+                end
+            end
+        end
+
+        function tf = sourceUnitIsTerm(obj)
+            % sourceUnitIsTerm - true when a dimensioned value's `source_unit`
+            %   is declared an `ontology_term` rather than char.
+            %
+            %   did-schema V_eta_source_unit_plan.md (signed 2026-10-21):
+            %   every `source_unit` became a bound term {node, name}, the
+            %   unit's registered term with its label as the name. did-schema
+            %   `main` (and the pinned v_eta-pre73) still declare char. The
+            %   builders read each field's own declaration (fillField), so
+            %   this is for a CALLER that has to decide what to pass or how to
+            %   read a stored value, as sessionIdIsEdge is for the session id.
+            %
+            %   ASKED OF THE SCHEMA: the `value.source_unit` of the first of a
+            %   few dimensioned value classes the schema has (time, length,
+            %   mass, voltage, duration). The plan changed every declaration
+            %   at once, so one answers for all. False when none is readable.
+            arguments
+                obj
+            end
+            tf = false;
+            for c = {'time', 'length', 'mass', 'voltage', 'duration'}
+                if ~obj.hasClass(c{1})
+                    continue;
+                end
+                s = obj.getClass(c{1});
+                if ~isfield(s, 'fields') || isempty(s.fields)
+                    continue;
+                end
+                fields = did2.schema.cache.asCellOfDefs(s.fields);
+                for k = 1:numel(fields)
+                    f = fields{k};
+                    if ~(isstruct(f) && isfield(f, 'name') && strcmp(char(f.name), 'value') ...
+                            && isfield(f, 'fields') && ~isempty(f.fields))
+                        continue;
+                    end
+                    sub = did2.schema.cache.asCellOfDefs(f.fields);
+                    for j = 1:numel(sub)
+                        d = sub{j};
+                        if isstruct(d) && isfield(d, 'name') && strcmp(char(d.name), 'source_unit')
+                            tf = isfield(d, 'type') && strcmp(char(d.type), 'ontology_term');
+                            return;
+                        end
+                    end
+                end
+            end
+        end
+
+        function block = datumOrderBlock(obj)
+            % datumOrderBlock - the class whose block declares `datum_order`.
+            %
+            %   did-schema PR #88 (Haley audit D-5, signed 2026-10-20) moved
+            %   `datum_order` from `sampled_body` up to `data`, beside `keys`,
+            %   so it describes whichever array the keys do: an inline value
+            %   or a body's own; empty means F. did-schema `main` and the
+            %   pinned v_eta-pre73 still declare it on `sampled_body`. A
+            %   builder places a field by its declaration (fillField), so this
+            %   is for a CALLER that writes or reads the block directly, as
+            %   sessionIdIsEdge and sourceUnitIsTerm are for theirs.
+            %
+            %   ASKED OF THE SCHEMA: 'data' when `data` declares it, else
+            %   'sampled_body' when that does, else '' (neither readable).
+            arguments
+                obj
+            end
+            block = '';
+            for c = {'data', 'sampled_body'}
+                if ~obj.hasClass(c{1})
+                    continue;
+                end
+                own = obj.ownFields(c{1});
+                for k = 1:numel(own)
+                    f = own{k};
+                    if isstruct(f) && isfield(f, 'name') && strcmp(char(f.name), 'datum_order')
+                        block = c{1};
+                        return;
+                    end
+                end
+            end
         end
 
         function names = requiredDependencies(obj, className)
@@ -528,9 +913,18 @@ classdef cache < handle
             %                               both place into the concrete-class
             %                               block, or any class redeclares a
             %                               name an ancestor has placed).
+            %   Computed once per class and remembered (see placementMemo).
+            %   INFO.fieldsByBlock is a containers.Map, a handle: the same
+            %   map is handed to every caller, so callers must read it and
+            %   never modify it. None does (checked 2026-10-06: cache.m,
+            %   v1_to_v2.m ensureClassBlocks, did2.build.document).
             arguments
                 obj
                 className (1,:) char
+            end
+            if isKey(obj.placementMemo, className)
+                info = obj.placementMemo(className);
+                return;
             end
 
             chain = obj.classChain(className);
@@ -624,6 +1018,7 @@ classdef cache < handle
             info.blocksContributed = blocksContributed;
             info.fieldsByBlock     = entriesByBlock;
             info.chain             = chain;
+            obj.placementMemo(className) = info;
         end
 
         function loadAllSchemas(obj)
@@ -733,19 +1128,22 @@ classdef cache < handle
             paths = struct('scalar', {scalar}, 'array', {arrayPaths});
         end
 
-        function doc = buildBlankDocument(obj, className)
+        function doc = buildBlankDocument(obj, className, kind)
             % buildBlankDocument - blank V_delta document in the
             %   class-scoped wire shape. Mints a fresh did_uid for
             %   base.id and the current UTC timestamp for base.datestamp.
+            %   KIND names the value kind of a statement direction that
+            %   takes one (see documentValueKind); default none.
             arguments
                 obj
                 className (1,:) char
+                kind (1,:) char = ''
             end
             doc = struct();
             schema = obj.getClass(className);
             schemaDC = schema.document_class;
 
-            ancestors = obj.superclasses(className);
+            ancestors = obj.documentAncestors(className, kind);
             sc = struct('class_name', {}, 'class_version', {});
             for k = 1:numel(ancestors)
                 ancDC = obj.getClass(ancestors{k}).document_class;
@@ -766,7 +1164,7 @@ classdef cache < handle
             % to it (the class's own declaring-class fields plus any
             % concrete-class-placed fields from abstract ancestors when
             % this is the leaf).
-            info = obj.resolvePlacement(className);
+            info = obj.resolvePlacementFor(className, kind);
             for k = 1:numel(info.blocksContributed)
                 blockClass = info.blocksContributed{k};
                 doc.(blockClass) = obj.buildBlockFromEntries( ...
@@ -825,8 +1223,12 @@ classdef cache < handle
                      '[] for base). Class "%s" expects %d entries.'], ...
                     className, numel(obj.superclasses(className)));
             end
-            expectedAncestors = obj.superclasses(className);
             declaredAncestors = obj.superclassClassNames(dc.superclasses);
+            % Composition (did-schema V_eta_entity_composition_plan.md
+            % sec. 1): a statement direction lists its value kind's chain
+            % after its own, so the expected snapshot depends on which kind.
+            kind = obj.documentValueKind(className, declaredAncestors);
+            expectedAncestors = obj.documentAncestors(className, kind);
             if numel(declaredAncestors) ~= numel(expectedAncestors) ...
                     || ~all(cellfun(@strcmp, declaredAncestors, expectedAncestors))
                 error('did2:validation:superclassesChainMismatch', ...
@@ -843,7 +1245,7 @@ classdef cache < handle
             % contribute a body block. Inherited fields routed onto the
             % concrete leaf's block are validated there against their
             % declaring class's field definition.
-            info = obj.resolvePlacement(className);
+            info = obj.resolvePlacementFor(className, kind);
             for k = 1:numel(info.blocksContributed)
                 blockClass = info.blocksContributed{k};
                 if ~isfield(s, blockClass)
@@ -923,6 +1325,10 @@ classdef cache < handle
             % PER CLASS out of v1_to_v2/printSummary, and repair against that.
             if did2.schema.cache.strictMode('RequiredDependencies')
                 missingDeps = obj.unpopulatedRequiredDependencies(s, className);
+                if ~isempty(kind)
+                    missingDeps = unique([missingDeps, ...
+                        obj.unpopulatedRequiredDependencies(s, kind)], 'stable');
+                end
                 if ~isempty(missingDeps)
                     error('did2:validation:emptyRequiredDependency', ...
                         ['Class "%s" declares depends_on %s as ' ...
@@ -933,6 +1339,24 @@ classdef cache < handle
                         className, ...
                         ['{' strjoin(missingDeps, ', ') '}']);
                 end
+            end
+            % ---- value_inline_or_body (did-schema data_body AMENDMENT 5) ---
+            % Jess Haley, signed 2026-10-21: a value is inline (`value`
+            % filled) or in data bodies (`data_body` true), never neither; a
+            % statement may instead take its value from a shared value
+            % document through a non-empty `value_id` edge (clarification,
+            % same day). The rule on `value` replaces the per-class required
+            % `value` of nine classes, which is why this switch is ARMED BY
+            % DEFAULT: disarmed, those nine would validate with no value at
+            % all. LAST, like #37, so a document failing an older check keeps
+            % failing for the same reason.
+            if did2.schema.cache.strictMode('ValueInlineOrBody') ...
+                    && obj.valueIsNowhere(s, info, [{className}, expectedAncestors])
+                error('did2:validation:valueNowhere', ...
+                    ['Class "%s" is a value (rule value_inline_or_body): its ' ...
+                     '`value` is empty, `data_body` is not true, and no ' ...
+                     '`value_id` edge names a shared value document, so the ' ...
+                     'value is nowhere.'], className);
             end
         end
     end
@@ -966,6 +1390,63 @@ classdef cache < handle
             did2.schema.cache.shared(schemaPath);
         end
 
+        function sid = sessionIdOf(body)
+            % sessionIdOf - the session id a document body carries, in
+            %   either shape: BODY's `base.session_id` field when it has one
+            %   (even blank), else -- when it has NO such field -- the id its
+            %   `session_id` depends_on edge names, else ''. BODY
+            %   is a body struct or a did2.document.
+            %
+            %   TWO SHAPES, ONE ANSWER. did_v1 and V_eta before 2026-10-20
+            %   store the session id as the field; V_eta after did-schema
+            %   V_eta_relation_inheritance_plan.md stores it as the edge,
+            %   whose target is the session (or dataset) entity, and that
+            %   entity's base.id IS the session id -- so the two are the
+            %   same string. The FIELD is read first: a body on its way
+            %   through the migration still carries it, and it is the
+            %   authority until did2.convert.v1_to_v2 moves it onto the edge.
+            %   The edge's target is read under all three keys, as
+            %   edgeIsPopulated reads it. See also sessionIdIsEdge.
+            arguments
+                body   % a struct or a did2.document
+            end
+            sid = '';
+            if isa(body, 'did2.document')
+                body = body.toStruct();
+            end
+            if ~isstruct(body) || ~isscalar(body)
+                return;
+            end
+            if isfield(body, 'base') && isstruct(body.base) && isscalar(body.base) ...
+                    && isfield(body.base, 'session_id')
+                % A body that HAS the field answers from it, even blank: on
+                % the field shape a `session_id` edge some classes declare
+                % (an epoch's) names the session DOCUMENT, a different id.
+                sid = char(body.base.session_id);
+                return;
+            end
+            if ~isfield(body, 'depends_on') || isempty(body.depends_on)
+                return;
+            end
+            deps = body.depends_on;
+            for k = 1:numel(deps)
+                if iscell(deps)
+                    d = deps{k};
+                else
+                    d = deps(k);
+                end
+                if ~isstruct(d) || ~isfield(d, 'name') || ~strcmp(char(d.name), 'session_id')
+                    continue;
+                end
+                for key = {'document_id', 'value', 'id'}
+                    if isfield(d, key{1}) && ~isempty(d.(key{1}))
+                        sid = char(d.(key{1}));
+                        return;
+                    end
+                end
+            end
+        end
+
         function resetSingleton()
             % resetSingleton - drop the cached singleton.
             did2.schema.cache.shared('-reset');
@@ -987,6 +1468,11 @@ classdef cache < handle
             %     NonVacuousFields      #38. A required field whose every
             %                           leaf is blank rejects, raising
             %                           did2:validation:vacuousField.
+            %     TermRegistry          T19. did2.build refuses a term the
+            %                           schema's term registry does not
+            %                           hold, raising
+            %                           did2:build:unregisteredTerm. ARMED;
+            %                           DID_ENFORCE_TERM_REGISTRY=0 disarms.
             %
             %   BOTH ARE NOW ARMED (2026-08-10, team's call) -- and they were
             %   armed on OPPOSITE evidence, which must not be flattened out.
@@ -1162,7 +1648,32 @@ classdef cache < handle
                     ... reject today: the strength on the field and this switch
                     ... are two independent brakes.
                     'BindingConformance', ...
-                        did2.schema.cache.envFlag('DID_ENFORCE_BINDING_CONFORMANCE'));
+                        did2.schema.cache.envFlag('DID_ENFORCE_BINDING_CONFORMANCE'), ...
+                    ... Tenet T19 (DID-schema V_eta_term_registry_plan.md,
+                    ... Jess Haley 2026-10-20: "error until the term is
+                    ... registered"). ARMED BY DEFAULT: did2.build refuses an
+                    ... ontology term in a vocabulary slot (a variable, method,
+                    ... unit, condition, parameter or key) that the schema's
+                    ... term registry does not hold. Only did2.build reads it;
+                    ... did2.convert turns it off while it migrates, because a
+                    ... migrator transcribes the v1 source's own terms. A
+                    ... schema with no registry (did-schema main) checks
+                    ... nothing. DID_ENFORCE_TERM_REGISTRY=0 turns it off.
+                    'TermRegistry', ...
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_TERM_REGISTRY'), ...
+                    ... did-schema data_body AMENDMENT 5 (rule
+                    ... value_inline_or_body on `value`, Jess Haley, signed
+                    ... 2026-10-21). ARMED BY DEFAULT because the rule REPLACES
+                    ... a required `value` on nine classes (term, date, logical,
+                    ... polynomial, model_fit, tuning_curve, contrast_sensitivity,
+                    ... harmonic_component, receptive_field): off, those would
+                    ... validate empty. For the other value classes the cost is
+                    ... NOT YET MEASURED on a corpus; a value document that says
+                    ... nothing now quarantines, which is the rule's intent.
+                    ... A schema whose `value` does not declare the rule checks
+                    ... nothing. DID_ENFORCE_VALUE_INLINE_OR_BODY=0 turns it off.
+                    'ValueInlineOrBody', ...
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_VALUE_INLINE_OR_BODY'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;
@@ -1197,7 +1708,14 @@ classdef cache < handle
             % three '..'s land at the *sibling* of DID-matlab where a
             % did-schema checkout typically lives. (The previous two
             % '..'s expected did-schema *inside* DID-matlab.)
-            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
+            %
+            % V_eta, not V_delta: did-schema #88 deleted schemas/V_alpha ..
+            % V_zeta (OPEN_WORK #128), so V_eta is the only schema set left.
+            % V_eta spreads its classes over stable/, draft/ and deprecated/;
+            % this fallback reads stable/ only. The CI workflows copy all three
+            % tiers into one directory and set DID_SCHEMA_PATH to it, which
+            % wins over this default (above).
+            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_eta', 'stable');
         end
 
         function block = coerceBlock(block, fieldDefs)
@@ -1252,6 +1770,25 @@ classdef cache < handle
             % so the array's field set cannot diverge between elements.
             for k = 1:numel(value)
                 value(k) = did2.schema.cache.coerceBlock(value(k), subDefs);
+            end
+        end
+
+        function paths = matrixPathsIn(fieldDefs, prefix)
+            % matrixPathsIn - the `matrix` fields among FIELDDEFS, recursively,
+            %   each as PREFIX followed by its field names.
+            paths = {};
+            for i = 1:numel(fieldDefs)
+                fdef = fieldDefs{i};
+                if ~isstruct(fdef) || ~isfield(fdef, 'name') || ~isfield(fdef, 'type')
+                    continue;
+                end
+                here = [prefix, {char(fdef.name)}];
+                if strcmp(char(fdef.type), 'matrix')
+                    paths{end+1} = here; %#ok<AGROW>
+                elseif isfield(fdef, 'fields') && ~isempty(fdef.fields)
+                    paths = [paths, did2.schema.cache.matrixPathsIn( ...
+                        did2.schema.cache.asCellOfDefs(fdef.fields), here)]; %#ok<AGROW>
+                end
             end
         end
 
@@ -1412,9 +1949,17 @@ classdef cache < handle
             end
         end
 
-        function checkBinding(value, binding, qualifiedName)
+        function checkBinding(value, binding, qualifiedName, registry)
             % checkBinding - #32 (T8). Enforce what a `constraints.binding`
             %   ACTUALLY STATES, and nothing more.
+            %
+            %   REGISTRY (optional; [] = the shared cache's) is the parsed
+            %   CURIE_lookups_meta.json. A member of an inline set is
+            %   matched on its node by did2.schema.curieKey, so a prefix
+            %   matches by key, spelling or synonym, ignoring case
+            %   (DID-schema V_eta_prefix_spelling_plan.md, signed
+            %   2026-10-19): `ncit:C175887` is a member of a set that lists
+            %   `NCIT:C175887`.
             %
             %   T8 wants controlled vocabularies hard-validated: a value
             %   resolved against an admissible set through the binding
@@ -1469,6 +2014,9 @@ classdef cache < handle
             %
             %   NEVER EXECUTED. There is no MATLAB in the environment this
             %   was written in. See testBindingConformance.m.
+            if nargin < 4
+                registry = [];
+            end
             if ~did2.schema.cache.strictMode('BindingConformance')
                 return;
             end
@@ -1515,9 +2063,15 @@ classdef cache < handle
 
             memberNodes = {};
             memberNames = {};
+            memberKeys = {};
             if hasSet
                 [memberNodes, memberNames] = ...
                     did2.schema.cache.bindingMembers(binding.values);
+                if any(~cellfun(@isempty, memberNodes))
+                    index = did2.schema.curiePrefixIndex(registry);
+                    memberKeys = cellfun(@(n) did2.schema.curieKey(n, index), ...
+                        memberNodes, 'UniformOutput', false);
+                end
             end
 
             for k = 1:numel(terms)
@@ -1538,6 +2092,10 @@ classdef cache < handle
                     inSet = false;
                     if ~isempty(node)
                         inSet = any(strcmp(node, memberNodes));
+                        if ~inSet && ~isempty(memberKeys)
+                            inSet = any(strcmp( ...
+                                did2.schema.curieKey(node, index), memberKeys));
+                        end
                     end
                     if ~inSet && ~isempty(name)
                         inSet = any(strcmp(name, memberNames));
@@ -1723,6 +2281,18 @@ classdef cache < handle
             registryFile = fullfile(obj.schemaPath, 'CURIE_lookups_meta.json');
             if isfile(registryFile)
                 obj.curieRegistry = jsondecode(fileread(registryFile));
+            end
+            % the term registry (DID-schema V_eta_term_registry_plan.md,
+            % tenet T19); absent before it was built (did-schema main)
+            termFile = fullfile(obj.schemaPath, 'term_registry_meta.json');
+            if isfile(termFile)
+                obj.termRegistry = jsondecode(fileread(termFile));
+            end
+            % the binding registry: a variable's closed value list
+            % (`values`, Jess Haley 2026-10-21; did2.schema.valueInSet)
+            bindingFile = fullfile(obj.schemaPath, 'binding_registry_meta.json');
+            if isfile(bindingFile)
+                obj.bindingRegistry = jsondecode(fileread(bindingFile));
             end
         end
 
@@ -1994,6 +2564,69 @@ classdef cache < handle
             end
         end
 
+        function tf = valueIsNowhere(obj, s, info, ancestors)
+            % valueIsNowhere - true when a document of a class declaring
+            %   rule `value_inline_or_body` (on `value`) has a blank inline
+            %   value, `data_body` not true, and no non-empty `value_id` edge.
+            tf = false;
+            if ~any(strcmp(ancestors, 'value')) || ~obj.hasClass('value')
+                return;
+            end
+            vs = obj.getClass('value');
+            if ~isfield(vs, 'rules') || isempty(vs.rules)
+                return;
+            end
+            r = vs.rules;
+            if iscell(r)
+                names = cellfun(@(x) char(x.name), r, 'UniformOutput', false);
+            else
+                names = arrayfun(@(x) char(x.name), r, 'UniformOutput', false);
+            end
+            if ~any(strcmp(names, 'value_inline_or_body'))
+                return;
+            end
+            value = [];
+            dataBody = [];
+            for k = 1:numel(info.blocksContributed)
+                b = info.blocksContributed{k};
+                if ~isfield(s, b) || ~isstruct(s.(b)) || ~isscalar(s.(b))
+                    continue;
+                end
+                if isempty(value) && isfield(s.(b), 'value') ...
+                        && (strcmp(b, 'value') || any(strcmp(obj.superclasses(b), 'value')))
+                    value = s.(b).value;
+                end
+                if isfield(s.(b), 'data_body')
+                    dataBody = s.(b).data_body;
+                end
+            end
+            if ~isempty(dataBody) && (islogical(dataBody) || isnumeric(dataBody)) ...
+                    && all(dataBody(:))
+                return;
+            end
+            if isfield(s, 'depends_on') && ~isempty(s.depends_on)
+                d = s.depends_on;
+                for k = 1:numel(d)
+                    if iscell(d); e = d{k}; else; e = d(k); end
+                    if ~strcmp(char(e.name), 'value_id'); continue; end
+                    id = '';
+                    if isfield(e, 'document_id') && ~isempty(e.document_id)
+                        id = e.document_id;
+                    elseif isfield(e, 'value') && ~isempty(e.value)
+                        id = e.value;
+                    end
+                    if ~isempty(id)
+                        return;
+                    end
+                end
+            end
+            if isempty(value) || (isstruct(value) && isempty(fieldnames(value))) ...
+                    || (ischar(value) && isempty(strtrim(value))) ...
+                    || obj.isVacuousValue(value)
+                tf = true;
+            end
+        end
+
         function tf = isVacuousValue(obj, value)
             % isVacuousValue - PRESENT, but carrying nothing: a struct
             %   every leaf of which is blank, recursively (#38).
@@ -2083,7 +2716,10 @@ classdef cache < handle
                             'Field "%s" must be boolean.', qualifiedName);
                     end
                 case 'integer'
-                    if ~isnumeric(value) || any(mod(value(:), 1) ~= 0)
+                    % a whole number or NaN, a missing position stored as a
+                    % literal NaN (Jess Haley 2026-10-22 [missing integers],
+                    % O4a); a field's mustNotHaveNaN still refuses NaN
+                    if ~isnumeric(value) || any(mod(value(~isnan(value)), 1) ~= 0)
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be integer.', qualifiedName);
                     end
@@ -2119,7 +2755,7 @@ classdef cache < handle
             end
         end
 
-        function validateConstraints(~, value, constraints, ~, qualifiedName)
+        function validateConstraints(obj, value, constraints, ~, qualifiedName)
             cnames = fieldnames(constraints);
             for k = 1:numel(cnames)
                 cname = cnames{k};
@@ -2163,7 +2799,8 @@ classdef cache < handle
                         % the added cost on a corpus run is one function
                         % call per bound field per document -- 14 bound
                         % fields exist in the whole of V_eta.
-                        did2.schema.cache.checkBinding(value, cval, qualifiedName);
+                        did2.schema.cache.checkBinding(value, cval, qualifiedName, ...
+                            obj.curieRegistry);
                     otherwise
                         % Unrecognised constraint keys are tolerated;
                         % `pattern` and similar can be added later.

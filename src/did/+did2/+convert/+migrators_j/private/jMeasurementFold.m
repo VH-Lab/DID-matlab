@@ -62,34 +62,33 @@ if isnumeric(numValue) && ~isempty(numValue) && isfinite(numValue(1))
     leaf = jQuantityLeaf(hay, wordBoundary);
 end
 
+% did-schema #88: built through did2.build (jStatement): the `observation`
+% direction with the value kind as its mixin.
+entityId = jDependency(preBody, 'subject_id');
 if isempty(leaf) && looksLikeCURIE(strValue)
-    % the value IS an ontology term (the consumer's nested-CURIE branch)
-    obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-        {}, variable, {'subject_id'});
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-    obs.term = struct('value', jOntologyTerm(strValue, ''));
+    obs = jStatement(preBody, 'observation', entityId, variable, ...
+        did2.build.term(strValue, ''), 'TimeReferenceIds', {anchor.base.id}, ...
+        'Id', sourceId(preBody), 'ValueKind', 'term');
     bodies = {obs, anchor};
     return;
 end
-
 if isempty(leaf)
-    % No honest leaf -- date of birth, an untyped number, or free prose. The
-    % caller carries the document through; the unconverted-document counter
-    % makes that visible.
     return;
 end
-
-obs = jStartInteraction(preBody, [leaf '_observation'], 'subject_observation', ...
-    {leaf}, variable, {'subject_id'});
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-obs.subject_statement.storage_mode = 'inline';
-% unit deliberately unstated -- see the header.
-obs.(leaf) = struct('value', struct('source_unit', '', ...
-    'source_value', double(numValue(1)), 'approximate', false));
+obs = jStatement(preBody, 'observation', entityId, variable, ...
+    jQuantity(leaf, double(numValue(1)), '', 'approximate', false), ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', sourceId(preBody), 'ValueKind', leaf);
 bodies = {obs, anchor};
 end
 
-% ===================== small helpers =======================================
+function id = sourceId(preBody)
+% The ONE observation a measurement folds to keeps the source id, as the pre-#88
+% fold did (jStartInteraction), so anything naming the measurement still resolves.
+id = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    id = char(preBody.base.id);
+end
+end
 
 function tf = looksLikeCURIE(s)
 tf = ~isempty(s) && ischar(s) ...

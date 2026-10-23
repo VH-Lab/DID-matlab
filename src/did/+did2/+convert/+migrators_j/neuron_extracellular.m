@@ -1,39 +1,34 @@
 function bodies = neuron_extracellular(preBody)
 %NEURON_EXTRACELLULAR Brainstorm-J migrator: did_v1 neuron_extracellular -> a
-%   DERIVED SUBJECT (the sorted unit) + a derived_from relation + the MEAN SPIKE
-%   WAVEFORM as a voltage_observation + the sorter's cluster index + a quality
-%   observation (+ the shared session anchor).
+%   DERIVED entity (the sorted unit) + a derived_from relation + CALCULATIONS
+%   about the unit (+ the shared session anchor, the software and its run).
 %
-%   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   A neuron_extracellular is a spike-sorted unit on an extracellular recording,
-%   tied to that recording's subject via element_id. #9 analysis-tier "grain B"
-%   fold: a sorted cluster is not an observation OF the recording -- it is a
-%   DERIVED entity in its own right, so it becomes a `subject` linked back to the
-%   recording by a `derived_from` `directed_relation`:
+%   2026-10-21, did-schema #73 review item 48 (V_eta_spatial_transcriptomics_plan.md,
+%   signed by [spatial_transcriptomics_family], 2026-09-29): "every statement
+%   about the unit is a CALCULATION (computed from the spike sort) with
+%   input_id -> the sorting output". Emitted:
 %
-%       subject            the sorted unit (bare identity; local_identifier
+%       entity (cell)      the sorted unit (local_identifier
 %                          'unit_<cluster_index>'; id fresh).
-%       directed_relation  derived_from: the unit (child) <- the recording subject
-%                          (parent). ro:0001000.
-%       count_assertion    the sorter's own `cluster_index`, as an assertion ABOUT
-%                          the unit. See "CLUSTER_INDEX" below -- this one is a
-%                          proposal, not a signature.
-%       voltage_observation  the mean spike waveform: microvolt-scale numbers over
-%                          a time axis and a channel axis, INLINE on the statement.
-%                          Emitted only when the source carries a waveform.
-%       score_observation  the sort quality_number, as a scalar observation OF the
-%                          unit (inline). Emitted only when quality_number is a
-%                          numeric scalar.
-%       session_relative_reference   the 'during' anchor shared by both observations.
+%       directed_relation  derived_from: the unit (child) <- the recording
+%                          element (parent). derived_from (node from the schema row).
+%       calculation+label  `cluster_index` (a nominal label, not a count).
+%       calculation+label  `quality_label` ('multi' / 'single'), variable
+%                          'spike sort quality'.
+%       calculation+voltage  the mean spike waveform, INLINE over a time key
+%                          and a channel key. Only when the source has one.
+%       calculation+score  `quality_number`, variable 'spike sort quality'.
+%       relative_time_reference  (pass-1 session handle, folded later) the
+%                          'during' anchor every calculation shares.
+%       entity (software)  the `app` block (+ its version assertion), with the
+%                          run's OS and interpreter entities.
+%   Each calculation carries `input_id` = the source's `spike_clusters_id`
+%   when it is populated (the sorting output; see the body), never empty.
 %
-%   1 -> 4 with none of the three conditional bodies; 1 -> 7 on every one of the
-%   21 real documents in corpus 20211116, which carry cluster_index, a waveform,
-%   quality_number AND an `app` block.
-%
-%   STILL DEFERRED, and only this: a `term_assertion` of the unit's cell-type kind
-%   (subject_defining), and with it `quality_label` -- the human-readable twin of
-%   `quality_number` ('multi' / 'single' in the corpus), which has no home on
-%   `score` and is NOT folded here.
+%   The paragraphs below were written for the earlier observation shape; the
+%   facts they record about the 21 corpus documents, the axes, the units and
+%   the guards are unchanged. Where they name the earlier observation and
+%   assertion shapes, read the calculations above.
 %
 %   STATUS OF THE WAVEFORM FOLD: WRITTEN 2026-08-17 IN A CONTAINER WITH NEITHER
 %   MATLAB NOR OCTAVE (`command -v matlab octave` exits 1). Not one line of it has
@@ -135,6 +130,11 @@ function bodies = neuron_extracellular(preBody)
 %   `reshape(values, [n_time n_channel])` is the inverse. Recorded rather than
 %   worked around: the convention is not stated in the document, and where an
 %   inline multi-axis value should state it is a schema decision.
+%   [did-schema #88, Haley audit D-5, signed 2026-10-20: `datum_order` moved to
+%   `data`, beside `keys` (now `dimensions`), so an inline value has the
+%   slot, and EMPTY MEANS F.
+%   On that schema this fold's column-major flatten is the declared default;
+%   on did-schema main / v_eta-pre73 the paragraph above still holds.]
 %
 %   ---------------------------------------------------------------------
 %   THE UNIT IS DELIBERATELY UNSTATED
@@ -316,134 +316,101 @@ if isnumeric(clusterIndex) && isscalar(clusterIndex)
     unitName = sprintf('unit_%d', round(clusterIndex));
 end
 
+% did-schema #88: built through did2.build. The neuron is an `entity` of type
+% cell (a sorted unit); its derivation from the recording element is a
+% `derived_from` relation; its statements hang off one session anchor.
 neuronId = did.ido.unique_id();
-sessionId = baseField(preBody, 'session_id', '');
-datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
-
-% ---- the derived subject: the sorted unit ----------------------------------
-neuron = struct();
-neuron.document_class = struct('class_name', 'subject', 'class_version', '3.0.0', ...
-    'superclasses', struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-neuron.depends_on = struct('name', {}, 'value', {});
-neuron.base = struct('id', neuronId, 'session_id', sessionId, ...
-    'name', unitName, 'datestamp', datestamp);
-neuron.subject = struct('local_identifier', unitName, 'description', ...
-    'spike-sorted extracellular unit (derived)');
-
-% ---- the provenance relation: unit derived_from the recording subject -------
-rel = struct();
-rel.document_class = struct('class_name', 'directed_relation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'relation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',  'value', neuronId), ...
-    struct('name', 'parent', 'value', recordingSubjectId)];
-rel.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'derived_from', 'datestamp', datestamp);
-rel.directed_relation = struct('relation', otTerm('ro:0001000', 'derived_from'));
-
-% ---- the shared session anchor ('during') for the observations --------------
-anchorId = did.ido.unique_id();
-anchor = struct();
-% PASS-1 HANDLE, NOT AN UNMIGRATED CLASS. The signed model retires this class in
-% favour of `relative_reference`, but the same plan makes the change impossible
-% here: `relative_to` is REQUIRED and is not fillable in pass 1 (this body holds
-% base.session_id; the edge needs the session DOCUMENT's base.id). Emitting the
-% new class with an empty required edge would be ~106k husks that validate clean.
-% did2.convert.resolveSessionAnchors folds it in a batch pass, id PRESERVED. Full
-% reasoning in +migrators_j/private/jSessionAnchor.m; the seam is pinned by
-% tests/+did2/+unittest/testSessionAnchorEmitterContract.m.
-anchor.document_class = classBlock('session_relative_reference', {'time_reference'});
-anchor.depends_on = struct('name', {}, 'value', {});
-anchor.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'datestamp', datestamp);
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', 'during');
+neuron = jEntity(preBody, 'cell', struct('local_identifier', unitName, ...
+    'description', 'spike-sorted extracellular unit (derived)'), 'Id', neuronId);
+rel = jEntityRelation(preBody, neuronId, recordingSubjectId, 'derived_from');   % node from the schema's row (did2.build.vocabulary)
+anchor = jSessionAnchor(preBody, 'during');
+anchorId = anchor.base.id;
 
 bodies = {neuron, rel, anchor};
 
-% ---- the sorter's cluster index (see "CLUSTER_INDEX" in the header) ---------
-if isnumeric(clusterIndex) && isscalar(clusterIndex) && isfinite(clusterIndex)
-    cidx = struct();
-    cidx.document_class = classBlock('count_assertion', {'subject_assertion', 'count'});
-    cidx.depends_on = struct('name', {'subject_id'}, 'value', {neuronId});
-    cidx.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-        'name', 'migrated_sorter_cluster_index', 'datestamp', datestamp);
-    cidx.subject_statement = struct( ...
-        'variable', jOntologyTerm('', 'spike sorter cluster index'), ...
-        'storage_mode', 'inline');
-    % Assigned in its own statement rather than inside struct(...): the value of
-    % `count` is a composite, and a non-scalar struct passed to struct()
-    % DISTRIBUTES into a struct array of blocks instead of setting one field.
-    % Scalar here, but the idiom is uniform across this file for that reason.
-    cidx.count = struct();
-    % `unit` is "what is counted" and this counts nothing -- BLANK, not invented.
-    cidx.count.value = struct('value', round(double(clusterIndex)), ...
-        'unit', otTerm('', ''), 'approximate', false);
-    bodies{end+1} = cidx;
-end
+% did-schema #73 review item 48 (V_eta_spatial_transcriptomics_plan.md,
+% signed by the [spatial_transcriptomics_family] sign-off, 2026-09-29): every
+% statement about the unit is COMPUTED from the spike sort, so each is a
+% CALCULATION whose `input_id` names the sorting output -- `cluster_index` and
+% `quality_label` with the `label` value kind, `quality_number` with `score`,
+% `mean_waveform` with `voltage`. The unit entity and its derived_from
+% relation are unchanged.
+%
+% THE INPUT. All four NDI writers set `spike_clusters_id` to the sorting
+% output (origin/main: +ndi/+app/spikesorter.m:279 spike_clusters_doc;
+% +ndi/+fun/+probe/+import/+kilosort/probe.m:562, +kiasort/probe.m:336 and
+% +jrclust/probe.m:320 the *_clusters document). The kilosort / kiasort /
+% jrclust sorter documents keep their ids as the `calculation + label` they
+% migrate to (jSorterOutput, jrclust_clusters.m), so the edge carries over
+% verbatim. EMPTY on all 21 documents of corpus 20211116, and then NO
+% `input_id` is written: an empty edge validates clean and says nothing (the
+% invented-empty-edge pattern). The spikesorter case points at a
+% `spike_clusters` document, which pass 1 carries through unchanged for the
+% NDI second pass (spike_clusters.m).
+inputId = dependencyValue(preBody, 'spike_clusters_id');
+inputOpt = {};
+if ~isempty(inputId); inputOpt = {'InputIds', {inputId}}; end
 
-% ---- the v1 `app` block -> a software entity (+ the edge, on the obs) -------
-% jSoftwareFromApp reads BOTH spellings of name/version (universalRenames has
-% already rewritten app.name -> app.app_name by the time a migrator runs).
-% The entity is emitted ONLY when some body took the edge -- see the header:
-% none of {subject, directed_relation, session_relative_reference,
-% count_assertion} declares `software_id`, and an unreferenced entity would
-% record the software without recording what it produced.
+% THE SOFTWARE: the `app` block's, with the run's OS and interpreter
+% (operating_system_id / interpreter_id), as jCalculation and jSorterOutput do.
+% Decided by Jess Haley, 2026-10-22 [sorter software]: "a sorted unit
+% (`neuron_extracellular`) with no software record has no `software_id` (per
+% [calculation-software-optional decided]), not an invented 'spike sorter'".
 [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
-softwareIsReferenced = false;
+[runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
+calcOpt = [{'TimeReferenceIds', {anchorId}, 'OperatingSystemId', osId, ...
+    'InterpreterId', interpreterId}, inputOpt];
+if ~isempty(swId); calcOpt = [calcOpt, {'SoftwareId', swId}]; end
+nCalc = 0;
 
-% ---- the mean spike waveform as a voltage_observation OF the unit ----------
-wobs = meanWaveformObservation(blk, neuronId, anchorId, sessionId, datestamp);
-if ~isempty(wobs)
-    if ~isempty(swId)
-        wobs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
-        softwareIsReferenced = true;
-    end
-    if ~isempty(fieldnames(execEnv))
-        wobs.subject_interaction.execution_environment = execEnv;
-    end
-    bodies{end+1} = wobs;
+% cluster_index: the sorter's own label for the unit, a NOMINAL number (item
+% 48: "a cluster index is a nominal label, not a count"). A `label` value is a
+% string even when it looks numeric (did-schema `label`.value.name).
+if isnumeric(clusterIndex) && isscalar(clusterIndex) && isfinite(clusterIndex)
+    bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
+        jLabel('spike sorter cluster index'), ...
+        struct('name', sprintf('%d', round(double(clusterIndex)))), ...
+        calcOpt{:}, 'ValueKind', 'label');
+    nCalc = nCalc + 1;
 end
 
-% ---- the sort quality as a score_observation OF the unit (inline) -----------
+% quality_label: the human-readable twin of quality_number ('multi' /
+% 'single' in the corpus), until now dropped.
+qualityLabel = getField(blk, 'quality_label');
+if (ischar(qualityLabel) || isstring(qualityLabel)) && ~isempty(strtrim(char(qualityLabel)))
+    bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
+        jLabel('spike sort quality'), ...
+        struct('name', strtrim(char(qualityLabel))), ...
+        calcOpt{:}, 'ValueKind', 'label');
+    nCalc = nCalc + 1;
+end
+
+wcalc = meanWaveformCalculation(preBody, blk, neuronId, calcOpt);
+if ~isempty(wcalc)
+    bodies{end+1} = wcalc;
+    nCalc = nCalc + 1;
+end
+
 quality = getField(blk, 'quality_number');
 if isnumeric(quality) && isscalar(quality)
-    qobs = struct();
-    qobs.document_class = classBlock('score_observation', {'subject_observation', 'score'});
-    qobs.depends_on = [ ...
-        struct('name', 'subject_id',       'value', neuronId), ...
-        struct('name', 'time_reference_1', 'value', anchorId)];
-    qobs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-        'name', 'migrated_sort_quality', 'datestamp', datestamp);
-    qobs.subject_statement = struct('variable', otTerm('', 'spike sort quality'), ...
-        'storage_mode', 'inline');
-    qobs.subject_interaction = struct('method', otTerm('', ''), ...
-        'sample_time', struct('kind', 'point'));
-    qobs.subject_observation = struct();
-    qobs.score = struct('value', struct('value', double(quality), ...
-        'scale', otTerm('', ''), 'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false));
-    if ~isempty(swId)
-        qobs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
-        softwareIsReferenced = true;
-    end
-    if ~isempty(fieldnames(execEnv))
-        qobs.subject_interaction.execution_environment = execEnv;
-    end
-    bodies{end+1} = qobs;
+    qv = did2.build.composite('score', 'value', ...
+        struct('score', double(quality), 'approximate', false));
+    bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
+        jLabel('spike sort quality'), qv, calcOpt{:}, 'ValueKind', 'score');
+    nCalc = nCalc + 1;
 end
 
-if softwareIsReferenced && ~isempty(software)
-    bodies{end+1} = software;
+% The software and run entities are emitted only when a calculation names
+% them, so none is left unreferenced.
+if nCalc > 0
+    bodies = [bodies, software, runDocs];
 end
 end
 
-% ===================== the mean waveform ===================================
-
-function obs = meanWaveformObservation(blk, neuronId, anchorId, sessionId, datestamp)
-%MEANWAVEFORMOBSERVATION The mean spike waveform as an inline voltage_observation
-%   of the sorted unit, over a time axis and a channel axis.
+function obs = meanWaveformCalculation(preBody, blk, neuronId, calcOpt)
+%MEANWAVEFORMCALCULATION The mean spike waveform as an inline calculation
+%   (value kind voltage, #73 item 48) about the sorted unit, over a time key
+%   and a channel key.
 %
 %   Returns [] when the source carries no waveform, and that is a REAL, EXPECTED
 %   case rather than a defect: the writer sets both halves to empty together --
@@ -496,7 +463,6 @@ timeVariable = jOntologyTerm('', 'time');
 [timeIsRegular, timeOrigin, timeSpacing] = regularTimebase(t);
 if timeIsRegular
     timeAxis = jAxis(timeVariable, nTime, ...
-        'regular',     true, ...
         'source_unit', 's', ...
         'origin',      struct('value', timeOrigin,  'source_value', timeOrigin), ...
         'spacing',     struct('value', timeSpacing, 'source_value', timeSpacing));
@@ -506,72 +472,30 @@ else
     % a vector that looks regular and is not reproducible from origin+spacing at
     % the ulp. `values` keeps the stored doubles exactly.
     timeAxis = jAxis(timeVariable, nTime, ...
-        'regular',     false, ...
         'source_unit', 's', ...
-        'values',      struct('values', t, 'source_values', t));
+        'quantity',    struct('value', t, 'source_value', t));
 end
 
-% ---- the channel axis: an INDEX axis, no unit -------------------------------
-% The convention pyraview.m:370 and jNgridBody both use: origin 1, spacing 1 and
-% no unit. The document records no channel identities -- `site2channelmap` and
-% `probe_geometry` are where those live -- so numbering them 1..N is the only
-% thing this document actually says, and naming them would be a guess in a
-% queryable field.
-channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
-    'regular', true, ...
-    'origin',  struct('value', 1, 'source_value', 1), ...
-    'spacing', struct('value', 1, 'source_value', 1));
+% ---- the channel axis: a BARE dimension -------------------------------------
+% The document records no channel identities -- `site2channelmap` and
+% `probe_geometry` are where those live -- so the only thing it says about a
+% channel is its position. That is the dimension's own (0-based) position, and
+% a covariate that only repeats it (1..N here until 2026-10-22) is not written
+% (Jess Haley 2026-10-22 [covariate rules named] 6.2a, and "yes" to 1..N).
+% MATLAB's channel number is position + 1.
+channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels);
 
-obs = struct();
-obs.document_class = classBlock('voltage_observation', ...
-    {'subject_observation', 'voltage'});
-obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', neuronId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_mean_spike_waveform', 'datestamp', datestamp);
-
-obs.subject_statement = struct( ...
-    'variable', jOntologyTerm('', 'mean spike waveform'), ...
-    'storage_mode', 'inline');
-% Assigned separately, NOT inside struct(...): `axes` is a 1x2 struct array and
-% struct() DISTRIBUTES a non-scalar struct value into a struct array of
-% statements. Concatenation is safe only because jAxis gives both entries the
-% same field set in the same order -- that is what the helper is for.
-%
-% BOTH AXES OR NEITHER. axes[k] IS array dimension k, so a one-entry list does
-% not mean "here is one of the dimensions", it ASSERTS that dimension 1 is that
-% axis. Both extents are known here, so both are stated.
-obs.subject_statement.axes = [timeAxis, channelAxis];
-% The encoding of the values belongs to the STATEMENT (signed sec.5). Read off
-% the array's own class rather than defaulted -- image_stack.m's
-% `firstNonEmpty(dataType, 'uint16')` is the defect not repeated.
+% time and channel dimensions, each with its positions as a covariate along
+% it (data_body AMENDMENT 6; the former `time` and `channel` keys)
+[dims, covs] = jDimCov({timeAxis, channelAxis});
 [datumType, sourceDatumType] = jDatumType(class(w));
-if ~isempty(datumType)
-    obs.subject_statement.datum_type = datumType;
-end
-if ~isempty(sourceDatumType)
-    obs.subject_statement.source_datum_type = sourceDatumType;
-end
-
-% `sample_time` IS DELIBERATELY ABSENT. Time is an ordinary axis now (signed
-% sec.2, "both sample_time blocks retire"); writing the cadence into both would
-% store one fact twice, which is the #69 shape the axis exists to remove. The
-% score_observation above still carries `kind: 'point'` because a scalar quality
-% has no axis at all -- that is a different statement, not an inconsistency.
-obs.subject_interaction = struct('method', otTerm('', ''));
-obs.subject_observation = struct();
-
-% The values. COLUMN-MAJOR -- `w(:)` is MATLAB's own linearisation and matches
-% the axis order emitted above, so reshape(values, [nTime nChannels]) inverts it.
-% See the header: there is no `datum_order` slot on an inline statement to say so
-% in the document, and that is a recorded team question.
-%
-% Assigned separately for the reason above: jMeasureArray returns a 1xN struct
-% array (672 entries on a real document) and struct('value', thatArray) would
-% distribute into 672 `voltage` blocks instead of one block holding 672 values.
-obs.voltage = struct();
-obs.voltage.value = jMeasureArray(double(w(:)), '');
+% the samples carry no unit in v1, so the cells carry only what was written
+obs = jStatement(preBody, 'calculation', neuronId, ...
+    jLabel('mean spike waveform'), ...
+    jQuantity('voltage', double(w(:))', '', 'approximate', false), ...
+    'Dimensions', dims, 'Covariates', covs, ...
+    'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+    calcOpt{:}, 'ValueKind', 'voltage');
 end
 
 function checkRedundantCount(blk, name, derived, derivedFrom)
@@ -623,15 +547,6 @@ isRegular = max(abs(model - t)) <= tolerance;
 end
 
 % ===================== small helpers =======================================
-
-function dc = classBlock(name, supers)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', 'V_eta');
-end
 
 function t = otTerm(node, name)
 t = struct('node', char(node), 'name', char(name));

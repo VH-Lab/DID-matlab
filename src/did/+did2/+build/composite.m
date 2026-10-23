@@ -2,7 +2,7 @@ function out = composite(className, fieldPath, values, options)
 %COMPOSITE Any nested structure a class declares, checked against its schema.
 %
 %   OUT = did2.build.composite(CLASSNAME, FIELDPATH, VALUES) builds the
-%   structure declared at CLASSNAME's field FIELDPATH (dot-separated: 'keys',
+%   structure declared at CLASSNAME's field FIELDPATH (dot-separated: 'dimensions',
 %   'value', 'value.start', 'conditions') from VALUES, a struct (or struct
 %   array / cell of structs when the field is an array).
 %

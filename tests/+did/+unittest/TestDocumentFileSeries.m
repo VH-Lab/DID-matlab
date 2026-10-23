@@ -563,6 +563,69 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
                 'DID:Document:addFileSeries:badIndex');
         end
 
+        % ---- the member base follows the document's VINTAGE -----------
+        %
+        % DID-schema #73 item 17 (kept by Jess 2026-10-14): a V_eta document
+        % numbers its members from 0 (body_data_0 is manifest slot 0); a did_v1
+        % document keeps NAME_1 as slot 0. Read off
+        % document_class.schema_version, never off the file name.
+
+        function testAV1DocumentNumbersFromOne(testCase)
+            doc = did.document('demoSeries');
+            testCase.verifyEqual(doc.seriesMemberBase(), 1);
+            [stem, index, number] = doc.seriesMemberOf('chunkdata.bin_1');
+            testCase.verifyEqual(stem, 'chunkdata.bin');
+            testCase.verifyEqual(index, 1, 'NAME_1 is manifest slot 0 (index 1)');
+            testCase.verifyEqual(number, 1);
+            stem0 = doc.seriesMemberOf('chunkdata.bin_0');
+            testCase.verifyEmpty(stem0, 'a v1 series has no member 0');
+        end
+
+        function testAVEtaDocumentNumbersFromZero(testCase)
+            doc = veta(did.document('demoSeries'));
+            testCase.verifyEqual(doc.seriesMemberBase(), 0);
+            [stem, index, number] = doc.seriesMemberOf('chunkdata.bin_0');
+            testCase.verifyEqual(stem, 'chunkdata.bin');
+            testCase.verifyEqual(index, 1, 'NAME_0 is manifest slot 0 (index 1)');
+            testCase.verifyEqual(number, 0);
+            testCase.verifyEqual(doc.is_in_file_list('chunkdata.bin_0'), 1);
+        end
+
+        function testAVEtaSeriesAcceptsMemberZeroIntoSlotZero(testCase)
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a'), testCase.writeMember(root,'b')};
+            doc = veta(did.document('demoSeries'));
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'indices', [0 3]);
+            m = did.file.readSeriesManifest(testCase.manifestLocation(doc,'chunkdata.bin'));
+            testCase.verifyEqual(m.count, 4, 'members 0..3 are four slots');
+            testCase.verifyNotEmpty(m.uids{1}, 'member 0 -> manifest slot 0');
+            testCase.verifyEmpty(m.uids{2});
+            testCase.verifyEmpty(m.uids{3});
+            testCase.verifyNotEmpty(m.uids{4}, 'member 3 -> manifest slot 3');
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual([e.index], [0 3], ...
+                'the ingest record names members by their V_eta numbers');
+            testCase.verifyEqual(e(1).uid, m.uids{1});
+        end
+
+        function testAVEtaSeriesDefaultsToZeroBasedDenseMembers(testCase)
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a'), testCase.writeMember(root,'b')};
+            doc = veta(did.document('demoSeries'));
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual([e.index], [0 1]);
+            testCase.verifyEqual(doc.seriesCount('chunkdata.bin'), 2);
+        end
+
+        function testAVEtaSeriesRefusesANegativeMember(testCase)
+            locs = {testCase.writeMember(fullfile(pwd,'store'),'a')};
+            doc = veta(did.document('demoSeries'));
+            testCase.verifyError( ...
+                @() doc.addFileSeries('chunkdata.bin', locs, 'indices', -1), ...
+                'DID:Document:addFileSeries:badIndex');
+        end
+
         function testMismatchedAndDuplicateIndicesAreRefused(testCase)
             root = fullfile(pwd,'store');
             locs = {testCase.writeMember(root,'a'), testCase.writeMember(root,'b')};
@@ -679,4 +742,16 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
         end
 
     end
+end
+
+function doc = veta(doc)
+%VETA The same document, stamped as a V_eta document (schema_version V_eta),
+%   which is how did.document/seriesMemberBase tells the vintages apart.
+arguments
+    doc (1,1) did.document
+end
+
+props = doc.document_properties;
+props.document_class.schema_version = 'V_eta';
+doc = did.document(props);
 end

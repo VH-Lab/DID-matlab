@@ -116,7 +116,7 @@ end
 % value did-schema declares as `demo.is_mock`'s `default_value`, and writing it
 % keeps the flag queryable on every migrated document rather than only on half of
 % them.
-demoBlock.is_mock = isMock;
+demoBlock.mock = isMock;   % #88: `mock` (`is_mock` before)
 if isMock
     % `demoNDIMock` declares NO fields -- its template property block is `{}` --
     % so anything at all on it is unmapped and is reported rather than dropped.
@@ -132,7 +132,7 @@ if isMock
                  'scalar: class %s, size %s.'], ...
                 sourceClass, class(raw), mat2str(size(raw)));
         end
-        demoBlock.is_mock = logical(raw);
+        demoBlock.mock = logical(raw);
     end
 end
 

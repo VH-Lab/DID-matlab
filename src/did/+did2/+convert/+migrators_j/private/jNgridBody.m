@@ -191,6 +191,7 @@ arguments
     %                   VERIFIED against `ngrid.coordinates` before it is used.
     opts.DataDim         = []
     opts.AxisCoordinates = {}
+    opts.BodyOptions     = {}   % more did2.build.sampledBody name-value pairs
 end
 
 if ~isfield(preBody, 'ngrid') || ~isstruct(preBody.ngrid)
@@ -242,7 +243,7 @@ else
     error('did2:convert:ngridCoordinatesHaveNoHome', ...
         ['ngrid document "%s" carries EXPLICIT coordinate positions ' ...
          '(%d value(s) for data_dim [%s]) that this fold cannot account for. ' ...
-         '`axes[].values` EXISTS and the carry is signed ' ...
+         '`axes[].quantity` EXISTS and the carry is signed ' ...
          '(V_eta_ngrid_family_findings.md, TEAM-SIGN-OFF [receptive field ' ...
          'fold], 2026-08-17), so this is no longer "the model cannot hold it" ' ...
          '-- it is that the stored vector cannot be SEGMENTED. `coordinates` ' ...
@@ -277,15 +278,21 @@ end
 % Three of its four sub-fields were placeholders, and the fourth restated a
 % cardinality the axes below already carry. The signed model retires the block
 % (step 5); this writer had nothing in it to migrate.
-body = jSampledBody(char(statementId), baseField(preBody, 'session_id', ''), ...
-    baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'), ...
-    char(name));
-
-% Assigned in its own statement, NOT inside struct(...): a non-scalar struct
-% value passed to struct() would distribute into a struct ARRAY of bodies
-% instead of becoming one field. image_stack.m documents the same trap.
-axesArray = ngridAxes(dataDim, axisLabels, axisCoords);
-body.sampled_body.axes = axesArray;
+% did-schema #88: the body is built through did2.build.sampledBody, its
+% `keys` the ngrid's axes (NAME, the pre-#73 base.name, is not written: V_eta
+% documents write no base.name). The caller's own body fields arrive in
+% opts.BodyOptions.
+% did-schema data_body AMENDMENT 6: each axis is a dimension, its positions a
+% covariate along it (the former keys).
+[dims, covs] = jDimCov(ngridAxes(dataDim, axisLabels, axisCoords));
+% DATUM ORDER 'F': an ngrid's bytes are a MATLAB array written with fwrite, so
+% column-major -- unless the caller states otherwise in opts.BodyOptions.
+% Only with more than one dimension: a one-dimensional body leaves it empty
+% (rule datum_order_multidimensional, Jess Haley 2026-10-22 6.3a).
+orderOpt = {};
+if numel(dims) > 1; orderOpt = {'DatumOrder', 'F'}; end
+o = jOpts(preBody, orderOpt{:}, opts.BodyOptions{:});
+body = did2.build.sampledBody(char(statementId), dims, 'Covariates', covs, o{:});
 end
 
 % ===================== the coordinates test ================================
@@ -434,11 +441,16 @@ function ax = ngridAxes(dataDim, axisLabels, axisCoords)
 %                    name; `unit` is now a bound ontology_term and an index axis
 %                    has none, so it is left absent rather than blank.
 %
-%   `origin` IS NEW AND IS REQUIRED WHEN REGULAR, and 1 is the honest value: the
-%   guard has established the coordinates are MATLAB's default index vector,
-%   which starts at 1. The old shape could not say this at all -- it had no
-%   origin -- so a reader had to assume it by convention. That gap is exactly
-%   what the signed entry closes.
+%   SUPERSEDED 2026-10-22 for the default index vector: an axis with no stored
+%   positions, or with exactly 1..n, is now a BARE dimension with no covariate
+%   (Jess Haley 2026-10-22 [covariate rules named] 6.2a, and her "yes" to
+%   1..n): such a covariate only repeated the dimension's positions. The
+%   mapping above (spacing 1 -> origin 1, spacing 1) is the history; position
+%   k along a dimension is 0-based, MATLAB index k + 1.
+%
+%   (Until then: `origin` IS NEW AND IS REQUIRED WHEN REGULAR, and 1 is the
+%   honest value: the guard has established the coordinates are MATLAB's
+%   default index vector, which starts at 1.)
 %
 %   THE COORDINATE CARRY IS DONE, 2026-08-17. The sentence that stood here
 %   ("THE COORDINATE CARRY IS STILL NOT DONE ... Folding real positions without
@@ -453,7 +465,7 @@ function ax = ngridAxes(dataDim, axisLabels, axisCoords)
 %   `axes` is a struct ARRAY and MATLAB concatenates struct arrays only when the
 %   operands share a field set AND its order. Before the carry every entry had
 %   the same five fields, so an ad-hoc struct was safe; now a regular axis and
-%   an irregular one differ in which of {origin, spacing, values} carry
+%   an irregular one differ in which of {origin, spacing, quantity} carry
 %   anything, and building them by hand would throw on exactly the mixed case
 %   this fold produces (two regular index axes beside one irregular lag axis).
 %   jAxis exists for that: every field always present, in the schema's own
@@ -466,8 +478,7 @@ end
 % yields `axes = <0x0 struct>` rather than `[]`. Built by emptying a real entry
 % rather than by naming the ten fields again -- a second list of them would be a
 % second thing to keep in step with the signed axis entry.
-ax = jAxis(jOntologyTerm('', 'axis_0'), 0);
-ax(:) = [];
+entries = {};
 for k = 1:numel(dataDim)
     nm = sprintf('axis_%d', k);
     if k <= numel(labels) && ~isempty(labels{k})
@@ -476,24 +487,23 @@ for k = 1:numel(dataDim)
     v = [];
     if k <= numel(axisCoords); v = axisCoords{k}; end
     if isempty(v) || isDefaultIndexVector(v)
-        % REGULAR. `origin` 1 is the honest value and not a default: either
-        % there are no stored positions at all, or they have been checked to be
-        % MATLAB's default index vector, which starts at 1.
-        entry = jAxis(jOntologyTerm('', nm), dataDim(k), ...
-            'regular', true, ...
-            'origin',  struct('value', 1, 'source_value', 1), ...
-            'spacing', struct('value', 1, 'source_value', 1));
+        % BARE. Either there are no stored positions at all, or they are
+        % MATLAB's default index vector 1..n: only the dimension's positions,
+        % so no covariate is written (Jess Haley 2026-10-22 [covariate rules
+        % named] 6.2a, and "yes" to 1..n; origin 1 + spacing 1 until then).
+        % Position k (0-based) is MATLAB index k + 1.
+        entry = jAxis(jOntologyTerm('', nm), dataDim(k));
     else
         % IRREGULAR. `values` is REQUIRED iff not regular; origin/spacing stay
         % blank, because a stored vector that is not an arithmetic progression
         % has neither. `source_values` repeats them: nothing was converted, and
         % saying so explicitly is cheaper than a reader wondering.
         entry = jAxis(jOntologyTerm('', nm), dataDim(k), ...
-            'regular', false, ...
-            'values',  struct('values', v, 'source_values', v));
+            'quantity', struct('value', v, 'source_value', v));
     end
-    ax(end+1) = entry; %#ok<AGROW>
+    entries{end+1} = entry; %#ok<AGROW>
 end
+ax = entries;   % axis specs, in array order (jDimCov builds them)
 end
 
 function tf = isDefaultIndexVector(v)

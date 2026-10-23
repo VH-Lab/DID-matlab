@@ -79,6 +79,16 @@ function blk = bodyBlock(doc)
 %   and the condition under test look identical. toStruct + isfield is what
 %   the demo fold uses for the same job (testMigratorsJDemoFold.m:147-149).
 s = doc.toStruct();
+% #88: the session is an `entity` of type session; its block is `entity`.
+% `entity.type` is #88's own KIND field (always 'session' here), not the V_zeta
+% `session.type` invention the test hunts, so it is set aside before the check.
+if isfield(s, 'entity')
+    s.session = s.entity;
+    if isfield(s.session, 'type') && isstruct(s.session.type) ...
+            && did2.build.isVocabulary(s.session.type, 'entity_type', 'session')   % by node
+        s.session = rmfield(s.session, 'type');
+    end
+end
 if ~isfield(s, 'session')
     blk = struct();
     return;
@@ -108,24 +118,28 @@ function assumeVEtaSchemas(testCase)
 %   `local_identifier`.
 did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the V_eta session rename validation test');
+% did-schema #88: there is no `session` class. A session is an `entity` of
+% type session, and `local_identifier` is declared on `entity`.
 try
     cache = did2.schema.cache.shared();
-    cls = cache.getClass('session');
+    cls = cache.getClass('entity');
 catch err
     assumeFail(testCase, ...
-        ['DID_SCHEMA_PATH does not resolve the `session` class (' ...
+        ['DID_SCHEMA_PATH does not resolve the `entity` class (' ...
          err.message ').']);
     return;
 end
 names = {};
 if isprop(cls, 'fields') || isfield(cls, 'fields')
-    for k = 1:numel(cls.fields)
-        names{end+1} = cls.fields(k).name; %#ok<AGROW>
+    fs = cls.fields;
+    if isstruct(fs); fs = num2cell(fs); end   % jsondecode gives a cell for mixed keys
+    for k = 1:numel(fs)
+        names{end+1} = char(fs{k}.name); %#ok<AGROW>
     end
 end
 if ~any(strcmp(names, 'local_identifier'))
     assumeFail(testCase, ...
-        ['the resolved `session` class declares no `local_identifier`; ' ...
+        ['the resolved `entity` class declares no `local_identifier`; ' ...
          'DID_SCHEMA_PATH points at a pre-rename V_eta build.']);
 end
 end
@@ -165,10 +179,37 @@ verifyEmpty(testCase, out.quarantine, reasonsOf(out));
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the session migrator emitted no document; every assertion below would be vacuous');
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), 'session');
-verifyEqual(testCase, doc.get('base.id'), 'sess_doc_1');
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'session');
+if did2.schema.cache.shared().sessionIdIsEdge()
+    % the session entity's id IS its session id (see the next test)
+    verifyEqual(testCase, doc.get('base.id'), 'sess_09');
+else
+    verifyEqual(testCase, doc.get('base.id'), 'sess_doc_1');
+end
 verifyEqual(testCase, doc.get('base.session_id'), 'sess_09');
-verifyEqual(testCase, doc.get('session.local_identifier'), 'ts_2024');
+verifyEqual(testCase, doc.get('entity.local_identifier'), 'ts_2024');
+end
+
+function testOnTheEdgeShapeTheSessionIsReIdToItsSessionId(testCase)
+% did-schema V_eta_relation_inheritance_plan.md (2026-10-20): `session_id` is
+% an edge to the session entity, whose base.id IS the session id -- so the
+% migrated session takes the v1 base.session_id as its id and its own edge
+% points at itself. On the field shape base.id is preserved, as before.
+out = runJ(sessionV1('ts_2024'));
+assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
+s = out.migrated{1}.toStruct();
+if did2.schema.cache.shared().sessionIdIsEdge()
+    verifyEqual(testCase, s.base.id, 'sess_09');
+    verifyFalse(testCase, isfield(s.base, 'session_id'), ...
+        'base.session_id survived beside the session_id edge');
+    edges = s.depends_on(strcmp({s.depends_on.name}, 'session_id'));
+    assertEqual(testCase, numel(edges), 1, 'expected exactly one session_id edge');
+    verifyEqual(testCase, did2.schema.cache.sessionIdOf(s), s.base.id, ...
+        'the session entity must point at itself');
+else
+    verifyEqual(testCase, s.base.id, 'sess_doc_1');
+    verifyEqual(testCase, s.base.session_id, 'sess_09');
+end
 end
 
 function testTheOldSpellingIsGoneNotMerelyShadowed(testCase)
@@ -193,7 +234,7 @@ for f = {'type', 'date', 'purpose'}
     verifyFalse(testCase, isfield(blk, f{1}), ...
         sprintf('session.%s survived; it is undeclared and will quarantine', f{1}));
 end
-verifyEqual(testCase, out.migrated{1}.get('session.local_identifier'), 'ts_2024');
+verifyEqual(testCase, out.migrated{1}.get('entity.local_identifier'), 'ts_2024');
 end
 
 function testTheRenamedDocumentValidates(testCase)
@@ -203,21 +244,34 @@ assumeVEtaSchemas(testCase);
 out = runJValidated(sessionVZetaVintage('ts_2024'));
 verifyEmpty(testCase, out.quarantine, reasonsOf(out));
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
-verifyEqual(testCase, out.migrated{1}.get('session.local_identifier'), 'ts_2024');
+verifyEqual(testCase, out.migrated{1}.get('entity.local_identifier'), 'ts_2024');
 end
 
-function testAnEmptyReferenceQuarantinesRatherThanBeingInvented(testCase)
-% `local_identifier` is mustBeNonEmpty. A session with no reference is a FACT
-% ABOUT THE SOURCE, and manufacturing a handle for it would be the
-% hollow-document defect -- a document that validates while saying nothing.
-% So the correct behaviour is a loud quarantine, not a quiet substitution.
+function testAnEmptyReferenceIsCountedRatherThanInvented(testCase)
+% RENAMED 2026-10-21 from testAnEmptyReferenceQuarantinesRatherThanBeingInvented.
+% A session with no reference is a FACT ABOUT THE SOURCE; manufacturing a
+% handle for it would be the hollow-document defect. The registry says a
+% session `requires` local_identifier (entity_type_bindings), and that check is
+% REPORT-ONLY for now (Jess Haley, 2026-10-21, "b"): the session migrates with
+% the field blank -- nothing invented -- and did2.validate.entityRequires
+% COUNTS it missing. WHEN THE CHECK IS ARMED as a quarantining check (a later
+% decision, taken from a corpus count), this becomes a quarantine assertion again.
 assumeVEtaSchemas(testCase);
 out = runJValidated(sessionV1(''));
-verifyEmpty(testCase, out.migrated, ...
-    'an empty session reference was migrated; nothing may invent a handle');
-assertNotEmpty(testCase, out.quarantine, ...
-    'an empty session.local_identifier passed validation; mustBeNonEmpty is not enforced');
-verifyEqual(testCase, out.quarantine(1).class_name, 'session');
+verifyEmpty(testCase, out.quarantine, ...
+    'report-only: an empty session reference is counted, not quarantined');
+assertNotEmpty(testCase, out.migrated, 'the session was not migrated');
+s = out.migrated{1}.toStruct();
+lid = '';
+if isfield(s.entity, 'local_identifier'); lid = char(s.entity.local_identifier); end
+verifyEmpty(testCase, strtrim(lid), 'nothing may invent a handle');
+rep = did2.validate.entityRequires(out.migrated);
+verifyEqual(testCase, rep.entities_inspected, 1);
+row = rep.by_type_field(strcmp({rep.by_type_field.entity_type}, 'session') ...
+    & strcmp({rep.by_type_field.field}, 'local_identifier'));
+assertNumElements(testCase, row, 1, 'no session/local_identifier row in the census');
+verifyEqual(testCase, row.inspected, 1);
+verifyEqual(testCase, row.missing, 1, 'the empty reference is COUNTED missing');
 end
 
 function testABodyWithNoSessionBlockPassesThroughUnchanged(testCase)
@@ -227,5 +281,6 @@ v1 = sessionV1('ts_2024');
 v1 = rmfield(v1, 'session');
 out = runJ(v1);
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
-verifyEqual(testCase, out.migrated{1}.get('base.id'), 'sess_doc_1');
+verifyEqual(testCase, out.migrated{1}.get('base.id'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'sess_09'), ...
+    'the block is not rewritten; on the edge shape the session is still re-id');
 end

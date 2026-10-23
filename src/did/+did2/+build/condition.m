@@ -3,83 +3,67 @@ function c = condition(variable, options)
 %   EVERY value of the statement that is not a dimension of the stored array.
 %
 %   C = did2.build.condition(VARIABLE, 'Term', T)       categorical
+%   C = did2.build.condition(VARIABLE, 'Value', X)      number ('Quantity' is
+%                                                       the same option)
 %   C = did2.build.condition(VARIABLE, 'Count', N)      integer
-%   C = did2.build.condition(VARIABLE, 'Quantity', Q)   dimensioned number
+%   C = did2.build.condition(VARIABLE, 'Text', S)       free string
+%   C = did2.build.condition(VARIABLE, 'Logical', TF)   true / false (Jess
+%                                                       Haley 2026-10-22
+%                                                       [logical entries])
+%   C = did2.build.condition(VARIABLE, 'Matrix', A)     a numeric array, as
+%                                                       ONE value
 %
 %   VARIABLE is a term or a name (arm direction, OD600, trial type). Exactly ONE
-%   of 'Term', 'Count', 'Quantity' is given, and it is ONE value: "carries
-%   exactly one value form ... Cardinality exactly 1" (subject_statement.
-%   conditions, data_body AMENDMENT 2, #73 item 23). A fact with several values
-%   is a key, not a condition.
+%   value form is given, and it is ONE value: "a one-value fact true of EVERY
+%   value of the statement" (statement.conditions). A fact with several values
+%   is a covariate along a dimension, not a condition. The entry is the same as a method parameter's
+%   (data_body AMENDMENT 3): {variable, unit, source_unit, approximate} plus
+%   one of `term`, `quantity` {value, source_value}, `count`, `text` or
+%   `matrix` (data_body AMENDMENT 4), so it takes the same options as
+%   did2.build.parameter.
 %
 %   Options:
 %     'Term'           a term (or a name)
+%     'Value'          a number, canonical, in 'Unit' -> quantity.value
+%     'Quantity'       the same as 'Value'
+%     'SourceValue'    what the source wrote for the number, AS TEXT
+%                      -> quantity.source_value (kept verbatim)
 %     'Count'          an integer
-%     'Quantity'       a number, canonical, in 'Unit'
-%     'SourceValue'    what the source wrote for 'Quantity'
+%     'Text'           char
+%     'Matrix'         a numeric array that is ONE value of VARIABLE, in
+%                      'Unit'; no 'SourceValue' (did-schema #88)
 %     'Unit'           canonical unit (a term or a name); absent when categorical
-%     'SourceUnit'     the unit as the source gave it
+%     'SourceUnit'     the unit as the source gave it: its registered term
+%                      where the schema declares source_unit a term, text
+%                      where it declares char (see did2.build.valueCell)
 %     'Approximate'    logical, for the whole condition
 %     'SchemaCache'    a did2.schema.cache; default the shared one.
 %
 %   Join several with did2.build.list. A variable appears at most once across
-%   a statement's keys and conditions (checked when the document is built).
+%   a statement's conditions and its value's covariates (checked when the
+%   document is built).
 %
-%   See also did2.build.key, did2.build.statement.
+%   See also did2.build.covariate, did2.build.parameter, did2.build.statement.
 
 arguments
     variable
     options.Term = []
-    options.Count = []
+    options.Value = []
     options.Quantity = []
-    options.SourceValue = []
+    options.SourceValue = ''
+    options.Count = []
+    options.Text = ''
+    options.Matrix = []
+    options.Logical = []
     options.Unit = []
     options.SourceUnit = ''
     options.Approximate = []
     options.SchemaCache = []
 end
 
-forms = {'Term', 'Count', 'Quantity'};
-given = forms(cellfun(@(f) ~isempty(options.(f)), forms));
-if numel(given) ~= 1
-    error('did2:build:ruleViolated', ...
-        'conditions_one_value: give exactly one of ''Term'', ''Count'', ''Quantity''; got %d.', ...
-        numel(given));
-end
-one = options.(given{1});
-if ~(ischar(one) || (isstring(one) && isscalar(one))) && numel(one) ~= 1
-    error('did2:build:ruleViolated', ...
-        'conditions_one_value: a condition is ONE value; ''%s'' has %d. Use a key for more.', ...
-        given{1}, numel(one));
-end
-if ~isempty(options.SourceValue) && isempty(options.Quantity)
-    error('did2:build:ruleViolated', '''SourceValue'' applies only to ''Quantity''.');
-end
-
-s = struct('variable', {variableArg(variable)});
-if ~isempty(options.Unit);        s.unit = options.Unit;               end
-if ~isempty(options.SourceUnit);  s.source_unit = options.SourceUnit;  end
-if ~isempty(options.Approximate); s.approximate = options.Approximate; end
-switch given{1}
-    case 'Term'
-        s.term = struct('value', {{one}});
-    case 'Count'
-        s.count = struct('value', one);
-    case 'Quantity'
-        q = struct('value', one);
-        if ~isempty(options.SourceValue)
-            q.source_value = options.SourceValue;
-        end
-        s.quantity = struct('value', q);
-end
-c = did2.build.composite('subject_statement', 'conditions', s, ...
+s = oneValueEntry(variable, {'Term', 'Value', 'Quantity', 'Count', 'Text', 'Matrix', 'Logical'}, options, ...
+    'conditions_one_value');
+statementClass = vetaNames(options.SchemaCache);   % `subject_statement` before 2026-10-08
+c = did2.build.composite(statementClass, 'conditions', s, ...
     'SchemaCache', options.SchemaCache);
-end
-
-function v = variableArg(v)
-% A variable is ONE term: a name (char/string) or a scalar struct {node,name}.
-if iscell(v) || (isstruct(v) && ~isscalar(v)) || (isstring(v) && ~isscalar(v))
-    error('did2:build:typeMismatch', ...
-        'The variable is one term: a name or a scalar {node, name} struct.');
-end
 end

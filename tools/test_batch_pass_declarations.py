@@ -182,10 +182,16 @@ def test_the_live_declarations_include_the_three_row_107_shapes(out):
     fold = out["passes"]["foldGenericFiles"]
     assert "generic_file" in fold["consumes"]                    # shape (2)
     assert fold["emits"]["generic_file"]["form"] == "document"
-    rp = out["passes"]["resolveResponseParameters"]              # shape (3)
+    # Shape (3), `inline`, HAD its live instance here: resolveResponseParameters
+    # wrote the parameters onto the response. Since Jess Haley's [response
+    # parameters as a shared method] (2026-10-21) it converts each parameters
+    # document in place into a standalone `method` DOCUMENT, so it declares
+    # `document: method`, and no live pass emits `inline` today. The form stays
+    # in the grammar and is pinned by test_inline_is_a_distinct_form_from_document.
+    rp = out["passes"]["resolveResponseParameters"]
     k = "stimulus_response_scalar_parameters_basic"
-    assert rp["emits"][k]["form"] == "inline"
-    assert rp["emits"][k]["targets"] == ["method_parameters"]
+    assert rp["emits"][k]["form"] == "document"
+    assert rp["emits"][k]["targets"] == ["method"]
     vi = out["passes"]["resolveValidIntervals"]                  # the honesty case
     assert vi["emits"]["valid_interval"]["form"] == "nothing", (
         "resolveValidIntervals is DORMANT by team decision; declaring an "
@@ -246,12 +252,36 @@ def test_jSoftwareFromApp_declares_the_app_fold(helpers):
 
 
 def test_the_declaration_sits_on_the_fold_not_on_the_mint(helpers):
-    """jSoftwareFromApp carries no `class_name` literal at all -- jSoftware
-    does. A rule of "the file with the literal declares" would put the sentence
-    on a helper that has never heard of `app` and cannot say what becomes of
-    it. This asserts the split is real and not an accident of where it landed."""
+    """jSoftwareFromApp mints nothing itself -- jSoftware does. A rule of "the
+    file that mints declares" would put the sentence on a helper that has never
+    heard of `app` and cannot say what becomes of it. This asserts the split is
+    real and not an accident of where it landed.
+
+    UPDATED for did-schema #88: jSoftware no longer writes a `software` class
+    literal; it builds an `entity` of type software through jEntity, which calls
+    did2.build.document('entity', ...). The mint is read the way did-schema's
+    status_board reads it (builder calls, an entity-type wrapper found by
+    shape), and spelled `entity (software)`."""
     assert helpers["helpers"]["jSoftwareFromApp"]["mints"] == []
-    assert "software" in helpers["helpers"]["jSoftware"]["mints"]
+    assert "entity (software)" in helpers["helpers"]["jSoftware"]["mints"]
+    assert "jEntity" in helpers["entity_type_wrappers"]
+    assert "entity" in helpers["helpers"]["jEntity"]["mints"]
+
+
+def test_the_88_builder_idioms_are_read_as_mints():
+    """did2.build.statement with a ValueKind, document, a fixed-class builder
+    and an entity-type wrapper call: each is a mint, in the declaration
+    grammar's spelling."""
+    text = ("function d = f(x)\n"
+            "a = did2.build.statement('observation', s, v, [], ...\n"
+            "    'DataBody', true, 'ValueKind', 'voltage');\n"
+            "b = did2.build.document('formulation', struct());\n"
+            "c = did2.build.opaqueBody(id, fmt);\n"
+            "e = jEntity(pre, 'organism', f);\n"
+            "% did2.build.document('commented_out', x)\n")
+    got = bpd.builder_minted_classes(text, {"jEntity": 1})
+    assert got == {"observation+voltage", "formulation", "opaque_body",
+                   "entity (organism)"}, got
 
 
 def test_an_undeclared_helper_contributes_nothing_to_the_index(helpers):
@@ -298,3 +328,21 @@ def test_helper_index_drops_a_declaration_carrying_errors():
                                    "reason": None}},
                "errors": ["EMITS: `other` is not in CONSUMES"]}}}
     assert bpd.helper_index(out) == {}
+
+
+def test_the_88_statement_form_direction_plus_kind_is_a_target():
+    """did-schema #88 has no `<kind>_<direction>` leaf classes: a statement is a
+    direction plus one value-kind mixin, declared `direction+kind`, with or
+    without spaces around the `+` (normalised)."""
+    d = _parse("%P.", _C + "generic_file",
+               _E + "generic_file -> document: observation+term, manipulation + formulation, opaque_body")
+    assert not d["errors"], d["errors"]
+    assert d["emits"]["generic_file"]["targets"] == [
+        "observation+term", "manipulation+formulation", "opaque_body"]
+
+
+def test_a_malformed_plus_form_is_still_not_a_class_name():
+    d = _parse("%P.", _C + "generic_file",
+               _E + "generic_file -> document: observation+, +term")
+    assert sum("is not a class name" in e for e in d["errors"]) == 2, d["errors"]
+

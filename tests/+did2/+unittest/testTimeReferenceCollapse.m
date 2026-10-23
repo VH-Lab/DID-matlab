@@ -64,6 +64,24 @@ function tests = testTimeReferenceCollapse
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% did-schema #88 deleted the classes this file pins (session_relative_reference,
+% session_bounded_reference and the relative_reference they fold into; #65
+% increment 3b), and every migrator now builds its relative_time_reference
+% directly through did2.build, so resolveSessionAnchors has nothing to fold.
+% The tests are filtered with that reason on a schema without the class, and
+% run again on one that has it.
+c = did2.schema.cache.shared();
+hasClass = true;
+try
+    c.getClass('relative_reference');
+catch
+    hasClass = false;
+end
+testCase.assumeTrue(hasClass, ['relative_reference does not exist on the loaded ' ...
+    'schema (did-schema #88): the session-anchor fold has nothing to fold']);
+end
+
 % ===================== harness =========================================
 
 function out = runJ(v1)
@@ -82,14 +100,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = char(out.migrated{k}.get('document_class.class_name'));
+    names{k} = char(did2.unittest.helpers.classKey(out.migrated{k}));
 end
 end
 
 function docs = ofClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(char(out.migrated{k}.get('document_class.class_name')), className)
+    if strcmp(char(did2.unittest.helpers.classKey(out.migrated{k})), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
@@ -313,13 +331,13 @@ verifyTrue(testCase, isfield(out, 'session_anchor_fold'));
 end
 
 function testANonEtaTargetIsUntouched(testCase)
-% relative_reference exists only in V_eta. V_zeta / V_epsilon still have the
-% eight-class family and their migrators (+migrators_i, +migrators_e) still emit
-% into it, so this pass must be a no-op there -- `ran` false is the proof it
+% relative_reference exists only in V_eta. The pass must be a no-op on any
+% other target (V_delta here; V_zeta/V_epsilon and their migrators were deleted
+% with did-schema #88) -- `ran` false is the proof it
 % declined rather than silently found nothing.
 out = runJ({anchorBody('anchor_1', 'SID_1', 'during')});
 [out, rep] = did2.convert.resolveSessionAnchors(out, ...
-    'Validate', false, 'TargetVersion', 'V_zeta');
+    'Validate', false, 'TargetVersion', 'V_delta');
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, classNames(out), {'session_relative_reference'});
 end
@@ -342,8 +360,10 @@ verifyEqual(testCase, rep.anchors_folded, 1);
 verifyEqual(testCase, rep.refused_total, 0);
 
 ref = oneOfClass(testCase, out, 'relative_reference');
-verifyEqual(testCase, depValue(ref.toStruct(), 'relative_to'), 'sess_doc_1');
-verifyNotEqual(testCase, depValue(ref.toStruct(), 'relative_to'), 'SID_1');
+verifyEqual(testCase, depValue(ref.toStruct(), 'relative_to'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'SID_1'));
+if ~did2.schema.cache.shared().sessionIdIsEdge()   % one string on the edge shape
+    verifyNotEqual(testCase, depValue(ref.toStruct(), 'relative_to'), 'SID_1');
+end
 % and the old class is gone from the batch
 verifyFalse(testCase, any(strcmp(classNames(out), 'session_relative_reference')));
 end

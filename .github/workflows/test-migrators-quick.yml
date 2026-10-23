@@ -18,7 +18,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: quick-migrators-${{ github.ref }}
+  # Keyed on the commit: a push never cancels another commit's run;
+  # only a duplicate run of the same commit is cancelled.
+  group: quick-migrators-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -40,18 +42,18 @@ jobs:
         # is missing (PR merged into main), fall back to main.
         run: |
           want="${{ github.head_ref || github.ref_name }}"
-          schema_pr68="claude/calculator-restructure-2026-09-21"
+          schema_pr68="claude/ecstatic-pascal-md91fw"   # did-schema #88, the shape the migrators are ported to
           if git ls-remote --exit-code --heads \
                https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then
             echo "did-schema HAS branch '$want' -- using it."
             echo "ref=$want" >> "$GITHUB_OUTPUT"
           elif git ls-remote --exit-code --heads \
                https://github.com/Waltham-Data-Science/did-schema.git "$schema_pr68" >/dev/null 2>&1; then
-            echo "did-schema HAS PR #68 branch '$schema_pr68' -- using it (this DID-matlab PR implements it)."
+            echo "did-schema HAS PR #88 branch '$schema_pr68' -- using it (the migrators are ported to it)."
             echo "ref=$schema_pr68" >> "$GITHUB_OUTPUT"
           else
-            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- FALLING BACK to v_eta-pre73 (the pre-#73 schema; see test-code.yml)."
-            echo "ref=v_eta-pre73" >> "$GITHUB_OUTPUT"
+            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check out did-schema (sibling, for V_eta validation)
@@ -61,7 +63,7 @@ jobs:
           ref: ${{ steps.schema-ref.outputs.ref }}
           path: did-schema
 
-      - name: Resolve the NDI-matlab ref (falls back to main)
+      - name: Resolve the NDI-matlab ref (same name, claude/v2-object-layer, V2, main)
         id: ndi-ref
         # did2.unittest.testBatchPassWiring asserts that every batch post-pass
         # diverging between the corpus gate and PRODUCTION
@@ -69,7 +71,10 @@ jobs:
         # with a reason. It cannot do that without the file, and when the file
         # is missing it SKIPS -- loudly, but it skips.
         #
-        # THE REF FALLS BACK RATHER THAN FAILING THE JOB. Most DID-side
+        # THE REF FALLS BACK RATHER THAN FAILING THE JOB, in the decided order
+        # (same name, claude/v2-object-layer, V2, main; [NDI ref fallback]):
+        # `main` has no +ndi/+migrate, so falling straight back to it skipped
+        # the divergence check. Most DID-side
         # branches have no NDI-side twin, and a fast gate that goes red
         # because a sibling repository does not carry the same branch name is
         # a gate people delete. The chosen ref is PRINTED either way, so a run
@@ -78,14 +83,30 @@ jobs:
         # main" are different claims and must not print the same.
         run: |
           want="${{ github.head_ref || github.ref_name }}"
-          if git ls-remote --exit-code --heads \
-               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
-            echo "NDI-matlab HAS branch '$want' -- comparing against it."
-            echo "ref=$want" >> "$GITHUB_OUTPUT"
-          else
-            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
-            echo "ref=main" >> "$GITHUB_OUTPUT"
+          # Jess Haley, 2026-10-22 [NDI ref fallback] (did-schema
+          # V_eta_go_forward_class_audit.md): the same-name branch, then
+          # claude/v2-object-layer (NDI #1021's head, until #1021 merges),
+          # then V2, then main. The integration branch is removed from this
+          # list in the first commit after the merge.
+          chosen=""
+          for ref in "$want" claude/v2-object-layer V2 main; do
+            if git ls-remote --exit-code --heads \
+                 https://github.com/VH-Lab/NDI-matlab.git "$ref" >/dev/null 2>&1; then
+              chosen="$ref"
+              break
+            fi
+            echo "NDI-matlab has NO branch '$ref'."
+          done
+          if [ -z "$chosen" ]; then
+            echo "NDI-matlab: none of '$want', claude/v2-object-layer, V2, main answered -- using main."
+            chosen=main
           fi
+          if [ "$chosen" = "$want" ]; then
+            echo "NDI-matlab HAS branch '$want' -- comparing against it."
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLBACK to '$chosen'."
+          fi
+          echo "ref=$chosen" >> "$GITHUB_OUTPUT"
 
       - name: Check out NDI-matlab (sibling, for the cross-repo wiring gate)
         uses: actions/checkout@v4
@@ -229,6 +250,18 @@ jobs:
         # each is a fixture, not a corpus.
         run: python3 tools/test_corpus_proven.py
 
+      - name: Corpus sampler, failure-fixture extractor, affected-corpora map, test-code corpus matrix (python, <2s)
+        # The SAMPLED corpus run (test-corpus.yml `sample: true`) is only as good
+        # as its session picker: a missed class reads as a clean run over that
+        # class, and a cut session makes failures the full corpus does not have.
+        # The extractor turns a red report into a fixture testFailureFixtures
+        # runs here; affected_corpora says which corpora a change must re-run.
+        run: |
+          python3 tools/test_sample_corpus.py
+          python3 tools/test_extract_failure_fixtures.py
+          python3 tools/test_affected_corpora.py
+          python3 tools/test_corpus_matrix.py
+
       - name: Batch post-passes must be called, persisted and printed (python, <1s)
         # tests/+did2/+unittest/testBatchPassWiring.m gates the CALLED leg from
         # inside the harness, and is the better place for it -- but it needs
@@ -288,6 +321,12 @@ jobs:
 
       - name: Run migrator tests (excluding corpora)
         uses: matlab-actions/run-command@v2
+        env:
+          # The builder and migrator tests build documents from made-up terms
+          # to test the builder's mechanics; the term registry check (tenet
+          # T19, strictMode 'TermRegistry') is off here, and
+          # testBuildTermRegistry turns it on for the tests that are about it.
+          DID_ENFORCE_TERM_REGISTRY: '0'
         with:
           command: |
             addpath(genpath("src"));

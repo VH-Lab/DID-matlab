@@ -273,6 +273,24 @@ function tests = testSessionAnchorEmitterContract
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% did-schema #88 deleted the classes this file pins (session_relative_reference,
+% session_bounded_reference and the relative_reference they fold into; #65
+% increment 3b), and every migrator now builds its relative_time_reference
+% directly through did2.build, so resolveSessionAnchors has nothing to fold.
+% The tests are filtered with that reason on a schema without the class, and
+% run again on one that has it.
+c = did2.schema.cache.shared();
+hasClass = true;
+try
+    c.getClass('relative_reference');
+catch
+    hasClass = false;
+end
+testCase.assumeTrue(hasClass, ['relative_reference does not exist on the loaded ' ...
+    'schema (did-schema #88): the session-anchor fold has nothing to fold']);
+end
+
 % ===================== the emitter roster ==============================
 
 function roster = emitterRoster()
@@ -342,14 +360,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = char(out.migrated{k}.get('document_class.class_name'));
+    names{k} = char(did2.unittest.helpers.classKey(out.migrated{k}));
 end
 end
 
 function docs = ofClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(char(out.migrated{k}.get('document_class.class_name')), className)
+    if strcmp(char(did2.unittest.helpers.classKey(out.migrated{k})), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
@@ -872,7 +890,7 @@ function testTheStatementEdgeStillResolvesAfterTheFold(testCase)
     treatmentTransferBody('SID_1')});
 verifyEqual(testCase, rep.anchors_folded, 1);
 
-acts = ofClass(out, 'term_manipulation');
+acts = ofClass(out, 'manipulation+term');
 verifyEqual(testCase, numel(acts), 1);
 target = depValue(acts{1}.toStruct(), 'time_reference_1');
 verifyNotEmpty(testCase, target, 'the act lost its time_reference_1 edge');
@@ -883,8 +901,10 @@ verifyTrue(testCase, any(strcmp(ids, target)), ...
 % and what it now points at is the folded reference, on the session DOCUMENT
 ref = ofClass(out, 'relative_reference');
 verifyEqual(testCase, char(ref{1}.get('base.id')), target);
-verifyEqual(testCase, depValue(ref{1}.toStruct(), 'relative_to'), 'sess_doc_1');
-verifyNotEqual(testCase, depValue(ref{1}.toStruct(), 'relative_to'), 'SID_1');
+verifyEqual(testCase, depValue(ref{1}.toStruct(), 'relative_to'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'SID_1'));
+if ~did2.schema.cache.shared().sessionIdIsEdge()   % one string on the edge shape
+    verifyNotEqual(testCase, depValue(ref{1}.toStruct(), 'relative_to'), 'SID_1');
+end
 end
 
 function testAnEmitterAnchorWithNoSessionDocumentIsLeftIntactNotHollowed(testCase)
@@ -1140,8 +1160,10 @@ verifyFalse(testCase, any(strcmp(classNames(out), 'session_bounded_reference')),
 refs = ofClass(out, 'relative_reference');
 assertEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, char(refs{1}.get('base.id')), windowIds{1});
-verifyEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), 'sess_doc_1');
-verifyNotEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), 'SID_1');
+verifyEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'SID_1'));
+if ~did2.schema.cache.shared().sessionIdIsEdge()   % one string on the edge shape
+    verifyNotEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), 'SID_1');
+end
 end
 
 function testEveryEncounterEdgeStillResolvesAfterTheBoundedFold(testCase)

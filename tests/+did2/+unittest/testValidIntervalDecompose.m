@@ -207,26 +207,26 @@ b.(blockName) = block;
 end
 
 function b = sessionDoc()
-% `local_identifier`, NOT `reference`. This is a V_eta body, and V_eta renamed
-% the field on 2026-08-13 (signed) so `session` names its handle the way
-% `epoch` and `subject` directly below already do. `reference` is now
-% UNDECLARED, so the old spelling quarantined this fixture, which took the
-% anchor out of the batch and turned a fixture typo into an orphan edge --
-% caught by testEveryEmittedEdgeResolvesInsideTheBatch, which is what it is for.
-b = etaBody('session', {'entity'}, 'session_doc_1', 'session', ...
-    struct('local_identifier', 'fixture_session'), []);
+% did-schema #88: the session is an `entity` of type session whose base.id IS
+% its session id (V_eta_relation_inheritance_plan.md).
+b = did2.build.document('entity', struct('type', did2.build.term('', 'session'), ...
+    'local_identifier', 'fixture_session'), 'SessionId', 'session_doc_1', ...
+    'Id', 'session_doc_1', 'Validate', false);
 end
 
 function b = epochDoc(id, localIdentifier)
-%EPOCHDOC What did2.convert.epochMint mints: one per (session, epoch-string).
-b = etaBody('epoch', {'entity'}, id, 'epoch', ...
-    struct('local_identifier', localIdentifier), ...
-    struct('name', {'session_id'}, 'value', {'session_doc_1'}));
+%EPOCHDOC What did2.convert.epochMint mints on did-schema #88: an `entity` of
+%   type epoch, one per (session, epoch-string).
+b = did2.build.document('entity', struct('type', did2.build.term('', 'epoch'), ...
+    'local_identifier', localIdentifier), 'SessionId', 'session_doc_1', ...
+    'Id', id, 'Validate', false);
 end
 
 function b = elementSubject(id)
-b = etaBody('subject', {'entity'}, id, 'subject', ...
-    struct('local_identifier', 'ctx_probe_1', 'description', ''), []);
+% did-schema #88: an element is an `entity` (a probe is a device).
+b = did2.build.document('entity', struct('type', did2.build.term('', 'device'), ...
+    'local_identifier', 'ctx_probe_1'), 'SessionId', 'session_doc_1', ...
+    'Id', id, 'Validate', false);
 end
 
 function b = derivedSubject(id)
@@ -268,7 +268,7 @@ end
 function out = docsOfClass(result, className)
 out = {};
 for k = 1:numel(result.migrated)
-    if strcmp(result.migrated{k}.className(), className)
+    if strcmp(did2.unittest.helpers.classKey(result.migrated{k}), className)
         out{end+1} = result.migrated{k}; %#ok<AGROW>
     end
 end
@@ -359,8 +359,8 @@ verifyEqual(testCase, rep.statements_emitted, 0, ...
 verifyEqual(testCase, rep.references_emitted, 0);
 verifyEqual(testCase, rep.intervals_decomposed, 0);
 verifyEqual(testCase, rep.documents_appended, 0);
-verifyEmpty(testCase, docsOfClass(result, 'logical_observation'));
-verifyEmpty(testCase, docsOfClass(result, 'relative_reference'));
+verifyEmpty(testCase, docsOfClass(result, 'observation+logical'));
+verifyEmpty(testCase, docsOfClass(result, 'relative_time_reference'));
 verifyEqual(testCase, numel(result.migrated), before, ...
     'the dormant pass changed the batch');
 end
@@ -410,14 +410,15 @@ function testNoSourceDocumentsMeansNoStatementsAndNoChange(testCase)
 result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     elementSubject('element_1')});
 before = numel(result.migrated);
-result = runPass(result);
+result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
 
 rep = result.valid_interval_decompose;
 verifyTrue(testCase, rep.ran, 'the pass must report that it ran');
 verifyEqual(testCase, rep.sources_seen, 0);
 verifyEqual(testCase, rep.statements_emitted, 0);
 verifyEqual(testCase, rep.documents_appended, 0);
-verifyEmpty(testCase, docsOfClass(result, 'logical_observation'), ...
+verifyEmpty(testCase, docsOfClass(result, 'observation+logical'), ...
     ['a logical statement was minted for an element with NO valid_interval ' ...
      'document. Absence means the data is VALID; minting anything here turns ' ...
      'every markgarbage-free dataset from "all good" into "annotated", and ' ...
@@ -431,549 +432,23 @@ function testAnEmptyBatchIsNotAnErrorAndReportsItsDenominator(testCase)
 % report, not the same one. Operating Rule 5; silentLoss is what happens
 % without it.
 result = struct('migrated', {{}}, 'quarantine', {{}});
-result = runPass(result);
+result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
 rep = result.valid_interval_decompose;
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, rep.sources_seen, 0);
 end
 
-function testTheSourceDocumentIsNeverRemoved(testCase)
-% IT ADDS, IT NEVER REMOVES. The `valid_interval` document keeps validating
-% against its own tombstone, so a wrong decomposition loses nothing and the
-% deletion gate stays a MEASUREMENT rather than an assumption -- the
-% verify-before-delete rule (epochfiles_ingested cost 2,484 quarantines by
-% removing a class ahead of its evidence).
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
+function testDecomposeIsRefusedBecauseItsTargetWasRetired(testCase)
+% did-schema #88 RETIRED `logical_observation` (#73 review item 52), the class
+% the 1 -> N decomposition emitted, so asking for it is an error that names the
+% retirement, not a shape the schema no longer has. The decomposition tests that
+% stood here pinned that retired emission and were removed with it (port to
+% did-schema #88, 2026-10-21); the dormant census above is what still runs.
+entries = intervalEntry(10, 20, 'dev_local_time', 't00001');
 result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-kept = docsOfClass(result, 'valid_interval');
-verifyNumElements(testCase, kept, 1, ...
-    'the source valid_interval document must survive the decompose');
-verifyEqual(testCase, char(kept{1}.get('base.id')), 'vi_1', ...
-    'and it must keep its id');
-verifyEqual(testCase, result.valid_interval_decompose.sources_fully_decomposed, 1);
-end
-
-% ===================== HAZARD 2: order is load-bearing =====================
-
-function testNoOrdinalIsCarriedBecauseOrderIsNotLoadBearing(testCase)
-%TESTNOORDINALISCARRIED... HAZARD 2, RESOLVED AND INVERTED 2026-08-12.
-%
-%   THIS REPLACES TWO TESTS THAT ASSERTED THE OPPOSITE --
-%   `testSequenceIsTheV1ArrayPositionAndNotTheTimeOrder` and
-%   `testASingleIntervalStillGetsSequenceOne` -- which pinned a `sequence`
-%   ordinal onto every emitted statement. Their premise was that
-%   +app/+stimulus/tuning_response.m:253-256 reads the FIRST entry of the
-%   STORED array. It does not. From NDI `origin/main` (42c94e53b):
-%
-%       253:  vi       = gapp.loadvalidinterval(ndi_timeseries_obj);
-%       254:  interval = gapp.identifyvalidintervals(ndi_timeseries_obj,timeref,0,Inf);
-%       256:  readtimeseries(..., interval(1,1), interval(1,2));
-%
-%   `interval` is `identifyvalidintervals`'s RETURN VALUE; `vi` is loaded into a
-%   variable that is never read again. And `identifyvalidintervals`
-%   (markgarbage.m:178-204) runs `for i=1:size(vi,1)` accumulating through
-%   `vlt.math.interval_add` -- a SET UNION -- and never indexes `vi` by
-%   position. So v1's append order is invisible to its only consumer.
-%
-%   LIMIT, STATED: `vlt.math.interval_add` is in vhlab-toolbox-matlab, which was
-%   not available when this was re-verified, so whether the union SORTS was not
-%   read from source. The conclusion does not rest on it.
-%
-%   The t0 values are deliberately NOT ascending, kept from the deleted test:
-%   if any ordinal ever comes back, this fixture is the one that shows whether
-%   it tracks the array or the clock.
-entries = [intervalEntry(50, 60, 'dev_local_time', 't00001'), ...
-           intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
-           intervalEntry(30, 40, 'dev_local_time', 't00001')];
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 3, ...
-    'one statement per interval; the v1 block is an ARRAY and accumulation is the normal path');
-
-% `logical_observation` declares NO FIELDS AT ALL -- like length_observation and
-% count_observation. Asking for the deleted ordinal must not silently return
-% something, so this reads the block and asserts it carries nothing.
-for k = 1:numel(stmts)
-    blk = stmts{k}.get('logical_observation');
-    verifyTrue(testCase, isempty(blk) || isempty(fieldnames(blk)), ...
-        ['logical_observation carries a field. It has none: `sequence` was ' ...
-         'deleted with HAZARD 2, and an ordinal nobody reads is a fact we ' ...
-         'would have to keep true forever']);
-end
-
-% All three intervals still arrive, each with its own anchor, and the SET of
-% start times is what is preserved -- not an order over it.
-starts = [];
-for k = 1:numel(stmts)
-    refIds = allDepTargets(stmts{k}, 'time_reference_');
-    verifyNumElements(testCase, refIds, 1, ...
-        'agreeing anchors must produce exactly ONE reference document');
-    for r = 1:numel(result.migrated)
-        if strcmp(char(result.migrated{r}.get('base.id')), refIds{1})
-            starts(end+1) = double(result.migrated{r}.get( ...
-                'relative_reference.value.start.seconds')); %#ok<AGROW>
-        end
-    end
-end
-verifyEqual(testCase, sort(starts), [10 30 50], ...
-    ['an interval was lost or duplicated. The ORDER is not carried, but every ' ...
-     'interval in the source array must still produce exactly one statement']);
-end
-
-% ===================== HAZARD 3: validity inherits (NOT DECIDED) ===========
-
-function testInheritanceIsMEASUREDAndNothingIsMaterialised(testCase)
-% HAZARD 3 IS AN OPEN TEAM QUESTION AND THIS TEST DOES NOT ANSWER IT.
-%
-% `loadvalidinterval` falls back to `underlying_element` when a derived element
-% has none of its own (markgarbage.m:146-155) -- a QUERY-TIME rule in NDI.
-% Whether V_eta re-derives that through `derived_from` or MATERIALISES copies
-% onto derived subjects is for the team. What is asserted here is only that the
-% pass picks NEITHER: it writes one statement, against the element the source
-% named, and REPORTS how many subjects the question would affect.
-%
-% If a later decision is MATERIALISE, this test is the one to invert -- and
-% inverting it is the point of writing it this way rather than leaving the
-% behaviour unpinned.
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), derivedSubject('element_2'), ...
-    derivedFromRelation('rel_1', 'element_2', 'element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 1, ...
-    ['exactly ONE statement: the derived element must not receive a ' ...
-     'materialised copy. Which answer is right is a TEAM decision, and ' ...
-     'emitting one here would make it silently']);
-verifyEqual(testCase, depOf(stmts{1}, 'subject_id'), 'element_1', ...
-    ['the statement belongs to the element the v1 document named. Attaching ' ...
-     'it anywhere else destroys the graph a re-deriving answer would walk']);
-verifyEmpty(testCase, allDepTargets(stmts{1}, 'derived_from_'), ...
-    ['no derived_from edge is minted. It is the seam a materialising answer ' ...
-     'would use; filling it now would pre-empt the decision']);
-verifyEqual(testCase, result.valid_interval_decompose.inheritance_candidates, 1, ...
-    ['the OPEN question must be MEASURED. This counter is how big it is on ' ...
-     'real data -- subjects holding a derived_from edge to an element with ' ...
-     'statements, i.e. the population NDI''s underlying_element fallback ' ...
-     'serves. A decision made without it is a decision made on intuition']);
-end
-
-% ===================== the anchor (Decision C) =============================
-
-function testAgreeingAnchorsProduceOneReferenceWithADuration(testCase)
-% DECISION C, the case that actually occurs. One `relative_to` + one `clock`
-% govern both ends. CHANGE 1 of the signed walkthrough: the EXTENT is a
-% DURATION, not the raw t1, so a fuzzy anchor cannot contaminate the span.
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-
-refs = docsOfClass(result, 'relative_reference');
-verifyNumElements(testCase, refs, 1);
-verifyEqual(testCase, depOf(refs{1}, 'relative_to'), 'epoch_doc_1', ...
-    ['the anchor is the EPOCH DOCUMENT. It is why this is a batch pass: the ' ...
-     'v1 timeref names the epoch by STRING and relative_to is REQUIRED']);
-verifyEqual(testCase, double(refs{1}.get('relative_reference.value.start.seconds')), 10);
-verifyEqual(testCase, double(refs{1}.get('relative_reference.value.duration.seconds')), 90, ...
-    'duration = t1 - t0, not t1 (CHANGE 1)');
-verifyEqual(testCase, char(refs{1}.get('relative_reference.value.clock.name')), ...
-    'dev_local_time');
-verifyEqual(testCase, result.valid_interval_decompose.split_anchor_intervals, 0);
-end
-
-function testTheApproxPrefixBecomesAToleranceNotABoolean(testCase)
-% CHANGE 4 of the signed time model. NDI states the magnitude only in prose
-% (+ndi/+time/clocktype.m:21,23,26 -- "within 5 seconds"), so the 5 is
-% TRANSCRIBED. Folding the prefix into a boolean throws the number away, which
-% is the error CHANGE 4 exists to record.
-entries = intervalEntry(0, 30, 'approx_dev_global_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-refs = docsOfClass(result, 'relative_reference');
-verifyNumElements(testCase, refs, 1);
-verifyEqual(testCase, char(refs{1}.get('relative_reference.value.clock.name')), ...
-    'dev_global_time', 'the approx_ prefix is de-encoded off the clock name');
-verifyEqual(testCase, double(refs{1}.get('time_reference.clock_tolerance.seconds')), 5, ...
-    'and lands as a QUANTIFIED tolerance on the timeline, not as a flag');
-end
-
-function testDisagreeingAnchorsProduceTwoInstantReferences(testCase)
-% DECISION C, the case that has NO KNOWN INSTANCE. CHANGE 5 of the signed plan
-% measured every markvalidinterval call site -- the docstring (markgarbage.m:10),
-% the in-tree test app (+test/+app/markgarbage.m:49) and all six calls in
-% TestMarkGarbage.m -- and every one passes the SAME reference for both ends.
-%
-% So this asserts SHAPE, not modelling: two reference documents, each an
-% INSTANT (no duration, because a span between two differently-anchored ends is
-% not a quantity either anchor owns), and NEVER a nested anchor block per end --
-% that is the inline structure removed from acquisition_epoch.clocks,
-% epochclocktimes, distance_metadata and the tuning bag.
-%
-% NOTE THE #52 INTERACTION, which is NOT closed: the signed uniqueness rule says
-% `value.clock` is unique across a `time_reference_#` family, and two anchors
-% differing only by EPOCH share a clock. did2.validate.silentLoss reports that
-% as `family_uniqueness_violation`. The counter below is what makes the case
-% visible instead of quietly emitted.
-entries = splitAnchoredEntry(10, 100, 't00001', 't00002');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    epochDoc('epoch_doc_2', 't00002'), elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-
-verifyEqual(testCase, result.valid_interval_decompose.split_anchor_intervals, 1);
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 1);
-refIds = allDepTargets(stmts{1}, 'time_reference_');
-verifyNumElements(testCase, refIds, 2, ...
-    'an interval whose ends are anchored differently becomes TWO reference documents');
-targets = {};
-for k = 1:numel(result.migrated)
-    if ~strcmp(result.migrated{k}.className(), 'relative_reference'); continue; end
-    if ~any(strcmp(char(result.migrated{k}.get('base.id')), refIds)); continue; end
-    targets{end+1} = depOf(result.migrated{k}, 'relative_to'); %#ok<AGROW>
-    b = result.migrated{k}.toStruct();
-    verifyFalse(testCase, isfield(b.relative_reference.value, 'duration'), ...
-        ['each half is an INSTANT. A duration here would claim a span ' ...
-         'measured on one timeline when its ends are on two']);
-end
-verifyEqual(testCase, sort(targets), {'epoch_doc_1', 'epoch_doc_2'});
-end
-
-% ===================== refusals ============================================
-
-function testNoEpochDocumentRefusesAndLeavesTheSourceIntact(testCase)
-% The pass anchors to `epoch` DOCUMENTS, which did2.convert.epochMint mints. Run
-% without them -- or on an epoch string nothing minted -- it must REFUSE, count,
-% and leave the document exactly as pass 1 produced it. Guessing an anchor, or
-% emitting `relative_to` empty, would rebuild the invented-empty-edge pattern:
-% +did2/+validate/references.m:90 SKIPS empty edges, so the husks would validate
-% clean and no gate would see them.
-entries = intervalEntry(10, 100, 'dev_local_time', 't99999');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-rep = result.valid_interval_decompose;
-verifyEqual(testCase, rep.sources_seen, 1);
-verifyEqual(testCase, rep.refused_no_epoch_document, 1);
-verifyEqual(testCase, rep.statements_emitted, 0);
-verifyEqual(testCase, rep.sources_fully_decomposed, 0, ...
-    'the deletion gate must not read as satisfied when nothing was decomposed');
-verifyNumElements(testCase, docsOfClass(result, 'valid_interval'), 1);
-end
-
-function testNoTimeClockRefuses(testCase)
-% NO TIMES => NO REFERENCE (signed). `no_time` is a real, reachable value --
-% ndi.time.clocktype lists it among its nine -- and a NaN-valued reference is
-% the hollow document silentLoss and isFragment exist to catch.
-entries = intervalEntry(10, 100, 'no_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-rep = result.valid_interval_decompose;
-verifyEqual(testCase, rep.refused_no_clock, 1);
-verifyEqual(testCase, rep.statements_emitted, 0);
-end
-
-function testPartialDecompositionIsCountedApartFromFull(testCase)
-% Two intervals, one anchorable and one not. `sources_fully_decomposed` is the
-% DELETION GATE, so a source that gave up only some of its intervals must not
-% count toward it -- retiring the tombstone on a partial count would lose the
-% intervals that never converted.
-entries = [intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
-           intervalEntry(30, 40, 'dev_local_time', 't99999')];
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-rep = result.valid_interval_decompose;
-verifyEqual(testCase, rep.intervals_seen, 2);
-verifyEqual(testCase, rep.intervals_decomposed, 1);
-verifyEqual(testCase, rep.sources_fully_decomposed, 0);
-verifyEqual(testCase, rep.sources_partly_decomposed, 1);
-end
-
-% ===================== the value, and the graph ============================
-
-function testTheMigratedValueIsTrueAndTheClassCanSayFalse(testCase)
-% did_v1 encoded validity in the CLASS NAME, so "this stretch is bad" was
-% expressible only as ABSENCE -- markgarbage.m:40 is its own author writing the
-% gap down ("it would be great to have a 'markinvalidinterval' companion").
-% Every migrated value is therefore TRUE, and that is a property of the SOURCE.
-% The second half of this test is the one that matters: FALSE must be a legal,
-% NON-VACUOUS value, or the symmetry the decision was made for does not exist.
-% (`logical.value` is mustBeNonEmpty and #38's NonVacuousFields check is ARMED
-% BY DEFAULT; a `false` that read as blank would quarantine.)
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 1);
-verifyTrue(testCase, logical(stmts{1}.get('logical.value')), ...
-    'a migrated interval is VALID; v1 cannot express anything else');
-
-falseBody = etaBody('logical_observation', ...
-    {'subject_observation', 'logical'}, 'stmt_false_1', ...
-    'logical', struct('value', false), ...
-    struct('name', {'subject_id'}, 'value', {'element_1'}));
-falseBody.subject_statement = struct( ...
-    'variable', struct('node', '', 'name', 'data validity'), ...
-    'storage_mode', 'inline');
-% The verb is stated here too, so this hand-built body stays a faithful copy of
-% what the pass emits rather than a blank-method template a later reader copies.
-falseBody.subject_interaction = struct('method', ...
-    struct('node', '', 'name', expectedMethodName()));
-out = did2.convert.v1_to_v2({falseBody}, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
-verifyEmpty(testCase, out.quarantine, ...
-    ['a FALSE logical statement must validate. If it does not, the class ' ...
-     'cannot express invalidity and the whole point of the boolean is gone -- ' ...
-     'v1 already had "valid or nothing"']);
-end
-
-function testEveryEmittedEdgeResolvesInsideTheBatch(testCase)
-% The corpus gate is 0 quarantine AND 0 ORPHANS, and this pass emits documents
-% that point at each other. A statement whose anchor quarantined would carry a
-% `time_reference_1` edge naming a document that is not there -- so the pass
-% validates the ANCHORS FIRST and WITHHOLDS any statement that lost one. This
-% asserts the outcome directly rather than trusting that ordering.
-entries = [intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
-           intervalEntry(30, 40, 'dev_local_time', 't00001')];
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-verifyEmpty(testCase, result.quarantine);
-refRep = did2.validate.references(result.migrated);
-verifyEqual(testCase, refRep.orphan_count, 0, ...
-    sprintf('%d orphan edge(s) of %d examined after the decompose', ...
-        refRep.orphan_count, refRep.edges_examined));
-verifyEqual(testCase, result.valid_interval_decompose.statements_withheld_lost_anchor, 0);
-end
-
-% ===================== the verb (subject_interaction.method) ===============
-%
-% A validity `logical_observation` records a CURATORIAL JUDGEMENT -- a person ran
-% markgarbage and marked which stretches are good -- not a measurement taken
-% from the subject. V_eta's four directions are assertion / observation /
-% manipulation / calculation and none of them is "a human judged this", so the
-% stance has to be stated somewhere; T2 makes `subject_interaction.method` the
-% declared slot for THE VERB. These tests exist because a blank there fails
-% NOTHING: `method` is mustBeNonEmpty:false, so an empty term validates, and
-% subject_interaction.json's own documentation says the observation verb "is
-% nearly always 'measurement'" -- so a blank READS AS MEASUREMENT, which is the
-% one thing this statement is not. Same shape as HAZARD 1: a silent
-% reclassification that no corpus gate can see.
-
-function methodName = expectedMethodName()
-%EXPECTEDMETHODNAME The pin. Written out HERE, as a literal, on purpose.
-%   The pass keeps its own single spelling in `curationMethodName`. If this test
-%   read that function instead of restating the string, a rename would move both
-%   sides together and the suite would stay green through a silent change of
-%   what every migrated validity statement claims -- a test written from the
-%   same premise as the code, which is the failure mode CLAUDE.md names.
-methodName = 'curation';
-end
-
-function testEveryStatementStatesItsMethodAndNoneIsBlank(testCase)
-% THE GATE THIS SECTION EXISTS FOR. Three intervals, three statements, and not
-% one of them may carry an empty verb.
-entries = [intervalEntry(50, 60, 'dev_local_time', 't00001'), ...
-           intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
-           intervalEntry(30, 40, 'dev_local_time', 't00001')];
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 3);
-for k = 1:numel(stmts)
-    verifyNotEmpty(testCase, ...
-        char(stmts{k}.get('subject_interaction.method.name')), ...
-        ['a statement was emitted with a BLANK method. It validates -- the ' ...
-         'field is mustBeNonEmpty:false -- and it then reads as the default ' ...
-         'observation verb, `measurement`, so a curatorial judgement becomes ' ...
-         'indistinguishable from an instrument reading and nothing fails']);
-end
-end
-
-function testTheMethodNameIsPinnedSoASilentRenameFails(testCase)
-% T11: one canonical spelling per concept. The name is a CLAIM about every
-% migrated validity statement -- change it and every document in every corpus
-% says something different -- so it is pinned to a literal here rather than
-% asserted against the pass's own constant.
-%
-% If this test fails, the question is not "update the expected string". It is
-% whether the new name still beats the ones rejected on the tenets: the TOOL
-% names (`markgarbage`, `ndi_app_markgarbage` -- T13 wrapper-free, T11 no
-% device/method subtype in a name), the over-claiming ones (`manual curation`,
-% `expert annotation`, `visual inspection` -- markvalidinterval is a plain API a
-% script can call), and `measurement`, which is exactly what the blank already
-% read as.
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 1);
-verifyEqual(testCase, char(stmts{1}.get('subject_interaction.method.name')), ...
-    expectedMethodName(), ...
-    'the verb every migrated validity statement claims has changed');
-end
-
-function testTheMethodNamesTheActAndNotTheTool(testCase)
-% The tool belongs in PROVENANCE -- the `app` block on the retained source, and
-% `software_id` on the statement, which subject_interaction.json says in its own
-% words supersedes the v1 `app`. The verb slot must not become a second, worse
-% copy of it: `ndi_app_markgarbage` in `method` would encode a namespace wrapper
-% and an instrument identity in the one field whose job is the epistemic act.
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 1);
-name = char(stmts{1}.get('subject_interaction.method.name'));
-verifyEmpty(testCase, strfind(lower(name), 'garbage'), ...
-    ['`method` names the ACT, not the app. The producing tool rides on the ' ...
-     'retained source''s app block (and on software_id); putting it here ' ...
-     'spends the verb slot on an instrument identity']);
-verifyEmpty(testCase, strfind(lower(name), 'ndi_app'), ...
-    'a namespace wrapper in a term name (T13 wrapper-free)');
-end
-
-function testTheMethodNodeStaysEmptyAndNoCurieIsInvented(testCase)
-% The term joins the SAME empty-ontology-node staging `variable` and `clock`
-% already use here. Inventing a CURIE to make the field look resolved would put
-% our bookkeeping into the data, where a later reader could not tell it from a
-% real identifier -- which is the thing check_empty_ontology_nodes.py refuses to
-% do for the same reason ("it does NOT write a sentinel into the data").
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 1);
-verifyEmpty(testCase, char(stmts{1}.get('subject_interaction.method.node')), ...
-    ['the node must stay EMPTY. NDIC.txt left NDI-matlab at 2c19bf24c and no ' ...
-     'identifier authority is in scope, so a CURIE here would be invented']);
-end
-
-function testAStatementWhoseSourceHasNoAppBlockStillStatesItsMethod(testCase)
-% THE FALL-BACK BRANCH. The document names a TOOL and never a verb, so the verb
-% is a constant either way and what changes is where the claim RESTS: with no
-% producer named, it rests on the CLASS (nothing but markgarbage writes
-% `valid_interval`). What must NOT happen is the statement going blank because
-% the block it was read from is missing -- absence of provenance is not absence
-% of an epistemic stance.
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBodyNoApp('vi_1', 'element_1', entries)});
-result = runPass(result);
-
-stmts = docsOfClass(result, 'logical_observation');
-verifyNumElements(testCase, stmts, 1);
-verifyEqual(testCase, char(stmts{1}.get('subject_interaction.method.name')), ...
-    expectedMethodName(), ...
-    ['a source with no app block produced a statement with no stated method. ' ...
-     'The verb does not come from the app block -- the app block names a ' ...
-     'tool -- so losing it must not silence the stance']);
-rep = result.valid_interval_decompose;
-verifyEqual(testCase, rep.method_from_class_default, 1, ...
-    'and the fall-back must be COUNTED, not silent');
-verifyEqual(testCase, rep.method_from_app_block, 0);
-end
-
-function testTheMethodEvidenceIsCountedPerStatementAndSums(testCase)
-% Which branch backed the verb is EVIDENCE, and it is counted the same way
-% `anchor_session_from_timeref` / `anchor_session_from_document` count theirs
-% one field over -- so "read from the document" and "asserted from the class"
-% stay distinguishable in the corpus report instead of collapsing into one
-% unconditional constant.
-%
-% The counters are per STATEMENT; `sources_with_app_block` is per SOURCE. Both
-% are asserted here precisely because they are easy to mistake for each other:
-% one source with three intervals gives 1 and 3.
-entries = [intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
-           intervalEntry(30, 40, 'dev_local_time', 't00001'), ...
-           intervalEntry(50, 60, 'dev_local_time', 't00001')];
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-
-rep = result.valid_interval_decompose;
-verifyEqual(testCase, rep.sources_with_app_block, 1, 'per SOURCE');
-verifyEqual(testCase, rep.method_from_app_block, 3, 'per STATEMENT');
-verifyEqual(testCase, rep.method_from_class_default, 0);
-verifyEqual(testCase, ...
-    rep.method_from_app_block + rep.method_from_class_default, ...
-    rep.intervals_decomposed, ...
-    ['every decomposed interval produced exactly one statement, so the two ' ...
-     'evidence counters must sum to intervals_decomposed. A drift here means ' ...
-     'statements are being written down a path that states no method']);
-end
-
-function testTheStagedMethodTermIsCountedByTheLocalStandIn(testCase)
-% THE RATCHET CANNOT SEE THIS TERM, and that was RE-CHECKED rather than assumed
-% when `method` was populated: check_empty_ontology_nodes.py's migrator sweep
-% walks only `+migrators_j` and matches only `jOntologyTerm('', ...)`, and its
-% schema sweep reads built schemas -- a raw staged struct in `+did2/+convert` is
-% invisible to both. `staged_ontology_nodes` is this file's local stand-in and
-% it reaches the corpus report (runCorpusDiscovery) and the cross-corpus census
-% (tools/census_digest.py), so the debt is a number in two printed reports.
-%
-% The arithmetic is pinned so that adding a fourth staged term without counting
-% it fails here: ONE decomposed interval with agreeing anchors stages THREE --
-% the reference's `clock`, the statement's `variable`, and now its `method`.
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-rep = result.valid_interval_decompose;
-verifyEqual(testCase, rep.intervals_decomposed, 1);
-verifyEqual(testCase, rep.staged_ontology_nodes, 3, ...
-    ['clock + variable + method. If a term was added to the emission and not ' ...
-     'to this counter it is staged INVISIBLY: the #70 ratchet does not read ' ...
-     'this directory, so this number is the only place the debt appears']);
-end
-
-function testTheAppBlockIsCountedBecauseItStaysOnTheSource(testCase)
-% The v1 `app` block (which app marked these intervals) has no slot on the
-% statement, and minting a `software` entity per statement here would produce
-% one undeduplicated entity per interval -- did2.convert.resolveDatasetEntities,
-% which does the software dedup, has already run by this point. So the
-% provenance stays on the RETAINED source document and the pass counts it, so
-% the gap is a number rather than a silence.
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-verifyEqual(testCase, result.valid_interval_decompose.sources_with_app_block, 1);
-verifyEmpty(testCase, docsOfClass(result, 'software'), ...
-    'no software entity is minted here; the dedup pass has already run');
+    elementSubject('element_1'), validIntervalBody('vi_1', 'element_1', entries)});
+verifyError(testCase, @() runPass(result), ...
+    'did2:convert:validIntervalTargetRetired');
 end

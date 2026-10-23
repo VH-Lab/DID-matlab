@@ -100,7 +100,7 @@ function testSourceParkedMethodParameters(tc)
 % batch pass can collect it. Present only on MIGRATED bodies.
 b = baseOnly('method_parameters', 'doc3', 'sess1');
 b.method_parameters = struct('name', 'extraction', ...
-    'method_parameters', struct('variable', {}, 'value', {}), ...
+    'method_parameters', struct('variable', {}, 'quantity', {}), ...
     'other', struct('epochid', 't00011'));
 hits = did2.validate.epochStrings(b);
 tc.verifyEqual(valueOfSource(hits, 'method_parameters'), 't00011');
@@ -234,7 +234,7 @@ function testAFoldThatEatsTheFieldIsCaughtAndNamesItsClass(tc)
 v1 = baseOnly('stimulus_response_scalar', 'doc4', 'sess1');
 v1.stimulus_response = struct('stimulator_epochid', '', ...
     'element_epochid', 't00003');
-folded = baseOnly('harmonic_component_calculation', 'doc4', 'sess1');
+folded = baseOnly('calculation', 'doc4', 'sess1');
 r = did2.validate.epochStringRetention({v1}, {folded});
 tc.verifyEqual(r.v1_pairs, 1);
 tc.verifyEqual(r.retained_total, 0);
@@ -327,7 +327,7 @@ function testAClassThatDropsItsStringGetsARowWithBothNumbers(tc)
 % drop, so `1 of 1` is distinguishable from `0 of 0`.
 v1 = baseOnly('vmspikefit', 'doc1', 'sess1');
 v1.epochid = struct('epochid', 't00007');
-folded = baseOnly('score_observation', 'doc9', 'sess1');
+folded = baseOnly('observation', 'doc9', 'sess1');
 r = did2.validate.epochStringRetention({v1}, {folded});
 tc.verifyEqual(numel(r.v1_by_class), 1);
 tc.verifyEqual(r.v1_by_class(1).class_name, 'vmspikefit');

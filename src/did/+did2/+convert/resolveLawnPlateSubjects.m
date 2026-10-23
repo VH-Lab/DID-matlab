@@ -1,7 +1,7 @@
 function [result, report] = resolveLawnPlateSubjects(result, options)
 %RESOLVELAWNPLATESUBJECTS Mint the bacterial LAWN and PLATE subject tiers, join
-%   them with `member_of`, and give every patch subject the (experiment, plate,
-%   patch) identifier the team asked for.
+%   them with `contained_in` (lawn in its plate), and give every patch subject
+%   the (experiment, plate, patch) identifier the team asked for.
 %
 %   [RESULT, REPORT] = did2.convert.resolveLawnPlateSubjects(RESULT) takes the
 %   struct did2.convert.v1_to_v2 returns (after the sibling post-passes) and
@@ -18,8 +18,8 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %
 %   BATCH-PASS-CONSUMES: ontology_table_row
 %   BATCH-PASS-EMITS: ontology_table_row -> document: subject,
-%       directed_relation, concentration_observation, volume_observation,
-%       length_observation, score_observation
+%       directed_relation, observation+concentration, observation+volume,
+%       observation+length, observation+score
 %
 %   `ROW = 'ontology_table_row'` at :507 is the only class this pass selects
 %   on; everything else it touches it has just minted. The four observation
@@ -64,8 +64,22 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %        subject where each lawn is a member of it"
 %
 %           lawn  (a bacterial patch)  -> subject
-%           plate (a plate of lawns)   -> subject, the GROUP
-%           lawn --member_of--> plate
+%           plate (a plate of lawns)   -> subject
+%           lawn --contained_in--> plate
+%
+%   THE EDGE WAS `member_of` UNTIL 2026-10-22. did-schema
+%   schemas/V_eta_relation_inheritance_plan.md, verbatim:
+%
+%       "Decided by Jess Haley, 2026-10-22 [lawn in plate]: a bacterial lawn
+%        is `contained_in` its plate, not `member_of` it: a plate is a
+%        material, not a group, so [member_of endpoints] rejects it, and
+%        [contained_in endpoints] already allows material to material"
+%
+%   So the edge is `contained_in` (RO:0001025): child the lawn (`culture`),
+%   parent the plate (`material`), both in the binding row's child_types /
+%   parent_types. The plate's statements pass to the lawn as `context` (the
+%   row's `passes`), not `distributive`. The relation's node and name are the
+%   schema's binding row's (see makeContainedIn).
 %
 %   The refinement of the same day, verbatim:
 %
@@ -76,7 +90,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   subject is minted only where that tier actually has something measured about
 %   it; a subject with nothing attached is the hollow document
 %   did2.validate.isFragment exists to catch, and this pass must not manufacture
-%   them. Where only one tier is minted there is no `member_of` to emit -- BOTH
+%   them. Where only one tier is minted there is no `contained_in` to emit -- BOTH
 %   ENDS MUST EXIST -- and the withholding is COUNTED, by tier.
 %
 %   And the identifier directive of the same day, verbatim:
@@ -105,7 +119,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %
 %   The patch row carries NEITHER `plateID` NOR `expID`. So the triple is not
 %   available to any single-document migrator, and it is produced by the SAME
-%   two-hop chain the membership needs:
+%   two-hop chain the containment edge needs:
 %
 %       patch --imageID--> image row --plateID--> plate row --> expID
 %
@@ -184,7 +198,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   ---------------------------------------------------------------------
 %   WHY IT IS A BATCH POST-PASS AND NOT A MIGRATOR
 %   ---------------------------------------------------------------------
-%   Both the membership and the identifier need documents a single-document
+%   Both the containment edge and the identifier need documents a single-document
 %   migrator cannot see, and they need only documents ALREADY IN THE MIGRATED
 %   BATCH -- no session, no database, no file bytes -- which is the same
 %   criterion that put `epochMint` and `resolveSessionAnchors` DID-side.
@@ -420,7 +434,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %       REFERENCE" rule names. Pass-1 code is not changed on that point.
 %     * NO IMAGE SUBJECT. An image is not a subject; the image rows are read as
 %       the JOIN TABLE they are and are left exactly as pass 1 emitted them.
-%     * NO EDGE IT CANNOT RESOLVE. Every `member_of` is emitted only after BOTH
+%     * NO EDGE IT CANNOT RESOLVE. Every `contained_in` is emitted only after BOTH
 %       endpoint subjects have been minted AND have survived validation into
 %       `migrated`. A refusal is a no-op; a dangling edge is a gating orphan.
 %
@@ -439,6 +453,13 @@ arguments
     options.SchemaCache = []
     options.TargetVersion (1,:) char = 'V_eta'
 end
+
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
 
 % DENOMINATOR FIRST, and unconditionally. Every field exists before a single
 % document is read, so "did not run" (ran == false) and "ran and found nothing"
@@ -475,7 +496,7 @@ report = struct( ...
     'lawn_rows_refused_no_identity_keys',        0, ...
     'lawn_subjects_minted',                      0, ...
     'lawn_observations_emitted',                 0, ...
-    ... % --- the two-hop chain, which produces BOTH the triple and the group
+    ... % --- the two-hop chain, which produces BOTH the triple and the plate
     'chains_attempted',                          0, ...
     'chains_resolved',                           0, ...
     'refused_no_image_row',                      0, ...
@@ -484,7 +505,7 @@ report = struct( ...
     'refused_no_plate_row',                      0, ...
     'refused_plate_row_ambiguous',               0, ...
     'refused_lawn_no_exp_id',                    0, ...
-    'member_of_relations_emitted',               0, ...
+    'contained_in_relations_emitted',            0, ...
     'withheld_plate_tier_not_minted',            0, ...
     'withheld_lawn_tier_not_minted',             0, ...
     'refused_total',                             0, ...
@@ -561,7 +582,7 @@ for k = 1:n
     byKeyTotal = byKeyTotal + byKey;
     byNameTotal = byNameTotal + byName;
     colsOf{k}   = cols;
-    sessions{k} = baseField(b, 'session_id');
+    sessions{k} = did2.schema.cache.sessionIdOf(b);
     kinds(k)    = classifyTable(cols);
     hasExpSrc(k) = ~isempty(colByToken(cols, TOK_PLATE_ID())) ...
         && ~isempty(colByToken(cols, TOK_EXP_ID()));
@@ -707,7 +728,7 @@ for k = 1:n
         [ok, num] = scalarNumber(c{1}.value);
         if ~ok; continue; end
         obs{end+1} = {measures{m, 2}, measures{m, 3}, ...
-            variableTerm(c{1}), num}; %#ok<AGROW>
+            variableTerm(c{1}), num, measures{m, 1}}; %#ok<AGROW>
     end
     if isempty(obs)
         % THE THREE STATES, KEPT APART. "row present, no values at all" and
@@ -777,7 +798,7 @@ for k = 1:n
         localId = plateHandle(expId, plateId);
         description = 'bacterial plate (a plate of lawns)';
     else
-        % THE TWO-HOP CHAIN, which produces the triple AND the group. Refusals
+        % THE TWO-HOP CHAIN, which produces the triple AND the plate. Refusals
         % are per-hop so a failure says WHICH hop.
         report.chains_attempted = report.chains_attempted + 1;
         imageKey = joinKey(sessions{k}, idVals{1});
@@ -819,7 +840,7 @@ for k = 1:n
         % maxLength 256 on subject.local_identifier. Falling back to the id
         % keeps uniqueness; truncating would destroy the very thing the
         % qualification exists to provide.
-        body.subject.local_identifier = body.base.id;
+        body.entity.local_identifier = body.base.id;
         report.local_identifier_fallback_to_document_id = ...
             report.local_identifier_fallback_to_document_id + 1;
     else
@@ -839,7 +860,7 @@ for k = 1:n
     pendingObs{end+1} = obs; %#ok<AGROW>
 end
 
-% A lawn row that was never minted has no member end, so its edge is withheld
+% A lawn row that was never minted has no contained end, so its edge is withheld
 % too. Counted from the lawn side so the two tiers stay separable, which is what
 % the refinement asked for.
 report.withheld_lawn_tier_not_minted = ...
@@ -858,7 +879,7 @@ report.withheld_lawn_tier_not_minted = ...
 relabelBodies = {};
 relabelIds = {};
 for k = 1:n
-    if ~strcmp(classes{k}, 'subject'); continue; end
+    if ~any(strcmp(classes{k}, {'subject', 'entity'})); continue; end
     b = bodies{k};
     handle = subjectField(b, 'local_identifier');
     if ~strcmp(subjectField(b, 'description'), patchDescription()); continue; end
@@ -874,7 +895,7 @@ for k = 1:n
             report.celegans_patch_subjects_unparseable_handle + 1;
         continue;
     end
-    sid = baseField(b, 'session_id');
+    sid = did2.schema.cache.sessionIdOf(b);
     key = joinKey(sid, plateId);
     if isKey(expAmbiguous, key)
         report.celegans_patch_subjects_refused_ambiguous_exp_id = ...
@@ -894,7 +915,7 @@ for k = 1:n
             report.local_identifier_fallback_to_document_id + 1;
         continue;
     end
-    b.subject.local_identifier = newHandle;
+    b.(subjectBlockOf(b)).local_identifier = newHandle;
     relabelBodies{end+1} = b; %#ok<AGROW>
     relabelIds{end+1} = baseField(b, 'id'); %#ok<AGROW>
     formedHandles{end+1}  = newHandle; %#ok<AGROW>
@@ -984,22 +1005,33 @@ for j = 1:numel(subjectMeta)
 end
 
 % ==========================================================================
-% STAGE D -- the observations and the member_of edges.
+% STAGE D -- the observations and the contained_in edges.
 % ==========================================================================
 % Everything built here carries an EDGE, so it is built only for subjects that
 % actually landed. An observation whose subject quarantined would be a gating
-% orphan; a `member_of` whose parent was never minted would be the same. Both
+% orphan; a `contained_in` whose parent was never minted would be the same. Both
 % are refused and counted instead.
 statementBodies = {};
+statementAnchor = {};    % the session anchor each observation names ('' for a relation)
+anchorBySession = containers.Map('KeyType', 'char', 'ValueType', 'any');
 statementKind = [];      % 1 plate observation, 3 lawn observation, 0 relation
 for j = 1:numel(subjectMeta)
     if ~isKey(liveSubject, subjectMeta(j).docId); continue; end
     obs = pendingObs{j};
     for i = 1:numel(obs)
         entry = obs{i};
-        statementBodies{end+1} = makeObservation(bodies{subjectMeta(j).idx}, ...
-            entry{1}, entry{2}, entry{3}, entry{4}, subjectMeta(j).docId); %#ok<AGROW>
+        src = bodies{subjectMeta(j).idx};
+        [sidA, dsA] = sessionAndTime(src);
+        if ~isKey(anchorBySession, sidA)
+            a = did2.build.relativeTimeReference(sidA, 'Relation', 'intervalDuring', ...
+                'SessionId', sidA, 'CreationTimestamp', dsA, 'Validate', false);
+            anchorBySession(sidA) = a;
+        end
+        a = anchorBySession(sidA);
+        statementBodies{end+1} = makeObservation(src, ...
+            entry{1}, entry{2}, entry{3}, entry{4}, subjectMeta(j).docId, a.base.id, entry{5}); %#ok<AGROW>
         statementKind(end+1) = subjectMeta(j).kind; %#ok<AGROW>
+        statementAnchor{end+1} = a.base.id; %#ok<AGROW>
     end
 end
 for j = 1:numel(subjectMeta)
@@ -1009,19 +1041,22 @@ for j = 1:numel(subjectMeta)
     if ~isKey(plateSubjectId, plateKey)
         % The chain resolved -- the lawn could not have been minted otherwise --
         % so the plate ROW exists. The plate tier simply had nothing measured
-        % about it, so no group subject was warranted. BOTH ENDS MUST EXIST, so
+        % about it, so no plate subject was warranted. BOTH ENDS MUST EXIST, so
         % no relation, and the withholding is named by tier.
         report.withheld_plate_tier_not_minted = ...
             report.withheld_plate_tier_not_minted + 1;
         continue;
     end
-    statementBodies{end+1} = makeMemberOf(bodies{subjectMeta(j).idx}, ...
+    statementBodies{end+1} = makeContainedIn(bodies{subjectMeta(j).idx}, ...
         subjectMeta(j).docId, plateSubjectId(plateKey)); %#ok<AGROW>
     statementKind(end+1) = 0; %#ok<AGROW>
+    statementAnchor{end+1} = ''; %#ok<AGROW>
 end
 
 if ~isempty(statementBodies)
-    [survivedB, quarantinedB] = validateBodies(statementBodies, options);
+    anchorBodies = anchorBySession.values;
+    [survivedB, quarantinedB] = validateBodies([statementBodies, anchorBodies(:)'], options);
+    anchorUsed = containers.Map('KeyType', 'char', 'ValueType', 'logical');
     report.statements_quarantined = numel(quarantinedB);
     if ~isempty(quarantinedB)
         result = appendQuarantine(result, quarantinedB);
@@ -1031,6 +1066,14 @@ if ~isempty(statementBodies)
     for i = 1:numel(statementBodies)
         id = statementBodies{i}.base.id;
         if ~isKey(survivedB, id); continue; end
+        aid = statementAnchor{i};
+        if ~isempty(aid)
+            if ~isKey(survivedB, aid); continue; end   % its anchor did not validate
+            if ~isKey(anchorUsed, aid)
+                anchorUsed(aid) = true;
+                appended{end+1} = survivedB(aid); %#ok<AGROW>
+            end
+        end
         appended{end+1} = survivedB(id); %#ok<AGROW>
         switch statementKind(i)
             case 1
@@ -1040,8 +1083,8 @@ if ~isempty(statementBodies)
                 report.lawn_observations_emitted = ...
                     report.lawn_observations_emitted + 1;
             otherwise
-                report.member_of_relations_emitted = ...
-                    report.member_of_relations_emitted + 1;
+                report.contained_in_relations_emitted = ...
+                    report.contained_in_relations_emitted + 1;
         end
     end
 end
@@ -1094,13 +1137,13 @@ d = 'bacterial patch';
 end
 
 function m = plateMeasures()
-%PLATEMEASURES {token, leafClass, shapeClass} for the E. coli plate row.
+%PLATEMEASURES {token, direction, value kind} for the E. coli plate row.
 %
 %   CFU is a CONCENTRATION, not a count, and that is the writer's own arithmetic
 %   rather than a preference: doImport.m:157 converts it to "CFU/mL of OD600 = 1
 %   solution (standard)" -- an explicit per-volume normalisation. Both OD600
 %   columns follow the precedent already in the tree (applyPatchGeometryMap maps
-%   BacterialOD600TargetAtSeeding to concentration_observation).
+%   BacterialOD600TargetAtSeeding to an observation of concentration).
 %
 %   The other TEN plate columns -- expID, the two labels, peptoneFlag, the five
 %   timestamps and the strain document-id string -- are NOT typed here. They are
@@ -1108,30 +1151,30 @@ function m = plateMeasures()
 %   of them. A boolean leaf and a date leaf for this tier are separate
 %   decisions, not something to invent inside a join.
 m = {
-    'bacterialod600measurement',                'concentration_observation', 'concentration'
-    'bacterialod600targetatseeding',            'concentration_observation', 'concentration'
-    'bacterialcolonyformingunitscfumeasurement','concentration_observation', 'concentration'
-    'bacterialpatchvolume',                     'volume_observation',        'volume'};
+    'bacterialod600measurement',                'observation',               'concentration'
+    'bacterialod600targetatseeding',            'observation',               'concentration'
+    'bacterialcolonyformingunitscfumeasurement','observation',               'concentration'
+    'bacterialpatchvolume',                     'observation',               'volume'};
 end
 
 function m = lawnMeasures()
-%LAWNMEASURES {token, leafClass, shapeClass} for the E. coli patch/lawn row.
+%LAWNMEASURES {token, direction, value kind} for the E. coli patch/lawn row.
 %
 %   Radius -> length and circularity -> score follow applyPatchGeometryMap
 %   exactly. The six fluorescence columns are dimensionless arbitrary units, and
-%   D8 gives V_eta exactly one home for those -- `intensity_observation`, "J's
+%   D8 gives V_eta exactly one home for those -- an `intensity` observation, "J's
 %   one dimensionless numeric; NO generic escape hatch". `borderCenterRatio` is
 %   a ratio of two of them, so it goes there too rather than to `score`, which
 %   carries a scale with a minimum and a maximum a ratio does not have.
 m = {
-    'bacterialpatchradius',                          'length_observation',    'length'
-    'bacterialpatchcircularity',                     'score_observation',     'score'
-    'bacterialpatchborderpeakfluorescenceintensity', 'intensity_observation', 'intensity'
-    'bacterialpatchborderedgefluorescenceintensity', 'intensity_observation', 'intensity'
-    'bacterialpatchborderfluorescenceamplitude',     'intensity_observation', 'intensity'
-    'bacterialpatchmeanfluorescenceamplitude',       'intensity_observation', 'intensity'
-    'bacterialpatchcenterfluorescenceamplitude',     'intensity_observation', 'intensity'
-    'bacterialpatchbordertocenterfluorescenceratio', 'intensity_observation', 'intensity'};
+    'bacterialpatchradius',                          'observation',           'length'
+    'bacterialpatchcircularity',                     'observation',           'score'
+    'bacterialpatchborderpeakfluorescenceintensity', 'observation',           'intensity'
+    'bacterialpatchborderedgefluorescenceintensity', 'observation',           'intensity'
+    'bacterialpatchborderfluorescenceamplitude',     'observation',           'intensity'
+    'bacterialpatchmeanfluorescenceamplitude',       'observation',           'intensity'
+    'bacterialpatchcenterfluorescenceamplitude',     'observation',           'intensity'
+    'bacterialpatchbordertocenterfluorescenceratio', 'observation',           'intensity'};
 end
 
 function t = knownTokens()
@@ -1309,69 +1352,79 @@ end
 % ===================== body builders =======================================
 
 function body = makeSubject(srcBody, localId, description)
-%MAKESUBJECT A bare V_eta subject with a FRESH id.
+%MAKESUBJECT A bare did-schema #88 `entity` with a FRESH id.
 %   Mirrors makePatchSubject in +migrators_j/ontology_table_row.m except for the
 %   id: that one PRESERVES the source id because the encounter relation names
 %   the row as its parent. Here the source row is NOT consumed -- it stays in
 %   the batch -- so preserving would put two documents on one id.
-body = struct();
-body.document_class = struct('class_name', 'subject', 'class_version', '3.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', {}, 'value', {});
-body.base = freshBase(srcBody, 'migrated_lawn_plate_subject');
-body.subject = struct('local_identifier', char(localId), ...
-    'description', description);
+%   The type is the registry's: a lawn is a `culture` ("a bacterial lawn"), a
+%   plate is a `material` ("an agar plate").
+type = 'culture';
+if contains(description, 'plate of lawns')
+    type = 'material';
+end
+[sid, ds] = sessionAndTime(srcBody);
+body = did2.build.document('entity', ...
+    struct('type', did2.build.term('', type), ...
+           'local_identifier', char(localId), 'description', description), ...
+    'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
-function body = makeObservation(srcBody, leafClass, shapeClass, variable, num, subjectId)
-%MAKEOBSERVATION One typed observation of one subject.
-%   The value shapes mirror makeEncObs in +migrators_j/ontology_table_row.m,
-%   which is corpus-proven. NO `time_reference_1` edge: it is optional on
-%   subject_interaction and there is no time to put in one -- see the header.
-body = struct();
-body.document_class = struct('class_name', leafClass, 'class_version', '1.0.0', ...
-    'superclasses', supersOf({'subject_observation', shapeClass}), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', 'subject_id', 'value', subjectId);
-body.base = freshBase(srcBody, 'migrated_lawn_plate_measure');
-body.subject_statement   = struct('variable', variable, 'storage_mode', 'inline');
-body.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
-body.subject_observation = struct();
+function body = makeObservation(srcBody, direction, shapeClass, variable, num, subjectId, anchorId, token)
+%MAKEOBSERVATION One typed observation of one subject (did-schema #88): the
+%   direction DIRECTION with the value-kind mixin SHAPECLASS.
+%   An #88 observation REQUIRES a time reference and the table gives no time,
+%   so it names ANCHORID, a "during the session" relative_time_reference the
+%   caller mints once per session. The value carries the source value with no
+%   unit, as the table cell gives none.
+%   An OD600 column is an optical density: the number fills the canonical
+%   `optical_density` and the source unit is the registered OD600 term, which
+%   says the wavelength (Jess Haley 2026-10-22 [ratio slots named by unit];
+%   source value only until then).
+if nargin < 8; token = ''; end
 if strcmp(shapeClass, 'score')
-    body.score = struct('value', struct('value', double(num), ...
-        'scale', struct('node', '', 'name', ''), ...
-        'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false));
-else
-    body.(shapeClass) = struct('value', ...
-        struct('source_unit', '', 'source_value', double(num), ...
+    v = did2.build.composite('score', 'value', struct('score', double(num), ...
         'approximate', false));
+elseif strcmp(shapeClass, 'concentration') && contains(token, 'od600')
+    v = did2.build.composite(shapeClass, 'value', ...
+        struct('optical_density', double(num), 'source_value', double(num), ...
+        'source_unit', did2.build.term('MCO:0000059', 'OD600'), 'approximate', false));
+else
+    v = did2.build.composite(shapeClass, 'value', ...
+        struct('source_value', double(num), 'approximate', false));
 end
+[sid, ds] = sessionAndTime(srcBody);
+body = did2.build.statement(direction, char(subjectId), variable, v, ...
+    'ValueKind', shapeClass, ...
+    'TimeReferenceIds', {char(anchorId)}, 'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
-function rel = makeMemberOf(srcBody, lawnId, plateId)
-%MAKEMEMBEROF lawn --member_of--> plate.
-%   `member_of` is NOT a new relation: binding_registry_meta.json already
-%   carries it as RO:0002350 on `directed_relation`, child_role "the member",
-%   parent_role "the group", child_types and parent_types both `subject` --
-%   which is exactly this pair -- and the signed ensemble decision uses the same
-%   relation for group membership.
-%
-%   NO `time_reference_#` and NO `epoch_id`: both are optional, and a lawn's
-%   membership of its plate is a standing structural fact, not an event.
-%   `method` is left empty for the reason the schema itself gives ("Empty for
-%   standing structural relations (part_of, member_of)").
-rel = struct();
-rel.document_class = struct('class_name', 'directed_relation', ...
-    'class_version', '1.0.0', 'superclasses', supersOf({'relation'}), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',  'value', lawnId), ...     % the member: the lawn
-    struct('name', 'parent', 'value', plateId)];       % the group: the plate
-rel.base = freshBase(srcBody, 'migrated_lawn_plate_membership');
-rel.directed_relation = struct('relation', ...
-    struct('node', 'RO:0002350', 'name', 'member_of'));
+function rel = makeContainedIn(srcBody, lawnId, plateId)
+%MAKECONTAINEDIN lawn --contained_in--> plate.
+%   `contained_in` (RO:0001025) on `directed_relation`: child the contained
+%   (the lawn), parent the container (the plate) -- did-schema
+%   V_eta_relation_inheritance_plan.md [lawn in plate], Jess Haley 2026-10-22.
+%   The term carries the node did2.build.vocabulary reads from the loaded
+%   schema's binding row, and the builder completes the NAME from the field's
+%   bound value set by that node (fillField>completeFromValueSet), so the
+%   document carries the schema's node and label, not a spelling held here.
+%   NO time reference, as before: the row is `timed: true`, which declares
+%   that a contained_in MAY carry one (did-schema V_eta_study_plan.md,
+%   "contained_in is timed"; nothing enforces it), and the source table gives
+%   no window for a lawn on its plate.
+[sid, ds] = sessionAndTime(srcBody);
+relation = did2.build.term(did2.build.vocabulary('relation', 'contained_in'), 'contained_in');
+rel = did2.build.directedRelation(char(lawnId), char(plateId), relation, ...
+    'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
+end
+
+function [sid, ds] = sessionAndTime(srcBody)
+sid = ''; ds = '2024-01-01T00:00:00.000Z';
+if isstruct(srcBody)
+    sid = char(did2.schema.cache.sessionIdOf(srcBody));
+    ds0 = creationTime(srcBody);
+    if ~isempty(ds0); ds = ds0; end
+end
 end
 
 function supers = supersOf(chain)
@@ -1384,7 +1437,7 @@ end
 function base = freshBase(srcBody, name)
 sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
 if isstruct(srcBody) && isfield(srcBody, 'base') && isstruct(srcBody.base)
-    if isfield(srcBody.base, 'session_id'); sessionId = srcBody.base.session_id; end
+    sessionId = did2.schema.cache.sessionIdOf(srcBody);
     ds0 = creationTime(srcBody);
     if ~isempty(ds0)
         ds = ds0;
@@ -1478,7 +1531,7 @@ if isfield(col, 'node') && ischar(col.node); node = col.node; end
 if isfield(col, 'name') && ischar(col.name); name = col.name; end
 if isempty(name) && isfield(col, 'key') && ischar(col.key); name = col.key; end
 if isempty(name); name = col.token; end
-term = struct('node', node, 'name', name);
+term = did2.convert.registeredTerm(node, name);   % T19: the registry's label
 end
 
 function [ok, num] = scalarNumber(x)
@@ -1600,10 +1653,22 @@ end
 
 function v = subjectField(b, name)
 v = '';
-if isstruct(b) && isfield(b, 'subject') && isstruct(b.subject) ...
-        && isscalar(b.subject) && isfield(b.subject, name)
-    x = b.subject.(name);
+blk = subjectBlockOf(b);
+if isempty(blk); return; end
+if isscalar(b.(blk)) && isfield(b.(blk), name)
+    x = b.(blk).(name);
     if ischar(x); v = x; elseif isstring(x) && isscalar(x); v = char(x); end
+end
+end
+
+function blk = subjectBlockOf(b)
+% The block a subject's identity lives in: `subject` before did-schema #73,
+% `entity` on #88.
+blk = '';
+for c = {'entity', 'subject'}
+    if isstruct(b) && isfield(b, c{1}) && isstruct(b.(c{1}))
+        blk = c{1}; return;
+    end
 end
 end
 

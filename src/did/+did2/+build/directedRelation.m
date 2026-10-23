@@ -8,8 +8,13 @@ function doc = directedRelation(childId, parentId, relation, options)
 %   when it matches one exactly.
 %
 %   Options:
-%     'Sequence'          integer order among siblings
+%     'Order'             integer position among siblings, counted from 0
+%                         (`directed_relation.order`; named `sequence` until
+%                         did-schema T20). Omitted: -1, unordered
 %     'Method'            a term (or a name): how the relation was established
+%     'MethodParameters'  the settings of that method (did2.build.parameter /
+%                         list); did-schema #88 only, where a relation's
+%                         `method` is the block {term, parameters}
 %     'TimeReferenceIds'  cellstr: when it held (T15 `multiple`)
 %     'EpochId'           the epoch it is scoped to
 %     'ValueId'           a data_type document qualifying the relation
@@ -22,8 +27,9 @@ arguments
     childId (1,:) char
     parentId (1,:) char
     relation
-    options.Sequence = []
+    options.Order = []
     options.Method = []
+    options.MethodParameters = []
     options.TimeReferenceIds = {}
     options.EpochId = ''
     options.ValueId = ''
@@ -37,8 +43,19 @@ arguments
 end
 
 fields = struct('relation', {relation});
-if ~isempty(options.Sequence); fields.sequence = options.Sequence; end
-if ~isempty(options.Method);   fields.method = options.Method;     end
+% `order` counts from 0 (T14; Jess Haley, 2026-10-21 [author order from 0]),
+% so 0 is a real position and -1 is "unordered" (did-schema: blank and
+% default -1, as `positions_from`). An absent 'Order' writes -1 explicitly.
+if isempty(options.Order)
+    fields.order = -1;
+else
+    if ~isscalar(options.Order) || options.Order < 0 || options.Order ~= round(options.Order)
+        error('did2:build:badOption', ...
+            '''Order'' is a position counted from 0 (an integer >= 0); omit it for an unordered relation.');
+    end
+    fields.order = options.Order;
+end
+fields = methodFields(fields, options.Method, options.MethodParameters, options.SchemaCache);
 edges = struct('child_id', childId, 'parent_id', parentId, ...
     'time_reference_id', {options.TimeReferenceIds}, ...
     'epoch_id', options.EpochId, 'value_id', options.ValueId);

@@ -10,7 +10,9 @@ function [uid, count] = readSeriesManifestUid(filename, slot)
 %
 % SLOT is the same one-based index that addresses MANIFEST.uids in
 % did.file.readSeriesManifest -- that is, member SLOT-1 in the file's own
-% zero-based numbering, and the member named NAME_<SLOT> in a document.
+% zero-based numbering. In a document that is the member named NAME_<SLOT>
+% when the document is did_v1 and NAME_<SLOT-1> when it is V_eta
+% (did.document/seriesMemberBase); did.document/seriesMemberOf returns it.
 %
 % WHY THIS EXISTS. did.file.readSeriesManifest reads the whole manifest:
 % every uid, and every source name. That is what an inspector or an

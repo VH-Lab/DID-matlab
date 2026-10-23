@@ -1,8 +1,20 @@
 function bodies = daqsystem(preBody)
 %DAQSYSTEM Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
-%   (<- entity) + a `software` entity for its own implementation class.
-%   1 -> 2, or 1 -> 1 when there is no class name. base.id AND base.name
-%   PRESERVED on the acquisition_system.
+%   (configuration off `base`) + a `software` entity for its own
+%   implementation class. 1 -> 2, or 1 -> 1 when there is no class name.
+%   base.id AND base.name PRESERVED on the acquisition_system.
+%
+%   CURRENT SHAPE (did-schema #88; the signed 2026-08-08 text further down
+%   says `<- entity`; Jess Haley 2026-10-22 [audit mechanical
+%   fixes 2] retired the stale names below, [required acquisition edges] H2a):
+%       acquisition_system   base.id PRESERVED   name "intan1"
+%          depends_on: software_id                -> software entity
+%                      reader_id        REQUIRED  -> acquisition_reader
+%                      epoch_file_pattern_id REQUIRED -> epoch_file_pattern
+%                      epoch_parameter_reader_id (multiple) -> epoch_parameter_reader
+%   A v1 daqsystem without its daqreader or filenavigator is quarantined (the
+%   v1 template requires both too). The quoted text below keeps the 2026-08
+%   names (`<- entity`, `acquisition_metadata_reader_#`) as the record.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -62,7 +74,8 @@ function bodies = daqsystem(preBody)
 %                                (migrators_j/filenavigator.m, id preserved)
 %      daqreader_id           -> reader_id
 %                                (migrators_j/daqreader.m -> software, id preserved)
-%      daqmetadatareader_id_# -> acquisition_metadata_reader_#
+%      daqmetadatareader_id_# -> epoch_parameter_reader_id (one multiple edge;
+%                                `acquisition_metadata_reader_#` before #88)
 %                                (migrators_j/daqmetadatareader.m, id preserved)
 %
 %   `daqmetadatareader_id` is a NUMBERED FAMILY, not a scalar. NDI's
@@ -72,7 +85,7 @@ function bodies = daqsystem(preBody)
 %   daqmetadatareader_id (empty) plus daqmetadatareader_id_1 ... _N, and the
 %   family is re-indexed contiguously from 1 here. A system with no metadata
 %   reader never enters the loop, which is why NDI marks it "mustbenotempty": 0
-%   and V_eta gives acquisition_metadata_reader_# min_count 0.
+%   and V_eta gives epoch_parameter_reader_id min_count 0.
 %
 %   ---------------------------------------------------------------------
 %   base.name IS PRESERVED, AND IT IS THE JOIN KEY -- NOT DECORATION
@@ -279,86 +292,34 @@ if isempty(implClass) && isempty(navId) && isempty(readerId) && isempty(mdIds)
     return;
 end
 
-sessionId = '';
-datestamp = '';
-if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    sessionId = jGetChar(preBody.base, 'session_id');
-    datestamp = jGetChar(preBody.base, 'datestamp');
-end
-
-% The implementation class name becomes an ENTITY, not a string field -- the
-% same fold filenavigator.m:147 and daqmetadatareader.m:128-131 make of theirs,
-% through the one place a `software` body is built. v1 records no version for a
-% daqsystem (the template has one field and it is the class name), so the entity
-% carries a name only and the corpus-wide merge on (session, name, version) is
-% the deferred NDI second pass, ndi.migrate.internal.softwareDedup.
-%
-% GUARDED CALL, as in daqmetadatareader.m: jSoftware does return [] for an empty
-% name, but its `name (1,:) char` arguments block is a size constraint a 0x0 ''
-% does not obviously satisfy, and there is no MATLAB here to settle it.
-software = [];
+sessionId = jSid(preBody);
+datestamp = jStamp(preBody);
+software = {};
 swId     = '';
 if ~isempty(implClass)
     [software, swId] = jSoftware(implClass, '', '', sessionId, datestamp);
 end
 
-out = struct();
-out.document_class = struct('class_name', 'acquisition_system', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-
-% Every edge is OPTIONAL on acquisition_system, and an absent one is OMITTED
-% rather than written empty: +did2/+validate/references.m:90 skips empty edges,
-% so an empty edge is invisible rather than absent, which is the mechanism
-% behind the whole invented-empty-edge census.
-names  = {};
-values = {};
-% software_id FIRST, matching the schema's declaration order and the reading
-% "what this rig IS, then what it acquires through".
-if ~isempty(swId)
-    names{end+1} = 'software_id';            values{end+1} = swId;
-end
-if ~isempty(readerId)
-    names{end+1} = 'reader_id';              values{end+1} = readerId;
-end
-if ~isempty(navId)
-    names{end+1} = 'epoch_file_pattern_id';  values{end+1} = navId;
-end
-for k = 1:numel(mdIds)
-    names{end+1}  = sprintf('acquisition_metadata_reader_%d', k); %#ok<AGROW>
-    values{end+1} = mdIds{k};                                     %#ok<AGROW>
-end
-out.depends_on = struct('name', names, 'value', values);
-
-% base carried verbatim: id AND name PRESERVED (see above), with session_id and
-% datestamp.
+% did-schema #88: `acquisition_system` is configuration off `base` (sec. 8),
+% with a required `name` -- the v1 daqsystem's base.name, the string NDI's
+% getprobes matches devices by -- and edges to its reader, its file pattern
+% and its epoch parameter readers (the v1 daqmetadatareaders, renamed
+% `epoch_parameter_reader` on #88; one multiple edge, not a numbered family).
+edges = struct();
+if ~isempty(swId);     edges.software_id = swId;              end
+if ~isempty(readerId); edges.reader_id = readerId;            end
+if ~isempty(navId);    edges.epoch_file_pattern_id = navId;   end
+if ~isempty(mdIds);    edges.epoch_parameter_reader_id = mdIds; end
+f = struct();
+srcName = '';
 if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    out.base = preBody.base;
-else
-    out.base = struct('id', did.ido.unique_id(), 'session_id', '', ...
-        'name', '', 'datestamp', '2024-01-01T00:00:00.000Z');
+    srcName = jGetChar(preBody.base, 'name');
 end
-
-% `entity` is abstract but declares `global_identifier` with the default
-% (declaring_class) placement, so it contributes a block that must be present
-% (+did2/+schema/cache.m:248,268). v1 records no cross-reference identifier for
-% a rig, so the array is present-and-empty rather than absent-and-guessed-at --
-% the same shape private/jSoftware.m uses.
-out.entity = struct('global_identifier', {struct('scheme', {}, 'value', {})});
-% acquisition_system declares NO fields, but it is a CONCRETE class, so
-% resolvePlacement lists it in blocksContributed and the (empty) block must
-% exist -- the same reason migrators_j/daqmetadatareader_epochdata_ingested.m
-% writes an empty acquisition_metadata_file block.
-out.acquisition_system = struct();
-
-bodies = {out};
-if ~isempty(software)
-    bodies{end+1} = software;
+if ~isempty(srcName); f.name = srcName; end
+o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
+out = did2.build.document('acquisition_system', f, o{:});
+bodies = [{out}, software];
 end
-end
-
-% ===================== helpers =============================================
 
 function ids = dependencyFamily(bodyStruct, baseName)
 %DEPENDENCYFAMILY The populated members of a NUMBERED depends_on family, in order.

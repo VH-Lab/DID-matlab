@@ -222,7 +222,7 @@ for k = 1:numel(srcBodies)
     if isempty(hits); continue; end
     report.v1_documents_with_string = report.v1_documents_with_string + 1;
     report.v1_strings_read = report.v1_strings_read + numel(hits);
-    sid = baseField(b, 'session_id');
+    sid = did2.schema.cache.sessionIdOf(b);
     crow = classRows(cn);
     crow.documents_with_string = crow.documents_with_string + 1;
     for j = 1:numel(hits)
@@ -253,7 +253,7 @@ stillString = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 asEpochDoc  = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:numel(dstBodies)
     b   = dstBodies{k};
-    sid = baseField(b, 'session_id');
+    sid = did2.schema.cache.sessionIdOf(b);
     hits = did2.validate.epochStrings(b);
     for j = 1:numel(hits)
         stillString(pairKey(sid, hits(j).value)) = true;
@@ -376,16 +376,6 @@ if isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
     cn = char(b.document_class.class_name);
 end
-end
-
-function v = baseField(b, name)
-v = '';
-if ~isfield(b, 'base') || ~isstruct(b.base) || ~isscalar(b.base) ...
-        || ~isfield(b.base, name)
-    return;
-end
-x = b.base.(name);
-if ischar(x) || (isstring(x) && isscalar(x)); v = char(x); end
 end
 
 function rowsOut = perSourceCounts(values, sources)

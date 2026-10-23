@@ -99,10 +99,25 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
 end
 if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
 
+% The v1 prefix becomes its channel type term (Jess Haley 2026-10-22 [channel
+% types]: ai ao di do t ax e mk md tx). NDI's eight derived read modes (a
+% syncrule's 'dep1') are a way of reading a channel, not a channel type: they
+% keep the bare label, never an invented term, and each is a report note
+% `channel_derived_read_mode` (as is any unknown prefix, `channel_type_unknown`).
+srcId = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    srcId = char(preBody.base.id);
+end
 channels = struct('type', {}, 'numbers', {});
 for k = 1:numel(groups)
+    [t, kind] = did2.convert.channelType(groups(k).type);
+    if strcmp(kind, 'derived')
+        did2.convert.reportNote('channel_derived_read_mode', 'syncrule', srcId, groups(k).type);
+    elseif strcmp(kind, 'unknown')
+        did2.convert.reportNote('channel_type_unknown', 'syncrule', srcId, groups(k).type);
+    end
     channels(end+1) = struct( ...
-        'type',    jOntologyTerm('', groups(k).type), ...
+        'type',    t, ...
         'numbers', groups(k).numbers); %#ok<AGROW>
 end
 

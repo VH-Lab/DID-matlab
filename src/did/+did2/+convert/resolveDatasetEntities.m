@@ -24,7 +24,10 @@ function [result, report] = resolveDatasetEntities(result, options)
 %       dataset_session_info -- are each consumed by their own per-class
 %       migrator and are credited there, not here.
 %   BATCH-PASS-EMITS: NONE -- this pass only REMOVES documents and edges. There
-%       is no `document_class` write anywhere in the file.
+%       is no `document_class` write anywhere in the file. (2026-10-21: it also
+%       removes a session entity minted under a dataset's own id; see pass
+%       1b. No membership edge from that id to itself is left to prune:
+%       jMembershipBodies already skips "the dataset's own root".)
 %   ---------------------------------------------------------------------
 %
 %     1. DEDUPLICATE dataset entities. Every dataset-level source
@@ -150,6 +153,13 @@ arguments
     options.TargetVersion (1,:) char = 'V_eta'
 end
 
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 % DENOMINATOR FIRST, and unconditionally. Every field is defined before a
 % single document is read, so "did not run" and "ran and removed nothing" are
 % different readings of the same struct rather than the same reading.
@@ -166,6 +176,9 @@ report = struct( ...
     'membership_kept_child_present',      0, ...
     'membership_dropped_child_absent',    0, ...
     'membership_dropped_no_child_edge',   0, ...
+    'session_entities_dropped_dataset_id', 0, ...
+    'dataset_local_identifier_from_session', 0, ...
+    'dataset_local_identifier_conflicts', 0, ...
     'documents_removed',                  0, ...
     'documents_removed_unattributed',     0, ...
     'migrated_before',                    0, ...
@@ -204,7 +217,7 @@ for k = 1:n
         continue;
     end
     idsPresent(id) = true;
-    if ~strcmp(className, 'dataset'); continue; end
+    if ~isDatasetEntity(docs{k}, className); continue; end
     report.dataset_entities_seen = report.dataset_entities_seen + 1;
     r = datasetRichness(docs{k});
     if isKey(bestDatasetIdx, id)
@@ -230,6 +243,50 @@ for k = 1:n
 end
 report.distinct_dataset_ids = double(bestDatasetIdx.Count);
 
+% --- pass 1b: a dataset's own session is the dataset ---------------------------
+% NDI stores a dataset's documents under the dataset's own session, whose id is
+% D.id() -- the same id every dataset-level source mints the dataset entity on.
+% So a v1 `session` document stored with the dataset makes +migrators_j/session
+% mint a session entity under the DATASET's id, and the batch then holds two
+% entities with one id (NDI e2e run 39688367871, NDI:migrate:duplicateIds).
+% did-schema base.json `session_id` names "the `entity` document of type session
+% or dataset" a document is stored with, so that id's entity is the dataset; the
+% session entity is dropped, and counted. Decided by Jess Haley, 2026-10-22
+% [dataset session reference] (did-schema V_eta_entity_composition_plan.md):
+% its `reference` (the session entity's local_identifier) "becomes the dataset
+% entity's `local_identifier`, the same slot a session's reference takes; if
+% the dataset already has a different `local_identifier`, nothing is
+% overwritten and the conflict is counted".
+for k = 1:n
+    if ~keep(k); continue; end
+    try
+        id = char(docs{k}.get('base.id'));
+        className = docs{k}.className();
+    catch
+        continue;   % counted in `documents_unreadable` above
+    end
+    if ~isKey(bestDatasetIdx, id) || bestDatasetIdx(id) == k; continue; end
+    if isSessionEntity(docs{k}, className)
+        keep(k) = false;
+        report.session_entities_dropped_dataset_id = ...
+            report.session_entities_dropped_dataset_id + 1;
+        ref = entityLocalIdentifier(docs{k});
+        if ~isempty(ref)
+            ds = docs{bestDatasetIdx(id)};
+            have = entityLocalIdentifier(ds);
+            if isempty(have)
+                ds.set('entity.local_identifier', ref);
+                docs{bestDatasetIdx(id)} = ds;
+                report.dataset_local_identifier_from_session = ...
+                    report.dataset_local_identifier_from_session + 1;
+            elseif ~strcmp(have, ref)
+                report.dataset_local_identifier_conflicts = ...
+                    report.dataset_local_identifier_conflicts + 1;
+            end
+        end
+    end
+end
+
 % --- pass 2: drop best-effort membership edges whose member session is absent -
 for k = 1:n
     if ~keep(k); continue; end
@@ -240,9 +297,10 @@ for k = 1:n
         continue;   % already counted in `documents_unreadable` above
     end
     if ~strcmp(className, 'directed_relation'); continue; end
-    if ~strcmp(char(getBaseName(doc)), 'migrated_session_membership'); continue; end
+    if ~isMembership(doc); continue; end
     report.membership_relations_seen = report.membership_relations_seen + 1;
-    childId = depValueOf(doc, 'child');
+    childId = depValueOf(doc, 'child_id');
+    if isempty(childId); childId = depValueOf(doc, 'child'); end
     if isempty(childId)
         % NOT the linked-session case. An edge with no child names nothing at
         % all, which is a defect in whatever emitted it.
@@ -268,18 +326,68 @@ report.documents_removed = n - sum(keep);
 report.documents_removed_unattributed = report.documents_removed ...
     - report.duplicates_dropped_poorer_richness ...
     - report.membership_dropped_child_absent ...
-    - report.membership_dropped_no_child_edge;
+    - report.membership_dropped_no_child_edge ...
+    - report.session_entities_dropped_dataset_id;
 result.summary = recountSummary(result);
 result.dataset_entity_resolution = report;
 end
 
 % ===================== helpers =========================================
 
+function tf = isDatasetEntity(doc, className)
+% did-schema #88: an `entity` of type dataset (a `dataset` class before).
+tf = strcmp(className, 'dataset');
+if tf || ~strcmp(className, 'entity'); return; end
+try
+    t = doc.get('entity.type');
+    tf = isstruct(t) && did2.build.isVocabulary(t, 'entity_type', 'dataset');   % by node (L2)
+catch
+    tf = false;
+end
+end
+
+function v = entityLocalIdentifier(doc)
+% the entity's local_identifier, '' when absent or blank
+v = '';
+try
+    x = doc.get('entity.local_identifier');
+    if ischar(x) || (isstring(x) && isscalar(x)); v = strtrim(char(x)); end
+catch
+end
+end
+
+function tf = isSessionEntity(doc, className)
+% did-schema #88: an `entity` of type session (a `session` class before).
+tf = strcmp(className, 'session');
+if tf || ~strcmp(className, 'entity'); return; end
+try
+    t = doc.get('entity.type');
+    tf = isstruct(t) && did2.build.isVocabulary(t, 'entity_type', 'session');   % by node (L2)
+catch
+    tf = false;
+end
+end
+
+function tf = isMembership(doc)
+% A session's membership in its dataset: `included_in` on #88
+% (V_eta_relation_inheritance_plan.md item 2), `part_of` with the
+% `migrated_session_membership` base.name before (V_eta documents no longer
+% write base.name).
+tf = strcmp(char(getBaseName(doc)), 'migrated_session_membership');
+if tf; return; end
+try
+    r = doc.get('directed_relation.relation');
+    tf = isstruct(r) && did2.build.isVocabulary(r, 'relation', 'included_in');   % by node (L1)
+catch
+    tf = false;
+end
+end
+
 function r = datasetRichness(doc)
 %DATASETRICHNESS Non-empty dataset fields + global_identifier entries.
 r = 0;
 try
-    ds = doc.get('dataset');
+    ds = doc.get('entity');
     if isstruct(ds)
         fn = fieldnames(ds);
         for i = 1:numel(fn)

@@ -2336,7 +2336,7 @@ class TestLawnPlateRendering(ThreePassCase):
             "refused_no_image_row": 0, "refused_image_row_ambiguous": 0,
             "refused_image_row_has_no_plate_key": 0, "refused_no_plate_row": 0,
             "refused_plate_row_ambiguous": 0, "refused_lawn_no_exp_id": 0,
-            "member_of_relations_emitted": 28,
+            "contained_in_relations_emitted": 28,
             "withheld_plate_tier_not_minted": 0,
             "withheld_lawn_tier_not_minted": 2, "refused_total": 0,
             "celegans_patch_subjects_seen": 40,
@@ -2360,7 +2360,7 @@ class TestLawnPlateRendering(ThreePassCase):
         self.assertEqual(failed, [])
         self.assertIn("did2.convert.resolveLawnPlateSubjects", text)
         self.assertIn("SUBJECTS minted", text)
-        self.assertIn("member_of EDGES emitted", text)
+        self.assertIn("contained_in EDGES emitted", text)
 
     def test_the_denominator_prints_first_and_unconditionally(self):
         self._corpus("A", lawn_plate_subjects=self._lp())
@@ -2441,7 +2441,8 @@ class TestLawnPlateRendering(ThreePassCase):
         text, _ = self.run_digest()
         self.assertIn("COLUMNS matched by key (not rows)", text)
         self.assertIn("SESSIONS holding any of those", text)
-        self.assertIn("member_of EDGES emitted (edges, not rows)", text)
+        self.assertIn("contained_in EDGES emitted (edges, not rows)", text)
+        self.assertNotIn("member_of EDGES emitted", text)
 
     def test_a_missing_counter_prints_absent_not_zero(self):
         rep = self._lp()
@@ -2638,7 +2639,8 @@ class TestResponseParametersRendering(ThreePassCase):
             "ran": True, "documents_inspected": 1000, "documents_unreadable": 0,
             "leaves_seen": 0, "leaves_with_edge": 0, "leaves_without_edge": 0,
             "suppressed_responses_seen": 11167,
-            "parameters_documents_seen": 11440, "inlined": 0,
+            "parameters_documents_seen": 11440, "methods_minted": 0,
+            "leaves_already_on_method": 0,
             "fields_copied": 0, "harmonic_checked": 0,
             "harmonic_uncheckable": 0, "refused_not_in_batch": 0,
             "refused_ambiguous": 0, "refused_wrong_class": 0,
@@ -2657,7 +2659,7 @@ class TestResponseParametersRendering(ThreePassCase):
         text, failed = self.run_digest()
         self.assertEqual(failed, [])
         self.assertIn("did2.convert.resolveResponseParameters", text)
-        self.assertIn("INLINED", text)
+        self.assertIn("METHOD DOCUMENTS MINTED", text)
 
     def test_zero_leaves_beside_suppressed_responses_says_blocked_upstream(self):
         # THE PAIR. `leaves_seen: 0` alone is three findings; the pass reports
@@ -2684,35 +2686,41 @@ class TestResponseParametersRendering(ThreePassCase):
         self.assertIn("A bare 0 here means neither", text)
 
     def test_leaves_with_nothing_inlined_or_refused_is_called_a_defect(self):
+        # INVERTED 2026-10-21 (Jess Haley, "b"): the unit is the parameters
+        # document -- one becomes a `method` or is refused -- so the defect is
+        # parameters documents with nothing minted or refused.
         self._corpus("A", response_parameters_fold=self._rp(
             leaves_seen=5, leaves_with_edge=5))
         text, _ = self.run_digest()
-        self.assertIn("NOTHING inlined or refused", text)
+        self.assertIn("NOTHING minted or", text)
         self.assertIn("real defect in resolveResponseParameters", text)
 
     def test_a_harmonic_mismatch_is_the_alarming_row(self):
         self._corpus("A", response_parameters_fold=self._rp(
-            leaves_seen=5, leaves_with_edge=5, inlined=4,
+            leaves_seen=5, leaves_with_edge=5, methods_minted=4,
             refused_harmonic_mismatch=1, refused_total=1))
         text, _ = self.run_digest()
         self.assertIn("IS THE ALARMING ROW OF THE BLOCK", text)
         self.assertIn("refusal(s) for freq_response ~= value.harmonic", text)
         self.assertIn("refuses rather", text)
 
-    def test_the_deletion_gate_prints_its_own_denominator(self):
+    def test_the_sharing_reading_prints_its_own_denominator(self):
+        # Formerly the deletion gate: since [response parameters as a shared
+        # method] each parameters document is converted in place into a method
+        # document, so the rows read sharing, not what may be deleted.
         self._corpus("A", response_parameters_fold=self._rp())
         text, _ = self.run_digest()
-        self.assertIn("DELETION GATE: 11440 parameters document(s) in this "
-                      "batch", text)
-        self.assertIn("EVIDENCE", text)
+        self.assertIn("METHOD SHARING: 11440 parameters document(s) converted "
+                      "in place in this batch", text)
+        self.assertNotIn("DELETION GATE: 11440", text)
 
-    def test_a_zero_deletion_denominator_says_vacuous(self):
+    def test_a_zero_conversion_denominator_says_vacuous(self):
         self._corpus("A", response_parameters_fold=self._rp(
             parameters_documents_seen=0,
             parameters_documents_referenced_after=0))
         percorpus, _rollup, _f = self.halves()
-        self.assertIn("DELETION GATE: 0 parameters document(s) in this batch",
-                      percorpus)
+        self.assertIn("METHOD SHARING: 0 parameters document(s) converted in "
+                      "place in this batch", percorpus)
         self.assertIn("the referenced/unreferenced rows above are", percorpus)
         self.assertIn("VACUOUS", percorpus)
 
@@ -2752,8 +2760,8 @@ class TestResponseParametersRendering(ThreePassCase):
             suppressed_responses_seen=0, parameters_documents_seen=0,
             parameters_documents_referenced_after=0))
         _percorpus, rollup_text, _f = self.halves()
-        self.assertIn("DENOMINATOR: 0 harmonic_component_calculation "
-                      "leaf/leaves across 2 report(s)", rollup_text)
+        self.assertIn("DENOMINATOR: 0 harmonic_component calculation(s) "
+                      "across 2 report(s)", rollup_text)
         self.assertIn("REFUSAL total above is VACUOUS", rollup_text)
         self.assertIn("0 leaves beside 0 suppressed responses", rollup_text)
 
@@ -3045,6 +3053,62 @@ class TestEpochPopulations(DigestCase):
         text, failed = self.run_digest()
         self.assertIn("<epoch document populations disagree>", failed)
         self.assertIn("0 (by_class", text)
+
+    # --- the epoch ENTITY TYPE: matched by node, not by stored name --------
+    # did-schema dc116fd made a stored entity-type name its node's label, so
+    # the epoch type is written "recording epoch" (by_entity_type key
+    # `recordingEpoch`). DID corpus run 39879346144 (JH) failed here: the
+    # digest looked only for the key `epoch` and read 0 against 4156 minted.
+
+    def test_the_epoch_type_is_matched_by_node_in_the_node_table(self):
+        self._corpus("A", by_class={"entity": 140},
+                     by_entity_type_node=[
+                         {"node": "EMPTY:0000383", "name": "recording epoch",
+                          "count": 100},
+                         {"node": "NCIT:C67447", "name": "Session",
+                          "count": 40}])
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        block = self._block(text)
+        self.assertIn("-> AGREE (3 figure(s), all 100).", block)
+        self.assertIn("by_entity_type_node `EMPTY:0000383`", block)
+
+    def test_the_node_table_wins_over_the_name_table(self):
+        # A label that changes again must not matter: the node decides, and
+        # a name-keyed `epoch` alongside is not double counted.
+        self._corpus("A", by_class={"entity": 100},
+                     by_entity_type={"epoch": 100},
+                     by_entity_type_node={"node": "EMPTY:0000383",
+                                          "name": "some future label",
+                                          "count": 100})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("-> AGREE (3 figure(s), all 100).", self._block(text))
+
+    def test_a_node_table_without_the_epoch_node_is_a_measured_zero(self):
+        self._corpus("A", by_class={"entity": 100},
+                     by_entity_type_node=[{"node": "NCIT:C67447",
+                                           "name": "epoch", "count": 100}])
+        text, failed = self.run_digest()
+        self.assertIn("<epoch document populations disagree>", failed)
+
+    def test_without_a_node_table_the_post_flip_label_is_accepted(self):
+        # THE JH SHAPE of run 39879346144: by_entity_type only, keyed by the
+        # makeValidName of the label.
+        self._corpus("A", by_class={"entity": 140},
+                     by_entity_type={"recordingEpoch": 100, "Session": 40})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        block = self._block(text)
+        self.assertIn("-> AGREE (3 figure(s), all 100).", block)
+        self.assertIn("(by NAME; no node table)", block)
+
+    def test_without_a_node_table_the_pre_flip_name_is_accepted(self):
+        self._corpus("A", by_class={"entity": 100},
+                     by_entity_type={"epoch": 100})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("-> AGREE (3 figure(s), all 100).", self._block(text))
 
     def test_a_mint_without_found_existing_is_not_compared(self):
         # `epochs_found_existing` is part of the population and not part of the
@@ -5343,6 +5407,106 @@ class TestEdgeArity(DigestCase):
         self.assertEqual(table["c.e"]["total"], 13)
 
 
+class TestDimensionTermsAndControlEdges(unittest.TestCase):
+    """dimension_terms ([covariate details] 5.4) and stimulus_control_id_edges
+    ([covariate rules named] 6.4), persisted per corpus by writeCorpusReport:
+    denominators first, absent is NOT MEASURED, never a zero."""
+
+    def test_dimension_terms_absent_is_not_measured(self):
+        out = []
+        census_digest.render_dimension_terms({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_dimension_terms_prints_denominators_then_classes(self):
+        out = []
+        census_digest.render_dimension_terms({"dimension_terms": {
+            "documents_inspected": 120, "dimensions_written": 40,
+            "without_node": 31, "by_class": {
+                "sampled_body": {"dimensions_written": 30, "without_node": 30},
+                "calculation": {"dimensions_written": 10, "without_node": 1}}}}, out)
+        self.assertIn("120 doc(s) inspected, 40 dimension(s) written, "
+                      "31 without a node", out[0])
+        self.assertIn("calculation", out[1])
+        self.assertIn("1 of", out[1].replace("     ", " ").replace("  ", " "))
+        self.assertIn("sampled_body", out[2])
+
+    def test_dimension_terms_zero_written_is_called_vacuous(self):
+        out = []
+        census_digest.render_dimension_terms({"dimension_terms": {
+            "documents_inspected": 5, "dimensions_written": 0,
+            "without_node": 0, "by_class": {}}}, out)
+        self.assertTrue(any("vacuous" in x for x in out))
+
+    def test_control_edges_absent_is_not_measured(self):
+        out = []
+        census_digest.render_stimulus_control_edges({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_control_edges_print_dropped_of_converted(self):
+        out = []
+        census_digest.render_stimulus_control_edges({"stimulus_control_id_edges": {
+            "response_documents_converted": 11440, "edges_dropped": 11000,
+            "by_class": {"stimulus_response_scalar": 11440}}}, out)
+        self.assertIn("11000 of 11440 converted", out[0])
+        self.assertIn("stimulus_response_scalar", out[1])
+
+    def test_both_reach_the_per_corpus_digest(self):
+        import inspect
+        src = inspect.getsource(census_digest)
+        self.assertIn("    render_dimension_terms(r, out)\n", src)
+        self.assertIn("    render_stimulus_control_edges(r, out)\n", src)
+
+
+class TestTuningResponseVariable(unittest.TestCase):
+    """[unstated response variable] (Jess Haley, 2026-10-23): every corpus
+    summary shows the set / general-term counts, denominator first."""
+
+    def test_absent_is_not_measured(self):
+        out = []
+        census_digest.render_tuning_response_variable({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_denominator_first_then_set_and_general(self):
+        out = []
+        census_digest.render_tuning_response_variable({"tuning_response_variable": {
+            "documents_folded": 47747, "set_neural_firing_rate": 0, "set_dff": 0,
+            "general_not_stated": 47747, "general_unrecognised": 0,
+            "unrecognised_spellings": [],
+            "by_class": {"tuningcurve_calc": 34606}}}, out)
+        self.assertIn("47747 folded tuning document(s)", out[0])
+        self.assertIn("set from response_units", out[1])
+        self.assertIn("neural firing rate 0, dF/F 0", out[1])
+        self.assertIn('"neural response"', out[2])
+        self.assertIn("source empty 47747", out[2])
+        self.assertIn("spelling unrecognised 0", out[2])
+        self.assertFalse(any("do not add up" in x for x in out))
+        self.assertIn("tuningcurve_calc", out[-1])
+
+    def test_unrecognised_spellings_are_listed_and_a_bad_sum_is_flagged(self):
+        out = []
+        census_digest.render_tuning_response_variable({"tuning_response_variable": {
+            "documents_folded": 10, "set_neural_firing_rate": 4, "set_dff": 1,
+            "general_not_stated": 2, "general_unrecognised": 2,
+            "unrecognised_spellings": "mV", "by_class": {}}}, out)
+        self.assertTrue(any("do not add up" in x for x in out))
+        self.assertTrue(any("unrecognised spellings: mV" in x for x in out))
+
+    def test_a_missing_count_is_unknown_not_zero(self):
+        out = []
+        census_digest.render_tuning_response_variable({"tuning_response_variable": {
+            "documents_folded": 3}}, out)
+        self.assertIn("?", out[1])
+        self.assertIn("?", out[2])
+
+    def test_it_reaches_the_per_corpus_digest(self):
+        import inspect
+        src = inspect.getsource(census_digest)
+        self.assertIn("    render_tuning_response_variable(r, out)\n", src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
@@ -5510,3 +5674,38 @@ class TestPostMintEpochChain(DigestCase):
         rollup = text[text.index("ACROSS ALL 2 CORPORA"):]
         self.assertNotIn("REACH AN EPOCH", rollup.split("EPOCH-STRING")[0]
                          .split("could not contribute")[1])
+
+
+# ---- entity-type `requires` census (REPORT-ONLY, Jess Haley 2026-10-21 "b")
+
+
+def test_entity_requires_absent_is_not_measured():
+    out = []
+    census_digest.render_entity_requires({}, out)
+    assert any("NOT MEASURED" in line for line in out)
+    assert not any("missing" in line and "0" in line for line in out)
+
+
+def test_entity_requires_prints_denominator_then_rows():
+    r = {"entity_requires": {
+        "docs_inspected": 10, "entities_inspected": 3, "entities_untyped": 0,
+        "entities_type_without_row": 0, "missing_total": 1,
+        "by_type_field": [{"entity_type": "session", "field": "local_identifier",
+                           "inspected": 2, "missing": 1}]}}
+    out = []
+    census_digest.render_entity_requires(r, out)
+    assert "10 doc(s) inspected" in out[0] and "1 missing" in out[0]
+    assert "session" in out[1] and "inspected" in out[1] and "missing" in out[1]
+
+
+def test_dose_ingredients_absent_is_not_measured_and_present_prints_denominator():
+    out = []
+    census_digest.render_dose_ingredients({}, out)
+    assert "NOT MEASURED" in out[0]
+    out = []
+    census_digest.render_dose_ingredients({"dose_ingredients": {
+        "docs_inspected": 9, "doses_inspected": 2, "doses_with_ingredients": 1,
+        "formulation_not_in_batch": 0, "doses_checked": 2, "violations": 1,
+        "violation_examples": [{"id": "d1", "message": "m"}]}}, out)
+    assert "9 doc(s) inspected" in out[0] and "1 violation(s)" in out[0]
+    assert out[1].strip().startswith("d1:")

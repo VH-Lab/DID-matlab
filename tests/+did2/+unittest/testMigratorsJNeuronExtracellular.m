@@ -1,9 +1,13 @@
 function tests = testMigratorsJNeuronExtracellular
 %TESTMIGRATORSJNEURONEXTRACELLULAR The mean-waveform fold: `neuron_extracellular`
-%   -> a `voltage_observation` of the derived unit carrying the 21x32 waveform
-%   INLINE over a time axis and a channel axis, plus the `count_assertion` that
-%   gives `cluster_index` a queryable home, and the guards that stop the fold
-%   asserting a shape it cannot justify.
+%   -> a calculation (value kind voltage) about the derived unit carrying the
+%   21x32 waveform INLINE over a time key and a channel key, the label
+%   calculations for `cluster_index` and `quality_label`, and the guards that
+%   stop the fold asserting a shape it cannot justify.
+%
+%   2026-10-21: every statement about the unit is a CALCULATION with input_id ->
+%   the sorting output (did-schema #73 review item 48, signed
+%   [spatial_transcriptomics_family]); the tests below were inverted to it.
 %
 %   STATUS: NEVER RUN LOCALLY. `command -v matlab octave` exits 1 in the
 %   container this was written in, so every assertion below is UNEXECUTED here.
@@ -84,25 +88,43 @@ function tests = testMigratorsJNeuronExtracellular
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% The migrators run inside did2.convert.v1_to_v2, which disarms the
+% TermRegistry strict mode for the call (T19: the check is for imports; a
+% migrator transcribes the source's own terms, which the registry need not
+% hold yet). A test that calls a migrator directly runs it the same way.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== the shape ===========================================
 
 function testTheFoldEmitsSevenBodiesOnARealShapedDocument(testCase)
-% 1 -> 7: the derived subject, the derived_from relation, the shared session
-% anchor, the cluster-index assertion, the waveform observation, the quality
-% observation and the software entity. All 21 real documents carry a waveform,
-% a cluster index, a quality number AND an app block, so 7 is the real arity.
+% INVERTED 2026-10-21 for #73 review item 48 (signed [spatial_transcriptomics_family]):
+% every statement about the unit is a CALCULATION. A real-shaped document
+% yields TWELVE bodies (the name is kept for history): the unit, its
+% derived_from, the anchor, two label calculations (cluster_index,
+% quality_label), the waveform and the quality score; the app's software with
+% its version, and the run's OS and interpreter (the interpreter with its
+% version; the fixture's OS version is empty).
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 names = classNames(out);
-verifyEqual(testCase, numel(out), 7, ...
-    sprintf('expected 7 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
-verifyEqual(testCase, sum(strcmp(names, 'subject')), 1);
+verifyEqual(testCase, numel(out), 12, ...
+    sprintf('expected 12 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyEqual(testCase, sum(strcmp(names, 'cell')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'directed_relation')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'session_relative_reference')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'count_assertion')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'voltage_observation')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'score_observation')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'software')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'calculation+label')), 2);
+verifyEqual(testCase, sum(strcmp(names, 'calculation+voltage')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'calculation+score')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'software')), 3);         % app, OS, interpreter
+verifyEqual(testCase, sum(strcmp(names, 'assertion+text')), 2);   % software versions
+verifyFalse(testCase, any(strncmp(names, 'observation', 11)), ...
+    'no statement about the unit is an observation any more (item 48)');
+verifyFalse(testCase, any(strncmp(names, 'assertion+count', 15)), ...
+    'cluster_index is a label, not a count (item 48)');
 end
+
 
 function testNoSampledBodyIsEmitted(testCase)
 % THE DEVIATION, PINNED. The investigation note proposed a `sampled_body` with
@@ -126,19 +148,16 @@ end
 end
 
 function testTheWaveformIsAnObservationOfTheUNITNotOfTheRecording(testCase)
-% The whole point of the grain-B fold: a sorted unit is its own subject. The
-% waveform is the unit's, not the electrode's. `element_id` IS a subject edge
-% (+migrators_j/element.m promotes elements to subjects, ids PRESERVED), so the
-% recording subject is a real id and the test can tell the two apart.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-neuron = pick(out, 'subject');
-wobs   = pick(out, 'voltage_observation');
-verifyEqual(testCase, depValueOf(wobs, 'subject_id'), neuron.base.id);
-verifyNotEqual(testCase, depValueOf(wobs, 'subject_id'), 'rec_sub_1');
-verifyEqual(testCase, depValueOf(wobs, 'time_reference_1'), ...
-    pick(out, 'session_relative_reference').base.id, ...
+neuron = pick(out, 'cell');
+wobs   = pick(out, 'calculation+voltage');
+verifyEqual(testCase, depValueOf(wobs, 'entity_id'), neuron.base.id);
+verifyNotEqual(testCase, depValueOf(wobs, 'entity_id'), 'rec_sub_1');
+verifyEqual(testCase, depValueOf(wobs, 'time_reference_id'), ...
+    pick(out, 'relative_time_reference').base.id, ...
     'the waveform shares the one session anchor, it does not mint a second');
 end
+
 
 function testTheSourceIdIsNotReusedByAnyEmittedBody(testCase)
 % This migrator DISSOLVES rather than folding 1->1: it mints a fresh subject, so
@@ -154,170 +173,126 @@ end
 % ===================== the axes ============================================
 
 function testTheAxesAreBothPresentAndInSourceDimensionOrder(testCase)
-% axes[k] IS array dimension k, so a positional list has no partial mode: both
-% or neither (the pyraview lesson, where a one-entry list did not mean "one of
-% the dimensions" but ASSERTED that dimension 1 was channels).
-%
-% The order is POSITIVE EVIDENCE, not the arithmetic that 21 ~= 32: NDI's schema
-% says "(NumSamples x NumChannels)", pyraview.m:722-723 reads it as `% N x C`,
-% and kilosort/probe.m:546-547 writes the two counts from size(...,1)/size(...,2)
-% in that order.
+% UPDATED for #88: the axes are the statement's data.keys; data_body
+% AMENDMENT 6: its data.dimensions, each with a covariate along it.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyEqual(testCase, numel(ax), 2);
 verifyEqual(testCase, [ax.n], [21 32]);
-verifyEqual(testCase, arrayfun(@(a) a.variable.name, ax, 'UniformOutput', false), ...
-    {'time', 'channel'});
+verifyEqual(testCase, arrayfun(@(a) lower(a.term.name), ax, 'UniformOutput', false), ...
+    {'time', 'channel'});   % the registry's label (NCIT:C44170 'Channel', did-schema 34a15e2 [channel types])
+% the mechanical port of a key: the covariate along a dimension names the
+% same term as the dimension. The channel dimension is bare since 2026-10-22
+% (its 1..N only repeated the positions; Jess Haley, 6.2a and "yes" to 1..n).
+verifyEqual(testCase, ax(1).cov.variable.name, 'time');
+verifyEqual(testCase, [ax.nCov], [1 0]);
 end
+
 
 function testTheTimeAxisIsRegularWithTheMeasuredOriginAndSpacing(testCase)
-% MEASURED, NOT ASSUMED, and re-derived per document by the migrator. The real
-% vector has one distinct diff (5e-05), origin -0.00025 s and spacing 5e-05 s
-% (20 kHz), and reconstructs to within 1.08e-19 -- regular, but only to within a
-% rounding of the double, so the migrator decides with a tolerance.
-%
-% `unit` is left BLANK and `source_unit` carries 's'. The unit is EVIDENCED:
-% kilosort/probe.m:538 builds the vector as samples over a rate, and the V_eta
-% tombstone's own documentation says "(seconds, in the element's local clock)".
-% Leaving the bound term blank is the pyraview.m:414 precedent and stages no
-% ontology term.
+% UPDATED for #88: the time key's source unit is the registry term for 's'
+% (om:second-Time, 'second'); no canonical unit is stated.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').subject_statement.axes;
-verifyTrue(testCase, ax(1).regular);
-verifyEqual(testCase, ax(1).origin.value,         -0.00025, 'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).origin.source_value,  -0.00025, 'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).spacing.value,         5e-05,   'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).spacing.source_value,  5e-05,   'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).source_unit, 's');
-verifyEmpty(testCase, ax(1).unit.node);
-verifyEmpty(testCase, ax(1).unit.name);
-verifyEmpty(testCase, fieldnames(ax(1).values), ...
-    'a regular axis stores no coordinates -- origin+spacing generate them');
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
+verifyNotEmpty(testCase, ax(1).cov.origin, 'regular: origin + spacing (AMENDMENT 6 removed `regular`)');
+verifyEqual(testCase, ax(1).cov.origin.value,         -0.00025, 'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.origin.source_value,  -0.00025, 'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.spacing.value,         5e-05,   'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.spacing.source_value,  5e-05,   'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.source_unit.name, 'second');
+verifyFalse(testCase, isfield(ax(1).cov, 'quantity') && ~isempty(ax(1).cov.quantity), ...
+    'a regular covariate stores no coordinates -- origin+spacing generate them');
 end
 
+
 function testTheTimebaseIsCarriedAsValuesWhenItIsNotRegular(testCase)
-% THE IRREGULAR ARM IS REAL, NOT DEAD CODE. Regularity is a property of the
-% stored vector: hartley_calc's lag axis is the standing example of a vector
-% that looks regular and is not reproducible from origin+spacing at the ulp
-% (0 of 210 documents reproduce exactly). Here the fixture is bluntly irregular
-% so the branch is unambiguous, and `values` must keep the stored doubles.
 v1 = neuronExtracellularV1();
 jitter = [0; 0; 0.0004; zeros(18, 1)];       % one sample displaced
 v1.neuron_extracellular.waveform_sample_times = realTimebase() + jitter;
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'voltage_observation').subject_statement.axes;
-verifyFalse(testCase, ax(1).regular);
-verifyEqual(testCase, ax(1).values.values,        realTimebase() + jitter);
-verifyEqual(testCase, ax(1).values.source_values, realTimebase() + jitter);
-verifyEmpty(testCase, fieldnames(ax(1).origin), ...
-    'an irregular axis has no origin -- it has values');
-verifyEmpty(testCase, fieldnames(ax(1).spacing));
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
+verifyTrue(testCase, ~isfield(ax(1).cov, 'origin') || isempty(ax(1).cov.origin));
+verifyEqual(testCase, ax(1).cov.quantity.value(:), realTimebase() + jitter);
+verifyFalse(testCase, isfield(ax(1).cov, 'origin') && ~isempty(ax(1).cov.origin), ...
+    'an irregular covariate has no origin -- it has a quantity');
 end
 
-function testTheChannelAxisIsAnIndexAxisWithNoUnit(testCase)
-% The document records no channel IDENTITIES -- those live in `site2channelmap`
-% and `probe_geometry` -- so 1..N is the only thing it actually says. The index
-% convention (origin 1, spacing 1, no unit) is pyraview.m:370's and jNgridBody's.
-% Naming these channels would be a guess recorded as a fact in a queryable field.
+
+function testTheChannelAxisIsABareDimension(testCase)
+% INVERTED 2026-10-22 (was testTheChannelAxisIsAnIndexAxisWithNoUnit: origin
+% 1, spacing 1). The document names no channel, so its channel covariate only
+% repeated the dimension's positions as 1..N, and such a covariate is not
+% written (Jess Haley 2026-10-22 [covariate rules named] 6.2a, and "yes" to
+% 1..n). The dimension stays, n 32; the time covariate stays.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
+verifyEqual(testCase, lower(ax(2).term.name), 'channel');   % the registry's label (NCIT:C44170 'Channel', did-schema 34a15e2 [channel types])
 verifyEqual(testCase, ax(2).n, 32);
-verifyTrue(testCase, ax(2).regular);
-verifyEqual(testCase, ax(2).origin.value, 1);
-verifyEqual(testCase, ax(2).spacing.value, 1);
-verifyEmpty(testCase, ax(2).unit.name);
-verifyEmpty(testCase, ax(2).source_unit);
+verifyEqual(testCase, ax(2).nCov, 0, 'no covariate along the channel dimension');
+verifyEqual(testCase, ax(1).nCov, 1, 'the time covariate is kept');
 end
+
 
 % ===================== the value ===========================================
 
 function testAllSixHundredAndSeventyTwoValuesReachTheDocumentInColumnMajorOrder(testCase)
-% THE DROP THIS FOLD EXISTS TO CLOSE: 672 numbers per document, 14,112 across
-% the corpus, reaching no emitted document at all before 2026-08-17.
-%
-% The fixture is `reshape(1:672, 21, 32)` precisely so this assertion can tell
-% column-major from row-major -- with real doubles the two are
-% indistinguishable. The migrator flattens with `w(:)`, MATLAB's own
-% linearisation, which matches the axis order (dimension 1 = time first), so
-% reshape(values, [21 32]) is the inverse.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-value = pick(out, 'voltage_observation').voltage.value;
+value = pick(out, 'calculation+voltage').voltage.value;
 verifyEqual(testCase, numel(value), 672, ...
     'DENOMINATOR: 21 time samples x 32 channels; a short array is a silent drop');
 verifyEqual(testCase, [value.source_value], 1:672, ...
     'column-major -- reshape(values,[21 32]) must invert w(:)');
-% and the axis extents multiply out to exactly what the value holds (the signed
-% "axis.n == the extent of the value it indexes" check, asserted here because
-% nothing in pass 1 enforces it).
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyEqual(testCase, prod([ax.n]), numel(value));
 end
 
+
 function testTheValueStatesNoUnitAndInventsNoCanonicalNumber(testCase)
-% The numbers are microvolt-SCALE, and NOTHING declares a unit: not the NDI
-% template, not its schema documentation, and not any of the three writers
-% (spikesorter.m:254, kilosort/probe.m:548, kiasort/probe.m:322 each assign a
-% bare matrix). So `source_unit` is '' -- the honest "the source states no unit"
-% -- and the canonical `volts` sub-field is NOT written, because there is no
-% factor to convert by. Inferring microvolts from the magnitude would be a guess
-% recorded as a fact in a queryable field.
-%
-% INVERT THIS TEST if the team rules on a unit; do not patch it, because a
-% patched version would assert whatever the code then did.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-value = pick(out, 'voltage_observation').voltage.value;
-verifyTrue(testCase, all(arrayfun(@(v) isempty(v.source_unit), value)));
+value = pick(out, 'calculation+voltage').voltage.value;
+verifyFalse(testCase, isfield(value, 'source_unit') && ...
+    any(arrayfun(@(v) ~isempty(v.source_unit), value)));
 verifyFalse(testCase, isfield(value, 'volts'), ...
     'no unit means no canonical value -- a 0.0 here would read as a measurement');
 verifyTrue(testCase, all(~[value.approximate]));
 end
 
+
 function testTheStatementIsInlineAndCarriesTheEncoding(testCase)
-% The signed rule, and it is CHECKED rather than stylistic: inline => the axes
-% are on the statement and there are no bodies. `datum_type` is read off the
-% array's own class rather than defaulted (image_stack.m's
-% `firstNonEmpty(dataType,'uint16')` is the defect not repeated), and the source
-% spelling rides along because the map is not invertible.
+% UPDATED for #88: the encoding is value.data_type / source_data_type, and an
+% inline value is simply a value with no data_body flag.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-st = pick(out, 'voltage_observation').subject_statement;
-verifyEqual(testCase, st.storage_mode, 'inline');
-verifyEqual(testCase, st.datum_type, 'float64');
-verifyEqual(testCase, st.source_datum_type, 'double');
-verifyEqual(testCase, st.variable.name, 'mean spike waveform');
+w = pick(out, 'calculation+voltage');
+verifyFalse(testCase, isfield(w.value, 'data_body') && logical(w.value.data_body));
+verifyEqual(testCase, w.value.data_type, 'float64');
+verifyEqual(testCase, w.value.source_data_type, 'double');
+verifyEqual(testCase, w.statement.variable.name, 'mean spike waveform');
 end
 
+
 function testTheWaveformStatementHasNoSampleTimeBlock(testCase)
-% Signed sec.2: time becomes an ordinary axis and both `sample_time` blocks
-% retire. Writing the cadence into the axis AND into `sample_time` would store
-% one fact twice -- the #69 shape the axis exists to remove.
-%
-% The score_observation still carries `kind: 'point'` and that is NOT an
-% inconsistency: a scalar quality has no axis at all. Both are asserted so the
-% difference is deliberate rather than accidental.
+% UPDATED for #88: time is an ordinary key; neither observation carries a
+% sample_time block (the interaction block has none to carry).
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-verifyFalse(testCase, ...
-    isfield(pick(out, 'voltage_observation').subject_interaction, 'sample_time'));
-verifyEqual(testCase, ...
-    pick(out, 'score_observation').subject_interaction.sample_time.kind, 'point');
+verifyFalse(testCase, isfield(pick(out, 'calculation+voltage').interaction, 'sample_time'));
+verifyFalse(testCase, isfield(pick(out, 'calculation+score').interaction, 'sample_time'));
 end
+
 
 % ===================== the guards ==========================================
 
 function testAWaveformlessDocumentMintsNoObservation(testCase)
-% A REAL, EXPECTED CASE, NOT A DEFECT: kilosort/probe.m:543-545 sets `meanWf`
-% and `wst` to [] together when `waveform_source` is not 'templates'. An
-% observation minted from nothing is a husk that validates clean, so nothing is
-% minted -- and the other six bodies are unaffected.
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'mean_waveform', 'waveform_sample_times'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'voltage_observation')));
-verifyEqual(testCase, numel(out), 6, ...
-    sprintf('expected 6 bodies without the waveform, got %d: %s', ...
+verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')));
+verifyEqual(testCase, numel(out), 11, ...   % the 12 of the full fold, less the waveform
+    sprintf('expected 11 bodies without the waveform, got %d: %s', ...
         numel(out), strjoin(names, ', ')));
 end
+
 
 function testACountThatDisagreesWithTheArrayShapeIsRefused(testCase)
 % `number_of_samples_per_channel` and `number_of_channels` are DROPPED as
@@ -334,16 +309,14 @@ verifyError(testCase, ...
 end
 
 function testAnAbsentCountIsNotAnErrorBecauseThereIsNothingToCheck(testCase)
-% The other half of the same rule, asserted so the guard is not read as
-% "these fields are required". Absent or non-numeric means there is simply
-% nothing to compare against; the axes come from the array either way.
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'number_of_channels', 'number_of_samples_per_channel'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyEqual(testCase, [ax.n], [21 32]);
 end
+
 
 function testATimebaseOfTheWrongLengthIsRefused(testCase)
 % The writer assigns the waveform and its times together, and they match in 21
@@ -360,30 +333,72 @@ end
 % ===================== cluster_index =======================================
 
 function testTheClusterIndexGetsAQueryableHomeAndNotOnlyAName(testCase)
-% Before this change `cluster_index` survived ONLY as text inside the derived
-% subject's `local_identifier` ('unit_7') -- findable by a human, not by a query.
-%
-% THIS SHAPE IS A PROPOSAL, NOT A SIGNATURE (Operating Rule 4). A cluster index
-% is a NOMINAL integer and V_eta has no nominal integer type; `count_assertion`
-% is chosen on the in-tree precedent that jSorterOutput.m:87 models the per-spike
-% cluster LABEL series as a `count_observation`, a shape the team confirmed for
-% `jrclust_clusters` on 2026-08-17. `count.value.unit` is "what is counted" and
-% a label counts nothing, so it is left BLANK -- that blank is the visible marker
-% that this is not a cardinality. The migrator header lists the two rejected
-% alternatives and the standing objection.
+% INVERTED 2026-10-21 (#73 review item 48): `cluster_index` is a nominal
+% LABEL, computed by the sort -- a calculation with the `label` value kind
+% whose value is the index as a string, not a count.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-cidx = pick(out, 'count_assertion');
-neuron = pick(out, 'subject');
-verifyEqual(testCase, depValueOf(cidx, 'subject_id'), neuron.base.id);
-verifyEqual(testCase, cidx.count.value.value, 7);
-verifyEmpty(testCase, cidx.count.value.unit.name, ...
-    'a label counts nothing -- an invented unit here would read as a cardinality');
-verifyEqual(testCase, cidx.subject_statement.variable.name, ...
-    'spike sorter cluster index');
-verifyEqual(testCase, cidx.subject_statement.storage_mode, 'inline');
-% the name is still there too -- the assertion is an addition, not a move
-verifyEqual(testCase, neuron.subject.local_identifier, 'unit_7');
+neuron = pick(out, 'cell');
+cidx = labelCalc(out, 'spike sorter cluster index');
+verifyEqual(testCase, depValueOf(cidx, 'entity_id'), neuron.base.id);
+verifyEqual(testCase, cidx.label.value.name, '7');
+verifyEqual(testCase, neuron.entity.local_identifier, 'unit_7');
 end
+
+
+function testTheQualityLabelIsALabelCalculationNotDropped(testCase)
+% `quality_label` ('multi' / 'single' in the corpus) was dropped before item
+% 48; it is now a label calculation about the unit.
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+q = labelCalc(out, 'spike sort quality');
+verifyEqual(testCase, q.label.value.name, 'multi');
+verifyEqual(testCase, depValueOf(q, 'entity_id'), pick(out, 'cell').base.id);
+end
+
+
+function testEveryCalculationNamesItsSoftwareAndRun(testCase)
+% A calculation requires its software (did-schema `calculation`
+% require_inherited software_id) and names the run's OS and interpreter.
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+names = classNames(out);
+idx = find(strncmp(names, 'calculation+', 12));
+verifyEqual(testCase, numel(idx), 4, 'DENOMINATOR: two labels, the waveform, the score');
+swIds = cellfun(@(b) b.base.id, out(strcmp(names, 'software')), 'UniformOutput', false);
+for k = idx
+    c = out{k};
+    verifyTrue(testCase, any(strcmp(depValueOf(c, 'software_id'), swIds)));
+    verifyTrue(testCase, any(strcmp(depValueOf(c, 'operating_system_id'), swIds)));
+    verifyTrue(testCase, any(strcmp(depValueOf(c, 'interpreter_id'), swIds)));
+    verifyEqual(testCase, depValueOf(c, 'time_reference_id'), ...
+        pick(out, 'relative_time_reference').base.id);
+end
+end
+
+
+function testThePopulatedSortingOutputBecomesEveryCalculationsInput(testCase)
+% Item 48: input_id -> the sorting output. Every NDI writer sets
+% `spike_clusters_id` to it (spikesorter.m, kilosort/kiasort/jrclust probe.m),
+% and the sorter documents keep their ids when they migrate.
+v1 = neuronExtracellularV1();
+v1.depends_on(2).value = 'sorter_out_1';
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+names = classNames(out);
+idx = find(strncmp(names, 'calculation+', 12));
+verifyEqual(testCase, numel(idx), 4);
+for k = idx
+    verifyEqual(testCase, depValueOf(out{k}, 'input_id'), 'sorter_out_1');
+end
+end
+
+
+function testAnEmptySortingOutputWritesNoInputEdge(testCase)
+% EMPTY on all 21 corpus documents: then no input_id at all, never an empty one.
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+for k = 1:numel(out)
+    if ~isfield(out{k}, 'depends_on'); continue; end
+    verifyFalse(testCase, any(strcmp({out{k}.depends_on.name}, 'input_id')));
+end
+end
+
 
 % ===================== the edges ===========================================
 
@@ -403,8 +418,6 @@ end
 end
 
 function testEveryEmittedEdgeIsNonEmpty(testCase)
-% THE INVENTED-EMPTY-EDGE SWEEP, with its DENOMINATOR asserted first -- without
-% that an empty `out` would make this vacuously true.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 edges = 0;
 for k = 1:numel(out)
@@ -412,50 +425,61 @@ for k = 1:numel(out)
     d = out{k}.depends_on;
     for j = 1:numel(d)
         edges = edges + 1;
-        verifyNotEmpty(testCase, d(j).value, sprintf( ...
+        verifyNotEmpty(testCase, depValueAt(d(j)), sprintf( ...
             'body %d (%s) declares edge `%s` with an empty value', ...
             k, out{k}.document_class.class_name, d(j).name));
     end
 end
-verifyGreaterThanOrEqual(testCase, edges, 8, ...
-    ['DENOMINATOR: 2 on the relation (child, parent), 1 on the ' ...
-     'count_assertion, and 3 on each of the two observations ' ...
-     '(subject_id, time_reference_1, software_id)']);
+verifyGreaterThanOrEqual(testCase, edges, 22, ...
+    ['DENOMINATOR: 2 on the relation (child, parent), and 5 on each of the ' ...
+     'four calculations (entity_id, time_reference_id, software_id, ' ...
+     'operating_system_id, interpreter_id)']);
 end
 
+
 function testTheWaveformObservationCarriesTheAppBlock(testCase)
-% THE RESIDUAL THIS FOLD SHRINKS. `software_id` is declared once in the
-% statement tier, on `subject_interaction`. Before the waveform fold the only
-% carrier was the score_observation, so a unit with no `quality_number` had
-% nowhere typed to put its software. The waveform observation is a second
-% carrier, and this fixture withholds the quality number to prove it alone.
-%
-% The gap is NOT closed: a document with neither a quality number nor a waveform
-% still has nowhere to put it, and no slot is invented for it --
-% testNeuronExtracellularWithoutQualityStillHasNowhereToPutItsSoftware in
-% testMigratorsJAppFold.m asserts that residual.
+% The app becomes the software entity the waveform calculation names (the
+% name is kept for history); as a calculation it also names the run's OS.
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, 'quality_number');
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'score_observation')));
-sw   = pick(out, 'software');
-wobs = pick(out, 'voltage_observation');
-verifyEqual(testCase, depValueOf(wobs, 'software_id'), sw.base.id);
-verifyEqual(testCase, wobs.subject_interaction.execution_environment.os, 'MACA64');
-verifyEqual(testCase, ...
-    wobs.subject_interaction.execution_environment.interpreter_version, '24.2');
+verifyFalse(testCase, any(strcmp(names, 'calculation+score')));
+wcalc = pick(out, 'calculation+voltage');
+sws = out(strcmp(names, 'software'));
+app = sws{cellfun(@(b) strcmp(b.entity.name, 'JRCLUST'), sws)};
+verifyEqual(testCase, depValueOf(wcalc, 'software_id'), app.base.id);
+os = sws{cellfun(@(b) strcmp(b.entity.name, 'MACA64'), sws)};
+verifyEqual(testCase, depValueOf(wcalc, 'operating_system_id'), os.base.id);
 end
 
+
 function testNoSoftwareEntityIsEmittedWhenNothingCanReferenceIt(testCase)
-% An unreferenced `software` entity would record the program without recording
-% what it produced -- and it would be an orphan in the graph. With neither
-% observation there is no carrier, so no entity is minted.
+% An unreferenced `software` entity would be an orphan in the graph. With no
+% calculation at all (no cluster index, quality or waveform) nothing names
+% one, so none is minted.
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
-    {'quality_number', 'mean_waveform', 'waveform_sample_times'});
+    {'quality_number', 'quality_label', 'cluster_index', 'mean_waveform', 'waveform_sample_times'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
+verifyEqual(testCase, numel(out), 3, 'the unit, its derived_from and the anchor');
+end
+
+function testAUnitWithNoAppBlockNamesNoSoftware(testCase)
+% Decided by Jess Haley, 2026-10-22 [sorter software]: a sorted unit with no
+% software record has no `software_id` -- not an invented "spike sorter"
+% (which this migrator minted until then).
+v1 = neuronExtracellularV1();
+if isfield(v1, 'app'); v1 = rmfield(v1, 'app'); end
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+names = classNames(out);
+verifyFalse(testCase, any(strcmp(names, 'software')), 'no software entity is invented');
+idx = find(strncmp(names, 'calculation+', 12));
+verifyNotEmpty(testCase, idx, 'DENOMINATOR: the unit still has its calculations');
+for k = idx
+    verifyEmpty(testCase, depValueOf(out{k}, 'software_id'));
+end
 end
 
 % ===================== the fixture =========================================
@@ -503,7 +527,17 @@ end
 % ===================== small helpers =======================================
 
 function names = classNames(out)
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
+end
+
+function b = labelCalc(out, variableName)
+names = classNames(out);
+idx = find(strcmp(names, 'calculation+label'));
+for k = idx
+    if strcmp(out{k}.statement.variable.name, variableName); b = out{k}; return; end
+end
+error('testMigratorsJNeuronExtracellular:noSuchBody', ...
+    'no calculation+label with variable `%s`', variableName);
 end
 
 function b = pick(out, className)
@@ -521,8 +555,19 @@ v = '';
 if ~isfield(body, 'depends_on'); return; end
 for k = 1:numel(body.depends_on)
     if strcmp(body.depends_on(k).name, name)
-        v = body.depends_on(k).value;
+        v = depValueAt(body.depends_on(k));
         return;
     end
+end
+end
+
+
+function v = depValueAt(e)
+% #88 builders write {name, document_id}; older bodies {name, value}
+v = '';
+if isfield(e, 'document_id') && ~isempty(e.document_id)
+    v = e.document_id;
+elseif isfield(e, 'value')
+    v = e.value;
 end
 end

@@ -31,7 +31,7 @@ end
 
 key = lower(strtrim(name));
 if isKey(orgIds, key)
-    orgId = orgIds(key); orgBody = [];
+    orgId = orgIds(key); orgBody = {};
     return;
 end
 if isempty(existingId)
@@ -40,6 +40,7 @@ else
     orgId = existingId;
 end
 orgIds(key) = orgId;   % containers.Map is a handle: the update persists to the caller
+% a CELL of documents on did-schema #88 (see entityDoc)
 orgBody = did2.convert.entities.entityDoc(preBody, 'organization', orgId, ...
     struct('full_name', name), did2.convert.entities.emptyGids(), true);
 end

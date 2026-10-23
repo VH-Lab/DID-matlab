@@ -78,135 +78,13 @@ function bodies = vmspikefit(preBody)
 arguments
     preBody (1,1) struct
 end
-blk = getBlock(preBody, 'vmspikefit');
-subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
-    dependencyValue(preBody, 'subject_id'));
-sse = getField(blk, 'fit_sse');
-fitEq = getCharField(blk, 'fit_equation');
 
-anchor = jAnchor(preBody);
-bodies = {anchor};
-
-% The v1 `app` block -> a software entity + the edge. jSoftwareFromApp reads
-% BOTH spellings of name/version (universalRenames rewrites app.name ->
-% app.app_name before any migrator runs). Emitted only alongside the
-% score_observation that can reference it: the anchor declares no software_id,
-% and an unreferenced entity would name the program without naming its output.
-[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
-
-if isnumeric(sse) && isscalar(sse)
-    obs = struct();
-    obs.document_class = classBlock('score_observation', {'subject_observation', 'score'});
-    obs.depends_on = [ ...
-        struct('name', 'subject_id',       'value', subjectId), ...
-        struct('name', 'time_reference_1', 'value', anchor.base.id)];
-    obs.base = struct('id', did.ido.unique_id(), ...
-        'session_id', baseField(preBody, 'session_id', ''), ...
-        'name', 'migrated_vmspikefit', ...
-        'datestamp', baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'));
-    obs.subject_statement = struct('variable', otTerm('', 'residual sum of squares'), ...
-        'storage_mode', 'inline');
-    obs.subject_interaction = struct('method', otTerm('', firstNonEmpty(fitEq, '')), ...
-        'sample_time', struct('kind', 'point'));
-    obs.subject_observation = struct();
-    % scale_min/scale_max deliberately OMITTED (both optional): SSE is unbounded,
-    % so declaring 0..1 would be false. `scale` names a rubric; SSE has none.
-    obs.score = struct('value', struct('value', double(sse), ...
-        'scale', otTerm('', ''), 'approximate', false));
-    if ~isempty(swId)
-        obs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
-    end
-    if ~isempty(fieldnames(execEnv))
-        obs.subject_interaction.execution_environment = execEnv;
-    end
-    bodies = {obs, anchor};
-    if ~isempty(software)
-        bodies{end+1} = software;
-    end
-end
-end
-
-% ===================== small helpers =======================================
-
-function anchor = jAnchor(preBody)
-anchor = struct();
-% PASS-1 HANDLE, NOT AN UNMIGRATED CLASS. The signed model retires this class in
-% favour of `relative_reference`, but the same plan makes the change impossible
-% here: `relative_to` is REQUIRED and is not fillable in pass 1 (this body holds
-% base.session_id; the edge needs the session DOCUMENT's base.id). Emitting the
-% new class with an empty required edge would be ~106k husks that validate clean.
-% did2.convert.resolveSessionAnchors folds it in a batch pass, id PRESERVED. Full
-% reasoning in +migrators_j/private/jSessionAnchor.m; the seam is pinned by
-% tests/+did2/+unittest/testSessionAnchorEmitterContract.m.
-anchor.document_class = classBlock('session_relative_reference', {'time_reference'});
-anchor.depends_on = struct('name', {}, 'value', {});
-anchor.base = struct('id', did.ido.unique_id(), ...
-    'session_id', baseField(preBody, 'session_id', ''), ...
-    'name', 'migrated_session_anchor', ...
-    'datestamp', baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'));
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', 'during');
-end
-
-function dc = classBlock(name, supers)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', 'V_eta');
-end
-
-function t = otTerm(node, name)
-t = struct('node', char(node), 'name', char(name));
+% did-schema #88: a model_fit_calculation (jModelFit; #73 review item 68).
+% The pre-#73 fold kept only the residual, as a score observation.
+bodies = jModelFit(preBody, getBlock(preBody, 'vmspikefit'), {'fit_input_id'});
 end
 
 function b = getBlock(bodyStruct, name)
 b = struct();
 if isfield(bodyStruct, name) && isstruct(bodyStruct.(name)); b = bodyStruct.(name); end
-end
-
-function v = getField(block, name)
-v = [];
-if isfield(block, name); v = block.(name); end
-end
-
-function s = getCharField(block, name)
-s = '';
-if isfield(block, name)
-    v = block.(name);
-    if ischar(v); s = v; elseif isstring(v) && isscalar(v); s = char(v); end
-end
-end
-
-function s = firstNonEmpty(varargin)
-s = '';
-for k = 1:numel(varargin)
-    if ~isempty(varargin{k}); s = varargin{k}; return; end
-end
-end
-
-function v = dependencyValue(bodyStruct, name)
-v = '';
-if isfield(bodyStruct, 'depends_on') && isstruct(bodyStruct.depends_on)
-    for k = 1:numel(bodyStruct.depends_on)
-        d = bodyStruct.depends_on(k);
-        if isfield(d, 'name') && strcmp(d.name, name)
-            if isfield(d, 'value') && ~isempty(d.value)
-                v = char(d.value);
-            elseif isfield(d, 'document_id') && ~isempty(d.document_id)
-                v = char(d.document_id);
-            end
-            return;
-        end
-    end
-end
-end
-
-function v = baseField(bodyStruct, name, default)
-v = default;
-if isfield(bodyStruct, 'base') && isstruct(bodyStruct.base) ...
-        && isfield(bodyStruct.base, name) && ~isempty(bodyStruct.base.(name))
-    v = bodyStruct.base.(name);
-end
 end

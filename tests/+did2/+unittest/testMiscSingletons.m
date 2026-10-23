@@ -109,6 +109,15 @@ function tests = testMiscSingletons
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% The migrators run inside did2.convert.v1_to_v2, which disarms the
+% TermRegistry strict mode for the call (T19: the check is for imports; a
+% migrator transcribes the source's own terms, which the registry need not
+% hold yet). A test that calls a migrator directly runs it the same way.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== harness =============================================
 
 function out = runJ(v1)
@@ -120,7 +129,7 @@ function d = onlyClass(testCase, out, className)
 d = [];
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         d = out.migrated{k};
         n = n + 1;
     end
@@ -226,6 +235,13 @@ end
 % which is exactly why it failed loudly rather than silently.
 body.base = struct('id', id, 'session_id', sessionId, 'name', '', ...
     'creation_timestamp', '2024-06-01T12:00:00.000Z');
+if did2.schema.cache.shared().sessionIdIsEdge()
+    % the same reason, one change later: `base.session_id` is the `session_id`
+    % edge on a schema built after 2026-10-20 (did-schema
+    % V_eta_relation_inheritance_plan.md), and only v1_to_v2 moves it
+    body.base = rmfield(body.base, 'session_id');
+    body.depends_on(end+1) = struct('name', 'session_id', 'document_id', sessionId);
+end
 body.interaction_purpose = struct( ...
     'purpose', struct('node', 'NDIC:00000012', ...
                       'name', 'Assessing spatial frequency tuning'), ...
@@ -367,7 +383,7 @@ for k = 1:numel(out.migrated)
     s = out.migrated{k}.toStruct();
     % The GENERAL claim first -- no edge of ANY name, which is the fact that
     % makes a subject unreachable however a future fold tries to reach one.
-    verifyTrue(testCase, ~isfield(s, 'depends_on') || isempty(s.depends_on), ...
+    verifyTrue(testCase, ~isfield(s, 'depends_on') || isempty(did2.unittest.helpers.dropSessionEdge(s.depends_on)), ...
         'binaryseries_parameters acquired a depends_on edge; see the migrator header');
     % Then the two names a fold would actually reach for, stated separately so a
     % failure says WHICH edge appeared rather than only that the count moved.
@@ -438,13 +454,24 @@ function testBinaryseriesFoldBlockersAreStillInTheSchema(testCase)
 % mappings this checks:
 %   time_type -> the time axis's datum_type    data_type -> the statement's
 %   data_dim  -> the axis count      samples_regular_intervals -> axis `regular`
+%
+% PORTED TO did-schema #88 (2026-10-21), slot for slot -- the four mappings
+% are unchanged, only where #88 declares each destination moved:
+%   subject_statement          -> `statement` (the statement family renamed;
+%                                 the subject edge is `entity_id`)
+%   statement.datum_type       -> `value.data_type` (the element type lives on
+%                                 the VALUE, renamed from datum_type 2026-10-08)
+%   axes[] on statement + body -> ONE declaration, `data.keys[]`, inherited by
+%                                 both `value` and `sampled_body`
 cache = did2.schema.cache.shared();
 
-% DENOMINATOR FIRST. All three classes must RESOLVE or every assertion below is
+% DENOMINATOR FIRST. All four classes must RESOLVE or every assertion below is
 % vacuous -- "the slot is absent" and "the schema set is not on the path" would
 % otherwise read identically, which is the silentLoss defect in miniature.
 try
-    statement = cache.getClass('subject_statement');
+    statement = cache.getClass('statement');
+    value     = cache.getClass('value');
+    data      = cache.getClass('data');
     body      = cache.getClass('sampled_body');
     tombstone = cache.getClass('binaryseries_parameters');
 catch err
@@ -456,44 +483,51 @@ end
 verifyTrue(testCase, isstruct(tombstone), ...
     'the binaryseries_parameters source tombstone must exist to pass through to');
 
-% ---- (1) THE THREE SLOTS #45 BUILT. Absence here means the tier REGRESSED.
-verifyTrue(testCase, ~isempty(fieldDecl(statement, 'datum_type')), ...
-    ['subject_statement.datum_type has gone -- it is the destination the ' ...
-     'signature names for binaryseries_parameters.data_type.']);
-stmtAxes = fieldDecl(statement, 'axes');
-bodyAxes = fieldDecl(body, 'axes');
-verifyNotEmpty(testCase, stmtAxes, 'subject_statement.axes[] has gone (#45 regressed)');
-verifyNotEmpty(testCase, bodyAxes, 'sampled_body.axes[] has gone (#45 regressed)');
-% `data_dim -> the axis count` needs no field: it is numel(axes). `regular` does.
-for m = {{'subject_statement', stmtAxes}, {'sampled_body', bodyAxes}}
-    verifyTrue(testCase, ~isempty(subDecl(m{1}{2}, 'regular')), ...
-        sprintf(['%s.axes[].regular has gone -- it is the destination for ' ...
-                 'samples_regular_intervals.'], m{1}{1}));
+% ---- (1) THE SLOTS #45 BUILT. Absence here means the tier REGRESSED.
+verifyTrue(testCase, ~isempty(fieldDecl(value, 'data_type')), ...
+    ['value.data_type has gone -- it is the destination the signature ' ...
+     'names for binaryseries_parameters.data_type.']);
+% data_body AMENDMENT 6 (2026-10-22): `keys` became `dimensions` + `covariates`.
+dimsDecl = fieldDecl(data, 'dimensions');
+keysDecl = fieldDecl(data, 'covariates');
+verifyNotEmpty(testCase, dimsDecl, 'data.dimensions[] has gone (#45 / AMENDMENT 6 regressed)');
+verifyNotEmpty(testCase, keysDecl, 'data.covariates[] has gone (AMENDMENT 6 regressed)');
+% both signed targets reach them through `data`
+for c = {'value', 'sampled_body'}
+    verifyTrue(testCase, any(strcmp(cache.classChain(c{1}), 'data')), ...
+        sprintf('%s no longer inherits data.dimensions[] / covariates[]', c{1}));
 end
+% `data_dim -> the axis count` needs no field: it is numel(dimensions).
+% `samples_regular_intervals` lands on a covariate's `origin` + `spacing`
+% (their presence says regular; AMENDMENT 6 removed `regular`).
+verifyTrue(testCase, ~isempty(subDecl(keysDecl, 'origin')) && ~isempty(subDecl(keysDecl, 'spacing')), ...
+    ['data.covariates[].origin/spacing have gone -- they are the destination for ' ...
+     'samples_regular_intervals.']);
 
 % ---- (2) THE ONE SLOT THAT DID NOT LAND, and the reason `time_type` is still
 % homeless. V_eta_data_body_model_plan.md's ADDENDUM of 2026-08-09 ("the axis
 % carries its own `datum_type`") was written FROM this class -- the plan says so
-% -- and the built axis entry does not carry it, on either mount. If this goes
-% red the addendum has landed and `time_type` finally has a destination; that is
-% a genuine change in the fold's status and the migrator header says what to do.
-for m = {{'subject_statement', stmtAxes}, {'sampled_body', bodyAxes}}
-    verifyEmpty(testCase, subDecl(m{1}{2}, 'datum_type'), ...
-        sprintf(['%s.axes[] now declares `datum_type`. The 2026-08-09 addendum ' ...
+% -- and the built key entry does not carry it, under either spelling. If this
+% goes red the addendum has landed and `time_type` finally has a destination;
+% that is a genuine change in the fold's status and the migrator header says
+% what to do.
+for nm = {'datum_type', 'data_type'}
+    verifyEmpty(testCase, subDecl(keysDecl, nm{1}), ...
+        sprintf(['data.covariates[] now declares `%s`. The 2026-08-09 addendum ' ...
                  'has landed, so binaryseries_parameters.time_type has a ' ...
                  'destination for the first time -- read the migrator header ' ...
                  'before changing anything. It does NOT lift the edge blocker.'], ...
-                m{1}{1}));
+                nm{1}));
 end
 
 % ---- (3) THE BLOCKER #45 NEVER TOUCHED, in the schema rather than in prose.
-% subject_statement is ABSTRACT (+did2/+schema/cache.m raises
+% statement is ABSTRACT (+did2/+schema/cache.m raises
 % did2:validation:abstractInstantiation for any document naming such a class),
 % so the target the coverage ledger records BY NAME cannot be minted even given
 % a subject. sampled_body must stay CONCRETE -- that half also proves this
 % predicate can return false, so the assertion above is not vacuous.
 verifyTrue(testCase, schemaSaysAbstract(statement), ...
-    ['V_eta subject_statement is no longer abstract. The signed target is now ' ...
+    ['V_eta statement is no longer abstract. The signed target is now ' ...
      'directly instantiable -- which does NOT make the fold buildable (the ' ...
      'source still carries no edge and no `variable`), but it does change the ' ...
      'reason. Read the migrator header.']);
@@ -503,10 +537,10 @@ verifyFalse(testCase, schemaSaysAbstract(body), ...
 % ---- (4) and the required-ness that makes minting one a quarantine, not a
 % husk. Read off the schema so that a relaxation is noticed here rather than on
 % a corpus run.
-verifyTrue(testCase, depIsRequired(statement, 'subject_id'), ...
-    'subject_statement.subject_id stopped being mustBeNonEmpty');
+verifyTrue(testCase, depIsRequired(statement, 'entity_id'), ...
+    'statement.entity_id stopped being mustBeNonEmpty');
 verifyTrue(testCase, ~isempty(fieldDecl(statement, 'variable')), ...
-    'subject_statement.variable has gone');
+    'statement.variable has gone');
 end
 
 % ---- helpers for the schema read -----------------------------------------
@@ -678,7 +712,7 @@ end
 function testInteractionPurposeMissingEdgeFamilyIsReportOnly(testCase)
 % THIS TEST ASSERTS A GAP, DELIBERATELY. INVERT IT, DO NOT PATCH IT.
 %
-% `interaction_id_#` declares min_count 1. Nothing enforces it: cache.m:193-246
+% `interaction_id` (#88: one name repeated, `multiple`; `interaction_id_#` before) declares min_count 1. Nothing enforces it: cache.m:193-246
 % (requiredDependencies) EXCLUDES numbered families by design -- "a MISSING
 % instance is not a blank one" -- so a purpose covering no interaction at all
 % validates clean. The only instrument that sees it is the report-only census
@@ -697,7 +731,7 @@ verifyEqual(testCase, rep.skipped_docs, 0);
 verifyEqual(testCase, rep.family_violation_count, 1, ...
     'the census is the only thing that sees a missing required edge family');
 verifyEqual(testCase, rep.family_count_violation(1).class_name, 'interaction_purpose');
-verifyEqual(testCase, rep.family_count_violation(1).edge_name, 'interaction_id_#');
+verifyEqual(testCase, rep.family_count_violation(1).edge_name, 'interaction_id');
 end
 
 function testInteractionPurposeIsNotEmittedByPassOne(testCase)

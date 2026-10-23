@@ -57,6 +57,15 @@ function tests = testResolveOpenmindsCitations
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% The migrators run inside did2.convert.v1_to_v2, which disarms the
+% TermRegistry strict mode for the call (T19: the check is for imports; a
+% migrator transcribes the source's own terms, which the registry need not
+% hold yet). A test that calls a migrator directly runs it the same way.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== the two readings of "nothing happened" ==============
 
 function testAnEmptyBatchRanWithEveryCounterAtZero(testCase)
@@ -77,7 +86,7 @@ function testItIsANoOpOnANonVEtaTarget(testCase)
 % off-target reading, and it must not print the same as the empty-batch one.
 r = emptyResult();
 [out, rep] = did2.convert.resolveOpenmindsCitations(r, ...
-    'Validate', false, 'TargetVersion', 'V_zeta');
+    'Validate', false, 'TargetVersion', 'V_delta');
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, out.migrated, {});
@@ -98,10 +107,11 @@ end
 % ===================== the happy path =====================================
 
 function testTheCitationGraphBecomesTheSixEntityClasses(testCase)
-%TESTTHECITATIONGRAPHBECOMESTHESIXENTITYCLASSES One DatasetVersion graph in,
-%   the same six entity classes metadata_editor emits out, plus the edges.
+% UPDATED for did-schema #88: the six are entity TYPES (dataset, person,
+% organization, funding, publication, protocol -- #88 has no web_resource, so
+% the documentation link is a protocol entity; the report keeps its counter
+% name web_resources_emitted).
 [out, rep] = runPass(testCase, citationGraph());
-
 verifyEqual(testCase, rep.openminds_documents_seen, 12, ...
     'the denominator: the fixture graph is twelve openminds documents');
 verifyEqual(testCase, rep.openminds_components_seen, 1);
@@ -112,7 +122,6 @@ verifyEqual(testCase, rep.components_withheld, 0);
 verifyEqual(testCase, rep.components_reverted_on_validation, 0);
 verifyEqual(testCase, rep.documents_consumed, 12, ...
     'all twelve are the citation half, so the whole component goes');
-
 verifyEqual(testCase, rep.datasets_emitted, 1);
 verifyEqual(testCase, rep.persons_emitted, 1);
 verifyEqual(testCase, rep.organizations_emitted, 2, ...
@@ -120,61 +129,63 @@ verifyEqual(testCase, rep.organizations_emitted, 2, ...
 verifyEqual(testCase, rep.funding_emitted, 1);
 verifyEqual(testCase, rep.publications_emitted, 1);
 verifyEqual(testCase, rep.web_resources_emitted, 1);
-% has_author + affiliated_with + funded_by + issued_by + cites + documented_by
 verifyEqual(testCase, rep.relations_emitted, 6);
-
-% NOT A SOURCE `openminds` DOCUMENT IS LEFT. That is the whole point of
-% all-or-none: a partial consumption is what dangles an edge.
 verifyEqual(testCase, numel(classesOf(out, 'openminds')), 0);
 for cls = {'dataset', 'person', 'organization', 'funding', 'publication', ...
-        'web_resource'}
+        'protocol'}
     verifyGreaterThan(testCase, numel(classesOf(out, cls{1})), 0, ...
         sprintf('no `%s` entity was emitted', cls{1}));
 end
 end
 
+
+function testTheFirstAuthorIsOrderZero(testCase)
+% Decided by Jess Haley, 2026-10-21 [author order from 0] (did-schema
+% V_eta_study_plan.md): "a `has_author` edge's `order` counts from 0 ... the
+% first author is `order: 0`". The fixture has one author, so it is 0 (was 1).
+[out, ~] = runPass(testCase, citationGraph());
+n = 0;
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if strcmp(b.document_class.class_name, 'directed_relation') ...
+            && did2.build.isVocabulary(b.directed_relation.relation, 'relation', 'has_author')
+        n = n + 1;
+        verifyEqual(testCase, double(b.directed_relation.order), 0);
+    end
+end
+verifyEqual(testCase, n, 1, 'DENOMINATOR: one has_author relation');
+end
+
+
 function testIdsArePreservedOneToOne(testCase)
-%TESTIDSAREPRESERVEDONETOONE Each openMINDS instance is its own document, which
-%   the editor blob is not -- so `person` can be an id-preserving 1:1 fold,
-%   which metadata_editor cannot do (it mints a fresh id per author).
 [out, rep] = runPass(testCase, citationGraph());
 verifyEqual(testCase, rep.persons_id_preserved, 1, 'denominator');
 verifyEqual(testCase, idsOfClass(out, 'person'), {'om_person'});
 verifyEqual(testCase, idsOfClass(out, 'funding'), {'om_funding'});
 verifyEqual(testCase, idsOfClass(out, 'publication'), {'om_doi_pub'});
-verifyEqual(testCase, idsOfClass(out, 'web_resource'), {'om_webres'});
-% The organizations are documents here too, so their ids are kept as well.
+verifyEqual(testCase, idsOfClass(out, 'protocol'), {'om_webres'});   % #88: protocol
 verifyEqual(testCase, rep.organizations_id_preserved, 2);
 verifyEqual(testCase, sort(idsOfClass(out, 'organization')), ...
     {'om_funder', 'om_org'});
 end
 
+
 function testTheDatasetEntityIsKeyedOnTheDatasetIdNotTheDocumentId(testCase)
-%TESTTHEDATASETENTITYISKEYEDONTHEDATASETIDNOTTHEDOCUMENTID The one deliberate
-%   exception to id preservation, and it is load-bearing: `dataset` is keyed on
-%   base.session_id (= D.id()), the id every dataset-level document and every
-%   dataset-referencing relation converges on. Key it on the DatasetVersion
-%   document's own id and resolveDatasetEntities could never dedup it against
-%   the `dataset_remote` / `session_in_a_dataset` stubs.
+% UPDATED for #88: the dataset is an entity (name, description) and its other
+% attributes are assertions about it.
 [out, ~] = runPass(testCase, citationGraph());
 verifyEqual(testCase, idsOfClass(out, 'dataset'), {'ds_01'}, ...
     'the dataset entity must carry the DATASET id, not `om_dsv`');
 b = bodyOfClass(out, 'dataset');
-verifyEqual(testCase, b.dataset.full_name, 'A Real Dataset');
-verifyEqual(testCase, b.dataset.short_name, 'ARD');
-verifyEqual(testCase, b.dataset.version, '1.0.1');
-verifyEqual(testCase, b.dataset.release_date, '2024-05-05');
+verifyEqual(testCase, b.entity.name, 'A Real Dataset');
+verifyEqual(testCase, textAbout(out, 'ds_01', 'Abbreviation'), 'ARD');
+verifyEqual(testCase, textAbout(out, 'ds_01', 'version number'), '1.0.1');
+rd = assertionAbout(out, 'ds_01', 'release date');
+verifyEqual(testCase, rd.date.value.instant, '2024-05-05');
 end
 
+
 function testTheRichEntityBeatsABareStubInTheDedupThatRunsNext(testCase)
-%TESTTHERICHENTITYBEATSABARESTUBINTHEDEDUPTHATRUNSNEXT The ORDER constraint,
-%   asserted rather than described. resolveDatasetEntities keeps the RICHEST
-%   `dataset` per id; run in the wired order the citation entity must win, and
-%   exactly one must survive.
-%
-%   A test that only checked "one dataset survives" would pass with the STUB
-%   winning, which is the regression this exists to catch -- so it checks the
-%   surviving entity's full_name.
 out = did2.convert.v1_to_v2([citationGraph(), {datasetRemoteDoc()}], ...
     'Validate', false, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
@@ -186,68 +197,54 @@ out = did2.convert.resolveDatasetEntities(out, ...
 verifyEqual(testCase, numel(classesOf(out, 'dataset')), 1);
 b = bodyOfClass(out, 'dataset');
 verifyEqual(testCase, b.base.id, 'ds_01');
-verifyEqual(testCase, b.dataset.full_name, 'A Real Dataset', ...
+verifyEqual(testCase, b.entity.name, 'A Real Dataset', ...
     'the bare dataset_remote stub won the richness ranking');
 end
+
 
 % ===================== B IS ADDITIVE: nothing is fabricated ===============
 
 function testThePublicationCarriesADoiAndNoTitle(testCase)
-%TESTTHEPUBLICATIONCARRIESADOIANDNOTITLE The finding that shaped the decision:
-%   the two stores are NOT information-equivalent. The graph has only a DOI;
-%   ndidataset2metadataeditorstruct.m:161 gets the title, PMID and PMCID from a
-%   NETWORK lookup. A migrator that invented a title would make the two stores
-%   look equivalent when they are not.
-%
-%   The prefix is stripped because the writer ADDS it
-%   (convertFormDataToDocuments.addDoiPrefix), so the stored identifier is
-%   `https://doi.org/10.x/y` while the editor path's DOI field is bare.
+% UPDATED for #88: a global identifier is a CURIE string; no name is invented.
 [out, ~] = runPass(testCase, citationGraph());
 b = bodyOfClass(out, 'publication');
-verifyEqual(testCase, b.publication.title, '', ...
+verifyFalse(testCase, isfield(b.entity, 'name') && ~isempty(b.entity.name), ...
     'a title was invented for a graph that does not carry one');
-g = b.entity.global_identifier;
-verifyEqual(testCase, numel(g), 1, ...
+verifyEqual(testCase, cellstr(b.entity.global_identifier), {'doi:10.1234/example.2024'}, ...
     'only the DOI is knowable here -- no PMID, no PMCID');
-verifyEqual(testCase, g(1).scheme, 'DOI');
-verifyEqual(testCase, g(1).value, '10.1234/example.2024');
 end
 
+
 function testTheOrcidPrefixIsStrippedTheWayTheReaderStripsIt(testCase)
-% load_author_from_ndidocument does `identifier(19:end)` -- 18 characters of
-% `https://orcid.org/` -- because convertFormDataToDocuments added the prefix.
+% UPDATED for #88: the ORCID is the CURIE `ORCID:<id>` (the https://orcid.org/
+% prefix stripped); given name, family name and e-mail are assertions about the
+% person.
 [out, ~] = runPass(testCase, citationGraph());
 b = bodyOfClass(out, 'person');
-g = b.entity.global_identifier;
-verifyEqual(testCase, numel(g), 1);
-verifyEqual(testCase, g(1).scheme, 'ORCID');
-verifyEqual(testCase, g(1).value, '0000-0002-1825-0097');
-verifyEqual(testCase, b.person.given_name, 'Ada');
-verifyEqual(testCase, b.person.family_name, 'Lovelace');
-verifyEqual(testCase, b.person.email, 'ada@example.org', ...
+verifyEqual(testCase, cellstr(b.entity.global_identifier), {'ORCID:0000-0002-1825-0097'});
+verifyEqual(testCase, textAbout(out, 'om_person', 'given name'), 'Ada');
+verifyEqual(testCase, textAbout(out, 'om_person', 'family name'), 'Lovelace');
+verifyEqual(testCase, textAbout(out, 'om_person', 'E-mail Address'), 'ada@example.org', ...
     'the email lives in a SEPARATE ContactInformation document');
 end
 
+
 function testFullDocumentationIsReadInBothOfItsTwoShapes(testCase)
-%TESTFULLDOCUMENTATIONISREADINBOTHOFITSTWOSHAPES The bimodal field. The writer
-%   tries openminds.core.DOI first and falls back to WebResource; NDI's reader
-%   then reads `.IRI` unconditionally, which a DOI document does not have. Both
-%   arms must work AND must be counted apart, because a single total would hide
-%   which shape occurred.
+% UPDATED for #88: the documentation link is a protocol entity whose global
+% identifier is the URL (IRI shape) or the DOI CURIE (DOI shape).
 [outA, repA] = runPass(testCase, citationGraph());          % WebResource / IRI
 verifyEqual(testCase, repA.web_resources_from_iri, 1);
 verifyEqual(testCase, repA.web_resources_from_doi, 0);
-gA = bodyOfClass(outA, 'web_resource').entity.global_identifier;
-verifyEqual(testCase, gA(1).scheme, 'URL');
-verifyEqual(testCase, gA(1).value, 'https://example.org/docs');
-
+gA = cellstr(bodyOfClass(outA, 'protocol').entity.global_identifier);
+verifyEqual(testCase, gA, {'https://example.org/docs'});
 [outB, repB] = runPass(testCase, citationGraphDocumentedByDoi());
 verifyEqual(testCase, repB.web_resources_from_iri, 0);
 verifyEqual(testCase, repB.web_resources_from_doi, 1);
-gB = bodyOfClass(outB, 'web_resource').entity.global_identifier;
-verifyEqual(testCase, gB(1).scheme, 'DOI');
-verifyEqual(testCase, gB(1).value, '10.5555/docs');
+gB = cellstr(bodyOfClass(outB, 'protocol').entity.global_identifier);
+verifyEqual(testCase, numel(gB), 1);
+verifyTrue(testCase, strcmpi(gB{1}, 'doi:10.5555/docs'));
 end
+
 
 % ===================== out of scope: the subject branch ===================
 
@@ -309,7 +306,8 @@ consumed = runPass(testCase, citationGraph());
 withheld = runPass(testCase, ...
     [citationGraph(), {ontologyLabelDoc('lbl_1', 'om_person')}]);
 for r = {consumed, withheld}
-    refRep = did2.validate.references(r{1}.migrated);
+    refRep = did2.validate.references(r{1}.migrated, ...
+        'KnownIds', did2.unittest.helpers.sessionKnownIds(r{1}.migrated));
     verifyGreaterThan(testCase, refRep.edges_examined, 0, ...
         'zero edges examined would make the zero below meaningless');
     verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
@@ -374,26 +372,8 @@ verifyEqual(testCase, numel(classesOf(out, 'openminds')), 4, ...
 end
 
 function testAStrainFamilyBesideACitationGraphIsNotEatenByIt(testCase)
-%TESTASTRAINFAMILYBESIDEACITATIONGRAPHISNOTEATENBYIT The case where a bug
-%   would actually COST DATA, and the one no corpus can currently exercise.
-%
-%   No corpus carries both stores -- run 31522068566: 1 GRAPH WITHOUT EDITOR
-%   (JH), 1 EDITOR WITHOUT GRAPH (Soph), 4 NEITHER -- and JH's graph documents
-%   are strains rather than citations, so NOTHING measured today puts a
-%   consumable citation component and an untouchable strain component in one
-%   batch. The corpora are a SAMPLE, not the universe: a dataset that ran the
-%   metadata app AND the Haley importer produces exactly this batch, and the
-%   first evidence of a leak would be missing strain documents in a migration
-%   nobody was watching.
-%
-%   THE FAILURE TO CATCH is a partition or closure leak -- the citation walk
-%   reaching across into the strain component, or `removeMask` being indexed by
-%   component-local rather than batch-global position. Both consume documents
-%   that belong to ndi.migrate.internal.strainAssembly, and both leave every
-%   citation-side counter looking exactly right. So this asserts the strain
-%   documents SURVIVE BY ID, not merely that some count is unchanged, and runs
-%   the real did2.validate.references over the result: if the strain pair were
-%   half-consumed, its `openminds_1` edge would dangle.
+% UPDATED for #88: the citation component now appends 21 documents (7 entities
+% + 8 assertions + 6 relations).
 [out, rep] = runPass(testCase, [citationGraph(), strainFragmentGraph()]);
 verifyEqual(testCase, rep.openminds_documents_seen, 14, 'denominator');
 verifyEqual(testCase, rep.openminds_components_seen, 2);
@@ -401,13 +381,9 @@ verifyEqual(testCase, rep.dataset_versions_seen, 1);
 verifyEqual(testCase, rep.components_without_dataset_version, 1);
 verifyEqual(testCase, rep.components_planned, 1);
 verifyEqual(testCase, rep.components_consumed, 1);
-% The citation half behaves exactly as it does without the strain half beside
-% it -- 12 consumed, 13 appended, the figures testTheCitationGraphBecomesThe
-% SixEntityClasses pins. A different number here means the strain documents
-% were dragged into the closure.
 verifyEqual(testCase, rep.documents_consumed, 12, ...
     'the closure reached outside its own component');
-verifyEqual(testCase, rep.documents_appended, 13);
+verifyEqual(testCase, rep.documents_appended, 21);
 verifyEqual(testCase, rep.persons_emitted, 1);
 survivors = idsOfClass(out, 'openminds');
 verifyEqual(testCase, numel(survivors), 2, ...
@@ -416,12 +392,14 @@ verifyTrue(testCase, any(strcmp(survivors, 'om_strain')), ...
     'the Strain document was consumed by the citation walk');
 verifyTrue(testCase, any(strcmp(survivors, 'om_ecoli')), ...
     'the Species fragment was consumed by the citation walk');
-refRep = did2.validate.references(out.migrated);
+refRep = did2.validate.references(out.migrated, ...
+    'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
 verifyGreaterThan(testCase, refRep.edges_examined, 0, 'denominator');
 verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
     '%d orphan edge(s) of %d examined', refRep.orphan_count, ...
     refRep.edges_examined));
 end
+
 
 % ===================== the pass-1 guarded passthrough =====================
 
@@ -472,16 +450,6 @@ end
 % ===================== against the real schema ============================
 
 function testTheEmittedDocumentsValidateAgainstTheRealVEtaSchema(testCase)
-%TESTTHEEMITTEDDOCUMENTSVALIDATEAGAINSTTHEREALVETASCHEMA The only test here
-%   that proves the pass and the schema agree; every other one would pass just
-%   as happily against an entity shape the validator rejects. Needs the
-%   assembled V_eta set on DID_SCHEMA_PATH, which the quick gate builds.
-%
-%   THE 0-QUARANTINE GATE IS THE POINT: this pass appends to a corpus that is
-%   green at 0 quarantined, and a body the schema rejects turns that red. It
-%   would ALSO revert the component silently-but-counted, so the report's
-%   `components_reverted_on_validation` is checked too -- a reverted component
-%   is a pass that emitted nothing while every other counter looked calm.
 if isempty(getenv('DID_SCHEMA_PATH'))
     assumeFail(testCase, ...
         'DID_SCHEMA_PATH not set; run under the quick gate (assembled V_eta schema).');
@@ -496,14 +464,16 @@ verifyEqual(testCase, rep.components_reverted_on_validation, 0, ...
 verifyEqual(testCase, rep.bodies_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, rep.components_consumed, 1);
-verifyEqual(testCase, rep.documents_appended, 13, ...
-    '1 dataset + 1 person + 2 organizations + 1 funding + 1 publication + 1 web_resource + 6 relations');
-refRep = did2.validate.references(out.migrated);
+verifyEqual(testCase, rep.documents_appended, 21, ...
+    '7 entities (dataset, person, 2 organizations, funding, publication, protocol) + 8 assertions + 6 relations');
+refRep = did2.validate.references(out.migrated, ...
+    'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
 verifyGreaterThan(testCase, refRep.edges_examined, 0);
 verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
     '%d orphan edge(s) of %d examined', refRep.orphan_count, ...
     refRep.edges_examined));
 end
+
 
 % ===================== helpers ============================================
 
@@ -524,13 +494,16 @@ r = struct('migrated', {{}}, 'quarantine', [], ...
 end
 
 function idx = classesOf(out, className)
+% #88: a class name OR a leaf name (`dataset`, `person`, ... are entity types)
 idx = [];
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.className(), className)
+    if strcmp(out.migrated{k}.className(), className) ...
+            || strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         idx(end+1) = k; %#ok<AGROW>
     end
 end
 end
+
 
 function ids = idsOfClass(out, className)
 idx = classesOf(out, className);
@@ -753,4 +726,28 @@ d.depends_on = struct('name', {}, 'value', {});
 d.base = struct('id', 'dsr_01', 'session_id', 'ds_01', 'name', 'remote', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 d.dataset_remote = struct('dataset_id', '', 'organization_id', '');
+end
+
+function a = assertionAbout(out, entityId, varName)
+% #88: the first assertion (as a struct) about entityId whose variable is varName
+a = [];
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if ~strcmp(d.className(), 'assertion'); continue; end
+    s = d.toStruct();
+    e = '';
+    for j = 1:numel(s.depends_on)
+        if strcmp(s.depends_on(j).name, 'entity_id'); e = s.depends_on(j).document_id; end
+    end
+    if strcmp(e, entityId) && strcmpi(s.statement.variable.name, varName)
+        a = s; return;
+    end
+end
+end
+
+
+function t = textAbout(out, entityId, varName)
+t = '';
+a = assertionAbout(out, entityId, varName);
+if ~isempty(a); t = char(a.text.value(1).text); end
 end

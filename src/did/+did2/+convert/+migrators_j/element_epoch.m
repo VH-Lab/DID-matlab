@@ -1,9 +1,18 @@
 function v2Body = element_epoch(preBody)
 %ELEMENT_EPOCH Brainstorm-J migrator: element_epoch -> acquisition_epoch.
 %
-%   INTERIM. The signed model (#60) DISSOLVES this class; the dissolution is
-%   blocked, so the rename below is what still ships. Read the two blocks after
-%   the mechanics before changing anything here.
+%   PASS-1 CARRIER ONLY, SINCE 2026-10-22. Decided by Jess Haley, 2026-10-22
+%   [epoch dissolution before merge] (F1): the signed dissolution is BUILT, in
+%   the batch pass did2.convert.resolveEpochProbemap (it needs the `epoch`
+%   entity did2.convert.epochMint mints, which no single-document migrator
+%   can see). This migrator still renames element_epoch -> acquisition_epoch so
+%   the document waits in the batch with its clocks and its .vhsb; that pass
+%   then replaces it with ONE observation of the element per epoch (this
+%   document's id), its own relative_time_reference onto the epoch (t0_t1 +
+%   epoch_clock) and the .vhsb as its data body, keyed on the element `type`.
+%   An acquisition_epoch survives only where that pass refuses (a type with no
+%   decided row, no epoch, no file, several clocks), counted there. The
+%   history below is kept as it was written.
 %
 %   MECHANICS (unchanged). `element` is retired in V_eta (subjects replaced
 %   elements), so the class and its property block are renamed to

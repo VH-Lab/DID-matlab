@@ -28,19 +28,29 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: stimulus_bath
-%   BATCH-PASS-EMITS: stimulus_bath -> document: session_relative_reference,
-%       dose_manipulation, term_observation
+%   BATCH-PASS-EMITS: stimulus_bath -> document: relative_time_reference,
+%       manipulation+formulation, formulation, chemical, observation+term
 %
-%   SCOPE OF THAT LINE: it states the V_eta path (makeBathVEta, :396), which is
-%   what the corpus harness runs -- runCorpusDiscovery.m:46 defaults
-%   `TargetVersion` to 'V_eta'. THIS FILE'S DEFAULT IS 'V_zeta', and on that
-%   branch makeBath (:341) emits `bath` + `pharmacological_manipulation`
-%   instead. Those are V_zeta classes with no V_eta home, so they are
-%   deliberately NOT declared: the ledger this declaration feeds is the V_eta
-%   one, and naming them there would credit a class V_eta retired.
-%   `term_observation` is CONDITIONAL (:462-466, only when the source names a
-%   location); the declaration states what the pass can emit, not what every
-%   document produces.
+%   SCOPE OF THAT LINE: V_eta is the only path. The V_zeta branch (makeBath
+%   emitting `bath` + `pharmacological_manipulation`) was deleted with
+%   +migrators_e/+migrators_i (did-schema #88, OPEN_WORK #128): only
+%   +migrators_j.stimulus_bath defers a bath now, so no other target can
+%   reach this pass with work to do.
+%   `term_observation` is CONDITIONAL (makeBathVEta, only when the source names an
+%   ANATOMICAL location -- not the generic bath, see below); the declaration
+%   states what the pass can emit, not what every document produces.
+%
+%   WHERE THE BATH IS (Jess Haley, 2026-10-21, replacing D3's
+%   located-by-default; did-schema V_eta_go_forward_class_audit.md): "Any
+%   statement about an anatomical region of a subject -- manipulation or
+%   observation -- targets that region's part entity ... A statement about the
+%   whole subject (a whole-prep or whole-slice bath, i.e. the generic 'bath'
+%   location NCIm:C0179246) targets the subject." So the location observation
+%   is emitted, co-anchored with the bath, only for an anatomical location (a
+%   Marder compartment); the NDI second pass (ndi.migrate.internal.
+%   pathSPromotion) turns it into the region's part and moves the bath onto
+%   it. The generic bath gets none -- it is no site on the subject, the same
+%   call +migrators_j/private/jTreatmentRoute makes for a treatment.
 %   ---------------------------------------------------------------------
 %
 %   This is the COARSE resolver for callers without a live session (e.g. corpus
@@ -55,8 +65,11 @@ function [result, report] = resolveDeferredBaths(result, options)
 %     Validate      (1,1 logical, default true) - forwarded to the v1_to_v2
 %                   re-validation of the assembled bodies.
 %     SchemaCache   ([] or a did2.schema.cache handle, default []) - forwarded.
-%     TargetVersion (1,:) char, default 'V_zeta') - the migration target the
-%                   assembled bodies are tagged with (Brainstorm I).
+%     TargetVersion (1,:) char, default 'V_eta') - the migration target the
+%                   assembled bodies are tagged with. Only 'V_eta' assembles;
+%                   any other target counts each deferred bath under
+%                   refused_bath_assembly_failed (none can occur: only
+%                   +migrators_j defers a bath).
 %
 %   ---------------------------------------------------------------------
 %   THE REPORT, AND THE BARE `catch` IT REPLACES
@@ -113,8 +126,15 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char = 'V_zeta'
+    options.TargetVersion (1,:) char = 'V_eta'
 end
+
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
 
 % DENOMINATOR FIRST, and unconditionally -- every field defined before a single
 % quarantine entry is read, so "did not run", "ran over an empty quarantine"
@@ -302,13 +322,17 @@ for k = 1:numel(migrated)
     doc = migrated{k};
     try
         cn = doc.className();
-        if strcmp(cn, 'element')
+        if strcmp(cn, 'element') || strcmp(cn, 'entity')
+            % #88: an element migrates to an `entity` (its lineage to the
+            % specimen is a relation, read below)
             id = char(doc.get('base.id'));
             if ~isempty(id); idx.elements(id) = doc; end
         elseif strcmp(cn, 'directed_relation')
             deps = docDeps(doc);
-            child = depFrom(deps, 'child');
-            parent = depFrom(deps, 'parent');
+            child = depFrom(deps, 'child_id');
+            if isempty(child); child = depFrom(deps, 'child'); end
+            parent = depFrom(deps, 'parent_id');
+            if isempty(parent); parent = depFrom(deps, 'parent'); end
             if ~isempty(child) && ~isempty(parent) && ~isKey(idx.relParent, child)
                 idx.relParent(child) = parent;
             end
@@ -365,149 +389,138 @@ function bodies = makeBath(v1Body, subjectId, targetVersion)
 %MAKEBATH Assemble the resolved bath (+ its anchor) for TARGETVERSION. Returns a
 %   cell of bodies {anchor, manipulation, ...} to fold back through v1_to_v2.
 %   Strict J (V_eta) retired the `bath`/`pharmacological_manipulation` family
-%   (D8): a bath is a delivered substance -> a `dose_manipulation`
-%   subject_manipulation leaf, exactly as migrators_j.treatment routes a `bath`
-%   keyword. Earlier targets (V_zeta/E) keep the `bath` class.
-if strcmp(targetVersion, 'V_eta')
-    bodies = makeBathVEta(v1Body, subjectId);
-    return;
+%   (D8). A bath is a `manipulation` whose value is the bath's `formulation`,
+%   taken through `value_id` -- NOT a dose: "A bath is a manipulation whose
+%   value is the formulation (pointed at through `value_id`), not a dose; a
+%   dose always has an amount" (Jess Haley, 2026-10-21; did-schema
+%   V_eta_go_forward_class_audit.md). A bath gives no amount, so the dose it
+%   used to be had an empty `dose.value`, which the value rule
+%   (`value_inline_or_body`, did-schema data_body AMENDMENT 5) refuses. The
+%   V_zeta/V_epsilon branch that kept the `bath` class was deleted with
+%   did-schema #88 (OPEN_WORK #128).
+if ~strcmp(targetVersion, 'V_eta')
+    error('did2:convert:unsupportedTarget', ...
+        ['resolveDeferredBaths assembles V_eta only; TargetVersion "%s" has ' ...
+         'no bath model (V_epsilon/V_zeta were deleted, did-schema #88).'], ...
+        targetVersion);
 end
-
-sessionId = baseField(v1Body, 'session_id', '');
-datestamp = baseField(v1Body, 'datestamp', '');
-bathId    = baseField(v1Body, 'id', did.ido.unique_id());
-mixture   = parseMixture(v1Body);
-
-% session_relative_reference('during'): the ordinal fallback anchor.
-anchorId = did.ido.unique_id();
-anchorBody = struct();
-anchorBody.document_class = struct('class_name', 'session_relative_reference', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
-    'schema_version', targetVersion);
-% Session identity rides on base.session_id; no redundant session_id edge
-% (it only produced discovery-mode orphans). See V_zeta
-% session_relative_reference (depends_on now empty).
-anchorBody.depends_on = struct('name', {}, 'value', {});
-anchorBody.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'creation_timestamp', datestamp);
-anchorBody.time_reference = struct('is_approximate', true);
-anchorBody.session_relative_reference = struct('relation', 'during');
-
-bathBody = struct();
-bathBody.document_class = struct('class_name', 'bath', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'pharmacological_manipulation', ...
-        'class_version', '1.0.0'), ...
-    'schema_version', targetVersion);
-bathBody.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-bathBody.base = struct('id', bathId, 'session_id', sessionId, ...
-    'name', 'migrated_bath', 'creation_timestamp', datestamp);
-if strcmp(targetVersion, 'V_zeta')
-    bathBody.subject_interaction = struct( ...
-        'method', struct('node', '', 'name', ''), ...
-        'variable', primaryChemical(mixture), ...
-        'target_structure', {struct('node', {}, 'name', {})});
-    bathBody.manipulation = struct('notes', '');
-end
-bathBody.pharmacological_manipulation = struct('mixture', mixture);
-bathBody.bath = struct('kind', 'drug', 'location', locationTerm(v1Body));
-bodies = {anchorBody, bathBody};
+bodies = makeBathVEta(v1Body, subjectId);
 end
 
 function bodies = makeBathVEta(v1Body, subjectId)
-%MAKEBATHVETA Assemble a strict-J `dose_manipulation` (+ session anchor) from a
-%   deferred stimulus_bath. Mirrors migrators_j.treatment.makeDoseManipulation:
-%   the primary chemical is the spine identity (subject_statement.variable), the
-%   whole bath mixture becomes the dose formulation's chemicals, and the bath
-%   rides on the resolved subject over a session-relative window. The bath
-%   `location` has no strict-J home on the subject (it is the chamber, not a
-%   subject site) and is dropped -- a discovery follow-up if it proves needed.
+% did-schema #88, built through did2.build: a "during the session" anchor (a
+% relative_time_reference onto the session entity, whose base.id IS the
+% session id), one `chemical` per mixture row, the `formulation` naming them
+% (its ingredient entries carry each row's amount as the source wrote it), the
+% `manipulation` (id preserved) whose value kind is `formulation` and whose
+% value is that formulation document, through `value_id` (a bath is not a dose:
+% Jess Haley, 2026-10-21), and the location observation when the bath names a
+% location.
 sessionId = baseField(v1Body, 'session_id', '');
 datestamp = baseField(v1Body, 'datestamp', '');
-bathId    = baseField(v1Body, 'id', did.ido.unique_id());
+if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+bathId    = baseField(v1Body, 'id', '');
 mixture   = parseMixture(v1Body);
 variable  = primaryChemical(mixture);
+o = {'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), 'Validate', false};
 
-% session-relative anchor (the ordinal fallback; base.session_id carries session)
-anchorId = did.ido.unique_id();
-anchorBody = struct();
-anchorBody.document_class = struct('class_name', 'session_relative_reference', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-anchorBody.depends_on = struct('name', {}, 'value', {});
-anchorBody.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'creation_timestamp', datestamp);
-anchorBody.time_reference = struct('is_approximate', true);
-anchorBody.session_relative_reference = struct('relation', 'during');
+anchorBody = did2.build.relativeTimeReference(char(sessionId), ...
+    'Relation', 'intervalDuring', o{:});
+anchorId = anchorBody.base.id;
 
-% the bath mixture -> dose formulation chemicals ({substance, amount}).
-% `substance` is a non-empty ontology_term, so skip parseMixture's blank
-% fallback entry (both node and name empty) rather than emit an invalid chemical.
-chemicals = struct('substance', {}, 'amount', {});
+bodies = {anchorBody};
+ids = {};
+entries = {};
+props = struct();
 for i = 1:numel(mixture)
     chem = mixture(i).chemical;
     if isempty(chem.node) && isempty(chem.name)
         continue;
     end
-    chemicals(end+1) = struct('substance', chem, ...
-        'amount', mixture(i).amount); %#ok<AGROW>
+    a = mixture(i).amount;
+    unitTerm = did2.convert.registeredTerm(a.source_unit.node, a.source_unit.name);
+    % A WHOLE-MIXTURE PROPERTY is not an ingredient: the pH row and the
+    % osmolarity row land on the formulation's own `ph` / `osmolarity`, which
+    % #88 declares for exactly these (the source writes them as table rows).
+    if strcmpi(chem.name, 'pH') && isfinite(a.source_value)
+        props.ph = struct('ph', a.source_value, 'source_value', a.source_value, ...
+            'source_unit', unitTerm, 'approximate', false);
+        continue;
+    end
+    if any(strcmpi(chem.name, {'osm', 'osmolarity'})) && isfinite(a.source_value)
+        props.osmolarity = struct('source_value', a.source_value, ...
+            'source_unit', unitTerm, 'approximate', false);
+        continue;
+    end
+    sub = did2.convert.registeredTerm(chem.node, chem.name);
+    c = did2.build.document('chemical', struct('value', struct('substance', sub)), o{:});
+    bodies{end+1} = c; %#ok<AGROW>
+    ids{end+1} = c.base.id; %#ok<AGROW>
+    e = struct();
+    if isfinite(a.source_value)
+        conc = struct('source_value', a.source_value, 'approximate', false);
+        if ~isempty(a.source_unit.node) || ~isempty(a.source_unit.name)
+            conc.source_unit = unitTerm;
+        end
+        if strcmpi(a.source_unit.name, 'Molar')
+            conc.molar = a.source_value;      % the canonical slot, unit computable
+        end
+        e.concentration = conc;
+    end
+    entries{end+1} = e; %#ok<AGROW>
 end
-formulation = struct();
-formulation.chemicals = chemicals;
-
-dose = struct();
-dose.document_class = struct('class_name', 'dose_manipulation', 'class_version', '1.0.0', ...
-    'superclasses', [ ...
-        struct('class_name', 'subject_manipulation', 'class_version', '1.0.0'), ...
-        struct('class_name', 'dose',                 'class_version', '1.0.0')], ...
-    'schema_version', 'V_eta');
-dose.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-dose.base = struct('id', bathId, 'session_id', sessionId, ...
-    'name', 'migrated_bath', 'creation_timestamp', datestamp);
-dose.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
-dose.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
-dose.subject_manipulation = struct('notes', '');
-dose.dose = struct('value', struct('formulation', formulation, ...
-    'volume', struct('source_unit', '', 'source_value', 0.0, 'approximate', false), ...
-    'route', struct('node', '', 'name', '')));
-
-bodies = {anchorBody, dose};
-
-% carry the bath location (otherwise dropped): a merely-located site is a
-% term_observation about the subject (D3), the same disposition treatment /
-% virus_injection give a site. Emitted only when the source names a location.
+fv = props;
+fv.ingredients = entries;
+f = did2.build.document('formulation', struct('value', fv), ...
+    o{:}, 'Edges', struct('ingredient_id', {ids}));
+bodies{end+1} = f;
+% `formulation_manipulation` is no class: did2.build reads it as the direction
+% `manipulation` with the value kind `formulation`. Its own `value` stays empty;
+% the formulation document holds it.
+bath = did2.build.statement('manipulation', char(subjectId), variable, [], ...
+    'TimeReferenceIds', {anchorId}, 'ValueId', f.base.id, ...
+    'Id', char(bathId), o{:}, 'ValueKind', 'formulation');
+bodies = [{bath}, bodies];
 loc = locationTerm(v1Body);
-if ~isempty(loc.node) || ~isempty(loc.name)
+if (~isempty(loc.node) || ~isempty(loc.name)) && ~isGenericBath(loc)
     bodies{end+1} = makeLocationObs(v1Body, subjectId, anchorId, loc);
 end
 end
 
+function tf = isGenericBath(loc)
+%ISGENERICBATH The whole-prep / whole-slice bath location: a name 'bath', the
+%   node NCIm:C0179246 compared as a CURIE key, or a registry term labelled
+%   'bath' -- +migrators_j/private/jTreatmentRoute's test, restated here because
+%   a private function is not callable from this package.
+node = strtrim(char(loc.node));
+name = strtrim(char(loc.name));
+tf = strcmpi(name, 'bath');
+if ~tf && ~isempty(node)
+    tf = strcmpi(curieKeyOf(node), curieKeyOf('NCIm:C0179246'));
+end
+if ~tf
+    r = did2.convert.registeredTerm(node, name);
+    tf = strcmpi(strtrim(r.name), 'bath');
+end
+end
+
+function k = curieKeyOf(node)
+try
+    k = char(did2.schema.curieKey(node));
+catch
+    k = lower(node);
+end
+end
+
 function obs = makeLocationObs(v1Body, subjectId, anchorId, loc)
-%MAKELOCATIONOBS A term_observation carrying the bath's location term, about the
-%   bathed subject, on the same session anchor as the dose.
-sessionId = baseField(v1Body, 'session_id', '');
 datestamp = baseField(v1Body, 'datestamp', '');
-obs = struct();
-obs.document_class = struct('class_name', 'term_observation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'subject_observation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_bath_location', 'creation_timestamp', datestamp);
-obs.subject_statement = struct('variable', struct('node', '', 'name', 'anatomical location'), ...
-    'storage_mode', 'inline');
-obs.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
-obs.subject_observation = struct();
-obs.term = struct('value', loc);   % value rides the `term` composite block
+if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+obs = did2.build.statement('observation', char(subjectId), ...
+    did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), ...
+    did2.convert.registeredTerm(loc.node, loc.name), ...
+    'TimeReferenceIds', {anchorId}, ...
+    'SessionId', char(baseField(v1Body, 'session_id', '')), ...
+    'CreationTimestamp', char(datestamp), 'Validate', false, 'ValueKind', 'term');
 end
 
 function variable = primaryChemical(mixture)
@@ -530,34 +543,43 @@ end
 end
 
 function mixture = parseMixture(body)
+%PARSEMIXTURE The bath's mixture_table rows, as NDI's writer serialises them:
+%   a CSV with a HEADER row (ontologyName,name,value,ontologyUnit,unitName) and
+%   double-quoted names that may hold commas ("sodium phosphate, monobasic,
+%   anhydrous"). Each row is {chemical {node,name}, amount {source_value,
+%   source_unit {node,name}}}; the header is not a row. (The pre-#88 reader
+%   split on every comma and kept the header, which produced a chemical whose
+%   node was the literal text "ontologyName".)
 mixture = struct('chemical', {}, 'amount', {});
-if isfield(body, 'stimulus_bath') && isstruct(body.stimulus_bath) ...
-        && isfield(body.stimulus_bath, 'mixture_table')
-    raw = body.stimulus_bath.mixture_table;
-    if ischar(raw) || (isstring(raw) && isscalar(raw))
-        lines = strsplit(char(raw), newline);
-        for i = 1:numel(lines)
-            cols = strsplit(strtrim(lines{i}), ',', 'CollapseDelimiters', false);
-            if numel(cols) < 5 || isempty(strtrim(cols{1}))
-                continue;
-            end
-            chemical = struct('node', strtrim(cols{1}), 'name', strtrim(cols{2}));
-            amount = struct('source_value', str2double(cols{3}), ...
-                'source_unit', strtrim(cols{5}), 'approximate', false);
-            mixture(end+1) = struct('chemical', chemical, 'amount', amount); %#ok<AGROW>
-        end
-    end
+if ~(isfield(body, 'stimulus_bath') && isstruct(body.stimulus_bath) ...
+        && isfield(body.stimulus_bath, 'mixture_table'))
+    return;
 end
-if isempty(mixture)
-    mixture(1) = struct( ...
-        'chemical', struct('node', '', 'name', ''), ...
-        'amount', struct('source_value', 0.0, 'source_unit', '', ...
-            'approximate', false));
+raw = body.stimulus_bath.mixture_table;
+if ~(ischar(raw) || (isstring(raw) && isscalar(raw)))
+    return;
+end
+lines = regexp(char(raw), '\r?\n', 'split');
+for i = 1:numel(lines)
+    line = strtrim(lines{i});
+    if isempty(line); continue; end
+    cols = regexp(line, '("([^"]|"")*"|[^,]*)(,|$)', 'tokens');
+    cols = cellfun(@(c) unquote(c{1}), cols, 'UniformOutput', false);
+    if numel(cols) < 5 || isempty(cols{1}); continue; end
+    if strcmpi(cols{1}, 'ontologyName'); continue; end      % the header row
+    chemical = struct('node', cols{1}, 'name', cols{2});
+    amount = struct('source_value', str2double(cols{3}), ...
+        'source_unit', struct('node', cols{4}, 'name', cols{5}), 'approximate', false);
+    mixture(end+1) = struct('chemical', chemical, 'amount', amount); %#ok<AGROW>
 end
 end
 
-% ===================== small helpers =======================================
-
+function t = unquote(t)
+t = strtrim(t);
+if numel(t) >= 2 && t(1) == '"' && t(end) == '"'
+    t = strrep(t(2:end-1), '""', '"');
+end
+end
 function tf = isDeferredBath(qEntry)
 tf = false;
 if isfield(qEntry, 'class_name') && strcmp(qEntry.class_name, 'stimulus_bath')

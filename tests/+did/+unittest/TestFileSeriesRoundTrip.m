@@ -763,6 +763,44 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
                 'the series has three slots');
         end
 
+        function testAVEtaSeriesResolvesMemberZeroToSlotZero(testCase)
+            % DID-schema #73 item 17: on a V_eta document member 0 is slot 0.
+            % Ingested and read back through the database, each member by its
+            % zero-based name, bytes compared.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+            root = fullfile(pwd, 'store');
+            contents = {uint8(1:10), uint8(11:20)};
+            locs = cell(1, 2);
+            for i = 1:2
+                locs{i} = testCase.writeMember(root, sprintf('vmember%d.bin', i), contents{i});
+            end
+            props = did.document('demoSeries', 'demoSeries.value', 1).document_properties;
+            props.document_class.schema_version = 'V_eta';
+            doc = did.document(props);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+            db.add_docs(doc, 'Validate', false);
+
+            testCase.verifyEqual(testCase.readMember(db, doc.id(), 'chunkdata.bin_0'), ...
+                contents{1}, 'member 0 is the first member');
+            testCase.verifyEqual(testCase.readMember(db, doc.id(), 'chunkdata.bin_1'), ...
+                contents{2});
+            testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', 0));
+            testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', 1));
+            testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', 2));
+            indices = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.verifyEqual(indices, [0 1]);
+        end
+
+        function testAV1SeriesStillResolvesNameOneToSlotZero(testCase)
+            [db, doc, ~, contents] = testCase.ingestedSeries();
+            testCase.verifyEqual(testCase.readMember(db, doc.id(), 'chunkdata.bin_1'), ...
+                contents{1}, 'NAME_1 of a v1 document is still the first member');
+            testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', 0), ...
+                'a v1 series has no member 0');
+            testCase.verifyEqual(db.seriesMembers(doc, 'chunkdata.bin'), [1 2 3]);
+        end
+
         function testSeriesHasFollowsTheGapsOfASparseSeries(testCase)
             % The case a NAME_# entry cannot express, asked directly.
             [db, doc] = testCase.ingestedSeries([2 5 6]);

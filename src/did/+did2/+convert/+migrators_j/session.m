@@ -1,6 +1,7 @@
 function v2Body = session(preBody)
 %SESSION Brainstorm-J migrator: `reference` -> `local_identifier`, and drop the
-%   three V_zeta inventions. 1 -> 1, base.id PRESERVED.
+%   three V_zeta inventions. 1 -> 1, base.id PRESERVED, except where
+%   `session_id` is an edge: there base.id becomes the session id.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -75,32 +76,37 @@ function v2Body = session(preBody)
 %   STATUS: NOT VERIFIED BY EXECUTION. There is no MATLAB in the authoring
 %   environment, so not one line of this file has been run.
 
+%   did-schema #88: `session` is an `entity` of type session
+%   (V_eta_entity_composition_plan.md sec. 4), and its base.id IS the session
+%   id (V_eta_relation_inheritance_plan.md item 4, signed 2026-10-21: "a
+%   migrated session entity takes the v1 session id as its base.id"), so every
+%   migrated document's `session_id` edge resolves to it. `reference` is its
+%   `local_identifier` (required for type session). The three V_zeta inventions
+%   have nowhere to go and are dropped, as before. A body with no session id
+%   keeps its own id.
+
 arguments
     preBody (1,1) struct
 end
 
-v2Body = preBody;
-
-if ~isfield(v2Body, 'session') || ~isstruct(v2Body.session) ...
-        || ~isscalar(v2Body.session)
-    return;     % nothing to rewrite; the body passes through as it arrived
+id = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    id = char(preBody.base.id);
 end
-
-blk = v2Body.session;
-
-% The rename. `reference` is copied then removed, so a body that somehow
-% carries BOTH keeps the v1 one -- the source is the authority.
-if isfield(blk, 'reference')
-    blk.local_identifier = blk.reference;
-    blk = rmfield(blk, 'reference');
+sid = jSid(preBody);
+if ~isempty(sid)
+    id = sid;
 end
-
-% The three inventions.
-for f = {'type', 'date', 'purpose'}
-    if isfield(blk, f{1})
-        blk = rmfield(blk, f{1});
+li = '';
+if isfield(preBody, 'session') && isstruct(preBody.session) && isscalar(preBody.session)
+    for f = {'reference', 'local_identifier'}
+        if isfield(preBody.session, f{1}) && ~isempty(preBody.session.(f{1}))
+            li = char(preBody.session.(f{1}));
+            break;
+        end
     end
 end
-
-v2Body.session = blk;
+% The value is carried, never invented: an empty reference leaves
+% local_identifier out, and validation quarantines the session (it is required).
+v2Body = jEntity(preBody, 'session', struct('local_identifier', li), 'Id', id);
 end

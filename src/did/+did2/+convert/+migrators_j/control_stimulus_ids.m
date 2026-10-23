@@ -1,8 +1,11 @@
 function bodies = control_stimulus_ids(preBody)
 %CONTROL_STIMULUS_IDS Brainstorm-J migrator: did_v1 control_stimulus_ids ->
-%   `control_designation` (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus]
-%   2026-08-08). A DERIVED annotation of WHICH presented trials are the control
-%   reference, computed by the tuning_response app. It is NOT baked into the
+%   NO V2 DOCUMENT (passed through for NDI's second pass, which folds it into
+%   the presentation's `control condition` covariate; [control as covariate],
+%   Jess Haley 2026-10-22). HISTORY: `control_designation`
+%   (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08). A
+%   DERIVED annotation of WHICH presented trials are the control reference,
+%   computed by the tuning_response app. It is NOT baked into the
 %   immutable stimulus body: it REFERENCES the presentation (the timed_sequence
 %   body-of-record, id-preserved through the second-pass decompose, so the edge
 %   resolves either way) and carries the derivation method; marked derived_from
@@ -97,42 +100,19 @@ blk = struct();
 if isfield(preBody, 'control_stimulus_ids') && isstruct(preBody.control_stimulus_ids)
     blk = preBody.control_stimulus_ids;
 end
-presId = depValue(preBody, 'stimulus_presentation_id');
-
-% ---------------------------------------------------------------------------
-% THE GUARD (see above): no presentation => the indices index nothing.
-% ---------------------------------------------------------------------------
-if isempty(presId)
-    bodies = {preBody};
-    return;
-end
-
-v2Body = struct();
-v2Body.document_class = struct('class_name', 'control_designation', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-
-% The presentation body-of-record (the v1 stimulus_presentation id -> the
-% second-pass timed_sequence, id-preserved) + provenance (T10: this designation
-% was DERIVED from it). Both edges are emitted only with a real value, never as
-% an empty placeholder -- an edge present with an empty value is skipped by
-% +did2/+validate/references.m:90 and reads as a fact that was recorded.
-deps = struct('name', {}, 'value', {});
-deps(end+1) = struct('name', 'timed_sequence_id', 'value', presId);
-deps(end+1) = struct('name', 'derived_from_1',    'value', presId);
-v2Body.depends_on = deps;
-
-v2Body.base = preBody.base;   % id preserved -> inbound references resolve
-
-cd_ = struct('control_stimulus', [], 'method', struct());
-if isfield(blk, 'control_stimulus_ids');       cd_.control_stimulus = blk.control_stimulus_ids; end
-if isfield(blk, 'control_stimulus_id_method') && isstruct(blk.control_stimulus_id_method)
-    cd_.method = blk.control_stimulus_id_method;
-end
-v2Body.control_designation = cd_;
-
-bodies = {v2Body};
+% Decided by Jess Haley, 2026-10-22 [control as covariate] (did-schema
+% V_eta_stimulus_response_model_plan.md; supersedes item 67's
+% `value.control_item`, and [control record is a calculation]): a v1
+% control_stimulus_ids document becomes NO V2 DOCUMENT. Its content is the
+% `control condition` covariate (XCO:0000099, `logical`, true where the
+% presentation was a control; an all-NaN record gives all false) along the
+% presentation dimension of the item value the presentation becomes, and that
+% fold is NDI's second pass, which has the presentation in hand. Pass 1 has
+% no target, so the document PASSES THROUGH under its v1 tombstone
+% (stable/control_stimulus_ids) for that pass to consume and remove -- as
+% `stimulus_presentation` does. The responses that named it no longer do:
+% stimulus_response_scalar puts only the presentation in `input_id`.
+bodies = {preBody};
 end
 
 % ===================== small helpers =======================================

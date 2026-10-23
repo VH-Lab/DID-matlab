@@ -21,7 +21,7 @@ end
 
 sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
 if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
+    sessionId = did2.schema.cache.sessionIdOf(preBody);
     if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
         ds = preBody.base.datestamp;
     end

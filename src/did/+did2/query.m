@@ -24,7 +24,39 @@ classdef query
     %   Independent vs. correlated array predicates: per the model spec,
     %   two `[*]` predicates over the same array combined with `and()` do
     %   not necessarily refer to the same element. Each search structure
-    %   resolves its `[*]` paths independently.
+    %   resolves its `[*]` paths independently. So on an entry list
+    %
+    %       and(did2.query('s.parameters[*].variable.name', 'exact_string', 'orientation'), ...
+    %           did2.query('s.parameters[*].quantity.value', 'exact_number', 45))
+    %
+    %   matches a document whose 45 belongs to a DIFFERENT entry than its
+    %   orientation. To ask about ONE element, use `hasanyelement`:
+    %
+    %   hasanyelement (correlated, "same element"): field names an array
+    %   (of structures, usually); param1 is a SUB-QUERY (a did2.query, or a
+    %   search-structure array) whose field paths are read RELATIVE TO ONE
+    %   ELEMENT. The document matches when at least one element satisfies
+    %   the WHOLE sub-query:
+    %
+    %       sub = and(did2.query('variable.name', 'exact_string', 'orientation'), ...
+    %                 did2.query('quantity.value', 'exact_number', 45));
+    %       q = did2.query('s.parameters', 'hasanyelement', sub);
+    %
+    %   Any operator may appear in the sub-query (exact_string,
+    %   exact_number, lessthan..., contains_string, regexp, hasfield, `~`
+    %   negation, and/or, a nested hasanyelement over an array inside the
+    %   element); a sub-query field of '' is the element itself, so
+    %   hasanyelement also works over a flat list (e.g. of numbers).
+    %   `~hasanyelement` matches when NO element satisfies the sub-query,
+    %   which includes a missing or empty array. The elements are those of
+    %   the value at field: every entry of a structure array, cell array or
+    %   numeric/logical vector; a single structure or a text value is ONE
+    %   element (JSON stores a one-entry array of structures as an object);
+    %   a missing field or [] has none. field may itself carry `[*]`
+    %   segments (each array they reach is searched) and a trailing `[*]`
+    %   is ignored. isa and depends_on are document-level and are not
+    %   meaningful inside a sub-query. did2.database.sqlitedb compiles it to
+    %   json_each over the array (see did2.database.compileQuery).
     %
     %   did2.query Properties:
     %       searchstructure - struct array of the four-tuple form above.
@@ -35,6 +67,7 @@ classdef query
     %       or       - disjunction.
     %       matches  - logical scalar; does this query match one document?
     %       filter   - subset (or logical mask) over a list of documents.
+    %       hasNested, resolveNested - depends_on whose target is a query
     %
     %   did2.query Static Methods:
     %       all    - match every document (`isa base`).
@@ -48,6 +81,14 @@ classdef query
     %       q = did2.query('base.name', 'regexp', '^subject_');
     %       q = did2.query('', 'isa', 'demoA');
     %       q = did2.query('axes[*].unit', 'exact_string', 'micrometer');
+    %       q = did2.query('base.name', 'wildcard', 'subject_*');   % any case
+    %       q = did2.query('', 'depends_on', 'subject_id', {id1, id2});  % any of
+    %       q = did2.query('', 'depends_on', 'ingredient_id', ...       % its target
+    %               did2.query('chemical.value.substance.name', ...      % matches a
+    %                          'exact_string', 'peptone'));              % query
+    %       q = did2.query('s.parameters', 'hasanyelement', ...      % ONE entry
+    %               and(did2.query('variable.name', 'exact_string', 'orientation'), ...
+    %                   did2.query('quantity.value', 'exact_number', 45)));
     %       q = and(q1, q2);  q = or(q1, q2);
     %       tf = q.matches(doc);
     %       hits = q.filter(docList);
@@ -142,6 +183,39 @@ classdef query
             end
             out = docs(mask);
         end
+
+        function tf = hasNested(obj)
+            % hasNested - does any depends_on in this query target a query?
+            %
+            %   A `depends_on` term's param2 may be a did2.query: the edge
+            %   must point at a document that matches it,
+            %
+            %       q = did2.query('', 'depends_on', 'ingredient_id', ...
+            %               did2.query('chemical.value.substance.name', ...
+            %                          'exact_string', 'peptone'));
+            %
+            %   (any formulation with peptone as an ingredient). Such a
+            %   query needs a database to evaluate; see resolveNested.
+            tf = did2.query.anyNested(obj.searchstructure);
+        end
+
+        function q = resolveNested(obj, idsOf)
+            % resolveNested - replace each nested depends_on target by its ids
+            %
+            %   Q2 = q.resolveNested(IDSOF) returns the query with every
+            %   depends_on whose param2 is a did2.query replaced by the
+            %   cellstr IDSOF(thatQuery) -- the ids of the documents it
+            %   matches -- so Q2 can be evaluated on one document (an edge
+            %   to any of those ids matches). IDSOF is a function handle,
+            %   typically @(inner) db.searchIds(inner), which resolves
+            %   deeper nesting itself. Inside `or` branches too.
+            arguments
+                obj
+                idsOf (1,1) function_handle
+            end
+            q = obj;
+            q.searchstructure = did2.query.resolveArray(obj.searchstructure, idsOf);
+        end
     end
 
     methods (Static)
@@ -163,11 +237,49 @@ classdef query
                 param1 = ''
                 param2 = ''
             end
+            if any(strcmp(operation, {'hasanyelement', '~hasanyelement'}))
+                did2.query.subquerySearchstruct(param1);   % errors if not a sub-query
+            end
             ss = struct( ...
                 'field', field, ...
                 'operation', operation, ...
                 'param1', {param1}, ...
                 'param2', {param2});
+        end
+
+        function re = wildcardToRegexp(pattern)
+            % wildcardToRegexp - a `wildcard` pattern as an anchored regexp
+            %
+            %   '*' matches any run of characters (none included); '\*' is a
+            %   literal star; everything else is literal.
+            arguments
+                pattern {mustBeText}
+            end
+
+            parts = regexp(char(pattern), '(?<!\\)\*', 'split');
+            parts = cellfun(@(x) regexptranslate('escape', strrep(x, '\*', '*')), parts, ...
+                'UniformOutput', false);
+            re = ['^' strjoin(parts, '.*') '$'];
+        end
+
+        function like = wildcardToLike(pattern)
+            % wildcardToLike - a `wildcard` pattern as a SQL LIKE pattern
+            %
+            %   For `LIKE ? ESCAPE '\'`: '*' becomes '%', a literal '%', '_'
+            %   or '\' is escaped, '\*' becomes a literal star.
+            arguments
+                pattern % untyped: compileQuery passes a wildcard term's target unchecked; char() below
+            end
+
+            parts = regexp(char(pattern), '(?<!\\)\*', 'split');
+            for k = 1:numel(parts)
+                x = strrep(parts{k}, '\*', char(0));
+                x = strrep(x, '\', '\\');
+                x = strrep(x, '%', '\%');
+                x = strrep(x, '_', '\_');
+                parts{k} = strrep(x, char(0), '*');
+            end
+            like = strjoin(parts, '%');
         end
 
         function tf = evaluate(ss, docStruct)
@@ -216,6 +328,21 @@ classdef query
             end
         end
 
+        function ss = subquerySearchstruct(sub)
+            % The search-structure array of a hasanyelement sub-query.
+            if isa(sub, 'did2.query') && isscalar(sub)
+                ss = sub.searchstructure;
+            elseif isstruct(sub) && (isempty(sub) || isequal(sort(fieldnames(sub)), ...
+                    sort({'field'; 'operation'; 'param1'; 'param2'})))
+                ss = sub;
+            else
+                error('did2:query:badSubquery', ...
+                    ['hasanyelement takes a sub-query as param1: a did2.query ' ...
+                     '(or a search-structure array) whose paths are read ' ...
+                     'relative to one element of the array.']);
+            end
+        end
+
         function tf = evaluateAll(searchArray, doc)
             % AND across the searchstructure array. An empty array matches.
             tf = true;
@@ -255,11 +382,13 @@ classdef query
                 case 'hasanysubfield_exact_string'
                     tf = did2.query.opHasAnySubfieldExact(doc, ss.field, ...
                         ss.param1, ss.param2);
+                case 'hasanyelement'
+                    tf = did2.query.opHasAnyElement(doc, ss.field, ss.param1);
                 case 'hasfield'
                     tf = ~isempty(did2.query.walkPath(doc, ss.field));
                 case 'hasmember'
                     tf = did2.query.opHasMember(doc, ss.field, ss.param1);
-                case {'exact_string', 'exact_string_anycase', ...
+                case {'exact_string', 'exact_string_anycase', 'wildcard', ...
                       'contains_string', 'regexp', ...
                       'exact_number', 'lessthan', 'lessthaneq', ...
                       'greaterthan', 'greaterthaneq'}
@@ -270,6 +399,41 @@ classdef query
             end
             if isNeg
                 tf = ~tf;
+            end
+        end
+
+        function tf = anyNested(ss)
+            arguments
+                ss struct
+            end
+
+            tf = false;
+            for k = 1:numel(ss)
+                op = char(ss(k).operation);
+                if strcmp(op, 'or')
+                    tf = did2.query.anyNested(ss(k).param1) || did2.query.anyNested(ss(k).param2);
+                elseif any(strcmp(op, {'depends_on', '~depends_on'}))
+                    tf = isa(ss(k).param2, 'did2.query');
+                end
+                if tf, return; end
+            end
+        end
+
+        function ss = resolveArray(ss, idsOf)
+            arguments
+                ss struct
+                idsOf (1,1) function_handle
+            end
+
+            for k = 1:numel(ss)
+                op = char(ss(k).operation);
+                if strcmp(op, 'or')
+                    ss(k).param1 = did2.query.resolveArray(ss(k).param1, idsOf);
+                    ss(k).param2 = did2.query.resolveArray(ss(k).param2, idsOf);
+                elseif any(strcmp(op, {'depends_on', '~depends_on'})) && isa(ss(k).param2, 'did2.query')
+                    ids = idsOf(ss(k).param2);
+                    ss(k).param2 = reshape(cellstr(ids), 1, []);
+                end
             end
         end
 
@@ -314,7 +478,19 @@ classdef query
             end
             entries = doc.depends_on;
             name = char(name);
-            value = char(value);
+            if isa(value, 'did2.query')
+                error('did2:query:nestedNeedsDatabase', ...
+                    ['A depends_on whose target is itself a query cannot be ' ...
+                     'evaluated on one document: what the target matches is ' ...
+                     'only known to a database. Search a database ' ...
+                     '(did2.database.sqlitedb resolves it), or resolve it ' ...
+                     'first with q.resolveNested(@(inner) <ids matching inner>).']);
+            end
+            if iscell(value) || (isstring(value) && ~isscalar(value))
+                value = cellstr(value);     % an id list: any one of them
+            else
+                value = {char(value)};
+            end
             for k = 1:numel(entries)
                 if isstruct(entries)
                     e = entries(k);
@@ -335,14 +511,16 @@ classdef query
                 % evaluator works on bodies at any stage of the
                 % migration pipeline.
                 if isfield(e, 'document_id')
-                    gotValue = did2.query.charEq(e.document_id, value);
+                    v = e.document_id;
                 elseif isfield(e, 'value')
-                    gotValue = did2.query.charEq(e.value, value);
+                    v = e.value;
                 elseif isfield(e, 'id')
-                    gotValue = did2.query.charEq(e.id, value);
+                    v = e.id;
                 else
-                    gotValue = false;
+                    v = [];
                 end
+                gotValue = (ischar(v) || (isstring(v) && isscalar(v))) ...
+                    && any(strcmp(char(v), value));
                 if gotName && gotValue
                     tf = true;
                     return;
@@ -442,6 +620,44 @@ classdef query
             end
         end
 
+        function tf = opHasAnyElement(doc, fieldPath, sub)
+            % Correlated "same element" check: some element of the array at
+            % fieldPath satisfies the WHOLE sub-query, its paths read
+            % relative to that element. See the class help for what counts
+            % as an element; did2.database.compileQuery counts the same way.
+            subSS = did2.query.subquerySearchstruct(sub);
+            fieldPath = char(fieldPath);
+            if endsWith(fieldPath, '[*]')
+                fieldPath = fieldPath(1:end-3);
+            end
+            containers = did2.query.walkPath(doc, fieldPath);
+            tf = false;
+            for c = 1:numel(containers)
+                elems = did2.query.elementsOf(containers{c});
+                for k = 1:numel(elems)
+                    if did2.query.evaluateAll(subSS, elems{k})
+                        tf = true;
+                        return;
+                    end
+                end
+            end
+        end
+
+        function elems = elementsOf(v)
+            % The elements hasanyelement searches in the value V.
+            if isstruct(v) || isnumeric(v) || islogical(v)
+                elems = num2cell(v(:)');
+            elseif iscell(v)
+                elems = reshape(v, 1, []);
+            elseif ischar(v) || (isstring(v) && isscalar(v))
+                elems = {v};
+            elseif isstring(v)
+                elems = cellstr(v(:)');
+            else
+                elems = {v};
+            end
+        end
+
         function tf = opScalar(op, doc, fieldPath, param1)
             values = did2.query.walkPath(doc, fieldPath);
             tf = false;
@@ -466,6 +682,13 @@ classdef query
                     else
                         tf = false;
                     end
+                case 'wildcard'
+                    % '*' any run of characters, '\*' a literal star; the
+                    % whole value must match, ignoring case (as SQL LIKE)
+                    tf = (ischar(value) || (isstring(value) && isscalar(value))) ...
+                        && (ischar(target) || isstring(target)) ...
+                        && ~isempty(regexp(char(value), ...
+                            did2.query.wildcardToRegexp(target), 'once', 'ignorecase'));
                 case 'regexp'
                     if (ischar(value) || isstring(value)) ...
                             && (ischar(target) || isstring(target))
@@ -511,6 +734,25 @@ classdef query
             %   unresolvable.
             if isempty(fieldPath)
                 values = {s};
+                return;
+            end
+            if strcmp(fieldPath, 'base.session_id') ...
+                    && ~(isfield(s, 'base') && isstruct(s.base) ...
+                         && isscalar(s.base) && isfield(s.base, 'session_id'))
+                % THE ONE ALIAS. did-schema V_eta_relation_inheritance_plan.md
+                % (2026-10-20) moved `base.session_id` onto a required
+                % `session_id` depends_on edge; the edge's target, the
+                % session entity, has the session id as its base.id. A
+                % document without the field answers this path from the
+                % edge, so a query written against the field (NDI's
+                % `ndi.query('base.session_id', ...)`) finds both shapes.
+                % did2.database.compileQuery answers it the same way in SQL.
+                sid = did2.schema.cache.sessionIdOf(s);
+                if isempty(sid)
+                    values = {};
+                else
+                    values = {sid};
+                end
                 return;
             end
             parts = strsplit(fieldPath, '.');
@@ -571,8 +813,8 @@ classdef query
             allowed = {'or', 'isa', 'depends_on', ...
                 'hasfield', 'hasmember', ...
                 'hasanysubfield_contains_string', ...
-                'hasanysubfield_exact_string', ...
-                'exact_string', 'exact_string_anycase', 'contains_string', ...
+                'hasanysubfield_exact_string', 'hasanyelement', ...
+                'exact_string', 'exact_string_anycase', 'contains_string', 'wildcard', ...
                 'regexp', 'exact_number', ...
                 'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'};
             negAllowed = cellfun(@(x) ['~', x], allowed, 'UniformOutput', false);

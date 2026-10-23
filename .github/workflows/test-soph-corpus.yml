@@ -48,14 +48,15 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # false: a push queues behind a run in progress instead of cancelling it.
+  cancel-in-progress: false
 
 jobs:
   soph_corpus:
     name: Soph (Griswold) corpus discovery
     runs-on: ubuntu-latest
     env:
-      DID_SCHEMA_REF: ${{ inputs.did_schema_ref || 'v_eta-pre73' }}
+      DID_SCHEMA_REF: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
       DID_RUN_SOPH_TEST: '1'
     steps:
       - name: Check out repository

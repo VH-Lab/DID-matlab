@@ -7,22 +7,30 @@ function v2Body = subject(preBody)
 %   runs after this (exactly as the mechanical path did before), so the only delta
 %   is the guaranteed handle.
 
+%   did-schema #88 (V_eta_entity_composition_plan.md sec. 4, signed 2026-10-08):
+%   `subject` is gone; a v1 subject becomes one `entity` with its id preserved,
+%   `local_identifier` and `description` carried, and `type` 'organism' -- the
+%   v1 subject class names the animal an experiment is about. That default is
+%   PROPOSED, not signed: a v1 subject that is a culture or a plate takes it too
+%   until a source field says otherwise (the Haley lawn/plate subjects are typed
+%   by resolveLawnPlateSubjects, not here).
+
 arguments
     preBody (1,1) struct
 end
 
-v2Body = preBody;
+blk = struct();
+if isfield(preBody, 'subject') && isstruct(preBody.subject) && isscalar(preBody.subject)
+    blk = preBody.subject;
+end
 li = '';
-if isfield(v2Body, 'subject') && isstruct(v2Body.subject) ...
-        && isfield(v2Body.subject, 'local_identifier')
-    li = char(v2Body.subject.local_identifier);
+if isfield(blk, 'local_identifier')
+    li = char(blk.local_identifier);
 end
-li = jEnsureLocalId(li, v2Body);
-if ~isfield(v2Body, 'subject') || ~isstruct(v2Body.subject)
-    v2Body.subject = struct();
+li = jEnsureLocalId(li, preBody);
+f = struct('local_identifier', li);
+if isfield(blk, 'description') && ~isempty(blk.description)
+    f.description = char(blk.description);
 end
-v2Body.subject.local_identifier = li;
-if ~isfield(v2Body.subject, 'description')
-    v2Body.subject.description = '';
-end
+v2Body = jEntity(preBody, 'organism', f, 'Id', char(preBody.base.id));
 end

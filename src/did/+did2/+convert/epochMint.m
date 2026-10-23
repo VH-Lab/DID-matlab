@@ -22,14 +22,15 @@ function [result, report] = epochMint(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested,
-%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping
+%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping, pyraview
 %   BATCH-PASS-EMITS: epochid -> document: epoch
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
-%       at :727 only STAMPS the `epoch_id` edge onto the body and re-runs the
-%       ARMED per-class migrator. The `acquisition_metadata_file` document is
-%       minted there, in +migrators_j, and is credited to that migrator -- not
-%       to this pass. Declaring it here would count one emission twice.
+%       only STAMPS the `epoch_id` edge onto the body and re-runs the ARMED
+%       per-class migrator, which on did-schema #88 declines (its target
+%       `acquisition_metadata_file` is retired, #73 item 61). The opaque_body
+%       it becomes is minted by did2.convert.resolveEpochProbemap and declared
+%       there.
 %   BATCH-PASS-EMITS: stimulus_response_scalar -> nothing: SAME REASON, exactly.
 %       The second armed loop stamps the `epoch_id` edge and re-runs
 %       +migrators_j/stimulus_response_scalar; the
@@ -39,6 +40,10 @@ function [result, report] = epochMint(result, options)
 %       which is the failure the `-> nothing` form exists to prevent, and is
 %       why arming a migrator is NOT the same shape as `acquisition_epoch`
 %       below, where this pass mints the document itself.
+%   BATCH-PASS-EMITS: pyraview -> nothing: SAME REASON (did-schema #88). The
+%       fourth armed loop stamps `epoch_id` onto the passed-through pyraview
+%       and re-runs +migrators_j/pyraview, which mints the voltage observation,
+%       its bodies and the epoch-scoped relative_time_reference.
 %   BATCH-PASS-EMITS: syncrule_mapping -> nothing: SAME REASON, the third time.
 %       The third armed loop stamps `epoch_id_1` / `epoch_id_2` onto the
 %       passed-through mapping and re-runs +migrators_j/syncrule_mapping; the
@@ -384,6 +389,13 @@ arguments
     options.TargetVersion (1,:) char = 'V_eta'
     options.ArmingMigrators = []
 end
+
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
 armingMigrators = options.ArmingMigrators;
 if isempty(armingMigrators)
     armingMigrators = defaultArmingMigrators();
@@ -504,6 +516,17 @@ report = struct( ...
     ... % relative_reference bodies; `edges_stamped` counts the source documents
     ... % whose BOTH endpoints resolved, not the individual edges.
     'syncrule_seen',                       0, ...
+    'pyraview_seen',                       0, ...
+    'pyraview_refused_no_epoch_string',    0, ...
+    'pyraview_refused_no_epoch_document',  0, ...
+    'pyraview_refused_migrator_declined',  0, ...
+    'pyraview_refused_unsafe_output',      0, ...
+    'pyraview_folds_emitted',              0, ...
+    'pyraview_folds_withheld',             0, ...
+    'pyraview_deferred_seen',              0, ...
+    'pyraview_deferred_resolved',          0, ...
+    'pyraview_deferred_unresolved',        0, ...
+    'pyraview_deferred_epochs_minted',     0, ...
     'syncrule_already_folded',             0, ...
     'syncrule_edges_stamped',              0, ...
     'syncrule_folds_emitted',              0, ...
@@ -599,8 +622,8 @@ report.documents_inspected = n;
 % struct('f', {{c}}) double-brace, and that trap has already produced one
 % silently-empty reader in this package. `rows(k).epoch_string` is kept as the
 % FIRST string only, for the code paths that want a single answer.
-rows = struct('class_name', {}, 'epoch_string', {}, 'session_id', {}, ...
-              'doc_id', {}, 'datestamp', {});
+rows = struct('class_name', {}, 'value_kind', {}, 'epoch_string', {}, ...
+              'session_id', {}, 'doc_id', {}, 'datestamp', {});
 bodies = cell(1, n);
 epochValues  = cell(1, n);
 epochSources = cell(1, n);
@@ -619,15 +642,17 @@ for k = 1:n
         end
         first = '';
         if ~isempty(hits); first = hits(1).value; end
+        [~, valueKind] = did2.convert.statementKind(b);
         rows(k) = struct( ...
             'class_name',   classNameOf(b), ...
+            'value_kind',   valueKind, ...
             'epoch_string', first, ...
-            'session_id',   baseField(b, 'session_id'), ...
+            'session_id',   did2.schema.cache.sessionIdOf(b), ...
             'doc_id',       baseField(b, 'id'), ...
             'datestamp',    creationTime(b));
     catch
         report.documents_unreadable = report.documents_unreadable + 1;
-        rows(k) = struct('class_name', '', 'epoch_string', '', ...
+        rows(k) = struct('class_name', '', 'value_kind', '', 'epoch_string', '', ...
             'session_id', '', 'doc_id', '', 'datestamp', '');
     end
 end
@@ -697,8 +722,10 @@ indexRows = struct('session_id', {}, 'local_identifier', {}, ...
 for k = 1:n
     if ~strcmp(rows(k).class_name, 'epoch'); continue; end
     lid = '';
-    if isfield(bodies{k}, 'epoch') && isstruct(bodies{k}.epoch)
-        lid = charField(bodies{k}.epoch, {'local_identifier'});
+    for blk = {'entity', 'epoch'}   % #88: the entity block; `epoch` before
+        if isfield(bodies{k}, blk{1}) && isstruct(bodies{k}.(blk{1})) && isempty(lid)
+            lid = charField(bodies{k}.(blk{1}), {'local_identifier'});
+        end
     end
     if isempty(lid) || isempty(rows(k).doc_id); continue; end
     existingKey = pairKey(rows(k).session_id, lid);
@@ -877,7 +904,7 @@ extraBodies = {};    % bodies 2..N of every armed call, awaiting the re-fold
 extentRefIds = {};
 for m = 1:numel(minted)
     epochBody = minted{m};
-    key = pairKey(epochBody.base.session_id, epochBody.epoch.local_identifier);
+    key = pairKey(did2.schema.cache.sessionIdOf(epochBody), epochBody.entity.local_identifier);
     if ~isKey(clocksByKey, key); continue; end
     sessionDocumentId = depValueOf(epochBody, 'session_id');
     if isempty(sessionDocumentId)
@@ -889,7 +916,7 @@ for m = 1:numel(minted)
         continue;
     end
     [refs, stats] = epochExtentReferences(clocksByKey(key), ...
-        sessionDocumentId, epochBody.base.session_id, creationTime(epochBody));
+        sessionDocumentId, did2.schema.cache.sessionIdOf(epochBody), creationTime(epochBody));
     report.epoch_extent_skipped_no_time = ...
         report.epoch_extent_skipped_no_time + stats.no_time;
     report.epoch_extent_duplicate_clock = ...
@@ -898,8 +925,9 @@ for m = 1:numel(minted)
         report.epoch_extent_conflicting_clock + stats.conflicting;
     if isempty(refs); continue; end
     for r = 1:numel(refs)
-        epochBody = setDep(epochBody, sprintf('time_reference_%d', r), ...
-            refs{r}.base.id);
+        % did-schema #88: one `time_reference_id` edge declared `multiple`,
+        % repeated, not a numbered `time_reference_#` family
+        epochBody = addDep(epochBody, 'time_reference_id', refs{r}.base.id);
         % TWO LISTS, TWO JOBS. `extraBodies` gets the body VALIDATED (it joins
         % rebuildIn); `extentRefIds` gets it EMITTED (the append loop after the
         % mint). Using only the first is what dropped them in 68a1900.
@@ -962,6 +990,26 @@ for k = 1:n
     % The parked string leaves in the same step the edge arrives. Leaving both
     % would store one fact twice with nothing saying which is authoritative --
     % the defect open item #69 exists for.
+    if isfield(b, 'method') && isstruct(b.method) && isscalar(b.method) ...
+            && isfield(b.method, 'parameters') ...
+            && (isstruct(b.method.parameters) || iscell(b.method.parameters))
+        % #88: the parked string is the 'epochid' parameter entry; the edge
+        % now says it, so the entry goes. The list is a struct array when
+        % built and may be a cell of structs once it has been through a
+        % document round trip (ragged entries), so both are read.
+        ps = b.method.parameters;
+        keepP = true(1, numel(ps));
+        for ii = 1:numel(ps)
+            if iscell(ps); e = ps{ii}; else; e = ps(ii); end
+            keepP(ii) = ~(isstruct(e) && isfield(e, 'variable') && isstruct(e.variable) ...
+                && isfield(e.variable, 'name') ...
+                && strcmp(char(e.variable.name), 'epochid'));
+        end
+        b.method.parameters = ps(keepP);
+        if isempty(b.method.parameters)
+            b.method = rmfield(b.method, 'parameters');
+        end
+    end
     if isfield(b, 'method_parameters') && isstruct(b.method_parameters) ...
             && isfield(b.method_parameters, 'other') ...
             && isstruct(b.method_parameters.other) ...
@@ -1078,7 +1126,7 @@ for k = 1:n
     % split migrator -- and not as one body that happens to be wrapped.
     migrator = armingMigratorFor(armingMigrators, ...
         'daqmetadatareader_epochdata_ingested');
-    offered = normaliseArmingOutput(migrator(b));
+    offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1174,6 +1222,7 @@ for k = 1:n
     % which fields exist makes the read an ERROR rather than a false.
     armEntry.is_response_fold = false;
     armEntry.is_syncrule_fold = false;
+    armEntry.is_pyraview_fold = false;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
@@ -1216,7 +1265,7 @@ end
 % documents over 11 distinct values, and the mint already SEES that source
 % (did2.validate.epochStrings reads it), so the epochs those anchors need exist.
 for k = 1:n
-    if strcmp(rows(k).class_name, 'harmonic_component_calculation')
+    if isStatementRow(rows(k), 'calculation', 'harmonic_component')
         % A re-run -- find-or-create, as the metadata block above.
         report.response_scalar_already_folded = ...
             report.response_scalar_already_folded + 1;
@@ -1246,7 +1295,7 @@ for k = 1:n
     report.response_scalar_edges_stamped = ...
         report.response_scalar_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'stimulus_response_scalar');
-    offered = normaliseArmingOutput(migrator(b));
+    offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1260,7 +1309,7 @@ for k = 1:n
             report.arming_calls_returning_multiple + 1;
     end
     [safe, why, unchecked] = armingIsSafe(offered, ...
-        'harmonic_component_calculation', rows(k).doc_id, ...
+        {'calculation', 'harmonic_component'}, rows(k).doc_id, ...
         checkEdgeDeclaration, edgeIndex, edgeMemo);
     report.arming_edge_declaration_unchecked = ...
         report.arming_edge_declaration_unchecked + unchecked;
@@ -1319,6 +1368,7 @@ for k = 1:n
     armEntry.is_metadata_fold = false;
     armEntry.is_response_fold = true;
     armEntry.is_syncrule_fold = false;
+    armEntry.is_pyraview_fold = false;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
@@ -1383,7 +1433,7 @@ for k = 1:n
     b = setDep(b, 'epoch_id_2', epochIdByKey(keyB));
     report.syncrule_edges_stamped = report.syncrule_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'syncrule_mapping');
-    offered = normaliseArmingOutput(migrator(b));
+    offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1460,6 +1510,100 @@ for k = 1:n
     armEntry.is_metadata_fold = false;
     armEntry.is_response_fold = false;
     armEntry.is_syncrule_fold = true;
+    armEntry.is_pyraview_fold = false;
+    armings{end+1} = armEntry;                      %#ok<AGROW>
+    changedIdx(end+1)       = k;                    %#ok<AGROW>
+    changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
+    changedArming(end+1)    = numel(armings);       %#ok<AGROW>
+end
+
+% ---- the fourth armed fold: pyraview (did-schema #88) -----------------------
+% On #88 a pyraview's epoch-scoped time is a relative_time_reference onto the
+% EPOCH ENTITY this pass mints, so +migrators_j/pyraview passes a pyraview with
+% an epoch string through pass 1. Here the `epoch_id` edge is stamped and the
+% migrator re-run, exactly as for syncrule_mapping; the primary body is the
+% voltage observation, id preserved.
+for k = 1:n
+    if isStatementRow(rows(k), 'observation', 'voltage') ...
+            && isstruct(bodies{k}) && isfield(bodies{k}, 'pyraview')
+        continue;
+    end
+    if ~strcmp(rows(k).class_name, 'pyraview'); continue; end
+    report.pyraview_seen = report.pyraview_seen + 1;
+    es = valueForSource(epochValues{k}, epochSources{k}, 'epochid');
+    if isempty(es)
+        report.pyraview_refused_no_epoch_string = ...
+            report.pyraview_refused_no_epoch_string + 1;
+        continue;
+    end
+    key = pairKey(rows(k).session_id, es);
+    if ~isKey(epochIdByKey, key)
+        report.pyraview_refused_no_epoch_document = ...
+            report.pyraview_refused_no_epoch_document + 1;
+        continue;
+    end
+    b = setDep(bodies{k}, 'epoch_id', epochIdByKey(key));
+    migrator = armingMigratorFor(armingMigrators, 'pyraview');
+    offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    nOffered = numel(offered);
+    report.arming_calls          = report.arming_calls + 1;
+    report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
+    report.arming_extra_bodies_offered = ...
+        report.arming_extra_bodies_offered + max(0, nOffered - 1);
+    if nOffered > report.arming_max_bodies_per_call
+        report.arming_max_bodies_per_call = nOffered;
+    end
+    if nOffered > 1
+        report.arming_calls_returning_multiple = ...
+            report.arming_calls_returning_multiple + 1;
+    end
+    [safe, why, unchecked] = armingIsSafe(offered, ...
+        {'observation', 'voltage'}, rows(k).doc_id, ...
+        checkEdgeDeclaration, edgeIndex, edgeMemo);
+    report.arming_edge_declaration_unchecked = ...
+        report.arming_edge_declaration_unchecked + unchecked;
+    if ~safe
+        switch why
+            case 'declined'
+                report.pyraview_refused_migrator_declined = ...
+                    report.pyraview_refused_migrator_declined + 1;
+                report.arming_bodies_dropped_declined = ...
+                    report.arming_bodies_dropped_declined + nOffered;
+            case 'id_not_preserved'
+                report.pyraview_refused_unsafe_output = ...
+                    report.pyraview_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_id_not_preserved = ...
+                    report.arming_bodies_dropped_id_not_preserved + nOffered;
+            case 'undeclared_edge'
+                report.pyraview_refused_unsafe_output = ...
+                    report.pyraview_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_undeclared_edge = ...
+                    report.arming_bodies_dropped_undeclared_edge + nOffered;
+            otherwise
+                error('did2:convert:epochMint:unknownRefusal', ...
+                    ['armingIsSafe returned refusal "%s", which no counter ' ...
+                     'names. Add the counter; do not widen an existing ' ...
+                     'one.'], why);
+        end
+        report.pyraview_folds_withheld = report.pyraview_folds_withheld + 1;
+        continue;
+    end
+    bodies{k} = offered{1};
+    extraIds  = cell(1, nOffered - 1);
+    for e = 2:nOffered
+        extraBodies{end+1} = offered{e};        %#ok<AGROW>
+        extraIds{e-1}      = baseIdOf(offered{e});
+    end
+    armEntry = struct();
+    armEntry.index            = k;
+    armEntry.primary_id       = baseIdOf(offered{1});
+    armEntry.extra_ids        = extraIds;
+    armEntry.body_count       = nOffered;
+    armEntry.epoch_id         = epochIdByKey(key);
+    armEntry.is_metadata_fold = false;
+    armEntry.is_response_fold = false;
+    armEntry.is_syncrule_fold = false;
+    armEntry.is_pyraview_fold = true;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
@@ -1491,6 +1635,7 @@ if isempty(minted) && isempty(changedIdx)
     % so rather than reading 0 dropped over an unstated denominator.
     report.arming_bodies_dropped = report.arming_bodies_offered;
     report.epoch_index_report = edgeIndex.report;
+    [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
     result.epoch_mint = report;
     return;
 end
@@ -1653,8 +1798,19 @@ for a = 1:numel(armings)
             report.syncrule_folds_withheld = ...
                 report.syncrule_folds_withheld + 1;
         end
+    elseif armings{a}.is_pyraview_fold
+        % THE FOURTH FOLD (pyraview, #88 part 5). It had no reader here, so
+        % `pyraview_folds_emitted` stayed 0 whatever happened -- the
+        % missing-number failure the note below exists to prevent.
+        if armingCarried(a)
+            report.pyraview_folds_emitted = ...
+                report.pyraview_folds_emitted + 1;
+        else
+            report.pyraview_folds_withheld = ...
+                report.pyraview_folds_withheld + 1;
+        end
     end
-    % NO `else` BRANCH, DELIBERATELY: a FOURTH fold kind added without a reader
+    % NO `else` BRANCH, DELIBERATELY: a FIFTH fold kind added without a reader
     % here would be silently uncounted, so the invariant is asserted in
     % testEpochMintResponseArming rather than guessed at with a catch-all that
     % would attribute it to whichever counter came last.
@@ -1707,7 +1863,101 @@ result.summary = recountSummary(result);
 % `schema_lookups_unavailable` (no cache at all) and `schema_lookups_failed`
 % (the chain lookup threw) are different problems with different owners.
 report.epoch_index_report = edgeIndex.report;
+[result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
 result.epoch_mint = report;
+end
+
+function [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options)
+%RESOLVEDEFERREDPYRAVIEWS The pyraviews pass 1 DEFERRED, folded now.
+%   did-schema #88: a pyraview's v1 tombstone does not declare the
+%   `epochclocktimes` block every v1 pyraview carries, so a pyraview cannot
+%   pass through pass 1 and wait for the arming loop above. Instead
+%   +migrators_j/pyraview DEFERS (error did2:convert:needsEpochContext, the
+%   stimulus_bath pattern), the document lands in the quarantine with its
+%   original body, and this stage -- once the epochs exist -- stamps `epoch_id`
+%   onto the v1 body and runs it through v1_to_v2 again. A resolved deferral
+%   leaves the quarantine; an unresolvable one stays there, counted.
+if ~isfield(result, 'quarantine') || isempty(result.quarantine)
+    return;
+end
+q = result.quarantine;
+keep = true(1, numel(q));
+stamped = {};
+nDeferredFolded = 0;
+% The sessions the batch holds: a #88 session entity's base.id IS its session id.
+sessionIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:numel(result.migrated)
+    try
+        b = result.migrated{k}.toStruct();
+        if strcmp(classNameOf(b), 'session')
+            sessionIds(char(b.base.id)) = true;
+        end
+    catch
+    end
+end
+for k = 1:numel(q)
+    if ~isfield(q(k), 'class_name') || ~strcmp(q(k).class_name, 'pyraview') ...
+            || ~isfield(q(k), 'identifier') ...
+            || ~strcmp(q(k).identifier, 'did2:convert:needsEpochContext')
+        continue;
+    end
+    report.pyraview_deferred_seen = report.pyraview_deferred_seen + 1;
+    try
+        v1 = jsondecode(q(k).original_body);
+    catch
+        report.pyraview_deferred_unresolved = report.pyraview_deferred_unresolved + 1;
+        continue;
+    end
+    es = '';
+    if isfield(v1, 'epochid') && isstruct(v1.epochid) && isfield(v1.epochid, 'epochid')
+        es = char(v1.epochid.epochid);
+    end
+    sid = '';
+    if isfield(v1, 'base') && isstruct(v1.base) && isfield(v1.base, 'session_id')
+        sid = char(v1.base.session_id);
+    end
+    key = pairKey(sid, es);
+    if ~isempty(es) && ~isKey(epochIdByKey, key) && ~isempty(sid) ...
+            && isKey(sessionIds, sid)
+        % The deferred document may be the ONLY one naming this epoch (PRED:
+        % its one pyraview), and it sat in the quarantine while the mint read
+        % the batch. Mint the epoch here, by the same rule as above: one per
+        % (session, epoch string), and only for a session the batch holds.
+        ds = '';
+        if isfield(v1.base, 'datestamp'); ds = char(v1.base.datestamp); end
+        e = mintEpoch(es, sid, sid, ds);
+        epochIdByKey(key) = e.base.id;
+        stamped{end+1} = e; %#ok<AGROW>
+        report.pyraview_deferred_epochs_minted = ...
+            report.pyraview_deferred_epochs_minted + 1;
+    end
+    if isempty(es) || ~isKey(epochIdByKey, key)
+        report.pyraview_deferred_unresolved = report.pyraview_deferred_unresolved + 1;
+        continue;
+    end
+    stamped{end+1} = setDep(v1, 'epoch_id', epochIdByKey(key)); %#ok<AGROW>
+    nDeferredFolded = nDeferredFolded + 1;
+    keep(k) = false;
+end
+if isempty(stamped)
+    return;
+end
+out = did2.convert.v1_to_v2(stamped, 'Validate', options.Validate, ...
+    'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion);
+report.pyraview_deferred_resolved = nDeferredFolded - numel(out.quarantine);
+% The epochs minted here ARE this pass's mints, so they count in epochs_minted
+% (the census digest checks that figure against the epochs in the batch).
+for j = 1:numel(out.migrated)
+    try
+        if strcmp(classNameOf(out.migrated{j}.toStruct()), 'epoch')
+            report.epochs_minted = report.epochs_minted + 1;
+        end
+    catch
+    end
+end
+result.migrated = [result.migrated, out.migrated];
+result.quarantine = [q(keep), out.quarantine];
+result.summary = recountSummary(result);
 end
 
 % ===================== builders ========================================
@@ -1725,16 +1975,24 @@ function body = mintEpoch(epochString, sessionId, sessionDocumentId, datestamp)
 %   device needs the daq graph (#59). An edge emitted empty is the defect, not a
 %   placeholder.
 if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
-body = struct();
-body.document_class = struct( ...
-    'class_name',     'epoch', ...
-    'class_version',  '1.0.0', ...
-    'superclasses',   struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', 'session_id', 'value', sessionDocumentId);
-body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_epoch', 'creation_timestamp', datestamp);
-body.epoch = struct('local_identifier', epochString);
+% did-schema #88: an `entity` of type epoch (the `epoch` class went,
+% V_eta_entity_composition_plan.md sec. 4), its local_identifier the v1 epoch
+% string. Its `session_id` edge names the session entity, whose base.id IS
+% the session id (V_eta_relation_inheritance_plan.md item 4), so
+% SESSIONDOCUMENTID and SESSIONID are the same id on #88.
+% The type is written with its registered node, EMPTY:0000383 "recording
+% epoch" (Jess Haley 2026-10-22 [vocabulary nodes] L3; did2.build.vocabulary
+% holds the node), not as a bare name. did2.build.document then writes the
+% node and name of the schema's entity.type value-set member for that node
+% ({EMPTY:0000383, "epoch"} on did-schema #88).
+epochType = did2.convert.registeredTerm( ...
+    did2.build.vocabulary('entity_type', 'epoch'), 'recording epoch');
+body = did2.build.document('entity', ...
+    struct('type', epochType, 'local_identifier', epochString), ...
+    'SessionId', sessionId, 'CreationTimestamp', datestamp, 'Validate', false);
+if ~strcmp(sessionDocumentId, sessionId) && ~did2.schema.cache.shared().sessionIdIsEdge()
+    body = setDep(body, 'session_id', sessionDocumentId);
+end
 end
 
 % ===================== the arming path =================================
@@ -1792,7 +2050,9 @@ tbl = struct( ...
     'stimulus_response_scalar', ...
         @did2.convert.migrators_j.stimulus_response_scalar, ...
     'syncrule_mapping', ...
-        @did2.convert.migrators_j.syncrule_mapping);
+        @did2.convert.migrators_j.syncrule_mapping, ...
+    'pyraview', ...
+        @did2.convert.migrators_j.pyraview);
 end
 
 function fcn = armingMigratorFor(tbl, sourceClass)
@@ -1896,7 +2156,7 @@ if isempty(offered)
 end
 primary = offered{1};
 if ~isstruct(primary) || ~isscalar(primary) ...
-        || ~strcmp(classNameOf(primary), primaryClass)
+        || ~isPrimaryClass(primary, primaryClass)
     why = 'declined';
     return;
 end
@@ -1957,10 +2217,47 @@ k = did2.convert.epochIndex.pairKey(sessionId, epochString);
 end
 
 function cn = classNameOf(b)
+%CLASSNAMEOF The class name, except that an `entity` (did-schema #88: one
+%   entity class with a bound type) answers its TYPE ('session', 'epoch',
+%   ...), so the rows below keep comparing on 'session' and 'epoch'. The
+%   standalone `method` (#88; `method_parameters` before) answers
+%   'method_parameters', the name the epoch_id stamping loop looks for. A
+%   statement answers its DIRECTION ('observation', ...; an old-vintage joined
+%   leaf is read as its direction too); its value kind is `rows(k).value_kind`
+%   (did2.convert.statementKind).
 cn = '';
 if isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
     cn = char(b.document_class.class_name);
+end
+if strcmp(cn, 'entity') && isfield(b, 'entity') && isstruct(b.entity) ...
+        && isfield(b.entity, 'type')
+    % by node: the stored name is the ontology label ("recording epoch",
+    % "Session"; [vocabulary nodes] L1, L2), the handle is 'epoch', 'session'
+    t = did2.build.vocabularyHandle('entity_type', b.entity.type);
+    if ~isempty(t); cn = t; end
+elseif strcmp(cn, 'method')
+    cn = 'method_parameters';
+else
+    cn = did2.convert.statementKind(b);
+end
+end
+
+function tf = isStatementRow(row, direction, kind)
+%ISSTATEMENTROW Is ROW a statement of DIRECTION with value kind KIND? Both
+%   vintages: the #88 direction + mixin, and an old joined leaf (read by
+%   did2.convert.statementKind).
+tf = strcmp(row.class_name, direction) && strcmp(row.value_kind, kind);
+end
+
+function tf = isPrimaryClass(primary, primaryClass)
+%ISPRIMARYCLASS PRIMARYCLASS is a class name, or {direction, value kind} for
+%   a statement (did-schema #88).
+if iscell(primaryClass)
+    [d, k] = did2.convert.statementKind(primary);
+    tf = strcmp(d, primaryClass{1}) && strcmp(k, primaryClass{2});
+else
+    tf = strcmp(classNameOf(primary), primaryClass);
 end
 end
 
@@ -2181,9 +2478,14 @@ for k = 1:n
     if isempty(id); continue; end
     if ~isempty(cn) && ~isKey(classById, id); classById(id) = cn; end
     if ~isKey(bodyById, id) && isstruct(bodies{k}); bodyById(id) = bodies{k}; end
-    if strcmp(cn, 'subject') && isstruct(bodies{k}) ...
-            && isfield(bodies{k}, 'subject') && isstruct(bodies{k}.subject)
-        lid = charField(bodies{k}.subject, {'local_identifier'});
+    subjBlock = '';
+    if isstruct(bodies{k}) && isfield(bodies{k}, 'subject') && isstruct(bodies{k}.subject)
+        subjBlock = 'subject';                       % pre-#73
+    elseif isstruct(bodies{k}) && isfield(bodies{k}, 'entity') && isstruct(bodies{k}.entity)
+        subjBlock = 'entity';                        % did-schema #88
+    end
+    if ~isempty(subjBlock)
+        lid = charField(bodies{k}.(subjBlock), {'local_identifier'});
         if ~isempty(lid)
             if ~isKey(subjectLocalById, id);  subjectLocalById(id) = lid; end
             if ~isKey(subjectIdByLocal, lid); subjectIdByLocal(lid) = id; end
@@ -2202,6 +2504,7 @@ for k = 1:n
     if ~isRecordingObservation(bodies{k}); continue; end
     recSeen = recSeen + 1;
     trId = depValueOf(bodies{k}, 'time_reference_1');
+    if isempty(trId); trId = depValueOf(bodies{k}, 'time_reference_id'); end
     if isempty(trId) || ~isKey(classById, trId)
         recUnresolved = recUnresolved + 1;
     elseif any(strcmp(classById(trId), ...
@@ -2216,6 +2519,7 @@ for k = 1:n
         recSession = recSession + 1;
     end
     subjId = depValueOf(bodies{k}, 'subject_id');
+    if isempty(subjId); subjId = depValueOf(bodies{k}, 'entity_id'); end
     if isempty(subjId) || ~isKey(subjectLocalById, subjId); continue; end
     coveredSubjectSession(pairKey(rows(k).session_id, ...
         subjectLocalById(subjId))) = true;
@@ -2386,15 +2690,48 @@ end
 
 function tf = isRecordingObservation(body)
 %ISRECORDINGOBSERVATION True for a #30 observation, by its assembler's own stamp.
-%   jRecordingObservation sets obs.base.name = 'migrated_recording_observation'
-%   at exactly one site; matching on it needs no modality-class list and cannot
-%   drift as modalities are added.
+%   On did-schema #88 there is no base.name to stamp (#73 item 54), so the
+%   observation is recognised by its SHAPE, which only jRecordingObservation
+%   produces: an `observation` of a recording value kind, naming an
+%   instrument_id, and carrying NO value (the samples live in the recording,
+%   not on the statement). A pre-#88 body is still recognised by its stamp.
 tf = false;
-if ~isstruct(body) || ~isfield(body, 'base') || ~isstruct(body.base) ...
-        || ~isfield(body.base, 'name')
+if ~isstruct(body) || ~isfield(body, 'document_class')
     return;
 end
-tf = strcmp(char(body.base.name), 'migrated_recording_observation');
+if isfield(body, 'base') && isstruct(body.base) && isfield(body.base, 'name') ...
+        && strcmp(char(body.base.name), 'migrated_recording_observation')
+    tf = true;
+    return;
+end
+if ~strcmp(char(body.document_class.class_name), 'observation')
+    return;
+end
+hasInstrument = false;
+if isfield(body, 'depends_on') && isstruct(body.depends_on)
+    hasInstrument = any(strcmp({body.depends_on.name}, 'instrument_id'));
+end
+if ~hasInstrument
+    return;
+end
+kinds = {'voltage', 'current', 'time', 'acceleration', 'temperature', 'intensity'};
+for k = 1:numel(kinds)
+    if isfield(body, kinds{k})
+        blk = body.(kinds{k});
+        if isstruct(blk) && isfield(blk, 'value') && ~isempty(blk.value)
+            return;     % a value: a measurement, not a recording's statement
+        end
+        tf = true;
+        return;
+    end
+end
+superNames = {};
+try
+    sc = body.document_class.superclasses;
+    if isstruct(sc); superNames = {sc.class_name}; end
+catch
+end
+tf = any(ismember(kinds, superNames));
 end
 
 function tf = referenceIsEpochScoped(refBody, classById)
@@ -2404,6 +2741,7 @@ function tf = referenceIsEpochScoped(refBody, classById)
 tf = false;
 if ~isstruct(refBody); return; end
 target = depValueOf(refBody, 'relative_to');
+if isempty(target); target = depValueOf(refBody, 'referent_id'); end
 if isempty(target); return; end
 tf = isKey(classById, target) && strcmp(classById(target), 'epoch');
 end
@@ -2515,6 +2853,32 @@ if ~isfield(newEntry, 'name'); newEntry.name = name; end
 b.depends_on = [deps(:)', newEntry];
 end
 
+function b = addDep(b, name, value)
+%ADDDEP Append a depends_on entry NAME -> VALUE (an edge declared `multiple`
+%   repeats its name), in the shape the entries already have.
+if ~isfield(b, 'depends_on') || isempty(b.depends_on)
+    b.depends_on = struct('name', name, 'document_id', value);
+    return;
+end
+deps = b.depends_on;
+if iscell(deps)
+    deps{end+1} = struct('name', name, 'document_id', value);
+    b.depends_on = deps;
+    return;
+end
+fn = fieldnames(deps);
+e = struct();
+for k = 1:numel(fn)
+    switch fn{k}
+        case 'name';        e.name = name;
+        case 'value';       e.value = value;
+        case 'document_id'; e.document_id = value;
+        otherwise;          e.(fn{k}) = '';
+    end
+end
+b.depends_on = [reshape(deps, 1, []), e];
+end
+
 function summary = recountSummary(result)
 %RECOUNTSUMMARY Same contract as resolveDatasetEntities' local copy.
 summary = struct();
@@ -2620,31 +2984,23 @@ for k = 1:numel(entries)
         continue;
     end
     seen(e.name) = e;
-    ref = struct();
-    ref.document_class = struct('class_name', 'relative_reference', ...
-        'class_version', '2.0.0', ...
-        'superclasses', struct('class_name', 'time_reference', ...
-            'class_version', '4.0.0'), ...
-        'schema_version', 'V_eta');
-    ref.depends_on = struct('name', {'relative_to'}, 'value', {sessionDocumentId});
-    ref.base = struct('id', did.ido.unique_id(), ...
-        'session_id', sessionId, ...
-        'name', 'migrated_epoch_extent', ...
-        'creation_timestamp', datestamp);
-    ref.relative_reference = struct('value', struct( ...
-        'clock',    struct('node', '', 'name', e.name), ...
-        'start',    extentDuration(e.t0), ...
-        'duration', extentDuration(e.t1 - e.t0)));
+    % did-schema #88: a relative_time_reference onto the session entity,
+    % built through did2.build. A clock name outside the bound set is refused
+    % by the builder and counted, never guessed.
+    sec = struct('node', 'om:second-Time', 'name', 'second');
+    try
+        ref = did2.build.relativeTimeReference(sessionDocumentId, 'Clock', e.name, ...
+            'Start', e.t0, 'StartSourceValue', e.t0, 'StartSourceUnit', sec, ...
+            'StartApproximate', false, ...
+            'Duration', e.t1 - e.t0, 'DurationSourceValue', e.t1 - e.t0, ...
+            'DurationSourceUnit', sec, 'DurationApproximate', false, ...
+            'SessionId', sessionId, 'CreationTimestamp', datestamp, 'Validate', false);
+    catch
+        stats.no_time = stats.no_time + 1;
+        continue;
+    end
     refs{end+1} = ref; %#ok<AGROW>
 end
-end
-
-function c = extentDuration(seconds)
-%EXTENTDURATION A V_eta `duration` cell. `source_unit` is 's' because the v1
-%   clocks block stores seconds -- stated, not converted, per the standing rule
-%   that the source's own unit is carried verbatim beside the canonical value.
-c = struct('seconds', double(seconds), 'source_unit', 's', ...
-    'source_value', double(seconds), 'approximate', false);
 end
 
 function ts = creationTime(body)
@@ -2673,5 +3029,29 @@ for name = {'creation_timestamp', 'datestamp'}
         ts = body.base.(f);
         return;
     end
+end
+end
+
+function b = lendSessionIdField(b)
+%LENDSESSIONIDFIELD Put `base.session_id` back on a migrated body a migrator re-reads.
+%   This pass re-runs a per-document migrator on a body that has ALREADY been
+%   through did2.convert.v1_to_v2. On a schema where `session_id` is an edge
+%   (did-schema V_eta_relation_inheritance_plan.md, 2026-10-20) that body
+%   carries the edge and no field, while every migrator reads the did_v1 field
+%   -- so without this the bodies it emits would name no session and quarantine
+%   on the required edge. The field is lent from the edge; v1_to_v2's outbound
+%   pass moves it back onto the edge when the bodies are validated. A body that
+%   still has the field (the field shape) is returned unchanged.
+arguments
+    b (1,1) struct
+end
+
+if ~isfield(b, 'base') || ~isstruct(b.base) || ~isscalar(b.base) ...
+        || isfield(b.base, 'session_id')
+    return;
+end
+sid = did2.schema.cache.sessionIdOf(b);
+if ~isempty(sid)
+    b.base.session_id = sid;
 end
 end

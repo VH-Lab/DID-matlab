@@ -495,6 +495,13 @@ arguments
     options.Decompose (1,1) logical = false
 end
 
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 % DENOMINATOR FIRST, and unconditionally. Every field is defined before a single
 % document is read, so "did not run" and "ran and found nothing" are different
 % readings of the same struct rather than the same reading. Operating Rule 5;
@@ -561,7 +568,7 @@ for k = 1:n
         b = docs{k}.toStruct();
         bodies{k} = b;
         classes{k} = classNameOf(b);
-        sessionIds{k} = baseField(b, 'session_id');
+        sessionIds{k} = did2.schema.cache.sessionIdOf(b);
         docIds{k} = baseField(b, 'id');
     catch
         report.documents_unreadable = report.documents_unreadable + 1;
@@ -578,11 +585,18 @@ end
 epochIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
 epochCountByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
-    if ~strcmp(classes{k}, 'epoch'); continue; end
+    % did-schema #88: an epoch is an `entity` whose type is `epoch`.
+    isEpochEntity = strcmp(classes{k}, 'entity') && isfield(bodies{k}, 'entity') ...
+        && isstruct(bodies{k}.entity) && isfield(bodies{k}.entity, 'type') ...
+        && isstruct(bodies{k}.entity.type) ...
+        && did2.build.isVocabulary(bodies{k}.entity.type, 'entity_type', 'epoch');   % by node (L2)
+    if ~strcmp(classes{k}, 'epoch') && ~isEpochEntity; continue; end
     report.epoch_documents_seen = report.epoch_documents_seen + 1;
     lid = '';
     if isfield(bodies{k}, 'epoch') && isstruct(bodies{k}.epoch)
         lid = charField(bodies{k}.epoch, {'local_identifier'});
+    elseif isEpochEntity
+        lid = charField(bodies{k}.entity, {'local_identifier'});
     end
     if isempty(lid) || isempty(docIds{k}); continue; end
     key = pairKey(sessionIds{k}, lid);
@@ -627,6 +641,14 @@ if ~options.Decompose
     return;
 end
 report.dormant = false;
+% did-schema #88 retired `logical_observation` (#73 review item 52), the class
+% the decomposition below emits, so there is no target to decompose into. Say so
+% rather than build a shape the schema no longer has.
+error('did2:convert:validIntervalTargetRetired', ...
+    ['resolveValidIntervals: Decompose was requested, but its target (an ' ...
+     'observation of value kind logical) was retired in did-schema #73 review ' ...
+     'item 52; valid_interval documents ' ...
+     'stay on their v1 tombstone.']);
 
 % --- decompose every interval we can decompose honestly --------------------
 refBodies = {};
@@ -758,11 +780,10 @@ if elementsWritten.Count > 0
     for k = 1:n
         if ~strcmp(classes{k}, 'directed_relation'); continue; end
         blk = blockOf(bodies{k}, 'directed_relation');
-        rel = '';
-        if isstruct(blk) && isfield(blk, 'relation') && isstruct(blk.relation)
-            rel = charField(blk.relation, {'name'});
+        if ~(isstruct(blk) && isfield(blk, 'relation') && isstruct(blk.relation) ...
+                && did2.build.isVocabulary(blk.relation, 'relation', 'derived_from'))   % by node (L1)
+            continue;
         end
-        if ~strcmp(rel, 'derived_from'); continue; end
         parent = depValue(bodies{k}, 'parent');
         if ~isempty(parent) && isKey(elementsWritten, parent)
             report.inheritance_candidates = report.inheritance_candidates + 1;
@@ -1015,9 +1036,12 @@ function body = makeLogicalObservation(src, elementId, isValid, refIds, methodTe
 %   this pass records rather than a rule it can rely on -- which is exactly what
 %   #52 exists to fix, and why `split_anchor_intervals` is counted.
 body = struct();
-body.document_class = struct('class_name', 'logical_observation', ...
+% UNREACHABLE on did-schema #88 (the decomposition errors before it is called,
+% did2:convert:validIntervalTargetRetired). Named by direction + value kind,
+% never a joined leaf: an `observation` listing the `logical` mixin.
+body.document_class = struct('class_name', 'observation', ...
     'class_version', '1.0.0', ...
-    'superclasses', supersOf({'subject_observation', 'logical'}), ...
+    'superclasses', supersOf({'observation', 'logical'}), ...
     'schema_version', 'V_eta');
 deps = struct('name', {'subject_id'}, 'value', {elementId});
 for r = 1:numel(refIds)
@@ -1101,7 +1125,7 @@ end
 function base = freshBase(src, name)
 sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
 if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
-    if isfield(src.base, 'session_id'); sessionId = src.base.session_id; end
+    sessionId = did2.schema.cache.sessionIdOf(src);
     ds0 = creationTime(src);
     if ~isempty(ds0)
         ds = ds0;

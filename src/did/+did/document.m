@@ -791,20 +791,26 @@ classdef document
 
         end % isFileSeries()
 
-        function [stem, index] = seriesMemberOf(did_document_obj, name)
+        function [stem, index, number] = seriesMemberOf(did_document_obj, name)
             % SERIESMEMBEROF - is NAME a member of one of this document's series?
             %
-            % [STEM, INDEX] = SERIESMEMBEROF(DID_DOCUMENT_OBJ, NAME)
+            % [STEM, INDEX, NUMBER] = SERIESMEMBEROF(DID_DOCUMENT_OBJ, NAME)
             %
             % If NAME parses as STEM_<number> and STEM is declared as a file
-            % series by this document, returns the declared STEM and the
-            % member's INDEX. Otherwise returns '' and [].
+            % series by this document, returns the declared STEM, the
+            % member's manifest INDEX and the NUMBER as written in the name.
+            % Otherwise returns '', [] and [].
             %
-            % INDEX is ONE-BASED, the number as written in the name: the
-            % member NAME_1 is index 1. It addresses the manifest's slots
-            % directly -- see did.file.readSeriesManifestUid -- and is
-            % converted to the manifest's own zero-based numbering only
-            % inside the reader.
+            % THE NUMBERING DEPENDS ON THE DOCUMENT'S VINTAGE (seriesMemberBase):
+            % a did_v1 document numbers its members from 1 (NAME_1 is manifest
+            % slot 0); a V_eta document numbers them from 0 (body_data_0 is
+            % manifest slot 0; DID-schema #73 item 17, kept by Jess
+            % 2026-10-14). A NUMBER below the base is not a member.
+            %
+            % INDEX is the ONE-BASED position in the manifest (slot + 1), the
+            % value did.file.readSeriesManifestUid takes: NAME_1 of a v1
+            % document and NAME_0 of a V_eta document are both INDEX 1. For a
+            % v1 document INDEX equals NUMBER, as it always has.
             %
             % WHY THIS IS PUBLIC. A series member carries no file_info entry
             % and no files-table row of its own; membership is the manifest's
@@ -821,10 +827,15 @@ classdef document
             % See also: did.document/isFileSeries, did.document/is_in_file_list,
             %           did.file.readSeriesManifestUid
 
+            arguments
+                did_document_obj (1,1) did.document
+                name % untyped on purpose: see the note below
+            end
+
             stem = '';
             index = [];
 
-            % Deliberately no arguments block. is_in_file_list and add_file
+            % Deliberately no validation on NAME. is_in_file_list and add_file
             % both reach here with whatever name a caller handed them,
             % including '' and a string scalar, and a name this method cannot
             % parse is a "no" rather than an error.
@@ -847,11 +858,48 @@ classdef document
             % is case-insensitive, and everything downstream looks the stem up
             % again -- in file_info, in the files table -- where the declared
             % spelling is the one that is stored.
+            base = did_document_obj.seriesMemberBase();
+            if n < base, return; end
             declared = did_document_obj.seriesNames();
             stem = declared{find(strcmpi(candidate, declared), 1)};
-            index = n;
+            index = n - base + 1;
+            number = n;
 
         end % seriesMemberOf()
+
+        function base = seriesMemberBase(did_document_obj)
+            % SERIESMEMBERBASE - the number of a series' FIRST member: 0 or 1
+            %
+            % BASE = SERIESMEMBERBASE(DID_DOCUMENT_OBJ)
+            %
+            % Read off the DOCUMENT'S VINTAGE, never off a file name:
+            %   1  a did_v1 document (no document_class.schema_version, or one
+            %      before V_eta): NAME_1 is manifest slot 0, the live
+            %      convention of ingested epoch data and NDI's series writers.
+            %   0  a V_eta document (schema_version V_eta or later): member
+            %      NAME_k is chunk k is manifest slot k, so an unchunked body is
+            %      body_data_0 (DID-schema #73 item 17, kept by Jess 2026-10-14).
+            % The manifest format is the same either way; only the names differ.
+            %
+            % The version is ranked with did2.convert.schemaVersionRank, the
+            % one ordering of the schema line the converter already uses. A
+            % version it does not recognise is treated as v1 (base 1), which
+            % is what every document written before V_eta is.
+            base = 1;
+            props = did_document_obj.document_properties;
+            if ~isfield(props, 'document_class') || ~isstruct(props.document_class) ...
+                    || ~isfield(props.document_class, 'schema_version')
+                return;
+            end
+            sv = props.document_class.schema_version;
+            if isstring(sv) && isscalar(sv), sv = char(sv); end
+            if ~ischar(sv) || isempty(sv), return; end
+            [rank, known] = did2.convert.schemaVersionRank(sv);
+            etaRank = did2.convert.schemaVersionRank('V_eta');
+            if known && rank >= etaRank
+                base = 0;
+            end
+        end % seriesMemberBase()
 
         function [n, nPresent] = seriesCount(did_document_obj, name)
             % SERIESCOUNT - how many members a series has, WITHOUT reading anything
@@ -859,7 +907,8 @@ classdef document
             % [N, NPRESENT] = SERIESCOUNT(DID_DOCUMENT_OBJ, NAME)
             %
             % N is the number of member SLOTS -- the series runs NAME_1 to
-            % NAME_N. NPRESENT is how many of those actually exist; a sparse
+            % NAME_N for a did_v1 document and NAME_0 to NAME_<N-1> for a
+            % V_eta one (seriesMemberBase). NPRESENT is how many of those actually exist; a sparse
             % series has fewer, because a member with nothing to store is not
             % written. Both are 0 for a declared series that has not been
             % populated.
@@ -950,15 +999,18 @@ classdef document
             % DOC = ADDFILESERIES(DOC, NAME, LOCATIONS, 'indices', IDX, ...)
             %
             % NAME must be declared in this class's files.file_series. The
-            % members become NAME_1 ... NAME_N; NAME itself is the manifest
-            % that records them, and is added as an ordinary file.
+            % members become NAME_1 ... NAME_N on a did_v1 document and
+            % NAME_0 ... NAME_<N-1> on a V_eta one (seriesMemberBase); NAME
+            % itself is the manifest that records them, and is added as an
+            % ordinary file.
             %
             % Inputs:
             %   LOCATIONS - cellstr of source paths, one per member being added
             %
             % Optional Name-Value Arguments:
-            %   indices ([])      - ONE-BASED member numbers, one per entry of
-            %       LOCATIONS. Default 1:numel(LOCATIONS), i.e. dense. Pass
+            %   indices ([])      - member NUMBERS, one per entry of LOCATIONS,
+            %       counted from the document's base (1 for did_v1, 0 for
+            %       V_eta). Default base:base+numel(LOCATIONS)-1, i.e. dense. Pass
             %       them explicitly for a SPARSE series -- a chunk grid whose
             %       empty regions were never written -- which is the case the
             %       series mechanism exists for and which a NAME_# entry
@@ -988,9 +1040,11 @@ classdef document
             %       home. delete_original is unaffected -- a remote location
             %       still defaults to 0, and is never deleted regardless.
             %
-            % INDICES ARE ONE-BASED, matching the live NAME_# convention set by
-            % ingested epoch data (ndi.daq.reader.mfdaq writes _seg.nbf_1
-            % upward). The manifest's own array is zero-based; the conversion
+            % ON A did_v1 DOCUMENT INDICES ARE ONE-BASED, matching the live NAME_#
+            % convention set by ingested epoch data (ndi.daq.reader.mfdaq writes
+            % _seg.nbf_1 upward). ON A V_eta DOCUMENT THEY ARE ZERO-BASED: member
+            % k is chunk k is manifest slot k (DID-schema #73 item 17). The
+            % manifest's own array is zero-based either way; the conversion
             % happens here and nowhere else.
             %
             % See also: did.document/seriesCount, did.file.writeSeriesManifest
@@ -1019,9 +1073,10 @@ classdef document
                      'Use removeFileSeries first to replace it.'], name);
             end
 
+            base = did_document_obj.seriesMemberBase();
             indices = options.indices;
             if isempty(indices)
-                indices = 1:numel(locations);
+                indices = base:(base + numel(locations) - 1);
             end
             if numel(indices) ~= numel(locations)
                 error('DID:Document:addFileSeries:lengthMismatch', ...
@@ -1029,9 +1084,15 @@ classdef document
                     numel(indices), numel(locations));
             end
             if ~isempty(indices)
-                if any(indices < 1) || any(indices ~= round(indices))
-                    error('DID:Document:addFileSeries:badIndex', ...
-                        'Member indices must be positive integers (one-based).');
+                if any(indices < base) || any(indices ~= round(indices))
+                    if base == 1
+                        error('DID:Document:addFileSeries:badIndex', ...
+                            'Member indices must be positive integers (one-based).');
+                    else
+                        error('DID:Document:addFileSeries:badIndex', ...
+                            ['Member indices must be non-negative integers ' ...
+                             '(zero-based: this is a V_eta document).']);
+                    end
                 end
                 if numel(unique(indices)) ~= numel(indices)
                     error('DID:Document:addFileSeries:duplicateIndex', ...
@@ -1060,17 +1121,18 @@ classdef document
                 root = '';
             end
 
+            % Position p of these arrays is manifest slot p-1, i.e. member
+            % number p-1+BASE; the manifest writes them zero-based.
+            positions = indices - base + 1;
             n = 0;
-            if ~isempty(indices), n = max(indices); end
+            if ~isempty(positions), n = max(positions); end
 
-            % Slot i of these arrays is member i (one-based); the manifest
-            % writes them zero-based, which is the only place the two differ.
             uids = repmat({''}, 1, n);
             relnames = repmat({''}, 1, n);
             for i = 1:numel(locations)
-                uids{indices(i)} = did.ido.unique_id();
+                uids{positions(i)} = did.ido.unique_id();
                 if ~isempty(sourceNames)
-                    relnames{indices(i)} = sourceNames{i};
+                    relnames{positions(i)} = sourceNames{i};
                 end
             end
 
@@ -1101,7 +1163,7 @@ classdef document
             % without opening the manifest at all: it has the destination
             % (FileDir/<uid>), the source, and the files-table filename
             % (NAME_<index>). The manifest stays a download-side artifact.
-            ingestLocations = localIngestLocations(locations, indices, uids, ...
+            ingestLocations = localIngestLocations(locations, indices, uids(positions), ...
                 options.deleteOriginal, options.ingest);
 
             entry = struct('name', name, 'count', n, ...
@@ -1596,6 +1658,8 @@ end
 
 function entries = localIngestLocations(locations, indices, uids, deleteOriginal, ingestOption)
     % Build the transient uid -> source-path record for a series' members.
+    % UIDS is per ENTRY (uids{i} belongs to locations{i}); INDICES are the
+    % member NUMBERS as named (NAME_<index>), in the document's own base.
     %
     % Shaped like a file_info location so the ingestion loop can treat the two
     % the same way, plus 'index' so the member's files-table filename
@@ -1641,7 +1705,7 @@ function entries = localIngestLocations(locations, indices, uids, deleteOriginal
         end
 
         entries(end+1) = struct('index', indices(i), ...
-            'uid', uids{indices(i)}, ...
+            'uid', uids{i}, ...
             'location', L, ...
             'location_type', locationType, ...
             'ingest', ingest, ...

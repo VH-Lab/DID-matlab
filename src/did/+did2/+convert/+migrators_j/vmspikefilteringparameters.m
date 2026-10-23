@@ -164,7 +164,7 @@ if hasPayload(blk, 'spiketimes')
     return;
 end
 
-entries = struct('variable', {}, 'value', {});
+entries = {};
 other = blk;
 
 % `spiketimes` is provably empty on this path (the guard above), so removing it
@@ -175,7 +175,7 @@ other = dropField(other, 'spiketimes');
 % --- refractory period -------------------------------------------------------
 v = numField(blk, 'refract');
 if ~isempty(v)
-    entries(end+1) = jParameterEntry('refractory period', v, '', ...
+    entries{end+1} = jParameterEntry('refractory period', v, '', ...
         rawText(blk, 'refract'));
     other = dropField(other, 'refract');
 end
@@ -183,7 +183,7 @@ end
 % --- absolute threshold ------------------------------------------------------
 t = numField(blk, 'threshold');
 if ~isempty(t)
-    entries(end+1) = jParameterEntry('absolute voltage threshold', t, '', ...
+    entries{end+1} = jParameterEntry('absolute voltage threshold', t, '', ...
         rawText(blk, 'threshold'));
     other = dropField(other, 'threshold');
 end

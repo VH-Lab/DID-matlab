@@ -68,22 +68,22 @@ function result = v1_to_v2(v1Bodies, options)
 %                      identifiers in the legacy (camelCase) form so
 %                      the body stays schema-compatible while still
 %                      gaining the V_delta shape transformations.
-%     TargetVersion    (1,:) char, default 'V_delta') - migration target.
+%     Audits           (1,1 logical, default true) - run the report-only
+%                      census instruments over the batch (silentLoss,
+%                      fileList, timeReferenceFamilies) into
+%                      result.silent_loss / .file_list_audit /
+%                      .time_reference_families. They raise nothing and
+%                      change no outcome. Pass false on a READ path that
+%                      discards them: on one-document reads they cost more
+%                      than the conversion itself (NDI reading the 10,536
+%                      Haley V2 subjects: 23.5 s of 51 s profiled). When false,
+%                      each of the three fields is struct('audit_skipped',
+%                      true) -- never an empty census, which would read as
+%                      clean.
+%     TargetVersion    (1,:) char, default 'V_delta') - migration target,
+%                      'V_delta' or 'V_eta'.
 %                      'V_delta' (default) preserves the historical
-%                      class-preserving 1->1 behaviour. 'V_epsilon' routes
-%                      classes that have a Brainstorm-E split migrator
-%                      under +did2.+convert.+migrators_e (treatment,
-%                      ontology_table_row) through that migrator instead,
-%                      which may fan one source body out to several
-%                      destination documents (1 -> N). 'V_zeta' routes
-%                      classes that have a Brainstorm-I split/fold migrator
-%                      under +did2.+convert.+migrators_i (treatment,
-%                      ontology_table_row, subject_group, treatment_drug,
-%                      virus_injection, treatment_transfer, stimulus_bath)
-%                      through that migrator, targeting the Brainstorm-I
-%                      classes (the subject_interaction spine with
-%                      method/variable/target_structure, shape-typed
-%                      observation leaves, and generic_manipulation).
+%                      class-preserving 1->1 behaviour.
 %                      'V_eta' routes classes that have a Brainstorm-J
 %                      split/fold migrator under +did2.+convert.+migrators_j
 %                      through that migrator, targeting the Brainstorm-J
@@ -92,8 +92,12 @@ function result = v1_to_v2(v1Bodies, options)
 %                      subject_manipulation, data-type-named leaves +
 %                      dose/formulation/chemical composites, term_manipulation,
 %                      and subject_relation documents; no injection/bath, no
-%                      escape hatch). Any non-'V_delta' target stamps
+%                      escape hatch). A 'V_eta' target stamps
 %                      document_class.schema_version with the target name.
+%                      The 'V_epsilon' and 'V_zeta' targets (+migrators_e,
+%                      +migrators_i) were removed with did-schema #88, which
+%                      deleted schemas/V_alpha .. V_zeta (OPEN_WORK #128);
+%                      asking for either is an argument-validation error.
 %
 %   STATUS of the 2026-08-11 edit (`summary.legacy_ndi_document`, the
 %   accumulator and its printer): WRITTEN WITHOUT MATLAB OR OCTAVE AND NOT
@@ -111,10 +115,26 @@ arguments
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
-    options.TargetVersion (1,:) char = 'V_delta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_delta', 'V_eta'})} = 'V_delta'
+    options.Audits (1,1) logical = true
 end
 
+% a migrator transcribes the v1 source's own terms, which the term
+% registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
+% is for imports, so it is off while this runs and restored after
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 bodies = normaliseInput(v1Bodies);
+
+% Asked ONCE per call, of the schema the documents validate against: does
+% `base` declare `session_id` as an edge (did-schema
+% V_eta_relation_inheritance_plan.md, 2026-10-20) or as the field it always
+% was? See renameOutboundBaseFields.
+sessionEdge = false;
+if strcmp(options.TargetVersion, 'V_eta')
+    sessionEdge = outboundSchemaCache(options.SchemaCache).sessionIdIsEdge();
+end
 
 migrated = {};
 quarantine = struct( ...
@@ -134,6 +154,27 @@ unconvValues = [];
 % mode, and the only one no counter could see.
 fragNames = {};
 fragValues = [];
+% WHICH sources fragmented, by v1 base.id, so a failing corpus run names the
+% documents tools/extract_failure_fixtures.py lifts into a quick-suite fixture.
+% Complete (one short id per fragment); the counts above stay the census.
+fragIds = {};
+% Report-only: documents a migrator CONSUMED and EMITTED NOTHING for -- an empty
+% cell back from a split migrator (e.g. a metadata-only lightsheetZarrLevel,
+% #73 L3(c)). Without this the source would vanish from every count: it is not
+% migrated, not quarantined, not unconverted and not a fragment.
+emptyNames = {};
+emptyValues = [];
+% DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
+% answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
+% each corpus report counts the dimensions whose term has no node, so the move
+% to `required` (with variables, OPEN_WORK #129) rests on a measured number.
+% Per emitted class: dimensions written (the denominator) and how many of
+% them have a term with an empty node. Counted on every migrated document's
+% `data` and `acquisition_epoch` blocks, the two that declare AMENDMENT 6's
+% `dimensions`.
+dimTermClasses = {};
+dimTermWritten = [];
+dimTermNoNode = [];
 % THE LEGACY IDENTITY BLOCK (`ndi_document` -> `base`). DENOMINATOR FIRST AND
 % UNCONDITIONALLY (Operating Rule 5): this struct is complete before the loop
 % starts and is attached to the summary whether or not any body carries the
@@ -180,15 +221,20 @@ legacy = struct( ...
     'moved_vintage_unreadable_block',      0);
 legacyMovedNames = {};   legacyMovedValues = [];
 legacyDiscNames  = {};   legacyDiscValues  = [];
+% Notes a migrator leaves about HOW it migrated a document (did2.convert.
+% reportNote), e.g. a treatment whose route is unknown. Reset per batch; a
+% quarantined body's notes are dropped, since that body did not migrate.
+did2.convert.reportNote('reset');
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
     originalJSON = encodeForQuarantine(rawBody);
     className = '<unknown>';
+    noteMark = did2.convert.reportNote('mark');
     try
         preBody = ensureStruct(rawBody);
         refuseUnknownSchemaVersion(preBody);
-        if isAlreadyTarget(preBody, options.TargetVersion)
+        if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already V_delta,
             % so skip universalRenames and the per-class migrators.
             % ensureClassBlocks still runs (it rebuilds the V_delta
@@ -228,10 +274,9 @@ for k = 1:numel(bodies)
             % runConcreteMigrator returns a CELL of one-or-more bodies.
             % Default (TargetVersion 'V_delta') always returns a single
             % body via the existing per-class migrator, so behaviour is
-            % unchanged. Under TargetVersion 'V_epsilon' (+migrators_e) or
-            % 'V_zeta' (+migrators_i) a class with a split/fold migrator
-            % (treatment, ontology_table_row, ...) may fan out to several
-            % bodies (1 -> N).
+            % unchanged. Under TargetVersion 'V_eta' (+migrators_j) a class
+            % with a split/fold migrator (treatment, ontology_table_row, ...)
+            % may fan out to several bodies (1 -> N).
             v2Bodies = runConcreteMigrator(v2Body, className, ...
                 options.TargetVersion);
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
@@ -255,13 +300,17 @@ for k = 1:numel(bodies)
             %
             % Deliberately NOT computed on the idempotency short-circuit above:
             % that path skips the migrators by design and is not a passthrough.
-            if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body)
+            if isempty(v2Bodies)
+                [emptyNames, emptyValues] = bumpClassCounter( ...
+                    emptyNames, emptyValues, className);
+            elseif isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body)
                 [unconvNames, unconvValues] = bumpClassCounter( ...
                     unconvNames, unconvValues, className);
             elseif did2.validate.isFragment(v2Bodies, 'SchemaCache', options.SchemaCache)
                 % PHASE 1 REPORT-ONLY: the FRAGMENT mode. See countFragments.
                 [fragNames, fragValues] = bumpClassCounter( ...
                     fragNames, fragValues, className);
+                fragIds{end+1} = sourceIdOf(preBody); %#ok<AGROW>
             end
         end
         % Collect every produced body. Each is padded, optionally
@@ -269,8 +318,8 @@ for k = 1:numel(bodies)
         % N documents in `migrated` (or quarantines the whole source
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
-            outBody = ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
-            outBody = renameOutboundBaseFields(outBody, options.TargetVersion);
+            outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+            outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
             if ~strcmp(options.TargetVersion, 'V_delta') ...
                     && isfield(outBody, 'document_class') ...
                     && isstruct(outBody.document_class)
@@ -289,8 +338,21 @@ for k = 1:numel(bodies)
             end
             [classCountNames, classCountValues] = bumpClassCounter( ...
                 classCountNames, classCountValues, outName);
+            [nDim, nNoNode] = dimensionTermCounts(outBody);
+            if nDim > 0
+                ix = find(strcmp(dimTermClasses, outName), 1);
+                if isempty(ix)
+                    dimTermClasses{end+1} = outName; %#ok<AGROW>
+                    dimTermWritten(end+1) = 0; %#ok<AGROW>
+                    dimTermNoNode(end+1) = 0; %#ok<AGROW>
+                    ix = numel(dimTermClasses);
+                end
+                dimTermWritten(ix) = dimTermWritten(ix) + nDim;
+                dimTermNoNode(ix) = dimTermNoNode(ix) + nNoNode;
+            end
         end
     catch err
+        did2.convert.reportNote('truncate', noteMark);
         % `identifier` is carried alongside `reason` so the rollup can group
         % by FAILURE KIND rather than by message text. Messages interpolate
         % class and edge names, so every one of the 7,233 empty-required-edge
@@ -355,7 +417,13 @@ result.summary = struct( ...
     'unconverted_by_class', buildByClassTable(unconvNames, unconvValues), ...
     'fragment_count',     sum(fragValues), ...
     'fragment_by_class',  buildByClassTable(fragNames, fragValues), ...
-    'legacy_ndi_document', legacy);
+    'fragment_source_ids', {fragIds}, ...
+    'emitted_nothing_count',    sum(emptyValues), ...
+    'emitted_nothing_by_class', buildByClassTable(emptyNames, emptyValues), ...
+    'legacy_ndi_document', legacy, ...
+    'dimension_terms', dimensionTermSummary(numel(migrated), ...
+        dimTermClasses, dimTermWritten, dimTermNoNode), ...
+    'migration_notes', did2.convert.reportNote('collect'));
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
 % migrates away without a trace: required depends_on edges left empty, and
@@ -380,41 +448,48 @@ result.summary = struct( ...
 % and the quarantine rollup disagree about a class, one of the two paired
 % implementations has drifted -- that is the signal, and it is why they are
 % locked together by test.
-try
-    result.silent_loss = did2.validate.silentLoss(migrated, ...
-        'SchemaCache', options.SchemaCache);
-catch auditErr
-    result.silent_loss = struct('audit_failed', auditErr.message);
-end
+if options.Audits
+    try
+        result.silent_loss = did2.validate.silentLoss(migrated, ...
+            'SchemaCache', options.SchemaCache);
+    catch auditErr
+        result.silent_loss = struct('audit_failed', auditErr.message);
+    end
 
-% #64: the same shape one tier over -- a class declares payload FILES and the
-% document carries none, or carries bytes the class never declares. The schema
-% cache allows `file`/`files` as a top-level key and never looks inside, so
-% neither direction trips anything. REPORT ONLY, raises nothing.
-try
-    result.file_list_audit = did2.validate.fileList(migrated, ...
-        'SchemaCache', options.SchemaCache);
-catch fileErr
-    result.file_list_audit = struct('audit_failed', fileErr.message);
-end
+    % #64: the same shape one tier over -- a class declares payload FILES and the
+    % document carries none, or carries bytes the class never declares. The schema
+    % cache allows `file`/`files` as a top-level key and never looks inside, so
+    % neither direction trips anything. REPORT ONLY, raises nothing.
+    try
+        result.file_list_audit = did2.validate.fileList(migrated, ...
+            'SchemaCache', options.SchemaCache);
+    catch fileErr
+        result.file_list_audit = struct('audit_failed', fileErr.message);
+    end
 
-% #52 EVIDENCE, not a gate: how many time references does one statement carry,
-% and what shapes occur when it carries more than one. The team has to name (or
-% decline to name) the roles of `time_reference_1..N`, and the one thing it does
-% not have is the distribution and the shapes over real data. This produces
-% them. REPORT ONLY -- it raises nothing and changes no outcome, and it proposes
-% no role vocabulary.
-%
-% It is a SEPARATE INSTRUMENT from silentLoss's `family_uniqueness_violation`,
-% which asks whether the members of a family violate the signed uniqueness rule.
-% A batch can satisfy that rule perfectly and still be full of shapes nobody has
-% decided the meaning of: distinct clocks and distinct anchors are both
-% "unique", and they are not the same modelling situation.
-try
-    result.time_reference_families = did2.validate.timeReferenceFamilies( ...
-        migrated, 'SchemaCache', options.SchemaCache);
-catch trfErr
-    result.time_reference_families = struct('audit_failed', trfErr.message);
+    % #52 EVIDENCE, not a gate: how many time references does one statement carry,
+    % and what shapes occur when it carries more than one. The team has to name (or
+    % decline to name) the roles of `time_reference_1..N`, and the one thing it does
+    % not have is the distribution and the shapes over real data. This produces
+    % them. REPORT ONLY -- it raises nothing and changes no outcome, and it proposes
+    % no role vocabulary.
+    %
+    % It is a SEPARATE INSTRUMENT from silentLoss's `family_uniqueness_violation`,
+    % which asks whether the members of a family violate the signed uniqueness rule.
+    % A batch can satisfy that rule perfectly and still be full of shapes nobody has
+    % decided the meaning of: distinct clocks and distinct anchors are both
+    % "unique", and they are not the same modelling situation.
+    try
+        result.time_reference_families = did2.validate.timeReferenceFamilies( ...
+            migrated, 'SchemaCache', options.SchemaCache);
+    catch trfErr
+        result.time_reference_families = struct('audit_failed', trfErr.message);
+    end
+else
+    skipped = struct('audit_skipped', true);
+    result.silent_loss = skipped;
+    result.file_list_audit = skipped;
+    result.time_reference_families = skipped;
 end
 
 if options.CheckReferences
@@ -517,76 +592,14 @@ if ~known
 end
 end
 
-function tf = isAlreadyTarget(body, targetVersion)
-% Return true when BODY is already a TARGETVERSION-shaped document so the
-% per-body migration loop can skip universalRenames and the per-class
-% migrators (it still gets ensureClassBlocks + validate). Both conditions
-% must hold so the short-circuit only fires when we have high confidence
-% the body is already at the target:
-%   (a) document_class.schema_version ranks AT OR BEYOND TARGETVERSION on the
-%       did_v1 -> V_eta line (did2.convert.schemaVersionRank), the version
-%       having been set by the last run of universalRenames, the writer, or --
-%       for 'V_epsilon' -- a context assembler such as
-%       ndi.migrate.internal.stimulusBathToBath that emits ready-made target
-%       bodies. This was an EQUALITY test until 2026-08-14, which made a body
-%       newer than the target indistinguishable from one older than it; an
-%       unrecognised version still falls through to conversion, deliberately,
-%       AND
-%   (b) the body carries no v1-only structural markers — underscore-
-%       prefixed top-level keys (e.g., legacy _classname,
-%       _class_version) that predate the document_class header and
-%       could not survive a real V_delta build.
-%
-% (a) alone would misclassify a body that was tagged V_delta out-of-
-% band but still carries legacy field shapes; (b) alone would skip
-% the bulk of v1 corpora, which do not happen to use the underscore
-% markers but still need every other v1->V_delta rewrite.
-tf = false;
-if ~isstruct(body) || ~isscalar(body)
-    return;
+function id = sourceIdOf(body)
+%SOURCEIDOF The v1 document's base.id, or '' when it carries none.
+id = '';
+if isstruct(body) && isscalar(body) && isfield(body, 'base') ...
+        && isstruct(body.base) && isscalar(body.base) && isfield(body.base, 'id')
+    v = body.base.id;
+    if ischar(v); id = v; elseif isstring(v) && isscalar(v); id = char(v); end
 end
-if ~isfield(body, 'document_class') ...
-        || ~isstruct(body.document_class) ...
-        || ~isscalar(body.document_class) ...
-        || ~isfield(body.document_class, 'schema_version')
-    return;
-end
-sv = body.document_class.schema_version;
-if isstring(sv) && isscalar(sv)
-    sv = char(sv);
-end
-if ~ischar(sv)
-    return;
-end
-% AT OR BEYOND THE TARGET, not equal to it. `strcmp` here had no notion of
-% before and after, so a body NEWER than the target took the same branch as one
-% older than it -- and that branch runs the migrators. Converting an old body
-% forward is the point; running the same pipeline over a body that has already
-% passed the target is the opposite, and it was silent.
-%
-% Reached in production, not in theory: ndi.database.internal.
-% applyReadNormalization calls this converter on EVERY read without passing a
-% target, so it inherits the 'V_delta' default, and a V_eta document compared
-% unequal and was pushed through universalRenames plus the per-class migrators.
-%
-% An UNRECOGNISED version cannot reach here: refuseUnknownSchemaVersion runs
-% first and quarantines it. The `~svKnown` guard below is kept as a defence for
-% any other caller of this helper, and it returns FALSE only because a body
-% that got this far with an unknown version is already a contradiction -- the
-% refusal, not this line, is what decides that case.
-[svRank, svKnown] = did2.convert.schemaVersionRank(sv);
-[tgtRank, tgtKnown] = did2.convert.schemaVersionRank(targetVersion);
-if ~svKnown || ~tgtKnown || svRank < tgtRank
-    return;
-end
-topKeys = fieldnames(body);
-for k = 1:numel(topKeys)
-    name = topKeys{k};
-    if ~isempty(name) && name(1) == '_'
-        return;
-    end
-end
-tf = true;
 end
 
 function fcn = lookupMigrator(className)
@@ -602,17 +615,13 @@ function bodies = runConcreteMigrator(v2Body, className, targetVersion)
 %RUNCONCRETEMIGRATOR Run the concrete-class migrator, return a cell of bodies.
 %   Default ('V_delta') preserves the historical 1 -> 1 behaviour: the
 %   per-class migrator under +did2.+convert.+migrators is applied and a
-%   single-element cell is returned. Under 'V_epsilon', a class that has
-%   a Brainstorm-E split migrator under +did2.+convert.+migrators_e is
+%   single-element cell is returned. Under 'V_eta', a class that has
+%   a Brainstorm-J split/fold migrator under +did2.+convert.+migrators_j is
 %   routed there instead; that migrator may return either a single body
 %   (struct) or several (struct array / cell), enabling the treatment ->
 %   manipulation and ontology_table_row -> observations (1 -> N) splits.
 splitPackage = '';
-if strcmp(targetVersion, 'V_epsilon')
-    splitPackage = 'did2.convert.migrators_e.';
-elseif strcmp(targetVersion, 'V_zeta')
-    splitPackage = 'did2.convert.migrators_i.';
-elseif strcmp(targetVersion, 'V_eta')
+if strcmp(targetVersion, 'V_eta')
     splitPackage = 'did2.convert.migrators_j.';
 end
 if ~isempty(splitPackage)
@@ -647,7 +656,14 @@ else
 end
 end
 
-function body = renameOutboundBaseFields(body, targetVersion)
+function cache = outboundSchemaCache(cache)
+% The cache the batch validates against: the caller's, else the shared one.
+if isempty(cache)
+    cache = did2.schema.cache.shared();
+end
+end
+
+function body = renameOutboundBaseFields(body, targetVersion, sessionEdge)
 %RENAMEOUTBOUNDBASEFIELDS did_v1 `base` field names -> their V_eta spellings.
 %
 %   ONE PLACE, ON THE WAY OUT, FOR EVERY BODY. This runs on each emitted body
@@ -683,11 +699,29 @@ function body = renameOutboundBaseFields(body, targetVersion)
 %
 %   STATUS: NOT VERIFIED BY EXECUTION -- no MATLAB in the authoring
 %   environment.
+%
+%   `session_id` -> THE `session_id` EDGE, when SESSIONEDGE (the loaded `base`
+%   declares the edge: did-schema V_eta_relation_inheritance_plan.md,
+%   2026-10-20). The same argument as `datestamp`: every body, constructed or
+%   passed through, carries the v1 field until here, and every migrator keeps
+%   reading and writing it. The edge's target is the session (or dataset)
+%   entity, whose base.id IS the session id (migrators_j.session re-ids the
+%   session document to make that true), so the value moves unchanged. A body
+%   with no field (already moved, or built on the edge shape) is left as it is,
+%   so a batch pass may send its bodies back through here.
+arguments
+    body
+    targetVersion (1,:) char
+    sessionEdge (1,1) logical = false
+end
 if ~strcmp(targetVersion, 'V_eta')
     return;
 end
 if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base)
     return;
+end
+if sessionEdge && isfield(body.base, 'session_id')
+    body = moveSessionIdToEdge(body);
 end
 % `datestamp` -> `creation_timestamp`. `<noun>_<kind>` is the measured house
 % style (13 `_name`, 11 `_time`, 10 `_type`, 5 `_id`; 0 bare participles in
@@ -702,82 +736,72 @@ if isfield(body.base, 'datestamp')
 end
 end
 
-function body = ensureClassBlocks(body, schemaCacheOverride)
-% Make sure every class in the V_delta schema chain for the body's
-% concrete class has a property block in the document, manufacturing
-% empty `struct()` blocks for any chain entry that the v1 source did
-% not provide. Also rebuilds document_class.superclasses from the
-% V_delta schema chain so the snapshot matches the spec (same set,
-% same order, class-name-by-class-name) even when V_delta has
-% reordered or extended the chain relative to v1. V_delta's
-% validator rejects documents whose chain blocks are missing or
-% whose superclasses snapshot drifts from the schema, so this
-% padding lets the per-class migrators stay focused on real field
-% moves rather than placeholder bookkeeping.
+function body = moveSessionIdToEdge(body)
+%MOVESESSIONIDTOEDGE `base.session_id` -> the `session_id` depends_on edge.
+%   The field is the authority: a `session_id` edge already on the body is
+%   replaced by it, not kept beside it (base declares the edge once, and an
+%   epoch minted by did2.convert.epochMint carries one naming the session
+%   document, which on this shape is the same id). An empty field is removed
+%   and writes no edge -- the validator then reports the required edge as
+%   missing, which is the honest outcome for a document with no session.
 %
-% Silent no-op if the schema cache cannot resolve the class chain
-% (e.g., the class is unknown to the cache, or the cache itself is
-% not configured). In that case validation will catch the underlying
-% issue downstream; this function does not raise.
-if ~isfield(body, 'document_class') ...
-        || ~isstruct(body.document_class) ...
-        || ~isfield(body.document_class, 'class_name')
+%   The other edges are left exactly as they are, in order and with their key
+%   spelling; the new entry goes LAST and takes the spelling of the entries
+%   beside it (`value` on a raw
+%   migrator body, `document_id` after universalRenames), so a struct array
+%   stays one struct array.
+sid = char(body.base.session_id);
+body.base = rmfield(body.base, 'session_id');
+if ~isfield(body, 'depends_on') || isempty(body.depends_on)
+    deps = struct('name', {}, 'document_id', {});
+else
+    deps = body.depends_on;
+end
+if iscell(deps)
+    keep = true(1, numel(deps));
+    for k = 1:numel(deps)
+        keep(k) = ~(isstruct(deps{k}) && isfield(deps{k}, 'name') ...
+            && strcmp(char(deps{k}.name), 'session_id'));
+    end
+    deps = deps(keep);
+    if ~isempty(sid)
+        deps = [reshape(deps, 1, []), {struct('name', 'session_id', 'document_id', sid)}];
+    end
+    body.depends_on = deps;
     return;
 end
-className = char(body.document_class.class_name);
-cache = schemaCacheOverride;
-if isempty(cache)
-    try
-        cache = did2.schema.cache.shared();
-    catch
-        return;
+if isempty(deps)
+    if ~isempty(sid)
+        body.depends_on = struct('name', 'session_id', 'document_id', sid);
+    else
+        body.depends_on = struct('name', {}, 'document_id', {});
     end
-end
-if isempty(cache)
     return;
 end
-try
-    placementInfo = cache.resolvePlacement(className);
-    ancestors = cache.superclasses(className);
-catch
+names = fieldnames(deps);
+key = 'document_id';
+for candidate = {'document_id', 'value', 'id'}
+    if any(strcmp(names, candidate{1}))
+        key = candidate{1};
+        break;
+    end
+end
+for f = {'name', key}
+    if ~any(strcmp(names, f{1}))
+        [deps.(f{1})] = deal('');   % a shape with no such key gains it, empty
+        names{end+1} = f{1}; %#ok<AGROW>
+    end
+end
+deps = deps(~arrayfun(@(d) strcmp(char(d.name), 'session_id'), deps));
+if isempty(sid)
+    body.depends_on = deps;
     return;
 end
-% Placement-aware: only classes that contribute a body block (per
-% V_gamma_SPEC.md "Field placement") get an empty struct manufactured
-% for them. An abstract class whose declared fields are all
-% `placement: "concrete_class"` (e.g., `calculator`) does NOT
-% materialize on the instance body.
-for k = 1:numel(placementInfo.blocksContributed)
-    cls = placementInfo.blocksContributed{k};
-    if ~isfield(body, cls)
-        body.(cls) = struct();
-    end
-end
-% Drop stray EMPTY blocks left by v1 for chain classes that the target
-% schema does NOT host on the instance. v1 documents carried a property
-% block for every class in their hierarchy, including parents that became
-% abstract / fieldless in V_delta/V_epsilon (abstract classes are new
-% here). Those arrive as empty structs and would trip the strict
-% undeclared-top-level-block check. Only EMPTY such blocks are removed --
-% a non-empty one signals real data a migrator must place, so it is left
-% to fail loudly rather than be silently dropped.
-chainClasses = [reshape(ancestors, 1, []), {className}];
-nonContributing = setdiff(chainClasses, placementInfo.blocksContributed);
-for k = 1:numel(nonContributing)
-    cls = nonContributing{k};
-    if isfield(body, cls) && isstruct(body.(cls)) ...
-            && (numel(body.(cls)) == 0 || isempty(fieldnames(body.(cls))))
-        body = rmfield(body, cls);
-    end
-end
-sc = struct('class_name', {}, 'class_version', {});
-for k = 1:numel(ancestors)
-    ancDC = cache.getClass(ancestors{k}).document_class;
-    sc(end+1) = struct( ...
-        'class_name',    char(ancDC.class_name), ...
-        'class_version', char(ancDC.class_version)); %#ok<AGROW>
-end
-body.document_class.superclasses = sc;
+entry = cell2struct(repmat({''}, numel(names), 1), names, 1);
+entry = orderfields(entry, deps);
+entry.name = 'session_id';
+entry.(key) = sid;
+body.depends_on = [reshape(deps, 1, []), entry];
 end
 
 function body = applySuperclassMigrators(body, concreteClassName, targetVersion)
@@ -878,7 +902,8 @@ if ischar(rawBody) || (isstring(rawBody) && isscalar(rawBody))
     text = char(rawBody);
 elseif isstruct(rawBody)
     try
-        text = jsonencode(rawBody);
+        % the v1 body as V1 wrote it: NaN / Infinity kept (jsonencodenan)
+        text = jsonencode(rawBody, 'ConvertInfAndNaN', false);
     catch
         text = '';
     end
@@ -939,9 +964,157 @@ fprintf('  migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
 printUnconverted(result);
 printFragments(result);
+printEmittedNothing(result);
+printDimensionTerms(result);
+printStimulusControlEdges(result);
+printTuningResponseVariable(result);
+printMigrationNotes(result);
 printLegacyNdiDocument(result);
 printSilentLoss(result);
 printQuarantine(result);
+end
+
+function [n, noNode] = dimensionTermCounts(body)
+%DIMENSIONTERMCOUNTS The dimensions BODY writes (in its `data` and
+%   `acquisition_epoch` blocks) and how many of them have a term with no node.
+n = 0;
+noNode = 0;
+for b = {'data', 'acquisition_epoch'}
+    if ~isfield(body, b{1}) || ~isstruct(body.(b{1})) || ~isscalar(body.(b{1})) ...
+            || ~isfield(body.(b{1}), 'dimensions')
+        continue;
+    end
+    d = body.(b{1}).dimensions;
+    if iscell(d)
+        d = d(cellfun(@isstruct, d));
+    elseif isstruct(d)
+        d = num2cell(d);
+    else
+        continue;
+    end
+    for k = 1:numel(d)
+        n = n + 1;
+        t = [];
+        if isfield(d{k}, 'term'); t = d{k}.term; end
+        if iscell(t) && ~isempty(t); t = t{1}; end
+        node = '';
+        if isstruct(t) && ~isempty(t) && isfield(t, 'node'); node = t(1).node; end
+        if isempty(node) || (isstring(node) && strlength(node) == 0)
+            noNode = noNode + 1;
+        end
+    end
+end
+end
+
+function s = dimensionTermSummary(nDocs, classes, written, noNode)
+%DIMENSIONTERMSUMMARY summary.dimension_terms: DENOMINATORS FIRST
+%   (documents_inspected, dimensions_written), then without_node, then per
+%   class {dimensions_written, without_node}. A class that writes no
+%   dimension has no row; documents_inspected says how many were looked at.
+byClass = struct();
+for k = 1:numel(classes)
+    byClass.(matlab.lang.makeValidName(classes{k})) = struct( ...
+        'dimensions_written', written(k), 'without_node', noNode(k));
+end
+s = struct('documents_inspected', nDocs, ...
+    'dimensions_written', sum(written), ...
+    'without_node', sum(noNode), ...
+    'by_class', byClass);
+end
+
+function printDimensionTerms(result)
+%PRINTDIMENSIONTERMS [covariate details] 5.4: dimensions whose term has no node.
+if ~isfield(result.summary, 'dimension_terms'); return; end
+d = result.summary.dimension_terms;
+fprintf(['  dimension terms: %d of %d dimension(s) written have a term with ' ...
+    'no node (%d migrated document(s) inspected)\n'], d.without_node, ...
+    d.dimensions_written, d.documents_inspected);
+cls = fieldnames(d.by_class);
+for j = 1:numel(cls)
+    r = d.by_class.(cls{j});
+    fprintf('      %-40s %d of %d\n', cls{j}, r.without_node, r.dimensions_written);
+end
+end
+
+function printStimulusControlEdges(result)
+%PRINTSTIMULUSCONTROLEDGES [covariate rules named] 6.4: the v1
+%   `stimulus_control_id` edges the response migrators drop ([control as
+%   covariate]), against the response documents they converted.
+dropped = 0;
+total = 0;
+if isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'stimulus_control_id')
+    n = result.summary.migration_notes.stimulus_control_id;
+    total = n.count;
+    hit = strcmp(n.distinct_details, 'dropped');
+    if any(hit); dropped = n.distinct_detail_counts(hit); end
+end
+fprintf(['  stimulus_control_id edges dropped: %d of %d converted stimulus ' ...
+    'response document(s)\n'], dropped, total);
+end
+
+function printTuningResponseVariable(result)
+%PRINTTUNINGRESPONSEVARIABLE [response variable] / [dF/F as variable]: the
+%   folded tuning documents (jCalculation, one 'tuning_response_variable' note
+%   each), DENOMINATOR FIRST, then how many had `variable` set from v1
+%   `response_units` and how many got the general term EMPTY:0000398
+%   "neural response" because the source was empty or its spelling
+%   unrecognised ([unstated response variable], 2026-10-23).
+total = 0;
+names = {'neural firing rate', 'dF/F', 'not stated'};
+counts = zeros(1, numel(names));
+other = 0;
+if isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'tuning_response_variable')
+    n = result.summary.migration_notes.tuning_response_variable;
+    total = n.count;
+    for j = 1:numel(names)
+        hit = strcmp(n.distinct_details, names{j});
+        if any(hit); counts(j) = n.distinct_detail_counts(hit); end
+    end
+    other = total - sum(counts);
+end
+fprintf(['  tuning response variable: %d folded tuning document(s); set from ' ...
+    'response_units: %d (neural firing rate %d, dF/F %d); general term ' ...
+    '"neural response": %d (source empty %d, spelling unrecognised %d)\n'], ...
+    total, counts(1) + counts(2), counts(1), counts(2), counts(3) + other, ...
+    counts(3), other);
+end
+
+function printMigrationNotes(result)
+%PRINTMIGRATIONNOTES Notes migrators left (did2.convert.reportNote), per kind.
+if ~isfield(result.summary, 'migration_notes'); return; end
+notes = result.summary.migration_notes;
+kinds = fieldnames(notes);
+for k = 1:numel(kinds)
+    n = notes.(kinds{k});
+    fprintf('  migration note %s: %d document(s)\n', kinds{k}, n.count);
+    cls = fieldnames(n.by_class);
+    for j = 1:numel(cls)
+        fprintf('      %-40s %d\n', cls{j}, n.by_class.(cls{j}));
+    end
+    % what the notes name (field_dropped: the field path), distinct, counted.
+    % distinct_details is exact over every note; ids/details are a sample
+    % (did2.convert.reportNote), so the sample is stated, never passed off
+    % as the whole list.
+    if isfield(n, 'distinct_details')
+        [u, order] = sort(n.distinct_details);
+        c = n.distinct_detail_counts(order);
+        for j = 1:numel(u)
+            fprintf('        %-38s %d\n', u{j}, c(j));
+        end
+    elseif isfield(n, 'details')
+        d = n.details(~cellfun(@isempty, n.details));
+        [u, ~, ix] = unique(d);
+        for j = 1:numel(u)
+            fprintf('        %-38s %d\n', u{j}, sum(ix == j));
+        end
+    end
+    if isfield(n, 'sample_kept')
+        fprintf('      ids held: %d of %d note(s) (a sample: the first %d per class)\n', ...
+            n.sample_kept, n.count, n.sample_cap_per_class);
+    end
+end
 end
 
 function printLegacyNdiDocument(result)
@@ -1111,6 +1284,25 @@ for k = 1:numel(names); counts(k) = tbl.(names{k}); end
 [counts, order] = sort(counts, 'descend');
 for k = 1:min(numel(names), 20)
     fprintf('    %6d  %s\n', counts(k), names{order(k)});
+end
+end
+
+function printEmittedNothing(result)
+%PRINTEMITTEDNOTHING Report-only: sources a migrator consumed into nothing.
+%   Not a failure when the class is meant to fold away (a lightsheetZarrLevel
+%   that holds no bytes); a count on any other class is the signal.
+arguments
+    result (1,1) struct
+end
+
+if ~isfield(result.summary, 'emitted_nothing_count'); return; end
+if result.summary.emitted_nothing_count == 0; return; end
+fprintf(['  emitted nothing (REPORT ONLY -- migrator consumed the source ' ...
+         'and returned no document): %d\n'], result.summary.emitted_nothing_count);
+tbl = result.summary.emitted_nothing_by_class;
+names = fieldnames(tbl);
+for k = 1:numel(names)
+    fprintf('    %6d  %s\n', tbl.(names{k}), names{k});
 end
 end
 

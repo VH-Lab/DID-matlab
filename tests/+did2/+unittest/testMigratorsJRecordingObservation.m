@@ -1,6 +1,39 @@
 function tests = testMigratorsJRecordingObservation
 %TESTMIGRATORSJRECORDINGOBSERVATION Brainstorm-J: the raw-recording observation.
 %
+%   ---------------------------------------------------------------------
+%   2026-10-21: ONE OBSERVATION PER ELEMENT PER EPOCH, ITS FILES AS BODIES
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-10-21 (did-schema
+%   V_eta_recording_observation_plan.md): migrated recordings link their epoch
+%   files as data bodies, matching native V2 (NDI
+%   ndi.setup.V2.recordingDocuments): one observation per element per epoch,
+%   `data_body` true, an `opaque_body` per epoch file by location (ingested
+%   archives as attached), shared by the electrodes recorded in it, with the
+%   channel map; a file named but absent is still recorded by location.
+%
+%   So pass 1 (+migrators_j/element.m) NO LONGER EMITS the observation: an
+%   element names no epoch and carries no file, and the value-less session-wide
+%   observation it used to emit is refused by rule `value_inline_or_body`
+%   (data_body AMENDMENT 5), which quarantined the WHOLE element. The
+%   observation is minted per epoch by did2.convert.resolveEpochProbemap from
+%   the cached `epochfiles_ingested` document (or by the NDI second pass). The
+%   recording tests below therefore drive the DID chain over an element PLUS
+%   one epoch's cache (`runEpoch`), and assert the per-epoch observation with
+%   its file bodies; the pass-1-only assertions (`runJ`) now say what pass 1
+%   leaves: the element-subject, its kind assertions, and the `observes`
+%   relation, KEPT until the batch pass emits its replacement.
+%
+%   The tests that asserted "no body" (testNoBodyIsEmittedBecauseTheElement-
+%   CarriesNoBytes and the body-count lines of several others) are INVERTED,
+%   not patched: they pinned the old premise that a recording has no bytes to
+%   point at, and the decision is that the epoch's files ARE those bytes.
+%
+%   Derived `spikes` elements emit NO observation now (their per-epoch bytes
+%   are on element_epoch documents, and how those become a body is an open
+%   question); the spike-train tests are inverted to pin that, so the day it is
+%   decided they fail and say so.
+%
 %   Covers open item #30:
 %
 %     TEAM-SIGN-OFF [raw recording observation]  jess, 2026-08-10
@@ -26,7 +59,7 @@ function tests = testMigratorsJRecordingObservation
 %     TEAM-SIGN-OFF [spike train leaf]  jess, 2026-08-17
 %       (did-schema schemas/V_eta_ensemble_plan.md:218)
 %       "a per-neuron spike train is a `time_observation` [...] with
-%        `subject_statement.variable` = spike. The SPIKE TIMES ARE THE VALUE."
+%        `statement.variable` = spike. The SPIKE TIMES ARE THE VALUE."
 %
 %   It is here rather than in a file of its own because it is the same
 %   assembler with the two id ROLES exchanged -- the neuron is the subject and
@@ -91,49 +124,62 @@ end
 % ===================== the mapped recording case ===========================
 
 function testExtracellularProbeBecomesVoltageObservationOfTheSpecimen(testCase)
-% The headline case. An n-trode probe (direct = 1) recording a specimen becomes a
-% voltage_observation OF THE SPECIMEN taken WITH the electrode.
-out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-
-obs = firstOfClass(out, 'voltage_observation');
-verifyNotEmpty(testCase, obs, 'no voltage_observation was emitted for an n-trode');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'specimen_1');   % the SPECIMEN
+% The headline case. An n-trode probe (direct = 1) recording a specimen becomes,
+% PER EPOCH, a voltage_observation OF THE SPECIMEN taken WITH the electrode,
+% its value in the epoch's files (`data_body` true).
+out = runEpoch(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+    {'/data/2024-06-01/t00001/t00001.rhd'});
+obs = firstOfClass(out, 'observation+voltage');
+verifyNotEmpty(testCase, obs, 'no voltage_observation was emitted for an n-trode epoch');
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'specimen_1');   % the SPECIMEN
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');      % the electrode (T7)
-verifyEqual(testCase, obs.get('subject_statement.variable').name, 'voltage');
-% INVERTED 2026-08-14, not updated. This asserted 'body', matching the code,
-% and both were written from the same premise -- so the test could never have
-% caught it. `element` declares NO files (15 of 91 v1 templates do; element is
-% not one), so a body minted here is empty by construction in every session,
-% ingested or not. Team: "a body means bytes".
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
-% timing: the shared session 'during' anchor (the epoch join is the second pass)
-verifyNotEmpty(testCase, depValue(obs, 'time_reference_1'));
-anchor = firstOfClass(out, 'session_relative_reference');
+verifyEqual(testCase, obs.get('statement.variable').name, 'voltage');
+verifyTrue(testCase, logical(obs.get('value.data_body')), ...
+    'the recording''s value is its epoch files: data_body must be true');
+% timing: the EPOCH, not the session (one observation per element per epoch)
+anchor = docById(out, depValue(obs, 'time_reference_id'));
 verifyNotEmpty(testCase, anchor);
-verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
+ep = docById(out, depValue(anchor, 'referent_id'));
+verifyEqual(testCase, did2.unittest.helpers.classKey(ep), 'epoch');
+% and pass 1 alone emits no observation at all
+verifyFalse(testCase, anyObservationEmitted(runJ(elementDoc('ctx_probe', 'n-trode', ...
+    'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''))));
 end
 
-function testNoBodyIsEmittedBecauseTheElementCarriesNoBytes(testCase)
-% INVERTED 2026-08-14. This was `testTheBodyValuesTheObservation` and asserted
-% that a `sampled_body` IS emitted -- the exact behaviour now removed.
-%
-% WHY IT IS AN INVERSION AND NOT AN UPDATE: the test and the code were written
-% from one premise (an observation with storage_mode 'body' needs a body), so
-% the suite agreed with the defect all the way into a real migrated session --
-% 11 bodies with dtype '', shape [] and an empty sample_time. That is this
-% repository's own documented failure shape: "a test written from the same
-% premise as the code cannot catch the code."
-%
-% THE PREMISE THAT WAS WRONG: `element` declares no files at all, so there are
-% never bytes on this path. Ingestion does not change it -- ingested bytes go
-% to `epochfiles_ingested` / `daqreader_*_epochdata_ingested`, different
-% documents with their own migrators.
-out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-obs = firstOfClass(out, 'voltage_observation');
-verifyNotEmpty(testCase, obs, 'the observation itself must still be emitted');
-verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0, ...
-    ['a sampled_body was emitted for an element, which carries no files -- ' ...
-     'it can only be an empty body claiming a value that is not there']);
+function testTheEpochFilesBecomeOpaqueBodiesByLocation(testCase)
+% INVERTED 2026-10-21 -- this was testNoBodyIsEmittedBecauseTheElementCarriesNoBytes,
+% which asserted that a recording gets NO body. Its premise -- "`element`
+% declares no files, so there are never bytes on this path" -- is still true OF
+% THE ELEMENT (pass 1 below emits none), and the decision (Jess Haley,
+% 2026-10-21) is that the bytes are the EPOCH's files: each becomes an
+% opaque_body recorded BY LOCATION (ingest 0, never copied), owned by the
+% observation. `epochid://` entries name the epoch, not a file. No size and no
+% checksum: the batch pass reads documents, not a disk, so a file NAMED but
+% absent (as in every test corpus) is still recorded.
+files = {'/data/2024-06-01/t00001/t00001.rhd', '/data/2024-06-01/t00001/reference.txt'};
+el = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
+verifyEqual(testCase, countOfClass(runJ(el), 'opaque_body'), 0, ...
+    'pass 1 minted a body for an element, which carries no files');
+out = runEpoch(el, files);
+obs = firstOfClass(out, 'observation+voltage');
+verifyNotEmpty(testCase, obs);
+bodies = allOfClass(out, 'opaque_body');
+verifyEqual(testCase, numel(bodies), 2, 'one opaque_body per named file');
+locs = {};
+for i = 1:numel(bodies)
+    b = bodies{i}.toStruct();
+    verifyEqual(testCase, ownersOf(b), {char(obs.get('base.id'))});
+    fi = b.files.file_info;
+    verifyEqual(testCase, char(fi(1).name), 'body_data_0');
+    verifyEqual(testCase, char(fi(1).locations.location_type), 'file');
+    verifyEqual(testCase, double(fi(1).locations.ingest), 0);
+    locs{end+1} = char(fi(1).locations.location); %#ok<AGROW>
+    verifyFalse(testCase, isfield(b.data_body, 'size_bytes') && ~isempty(b.data_body.size_bytes) ...
+        && b.data_body.size_bytes > 0, 'a size was invented for a file nobody read');
+    verifyTrue(testCase, ~isfield(b.data_body, 'content_hash') || isempty(b.data_body.content_hash));
+end
+verifyEqual(testCase, sort(locs), sort(files));
+verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 end
 
 function testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId(testCase)
@@ -141,9 +187,10 @@ function testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId(testCas
 % them means "the recording element", which after migration is the SUBJECT.
 % Moving that id onto the observation would silently re-point all of them (the
 % 11,448-orphan shape). The observation is new, so nothing can dangle on it.
-out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-sub = firstOfClass(out, 'subject');
-obs = firstOfClass(out, 'voltage_observation');
+out = runEpoch(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+    {'/data/t00001/t00001.rhd'});
+sub = firstOfClass(out, 'device');   % #88: an entity of type device
+obs = firstOfClass(out, 'observation+voltage');
 verifyEqual(testCase, sub.get('base.id'), 'el_1');
 verifyNotEqual(testCase, obs.get('base.id'), 'el_1');
 end
@@ -151,26 +198,20 @@ end
 % ===================== multi-channel ======================================
 
 function testMultiChannelProbeIsOneObservationWithAChannelAxis(testCase)
-% SIGNED: a 32-site probe is ONE observation, NOT N observations.
-%
-% NARROWED 2026-08-14. The signed property under test is the CARDINALITY -- one
-% observation per probe, not one per site -- and that is unchanged. What is
-% removed is the assertion that a `sampled_body` carries the channel axis: no
-% body is emitted at all now (see testNoBodyIsEmittedBecauseTheElementCarriesNoBytes).
-% The channel axis rides with the bytes, wherever they are described, which for
-% an element is not here.
-out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1, ...
+% SIGNED: a 32-site probe is ONE observation, NOT N observations -- per epoch
+% now. The channels it owns in the shared file are its channel map, the
+% acquisition_channels document (from the probe map's device string, here
+% vhspike2:ai11-14), not N statements.
+out = runEpoch(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+    {'/data/t00001/t00001.rhd'});
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1, ...
     'a multi-site probe must not fan out into one observation per site');
+obs = firstOfClass(out, 'observation+voltage');
+ac = docById(out, depValue(obs, 'acquisition_channels_id'));
+verifyNotEmpty(testCase, ac, 'the observation names no channel map');
+ch = ac.get('acquisition_channels.channels');
+verifyEqual(testCase, double(ch(1).numbers(:))', [11 12 13 14]);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-% THE CHANNEL-AXIS ASSERTIONS THAT STOOD HERE ARE REMOVED WITH THE BODY, and
-% the property they protected is worth restating because it did not go away:
-% the channel COUNT is not on the element document (PROBE-TYPES.md -- for an
-% n-trode it "is calculated from the number of channels specified in the device
-% string", which lives in the epochprobemap). Writing a 0 there would have been
-% the spikewaves bug: a body cleanly describing an empty recording. Emitting no
-% body is a stronger form of the same refusal -- there is now no slot in which
-% to invent an extent.
 end
 
 function testUnderscoredElectrodeSpellingAlsoResolves(testCase)
@@ -179,107 +220,91 @@ function testUnderscoredElectrodeSpellingAlsoResolves(testCase)
 % probetype2object.json registers the stem as 'electrode-$' and
 % +ndi/+database/+metadata_app/+fun/loadProbes.m:46 matches real data with
 % regexp 'electrode-\d'. All three reach the same row.
-out = runJ(elementDoc('ctx', 'extracellular_electrode-4', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-% NARROWED 2026-08-14: the property under test is that all three spellings
-% RESOLVE to the voltage row. The channel-axis assertion rode on a body that is
-% no longer emitted; resolution is what this test is for.
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
-obs = firstOfClass(out, 'voltage_observation');
-verifyEqual(testCase, obs.get('subject_statement.variable').name, 'voltage');
+out = runEpoch(elementDoc('ctx', 'extracellular_electrode-4', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+    {'/data/t00001/t00001.rhd'});
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
+obs = firstOfClass(out, 'observation+voltage');
+verifyEqual(testCase, obs.get('statement.variable').name, 'voltage');
 end
 
 function testSingleChannelPipetteCarriesNoChannelAxis(testCase)
-% PROBE-TYPES.md: patch-Vm is "single channel, specifies voltage recording".
-% A single-channel body has no channel dimension to declare.
-out = runJ(elementDoc('Vm_a', 'patch-Vm', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-% NARROWED 2026-08-14 for the same reason as the multichannel test: no body is
-% emitted, so there is no axes slot to assert about either way. What survives is
-% the cardinality -- a single-channel pipette is ONE observation.
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
+% PROBE-TYPES.md: patch-Vm is "single channel, specifies voltage recording":
+% ONE observation per epoch.
+out = runEpoch(elementDoc('Vm_a', 'patch-Vm', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+    {'/data/t00001/t00001.abf'});
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 end
 
 % ===================== the retired `observes` relation =====================
 
 function testObservesRelationIsGoneForAMappedRecordingElement(testCase)
-% THE RETIREMENT. The instrument_id edge replaces it.
-out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+% THE RETIREMENT, now in two steps. Pass 1 KEEPS `observes` (it emits no
+% observation, so nothing replaces it yet); the batch pass retires it when a
+% surviving observation carries the same probe as instrument_id and the same
+% specimen as entity_id.
+el = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
+verifyTrue(testCase, hasRelation(runJ(el), 'observes'), ...
+    'pass 1 dropped `observes` with nothing in its place');
+out = runEpoch(el, {'/data/t00001/t00001.rhd'});
 verifyFalse(testCase, hasRelation(out, 'observes'), ...
     'the loose `probe observes specimen` relation survived the instrument_id edge');
-obs = firstOfClass(out, 'voltage_observation');
+obs = firstOfClass(out, 'observation+voltage');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
 end
 
 function testDerivedElementKeepsItsDerivedFromLineage(testCase)
 % REGRESSION GUARD. Only `observes` retires; `derived_from` is untouched.
 %
-% INVERTED 2026-08-18, NOT PATCHED. This test read "...and NO observation is
-% minted -- spike trains ride with the ensemble model's NDI second pass", and
-% asserted `verifyFalse(anyObservationEmitted(out))`. That was written from the
-% same premise as `element.m`'s `if isDirect` and could never have caught it;
-% TEAM-SIGN-OFF [spike train leaf] (V_eta_ensemble_plan.md:218) retires the
-% premise, so the assertion is reversed rather than deleted. The `derived_from`
-% half of this test was and remains correct, which is why the test survives
-% under its own name.
+% INVERTED AGAIN 2026-10-21. From 2026-08-18 this asserted that a derived
+% `spikes` element emits a (session-wide, value-less) time_observation. That
+% document is refused by rule `value_inline_or_body`, and the decision of
+% 2026-10-21 makes a recording ONE OBSERVATION PER EPOCH with its files as
+% bodies. A spike train's per-epoch bytes are on its element_epoch documents
+% (an attached epoch_binary_data.vhsb each, in every corpus), and how those
+% become the train's body is NOT DECIDED. So pass 1 emits no observation for
+% it, and this pins that: when the derived case is decided, this line fails
+% and points here.
 out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1'));
 verifyTrue(testCase, hasRelation(out, 'derived_from'));
-% Still no body: the element declares no files, exactly as for a direct probe.
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-verifyTrue(testCase, anyObservationEmitted(out), ...
-    ['a derived `spikes` element emitted no observation. It is a per-neuron ' ...
-     'spike train and the signed shape is a time_observation.']);
+verifyFalse(testCase, anyObservationEmitted(out), ...
+    'a derived spikes element emitted an observation before its body is decided');
 end
 
-function testDerivedSpikesBecomesATimeObservationOfTheNeuronItself(testCase)
-% THE SIGNED SHAPE, and the ROLES ARE THE MIRROR of the direct case above --
-% which is the whole reason this needs its own test rather than a line added to
-% the n-trode one. TEAM-SIGN-OFF [spike train leaf]: "a per-neuron spike train
-% is a `time_observation` [...] with `subject_statement.variable` = spike."
-%
-% The neuron IS the element: `migrators_j/element.m` mints a `subject` for every
-% element with `base.id` PRESERVED, so the subject of this observation is
-% `el_1`, not the animal. The animal (`specimen_1`) is not wrong, it is a
-% different fact -- the neuron's own lineage -- and it is carried by the
-% element's `subject_id` edge, not by this document.
-out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1'));
-
-obs = firstOfClass(out, 'time_observation');
-verifyNotEmpty(testCase, obs, 'no time_observation was emitted for a spikes element');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'el_1', ...
-    'the spike train is an observation OF THE NEURON, whose id the element keeps');
-verifyEqual(testCase, depValue(obs, 'instrument_id'), 'probe_1', ...
-    'the instrument is the probe underneath the unit, not the unit itself');
-verifyEqual(testCase, obs.get('subject_statement.variable').name, 'spike');
-% `reference`, not `body`: the times are in the sorter's .vhsb, which the
-% element document does not carry -- the same reason the voltage case says so.
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
-% and it is anchored, like every other observation this assembler emits
-anchor = firstOfClass(out, 'session_relative_reference');
-verifyNotEmpty(testCase, anchor);
-verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
-% NOT the unresolved path. `spikes` has a signature; it must never surface on
-% the Guard A worklist, which is where every derived type still goes.
-verifyEqual(testCase, countOfClass(out, 'time_observation'), 1);
+function testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided(testCase)
+% INVERTED 2026-10-21 -- this was testDerivedSpikesBecomesATimeObservationOfTheNeuronItself.
+% TEAM-SIGN-OFF [spike train leaf] still says what a spike train IS (a
+% time_observation of the neuron, variable spike, with the probe as
+% instrument); what changed is WHEN it can be emitted. A train's value is its
+% spike times, which are in the element_epoch's attached file per epoch, and
+% the observation is now per epoch with its value in bodies. Which file that
+% is, per epoch, is an open question (reported, not decided), so nothing is
+% emitted -- and nothing is quarantined either, which the old value-less
+% observation was.
+v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+verifyEmpty(testCase, out.quarantine, 'the derived element quarantined');
+verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
+verifyNotEmpty(testCase, firstOfClass(out, 'cell'), 'the neuron must still become a subject');
 end
 
 function testASpikesElementWithNoUnderlyingProbeOmitsTheInstrumentEdge(testCase)
-% THE THIRD ANSWER, and both of the other two are wrong. An empty
-% `instrument_id` would be the invented-empty-edge defect (7,233 documents, and
-% `references.m:90` skips empty edges so it validates clean); dropping the
-% observation would lose a real spike train because we do not know which probe
-% recorded it. `instrument_id` is optional on `subject_interaction`
-% (mustBeNonEmpty false), so saying nothing is expressible.
-%
-% NOT REACHABLE FROM 20211116 -- all 21 of its `spikes` elements carry an
-% `underlying_element_id` -- and that is why it is asserted here rather than
-% left to a corpus. The corpora are a sample.
+% The invented-empty-edge guard, kept for the day the derived observation
+% returns: whatever pass 1 emits for a spikes element with no underlying probe,
+% no document may carry an `instrument_id` edge naming nothing. (Today it emits
+% no observation at all -- see the test above.)
 out = runJ(elementDoc('orphan_unit', 'spikes', 'ndi.neuron', 0, 'specimen_1', ''));
-obs = firstOfClass(out, 'time_observation');
-verifyNotEmpty(testCase, obs, ...
-    'a spikes element with no underlying probe emitted no observation at all');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'el_1');
-verifyEmpty(testCase, depValue(obs, 'instrument_id'), ...
-    'an instrument_id edge was emitted naming nothing');
+for k = 1:numel(out.migrated)
+    deps = out.migrated{k}.get('depends_on');
+    for j = 1:numel(deps)
+        if strcmp(deps(j).name, 'instrument_id')
+            verifyNotEmpty(testCase, depValue(out.migrated{k}, 'instrument_id'), ...
+                'an instrument_id edge was emitted naming nothing');
+        end
+    end
+end
+verifyNotEmpty(testCase, firstOfClass(out, 'cell'));
 end
 
 % ===================== two quantities on one instrument ====================
@@ -287,55 +312,58 @@ end
 function testPatchProducesAVoltageAndACurrentObservation(testCase)
 % PROBE-TYPES.md: patch = "two channels; first is Vm, second is I". Two
 % quantities are two `variable`s, so two statements -- NOT one observation with a
-% 2-long channel axis, which would label a current trace 'voltage'.
-out = runJ(elementDoc('patch_a', 'patch', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
-verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
-% was 2 -- one body per observation. No bodies are emitted now; the signed
-% property is that patch yields TWO STATEMENTS, not one with a 2-long channel
-% axis that would label a current trace 'voltage'. That is untouched.
+% 2-long channel axis, which would label a current trace 'voltage'. Both are in
+% the same epoch file, so that file is ONE opaque_body SHARED by both: its
+% owner_id repeats (did-schema data_body, 2026-10-21).
+out = runEpoch(elementDoc('patch_a', 'patch', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+    {'/data/t00001/t00001.abf'});
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
+verifyEqual(testCase, countOfClass(out, 'observation+current'), 1);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-% both are OF the specimen and WITH the same instrument, and share one anchor
-volt = firstOfClass(out, 'voltage_observation');
-curr = firstOfClass(out, 'current_observation');
-verifyEqual(testCase, depValue(volt, 'subject_id'), 'specimen_1');
-verifyEqual(testCase, depValue(curr, 'subject_id'), 'specimen_1');
+volt = firstOfClass(out, 'observation+voltage');
+curr = firstOfClass(out, 'observation+current');
+verifyEqual(testCase, depValue(volt, 'entity_id'), 'specimen_1');
+verifyEqual(testCase, depValue(curr, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(volt, 'instrument_id'), 'el_1');
 verifyEqual(testCase, depValue(curr, 'instrument_id'), 'el_1');
-verifyEqual(testCase, depValue(volt, 'time_reference_1'), depValue(curr, 'time_reference_1'));
-verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);
-verifyEqual(testCase, volt.get('subject_statement.variable').name, 'voltage');
-verifyEqual(testCase, curr.get('subject_statement.variable').name, 'current');
+verifyEqual(testCase, depValue(volt, 'time_reference_id'), depValue(curr, 'time_reference_id'));
+verifyEqual(testCase, volt.get('statement.variable').name, 'voltage');
+verifyEqual(testCase, curr.get('statement.variable').name, 'current');
+bodies = allOfClass(out, 'opaque_body');
+verifyEqual(testCase, numel(bodies), 1, 'one file, one body');
+verifyEqual(testCase, sort(ownersOf(bodies{1}.toStruct())), ...
+    sort({char(volt.get('base.id')), char(curr.get('base.id'))}), ...
+    'the one file must be shared by both observations');
 end
 
 function testCurrentPipetteIsNotLabelledVoltage(testCase)
 % The unit-error tripwire. patch-I is "single channel, specifies current
 % recording"; mapping it to voltage would be the fitcurve SSE/goodness-of-fit
 % polarity swap one tier over -- a tidy-looking rename that inverts the meaning.
-out = runJ(elementDoc('I_a', 'patch-I', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 0);
+out = runEpoch(elementDoc('I_a', 'patch-I', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+    {'/data/t00001/t00001.abf'});
+verifyEqual(testCase, countOfClass(out, 'observation+current'), 1);
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 0);
 end
 
 % ===================== imaging ============================================
 
 function testImagingProbeBecomesImageObservation(testCase)
 % PROBE-TYPES.md _Imaging_; probetype2object.json registers all four imaging
-% types to ndi.probe.image.
-out = runJ(elementDoc('camera', 'wide-field-imaging', 'ndi.probe.image', 1, 'specimen_1', ''));
-obs = firstOfClass(out, 'image_observation');
+% types to ndi.probe.image. #88: a raster goes by what its pixels measure --
+% intensity. The frames are the epoch's files (a TIFF here), so the batch pass
+% no longer defers imaging rows: nothing inline is needed.
+out = runEpoch(elementDoc('camera', 'wide-field-imaging', 'ndi.probe.image', 1, 'specimen_1', ''), ...
+    {'/data/t00001/frames.tif'});
+obs = firstOfClass(out, 'observation+intensity');
 verifyNotEmpty(testCase, obs);
-verifyEqual(testCase, obs.get('subject_statement.variable').name, 'image');
+verifyEqual(testCase, obs.get('statement.variable').name, 'intensity');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
-% `image` declares `value` mustBeNonEmpty, so the raster cell has to be present
-% even though the pixels are not. This said "draft/image.json is the ONLY
-% data_type" -- wrong twice (the file is stable/, and 8 data_type descendants
-% declare it: contrast_sensitivity, date, harmonic_component, image, polynomial,
-% term, timed_sequence, tuning_curve, over 243 schemas). Corrected 2026-08-11.
-% The claim was made here AND in the migrator it tests, so this test pinned the
-% error instead of catching it -- see jRecordingObservation/attachQuantityBlock.
-verifyNotEmpty(testCase, fieldnames(obs.get('image.value')));
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'specimen_1');
 verifyFalse(testCase, hasRelation(out, 'observes'));
+b = firstOfClass(out, 'opaque_body');
+verifyNotEmpty(testCase, b);
+verifyEqual(testCase, char(b.get('data_body.format').node), 'EDAM:format_3591');
 end
 
 % ===================== Guard A ============================================
@@ -356,7 +384,7 @@ out = runJ(elementDoc('spout', 'lick-spout', 'ndi.probe.timeseries.mfdaq', 1, 's
 flag = assertionWithVariable(out, 'modality unresolved');
 verifyNotEmpty(testCase, flag, 'an unmapped element type produced no queryable flag');
 verifyEqual(testCase, flag.get('term.value').name, 'lick-spout');
-verifyEqual(testCase, depValue(flag, 'subject_id'), 'el_1');
+verifyEqual(testCase, depValue(flag, 'entity_id'), 'el_1');
 % nothing was invented, and nothing was lost
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
@@ -374,8 +402,8 @@ function testBannedClassNamesAreNeverMinted(testCase)
 % T11 bans `timeseries_observation` / `signal_observation`, and R6 KILLED `array`
 % outright. Swept across the resolved, the stimulator and the Guard A paths at
 % once, so a future map edit cannot reintroduce one on a branch nobody looked at.
-banned = {'timeseries_observation', 'signal_observation', 'array', ...
-          'dataseries_observation', 'imageseries_observation'};
+banned = {'observation+timeseries', 'observation+signal', 'array', ...
+          'observation+dataseries', 'observation+imageseries'};
 types = {'n-trode', 'patch', 'patch-Vm', 'wide-field-imaging', 'thermometer', ...
          'lick-spout', 'ppg', 'reward-well', 'stimulator', 'event', '', 'madeup'};
 for t = 1:numel(types)
@@ -428,55 +456,42 @@ function testNoSpecimenMeansNoObservationAndNoEmptyRequiredEdge(testCase)
 out = runJ(elementDoc('orphan_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, '', ''));
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-verifyEqual(testCase, countOfClass(out, 'subject'), 1);   % the element still migrates
+verifyEqual(testCase, countOfClass(out, 'device'), 1);   % the element still migrates (#88: a device entity)
 end
 
 % ===================== validation =========================================
 
 function testExtracellularRecordingValidatesAgainstVEta(testCase)
-% THE ONE VALIDATING RUN. The whole emitted set -- subject + two kind assertions
-% + voltage_observation + session anchor -- has to satisfy V_eta as declared: no
-% undeclaredField, no missing mustBeNonEmpty, and no abstract class
-% instantiated.
-%
-% `sampled_body` LEFT THAT LIST 2026-08-14 (a body means bytes; `element`
-% declares no files). This assertion is also the one that PROVES
-% `storage_mode: 'reference'` validates -- the run above quarantines nothing,
-% so the enum accepts it and the observation stands without a body.
-v1 = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+% THE VALIDATING RUN, now over the whole DID chain: the element-subject + its
+% kind assertions + the epoch + the per-epoch voltage_observation (data_body
+% true) + its epoch anchor + the channel map + the opaque_body by location.
+% Nothing may quarantine; rule value_inline_or_body is satisfied by data_body.
+el = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
+pass1 = did2.convert.v1_to_v2(el, 'Validate', true, 'TargetVersion', 'V_eta');
+verifyEmpty(testCase, pass1.quarantine, 'pass 1 quarantined the element');
+out = runEpoch(el, {'/data/t00001/t00001.rhd'}, true);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
+verifyNotEmpty(testCase, firstOfClass(out, 'observation+voltage'));
+verifyNotEmpty(testCase, firstOfClass(out, 'opaque_body'));
 end
 
 function testTheSpikeTrainAlsoValidatesAgainstVEta(testCase)
-% THE SECOND VALIDATING RUN, and it is not redundant with the first. It is the
-% only thing that proves `time_observation` is INSTANTIABLE: `time` is an
-% ABSTRACT data_type and `+did2/+schema/cache.m` raises
-% `did2:validation:abstractInstantiation` for a document naming an abstract
-% class, so a leaf wired to the wrong superclass fails exactly here and
-% nowhere else. It also proves an EMPTY `time` block is legal -- `time.value`
-% is mustBeNonEmpty false, unlike the ten classes that are not -- which is what
-% lets the times live in the sorter's file rather than in the document.
+% A derived spikes element validates in pass 1 -- no quarantine (the old
+% value-less time_observation quarantined the whole element under rule
+% value_inline_or_body) -- and emits NO observation until its per-epoch body is
+% decided (see testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided).
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
-verifyNotEmpty(testCase, firstOfClass(out, 'time_observation'), ...
-    'the validating run emitted no time_observation, so it proved nothing');
-% ZERO voltage_observation, not one. A derived `spikes`/`ndi.neuron` element
-% takes the spike-train branch (element.m:146), NOT the direct-probe branch
-% that mints voltage/current -- so the ONLY observation here is the time one
-% asserted above. The `1` this line carried was copy-paste residue from the
-% extracellular validating test it was cloned from; the migrator emits 0 and
-% testDerivedSpikesBecomesATimeObservationOfTheNeuronItself proves why.
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 0);
-verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);   % was 1
-verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);
+verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 0);
+verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 end
 
 % ===================== fixtures ===========================================
@@ -511,14 +526,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 end
 
 function d = firstOfClass(out, className)
 d = [];
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         d = out.migrated{k};
         return;
     end
@@ -530,11 +545,14 @@ n = sum(strcmp(classNames(out), className));
 end
 
 function tf = anyObservationEmitted(out)
-%ANYOBSERVATIONEMITTED Did anything at all in the batch end in '_observation'?
-%   Deliberately a SUFFIX sweep rather than a list: a Guard A / stimulator test
-%   that named the classes it does not expect would miss a NEW one.
+%ANYOBSERVATIONEMITTED Did anything at all in the batch be an observation?
+%   Deliberately a sweep rather than a list: a Guard A / stimulator test that
+%   named the classes it does not expect would miss a NEW one. did-schema #88:
+%   'observation' / 'observation+<kind>' (classKey); a joined old name ending
+%   in '_observation' counts too, so an emitter regressing to it is caught.
 names = classNames(out);
-tf = any(cellfun(@(n) numel(n) > 12 && strcmp(n(end-11:end), '_observation'), names));
+tf = any(cellfun(@(n) strcmp(n, 'observation') || strncmp(n, 'observation+', 12) ...
+    || (numel(n) > 12 && strcmp(n(end-11:end), '_observation')), names));
 end
 
 function tf = hasRelation(out, relationName)
@@ -543,18 +561,18 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if ~strcmp(d.get('document_class.class_name'), 'directed_relation'); continue; end
     r = d.get('directed_relation.relation');
-    if strcmp(r.name, relationName); tf = true; return; end
+    if did2.build.isVocabulary(r, 'relation', relationName); tf = true; return; end   % by node (L1)
 end
 end
 
 function d = assertionWithVariable(out, variableName)
-%ASSERTIONWITHVARIABLE The term_assertion whose subject_statement.variable is
+%ASSERTIONWITHVARIABLE The term_assertion whose statement.variable is
 %   VARIABLENAME -- the query shape the Guard A worklist is meant to be found by.
 d = [];
 for k = 1:numel(out.migrated)
     doc = out.migrated{k};
-    if ~strcmp(doc.get('document_class.class_name'), 'term_assertion'); continue; end
-    v = doc.get('subject_statement.variable');
+    if ~strcmp(did2.unittest.helpers.classKey(doc), 'assertion+term'); continue; end
+    v = doc.get('statement.variable');
     if strcmp(v.name, variableName); d = doc; return; end
 end
 end
@@ -573,5 +591,78 @@ for k = 1:numel(deps)
         v = char(deps(k).value);
     end
     return;
+end
+end
+
+
+function out = runEpoch(el, files, validate)
+%RUNEPOCH The DID chain over ELEMENT plus one epoch's v1 cache: a session, the
+%   specimen subject (local_identifier 'L'), and an epochfiles_ingested naming
+%   epoch t00001, FILES, and one probe-map row for this element (its name,
+%   reference '1', its type, device vhspike2:ai11-14, subject 'L'). Mirrors
+%   testResolveEpochProbemap's decompose().
+if nargin < 3; validate = false; end
+sess = struct();
+sess.document_class = struct('class_name', 'session', 'class_version', 1, ...
+    'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+sess.depends_on = struct('name', {}, 'value', {});
+sess.base = struct('id', 'sd_09', 'session_id', 'sess_09', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+sess.session = struct('reference', 'ref');
+subj = struct();
+subj.document_class = struct('class_name', 'subject', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+subj.depends_on = struct('name', {}, 'value', {});
+subj.base = struct('id', 'specimen_1', 'session_id', 'sess_09', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+subj.subject = struct('local_identifier', 'L', 'description', '');
+ing = struct();
+ing.document_class = struct( ...
+    'definition', '$NDIDOCUMENTPATH/ingestion/epochfiles_ingested.json', ...
+    'validation', '$NDISCHEMAPATH/ingestion/epochfiles_ingested_schema.json', ...
+    'class_name', 'epochfiles_ingested', 'property_list_name', 'epochfiles_ingested', ...
+    'class_version', 1, 'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+ing.depends_on = struct('name', 'filenavigator_id', 'value', 'nav_1');
+ing.base = struct('id', 'efi_1', 'session_id', 'sess_09', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+pm = sprintf('name\treference\ttype\tdevicestring\tsubjectstring\n%s\t1\t%s\tvhspike2:ai11-14\tL\n', ...
+    el.element.name, el.element.type);
+ing.epochfiles_ingested = struct('epoch_id', 't00001', ...
+    'files', {[{'epochid://t00001'}, files]}, 'epochprobemap', pm);
+out = did2.convert.v1_to_v2({sess, subj, el, ing}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveSessionAnchors(out, 'Validate', validate, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'V_eta');
+end
+
+function c = allOfClass(out, className)
+c = {};
+for k = 1:numel(out.migrated)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
+        c{end+1} = out.migrated{k}; %#ok<AGROW>
+    end
+end
+end
+
+function d = docById(out, id)
+d = [];
+if isempty(id); return; end
+for k = 1:numel(out.migrated)
+    if strcmp(char(out.migrated{k}.get('base.id')), id); d = out.migrated{k}; return; end
+end
+end
+
+function ids = ownersOf(b)
+%OWNERSOF Every owner_id of a body STRUCT (the edge repeats), in order.
+ids = {};
+deps = b.depends_on;
+if iscell(deps); deps = [deps{:}]; end
+for k = 1:numel(deps)
+    if ~strcmp(deps(k).name, 'owner_id'); continue; end
+    if isfield(deps(k), 'document_id') && ~isempty(deps(k).document_id)
+        ids{end+1} = char(deps(k).document_id); %#ok<AGROW>
+    elseif isfield(deps(k), 'value') && ~isempty(deps(k).value)
+        ids{end+1} = char(deps(k).value); %#ok<AGROW>
+    end
 end
 end

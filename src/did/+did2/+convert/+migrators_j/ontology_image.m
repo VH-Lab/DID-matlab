@@ -15,6 +15,24 @@ function v2Body = ontology_image(preBody)
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
+%   did-schema #88 (2026-10-21), READ BEFORE THE HISTORY BELOW. Where the text
+%   below says `term_observation` / `image_observation`, #88 emits DIRECTION
+%   classes with ONE value-kind mixin: the region is an `observation` with the
+%   `term` value kind, and the raster (#73 review item 51: an ontologyImage's
+%   pixels are an ordinary numeric image) an `observation` with the
+%   `intensity` value kind, body-backed by a `sampled_body`. A document with no
+%   subject passes through whole (#88 requires `entity_id`). Vintage B still
+%   passes through; the subject-bearing raster arm is unchanged in reach.
+%
+%   2026-10-21, [ontology image is an observation of its region] (Jess Haley):
+%   the raster arm no longer emits the term observation. It is ONE intensity
+%   observation (variable NCIT:C221750, the source id) carrying the ontology
+%   node as a condition (NCIT:C13717 for a UBERON area, for pathSPromotion to
+%   promote onto the region part; the label 'ontology node' otherwise), plus its
+%   sampled_body and the anchor: 1 -> 3.
+%   Text below that says "term_observation + image_observation", "1 -> 4" or
+%   "the term says what the picture depicts" is history.
+%
 %   ---------------------------------------------------------------------
 %   WHY THIS MIGRATOR IS VINTAGE-AWARE, AND WHY ONE VINTAGE IS DEFERRED
 %   ---------------------------------------------------------------------
@@ -254,152 +272,86 @@ end
 node = jGetChar(block, 'ontology_name');
 regionName = jGetChar(block, 'ontology_region');
 
-obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-    {}, jOntologyTerm('', 'imaged region'), {'element_id', 'subject_id'});
-obs.term = struct('value', jOntologyTerm(node, regionName));
-
-anchor = jSessionAnchor(preBody, 'during');
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-
-v2Body = {obs, anchor};
-
-% --- the raster, when there IS one and we can say whose it is ------------
-% BOTH conditions, and neither is redundant. Without a subject an
-% image_observation is an observation about nobody -- the 4,563-document husk.
-% Without an `ngrid` block there is no raster to fold, and minting an empty body
-% would be the same husk one tier down. See the #47 block in the header for why
-% the pair does not occur on any NDI production document today.
+% did-schema #88. A document naming no subject cannot be an observation (#88
+% requires the entity_id edge), so it passes through, raster and all.
 subjectId = subjectOf(preBody);
-if ~isempty(subjectId) && isfield(preBody, 'ngrid') && isstruct(preBody.ngrid)
-    [imgObs, imgBody] = rasterBodies(preBody, subjectId, ...
-        jOntologyTerm(node, regionName), anchor.base.id);
-    v2Body = {obs, imgObs, imgBody, anchor};
+if isempty(subjectId)
+    v2Body = {preBody};
+    return;
 end
-end
-
-% ===================== the raster fold =====================================
-
-function [imgObs, imgBody] = rasterBodies(preBody, subjectId, depicted, anchorId)
-%RASTERBODIES The image_observation + its sampled_body.
-%
-%   The observation gets a FRESH id: the source id stays on the term_observation,
-%   which is the primary body of this split (the primary/sibling convention
-%   jStartInteraction already uses, and the one ontology_table_row.m follows so
-%   that an inbound edge lands on exactly one document).
-%
-%   `variable` is the DEPICTED TERM, not a placeholder. This is the one thing
-%   this fold can do that image_stack cannot: image_stack.m:328-331 emits
-%   `{node:'', name:'image'}` and defers to a second-pass join because the
-%   ontology label lives on another document. Here the term is ON the document
-%   being migrated, so there is nothing to defer -- and nothing to invent either,
-%   which is why an empty `node` stays empty rather than being filled.
-%
-%   `storage_mode: 'body'` is what says the pixels are in the sampled_body rather
-%   than inline, so `image.value.pixels` is deliberately left empty. The
-%   descriptors stay explicit on the composite (R6 decision 4: dtype is NOT
-%   recoverable from an inline matrix) -- dtype from the v1 `ngrid.data_type`.
-imgObs = jStartInteraction(preBody, 'image_observation', 'subject_observation', ...
-    {'image'}, depicted, {'element_id', 'subject_id'}, true);
-
-% ---------------------------------------------------------------------
-% THE GUARDED VALUE IS AUTHORITATIVE. TWO READERS WOULD BE TWO DECISIONS.
-% ---------------------------------------------------------------------
-% jStartInteraction fills `subject_id` by calling jCarrySubject, which RE-READS
-% the source edge -- so without this line the subject the caller GUARDED on and
-% the subject that reaches the document are produced by two different functions.
-% They already disagree, and the disagreement is not hypothetical:
-%
-%   jCarrySubject.m:20-22      accepts  d.value , d.document_id
-%   subjectOf/dependencyValue  accepts  d.value , d.document_id , d.id
-%
-% A document whose edge value lives only under `.id` therefore PASSES the guard
-% ("there is a subject, fold it") and then receives an EMPTY `subject_id` from
-% jCarrySubject -- an image_observation about nobody, which validates clean
-% because +did2/+validate/references.m:90 skips empty edges. That is the
-% 4,563-document husk, rebuilt from a spelling mismatch.
-%
-% Overwriting with the guarded value collapses it to ONE reading. Deliberately
-% NOT fixed by narrowing `dependencyValue` to match jCarrySubject: image_stack.m
-% reads all three spellings, so narrowing would make this migrator refuse
-% documents its sibling folds -- inventing a failure instead of removing one.
-% The slot is located BY NAME, not by index. jStartInteraction happens to put
-% `subject_id` first today; an index would silently overwrite whatever moved
-% into position 1 if that ever changed.
-slot = find(strcmp({imgObs.depends_on.name}, 'subject_id'), 1);
-if isempty(slot)
-    imgObs.depends_on(end+1) = struct('name', 'subject_id', 'value', char(subjectId));
-    slot = numel(imgObs.depends_on);
-else
-    imgObs.depends_on(slot).value = char(subjectId);
+anchor = jSessionAnchor(preBody, 'during');
+if ~(isfield(preBody, 'ngrid') && isstruct(preBody.ngrid))
+    % No raster: the vintage-A term observation, unchanged. [ontology image is
+    % an observation of its region] decides the RASTER's shape only.
+    obs = jStatement(preBody, 'observation', subjectId, ...
+        jLabel('imaged region'), jOntologyTerm(node, regionName), ...
+        'ValueKind', 'term', ...
+        'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id));
+    v2Body = {obs, anchor};
+    return;
 end
 
-% BELT AND BRACES, and cheap. The caller has already guarded, so reaching here
-% with an empty subject is a wiring bug rather than a data condition -- and a
-% wiring bug that produces a husk is invisible to every gate. Fail loudly at the
-% point where the cause is known.
-if isempty(imgObs.depends_on(slot).value)
-    error('did2:convert:ontologyImageRasterWithoutASubject', ...
-        ['ontology_image "%s" reached the raster fold with an empty ' ...
-         '`subject_id`. The caller guards on subjectOf() before folding, so ' ...
-         'this is a wiring defect, not a document: an image_observation with ' ...
-         'an empty required edge validates clean (references.m skips empty ' ...
-         'edges) and would be counted as a successful migration.'], ...
-        sourceId(preBody));
-end
-
-imgObs.subject_statement.storage_mode = 'body';
-% storage_mode 'body' means the BODY owns the cadence, so the statement carries
-% no sample_time (D1: one home for a body-backed value). jStartInteraction seeds
-% a single-point cadence for the inline case, which is the wrong half here.
-if isfield(imgObs.subject_interaction, 'sample_time')
-    imgObs.subject_interaction = rmfield(imgObs.subject_interaction, 'sample_time');
-end
-imgObs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
-imgObs.base.name = 'migrated_ontology_image';
-
-% The provenance edge, when the source has one. CONDITIONAL, never blank: a
-% declared-but-empty edge is the invented-empty-edge pattern (7,233 documents).
-% The slot exists on image_observation for exactly this relationship
-% (did-schema 6cf31f2), and `ontology_image` already declared the same edge.
-tableRowId = dependencyValue(preBody, 'ontology_table_row_id');
-if ~isempty(tableRowId)
-    imgObs.depends_on(end+1) = struct('name', 'ontology_table_row_id', ...
-        'value', tableRowId);
-end
-
-% `color_model` and `channels` are OMITTED, not emitted blank, and the axes live
-% on the body rather than here. Three reasons, none of them tidiness:
-%   - An ngrid is a bare N-D numeric grid. It has no colour model and no channel
-%     list, so a blank `color_model` ontology_term would assert "we looked and
-%     found nothing" using the same shape that means "not yet minted" -- a
-%     fragment, and a new row on the #70 unminted-term backlog for a fact that
-%     does not exist rather than one awaiting a CURIE.
-%   - Both sub-fields are mustBeNonEmpty false, so omission validates.
-%   - `value.axes` belongs to the BODY when storage_mode is 'body'
-%     (V_eta_data_body_model_plan.md: the axis entry mounts on subject_statement
-%     for inline pixels, on sampled_body for body-backed), and jNgridBody puts
-%     it there. Declaring it twice is the drift T14 exists to prevent.
-% `dtype` stays explicit because R6 decision 4 turns on it specifically: a dtype
-% is not recoverable from the raster.
-imgObs.image = struct();
-imgObs.image.value = struct( ...
-    'pixels', [], ...
-    'dtype', jGetChar(preBody.ngrid, 'data_type'));
-
-[imgBody, rasterDatumType, rasterSourceDatumType] = ...
-    jNgridBody(preBody, imgObs.base.id, 'migrated_ontology_image_raster');
-% The raster's encoding belongs to the STATEMENT (signed sec.5), and the helper
-% that reads it mints the BODY -- so it hands the value back and the statement
-% is set here. `ngrid.data_type` is real source data ('ubit1' for a logical
-% mask), so dropping it with `datum` would have been a silent loss.
-imgObs.subject_statement.datum_type = rasterDatumType;
-imgObs.subject_statement.source_datum_type = rasterSourceDatumType;
-% The raster bytes move WITH the grid. The file name is NDI's own
-% (`ontologyImage.ngrid`): universalRenames.m:308 skips the structural keys
-% outright, so file/files arrive verbatim and must be carried verbatim -- the
-% image_stack tombstone's `imagestack_file` was exactly this mistake.
+% THE RASTER. Decided by Jess Haley, 2026-10-21 [ontology image is an
+% observation of its region] (did-schema V_eta_spatial_transcriptomics_plan.md,
+% search that marker): "a migrated v1 ontologyImage raster is one observation
+% with the `intensity` value kind and variable NCIT:C221750 "Imaging Signal
+% Intensity"; when its ontology node is an anatomical area, the observation's
+% entity is that area's region part (per [region parts]), and any non-area node
+% is a condition on the same observation. This replaces item 51's separate term
+% observation for ontologyImage."
+%
+% So 1 -> 3: the intensity observation (it KEEPS the source id, so an inbound
+% edge naming the source lands on exactly one body), its sampled_body, and the
+% anchor. The ontology node rides as ONE condition on that observation:
+%
+%   - an anatomical (UBERON) area -> variable NCIT:C13717 "Anatomic Site". Pass 1
+%     cannot mint the region part (the part is keyed per parent, region and side
+%     across the whole session, which a one-document migrator cannot see), so
+%     the observation stays about the subject here and NDI's second pass
+%     (ndi.migrate.internal.pathSPromotion) mints or finds the part, retargets
+%     the observation onto it and drops the condition. Until that pass runs the
+%     document is Bar-1 shape, not the decided final shape.
+%   - any other node -> a condition with the plain label variable 'ontology
+%     node', and a migration note (kind non_area_ontology_node, DETAIL the
+%     node) so every such case is counted. Decided by Jess Haley, 2026-10-22
+%     [non-area image node, revisited]: [non-area image node] is reopened and
+%     NOT decided ("we need to wait and see what those values actually are");
+%     NCIT:C211970 is not used. Nothing is lost and the cases are visible.
+%
+% The raster itself (#73 review item 51): an ordinary numeric image (NDI
+% imageDocMaker.m: `image` is "a numeric matrix"), body-backed (data_body true,
+% the plain array's element type on the statement's `data_type`), the bytes a
+% `sampled_body` whose keys are the ngrid's dimensions (jNgridBody: data_dim ->
+% one key per dimension; coordinates carried or refused, never dropped).
+imgId = char(preBody.base.id);
+% Keys per #73 review item 51: a raster is keyed [y, x, (channel)]. The ngrid's
+% data_dim is MATLAB's size(image) (mat2ngrid), so dimension 1 is rows (y),
+% 2 columns (x), 3 the channel.
+[imgBody, dataType, sourceDataType] = ...
+    jNgridBody(preBody, imgId, 'migrated_ontology_image_raster', ...
+    {'y', 'x', 'channel'});
+% the v1 file rides as written (name and locations), as hartley_calc's bodies
+% do: renaming it would cut it from the bytes NDI stores under that name
 if isfield(preBody, 'files'); imgBody.files = preBody.files; end
 if isfield(preBody, 'file');  imgBody.file  = preBody.file;  end
+nodeTerm = jOntologyTerm(node, regionName);
+if isAnatomicalArea(node)
+    cond = did2.build.condition( ...
+        did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), ...
+        'Term', nodeTerm);
+else
+    cond = did2.build.condition(jLabel('ontology node'), 'Term', nodeTerm);
+    did2.convert.reportNote('non_area_ontology_node', 'ontology_image', ...
+        char(preBody.base.id), char(node));
+end
+imgObs = jStatement(preBody, 'observation', subjectId, ...
+    did2.convert.registeredTerm('NCIT:C221750', 'Imaging Signal Intensity'), ...
+    struct(), ...
+    'ValueKind', 'intensity', ...
+    'DataBody', true, 'DatumType', dataType, 'SourceDatumType', sourceDataType, ...
+    'Conditions', cond, ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', imgId);
+v2Body = {imgObs, imgBody, anchor};
 end
 
 function v = subjectOf(preBody)
@@ -451,6 +403,12 @@ end
 end
 
 % ===================== local helpers ===================================
+
+function tf = isAnatomicalArea(node)
+%ISANATOMICALAREA True for a UBERON CURIE ([region anatomy is UBERON], Jess
+%   Haley 2026-10-21). Case-insensitive: NDI writes `uberon:` lower case.
+tf = strncmpi(strtrim(char(node)), 'uberon:', 7);
+end
 
 function id = sourceId(preBody)
 %SOURCEID The document's own id, for a diagnosable message. '<no base.id>' is

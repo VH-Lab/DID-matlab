@@ -84,235 +84,105 @@ arguments
     preBody (1,1) struct
 end
 
-TV  = 'V_eta';
 blk = getBlock(preBody, 'pyraview');
-
 subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
     dependencyValue(preBody, 'subject_id'));
-sessionId = baseField(preBody, 'session_id', '');
-datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
 obsId     = baseField(preBody, 'id', did.ido.unique_id());
 
-label    = getCharField(blk, 'label');
-dataType = getCharField(blk, 'data_type');
-channels = getField(blk, 'channels');
-t0       = numScalar(getField(blk, 'native_start_time'), 0.0);
-nativeRt = numScalar(getField(blk, 'native_rate'), 0.0);
-% NO top-level `dt`. It was computed here and never read: the per-level loop
-% below derives `dt_k` from `rate_k`, which starts at `nativeRt` and is
-% overridden by `decimation_sampling_rates(k)` when the level has its own rate.
-% So nothing was lost -- but a dead variable named `dt` sitting beside a live
-% `dt_k` is an invitation to "simplify" the loop into using it, which would
-% silently give every decimated level the NATIVE sample interval. Removed rather
-% than left as a trap. (GitHub code scanning 167/168 flagged it; verified by
-% reading the loop, not assumed.)
+label    = charOf(fieldByNormalisedName(blk, 'label'));
+dataType = charOf(fieldByNormalisedName(blk, 'datatype'));
+channels = fieldByNormalisedName(blk, 'channels');
+t0       = numScalar(fieldByNormalisedName(blk, 'nativestarttime'), 0.0);
+nativeRt = numScalar(fieldByNormalisedName(blk, 'nativerate'), 0.0);
 
-anchorId = did.ido.unique_id();
-
-% ---- the frequency_filter split off the inherited `filter` block ------------
-% [] when the block is absent, describes an all-pass ('none'), or uses a
-% vocabulary this model cannot represent. In that case no document is emitted
-% and no filter_id edge is written -- never a guessed design.
-filterDoc = jFrequencyFilter(preBody);
-filterId = '';
-if ~isempty(filterDoc)
-    filterId = filterDoc.base.id;
-end
-
-% ---- the session-relative time anchor ('during') ----------------------------
-anchor = struct();
-% PASS-1 HANDLE, NOT AN UNMIGRATED CLASS. The signed model retires this class in
-% favour of `relative_reference`, but the same plan makes the change impossible
-% here: `relative_to` is REQUIRED and is not fillable in pass 1 (this body holds
-% base.session_id; the edge needs the session DOCUMENT's base.id). Emitting the
-% new class with an empty required edge would be ~106k husks that validate clean.
-% did2.convert.resolveSessionAnchors folds it in a batch pass, id PRESERVED. Full
-% reasoning in +migrators_j/private/jSessionAnchor.m; the seam is pinned by
-% tests/+did2/+unittest/testSessionAnchorEmitterContract.m.
-anchor.document_class = classBlock('session_relative_reference', {'time_reference'}, TV);
-anchor.depends_on = struct('name', {}, 'value', {});   % session rides on base
-anchor.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'datestamp', datestamp);
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', 'during');
-
-% ---- the EPOCH HANDLE: identity + clock, for the batch passes ---------------
-% WITHOUT THIS, PYRAVIEW'S EPOCH DISAPPEARS ENTIRELY. `pyraview` is EPOCH-SCOPED
-% BY DECLARATION -- NDI's template declares superclasses
-% ['epochclocktimes.json', 'filter.json'], and that mixin carries the `epochid`
-% block. This migrator read NEITHER, so migration dropped the epoch dimension in
-% two pieces: WHICH epoch (`epochid.epochid`) and its EXTENT + CLOCK
-% (`epochclocktimes`). In the PRED corpus, pyraview is the ONLY document
-% carrying an epoch id, so the whole corpus minted no epoch at all.
-%
-% `epoch_bounded_reference` is the right carrier and is NOT a new class: it
-% already carries the `epochid` mixin AND is a `time_reference`, which is
-% exactly the pass-1 HANDLE pattern this pipeline uses for anchors it cannot
-% resolve yet (see the session anchor above, and
-% did2.convert.resolveSessionAnchors). It is not in the persist set, and does
-% not need to be -- a handle is consumed, not kept:
-%
-%     did2.convert.epochMint      reads `epochid.epochid` off migrated bodies
-%                                 and mints one `epoch` per (session, id)
-%     ndi.migrate.internal.epochAnchorFold
-%                                 folds this handle into a `relative_reference`
-%                                 anchored to that epoch, base.id PRESERVED
-%
-% THE EXTENT IS DELIBERATELY NOT CARRIED HERE. `epoch_bounded_reference` has no
-% slot for an interval, and adding one to a class scheduled for deletion was
-% considered and REJECTED (team, 2026-08-13). The extent belongs to the EPOCH --
-% several documents can share one epoch and would each report the same interval
-% -- so epochMint mints it off the epoch's own `time_reference_#`.
-%
-% "That half is signed and NOT YET BUILT" -- STALE, corrected 2026-08-15. It IS
-% built, in the file this comment nominates, and a reader acting on the old
-% sentence would build a second emitter for an extent that is already minted:
-%
-%   $ grep -n "class_name', 'relative_reference'" ../epochMint.m
-%   1719:    ref.document_class = struct('class_name', 'relative_reference', ...
-%   $ grep -n "EPOCHEXTENTREFERENCES\|epoch_extent_references_emitted" ../epochMint.m
-%   414:    'epoch_extent_references_emitted',     0, ...
-%   776:        report.epoch_extent_references_emitted + numel(refs);
-%   1663:%EPOCHEXTENTREFERENCES One `relative_reference` per DISTINCT clock of an epoch.
-%
-% Twelve `epoch_extent_*` counters travel with it, four of them NAMED REFUSAL
-% REASONS, so a run that mints nothing says which refusal fired rather than
-% reporting a bare zero. What this commit contributed is unchanged and is still
-% the identity half: the handle below is what epochMint keys on.
-%
-% NO EPOCH ID => NO HANDLE. An epoch_bounded_reference with an empty epochid
-% names no epoch and is a hollow document; `element_id` is REQUIRED on the class
-% and is the same referent the observation uses.
+% ---- did-schema #88: the time anchor ---------------------------------------
+% The pre-#73 `epoch_bounded_reference` (the epoch named by its STRING) is
+% gone; on #88 an epoch-scoped time is a relative_time_reference onto the
+% EPOCH ENTITY, whose id did2.convert.epochMint mints. So a pyraview carrying
+% an epoch string PASSES THROUGH pass 1 (its v1 tombstone validates it), and
+% epochMint stamps `epoch_id` and re-runs this migrator (the arming path, like
+% syncrule_mapping): jEpochDocId then names the epoch and the fold happens. A
+% pyraview with no epoch string is anchored "during the session".
 epochStr = getCharField(getBlock(preBody, 'epochid'), 'epochid');
 epochClk = getCharField(getBlock(preBody, 'epochclocktimes'), 'clocktype');
-epochRefId = '';
-if ~isempty(epochStr) && ~isempty(subjectId)
-    epochRefId = did.ido.unique_id();
-    epochRef = struct();
-    epochRef.document_class = classBlock('epoch_bounded_reference', ...
-        {'time_reference', 'epochid'}, TV);
-    epochRef.depends_on = struct('name', {'element_id'}, 'value', {subjectId});
-    epochRef.base = struct('id', epochRefId, 'session_id', sessionId, ...
-        'name', 'migrated_epoch_anchor', 'datestamp', datestamp);
-    epochRef.time_reference = struct('is_approximate', false);
-    epochRef.epochid = struct('epochid', epochStr);
-    % `epoch_clock` is mustBeNonEmpty. v1 records it in the epochclocktimes
-    % block; NDI's own default for a device-local epoch clock is dev_local_time,
-    % and PRED's document says exactly that.
-    if isempty(epochClk)
-        epochClk = 'dev_local_time';
+if isempty(epochClk)
+    epochClk = charOf(fieldByNormalisedName(getBlock(preBody, 'epochclocktimes'), 'epochclock'));
+end
+epochDocId = jEpochDocId(preBody);
+if ~isempty(epochStr) && isempty(epochDocId)
+    % DEFER (the stimulus_bath pattern): the #88 pyraview tombstone does not
+    % declare the v1 `epochclocktimes` block, so the document cannot wait in
+    % the batch as a passthrough. It waits in the quarantine instead, and
+    % did2.convert.epochMint folds it once the epoch entity exists.
+    error('did2:convert:needsEpochContext', ...
+        ['pyraview "%s" names epoch "%s"; its time anchor is the epoch ' ...
+         'entity epochMint mints, so it is deferred to that pass.'], ...
+        char(preBody.base.id), epochStr);
+end
+% Read the extent by its NORMALISED name: universalRenames' snake_case pass may
+% respell `t0_t1` (digits next to underscores), and a missed spelling here
+% passes the whole document through (corpus run 39555306048, PRED).
+ect = getBlock(preBody, 'epochclocktimes');
+epochSpan = numVec(fieldByNormalisedName(ect, 't0t1'));
+if numel(epochSpan) < 2
+    % universalRenames reshapes the v1 block to {epoch_clock, t0, t1}
+    % (corpus run 39556010131, PRED): read the two ends separately.
+    a = numVec(fieldByNormalisedName(ect, 't0'));
+    b = numVec(fieldByNormalisedName(ect, 't1'));
+    if isscalar(a) && isscalar(b)
+        epochSpan = [a b];
     end
-    epochRef.epoch_bounded_reference = struct('epoch_clock', epochClk);
-    % THE EXTENT, in the shape relative_reference uses, so epochAnchorFold's
-    % job is a COPY and not a translation (did-schema: the slot is a verbatim
-    % deep copy of relative_reference.value). ANCHOR AND EXTENT ARE SEPARATE
-    % FACTS -- start + duration, NOT start + end -- which is the signed time
-    % model, so t1 is converted here rather than carried raw.
-    %
-    % NO TIMES => NO VALUE. A NaN or absent interval is a hollow reference,
-    % the exact thing silentLoss and isFragment exist to catch, so the block
-    % is attached only when both ends are real numbers.
-    t0t1 = numVec(getField(getBlock(preBody, 'epochclocktimes'), 't0_t1'));
-    if numel(t0t1) >= 2 && all(isfinite(t0t1(1:2)))
-        % INSIDE the class block, not at the top level. V_eta puts a class's
-        % fields in a property block named after the class, and
-        % `epoch_bounded_reference` declares BOTH `epoch_clock` and `value`. A
-        % top-level `value` is an undeclared property and quarantines the
-        % document -- caught before it ever ran, but only because the fold that
-        % consumes it had to be read to see whether it copies this through.
-        epochRef.epoch_bounded_reference.value = struct( ...
-            'relation', otTerm(''), ...
-            'clock',    otTerm(epochClk), ...
-            'start',    withSeconds(double(t0t1(1))), ...
-            'duration', withSeconds(double(t0t1(2) - t0t1(1))));
+end
+epochDur  = NaN;
+if numel(epochSpan) >= 2 && all(isfinite(epochSpan(1:2)))
+    epochDur = double(epochSpan(2)) - double(epochSpan(1));
+end
+% every level's body needs its time key, whose extent is the epoch's duration
+% times the level's rate; with no duration there is no key, and #88's
+% sampled_body requires one: pass through rather than invent an extent
+if ~isfinite(epochDur)
+    % A passthrough cannot validate on #88 (the tombstone lacks the v1
+    % epochclocktimes block), so refuse with the reason instead.
+    error('did2:convert:pyraviewNoExtent', ...
+        ['pyraview "%s": no epoch extent to size its levels (epochclocktimes ' ...
+         'fields: %s).'], char(preBody.base.id), ...
+        strjoin(fieldnamesOf(getBlock(preBody, 'epochclocktimes')), ', '));
+end
+
+% the filter: a `method` document named by each body's method_id once the
+% schema declares it (Jess Haley 2026-10-22 [filters are methods]); a
+% frequency_filter by filter_id before
+[filterDoc, filterEdge] = jFrequencyFilter(preBody);
+filterOpt = {};
+if ~isempty(filterDoc)
+    if strcmp(filterEdge, 'method_id')
+        filterOpt = {'MethodId', filterDoc.base.id};
+    else
+        filterOpt = {'FilterId', filterDoc.base.id};
     end
 end
 
-% ---- the discoverable, body-backed voltage_observation ----------------------
-% A pyraview is a decimated view of a continuous recorded signal -> default to the
-% voltage_observation quantity leaf (the abstract/collapsed dataseries_observation
-% branch is not a valid concrete class). NOTE: the physical quantity is not carried
-% on the doc; voltage is the dominant NDI case (ephys), but a non-voltage pyraview
-% would need per-signal quantity typing (a discovery/second-pass refinement).
-obs = struct();
-obs.document_class = classBlock('voltage_observation', {'subject_observation', 'voltage'}, TV);
-obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-% AND time_reference_2 -> THE EPOCH, when there is one. Without this edge the
-% epoch reference emitted above is UNREACHABLE from the observation: the epoch
-% identity and extent survive migration, but a reader holding the signal cannot
-% get from it to "when did this happen, in the device clock". An emitted
-% document nothing points at reads as finished work and is not.
-%
-% THE FAMILY IS LEGAL BY CONSTRUCTION, not by luck. The uniqueness rule
-% (`referent_unique_by`, subject_interaction: time_reference_# discriminated by
-% `value.clock`) says members of one family must differ by clock -- and these
-% two do: the session anchor names no clock at all, the epoch reference names
-% `dev_local_time`. Two members, two distinct clocks.
-%
-% This is the LINK, and it is the WHOLE of what the signed model asks for here.
-%
-% THIS COMMENT READ: "This is the LINK, not the `epoch_id` edge. That edge is
-% declared by exactly four V_eta classes and `voltage_observation` is not one of
-% them, so wiring it needs a schema increment and belongs with the epoch family
-% (#60)." CORRECTED 2026-08-15. Every FACT in it is true and the CONCLUSION is
-% backwards: the edge is not OWED here, it is FORBIDDEN here, and the sentence
-% reads as a deferral. TEAM-SIGN-OFF [epoch], 2026-08-08 amended 2026-08-10
-% (DID-schema `V_eta_epoch_plan.md:869`), verbatim:
-%
-%   "a document reaches its epoch through the TIME_REFERENCE CHAIN
-%    (subject_interaction -> time_reference_# -> relative_reference ->
-%    relative_to -> epoch) -- a direct `epoch_id` edge is added ONLY where the
-%    epoch is the document's own content (`directed_relation`, per the ensemble
-%    sign-off), NOT on subject_interaction"
-%
-% `voltage_observation` is UNDER `subject_interaction`, and the four classes that
-% DO declare `epoch_id` are exactly the four that are not:
-%
-%   DENOMINATOR: 245 json file(s) under DID-schema schemas/V_eta/ read;
-%                241 class(es) indexed; 4 declare an epoch_id edge
-%     acquisition_metadata_file  <- base                     required
-%     directed_relation          <- relation <- base         optional
-%     ingestion_manifest         <- base                     required
-%     method_parameters          <- base                     optional
-%     voltage_observation        <- subject_observation
-%                                <- subject_interaction ...  <- THE EXCLUSION
-%
-% So the `time_reference_2` edge below IS the epoch link the model specifies and
-% nothing further is owed by this migrator. A reader who acted on the old
-% sentence would have added `epoch_id` to a subject_interaction descendant --
-% the phantom-work shape CLAUDE.md records for #52, where a note left standing
-% instructs the one build a signature rules out.
-if ~isempty(epochRefId)
-    obs.depends_on(end+1) = ...
-        struct('name', 'time_reference_2', 'value', epochRefId);
+if ~isempty(epochDocId)
+    if isempty(epochClk); epochClk = 'dev_local_time'; end
+    sec = struct('node', 'om:second-Time', 'name', 'second');
+    anchor = did2.build.relativeTimeReference(epochDocId, 'Clock', epochClk, ...
+        'Start', double(epochSpan(1)), 'StartSourceValue', double(epochSpan(1)), ...
+        'StartSourceUnit', sec, 'StartApproximate', false, ...
+        'Duration', epochDur, 'DurationSourceValue', epochDur, ...
+        'DurationSourceUnit', sec, 'DurationApproximate', false, ...
+        'SessionId', jSid(preBody), 'CreationTimestamp', jStamp(preBody), ...
+        'Validate', false);
+else
+    anchor = jSessionAnchor(preBody, 'during');
 end
-obs.base = struct('id', obsId, 'session_id', sessionId, ...
-    'name', 'migrated_signal', 'datestamp', datestamp);
-% storage_mode: body -> the value is in the sampled_body; the statement carries no
-% sample_time (the body owns the cadence). variable = the signal label.
-% `datum_type` LIVES ON THE STATEMENT (signed sec.5) -- the statement says what
-% the values ARE, the body says how the bytes lay out. Normalised through
-% jDatumType, which keeps the source spelling when the two differ because the
-% map is not invertible ('bool' came from 'logical' OR 'ubit1').
+
+% ---- the observation (the signal is in the per-level bodies) -----------------
 [datumType, sourceDatumType] = jDatumType(dataType);
-obs.subject_statement = struct( ...
-    'variable', struct('node', '', 'name', firstNonEmpty(label, 'signal')), ...
-    'datum_type', datumType, ...
-    'source_datum_type', sourceDatumType, ...
-    'storage_mode', 'body');
-obs.subject_interaction = struct('method', otTerm(''));
-obs.subject_observation = struct();
-obs.voltage = struct();   % value is body-backed
+obs = jStatement(preBody, 'observation', subjectId, ...
+    jLabel(firstNonEmpty(label, 'signal')), [], ...
+    'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', obsId, 'ValueKind', 'voltage');
 
-% ---- one sampled_body per stored resolution level ---------------------------
-% Each pyramid level is its own sampled_body, all sharing the statement (the
-% observation) -- the multi-body-per-statement stream sampled_body was designed
-% for ("append more bodies without rewriting the anchor"). Levels are told apart
-% by sample_time.dt (the per-level sampling rate); level 1 is native. Each body
-% owns one level_k.bin (files.file_list re-keys the bytes to the minting doc, as
-% the image_stack fold does for its single body).
 fileList = {};
 if isfield(preBody, 'files') && isstruct(preBody.files) ...
         && isfield(preBody.files, 'file_list')
@@ -320,57 +190,14 @@ if isfield(preBody, 'files') && isstruct(preBody.files) ...
     if ~iscell(fileList); fileList = {fileList}; end
 end
 if isempty(fileList); fileList = {''}; end   % at least the native body
-
-rates  = numVec(getField(blk, 'decimation_sampling_rates'));
-starts = numVec(getField(blk, 'decimation_start_times'));
-
-% THE PER-LEVEL SAMPLE COUNT, DERIVED -- v1 RECORDS NO LENGTH ANYWHERE. The
-% writer's own document (NDI +gui/+app/+pyraview/makePyraviewDoc.m:155-163)
-% stores label, nativeRate, nativeStartTime, channels, dataType,
-% decimationLevels, decimationSamplingRates and decimationStartTimes. There is
-% no sample count in the template, and a migrator does not read the attached
-% bytes, so the extent is recoverable ONLY from the epoch interval and the
-% level's rate.
-%
-% THE CONVENTION IS THE WRITER'S, NOT A GUESS. makePyraviewDoc:127-128 converts
-% a duration to a sample range as `start_idx = round(offset*sr)+1; end_idx =
-% round(offset_end*sr)`, i.e. a span of D seconds at rate sr yields round(D*sr)
-% samples. Same arithmetic here.
-%
-% Read independently of the epoch-anchor block above: `t0t1` there is assigned
-% inside `if ~isempty(epochStr) && ~isempty(subjectId)`, so it is not defined on
-% every path that reaches this loop.
-epochSpan = numVec(getField(getBlock(preBody, 'epochclocktimes'), 't0_t1'));
-epochDur  = NaN;
-if numel(epochSpan) >= 2 && all(isfinite(epochSpan(1:2)))
-    epochDur = double(epochSpan(2)) - double(epochSpan(1));
-end
-
-% THE CHANNEL AXIS IS LOOP-INVARIANT AND IS BUILT ONCE. `channels` is a
-% document-level field: every resolution level of the pyramid holds the same
-% channel count, and only the TIME axis differs per level (its rate and start).
-% It used to be rebuilt inside the loop and appended with `axesEntries(end+1)`,
-% which GitHub code scanning 220 flagged as a grow-in-loop.
-%
-% THE PERFORMANCE CLAIM IS A FALSE POSITIVE and is recorded as one: the variable
-% was reset to [] on every iteration and reached at most TWO elements, so it was
-% bounded, not growing. This file has form both ways -- 218 was a false positive
-% and is documented in place, 219 was real -- so the alert was read rather than
-% assumed either way. Third alert, third separate answer.
-%
-% IT IS RESTRUCTURED ANYWAY, because the line the scanner pointed at sat on a
-% real (if cheap) defect it did not report: a loop-invariant built N times. The
-% growing assignment is gone as a side effect, so the alert clears on its merits
-% instead of being suppressed.
+rates  = numVec(fieldByNormalisedName(blk, 'decimationsamplingrates'));
+starts = numVec(fieldByNormalisedName(blk, 'decimationstarttimes'));
 nChannels   = numScalar(channels, 0);
 channelAxis = [];
 if nChannels > 0
-    % An INDEX axis, the convention jNgridBody and image_stack's uncalibrated
-    % arm both use: origin 1, spacing 1, no unit.
-    channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
-        'regular', true, ...
-        'origin',  struct('value', 1, 'source_value', 1), ...
-        'spacing', struct('value', 1, 'source_value', 1));
+    % a BARE dimension: its 1..N numbering only repeated the positions (Jess
+    % Haley 2026-10-22, 6.2a and "yes" to 1..N); channel number = position + 1
+    channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels);
 end
 
 bodies = {obs};
@@ -381,92 +208,47 @@ for k = 1:numel(fileList)
     if rate_k > 0; dt_k = 1.0 / rate_k; end
     t0_k = t0;
     if k <= numel(starts); t0_k = starts(k); end
-
     n_k = 0;
-    if isfinite(epochDur) && rate_k > 0
-        n_k = round(epochDur * rate_k);
+    if rate_k > 0
+        % CEIL, not round: a decimated level holds one sample per bin, and the
+        % last, partial bin is still written. PRED's coarsest level (0.0002 Hz
+        % over 28.1 s) rounds to 0 samples, which passed the whole document
+        % through (a judgment call, recorded in the port report).
+        n_k = ceil(epochDur * rate_k - 1e-9);
     end
-
-    % `sample_time` IS LEFT BLANK AND THE AXES CARRY THE CADENCE. The field is
-    % optional and is what step 5 of the build order retires outright; writing
-    % t0/dt/n into it AND into axes(1) would store one fact twice, which is the
-    % #69 shape this whole step exists to remove. Blank here means "this writer
-    % has stopped using it", not "unknown".
-    b = jSampledBody(obsId, sessionId, datestamp, 'migrated_signal_body');
-
-    % A CORRECTION TO WHAT THIS FILE SHIPPED IN ccfb1eb, WHICH WAS WRONG IN THE
-    % WAY ITS OWN COMMIT MESSAGE PREDICTED. That commit emitted ONE axis entry,
-    % `channel`, and argued the time dimension could stay in `sample_time`
-    % meanwhile. The schema's axes field says `axes[k] IS array dimension k`, so
-    % a one-entry list does not mean "here is one of the dimensions" -- it
-    % ASSERTS that array dimension 1 is channels. It is not:
-    % makePyraviewDoc.m:135 slices `data_central = data(start_idx:end_idx, :)`,
-    % so dimension 1 is SAMPLES and dimension 2 is channels. The commit message
-    % stated the hazard verbatim ("a partial list would claim dimension 1 is
-    % channels") and then shipped it. A positional list has no partial mode.
-    %
-    % SO BOTH AXES OR NEITHER, and neither is the honest answer when the time
-    % extent cannot be derived: an axes list that omits dimension 1 is not
-    % incomplete, it is false, whereas an ABSENT list merely says nothing. The
-    % channel count is then unhomed again -- a known, recorded loss (#45) --
-    % rather than a wrong claim about layout.
-    if n_k > 0
-        timeAxis = jAxis(jOntologyTerm('', 'time'), n_k, ...
-            'regular',     true, ...
-            'source_unit', 's', ...
-            'origin',      struct('value', t0_k, 'source_value', t0_k), ...
-            'spacing',     struct('value', dt_k, 'source_value', dt_k));
-        % Assigned in its own statement, NOT inside struct(...): a non-scalar
-        % struct value passed to struct() distributes into a struct ARRAY of
-        % bodies. Concatenation is safe only because jAxis gives every entry the
-        % same field set in the same order -- that is what the helper is for.
-        %
-        % BRANCHED RATHER THAN `[timeAxis, channelAxis]` WITH AN EMPTY SECOND
-        % OPERAND. That would rest on MATLAB dropping a 0x0 double when
-        % concatenating it with a struct, which there is no MATLAB in this
-        % container to confirm -- and a wrong guess there is a class error on the
-        % no-channel path only, i.e. exactly the path least likely to be
-        % fixtured. Two explicit arms cost one `if` and depend on nothing.
-        if isempty(channelAxis)
-            b.sampled_body.axes = timeAxis;
-        else
-            b.sampled_body.axes = [timeAxis, channelAxis];
-        end
+    if n_k <= 0
+        error('did2:convert:pyraviewNoExtent', ...
+            ['pyraview "%s": level %d of %d has no extent (rate %g Hz over ' ...
+             '%g s; native rate %g; block fields: %s).'], char(preBody.base.id), ...
+            k, numel(fileList), rate_k, epochDur, nativeRt, strjoin(fieldnamesOf(blk), ', '));
     end
-    % this body owns exactly its level's file
+    timeAxis = jAxis(jOntologyTerm('', 'time'), n_k, ...
+        'source_unit', 's', ...
+        'origin',      struct('value', t0_k, 'source_value', t0_k), ...
+        'spacing',     struct('value', dt_k, 'source_value', dt_k));
+    % time (and channel) dimensions, each with its positions as a covariate
+    % along it (data_body AMENDMENT 6; the former keys)
+    if isempty(channelAxis)
+        [dims, covs] = jDimCov({timeAxis});
+    else
+        [dims, covs] = jDimCov({timeAxis, channelAxis});
+    end
+    % DATUM ORDER 'C': a pyraview level file interleaves the channels within
+    % each sample (the channel dimension varies fastest) -- a conservative reading
+    % of the writer, recorded as a judgment call in the port report.
+    % DatumOrder only with more than one dimension (rule
+    % datum_order_multidimensional: empty with one)
+    orderOpt = {};
+    if numel(dims) > 1; orderOpt = {'DatumOrder', 'C'}; end
+    o = jOpts(preBody, filterOpt{:}, orderOpt{:});
+    b = did2.build.sampledBody(obsId, dims, 'Covariates', covs, o{:});
     b.files = struct('file_list', {fileList(k)});
-    % every level was produced by the SAME filter (filterData is called once per
-    % document, makePyraviewDoc.m:58/:108, and the decimation happens after it),
-    % so all the level bodies share one frequency_filter document. The edge is
-    % appended only when there is a filter to point at -- never an empty edge.
-    if ~isempty(filterId)
-        b.depends_on(end+1) = struct('name', 'filter_id', 'value', filterId);
-    end
     bodies{end+1} = b; %#ok<AGROW>
 end
 bodies{end+1} = anchor;
-% The epoch handle rides alongside the session anchor rather than replacing it:
-% they answer different questions ("during the session, approximately" vs "which
-% epoch, in which clock"), and the session anchor is what the observation's
-% time_reference_1 edge already points at. Emitted only when there is an epoch
-% id to name -- see the guard above.
-if ~isempty(epochRefId)
-    bodies{end+1} = epochRef;
-end
 if ~isempty(filterDoc)
     bodies{end+1} = filterDoc;
 end
-end
-
-% ===================== small helpers =======================================
-
-function dc = classBlock(name, supers, tv)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', tv);
 end
 
 function c = durationComposite(seconds)
@@ -555,4 +337,28 @@ if isfield(bodyStruct, 'base') && isstruct(bodyStruct.base) ...
         && isfield(bodyStruct.base, name) && ~isempty(bodyStruct.base.(name))
     v = bodyStruct.base.(name);
 end
+end
+
+function v = fieldByNormalisedName(block, normalised)
+% The field of BLOCK whose name, lower-cased with underscores removed, is
+% NORMALISED; [] when there is none.
+v = [];
+if ~isstruct(block); return; end
+fn = fieldnames(block);
+for k = 1:numel(fn)
+    if strcmp(lower(strrep(fn{k}, '_', '')), normalised)
+        v = block.(fn{k});
+        return;
+    end
+end
+end
+
+function c = charOf(x)
+c = '';
+if ischar(x); c = x; elseif isstring(x) && isscalar(x); c = char(x); end
+end
+
+function n = fieldnamesOf(s)
+n = {};
+if isstruct(s); n = fieldnames(s)'; end
 end

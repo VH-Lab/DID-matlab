@@ -1,6 +1,11 @@
 function bodies = daqmetadatareader_epochdata_ingested(preBody)
 %DAQMETADATAREADER_EPOCHDATA_INGESTED Brainstorm-J migrator: the per-epoch
-%   companion-spreadsheet bytes -> `acquisition_metadata_file`.
+%   metadata archive. On did-schema #88 this PASSES THROUGH: #73 review item 61
+%   retired `acquisition_metadata_file`, and the decided target, an
+%   `opaque_body` owned by the epoch's stimulator manipulation, is built by the
+%   batch pass did2.convert.resolveEpochProbemap (mkMetadataArchiveBodies).
+%
+%   The rest of this header records the retired 2026-08-08 fold.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   1 -> 1, base.id PRESERVED. The signed decision
@@ -71,96 +76,12 @@ arguments
     preBody (1,1) struct
 end
 
-readerId   = dependencyValue(preBody, 'daqmetadatareader_id');
-epochDocId = jEpochDocId(preBody);
-carried    = carriedFiles(preBody);
-
-if isempty(readerId) || isempty(epochDocId) || isempty(carried)
-    % Guarded passthrough. Note the file check is part of the guard, not
-    % politeness: `data.bin` is declared REQUIRED on both the NDI schema
-    % document and the V_eta class, and unlike `depends_on` NOTHING skips an
-    % empty `file` -- so a byte-less carrier is a hollow document with no
-    % excuse. A source document with no bytes has nothing this class can hold.
-    bodies = {preBody};
-    return;
-end
-
-out = struct();
-out.document_class = struct('class_name', 'acquisition_metadata_file', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-out.depends_on = [ ...
-    struct('name', 'acquisition_metadata_reader_id', 'value', readerId), ...
-    struct('name', 'epoch_id',                       'value', epochDocId)];
-% base.id PRESERVED (T10). Nothing in NDI points at this class by id -- the
-% id-reference check in the findings document found 0 references across 91
-% templates and 1,002 .m files -- but preserving it costs nothing and keeps the
-% migrated document traceable to its source.
-out.base = struct('id', baseField(preBody, 'id', did.ido.unique_id()), ...
-    'session_id', baseField(preBody, 'session_id', ''), ...
-    'name', 'migrated_acquisition_metadata', ...
-    'datestamp', baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'));
-% acquisition_metadata_file declares NO fields, but it is a CONCRETE class, so
-% resolvePlacement still lists it in blocksContributed and validateDocument
-% requires the (empty) block to be present.
-out.acquisition_metadata_file = struct();
-% Carry the bytes. This is the whole content of the document.
-out.files = struct('file_list', {carried});
-
-bodies = {out};
-end
-
-% ===================== small helpers =======================================
-
-function names = carriedFiles(bodyStruct)
-%CARRIEDFILES The document's own file list, accepting both spellings NDI uses.
-%   Mirrors did2.validate.fileList's reader so the audit and the migrator agree
-%   on what "carries files" means.
-names = {};
-raw = [];
-if isfield(bodyStruct, 'files') && isstruct(bodyStruct.files) ...
-        && isfield(bodyStruct.files, 'file_list')
-    raw = bodyStruct.files.file_list;
-elseif isfield(bodyStruct, 'file') && isstruct(bodyStruct.file) ...
-        && isfield(bodyStruct.file, 'file_list')
-    raw = bodyStruct.file.file_list;
-end
-if isempty(raw)
-    return;
-end
-if iscell(raw)
-    names = raw(:)';
-elseif isstring(raw)
-    names = cellstr(raw(:)');
-elseif ischar(raw)
-    names = {raw};
-end
-end
-
-function v = dependencyValue(bodyStruct, name)
-v = '';
-if isfield(bodyStruct, 'depends_on') && isstruct(bodyStruct.depends_on)
-    for k = 1:numel(bodyStruct.depends_on)
-        d = bodyStruct.depends_on(k);
-        if isfield(d, 'name') && strcmp(d.name, name)
-            if isfield(d, 'value') && ~isempty(d.value)
-                v = char(d.value);
-            elseif isfield(d, 'document_id') && ~isempty(d.document_id)
-                v = char(d.document_id);
-            elseif isfield(d, 'id') && ~isempty(d.id)
-                v = char(d.id);
-            end
-            return;
-        end
-    end
-end
-end
-
-function v = baseField(bodyStruct, name, default)
-v = default;
-if isfield(bodyStruct, 'base') && isstruct(bodyStruct.base) ...
-        && isfield(bodyStruct.base, name) && ~isempty(bodyStruct.base.(name))
-    v = bodyStruct.base.(name);
-end
+% did-schema #88 RETIRED `acquisition_metadata_file` (#73 review item 61): the
+% bytes become an opaque_body OWNED BY the stimulator term_manipulation of the
+% same epoch, which resolveEpochProbemap mints in a batch pass. A single
+% document cannot name that owner, so pass 1 PASSES IT THROUGH on its v1
+% tombstone, unchanged; did2.convert.resolveEpochProbemap
+% (mkMetadataArchiveBodies) joins it to that manipulation and replaces it with
+% the opaque_body, id preserved, or keeps it and counts why.
+bodies = {preBody};
 end

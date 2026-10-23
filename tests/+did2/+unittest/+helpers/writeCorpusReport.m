@@ -45,6 +45,16 @@ report = struct( ...
     'by_class',          result.summary.by_class, ...
     'quarantine_reasons', reasons);
 
+% did-schema #88: an epoch, an animal, a probe are all ONE `entity` class told
+% apart by `type`, so `by_class` counts them all under `entity`. The census
+% digest's epoch-population cross-check needs the epoch count, so the entity
+% documents are also counted by type.
+report.by_entity_type = entityTypeCounts(result.migrated);
+% The same count keyed by the type's ontology NODE. The stored name is the
+% node's label and changes with the schema (did-schema dc116fd: `epoch` became
+% "recording epoch"); the digest matches the epoch type by node.
+report.by_entity_type_node = entityTypeNodeCounts(result.migrated);
+
 % THE SECOND HALF OF THE HEADLINE CORPUS GATE, PERSISTED FOR THE FIRST TIME.
 % The gate is quoted everywhere in this project as "0 quarantine + 0 orphans".
 % `quarantine_count` is four lines above and has been in this report since it
@@ -80,6 +90,15 @@ end
 % count is reviewable per corpus without re-reading a 2.5-hour log.
 if isfield(result, 'silent_loss')
     report.silent_loss = result.silent_loss;
+end
+% Entity-type `requires` census, REPORT-ONLY (Jess Haley, 2026-10-21, "b").
+% ABSENT IS NOT ZERO: written only when the caller computed it.
+if isfield(result, 'entity_requires')
+    report.entity_requires = result.entity_requires;
+end
+% Dose ingredient_in_formulation census (counts only). Absent is not zero.
+if isfield(result, 'dose_ingredients')
+    report.dose_ingredients = result.dose_ingredients;
 end
 % #52 EVIDENCE (report-only): the per-statement time-reference COUNT
 % DISTRIBUTION and, for the multi-reference ones, the SHAPES. Persisted for the
@@ -144,6 +163,51 @@ end
 % field name each (`experiment_id` vs `session_id`, `document_id` vs `id`).
 if isfield(result, 'summary') && isfield(result.summary, 'legacy_ndi_document')
     report.legacy_ndi_document = result.summary.legacy_ndi_document;
+end
+% DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
+% answer "B" to 5.4): pass 1's count of the dimensions whose term has no node,
+% per class, with its denominators (documents_inspected, dimensions_written).
+% It is what moves dimension terms from `preferred` to `required` with the
+% variables (OPEN_WORK #129) after the merge, so it is persisted, not left in
+% the log. Absent is not zero: written only when v1_to_v2 produced it.
+if isfield(result, 'summary') && isfield(result.summary, 'dimension_terms')
+    report.dimension_terms = result.summary.dimension_terms;
+end
+% THE DROPPED v1 `stimulus_control_id` EDGES ([covariate rules named], 6.4
+% "A"; [control as covariate]): converted response documents (the
+% denominator) and how many of them carried an edge that was dropped.
+% Absent when no response migrator ran: "not measured", never 0 of 0 by
+% default.
+if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'stimulus_control_id')
+    n = result.summary.migration_notes.stimulus_control_id;
+    hit = strcmp(n.distinct_details, 'dropped');
+    report.stimulus_control_id_edges = struct( ...
+        'response_documents_converted', n.count, ...
+        'edges_dropped', sum(n.distinct_detail_counts(hit)), ...
+        'by_class', n.by_class);
+end
+% THE TUNING RESPONSE VARIABLE ([response variable], [dF/F as variable],
+% 2026-10-22; [unstated response variable], 2026-10-23): folded tuning and
+% contrast-sensitivity documents (the denominator), how many had `variable`
+% set from v1 `response_units`, and how many got the general term
+% EMPTY:0000398 "neural response" because the source was empty or its
+% spelling unrecognised. Absent when no tuning migrator ran: "not measured".
+if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'tuning_response_variable')
+    n = result.summary.migration_notes.tuning_response_variable;
+    det = n.distinct_details;
+    cnt = n.distinct_detail_counts;
+    pick = @(name) sum(cnt(strcmp(det, name)));
+    unrec = strncmp(det, 'unrecognised: ', numel('unrecognised: '));
+    report.tuning_response_variable = struct( ...
+        'documents_folded', n.count, ...
+        'set_neural_firing_rate', pick('neural firing rate'), ...
+        'set_dff', pick('dF/F'), ...
+        'general_not_stated', pick('not stated'), ...
+        'general_unrecognised', sum(cnt(unrec)), ...
+        'unrecognised_spellings', {det(unrec)}, ...
+        'by_class', n.by_class);
 end
 
 % The V1 SOURCE census: three pre-build measurements that exist nowhere else
@@ -317,7 +381,7 @@ if isfield(result, 'response_parameters_fold')
 end
 
 % did2.convert.resolveLawnPlateSubjects -- the E. coli lawn/plate subject tiers,
-% their `member_of` join and the (experiment, plate, patch) identifier (team,
+% their `contained_in` join and the (experiment, plate, patch) identifier (team,
 % 2026-08-11). Persisted for the reasons the passes above are, plus three that
 % are specific to it:
 % (1) FOUR STATES THAT MUST NOT BE SUMMED. "no E. coli tables in this corpus",
@@ -446,6 +510,26 @@ if isfield(result, 'clock_alignment_fold')
     report.clock_alignment_fold = result.clock_alignment_fold;
 end
 
+% FAILURE DOCUMENTS: the ids behind the failure counters, so
+% tools/extract_failure_fixtures.py can turn a red corpus run into a quick-suite
+% fixture without re-running the corpus. Best-effort: a throw here must not
+% cost the run its report, and the failure is written in the block's place.
+try
+    report.failure_documents = did2.unittest.helpers.failureDocuments(result);
+catch fdErr
+    report.failure_documents = struct('audit_failed', fdErr.message);
+end
+% SAMPLED RUN: the manifest travels inside the report, so no reader can take a
+% sampled run's numbers for the full corpus's. ABSENT on a full run.
+try
+    [~, sampleManifest] = did2.unittest.helpers.sampledCorpus(corpusName);
+    if ~isempty(sampleManifest)
+        report.sample = sampleManifest;
+    end
+catch sampleErr
+    report.sample = struct('audit_failed', sampleErr.message);
+end
+
 fid = fopen(reportPath, 'w');
 if fid < 0
     error('did2:test:reportWriteFailed', ...
@@ -453,4 +537,48 @@ if fid < 0
 end
 cleanup = onCleanup(@() fclose(fid)); %#ok<NASGU>
 fwrite(fid, jsonencode(report, 'PrettyPrint', true));
+end
+
+function counts = entityTypeCounts(migrated)
+% {type name -> number of entity documents of that type}; empty when none.
+counts = struct();
+for k = 1:numel(migrated)
+    try
+        b = migrated{k}.toStruct();
+        if ~strcmp(char(b.document_class.class_name), 'entity'); continue; end
+        t = matlab.lang.makeValidName(char(b.entity.type.name));
+        if isfield(counts, t)
+            counts.(t) = counts.(t) + 1;
+        else
+            counts.(t) = 1;
+        end
+    catch
+    end
+end
+end
+
+function rows = entityTypeNodeCounts(migrated)
+% [{node, name, count}] per distinct (node, name) of entity documents; a list
+% (cell) so a single row still encodes as a JSON array. Empty when none.
+keys = {};
+rows = {};
+for k = 1:numel(migrated)
+    try
+        b = migrated{k}.toStruct();
+        if ~strcmp(char(b.document_class.class_name), 'entity'); continue; end
+        t = b.entity.type;
+        node = '';
+        if isfield(t, 'node') && ~isempty(t.node); node = strtrim(char(t.node)); end
+        name = char(t.name);
+        key = [node '|' name];
+        i = find(strcmp(keys, key), 1);
+        if isempty(i)
+            keys{end+1} = key; %#ok<AGROW>
+            rows{end+1} = struct('node', node, 'name', name, 'count', 1); %#ok<AGROW>
+        else
+            rows{i}.count = rows{i}.count + 1;
+        end
+    catch
+    end
+end
 end

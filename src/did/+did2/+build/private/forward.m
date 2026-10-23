@@ -44,8 +44,12 @@ for k = 1:numel(names)
     fields.(names{k}) = extra.(names{k});
 end
 
+kindOpt = {};
+if isfield(options, 'ValueKind') && ~isempty(options.ValueKind)
+    kindOpt = {'ValueKind', options.ValueKind};
+end
 doc = did2.build.document(className, fields, ...
     'SessionId', options.SessionId, 'Edges', edges, 'Files', options.Files, ...
     'Id', options.Id, 'CreationTimestamp', options.CreationTimestamp, ...
-    'Validate', options.Validate, 'SchemaCache', options.SchemaCache);
+    'Validate', options.Validate, 'SchemaCache', options.SchemaCache, kindOpt{:});
 end

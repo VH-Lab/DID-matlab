@@ -44,7 +44,7 @@ testCase.TestData.predDir = '';
 schemaPath = resolveSchemaPath();
 if isempty(schemaPath)
     assumeFail(testCase, ...
-        ['V_delta schemas not found. Set DID_SCHEMA_PATH or check out ', ...
+        ['V_eta schemas not found. Set DID_SCHEMA_PATH or check out ', ...
          'did-schema as a sibling of DID-matlab; skipping PRED corpus test.']);
 end
 setenv('DID_SCHEMA_PATH', schemaPath);
@@ -192,7 +192,7 @@ result = did2.unittest.helpers.runBatchPass(result, ...
         'TargetVersion', 'V_eta'));
 
 % TEAM DECISION 2026-08-11: the E. coli lawns and plates are subjects in two
-% tiers joined by `member_of`, minted only where a tier has measurements, and a
+% tiers joined by `contained_in`, minted only where a tier has measurements, and a
 % patch subject's `local_identifier` is the (experiment, plate, patch) triple.
 % Kept in step with runCorpusDiscovery and testFixtureCorpus, in the SAME ORDER,
 % for the same reason as the three passes above: a post-pass wired into some
@@ -479,7 +479,7 @@ end
 % did-schema is a sibling of the DID-matlab checkout.
 toolboxDir = did.toolboxdir();
 candidates{end+1} = fullfile(toolboxDir, '..', '..', '..', ...
-    'did-schema', 'schemas', 'V_delta', 'stable'); %#ok<AGROW>
+    'did-schema', 'schemas', 'V_eta', 'stable'); %#ok<AGROW>
 
 p = '';
 for k = 1:numel(candidates)
@@ -494,6 +494,13 @@ end
 function predDir = ensurePREDCorpus()
 % Download (if necessary) and extract PRED.zip. The unzip target is
 % cached under tempdir so repeated test runs reuse the same files.
+% A SAMPLED run (DID_CORPUS_SAMPLE_DIR, test-corpus.yml `sample: true`) reads
+% tools/sample_corpus.py's copy. PRED is one session, so the sample is the whole
+% corpus; reading it anyway keeps the run's label and its input the same thing.
+predDir = did2.unittest.helpers.sampledCorpus('PRED');
+if ~isempty(predDir)
+    return;
+end
 corpusURL = 'https://ndi-programming-development.s3.us-east-1.amazonaws.com/PRED.zip';
 cacheRoot = fullfile(tempdir(), 'did2-corpus-PRED');
 predDir   = fullfile(cacheRoot, 'PRED');

@@ -21,6 +21,8 @@ function doc = relativeTimeReference(referentId, options)
 %     'Relation'        an OWL-Time interval relation, e.g. 'intervalDuring'
 %     'Start'           seconds, canonical
 %     'StartSourceValue', 'StartSourceUnit', 'StartApproximate'
+%                       (a *SourceUnit is a term or text as the schema declares
+%                       source_unit; see did2.build.valueCell)
 %     'Duration'        seconds, canonical
 %     'DurationSourceValue', 'DurationSourceUnit', 'DurationApproximate'
 %     'End'             seconds, canonical: the end's offset from the referent

@@ -112,21 +112,25 @@ function bodies = hartley_calc(preBody)
 %   moves, per the standing rule in DID-schema CLAUDE.md.
 %
 %     ngrid.data_dim            -> one axis entry per dimension, per PLANE
-%     ngrid.coordinates         -> axes[].values (the lag axis) / dropped as
+%     ngrid.coordinates         -> axes[].quantity (the lag axis) / dropped as
 %                                  redundant (the two index axes)
-%     ngrid.data_type 'double'  -> subject_statement.datum_type 'float64'
-%                                  + source_datum_type 'double' (jDatumType)
+%     ngrid.data_type 'double'  -> value.data_type 'float64' on the leaf
+%                                  + source_data_type 'double' (jDatumType)
 %     ngrid.data_size 8         -> DROPPED. Bytes-per-element restates the
 %                                  dtype; it is derivable, unlike coordinates.
 %     reverse_correlation.method 'Hartley'
-%                               -> receptive_field.value.method, a term. NOT in
-%                                  the class name (T11: the name must not read
-%                                  as how it was made).
+%                               -> NOT CARRIED on did-schema #88. #73 item 57
+%                                  moved the method off the composite onto the
+%                                  statement, whose `interaction.method.term` is
+%                                  the calculator, 'ndi.calc.vis.hartley'
+%                                  (jCalculation). Still NOT in the class name
+%                                  (T11: the name must not read as how it was
+%                                  made).
 %     reverse_correlation.dimension_labels ''
 %                               -> DROPPED. Empty in 210 of 210, and the
 %                                  signature names it droppable.
 %     hartley_calc.input_parameters {T, X_sample, Y_sample}
-%                               -> subject_interaction.method_parameters, via
+%                               -> interaction.method.parameters, via
 %                                  jCalculation's shared reader.
 %     hartley_reverse_correlation.reconstruction_properties.{T,X,Y}_coords
 %                               -> the axis segmentation (above). They are the
@@ -228,8 +232,10 @@ function bodies = hartley_calc(preBody)
 %   class, so the destination cannot be instantiated at all; it belongs to the
 %   stimulus model (#31), which is out of this signature's scope.
 %
-%   THEY ARE THEREFORE CARRIED, NOT DROPPED, in
-%   `subject_interaction.method_parameters.stimulus_sequence`. That field is
+%   THEY ARE THEREFORE CARRIED, NOT DROPPED, in the method parameters
+%   (`interaction.method.parameters` on did-schema #88, entries named
+%   `stimulus sequence.<field>`; `subject_interaction.method_parameters
+%   .stimulus_sequence` before). That field is
 %   declared free-form and its documentation is "the calculator input_parameters
 %   that produced it [...] Retaining it keeps the computation reproducible" --
 %   and these two blocks ARE the reverse-correlation's regressors, i.e. exactly
@@ -247,6 +253,14 @@ function bodies = hartley_calc(preBody)
 arguments
     preBody (1,1) struct
 end
+
+% `receptive_field.value` declares no sub-fields (the volume is on the plane
+% bodies, #73 audit 2 D11). Until 2026-10-21 it was also REQUIRED, so no
+% document could satisfy it and this fold passed through (corpus run
+% 39550766416 quarantined all 210 of 20211116's documents before that guard).
+% did-schema data_body AMENDMENT 5 (rule `value_inline_or_body`, Jess Haley,
+% signed 2026-10-21) replaced the required value: a receptive field is
+% `data_body: true` with an empty `value`, so the signed fold runs.
 
 % The eight keys the referenced stimulus_presentation's generator spec
 % supplies, and therefore the eight this document may drop. Named here, once,
@@ -293,64 +307,38 @@ checkStimulusPropertiesAreDroppable(preBody, hrc, presentationId, ...
 % `valueOverride` is the documented hook for a composite whose value is
 % RESHAPED rather than carried verbatim; the RF value is descriptors only,
 % because the payload is body-backed.
-bodies = jCalculation(preBody, 'receptive_field_calculation', ...
-    {'subject_calculation', 'receptive_field'}, 'receptive_field', ...
-    'receptive field', 'ndi.calc.vis.hartley', 'hartley_calc', ...
-    receptiveFieldValue(rc));
-
-leaf = bodies{1};
-
-% The payload is body-backed, and the statement says so. jCalculation seeds
-% 'inline', which is right for the twelve calculators whose result is a small
-% matrix and wrong here: a plane is 200x200x36 doubles.
-leaf.subject_statement.storage_mode = 'body';
-
-% The volume's encoding belongs to the STATEMENT (signed sec.5). jNgridBody
-% reads it off `ngrid.data_type` and hands it back rather than writing it,
-% because it mints bodies and the caller owns the statement.
+% did-schema #88: the bodies are built first (the leaf's id is the preserved
+% source id, so they can name their owner), then the leaf, carrying the
+% bodies' data type, `data_body` true, the stimulus sequence among its method
+% parameters, and the presentation among its inputs.
+leafId = char(preBody.base.id);
 [planeBodies, datumType, sourceDatumType] = planeSampledBodies(preBody, ...
-    leaf.base.id, planeDim, axisCoords, axisLabels);
-leaf.subject_statement.datum_type = datumType;
-leaf.subject_statement.source_datum_type = sourceDatumType;
-
-% The stimulus sequence the reverse correlation regressed against. PARKED, not
-% modelled -- see the header. Appended to the parameters jCalculation already
-% read off `hartley_calc.input_parameters`.
+    leafId, planeDim, axisCoords, axisLabels);
+extra = [];
 sequence = stimulusSequence(hrc);
 if ~isempty(fieldnames(sequence))
-    if ~isfield(leaf, 'subject_interaction') || ~isstruct(leaf.subject_interaction)
-        leaf.subject_interaction = struct();
-    end
-    if ~isfield(leaf.subject_interaction, 'method_parameters') ...
-            || ~isstruct(leaf.subject_interaction.method_parameters)
-        leaf.subject_interaction.method_parameters = struct();
-    end
-    leaf.subject_interaction.method_parameters.stimulus_sequence = sequence;
+    extra = jParameterList(struct('stimulus_sequence', sequence));
 end
-
-% The presentation the field was computed against: provenance, not a subject.
-% CONDITIONAL, never blank -- a declared-but-empty edge is the invented-empty-
-% edge pattern (7,233 documents). Guard 2 above has already refused the
-% document if this is missing, so the branch is belt-and-braces rather than a
-% live alternative; it stays because a guard and its consumer drifting apart is
-% how an empty edge gets emitted.
-%
-% jCalculation fills `derived_from_1` only from the three stimulus-response
-% edge names (jCalculation.m firstDepValue), none of which a hartley_calc
-% carries, so the slot is free and there is no collision to reason about.
+inputs = {};
 if ~isempty(presentationId)
-    leaf.depends_on(end+1) = struct('name', 'derived_from_1', ...
-        'value', presentationId);
+    inputs = {presentationId};
 end
-
-bodies{1} = leaf;
-
-% ---- the bodies ------------------------------------------------------------
-% ORDER IS LOAD-BEARING. `receptive_field.value.planes` is declared as "one
-% entry per emitted body in emission order", so the two plane bodies are
-% appended FIRST and in plane order. The spike-time body follows and is not a
-% plane: it carries no file, its single axis is time, and its base.name says
-% so. A reader pairing `planes` with bodies takes the first numel(planes).
+% reverse_correlation.method ('Hartley') is implied by the method term
+% ndi.calc.vis.hartley and is not carried; its drop is REPORTED per document
+% (Jess Haley, 2026-10-21, "a"), through jCalculation's field_dropped notes.
+dropped = {};
+if isfield(rc, 'method') && ~isempty(rc.method)
+    dropped{end+1} = 'reverse_correlation.method';
+end
+bodies = jCalculation(preBody, 'receptive_field_calculation', 'rf', ...
+    'hartley_calc', 'receptive field', 'ndi.calc.vis.hartley', ...
+    'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
+    'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+    'Dropped', dropped);
+leaf = bodies{1};
+if isscalar(bodies) && strcmp(leaf.document_class.class_name, 'hartley_calc')
+    return;     % passed through (no subject): no bodies
+end
 for k = 1:numel(planeBodies)
     bodies{end+1} = planeBodies{k}; %#ok<AGROW>
 end
@@ -360,48 +348,6 @@ if ~isempty(spikeBody)
     bodies{end+1} = spikeBody;
 end
 end
-
-% ===================== the composite value =================================
-
-function value = receptiveFieldValue(rc)
-%RECEPTIVEFIELDVALUE The `receptive_field` descriptors. The volume is NOT here.
-%
-%   Three sub-fields, and only `planes` is mustBeNonEmpty:
-%     method        `reverse_correlation.method`, verbatim as the term's name.
-%                   'Hartley' in 210 of 210. The node is left blank: no CURIE
-%                   has been minted for it, and inventing one would be a
-%                   fragment (#70) rather than a binding.
-%     storage_mode  'body'. The schema's own words: "`body` for a sampled_body
-%                   per plane, which is the only mode a real receptive field
-%                   uses."
-%     planes        one entry per emitted body, IN EMISSION ORDER.
-%
-%   THE TWO PLANE NAMES COME FROM THE WRITER, which this container does not
-%   hold -- the NDIcalc-vis clone is ephemeral and is not in scope now. They are
-%   taken from the committed reading of it in
-%   V_eta_ngrid_family_findings.md F2, quoted there from
-%   `+ndi/+calc/+vis/hartley.m`:
-%
-%       ngridp.data_dim = [size(sta) 2];
-%       fwrite(fid, cat(4, sta, p_val), 'double');
-%
-%   so plane 1 is the spike-triggered average (the response estimate) and plane
-%   2 is the per-voxel p-value map (its significance). The schema's own
-%   documentation for `planes[].quantity` names exactly that pair: "What this
-%   plane holds (the response estimate, or its significance)."
-value = struct();
-value.method = jOntologyTerm('', jGetChar(rc, 'method'));
-value.storage_mode = 'body';
-% Assigned in its own statement and built by concatenation, NOT inside
-% struct(...): a non-scalar struct passed to struct() DISTRIBUTES into a struct
-% array of values instead of becoming one field. image_stack.m and jNgridBody.m
-% both carry a comment about this trap.
-planes = struct('quantity', jOntologyTerm('', 'response estimate'));
-planes(2) = struct('quantity', jOntologyTerm('', 'significance'));
-value.planes = planes;
-end
-
-% ===================== the axis segmentation ===============================
 
 function [planeDim, axisCoords, axisLabels] = planeAxes(preBody, hrc)
 %PLANEAXES Split `ngrid` into ONE PLANE's dims and their coordinate vectors.
@@ -526,39 +472,48 @@ planeBodies = cell(1, nPlanes);
 datumType = '';
 sourceDatumType = '';
 for k = 1:nPlanes
+    % #73 audit 2 D11: bodies have no order, so each plane says what it holds
+    % as one body condition {variable: represented quantity, term: ...}.
+    cond = did2.build.condition(jLabel('represented quantity'), ...
+        'Term', jLabel(planeNames{k}));
+    desc = sprintf(['plane %d of %d in the source ngrid file: ' ...
+            'the %s. The v1 writer stores both planes in one stream ' ...
+            '(cat(4, sta, p_val)), so both bodies name the same file.'], ...
+            k, nPlanes, planeNames{k});
+    bodyOpts = {'DatumOrder', 'F', 'Conditions', cond, 'Description', desc};
+    fname = sourceFileName(preBody);
+    if ~isempty(fname)
+        bodyOpts = [bodyOpts, {'Fields', struct('filename', fname)}]; %#ok<AGROW>
+    end
     [b, dt, sdt] = jNgridBody(preBody, statementId, ...
         sprintf('migrated_receptive_field_plane_%d', k), axisLabels, ...
-        'DataDim', planeDim, 'AxisCoordinates', axisCoords);
+        'DataDim', planeDim, 'AxisCoordinates', axisCoords, 'BodyOptions', bodyOpts);
     if k == 1
         datumType = dt;
         sourceDatumType = sdt;
     end
-    % `datum_order` IS SET AND `byte_order` IS NOT, and the difference is
-    % evidence. The schema calls both "REQUIRED in practice" -- datum_order
-    % whenever there is more than one axis, byte_order whenever the datum is
-    % multi-byte -- and both are optional to the validator, so a wrong value
-    % here would be silent.
-    %   datum_order 'F'  A PROPERTY OF THE LANGUAGE, not a guess. The writer is
-    %                    `fwrite(fid, cat(4, sta, p_val), 'double')`
-    %                    (V_eta_ngrid_family_findings.md F2, quoting
-    %                    +ndi/+calc/+vis/hartley.m), and MATLAB linearises an
-    %                    array column-major. Without it a 200x200x36 volume
-    %                    cannot be reassembled from the bytes at all.
-    %   byte_order  ''   NOT INFERRED. The document records the producing
-    %                    machine (`app.os` is 'MACA64' in all 210) and NOT its
-    %                    endianness; reading one off the other would be a guess
-    %                    recorded as a fact, and an empty field is a legal "not
-    %                    stated" while a wrong one is undetectable.
-    b.sampled_body.datum_order = 'F';
-    b.data_body = struct( ...
-        'filename', sourceFileName(preBody), ...
-        'description', sprintf(['plane %d of %d in the source ngrid file: ' ...
-            'the %s. The v1 writer stores both planes in one stream ' ...
-            '(cat(4, sta, p_val)), so both bodies name the same file.'], ...
-            k, nPlanes, planeNames{k}));
+    % the v1 file rides as written (its name and locations): the body's
+    % declared file is `body_data`, and renaming the v1 attachment would cut
+    % it from the bytes NDI stores under that name
     if isfield(preBody, 'files'); b.files = preBody.files; end
     if isfield(preBody, 'file');  b.file  = preBody.file;  end
     planeBodies{k} = b;
+end
+end
+
+function block = datumOrderBlock()
+%DATUMORDERBLOCK The block that declares `datum_order` in the loaded schema.
+%   `data` since did-schema #88 (Haley audit D-5, 2026-10-20); `sampled_body`
+%   on did-schema main and v_eta-pre73. A migrator holds no cache handle, so
+%   it asks the shared one; `sampled_body` when no schema can be asked.
+block = '';
+try
+    block = did2.schema.cache.shared().datumOrderBlock();
+catch
+    % no schema to ask
+end
+if isempty(block)
+    block = 'sampled_body';
 end
 end
 
@@ -577,26 +532,18 @@ if isempty(times)
     body = [];
     return;
 end
-body = jSampledBody(char(leaf.base.id), baseField(preBody, 'session_id', ''), ...
-    baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'), ...
-    'migrated_receptive_field_input_spiketimes');
-body.sampled_body.axes = jAxis(jOntologyTerm('', 'time'), numel(times), ...
-    'regular', false, ...
-    'values', struct('values', times, 'source_values', times));
-body.data_body = struct('description', ...
+% one `time` dimension, the times a `time` covariate along it (data_body
+% AMENDMENT 6; the former irregular `time` key)
+[dims, covs] = jDimCov({jAxis(jOntologyTerm('', 'time'), numel(times), ...
+    'quantity', struct('value', times, 'source_value', times))});
+o = jOpts(preBody, 'Description', ...
     ['the spike times the reverse correlation consumed, WINDOWED to one ' ...
      'stimulus presentation. Calculation input, not archival data: a ' ...
      'windowed subset filed as archival would be indistinguishable from a ' ...
      'complete train (TEAM-SIGN-OFF [receptive field fold]).']);
-
-% The neuron the times came from. `element_id` IS a subject edge --
-% +migrators_j/element.m promotes elements to subjects with their ids
-% PRESERVED, which is a recurring trap in this repo and is why it is written
-% down here. Appended only when it is non-empty; never blank.
-neuronId = firstDepValue(preBody, {'element_id', 'subject_id'});
-if ~isempty(neuronId)
-    body.depends_on(end+1) = struct('name', 'derived_from_1', 'value', neuronId);
-end
+% the neuron (the pre-#73 `derived_from_1` on this body) is the leaf's own
+% entity; a data_body declares no lineage edge
+body = did2.build.sampledBody(char(leaf.base.id), dims, 'Covariates', covs, o{:});
 end
 
 % ===================== the stimulus blocks =================================

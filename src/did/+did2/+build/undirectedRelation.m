@@ -8,6 +8,8 @@ function doc = undirectedRelation(entityIds, relation, options)
 %
 %   Options:
 %     'Method'   a term (or a name)
+%     'MethodParameters'  its settings (did2.build.parameter / list);
+%                did-schema #88 only, where `method` is {term, parameters}
 %     'ValueId'  a data_type document qualifying the relation
 %     'Fields', 'Edges', 'SessionId' (required), 'Id', 'CreationTimestamp',
 %     'Validate', 'SchemaCache' -- as did2.build.document.
@@ -18,6 +20,7 @@ arguments
     entityIds {mustBeText}
     relation
     options.Method = []
+    options.MethodParameters = []
     options.ValueId = ''
     options.Fields (1,1) struct = struct()
     options.Edges = struct()
@@ -29,7 +32,7 @@ arguments
 end
 
 fields = struct('relation', {relation});
-if ~isempty(options.Method); fields.method = options.Method; end
+fields = methodFields(fields, options.Method, options.MethodParameters, options.SchemaCache);
 edges = struct('entity_id', {cellstr(entityIds)}, 'value_id', options.ValueId);
 options.Files = {};
 doc = forward('undirected_relation', fields, edges, options);

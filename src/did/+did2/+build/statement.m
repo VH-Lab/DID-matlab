@@ -2,10 +2,12 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %STATEMENT A statement document: VARIABLE of SUBJECTID has VALUE.
 %
 %   DOC = did2.build.statement(LEAFCLASS, SUBJECTID, VARIABLE, VALUE, ...)
-%   builds a concrete statement leaf -- an observation, assertion, manipulation
-%   or calculation ('voltage_observation', 'term_assertion',
-%   'dose_manipulation', 'tuning_curve_calculation', ...) -- about the subject
-%   SUBJECTID. VARIABLE is a term or a name; VALUE is the leaf's `value`, e.g.
+%   builds a statement -- LEAFCLASS a direction ('observation', 'assertion',
+%   'manipulation', 'calculation') with its value-kind mixin given as
+%   'ValueKind' ('voltage', 'term', 'dose', ...), or a named calculator
+%   ('tuning_curve_calculation', ...) -- about the entity
+%   SUBJECTID (its `entity_id` edge; usually a subject, any entity may be
+%   described). VARIABLE is a term or a name; VALUE is the leaf's `value`, e.g.
 %   from did2.build.valueCell or did2.build.term. VALUE may be [] when the
 %   value lives elsewhere: in a body ('DataBody', true, then build the body
 %   with did2.build.sampledBody/opaqueBody, owner = this document), or in a
@@ -15,27 +17,49 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %   leaf declares is accepted.
 %
 %   Fields:
-%     'Keys'              the value's dimensions (did2.build.key / list)
+%     'Dimensions'        the axes of the INLINE value, in array order
+%                         (did2.build.dimension / list; did-schema data_body
+%                         AMENDMENT 6, `keys` until 2026-10-22)
+%     'Covariates'        what is known along those axes
+%                         (did2.build.covariate / list)
+%     'DatumOrder'        'C' or 'F': the order of the inline array's values
+%                         when it has more than one dimension
 %     'Conditions'        one-value qualifiers (did2.build.condition / list)
-%     'Method'            a term (or a name)
-%     'MethodParameters'  inline settings (did2.build.parameter / list) --
-%                         OR 'MethodParametersId', never both
-%     'DatumType'         data_type.datum_type (did2.build.datumType)
+%     'Method'            the technique: a term (or a name)
+%     'MethodParameters'  the settings it ran with (did2.build.parameter /
+%                         list). On the did-schema #88 shape both are
+%                         written as ONE block, `method: {term, parameters}`
+%                         (DID-schema V_eta_method_plan.md, 2026-10-21);
+%                         before it, as `method` and `method_parameters`.
+%                         Beside 'MethodId' an inline block only ADDS
+%                         settings, with no term (rule method_shared_and_own,
+%                         Jess Haley 2026-10-22); never both before it.
+%     'DatumType'         value.data_type (value.datum_type before 2026-10-08;
+%                         did2.build.datumType)
 %     'SourceDatumType'   the source's own type name
 %     'DataBody'          logical: the value is stored in a body
 %     'Notes'             char
+%     'ValueKind'         with LEAFCLASS a DIRECTION ('observation', 'assertion',
+%                         'manipulation', 'calculation'): the value-kind mixin
+%                         ('time', 'dose', ...) -- the did-schema #88 form; a
+%                         joined '<kind>_<direction>' name from an old-vintage
+%                         caller still resolves, but is never written here
 %     'Fields'            any other declared field, as a struct
 %   Edges:
 %     'TimeReferenceIds'  cellstr: the statement's time references (T15
 %                         `multiple`; the leaf declares how many it needs)
 %     'InstrumentId'      the instrument (T7)
 %     'SoftwareId'        the software that produced it
-%     'MethodParametersId'
+%     'MethodId'          a standalone `method` document (did2.build.method)
+%                         -- the edge `method_id`, `method_parameters_id`
+%                         before #88. 'MethodParametersId' is the same
+%                         option under its old name.
 %     'AcquisitionChannelsId'
 %     'ValueId'           a standalone data_type document holding the value
 %     'InputIds'          cellstr: a calculation's inputs (ordered)
-%     'KeyIds'            cellstr: data_type documents a key takes its
-%                         positions from (a key's `positions_from` indexes them)
+%     'KeyIds'            cellstr: value documents a covariate takes its
+%                         positions from (a covariate's `document` indexes
+%                         them)
 %     'InterpreterId', 'OperatingSystemId'   a calculation's run environment
 %     'Edges'             any other declared edge (see did2.build.document)
 %   Document:
@@ -43,19 +67,22 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %     'SchemaCache' -- as did2.build.document.
 %
 %   Example:
-%     doc = did2.build.statement('voltage_observation', subjectId, 'voltage', ...
+%     doc = did2.build.statement('observation', subjectId, 'voltage', ...
 %         did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, 'SourceUnit', 'mV'), ...
 %         'SessionId', sessionId, 'TimeReferenceIds', {timeRefId}, ...
-%         'InstrumentId', electrodeId);
+%         'InstrumentId', electrodeId, 'ValueKind', 'voltage');
 %
-%   See also did2.build.document, did2.build.valueCell, did2.build.key.
+%   See also did2.build.document, did2.build.valueCell, did2.build.dimension,
+%   did2.build.covariate.
 
 arguments
     leafClass (1,:) char
     subjectId (1,:) char
     variable
     value
-    options.Keys = []
+    options.Dimensions = []
+    options.Covariates = []
+    options.DatumOrder = ''
     options.Conditions = []
     options.Method = []
     options.MethodParameters = []
@@ -67,6 +94,7 @@ arguments
     options.TimeReferenceIds = {}
     options.InstrumentId = ''
     options.SoftwareId = ''
+    options.MethodId = ''
     options.MethodParametersId = ''
     options.AcquisitionChannelsId = ''
     options.ValueId = ''
@@ -81,27 +109,39 @@ arguments
     options.Files = {}
     options.Validate (1,1) logical = true
     options.SchemaCache = []
+    options.ValueKind (1,:) char = ''
 end
 
 fields = struct();
 fields.variable = variable;
 fields.value = value;
-fields.keys = options.Keys;
+fields.dimensions = options.Dimensions;
+fields.covariates = options.Covariates;
+fields.datum_order = options.DatumOrder;
 fields.conditions = options.Conditions;
-fields.method = options.Method;
-fields.method_parameters = options.MethodParameters;
-fields.datum_type = options.DatumType;
-fields.source_datum_type = options.SourceDatumType;
+fields = methodFields(fields, options.Method, options.MethodParameters, options.SchemaCache);
+[~, entityEdge, dataTypeField] = vetaNames(options.SchemaCache);   % `subject_id` / `datum_type` before 2026-10-08
+fields.(dataTypeField) = options.DatumType;
+fields.(['source_' dataTypeField]) = options.SourceDatumType;
 fields.data_body = options.DataBody;
 fields.notes = options.Notes;
 fields = dropAbsent(fields);
 
+shape = methodShape(options.SchemaCache);
+methodId = options.MethodId;
+if ~isAbsent(options.MethodParametersId)
+    if ~isAbsent(methodId)
+        error('did2:build:badOption', ...
+            '''MethodId'' and ''MethodParametersId'' name the same edge; give one.');
+    end
+    methodId = options.MethodParametersId;
+end
 edges = struct( ...
-    'subject_id', subjectId, ...
+    entityEdge, subjectId, ...
     'time_reference_id', {options.TimeReferenceIds}, ...
     'instrument_id', options.InstrumentId, ...
     'software_id', options.SoftwareId, ...
-    'method_parameters_id', options.MethodParametersId, ...
+    shape.edge, methodId, ...
     'acquisition_channels_id', options.AcquisitionChannelsId, ...
     'value_id', options.ValueId, ...
     'input_id', {options.InputIds}, ...

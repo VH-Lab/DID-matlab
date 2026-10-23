@@ -470,6 +470,8 @@ if isempty(uniqueBy); uniqueBy = ''; end
 kindPart  = trfKindPart(cache, refs, chainMemo);
 discPart  = trfAgreementPart(trfLastSegment(uniqueBy), ...
                              trfTermKeys(refs, uniqueBy));
+% The label stays `relative_to` on #88 (the edge is now `referent_id`): the
+% census digest parses shape keys by this label.
 anchorPart = trfAgreementPart('relative_to', trfAnchorKeys(refs));
 extentPart = trfExtentPart(refs);
 
@@ -482,9 +484,13 @@ labels = cell(1, numel(refs));
 for k = 1:numel(refs)
     cn = trfClassName(refs{k});
     chain = trfChain(cache, cn, chainMemo);
-    if any(strcmp(chain, 'absolute_reference'))
+    % #88 names them absolute_/relative_time_reference; the older names are
+    % kept so a pre-#88 batch still reads.
+    if any(strcmp(chain, 'absolute_reference')) || ...
+            any(strcmp(chain, 'absolute_time_reference'))
         labels{k} = 'abs';
-    elseif any(strcmp(chain, 'relative_reference'))
+    elseif any(strcmp(chain, 'relative_reference')) || ...
+            any(strcmp(chain, 'relative_time_reference'))
         labels{k} = 'rel';
     elseif any(strcmp(chain, 'time_reference'))
         labels{k} = 'timeref';
@@ -560,7 +566,9 @@ function keys = trfTermKeys(refs, dottedPath)
 %TRFTERMKEYS The comparison key for each member, off the declared path.
 %   An ontology_term is keyed on the CURIE when it has one and on the LABEL when
 %   it does not -- the NDIC clocktype terms are unminted (#67), so every real key
-%   today is a label. Case-folded, because `NDIC:1` and `ndic:1` are one node.
+%   today is a label. Case-folded, because `NDIC:1` and `ndic:1` are one node,
+%   and the prefix read by key, spelling or synonym through did2.schema.curieKey
+%   (DID-schema V_eta_prefix_spelling_plan.md, signed 2026-10-19).
 keys = cell(1, numel(refs));
 for k = 1:numel(refs)
     keys{k} = '';
@@ -569,7 +577,7 @@ for k = 1:numel(refs)
     if isempty(v); continue; end
     if isstruct(v) && isscalar(v)
         if isfield(v, 'node') && ~isempty(v.node)
-            keys{k} = lower(trfChar(v.node));
+            keys{k} = lower(did2.schema.curieKey(trfChar(v.node)));
         elseif isfield(v, 'name') && ~isempty(v.name)
             keys{k} = lower(trfChar(v.name));
         end
@@ -586,7 +594,9 @@ function keys = trfAnchorKeys(refs)
 %   rather than being folded into `same`.
 keys = cell(1, numel(refs));
 for k = 1:numel(refs)
-    keys{k} = trfEdgeValue(refs{k}, 'relative_to');
+    % #88: `relative_time_reference.referent_id` (was `relative_to`).
+    keys{k} = trfEdgeValue(refs{k}, 'referent_id');
+    if isempty(keys{k}); keys{k} = trfEdgeValue(refs{k}, 'relative_to'); end
 end
 end
 
@@ -717,7 +727,11 @@ for k = 1:numel(chain)
         dep = items{d};
         if ~isstruct(dep) || ~isfield(dep, 'name'); continue; end
         nm = trfChar(dep.name);
-        if ~contains(nm, '#'); continue; end
+        % #88 (T15): a family is ONE name repeated, declared `multiple: true`;
+        % the older spelling is `name_#`. Both are families.
+        isMultiple = isfield(dep, 'multiple') && islogical(dep.multiple) ...
+            && isscalar(dep.multiple) && dep.multiple;
+        if ~contains(nm, '#') && ~isMultiple; continue; end
         if any(strcmp({fams.name}, nm)); continue; end
         refersTo = '';
         if isfield(dep, 'must_refer_to_document_class') ...
@@ -795,7 +809,17 @@ elseif iscell(deps)
 else
     return;
 end
-prefix = strrep(trfChar(famName), '#', '');
+fam = trfChar(famName);
+if ~contains(fam, '#')
+    % #88: one name repeated, so members match it exactly.
+    for k = 1:numel(items)
+        d = items{k};
+        if ~isstruct(d) || ~isfield(d, 'name'); continue; end
+        if strcmp(trfChar(d.name), fam); vals{end+1} = trfDepValue(d); end %#ok<AGROW>
+    end
+    return;
+end
+prefix = strrep(fam, '#', '');
 for k = 1:numel(items)
     d = items{k};
     if ~isstruct(d) || ~isfield(d, 'name'); continue; end

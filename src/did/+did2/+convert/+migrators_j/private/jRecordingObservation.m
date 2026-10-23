@@ -1,7 +1,48 @@
 function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBody, instrumentId, subjectId, elementType, bestKnownLabel)
-%JRECORDINGOBSERVATION Assemble the typed observation(s) for a DIRECT recording
-%   element -- open item #30, SIGNED 2026-08-10 in
-%   V_eta_recording_observation_plan.md.
+%JRECORDINGOBSERVATION The pass-1 half of a recording element's observation:
+%   the modality disposition and Guard A's worklist label. SINCE 2026-10-21 IT
+%   EMITS NO OBSERVATION.
+%
+%   ---------------------------------------------------------------------
+%   2026-10-21: ONE OBSERVATION PER ELEMENT PER EPOCH, WITH ITS FILES AS BODIES
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-10-21 (did-schema
+%   V_eta_recording_observation_plan.md): migrated recordings link their epoch
+%   files as data bodies, matching native V2 (NDI ndi.setup.V2.recordingDocuments):
+%   one observation per element PER EPOCH, `data_body` true, an `opaque_body` per
+%   epoch file recorded by location (ingested archives as attached), shared by
+%   the electrodes recorded in it, with the channel map.
+%
+%   This function used to emit ONE observation per element across all its
+%   epochs, with a session 'during' anchor and NO value and NO body. Rule
+%   `value_inline_or_body` (data_body AMENDMENT 5, signed 2026-10-21) refuses
+%   exactly that document, so every direct element QUARANTINED whole. And an
+%   `element` document names no epochs and carries no files (the measurement
+%   below), so pass 1 cannot build the decided shape. The per-epoch observation
+%   is minted where the epoch and its files ARE known:
+%
+%     did2.convert.resolveEpochProbemap   the DID batch pass, over the cached
+%                                         `epochfiles_ingested` documents (each
+%                                         names its epoch, its probe-map rows,
+%                                         its files) and the ingested archives
+%     ndi.migrate.local (second pass)     sessions with no such cache: the file
+%                                         navigator names the epoch's files
+%
+%   So here: RETIREOBSERVES is always false (no `instrument_id` edge exists yet,
+%   so the loose `observes` relation is KEPT; the batch pass retires it when it
+%   emits the replacement), BODIES is always empty, and UNRESOLVEDLABEL is
+%   unchanged (Guard A's worklist entry still belongs to the element).
+%
+%   The derived (`spikes`) branch emits nothing either: its per-epoch samples
+%   live on `element_epoch` documents (one attached `epoch_binary_data.vhsb`
+%   each), and how those become the spike train's body is an OPEN question,
+%   not decided here.
+%
+%   The rest of this header is the history of the pass-1 observation, kept for
+%   its reasoning (ID preservation, multi-channel cardinality, Guard A).
+%
+%   ---------------------------------------------------------------------
+%   HISTORY: open item #30, SIGNED 2026-08-10 in V_eta_recording_observation_plan.md.
 %
 %   [BODIES, RETIREOBSERVES, UNRESOLVEDLABEL] = jRecordingObservation(PREBODY,
 %       INSTRUMENTID, SUBJECTID, ELEMENTTYPE, BESTKNOWNLABEL)
@@ -255,108 +296,19 @@ switch disposition
         unresolvedLabel = firstNonEmptyChar(elementType, bestKnownLabel, '(unspecified)');
         return;
     case 'recording'
-        % the assembler below runs
+        % resolved; the observation itself is minted per epoch (see below)
     otherwise
         return;              % an unknown disposition is never guessed at
 end
 
-sessionId = baseField(preBody, 'session_id', '');
-datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
-
-% ---- the shared session-relative 'during' anchor -----------------------------
-anchor = jSessionAnchor(preBody, 'during');
-anchorId = anchor.base.id;
-
-for k = 1:numel(entries)
-    e = entries(k);
-    obsId = did.ido.unique_id();
-
-    obs = struct();
-    obs.document_class = classBlock(e.class, {'subject_observation', e.mixin});
-    obs.depends_on = struct('name', 'subject_id', 'value', subjectId);
-    if hasInstrument
-        obs.depends_on(end+1) = ...
-            struct('name', 'instrument_id', 'value', instrumentId);   % T7
-    end
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
-    obs.base = struct('id', obsId, 'session_id', sessionId, ...
-        'name', 'migrated_recording_observation', 'datestamp', datestamp);
-    % 'reference', not 'body': see the header. The samples live in the
-    % acquisition files, reached the way v1 reaches them.
-    obs.subject_statement = struct( ...
-        'variable', jOntologyTerm('', e.variable), ...
-        'storage_mode', 'reference');
-    % `method` is left blank: the leaf class already names the act (the
-    % jStartInteraction convention), and no algorithm produced this value.
-    % No `sample_time` on the statement -- the body owns the cadence (D1).
-    obs.subject_interaction = struct('method', jOntologyTerm('', ''));
-    obs.subject_observation = struct();
-    obs = attachQuantityBlock(obs, e.mixin);
-
-    % NO BODY. The element document carries no files -- see the header -- so a
-    % `sampled_body` minted here could only ever be empty. The observation
-    % alone is the honest record: this electrode measured this modality from
-    % this specimen, and the value is outside the database.
-    bodies{end+1} = obs;  %#ok<AGROW>
+% 2026-10-21: NOTHING IS EMITTED HERE (see the header). The modality is
+% resolved -- `entries` is the type's observation leaf(s) -- but the
+% observation belongs to an EPOCH and owns that epoch's files, neither of which
+% an element document carries; the batch pass (resolveEpochProbemap) or the
+% NDI second pass mints it. `hasInstrument` and `entries` are kept so the
+% dispositions above stay exactly what they were.
+%#ok<*NASGU>
 end
-
-if isempty(bodies)
-    return;
-end
-bodies{end+1} = anchor;
-retireObserves = true;   % the instrument_id edge is now present, so `observes` may go
-end
-
-% ===================== builders ============================================
-
-function obs = attachQuantityBlock(obs, mixin)
-%ATTACHQUANTITYBLOCK The data_type block, empty because the value is body-backed.
-%   `image` declares `value` with "mustBeNonEmpty": true, so the
-%   raster CELL must be present even when the pixels are not. Only DECLARED
-%   subfields are written; `dtype` stays blank because R6 is right that dtype is
-%   not recoverable from bytes we have not read, and a guess here would be the
-%   thing R6 wrote the rule against.
-%
-%   THIS COMMENT SAID "(the only data_type that does)" AND CITED
-%   schemas/V_eta/draft/image.json. Both were wrong; corrected 2026-08-11.
-%   The path is stable/, not draft/, and the uniqueness claim is wrong by 8x:
-%
-%       DENOMINATOR: 243 V_eta class schemas parsed
-%       declaring field `value` mustBeNonEmpty: 10
-%         contrast_sensitivity  date  harmonic_component  image  polynomial
-%         term  timed_sequence  tuning_curve        (8 data_type descendants)
-%         absolute_reference  relative_reference   (time_reference, not data_type)
-%
-%   It matters because this comment states the RULE this function implements,
-%   and the branch below fires for `image` and nothing else. The blast radius is
-%   bounded today only because jRecordingModality reaches just
-%   voltage/current/image/acceleration/temperature -- but a maintainer adding a
-%   modality that maps to `date`, `term`, `tuning_curve` or `contrast_sensitivity`
-%   would read "image is the only one", skip the cell, and emit a document that
-%   fails mustBeNonEmpty. If you add such a modality, extend the branch.
-%
-%   Asserted twice, here and in testMigratorsJRecordingObservation.m:223 -- a
-%   test written from the same premise as the code, so it pinned the error
-%   rather than catching it.
-if strcmp(mixin, 'image')
-    obs.image = struct();
-    obs.image.value = struct('pixels', [], 'dtype', '', ...
-        'color_model', jOntologyTerm('', ''));
-    return;
-end
-obs.(mixin) = struct();
-end
-
-function dc = classBlock(name, supers)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', 'V_eta');
-end
-
-% ===================== small helpers =======================================
 
 function v = baseField(bodyStruct, name, default)
 v = default;

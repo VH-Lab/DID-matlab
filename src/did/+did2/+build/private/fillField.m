@@ -26,12 +26,25 @@ function out = fillField(def, value, path)
 %   A `structure` with no declared sub-fields cannot be checked and is passed
 %   through as given (it must still be a struct).
 %
+%   A value's `source_unit` is read by the shape the schema declares
+%   (DID-schema V_eta_source_unit_plan.md, 2026-10-21): where it is an
+%   ontology_term it must be given as a term ({node, name}, e.g.
+%   did2.build.term('om:millimetre', 'millimetre')) -- text is refused
+%   (did2:build:sourceUnitNotATerm), because a spelling such as 'mm' is not
+%   the unit's registered term and the builder does not guess one; where it
+%   is char (did-schema main), text is written as given and a term writes its
+%   name. So one caller can pass terms on either schema.
+%
 %   The binding constraint (T8) is NOT checked here; it is the schema cache's
-%   (strictMode 'BindingConformance').
+%   (strictMode 'BindingConformance'). An ontology_term IS checked against the
+%   term registry (checkTerm; strictMode 'TermRegistry', tenet T19).
 
 subDefs = asDefs(getOr(def, 'fields', []));
 fieldType = char(getOr(def, 'type', ''));
 isArray = ~logical(getOr(def, 'mustBeScalar', true));
+if strcmp(char(getOr(def, 'name', '')), 'source_unit')
+    value = sourceUnitValue(value, fieldType, path);
+end
 
 if isempty(subDefs)
     if strcmp(fieldType, 'structure')
@@ -63,6 +76,7 @@ for k = 1:numel(elems)
     elems{k} = fillStruct(subDefs, names, elems{k}, fieldType, elemPath);
     if strcmp(fieldType, 'ontology_term')
         elems{k} = completeFromValueSet(def, elems{k});
+        checkTerm(def, elems{k}, elemPath);
     end
 end
 if isArray
@@ -73,6 +87,38 @@ end
 end
 
 % -------------------------------------------------------------------------
+
+function value = sourceUnitValue(value, fieldType, path)
+%SOURCEUNITVALUE A `source_unit` in the shape the schema declares for it.
+%   On the term shape text is an error; on the char shape a term is its name
+%   (its node when it has no name).
+arguments
+    value
+    fieldType (1,:) char
+    path (1,:) char
+end
+isText = ischar(value) || (isstring(value) && isscalar(value));
+if strcmp(fieldType, 'ontology_term')
+    if isText || iscellstr(value) || isstring(value)
+        error('did2:build:sourceUnitNotATerm', ...
+            ['"%s" is a term on the schema in use (DID-schema ' ...
+             'V_eta_source_unit_plan.md): give the unit''s registered term, ' ...
+             'did2.build.term(NODE, NAME), not the text "%s". The builder does ' ...
+             'not guess a term from a spelling.'], path, strjoin(cellstr(value), '", "'));
+    end
+    if iscell(value) && any(cellfun(@(x) ischar(x) || isstring(x), value))
+        error('did2:build:sourceUnitNotATerm', ...
+            ['"%s" is a term on the schema in use (DID-schema ' ...
+             'V_eta_source_unit_plan.md): give each unit as a term, ' ...
+             'did2.build.term(NODE, NAME), not as text.'], path);
+    end
+elseif isstruct(value) && isscalar(value) && (isfield(value, 'name') || isfield(value, 'node'))
+    name = '';
+    if isfield(value, 'name'); name = strtrim(char(value.name)); end
+    if isempty(name) && isfield(value, 'node'); name = strtrim(char(value.node)); end
+    value = name;
+end
+end
 
 function s = fillStruct(subDefs, names, given, fieldType, path)
 given = given(1);
@@ -153,8 +199,10 @@ switch fieldType
             error('did2:build:typeMismatch', '"%s" must be true/false, got %s.', path, class(value));
         end
     case 'integer'
-        if ~(isnumeric(value) && isreal(value) && all(mod(value(:), 1) == 0))
-            error('did2:build:typeMismatch', '"%s" must be an integer.', path);
+        % a whole number or NaN for a missing position (Jess Haley 2026-10-22
+        % [missing integers], O4a)
+        if ~(isnumeric(value) && isreal(value) && all(mod(value(~isnan(value)), 1) == 0))
+            error('did2:build:typeMismatch', '"%s" must be an integer (or NaN for a missing one).', path);
         end
         value = double(value);
     case 'double'
@@ -199,29 +247,75 @@ out = value;
 end
 
 function t = completeFromValueSet(def, t)
-%COMPLETEFROMVALUESET A term given by name alone, completed from the field's
-%   own value set when the schema lists one (binding.values). Only an EXACT
-%   name match fills the node -- nothing is guessed -- and an unmatched name is
-%   left as given: whether it is admissible is the binding check's question
-%   (strictMode 'BindingConformance'), not the builder's.
+%COMPLETEFROMVALUESET A term completed from the field's own value set when the
+%   schema lists one (binding.values): the writer's term takes the member's
+%   node AND name, so a document carries the schema's label (did-schema #88,
+%   Jess Haley 2026-10-22 [vocabulary nodes] L1, L2: the stored name is the
+%   ontology label; code matches by node). A member is found
+%     1. by NODE, when the term gives one;
+%     2. by exact NAME;
+%     3. for a relation or entity-type value set, by the node
+%        did2.build.vocabulary gives the name as a handle ('member_of' ->
+%        RO:0002350), so a writer's handle still finds its member when the
+%        schema's name is the label ("member of").
+%   Nothing is guessed beyond that: an unmatched term is left as given, and
+%   whether it is admissible is the binding check's question (strictMode
+%   'BindingConformance'), not the builder's.
 constraints = getOr(def, 'constraints', struct());
 if ~isstruct(constraints) || ~isfield(constraints, 'binding') ...
         || ~isstruct(constraints.binding) || ~isfield(constraints.binding, 'values')
     return;
 end
-if hasText(t, 'node') || ~hasText(t, 'name')
+members = asDefs(constraints.binding.values);
+hit = 0;
+if hasText(t, 'node')
+    for k = 1:numel(members)
+        if isfield(members{k}, 'node') && strcmpi(char(members{k}.node), strtrim(char(t.node)))
+            hit = k;
+            break;
+        end
+    end
+elseif hasText(t, 'name')
+    for k = 1:numel(members)
+        if isfield(members{k}, 'name') && strcmp(char(members{k}.name), char(t.name))
+            hit = k;
+            break;
+        end
+    end
+    kind = vocabularyKind(constraints.binding);
+    if hit == 0 && ~isempty(kind)
+        want = did2.build.vocabulary(kind, char(t.name));
+        for k = 1:numel(members)
+            if ~isempty(want) && isfield(members{k}, 'node') ...
+                    && strcmpi(char(members{k}.node), want)
+                hit = k;
+                break;
+            end
+        end
+    end
+end
+if hit == 0
     return;
 end
-members = asDefs(constraints.binding.values);
-for k = 1:numel(members)
-    if isfield(members{k}, 'name') && strcmp(char(members{k}.name), char(t.name))
-        node = char(members{k}.node);
-        if ~isempty(node)
-            t.node = node;
-            t = orderfields(t, intersect({'node', 'name'}, fieldnames(t), 'stable'));
-        end
-        return;
-    end
+node = '';
+if isfield(members{hit}, 'node'); node = char(members{hit}.node); end
+if ~isempty(node)
+    t.node = node;
+end
+if isfield(members{hit}, 'name') && ~isempty(char(members{hit}.name))
+    t.name = char(members{hit}.name);
+end
+t = orderfields(t, intersect({'node', 'name'}, fieldnames(t), 'stable'));
+end
+
+function kind = vocabularyKind(binding)
+kind = '';
+root = '';
+if isfield(binding, 'root'); root = char(binding.root); end
+if startsWith(root, 'did_relation')
+    kind = 'relation';
+elseif strcmp(root, 'did_entity_type')
+    kind = 'entity_type';
 end
 end
 

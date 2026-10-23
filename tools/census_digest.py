@@ -165,6 +165,9 @@ POST_PASSES = [
         ("membership_kept_child_present", "  kept, child present"),
         ("membership_dropped_child_absent", "  DROPPED, child absent  <- upper bound if any doc was unreadable"),
         ("membership_dropped_no_child_edge", "  DROPPED, no child edge at all"),
+        ("session_entities_dropped_dataset_id", "SESSION ENTITY under a dataset's own id: dropped (the dataset is that id's entity)"),
+        ("dataset_local_identifier_from_session", "  its reference became the dataset's local_identifier"),
+        ("dataset_local_identifier_conflicts", "  CONFLICT: the dataset already had a different local_identifier (kept)"),
         ("migrated_before", "migrated before"),
         ("migrated_after", "  after"),
         ("documents_removed", "documents REMOVED"),
@@ -292,9 +295,9 @@ POST_PASSES = [
         # sources must not read as a batch where everything succeeded.
         ("response_fold_vacuous", "stimulus-response fold VACUOUS (no sources)"),
         ("response_scalar_seen", "stimulus_response_scalar seen"),
-        ("response_scalar_already_folded", "  already harmonic_component_calculation"),
+        ("response_scalar_already_folded", "  already a calculation (harmonic_component value kind)"),
         ("response_scalar_edges_stamped", "  epoch_id stamped"),
-        ("response_scalar_folds_emitted", "FOLDED to harmonic_component_calculation"),
+        ("response_scalar_folds_emitted", "FOLDED to a calculation (harmonic_component value kind)"),
         ("response_scalar_folds_withheld", "  WITHHELD (fold did not validate)"),
         ("response_refused_total", "REFUSED (total)"),
         ("response_refused_no_epoch_string", "  no element_epochid on the document"),
@@ -452,6 +455,24 @@ POST_PASSES = [
         # path is a number rather than a comment.
         ("method_parameters_epoch_not_in_batch",
          "method_parameters: epoch edge to a document NOT in the batch"),
+        # THE PYRAVIEW FOLD (did-schema #88 port, 2026-10-21): a pyraview body
+        # carrying only an epoch STRING passes through until the epoch entity
+        # exists; this pass then re-runs the migrator with the epoch_id edge
+        # stamped. Same reading as the two folds above.
+        ("pyraview_seen", "pyraview seen"),
+        ("pyraview_folds_emitted", "FOLDED (pyraview with its epoch edge)"),
+        ("pyraview_folds_withheld", "  WITHHELD (fold did not validate)"),
+        ("pyraview_refused_no_epoch_string", "  pyraview: no epoch string"),
+        ("pyraview_refused_no_epoch_document", "  pyraview: no epoch document for the pair"),
+        ("pyraview_refused_migrator_declined", "  pyraview: migrator declined"),
+        ("pyraview_refused_unsafe_output", "  pyraview: refused, unsafe output"),
+        # #88: a pyraview cannot pass through pass 1 (its tombstone lacks the v1
+        # epochclocktimes block), so it DEFERS into the quarantine and is folded
+        # here; an unresolved deferral stays quarantined and fails the integrity check loudly.
+        ("pyraview_deferred_seen", "pyraview DEFERRED from pass 1 (in the quarantine)"),
+        ("pyraview_deferred_resolved", "  deferred pyraview FOLDED (left the quarantine)"),
+        ("pyraview_deferred_unresolved", "  deferred pyraview UNRESOLVED (stays quarantined)"),
+        ("pyraview_deferred_epochs_minted", "  epochs minted for a deferred pyraview (it alone named them)"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
         ("documents_inspected", "documents inspected"),
@@ -544,13 +565,111 @@ POST_PASSES = [
         ("manifests_renamed", "ingestion_manifests renamed (epochfiles_ingested consumed)"),
         ("rename_skipped_no_filenavigator", "  rename SKIPPED: no filenavigator_id (tombstone kept)"),
         ("rename_skipped_no_epoch", "  rename SKIPPED: no resolved epoch (tombstone kept)"),
-        ("rename_quarantined", "  rename QUARANTINED (tombstone kept, Bar-1 fallback)"),
+        ("rename_quarantined", "  rename QUARANTINED (tombstone kept, integrity fallback)"),
+        # did-schema #88 (#73 item 39): no serialized probemap on the manifest,
+        # so a document with ANY row that did not decompose keeps its tombstone.
+        ("rename_skipped_rows_without_home", "  rename SKIPPED: a probemap row has no home (tombstone kept)"),
+        # #73 item 56: one shared acquisition_channels document per (rig, channels).
+        ("acquisition_channels_minted", "acquisition_channels documents minted"),
+        ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no channels doc)"),
+        ("channels_derived_read_mode", "  channel groups naming a derived read mode (dep, den, dimp, ...; not a channel type)"),
+        ("rigs_without_daqsystem", "  rigs a devicestring names with no daqsystem document (no system minted)"),
         ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
+        # 2026-10-21 (Jess Haley, did-schema V_eta_recording_observation_plan.md):
+        # each recording observation is `data_body` true and the epoch's files
+        # are its opaque_bodies, shared through a repeated owner_id. BY LOCATION
+        # means the file is NAMED, not checked: the test corpora carry document
+        # JSON only, so "files named but absent" is a property of the test data.
+        ("epochs_with_observations", "epochs with a surviving recording observation  <- BODY DENOMINATOR"),
+        ("epochs_from_archive", "  epochs whose bodies are the ingested archive (as attached)"),
+        ("epochs_by_location", "  epochs whose bodies are named files, by location"),
+        ("epochs_no_file_named", "  epochs with NO file to point at (observation has no body)"),
+        ("bodies_from_archive", "opaque_bodies from ingested archive series"),
+        ("archive_members_carried", "  archive members carried as attached"),
+        ("bodies_by_location", "opaque_bodies by location (files named, presence NOT checked)"),
+        ("bodies_size_and_checksum_omitted", "  of which size + checksum omitted (no disk read in this pass)"),
+        ("body_owner_links", "  owner_id links (body x observation; shared bodies)"),
+        ("body_build_refused", "  epochs whose bodies could not be BUILT (see first error)"),
+        ("bodies_quarantined", "  bodies QUARANTINED"),
+        ("observes_retired", "`observes` relations retired (replaced by instrument_id)"),
+        # 2026-10-21 (Jess Haley, "a"): a spike-sorted neuron's per-epoch
+        # observation (time, data_body, its element_epoch .vhsb as the body).
+        ("spike_epochs_seen", "spikes element_epochs seen  <- SPIKE DENOMINATOR"),
+        ("spike_trains_emitted", "  spike-train observations emitted"),
+        ("spike_instrument_resolved", "    with the sorted-from instrument resolved"),
+        ("spike_bodies", "  spike-train bodies (epoch_binary_data.vhsb)"),
+        ("spike_bodies_quarantined", "  spike-train bodies QUARANTINED"),
+        ("spike_refused_no_epoch", "  refused: no epoch document"),
+        ("spike_epochs_no_file", "  refused: no epoch_binary_data.vhsb named"),
+        # 2026-10-22 (Jess Haley, F1 [epoch dissolution before merge]): every
+        # acquisition_epoch (v1 element_epoch) dissolves into its per-epoch
+        # observation + own anchor + body, keyed on the element type; the
+        # kept rows say why one did not. TARGET: kept rows 0.
+        ("acquisition_epoch_seen", "acquisition_epoch seen  <- DISSOLUTION DENOMINATOR"),
+        ("acquisition_epoch_dissolved", "  DISSOLVED (observation + own anchor + body, id kept)"),
+        ("element_epoch_anchors_minted", "  per-train epoch anchors minted"),
+        ("acquisition_epoch_kept_type_undecided", "  KEPT: element type has no decided row"),
+        ("acquisition_epoch_kept_types", "    kept, by element type"),
+        ("acquisition_epoch_kept_no_epoch", "  KEPT: no epoch document"),
+        ("acquisition_epoch_kept_no_file", "  KEPT: no epoch_binary_data.vhsb named"),
+        ("acquisition_epoch_kept_clock", "  KEPT: not exactly one dev_local_time clock"),
+        ("acquisition_epoch_kept_not_rebuilt", "  KEPT: observation, anchor or body did not validate"),
+        ("acquisition_epoch_kept_no_subject", "  KEPT: JH element with no worm (derived_from parent)"),
+        ("acquisition_epoch_kept_ensemble_unverified", "  KEPT: ensemble combined bytes, members' trains not verified"),
+        # 2026-10-22 (Jess Haley, [JH position and distance])
+        ("position_calculations_emitted", "  JH position calculations emitted"),
+        ("distance_calculations_emitted", "  JH signed-distance calculations emitted"),
+        ("nearest_patch_calculations_emitted", "  JH nearest-patch calculations emitted"),
+        ("coordinate_systems_minted", "    pixel coordinate systems minted"),
+        ("distance_without_position", "    distance statements with no position input"),
+        ("nearest_patch_without_patches", "    nearest-patch statements with no item_id"),
+        # 2026-10-21 (Jess Haley, "a"): a v1 daqreader_*_epochdata_ingested is
+        # retired only when every file it holds has a new per-epoch owner.
+        ("archive_docs_inspected", "v1 ingested archives inspected  <- ARCHIVE DENOMINATOR"),
+        ("archive_docs_retired", "  retired (every file owned by a new data body)"),
+        ("archive_docs_kept_unowned_files", "  KEPT: a file with no new owner"),
+        ("archive_files_unowned", "    files with no new owner"),
+        ("archive_kept_referenced", "  KEPT: still referenced by a survivor"),
+        ("archive_dangling_references", "    dangling references found (and avoided)"),
+        # #73 review item 61: a v1 daqmetadatareader_epochdata_ingested's data.bin
+        # becomes an opaque_body owned by the epoch's stimulator manipulation(s).
+        ("metadata_archives_inspected", "v1 metadata archives inspected  <- METADATA ARCHIVE DENOMINATOR"),
+        ("metadata_archives_to_body", "  replaced by an opaque_body (id preserved)"),
+        ("metadata_archive_owner_links", "    owner links (stimulator manipulations)"),
+        ("metadata_archives_kept_no_owner", "  KEPT: no stimulator manipulation for the epoch"),
+        ("metadata_archives_kept_no_bytes", "  KEPT: no data.bin"),
+        ("metadata_archives_quarantined", "  body QUARANTINED (v1 document kept)"),
+        # 2026-10-21 (Jess Haley, "a"): pyraview levels owned by the epoch's
+        # recording observation; the separate observation is retired.
+        ("pyraview_observations_seen", "pyraview observations seen  <- PYRAVIEW DENOMINATOR"),
+        ("pyraview_observations_retired", "  retired (levels moved to the recording observation)"),
+        ("pyraview_levels_repointed", "  level bodies re-pointed"),
+        ("pyraview_kept_no_recording_observation", "  KEPT: no recording observation for element+epoch"),
+        ("pyraview_kept_referenced", "  KEPT: still referenced by a survivor"),
+        ("pyraview_repoint_quarantined", "  re-point QUARANTINED (kept as it was)"),
+        # [pyraview leftovers, schema form] (Jess Haley, 2026-10-21): the data
+        # type onto the recording observation's value; the anchor dropped when
+        # it equals the epoch, else its start is the levels' time key origin.
+        ("pyraview_data_type_moved", "  data type placed on the recording observation's value"),
+        ("pyraview_kept_data_type_conflict", "  KEPT: data type differs from one already placed"),
+        ("pyraview_anchor_equal_epoch_dropped", "  anchor equal to the epoch: dropped"),
+        ("pyraview_anchor_to_time_key", "  anchor differs from the epoch: start carried by the time key"),
+        ("pyraview_anchor_not_comparable_to_time_key", "  anchor NOT COMPARABLE (epoch states no extent): start carried by the time key"),
+        ("pyraview_kept_start_conflict", "  KEPT: anchor start is not the levels' time origin"),
+        # [sorter input] (Jess Haley, 2026-10-21): a sorter calculation's
+        # input is its electrode's per-epoch recording observations, else
+        # the electrode entity (its entity_id; no input_id).
+        ("sorter_calculations_seen", "sorter calculations seen  <- SORTER DENOMINATOR"),
+        ("sorter_inputs_linked", "  input_id to the electrode's recording observations"),
+        ("sorter_input_edges", "    input_id edges added"),
+        ("sorter_input_fallback_entity", "  FALLBACK: no recording observation, the electrode entity"),
+        ("sorter_link_quarantined", "  link QUARANTINED (kept as it was)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
-    # five run knobs move inline onto the harmonic_component_calculation leaf
-    # and `method_parameters_id` is dropped, because the schema says a statement
-    # carries the inline field OR the edge, never both.
+    # run knobs move inline onto the calculation whose value kind is
+    # harmonic_component (did-schema #88: `interaction.method`), and `method_id`
+    # is dropped, because the schema says a statement carries the inline method
+    # OR the edge, never both.
     #
     # READ `leaves_seen` AND `suppressed_responses_seen` AS A PAIR, ALWAYS.
     # `leaves_seen: 0` alone is ambiguous and the pass was built so that it does
@@ -567,22 +686,34 @@ POST_PASSES = [
     #     N leaves, 0 inlined      a real defect in resolveResponseParameters,
     #                              unless refused_total accounts for all of them.
     #
-    # IT DELETES NOTHING, AND THAT IS THE GATE RATHER THAN AN OMISSION. The
-    # three `parameters_documents_*` rows ARE the verify-before-delete
-    # measurement the plan requires before 11,440 documents may go; they are
-    # EVIDENCE, never authorisation, and the corpora are a SAMPLE.
+    # IT DELETES NOTHING, BECAUSE NOTHING IS LEFT TO DELETE. Since Jess Haley's
+    # [response parameters as a shared method] (2026-10-21) each parameters
+    # document is CONVERTED IN PLACE into a standalone `method` document, id
+    # preserved, and the responses keep their `method_id` edge to it. The
+    # `parameters_documents_*` rows are no longer a verify-before-delete gate:
+    # referenced/unreferenced is evidence about SHARING (how many methods some
+    # response uses), and `_deleted` must stay 0.
     ("response_parameters_fold", "did2.convert.resolveResponseParameters", [
         ("documents_inspected", "documents inspected"),
         ("documents_unreadable", "UNREADABLE"),
-        ("leaves_seen", "harmonic_component_calculation leaves  <- DENOMINATOR"),
-        ("leaves_with_edge", "  carrying method_parameters_id"),
+        ("leaves_seen", "harmonic_component calculations  <- DENOMINATOR"),
+        ("leaves_with_edge", "  carrying method_id"),
         ("leaves_without_edge", "  no such edge (complete as they stand)"),
         ("suppressed_responses_seen", "v1 responses STILL SUPPRESSED by the epoch gate"),
-        ("parameters_documents_seen", "parameters documents  <- DELETION DENOMINATOR"),
-        ("inlined", "INLINED"),
+        ("parameters_documents_seen", "parameters documents  <- CONVERSION DENOMINATOR"),
+        # Jess Haley 2026-10-21 ("b"): one standalone `method` per parameters
+        # document, id preserved; the responses keep `method_id` (was INLINED).
+        ("methods_minted", "METHOD DOCUMENTS MINTED (one per parameters document)"),
+        ("leaves_already_on_method", "  responses already pointing at a method document"),
         # A FIELD-VALUE count, not a document count: one leaf contributes up to
-        # five. It must not be read down the same column as `inlined`.
+        # five. It must not be read down the same column as `methods_minted`.
         ("fields_copied", "  field VALUES copied (cells, not documents)"),
+        # did-schema #88: an entry holds exactly one value form, so a knob the
+        # writer left [] cannot be stated. Counted here so it does not vanish.
+        ("knobs_empty_not_stated", "  writer-empty knobs NOT stated (no value form)"),
+        # Jess Haley 2026-10-21 ("c"): [] given NDI's documented meaning
+        # (prestimulus_normalization -> 0, prestimulus_time -> left out).
+        ("knobs_empty_ndi_defined", "  writer-empty knobs given NDI's defined meaning"),
         ("harmonic_checked", "freq_response cross-checked against value.harmonic"),
         ("harmonic_uncheckable", "  not checkable (one side unreadable)"),
         ("refused_total", "REFUSED (total)"),
@@ -593,12 +724,12 @@ POST_PASSES = [
         ("refused_inline_present", "  the leaf already carries inline parameters"),
         ("refused_harmonic_mismatch", "  freq_response ~= value.harmonic"),
         ("fold_quarantined", "QUARANTINED by the fold"),
-        ("parameters_documents_referenced_after", "DELETION GATE: still referenced after"),
-        ("parameters_documents_unreferenced_after", "  UNREFERENCED after (evidence only)"),
-        # 0 by construction -- this pass never deletes. Printed anyway, because
-        # the gate it measures is a gate to delete 11,440 documents and a
-        # non-zero here would mean the pass pre-empted the team's decision.
-        ("parameters_documents_deleted", "parameters documents DELETED (0 by construction)"),
+        ("parameters_documents_referenced_after", "SHARING: method documents some response uses"),
+        ("parameters_documents_unreferenced_after", "  used by no response (evidence only)"),
+        # 0 by construction -- each parameters document is converted in place
+        # into a method document (id preserved), so nothing is removed. Printed
+        # anyway: a non-zero would mean documents vanished from the batch.
+        ("parameters_documents_deleted", "parameters documents DELETED (0 by construction: converted in place)"),
     ]),
     # TEAM DECISION 2026-08-11 (two of them): "each lawn can be a subject and a
     # plate of lawns is another subject where each lawn is a member of it", and
@@ -658,7 +789,7 @@ POST_PASSES = [
         ("refused_no_plate_row", "  refused: no plate row"),
         ("refused_plate_row_ambiguous", "  refused: two plate rows claim the key"),
         ("refused_lawn_no_exp_id", "  refused: no expID for that plate"),
-        ("member_of_relations_emitted", "  member_of EDGES emitted (edges, not rows)"),
+        ("contained_in_relations_emitted", "  contained_in EDGES emitted (edges, not rows)"),
         ("withheld_plate_tier_not_minted", "  edge withheld: plate tier not minted"),
         ("withheld_lawn_tier_not_minted", "  edge withheld: lawn tier not minted"),
         # EXCLUDES the C. elegans relabel refusals below -- totalRefusals()
@@ -695,7 +826,7 @@ POST_PASSES = [
         ("local_identifier_collisions_across_sessions_only", "  of them ACROSS sessions only"),
         ("local_identifier_collisions_unclassifiable_no_session_id", "  of them UNCLASSIFIABLE (no session id)"),
         ("subjects_quarantined", "QUARANTINED: subjects"),
-        ("statements_quarantined", "QUARANTINED: observations + member_of"),
+        ("statements_quarantined", "QUARANTINED: observations + contained_in"),
         ("documents_appended", "documents appended"),
         # NOT consumed, deliberately: the typed measures are stored twice until
         # a separate verify-before-delete step says otherwise.
@@ -735,6 +866,40 @@ POST_PASSES = [
         # silent change to it would be ten times the size of the fold.
         ("labels_deleted", "ontology_label documents deleted"),
         ("labels_modified", "ontology_label documents modified"),
+        # THE UNHELD HALF (Jess, 2026-10-14, lightsheet point 3): a
+        # fileReference named by a lightsheet pyramid's carried
+        # `source_file_id` becomes that observation's unheld opaque_body.
+        # READ `store_carriers_seen` FIRST: no corpus in the gate holds a
+        # lightsheet pyramid, so all-zero here is the EXPECTED reading.
+        ("store_records_seen", "file_reference documents"),
+        ("store_carriers_seen", "observations carrying source_file_id"),
+        ("stores_folded", "FOLDED to an unheld opaque_body (id kept)"),
+        ("stores_folded_ome_zarr", "  of those, an OME-Zarr store (format EMPTY:0000259)"),
+        ("stores_folded_tiff_folder", "  of those, a SmartSPIM TIFF folder (format EDAM:format_3591)"),
+        ("store_refused_total", "store records REFUSED (total)"),
+        ("store_refused_not_in_batch", "  named record not in this batch"),
+        ("store_refused_not_a_file_reference", "  named document is not a file_reference"),
+        ("store_refused_shared", "  record named by two observations"),
+        ("store_refused_no_original_path", "  record has no original_path"),
+        ("store_carriers_stripped", "carriers stripped WITHOUT a fold (keys lost)"),
+        ("store_fold_quarantined", "QUARANTINED by the store fold"),
+        ("store_records_left_passthrough", "file_reference named by no observation (passthrough)"),
+        ("store_checksums_to_description", "  .zattrs checksums put in description, not content_hash"),
+        ("store_sizes_unrecorded", "  folded with file_size 0 (unrecorded: size_bytes left out)"),
+        # Point 8: the pyramid's t unit and channel names onto its levels' keys.
+        ("level_bodies_seen", "level sampled_bodies owned by a pyramid observation"),
+        ("level_bodies_completed", "  completed from the pyramid (t unit / channel names)"),
+        ("level_unit_disagreements", "  z/y/x unit DISAGREEMENTS with the pyramid (not overwritten)"),
+        ("level_bodies_without_pyramid", "level sampled_bodies whose pyramid is not in the batch"),
+        ("level_completion_quarantined", "QUARANTINED by the level completion"),
+        # Point 10: units with no UO mapping stay name-only, counted.
+        ("pyramid_key_units_name_only", "pyramid key units left NAME-ONLY (no UO mapping)"),
+        # Point 1: "during the session" references minted for marked documents.
+        ("session_references_marked", "documents marked for a session time reference"),
+        ("session_references_minted", "  minted (relative_time_reference intervalDuring)"),
+        ("observations_without_session", "  NO session document in the batch (left without one)"),
+        ("session_references_ambiguous", "  two session documents claim the session id (refused)"),
+        ("session_references_quarantined", "  minted but QUARANTINED"),
     ]),
     # DORMANT BY TEAM DECISION 2026-08-12. The pass RUNS and EMITS NOTHING.
     # The agreed model is ONE statement per source document holding an ARRAY of
@@ -840,6 +1005,26 @@ POST_PASSES = [
         ("policies_folded", "clock_alignment_policy FOLDED"),
         ("extra_bodies_emitted", "  software entities appended"),
         ("fold_quarantined", "QUARANTINED on re-validation"),
+        # The filefind syncrule arm: daqsystem1 / daqsystem2 resolved BY NAME
+        # within the rule's session. READ `syncrules_seen` and
+        # `syncrule_filefind_seen` BESIDE the folds. A name resolving to zero or
+        # to several systems is a refusal, per rule and per name, never a mint.
+        ("acquisition_systems_indexed", "acquisition_system documents indexed"),
+        ("syncrules_seen", "syncrule documents left by pass 1"),
+        ("syncrule_filefind_seen", "  of which filefind"),
+        ("syncrule_not_filefind", "  other rules (not this arm's)"),
+        ("syncrule_refused_no_session_id", "filefind refused: no session (or the empty sentinel)"),
+        ("syncrule_refused_no_system_name", "filefind refused: daqsystem1/2 not named"),
+        ("syncrule_refused_name_missing", "filefind refused: a name matches NO system"),
+        ("syncrule_refused_name_ambiguous", "filefind refused: a name matches SEVERAL systems"),
+        ("syncrule_names_missing", "  names matching no system"),
+        ("syncrule_names_ambiguous", "  names matching several systems"),
+        ("syncrule_refused_migrator_declined", "filefind refused: migrator declined after the stamp"),
+        ("syncrule_refused_total", "  filefind refused TOTAL"),
+        ("syncrule_configurations_folded", "clock_alignment_configuration FOLDED (filefind)"),
+        ("syncrule_channels_emitted", "  acquisition_channels appended"),
+        ("syncrule_software_emitted", "  software entities appended"),
+        ("syncrule_fold_quarantined", "QUARANTINED filefind folds (rule kept)"),
     ]),
 ]
 
@@ -2232,6 +2417,150 @@ def _edge_arity_verdict(ea, out, indent="      "):
         p("%s*** :291), so this is consistent with the plural count above --"
           % indent)
         p("%s*** and it is the independent way of seeing it." % indent)
+
+
+def render_dose_ingredients(r, out):
+    """The dose `ingredient_in_formulation` batch census (Jess Haley,
+    2026-10-21 [dose per ingredient]). Denominator first; absent is NOT
+    MEASURED, never a zero."""
+    p = out.append if isinstance(out, list) else out
+    di = r.get("dose_ingredients")
+    if not isinstance(di, dict) or "audit_failed" in di:
+        why = ("audit failed (%s)" % di.get("audit_failed")) if isinstance(di, dict) \
+            else "this report carries no dose_ingredients block"
+        p("    dose ingredient_in_formulation: NOT MEASURED -- %s" % why)
+        return
+    p("    dose ingredient_in_formulation: %s doc(s) inspected, %s dose(s) "
+      "(%s with ingredient_id), %s formulation not in batch (not checked), "
+      "%s checked, %s violation(s)"
+      % (di.get("docs_inspected", "?"), di.get("doses_inspected", "?"),
+         di.get("doses_with_ingredients", "?"), di.get("formulation_not_in_batch", "?"),
+         di.get("doses_checked", "?"), di.get("violations", "?")))
+    ex = di.get("violation_examples") or []
+    if isinstance(ex, dict):
+        ex = [ex]
+    for e in ex:
+        p("      %s: %s" % (e.get("id", "?"), e.get("message", "?")))
+
+
+def render_dimension_terms(r, out):
+    """Pass 1's count of dimensions whose term has no node (Jess Haley,
+    2026-10-22 [covariate details], answer "B" to 5.4): it is what moves
+    dimension terms from `preferred` to `required` (OPEN_WORK #129).
+    Denominators first (documents inspected, dimensions written); an absent
+    block is NOT MEASURED, never a zero."""
+    p = out.append if isinstance(out, list) else out
+    d = r.get("dimension_terms")
+    if not isinstance(d, dict):
+        p("    dimension terms with no node: NOT MEASURED -- this report carries "
+          "no dimension_terms block")
+        return
+    p("    dimension terms with no node: %s doc(s) inspected, %s dimension(s) "
+      "written, %s without a node"
+      % (d.get("documents_inspected", "?"), d.get("dimensions_written", "?"),
+         d.get("without_node", "?")))
+    if d.get("dimensions_written") == 0:
+        p("      (no dimension written: the count is vacuous, not clean)")
+    rows = d.get("by_class") or {}
+    for cls in sorted(rows):
+        row = rows[cls] if isinstance(rows[cls], dict) else {}
+        p("      %-40s %6s of %6s without a node"
+          % (cls, row.get("without_node", "?"), row.get("dimensions_written", "?")))
+
+
+def render_stimulus_control_edges(r, out):
+    """The v1 `stimulus_control_id` edges dropped by [control as covariate]
+    (Jess Haley, 2026-10-22 [covariate rules named], answer "A" to 6.4), of
+    the response documents converted. Absent is NOT MEASURED (no response
+    migrator ran), never 0 of 0."""
+    p = out.append if isinstance(out, list) else out
+    e = r.get("stimulus_control_id_edges")
+    if not isinstance(e, dict):
+        p("    stimulus_control_id edges dropped: NOT MEASURED -- this report "
+          "carries no stimulus_control_id_edges block")
+        return
+    p("    stimulus_control_id edges dropped: %s of %s converted stimulus "
+      "response document(s)"
+      % (e.get("edges_dropped", "?"), e.get("response_documents_converted", "?")))
+    rows = e.get("by_class") or {}
+    for cls in sorted(rows):
+        p("      %-40s %6s converted" % (cls, rows[cls]))
+
+
+def render_tuning_response_variable(r, out):
+    """The tuning response variable (Jess Haley, 2026-10-22 [response
+    variable], [dF/F as variable]; 2026-10-23 [unstated response variable]):
+    of the tuning / contrast-sensitivity documents folded (the denominator,
+    first), how many had `variable` set from v1 `response_units`, and how
+    many got the general term EMPTY:0000398 "neural response" because the
+    source was empty or its spelling unrecognised. Absent is NOT MEASURED (no
+    tuning migrator ran), never 0 of 0."""
+    p = out.append if isinstance(out, list) else out
+    e = r.get("tuning_response_variable")
+    if not isinstance(e, dict):
+        p("    tuning response variable: NOT MEASURED -- this report carries "
+          "no tuning_response_variable block")
+        return
+
+    def n(key):
+        v = e.get(key)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    total = n("documents_folded")
+    fr, dff = n("set_neural_firing_rate"), n("set_dff")
+    ns, un = n("general_not_stated"), n("general_unrecognised")
+
+    def s(v):
+        return "?" if v is None else str(v)
+
+    set_ = None if fr is None or dff is None else fr + dff
+    gen = None if ns is None or un is None else ns + un
+    p("    tuning response variable: %s folded tuning document(s)" % s(total))
+    p("      set from response_units:           %6s  (neural firing rate %s, dF/F %s)"
+      % (s(set_), s(fr), s(dff)))
+    p("      general term \"neural response\":    %6s  (source empty %s, "
+      "spelling unrecognised %s)" % (s(gen), s(ns), s(un)))
+    if None not in (total, set_, gen) and set_ + gen != total:
+        p("      *** the parts (%d) do not add up to the denominator (%d)"
+          % (set_ + gen, total))
+    sp = e.get("unrecognised_spellings")
+    if isinstance(sp, str):
+        sp = [sp]
+    if sp:
+        p("      unrecognised spellings: %s" % ", ".join(str(x) for x in sp))
+    rows = e.get("by_class") or {}
+    for cls in sorted(rows):
+        p("      %-40s %6s folded" % (cls, rows[cls]))
+
+
+def render_entity_requires(r, out):
+    """The entity-type `requires` census, REPORT-ONLY (Jess Haley, 2026-10-21,
+    "b"): per entity type and required field, entities inspected and missing.
+    Denominator first; an absent block is NOT MEASURED, never a zero."""
+    p = out.append if isinstance(out, list) else out
+    er = r.get("entity_requires")
+    if er is None:
+        p("    entity requires (REPORT-ONLY): NOT MEASURED -- this report carries "
+          "no entity_requires block")
+        return
+    if not isinstance(er, dict) or "audit_failed" in er:
+        why = er.get("audit_failed") if isinstance(er, dict) else type(er).__name__
+        p("    entity requires (REPORT-ONLY): NOT MEASURED -- audit failed (%s)" % why)
+        return
+    p("    entity requires (REPORT-ONLY): %s doc(s) inspected, %s entity(ies) "
+      "(%s untyped, %s of a type with no registry row); %s missing"
+      % (er.get("docs_inspected", "?"), er.get("entities_inspected", "?"),
+         er.get("entities_untyped", "?"), er.get("entities_type_without_row", "?"),
+         er.get("missing_total", "?")))
+    if er.get("registry_unavailable"):
+        p("      registry UNAVAILABLE: every count above is NOT MEASURED")
+    rows = er.get("by_type_field") or []
+    if isinstance(rows, dict):
+        rows = [rows]
+    for row in rows:
+        p("      %-14s %-18s inspected %6s  missing %6s"
+          % (row.get("entity_type", "?"), row.get("field", "?"),
+             row.get("inspected", "?"), row.get("missing", "?")))
 
 
 def render_edge_arity(r, out):
@@ -3672,6 +4001,48 @@ def _pass_report(r, key):
     return rep, None
 
 
+# THE EPOCH ENTITY TYPE IS IDENTIFIED BY ITS NODE, NOT ITS STORED NAME.
+# An entity type's stored `name` is its node's ontology label (did-schema
+# dc116fd; Jess Haley 2026-10-22 [vocabulary nodes] L1, L2), so it changes when
+# the schema changes and the node does not. The node is the one
+# did2.build.vocabulary('entity_type', 'epoch') answers (src/did/+did2/+build/
+# vocabulary.m) and did-schema's binding_registry_meta.json entity_type_bindings
+# row for "recording epoch" holds.
+EPOCH_TYPE_NODE = "EMPTY:0000383"
+
+# FALLBACK ONLY, for a report that carries no `by_entity_type_node`: the
+# keys `by_entity_type` has been written under, each matlab.lang.makeValidName
+# of the stored name -- `epoch` before the label flip, `recordingEpoch`
+# ("recording epoch") after it. A report that counted the type under any other
+# name is not recognised here; that is why the node table is preferred.
+EPOCH_TYPE_NAME_KEYS = ("epoch", "recordingEpoch")
+
+
+def epoch_entity_type_count(r):
+    """(count, label) of `entity` documents of the epoch type in the FINAL
+    census, or (None, None) when the report carries neither table.
+
+    Prefers `by_entity_type_node` (rows {node, name, count}; matched by NODE).
+    Falls back to `by_entity_type` (keyed by name) for reports written before
+    the node table existed, accepting the pre- and post-flip names."""
+    rows = r.get("by_entity_type_node")
+    if rows is not None:
+        n = 0
+        for row in aslist(rows):
+            if isinstance(row, dict) and \
+                    str(row.get("node") or "").strip() == EPOCH_TYPE_NODE:
+                n += _int_or_none(row.get("count")) or 0
+        return n, "by_entity_type_node `%s`" % EPOCH_TYPE_NODE
+    by_type = r.get("by_entity_type")
+    if isinstance(by_type, dict):
+        present = [k for k in EPOCH_TYPE_NAME_KEYS if by_type.get(k) is not None]
+        if present:
+            n = sum(_int_or_none(by_type.get(k)) or 0 for k in present)
+            return n, "by_entity_type %s (by NAME; no node table)" % \
+                " + ".join("`%s`" % k for k in present)
+    return None, None
+
+
 def epoch_populations(r):
     """Every `epoch` figure in one report, tagged with the batch it counted.
 
@@ -3801,9 +4172,16 @@ def epoch_populations(r):
             "the report carries no `by_class` -- the FINAL class census is "
             "the only figure that would notice an epoch DELETED after minting")
     else:
-        reading["commensurable"].append(
-            (class_count(normalised_class_index(by_class), "epoch"),
-             "by_class: `epoch` in the FINAL class census"))
+        n_epoch = class_count(normalised_class_index(by_class), "epoch")
+        label = "by_class: `epoch` in the FINAL class census"
+        # did-schema #88: an epoch is an `entity` of type epoch, which by_class
+        # counts under `entity`; the report carries the type separately.
+        n_typed, typed_label = epoch_entity_type_count(r)
+        if n_typed is not None:
+            n_epoch += n_typed
+            label = ("by_class `epoch` + %s in the FINAL class census"
+                     % typed_label)
+        reading["commensurable"].append((n_epoch, label))
 
     values = set(v for v, _label in reading["commensurable"])
     if len(values) > 1:
@@ -4413,7 +4791,7 @@ def _render_openminds_citations_reading(rep, p):
         p("          %8d  thing(s) consumed with NOWHERE TO PUT THEM (the four"
           % total)
         p("                    LOSSY rows summed). Author ORDER survives as")
-        p("                    `sequence`; the ROLE does not, because `person`")
+        p("                    `order`; the ROLE does not, because `person`")
         p("                    has no role field. This is real loss with a")
         p("                    number on it, and `affiliations_beyond_first_")
         p("                    dropped` is the size of an OPEN team question,")
@@ -4431,7 +4809,7 @@ def _render_response_parameters_reading(rep, p):
     p("          THE STIMULUS-RESPONSE FOLD -- the reading of the rows above")
     leaves = _reading_denominator(
         rep, "leaves_seen",
-        "harmonic_component_calculation leaf/leaves in the batch", p,
+        "harmonic_component calculation(s) in the batch", p,
         when_absent=[
             "The pass landed 2026-08-11, so a report from before then carries",
             "no counter of any kind for it.",
@@ -4477,19 +4855,29 @@ def _render_response_parameters_reading(rep, p):
             p("          *** different fact from the blocked-upstream reading,")
             p("          *** and the two rows exist to keep them apart.")
     else:
-        inlined = _int_or_none(rep.get("inlined"))
-        refused = _int_or_none(rep.get("refused_total"))
+        # Jess Haley 2026-10-21 ("b"): the unit of work is the PARAMETERS
+        # DOCUMENT (one `method` each), not the response, so the accounting is
+        # over parameters documents: each is minted, refused or quarantined.
+        minted = _int_or_none(rep.get("methods_minted"))
+        seen_p = _int_or_none(rep.get("parameters_documents_seen"))
+        doc_refused = None
+        parts = [_int_or_none(rep.get(k)) for k in (
+            "refused_no_fields", "refused_inline_present",
+            "refused_harmonic_mismatch")]
+        if None not in parts:
+            doc_refused = sum(parts)
         quar = _int_or_none(rep.get("fold_quarantined"))
-        if inlined == 0 and refused == 0:
-            p("          *** %d leaf/leaves seen and NOTHING inlined or refused."
-              % leaves)
-            p("          *** That is a real defect in resolveResponseParameters,")
-            p("          *** not a corpus fact: a leaf either folds or is")
+        if seen_p and minted == 0 and doc_refused == 0 and not quar:
+            p("          *** %d parameters document(s) seen and NOTHING minted or"
+              % seen_p)
+            p("          *** refused. That is a")
+            p("          *** real defect in resolveResponseParameters, not a corpus fact: a")
+            p("          *** parameters document either becomes a method or is")
             p("          *** refused with a reason.")
-        if None not in (with_edge, inlined, refused, quar):
-            residual = with_edge - inlined - refused - quar
+        if None not in (seen_p, minted, doc_refused, quar):
+            residual = seen_p - minted - doc_refused - quar
             if residual:
-                p("          *** %d leaf/leaves with an edge neither inlined,"
+                p("          *** %d parameters document(s) neither minted,"
                   % residual)
                 p("          *** refused nor quarantined. The pass matches its")
                 p("          *** rebuilt bodies back by base.id, so a residual")
@@ -4507,39 +4895,38 @@ def _render_response_parameters_reading(rep, p):
         p("          *** than picking a winner, so nothing is lost -- but the")
         p("          *** cause is worth finding before it is read as noise.")
 
-    # THE DELETION GATE. Rendered whether or not anything folded, because it is
-    # measured over the whole batch and is the number a deletion decision would
-    # be quoted from.
+    # THE SHARING READING (formerly the deletion gate). Rendered whether or not
+    # anything folded: each parameters document is converted in place into a
+    # method document, so referenced/unreferenced says how many methods a
+    # response uses -- not what may be deleted.
     seen = _int_or_none(rep.get("parameters_documents_seen"))
     ref_after = _int_or_none(rep.get("parameters_documents_referenced_after"))
     unref = _int_or_none(rep.get("parameters_documents_unreferenced_after"))
     deleted = _int_or_none(rep.get("parameters_documents_deleted"))
     if seen is None:
-        p("          *** the deletion-gate denominator is absent, so the")
+        p("          *** the conversion denominator is absent, so the")
         p("          *** referenced/unreferenced rows cannot be read.")
         return
-    p("          DELETION GATE: %d parameters document(s) in this batch" % seen)
+    p("          METHOD SHARING: %d parameters document(s) converted in place in this batch" % seen)
     if seen == 0:
         p("          *** 0 seen -- the referenced/unreferenced rows above are")
-        p("          *** VACUOUS. Nothing here bears on whether the class may")
-        p("          *** be retired.")
+        p("          *** VACUOUS.")
     elif None not in (ref_after, unref) and ref_after + unref != seen:
         p("          *** referenced (%d) + unreferenced (%d) != seen (%d). The"
           % (ref_after, unref, seen))
         p("          *** walk classifies every parameters document exactly")
         p("          *** once, so this is a counter that stopped moving.")
     elif unref is not None:
-        p("          %8d  unreferenced after the fold. This is EVIDENCE for the"
+        p("          %8d  method document(s) no response uses. Computed by"
           % unref)
-        p("                    verify-before-delete gate and NEVER authorisation:")
-        p("                    the corpora are a SAMPLE, and it is computed by")
-        p("                    walking every edge of every document rather than")
-        p("                    by assuming this pass removed the only referent.")
+        p("                    walking every edge of every document; it is a")
+        p("                    reading about sharing, not a deletion gate (the")
+        p("                    documents are kept: they ARE the methods now).")
     if deleted:
-        p("          *** parameters_documents_deleted is %d and MUST be 0. This"
+        p("          *** parameters_documents_deleted is %d and MUST be 0. Each"
           % deleted)
-        p("          *** pass deletes nothing by construction; a non-zero means")
-        p("          *** it has pre-empted a decision that is the team's.")
+        p("          *** parameters document is converted in place into a method")
+        p("          *** document; a non-zero means documents vanished.")
 
 
 def _collision_split_reading(rep, collisions, pad, p):
@@ -4682,7 +5069,7 @@ def _render_lawn_plate_reading(rep, p):
     withheld_plate = _int_or_none(rep.get("withheld_plate_tier_not_minted")) or 0
     withheld_lawn = _int_or_none(rep.get("withheld_lawn_tier_not_minted")) or 0
     if withheld_plate or withheld_lawn:
-        p("          %8d  member_of edge(s) WITHHELD (%d plate tier, %d lawn"
+        p("          %8d  contained_in edge(s) WITHHELD (%d plate tier, %d lawn"
           % (withheld_plate + withheld_lawn, withheld_plate, withheld_lawn))
         p("                    tier). THIS IS NOT A LOSS AND NOT A REFUSAL. The")
         p("                    team's refinement makes a tier CONDITIONAL ON THE")
@@ -4713,7 +5100,7 @@ def _render_lawn_plate_reading(rep, p):
     if any(v for _k, v in quar):
         p("          *** %s. A QUARANTINED SUBJECT TAKES ITS"
           % ", ".join("%s=%d" % (k, v) for k, v in quar))
-        p("          *** OBSERVATIONS AND ITS member_of WITH IT: the pass emits")
+        p("          *** OBSERVATIONS AND ITS contained_in WITH IT: the pass emits")
         p("          *** nothing that points at a body which did not survive")
         p("          *** validation, so an observation count that looks short is")
         p("          *** explained here rather than upstream.")
@@ -5793,6 +6180,11 @@ def render_report(r, out):
     # and reading the narrow answer without the wide one beside it is how the
     # wide question came to be recorded as unmeasured.
     render_edge_arity(r, out)
+    render_entity_requires(r, out)
+    render_dose_ingredients(r, out)
+    render_dimension_terms(r, out)
+    render_stimulus_control_edges(r, out)
+    render_tuning_response_variable(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the
@@ -6491,7 +6883,7 @@ def _rollup_response_parameters_reading(totals, key_missing_in, carried, p):
     p("      THE STIMULUS-RESPONSE FOLD -- the reading of the totals above")
     leaves = _rollup_denominator(
         totals, key_missing_in, carried, "leaves_seen",
-        "harmonic_component_calculation leaf/leaves", p,
+        "harmonic_component calculation(s)", p,
         when_absent=["These counters landed 2026-08-11."],
         when_zero=[
             "No leaf reached the fold in any corpus, so every INLINE and",
@@ -6518,18 +6910,16 @@ def _rollup_response_parameters_reading(totals, key_missing_in, carried, p):
     seen = totals.get("parameters_documents_seen")
     unref = totals.get("parameters_documents_unreferenced_after")
     if seen is None:
-        p("      *** the deletion-gate denominator is carried by no report, so")
-        p("      *** nothing here bears on retiring the parameters class.")
+        p("      *** the conversion denominator is carried by no report.")
         return
-    p("      DELETION GATE: %d parameters document(s) over %d report(s)"
+    p("      METHOD SHARING: %d parameters document(s) converted in place over %d report(s)"
       % (seen, len(carried)))
     if seen == 0:
-        p("      *** 0 seen -- the gate rows are VACUOUS in this run.")
+        p("      *** 0 seen -- the sharing rows are VACUOUS in this run.")
     elif unref is not None:
-        p("      %8d  unreferenced after the fold. EVIDENCE, NEVER" % unref)
-        p("                AUTHORISATION: the corpora are a SAMPLE, and a class")
-        p("                absent from the ones we test may be well represented")
-        p("                in a dataset still waiting to migrate.")
+        p("      %8d  method document(s) no response uses (kept: they are" % unref)
+        p("                the methods; a reading about sharing, not a deletion")
+        p("                gate).")
 
 
 def _rollup_lawn_plate_reading(totals, key_missing_in, carried, p):

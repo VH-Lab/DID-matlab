@@ -58,12 +58,9 @@ end
 measurement = jOntologyTerm(node, '');       % name resolved in NDI 2nd pass
 variable = jOntologyTerm('', 'position');    % the kind of measurement (spine "what")
 
-obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-    {}, variable, {'element_id', 'subject_id'});
-obs.term = struct('value', measurement);
-
 anchor = jSessionAnchor(preBody, 'during');
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-
+obs = jStatement(preBody, 'observation', ...
+    jSubjectOf(preBody, {'element_id', 'subject_id'}), variable, measurement, ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id), 'ValueKind', 'term');
 bodies = {obs, anchor};
 end

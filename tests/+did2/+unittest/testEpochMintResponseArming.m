@@ -39,6 +39,18 @@ function tests = testEpochMintResponseArming
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% RE-ARMED 2026-10-21. These tests were filtered while did-schema #88's
+% `calculation` required operating_system_id, which no v1 document records.
+% Decided by Jess Haley, 2026-10-21 [calculation-os-optional]: "A calculation's
+% `operating_system_id` is optional: required when the operating system is
+% known, absent when the source never recorded it." So that reason is gone and
+% the tests run unconditionally; a failure here is a migrator gap to report,
+% not a reason to filter.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== the arming table ================================
 
 function testBothArmedFoldsAreInTheDefaultTable(testCase)
@@ -127,21 +139,18 @@ end
 end
 
 function testEveryFoldKindSetsEveryFlag(testCase)
-% `armings` is a struct set and the carry loop asks every entry for ALL flags.
-% An entry missing one makes that read an ERROR, not a false -- so every flag
-% assignment must appear once per arming block. There are now THREE blocks
-% (metadata, response, syncrule), each setting all three flags, so each flag
-% name appears exactly three times.
+% `armings` entries are asked by the carry loop for EVERY flag, so every flag
+% assignment must appear once per arming block. There are FOUR blocks
+% (metadata, response, syncrule and -- since did-schema #88 part 5 --
+% pyraview), each setting all four flags, so each flag name appears exactly
+% four times.
 src = epochMintSource();
-nMeta = numel(strfind(src, 'armEntry.is_metadata_fold ='));
-nResp = numel(strfind(src, 'armEntry.is_response_fold ='));
-nSync = numel(strfind(src, 'armEntry.is_syncrule_fold ='));
-verifyEqual(testCase, nMeta, 3, ...
-    'expected all three arming blocks to set is_metadata_fold');
-verifyEqual(testCase, nResp, 3, ...
-    'expected all three arming blocks to set is_response_fold');
-verifyEqual(testCase, nSync, 3, ...
-    'expected all three arming blocks to set is_syncrule_fold');
+flags = {'is_metadata_fold', 'is_response_fold', 'is_syncrule_fold', 'is_pyraview_fold'};
+for f = flags
+    n = numel(strfind(src, ['armEntry.' f{1} ' =']));
+    verifyEqual(testCase, n, 4, ...
+        sprintf('expected all four arming blocks to set %s', f{1}));
+end
 end
 
 function testEveryFoldFlagHasACarryReader(testCase)
@@ -160,6 +169,10 @@ verifyTrue(testCase, contains(src, 'elseif armings{a}.is_response_fold'), ...
     'the carry loop does not read is_response_fold');
 verifyTrue(testCase, contains(src, 'elseif armings{a}.is_syncrule_fold'), ...
     'the carry loop does not read is_syncrule_fold');
+verifyTrue(testCase, contains(src, 'elseif armings{a}.is_pyraview_fold'), ...
+    'the carry loop does not read is_pyraview_fold');
+verifyTrue(testCase, contains(src, 'report.pyraview_folds_emitted + 1'), ...
+    'the pyraview fold has no emitted reader in the carry loop');
 end
 
 % ===================== the string source, which is not the mixin =======
@@ -188,8 +201,8 @@ function testTheResponseFoldExpectsTheCalculationLeafAsItsPrimary(testCase)
 % wrong primary here would read as "the migrator declined" on every document --
 % a refusal counter ticking for a reason that is not true.
 src = epochMintSource();
-verifyTrue(testCase, contains(src, '''harmonic_component_calculation'''), ...
-    'the response fold does not name harmonic_component_calculation as its primary');
+verifyTrue(testCase, contains(src, '{''calculation'', ''harmonic_component''}'), ...
+    'the response fold does not name a calculation of value kind harmonic_component as its primary');
 end
 
 % ===================== readers =========================================

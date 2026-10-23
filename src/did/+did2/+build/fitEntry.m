@@ -2,7 +2,9 @@ function f = fitEntry(model, options)
 %FITENTRY One model fit: {model, coefficients, goodness, ...}.
 %
 %   F = did2.build.fitEntry(MODEL, 'Coefficients', C, ...) builds one entry of
-%   a fit list -- by default `tuning_curve_calculation.model_fit`, an ARRAY of
+%   a fit list -- by default `tuning_curve.value.model_fit` on a
+%   tuning_curve_calculation (one fit entry, Jess Haley 2026-10-22 [one fit
+%   entry]; `tuning_curve_calculation.model_fit` until then), an ARRAY of
 %   these because one curve can carry several co-existing fits (tuning model
 %   plan: a fit is an entry, not a class). MODEL is a term (or a name) naming
 %   the fitted model; a bare bound term, not `model_name`.
@@ -18,7 +20,8 @@ function f = fitEntry(model, options)
 %     'SampledFit'     struct {independent_values, response}
 %     'Fields'         any other field the target declares (a struct)
 %     'Target'         'class.field' of the fit list; default
-%                      'tuning_curve_calculation.model_fit'. Use
+%                      'tuning_curve_calculation.tuning_curve.value.model_fit'
+%                      (class, then the declaring class, then the path). Use
 %                      'model_fit.value' for a standalone model_fit document,
 %                      'contrast_sensitivity.<field>' etc. as declared.
 %     'SchemaCache'    a did2.schema.cache; default the shared one.
@@ -37,7 +40,7 @@ arguments
     options.Metrics = []
     options.SampledFit = []
     options.Fields (1,1) struct = struct()
-    options.Target (1,:) char = 'tuning_curve_calculation.model_fit'
+    options.Target (1,:) char = 'tuning_curve_calculation.tuning_curve.value.model_fit'
     options.SchemaCache = []
 end
 

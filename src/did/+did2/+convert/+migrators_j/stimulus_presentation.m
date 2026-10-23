@@ -1,93 +1,78 @@
 function bodies = stimulus_presentation(preBody)
 %STIMULUS_PRESENTATION Brainstorm-J migrator: did_v1 stimulus_presentation --
-%   the decomposition is DEFERRED to the NDI second pass; pass 1 is a GUARDED
+%   the decomposition is DONE BY THE NDI SECOND PASS; pass 1 is a GUARDED
 %   PASSTHROUGH that carries the document intact.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
 %   ---------------------------------------------------------------------
-%   THE SIGNED MODEL (what this document eventually becomes)
+%   WHAT THIS DOCUMENT BECOMES (in NDI's second pass, not here)
 %   ---------------------------------------------------------------------
-%   V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08. A
-%   presentation is an ordered, timed list of references to DEDUPED stimulus
-%   VALUE documents -- the ensemble pattern applied to stimulation:
+%   ndi.migrate.internal.stimulusPresentationToItem decomposes each
+%   presentation into the did-schema #88 stimulus shape:
 %
-%     timed_sequence                  (3) data_type, DIRECTION-NEUTRAL
-%        value.presentation_order     an INDEX ARRAY into the presented_id refs
-%        depends_on presented_id -> data_type   BROAD, MULTIPLE, one per DISTINCT
-%                                               stimulus (visual_grating, image, ...)
-%        per-trial timing             -> sampled_body, irregular time axis (rev 2)
-%     timed_sequence_manipulation     (4) leaf = subject_manipulation + timed_sequence
-%        depends_on subject_id     -> subject             who was shown the sequence
-%                   instrument_id  -> entity              THE STIMULATOR (T7) --
-%                                                         this is where v1's
-%                                                         stimulus_element_id goes
-%                   time_reference -> relative_reference  relative_to -> epoch (rev 1)
+%     method            one standalone document per DISTINCT stimulus, given
+%                       as a recipe {term, parameters}, deduplicated by the
+%                       recipe (V_eta_method_plan.md: "recipe stimuli are
+%                       method documents referenced by item"; visual_grating
+%                       is deleted)
+%     manipulation      ONE per presentation, value kind `item`
+%                       (V_eta_study_plan.md: `item` replaces `timed_sequence`):
+%                         base.id         THE V1 PRESENTATION id, kept
+%                         entity_id       the animal, or the session's cohort
+%                         instrument_id   the stimulator, v1 stimulus_element_id (T7)
+%                         item_id         the distinct method documents
+%                         item.value.item the playlist into them, 0-based
+%                         covariates      onset time / offset time / control
+%                                         condition along the presentation
+%                                         dimension
 %
-%   The presentation is DECOMPOSED AROUND ITS PRESERVED ID, NOT DISSOLVED: the
-%   v1 id stays on the body-of-record (the timed_sequence) so every fan-in
-%   dependent still resolves. The fan-in is real and large --
+%   A presentation whose subject cannot be resolved becomes a standalone
+%   item with no manipulation (V_eta_stimulus_model_plan.md, Decided by Jess
+%   Haley, 2026-10-21 [presentation with no subject]). A Hartley presentation
+%   carries only the generator spec; its basis comes from the hartley_calc
+%   documents through ndi.migrate.internal.hartleyBasisGratings.
+%
+%   The presentation is DECOMPOSED AROUND ITS PRESERVED ID, NOT DISSOLVED, so
+%   every fan-in dependent still resolves. The fan-in is real and large --
 %   `stimulus_response_scalar` carries `stimulus_presentation_id`
 %   (+ndi/+app/+stimulus/tuning_response.m:326) and `control_stimulus_ids`
 %   carries it too (:656). Reassigning that id is the mistake that produced
 %   11,448 orphans on Soph.
 %
 %   ---------------------------------------------------------------------
-%   WHY PASS 1 CANNOT BUILD ANY OF IT -- four independent blockers
+%   WHY PASS 1 CANNOT DO IT -- three independent blockers
 %   ---------------------------------------------------------------------
-%   1. NO SUBJECT IS KNOWABLE FROM THIS DOCUMENT. `timed_sequence_manipulation`
-%      is a subject_manipulation, so `subject_id` is required by tier. The v1
-%      document names a STIMULATOR, not a subject: NDI's only dependency on this
-%      class is `stimulus_element_id`, set from `ndi_element_stim.id()`
+%   1. NO SUBJECT IS KNOWABLE FROM THIS DOCUMENT. The v1 document names a
+%      STIMULATOR, not a subject: NDI's only dependency on this class is
+%      `stimulus_element_id`, set from `ndi_element_stim.id()`
 %      (+ndi/+app/+stimulus/decoder.m:138) and from the mock's
 %      `stimulus_element_id` argument (+ndi/+mock/+fun/stimulus_presentation.m).
-%      Who WATCHED the sequence is recoverable only through the response link
-%      (stimulus_response -> element -> subject), i.e. the whole migrated graph.
-%      NDI already has that resolver -- ndi.migrate.internal.bodyResolver's
-%      `subjectsForPresentation` -- and it lives in the second pass for exactly
-%      this reason. Minting the leaf here would emit an EMPTY REQUIRED
-%      `subject_id`, which `+did2/+validate/references.m:90` skips, so it would
-%      validate clean and be invisible: the image_stack husk (4,563 documents)
-%      and the fitcurve husk, one more time.
+%      Who WATCHED the sequence is recoverable only through the migrated graph
+%      (stimulus_response -> element -> subject, the epoch's elements, the
+%      probe map) -- the resolution order in V_eta_stimulus_model_plan.md,
+%      "Who received a presentation". Minting the manipulation here would emit
+%      an EMPTY REQUIRED `entity_id`, which `+did2/+validate/references.m`
+%      skips, so it would validate clean and be invisible: the image_stack
+%      husk (4,563 documents) and the fitcurve husk, one more time.
 %
-%   2. MINTING THE `timed_sequence` HERE WOULD DESTROY THE STIMULUS DICTIONARY.
-%      `timed_sequence` declares exactly one field, `value.presentation_order`.
-%      The v1 block also carries `stimuli`, a struct ARRAY of per-stimulus
-%      `parameters` (decoder.m:103-106 builds one entry per `data.parameters{k}`;
-%      the Hartley case is 225 of them). Those parameters have no slot on
-%      `timed_sequence` -- by design, because they belong in the referenced
-%      `visual_grating`/`image`/... documents, which do not exist yet. Emitting
-%      a timed_sequence in pass 1 therefore drops the entire dictionary while
-%      producing a document that validates.
+%   2. DEDUPLICATION OF THE DISTINCT STIMULI IS A WHOLE-CORPUS OPERATION. Each
+%      distinct recipe is stored ONCE and referenced. A single-document
+%      migrator can only dedupe within one presentation, so it would mint the
+%      same 225 Hartley stimuli again for every presentation -- corpus Dab
+%      alone has 1,242 presentations.
 %
-%   3. DEDUPLICATION OF THE DISTINCT STIMULI IS A WHOLE-CORPUS OPERATION. The
-%      signed model stores each distinct config ONCE and references it. A
-%      single-document migrator can only dedupe within one presentation, so it
-%      would mint the same 225 basis gratings again for every presentation --
-%      corpus Dab alone has 1,242 presentations. The precedent for putting a
-%      corpus-wide mint in the second pass is
-%      ndi.migrate.internal.pathSPromotion, which promotes loci to Path-S
-%      subjects using "the whole migrated body set ... that a single-document
-%      migrator cannot see", with a find-or-create keyed on (animal, site).
-%      The stimulus dedup is the same shape keyed on (content hash of
-%      `stimuli(k).parameters`).
+%   3. THE TIMING IS IN AN ATTACHED FILE. The current writer puts per-trial
+%      timing in presentation_time.bin (see TWO VINTAGES below). Reading it
+%      needs the session's .ndi directory on disk
+%      (ndi.migrate.internal.v1AttachedFile); a per-document migrator is
+%      handed the document only.
 %
-%   4. `timed_sequence` IS DECLARED ABSTRACT TODAY. V_eta/draft/timed_sequence.json
-%      carries `"abstract": true`, and +did2/+schema/cache.m raises
-%      `did2:validation:abstractInstantiation` for any document naming an
-%      abstract class. So a standalone timed_sequence body-of-record -- which
-%      the signed multi-subject `storage_mode: reference` case requires -- cannot
-%      be instantiated at all until that flag is reconsidered. Recorded, not
-%      worked around.
-%
-%   DECISION, stated plainly so it is not re-litigated: the decomposition
-%   (distinct-stimulus minting + dedup, the timed_sequence, the manipulation
-%   leaf, the relative_reference and the per-trial sampled_body) is DEFERRED TO
-%   THE NDI SECOND PASS. Pass 1 emits nothing new and loses nothing.
+%   DECISION, stated plainly so it is not re-litigated: the decomposition is
+%   NDI's second pass. Pass 1 emits nothing new and loses nothing.
 %
 %   ---------------------------------------------------------------------
-%   THE GUARD: `element_id` IS AN INVENTION, AND IT IS THE LARGEST REMAINING
-%   INSTANCE OF THE INVENTED-EMPTY-EDGE PATTERN
+%   THE GUARD: `element_id` IS AN INVENTION
 %   ---------------------------------------------------------------------
 %   NDI names this edge `stimulus_element_id` in all four places that could
 %   settle it, on origin/main:
@@ -101,35 +86,29 @@ function bodies = stimulus_presentation(preBody)
 %     +ndi/+mock/+fun/stimulus_presentation.m
 %         stim_pres_doc.set_dependency_value('stimulus_element_id',stimulus_element_id);
 %
-%   There is no `element_id` anywhere in the class. V_eta's tombstone
-%   nevertheless declares `element_id` as a REQUIRED dependency, and because
-%   universalRenames normalises a depends_on entry's SHAPE (id/value ->
-%   document_id) and NEVER its NAME, nothing ever filled it: the census reports
-%   `stimulus_presentation.element_id` empty on 2,670 of 2,670 documents
-%   (B 1242 / Dab 1242 / Soph 175 / 20211116 11). Every one validated clean
-%   because references.m skips empty edges.
+%   There is no `element_id` anywhere in the class. An earlier V_eta class
+%   declared `element_id` as a REQUIRED dependency, and nothing ever filled it:
+%   the census reported it empty on 2,670 of 2,670 documents (B 1242 /
+%   Dab 1242 / Soph 175 / 20211116 11). V_eta's stimulus_presentation now
+%   declares `stimulus_element_id` instead.
 %
 %   So a body that arrives HERE carrying an `element_id` dependency cannot have
-%   come from a real did_v1 document; it came from DID-schema's own V_alpha/
+%   come from a real did_v1 document; it came from DID-schema's old V_alpha/
 %   V_zeta snapshot, or from a fixture built against it. Reject it by name --
 %   the same stance as openminds_stimulus (`stimulus_id`) and
 %   epochfiles_ingested (`epochid`).
 %
-%   NOTE what this guard does NOT do. It cannot take the 2,670-document census
-%   row to zero: that row is produced by the TOMBSTONE declaring `element_id`
-%   required, not by anything a migrator emits. The repair is schema-side
-%   (build_v_eta.py) and is reported alongside this build.
-%
 %   ---------------------------------------------------------------------
 %   WHAT THE PASSTHROUGH MUST CARRY, AND WHY EACH PIECE MATTERS
 %   ---------------------------------------------------------------------
-%     base.id                  the anchor the whole decomposition hangs on
-%     stimulus_element_id      -> instrument_id on the future manipulation (T7)
-%     epochid.epochid          -> the relative_reference's `relative_to` epoch;
-%                                 the epochid superclass is on the NDI template
-%     presentation_order       -> timed_sequence.value.presentation_order
-%     stimuli(k).parameters    -> the distinct presented data_type documents
-%     files: presentation_time.bin  -> the irregular time axis (revision 2)
+%     base.id                  the manipulation's id (inbound edges resolve)
+%     stimulus_element_id      -> instrument_id on the manipulation (T7)
+%     epochid.epochid          -> the epoch the timing is relative to, and the
+%                                 elements used to find the subject; the
+%                                 epochid superclass is on the NDI template
+%     presentation_order       -> the playlist, item.value.item
+%     stimuli(k).parameters    -> the distinct method documents
+%     files: presentation_time.bin  -> onset / offset covariates
 %     presentation_time (block)     the DEPRECATED vintage, see below
 %     app                      added by the writer via `+ ..._obj.newdocument()`
 %                              (decoder.m:135-137; ndi.app/newdocument fills
@@ -150,26 +129,14 @@ function bodies = stimulus_presentation(preBody)
 %   migration checklist for the change (docs/developer_notes/
 %   stimulus_presentation_change.m). That is positive evidence that documents
 %   carrying the inline block exist; a passthrough must not drop it, and the
-%   tombstone must declare it or those documents quarantine on
+%   class must declare it or those documents quarantine on
 %   `did2:validation:undeclaredField`.
 %
-%   ---------------------------------------------------------------------
-%   ONE MORE THING THE SECOND PASS MUST NOT DO
-%   ---------------------------------------------------------------------
-%   `ndi.migrate.internal.stimulusPresentationToManipulation` still implements
-%   the SUPERSEDED #19 dissolve: one `visual_grating_manipulation` per
-%   presentation with a per-trial `sampled_body`, reading `block.presentation_time`
-%   (the deprecated vintage only) and calling `gratingValueFromParameters`. The
-%   signed plan supersedes it -- stimuli are REFERENCED, not folded into the
-%   manipulation, and the presentation keeps its id. That file is in NDI-matlab
-%   and out of this build's scope; it is named here so the second-pass build
-%   replaces it rather than extending it.
-%
-%   See also: did2.convert.migrators_j.control_stimulus_ids (the sibling that
-%   DOES fold, because its whole content is local),
+%   See also: ndi.migrate.internal.stimulusPresentationToItem (the
+%   decomposition), ndi.migrate.internal.hartleyBasisGratings,
+%   did2.convert.migrators_j.control_stimulus_ids,
 %   did2.convert.migrators_j.openminds_stimulus (the invented-edge guard),
-%   did2.convert.migrators_j.epochfiles_ingested (the guarded-passthrough shape),
-%   ndi.migrate.internal.pathSPromotion (the second-pass harness this belongs in).
+%   did2.convert.migrators_j.epochfiles_ingested (the guarded-passthrough shape).
 
 arguments
     preBody (1,1) struct
@@ -191,8 +158,8 @@ end
 
 % Deliberate passthrough. `bodies = {preBody}` is how a migrator says "nothing to
 % do here"; v1_to_v2 counts it in `unconverted_by_class`, which is where this
-% deferral should be visible -- and where it will stop being visible the day the
-% second-pass decompose lands.
+% deferral is visible. NDI's second pass (stimulusPresentationToItem) does the
+% decomposition.
 bodies = {preBody};
 end
 

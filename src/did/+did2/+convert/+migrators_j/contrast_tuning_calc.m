@@ -1,5 +1,6 @@
 function bodies = contrast_tuning_calc(preBody)
-%CONTRAST_TUNING_CALC Brainstorm-J migrator: the ndi.calc.vis.contrast
+%CONTRAST_TUNING_CALC Brainstorm-J migrator -> contrast_tuning_calculation (did-schema #88).
+%   Brainstorm-J migrator: the ndi.calc.vis.contrast
 %   calculator OUTPUT document -> the CONCRETE V_eta leaf `contrasttuning_calc`
 %   (⊂ [tuning_curve_calculation, contrast_tuning]) + a session anchor + minted
 %   `software` and `runtime_environment` entities.
@@ -14,8 +15,6 @@ function bodies = contrast_tuning_calc(preBody)
 arguments
     preBody (1,1) struct
 end
-bodies = jCalculation(preBody, 'contrasttuning_calc', ...
-    {'tuning_curve_calculation', 'contrast_tuning'}, ...
-    'tuning_curve', ...
-    'contrast tuning', 'ndi.calc.vis.contrast', 'contrast_tuning');
+bodies = jCalculation(preBody, 'contrast_tuning_calculation', 'contrast', ...
+    'contrast_tuning', 'contrast tuning', 'ndi.calc.vis.contrast');
 end
