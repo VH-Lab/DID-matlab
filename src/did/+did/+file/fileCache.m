@@ -206,7 +206,7 @@ classdef fileCache < handle
             [lockfid,key] = fileCacheObj.binaryTable.getLock();
             try
                 fullFileInCache = fullfile(fileCacheObj.directoryName,fileNameInCache);
-                [row,~] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
+                [row,~] = fileCacheObj.binaryTable.findRow(1,fileNameInCache,'sorted',true);
                 if row
                     if isfile(fullFileInCache)
                         error(['There is already a file with name ' fileNameInCache ' in the cache.']);
@@ -317,7 +317,12 @@ classdef fileCache < handle
             % Returns 1 if the file FILENAMEINCACHE is in the cache and
             % 0 otherwise. FILENAMEINCACHE should be the name of a file only
             % without a path.
-            b=(fileCacheObj.binaryTable.findRow(1,fileNameInCache)>0);
+            %
+            % A binary search: the index is kept sorted by name
+            % (resizeAndAdd inserts in order and rewrites it in order). A
+            % scan here, once per file fetched, grew with the size of the
+            % cache.
+            b=(fileCacheObj.binaryTable.findRow(1,fileNameInCache,'sorted',true)>0);
         end % isFile()
 
         function [fn,sz,lastAccess] = fileList(fileCacheObj, useCatalog)
@@ -554,7 +559,7 @@ classdef fileCache < handle
             b = 0;
 
             [lockfid,key] = fileCacheObj.binaryTable.getLock();
-            row = fileCacheObj.binaryTable.findRow(1,fileName);
+            row = fileCacheObj.binaryTable.findRow(1,fileName,'sorted',true);
             if row
                 fileCacheObj.binaryTable.writeEntry(row,2,now());
                 b = 1;
