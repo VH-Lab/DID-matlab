@@ -2257,6 +2257,9 @@ function k = stemKey(sessionId, wormId, elementLid, elementId)
 % ' (ref N)'): the key that pairs a worm body part's position and distance
 lid = '';
 if isKey(elementLid, elementId); lid = elementLid(elementId); end
+if iscell(lid); if isempty(lid); lid = ''; else; lid = lid{1}; end; end
+lid = char(lid);
+if size(lid, 1) > 1; lid = lid(1, :); end
 lid = regexprep(lid, '\s*\(ref [^)]*\)\s*$', '');
 lid = regexprep(lid, '_(position|distance)$', '');
 k = [char(sessionId) char(0) char(wormId) char(0) lid];
@@ -2274,9 +2277,18 @@ for i = 1:numel(ep)
     e = ep{i};
     if ~isstruct(e) || ~isfield(e, 'label') || ~strcmp(char(e.label), label) ...
             || ~isfield(e, 'string_ids'); continue; end
+    % the migrated form may be a comma-joined char, a cellstr or a string
+    % array (one id each) -- read every shape rather than assume one
     v = e.string_ids;
-    if iscell(v); v = strjoin(cellfun(@char, v, 'UniformOutput', false), ','); end
-    parts = strtrim(strsplit(char(v), ','));
+    if isstring(v); v = cellstr(v); end
+    if ischar(v); v = cellstr(v); end
+    if ~iscell(v); return; end
+    parts = {};
+    for j = 1:numel(v)
+        if ~(ischar(v{j}) || isstring(v{j})); continue; end
+        q = strtrim(strsplit(char(v{j}), ','));
+        parts = [parts, q]; %#ok<AGROW>
+    end
     ids = parts(~cellfun(@isempty, parts));
     return;
 end

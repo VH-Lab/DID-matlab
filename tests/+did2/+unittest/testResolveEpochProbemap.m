@@ -537,8 +537,12 @@ function testJHPositionAndDistanceDissolveIntoTrackCalculations(testCase)
 sid = 'sess_jh';
 worm = subjectBody('worm_1', sid, 'N2_worm0001');
 patch = subjectBody('patch_1', sid, 'patch 1');
-[els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1');
-[out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch}, els, ees, {dm}]);
+patch2 = subjectBody('patch_2', sid, 'patch 2');
+% two patches: the migrated endpoint is a STRING ARRAY of ids (corpus JH run
+% 39868711230 failed on that shape: MATLAB:REGEXP:invalidInputs)
+[els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1,patch_2');
+dm.distance_metadata.integerIDs_B = [1 2];
+[out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch, patch2}, els, ees, {dm}]);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
 verifyEqual(testCase, rep.acquisition_epoch_dissolved, 2);
 verifyEqual(testCase, rep.position_calculations_emitted, 1);
@@ -570,7 +574,7 @@ verifyEqual(testCase, depVals(len, 'input_id'), {'ee_N2_x_midpoint_pos'});
 items = bodiesOfClass(out, 'calculation+item');
 assertEqual(testCase, numel(items), 1);
 verifyEqual(testCase, char(items{1}.statement.variable.node), 'EMPTY:0000297');
-verifyEqual(testCase, depVals(items{1}, 'item_id'), {'patch_1'});
+verifyEqual(testCase, depVals(items{1}, 'item_id'), {'patch_1', 'patch_2'});
 verifyEqual(testCase, depVals(items{1}, 'input_id'), {'ee_N2_x_midpoint_pos'});
 ob = bodiesOfClass(out, 'opaque_body');
 owners = {};
