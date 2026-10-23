@@ -226,8 +226,9 @@ function bodies = hartley_calc(preBody)
 %   frame k showed stimulus (S, KXV, KYV, ORDER)(k) at time frame_times(k), and
 %   3360 == 3360 in 210 of 210.
 %
-%   NEITHER CAN BE BUILT HERE. `timed_sequence` is DECLARED ABSTRACT
-%   (schemas/V_eta/draft/timed_sequence.json) and +did2/+schema/cache.m raises
+%   NEITHER CAN BE BUILT HERE. `timed_sequence` WAS DECLARED ABSTRACT
+%   (schemas/V_eta/draft/timed_sequence.json, replaced by `item` in did-schema
+%   c12d778, 2026-10-04; this paragraph predates that) and +did2/+schema/cache.m raises
 %   `did2:validation:abstractInstantiation` for any document naming an abstract
 %   class, so the destination cannot be instantiated at all; it belongs to the
 %   stimulus model (#31), which is out of this signature's scope.
@@ -240,7 +241,7 @@ function bodies = hartley_calc(preBody)
 %   that produced it [...] Retaining it keeps the computation reproducible" --
 %   and these two blocks ARE the reverse-correlation's regressors, i.e. exactly
 %   what makes it reproducible. It is a HOLDING SLOT, not a model decision:
-%   when #31 lands, the sequence moves to the `timed_sequence` and this key
+%   when #31 lands, the sequence moves to the `timed_sequence` (now `item`) and this key
 %   goes. Dropping them instead would be a silent loss of 5 x 3360 real values
 %   per document, which is the failure this repository's whole error history is
 %   made of. Reported as a team question.

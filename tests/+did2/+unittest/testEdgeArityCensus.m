@@ -17,7 +17,7 @@ function tests = testEdgeArityCensus
 %     did2.validate.silentLoss.uniqueness_denominator.docs_multi_member
 %         IS an arity counter and is GATED on the schema key
 %         `referent_unique_by`. DID-schema's `_EDGE_REFERENT_UNIQUE`
-%         (tools/build_v_eta.py:5583-5587) has THREE entries, every one of them
+%         (tools/build_v_eta.py:5583-5587 (deleted 2026-10-21)) has THREE entries, every one of them
 %         `time_reference_#`. `document_id` is not among them, so that counter
 %         does not report zero for it -- it never looks.
 %
@@ -305,7 +305,7 @@ function testItSeesAPluralFamilyTheGatedCounterCannotSee(testCase)
 % with more than one member, EXACTLY like `pairs_plural` -- but only for a
 % family whose schema declares `referent_unique_by`. DID-schema declares it on
 % three families, all `time_reference_#`
-% (tools/build_v_eta.py:5583-5587), so `document_id` is never examined by it.
+% (tools/build_v_eta.py:5583-5587 (deleted 2026-10-21)), so `document_id` is never examined by it.
 docs = {rowBody('r1', {'document_id_1', 'document_id_2'}, {'a', 'b'}), ...
         rowBody('r2', {'document_id_1', 'document_id_2'}, {'c', 'd'})};
 rep = did2.validate.silentLoss(docs);

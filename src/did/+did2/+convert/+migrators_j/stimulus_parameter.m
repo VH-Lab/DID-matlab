@@ -36,7 +36,7 @@ function bodies = stimulus_parameter(preBody)
 %
 %   V_eta takes its type from the NDI SCHEMA, so the tombstone declares `value`
 %   `double`, `mustBeScalar: false`, `mustBeNonEmpty: false` (built by
-%   did-schema/tools/build_v_eta.py). Against the validator that admits no empty
+%   did-schema/tools/build_v_eta.py (deleted 2026-10-21)). Against the validator that admits no empty
 %   representation at all:
 %
 %     +did2/+schema/cache.m:1229   validateTypeShape runs UNCONDITIONALLY on any

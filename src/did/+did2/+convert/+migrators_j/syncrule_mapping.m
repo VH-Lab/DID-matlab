@@ -228,7 +228,7 @@ function v = carryProbeMap(src)
 %   reader to go and change a schema that is ALREADY CORRECT -- and changing the
 %   V_eta schema is a separate decision with its own blast radius.
 %
-%     DID-schema tools/build_v_eta.py:6696-6710
+%     DID-schema tools/build_v_eta.py:6696-6710 (deleted 2026-10-21)
 %        # TYPE CORRECTED 2026-08-10: it was `structure`; it is a CHAR.
 %        subfield("epochprobemap", "string", ...
 %     DID-schema schemas/V_eta/stable/syncrule_mapping.json

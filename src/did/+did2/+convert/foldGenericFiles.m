@@ -229,7 +229,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   statement edge -- and no dates. They survive only on a REFUSED document.
 %
 %   This CONTRADICTS the team note's "THE ONE REMAINING BLOCKER IS ONE FIELD",
-%   which named only `checksum`; the older build_v_eta.py comment had it right
+%   which named only `checksum`; the older build_v_eta.py (deleted 2026-10-21) comment had it right
 %   ("no content_hash ... and no created/updated dates"). Two fields were
 %   missing, not one. `checksum` is fixed -- opaque_body now declares
 %   `content_hash` and this pass carries the MD5 into it. The dates are NOT,

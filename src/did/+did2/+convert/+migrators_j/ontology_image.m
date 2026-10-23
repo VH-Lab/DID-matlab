@@ -123,7 +123,7 @@ function v2Body = ontology_image(preBody)
 %
 %                  A passthrough MUST validate, so V_eta's `ontology_image`
 %                  schema declares vintage B faithfully (ngrid superclass,
-%                  ontology_nodes, ontology_table_row_id). See build_v_eta.py.
+%                  ontology_nodes, ontology_table_row_id). See build_v_eta.py (deleted 2026-10-21).
 %
 %                  Deferred with it: the raster itself (the ngrid block + the
 %                  .ngrid file) and the ontologyTableRow_id provenance edge.

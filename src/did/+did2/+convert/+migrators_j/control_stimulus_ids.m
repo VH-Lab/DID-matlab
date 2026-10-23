@@ -77,7 +77,8 @@ function bodies = control_stimulus_ids(preBody)
 %      STIMULUS `data_type` DOCUMENT(S). Those documents are minted by the
 %      second-pass decompose (see migrators_j/stimulus_presentation.m), so pass 1
 %      cannot point at them. The information is not lost: `control_stimulus`
-%      carries the trial indices and `timed_sequence_id` carries the
+%      carries the trial indices and `timed_sequence_id` (an `item` since
+%      did-schema c12d778, 2026-10-04) carries the
 %      presentation, which is everything the second pass needs to resolve them.
 %   2. `software_id` (T10 -- the plan records the designation as computed by the
 %      tuning_response app) is NOT emitted: `control_designation` declares no

@@ -1,7 +1,7 @@
 function v2Body = jDemoFold(preBody, isMock, sourceClass)
 %JDEMOFOLD Fold a did_v1 demo document into the V_eta `demo` class, id-preserved.
 %   Shared by the two migrators of the 3 -> 1 demo collapse (team, 2026-08-06,
-%   recorded at did-schema `tools/build_v_eta.py:1817-1864`):
+%   recorded at did-schema `tools/build_v_eta.py:1817-1864` (deleted 2026-10-21)):
 %
 %       did_v1 demoNDI      -> demo, is_mock FALSE
 %       did_v1 demoNDIMock  -> demo, is_mock TRUE
@@ -66,7 +66,7 @@ function v2Body = jDemoFold(preBody, isMock, sourceClass)
 %                         exactly what the source said, which is nothing.
 %     anything else   ->  ERROR. A guarded PASSTHROUGH IS NOT AVAILABLE HERE:
 %                         did-schema deletes `demo_ndi`, `demo_ndi_mock` and
-%                         `mock` from the built set (build_v_eta.py:1864-1867), so
+%                         `mock` from the built set (build_v_eta.py:1864-1867 (deleted 2026-10-21)), so
 %                         a passed-through document has no schema to validate
 %                         against and quarantines with `missingClass` -- the
 %                         image_stack shape, priced at 4,563 quarantines. An error

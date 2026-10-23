@@ -105,7 +105,7 @@ function tf = schemaSaysAbstract(classSchema)
 %   MATLAB:class:MethodRestricted rather than failing a verification. The header
 %   is public data on the struct `getClass` hands back, so read that.
 %
-%   ABSENCE IS CONCRETE, and that is the whole subtlety: build_v_eta.py emits
+%   ABSENCE IS CONCRETE, and that is the whole subtlety: build_v_eta.py (deleted 2026-10-21) emits
 %   the key only on abstract classes, so a concrete one has no `abstract` field
 %   at all -- `image_stack` does not carry it. Both the logical and numeric
 %   spellings are accepted for the same reason the private method accepts both:
@@ -3344,7 +3344,7 @@ function testDaqreaderNdrDeEncodesToDaqreader(testCase)
 % daq-configuration decision, no V_eta schema declares it (0 of 247), and the
 % migrator makes no assignment to it -- every remaining mention in that file is
 % a comment. The same wrong clause was in the migrator's own docstring and in
-% DID-schema's build_v_eta.py, each a few lines from something contradicting it.
+% DID-schema's build_v_eta.py (deleted 2026-10-21), each a few lines from something contradicting it.
 % directly (the quick CI's V_zeta schema still has daqreader_ndr; under the V_eta
 % corpus run daqreader_ndr is gone and the folded daqreader validates).
 body = struct();

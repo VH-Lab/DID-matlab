@@ -43,7 +43,7 @@ function bodies = simple_calc(preBody)
 %   So the document is carried through intact for the NDI second pass, the same
 %   strategy stimulus_presentation and ontology_image use. V_eta's `simple_calc`
 %   tombstone declares the real shape (base+app, document_id, answer,
-%   input_parameters) so the passthrough validates -- see build_v_eta.py.
+%   input_parameters) so the passthrough validates -- see build_v_eta.py (deleted 2026-10-21).
 %
 %   THE GUARD. A body carrying `result_value` or `result_units` is REJECTED BY
 %   NAME: those are DID-side inventions from the V_alpha snapshot, so their

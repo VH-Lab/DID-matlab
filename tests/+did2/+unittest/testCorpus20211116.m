@@ -4,7 +4,8 @@ function tests = testCorpus20211116
 %   Pulls the 20211116.zip fixture from the public S3 prefix
 %   (~11MB compressed, ~36MB unzipped, ~1220 v1 documents across
 %   ~21 classes) and runs every contained body through
-%   did2.convert.v1_to_v2 with Validate=true, targeting **V_epsilon**
+%   did2.convert.v1_to_v2 with Validate=true, targeting **V_eta** (the
+%   driver's default TargetVersion; V_epsilon until its deletion, 2026-10-21)
 %   (via the shared did2.unittest.helpers.runCorpusDiscovery driver,
 %   same as the B / Dab / JH corpora), and writes a per-run summary
 %   JSON to corpus-reports/20211116-summary.json that the workflow's

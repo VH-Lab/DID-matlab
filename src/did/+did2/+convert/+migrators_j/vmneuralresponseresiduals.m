@@ -51,7 +51,7 @@ function bodies = vmneuralresponseresiduals(preBody)
 %   every element to a subject WITH ITS ID PRESERVED (device-as-subject, D2).
 %
 %   V_eta's tombstone declares the real shape so the passthrough validates -- see
-%   build_v_eta.py.
+%   build_v_eta.py (deleted 2026-10-21).
 %
 %   THE GUARD. A body carrying `mean_residual` is REJECTED BY NAME: it is a
 %   DID-side invention from the V_alpha snapshot, so its presence means a fixture

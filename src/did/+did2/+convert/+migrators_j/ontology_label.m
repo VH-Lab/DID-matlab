@@ -71,7 +71,7 @@ function bodies = ontology_label(preBody)
 %   subject is a TEAM MODELLING CALL, deliberately not made.
 %
 %   V_eta's tombstone declares the real shape so the passthrough validates -- see
-%   build_v_eta.py.
+%   build_v_eta.py (deleted 2026-10-21).
 %
 %   ---------------------------------------------------------------------
 %   RE-DERIVED 2026-08-11: THE `document_id` EDGE IS CARRIED, AND THE WRITER
