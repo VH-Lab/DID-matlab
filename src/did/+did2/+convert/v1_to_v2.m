@@ -86,13 +86,14 @@ function result = v1_to_v2(v1Bodies, options)
 %                      class-preserving 1->1 behaviour.
 %                      'V_eta' routes classes that have a Brainstorm-J
 %                      split/fold migrator under +did2.+convert.+migrators_j
-%                      through that migrator, targeting the Brainstorm-J
-%                      subject model (bare-identity subject, restored
-%                      subject_statement owning `variable`, subject_observation/
-%                      subject_manipulation, data-type-named leaves +
-%                      dose/formulation/chemical composites, term_manipulation,
-%                      and subject_relation documents; no injection/bath, no
-%                      escape hatch). A 'V_eta' target stamps
+%                      through that migrator, targeting the V_eta model
+%                      (one `entity` class with a bound `type`; statements
+%                      whose class is the direction -- observation, assertion,
+%                      manipulation, calculation -- with the value kind as a
+%                      mixin; directed_relation documents; no injection/bath,
+%                      no escape hatch). A class with no +migrators_j file
+%                      takes its +migrators one (identity fallback). A 'V_eta'
+%                      target stamps
 %                      document_class.schema_version with the target name.
 %                      The 'V_epsilon' and 'V_zeta' targets (+migrators_e,
 %                      +migrators_i) were removed with did-schema #88, which
