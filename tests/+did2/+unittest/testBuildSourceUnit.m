@@ -5,7 +5,8 @@ function tests = testBuildSourceUnit
 %   value's `source_unit` is an `ontology_term` {node, name} bound
 %   {strength: preferred, node_form: curie} -- the unit's REGISTERED term, its
 %   label as the name; blank when the source gives no unit. did-schema `main`
-%   (and the pinned v_eta-pre73) still declare char. So the builders read the
+%   declared char until #88 merged (2026-10-23), as does the pre-#73 tag
+%   v_eta-pre73. So the builders read the
 %   declaration of each field they fill (private/fillField.m):
 %     - term shape: a term is written; TEXT IS AN ERROR
 %       (did2:build:sourceUnitNotATerm) -- a spelling is not a term and the

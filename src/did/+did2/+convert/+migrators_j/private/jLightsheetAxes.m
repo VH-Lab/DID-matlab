@@ -207,7 +207,8 @@ end
 
 function u = sourceUnitOf(spelling)
 %SOURCEUNITOF The source's unit in the shape the schema declares source_unit.
-%   char (did-schema main, v_eta-pre73): the spelling, as before. A term
+%   char (did-schema main before #88 merged, 2026-10-23; v_eta-pre73): the
+%   spelling, as before. A term
 %   (DID-schema V_eta_source_unit_plan.md, signed 2026-10-21; did2.build
 %   refuses text there): the spelling's term as unitTerm maps it, else the
 %   spelling as the name with an empty node -- the plan's item 4 for a

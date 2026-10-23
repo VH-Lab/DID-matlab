@@ -134,7 +134,8 @@ function bodies = neuron_extracellular(preBody)
 %   `data`, beside `keys` (now `dimensions`), so an inline value has the
 %   slot, and EMPTY MEANS F.
 %   On that schema this fold's column-major flatten is the declared default;
-%   on did-schema main / v_eta-pre73 the paragraph above still holds.]
+%   on did-schema main before #88 merged (2026-10-23) / v_eta-pre73 the
+%   paragraph above held.]
 %
 %   ---------------------------------------------------------------------
 %   THE UNIT IS DELIBERATELY UNSTATED

@@ -505,7 +505,7 @@ end
 function block = datumOrderBlock()
 %DATUMORDERBLOCK The block that declares `datum_order` in the loaded schema.
 %   `data` since did-schema #88 (Haley audit D-5, 2026-10-20); `sampled_body`
-%   on did-schema main and v_eta-pre73. A migrator holds no cache handle, so
+%   on did-schema main before #88 merged (2026-10-23) and on v_eta-pre73. A migrator holds no cache handle, so
 %   it asks the shared one; `sampled_body` when no schema can be asked.
 block = '';
 try
