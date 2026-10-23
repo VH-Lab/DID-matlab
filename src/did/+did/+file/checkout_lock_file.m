@@ -130,7 +130,17 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
         file_exists = isfile(filename);
 
         if file_exists
-            C = did.file.readlines(filename);
+            try
+                C = did.file.readlines(filename);
+            catch readError
+                if ~isfile(filename)
+                    % Released between the check above and this read --
+                    % a window that checking every few milliseconds hits.
+                    % Look again; the loop condition will find it gone.
+                    continue;
+                end
+                rethrow(readError);
+            end
 
             if ~isempty(C)
                 % Both formats, and never silently: the bare try/end this
