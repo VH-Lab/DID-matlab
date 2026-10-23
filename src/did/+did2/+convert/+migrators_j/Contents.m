@@ -916,8 +916,8 @@
 %         normalises the template's own untypeable placeholder.
 %     stimulus_presentation
 %         Brainstorm-J migrator: did_v1 stimulus_presentation -- the decomposition is
-%         DEFERRED to the NDI second pass; pass 1 is a GUARDED PASSTHROUGH that
-%         carries the document intact.
+%         DONE BY THE NDI SECOND PASS; pass 1 is a GUARDED PASSTHROUGH that carries
+%         the document intact.
 %     stimulus_response_scalar
 %         Brainstorm-J migrator: did_v1 stimulus_response_scalar -> a `calculation`
 %         whose value kind is `harmonic_component` (id PRESERVED), + its time anchor +
