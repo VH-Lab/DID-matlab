@@ -458,7 +458,7 @@ assertNotEmpty(testCase, ref, 'its time reference is in the batch');
 verifyEqual(testCase, char(did2.unittest.helpers.classKey(ref)), 'relative_time_reference');
 ep = docById(out, depVal(ref, 'referent_id'));
 assertNotEmpty(testCase, ep, 'the referent is in the batch');
-verifyEqual(testCase, char(ep.entity.type.name), 'epoch');
+verifyEqual(testCase, did2.build.vocabularyHandle('entity_type', ep.entity.type), 'epoch');
 verifyEqual(testCase, char(ep.entity.local_identifier), 't00sx');
 verifyEqual(testCase, char(ref.relative_time_reference.value.clock.name), 'dev_local_time');
 verifyEqual(testCase, ref.relative_time_reference.value.start.seconds, 2, 'AbsTol', 1e-12);
@@ -1376,7 +1376,7 @@ t = '';
 if isempty(id) || ~isKey(byId, id); return; end
 d = byId(id);
 if isfield(d, 'entity') && isfield(d.entity, 'type') && isfield(d.entity.type, 'name')
-    t = char(d.entity.type.name);
+    t = did2.build.vocabularyHandle('entity_type', d.entity.type);
 end
 end
 

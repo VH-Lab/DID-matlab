@@ -9,7 +9,8 @@ function name = classKey(doc)
 %                   'observation+score': the direction and the value kind,
 %                   both asserted (did-schema #88; never a joined leaf name)
 %     a named calculator ('tuning_curve_calculation', ...) -> its class name
-%     an `entity`   -> its type, e.g. 'organism', 'epoch', 'software'
+%     an `entity`   -> its type's handle, by node (did2.build.vocabularyHandle):
+%                   'organism', 'epoch' (stored "recording epoch"), 'software'
 %     anything else -> document_class.class_name
 %
 %   A document that names a joined '<kind>_<direction>' class is NOT
@@ -27,7 +28,9 @@ name = char(doc.document_class.class_name);
 if strcmp(name, 'entity') && isfield(doc, 'entity') && isstruct(doc.entity) ...
         && isfield(doc.entity, 'type') && isstruct(doc.entity.type) ...
         && isfield(doc.entity.type, 'name') && ~isempty(doc.entity.type.name)
-    name = char(doc.entity.type.name);
+    % by node: the stored name is the ontology label ("recording epoch",
+    % "Data Set"; did-schema [vocabulary nodes] L1, L2), the key the handle
+    name = did2.build.vocabularyHandle('entity_type', doc.entity.type);
     return;
 end
 if any(strcmp(name, {'observation', 'assertion', 'manipulation', 'calculation'}))

@@ -340,7 +340,7 @@ tf = strcmp(className, 'dataset');
 if tf || ~strcmp(className, 'entity'); return; end
 try
     t = doc.get('entity.type');
-    tf = isstruct(t) && isfield(t, 'name') && strcmpi(char(t.name), 'dataset');
+    tf = isstruct(t) && did2.build.isVocabulary(t, 'entity_type', 'dataset');   % by node (L2)
 catch
     tf = false;
 end
@@ -362,7 +362,7 @@ tf = strcmp(className, 'session');
 if tf || ~strcmp(className, 'entity'); return; end
 try
     t = doc.get('entity.type');
-    tf = isstruct(t) && isfield(t, 'name') && strcmpi(char(t.name), 'session');
+    tf = isstruct(t) && did2.build.isVocabulary(t, 'entity_type', 'session');   % by node (L2)
 catch
     tf = false;
 end
@@ -377,7 +377,7 @@ tf = strcmp(char(getBaseName(doc)), 'migrated_session_membership');
 if tf; return; end
 try
     r = doc.get('directed_relation.relation');
-    tf = isstruct(r) && isfield(r, 'name') && strcmp(char(r.name), 'included_in');
+    tf = isstruct(r) && did2.build.isVocabulary(r, 'relation', 'included_in');   % by node (L1)
 catch
     tf = false;
 end

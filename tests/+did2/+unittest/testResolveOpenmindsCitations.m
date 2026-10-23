@@ -148,7 +148,7 @@ n = 0;
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
     if strcmp(b.document_class.class_name, 'directed_relation') ...
-            && strcmp(b.directed_relation.relation.name, 'has_author')
+            && did2.build.isVocabulary(b.directed_relation.relation, 'relation', 'has_author')
         n = n + 1;
         verifyEqual(testCase, double(b.directed_relation.order), 0);
     end

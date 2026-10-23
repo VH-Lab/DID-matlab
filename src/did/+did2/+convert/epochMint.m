@@ -2232,12 +2232,10 @@ if isfield(b, 'document_class') && isstruct(b.document_class) ...
 end
 if strcmp(cn, 'entity') && isfield(b, 'entity') && isstruct(b.entity) ...
         && isfield(b.entity, 'type')
-    t = b.entity.type;
-    if isstruct(t) && isfield(t, 'name') && ~isempty(t.name)
-        cn = char(t.name);
-    elseif ischar(t) && ~isempty(t)
-        cn = t;
-    end
+    % by node: the stored name is the ontology label ("recording epoch",
+    % "Session"; [vocabulary nodes] L1, L2), the handle is 'epoch', 'session'
+    t = did2.build.vocabularyHandle('entity_type', b.entity.type);
+    if ~isempty(t); cn = t; end
 elseif strcmp(cn, 'method')
     cn = 'method_parameters';
 else

@@ -261,7 +261,7 @@ children = {};
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation')
-        verifyEqual(testCase, d.get('directed_relation.relation').name, 'member_of');
+        verifyEqual(testCase, did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), 'member_of');
         verifyEqual(testCase, depVal(d, 'parent_id'), 'grp_1');   % the group
         children{end+1} = depVal(d, 'child_id'); %#ok<AGROW>
     end
@@ -374,7 +374,7 @@ out = runJ(elementDoc('probeA', 'n-trode', 'ndi.probe.timeseries', 1, 'subj_007'
 
 rel = firstOfClassJ(out.migrated, 'directed_relation');
 verifyNotEmpty(testCase, rel, 'pass 1 dropped `observes` with nothing in its place');
-verifyEqual(testCase, rel.get('directed_relation.relation').name, 'observes');
+verifyEqual(testCase, did2.build.vocabularyHandle('relation', rel.get('directed_relation.relation')), 'observes');
 verifyEqual(testCase, depVal(rel, 'child_id'), 'el_1');
 verifyEqual(testCase, depVal(rel, 'parent_id'), 'subj_007');
 
@@ -2189,7 +2189,7 @@ verifyEqual(testCase, depVal(vel, 'time_reference_id'), tref.get('base.id'));
 rel = firstOfClassJ(out.migrated, 'directed_relation');
 verifyEqual(testCase, depVal(rel, 'child_id'), 'worm_1');
 verifyEqual(testCase, depVal(rel, 'parent_id'), 'patch_1');
-verifyEqual(testCase, rel.get('directed_relation.relation').name, 'encountered');
+verifyEqual(testCase, did2.build.vocabularyHandle('relation', rel.get('directed_relation.relation')), 'encountered');
 verifyEqual(testCase, depVal(rel, 'time_reference_id'), tref.get('base.id'));
 % the window carries onset/offset
 verifyEqual(testCase, tref.get('relative_time_reference.value').start.seconds, 1249.72);
@@ -2803,7 +2803,7 @@ adaOrder = [];
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
-            && strcmp(d.get('directed_relation.relation').name, 'has_author')
+            && strcmp(did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), 'has_author')
         verifyEqual(testCase, depVal(d, 'child_id'), ds.get('base.id'));
         seqs(end+1) = d.get('directed_relation.order'); %#ok<AGROW>
         verifyFalse(testCase, isfield(d.documentProperties.directed_relation, 'sequence'));
@@ -2842,7 +2842,7 @@ affParents = {};
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
-            && strcmp(d.get('directed_relation.relation').name, 'affiliated_with')
+            && strcmp(did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), 'affiliated_with')
         affParents{end+1} = depVal(d, 'parent_id'); %#ok<AGROW>
     end
 end
@@ -2939,7 +2939,7 @@ n = 0;
 for k = 1:numel(migrated)
     d = migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
-            && strcmp(d.get('directed_relation.relation').name, relName)
+            && strcmp(did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), relName)
         n = n + 1;
     end
 end
@@ -3095,7 +3095,7 @@ r = [];
 for k = 1:numel(migrated)
     d = migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
-            && strcmp(d.get('directed_relation.relation').name, relName)
+            && strcmp(did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), relName)
         r = d; return;
     end
 end
@@ -3170,7 +3170,7 @@ ds = firstOfClassJ(out.migrated, 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'dsid_1');
 rel = firstOfClassJ(out.migrated, 'directed_relation');
 [relName, relNode] = membershipRelation();
-verifyEqual(testCase, rel.get('directed_relation.relation').name, relName);
+verifyEqual(testCase, did2.build.vocabularyHandle('relation', rel.get('directed_relation.relation')), relName);
 verifyEqual(testCase, rel.get('directed_relation.relation').node, relNode);
 verifyEqual(testCase, depVal(rel, 'child_id'), 'member_sess_9');   % the member session
 verifyEqual(testCase, depVal(rel, 'parent_id'), 'dsid_1');          % the dataset
@@ -3196,7 +3196,7 @@ relName = membershipRelation();
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation')
-        verifyEqual(testCase, d.get('directed_relation.relation').name, relName);
+        verifyEqual(testCase, did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), relName);
         verifyEqual(testCase, depVal(d, 'parent_id'), 'dsid_1');
         children{end+1} = depVal(d, 'child_id'); %#ok<AGROW>
     end
@@ -3225,7 +3225,7 @@ relName = membershipRelation();
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
-            && strcmp(d.get('directed_relation.relation').name, relName)
+            && strcmp(did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), relName)
         verifyNotEqual(testCase, depVal(d, 'child_id'), 'absent_sess');
     end
 end
@@ -3259,7 +3259,7 @@ dup = u(accumarray(j(:), 1) > 1);
 verifyEmpty(testCase, dup, sprintf('duplicate ids: %s', strjoin(dup, ', ')));
 hits = out.migrated(strcmp(ids, 'dsid_1'));
 assertEqual(testCase, numel(hits), 1);
-verifyEqual(testCase, char(hits{1}.get('entity.type').name), 'dataset');
+verifyEqual(testCase, did2.build.vocabularyHandle('entity_type', hits{1}.get('entity.type')), 'dataset');
 verifyEqual(testCase, rep.session_entities_dropped_dataset_id, 1);
 % Decided by Jess Haley, 2026-10-22 [dataset session reference]: the dropped
 % session's reference becomes the dataset entity's local_identifier

@@ -146,7 +146,7 @@ function testMembershipIsIncludedInOnTheEdgeShape(testCase)
 % UPDATED for #88: run on the real schema (the builder needs the entity and
 % relation classes the base-only stub does not have).
 rel = membershipRelation(runJ(sessionInADatasetV1()));
-verifyEqual(testCase, rel.directed_relation.relation.name, 'included_in');
+verifyEqual(testCase, did2.build.vocabularyHandle('relation', rel.directed_relation.relation), 'included_in');
 verifyEqual(testCase, rel.directed_relation.relation.node, 'schema:isPartOf');
 verifyEqual(testCase, edgeTargets(rel, 'session_id'), {'dsid_1'});
 end

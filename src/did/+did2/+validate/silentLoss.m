@@ -2031,7 +2031,8 @@ if ~strcmp(cls, eaEntityClass()); return; end
 try
     t = body.entity.type;
     if iscell(t); t = t{1}; end
-    if ~isempty(t.name); s = char(t.name); end
+    h = did2.build.vocabularyHandle('entity_type', t);   % by node (L2)
+    if ~isempty(h); s = h; end
 catch
 end
 end
@@ -2051,7 +2052,7 @@ if tf || ~info.is_entity; return; end
 try
     t = body.entity.type;
     if iscell(t); t = t{1}; end
-    tf = strcmp(char(t.name), eaTerminalClass());
+    tf = did2.build.isVocabulary(t, 'entity_type', eaTerminalClass());   % by node (L2)
 catch
     tf = false;
 end

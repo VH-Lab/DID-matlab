@@ -85,7 +85,7 @@ s = doc.toStruct();
 if isfield(s, 'entity')
     s.session = s.entity;
     if isfield(s.session, 'type') && isstruct(s.session.type) ...
-            && strcmp(char(s.session.type.name), 'session')
+            && did2.build.isVocabulary(s.session.type, 'entity_type', 'session')   % by node
         s.session = rmfield(s.session, 'type');
     end
 end

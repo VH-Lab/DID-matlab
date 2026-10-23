@@ -81,7 +81,7 @@ verifyEqual(testCase, edge(obs, 'software_id'), sw{1}.base.id);
 verifyEqual(testCase, sw{1}.entity.name, ...
     'NDI lightsheet pyramid builder (ndi.fun.doc.lightsheet.makePyramid)', ...
     'point 5: named for the program, not for pipeline_version');
-verifyEqual(testCase, sw{1}.entity.type.name, 'software');
+verifyEqual(testCase, did2.build.vocabularyHandle('entity_type', sw{1}.entity.type), 'software');
 % The pyramid carries no time; nothing may claim one (migrator header).
 verifyEqual(testCase, edge(obs, 'time_reference_id'), '');
 % The edges every member of the batch names resolve inside it, given the two

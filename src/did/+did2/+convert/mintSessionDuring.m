@@ -125,10 +125,8 @@ if ~strcmp(cls, 'entity') || ~isstruct(b) || ~isfield(b, 'entity') ...
 end
 t = b.entity.type;
 if iscell(t) && ~isempty(t); t = t{1}; end
-if isstruct(t) && isfield(t, 'name')
-    tf = strcmpi(char(t.name), 'session');
-elseif ischar(t) || isstring(t)
-    tf = strcmpi(char(t), 'session');
+if isstruct(t) || ischar(t) || isstring(t)
+    tf = did2.build.isVocabulary(t, 'entity_type', 'session');   % by node (L2)
 end
 end
 
