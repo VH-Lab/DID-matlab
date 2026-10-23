@@ -1,4 +1,4 @@
-% +migrators  Per-class did_v1 -> V_delta migrator functions.
+% +migrators  Per-class did_v1 -> V2 migrator functions.
 %
 %   Each file in this package is named after the post-universal-rename
 %   v1 class name (snake_case) and exports a single function:
@@ -58,7 +58,7 @@
 %     stimulus_bath       - rename location.ontologyNode -> .node;
 %                           parse the v1 CSV mixture_table into a
 %                           mixture array-of-records; each amount is a
-%                           V_delta `concentration` composite with
+%                           V2 `concentration` composite with
 %                           source_unit / source_value preserved and
 %                           the appropriate canonical sub-field (molar,
 %                           grams_per_liter, mass_fraction,
@@ -78,5 +78,5 @@
 %     temporal_frequency_tuning_calc, simple_calc
 %
 %   See did-schema's
-%   schemas/V_delta/conversions/from_did_v1/<class_name>.md for the
+%   did-schema's per-class conversion notes (deleted with did-schema #88) for the
 %   per-class specifications.

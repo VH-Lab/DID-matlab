@@ -55,7 +55,7 @@ classdef document
             end
 
             % Canonicalize depends_on entry keys to `document_id`
-            % (V_delta). Accepts v1 `id` and the earlier draft
+            % (V2). Accepts v1 `id` and the earlier draft
             % `value` as synonyms. Establishes the invariant that
             % every dependency accessor on this class can rely on:
             % after construction, depends_on entries use
@@ -275,7 +275,7 @@ classdef document
                 hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
             end
             % The constructor's i_normalizeDependsOn pass guarantees
-            % depends_on entries use the V_delta canonical key
+            % depends_on entries use the V2 canonical key
             % `document_id`. Build d_struct with the same key so
             % struct-array assignment / append stays consistent.
             d_struct = struct('name', dependency_name, 'document_id', value);
@@ -1262,10 +1262,10 @@ classdef document
             % id from a single depends_on struct entry.
             %
             % The constructor's i_normalizeDependsOn pass guarantees
-            % entries carry `document_id` (V_delta canonical), but
+            % entries carry `document_id` (V2 canonical), but
             % callers occasionally hand us hand-built structs that
             % skip the constructor and still use `value` (earlier
-            % V_delta draft) or `id` (V_alpha legacy). This helper
+            % V2 draft) or `id` (v1). This helper
             % accepts all three with precedence
             % document_id > value > id.
             if ~isstruct(entry) || ~isscalar(entry)
@@ -1285,17 +1285,17 @@ classdef document
 
         function names = i_normalizePropertyBlockFields(blockName, names)
             % i_normalizePropertyBlockFields - normalise a list of
-            % field names inside a class property block so V_delta
+            % field names inside a class property block so V2
             % renames compare equal to their V_alpha originals.
             %
             % Used by did.database/validate_doc_vs_schema when the
             % schema (V_alpha-shaped) declares field names that
-            % V_delta migrators have since renamed. Rather than
+            % base (+migrators) migrators have since renamed. Rather than
             % maintain two copies of every schema, normalise both
             % sides via this map and compare.
             %
             % Currently covers only `daqmetadatareader.reader_class`
-            % (V_delta) -> `ndi_daqmetadatareader_class` (V_alpha).
+            % (V2) -> `ndi_daqmetadatareader_class` (V_alpha).
             % Extend the rename map (i_propertyBlockRenameMap) as
             % additional block-level renames surface. The
             % probe_location / treatment / ontology_image /
@@ -1316,16 +1316,16 @@ classdef document
             end
         end % i_normalizePropertyBlockFields
 
-        function aliased = i_aliasV_alphaToV_delta(blockName, vAlphaName)
-            % i_aliasV_alphaToV_delta - inverse of the rename map
+        function aliased = i_aliasV1ToV2(blockName, vAlphaName)
+            % i_aliasV1ToV2 - inverse of the rename map
             % above: given a V_alpha legacy field name (e.g.,
-            % `ndi_daqmetadatareader_class`), return the V_delta
+            % `ndi_daqmetadatareader_class`), return the V2
             % canonical name (e.g., `reader_class`). Returns '' if
             % the name is not aliased.
             %
             % Used by did.database/validate_doc_vs_schema when the
-            % schema-declared subfield isn't on the V_delta body and
-            % we need to look up the body via the V_delta-renamed
+            % schema-declared subfield isn't on the V2 body and
+            % we need to look up the body via the V2-renamed
             % key.
             arguments
                 blockName (1,:) char
@@ -1338,7 +1338,7 @@ classdef document
             for k = 1:numel(allKeys)
                 key = allKeys{k};
                 if strcmp(renames(key), vAlphaName)
-                    % key has the form "<block>.<vDeltaName>".
+                    % key has the form "<block>.<v2Name>".
                     dotIdx = find(key == '.', 1, 'first');
                     if isempty(dotIdx), continue; end
                     keyBlock = key(1:dotIdx-1);
@@ -1349,12 +1349,12 @@ classdef document
                 end
             end
             aliased = '';
-        end % i_aliasV_alphaToV_delta
+        end % i_aliasV1ToV2
 
         function map = i_propertyBlockRenameMap()
             % i_propertyBlockRenameMap - source-of-truth rename map
-            % for V_alpha <-> V_delta property-block field renames.
-            % Keys: "<block>.<v_delta_name>". Values: V_alpha name.
+            % for v1 <-> V2 property-block field renames.
+            % Keys: "<block>.<v2_name>". Values: v1 name.
             map = containers.Map( ...
                 {'daqmetadatareader.reader_class'}, ...
                 {'ndi_daqmetadatareader_class'});
@@ -1362,8 +1362,8 @@ classdef document
 
         function body = i_normalizeDependsOn(body)
             % i_normalizeDependsOn - canonicalise depends_on entry
-            % keys to V_delta `document_id`. Accepts `id` (V_alpha)
-            % and `value` (earlier V_delta draft) as synonyms with
+            % keys to V2 `document_id`. Accepts `id` (V_alpha)
+            % and `value` (earlier V2 draft) as synonyms with
             % precedence document_id > value > id. The resulting
             % depends_on struct schema is exactly {name, document_id}.
             %

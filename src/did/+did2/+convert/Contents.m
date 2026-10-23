@@ -1,7 +1,7 @@
-% +convert  did_v1 -> V_delta document conversion utilities.
+% +convert  did_v1 -> V2 document conversion utilities.
 %
 %   The +convert subpackage implements PLAN.md §7 plus the step-6
-%   sub-steps in §9.6: the v1-to-V_delta migration dispatcher, the
+%   sub-steps in §9.6: the v1-to-V2 migration dispatcher, the
 %   universal-rename pass, per-class migrator functions for the
 %   four 2.0.0-bumped classes, and the legacy-database readers plus
 %   end-to-end orchestrator that drive the dispatcher off real v1
@@ -21,7 +21,7 @@
 %                        cell array, or JSON string) and returns a
 %                        result struct with `migrated`, `quarantine`,
 %                        and `summary` fields.
-%     universalRenames - the cross-cutting did_v1 -> V_delta rewrites
+%     universalRenames - the cross-cutting did_v1 -> V2 rewrites
 %                        (snake-case class names, schema_version on
 %                        document_class, depends_on entry shape) from
 %                        did-schema's _universal_renames.md.

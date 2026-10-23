@@ -1,11 +1,11 @@
 function [postBody, report] = universalRenames(preBody, options)
-%UNIVERSALRENAMES Apply did_v1 -> V_delta universal renames.
+%UNIVERSALRENAMES Apply did_v1 -> V2 universal renames.
 %
 %   POSTBODY = did2.convert.universalRenames(PREBODY) returns a copy of
 %   PREBODY with the cross-cutting transformations from
-%   did-schema/schemas/V_delta/conversions/from_did_v1/_universal_renames.md
+%   did-schema's per-class conversion notes (deleted with did-schema #88)
 %   applied. Per-class migrators run after this pass and assume their
-%   input is the semi-V_delta shape produced here.
+%   input is the semi-V2 shape produced here.
 %
 %   POSTBODY = did2.convert.universalRenames(PREBODY, 'RenameClassNames', false)
 %   skips the identifier-level snake_case sweep: document_class.class_name,
@@ -13,10 +13,10 @@ function [postBody, report] = universalRenames(preBody, options)
 %   keys, and field names inside property blocks are left untouched.
 %   Callers reading bodies whose schemas still spell identifiers in
 %   the legacy (camelCase) form pass false so the body stays
-%   schema-compatible while still gaining the V_delta shape
+%   schema-compatible while still gaining the V2 shape
 %   transformations (schema_version stamping, base reconciliation,
 %   app block renames, depends_on rewrite). Default is true (full
-%   V_delta normalisation).
+%   V2 normalisation).
 %
 %   Transformations applied:
 %
@@ -35,16 +35,16 @@ function [postBody, report] = universalRenames(preBody, options)
 %       (e.g., filter.parameters.sampleFrequency) are left alone for
 %       per-class migrators to handle if needed. [gated by
 %       RenameClassNames]
-%     - rewrite depends_on entries to the V_delta (name,
+%     - rewrite depends_on entries to the V2 (name,
 %       document_id) shape. Accepts v1 (name, id [, version]) and
-%       the earlier V_delta draft (name, value); precedence is
+%       the earlier V2 draft (name, value); precedence is
 %       document_id > value > id when more than one is populated.
-%       `version` is always dropped (V_delta does not support
+%       `version` is always dropped (V2 does not support
 %       per-document version branches). See did-schema#52 for the
-%       V_delta-side rename rationale.
+%       V2-side rename rationale.
 %     - rename `app.name` -> `app.app_name` and `app.version` ->
 %       `app.app_version` on any document carrying a top-level `app`
-%       block. V_delta's `app` schema names these fields with the
+%       block. V2's `app` schema names these fields with the
 %       `app_` prefix; v1 carries the same data under the unprefixed
 %       names. Documents whose v1 class did not include the `app`
 %       superclass (most non-calc docs) are unaffected.
@@ -183,7 +183,7 @@ function [postBody, report] = universalRenames(preBody, options)
 %
 %   Field-level renames that change identifiers (not just case) inside
 %   a class's property block are class-specific (see the conversion
-%   markdowns under did-schema's schemas/V_delta/conversions/from_did_v1/)
+%   notes in did-schema, deleted with did-schema #88)
 %   and are handled by per-class migrators, not here.
 %
 %   STATUS of the 2026-08-11 edit (the legacy-identity-block counters and
@@ -238,7 +238,7 @@ postBody = preBody;
 if options.RenameClassNames
     v1ClassName = char(postBody.document_class.class_name);
     v2ClassName = snakeCase(v1ClassName);
-    v2ClassName = v1ToVDeltaClassName(v2ClassName);
+    v2ClassName = v1ToV2ClassName(v2ClassName);
     postBody.document_class.class_name = v2ClassName;
     if ~strcmp(v1ClassName, v2ClassName) && isfield(postBody, v1ClassName)
         postBody.(v2ClassName) = postBody.(v1ClassName);
@@ -465,7 +465,7 @@ end
 end
 
 function block = renameAppBlockFields(block)
-% V_delta `app` declares `app_name` and `app_version`; v1 carries the
+% V2 `app` declares `app_name` and `app_version`; v1 carries the
 % same data under `name` and `version`. Apply the rename whenever a
 % v1 document ships an `app` block, regardless of its concrete class.
 % (7 v1 classes in the 20211116 corpus carry an app block: every
@@ -485,14 +485,14 @@ elseif isfield(block, 'version')
 end
 end
 
-function out = v1ToVDeltaClassName(name)
-% Map v1 class names that drift from V_delta's underscore-separated
+function out = v1ToV2ClassName(name)
+% Map v1 class names that drift from V2's underscore-separated
 % canonical form. v1 occasionally drops the underscore between
 % adjacent words in a calc class name (e.g., `contrasttuning_calc`
-% instead of `contrast_tuning_calc`); V_delta keeps the
+% instead of `contrast_tuning_calc`); V2 keeps the
 % underscored convention to match the NDI calculator class
 % hierarchy (`ndi.calc.vis.contrast_tuning`, etc.). This rename
-% pass bridges the two without forcing V_delta names to be
+% pass bridges the two without forcing V2 names to be
 % inconsistent.
 table = { ...
     'contrasttuning_calc',      'contrast_tuning_calc'; ...
@@ -624,7 +624,7 @@ end
 function postBody = snakeCasePropertyBlocks(postBody)
 % Rename top-level property-block keys to snake_case (so v1
 % inherited blocks with camelCase names like `imageStack_parameters`
-% match V_delta's snake-cased class names), and rename camelCase
+% match V2's snake-cased class names), and rename camelCase
 % field names inside each block to snake_case. Structural keys
 % (document_class, depends_on, file, files) are skipped.
 skip = {'document_class', 'depends_on', 'file', 'files'};
@@ -689,18 +689,18 @@ end
 end
 
 function out = renameDependsOnEntries(entries)
-%RENAMEDEPENDSONENTRIES Migrate depends_on entries to the V_delta shape.
+%RENAMEDEPENDSONENTRIES Migrate depends_on entries to the V2 shape.
 %
-%   V_delta entries carry `name` and `document_id`. Accepts three
-%   input shapes and normalises to V_delta:
+%   V2 entries carry `name` and `document_id`. Accepts three
+%   input shapes and normalises to V2:
 %     - v1 (V_alpha): {name, id [, version]}        - id -> document_id
-%     - old V_delta draft: {name, value}             - value -> document_id
-%     - current V_delta: {name, document_id}         - identity
+%     - old V2 draft: {name, value}             - value -> document_id
+%     - current V2: {name, document_id}         - identity
 %
 %   When multiple legacy keys are present (an in-flight migration
 %   that already wrote a value but left the v1 id behind), the
 %   precedence is: document_id wins if non-empty, else value,
-%   else id. `version` is always dropped (V_delta does not
+%   else id. `version` is always dropped (V2 does not
 %   support per-document version branches).
 out = entries;
 

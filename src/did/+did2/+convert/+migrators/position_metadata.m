@@ -1,5 +1,5 @@
 function v2Body = position_metadata(preBody)
-%POSITION_METADATA Migrate a did_v1 position_metadata body to V_delta.
+%POSITION_METADATA Base migrator: did_v1 position_metadata body -> the class-preserving V2 shape.
 %
 %   v1 carries three ontology-driven descriptor fields:
 %
@@ -10,7 +10,7 @@ function v2Body = position_metadata(preBody)
 %       position_metadata.dimensions                     - comma-separated
 %                                                          per-axis CURIEs
 %
-%   V_delta re-shapes these into ontology_term composites and an
+%   V2 re-shapes these into ontology_term composites and an
 %   array-of-records `dimensions` field with explicit per-axis
 %   identifiers:
 %
@@ -23,11 +23,11 @@ function v2Body = position_metadata(preBody)
 %   Human-readable names on the ontology terms are looked up via
 %   ndi.ontology.lookup. If the lookup throws (ndi-ontology-matlab
 %   not installed, CURIE unknown), the name stays empty -- the
-%   V_delta ontology_term composite type only requires the value
+%   V2 ontology_term composite type only requires the value
 %   to be a struct; the inner-field-name shape is open.
 %
 %   See did-schema's
-%   schemas/V_delta/conversions/from_did_v1/position_metadata.md
+%   did-schema's per-class conversion notes (deleted with did-schema #88)
 %   for the full conversion spec.
 
 arguments

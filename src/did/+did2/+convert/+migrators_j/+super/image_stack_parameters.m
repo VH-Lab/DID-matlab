@@ -10,7 +10,7 @@ function v2Body = image_stack_parameters(preBody)
 %   Selected by did2.convert.v1_to_v2 (applySuperclassMigrators) whenever
 %   TargetVersion == 'V_eta' and the body's superclass chain names
 %   `image_stack_parameters` -- i.e. on every `image_stack` document. There is
-%   no V_delta migrator of this name, so nothing is being displaced.
+%   no base (+migrators) migrator of this name, so nothing is being displaced.
 %
 %   ---------------------------------------------------------------------
 %   WHY A SUPERCLASS MIGRATOR AND NOT A CONCRETE ONE

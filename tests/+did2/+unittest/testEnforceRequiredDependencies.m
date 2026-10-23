@@ -70,7 +70,7 @@ end
 % ===================== fixtures ============================================
 
 function setupOnce(testCase)
-% The hermetic V_delta fixtures already contain exactly the class this needs:
+% The hermetic V2 fixtures already contain exactly the class this needs:
 % demoC declares item1 (mustBeNonEmpty true), item2 (true) and item3 (false).
 thisDir = fileparts(mfilename('fullpath'));
 fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');

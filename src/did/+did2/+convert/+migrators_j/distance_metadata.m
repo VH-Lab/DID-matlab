@@ -9,9 +9,9 @@ function bodies = distance_metadata(preBody)
 %   design, `units` a CURIE, and `depends_on element_id` points at the `distance`
 %   TIMESERIES element (where the actual distances over time live).
 %
-%   The V_eta distance_metadata schema is shape-identical to V_delta's (the flat
+%   The V_eta distance_metadata schema is shape-identical to the base migrator's output (the flat
 %   per-endpoint A/B fields collapse into a nested `endpoints` array-of-records +
-%   an `units` ontology_term), so this DELEGATES to the proven, tested V_delta
+%   an `units` ontology_term), so this DELEGATES to the proven, tested base
 %   migrator (did2.convert.migrators.distance_metadata -- regex label discovery,
 %   string/numeric handling, ndi.ontology.lookup name resolution) and wraps its one
 %   body in the cell the J pipeline expects.

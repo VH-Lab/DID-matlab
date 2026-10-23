@@ -1444,7 +1444,7 @@ end
 
 function testOntologyLabelRejectsInventedShape(testCase)
 % ontology_name/label_id/label came from the false provenance line in the
-% V_delta conversion doc (since corrected). None exists on the real class.
+% V2 conversion doc (since corrected). None exists on the real class.
 v1 = ontologyLabelBody();
 v1.ontology_label = struct('ontology_name', 'Allen CCF v3', 'label_id', 12345, ...
     'label', 'primary visual cortex');
@@ -4222,8 +4222,8 @@ verifyEqual(testCase, o.ngrid.coordinates, [1;2;3;4;1;2;3;4]);
 verifyFalse(testCase, isfield(o, 'subject_statement'));
 end
 
-function testOntologyImageRejectsVDeltaRegionShape(testCase)
-% THE GUARD. `region` is the V_delta migrator's OUTPUT, not a did_v1 field.
+function testOntologyImageRejectsBaseMigratorRegionShape(testCase)
+% THE GUARD. `region` is the base (+migrators) migrator's OUTPUT, not a did_v1 field.
 % The previous implementation read it, so it matched only a fixture built to
 % our own schema and silently emitted an empty observation about nobody.
 % Reading it again must be loud, not silent.
@@ -4231,7 +4231,7 @@ v1 = ontologyImageVintageA();
 v1.ontology_image = struct('region', ...
     struct('node', 'uberon:0002436', 'name', 'primary visual cortex'));
 verifyError(testCase, @() did2.convert.migrators_j.ontology_image(v1), ...
-    'did2:convert:ontologyImageVDeltaShape');
+    'did2:convert:ontologyImageBaseMigratorShape');
 end
 
 function testOntologyImageRejectsUnknownShape(testCase)

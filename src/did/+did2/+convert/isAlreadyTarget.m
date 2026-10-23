@@ -23,12 +23,12 @@ function tf = isAlreadyTarget(body, targetVersion)
 %   (b) the body carries no v1-only structural markers — underscore-
 %       prefixed top-level keys (e.g., legacy _classname,
 %       _class_version) that predate the document_class header and
-%       could not survive a real V_delta build.
+%       could not survive a real V2 build.
 %
-% (a) alone would misclassify a body that was tagged V_delta out-of-
+% (a) alone would misclassify a body that was tagged V2 out-of-
 % band but still carries legacy field shapes; (b) alone would skip
 % the bulk of v1 corpora, which do not happen to use the underscore
-% markers but still need every other v1->V_delta rewrite.
+% markers but still need every other v1 -> V2 rewrite.
 arguments
     body % anything; only a scalar struct can be a target document
     targetVersion {mustBeText}
@@ -57,10 +57,11 @@ end
 % forward is the point; running the same pipeline over a body that has already
 % passed the target is the opposite, and it was silent.
 %
-% Reached in production, not in theory: ndi.database.internal.
-% applyReadNormalization calls this converter on EVERY read without passing a
-% target, so it inherits the 'V_delta' default, and a V_eta document compared
-% unequal and was pushed through universalRenames plus the per-class migrators.
+% Reached in production, not in theory (until 2026-10-23, when NDI's read path
+% stopped converting and the earlier, lower target was removed): NDI's read
+% path called this converter on EVERY read at a target below V_eta, and a V_eta
+% document compared unequal and was pushed through universalRenames plus the
+% per-class migrators.
 %
 % An UNRECOGNISED version cannot reach here: refuseUnknownSchemaVersion runs
 % first and quarantines it. The `~svKnown` guard below is kept as a defence for

@@ -1,12 +1,12 @@
 classdef cache < handle
-    % did2.schema.cache  V_delta schema cache.
+    % did2.schema.cache  V2 schema cache.
     %
-    %   Loads V_delta schema files lazily, resolves superclass chains,
-    %   builds blank documents in the V_delta class-scoped wire shape,
+    %   Loads V2 schema files lazily, resolves superclass chains,
+    %   builds blank documents in the V2 class-scoped wire shape,
     %   and validates documents against their class definitions. See
     %   docs/v2/PLAN.md §5.
     %
-    %   Document shape (V_delta "JSON Format: Document Instances"):
+    %   Document shape (V2 "JSON Format: Document Instances"):
     %     document_class
     %       .class_name       string         concrete class
     %       .class_version    string         semver of the concrete class
@@ -18,15 +18,15 @@ classdef cache < handle
     %                                        declared (empty {} if it
     %                                        declares no fields).
     %
-    %   MATLAB representation: every key in the V_delta wire shape is a
+    %   MATLAB representation: every key in the V2 wire shape is a
     %   valid MATLAB struct field name (no leading underscores anywhere
-    %   after the V_delta SPEC's "drop underscore prefixes" update), so
+    %   after the V2 SPEC's "drop underscore prefixes" update), so
     %   the in-memory representation is the JSON shape verbatim.
     %   `jsondecode` returns a struct with the same field names, and
     %   `jsonencode` writes them back without any rename pass.
     %
     %   did2.schema.cache Properties:
-    %       schemaPath      - filesystem path to a V_delta schema dir.
+    %       schemaPath      - filesystem path to a V2 schema dir.
     %       loadedClasses   - containers.Map of classname -> raw schema.
     %       curieRegistry   - parsed CURIE_lookups_meta.json contents.
     %
@@ -140,7 +140,7 @@ classdef cache < handle
     %       loadAllSchemas      - parse every *.json in the schema dir.
     %       queryablePaths      - scalar and array-iteration paths
     %                             declared by the loaded schemas.
-    %       buildBlankDocument  - blank V_delta document in the wire shape.
+    %       buildBlankDocument  - blank V2 document in the wire shape.
     %       validateDocument    - validate a did2.document instance.
     %
     %   See also: did2.document, docs/v2/PLAN.md.
@@ -1129,7 +1129,7 @@ classdef cache < handle
         end
 
         function doc = buildBlankDocument(obj, className, kind)
-            % buildBlankDocument - blank V_delta document in the
+            % buildBlankDocument - blank V2 document in the
             %   class-scoped wire shape. Mints a fresh did_uid for
             %   base.id and the current UTC timestamp for base.datestamp.
             %   KIND names the value kind of a statement direction that
@@ -1233,7 +1233,7 @@ classdef cache < handle
                     || ~all(cellfun(@strcmp, declaredAncestors, expectedAncestors))
                 error('did2:validation:superclassesChainMismatch', ...
                     ['document_class.superclasses for "%s" is {%s} but ' ...
-                     'the schema chain is {%s}. V_delta requires the ' ...
+                     'the schema chain is {%s}. V2 requires the ' ...
                      'snapshot to match the schema-derived chain ' ...
                      'class-name-by-class-name.'], ...
                     className, ...
@@ -1282,9 +1282,9 @@ classdef cache < handle
                     if ~any(strcmp(fn, declaredNames))
                         error('did2:validation:undeclaredField', ...
                             ['Property block "%s" carries undeclared ' ...
-                             'field "%s". V_delta requires every block ' ...
+                             'field "%s". V2 requires every block ' ...
                              'field to be declared by the schema; v1 ' ...
-                             'fields without a V_delta counterpart must ' ...
+                             'fields without a V2 counterpart must ' ...
                              'be migrated or explicitly dropped.'], ...
                             blockClass, fn);
                     end
@@ -1305,7 +1305,7 @@ classdef cache < handle
                     error('did2:validation:undeclaredBlock', ...
                         ['Document carries undeclared top-level block ' ...
                          '"%s". Either snake_case the key to match a ' ...
-                         'V_delta chain class or remove it in a per-class ' ...
+                         'V2 chain class or remove it in a per-class ' ...
                          'migrator.'], tn);
                 end
             end
@@ -1709,7 +1709,7 @@ classdef cache < handle
             % did-schema checkout typically lives. (The previous two
             % '..'s expected did-schema *inside* DID-matlab.)
             %
-            % V_eta, not V_delta: did-schema #88 deleted schemas/V_alpha ..
+            % V_eta: did-schema #88 deleted schemas/V_alpha ..
             % V_zeta (OPEN_WORK #128), so V_eta is the only schema set left.
             % V_eta spreads its classes over stable/, draft/ and deprecated/;
             % this fallback reads stable/ only. The CI workflows copy all three
@@ -2256,13 +2256,13 @@ classdef cache < handle
             %   Always lowercase so the convention round-trips cleanly
             %   through `pragma_table_info` (which reports column names
             %   in the case SQLite parses them) regardless of how the
-            %   class names happen to be spelled in the V_delta schema
+            %   class names happen to be spelled in the V2 schema
             %   files.
             name = ['q_' lower(strrep(path, '.', '_'))];
         end
 
         function aff = affinityFor(fieldType)
-            % affinityFor - SQLite type affinity for a V_delta scalar type.
+            % affinityFor - SQLite type affinity for a V2 scalar type.
             switch fieldType
                 case {'char', 'did_uid', 'timestamp', 'date', 'string'}
                     aff = 'TEXT';

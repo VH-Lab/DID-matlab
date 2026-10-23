@@ -1,5 +1,12 @@
 # DID-matlab v2 Plan — V_delta support
 
+> **2026-10-23 — historical record.** The V_delta schema generation this plan
+> was written for is removed from DID-matlab (Jess Haley: "there should be no
+> mention of V_delta"). V_eta is the only target of `did2.convert.v1_to_v2`;
+> `did2.database.sqlitedb` stamps new databases `'V_eta'` and opens the old
+> `'V_delta'` stamp as a legacy alias. The V_delta references below are kept as
+> the dated record of how the v2 line was built, not as current behaviour.
+
 **Status:** living document. Edit freely as decisions are made or revised.
 
 **Scope:** transform DID-matlab so it consumes `did-schema` V_delta (and later

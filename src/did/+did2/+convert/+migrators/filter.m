@@ -1,11 +1,11 @@
 function v2Body = filter(preBody)
-%FILTER Migrate a did_v1 filter block to V_delta.
+%FILTER Base migrator: did_v1 filter block -> the class-preserving V2 shape.
 %
 %   v1's filter block carries a `type` field (e.g., 'high', 'low',
-%   'bandpass') describing the filter character. V_delta renamed
+%   'bandpass') describing the filter character. V2 renamed
 %   this to `filter_type` to avoid collision with the more
 %   universal `type` keyword. The other fields (label, algorithm,
-%   parameters) match V_delta verbatim and pass through.
+%   parameters) match V2 verbatim and pass through.
 %
 %   This is a *superclass migrator*: filter is rarely a concrete
 %   class; it ships as a superclass-contributed property block on

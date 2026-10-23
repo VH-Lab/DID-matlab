@@ -188,7 +188,7 @@ for k = 1:numel(d)
     if ~isstruct(e) || ~isfield(e, 'name')
         continue;
     end
-    % Tolerate V_delta canonical, the earlier `value` draft, and the
+    % Tolerate V2 canonical, the earlier `value` draft, and the
     % raw v1 `id` key so the validator can run mid-migration.
     if isfield(e, 'document_id')
         documentId = char(e.document_id);

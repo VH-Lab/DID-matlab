@@ -6,7 +6,7 @@ function value = jSyncDependency(bodyStruct, name)
 %
 %       `value`        a raw migrator body (what +migrators_j hands back)
 %       `document_id`  after did2.convert.universalRenames rewrote depends_on
-%                      "rewrite depends_on entries to the V_delta (name,
+%                      "rewrite depends_on entries to the V2 (name,
 %                       document_id) shape ... precedence is document_id > value
 %                       > id" (universalRenames.m:38-43)
 %       `id`           an unconverted did_v1 body

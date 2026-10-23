@@ -12,7 +12,7 @@ function tests = testCorpusPRED
 %   The zip contains a top-level PRED/ directory of v1-shaped NDI
 %   document JSONs (plus __MACOSX/ sidecars that are skipped).
 %
-%   Validation requires V_delta schemas to be reachable. The test
+%   Validation requires the V_eta schemas to be reachable. The test
 %   probes, in order:
 %       1. DID_SCHEMA_PATH env var
 %       2. did2.schema.cache default (sibling did-schema checkout)
@@ -82,7 +82,8 @@ end
 % at), then run the same DID-side post-passes as the other corpus tests
 % (runCorpusDiscovery): resolve deferred stimulus_baths and finalize the dataset
 % entity layer. Previously this called v1_to_v2 with no TargetVersion, defaulting
-% to V_delta -- but validation is against the V_eta schema, so a V_delta-shaped
+% to the class-preserving target since removed -- but validation is against the
+% V_eta schema, so a class-preserving
 % output (e.g. pyraview still carrying the retired epochclocktimes block) fails
 % with an "undeclared block" error. Targeting V_eta runs the strict-J migrators
 % (migrators_j) so the corpus migrates cleanly under the schema it is checked
@@ -468,7 +469,7 @@ end
 % --- helpers ---
 
 function p = resolveSchemaPath()
-% Return a directory that holds V_delta `*.json` schema files, or '' if
+% Return a directory that holds V_eta `*.json` schema files, or '' if
 % none can be found. Probe order matches the docstring above.
 candidates = {};
 envPath = getenv('DID_SCHEMA_PATH');

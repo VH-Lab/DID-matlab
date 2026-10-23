@@ -1,25 +1,25 @@
 function v2Body = calcCommon(preBody, v1ClassName)
-%CALCCOMMON Shared migrator body for V_delta `*_calc` classes.
+%CALCCOMMON Shared migrator body for V2 `*_calc` classes.
 %
 %   v2Body = did2.convert.calcCommon(PREBODY, V1CLASSNAME) reshapes a
-%   did_v1 calculator document body to match the V_delta
+%   did_v1 calculator document body to match the V2
 %   `calculator`-base inheritance contract. The abstract
 %   `calculator` parent declares `input_parameters` with
-%   `placement: "concrete_class"` (DID-schema V_delta calculator.json),
+%   `placement: "concrete_class"` (DID-schema V2 calculator.json),
 %   which means the field is hosted on the concrete subclass's block
-%   (`<v1ClassName>.input_parameters`) on V_delta instance bodies and
+%   (`<v1ClassName>.input_parameters`) on V2 instance bodies and
 %   the abstract `calculator` class contributes no body block. See
 %   V_gamma_SPEC.md "Field placement" under "Field Definition Object".
 %
 %   v1 already stores `input_parameters` on the concrete class block
-%   (`<class>.input_parameters`) — the same location V_delta wants —
+%   (`<class>.input_parameters`) — the same location V2 wants —
 %   so no structural move is needed. This migrator therefore only:
 %
 %     1. Coerces `<class>.input_parameters` to a struct (v1 sometimes
-%        shipped an empty `[]`; V_delta wants `struct()`). Idempotent
+%        shipped an empty `[]`; V2 wants `struct()`). Idempotent
 %        for v1 bodies that already shipped a struct.
 %     2. Drops a redundant inner `depends_on` if v1 stored one on the
-%        calc block (e.g., `oridirtuning_calc.depends_on`); V_delta
+%        calc block (e.g., `oridirtuning_calc.depends_on`); V2
 %        only honors top-level `depends_on`.
 %
 %   The calculator-identity string lives in `app.app_name`, not in a
@@ -37,14 +37,14 @@ function v2Body = calcCommon(preBody, v1ClassName)
 %       end
 %
 %   The dispatcher's downstream ensureClassBlocks pass adds empty
-%   `{}` property blocks for the rest of the V_delta inheritance
+%   `{}` property blocks for the rest of the V2 inheritance
 %   chain (e.g., `tuning_fit`, the measurement parent), so this
 %   helper does not need to manufacture them. ensureClassBlocks is
 %   placement-aware and will not manufacture a `calculator` block
 %   since calculator contributes nothing of its own to instance
 %   bodies under the placement contract.
 %
-%   See did-schema's schemas/V_delta/conversions/from_did_v1/
+%   See did-schema's conversion notes (deleted with did-schema #88)
 %   oridirtuning_calc.md for the full conversion spec.
 
 arguments
@@ -68,7 +68,7 @@ else
 end
 
 % v1 sometimes stored an internal `depends_on` struct on the calc
-% block (e.g., oridirtuning_calc.depends_on); V_delta only honors
+% block (e.g., oridirtuning_calc.depends_on); V2 only honors
 % top-level `depends_on`, so drop the redundant inner copy.
 if isfield(block, 'depends_on')
     block = rmfield(block, 'depends_on');
@@ -79,8 +79,8 @@ end
 
 function out = coerceToStruct(value)
 % Normalize a v1 `input_parameters` value to a struct so the
-% V_delta `structure`-type validator accepts it. v1 frequently
-% stores an empty array (`[]`) where V_delta wants `struct()`.
+% V2 `structure`-type validator accepts it. v1 frequently
+% stores an empty array (`[]`) where V2 wants `struct()`.
 if isstruct(value)
     out = value;
 elseif isnumeric(value) && isempty(value)

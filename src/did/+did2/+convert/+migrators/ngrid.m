@@ -1,5 +1,5 @@
 function v2Body = ngrid(preBody)
-%NGRID Migrate a did_v1 ngrid block to V_delta.
+%NGRID Base migrator: did_v1 ngrid block -> the class-preserving V2 shape.
 %
 %   This is a *superclass migrator*: ngrid is rarely a concrete
 %   class; it ships as a superclass-contributed property block on
@@ -16,12 +16,12 @@ function v2Body = ngrid(preBody)
 %
 %   v1 also stores `data_size` (per-element byte size) and
 %   `coordinates` (sample coordinates along each dimension); both
-%   are v1-only fields with no V_delta counterpart on ngrid and
+%   are v1-only fields with no V2 counterpart on ngrid and
 %   are dropped per the conversion default (PLAN.md §9.6 Q1:
 %   surface drop-counts in summary; promote to per-class migrators
 %   only if a consumer surfaces).
 %
-%   v1 `data_type` matches V_delta `data_type` verbatim and passes
+%   v1 `data_type` matches V2 `data_type` verbatim and passes
 %   through. If v1 already supplied `ndims` (rare), the value is
 %   preserved instead of recomputed.
 

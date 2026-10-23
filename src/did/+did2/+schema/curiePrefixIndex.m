@@ -28,7 +28,7 @@ function ix = curiePrefixIndex(registry)
 %   prefix both as written and in that form.
 %
 %   A registry with no `prefixes`, or one written before entries carried a
-%   `spelling` (V_delta's `_prefixes`, V_zeta), gives an index that knows
+%   `spelling` (V2's `_prefixes`, V_zeta), gives an index that knows
 %   each entry by its key alone, so a reader still matches prefixes ignoring
 %   case.
 %

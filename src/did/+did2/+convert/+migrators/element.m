@@ -1,16 +1,16 @@
 function v2Body = element(preBody)
-%ELEMENT Migrate a did_v1 element body to V_delta.
+%ELEMENT Base migrator: did_v1 element body -> the class-preserving V2 shape.
 %
-%   V_delta's element schema declares `direct` as integer (default 0,
+%   V2's element schema declares `direct` as integer (default 0,
 %   range 0..1). The did_v1 element_schema also declares it integer,
 %   but some v1 producers (PRED corpus, and historical writes across
 %   the other public corpora) emit it as a JSON boolean. After
-%   jsondecode that lands as a MATLAB `logical`, which V_delta's
+%   jsondecode that lands as a MATLAB `logical`, which V2's
 %   validator rejects because `isnumeric(true)` is false. This
 %   migrator coerces logical (and a couple of defensive char shapes)
 %   to integer so the corpus migrates cleanly.
 %
-%   Other element fields pass through unchanged: V_delta keeps the
+%   Other element fields pass through unchanged: V2 keeps the
 %   v1 names for ndi_element_class, name, reference, and type.
 
 arguments

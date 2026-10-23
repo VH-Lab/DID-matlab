@@ -120,7 +120,7 @@ function testANodeMemberMatchesWhateverCaseItsPrefixIsWrittenIn(testCase)
 % DID-schema V_eta_prefix_spelling_plan.md, signed 2026-10-19: "readers match
 % a prefix by key, spelling or synonym, ignoring case". `pato:0000384` and
 % `PATO:0000384` are one node, so the lowercase form is a member of a set
-% that lists the spelled one. (This fixture's registry is V_delta's, which
+% that lists the spelled one. (This fixture's registry is V2's, which
 % carries no spellings; did2.schema.curieKey then compares prefixes ignoring
 % case. Synonyms are covered by testCuriePrefixSpelling.)
 did2.schema.cache.strictMode('BindingConformance', true);

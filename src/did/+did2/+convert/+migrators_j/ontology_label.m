@@ -34,7 +34,7 @@ function bodies = ontology_label(preBody)
 %
 %   The two extra property fields the migrator also reads -- `ontology_name` and
 %   `label_id`, with `label` -- do not exist either. They came from the false
-%   provenance line in the V_delta conversion doc, which has since been corrected.
+%   provenance line in the V2 conversion doc, which has since been corrected.
 %
 %   WHY THIS CANNOT BE FIXED BY RENAMING THE EDGE. `document_id` points at the
 %   document being labelled, which is NOT a subject -- typically an image stack.
@@ -173,7 +173,7 @@ function bodies = ontology_label(preBody)
 %   THE GUARD. A body carrying `ontology_name`, `label_id` or `label` is REJECTED
 %   BY NAME: those are DID-side inventions, so their presence means a fixture or a
 %   caller has been built against our schema instead of the real document. (Note
-%   the default +migrators/ontology_label, on the V_delta path, still reads those
+%   the default +migrators/ontology_label, on the base-migrator path, still reads those
 %   names; this guard is on the V_eta path only.)
 %
 %   See V_eta_migrator_vocabulary_audit.md for the evidence.

@@ -1,5 +1,5 @@
 function tests = testQuery
-% testQuery - exercises did2.query against V_delta documents.
+% testQuery - exercises did2.query against V2 documents.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testQuery');
@@ -179,7 +179,7 @@ end
 
 function testArrayStarExistential(testCase)
 doc = makeDemoA(testCase, 'alice', 'a1');
-% Inject an ad-hoc array-of-structure field (not in V_delta schema, but
+% Inject an ad-hoc array-of-structure field (not in V2 schema, but
 % the evaluator is schema-agnostic over its dot-paths).
 axes = struct('name', {'x','y','z'}, 'unit', {'micrometer','micrometer','degrees'});
 doc = doc.set('demoA.axes', axes);

@@ -1,13 +1,13 @@
 function tests = testMigrators
-%TESTMIGRATORS Per-class did_v1 -> V_delta migrator tests.
+%TESTMIGRATORS Per-class did_v1 -> V2 migrator tests.
 %
 %   Exercises the four 2.0.0-bumped class migrators (PLAN.md §9.6
 %   sub-step 6c) against the worked examples in
-%   did-schema/schemas/V_delta/conversions/from_did_v1/<class>.md.
+%   did-schema's per-class conversion notes (deleted with did-schema #88).
 %
 %   Tests run with Validate=false on the end-to-end dispatcher case
 %   so they do not depend on the schema cache being able to resolve
-%   V_delta schemas at the test-runner working directory.
+%   V2 schemas at the test-runner working directory.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testMigrators');
@@ -69,7 +69,7 @@ end
 function testElementDirectLogicalCoercedToInteger(testCase)
 % The PRED corpus (and writes in the larger public corpora) emits
 % element.direct as a JSON boolean. After jsondecode that arrives
-% as MATLAB `logical`, which V_delta's validator rejects with
+% as MATLAB `logical`, which V2's validator rejects with
 % `Field "element.direct" must be integer.`. The element migrator
 % canonicalises it to a numeric integer.
 v1 = wrap('element', 'element', struct( ...
@@ -103,8 +103,8 @@ end
 % --- calc-base migrators (PLAN.md §9.6 sub-step 6d, 20211116 corpus) ---
 
 function testCalcCommonKeepsInputParametersOnSubclassBlock(testCase)
-% V_delta `calculator.input_parameters` declares `placement:
-% "concrete_class"` (DID-schema V_delta calculator.json), so the
+% V2 `calculator.input_parameters` declares `placement:
+% "concrete_class"` (DID-schema V2 calculator.json), so the
 % field lives on the concrete subclass's block on instance bodies,
 % not in a `calculator` block. v1 already stores it there, so no
 % structural move is required.
@@ -117,7 +117,7 @@ verifyFalse(testCase, isfield(out, 'calculator'));
 end
 
 function testCalcCommonCoercesEmptyArrayInputParametersToStruct(testCase)
-% v1 frequently ships `input_parameters: []`. V_delta `structure`
+% v1 frequently ships `input_parameters: []`. V2 `structure`
 % type requires a struct value, so the helper coerces in place on
 % the subclass block.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
@@ -191,7 +191,7 @@ end
 end
 
 function testUniversalRenamesAppBlockNameAndVersion(testCase)
-% v1 carries app.name / app.version; V_delta uses app.app_name /
+% v1 carries app.name / app.version; V2 uses app.app_name /
 % app.app_version. The rename is in universalRenames so it applies
 % to every doc that ships an app block, not just calc docs.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...

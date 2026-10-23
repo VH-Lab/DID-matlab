@@ -15,12 +15,16 @@ function [rank, known] = schemaVersionRank(version)
 %   forward is the whole point; running the same pipeline over a newer one is
 %   the opposite of what is wanted, and it happened silently.
 %
-%   That is not hypothetical. `ndi.database.internal.applyReadNormalization`
-%   calls `did2.convert.v1_to_v2` on EVERY document read, without passing a
-%   target, so it inherits this function's caller's default of 'V_delta'. A
+%   That was not hypothetical. Until 2026-10-23 NDI's read path called
+%   `did2.convert.v1_to_v2` on EVERY document read at a target below V_eta
+%   (that target is now removed, and NDI no longer converts on read). A
 %   V_eta document read back through NDI therefore compared unequal, missed
 %   the short-circuit, and was pushed through universalRenames and the
 %   per-class migrators aimed at a version it had already passed.
+%
+%   'V_delta' STAYS IN THE LIST BELOW (2026-10-23) although that target is
+%   removed: bodies stamped with it exist on disk and must rank below V_eta,
+%   so they convert forward instead of being refused as an unknown vintage.
 %
 %   THE LINE, AND WHAT IS AND IS NOT IN IT
 %   --------------------------------------

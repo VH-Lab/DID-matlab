@@ -1649,8 +1649,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
                             for m = 1 : numel(matchIdx)
                                 % Read via the depends_on shape helper:
-                                % accepts document_id (V_delta/V_zeta),
-                                % value (V_delta draft), and id (V_alpha),
+                                % accepts document_id (V2),
+                                % value (V2 draft), and id (V_alpha),
                                 % precedence document_id > value > id. A
                                 % direct .value read would return empty on
                                 % any doc constructed via V2's
@@ -1751,7 +1751,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         docSubFields = strjoin(unique(fieldnames(docValue)),',');
                         areSame = strcmpi(expectedSubFields,docSubFields);
                         if ~areSame
-                            % Compensate for V_alpha->V_delta property-block
+                            % Compensate for v1 -> V2 property-block
                             % field renames the V_alpha validator does not
                             % know about. Normalise both sides via the
                             % small alias map and re-compare. See #801.
@@ -1772,15 +1772,15 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             definition = expected(idx);
                             subfield = definition.name;
                             field_name = [field '.' subfield];
-                            % Tolerate V_alpha->V_delta property-block
+                            % Tolerate v1 -> V2 property-block
                             % renames the schema does not know about:
                             % if the schema's declared subfield isn't on
-                            % the body, look for the V_delta canonical
+                            % the body, look for the V2 canonical
                             % via the rename map. See #801.
                             if isfield(docValue, subfield)
                                 docSubValue = docValue.(subfield);
                             else
-                                aliased = did.document.i_aliasV_alphaToV_delta(field, subfield);
+                                aliased = did.document.i_aliasV1ToV2(field, subfield);
                                 if ~isempty(aliased) && isfield(docValue, aliased)
                                     docSubValue = docValue.(aliased);
                                 else

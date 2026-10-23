@@ -1,5 +1,5 @@
 function v2Body = stimulus_bath(preBody)
-%STIMULUS_BATH Migrate a did_v1 stimulus_bath body to V_delta.
+%STIMULUS_BATH Base migrator: did_v1 stimulus_bath body -> the class-preserving V2 shape.
 %
 %   v1 stimulus_bath stores an ontology-typed bath location plus an
 %   inline CSV `mixture_table` listing chemicals:
@@ -10,7 +10,7 @@ function v2Body = stimulus_bath(preBody)
 %                                       <unit_curie>,<unit_name>\n
 %                                       ..."
 %
-%   V_delta keeps `location` as an ontology_term composite (just
+%   V2 keeps `location` as an ontology_term composite (just
 %   renames `ontologyNode` -> `node`) and parses the mixture CSV
 %   into an array-of-records `mixture` field. Each chemical row
 %   becomes a record with the chemical identity as an ontology_term

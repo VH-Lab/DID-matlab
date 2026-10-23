@@ -22,7 +22,7 @@ function tests = testNgridCoordinates
 %   ---------------------------------------------------------------------
 %   `did2.convert.v1_to_v2` runs SUPERCLASS migrators before the concrete one,
 %   and that step was never bypassed by the migrators_j split. So under
-%   TargetVersion 'V_eta' the V_delta `ngrid` superclass migrator ran, and its
+%   TargetVersion 'V_eta' the base (+migrators) `ngrid` superclass migrator ran, and its
 %   job is to `rmfield(block,'coordinates')` and `rmfield(block,'data_size')`.
 %   Every ontologyImage document and every hartley_calc document (>=210 in the
 %   20211116 corpus) lost both fields before any J migrator saw the body.
@@ -49,7 +49,7 @@ function tests = testNgridCoordinates
 %       `git grep -c ndims -- src/ndi/ndi_common/*` -> nothing
 %
 %   `ndims` and `dim_sizes` therefore have NO did_v1 existence: they are the
-%   V_delta migrator's output. A test written against them would be a test
+%   base migrator's output. A test written against them would be a test
 %   written from the same premise as the code.
 %
 %   ---------------------------------------------------------------------
@@ -81,7 +81,7 @@ verifyEqual(testCase, out.ngrid.data_size, 8);
 verifyEqual(testCase, out.ngrid.data_type, 'double');
 verifyEqual(testCase, out.ngrid.data_dim, [4 4]);
 verifyEqual(testCase, out.ngrid.coordinates, [1;2;3;4;1;2;3;4]);
-% and it invents nothing -- the two V_delta names must not appear
+% and it invents nothing -- the two base-migrator names must not appear
 verifyFalse(testCase, isfield(out.ngrid, 'dim_sizes'));
 verifyFalse(testCase, isfield(out.ngrid, 'ndims'));
 end
@@ -93,24 +93,24 @@ out = did2.convert.migrators_j.super.ngrid(b);
 verifyFalse(testCase, isfield(out, 'ngrid'));
 end
 
-function testVEtaSuperNgridRejectsTheVDeltaOutputShape(testCase)
+function testVEtaSuperNgridRejectsTheBaseMigratorShape(testCase)
 % THE GUARD, and it is the same guard ontology_image needed: a block carrying
-% `dim_sizes`/`ndims` can only have come from the V_delta migrator or from a
+% `dim_sizes`/`ndims` can only have come from the base (+migrators) migrator or from a
 % fixture built against a DID-side schema. Both are the mistake this family has
 % already paid for twice, so it must be loud.
 b = v1NgridBody();
 b.ngrid = struct('dim_sizes', [4 4], 'ndims', 2, 'data_type', 'double');
 verifyError(testCase, @() did2.convert.migrators_j.super.ngrid(b), ...
-    'did2:convert:ngridVDeltaShape');
+    'did2:convert:ngridBaseMigratorShape');
 end
 
-% ===================== the V_delta path is UNCHANGED =======================
+% ===================== the base ngrid migrator is UNCHANGED ===============
 
-function testVDeltaSuperclassMigratorStillReshapesAndDrops(testCase)
-% The V_delta migrator is CORRECT for V_delta -- its schema declares ndims and
+function testBaseNgridMigratorStillReshapesAndDrops(testCase)
+% The base (+migrators) migrator is CORRECT for the class-preserving shape -- it declares ndims and
 % dim_sizes and has nowhere to put coordinates. This test exists so that a
 % future reader cannot mistake the V_eta override for a bug fix in the shared
-% migrator, and so that "carry it" cannot quietly leak into the V_delta path.
+% migrator, and so that "carry it" cannot quietly leak into the base migrator.
 out = did2.convert.migrators.ngrid(v1NgridBody());
 verifyEqual(testCase, out.ngrid.ndims, 2);
 verifyEqual(testCase, out.ngrid.dim_sizes, [4 4]);

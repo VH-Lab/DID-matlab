@@ -1348,7 +1348,7 @@ end
 % term_observation.
 %
 % This fixture previously used `ontology_image.region`, which is not a v1 field
-% at all -- it is what the V_delta migrator PRODUCES. The migrator was written
+% at all -- it is what the base (+migrators) migrator PRODUCES. The migrator was written
 % to match that invented shape and so silently emitted an empty observation on
 % every real document. The guard now rejects `region` by name, and this fixture
 % carries the real field names.
