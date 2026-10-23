@@ -7,7 +7,12 @@ function tests = testFromV1Database
 %   covers the quarantine sidecar and the Overwrite policy.
 %
 %   All tests run with Validate=false so the test runner does not need
-%   a checked-out did-schema directory next to it. The mksqlite gate
+%   a checked-out did-schema directory next to it. The fixture classes
+%   (demo_alpha, demo_beta, demo_gamma) have no migrator, so they pass
+%   through the V_eta pipeline 1 -> 1: these tests are about the database
+%   round trip, not about any class's migration. (Until 2026-10-23 they used
+%   treatment / ontology_image / probe_location, which passed through only
+%   under the removed V_delta target; under V_eta those route to +migrators_j.) The mksqlite gate
 %   lives in setupOnce; if mksqlite is missing the whole file is
 %   skipped, matching testSqliteDb.m.
 %
@@ -40,9 +45,9 @@ end
 % ---- sqlite -> v2 ----
 
 function testFromSqliteRoundTripsAllDocs(testCase)
-b1 = jsonencode(makeV1Body('treatment', 'alpha'));
-b2 = jsonencode(makeV1Body('ontology_image', 'beta'));
-b3 = jsonencode(makeV1Body('probe_location', 'gamma'));
+b1 = jsonencode(makeV1Body('demo_alpha', 'alpha'));
+b2 = jsonencode(makeV1Body('demo_beta', 'beta'));
+b3 = jsonencode(makeV1Body('demo_gamma', 'gamma'));
 buildV1Sqlite(testCase.TestData.srcSqlite, {b1, b2, b3});
 
 result = did2.convert.fromV1Database( ...
@@ -64,8 +69,8 @@ end
 % ---- dumbjsondb -> v2 ----
 
 function testFromDumbJsonRoundTripsAllDocs(testCase)
-b1 = jsonencode(makeV1Body('treatment', 'alpha'));
-b2 = jsonencode(makeV1Body('ontology_image', 'beta'));
+b1 = jsonencode(makeV1Body('demo_alpha', 'alpha'));
+b2 = jsonencode(makeV1Body('demo_beta', 'beta'));
 writeDumbJsonDoc(testCase.TestData.tmpDir, 'id_alpha', 0, b1);
 writeDumbJsonDoc(testCase.TestData.tmpDir, 'id_beta',  0, b2);
 
@@ -86,7 +91,7 @@ end
 % ---- quarantine ----
 
 function testQuarantineFileWrittenForMalformedDoc(testCase)
-goodBody = jsonencode(makeV1Body('treatment', 'alpha'));
+goodBody = jsonencode(makeV1Body('demo_alpha', 'alpha'));
 malformed = 'not json {';
 buildV1Sqlite(testCase.TestData.srcSqlite, {goodBody, malformed});
 
@@ -112,7 +117,7 @@ end
 % ---- overwrite policy ----
 
 function testOverwriteFalseRefusesExistingDst(testCase)
-goodBody = jsonencode(makeV1Body('treatment', 'alpha'));
+goodBody = jsonencode(makeV1Body('demo_alpha', 'alpha'));
 buildV1Sqlite(testCase.TestData.srcSqlite, {goodBody});
 
 % Touch the destination so it exists before the call.
@@ -126,7 +131,7 @@ verifyError(testCase, @() did2.convert.fromV1Database( ...
 end
 
 function testOverwriteTrueReplacesExistingDst(testCase)
-goodBody = jsonencode(makeV1Body('treatment', 'alpha'));
+goodBody = jsonencode(makeV1Body('demo_alpha', 'alpha'));
 buildV1Sqlite(testCase.TestData.srcSqlite, {goodBody});
 
 fid = fopen(testCase.TestData.dstPath, 'w');

@@ -3,10 +3,10 @@ function tests = testV1ToV2Audits
 %
 %   The report-only census instruments (silentLoss, fileList,
 %   timeReferenceFamilies) run by default, so migration runs and their
-%   census are unchanged. 'Audits', false skips them for read paths that
-%   discard them (NDI's applyReadNormalization), where they cost more than
-%   the conversion. Skipping must not change the documents, and must not
-%   look like an empty -- clean -- census.
+%   census are unchanged. 'Audits', false skips them for callers that
+%   discard them, where they cost more than the conversion. Skipping must
+%   not change the documents, and must not look like an empty -- clean --
+%   census.
 
 tests = functiontests(localfunctions);
 end
@@ -53,30 +53,18 @@ end
 verifyEqual(testCase, numel(b.quarantine), numel(a.quarantine));
 end
 
-function testTheReadShortcutEqualsTheFullPass(testCase)
-% A read path may skip v1_to_v2 for a body already at its target and apply
-% did2.convert.ensureClassBlocks alone (NDI's applyReadNormalization). That
-% is sound only if the two give the same document -- including when the
-% body is missing a block or carries a stale superclass list.
-bodies = {makeBody(), makeBodyOf('demoB')};
-b = makeBodyOf('demoB');  b = rmfield(b, 'demoA');           bodies{end+1} = b;
-b = makeBody();  b.document_class.superclasses = b.document_class.superclasses([]);
-bodies{end+1} = b;
-for k = 1:numel(bodies)
-    verifyTrue(testCase, did2.convert.isAlreadyTarget(bodies{k}, 'V_delta'), ...
-        sprintf('body %d is at the target, so the shortcut applies', k));
-    full = did2.convert.v1_to_v2(bodies(k), 'Validate', false, ...
-        'RenameClassNames', false, 'TargetVersion', 'V_delta', 'Audits', false);
-    verifyNumElements(testCase, full.migrated, 1);
-    verifyEqual(testCase, did2.convert.ensureClassBlocks(bodies{k}, []), ...
-        full.migrated{1}.toStruct(), sprintf('body %d', k));
-end
 end
 
 function testAV1BodyIsNotAtTheTarget(testCase)
 b = makeBody();
 b.document_class = rmfield(b.document_class, 'schema_version');
-verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'V_delta'));
+verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'V_eta'));
+end
+
+function testABlankDocumentIsAtTheTarget(testCase)
+% did2.document.blank stamps 'V_eta' (it stamped the removed 'V_delta' until
+% 2026-10-23), so a freshly built document is already at the target.
+verifyTrue(testCase, did2.convert.isAlreadyTarget(makeBody(), 'V_eta'));
 end
 
 function body = makeBodyOf(className)

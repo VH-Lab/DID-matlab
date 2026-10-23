@@ -473,7 +473,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   Options (name-value), mirroring the sibling passes:
 %     Validate       (1,1 logical, default true)  validate emitted bodies
 %     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
-%     TargetVersion  (1,:) char, default 'V_eta'  no-op on other targets
+%     TargetVersion  (1,:) char, default 'V_eta'  the only target accepted
 %     Decompose      (1,1 logical, default FALSE) arm the 1->N emission path.
 %                    DORMANT BY TEAM DECISION 2026-08-12 -- see the top of this
 %                    file. The default is FALSE and no production caller passes
@@ -491,7 +491,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
     options.Decompose (1,1) logical = false
 end
 
@@ -543,9 +543,6 @@ report = struct( ...
     'ran',                            false);
 result.valid_interval_decompose = report;
 
-if ~strcmp(options.TargetVersion, 'V_eta')
-    return;     % `logical_observation` exists only in V_eta.
-end
 if ~isfield(result, 'migrated') || isempty(result.migrated)
     report.ran = true;
     result.valid_interval_decompose = report;

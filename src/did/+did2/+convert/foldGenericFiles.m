@@ -254,8 +254,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   and it is not this fold's to answer alone.
 %
 %   Idempotent: a second run finds no `generic_file` and folds nothing.
-%   Off-target (TargetVersion ~= 'V_eta') it returns its input untouched with
-%   `ran` false -- `opaque_body` and the statement tier exist only in V_eta.
+%   TargetVersion accepts only 'V_eta' (any other target is an argument error).
 %
 %   ---------------------------------------------------------------------
 %   THE STORE RECORDS -- fileReference -> an UNHELD opaque_body
@@ -394,7 +393,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
@@ -461,9 +460,6 @@ report = struct( ...
     'ran',                           false);
 result.generic_file_fold = report;
 
-if ~strcmp(options.TargetVersion, 'V_eta')
-    return;     % opaque_body + the statement tier exist only in V_eta.
-end
 if ~isfield(result, 'migrated') || isempty(result.migrated)
     report.ran = true;
     result.generic_file_fold = report;

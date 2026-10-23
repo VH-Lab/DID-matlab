@@ -113,13 +113,13 @@ verifyEqual(testCase, doc.document_class.superclasses(2).class_name, 'base');
 end
 
 function testBuildBlankDocumentStampsSchemaVersion(testCase)
-% Every blank V_delta document carries the schema-set tag on
+% Every blank document carries the schema-set tag 'V_eta' on
 % document_class (sibling of class_name/class_version/superclasses).
-% Lets the v1->V_delta dispatcher's short-circuit recognise a freshly
-% built blank as already-V_delta on a subsequent migration pass.
+% Lets the v1->V_eta dispatcher's short-circuit recognise a freshly
+% built blank as already at the target on a subsequent migration pass.
 doc = testCase.TestData.cache.buildBlankDocument('demoA');
 verifyTrue(testCase, isfield(doc.document_class, 'schema_version'));
-verifyEqual(testCase, doc.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, doc.document_class.schema_version, 'V_eta');
 verifyFalse(testCase, isfield(doc.base, 'schema_version'));
 end
 

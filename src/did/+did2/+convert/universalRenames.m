@@ -53,8 +53,10 @@ function [postBody, report] = universalRenames(preBody, options)
 %       than `base`. If a v1 body has `ndi_document` but no `base`,
 %       rename `ndi_document` -> `base`. If both are present, discard
 %       `ndi_document` (base wins; ndi_document is stale).
-%     - default document_class.schema_version to 'V_delta' when absent
-%       so every migrated body self-identifies as V_delta-shaped. The
+%     - default document_class.schema_version to 'V_eta' (the only
+%       migration target) when absent, so every migrated body
+%       self-identifies. did2.convert.v1_to_v2 stamps the target again on
+%       every emitted body, after the migrators. The
 %       tag lives alongside class_name/class_version/superclasses on
 %       document_class (it identifies the schema set, not a payload
 %       field on any class) — never under `base`.
@@ -287,10 +289,10 @@ if isfield(postBody, 'app') && isstruct(postBody.app) ...
     postBody.app = renameAppBlockFields(postBody.app);
 end
 
-% Migrate a stale base.schema_version (left over from an earlier
-% V_delta-draft migrator that stamped the tag on the base block) to
-% document_class.schema_version, then default to 'V_delta' if absent.
-% base.schema_version is not a declared V_delta field; leaving it on
+% Migrate a stale base.schema_version (left over from an earlier draft
+% migrator that stamped the tag on the base block) to
+% document_class.schema_version, then default to 'V_eta' if absent.
+% base.schema_version is not a declared `base` field; leaving it on
 % base would trip the strict-fields validator on the next write.
 if isfield(postBody, 'base') && isstruct(postBody.base) ...
         && isscalar(postBody.base) ...
@@ -301,7 +303,7 @@ if isfield(postBody, 'base') && isstruct(postBody.base) ...
     postBody.base = rmfield(postBody.base, 'schema_version');
 end
 if ~isfield(postBody.document_class, 'schema_version')
-    postBody.document_class.schema_version = 'V_delta';
+    postBody.document_class.schema_version = 'V_eta';
 end
 end
 

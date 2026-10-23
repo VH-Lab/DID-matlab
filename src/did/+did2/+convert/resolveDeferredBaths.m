@@ -66,10 +66,8 @@ function [result, report] = resolveDeferredBaths(result, options)
 %                   re-validation of the assembled bodies.
 %     SchemaCache   ([] or a did2.schema.cache handle, default []) - forwarded.
 %     TargetVersion (1,:) char, default 'V_eta') - the migration target the
-%                   assembled bodies are tagged with. Only 'V_eta' assembles;
-%                   any other target counts each deferred bath under
-%                   refused_bath_assembly_failed (none can occur: only
-%                   +migrators_j defers a bath).
+%                   assembled bodies are tagged with. Only 'V_eta' is
+%                   accepted (any other target is an argument error).
 %
 %   ---------------------------------------------------------------------
 %   THE REPORT, AND THE BARE `catch` IT REPLACES
@@ -126,7 +124,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a

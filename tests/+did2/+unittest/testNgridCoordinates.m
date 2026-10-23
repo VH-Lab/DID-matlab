@@ -118,14 +118,6 @@ verifyFalse(testCase, isfield(out.ngrid, 'coordinates'));
 verifyFalse(testCase, isfield(out.ngrid, 'data_size'));
 end
 
-function testDispatcherUnderVDeltaStillUsesTheVDeltaMigrator(testCase)
-% The override is selected by TargetVersion, so the default target must be
-% completely untouched. `ndims` present == the V_delta migrator ran.
-out = did2.convert.v1_to_v2(ontologyImageVintageB(), 'Validate', false);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('ngrid.ndims'), 2);
-end
-
 % ===================== end to end, through the dispatcher ==================
 
 function testCoordinatesSurviveTheFullVEtaPipeline(testCase)
