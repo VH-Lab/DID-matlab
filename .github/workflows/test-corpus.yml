@@ -90,13 +90,13 @@ on:
         type: string
       did_schema_ref:
         description: >-
-          did-schema ref to validate against. Default: the did-schema #88
-          branch the migrators are ported to (Jess Haley, 2026-10-21). The
-          default does not depend on the branch the run is dispatched from, so
-          it is the same for #218 (claude/ecstatic-pascal-md91fw), port-88 and
-          the nightly schedule; each corpus job prints the ref and sha it used.
+          did-schema ref to validate against. Default: did-schema `main`,
+          where #88 (the shape the migrators are ported to) merged on
+          2026-10-23. The default does not depend on the branch the run is
+          dispatched from, so it is the same for every branch and the nightly
+          schedule; each corpus job prints the ref and sha it used.
         required: false
-        default: 'claude/ecstatic-pascal-md91fw'
+        default: 'main'
         type: string
       sample:
         # THE FAST LOOP (Jess Haley, 2026-10-21: "we can't be spending hours on
@@ -208,7 +208,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
+          ref: ${{ inputs.did_schema_ref || 'main' }}
           path: did-schema
 
       - name: Print the did-schema ref and sha actually checked out
@@ -217,7 +217,7 @@ jobs:
         # exist; this step makes the ref AND the sha readable in every log and
         # fails if HEAD is not the tip of what was asked for.
         env:
-          WANT: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
+          WANT: ${{ inputs.did_schema_ref || 'main' }}
         run: |
           set -euo pipefail
           got=$(git -C did-schema rev-parse HEAD)
@@ -448,10 +448,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
+          ref: ${{ inputs.did_schema_ref || 'main' }}
           path: did-schema
 
-      - name: Resolve the NDI-matlab ref (same name, claude/v2-object-layer, V2, main)
+      - name: Resolve the NDI-matlab ref (same name, V2, main)
         id: ndi-ref
         # Same fallback, in the same order, as test-code.yml's steps of the same
         # name ([NDI ref fallback]), and the reason is the same: most
@@ -462,12 +462,11 @@ jobs:
           want="${{ github.head_ref || github.ref_name }}"
           # Jess Haley, 2026-10-22 [NDI ref fallback] (did-schema
           # V_eta_go_forward_class_audit.md), extended to this workflow by her
-          # 2026-10-22 answer: the same-name branch, then
-          # claude/v2-object-layer (NDI #1021's head, until #1021 merges),
-          # then V2, then main. The integration branch is removed from this
-          # list in the first commit after the merge.
+          # 2026-10-22 answer: the same-name branch,
+          # then V2, then main. The integration branch claude/v2-object-layer
+          # (NDI #1021's head) left this list when #1021 merged (2026-10-23).
           chosen=""
-          for ref in "$want" claude/v2-object-layer V2 main; do
+          for ref in "$want" V2 main; do
             if git ls-remote --exit-code --heads \
                  https://github.com/VH-Lab/NDI-matlab.git "$ref" >/dev/null 2>&1; then
               chosen="$ref"
@@ -476,7 +475,7 @@ jobs:
             echo "NDI-matlab has NO branch '$ref'."
           done
           if [ -z "$chosen" ]; then
-            echo "NDI-matlab: none of '$want', claude/v2-object-layer, V2, main answered -- using main."
+            echo "NDI-matlab: none of '$want', V2, main answered -- using main."
             chosen=main
           fi
           if [ "$chosen" = "$want" ]; then
@@ -649,6 +648,6 @@ jobs:
         # class list is the sample's, which covers every class of the corpus.
         if: always()
         run: |
-          echo "did-schema for bar2_gap: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }} @ $(git -C did-schema rev-parse HEAD)"
+          echo "did-schema for bar2_gap: ${{ inputs.did_schema_ref || 'main' }} @ $(git -C did-schema rev-parse HEAD)"
           python3 did-schema/tools/bar2_gap.py \
               corpus-reports tests/corpus-reports || true
