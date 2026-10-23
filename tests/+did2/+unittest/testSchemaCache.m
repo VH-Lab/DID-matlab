@@ -1,6 +1,6 @@
 function tests = testSchemaCache
 % testSchemaCache - exercises did2.schema.cache against the in-repo
-%   V_delta fixtures at tests/+did2/fixtures/V_delta/. Also covers
+%   V_delta fixtures at tests/+did2/fixtures/schema_minimal/. Also covers
 %   did2.document.blank() and did2.document.validate() end-to-end.
 %
 %   Run with:
@@ -16,11 +16,11 @@ tests = functiontests(localfunctions);
 end
 
 function setupOnce(testCase)
-% Fixtures live at tests/+did2/fixtures/V_delta/. This file is at
+% Fixtures live at tests/+did2/fixtures/schema_minimal/. This file is at
 % tests/+did2/+unittest/testSchemaCache.m, so the fixture directory is
 % two `fileparts` levels above mfilename's directory.
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');
 did2.schema.cache.setSchemaPath(fixtureDir);
 testCase.TestData.fixtureDir = fixtureDir;
 testCase.TestData.cache = did2.schema.cache.shared();

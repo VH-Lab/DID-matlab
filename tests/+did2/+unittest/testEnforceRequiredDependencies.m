@@ -73,7 +73,7 @@ function setupOnce(testCase)
 % The hermetic V_delta fixtures already contain exactly the class this needs:
 % demoC declares item1 (mustBeNonEmpty true), item2 (true) and item3 (false).
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');
 did2.schema.cache.setSchemaPath(fixtureDir);
 testCase.TestData.fixtureDir = fixtureDir;
 testCase.TestData.cache = did2.schema.cache.shared();

@@ -41,7 +41,7 @@ end
 
 function setupOnce(testCase)
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');
 schemaDir = tempname();
 mkdir(schemaDir);
 copyfile(fullfile(fixtureDir, '*.json'), schemaDir);

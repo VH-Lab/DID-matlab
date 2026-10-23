@@ -26,7 +26,7 @@ if isempty(which('mksqlite'))
         'mksqlite is not on the MATLAB path; skipping the v2 SQLite tests.');
 end
 thisDir = fileparts(mfilename('fullpath'));
-did2.schema.cache.setSchemaPath(fullfile(fileparts(thisDir), 'fixtures', 'V_delta'));
+did2.schema.cache.setSchemaPath(fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal'));
 end
 
 function teardownOnce(testCase)

@@ -64,7 +64,7 @@ end
 
 function setupOnce(testCase)
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');
 testCase.TestData.fixtureDir = fixtureDir;
 % A throwaway schema dir: the hermetic V_delta fixtures carry no required
 % composite field, and adding one to them would change the queryable-path

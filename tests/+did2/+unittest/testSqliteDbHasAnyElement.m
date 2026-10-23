@@ -29,7 +29,7 @@ if isempty(which('mksqlite'))
         'mksqlite is not on the MATLAB path; skipping the v2 SQLite tests.');
 end
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');
 did2.schema.cache.setSchemaPath(fixtureDir);
 end
 

@@ -662,7 +662,7 @@ function testLegacyDeclaredBaseFieldListMatchesTheSchema(testCase)
 % fails here rather than silently inflating `moved_undeclared_field_instances`
 % on every future run.
 thisDir = fileparts(mfilename('fullpath'));
-schemaFile = fullfile(fileparts(thisDir), 'fixtures', 'V_delta', 'base.json');
+schemaFile = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal', 'base.json');
 verifyTrue(testCase, isfile(schemaFile), ...
     sprintf('base schema fixture not found at %s', schemaFile));
 schema = jsondecode(fileread(schemaFile));

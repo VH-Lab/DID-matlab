@@ -9,7 +9,7 @@ end
 
 function setupOnce(testCase)
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');
 testCase.TestData.fixtureDir = fixtureDir;
 files = dir(fullfile(fixtureDir, '*.json'));
 names = erase({files.name}, '.json');
