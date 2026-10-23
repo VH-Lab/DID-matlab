@@ -915,7 +915,8 @@ for i = 1:numel(acqEpochIdx)
         edges = struct();
         if strcmp(st.valueKind, 'position')
             % the pixel grid this track is in (trackDocuments' coordinate
-            % system, uncalibrated: v1 records pixels and no scale), one per
+            % system, uncalibrated here: the v1 element records pixels, and
+            % the scale is on the video imageStack, not on the element), one per
             % epoch, ON the epoch it was recorded in
             if isKey(csByEpoch, epochDocId)
                 csId = csByEpoch(epochDocId);
@@ -2180,7 +2181,12 @@ function kind = derivedSeriesKind(elementType)
 %               boundary" (condition Location = bacterial patch; method
 %               distance transform), and calculation + item, EMPTY:0000297
 %               "nearest bacterial patch" (item_id the patches); input: the
-%               position calculation
+%               position calculation. The .vhsb is carried whole here; NDI's
+%               second pass (ndi.migrate.internal.epochSeriesBodies) splits
+%               it where the bytes are, column 1 into the length's own body
+%               in METRES by the epoch video's scale (Decided by Jess Haley,
+%               2026-10-23 [JH signed distance in metres],
+%               V_eta_epoch_plan.md)
 %   The JH rows: Decided by Jess Haley, 2026-10-22 [JH position and distance],
 %   "the shapes the Haley V2 import already writes (trackDocuments.m)"; the
 %   terms, methods and parameters are trackDocuments' own.
@@ -2297,8 +2303,9 @@ end
 function cs = mkPixelCoordinateSystem(epochDocId, sid, datestamp)
 % trackDocuments' pixel grid (ndi.setup.conv.haley.geometryDocuments):
 % reference point the image upper-left corner, x toward image right, y toward
-% image down -- with NO spacing, because v1 records pixels and no scale
-% (`spacing` absent = uncalibrated, coordinate_system.json); ON the epoch.
+% image down -- with NO spacing: the v1 element records pixels, and its
+% scale is on the video imageStack, which this pass does not join (`spacing`
+% absent = uncalibrated, coordinate_system.json); ON the epoch.
 ax = @(a, an, d, dn) struct('axis', term(a, an), 'positive_direction', term(d, dn));
 cs = did2.build.document('coordinate_system', struct( ...
     'reference_point', term('EMPTY:0000310', 'image upper-left corner'), ...
