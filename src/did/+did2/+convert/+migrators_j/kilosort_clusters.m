@@ -1,6 +1,7 @@
 function bodies = kilosort_clusters(preBody)
 %KILOSORT_CLUSTERS Brainstorm-J migrator: did_v1 kilosort_clusters -> the D-C
-%   analysis-tier shape (count_observation + opaque_body + session anchor).
+%   analysis-tier shape (a `calculation` with value kind `label` + opaque_body +
+%   session anchor, + software and run documents).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   kilosort_clusters is a Kilosort spike-sorting RUN: an external, session-relative

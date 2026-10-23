@@ -1,5 +1,6 @@
 function v2Body = openminds_subject(preBody)
-%OPENMINDS_SUBJECT Brainstorm-J migrator: did_v1 openminds_subject -> term_assertion.
+%OPENMINDS_SUBJECT Brainstorm-J migrator: did_v1 openminds_subject -> an `assertion`
+%   with value kind `term`.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Brainstorm J does NOT store the bundled openMINDS document (J:92): it is

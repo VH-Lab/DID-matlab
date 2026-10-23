@@ -1,6 +1,7 @@
 function bodies = fitcurve(preBody)
-%FITCURVE Brainstorm-J migrator: did_v1 fitcurve -> a fit-residual
-%   score_observation (+ the shared session anchor).
+%FITCURVE Brainstorm-J migrator: did_v1 fitcurve -> a `calculation` with
+%   value kind `model_fit` (private/jModelFit) + the shared session anchor
+%   (+ software and run documents).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   fitcurve is a generic curve fit, tied to a subject via element_id. #9

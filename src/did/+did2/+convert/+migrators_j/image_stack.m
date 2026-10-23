@@ -1,6 +1,8 @@
 function bodies = image_stack(preBody)
 %IMAGE_STACK Brainstorm-J migrator: did_v1 image_stack -> a body-backed
-%   image_observation + a sampled_body (+ the shared session anchor).
+%   `observation` with value kind `intensity` (a mask: a `calculation` with
+%   value kind `logical` or `label`) + a sampled_body (+ the shared session
+%   anchor).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   image_stack / image_stack_parameters are a pre-Brainstorm-I standalone image

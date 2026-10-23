@@ -1,6 +1,7 @@
 function v2Body = treatment_transfer(preBody)
 %TREATMENT_TRANSFER Brainstorm-J migrator: did_v1 treatment_transfer ->
-%   term_manipulation + a provenance directed_relation.
+%   a `manipulation` with value kind `term` + a provenance directed_relation
+%   (+ the session anchor).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Per V_eta_SPEC.md (D4): there is no biological_transfer class in strict J

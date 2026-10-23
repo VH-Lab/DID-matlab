@@ -1,7 +1,8 @@
 function bodies = electrode_offset_voltage(preBody)
 %ELECTRODE_OFFSET_VOLTAGE Brainstorm-J migrator: did_v1 electrode_offset_voltage
-%   -> a voltage_observation of the probe-subject, qualified by the temperature
-%   it was measured at, + the session anchor. 1 -> 2.
+%   -> an `observation` with value kind `voltage` about the probe's entity,
+%   qualified by the temperature it was measured at (a condition), + the
+%   session anchor. 1 -> 2.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'. The
 %   probe IS a `subject` (device-as-subject, D2), carried from the source

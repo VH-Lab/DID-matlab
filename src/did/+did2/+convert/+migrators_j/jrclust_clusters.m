@@ -1,6 +1,7 @@
 function bodies = jrclust_clusters(preBody)
 %JRCLUST_CLUSTERS Brainstorm-J migrator: did_v1 jrclust_clusters -> a body-backed
-%   count_observation (the per-spike cluster assignments) + the session anchor.
+%   `calculation` with value kind `label` (the per-spike cluster assignments) +
+%   an opaque_body + the session anchor (+ software and run documents).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   jrclust_clusters is a JRCLUST spike-sorting RESULT on an extracellular

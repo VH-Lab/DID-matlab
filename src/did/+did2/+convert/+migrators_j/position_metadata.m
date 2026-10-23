@@ -1,7 +1,7 @@
 function bodies = position_metadata(preBody)
 %POSITION_METADATA Brainstorm-J migrator: did_v1 position_metadata ->
-%   term_observation (WHAT kind of position was recorded) about the
-%   element-subject + a session anchor. 1 -> 2.
+%   an `observation` with value kind `term` (WHAT kind of position was
+%   recorded) about the element's entity + a session anchor. 1 -> 2.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %

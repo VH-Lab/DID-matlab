@@ -656,9 +656,9 @@
 %         Brainstorm-J migrator: reshape a did_v1 distance_metadata into the validated
 %         V_eta distance_metadata. 1 -> 1.
 %     electrode_offset_voltage
-%         Brainstorm-J migrator: did_v1 electrode_offset_voltage -> a
-%         voltage_observation of the probe-subject, qualified by the temperature it
-%         was measured at, + the session anchor. 1 -> 2.
+%         Brainstorm-J migrator: did_v1 electrode_offset_voltage -> an `observation`
+%         with value kind `voltage` about the probe's entity, qualified by the
+%         temperature it was measured at (a condition), + the session anchor. 1 -> 2.
 %     element
 %         Brainstorm-J migrator: did_v1 element -> subject (+ kind assertions + the
 %         raw-recording observation + a lineage relation). Strict J retires the
@@ -690,8 +690,9 @@
 %         Brainstorm-J migrator: did_v1 filenavigator -> epoch_file_pattern (+ the
 %         `software` entity for the implementation class). 1 -> 1 or 1 -> 2.
 %     fitcurve
-%         Brainstorm-J migrator: did_v1 fitcurve -> a fit-residual score_observation
-%         (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 fitcurve -> a `calculation` with value kind
+%         `model_fit` (private/jModelFit) + the shared session anchor (+ software and
+%         run documents).
 %     gene_expression
 %         Brainstorm-J migrator: did_v1 geneExpression -> V_eta gene_expression, an
 %         id-preserving 1:1 passthrough. ⊂ base in V_eta; a SHAPE MIXIN, not itself an
@@ -720,25 +721,31 @@
 %         attempt to normalise or infer either. base.id is preserved.
 %     hartley_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.hartley reverse-correlation OUTPUT
-%         document -> the subject_calculation LEAF `receptive_field_calculation` + the
+%         document -> the named calculator class `receptive_field_calculation` + the
 %         `receptive_field` result composite, id- and depends_on-PRESERVED, plus the
 %         response volume in TWO `sampled_body` documents (one per plane) and the
 %         windowed spike train as a THIRD, input-side body.
 %     image
-%         Brainstorm-J migrator: did_v1 `image` -> a body-backed image_observation + a
-%         sampled_body (+ the shared session anchor). 1 -> 3.
+%         Brainstorm-J migrator: did_v1 `image` -> through image_stack: a body-backed
+%         `observation` with value kind `intensity` (a mask: a `calculation` with
+%         value kind `logical` or `label`) + a sampled_body (+ the shared session
+%         anchor). 1 -> 3.
 %     image_stack
-%         Brainstorm-J migrator: did_v1 image_stack -> a body-backed image_observation
-%         + a sampled_body (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 image_stack -> a body-backed `observation`
+%         with value kind `intensity` (a mask: a `calculation` with value kind
+%         `logical` or `label`) + a sampled_body (+ the shared session anchor).
 %     jrclust_clusters
 %         Brainstorm-J migrator: did_v1 jrclust_clusters -> a body-backed
-%         count_observation (the per-spike cluster assignments) + the session anchor.
+%         `calculation` with value kind `label` (the per-spike cluster assignments) +
+%         an opaque_body + the session anchor (+ software and run documents).
 %     kiasort_clusters
 %         Brainstorm-J migrator: did_v1 kiasort_clusters -> the D-C analysis-tier
-%         shape (count_observation + opaque_body + session anchor).
+%         shape (a `calculation` with value kind `label` + opaque_body + session
+%         anchor, + software and run documents).
 %     kilosort_clusters
 %         Brainstorm-J migrator: did_v1 kilosort_clusters -> the D-C analysis-tier
-%         shape (count_observation + opaque_body + session anchor).
+%         shape (a `calculation` with value kind `label` + opaque_body + session
+%         anchor, + software and run documents).
 %     lightsheet_zarr_level
 %         Brainstorm-J migrator: did_v1 lightsheetZarrLevel -> a `sampled_body` of the
 %         pyramid's observation when the level HOLDS bytes, or NOTHING (an empty cell)
@@ -750,9 +757,10 @@
 %         `source_file_id` join a batch pass follows to make the source's
 %         fileReference (OME-Zarr store or TIFF folder) the observation's unheld body.
 %     measurement
-%         Brainstorm-J migrator: did_v1 measurement -> a typed subject_observation
-%         leaf (+ the shared session anchor), for the rows that can be typed honestly;
-%         everything else is carried through for the second pass.
+%         Brainstorm-J migrator: did_v1 measurement -> a typed `observation` (value
+%         kind: the measured quantity, or `term`) (+ the shared session anchor), for
+%         the rows that can be typed honestly; everything else is carried through for
+%         the second pass.
 %     metadata_editor
 %         Brainstorm-J migrator: did_v1 metadata_editor -> a structured `dataset`
 %         entity + the person / organization / funding / publication / web_resource
@@ -771,13 +779,14 @@
 %         Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE. The
 %         current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the
 %         `ngrid` raster) is a GUARDED PASSTHROUGH deferred to the NDI second pass: a
-%         table row is not a subject, so pass 1 cannot fill
-%         `subject_statement.subject_id` without minting the husk the image_stack
-%         guard exists to stop. The legacy `ontology_name` + `ontology_region` shape
-%         (which the correction below shows has never existed in NDI) would migrate 1
-%         -> 2 to a term_observation about the element-subject + a session anchor. Any
-%         third shape ERRORS rather than emitting. The raster and the provenance edge
-%         are deferred with the passthrough (#47).
+%         table row is not a subject, so pass 1 cannot fill a statement's `entity_id`
+%         edge without minting the husk the image_stack guard exists to stop. The
+%         legacy `ontology_name` + `ontology_region` shape (which the correction below
+%         shows has never existed in NDI) would migrate 1 -> 2 to an `observation`
+%         with value kind `term` about the element's entity + a session anchor (with
+%         an `ngrid` raster, 1 -> 3: an `observation` with value kind `intensity` + a
+%         sampled_body + the anchor). Any third shape ERRORS rather than emitting. The
+%         raster and the provenance edge are deferred with the passthrough (#47).
 %     ontology_label
 %         Brainstorm-J migrator: did_v1 ontology_label -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
@@ -787,12 +796,14 @@
 %     openminds
 %         Brainstorm-J migrator: did_v1 `openminds` -- a GUARDED PASSTHROUGH.
 %     openminds_element
-%         Brainstorm-J migrator: did_v1 openminds_element -> term_assertion.
+%         Brainstorm-J migrator: did_v1 openminds_element -> an `assertion` with value
+%         kind `term`.
 %     openminds_stimulus
 %         Brainstorm-J migrator: did_v1 openminds_stimulus -- DEFERRED to the NDI
 %         second pass; the document is passed through UNCHANGED.
 %     openminds_subject
-%         Brainstorm-J migrator: did_v1 openminds_subject -> term_assertion.
+%         Brainstorm-J migrator: did_v1 openminds_subject -> an `assertion` with value
+%         kind `term`.
 %     oridirtuning_calc
 %         Brainstorm-J migrator -> orientation_direction_tuning_calculation
 %         (did-schema #88). Brainstorm-J migrator: the ndi.calc.vis.oridir calculator
@@ -806,18 +817,20 @@
 %         (⊂ [tuning_curve_calculation, orientation_direction_tuning]) + a session
 %         anchor + minted `software` and `runtime_environment` entities.
 %     position_metadata
-%         Brainstorm-J migrator: did_v1 position_metadata -> term_observation (WHAT
-%         kind of position was recorded) about the element-subject + a session anchor.
-%         1 -> 2.
+%         Brainstorm-J migrator: did_v1 position_metadata -> an `observation` with
+%         value kind `term` (WHAT kind of position was recorded) about the element's
+%         entity + a session anchor. 1 -> 2.
 %     probe_geometry
-%         Brainstorm-J migrator: did_v1 probe_geometry -> one length_observation PER
-%         SPATIAL AXIS about the probe-subject, plus the session anchor, plus an
-%         optional probe-model term_assertion.
+%         Brainstorm-J migrator: did_v1 probe_geometry -> one `observation` with value
+%         kind `length` PER SPATIAL AXIS about the probe's entity, plus the session
+%         anchor, plus an optional probe-model `assertion` with value kind `term`.
 %     probe_location
-%         Brainstorm-J migrator: did_v1 probe_location -> term_observation.
+%         Brainstorm-J migrator: did_v1 probe_location -> an `observation` with value
+%         kind `term`, + the session anchor.
 %     pyraview
-%         Brainstorm-J migrator: did_v1 pyraview -> a body-backed voltage_observation
-%         + a sampled_body (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 pyraview -> a body-backed `observation` with
+%         value kind `voltage` + one sampled_body per level file (+ the shared session
+%         anchor, + a frequency filter document when the source names one).
 %     session
 %         Brainstorm-J migrator: `reference` -> `local_identifier`, and drop the three
 %         V_zeta inventions. 1 -> 1, base.id PRESERVED, except where `session_id` is
@@ -946,10 +959,10 @@
 %         Brainstorm-J migrator: did_v1 subject_group -> bare subject (+ member_of
 %         relations).
 %     subjectmeasurement
-%         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed
-%         subject_observation leaf + an `absolute_reference` carrying the measurement
-%         instant. Routed from did2.convert.v1_to_v2 only when TargetVersion ==
-%         'V_eta'.
+%         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed `observation`
+%         (value kind: the measured quantity, or `term`) + an
+%         `absolute_time_reference` carrying the measurement instant. Routed from
+%         did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %     syncgraph
 %         Brainstorm-J migrator: did_v1 `syncgraph` -> `clock_alignment_policy`.
 %     syncrule
@@ -970,16 +983,19 @@
 %         (⊂ [tuning_curve_calculation, temporal_frequency_tuning]) + a session anchor
 %         + minted `software` and `runtime_environment` entities.
 %     treatment
-%         Brainstorm-J split migrator: did_v1 treatment -> a data-type-named
-%         subject_manipulation leaf (+ an optional site term_observation + the shared
-%         session anchor).
+%         Brainstorm-J split migrator: did_v1 treatment -> a `manipulation` whose
+%         value kind is chosen by the treatment (`temperature`, `dose` or
+%         `formulation` for a substance, `term` for a procedure, or the kind the
+%         treatment's term names for its number) (+ an optional site `observation`
+%         with value kind `term` + the shared session anchor).
 %     treatment_drug
 %         Brainstorm-J migrator: did_v1 treatment_drug -> an immersion (`manipulation`
-%         valued by its formulation) or a dose_manipulation, decided by the recorded
-%         location.
+%         valued by its formulation) or a `manipulation` with value kind `dose`,
+%         decided by the recorded location (a heat-only row: a `manipulation` with
+%         value kind `temperature`).
 %     treatment_transfer
-%         Brainstorm-J migrator: did_v1 treatment_transfer -> term_manipulation + a
-%         provenance directed_relation.
+%         Brainstorm-J migrator: did_v1 treatment_transfer -> a `manipulation` with
+%         value kind `term` + a provenance directed_relation (+ the session anchor).
 %     tuningcurve_calc
 %         Brainstorm-J migrator: the ndi.calc.stimulus.tuningcurve calculator OUTPUT
 %         document -> the CONCRETE V_eta leaf `tuningcurve_calc` (⊂
@@ -997,8 +1013,9 @@
 %         names) -- GUARDED, because this class mixes OUTPUT DATA into a configuration
 %         document.
 %     vmspikefit
-%         Brainstorm-J migrator: did_v1 vmspikefit -> a fit-residual score_observation
-%         (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 vmspikefit -> a `calculation` with value kind
+%         `model_fit` (private/jModelFit) + the shared session anchor (+ software and
+%         run documents).
 %     vmspikesummary
 %         Brainstorm-J migrator: did_v1 vmspikesummary -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.

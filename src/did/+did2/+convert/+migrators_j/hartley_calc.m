@@ -1,6 +1,6 @@
 function bodies = hartley_calc(preBody)
 %HARTLEY_CALC Brainstorm-J migrator: the ndi.calc.vis.hartley reverse-correlation
-%   OUTPUT document -> the subject_calculation LEAF `receptive_field_calculation`
+%   OUTPUT document -> the named calculator class `receptive_field_calculation`
 %   + the `receptive_field` result composite, id- and depends_on-PRESERVED, plus
 %   the response volume in TWO `sampled_body` documents (one per plane) and the
 %   windowed spike train as a THIRD, input-side body.

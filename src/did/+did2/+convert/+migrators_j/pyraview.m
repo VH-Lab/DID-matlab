@@ -1,6 +1,8 @@
 function bodies = pyraview(preBody)
 %PYRAVIEW Brainstorm-J migrator: did_v1 pyraview -> a body-backed
-%   voltage_observation + a sampled_body (+ the shared session anchor).
+%   `observation` with value kind `voltage` + one sampled_body per level file
+%   (+ the shared session anchor, + a frequency filter document when the source
+%   names one).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %

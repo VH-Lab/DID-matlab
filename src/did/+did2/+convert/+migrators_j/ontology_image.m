@@ -2,11 +2,13 @@ function v2Body = ontology_image(preBody)
 %ONTOLOGY_IMAGE Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE.
 %   The current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the
 %   `ngrid` raster) is a GUARDED PASSTHROUGH deferred to the NDI second pass: a table
-%   row is not a subject, so pass 1 cannot fill `subject_statement.subject_id` without
+%   row is not a subject, so pass 1 cannot fill a statement's `entity_id` edge without
 %   minting the husk the image_stack guard exists to stop. The legacy
 %   `ontology_name` + `ontology_region` shape (which the correction below shows has
-%   never existed in NDI) would migrate 1 -> 2 to a term_observation about the
-%   element-subject + a session anchor. Any third shape ERRORS rather than emitting.
+%   never existed in NDI) would migrate 1 -> 2 to an `observation` with value kind
+%   `term` about the element's entity + a session anchor (with an `ngrid` raster,
+%   1 -> 3: an `observation` with value kind `intensity` + a sampled_body + the
+%   anchor). Any third shape ERRORS rather than emitting.
 %   The raster and the provenance edge are deferred with the passthrough (#47).
 %
 %   THIS SUMMARY LINE READ ONLY "did_v1 ontology_image." until 2026-08-12 -- a

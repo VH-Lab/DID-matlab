@@ -1,5 +1,6 @@
 function v2Body = probe_location(preBody)
-%PROBE_LOCATION Brainstorm-J migrator: did_v1 probe_location -> term_observation.
+%PROBE_LOCATION Brainstorm-J migrator: did_v1 probe_location -> an `observation`
+%   with value kind `term`, + the session anchor.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Per D5, an element/probe location is not its own class in J: the probe IS a
