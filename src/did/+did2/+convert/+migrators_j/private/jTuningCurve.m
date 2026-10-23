@@ -66,8 +66,10 @@ function [value, valueAxes, leafFields, dropped, response] = jTuningCurve(srcBlk
 %   RESPONSE   struct {variable, outcome}: what the response measured, from
 %     the same `response_units` (Jess Haley 2026-10-22 [response variable],
 %     [dF/F as variable], [response variable nodes]; jResponseVariable).
-%     VARIABLE is the registered term for the statement's `variable`, or []
-%     when the source does not say; OUTCOME names the case for the report.
+%     VARIABLE is the registered term for the statement's `variable`: the
+%     measured quantity, or EMPTY:0000398 "neural response" when the source
+%     does not say ([unstated response variable], 2026-10-23); OUTCOME names
+%     the case for the report.
 %
 %   Fit coefficients are a vector in v1 with no names; each becomes a
 %   `{variable, value}` entry named '<model> parameter k' (a label) -- a
@@ -82,7 +84,8 @@ value = struct();
 valueAxes = [];
 leafFields = struct();
 dropped = {};
-response = struct('variable', [], 'outcome', 'not stated');
+[v0, ~, o0] = jResponseVariable([]);   % no block: the source does not say
+response = struct('variable', v0, 'outcome', o0);
 if ~isstruct(srcBlk) || ~isscalar(srcBlk)
     return;
 end
@@ -505,8 +508,7 @@ function [v, response] = putUnit(v, u)
 % an empty one writes nothing.
 if isstring(u) && isscalar(u); u = char(u); end
 [variable, unit, outcome] = jResponseVariable(u);
-response = struct('variable', [], 'outcome', outcome);
-response.variable = variable;
+response = struct('variable', variable, 'outcome', outcome);
 if ~isempty(unit)
     v.response_unit = unit;
 elseif ischar(u) && ~isempty(strtrim(u))

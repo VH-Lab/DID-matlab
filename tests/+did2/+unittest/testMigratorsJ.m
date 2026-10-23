@@ -3926,11 +3926,12 @@ verifyEqual(testCase, csv.interpolated_values.c50, [0.21 0.31 0.41 0.51]);
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
 verifyEqual(testCase, lower(csv.response_type.name), 'mean');
 % contrast_sensitivity_calc carries no response_units, so what the response
-% measured is not stated: no response variable is guessed (Jess Haley
-% 2026-10-22 [response variable]); the variable is the calculator label, no node
-v = leaf.statement.variable;   % a blank node is left out of the built term
-verifyFalse(testCase, isfield(v, 'node') && ~isempty(v.node), 'a variable node was guessed');
-verifyEqual(testCase, char(leaf.statement.variable.name), 'contrast sensitivity');
+% measured is not stated: INVERTED 2026-10-23 (Jess Haley [unstated response
+% variable]) -- the variable is the general term EMPTY:0000398 "neural
+% response", not the calculator label 'contrast sensitivity'
+v = leaf.statement.variable;
+verifyEqual(testCase, char(v.node), 'EMPTY:0000398');
+verifyEqual(testCase, char(v.name), 'neural response');
 sw = entityByNameJ(out, 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 end

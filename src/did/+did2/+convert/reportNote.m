@@ -75,9 +75,11 @@ function out = reportNote(action, arg2, arg3, arg4)
 %     tuning_response_variable  ONE note per tuning / contrast-sensitivity
 %                     calculator document jCalculation folds: DETAIL 'neural
 %                     firing rate' or 'dF/F' when `variable` was set from v1
-%                     `response_units`, 'not stated' when the source gives none,
-%                     'unrecognised: <spelling>' otherwise (Jess Haley
-%                     2026-10-22 [response variable], [dF/F as variable]).
+%                     `response_units`; 'not stated' (source gives none) or
+%                     'unrecognised: <spelling>' when it got the general term
+%                     EMPTY:0000398 "neural response" (Jess Haley 2026-10-22
+%                     [response variable], [dF/F as variable]; 2026-10-23
+%                     [unstated response variable]).
 %                     The count is the denominator; v1_to_v2 prints it first.
 %     non_area_ontology_node  a migrated ontologyImage raster whose ontology
 %                     node is not an anatomical (UBERON) area: kept as a

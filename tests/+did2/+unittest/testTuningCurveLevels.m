@@ -924,23 +924,21 @@ verifyEqual(testCase, inspected, 6 * numel(spellings), ...
     'every spelling through all six tuning migrators');
 end
 
-function testEmptyUnitsSetNoResponseVariable(testCase)
+function testEmptyUnitsMakeTheVariableNeuralResponse(testCase)
 % The writers' real value is EMPTY (response_units is declared in NDI-matlab
-% tuning_response.m's emptystruct and never assigned). Nothing is guessed: the
-% variable is not a measured quantity (no node; the calculator label the
-% migrator always wrote, because statement.variable is mustBeNonEmpty and an
-% all-blank term is refused), and response_unit stays out.
+% tuning_response.m's emptystruct and never assigned). INVERTED 2026-10-23
+% (Jess Haley [unstated response variable]): the variable is the general term
+% EMPTY:0000398 "neural response" -- not the calculator label this test used
+% to expect, which is not what was measured -- and response_unit stays out.
 inspected = 0;
 for u = {[], '', '   ', "", 7}
     for leaf = responseLeaves(u{1})
         L = leaf{1};
         inspected = inspected + 1;
-        verifyEmpty(testCase, nodeOf(L.statement.variable), sprintf( ...
-            '%s: a variable node was written although the source gives no unit', ...
+        verifyTrue(testCase, isTerm(L.statement.variable, 'EMPTY:0000398', ...
+            'neural response'), sprintf( ...
+            '%s: variable is not EMPTY:0000398 "neural response"', ...
             L.document_class.class_name));
-        verifyFalse(testCase, any(strcmpi(char(L.statement.variable.name), ...
-            {'neural firing rate', 'dF/F'})), sprintf( ...
-            '%s: a response variable was guessed', L.document_class.class_name));
         verifyFalse(testCase, isfield(L.tuning_curve.value, 'response_unit'), sprintf( ...
             '%s: response_unit written although the source gives none', ...
             L.document_class.class_name));
@@ -949,19 +947,20 @@ end
 verifyEqual(testCase, inspected, 6 * 5, 'five empty forms through all six migrators');
 end
 
-function testAnUnknownSpellingIsNotGuessed(testCase)
-% A spelling the decisions do not name ('mV', 'Spikes', 'a.u.') sets no variable;
-% the unit keeps the source's own label, as it did before the decision.
+function testAnUnknownSpellingMakesTheVariableNeuralResponse(testCase)
+% A spelling the decisions do not name ('mV', 'Spikes', 'a.u.') is not guessed
+% at: INVERTED 2026-10-23 ([unstated response variable]) -- the variable is the
+% general term EMPTY:0000398 "neural response", not the calculator label; the
+% unit keeps the source's own label, as it did before (no unit is invented).
 inspected = 0;
 for u = {'mV', 'Spikes', 'a.u.', 'F/F0'}
     for leaf = responseLeaves(u{1})
         L = leaf{1};
         inspected = inspected + 1;
-        verifyEmpty(testCase, nodeOf(L.statement.variable), sprintf( ...
-            '%s, ''%s'': a variable node was guessed', L.document_class.class_name, u{1}));
-        verifyFalse(testCase, any(strcmpi(char(L.statement.variable.name), ...
-            {'neural firing rate', 'dF/F'})), sprintf( ...
-            '%s, ''%s'': a response variable was guessed', L.document_class.class_name, u{1}));
+        verifyTrue(testCase, isTerm(L.statement.variable, 'EMPTY:0000398', ...
+            'neural response'), sprintf( ...
+            '%s, ''%s'': variable is not EMPTY:0000398 "neural response"', ...
+            L.document_class.class_name, u{1}));
         verifyTrue(testCase, isUnitNamed(L.tuning_curve.value.response_unit, u{1}), ...
             sprintf('%s, ''%s'': the source spelling of the unit was lost', ...
             L.document_class.class_name, u{1}));
@@ -1010,12 +1009,6 @@ end
 tc = flatRawCurve();
 tc.response_units = units;
 leaves{end+1} = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve(flatRawBody(tc)));
-end
-
-function n = nodeOf(term)
-%NODEOF A term's node, '' when the built term leaves a blank node out.
-n = '';
-if isstruct(term) && isfield(term, 'node'); n = char(term.node); end
 end
 
 function tf = isTerm(term, node, name)

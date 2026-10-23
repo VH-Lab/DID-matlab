@@ -5403,6 +5403,54 @@ class TestDimensionTermsAndControlEdges(unittest.TestCase):
         self.assertIn("    render_stimulus_control_edges(r, out)\n", src)
 
 
+class TestTuningResponseVariable(unittest.TestCase):
+    """[unstated response variable] (Jess Haley, 2026-10-23): every corpus
+    summary shows the set / general-term counts, denominator first."""
+
+    def test_absent_is_not_measured(self):
+        out = []
+        census_digest.render_tuning_response_variable({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_denominator_first_then_set_and_general(self):
+        out = []
+        census_digest.render_tuning_response_variable({"tuning_response_variable": {
+            "documents_folded": 47747, "set_neural_firing_rate": 0, "set_dff": 0,
+            "general_not_stated": 47747, "general_unrecognised": 0,
+            "unrecognised_spellings": [],
+            "by_class": {"tuningcurve_calc": 34606}}}, out)
+        self.assertIn("47747 folded tuning document(s)", out[0])
+        self.assertIn("set from response_units", out[1])
+        self.assertIn("neural firing rate 0, dF/F 0", out[1])
+        self.assertIn('"neural response"', out[2])
+        self.assertIn("source empty 47747", out[2])
+        self.assertIn("spelling unrecognised 0", out[2])
+        self.assertFalse(any("do not add up" in x for x in out))
+        self.assertIn("tuningcurve_calc", out[-1])
+
+    def test_unrecognised_spellings_are_listed_and_a_bad_sum_is_flagged(self):
+        out = []
+        census_digest.render_tuning_response_variable({"tuning_response_variable": {
+            "documents_folded": 10, "set_neural_firing_rate": 4, "set_dff": 1,
+            "general_not_stated": 2, "general_unrecognised": 2,
+            "unrecognised_spellings": "mV", "by_class": {}}}, out)
+        self.assertTrue(any("do not add up" in x for x in out))
+        self.assertTrue(any("unrecognised spellings: mV" in x for x in out))
+
+    def test_a_missing_count_is_unknown_not_zero(self):
+        out = []
+        census_digest.render_tuning_response_variable({"tuning_response_variable": {
+            "documents_folded": 3}}, out)
+        self.assertIn("?", out[1])
+        self.assertIn("?", out[2])
+
+    def test_it_reaches_the_per_corpus_digest(self):
+        import inspect
+        src = inspect.getsource(census_digest)
+        self.assertIn("    render_tuning_response_variable(r, out)\n", src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

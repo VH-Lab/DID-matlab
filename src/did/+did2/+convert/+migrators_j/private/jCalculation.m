@@ -29,10 +29,13 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %   spikes-per-second spelling, EMPTY:0000397 "dF/F" for a dF/F spelling.
 %   Where the source does not say (empty response_units, an unrecognised
 %   spelling, and every contrast_sensitivity_calc, which carries no
-%   response_units), nothing is guessed: `variable` stays the VARIABLENAME
-%   label it was before, because `statement.variable` is mustBeNonEmpty and an
-%   all-blank term is refused (did2:validation:vacuousField, NonVacuousFields
-%   armed), which would quarantine the document. Every folded document of
+%   response_units), `variable` is the general term EMPTY:0000398 "neural
+%   response" (Jess Haley 2026-10-23 [unstated response variable]): not
+%   empty, because `statement.variable` is mustBeNonEmpty and an all-blank
+%   term is refused (did2:validation:vacuousField), and not the VARIABLENAME
+%   calculator label, which is not what was measured. VARIABLENAME remains
+%   the variable only for the receptive-field family, which reads no
+%   response_units. Every folded document of
 %   these families leaves ONE did2.convert.reportNote('tuning_response_variable',
 %   <v1 class>, <id>, <outcome>): the count is the denominator, the DETAIL
 %   'neural firing rate' | 'dF/F' | 'not stated' | 'unrecognised: <spelling>'.
@@ -104,8 +107,9 @@ response = [];   % no response variable read (receptive field)
 if strcmp(family, 'csf')
     [value, valueAxes, dropped] = jContrastSensitivityValue(srcBlk);
     % contrast_sensitivity_calc carries no response_units (NDIcalc-vis mock):
-    % the source does not say what the response measured
-    response = struct('variable', [], 'outcome', 'not stated');
+    % the source does not say what the response measured -> "neural response"
+    [rv, ~, ro] = jResponseVariable([]);
+    response = struct('variable', rv, 'outcome', ro);
 elseif strcmp(family, 'rf')
     % receptive_field.value declares no sub-fields: the volume is in bodies
     value = struct();

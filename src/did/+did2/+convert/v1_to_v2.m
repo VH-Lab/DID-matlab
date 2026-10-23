@@ -1057,7 +1057,9 @@ function printTuningResponseVariable(result)
 %PRINTTUNINGRESPONSEVARIABLE [response variable] / [dF/F as variable]: the
 %   folded tuning documents (jCalculation, one 'tuning_response_variable' note
 %   each), DENOMINATOR FIRST, then how many had `variable` set from v1
-%   `response_units` and how many did not (the source did not say).
+%   `response_units` and how many got the general term EMPTY:0000398
+%   "neural response" because the source was empty or its spelling
+%   unrecognised ([unstated response variable], 2026-10-23).
 total = 0;
 names = {'neural firing rate', 'dF/F', 'not stated'};
 counts = zeros(1, numel(names));
@@ -1073,9 +1075,10 @@ if isfield(result.summary, 'migration_notes') ...
     other = total - sum(counts);
 end
 fprintf(['  tuning response variable: %d folded tuning document(s); set from ' ...
-    'response_units: %d (neural firing rate %d, dF/F %d); not set: %d ' ...
-    '(not stated %d, unrecognised %d)\n'], total, counts(1) + counts(2), ...
-    counts(1), counts(2), counts(3) + other, counts(3), other);
+    'response_units: %d (neural firing rate %d, dF/F %d); general term ' ...
+    '"neural response": %d (source empty %d, spelling unrecognised %d)\n'], ...
+    total, counts(1) + counts(2), counts(1), counts(2), counts(3) + other, ...
+    counts(3), other);
 end
 
 function printMigrationNotes(result)

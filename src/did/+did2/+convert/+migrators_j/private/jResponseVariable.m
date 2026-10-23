@@ -13,6 +13,12 @@ function [variable, unit, outcome] = jResponseVariable(units)
 %       `response_unit` om:one.
 %     [response variable nodes]  firing rate is wikidata:Q71762818 "neural
 %       firing rate"; dF/F is EMPTY:0000397 "dF/F".
+%   and Jess Haley 2026-10-23 [unstated response variable]: where the source
+%   does not state what was measured (empty or unrecognised response_units),
+%   `variable` is the general term EMPTY:0000398 "neural response" and the
+%   unit is left out; `variable` cannot be empty (mustBeNonEmpty; a blank
+%   term is quarantined as vacuous), and a calculator label is not what was
+%   measured.
 %
 %   UNITS is the v1 `response_units` value as the document holds it (char,
 %   string, or the writers' real value, the empty matrix: NDI-matlab
@@ -28,15 +34,17 @@ function [variable, unit, outcome] = jResponseVariable(units)
 %   Node and name come from the term registry (did2.convert.registeredTerm),
 %   so the registered label is written, never this file's spelling.
 %
-%   Anything else is NOT GUESSED: VARIABLE is [] and UNIT is [] (the caller
-%   keeps the source spelling as it did before). OUTCOME says which case held,
-%   for the migration report's denominator:
-%     'neural firing rate'   a spikes-per-second spelling
-%     'dF/F'                 a dF/F spelling
-%     'not stated'           empty, blank or not text
+%   Anything else is NOT GUESSED: VARIABLE is the general term EMPTY:0000398
+%   "neural response" and UNIT is [] (the caller keeps an unrecognised
+%   spelling as the unit label, as it did before; it invents no unit).
+%   OUTCOME says which case held, for the migration report's denominator:
+%     'neural firing rate'   a spikes-per-second spelling (set)
+%     'dF/F'                 a dF/F spelling (set)
+%     'not stated'           empty, blank or not text (general term)
 %     'unrecognised: <s>'    any other spelling, quoted as the source has it
+%                            (general term)
 
-variable = [];
+variable = did2.convert.registeredTerm('EMPTY:0000398', 'neural response');
 unit = [];
 if isstring(units) && isscalar(units)
     units = char(units);

@@ -2487,6 +2487,52 @@ def render_stimulus_control_edges(r, out):
         p("      %-40s %6s converted" % (cls, rows[cls]))
 
 
+def render_tuning_response_variable(r, out):
+    """The tuning response variable (Jess Haley, 2026-10-22 [response
+    variable], [dF/F as variable]; 2026-10-23 [unstated response variable]):
+    of the tuning / contrast-sensitivity documents folded (the denominator,
+    first), how many had `variable` set from v1 `response_units`, and how
+    many got the general term EMPTY:0000398 "neural response" because the
+    source was empty or its spelling unrecognised. Absent is NOT MEASURED (no
+    tuning migrator ran), never 0 of 0."""
+    p = out.append if isinstance(out, list) else out
+    e = r.get("tuning_response_variable")
+    if not isinstance(e, dict):
+        p("    tuning response variable: NOT MEASURED -- this report carries "
+          "no tuning_response_variable block")
+        return
+
+    def n(key):
+        v = e.get(key)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    total = n("documents_folded")
+    fr, dff = n("set_neural_firing_rate"), n("set_dff")
+    ns, un = n("general_not_stated"), n("general_unrecognised")
+
+    def s(v):
+        return "?" if v is None else str(v)
+
+    set_ = None if fr is None or dff is None else fr + dff
+    gen = None if ns is None or un is None else ns + un
+    p("    tuning response variable: %s folded tuning document(s)" % s(total))
+    p("      set from response_units:           %6s  (neural firing rate %s, dF/F %s)"
+      % (s(set_), s(fr), s(dff)))
+    p("      general term \"neural response\":    %6s  (source empty %s, "
+      "spelling unrecognised %s)" % (s(gen), s(ns), s(un)))
+    if None not in (total, set_, gen) and set_ + gen != total:
+        p("      *** the parts (%d) do not add up to the denominator (%d)"
+          % (set_ + gen, total))
+    sp = e.get("unrecognised_spellings")
+    if isinstance(sp, str):
+        sp = [sp]
+    if sp:
+        p("      unrecognised spellings: %s" % ", ".join(str(x) for x in sp))
+    rows = e.get("by_class") or {}
+    for cls in sorted(rows):
+        p("      %-40s %6s folded" % (cls, rows[cls]))
+
+
 def render_entity_requires(r, out):
     """The entity-type `requires` census, REPORT-ONLY (Jess Haley, 2026-10-21,
     "b"): per entity type and required field, entities inspected and missing.
@@ -6096,6 +6142,7 @@ def render_report(r, out):
     render_dose_ingredients(r, out)
     render_dimension_terms(r, out)
     render_stimulus_control_edges(r, out)
+    render_tuning_response_variable(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the
