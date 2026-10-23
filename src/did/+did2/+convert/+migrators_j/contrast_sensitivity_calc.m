@@ -1,18 +1,19 @@
 function bodies = contrast_sensitivity_calc(preBody)
 %CONTRAST_SENSITIVITY_CALC Brainstorm-J migrator: the ndi.calc.vis.contrast_sensitivity
-%   calculator OUTPUT document -> the subject_calculation LEAF
-%   contrast_sensitivity_calculation (id-preserved) + a session anchor. Un-defers the
-%   aggregate contrast-sensitivity calculation. This doc HAS element_id (like every
-%   vision calculator, tuningcurve_calc included), so the fold is single-doc:
-%   element_id -> subject_id; the result fields
-%   (sensitivity / gain / c50 / p-value matrices) sit on the concrete
-%   contrast_sensitivity_calc block, so it is passed as the sourceBlock (its inherited
-%   input_parameters stripped -> method_parameters); app kept; the raw responses
-%   (stimulus_response_scalar_id) -> derived_from_1.
+%   calculator OUTPUT document -> the named calculation contrast_sensitivity_calculation
+%   (id-preserved) + a session anchor + its software / run entities. Single-doc fold:
+%   element_id (subject_id as fallback) -> entity_id; the result fields on the
+%   contrast_sensitivity_calc block -> value (jContrastSensitivityValue: one model_fit
+%   entry per RB / RBN / RBNS Naka-Rushton variant, interpolated_values, significance,
+%   response_type), the spatial frequencies the dimension and covariate; inherited
+%   input_parameters -> method.parameters; `app` -> software / operating system /
+%   interpreter.
 %
-%   NOTE: the doc's stimulus_presentation_id (and any upstream contrast_tuning refs)
-%   are simplified away in this single-doc pass; carrying the full input provenance as
-%   derived_from_# is a follow-up. See did2.convert.migrators_j.private.jCalculation.
+%   LOSSLESS (Jess Haley 2026-10-23 [contrast sensitivity lossless]): input_id carries
+%   the consumed responses (stimulus_response_scalar_id, contrasttuning_id_*) AND the
+%   stimulus_presentation_id; v1 is_modulated_response (0/1) ->
+%   value.significance.modulated_response (boolean), written only when present.
+%   See did2.convert.migrators_j.private.jCalculation.
 arguments
     preBody (1,1) struct
 end

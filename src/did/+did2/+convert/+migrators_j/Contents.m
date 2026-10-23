@@ -553,15 +553,14 @@
 %         as-is. base.id is preserved.
 %     contrast_sensitivity_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.contrast_sensitivity calculator
-%         OUTPUT document -> the subject_calculation LEAF
-%         contrast_sensitivity_calculation (id-preserved) + a session anchor.
-%         Un-defers the aggregate contrast-sensitivity calculation. This doc HAS
-%         element_id (like every vision calculator, tuningcurve_calc included), so the
-%         fold is single-doc: element_id -> subject_id; the result fields (sensitivity
-%         / gain / c50 / p-value matrices) sit on the concrete
-%         contrast_sensitivity_calc block, so it is passed as the sourceBlock (its
-%         inherited input_parameters stripped -> method_parameters); app kept; the raw
-%         responses (stimulus_response_scalar_id) -> derived_from_1.
+%         OUTPUT document -> the named calculation contrast_sensitivity_calculation
+%         (id-preserved) + a session anchor + its software / run entities. Single-doc
+%         fold: element_id (subject_id as fallback) -> entity_id; the result fields on
+%         the contrast_sensitivity_calc block -> value (jContrastSensitivityValue: one
+%         model_fit entry per RB / RBN / RBNS Naka-Rushton variant,
+%         interpolated_values, significance, response_type), the spatial frequencies
+%         the dimension and covariate; inherited input_parameters ->
+%         method.parameters; `app` -> software / operating system / interpreter.
 %     contrast_tuning
 %         Brainstorm-J migrator -> contrast_tuning_calculation (did-schema #88).
 %         Brainstorm-J migrator: did_v1 contrast_tuning (raw NDIcalc-vis result class)

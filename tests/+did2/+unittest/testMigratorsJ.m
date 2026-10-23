@@ -3883,13 +3883,17 @@ function testContrastSensitivityCalcUndefersToLeaf(testCase)
 % spatial frequencies are the statement's key (data.keys), each RB/RBN/RBNS
 % Naka-Rushton variant is one value.model_fit entry whose coefficients are a
 % {variable, value} list, input_parameters -> method.parameters, the consumed
-% responses -> input_id, and `is_modulated_response` has no #88 field (dropped,
-% reported by the migrator).
+% responses -> input_id. INVERTED 2026-10-23 (Jess Haley [contrast sensitivity
+% lossless]): the stimulus_presentation_id is an input too (after the
+% responses), and `is_modulated_response` 1 -> significance.modulated_response
+% true (was dropped). The 0 and absent cases are
+% testContrastSensitivityModulatedResponseFalseAndAbsent.
 body = struct();
 body.document_class = struct('class_name', 'contrast_sensitivity_calc', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'; 'calculator'}, 'class_version', {'1.0.0'; '1.0.0'}));
 body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_cs'), ...
-                    struct('name', 'stimulus_response_scalar_id', 'value', 'resp_cs')];
+                    struct('name', 'stimulus_response_scalar_id', 'value', 'resp_cs'), ...
+                    struct('name', 'stimulus_presentation_id', 'value', 'pres_cs')];
 body.base = struct('id', 'cs_1', 'session_id', 'sess_09', 'name', 'cs', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.app = struct('name', 'ndi.calc.vis.contrast_sensitivity', 'version', '1.0', ...
@@ -3907,7 +3911,7 @@ body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
 out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'contrast_sensitivity_calculation', 'cs_1', 'neuron_cs');
-verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_cs');
+verifyEqual(testCase, depValuesJ(leaf, 'input_id'), {'resp_cs', 'pres_cs'});
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, paramValueJ(leaf, 'threshold'), 1);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0.5 1 2 4]);
@@ -3924,6 +3928,7 @@ verifyEqual(testCase, rb.c50, [0.2 0.3 0.4 0.5]);
 verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
 verifyEqual(testCase, csv.interpolated_values.c50, [0.21 0.31 0.41 0.51]);
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
+verifyEqual(testCase, csv.significance.modulated_response, true);
 verifyEqual(testCase, lower(csv.response_type.name), 'mean');
 % contrast_sensitivity_calc carries no response_units, so what the response
 % measured is not stated: INVERTED 2026-10-23 (Jess Haley [unstated response
@@ -3934,6 +3939,66 @@ verifyEqual(testCase, char(v.node), 'EMPTY:0000398');
 verifyEqual(testCase, char(v.name), 'neural response');
 sw = entityByNameJ(out, 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
+end
+
+
+function testContrastSensitivityModulatedResponseFalseAndAbsent(testCase)
+% Jess Haley 2026-10-23 [contrast sensitivity lossless]: v1
+% is_modulated_response 0 -> significance.modulated_response false; ABSENT ->
+% no field at all (the schema's blank is null, so missing never reads as
+% false). Neither case leaves a field_dropped note for it.
+body = struct();
+body.document_class = struct('class_name', 'contrast_sensitivity_calc', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'calculator'}, 'class_version', {'1.0.0'; '1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_cs'), ...
+                    struct('name', 'stimulus_response_scalar_id', 'value', 'resp_cs'), ...
+                    struct('name', 'stimulus_presentation_id', 'value', 'pres_cs')];
+body.base = struct('id', 'cs_2', 'session_id', 'sess_09', 'name', 'cs', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = struct('name', 'ndi.calc.vis.contrast_sensitivity', 'version', '1.0', ...
+    'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
+    'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
+body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
+    'sensitivity_rb', [10 20 15 5], 'parameters_rb', [12 0.25 2], ...
+    'visual_response_p_bonferroni', [0.01 0.02 0.03 0.04], ...
+    'is_modulated_response', 0, 'response_type', 'mean', ...
+    'input_parameters', struct('threshold', 1));
+
+did2.convert.reportNote('reset');
+cleanup = onCleanup(@() did2.convert.reportNote('reset'));
+out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
+leaf = calcLeafJ(testCase, out, 'contrast_sensitivity_calculation', 'cs_2', 'neuron_cs');
+verifyEqual(testCase, leaf.contrast_sensitivity.value.significance.modulated_response, false);
+verifyEqual(testCase, depValuesJ(leaf, 'input_id'), {'resp_cs', 'pres_cs'});
+
+body.contrast_sensitivity_calc = rmfield(body.contrast_sensitivity_calc, 'is_modulated_response');
+body.base.id = 'cs_3';
+out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
+leaf = calcLeafJ(testCase, out, 'contrast_sensitivity_calculation', 'cs_3', 'neuron_cs');
+sig = leaf.contrast_sensitivity.value.significance;
+verifyTrue(testCase, ~isfield(sig, 'modulated_response') || isempty(sig.modulated_response), ...
+    'an absent is_modulated_response must not be written (never false)');
+notes = did2.convert.reportNote('collect');
+if isfield(notes, 'field_dropped')
+    verifyFalse(testCase, any(contains(notes.field_dropped.distinct_details, 'is_modulated_response')), ...
+        'is_modulated_response is carried now, never reported as field_dropped');
+end
+end
+
+
+function v = depValuesJ(b, name)
+% Every edge named NAME on a raw body, in order, as a 1xN cellstr (depValue
+% returns the first only). Same document_id-then-value precedence as depValue.
+v = {};
+if ~isfield(b, 'depends_on'); return; end
+for k = 1:numel(b.depends_on)
+    if ~strcmp(b.depends_on(k).name, name); continue; end
+    if isfield(b.depends_on(k), 'document_id') && ~isempty(b.depends_on(k).document_id)
+        v{end+1} = char(b.depends_on(k).document_id); %#ok<AGROW>
+    elseif isfield(b.depends_on(k), 'value')
+        v{end+1} = char(b.depends_on(k).value); %#ok<AGROW>
+    end
+end
 end
 
 

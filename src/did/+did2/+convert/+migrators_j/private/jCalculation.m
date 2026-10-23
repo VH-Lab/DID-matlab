@@ -44,8 +44,10 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %     entity_id          the element (v1 element_id; subject_id as fallback)
 %     time_reference_id  the session anchor (jSessionAnchor)
 %     input_id           the v1 input edges (stimulus_tuningcurve_id,
-%                        stimulus_response_scalar_id, contrasttuning_id_*,
-%                        stimulus_response_id), in order -- `derived_from_1`
+%                        stimulus_response_scalar_id, stimulus_response_id,
+%                        contrasttuning_id_*), in order, then for 'csf' only
+%                        stimulus_presentation_id (Jess Haley 2026-10-23
+%                        [contrast sensitivity lossless]) -- `derived_from_1`
 %                        (the first only) before
 %     software_id        the calculator, from the v1 `app` block (or a
 %                        software entity named METHODNAME when it has none)
@@ -104,12 +106,18 @@ end
 leafFields = struct();
 dropped = {};
 response = [];   % no response variable read (receptive field)
+csfInputs = {};  % the contrast-sensitivity family's extra input (stimulus_presentation_id)
 if strcmp(family, 'csf')
     [value, valueAxes, dropped] = jContrastSensitivityValue(srcBlk);
     % contrast_sensitivity_calc carries no response_units (NDIcalc-vis mock):
     % the source does not say what the response measured -> "neural response"
     [rv, ~, ro] = jResponseVariable([]);
     response = struct('variable', rv, 'outcome', ro);
+    % the stimulus presentation the responses were measured against is an
+    % input too (Jess Haley 2026-10-23 [contrast sensitivity lossless]):
+    % after the responses, for the contrast-sensitivity family only
+    sp = jDependency(preBody, 'stimulus_presentation_id');
+    if ~isempty(sp); csfInputs = {sp}; end
 elseif strcmp(family, 'rf')
     % receptive_field.value declares no sub-fields: the volume is in bodies
     value = struct();
@@ -127,7 +135,7 @@ if isempty(swId)
     [software, swId] = jSoftware(methodName, '', '', jSid(preBody), jStamp(preBody));
 end
 
-inputs = [inputIds(preBody), reshape(opts.ExtraInputs, 1, [])];
+inputs = [inputIds(preBody), csfInputs, reshape(opts.ExtraInputs, 1, [])];
 f = leafFields;
 params = jParameterList(calcInputParameters(preBody));
 if ~isempty(opts.ExtraParameters)

@@ -19,10 +19,14 @@ function [value, valueAxes, dropped] = jContrastSensitivityValue(block)
 %   VALUE {model_fit[] {model, coefficients[] {variable, value}, goodness,
 %   sensitivity, relative_max_gain, c50 (v1 empirical_c50; empirical_c50 until
 %   2026-10-22), saturation_index},
-%   interpolated_values {c50}, significance {...}, response_type (a bound
+%   interpolated_values {c50}, significance {visual_response_p_bonferroni,
+%   response_varies_p_bonferroni, modulated_response}, response_type (a bound
 %   term)}; AXES {dimensions, covariates}: one `spatial frequency` dimension
 %   the per-SF arrays are indexed by, the frequencies a quantity covariate
-%   along it (data_body AMENDMENT 6; one key before); DROPPED the v1 fields with no home (`is_modulated_response`).
+%   along it (data_body AMENDMENT 6; one key before). v1 `is_modulated_response`
+%   (0/1) -> significance.modulated_response (boolean; Jess Haley 2026-10-23
+%   [contrast sensitivity lossless]); absent or empty writes nothing. DROPPED:
+%   nothing, unless is_modulated_response is present but not a scalar 0/1.
 %   A Naka-Rushton variant's v1 parameters are a parameters x SF matrix; each
 %   element is one coefficient entry named '<model> parameter k, spatial
 %   frequency j' -- every number kept, a CONSERVATIVE CHOICE recorded.
@@ -51,11 +55,22 @@ for nm = {'visual_response_p_bonferroni', 'response_varies_p_bonferroni'}
     v = getf(block, nm);
     if isnumeric(v) && ~isempty(v); sig.(nm{1}) = double(v); end
 end
+% v1 is_modulated_response (scalar 0/1) -> significance.modulated_response
+% (boolean). Jess Haley 2026-10-23 [contrast sensitivity lossless]. Absent or
+% empty writes NOTHING (the schema's blank is null, so missing never reads as
+% false). A present value that is not a scalar 0/1 has no faithful boolean
+% spelling, so it is still reported as dropped rather than coerced.
+imr = getf(block, {'is_modulated_response'});
+if ~isempty(imr)
+    if (isnumeric(imr) || islogical(imr)) && isscalar(imr) && any(double(imr) == [0 1])
+        sig.modulated_response = logical(imr);
+    else
+        dropped{end+1} = 'is_modulated_response';
+    end
+end
 if ~isempty(fieldnames(sig)); value.significance = sig; end
 fits = collectVariantFits(block);
 if ~isempty(fits); value.model_fit = did2.build.list(fits{:}); end
-imr = getf(block, {'is_modulated_response'});
-if ~isempty(imr); dropped{end+1} = 'is_modulated_response'; end
 end
 
 function v = getf(s, names)
