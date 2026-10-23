@@ -6,9 +6,10 @@ function bodies = control_stimulus_ids(preBody)
 %   (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08). A
 %   DERIVED annotation of WHICH presented trials are the control reference,
 %   computed by the tuning_response app. It is NOT baked into the
-%   immutable stimulus body: it REFERENCES the presentation (the timed_sequence
-%   body-of-record, id-preserved through the second-pass decompose, so the edge
-%   resolves either way) and carries the derivation method; marked derived_from
+%   immutable stimulus body: it REFERENCES the presentation (the body-of-record,
+%   then `timed_sequence`, `item` since did-schema c12d778, 2026-10-04;
+%   id-preserved through the second-pass decompose, so the edge resolves
+%   either way) and carries the derivation method; marked derived_from
 %   the presentation (T10). Drops the v1 `app` mixin (software model, R1) and the
 %   `ids` container word (T13).
 %

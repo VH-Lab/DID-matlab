@@ -1,6 +1,6 @@
 function bodies = daqreader_epochdata_ingested(preBody)
 %DAQREADER_EPOCHDATA_INGESTED Brainstorm-J migrator: lift the epoch's clock
-%   extents out of `epochtable` into `relative_reference` documents.
+%   extents out of `epochtable` into `relative_time_reference` documents.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta', and
 %   also called directly by the sibling migrator

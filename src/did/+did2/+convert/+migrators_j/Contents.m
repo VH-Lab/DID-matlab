@@ -581,10 +581,11 @@
 %         TEAM-SIGN-OFF [stimulus] 2026-08-08). A DERIVED annotation of WHICH
 %         presented trials are the control reference, computed by the tuning_response
 %         app. It is NOT baked into the immutable stimulus body: it REFERENCES the
-%         presentation (the timed_sequence body-of-record, id-preserved through the
-%         second-pass decompose, so the edge resolves either way) and carries the
-%         derivation method; marked derived_from the presentation (T10). Drops the v1
-%         `app` mixin (software model, R1) and the `ids` container word (T13).
+%         presentation (the body-of-record, then `timed_sequence`, `item` since
+%         did-schema c12d778, 2026-10-04; id-preserved through the second-pass
+%         decompose, so the edge resolves either way) and carries the derivation
+%         method; marked derived_from the presentation (T10). Drops the v1 `app` mixin
+%         (software model, R1) and the `ids` container word (T13).
 %     daqmetadatareader
 %         Brainstorm-J migrator: did_v1 daqmetadatareader ->
 %         `acquisition_metadata_reader` (+ the `software` entity for the
@@ -600,7 +601,7 @@
 %         `software` entity. 1 -> 2, base.id PRESERVED ON THE READER.
 %     daqreader_epochdata_ingested
 %         Brainstorm-J migrator: lift the epoch's clock extents out of `epochtable`
-%         into `relative_reference` documents.
+%         into `relative_time_reference` documents.
 %     daqreader_image_epochdata_ingested
 %         Brainstorm-J migrator: the camera's ingested epoch. Lifts the inherited
 %         epoch clock extents; the image fold is BLOCKED and the document is
@@ -644,14 +645,16 @@
 %     demo_ndi
 %         Brainstorm-J migrator: did_v1 `demoNDI` -> the V_eta `demo` class, 1 -> 1
 %         with base.id PRESERVED, `value` carried and `is_mock` FALSE. Part of the 3
-%         -> 1 demo collapse signed by the team on 2026-08-06 (did-schema
-%         `tools/build_v_eta.py:1817-1867`); the fold itself is in private/jDemoFold.
+%         -> 1 demo collapse signed by the team on 2026-08-06 (recorded then in
+%         did-schema `tools/build_v_eta.py`, deleted 2026-10-21; the class is now
+%         `schemas/V_eta/stable/demo.json`); the fold itself is in private/jDemoFold.
 %     demo_ndi_mock
 %         Brainstorm-J migrator: did_v1 `demoNDIMock` -> the V_eta `demo` class, 1 ->
 %         1 with base.id PRESERVED, the INHERITED `demoNDI.value` carried and
 %         `is_mock` TRUE. The other half of the 3 -> 1 demo collapse signed by the
-%         team on 2026-08-06 (did-schema `tools/build_v_eta.py:1817-1867`); the fold
-%         itself is in private/jDemoFold.
+%         team on 2026-08-06 (recorded then in did-schema `tools/build_v_eta.py`,
+%         deleted 2026-10-21; the class is now `schemas/V_eta/stable/demo.json`); the
+%         fold itself is in private/jDemoFold.
 %     distance_metadata
 %         Brainstorm-J migrator: reshape a did_v1 distance_metadata into the validated
 %         V_eta distance_metadata. 1 -> 1.
@@ -660,13 +663,15 @@
 %         with value kind `voltage` about the probe's entity, qualified by the
 %         temperature it was measured at (a condition), + the session anchor. 1 -> 2.
 %     element
-%         Brainstorm-J migrator: did_v1 element -> subject (+ kind assertions + the
-%         raw-recording observation + a lineage relation). Strict J retires the
-%         recording-side `element` class (J:214, D2): any identifiable thing -- an
-%         organism, a device/probe, a derived signal or sorted unit -- is a `subject`.
-%         The element document therefore becomes a `subject` with its id PRESERVED, so
-%         the ~50 classes that reference it (`element_id` / `underlying_element_id` /
-%         `stimulator_id`) keep resolving -- now to a subject.
+%         Brainstorm-J migrator: did_v1 element -> an `entity` (+ kind assertions +
+%         the raw-recording observation + a lineage relation). V_eta retires the
+%         recording-side `element` class: any identifiable thing -- an organism, a
+%         device/probe, a derived signal or sorted unit -- is an `entity` with a
+%         `type` (here `cell` for a sorted unit, `group` for an ensemble, `device`
+%         otherwise; see elementEntityType). The element document therefore becomes an
+%         `entity` with its id PRESERVED, so the ~50 classes that reference it
+%         (`element_id` / `underlying_element_id` / `stimulator_id`) keep resolving --
+%         now to an entity.
 %     element_epoch
 %         Brainstorm-J migrator: element_epoch -> acquisition_epoch.
 %     epochfiles_ingested
@@ -791,8 +796,8 @@
 %         Brainstorm-J migrator: did_v1 ontology_label -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
 %     ontology_table_row
-%         Brainstorm-J split migrator: did_v1 ontology_table_row -> the
-%         subject_statement tier (1 -> N).
+%         Brainstorm-J split migrator: did_v1 ontology_table_row -> one statement per
+%         column (1 -> N).
 %     openminds
 %         Brainstorm-J migrator: did_v1 `openminds` -- a GUARDED PASSTHROUGH.
 %     openminds_element
@@ -847,8 +852,9 @@
 %         Brainstorm-J migrator: did_v1 site2channelmap -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
 %     sorting_parameters
-%         Brainstorm-J migrator: did_v1 sorting_parameters -> ONE `method_parameters`
-%         document (+ the `software` entity its v1 `app` block names).
+%         Brainstorm-J migrator: did_v1 sorting_parameters -> ONE `method` document
+%         (`method_parameters` before did-schema #88) (+ the `software` entity its v1
+%         `app` block names).
 %     spatial_frequency_tuning
 %         Brainstorm-J migrator -> spatial_frequency_tuning_calculation (did-schema
 %         #88). Brainstorm-J migrator: did_v1 spatial_frequency_tuning (raw
@@ -907,13 +913,13 @@
 %         Brainstorm-J migrator: did_v1 spike_clusters -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
 %     spike_extraction_parameters
-%         Brainstorm-J migrator: did_v1 spike_extraction_parameters -> ONE
-%         `method_parameters` document (+ the `software` entity its v1 `app` block
-%         names).
+%         Brainstorm-J migrator: did_v1 spike_extraction_parameters -> ONE `method`
+%         document (`method_parameters` before did-schema #88) (+ the `software`
+%         entity its v1 `app` block names).
 %     spike_extraction_parameters_modification
 %         Brainstorm-J migrator: did_v1 spike_extraction_parameters_modification -> a
-%         SECOND `method_parameters` document (+ the `software` entity its v1 `app`
-%         block names).
+%         SECOND `method` document (`method_parameters` before did-schema #88) (+ the
+%         `software` entity its v1 `app` block names).
 %     spike_interface_sorting_outputs
 %         Brainstorm-J migrator: did_v1 spike_interface_sorting_outputs -- DEFERRED to
 %         the NDI second pass; the document is passed through UNCHANGED.
@@ -948,16 +954,13 @@
 %         the raw case per issue #67) + a session anchor + minted `software` and
 %         `runtime_environment` entities.
 %     subject
-%         Brainstorm-J carry-forward for a v1 subject: guarantee a non-empty
-%         local_identifier. V_eta makes subject.local_identifier REQUIRED (a subject
-%         must be nameable); a v1 subject's handle was optional, so an empty or
-%         missing one now needs filling. Fill it from the preserved document id.
-%         Everything else is unchanged -- the body is already post-universalRenames
-%         and ensureClassBlocks runs after this (exactly as the mechanical path did
-%         before), so the only delta is the guaranteed handle.
+%         Brainstorm-J migrator: a v1 subject -> one `entity` of type `organism`, id
+%         preserved, carrying `local_identifier` and `description`. A v1 subject's
+%         handle was optional, so an empty or missing one is filled from the preserved
+%         document id (jEnsureLocalId).
 %     subject_group
-%         Brainstorm-J migrator: did_v1 subject_group -> bare subject (+ member_of
-%         relations).
+%         Brainstorm-J migrator: did_v1 subject_group -> an `entity` of type `group`,
+%         id preserved (+ one member_of directed_relation per member).
 %     subjectmeasurement
 %         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed `observation`
 %         (value kind: the measured quantity, or `term`) + an
@@ -1008,10 +1011,10 @@
 %         Brainstorm-J migrator: did_v1 vmneuralresponseresiduals -- DEFERRED to the
 %         NDI second pass; the document is passed through UNCHANGED.
 %     vmspikefilteringparameters
-%         Brainstorm-J migrator: did_v1 vmspikefilteringparameters -> ONE
-%         `method_parameters` document (+ the `software` entity its v1 `app` block
-%         names) -- GUARDED, because this class mixes OUTPUT DATA into a configuration
-%         document.
+%         Brainstorm-J migrator: did_v1 vmspikefilteringparameters -> ONE `method`
+%         document (`method_parameters` before did-schema #88) (+ the `software`
+%         entity its v1 `app` block names) -- GUARDED, because this class mixes OUTPUT
+%         DATA into a configuration document.
 %     vmspikefit
 %         Brainstorm-J migrator: did_v1 vmspikefit -> a `calculation` with value kind
 %         `model_fit` (private/jModelFit) + the shared session anchor (+ software and

@@ -1,6 +1,7 @@
 function bodies = vmspikefilteringparameters(preBody)
 %VMSPIKEFILTERINGPARAMETERS Brainstorm-J migrator: did_v1
-%   vmspikefilteringparameters -> ONE `method_parameters` document (+ the
+%   vmspikefilteringparameters -> ONE `method` document (`method_parameters`
+%   before did-schema #88) (+ the
 %   `software` entity its v1 `app` block names) -- GUARDED, because this class
 %   mixes OUTPUT DATA into a configuration document.
 %

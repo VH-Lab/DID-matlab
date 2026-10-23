@@ -1,11 +1,8 @@
 function v2Body = subject(preBody)
-%SUBJECT Brainstorm-J carry-forward for a v1 subject: guarantee a non-empty
-%   local_identifier. V_eta makes subject.local_identifier REQUIRED (a subject
-%   must be nameable); a v1 subject's handle was optional, so an empty or missing
-%   one now needs filling. Fill it from the preserved document id. Everything else
-%   is unchanged -- the body is already post-universalRenames and ensureClassBlocks
-%   runs after this (exactly as the mechanical path did before), so the only delta
-%   is the guaranteed handle.
+%SUBJECT Brainstorm-J migrator: a v1 subject -> one `entity` of type
+%   `organism`, id preserved, carrying `local_identifier` and `description`. A
+%   v1 subject's handle was optional, so an empty or missing one is filled from
+%   the preserved document id (jEnsureLocalId).
 
 %   did-schema #88 (V_eta_entity_composition_plan.md sec. 4, signed 2026-10-08):
 %   `subject` is gone; a v1 subject becomes one `entity` with its id preserved,

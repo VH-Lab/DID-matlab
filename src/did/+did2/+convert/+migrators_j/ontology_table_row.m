@@ -1,6 +1,6 @@
 function bodies = ontology_table_row(preBody)
 %ONTOLOGY_TABLE_ROW Brainstorm-J split migrator: did_v1 ontology_table_row
-%   -> the subject_statement tier (1 -> N).
+%   -> one statement per column (1 -> N).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Each column of the legacy open key/value table becomes its own statement,

@@ -1,12 +1,13 @@
 function v2Body = element(preBody)
-%ELEMENT Brainstorm-J migrator: did_v1 element -> subject (+ kind assertions +
-%   the raw-recording observation + a lineage relation). Strict J retires the
-%   recording-side `element` class
-%   (J:214, D2): any identifiable thing -- an organism, a device/probe, a derived
-%   signal or sorted unit -- is a `subject`. The element document therefore
-%   becomes a `subject` with its id PRESERVED, so the ~50 classes that reference
+%ELEMENT Brainstorm-J migrator: did_v1 element -> an `entity` (+ kind
+%   assertions + the raw-recording observation + a lineage relation). V_eta
+%   retires the recording-side `element` class: any identifiable thing -- an
+%   organism, a device/probe, a derived signal or sorted unit -- is an `entity`
+%   with a `type` (here `cell` for a sorted unit, `group` for an ensemble,
+%   `device` otherwise; see elementEntityType). The element document therefore
+%   becomes an `entity` with its id PRESERVED, so the ~50 classes that reference
 %   it (`element_id` / `underlying_element_id` / `stimulator_id`) keep resolving
-%   -- now to a subject.
+%   -- now to an entity.
 %
 %   1 -> N:
 %     - subject           the element itself (id preserved; name/reference ->
