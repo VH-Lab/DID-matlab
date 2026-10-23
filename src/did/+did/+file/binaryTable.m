@@ -527,13 +527,18 @@ classdef binaryTable < handle
             end
 
             if ~option.sorted
-                % then we just have to read each entry one by one
+                % then we just have to look at each entry, but read the
+                % column once rather than reopening the file for every row:
+                % the file cache's index has a row per cached file, and a
+                % per-row read took seconds at tens of thousands of files.
                 r = binaryTableObj.getSize();
-                for i=1:r
-                    data = binaryTableObj.readRow(i,col);
-                    if isequal(data,value)
-                        row = i;
-                        break;
+                if r>0
+                    allData = binaryTableObj.readRow(Inf,col);
+                    for i=1:r
+                        if isequal(allData(i,:),value)
+                            row = i;
+                            break;
+                        end
                     end
                 end
             else

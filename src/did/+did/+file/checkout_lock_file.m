@@ -14,7 +14,10 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     %  file will be created and FID will return the file ID (see help fopen).
     %
     %  If instead the file already exists, the function will check
-    %  every 1 second for 30 iterations to see if the file disappears.
+    %  repeatedly for up to 30 seconds to see if the file disappears,
+    %  first after a few milliseconds and then less often (at most every
+    %  0.25 seconds): a lock is usually held only briefly, and waiting a
+    %  whole second between checks made every waiter lose a second.
     %  If the function is never able to create a new file because the
     %  old file exists, then the function will give up and return FID < 0.
     %
@@ -50,8 +53,9 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     %
     %  [FID,KEY] = CHECKOUT_LOCK_FILE(FILENAME, CHECKLOOPS)
     %
-    %  Alters the number of times the function will check (at 1 second
-    %  intervals) to see if FILENAME has disappeared.
+    %  Alters how long, in seconds, the function will keep checking to see
+    %  if FILENAME has disappeared. (It used to check once a second,
+    %  CHECKLOOPS times; the bound is the same, the checks more frequent.)
     %
     %  [FID,KEY] = CHECKOUT_LOCK_FILE(FILENAME, CHECKLOOPS, THROWERROR)
     %
@@ -108,12 +112,21 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
 
     % now check
 
-    loop = 0;
+    % LOOPS is a budget in seconds (it was one check per second). The
+    % checks themselves start a few milliseconds apart and back off to
+    % 0.25 s, so a briefly held lock is handed on almost at once.
+    waitStart = tic;
+    delay = 0.005;
+    timedOut = ~(loops>0);
 
     expiration_time_of_file = Inf;
     isexpired = 0;
 
-    while ( isfile(filename) && loop<loops )
+    while ( ~timedOut && isfile(filename) )
+        if toc(waitStart) >= loops
+            timedOut = true;
+            break;
+        end
         file_exists = isfile(filename);
 
         if file_exists
@@ -138,14 +151,14 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
             %else,
             %    disp('will not expire.');
             %end;
-            pause(1);
+            pause(delay);
+            delay = min(delay*2, 0.25);
         else    % it is expired; we get to delete it
             delete(filename);
         end
-        loop = loop + 1;
     end
 
-    if loop<loops % we made it
+    if ~timedOut % we made it
         fid = fopen(filename,'wt','ieee-le');
         % 'UTC', not 'UTCLeapSeconds': a UTCLeapSeconds datetime accepts
         % only a Z-suffixed display format, and DID-python writes no Z --
