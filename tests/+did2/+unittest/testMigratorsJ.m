@@ -3928,7 +3928,8 @@ verifyEqual(testCase, lower(csv.response_type.name), 'mean');
 % contrast_sensitivity_calc carries no response_units, so what the response
 % measured is not stated: no response variable is guessed (Jess Haley
 % 2026-10-22 [response variable]); the variable is the calculator label, no node
-verifyEmpty(testCase, leaf.statement.variable.node);
+v = leaf.statement.variable;   % a blank node is left out of the built term
+verifyFalse(testCase, isfield(v, 'node') && ~isempty(v.node), 'a variable node was guessed');
 verifyEqual(testCase, char(leaf.statement.variable.name), 'contrast sensitivity');
 sw = entityByNameJ(out, 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);

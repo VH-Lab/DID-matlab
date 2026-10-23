@@ -935,7 +935,7 @@ for u = {[], '', '   ', "", 7}
     for leaf = responseLeaves(u{1})
         L = leaf{1};
         inspected = inspected + 1;
-        verifyEmpty(testCase, L.statement.variable.node, sprintf( ...
+        verifyEmpty(testCase, nodeOf(L.statement.variable), sprintf( ...
             '%s: a variable node was written although the source gives no unit', ...
             L.document_class.class_name));
         verifyFalse(testCase, any(strcmpi(char(L.statement.variable.name), ...
@@ -957,7 +957,7 @@ for u = {'mV', 'Spikes', 'a.u.', 'F/F0'}
     for leaf = responseLeaves(u{1})
         L = leaf{1};
         inspected = inspected + 1;
-        verifyEmpty(testCase, L.statement.variable.node, sprintf( ...
+        verifyEmpty(testCase, nodeOf(L.statement.variable), sprintf( ...
             '%s, ''%s'': a variable node was guessed', L.document_class.class_name, u{1}));
         verifyFalse(testCase, any(strcmpi(char(L.statement.variable.name), ...
             {'neural firing rate', 'dF/F'})), sprintf( ...
@@ -1010,6 +1010,12 @@ end
 tc = flatRawCurve();
 tc.response_units = units;
 leaves{end+1} = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve(flatRawBody(tc)));
+end
+
+function n = nodeOf(term)
+%NODEOF A term's node, '' when the built term leaves a blank node out.
+n = '';
+if isstruct(term) && isfield(term, 'node'); n = char(term.node); end
 end
 
 function tf = isTerm(term, node, name)
