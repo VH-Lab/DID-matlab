@@ -1,8 +1,8 @@
 classdef sqlitedb < handle
-    % did2.database.sqlitedb  SQLite + JSON1 backend for V_delta documents.
+    % did2.database.sqlitedb  SQLite + JSON1 backend for V2 (V_eta) documents.
     %
     %   First database backend in the v2 line. Stores each document's full
-    %   V_delta JSON body in a single TEXT column on the `documents`
+    %   V2 JSON body in a single TEXT column on the `documents`
     %   table; the `superclasses` and `depends_on` sidecar tables hold
     %   the entries needed for `isa` and `depends_on` queries without
     %   walking JSON.
@@ -56,6 +56,21 @@ classdef sqlitedb < handle
     %   the bytes it ingested, unless another document still records the
     %   same uid.
     %
+    %   THE SCHEMA-GENERATION STAMP. `meta.schema_generation` names the
+    %   schema generation the database was created for. A new database is
+    %   stamped 'V_eta' (SchemaGeneration). Every database created before
+    %   2026-10-23 was stamped with the earlier generation name 'V_delta',
+    %   whatever its documents were (did-schema #88, which made them V_eta,
+    %   did not change the stamp). Those files still open: the old name is a
+    %   LEGACY ALIAS (LegacySchemaGenerations), accepted as it is and NOT
+    %   rewritten on open. The stamp is left alone because it cannot say what
+    %   the file holds -- the same 'V_delta' was written on files of V_eta
+    %   documents and on files of pre-V_eta documents -- so relabelling it
+    %   would record a claim nobody checked, on a path that only reads. What
+    %   each document is, is in its own document_class.schema_version.
+    %   (Jess Haley, 2026-10-23: "there should be no mention of V_delta";
+    %   DID-matlab #223.)
+    %
     %   See also: did2.query, did2.database.compileQuery, did2.document,
     %             docs/v2/PLAN.md.
 
@@ -83,6 +98,11 @@ classdef sqlitedb < handle
 
     properties (Constant, Access = private)
         SchemaVersion = 1
+        % The meta.schema_generation stamp a new database gets.
+        SchemaGeneration = 'V_eta'
+        % Stamps written by earlier versions of this class, still opened as
+        % they are (see the class help, "THE SCHEMA-GENERATION STAMP").
+        LegacySchemaGenerations = {'V_delta'}
     end
 
     methods
@@ -560,7 +580,7 @@ classdef sqlitedb < handle
                     'schema_version', num2str(obj.SchemaVersion));
                 mksqlite(obj.dbid, ...
                     'INSERT INTO meta(key, value) VALUES(?, ?)', ...
-                    'schema_generation', 'V_delta');
+                    'schema_generation', obj.SchemaGeneration);
                 mksqlite(obj.dbid, ...
                     'INSERT INTO meta(key, value) VALUES(?, ?)', ...
                     'queryable_array_paths', ...
@@ -1114,9 +1134,18 @@ classdef sqlitedb < handle
                     '%s is not a v2 SQLite database (missing meta table).', ...
                     obj.filename);
             end
-            if isempty(row) || ~strcmp(row(1).value, 'V_delta')
+            % The current stamp, or a legacy one (opened as it is, never
+            % rewritten: see the class help).
+            accepted = [{obj.SchemaGeneration}, obj.LegacySchemaGenerations];
+            if isempty(row) || ~any(strcmp(char(row(1).value), accepted))
+                found = '<none>';
+                if ~isempty(row)
+                    found = char(row(1).value);
+                end
                 error('did2:database:notV2Database', ...
-                    '%s is not a V_delta database.', obj.filename);
+                    ['%s is not a v2 SQLite database this version can open ' ...
+                     '(meta.schema_generation is ''%s''; expected one of: %s).'], ...
+                    obj.filename, found, strjoin(accepted, ', '));
             end
             obj.migrateDependsOnValueToDocumentId();
             obj.migrateDependsOnKeyForRepeatedEdges();
@@ -1594,7 +1623,7 @@ classdef sqlitedb < handle
                 if ~isstruct(e) || ~isfield(e, 'name')
                     continue;
                 end
-                % V_delta uses `document_id`; tolerate the earlier
+                % V2 uses `document_id`; tolerate the earlier
                 % `value` draft and the raw v1 `id` so mid-migration
                 % bodies still write their sidecar rows.
                 if isfield(e, 'document_id')
