@@ -212,11 +212,30 @@ classdef TestLockFile < matlab.unittest.TestCase
             start(t);
 
             waitStart = tic;
-            [fid, key] = did.file.checkout_lock_file(testCase.lockFile, 5, false);
+            [fid, key] = did.file.checkout_lock_file(testCase.lockFile, 5, false, 3600, 0.1);
             waited = toc(waitStart);
             testCase.assertGreaterThan(fid, -1);
             did.file.release_lock_file(testCase.lockFile, key);
             testCase.verifyLessThan(waited, 0.9);
+        end
+
+        function testByDefaultAWaiterStillLooksOnceASecond(testCase)
+            % Fast polling is opt-in. Locks that guard long operations (a
+            % database adding thousands of documents) keep the old cadence.
+            future = datetime('now','TimeZone','UTC') + hours(1);
+            future.Format = 'uuuu-MM-dd''T''HH:mm:ss.SSSSSS';
+            testCase.writeLock(char(future), 'someoneElsesKey');
+            lockFile = testCase.lockFile;
+            t = timer('StartDelay', 0.1, 'TimerFcn', @(~,~) delete(lockFile));
+            testCase.addTeardown(@() delete(t));
+            start(t);
+
+            waitStart = tic;
+            [fid, key] = did.file.checkout_lock_file(testCase.lockFile, 5, false);
+            waited = toc(waitStart);
+            testCase.assertGreaterThan(fid, -1);
+            did.file.release_lock_file(testCase.lockFile, key);
+            testCase.verifyGreaterThanOrEqual(waited, 0.9);
         end
 
     end

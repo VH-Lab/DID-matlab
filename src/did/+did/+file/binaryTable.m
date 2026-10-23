@@ -139,8 +139,10 @@ classdef binaryTable < handle
             key = '';
             lockfid = [];
             if binaryTableObj.hasLock == false
+                % Held for one table update (milliseconds), so look again
+                % often (at most every 0.1 s) rather than once a second.
                 [lockfid,key] = did.file.checkout_lock_file(binaryTableObj.lockFileName(),...
-                    30,1,20);
+                    30,1,20,0.1);
                 binaryTableObj.hasLock = true;
             end
         end %
