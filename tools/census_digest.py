@@ -4001,6 +4001,48 @@ def _pass_report(r, key):
     return rep, None
 
 
+# THE EPOCH ENTITY TYPE IS IDENTIFIED BY ITS NODE, NOT ITS STORED NAME.
+# An entity type's stored `name` is its node's ontology label (did-schema
+# dc116fd; Jess Haley 2026-10-22 [vocabulary nodes] L1, L2), so it changes when
+# the schema changes and the node does not. The node is the one
+# did2.build.vocabulary('entity_type', 'epoch') answers (src/did/+did2/+build/
+# vocabulary.m) and did-schema's binding_registry_meta.json entity_type_bindings
+# row for "recording epoch" holds.
+EPOCH_TYPE_NODE = "EMPTY:0000383"
+
+# FALLBACK ONLY, for a report that carries no `by_entity_type_node`: the
+# keys `by_entity_type` has been written under, each matlab.lang.makeValidName
+# of the stored name -- `epoch` before the label flip, `recordingEpoch`
+# ("recording epoch") after it. A report that counted the type under any other
+# name is not recognised here; that is why the node table is preferred.
+EPOCH_TYPE_NAME_KEYS = ("epoch", "recordingEpoch")
+
+
+def epoch_entity_type_count(r):
+    """(count, label) of `entity` documents of the epoch type in the FINAL
+    census, or (None, None) when the report carries neither table.
+
+    Prefers `by_entity_type_node` (rows {node, name, count}; matched by NODE).
+    Falls back to `by_entity_type` (keyed by name) for reports written before
+    the node table existed, accepting the pre- and post-flip names."""
+    rows = r.get("by_entity_type_node")
+    if rows is not None:
+        n = 0
+        for row in aslist(rows):
+            if isinstance(row, dict) and \
+                    str(row.get("node") or "").strip() == EPOCH_TYPE_NODE:
+                n += _int_or_none(row.get("count")) or 0
+        return n, "by_entity_type_node `%s`" % EPOCH_TYPE_NODE
+    by_type = r.get("by_entity_type")
+    if isinstance(by_type, dict):
+        present = [k for k in EPOCH_TYPE_NAME_KEYS if by_type.get(k) is not None]
+        if present:
+            n = sum(_int_or_none(by_type.get(k)) or 0 for k in present)
+            return n, "by_entity_type %s (by NAME; no node table)" % \
+                " + ".join("`%s`" % k for k in present)
+    return None, None
+
+
 def epoch_populations(r):
     """Every `epoch` figure in one report, tagged with the batch it counted.
 
@@ -4133,12 +4175,12 @@ def epoch_populations(r):
         n_epoch = class_count(normalised_class_index(by_class), "epoch")
         label = "by_class: `epoch` in the FINAL class census"
         # did-schema #88: an epoch is an `entity` of type epoch, which by_class
-        # counts under `entity`; the report's by_entity_type carries the type.
-        by_type = r.get("by_entity_type")
-        if isinstance(by_type, dict) and by_type.get("epoch") is not None:
-            n_epoch += _int_or_none(by_type.get("epoch")) or 0
-            label = ("by_class `epoch` + by_entity_type `epoch` in the FINAL "
-                     "class census")
+        # counts under `entity`; the report carries the type separately.
+        n_typed, typed_label = epoch_entity_type_count(r)
+        if n_typed is not None:
+            n_epoch += n_typed
+            label = ("by_class `epoch` + %s in the FINAL class census"
+                     % typed_label)
         reading["commensurable"].append((n_epoch, label))
 
     values = set(v for v, _label in reading["commensurable"])

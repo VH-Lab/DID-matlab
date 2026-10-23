@@ -3054,6 +3054,62 @@ class TestEpochPopulations(DigestCase):
         self.assertIn("<epoch document populations disagree>", failed)
         self.assertIn("0 (by_class", text)
 
+    # --- the epoch ENTITY TYPE: matched by node, not by stored name --------
+    # did-schema dc116fd made a stored entity-type name its node's label, so
+    # the epoch type is written "recording epoch" (by_entity_type key
+    # `recordingEpoch`). DID corpus run 39879346144 (JH) failed here: the
+    # digest looked only for the key `epoch` and read 0 against 4156 minted.
+
+    def test_the_epoch_type_is_matched_by_node_in_the_node_table(self):
+        self._corpus("A", by_class={"entity": 140},
+                     by_entity_type_node=[
+                         {"node": "EMPTY:0000383", "name": "recording epoch",
+                          "count": 100},
+                         {"node": "NCIT:C67447", "name": "Session",
+                          "count": 40}])
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        block = self._block(text)
+        self.assertIn("-> AGREE (3 figure(s), all 100).", block)
+        self.assertIn("by_entity_type_node `EMPTY:0000383`", block)
+
+    def test_the_node_table_wins_over_the_name_table(self):
+        # A label that changes again must not matter: the node decides, and
+        # a name-keyed `epoch` alongside is not double counted.
+        self._corpus("A", by_class={"entity": 100},
+                     by_entity_type={"epoch": 100},
+                     by_entity_type_node={"node": "EMPTY:0000383",
+                                          "name": "some future label",
+                                          "count": 100})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("-> AGREE (3 figure(s), all 100).", self._block(text))
+
+    def test_a_node_table_without_the_epoch_node_is_a_measured_zero(self):
+        self._corpus("A", by_class={"entity": 100},
+                     by_entity_type_node=[{"node": "NCIT:C67447",
+                                           "name": "epoch", "count": 100}])
+        text, failed = self.run_digest()
+        self.assertIn("<epoch document populations disagree>", failed)
+
+    def test_without_a_node_table_the_post_flip_label_is_accepted(self):
+        # THE JH SHAPE of run 39879346144: by_entity_type only, keyed by the
+        # makeValidName of the label.
+        self._corpus("A", by_class={"entity": 140},
+                     by_entity_type={"recordingEpoch": 100, "Session": 40})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        block = self._block(text)
+        self.assertIn("-> AGREE (3 figure(s), all 100).", block)
+        self.assertIn("(by NAME; no node table)", block)
+
+    def test_without_a_node_table_the_pre_flip_name_is_accepted(self):
+        self._corpus("A", by_class={"entity": 100},
+                     by_entity_type={"epoch": 100})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("-> AGREE (3 figure(s), all 100).", self._block(text))
+
     def test_a_mint_without_found_existing_is_not_compared(self):
         # `epochs_found_existing` is part of the population and not part of the
         # mint's work. Absent, its contribution is UNKNOWN -- assuming zero

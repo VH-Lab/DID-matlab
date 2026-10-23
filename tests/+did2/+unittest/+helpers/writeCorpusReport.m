@@ -50,6 +50,10 @@ report = struct( ...
 % digest's epoch-population cross-check needs the epoch count, so the entity
 % documents are also counted by type.
 report.by_entity_type = entityTypeCounts(result.migrated);
+% The same count keyed by the type's ontology NODE. The stored name is the
+% node's label and changes with the schema (did-schema dc116fd: `epoch` became
+% "recording epoch"); the digest matches the epoch type by node.
+report.by_entity_type_node = entityTypeNodeCounts(result.migrated);
 
 % THE SECOND HALF OF THE HEADLINE CORPUS GATE, PERSISTED FOR THE FIRST TIME.
 % The gate is quoted everywhere in this project as "0 quarantine + 0 orphans".
@@ -547,6 +551,32 @@ for k = 1:numel(migrated)
             counts.(t) = counts.(t) + 1;
         else
             counts.(t) = 1;
+        end
+    catch
+    end
+end
+end
+
+function rows = entityTypeNodeCounts(migrated)
+% [{node, name, count}] per distinct (node, name) of entity documents; a list
+% (cell) so a single row still encodes as a JSON array. Empty when none.
+keys = {};
+rows = {};
+for k = 1:numel(migrated)
+    try
+        b = migrated{k}.toStruct();
+        if ~strcmp(char(b.document_class.class_name), 'entity'); continue; end
+        t = b.entity.type;
+        node = '';
+        if isfield(t, 'node') && ~isempty(t.node); node = strtrim(char(t.node)); end
+        name = char(t.name);
+        key = [node '|' name];
+        i = find(strcmp(keys, key), 1);
+        if isempty(i)
+            keys{end+1} = key; %#ok<AGROW>
+            rows{end+1} = struct('node', node, 'name', name, 'count', 1); %#ok<AGROW>
+        else
+            rows{i}.count = rows{i}.count + 1;
         end
     catch
     end
