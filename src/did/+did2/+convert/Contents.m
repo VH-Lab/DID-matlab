@@ -9,7 +9,9 @@
 %   or 'V_eta'. Only 'V_eta' routes through +migrators_j; the V_delta schema
 %   set the default names was deleted from did-schema (OPEN_WORK #128,
 %   2026-10-21), as were the 'V_epsilon' and 'V_zeta' targets and their
-%   +migrators_e / +migrators_i packages. See v1_to_v2's own help.
+%   +migrators_e / +migrators_i packages. The unit tests that still run the
+%   'V_delta' target read a small V_delta fixture schema
+%   (tests/+did2/fixtures/V_delta). See v1_to_v2's own help.
 %
 %   STATEMENTS. A V_eta statement's class is its direction (`observation`,
 %   `assertion`, `manipulation`, `calculation`) and its value kind (`voltage`,
