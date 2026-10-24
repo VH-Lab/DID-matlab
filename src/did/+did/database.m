@@ -1093,38 +1093,10 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 case 'hassize'   %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasmember'
-                    % Matched as did.datastructures.fieldsearch matches it
-                    % (and DID-python's field_search): text is a member of
-                    % text that is the whole value or an item of its
-                    % comma-separated list, and a number of an equal number;
-                    % text is never a member of a number, nor a number of
-                    % text. The pattern is a single-quoted literal (see
-                    % sqlStringList): an unquoted value was read as SQL, and
-                    % a double-quoted "value" as the column doc_data.value
-                    % (issue #236). doc2sql stores a number as a number, so a
-                    % numeric PARAM1 is compared as a number, written by
-                    % sprintf so that it can only be a numeric literal.
-                    % Values doc2sql stores as a summary of their size and
-                    % class (arrays and cells of more than one element) are
-                    % not matched.
-                    if ischar(param1) || (isstring(param1) && isscalar(param1))
-                        memberRegex = did.database.sqlStringList({['(^|,\s*)' ...
-                            regexptranslate('escape', char(param1)) '\s*(,|$)']});
-                        value_check = ['typeof(doc_data.value)=''text'' AND ' ...
-                            'regex(doc_data.value,' memberRegex ') NOT NULL'];
-                    elseif (isnumeric(param1) || islogical(param1)) && isscalar(param1) ...
-                            && isreal(param1) && ~isnan(param1)
-                        if isinf(param1)
-                            numberLiteral = sprintf('%s9e999', repmat('-', 1, param1 < 0));
-                        else
-                            numberLiteral = sprintf('%.17g', double(param1));
-                        end
-                        value_check = ['typeof(doc_data.value) IN (''integer'',''real'') AND ' ...
-                            'doc_data.value=' numberLiteral];
-                    else
-                        value_check = '0';  % a member no value can have
-                    end
-                    sql_str = [field_check ' AND ' notStr '(' value_check ')'];
+                    % Searched by brute force in search_doc_ids (see
+                    % isBruteForceTerm), so never gets here
+                    error('DID:Database:SQL', ['hasmember is searched by brute force, ' ...
+                        'not in SQL']);
                 case 'hasfield'
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     sql_str = [field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\"'];
@@ -1274,8 +1246,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     termOp(termOp=='~') = '';
                     if did.database.baseIdLookupValues(query_struct(i))
                         rank(i) = 1;
-                    elseif any(strcmp(termOp, {'regexp','contains_string','hasmember'})) ...
-                            || did.database.isBruteForceDependsOn(query_struct(i))
+                    elseif any(strcmp(termOp, {'regexp','contains_string'})) ...
+                            || did.database.isBruteForceTerm(query_struct(i))
                         rank(i) = 4;
                     elseif strcmp(char(query_struct(i).field), 'base.session_id')
                         rank(i) = 3;
@@ -1341,7 +1313,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     if size(doc_ids,1)==1 && size(doc_ids,2)>1
                         doc_ids = doc_ids';  % ensure column vector
                     end
-                elseif did.database.isBruteForceDependsOn(query_struct)
+                elseif did.database.isBruteForceTerm(query_struct)
                     doc_ids = brute_force_search(sqlitedb_obj, query_struct, branch_id, candidate_ids);
                 else  % leaf scalar query
                     query_str = get_sql_query_str(sqlitedb_obj, query_struct, branch_id, candidate_ids);
@@ -1393,9 +1365,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % ORed base.id lookups among the operands are searched together
             % by search_base_ids, as for an OR of nothing but base.id
             % lookups. Operands that are not single SQL terms - ANDs (struct
-            % arrays), negated ORs and the depends_on queries that are
-            % brute-forced (see isBruteForceDependsOn) - are searched by
-            % search_doc_ids, one at a time, as before.
+            % arrays), negated ORs and the terms that are brute-forced
+            % (see isBruteForceTerm) - are searched by search_doc_ids, one
+            % at a time, as before.
 
             batchSize = sqlitedb_obj.orBatchTerms();
             numOperands = numel(operands);
@@ -1414,7 +1386,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     if strcmp(op, 'or')
                         continue  % a negated OR (a plain one was flattened)
                     end
-                    if did.database.isBruteForceDependsOn(operand)
+                    if did.database.isBruteForceTerm(operand)
                         continue  % no SQL form: brute_force_search
                     end
                     [isId, id] = did.database.baseIdLookupValues(operand);
@@ -1470,7 +1442,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % the ones that did.datastructures.fieldsearch matches against the
             % search structure of QUERY_STRUCT (see did.query/to_searchstructure).
             % Used for the queries that SQL cannot match exactly (see
-            % isBruteForceDependsOn), as DID-python does.
+            % isBruteForceTerm), as DID-python does.
             if nargin > 3 && iscell(candidate_ids)
                 ids = candidate_ids;
             else
@@ -2398,6 +2370,28 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             tf = strcmp(op, 'depends_on') && ...
                 isempty(did.database.dependsOnSqlMatch(query_struct.param1, query_struct.param2));
         end % isBruteForceDependsOn()
+
+        function tf = isBruteForceTerm(query_struct)
+            % isBruteForceTerm - is a search term tested by brute force?
+            %
+            % TF = isBruteForceTerm(QUERY_STRUCT)
+            %
+            % True if QUERY_STRUCT (a single search structure) is searched
+            % by brute_force_search - its documents tested one by one with
+            % did.datastructures.fieldsearch - rather than in SQL, as
+            % DID-python searches it:
+            %   - hasmember and ~hasmember, always. Their members are often
+            %     those of an array or cell, which doc2sql stores only as a
+            %     summary of its size and class ('[1 3] double'), so SQL
+            %     cannot see them (issue #236).
+            %   - the depends_on queries SQL cannot match exactly (see
+            %     isBruteForceDependsOn).
+            % search_doc_ids searches these last in an AND, so they test
+            % only the documents the other terms leave.
+            op = strtrim(lower(char(query_struct.operation)));
+            op(op=='~') = '';
+            tf = strcmp(op, 'hasmember') || did.database.isBruteForceDependsOn(query_struct);
+        end % isBruteForceTerm()
 
         function [tf, ids] = baseIdLookupValues(query_struct)
             % baseIdLookupValues - is a search structure a lookup by base.id?

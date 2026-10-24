@@ -1,25 +1,29 @@
 classdef TestHasMemberQuoting < matlab.unittest.TestCase
-    % Test 'hasmember': one rule in fieldsearch and SQL, never read as SQL
+    % Test 'hasmember': one rule, searched by brute force, never as SQL
     %
     % did.database/query_struct_to_sql_str put a text 'hasmember' value
     % into the SQL unquoted, so 'name17' was read as a column (an error),
     % 'value' as the column doc_data.value (every document matched) and
-    % '1 OR 1=1' as SQL (SQL injection). And did.datastructures.fieldsearch
-    % used ismember, which compares two texts character by character, so
-    % it matched another rule than the SQL did. Both now match one rule
-    % (see fieldsearch), as DID-python's field_search does:
+    % '1 OR 1=1' as SQL (SQL injection). And each implementation had its
+    % own rule: did.datastructures.fieldsearch used ismember, which
+    % compares two texts character by character; the SQL matched an item
+    % of a comma-separated list, and could not see the members of arrays
+    % and cells at all (doc2sql stores them as '[1 3] double'); DID-python
+    % tested for a substring. Now hasmember has one rule (see fieldsearch):
     %   - text is a member of text that is the whole value or an item of
     %     its comma-separated list;
     %   - anything is a member of a cell array that holds an equal element,
     %     and a number of a numeric array that holds it;
-    %   - text is never a member of a number, nor a number of text.
+    %   - text is never a member of a number, nor a number of text;
+    % and the SQLite search tests it by brute force with fieldsearch (see
+    % did.database/isBruteForceTerm), as DID-python does, so no hasmember
+    % value goes into SQL.
     %
     % testRule checks fieldsearch against a table of cases (the same table
     % as DID-python's tests/test_hasmember_quoting.py). The other tests
-    % compare db.search with fieldsearch for text values, numbers and
-    % '~hasmember', on their own, inside an AND (searched restricted to
-    % candidate documents) and inside an OR (searched in a batch by
-    % search_or_operands). See issue #236.
+    % compare db.search with fieldsearch for text values, numbers, array
+    % and cell fields and '~hasmember', on their own, inside an AND (only
+    % the candidates are tested) and inside an OR. See issue #236.
 
     properties (Constant)
         db_filename = 'test_db_hasmember.sqlite'
@@ -100,8 +104,20 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
         end
 
         function numQueries = countDocQueries(testCase)
+            % The SQL searches run since the query log was cleared
             entries = testCase.db.queryLog;
             numQueries = nnz(startsWith({entries.query}, 'SELECT DISTINCT docs.doc_id'));
+        end
+
+        function verifyLoadedOnly(testCase, numDocs, msg)
+            % Since the query log was cleared, NUMDOCS documents were
+            % loaded, and the documents of the branch were not listed
+            entries = testCase.db.queryLog;
+            queries = {entries.query};
+            testCase.verifyFalse(any(startsWith(queries, 'SELECT docs.doc_id FROM docs')), ...
+                [msg ': the branch must not be listed']);
+            testCase.verifyEqual(nnz(startsWith(queries, 'SELECT json_code FROM docs')), numDocs, ...
+                [msg ': documents loaded']);
         end
     end
 
@@ -194,6 +210,59 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
             end
         end
 
+        function testMissingField(testCase)
+            % No document has demoB.value: none holds a member of it, so
+            % ~hasmember matches every one (as in fieldsearch)
+            testCase.verifyIds(testCase.hasMember('demoB.value', 1, false), [], ...
+                'hasmember in a missing field');
+            testCase.verifyIds(testCase.hasMember('demoB.value', 1, true), ...
+                1:numel(testCase.names), '~hasmember in a missing field');
+        end
+
+        function testArrayAndCellFields(testCase)
+            % doc2sql stores these as a summary ('[1 3] double', '[1 2]
+            % cell'), which SQL could not search; brute force can
+            testCase.applyFixture(matlab.unittest.fixtures.WorkingFolderFixture);
+            db = did.implementations.sqlitedb('list_fields.sqlite');
+            db.add_branch('a');
+            docs = {did.document('demoA', 'base.name', 'numbers', 'demoA.value', [1 2 3]), ...
+                did.document('demoA', 'base.name', 'other', 'demoA.value', [4 5]), ...
+                did.document('demoA', 'base.name', 'names', 'demoA.value', {'alpha', 'beta'})};
+            db.add_docs(docs, 'a', 'Validate', false);
+            ids = cellfun(@(d) d.id(), docs, 'UniformOutput', false);
+            stored = db.get_docs(ids);  % the documents as the search sees them
+            cases = {
+                'demoA.value', 2,       1
+                'demoA.value', 5,       2
+                'demoA.value', 6,       []
+                'demoA.value', 'beta',  3
+                'demoA.value', 'gamma', []
+                'base.name',   'other', 2
+                };
+            for k = 1:size(cases, 1)
+                [field, member, matching] = cases{k, :};
+                for negate = [false true]
+                    s = testCase.hasMember(field, member, negate);
+                    if negate
+                        expected = ids(setdiff(1:3, matching));
+                    else
+                        expected = ids(matching);
+                    end
+                    expected = sort(expected(:));
+                    msg = sprintf('%s %s in %s', s.operation, num2str(member), field);
+                    found = db.search(s);
+                    testCase.verifyEqual(sort(found(:)), expected, msg);
+                    fieldsearchIds = cell(0, 1);
+                    for j = 1:numel(stored)
+                        if did.datastructures.fieldsearch(stored(j).document_properties, s)
+                            fieldsearchIds{end+1, 1} = stored(j).id(); %#ok<AGROW>
+                        end
+                    end
+                    testCase.verifyEqual(sort(fieldsearchIds), expected, [msg ': fieldsearch']);
+                end
+            end
+        end
+
         function testStructField(testCase)
             % A struct (base) has no members: its fields are not searched
             testCase.verifyIds(testCase.hasMember('base', 'value', false), [], ...
@@ -201,22 +270,19 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
         end
 
         function testInAnAnd(testCase, textValue)
-            % 'demoA.value < 100' is searched first and leaves every
-            % document as a candidate, so hasmember is searched restricted
-            % to them
+            % 'demoA.value < 4' is searched first and leaves 3 candidates,
+            % so hasmember loads and tests those 3 documents only
+            firstThree = did.query('demoA.value', 'lessthan', 4).searchstructure;
             for negate = [false true]
-                s = [testCase.allDocs(), ...
-                    testCase.hasMember('base.name', textValue, negate)];
+                s = [firstThree, testCase.hasMember('base.name', textValue, negate)];
+                msg = sprintf('demoA.value < 4 AND %s ''%s''', s(2).operation, textValue);
                 testCase.db.clearQueryLog();
-                testCase.verifySearch(s, sprintf('demoA.value < 100 AND %s ''%s''', s(2).operation, textValue));
-                entries = testCase.db.queryLog;
-                testCase.verifyTrue(any(contains({entries.query}, 'INDEXED BY')), ...
-                    'hasmember in an AND must be searched restricted to candidates');
+                testCase.verifySearch(s, msg);
+                testCase.verifyLoadedOnly(3, msg);
             end
             for negate = [false true]
-                s = [testCase.allDocs(), ...
-                    testCase.hasMember('demoA.value', 5, negate)];
-                testCase.verifySearch(s, sprintf('demoA.value < 100 AND %s 5', s(2).operation));
+                s = [firstThree, testCase.hasMember('demoA.value', 2, negate)];
+                testCase.verifySearch(s, sprintf('demoA.value < 4 AND %s 2', s(2).operation));
             end
         end
 
@@ -237,12 +303,12 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
                     terms{k}.operation, num2str(terms{k}.param1)));
             end
 
-            % every operand is a single SQL term, so the OR is one batch
+            % every operand is brute-forced, so no SQL search is run
             s = testCase.orOf(terms(1:3));
             testCase.db.clearQueryLog();
             testCase.verifySearch(s, 'an OR of text hasmembers');
-            testCase.verifyEqual(testCase.countDocQueries(), 1, ...
-                'an OR of hasmembers must be searched in one batched query');
+            testCase.verifyEqual(testCase.countDocQueries(), 0, ...
+                'hasmember must not be searched in SQL');
 
             % ...and restricted to candidates, inside an AND
             s = [testCase.allDocs(), testCase.orOf(terms)];
