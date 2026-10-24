@@ -4,15 +4,21 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
     % did.database/query_struct_to_sql_str put a text 'hasmember' value
     % into the SQL unquoted, so 'name17' was read as a column (an error),
     % 'value' as the column doc_data.value (every document matched) and
-    % '1 OR 1=1' as SQL (SQL injection). These tests compare db.search with
-    % did.datastructures.fieldsearch for text values, numbers and
-    % '~hasmember', on their own, inside an AND (searched restricted to
-    % candidate documents) and inside an OR (searched in a batch by
-    % search_or_operands). See issue #236.
+    % '1 OR 1=1' as SQL (SQL injection). These tests check db.search for
+    % text values, numbers and '~hasmember', on their own, inside an AND
+    % (searched restricted to candidate documents) and inside an OR
+    % (searched in a batch by search_or_operands). See issue #236.
     %
-    % fieldsearch tests hasmember of a text value character by character
-    % (ismember), so the names below are chosen so that no name holds
-    % all the characters of another's except where SQL matches too.
+    % The expected documents are found by matches, which tests hasmember
+    % by memberOf - the value is the whole field or an item of its
+    % comma-separated list, as the SQL search has it - and every other
+    % operation by did.datastructures.fieldsearch. fieldsearch itself is
+    % no guide for a text hasmember: ismember(param1, value) compares
+    % them character by character, and the logical array it returns is
+    % then negated and ANDed element by element, so '~hasmember value'
+    % matches only the names that share no character with 'value'.
+    % For numbers, fieldsearch agrees, and the search is compared with
+    % it too.
 
     properties (Constant)
         db_filename = 'test_db_hasmember.sqlite'
@@ -46,15 +52,60 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
     end
 
     methods
-        function ids = expectedIds(testCase, s)
-            % The ids of the documents that fieldsearch matches with S
+        function ids = expectedIds(testCase, s, useFieldsearch)
+            % The ids of the documents that match S (see matches), or, if
+            % USEFIELDSEARCH is true, that fieldsearch matches with S
+            if nargin < 3, useFieldsearch = false; end
             ids = {};
             for k = 1:numel(testCase.docs)
-                if did.datastructures.fieldsearch(testCase.docs{k}.document_properties, s)
+                props = testCase.docs{k}.document_properties;
+                if useFieldsearch
+                    isMatch = did.datastructures.fieldsearch(props, s);
+                else
+                    isMatch = testCase.matches(props, s);
+                end
+                if isMatch
                     ids{end+1} = testCase.docs{k}.id(); %#ok<AGROW>
                 end
             end
             ids = sort(ids(:));
+        end
+
+        function tf = matches(testCase, props, s)
+            % Does a document with properties PROPS match the search
+            % structure S? hasmember is tested by memberOf, the rest by
+            % fieldsearch
+            if numel(s) > 1  % AND
+                tf = true;
+                for k = 1:numel(s)
+                    tf = tf && testCase.matches(props, s(k));
+                end
+                return
+            end
+            op = lower(s.operation);
+            switch op
+                case 'or'
+                    tf = testCase.matches(props, s.param1) || testCase.matches(props, s.param2);
+                case {'hasmember', '~hasmember'}
+                    [isthere, value] = did.datastructures.isfullfield(props, s.field);
+                    tf = isthere && testCase.memberOf(s.param1, value);
+                    if op(1) == '~'
+                        tf = ~tf;  % as fieldsearch negates
+                    end
+                otherwise
+                    tf = logical(did.datastructures.fieldsearch(props, s));
+            end
+        end
+
+        function tf = memberOf(~, member, value)
+            % Is MEMBER the whole of VALUE, or an item of the
+            % comma-separated list in VALUE?
+            if ischar(member)
+                tf = ischar(value) && (strcmp(value, member) || ...
+                    any(strcmp(strtrim(strsplit(value, ',')), member)));
+            else
+                tf = isnumeric(value) && isscalar(member) && any(value(:) == member);
+            end
         end
 
         function verifySearch(testCase, s, msg)
@@ -102,7 +153,11 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
             % doc2sql stores demoA.value as a number
             for negate = [false true]
                 s = testCase.hasMember('demoA.value', numberValue, negate);
-                testCase.verifySearch(s, sprintf('%s %g', s.operation, numberValue));
+                msg = sprintf('%s %g', s.operation, numberValue);
+                testCase.verifySearch(s, msg);
+                found = testCase.db.search(s);
+                testCase.verifyEqual(sort(found(:)), testCase.expectedIds(s, true), ...
+                    [msg ': vs. fieldsearch']);
             end
             s = testCase.hasMember('demoA.value', numberValue, false);
             testCase.verifyNumElements(testCase.db.search(s), ...
