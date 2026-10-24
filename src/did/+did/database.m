@@ -1093,22 +1093,36 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 case 'hassize'   %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasmember'
-                    fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
-                    field_check = ['(' field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\")'];
-                    % PARAM1 is a member of a comma-separated list, or the
-                    % whole value. The text tests use single-quoted literals
-                    % (see sqlStringList): a double-quoted "value" is read as
-                    % the column doc_data.value, and an unquoted value as SQL
-                    % (issue #236). doc2sql stores a number as a number, which
-                    % never equals a text literal, so a finite numeric PARAM1
-                    % is also compared as a number, written by sprintf so it
-                    % can only be a numeric literal.
-                    memberRegex = did.database.sqlStringList({['^(.*,\s*)*' param1RegexEsc '\s*(,.*)*$']});
-                    value_check = ['regex(doc_data.value,' memberRegex ') NOT NULL' ...
-                        ' OR doc_data.value=' did.database.sqlStringList({param1Str})];
-                    if (isnumeric(param1) || islogical(param1)) && isscalar(param1) ...
-                            && isreal(param1) && isfinite(param1)
-                        value_check = [value_check ' OR doc_data.value=' param1Val];
+                    % Matched as did.datastructures.fieldsearch matches it
+                    % (and DID-python's field_search): text is a member of
+                    % text that is the whole value or an item of its
+                    % comma-separated list, and a number of an equal number;
+                    % text is never a member of a number, nor a number of
+                    % text. The pattern is a single-quoted literal (see
+                    % sqlStringList): an unquoted value was read as SQL, and
+                    % a double-quoted "value" as the column doc_data.value
+                    % (issue #236). doc2sql stores a number as a number, so a
+                    % numeric PARAM1 is compared as a number, written by
+                    % sprintf so that it can only be a numeric literal.
+                    % Values doc2sql stores as a summary of their size and
+                    % class (arrays and cells of more than one element) are
+                    % not matched.
+                    if ischar(param1) || (isstring(param1) && isscalar(param1))
+                        memberRegex = did.database.sqlStringList({['(^|,\s*)' ...
+                            regexptranslate('escape', char(param1)) '\s*(,|$)']});
+                        value_check = ['typeof(doc_data.value)=''text'' AND ' ...
+                            'regex(doc_data.value,' memberRegex ') NOT NULL'];
+                    elseif (isnumeric(param1) || islogical(param1)) && isscalar(param1) ...
+                            && isreal(param1) && ~isnan(param1)
+                        if isinf(param1)
+                            numberLiteral = sprintf('%s9e999', repmat('-', 1, param1 < 0));
+                        else
+                            numberLiteral = sprintf('%.17g', double(param1));
+                        end
+                        value_check = ['typeof(doc_data.value) IN (''integer'',''real'') AND ' ...
+                            'doc_data.value=' numberLiteral];
+                    else
+                        value_check = '0';  % a member no value can have
                     end
                     sql_str = [field_check ' AND ' notStr '(' value_check ')'];
                 case 'hasfield'

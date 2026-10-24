@@ -1,28 +1,29 @@
 classdef TestHasMemberQuoting < matlab.unittest.TestCase
-    % Test that 'hasmember' never reads its value as SQL
+    % Test 'hasmember': one rule in fieldsearch and SQL, never read as SQL
     %
     % did.database/query_struct_to_sql_str put a text 'hasmember' value
     % into the SQL unquoted, so 'name17' was read as a column (an error),
     % 'value' as the column doc_data.value (every document matched) and
-    % '1 OR 1=1' as SQL (SQL injection). These tests check db.search for
-    % text values, numbers and '~hasmember', on their own, inside an AND
-    % (searched restricted to candidate documents) and inside an OR
-    % (searched in a batch by search_or_operands). See issue #236.
+    % '1 OR 1=1' as SQL (SQL injection). And did.datastructures.fieldsearch
+    % used ismember, which compares two texts character by character, so
+    % it matched another rule than the SQL did. Both now match one rule
+    % (see fieldsearch), as DID-python's field_search does:
+    %   - text is a member of text that is the whole value or an item of
+    %     its comma-separated list;
+    %   - anything is a member of a cell array that holds an equal element,
+    %     and a number of a numeric array that holds it;
+    %   - text is never a member of a number, nor a number of text.
     %
-    % The expected documents are found by matches, which tests hasmember
-    % by memberOf - the value is the whole field or an item of its
-    % comma-separated list, as the SQL search has it - and every other
-    % operation by did.datastructures.fieldsearch. fieldsearch itself is
-    % no guide for a text hasmember: ismember(param1, value) compares
-    % them character by character, and the logical array it returns is
-    % then negated and ANDed element by element, so '~hasmember value'
-    % matches only the names that share no character with 'value'.
-    % For numbers, fieldsearch agrees, and the search is compared with
-    % it too.
+    % testRule checks fieldsearch against a table of cases (the same table
+    % as DID-python's tests/test_hasmember_quoting.py). The other tests
+    % compare db.search with fieldsearch for text values, numbers and
+    % '~hasmember', on their own, inside an AND (searched restricted to
+    % candidate documents) and inside an OR (searched in a batch by
+    % search_or_operands). See issue #236.
 
     properties (Constant)
         db_filename = 'test_db_hasmember.sqlite'
-        names = {'value', '1 OR 1=1', 'say "hi"', 'x, value', 'alpha', 'n7', 'O''Brien'}
+        names = {'value', '1 OR 1=1', 'say "hi"', 'x, value', 'alpha', 'n7', 'O''Brien', '5'}
     end
 
     properties
@@ -31,7 +32,7 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
     end
 
     properties (TestParameter)
-        textValue = {'value', '1 OR 1=1', 'say "hi"', 'O''Brien', 'x, value', 'name17', 'zzz'}
+        textValue = {'value', '1 OR 1=1', 'say "hi"', 'O''Brien', 'x, value', 'name17', 'zzz', '5', ''}
         numberValue = {3, 5, 99}
     end
 
@@ -52,66 +53,29 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
     end
 
     methods
-        function ids = expectedIds(testCase, s, useFieldsearch)
-            % The ids of the documents that match S (see matches), or, if
-            % USEFIELDSEARCH is true, that fieldsearch matches with S
-            if nargin < 3, useFieldsearch = false; end
+        function ids = expectedIds(testCase, s)
+            % The ids of the documents that fieldsearch matches with S
             ids = {};
             for k = 1:numel(testCase.docs)
-                props = testCase.docs{k}.document_properties;
-                if useFieldsearch
-                    isMatch = did.datastructures.fieldsearch(props, s);
-                else
-                    isMatch = testCase.matches(props, s);
-                end
-                if isMatch
+                if did.datastructures.fieldsearch(testCase.docs{k}.document_properties, s)
                     ids{end+1} = testCase.docs{k}.id(); %#ok<AGROW>
                 end
             end
             ids = sort(ids(:));
         end
 
-        function tf = matches(testCase, props, s)
-            % Does a document with properties PROPS match the search
-            % structure S? hasmember is tested by memberOf, the rest by
-            % fieldsearch
-            if numel(s) > 1  % AND
-                tf = true;
-                for k = 1:numel(s)
-                    tf = tf && testCase.matches(props, s(k));
-                end
-                return
-            end
-            op = lower(s.operation);
-            switch op
-                case 'or'
-                    tf = testCase.matches(props, s.param1) || testCase.matches(props, s.param2);
-                case {'hasmember', '~hasmember'}
-                    [isthere, value] = did.datastructures.isfullfield(props, s.field);
-                    tf = isthere && testCase.memberOf(s.param1, value);
-                    if op(1) == '~'
-                        tf = ~tf;  % as fieldsearch negates
-                    end
-                otherwise
-                    tf = logical(did.datastructures.fieldsearch(props, s));
-            end
-        end
-
-        function tf = memberOf(~, member, value)
-            % Is MEMBER the whole of VALUE, or an item of the
-            % comma-separated list in VALUE?
-            if ischar(member)
-                tf = ischar(value) && (strcmp(value, member) || ...
-                    any(strcmp(strtrim(strsplit(value, ',')), member)));
-            else
-                tf = isnumeric(value) && isscalar(member) && any(value(:) == member);
-            end
-        end
-
         function verifySearch(testCase, s, msg)
             found = testCase.db.search(s);
             testCase.verifyClass(found, 'cell', msg);
             testCase.verifyEqual(sort(found(:)), testCase.expectedIds(s), msg);
+        end
+
+        function verifyIds(testCase, s, docIndexes, msg)
+            % The search and fieldsearch must both find the documents
+            % DOCINDEXES, no more
+            expected = cellfun(@(d) d.id(), testCase.docs(docIndexes), 'UniformOutput', false);
+            testCase.verifyEqual(testCase.expectedIds(s), sort(expected(:)), [msg ': fieldsearch']);
+            testCase.verifySearch(s, msg);
         end
 
         function s = hasMember(~, field, value, negate)
@@ -142,6 +106,41 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function testRule(testCase)
+            % {value, member, is a member}; the same table as DID-python's
+            cases = {
+                'value',        'value',     true
+                'x, value',     'value',     true
+                'x,value ,y',   'value',     true
+                'valuex',       'value',     false
+                'value',        'x, value',  false
+                'eulav',        'value',     false  % ismember matched this
+                'a.b',          '.',         false  % the member is not a pattern
+                '',             '',          true
+                5,              5,           true
+                [1 2 3],        2,           true
+                [1 2 3],        4,           false
+                true,           1,           true
+                {'a', 'b'},     'b',         true
+                {'a', 'b'},     'a,b',       false
+                {1, 'a'},       1,           true
+                '5',            5,           false
+                5,              '5',         false
+                'a',            97,          false  % ismember matched this
+                struct('a',1),  'a',         false
+                };
+            for k = 1:size(cases, 1)
+                [value, member, isMember] = cases{k, :};
+                A = struct('f', {value});
+                s = struct('field', 'f', 'operation', 'hasmember', 'param1', member, 'param2', '');
+                testCase.verifyEqual(logical(did.datastructures.fieldsearch(A, s)), isMember, ...
+                    sprintf('case %d: hasmember', k));
+                s.operation = '~hasmember';
+                testCase.verifyEqual(logical(did.datastructures.fieldsearch(A, s)), ~isMember, ...
+                    sprintf('case %d: ~hasmember', k));
+            end
+        end
+
         function testText(testCase, textValue)
             for negate = [false true]
                 s = testCase.hasMember('base.name', textValue, negate);
@@ -153,11 +152,7 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
             % doc2sql stores demoA.value as a number
             for negate = [false true]
                 s = testCase.hasMember('demoA.value', numberValue, negate);
-                msg = sprintf('%s %g', s.operation, numberValue);
-                testCase.verifySearch(s, msg);
-                found = testCase.db.search(s);
-                testCase.verifyEqual(sort(found(:)), testCase.expectedIds(s, true), ...
-                    [msg ': vs. fieldsearch']);
+                testCase.verifySearch(s, sprintf('%s %g', s.operation, numberValue));
             end
             s = testCase.hasMember('demoA.value', numberValue, false);
             testCase.verifyNumElements(testCase.db.search(s), ...
@@ -165,15 +160,33 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
                 sprintf('hasmember %g must match the one document holding it', numberValue));
         end
 
-        function testInjectionMatchesOnlyItsOwnName(testCase)
-            s = testCase.hasMember('base.name', '1 OR 1=1', false);
-            found = testCase.db.search(s);
-            testCase.verifyEqual(found(:), {testCase.docs{2}.id()}, ...
-                'hasmember ''1 OR 1=1'' must match only the document of that name');
-            s = testCase.hasMember('base.name', 'value', false);
-            found = testCase.db.search(s);
-            testCase.verifyEqual(sort(found(:)), sort({testCase.docs{1}.id(); testCase.docs{4}.id()}), ...
-                'hasmember ''value'' must match the name and the list holding it');
+        function testExpectedDocuments(testCase)
+            testCase.verifyIds(testCase.hasMember('base.name', '1 OR 1=1', false), 2, ...
+                'hasmember ''1 OR 1=1''');
+            testCase.verifyIds(testCase.hasMember('base.name', 'value', false), [1 4], ...
+                'hasmember ''value'' (the name and the list holding it)');
+            testCase.verifyIds(testCase.hasMember('base.name', 'value', true), [2 3 5 6 7 8], ...
+                '~hasmember ''value''');
+            testCase.verifyIds(testCase.hasMember('base.name', 'O''Brien', false), 7, ...
+                'hasmember ''O''''Brien''');
+        end
+
+        function testTextAndNumbersDoNotMix(testCase)
+            % base.name '5' is text; demoA.value 3 is a number
+            testCase.verifyIds(testCase.hasMember('base.name', 5, false), [], ...
+                'hasmember 5 in the text ''5''');
+            testCase.verifyIds(testCase.hasMember('base.name', '5', false), 8, ...
+                'hasmember ''5'' in the text ''5''');
+            testCase.verifyIds(testCase.hasMember('demoA.value', '3', false), [], ...
+                'hasmember ''3'' in the number 3');
+            testCase.verifyIds(testCase.hasMember('demoA.value', 3, false), 3, ...
+                'hasmember 3 in the number 3');
+        end
+
+        function testStructField(testCase)
+            % A struct (base) has no members: its fields are not searched
+            testCase.verifyIds(testCase.hasMember('base', 'value', false), [], ...
+                'hasmember ''value'' in the struct base');
         end
 
         function testInAnAnd(testCase, textValue)
