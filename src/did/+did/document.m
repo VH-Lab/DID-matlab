@@ -344,9 +344,18 @@ classdef document
                         % not have to know which form a definition used.
                         matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
                         if ~isempty(matches)
-                            % An empty value is the placeholder a blank
+                            % An empty target is the placeholder a blank
                             % definition carries, not an entry in the list.
-                            if isempty(did_document_obj.document_properties.depends_on(matches(1)).value)
+                            % Read it the way every other reader here does,
+                            % through i_readDependencyTarget: the constructor
+                            % renames the entry's key to document_id, so a
+                            % constructed document has no .value to read, and
+                            % reaching for one threw instead of answering.
+                            % A hand-built entry still keyed value or id is
+                            % read the same way as before.
+                            target = did.document.i_readDependencyTarget( ...
+                                did_document_obj.document_properties.depends_on(matches(1)));
+                            if isempty(target)
                                 matches = [];
                             end
                         end
