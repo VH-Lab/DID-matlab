@@ -1326,7 +1326,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             if isempty(ids)
                 return
             end
-            searchstruct = did.query(query_struct).to_searchstructure();
+            op = strtrim(lower(char(query_struct.operation)));
+            searchstruct = did.query(query_struct.field, op, ...
+                query_struct.param1, query_struct.param2).to_searchstructure();
             docs = sqlitedb_obj.get_docs(ids);
             for k = 1 : numel(docs)
                 if did.datastructures.fieldsearch(docs(k).document_properties, searchstruct)
