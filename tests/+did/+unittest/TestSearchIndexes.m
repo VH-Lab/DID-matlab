@@ -137,11 +137,26 @@ classdef TestSearchIndexes < matlab.unittest.TestCase
             older.close();
             delete(older);
 
-            reopened = did.test.helper.QueryLogSqlitedb(filename);
+            % Building an index on a large database can take minutes, so
+            % each one is announced and timed rather than built silently.
+            % (reopened is assigned first so MATLAB knows it as a variable.)
+            reopened = []; %#ok<NASGU>
+            output = evalc('reopened = did.test.helper.QueryLogSqlitedb(filename);');
             for k = 1:numel(testCase.searchIndexNames)
                 testCase.verifyTrue(testCase.hasIndex(reopened, testCase.searchIndexNames{k}), ...
                     ['opening an older database must add the ' testCase.searchIndexNames{k} ' index']);
+                testCase.verifySubstring(output, ['adding search index ' testCase.searchIndexNames{k}], ...
+                    'building an index must be announced');
+                testCase.verifySubstring(output, ['added search index ' testCase.searchIndexNames{k} ' in '], ...
+                    'a built index must report how long it took');
             end
+
+            % ...and only once: a database that has them opens quietly
+            reopened.close();
+            delete(reopened);
+            output = evalc('reopened = did.test.helper.QueryLogSqlitedb(filename);');
+            testCase.verifyEmpty(strfind(output, 'search index'), ...
+                'opening a database that already has the indexes must print nothing about them');
             testCase.verifyTrue(reopened.hasSearchIndexesFlag());
             reopened.set_branch('a');
             q = testCase.idQuery(doc.id()) & did.query('demoA.value', 'exact_number', 1);
