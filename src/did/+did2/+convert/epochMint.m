@@ -1961,7 +1961,7 @@ end
 
 function body = mintEpoch(epochString, sessionId, sessionDocumentId, datestamp)
 %MINTEPOCH One `epoch ⊂ entity` body.
-%   `local_identifier` is declared ON epoch and REQUIRED (build_v_eta.py's #60
+%   `local_identifier` is declared ON epoch and REQUIRED (build_v_eta.py's (deleted 2026-10-21) #60
 %   block): `entity` deliberately declares none so a child can ADD it as
 %   required, the same reason `subject` does. The v1 epoch string IS that
 %   handle -- 30 live NDI sites match it by exact_string.

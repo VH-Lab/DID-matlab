@@ -1,7 +1,8 @@
 function bodies = probe_geometry(preBody)
 %PROBE_GEOMETRY Brainstorm-J migrator: did_v1 probe_geometry -> one
-%   length_observation PER SPATIAL AXIS about the probe-subject, plus the session
-%   anchor, plus an optional probe-model term_assertion.
+%   `observation` with value kind `length` PER SPATIAL AXIS about the probe's
+%   entity, plus the session anchor, plus an optional probe-model `assertion`
+%   with value kind `term`.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'. The
 %   probe IS a `subject` (device-as-subject, D2), carried from the source

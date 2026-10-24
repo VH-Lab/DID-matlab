@@ -151,7 +151,7 @@ function bodies = daqsystem(preBody)
 %   has a home. (Recorded in prose; the signature for this family lives in
 %   did-schema schemas/V_eta_daq_family_decisions.md, and is not written here.)
 %
-%   The edge is `software_id`, built in did-schema tools/build_v_eta.py beside
+%   The edge is `software_id`, built in did-schema tools/build_v_eta.py (deleted 2026-10-21) beside
 %   the class it belongs to, with the naming argument in full there. In short:
 %   it is the SAME concept the two siblings minted from the same decision
 %   already spell `software_id` (epoch_file_pattern.software_id <-

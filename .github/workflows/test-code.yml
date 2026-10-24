@@ -91,10 +91,9 @@ jobs:
           # `main` on 2026-09-23 and deleted the shared topic branch, so the
           # full V_eta schema tree (schemas/V_eta/, tools/bar2_gap.py, the plan
           # docs) now lives on main. Validate against main.
-          # PINNED to the did-schema #88 branch: the migrators were ported from the
-          # pre-#73 tag `v_eta-pre73` to #88's shape (approved by Jess Haley,
-          # 2026-10-21). Move to `main` when #88 merges.
-          ref: claude/ecstatic-pascal-md91fw
+          # did-schema #88 (the shape the migrators are ported to) merged into
+          # `main` on 2026-10-23, so the #88 branch pin moved to main.
+          ref: main
           path: did-schema
 
       # ---------------------------------------------------------------
@@ -108,7 +107,7 @@ jobs:
       # If you edit one copy, edit both -- the confirm step below prints
       # PRESENT/ABSENT either way, so a divergence is visible in the log.
       # ---------------------------------------------------------------
-      - name: Resolve the NDI-matlab ref (same name, claude/v2-object-layer, V2, main)
+      - name: Resolve the NDI-matlab ref (same name, V2, main)
         id: ndi-ref
         # did2.unittest.testBatchPassWiring asserts that every batch post-pass
         # diverging between the corpus gate and PRODUCTION
@@ -117,7 +116,7 @@ jobs:
         # is missing it SKIPS -- loudly, but it skips.
         #
         # THE REF FALLS BACK RATHER THAN FAILING THE JOB, in the decided order
-        # (same name, claude/v2-object-layer, V2, main; [NDI ref fallback]):
+        # (same name, V2, main; [NDI ref fallback]):
         # `main` has no +ndi/+migrate, so falling straight back to it skipped
         # the divergence check. Most DID-side
         # branches have no NDI-side twin, and a fast gate that goes red
@@ -129,12 +128,11 @@ jobs:
         run: |
           want="${{ github.head_ref || github.ref_name }}"
           # Jess Haley, 2026-10-22 [NDI ref fallback] (did-schema
-          # V_eta_go_forward_class_audit.md): the same-name branch, then
-          # claude/v2-object-layer (NDI #1021's head, until #1021 merges),
-          # then V2, then main. The integration branch is removed from this
-          # list in the first commit after the merge.
+          # V_eta_go_forward_class_audit.md): the same-name branch,
+          # then V2, then main. The integration branch claude/v2-object-layer
+          # (NDI #1021's head) left this list when #1021 merged (2026-10-23).
           chosen=""
-          for ref in "$want" claude/v2-object-layer V2 main; do
+          for ref in "$want" V2 main; do
             if git ls-remote --exit-code --heads \
                  https://github.com/VH-Lab/NDI-matlab.git "$ref" >/dev/null 2>&1; then
               chosen="$ref"
@@ -143,7 +141,7 @@ jobs:
             echo "NDI-matlab has NO branch '$ref'."
           done
           if [ -z "$chosen" ]; then
-            echo "NDI-matlab: none of '$want', claude/v2-object-layer, V2, main answered -- using main."
+            echo "NDI-matlab: none of '$want', V2, main answered -- using main."
             chosen=main
           fi
           if [ "$chosen" = "$want" ]; then
@@ -374,10 +372,9 @@ jobs:
           # `main` on 2026-09-23 and deleted the shared topic branch, so the
           # full V_eta schema tree (schemas/V_eta/, tools/bar2_gap.py, the plan
           # docs) now lives on main. Validate against main.
-          # PINNED to the did-schema #88 branch: the migrators were ported from the
-          # pre-#73 tag `v_eta-pre73` to #88's shape (approved by Jess Haley,
-          # 2026-10-21). Move to `main` when #88 merges.
-          ref: claude/ecstatic-pascal-md91fw
+          # did-schema #88 (the shape the migrators are ported to) merged into
+          # `main` on 2026-10-23, so the #88 branch pin moved to main.
+          ref: main
           path: did-schema
 
       - name: Assemble V_eta schema set (stable + draft)
@@ -550,10 +547,9 @@ jobs:
           # `main` on 2026-09-23 and deleted the shared topic branch, so the
           # full V_eta schema tree (schemas/V_eta/, tools/bar2_gap.py, the plan
           # docs) now lives on main. Validate against main.
-          # PINNED to the did-schema #88 branch: the migrators were ported from the
-          # pre-#73 tag `v_eta-pre73` to #88's shape (approved by Jess Haley,
-          # 2026-10-21). Move to `main` when #88 merges.
-          ref: claude/ecstatic-pascal-md91fw
+          # did-schema #88 (the shape the migrators are ported to) merged into
+          # `main` on 2026-10-23, so the #88 branch pin moved to main.
+          ref: main
           path: did-schema
 
       # ---------------------------------------------------------------
@@ -567,7 +563,7 @@ jobs:
       # If you edit one copy, edit both -- the confirm step below prints
       # PRESENT/ABSENT either way, so a divergence is visible in the log.
       # ---------------------------------------------------------------
-      - name: Resolve the NDI-matlab ref (same name, claude/v2-object-layer, V2, main)
+      - name: Resolve the NDI-matlab ref (same name, V2, main)
         id: ndi-ref
         # Same fallback, in the same order, as the unit job's step of the
         # same name ([NDI ref fallback]). Here NDI is
@@ -578,12 +574,11 @@ jobs:
         run: |
           want="$WANT"
           # Jess Haley, 2026-10-22 [NDI ref fallback] (did-schema
-          # V_eta_go_forward_class_audit.md): the same-name branch, then
-          # claude/v2-object-layer (NDI #1021's head, until #1021 merges),
-          # then V2, then main. The integration branch is removed from this
-          # list in the first commit after the merge.
+          # V_eta_go_forward_class_audit.md): the same-name branch,
+          # then V2, then main. The integration branch claude/v2-object-layer
+          # (NDI #1021's head) left this list when #1021 merged (2026-10-23).
           chosen=""
-          for ref in "$want" claude/v2-object-layer V2 main; do
+          for ref in "$want" V2 main; do
             if git ls-remote --exit-code --heads \
                  https://github.com/VH-Lab/NDI-matlab.git "$ref" >/dev/null 2>&1; then
               chosen="$ref"
@@ -592,7 +587,7 @@ jobs:
             echo "NDI-matlab has NO branch '$ref'."
           done
           if [ -z "$chosen" ]; then
-            echo "NDI-matlab: none of '$want', claude/v2-object-layer, V2, main answered -- using main."
+            echo "NDI-matlab: none of '$want', V2, main answered -- using main."
             chosen=main
           fi
           if [ "$chosen" = "$want" ]; then

@@ -460,7 +460,8 @@ end
 function testNoTimeClockEmitsNoReference(testCase)
 % NO TIMES => NO REFERENCE. `no_time` is reachable, not theoretical:
 % +ndi/+daq/+reader/image.m:204-207 falls back to it for a clockless epoch and
-% migrators_i/image_stack.m:182 does the same.
+% migrators_i/image_stack.m:182 did the same (+migrators_i was deleted
+% 2026-10-21, 5879994).
 out = runJ(withEpochEdge(readerIngestedV1({'no_time'}, [0; 0]), 'epoch_doc_1'));
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEmpty(testCase, docsOfClass(out, 'relative_time_reference'));

@@ -643,8 +643,9 @@ classdef cache < handle
             %   built ahead of signature): `base.session_id` became one
             %   required edge, `session_id`, to the session or dataset
             %   `entity` a document is stored with; that entity's base.id IS
-            %   its session id. did-schema `main` (and the pinned
-            %   v_eta-pre73) still declare the field. Every caller that writes
+            %   its session id. did-schema `main` declared the field until #88
+            %   merged (2026-10-23), as does the pre-#73 tag v_eta-pre73.
+            %   Every caller that writes
             %   or moves a session id asks here rather than assuming, as the
             %   builders ask which statement class the schema spells
             %   (+build/private/vetaNames.m), so one code base writes valid
@@ -681,7 +682,8 @@ classdef cache < handle
             %   did-schema V_eta_source_unit_plan.md (signed 2026-10-21):
             %   every `source_unit` became a bound term {node, name}, the
             %   unit's registered term with its label as the name. did-schema
-            %   `main` (and the pinned v_eta-pre73) still declare char. The
+            %   `main` declared char until #88 merged (2026-10-23), as does the
+            %   pre-#73 tag v_eta-pre73. The
             %   builders read each field's own declaration (fillField), so
             %   this is for a CALLER that has to decide what to pass or how to
             %   read a stored value, as sessionIdIsEdge is for the session id.
@@ -725,10 +727,12 @@ classdef cache < handle
             % datumOrderBlock - the class whose block declares `datum_order`.
             %
             %   did-schema PR #88 (Haley audit D-5, signed 2026-10-20) moved
-            %   `datum_order` from `sampled_body` up to `data`, beside `keys`,
-            %   so it describes whichever array the keys do: an inline value
-            %   or a body's own; empty means F. did-schema `main` and the
-            %   pinned v_eta-pre73 still declare it on `sampled_body`. A
+            %   `datum_order` from `sampled_body` up to `data`, beside `keys`
+            %   (`dimensions` since data_body AMENDMENT 6), so it describes
+            %   whichever array the keys do: an inline value or a body's own;
+            %   empty means F. did-schema `main` declared it on `sampled_body`
+            %   until #88 merged (2026-10-23), as does the pre-#73 tag
+            %   v_eta-pre73. A
             %   builder places a field by its declaration (fillField), so this
             %   is for a CALLER that writes or reads the block directly, as
             %   sessionIdIsEdge and sourceUnitIsTerm are for theirs.

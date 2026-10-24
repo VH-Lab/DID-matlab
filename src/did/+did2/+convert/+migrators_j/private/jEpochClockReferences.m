@@ -55,7 +55,7 @@ function refs = jEpochClockReferences(epochTable, epochDocId, sessionId, datesta
 %     * clocktype 'no_time' (or absent)  -> NO document. `no_time` is a real,
 %       reachable value: `ndi.time.clocktype` lists it, image.m:204-207 falls
 %       back to it when an epoch has no clock, and migrators_i/image_stack.m:182
-%       does the same.
+%       did the same (+migrators_i was deleted 2026-10-21, 5879994).
 %     * a non-finite t0 or t1           -> NO document. Also real and reachable:
 %       the abstract `ndi.daq.reader.mfdaq/t0_t1` docstring says "The abstract
 %       class always returns {[NaN NaN]}".

@@ -6,7 +6,7 @@ function tests = testMigratorsJDemoFold
 %     did_v1 mock         -> NO MIGRATOR: no document can carry it alone
 %
 %   Signed by the team 2026-08-06 and recorded at did-schema
-%   `tools/build_v_eta.py:1817-1867`, which builds `stable/demo.json` and DELETES
+%   `tools/build_v_eta.py:1817-1867` (deleted 2026-10-21), which builds `stable/demo.json` and DELETES
 %   `demo_ndi`, `demo_ndi_mock` and `mock` from the built set. The migrator half
 %   did not exist until now, so a real document passed through to a class name
 %   with no schema.

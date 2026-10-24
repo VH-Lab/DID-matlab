@@ -129,8 +129,9 @@ function bodies = binaryseries_parameters(preBody)
 %   (`voltage_observation`, `count_observation`, ...). Choosing among 78
 %   quantities for a document that measures nothing is the same question as
 %   inventing `variable`, arriving through the class name instead of the field.
-%   That is the same shape as the `timed_sequence` abstract flag recorded in
-%   did-schema CLAUDE.md, and it is a modelling decision, not plumbing.
+%   That is the same shape as the `timed_sequence` abstract flag once recorded
+%   in did-schema CLAUDE.md (`item` replaced `timed_sequence` in did-schema
+%   c12d778, 2026-10-04), and it is a modelling decision, not plumbing.
 %
 %   So folding today would mint a statement about NOBODY carrying an invented
 %   `variable`. That is the image_stack husk exactly (4,563

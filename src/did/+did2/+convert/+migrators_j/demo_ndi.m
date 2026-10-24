@@ -1,8 +1,9 @@
 function v2Body = demo_ndi(preBody)
 %DEMO_NDI Brainstorm-J migrator: did_v1 `demoNDI` -> the V_eta `demo` class,
 %   1 -> 1 with base.id PRESERVED, `value` carried and `is_mock` FALSE. Part of
-%   the 3 -> 1 demo collapse signed by the team on 2026-08-06 (did-schema
-%   `tools/build_v_eta.py:1817-1867`); the fold itself is in private/jDemoFold.
+%   the 3 -> 1 demo collapse signed by the team on 2026-08-06 (recorded then in
+%   did-schema `tools/build_v_eta.py`, deleted 2026-10-21; the class is now
+%   `schemas/V_eta/stable/demo.json`); the fold itself is in private/jDemoFold.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %

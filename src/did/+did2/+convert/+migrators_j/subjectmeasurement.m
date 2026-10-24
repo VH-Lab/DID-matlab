@@ -1,6 +1,7 @@
 function bodies = subjectmeasurement(preBody)
 %SUBJECTMEASUREMENT Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed
-%   subject_observation leaf + an `absolute_reference` carrying the measurement
+%   `observation` (value kind: the measured quantity, or `term`) + an
+%   `absolute_time_reference` carrying the measurement
 %   instant. Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
 %   TEAM-SIGN-OFF (jess, 2026-08-06, V_eta_go_forward_class_audit.md §4):

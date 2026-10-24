@@ -1,6 +1,6 @@
 function v2Body = subject_group(preBody)
-%SUBJECT_GROUP Brainstorm-J migrator: did_v1 subject_group -> bare subject
-%   (+ member_of relations).
+%SUBJECT_GROUP Brainstorm-J migrator: did_v1 subject_group -> an `entity` of
+%   type `group`, id preserved (+ one member_of directed_relation per member).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Per did-schema V_eta_SPEC.md section 1, `subject` is a BARE identity card

@@ -470,7 +470,7 @@ function report = silentLoss(docs, opts)
 %   different documents -- leaving ONE live case, SAME EXTENT / N CLOCKS, whose
 %   discriminator already exists INSIDE THE REFERENCED DOCUMENT as `value.clock`.
 %   The schema now says so machine-readably, as `referent_unique_by` on the
-%   family (did-schema tools/build_v_eta.py, `_EDGE_REFERENT_UNIQUE`). This
+%   family (did-schema tools/build_v_eta.py (deleted 2026-10-21), `_EDGE_REFERENT_UNIQUE`). This
 %   function reads that key; it does not know the word "time_reference".
 %
 %   WHY IT LIVES HERE AND NOWHERE ELSE. The path is evaluated on the REFERENCED

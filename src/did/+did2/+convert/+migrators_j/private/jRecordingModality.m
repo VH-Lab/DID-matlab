@@ -17,8 +17,9 @@ function [entries, disposition] = jRecordingModality(elementType)
 %                                   (the body gets a channel axis; see below)
 %     'stimulator'  ELEMENTTYPE names an instrument that ACTS ON the specimen.
 %                   ENTRIES is empty. NO observation is emitted -- a stimulus
-%                   delivery is a subject_manipulation (T3 direction), and the
-%                   stimulus model (#31/#43, timed_sequence_manipulation) is the
+%                   delivery is a `manipulation` (T3 direction), and the
+%                   stimulus model (#31/#43; a `manipulation` with value kind
+%                   `item`, `timed_sequence` before did-schema c12d778) is the
 %                   thing that gives these their `instrument_id` edge. Until it
 %                   lands the loose `observes` relation is KEPT for them, so
 %                   nothing is lost in the meantime.

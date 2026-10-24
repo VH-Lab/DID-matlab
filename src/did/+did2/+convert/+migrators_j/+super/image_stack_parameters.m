@@ -37,7 +37,7 @@ function v2Body = image_stack_parameters(preBody)
 %        timestamp -> "type": "double", "default_value": [0]
 %
 %   V_eta takes its type from the NDI SCHEMA, so the tombstone declares
-%   `timestamp` `double`, `mustBeScalar: true` (did-schema/tools/build_v_eta.py,
+%   `timestamp` `double`, `mustBeScalar: true` (did-schema/tools/build_v_eta.py (deleted 2026-10-21),
 %   the image_stack_parameters _tombstone). The empty double PASSES the type
 %   check -- isnumeric([]) is true -- and then fails the next one:
 %

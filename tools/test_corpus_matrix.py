@@ -155,10 +155,12 @@ class TestNdiRefFallback(unittest.TestCase):
     V_eta_go_forward_class_audit.md; test-corpus.yml added by her answer of
     the same day): EVERY "Resolve the NDI-matlab ref" step of test-code.yml
     (all of its jobs), test-migrators-quick.yml and test-corpus.yml tries the
-    same-name branch, then claude/v2-object-layer, then V2, then main, prints
-    the ref it took and says FALLBACK when it is not the same-name branch."""
+    same-name branch, then V2, then main, prints the ref it took and says
+    FALLBACK when it is not the same-name branch. The integration branch
+    claude/v2-object-layer (NDI #1021's head) left the order when #1021 merged
+    into V2 (2026-10-23), as the decision said it would."""
 
-    ORDER = '"$want" claude/v2-object-layer V2 main'
+    ORDER = '"$want" V2 main'
     FILES = ("test-code.yml", "test-migrators-quick.yml", "test-corpus.yml")
 
     def steps(self, name):
@@ -197,8 +199,8 @@ class TestNdiRefFallback(unittest.TestCase):
 
     def test_the_resolver_runs_and_falls_back_in_order(self):
         """Run one step's script with git ls-remote stubbed: only V2 and main
-        exist, so the same-name branch and the integration branch are tried
-        first and V2 is taken, printed as a FALLBACK."""
+        exist, so the same-name branch is tried first and V2 is taken,
+        printed as a FALLBACK; the retired integration branch is not tried."""
         import subprocess
         st = self.steps("test-code.yml")[0]
         body = st.split("run: |", 1)[1]
@@ -221,7 +223,7 @@ class TestNdiRefFallback(unittest.TestCase):
         with open(out_file) as fh:
             self.assertEqual(fh.read().strip(), "ref=V2")
         self.assertIn("NO branch 'feature-x'", p.stdout)
-        self.assertIn("NO branch 'claude/v2-object-layer'", p.stdout)
+        self.assertNotIn("claude/v2-object-layer", p.stdout)
         self.assertIn("FALLBACK to 'V2'", p.stdout)
 
 

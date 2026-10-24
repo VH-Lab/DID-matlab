@@ -3,7 +3,9 @@ function tests = testMigratorsJStimulusModel
 %
 %   Exercises the two migrators that implement the signed stimulus decision
 %   (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus], 2026-08-08 --
-%   `timed_sequence` + `timed_sequence_manipulation`; the presentation is
+%   `timed_sequence` + `timed_sequence_manipulation`, now `item` and a
+%   `manipulation` with value kind `item` (did-schema c12d778, 2026-10-04);
+%   the presentation is
 %   DECOMPOSED AROUND ITS PRESERVED ID, not dissolved):
 %
 %     stimulus_presentation
@@ -47,7 +49,7 @@ function tests = testMigratorsJStimulusModel
 %   stimulus_presentation tombstone does not declare `presentation_time`, so such
 %   a document raises `did2:validation:undeclaredField` -- which is exactly why
 %   check_tombstones.py grades this class BLOCKING. That is a schema repair
-%   (DID-schema tools/build_v_eta.py), not a migrator repair, so the test here
+%   (DID-schema tools/build_v_eta.py (deleted 2026-10-21)), not a migrator repair, so the test here
 %   pins that the migrator CARRIES the block rather than pretending it validates.
 %   When the tombstone lands, add the vintage to the Validate=true batch.
 %

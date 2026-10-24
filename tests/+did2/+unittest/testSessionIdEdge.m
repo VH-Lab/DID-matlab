@@ -6,7 +6,8 @@ function tests = testSessionIdEdge
 %   depends_on EDGE, `session_id`, to the session or dataset entity a document
 %   is stored with; that entity's base.id IS its session id. The same change
 %   gave record membership its own relation, `included_in` (schema:isPartOf).
-%   did-schema `main` and the pinned v_eta-pre73 keep the field, so every
+%   did-schema `main` kept the field until #88 merged (2026-10-23), as does
+%   the pre-#73 tag v_eta-pre73, so every
 %   writer asks the loaded schema (did2.schema.cache/sessionIdIsEdge).
 %
 %   BOTH SHAPES ARE TESTED HERE WHATEVER DID_SCHEMA_PATH SAYS: each test points

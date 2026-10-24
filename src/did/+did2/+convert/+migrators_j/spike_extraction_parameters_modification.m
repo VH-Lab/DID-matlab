@@ -1,7 +1,7 @@
 function bodies = spike_extraction_parameters_modification(preBody)
 %SPIKE_EXTRACTION_PARAMETERS_MODIFICATION Brainstorm-J migrator: did_v1
-%   spike_extraction_parameters_modification -> a SECOND `method_parameters`
-%   document (+ the `software` entity its v1 `app` block names).
+%   spike_extraction_parameters_modification -> a SECOND `method` document
+%   (`method_parameters` before did-schema #88) (+ the `software` entity its v1 `app` block names).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %

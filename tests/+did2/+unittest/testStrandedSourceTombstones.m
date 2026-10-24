@@ -31,12 +31,12 @@ function tests = testStrandedSourceTombstones
 %   A dataset carrying one loses it.
 %
 %   THE FIX IS A TOMBSTONE, NOT A MODEL. Both classes are now restated in
-%   DID-schema tools/build_v_eta.py from the NDI WRITER, marked `retire` (a v1
+%   DID-schema tools/build_v_eta.py (deleted 2026-10-21) from the NDI WRITER, marked `retire` (a v1
 %   SOURCE name, never a go-forward class). No migrator is added, deliberately:
 %   this is the vmspikefilteringparameters shape, where a correct tombstone IS
 %   the whole fix. Whether generic_file folds to opaque_body + a statement, and
 %   what tier valid_interval belongs to, are TEAM decisions that have not been
-%   made -- see the report and DID-schema build_v_eta.py's own comment block.
+%   made -- see the report and DID-schema build_v_eta.py's (deleted 2026-10-21) own comment block.
 %
 %   ---------------------------------------------------------------------
 %   THE FIXTURES, AND WHERE EACH ONE COMES FROM

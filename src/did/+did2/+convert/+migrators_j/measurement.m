@@ -1,6 +1,7 @@
 function bodies = measurement(preBody)
 %MEASUREMENT Brainstorm-J migrator: did_v1 measurement -> a typed
-%   subject_observation leaf (+ the shared session anchor), for the rows that can
+%   `observation` (value kind: the measured quantity, or `term`) (+ the shared
+%   session anchor), for the rows that can
 %   be typed honestly; everything else is carried through for the second pass.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.

@@ -117,7 +117,7 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   to their FATAL pass list, so a throw still turns the gate red.
 %   testFixtureCorpus keeps calling it BARE on purpose.
 %
-%   See also: did2.convert.v1_to_v2, did2.convert.migrators_i.stimulus_bath,
+%   See also: did2.convert.v1_to_v2, did2.convert.migrators_j.stimulus_bath,
 %   ndi.migrate.internal.stimulusBathToBath.
 
 arguments

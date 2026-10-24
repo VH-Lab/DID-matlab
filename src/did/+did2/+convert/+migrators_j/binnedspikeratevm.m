@@ -53,7 +53,7 @@ function bodies = binnedspikeratevm(preBody)
 %
 %   The document is carried through intact for the NDI second pass. V_eta's
 %   tombstone declares the real shape so the passthrough validates -- see
-%   build_v_eta.py.
+%   build_v_eta.py (deleted 2026-10-21).
 %
 %   THE GUARD. A body carrying `num_bins` or `bin_size` is REJECTED BY NAME:
 %   those are DID-side inventions from the V_alpha snapshot, so their presence

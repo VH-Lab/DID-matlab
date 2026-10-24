@@ -8,7 +8,8 @@ function f = formatTerm(format, schemaCache)
 %
 %     ontology_term  (did-schema 877bbde on, lightsheet point 4, Jess
 %                    2026-10-14): a {node, name} struct
-%     char           (v_eta-pre73, which test-fixtures.yml pins on purpose):
+%     char           (the pre-#73 tag v_eta-pre73, which test-fixtures.yml
+%                    pinned until the 2026-10-21 migrator port):
 %                    the media-type string the older schema expects
 %
 %   FORMAT may be:

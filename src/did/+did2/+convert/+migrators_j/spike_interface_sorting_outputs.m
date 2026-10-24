@@ -36,7 +36,7 @@ function bodies = spike_interface_sorting_outputs(preBody)
 %   decisions that need the subject the second pass can find, not repairs.
 %
 %   V_eta's tombstone declares the real shape so the passthrough validates -- see
-%   build_v_eta.py.
+%   build_v_eta.py (deleted 2026-10-21).
 %
 %   THE GUARD. A body carrying `num_units` or `sorter_parameters` is REJECTED BY
 %   NAME: those are DID-side inventions from the V_alpha snapshot, so their

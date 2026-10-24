@@ -33,7 +33,7 @@ function bodies = spikewaves(preBody)
 %
 %   The document is carried through intact for the NDI second pass, which can read
 %   the header. V_eta's `spikewaves` tombstone declares the real shape so the
-%   passthrough validates -- see build_v_eta.py.
+%   passthrough validates -- see build_v_eta.py (deleted 2026-10-21).
 %
 %   THE GUARD. A body carrying `num_spikes`, `samples_per_spike` or `sample_rate`
 %   is REJECTED BY NAME: those are DID-side inventions from the V_alpha snapshot,
