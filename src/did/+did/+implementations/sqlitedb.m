@@ -20,15 +20,21 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         pendingFileDeletes = {}    % files to delete once the write commits
         dbFileKey = ''             % identity of the file the connection opened
 
-        % Does the database have the doc_data (doc_idx,field_idx) index that
-        % lets a search be restricted to candidate documents? Set on open -
-        % see ensure_search_index and did.database/search_doc_ids.
-        hasSearchIndex (1,1) logical = false
+        % Does the database have every index in searchIndexes? Set on open -
+        % see ensure_search_indexes and did.database/hasSearchIndexes.
+        searchIndexesReady (1,1) logical = false
     end
 
     properties (Constant, Access=protected)
-        % Name of the doc_data (doc_idx,field_idx) index - the same in DID-python
-        searchIndexName = 'doc_data_doc_idx_field_idx'
+        % Indexes on doc_data that searches rely on, as {name, columns} rows.
+        % The names are the same in DID-python.
+        %   doc_data_doc_idx_field_idx - a document's rows, so that a search
+        %       term can be checked against a few candidate documents
+        %   doc_data_field_idx_value - one field's rows, in value order, so
+        %       that 'isa' can match the distinct superclass lists only
+        searchIndexes = { ...
+            'doc_data_doc_idx_field_idx', '"doc_idx","field_idx"'; ...
+            'doc_data_field_idx_value',   '"field_idx","value"'}
     end
 
     methods % constructor
@@ -152,15 +158,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             s = strrep(char(s), '"', '""');
         end % escapeSqlLiteral()
 
-        function tf = canSearchCandidates(this_obj)
-            % canSearchCandidates - can a search be restricted to candidate documents?
+        function tf = hasSearchIndexes(this_obj)
+            % hasSearchIndexes - can a search be restricted to candidate documents?
             %
-            % TF = canSearchCandidates(THIS_OBJ)
+            % TF = hasSearchIndexes(THIS_OBJ)
             %
-            % True once the doc_data (doc_idx,field_idx) index is known to
-            % exist - see ensure_search_index and did.database/search_doc_ids.
-            tf = this_obj.hasSearchIndex;
-        end % canSearchCandidates()
+            % True once the indexes in searchIndexes are known to exist - see
+            % ensure_search_indexes and did.database/hasSearchIndexes.
+            tf = this_obj.searchIndexesReady;
+        end % hasSearchIndexes()
 
         function branch_ids = do_get_branch_ids(this_obj)
             % do_get_branch_ids - return all unique branch ids in the database
@@ -1860,8 +1866,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     error('DID:SQLITEDB:OPEN','Error opening %s as a DID SQLite database: %s',filename,err.message);
                 end
 
-                % Add the search index, if this database predates it
-                this_obj.ensure_search_index();
+                % Add the search indexes, if this database predates them
+                this_obj.ensure_search_indexes();
 
             else % new database
 
@@ -2598,9 +2604,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 this_obj.run_sql_noOpen('CREATE INDEX "docs_doc_id"       ON "docs"     ("doc_id")');
                 this_obj.run_sql_noOpen('CREATE INDEX "doc_data_value"    ON "doc_data" ("value")');
                 this_obj.run_sql_noOpen('CREATE INDEX "fields_field_name" ON "fields"   ("field_name")');
-                this_obj.run_sql_noOpen(['CREATE INDEX "' this_obj.searchIndexName '" ' ...
-                                         'ON "doc_data" ("doc_idx","field_idx")']);
-                this_obj.hasSearchIndex = true;
+                for i = 1 : size(this_obj.searchIndexes, 1)
+                    this_obj.run_sql_noOpen(['CREATE INDEX "' this_obj.searchIndexes{i,1} '" ' ...
+                                             'ON "doc_data" (' this_obj.searchIndexes{i,2} ')']);
+                end
+                this_obj.searchIndexesReady = true;
                 %% Optimize
                 mksqlite(this_obj.dbid,'pragma optimize');
             catch err
@@ -2655,34 +2663,37 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             this_obj.record_deleted_doc_id(doc_id);
         end % reclaim_unreferenced_doc()
 
-        function ensure_search_index(this_obj)
-            % ensure_search_index - Add the doc_data (doc_idx,field_idx) index if missing
+        function ensure_search_indexes(this_obj)
+            % ensure_search_indexes - Add the indexes in searchIndexes if missing
             %
-            % ensure_search_index(this_obj)
+            % ensure_search_indexes(this_obj)
             %
-            % Databases written before this index existed - by DID-matlab or
-            % DID-python - do not have it, so it is added when they are
-            % opened. That is a one-time cost, of a few seconds for a
-            % database of 100,000 documents. A database that cannot be
+            % Databases written before these indexes existed - by DID-matlab
+            % or DID-python - do not have them, so they are added when such a
+            % database is opened. That is a one-time cost, of a few seconds
+            % for a database of 100,000 documents. A database that cannot be
             % written to (a read-only file, or one locked by another writer)
-            % is left as it is: the index only speeds up searches, and
-            % without it they run as they always have (hasSearchIndex stays
-            % false).
+            % is left as it is: the indexes only speed up searches, and
+            % without them searches run as they always have
+            % (searchIndexesReady stays false).
             %
             % mksqlite is called directly rather than through run_sql_noOpen,
             % whose retries would spend seconds on a file that is simply
             % read-only, and print an error for it.
-            this_obj.hasSearchIndex = false;
+            this_obj.searchIndexesReady = false;
             try
-                found = mksqlite(this_obj.dbid, ['SELECT name FROM sqlite_master ' ...
-                    'WHERE type=''index'' AND name=''' this_obj.searchIndexName '''']);
-                if isempty(found)
-                    mksqlite(this_obj.dbid, ['CREATE INDEX IF NOT EXISTS "' ...
-                        this_obj.searchIndexName '" ON "doc_data" ("doc_idx","field_idx")']);
+                for i = 1 : size(this_obj.searchIndexes, 1)
+                    found = mksqlite(this_obj.dbid, ['SELECT name FROM sqlite_master ' ...
+                        'WHERE type=''index'' AND name=''' this_obj.searchIndexes{i,1} '''']);
+                    if isempty(found)
+                        mksqlite(this_obj.dbid, ['CREATE INDEX IF NOT EXISTS "' ...
+                            this_obj.searchIndexes{i,1} '" ON "doc_data" (' ...
+                            this_obj.searchIndexes{i,2} ')']);
+                    end
                 end
-                this_obj.hasSearchIndex = true;
+                this_obj.searchIndexesReady = true;
             catch
-                % Not writable now - search without the index
+                % Not writable now - search without the indexes
             end
         end
 

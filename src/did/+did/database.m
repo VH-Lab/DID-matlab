@@ -1028,8 +1028,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             roots = {};
         end % do_cachedPathRoots()
 
-        function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
+        function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct, restricted)
             % Convert a single did.query object/struct into SQL query string
+            %
+            % RESTRICTED is true when the query is limited to a list of
+            % candidate documents (see get_sql_query_str); it changes how
+            % 'isa' is matched. Default: false.
+            if nargin < 3, restricted = false; end
             sql_str = ''; %#ok<NASGU>
             % Charset-restrict the field name (interpolated into SQL below) and
             % escape every user-supplied literal to prevent SQL injection - the
@@ -1060,8 +1065,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             op(op=='~') = '';
             switch op
                 case 'or'
-                    sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1) ' OR ' ...
-                        query_struct_to_sql_str(sqlitedb_obj, param2)];
+                    sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1, restricted) ' OR ' ...
+                        query_struct_to_sql_str(sqlitedb_obj, param2, restricted)];
                 case 'exact_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1StrEsc '"'];
                 case 'exact_string_anycase'
@@ -1115,8 +1120,28 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     % comma-separated superclass list, so regex-escape it (so
                     % metacharacters are literal) then SQL-escape the pattern.
                     param1regExp = did.database.sqlEscapeLiteral(['(^|, )' param1RegexEsc '(,|$)']);
+                    superclassMatch = ['regex(doc_data.value,"' param1regExp '") NOT NULL'];
+                    if ~isNot && ~restricted && sqlitedb_obj.hasSearchIndexes()
+                        % Over a whole branch, running the regex on every
+                        % document's superclass list took seconds (~5 s for
+                        % 100,000 documents). Most documents share one of a
+                        % few dozen superclass lists, so match the regex
+                        % against the distinct lists only - read in order
+                        % from the doc_data_field_idx_value index - and then
+                        % find the documents holding a matching list through
+                        % the same index. LIMIT -1 keeps SQLite from merging
+                        % the inner DISTINCT query into the outer one, which
+                        % would run the regex on every row again.
+                        superclassMatch = ['doc_data.value IN (' ...
+                            'SELECT superclasses FROM (' ...
+                                'SELECT DISTINCT sc.value AS superclasses ' ...
+                                'FROM doc_data sc, fields scf ' ...
+                                'WHERE scf.field_name="meta.superclass" ' ...
+                                'AND sc.field_idx = scf.field_idx LIMIT -1) ' ...
+                            'WHERE regex(superclasses,"' param1regExp '") NOT NULL)'];
+                    end
                     sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1StrEsc '") OR ' ...
-                        '(fields.field_name="meta.superclass" AND ' notStr 'regex(doc_data.value,"' param1regExp '") NOT NULL)'];
+                        '(fields.field_name="meta.superclass" AND ' notStr superclassMatch ')'];
                 otherwise
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
             end
@@ -1131,14 +1156,17 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % are then joined with CROSS JOIN, which makes SQLite loop over
             % them in the order written: each candidate is found through the
             % unique docs.doc_id index, and its doc_data rows through the
-            % doc_data_doc_idx_field_idx index. Left to choose, the query
-            % planner (which has no table statistics to go on) can start
-            % instead from every document of the branch, or from every
-            % doc_data row holding the searched value - for base.session_id,
-            % one row per document in the session.
+            % doc_data_doc_idx_field_idx index, named with INDEXED BY (a
+            % restricted query is only built when hasSearchIndexes says the
+            % index exists). Left to choose, the query planner (which has no
+            % table statistics to go on) can start instead from every
+            % document of the branch, or reach doc_data through an index on
+            % the searched value - for base.session_id, one row per document
+            % in the session, for every candidate.
             restrict = nargin > 3 && iscell(candidate_ids);
             if restrict
-                from_str = 'docs CROSS JOIN branch_docs CROSS JOIN fields CROSS JOIN doc_data';
+                from_str = ['docs CROSS JOIN branch_docs CROSS JOIN fields ' ...
+                    'CROSS JOIN doc_data INDEXED BY doc_data_doc_idx_field_idx'];
             else
                 from_str = 'docs, branch_docs, doc_data, fields';
             end
@@ -1154,7 +1182,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
             %((fields.field_name = "meta.class" AND doc_data.value = "ndi_document") OR (fields.field_name = "meta.superclass" AND doc_data.value like "%ndi_document%"))')';
             for i = 1 : numel(query_structs)
-                sql_str = query_struct_to_sql_str(sqlitedb_obj, query_structs(i));
+                sql_str = query_struct_to_sql_str(sqlitedb_obj, query_structs(i), restrict);
                 if ~isempty(sql_str)
                     query_str = [query_str ' AND ' sql_str];
                 end
@@ -1176,11 +1204,18 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % document of the session to be intersected here (which took ~1 s
             % in a database of 100,000 documents).
             %
-            % Restricting to candidates needs the doc_data_doc_idx_field_idx
-            % index (see canSearchCandidates); without it every term is
-            % searched over the whole branch, as before.
+            % The terms of an AND are searched in this order: base.id lookups
+            % first, as they match at most a few documents; then the other
+            % terms in the order given; and base.session_id terms last, as one
+            % session usually holds most of the documents of a database. So
+            % 'isa daqsystem AND base.session_id = SESSION_ID' finds the few
+            % daqsystem documents and then checks their session.
+            %
+            % Restricting to candidates needs the indexes that
+            % hasSearchIndexes reports; without them every term is searched
+            % over the whole branch, as before.
 
-            if nargin < 4 || ~sqlitedb_obj.canSearchCandidates()
+            if nargin < 4 || ~sqlitedb_obj.hasSearchIndexes()
                 candidate_ids = [];  % not a cell: all documents of the branch
             end
             if iscell(candidate_ids) && isempty(candidate_ids)
@@ -1190,13 +1225,18 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
             num_structs = numel(query_struct);
             if num_structs > 1  % loop over all &-ed queries
-                % Search base.id lookups first: they match at most a few
-                % documents, which then restrict the remaining terms
-                isIdLookup = false(1, num_structs);
+                % Order the terms (see above): 1 = base.id lookup, 2 = other,
+                % 3 = base.session_id. sort is stable, so the given order is
+                % kept within each group.
+                rank = 2 * ones(1, num_structs);
                 for i = 1 : num_structs
-                    isIdLookup(i) = did.database.baseIdLookupValues(query_struct(i));
+                    if did.database.baseIdLookupValues(query_struct(i))
+                        rank(i) = 1;
+                    elseif strcmp(char(query_struct(i).field), 'base.session_id')
+                        rank(i) = 3;
+                    end
                 end
-                order = [find(isIdLookup) find(~isIdLookup)];
+                [~, order] = sort(rank);
                 doc_ids = {};
                 for i = 1 : num_structs
                     new_doc_ids = search_doc_ids(sqlitedb_obj, query_struct(order(i)), branch_id, candidate_ids);
@@ -1220,7 +1260,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 op(op=='~') = '';
                 if strcmpi(op,'or')
                     [isIdLookup, ids] = did.database.baseIdLookupValues(query_struct);
-                    if isIdLookup && sqlitedb_obj.canSearchCandidates()
+                    if isIdLookup && sqlitedb_obj.hasSearchIndexes()
                         % base.id lookups ORed together: search all the ids at once
                         doc_ids = search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids);
                     else
@@ -1269,16 +1309,21 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 doc_ids = [doc_ids; new_doc_ids(:)];
             end
         end
-        function tf = canSearchCandidates(sqlitedb_obj) %#ok<MANU>
-            % canSearchCandidates - can a search be restricted to candidate documents?
+        function tf = hasSearchIndexes(sqlitedb_obj) %#ok<MANU>
+            % hasSearchIndexes - does the database have the doc_data search indexes?
             %
-            % TF = canSearchCandidates(SQLITEDB_OBJ)
+            % TF = hasSearchIndexes(SQLITEDB_OBJ)
             %
-            % Restricting a search term to candidate documents (see
-            % search_doc_ids) is only fast when each document's doc_data rows
-            % can be found by an index. Implementations that have one
-            % override this; the default is false, which searches every term
-            % over the whole branch.
+            % Two ways of searching are fast only with indexes on doc_data,
+            % and are used only when this returns true:
+            %   - restricting a search term to candidate documents (see
+            %     search_doc_ids), which needs each document's doc_data rows
+            %     to be found by an index (doc_idx, field_idx);
+            %   - matching 'isa' against the distinct superclass lists only
+            %     (see query_struct_to_sql_str), which needs one field's
+            %     values to be read in order from an index (field_idx, value).
+            % Implementations that have both override this; the default is
+            % false, which searches as before.
             tf = false;
         end
         function document_ids = do_search(sqlitedb_obj, query_obj, branch_id)
