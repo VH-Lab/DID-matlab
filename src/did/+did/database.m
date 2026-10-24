@@ -89,6 +89,10 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
         % Most document ids that search_doc_ids lists in one SQL query, when
         % it restricts a search term to candidate documents
         maxSearchCandidates = 1000
+        % Most OR operands that search_or_operands searches in one SQL
+        % query. SQLite allows 500 SELECTs in a compound SELECT and an
+        % expression depth of 1000 by default; this stays well below both.
+        maxOrBatchTerms = 200
     end % properties
 
     % Public read/write properties
@@ -1285,12 +1289,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         % term, so it is flattened first rather than searched
                         % by recursing once per level, which overran the
                         % recursion limit after a few hundred terms.
-                        doc_ids = {};
                         operands = did.datastructures.orOperands(query_struct);
-                        for k = 1:numel(operands)
-                            new_doc_ids = search_doc_ids(sqlitedb_obj, operands{k}, branch_id, candidate_ids);
-                            doc_ids = union(doc_ids, new_doc_ids);
-                        end
+                        doc_ids = search_or_operands(sqlitedb_obj, operands, branch_id, candidate_ids);
                     end
                     if size(doc_ids,1)==1 && size(doc_ids,2)>1
                         doc_ids = doc_ids';  % ensure column vector
@@ -1304,6 +1304,114 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
             if numel(doc_ids)==1 && iscell(doc_ids{1})
                 doc_ids = doc_ids{1};  %de-cell
+            end
+        end
+        function doc_ids = search_or_operands(sqlitedb_obj, operands, branch_id, candidate_ids)
+            % search_or_operands - find the documents that match any of several search structures
+            %
+            % DOC_IDS = search_or_operands(SQLITEDB_OBJ, OPERANDS, BRANCH_ID, CANDIDATE_IDS)
+            %
+            % OPERANDS is a cell array of search structures, the operands of
+            % an OR (see did.datastructures.orOperands). DOC_IDS is the union
+            % of what search_doc_ids returns for each of them, but the
+            % operands that are single SQL terms are searched up to
+            % orBatchTerms at a time in one SQL query, rather than one query
+            % each: a query costs an mksqlite call and a conversion of its
+            % result, so an OR of a few hundred names or classes took that
+            % many round trips.
+            %
+            % Over a whole branch, a batch is one SELECT per operand,
+            % combined with UNION. SQLite plans each SELECT on its own, so
+            % each keeps its index (an 'exact_string' is found through
+            % doc_data_field_value; 'isa' keeps its distinct-superclass
+            % subquery). One WHERE with the operands' conditions joined by
+            % OR returns the same documents, but the planner then reads
+            % every row of doc_data: on 100,000 documents of 30 fields that
+            % took ~1 s for 10 names and ~6 s for 100, against 0.2 ms and
+            % 2 ms for the UNION.
+            %
+            % Restricted to candidate documents (CANDIDATE_IDS a cell array;
+            % see search_doc_ids), it is the other way round: each term
+            % reads every row of every candidate (~10 ms for 1,000
+            % candidates), whatever it searches for. So a batch is then one
+            % restricted query (see get_sql_query_str) with the operands'
+            % conditions joined by OR, which reads those rows once: 1,000
+            % names took 0.2 s that way, against 10 s as 1,000 queries.
+            % CROSS JOIN and INDEXED BY fix the plan, so the OR cannot make
+            % SQLite read the whole of doc_data.
+            %
+            % Either way, a document matches when one of its doc_data rows
+            % satisfies one of the conditions, so the result is exactly the
+            % union of the operands' results.
+            %
+            % ORed base.id lookups among the operands are searched together
+            % by search_base_ids, as for an OR of nothing but base.id
+            % lookups. Operands that are not single SQL terms - ANDs (struct
+            % arrays), negated ORs and the depends_on queries that are
+            % brute-forced (see isBruteForceDependsOn) - are searched by
+            % search_doc_ids, one at a time, as before.
+
+            batchSize = sqlitedb_obj.orBatchTerms();
+            numOperands = numel(operands);
+            inBatch = false(1, numOperands);  % searched in a batch of SQL terms
+            isIdLookup = false(1, numOperands);  % searched by search_base_ids
+            ids = cell(0,1);
+            if batchSize > 1
+                useIdLookup = sqlitedb_obj.hasSearchIndexes();
+                for k = 1:numOperands
+                    operand = operands{k};
+                    if ~(isstruct(operand) && isscalar(operand) && isfield(operand, 'operation'))
+                        continue  % an AND, or not a search structure
+                    end
+                    op = strtrim(lower(char(operand.operation)));
+                    op(op=='~') = '';
+                    if strcmp(op, 'or')
+                        continue  % a negated OR (a plain one was flattened)
+                    end
+                    if did.database.isBruteForceDependsOn(operand)
+                        continue  % no SQL form: brute_force_search
+                    end
+                    [isId, id] = did.database.baseIdLookupValues(operand);
+                    if isId && useIdLookup
+                        isIdLookup(k) = true;
+                        ids = [ids; id];
+                    else
+                        inBatch(k) = true;
+                    end
+                end
+            end
+
+            doc_ids = {};
+            if any(isIdLookup)
+                doc_ids = union(doc_ids, search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids));
+            end
+
+            terms = operands(inBatch);
+            restrict = iscell(candidate_ids);
+            for k = 1 : batchSize : numel(terms)
+                batch = terms(k : min(k+batchSize-1, numel(terms)));
+                if restrict
+                    conditions = cellfun(@(q) query_struct_to_sql_str(sqlitedb_obj, q, true), ...
+                        batch, 'UniformOutput', false);
+                    query_str = [get_sql_query_str(sqlitedb_obj, [], branch_id, candidate_ids) ...
+                        ' AND (' strjoin(conditions, ' OR ') ')'];
+                    % as get_sql_query_str does for a single term
+                    query_str = regexprep(query_str,' +',' ');
+                else
+                    selects = cellfun(@(q) get_sql_query_str(sqlitedb_obj, q, branch_id, candidate_ids), ...
+                        batch, 'UniformOutput', false);
+                    query_str = strjoin(selects, ' UNION ');
+                end
+                new_doc_ids = run_sql_query(sqlitedb_obj, query_str);
+                if numel(new_doc_ids)==1 && iscell(new_doc_ids{1})
+                    new_doc_ids = new_doc_ids{1};  %de-cell
+                end
+                doc_ids = union(doc_ids, new_doc_ids);
+            end
+
+            for k = find(~inBatch & ~isIdLookup)
+                new_doc_ids = search_doc_ids(sqlitedb_obj, operands{k}, branch_id, candidate_ids);
+                doc_ids = union(doc_ids, new_doc_ids);
             end
         end
         function doc_ids = brute_force_search(sqlitedb_obj, query_struct, branch_id, candidate_ids)
@@ -1381,6 +1489,15 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Implementations that have both override this; the default is
             % false, which searches as before.
             tf = false;
+        end
+        function n = orBatchTerms(sqlitedb_obj)
+            % orBatchTerms - most OR operands to search in one SQL query
+            %
+            % N = orBatchTerms(SQLITEDB_OBJ)
+            %
+            % See search_or_operands. If N is 1 or less, every operand of an
+            % OR is searched by a query of its own.
+            n = sqlitedb_obj.maxOrBatchTerms;
         end
         function document_ids = do_search(sqlitedb_obj, query_obj, branch_id)
             % do_search - searches a branch for doc_ids that match specified query
