@@ -161,8 +161,9 @@ function b = fieldsearch(A, searchstruct)
                 end
             end
         case {'hasanysubfield_contains_string','hasanysubfield_exact_string'}
-            if isthere
-                if ~ (isstruct(value) | iscell(value) ), return; end % must be a structure or cell
+            % must be a structure or cell; anything else does not match (and
+            % so, negated, does - hence no early return past the negation)
+            if isthere && (isstruct(value) || iscell(value))
                 for i=1:numel(value)
                     if isstruct(value)
                         item = value(i);

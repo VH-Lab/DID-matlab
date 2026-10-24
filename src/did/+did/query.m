@@ -59,6 +59,8 @@ classdef query
             %     |   'or'                 - are any of the searchstruct elements specified in 'param1' true?
             %     |***'isa'                - is 'param1' either a superclass or the document class itself of the DID_DOCUMENT?
             %     |***'depends_on'         - does the document depend on an item with name 'param1' and value 'param2'?
+            %     |                          'param1' '*' means any name; it is the only wildcard. Both are
+            %     |                          matched exactly and case-sensitively, by every database.
             %     |
             %     |***to be implemented
             %     |----------------------|
