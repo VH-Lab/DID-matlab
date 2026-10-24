@@ -85,6 +85,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
         preferences
     end % properties
 
+    properties (Constant, Access=protected)
+        % Most document ids that search_doc_ids lists in one SQL query, when
+        % it restricts a search term to candidate documents
+        maxSearchCandidates = 1000
+    end % properties
+
     % Public read/write properties
     properties (Access=public, Transient)
         debug (1,1) logical = false  % Display debug info in console? (default: false)
@@ -1117,14 +1123,35 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             sql_str = ['(' sql_str ')'];
             %sql_str = [notStr sql_str];
         end
-        function query_str = get_sql_query_str(sqlitedb_obj, query_structs, branch_id)
+        function query_str = get_sql_query_str(sqlitedb_obj, query_structs, branch_id, candidate_ids)
             % Convert an array of did.query objects/structs into SQL query string
+            %
+            % If CANDIDATE_IDS (a cell array of document ids) is given, only
+            % those documents are considered - see search_doc_ids. The tables
+            % are then joined with CROSS JOIN, which makes SQLite loop over
+            % them in the order written: each candidate is found through the
+            % unique docs.doc_id index, and its doc_data rows through the
+            % doc_data_doc_idx_field_idx index. Left to choose, the query
+            % planner (which has no table statistics to go on) can start
+            % instead from every document of the branch, or from every
+            % doc_data row holding the searched value - for base.session_id,
+            % one row per document in the session.
+            restrict = nargin > 3 && iscell(candidate_ids);
+            if restrict
+                from_str = 'docs CROSS JOIN branch_docs CROSS JOIN fields CROSS JOIN doc_data';
+            else
+                from_str = 'docs, branch_docs, doc_data, fields';
+            end
             query_str = ['SELECT DISTINCT docs.doc_id ' ...
-                'FROM   docs, branch_docs, doc_data, fields ' ...
+                'FROM   ' from_str ' ' ...
                 'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
                 '  AND  docs.doc_idx = branch_docs.doc_idx ' ...
                 '  AND  branch_docs.branch_id = "' did.database.sqlEscapeLiteral(branch_id) '" ' ...
                 '  AND  fields.field_idx = doc_data.field_idx'];
+            if restrict
+                query_str = [query_str ...
+                    ' AND docs.doc_id IN (' did.database.sqlStringList(candidate_ids) ')'];
+            end
             %((fields.field_name = "meta.class" AND doc_data.value = "ndi_document") OR (fields.field_name = "meta.superclass" AND doc_data.value like "%ndi_document%"))')';
             for i = 1 : numel(query_structs)
                 sql_str = query_struct_to_sql_str(sqlitedb_obj, query_structs(i));
@@ -1134,18 +1161,55 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
             query_str = regexprep(query_str,' +',' ');
         end
-        function doc_ids = search_doc_ids(sqlitedb_obj, query_struct, branch_id)
+        function doc_ids = search_doc_ids(sqlitedb_obj, query_struct, branch_id, candidate_ids)
             % search_doc_ids - recursively search the database for matching doc IDs
+            %
+            % DOC_IDS = search_doc_ids(SQLITEDB_OBJ, QUERY_STRUCT, BRANCH_ID, [CANDIDATE_IDS])
+            %
+            % If CANDIDATE_IDS is a cell array of document ids, only those
+            % documents are considered, so DOC_IDS is a subset of them. Once
+            % one term of an AND has narrowed the result to a few documents
+            % (at most maxSearchCandidates), the remaining terms are checked
+            % against those documents only. So a lookup such as
+            %     base.id = ID  AND  base.session_id = SESSION_ID
+            % checks the session of one document, instead of returning every
+            % document of the session to be intersected here (which took ~1 s
+            % in a database of 100,000 documents).
+            %
+            % Restricting to candidates needs the doc_data_doc_idx_field_idx
+            % index (see canSearchCandidates); without it every term is
+            % searched over the whole branch, as before.
+
+            if nargin < 4 || ~sqlitedb_obj.canSearchCandidates()
+                candidate_ids = [];  % not a cell: all documents of the branch
+            end
+            if iscell(candidate_ids) && isempty(candidate_ids)
+                doc_ids = {};
+                return
+            end
 
             num_structs = numel(query_struct);
             if num_structs > 1  % loop over all &-ed queries
+                % Search base.id lookups first: they match at most a few
+                % documents, which then restrict the remaining terms
+                isIdLookup = false(1, num_structs);
+                for i = 1 : num_structs
+                    isIdLookup(i) = did.database.baseIdLookupValues(query_struct(i));
+                end
+                order = [find(isIdLookup) find(~isIdLookup)];
                 doc_ids = {};
                 for i = 1 : num_structs
-                    new_doc_ids = search_doc_ids(sqlitedb_obj, query_struct(i), branch_id);
+                    new_doc_ids = search_doc_ids(sqlitedb_obj, query_struct(order(i)), branch_id, candidate_ids);
                     if i > 1
                         doc_ids = intersect(doc_ids, new_doc_ids);
                     else
                         doc_ids = new_doc_ids;
+                    end
+                    if isempty(doc_ids)
+                        break  % no document matches every term - skip the rest
+                    end
+                    if numel(doc_ids) <= sqlitedb_obj.maxSearchCandidates
+                        candidate_ids = doc_ids;
                     end
                 end
                 if size(doc_ids,1)==1 && size(doc_ids,2)>1
@@ -1155,20 +1219,67 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 op = strtrim(lower(query_struct.operation));
                 op(op=='~') = '';
                 if strcmpi(op,'or')
-                    doc_ids1 = search_doc_ids(sqlitedb_obj, query_struct.param1, branch_id);
-                    doc_ids2 = search_doc_ids(sqlitedb_obj, query_struct.param2, branch_id);
-                    doc_ids = union(doc_ids1, doc_ids2);
+                    [isIdLookup, ids] = did.database.baseIdLookupValues(query_struct);
+                    if isIdLookup && sqlitedb_obj.canSearchCandidates()
+                        % base.id lookups ORed together: search all the ids at once
+                        doc_ids = search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids);
+                    else
+                        doc_ids1 = search_doc_ids(sqlitedb_obj, query_struct.param1, branch_id, candidate_ids);
+                        doc_ids2 = search_doc_ids(sqlitedb_obj, query_struct.param2, branch_id, candidate_ids);
+                        doc_ids = union(doc_ids1, doc_ids2);
+                    end
                     if size(doc_ids,1)==1 && size(doc_ids,2)>1
                         doc_ids = doc_ids';  % ensure column vector
                     end
                 else  % leaf scalar query
-                    query_str = get_sql_query_str(sqlitedb_obj, query_struct, branch_id);
+                    query_str = get_sql_query_str(sqlitedb_obj, query_struct, branch_id, candidate_ids);
                     doc_ids = run_sql_query(sqlitedb_obj, query_str);
                 end
             end
             if numel(doc_ids)==1 && iscell(doc_ids{1})
                 doc_ids = doc_ids{1};  %de-cell
             end
+        end
+        function doc_ids = search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids)
+            % search_base_ids - find the documents whose base.id is one of IDS
+            %
+            % DOC_IDS = search_base_ids(SQLITEDB_OBJ, IDS, BRANCH_ID, [CANDIDATE_IDS])
+            %
+            % Equivalent to ORing a base.id exact_string query for each of IDS,
+            % in one SQL query per maxSearchCandidates ids rather than one per
+            % id. A document's doc_id is its base.id (see doc2sql), so IDS also
+            % serve as the candidate documents, and are looked up through the
+            % docs.doc_id index. The doc_data condition is kept so that the
+            % result is exactly what the ORed exact_string queries return.
+            ids = unique(ids(:));
+            if nargin > 3 && iscell(candidate_ids)
+                ids = intersect(ids, candidate_ids);
+            end
+            doc_ids = cell(0,1);
+            chunk = sqlitedb_obj.maxSearchCandidates;
+            for k = 1 : chunk : numel(ids)
+                these_ids = ids(k : min(k+chunk-1, numel(ids)));
+                query_str = [get_sql_query_str(sqlitedb_obj, [], branch_id, these_ids) ...
+                    ' AND fields.field_name="base.id"' ...
+                    ' AND doc_data.value IN (' did.database.sqlStringList(these_ids) ')'];
+                new_doc_ids = run_sql_query(sqlitedb_obj, query_str);
+                if numel(new_doc_ids)==1 && iscell(new_doc_ids{1})
+                    new_doc_ids = new_doc_ids{1};  %de-cell
+                end
+                doc_ids = [doc_ids; new_doc_ids(:)];
+            end
+        end
+        function tf = canSearchCandidates(sqlitedb_obj) %#ok<MANU>
+            % canSearchCandidates - can a search be restricted to candidate documents?
+            %
+            % TF = canSearchCandidates(SQLITEDB_OBJ)
+            %
+            % Restricting a search term to candidate documents (see
+            % search_doc_ids) is only fast when each document's doc_data rows
+            % can be found by an index. Implementations that have one
+            % override this; the default is false, which searches every term
+            % over the whole branch.
+            tf = false;
         end
         function document_ids = do_search(sqlitedb_obj, query_obj, branch_id)
             % do_search - searches a branch for doc_ids that match specified query
@@ -1939,6 +2050,64 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % DID-python _sql_escape primitive.
             s = strrep(char(s), '"', '""');
         end % sqlEscapeLiteral()
+
+        function s = sqlStringList(values)
+            % sqlStringList - a list of SQL string literals, for an IN (...) clause
+            %
+            % S = sqlStringList(VALUES)
+            %
+            % Returns the cell array of strings VALUES as single-quoted SQL
+            % string literals separated by commas, e.g. 'a','b''c'. Single
+            % quotes are used (with ' doubled inside) because a double-quoted
+            % token that happens to equal a column name, such as "doc_id", is
+            % read by SQLite as that column rather than as a string.
+            values = cellfun(@(v) ['''' strrep(char(v), '''', '''''') ''''], ...
+                values, 'UniformOutput', false);
+            s = strjoin(values, ',');
+        end % sqlStringList()
+
+        function [tf, ids] = baseIdLookupValues(query_struct)
+            % baseIdLookupValues - is a search structure a lookup by base.id?
+            %
+            % [TF, IDS] = baseIdLookupValues(QUERY_STRUCT)
+            %
+            % TF is true if QUERY_STRUCT (a single search structure) is a
+            % base.id exact_string match for a non-empty id, or an OR of such
+            % matches nested to any depth. IDS is then a cell array of the ids
+            % it looks for. Negated operations are not lookups.
+            %
+            % The OR tree is walked with a stack rather than by recursion: a
+            % query built as q = q | did.query('base.id',...) in a loop nests
+            % one level per id, deeper than MATLAB's recursion limit allows.
+            tf = false;
+            ids = {};
+            found = cell(0,1);
+            pending = {query_struct};
+            while ~isempty(pending)
+                s = pending{end};
+                pending(end) = [];
+                if ~isstruct(s) || ~isscalar(s)
+                    return
+                end
+                switch strtrim(lower(char(s.operation)))
+                    case 'exact_string'
+                        value = s.param1;
+                        if isstring(value) && isscalar(value)
+                            value = char(value);
+                        end
+                        if ~(strcmp(char(s.field), 'base.id') && ischar(value) && isrow(value))
+                            return
+                        end
+                        found{end+1,1} = value; %#ok<AGROW>
+                    case 'or'
+                        pending(end+1:end+2) = {s.param1, s.param2};
+                    otherwise
+                        return
+                end
+            end
+            tf = true;
+            ids = found;
+        end % baseIdLookupValues()
 
         function fld = validateSqlFieldName(fld)
             % validateSqlFieldName - charset-restrict a query field name
