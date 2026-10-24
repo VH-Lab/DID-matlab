@@ -101,6 +101,47 @@ class TestCheck(unittest.TestCase):
         self.assertTrue(out.splitlines()[1].lstrip().startswith("expected 1"))
 
 
+class TestGate(unittest.TestCase):
+    """The corpora run only when migration code changes (Jess Haley, 2026-10-24)."""
+
+    def run_gate(self, event, files):
+        return cm.gate(event, files, out=lambda *_: None)[0]
+
+    def test_dispatch_always_runs(self):
+        self.assertTrue(self.run_gate("workflow_dispatch", ["README.md"]))
+
+    def test_unknown_file_list_runs(self):
+        self.assertTrue(self.run_gate("pull_request", None))
+        self.assertTrue(self.run_gate("push", []))
+
+    def test_a_migration_file_runs(self):
+        for f in ("src/did/+did2/+convert/epochMint.m",
+                  "src/did/+did2/+convert/+migrators_j/treatment.m",
+                  "tests/+did2/+unittest/testCorpusJH.m",
+                  "tests/+did2/+unittest/+helpers/runCorpusDiscovery.m",
+                  "tools/corpus_matrix.py",
+                  ".github/workflows/test-code.yml"):
+            self.assertTrue(self.run_gate("pull_request", ["README.md", f]), f)
+
+    def test_other_files_skip(self):
+        self.assertFalse(self.run_gate("pull_request", [
+            "README.md", "src/did/+did2/+schema/cache.m",
+            "src/did/+did2/+build/statement.m",
+            "tests/+did2/+unittest/testMigratorsJ.m",
+            ".github/workflows/test-builder.yml"]))
+
+    def test_cli_writes_the_output(self):
+        d = tempfile.mkdtemp()
+        lst, gho = os.path.join(d, "f.txt"), os.path.join(d, "o.txt")
+        with open(lst, "w") as fh:
+            fh.write("docs/x.md\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            cm.main(["gate", "--event", "push", "--files-from", lst,
+                     "--github-output", gho])
+        with open(gho) as fh:
+            self.assertEqual(fh.read(), "run=false\n")
+
+
 class TestWorkflowWiring(unittest.TestCase):
     """Scoped text reads of test-code.yml; a YAML cross-check when available."""
 
@@ -129,9 +170,15 @@ class TestWorkflowWiring(unittest.TestCase):
         self.assertIn("fail-fast: false", corpus)
         self.assertIn("corpus-report-${{ matrix.group }}", corpus)
 
+    def test_corpus_jobs_are_gated(self):
+        plan = self.job("plan")
+        self.assertIn("tools/corpus_matrix.py gate", plan)
+        self.assertIn("run: ${{ steps.gate.outputs.run }}", plan)
+        self.assertIn("if: needs.plan.outputs.run == 'true'", self.job("corpus"))
+
     def test_aggregate_runs_always_and_checks_reports(self):
         agg = self.job("aggregate")
-        self.assertIn("if: always()", agg)
+        self.assertIn("if: always() && needs.plan.outputs.run == 'true'", agg)
         self.assertIn("tools/corpus_matrix.py check", agg)
         for tool in ("tools/census_digest.py", "tools/corpus_proven.py",
                      "did-schema/tools/bar2_gap.py"):

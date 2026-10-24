@@ -44,9 +44,39 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
+      run: ${{ steps.gate.outputs.run }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      # THE CORPORA RUN ONLY WHEN MIGRATION CODE CHANGES (2026-10-24, Jess
+      # Haley). Generic migration is frozen (did-schema
+      # V_eta_go_forward_class_audit.md [migration not generalizable]), and the
+      # JH and Soph jobs take ~3 hours each, so re-measuring unchanged migration
+      # on every push buys nothing. tools/corpus_matrix.py `gate` holds the
+      # paths and the rule; an unknown file list runs the corpora (not measured
+      # is not "unchanged"). workflow_dispatch always runs them.
+      - name: List the changed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          : > changed-files.txt
+          if [ "$EVENT" = pull_request ]; then
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+              --jq '.[].filename' > changed-files.txt || : > changed-files.txt
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE" ] && [ "${BEFORE//0/}" != "" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$SHA" \
+              --jq '.files[].filename' > changed-files.txt || : > changed-files.txt
+          fi
+          echo "changed files listed: $(wc -l < changed-files.txt)"
+
+      - name: Decide whether the corpora run
+        id: gate
+        run: python3 tools/corpus_matrix.py gate --event "${{ github.event_name }}" --files-from changed-files.txt --github-output "$GITHUB_OUTPUT"
 
       - name: Derive the corpus matrix from testCorpus*.m
         id: pick
@@ -353,6 +383,7 @@ jobs:
 
   corpus:
     needs: plan
+    if: needs.plan.outputs.run == 'true'
     name: "corpus: ${{ matrix.group }}"
     runs-on: ubuntu-latest
     strategy:
@@ -532,8 +563,9 @@ jobs:
     name: Corpus census, CORPUS-PROVEN rung, done report
     needs: [plan, unit, corpus]
     # always(): the census must report on whatever corpora finished, and a
-    # missing one must be NAMED here rather than the job being skipped.
-    if: always()
+    # missing one must be NAMED here rather than the job being skipped. It is
+    # skipped only when the plan job's gate decided the corpora do not run.
+    if: always() && needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
