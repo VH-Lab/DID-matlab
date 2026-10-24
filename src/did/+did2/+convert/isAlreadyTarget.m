@@ -57,12 +57,6 @@ end
 % forward is the point; running the same pipeline over a body that has already
 % passed the target is the opposite, and it was silent.
 %
-% Reached in production, not in theory (until 2026-10-23, when NDI's read path
-% stopped converting and the earlier, lower target was removed): NDI's read
-% path called this converter on EVERY read at a target below V_eta, and a V_eta
-% document compared unequal and was pushed through universalRenames plus the
-% per-class migrators.
-%
 % An UNRECOGNISED version cannot reach here: refuseUnknownSchemaVersion runs
 % first and quarantines it. The `~svKnown` guard below is kept as a defence for
 % any other caller of this helper, and it returns FALSE only because a body

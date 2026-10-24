@@ -11,8 +11,7 @@
 %   which returns the post-universal body unchanged.
 %
 %   Currently registered migrators implement the four 2.0.0-bumped
-%   classes from PLAN.md §7 plus the PRED-driven §9.6 sub-step 6d
-%   additions:
+%   classes plus the PRED-driven additions:
 %
 %     identity            - default passthrough.
 %     probe_location      - collapse (ontology_name, name) -> location.
@@ -64,7 +63,7 @@
 %                           grams_per_liter, mass_fraction,
 %                           volume_fraction) populated when computable.
 %
-%   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
+%   Calculator-base wrappers (20211116-driven):
 %   each calls did2.convert.calcCommon to move v1's
 %   `<class>.input_parameters` into a new inherited `calculator` block.
 %   The calculator-identity string lives in `app.app_name` (carried in

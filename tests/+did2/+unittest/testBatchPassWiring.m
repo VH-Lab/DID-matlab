@@ -1003,17 +1003,15 @@ end
 % ===================== the passes refuse another target ==================
 
 function testBothNewPassesRefuseANonVEtaTarget(testCase)
-% V_eta is the only migration target (Jess Haley, 2026-10-23: the earlier
-% 'V_delta' target was removed). Asking a pass for another target is an
+% V_eta is the only migration target. Asking a pass for another target is an
 % argument error, never a silent no-op that could be read as "ran, found
-% nothing". This replaces the off-target no-op these passes had while a
-% second target existed.
+% nothing".
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 verifyError(testCase, @() did2.convert.epochMint(r, 'Validate', false, ...
-    'TargetVersion', 'V_delta'), 'MATLAB:validators:mustBeMember');
+    'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 verifyError(testCase, @() did2.convert.resolveSessionAnchors(r, 'Validate', false, ...
-    'TargetVersion', 'V_delta'), 'MATLAB:validators:mustBeMember');
+    'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 function testBothNewPassesAttachADenominatorOnAnEmptyBatch(testCase)
@@ -1049,12 +1047,12 @@ end
 % and the untouched label. It is not repeated here.
 
 function testFoldGenericFilesRefusesANonVEtaTarget(testCase)
-% V_eta is the only migration target (2026-10-23); another one is an argument
+% V_eta is the only migration target; another one is an argument
 % error rather than a no-op.
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 verifyError(testCase, @() did2.convert.foldGenericFiles(r, 'Validate', false, ...
-    'TargetVersion', 'V_delta'), 'MATLAB:validators:mustBeMember');
+    'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 function testFoldGenericFilesAttachesADenominatorOnAnEmptyBatch(testCase)

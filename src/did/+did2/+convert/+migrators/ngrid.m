@@ -17,9 +17,9 @@ function v2Body = ngrid(preBody)
 %   v1 also stores `data_size` (per-element byte size) and
 %   `coordinates` (sample coordinates along each dimension); both
 %   are v1-only fields with no V2 counterpart on ngrid and
-%   are dropped per the conversion default (PLAN.md §9.6 Q1:
-%   surface drop-counts in summary; promote to per-class migrators
-%   only if a consumer surfaces).
+%   are dropped per the conversion default (surface drop-counts in
+%   summary; promote to per-class migrators only if a consumer
+%   surfaces).
 %
 %   v1 `data_type` matches V2 `data_type` verbatim and passes
 %   through. If v1 already supplied `ndims` (rare), the value is

@@ -1,7 +1,7 @@
 % +convert  did_v1 -> V2 document conversion utilities.
 %
-%   The +convert subpackage implements PLAN.md §7 plus the step-6
-%   sub-steps in §9.6: the v1-to-V2 migration dispatcher, the
+%   The +convert subpackage implements the v1-to-V2 migration
+%   dispatcher, the
 %   universal-rename pass, per-class migrator functions for the
 %   four 2.0.0-bumped classes, and the legacy-database readers plus
 %   end-to-end orchestrator that drive the dispatcher off real v1
@@ -42,4 +42,6 @@
 %                        and returns the latest version of every
 %                        Object_id_*_v#####.json file.
 %
-%   See also: docs/v2/PLAN.md §7, §9.6.
+%   V_eta is the only migration target.
+%
+%   V_delta, the pre-V_eta V2 shape, was removed 2026-10-23; see git history.

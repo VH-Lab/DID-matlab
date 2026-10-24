@@ -4,8 +4,7 @@
 %   It consumes the V_eta schema set from the did-schema repository
 %   directly, without translating to the V_alpha base.* /
 %   document_class.* / <property_list_name> nesting that the legacy +did
-%   package uses. See docs/v2/PLAN.md for the full design and the
-%   step-by-step order of work.
+%   package uses.
 %
 %   Files
 %     document      - V2 document object (load / validate /
@@ -24,7 +23,7 @@
 %                     JSON1 SQL compiler that routes scalar leaves to
 %                     the generated columns and `[*]` leaves to the
 %                     sidecar when their dot-path is in the indexed
-%                     set). See docs/v2/PLAN.md §3, §9 steps 3–5.
+%                     set).
 %     +convert      - did_v1 -> V2 document migration utilities.
 %                     `v1_to_v2` is the dispatcher / CLI entry;
 %                     `universalRenames` runs the cross-cutting did_v1
@@ -32,8 +31,7 @@
 %                     per-class migrators (currently `identity` plus
 %                     the four 2.0.0-bumped classes `probe_location`,
 %                     `treatment`, `ontology_image`, and
-%                     `ontology_label`). See docs/v2/PLAN.md §7,
-%                     §9 step 6.
+%                     `ontology_label`).
 %
 %   Conventions
 %     - New code uses camelCase identifiers and arguments-block input
@@ -46,4 +44,4 @@
 %       "valid" means; runtime reflection over values never substitutes
 %       for the schema.
 %
-%   See also: did, docs/v2/PLAN.md.
+%   See also: did.

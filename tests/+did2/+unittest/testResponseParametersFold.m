@@ -388,12 +388,12 @@ verifyTrue(testCase, out.response_parameters_fold.ran);
 end
 
 function testItRefusesANonVEtaTarget(testCase)
-% V_eta is the only migration target (2026-10-23); another one is an argument
+% V_eta is the only migration target; another one is an argument
 % error rather than a no-op.
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 verifyError(testCase, @() did2.convert.resolveResponseParameters(r, ...
-    'Validate', false, 'TargetVersion', 'V_delta'), 'MATLAB:validators:mustBeMember');
+    'Validate', false, 'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 % ===================== validation ==========================================

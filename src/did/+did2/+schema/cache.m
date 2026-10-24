@@ -3,8 +3,7 @@ classdef cache < handle
     %
     %   Loads V2 schema files lazily, resolves superclass chains,
     %   builds blank documents in the V2 class-scoped wire shape,
-    %   and validates documents against their class definitions. See
-    %   docs/v2/PLAN.md §5.
+    %   and validates documents against their class definitions.
     %
     %   Document shape (V2 "JSON Format: Document Instances"):
     %     document_class
@@ -143,7 +142,7 @@ classdef cache < handle
     %       buildBlankDocument  - blank V2 document in the wire shape.
     %       validateDocument    - validate a did2.document instance.
     %
-    %   See also: did2.document, docs/v2/PLAN.md.
+    %   See also: did2.document.
 
     properties (SetAccess = private)
         schemaPath (1,:) char = ''

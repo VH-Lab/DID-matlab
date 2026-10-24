@@ -3,7 +3,7 @@ function [whereSQL, params] = compileQuery(q, opts)
 %
 %   [WHERESQL, PARAMS] = did2.database.compileQuery(Q) returns a SQL WHERE
 %   clause and a bound-parameter cell array suitable for binding against
-%   the `documents` table laid out in docs/v2/PLAN.md §3 (columns: id,
+%   the `documents` table (columns: id,
 %   classname, class_version, session_id, datestamp, body, body_hash,
 %   plus the `superclasses(doc_id, classname)` and
 %   `depends_on(doc_id, name, document_id)` sidecar tables).
@@ -19,7 +19,7 @@ function [whereSQL, params] = compileQuery(q, opts)
 %   (path, value) index. Predicates against paths not in the set fall back
 %   to json_extract.
 %
-%   This is the "JSON1 fallback" compiler called for in PLAN.md §9 step 3.
+%   This is the "JSON1 fallback" compiler.
 %   It uses sqlite3 json_extract / json_each / json_type for every
 %   document-body predicate, EXISTS over the sidecar tables for `isa`
 %   and a wildcard `depends_on`, `documents.id IN (...)` for a named

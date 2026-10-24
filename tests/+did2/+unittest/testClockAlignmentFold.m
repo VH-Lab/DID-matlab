@@ -114,11 +114,11 @@ verifyEqual(testCase, out.clock_alignment_fold.syncgraphs_seen, 0);
 end
 
 function testANonEtaTargetIsRefused(testCase)
-% V_eta is the only migration target (2026-10-23); another one is an argument
+% V_eta is the only migration target; another one is an argument
 % error rather than a no-op.
 result = struct('migrated', {{}}, 'summary', struct('total', 0));
 verifyError(testCase, @() did2.convert.resolveClockAlignment(result, ...
-    'TargetVersion', 'V_delta'), 'MATLAB:validators:mustBeMember');
+    'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 % ===================== the filefind syncrule arm ===========================

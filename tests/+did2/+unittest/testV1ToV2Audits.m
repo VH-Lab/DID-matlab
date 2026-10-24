@@ -62,8 +62,8 @@ verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'V_eta'));
 end
 
 function testABlankDocumentIsAtTheTarget(testCase)
-% did2.document.blank stamps 'V_eta' (it stamped the removed 'V_delta' until
-% 2026-10-23), so a freshly built document is already at the target.
+% did2.document.blank stamps 'V_eta', so a freshly built document is already
+% at the target.
 verifyTrue(testCase, did2.convert.isAlreadyTarget(makeBody(), 'V_eta'));
 end
 

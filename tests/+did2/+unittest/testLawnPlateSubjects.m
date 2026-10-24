@@ -109,11 +109,11 @@ verifyTrue(testCase, out.lawn_plate_subjects.ran);
 end
 
 function testItRefusesANonVEtaTarget(testCase)
-% V_eta is the only migration target (2026-10-23); another one is an argument
+% V_eta is the only migration target; another one is an argument
 % error rather than a no-op.
 r = emptyResult();
 verifyError(testCase, @() did2.convert.resolveLawnPlateSubjects(r, ...
-    'Validate', false, 'TargetVersion', 'V_delta'), 'MATLAB:validators:mustBeMember');
+    'Validate', false, 'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 function testNoEcoliTablesIsDistinctFromTablesPresentAndJoinsFailing(testCase)

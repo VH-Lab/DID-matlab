@@ -83,33 +83,16 @@ end
 
 % ---- the schema-generation stamp (DID-matlab #223) ----
 
-function testANewDatabaseIsStampedVEta(testCase)
-% A database created now names the schema generation it is for.
-verifyEqual(testCase, schemaGenerationOf(testCase.TestData.db), 'V_eta');
+function testANewDatabaseIsStampedV2(testCase)
+% A database created now carries the generation stamp 'V2'.
+verifyEqual(testCase, schemaGenerationOf(testCase.TestData.db), 'V2');
 end
 
-function testADatabaseStampedVDeltaStillOpens(testCase)
-% Every database written before 2026-10-23 carries the legacy stamp 'V_delta'
-% (e.g. the Haley dataset). It must open, keep its documents, and keep its
-% stamp: the legacy name is accepted as it is, never rewritten on open.
+function testAnyOtherSchemaGenerationIsRefusedNamingTheFix(testCase)
+% A stamp other than 'V2' is refused, naming the stamp it found and saying to
+% re-create the database.
 db = testCase.TestData.db;
-doc = makeDemoA('alice', 'a1');
-db.add(doc);
-setSchemaGeneration(db, 'V_delta');
-db.close();
-db2 = did2.database.sqlitedb(testCase.TestData.tmpFile);
-testCase.TestData.db = db2;
-verifyEqual(testCase, db2.count(), 1);
-verifyTrue(testCase, db2.has(doc.get('base.id')));
-verifyEqual(testCase, schemaGenerationOf(db2), 'V_delta', ...
-    'opening a legacy-stamped database must not rewrite its stamp');
-end
-
-function testAnUnknownSchemaGenerationIsRefused(testCase)
-% A stamp this version does not know (a newer writer, or not a did2 file) is
-% refused, naming the stamp it found.
-db = testCase.TestData.db;
-setSchemaGeneration(db, 'V_omega');
+setSchemaGeneration(db, 'V_none');
 db.close();
 verifyError(testCase, ...
     @() did2.database.sqlitedb(testCase.TestData.tmpFile), ...
@@ -117,7 +100,8 @@ verifyError(testCase, ...
 try
     did2.database.sqlitedb(testCase.TestData.tmpFile);
 catch err
-    verifySubstring(testCase, err.message, 'V_omega');
+    verifySubstring(testCase, err.message, 'V_none');
+    verifySubstring(testCase, err.message, 'Re-create this database');
 end
 end
 
@@ -173,7 +157,7 @@ end
 
 function testValidateFalseSkipsSchemaCheck(testCase)
 % A document missing a required field should still be insertable when
-% Validate=false (the bulk-load escape hatch documented in PLAN.md §1).
+% Validate=false (the bulk-load escape hatch).
 db = testCase.TestData.db;
 doc = makeDemoA('alice', 'a1');
 % Wipe the session_id (mustBeNonEmpty in base.json) and prove that the

@@ -10,9 +10,7 @@ function result = fromV1Database(srcPath, dstPath, options)
 %   THIS IS PASS 1 ONLY. The batch post-passes (epochMint,
 %   resolveSessionAnchors, ...) and the NDI second pass that complete a
 %   V_eta migration need the whole document set and run in
-%   ndi.migrate.local, which is the way to migrate an NDI dataset. Until
-%   2026-10-23 this function took v1_to_v2's default target 'V_delta',
-%   which no longer exists (Jess Haley, 2026-10-23; DID-matlab #224).
+%   ndi.migrate.local, which is the way to migrate an NDI dataset.
 %
 %   SRCPATH may be either:
 %     - a file (e.g. *.sqlite) - read via did2.convert.readers.sqliteV1

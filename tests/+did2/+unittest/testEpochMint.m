@@ -478,11 +478,11 @@ end
 
 function testANonEtaTargetIsRefused(testCase)
 % `epoch` exists only in V_eta, and V_eta is the only migration target
-% (2026-10-23): another target is an argument error, not a silent no-op.
+% -- another target is an argument error, not a silent no-op.
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 verifyError(testCase, @() did2.convert.epochMint(r, ...
-    'Validate', false, 'TargetVersion', 'V_delta'), 'MATLAB:validators:mustBeMember');
+    'Validate', false, 'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 % ===================== the key is the PAIR =============================

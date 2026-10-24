@@ -1,17 +1,14 @@
 function tests = testConvertV1ToV2
 %TESTCONVERTV1TOV2 Smoke tests for the did2.convert v1->V_eta dispatcher.
 %
-%   Exercises the converter skeleton (PLAN.md §9.6 sub-step 6a): the
+%   Exercises the converter skeleton: the
 %   dispatcher's input normalisation, the universal-rename pass, the
 %   identity-migrator fallback, quarantine semantics, and the
 %   end-of-run summary table. Tests run with Validate=false so they do
 %   not depend on the schema cache being able to resolve the V_eta
 %   schemas at the test-runner working directory.
 %
-%   2026-10-23: the 'V_delta' migration target was removed (Jess Haley:
-%   "there should be no mention of V_delta"); 'V_eta' is the only and the
-%   default target. Tests that pinned the removed target's output were
-%   deleted or ported to a class with no +migrators_j override.
+%   'V_eta' is the only and the default target.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testConvertV1ToV2');
@@ -1107,14 +1104,13 @@ end
 
 function testABodyBelowTheTargetStillConverts(testCase)
 % The counterpart of the short-circuit, so the ordering cannot pass by
-% skipping everything. A body carrying the LEGACY stamp 'V_delta' (written
-% before 2026-10-23, when that target was removed) ranks below V_eta: it is
-% converted forward and leaves stamped 'V_eta', never refused as unknown.
+% skipping everything. A body stamped with a known earlier name ('V_zeta')
+% ranks below V_eta: it is converted forward and leaves stamped 'V_eta'.
 v1 = makeV1Skeleton('unknown_class');
-v1.document_class.schema_version = 'V_delta';
+v1.document_class.schema_version = 'V_zeta';
 v1.unknown_class = struct('foo', 'bar');
 r = did2.convert.v1_to_v2({v1}, 'Validate', false);
-verifyEmpty(testCase, r.quarantine, 'a legacy-stamped body was refused');
+verifyEmpty(testCase, r.quarantine, 'a body below the target was refused');
 verifyNotEmpty(testCase, r.migrated);
 verifyEqual(testCase, ...
     r.migrated{1}.toStruct().document_class.schema_version, 'V_eta');
@@ -1122,14 +1118,17 @@ verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_re
     'a body below the target must take the full pipeline');
 end
 
-function testTheRemovedTargetIsRefused(testCase)
-% Jess Haley, 2026-10-23: no TargetVersion 'V_delta' exists. Asking for it is
-% an argument-validation error, not a silent fallback to V_eta.
+function testAnyOtherTargetIsRefused(testCase)
+% V_eta is the only target. Asking for another (a made-up 'V_none', or an
+% earlier name such as 'V_zeta') is an argument-validation error, not a silent
+% fallback to V_eta.
 v1 = makeV1Skeleton('unknown_class');
 v1.unknown_class = struct('foo', 'bar');
-verifyError(testCase, ...
-    @() did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta'), ...
-    'MATLAB:validators:mustBeMember');
+for target = {'V_none', 'V_zeta'}
+    verifyError(testCase, ...
+        @() did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', target{1}), ...
+        'MATLAB:validators:mustBeMember', target{1});
+end
 end
 
 function testTheDefaultTargetIsVEta(testCase)
@@ -1175,13 +1174,12 @@ end
 
 function testTheVersionRankOrdersTheLineAndFlagsTheUnknown(testCase)
 [r0, k0] = did2.convert.schemaVersionRank('');
-[rd, kd] = did2.convert.schemaVersionRank('V_delta');
+[rd, kd] = did2.convert.schemaVersionRank('V_zeta');
 [re, ke] = did2.convert.schemaVersionRank('V_eta');
 [rx, kx] = did2.convert.schemaVersionRank('V_omega');
 verifyTrue(testCase, k0 && kd && ke);
 verifyEqual(testCase, r0, 0, 'did_v1 is the origin of the line');
-verifyTrue(testCase, rd < re, ...
-    'the legacy stamp V_delta must rank before V_eta, so such bodies convert forward');
+verifyTrue(testCase, rd < re, 'V_zeta must rank before V_eta');
 verifyFalse(testCase, kx, 'an unknown name must not be reported as known');
 verifyTrue(testCase, isnan(rx), ...
     'an unknown name must not get rank 0 -- that is did_v1, "convert this"');

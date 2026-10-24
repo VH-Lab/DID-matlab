@@ -5,7 +5,7 @@ function tests = testCorpusPRED
 %   step-6d RFC), unwraps it, and runs every contained v1 document
 %   through did2.convert.v1_to_v2 with Validate=true. Asserts that
 %   the full corpus migrates with zero quarantine entries. This is
-%   the corpus-coverage gate referenced in PLAN.md §9.6 sub-step 6d.
+%   the corpus-coverage gate.
 %
 %   The corpus URL:
 %       https://ndi-programming-development.s3.us-east-1.amazonaws.com/PRED.zip

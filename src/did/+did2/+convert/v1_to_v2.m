@@ -83,10 +83,8 @@ function result = v1_to_v2(v1Bodies, options)
 %                      true) -- never an empty census, which would read as
 %                      clean.
 %     TargetVersion    (1,:) char, default 'V_eta') - migration target.
-%                      'V_eta' is the only target (Jess Haley,
-%                      2026-10-23: the earlier class-preserving 1->1
-%                      target was removed; asking for it is an
-%                      argument-validation error). The option is kept so
+%                      'V_eta' is the only target; any other name is an
+%                      argument-validation error. The option is kept so
 %                      callers can name the target they mean.
 %                      'V_eta' routes classes that have a Brainstorm-J
 %                      split/fold migrator under +did2.+convert.+migrators_j
@@ -111,8 +109,7 @@ function result = v1_to_v2(v1Bodies, options)
 %   EXECUTED. Neither is available in the environment it was written in, so
 %   CI is the first run of this code.
 %
-%   See also: did2.convert.universalRenames, did2.convert.migrators,
-%   docs/v2/PLAN.md §9.6.
+%   See also: did2.convert.universalRenames, did2.convert.migrators.
 
 arguments
     v1Bodies

@@ -5,10 +5,6 @@ so unit tests do not depend on a sibling `did-schema` checkout or on
 network access. They exercise the schema-cache, document, query and
 database machinery; they are not a copy of the V_eta schema set.
 
-(Until 2026-10-23 this directory was `tests/+did2/fixtures/V_delta/`, after
-the schema generation the files were first copied from. It was renamed when
-that generation was removed — Jess Haley, 2026-10-23.)
-
 ## Files
 
 | File | Origin | Purpose |

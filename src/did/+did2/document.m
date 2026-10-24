@@ -35,7 +35,7 @@ classdef document < handle
     %       fromStruct   - construct from a struct.
     %       blank        - construct a blank instance of the named class.
     %
-    %   See also: did2.schema.cache, docs/v2/PLAN.md.
+    %   See also: did2.schema.cache.
 
     properties
         documentProperties (1,1) struct = struct()

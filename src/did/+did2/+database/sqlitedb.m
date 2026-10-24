@@ -7,8 +7,7 @@ classdef sqlitedb < handle
     %   the entries needed for `isa` and `depends_on` queries without
     %   walking JSON.
     %
-    %   This is the "JSON1 fallback only" backend called for in
-    %   docs/v2/PLAN.md §9 step 3: every body predicate compiles to
+    %   This is the "JSON1 fallback only" backend: every body predicate compiles to
     %   sqlite3 json_extract / json_each via did2.database.compileQuery,
     %   and the result set is post-filtered through the reference
     %   in-memory evaluator (did2.query.matches) to guarantee correctness
@@ -57,22 +56,12 @@ classdef sqlitedb < handle
     %   same uid.
     %
     %   THE SCHEMA-GENERATION STAMP. `meta.schema_generation` names the
-    %   schema generation the database was created for. A new database is
-    %   stamped 'V_eta' (SchemaGeneration). Every database created before
-    %   2026-10-23 was stamped with the earlier generation name 'V_delta',
-    %   whatever its documents were (did-schema #88, which made them V_eta,
-    %   did not change the stamp). Those files still open: the old name is a
-    %   LEGACY ALIAS (LegacySchemaGenerations), accepted as it is and NOT
-    %   rewritten on open. The stamp is left alone because it cannot say what
-    %   the file holds -- the same 'V_delta' was written on files of V_eta
-    %   documents and on files of pre-V_eta documents -- so relabelling it
-    %   would record a claim nobody checked, on a path that only reads. What
-    %   each document is, is in its own document_class.schema_version.
-    %   (Jess Haley, 2026-10-23: "there should be no mention of V_delta";
-    %   DID-matlab #223.)
+    %   generation of the database layout: 'V2' (SchemaGeneration). What
+    %   each document is, is in its own document_class.schema_version. A
+    %   database carrying any other stamp is refused on open; re-create it
+    %   with the current DID-matlab (re-run the import or migration).
     %
-    %   See also: did2.query, did2.database.compileQuery, did2.document,
-    %             docs/v2/PLAN.md.
+    %   See also: did2.query, did2.database.compileQuery, did2.document.
 
     properties (SetAccess = private)
         filename (1,:) char = ''
@@ -98,11 +87,9 @@ classdef sqlitedb < handle
 
     properties (Constant, Access = private)
         SchemaVersion = 1
-        % The meta.schema_generation stamp a new database gets.
-        SchemaGeneration = 'V_eta'
-        % Stamps written by earlier versions of this class, still opened as
-        % they are (see the class help, "THE SCHEMA-GENERATION STAMP").
-        LegacySchemaGenerations = {'V_delta'}
+        % The meta.schema_generation stamp a new database gets, and the only
+        % one assertSchema accepts (see the class help).
+        SchemaGeneration = 'V2'
     end
 
     methods
@@ -173,7 +160,7 @@ classdef sqlitedb < handle
             %   db.add(doc)
             %   db.add({doc1, doc2, ...})
             %   db.add(docs, Validate=false) skips schema validation
-            %       (PLAN.md §1 "unsafe_insert" escape hatch).
+            %       (the "unsafe_insert" escape hatch).
             arguments
                 obj
                 docOrList
@@ -865,7 +852,7 @@ classdef sqlitedb < handle
             % Drop every sidecar row and rebuild from the stored
             % document bodies under the currently-configured array
             % path set. O(numDocuments * numArrayPaths * elemsPerArray);
-            % acceptable while DBs are small (see PLAN.md Decision 9).
+            % acceptable while DBs are small (a design decision of the v2 line).
             mksqlite(obj.dbid, 'BEGIN IMMEDIATE');
             try
                 mksqlite(obj.dbid, 'DELETE FROM queryable_array_elem');
@@ -1134,18 +1121,17 @@ classdef sqlitedb < handle
                     '%s is not a v2 SQLite database (missing meta table).', ...
                     obj.filename);
             end
-            % The current stamp, or a legacy one (opened as it is, never
-            % rewritten: see the class help).
-            accepted = [{obj.SchemaGeneration}, obj.LegacySchemaGenerations];
-            if isempty(row) || ~any(strcmp(char(row(1).value), accepted))
+            if isempty(row) || ~strcmp(char(row(1).value), obj.SchemaGeneration)
                 found = '<none>';
                 if ~isempty(row)
                     found = char(row(1).value);
                 end
                 error('did2:database:notV2Database', ...
-                    ['%s is not a v2 SQLite database this version can open ' ...
-                     '(meta.schema_generation is ''%s''; expected one of: %s).'], ...
-                    obj.filename, found, strjoin(accepted, ', '));
+                    ['%s is stamped ''%s'' (meta.schema_generation); this ' ...
+                     'version opens only ''%s'' databases. Re-create this ' ...
+                     'database with the current DID-matlab (re-run the import ' ...
+                     'or ndi.migrate.local).'], ...
+                    obj.filename, found, obj.SchemaGeneration);
             end
             obj.migrateDependsOnValueToDocumentId();
             obj.migrateDependsOnKeyForRepeatedEdges();

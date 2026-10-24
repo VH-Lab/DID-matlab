@@ -10,9 +10,7 @@ function tests = testFromV1Database
 %   a checked-out did-schema directory next to it. The fixture classes
 %   (demo_alpha, demo_beta, demo_gamma) have no migrator, so they pass
 %   through the V_eta pipeline 1 -> 1: these tests are about the database
-%   round trip, not about any class's migration. (Until 2026-10-23 they used
-%   treatment / ontology_image / probe_location, which passed through only
-%   under the removed V_delta target; under V_eta those route to +migrators_j.) The mksqlite gate
+%   round trip, not about any class's migration. The mksqlite gate
 %   lives in setupOnce; if mksqlite is missing the whole file is
 %   skipped, matching testSqliteDb.m.
 %

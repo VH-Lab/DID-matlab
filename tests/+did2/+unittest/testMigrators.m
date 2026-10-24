@@ -1,8 +1,7 @@
 function tests = testMigrators
 %TESTMIGRATORS Per-class did_v1 -> V2 migrator tests.
 %
-%   Exercises the four 2.0.0-bumped class migrators (PLAN.md §9.6
-%   sub-step 6c) against the worked examples in
+%   Exercises the base class migrators against the worked examples of
 %   did-schema's per-class conversion notes (deleted with did-schema #88).
 %
 %   Tests run with Validate=false on the end-to-end dispatcher case
@@ -100,7 +99,7 @@ verifyFalse(testCase, isfield(out.epochclocktimes, 'clocktype'));
 verifyFalse(testCase, isfield(out.epochclocktimes, 't0_t1'));
 end
 
-% --- calc-base migrators (PLAN.md §9.6 sub-step 6d, 20211116 corpus) ---
+% --- calc-base migrators (20211116 corpus) ---
 
 function testCalcCommonKeepsInputParametersOnSubclassBlock(testCase)
 % V2 `calculator.input_parameters` declares `placement:
