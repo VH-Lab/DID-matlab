@@ -297,6 +297,23 @@ classdef TestSearchIndexes < matlab.unittest.TestCase
             testCase.verifyLessThanOrEqual(maxRows, testCase.numOtherDocs);
         end
 
+        function testRegexpIsCheckedLast(testCase)
+            % A regexp that matches every document, ANDed with isa and a
+            % session in any order, must run on the isa matches only
+            regexpQuery = did.query('base.datestamp', 'regexp', '^[0-9]');
+            isaQuery = did.query('', 'isa', 'demoB');
+            session = testCase.sessionQuery(testCase.otherSession);
+            for q = {regexpQuery & isaQuery & session, ...
+                     session & regexpQuery & isaQuery, ...
+                     isaQuery & session & regexpQuery}
+                [found, maxRows] = testCase.searchLogged(q{1});
+                testCase.verifySameIds(found, testCase.otherIds, ...
+                    'regexp AND isa AND session must return the session''s documents of that class');
+                testCase.verifyLessThanOrEqual(maxRows, testCase.numOtherDocs, ...
+                    'the regexp must be run on the isa matches, not on every document');
+            end
+        end
+
         function testIsaMatchesWithAndWithoutIndexes(testCase)
             % 'isa' matched against the distinct superclass lists must give
             % what the regex on every document's list gives

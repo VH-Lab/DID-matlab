@@ -1206,10 +1206,14 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             %
             % The terms of an AND are searched in this order: base.id lookups
             % first, as they match at most a few documents; then the other
-            % terms in the order given; and base.session_id terms last, as one
-            % session usually holds most of the documents of a database. So
-            % 'isa daqsystem AND base.session_id = SESSION_ID' finds the few
-            % daqsystem documents and then checks their session.
+            % terms in the order given; then base.session_id terms, as one
+            % session usually holds most of the documents of a database; and
+            % last the terms that must test every value they see (regexp,
+            % contains_string, hasmember), so that they test the few
+            % documents the other terms left rather than the whole branch.
+            % So 'isa daqsystem AND base.session_id = SESSION_ID AND
+            % base.name regexp ...' finds the few daqsystem documents, then
+            % checks their session, then runs the regexp on their names only.
             %
             % Restricting to candidates needs the indexes that
             % hasSearchIndexes reports; without them every term is searched
@@ -1226,12 +1230,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             num_structs = numel(query_struct);
             if num_structs > 1  % loop over all &-ed queries
                 % Order the terms (see above): 1 = base.id lookup, 2 = other,
-                % 3 = base.session_id. sort is stable, so the given order is
-                % kept within each group.
+                % 3 = base.session_id, 4 = a test of every value. sort is
+                % stable, so the given order is kept within each group.
                 rank = 2 * ones(1, num_structs);
                 for i = 1 : num_structs
+                    termOp = strtrim(lower(char(query_struct(i).operation)));
+                    termOp(termOp=='~') = '';
                     if did.database.baseIdLookupValues(query_struct(i))
                         rank(i) = 1;
+                    elseif any(strcmp(termOp, {'regexp','contains_string','hasmember'}))
+                        rank(i) = 4;
                     elseif strcmp(char(query_struct(i).field), 'base.session_id')
                         rank(i) = 3;
                     end
