@@ -149,6 +149,26 @@ classdef TestWriteTransactions < matlab.unittest.TestCase
             testCase.verifyTrue(testCase.isOnDisk(second.id()));
         end
 
+        function testAPoisonedHandleAtTheFirstWriteIsRecovered(testCase)
+            % A real SQLITE_READONLY_DBMOVED: the file is replaced after the
+            % operation's reads but before its first write, which is where
+            % SQLite checks. The INSERT fails on the poisoned handle, and is
+            % recovered by reopening and replaying the reads before it - not
+            % by the single-statement reopen, which would drop them.
+            testCase.assumeFalse(ispc, 'needs the file''s inode');
+            testCase.db.onInsertInto = 'docs';
+            testCase.db.beforeInsert = @replaceWithCopy;
+
+            doc = did.document('demoA', 'demoA.value', 1);
+            testCase.db.add_docs(doc);
+
+            testCase.verifyTrue(testCase.isOnDisk(doc.id()));
+            rows = testCase.onDisk(['SELECT branch_docs.branch_id FROM docs, branch_docs ' ...
+                'WHERE docs.doc_idx = branch_docs.doc_idx AND docs.doc_id="' doc.id() '"']);
+            testCase.verifyEqual({rows.branch_id}, {'a'}, ...
+                'the recovered document must be on its branch, once');
+        end
+
         function testAFileReplacedDuringAWriteIsCaughtBeforeCommit(testCase)
             % The swap SQLite does not see: after the transaction's first
             % write. Without the pre-commit check the document would be
