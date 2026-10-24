@@ -1272,9 +1272,17 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         % base.id lookups ORed together: search all the ids at once
                         doc_ids = search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids);
                     else
-                        doc_ids1 = search_doc_ids(sqlitedb_obj, query_struct.param1, branch_id, candidate_ids);
-                        doc_ids2 = search_doc_ids(sqlitedb_obj, query_struct.param2, branch_id, candidate_ids);
-                        doc_ids = union(doc_ids1, doc_ids2);
+                        % Union the results of the operands. A chain of ORs
+                        % built in a loop (q = q | ...) nests one level per
+                        % term, so it is flattened first rather than searched
+                        % by recursing once per level, which overran the
+                        % recursion limit after a few hundred terms.
+                        doc_ids = {};
+                        operands = did.datastructures.orOperands(query_struct);
+                        for k = 1:numel(operands)
+                            new_doc_ids = search_doc_ids(sqlitedb_obj, operands{k}, branch_id, candidate_ids);
+                            doc_ids = union(doc_ids, new_doc_ids);
+                        end
                     end
                     if size(doc_ids,1)==1 && size(doc_ids,2)>1
                         doc_ids = doc_ids';  % ensure column vector

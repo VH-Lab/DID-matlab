@@ -197,10 +197,19 @@ function b = fieldsearch(A, searchstruct)
                 end
             end
         case 'or'
-            if ~isstruct(searchstruct.param1) | ~isstruct(searchstruct.param2)
+            % A chain of ORs built in a loop (q = q | ...) nests one level per
+            % term, so walk its operands instead of recursing once per level,
+            % which overran the recursion limit after a few hundred terms
+            operands = did.datastructures.orOperands(searchstruct);
+            if ~all(cellfun(@isstruct, operands))
                 error('In operation ''or'', searchstruct ''param1'' and ''param2'' must be an array of structures.');
             end
-            b = (did.datastructures.fieldsearch(A,searchstruct.param1) | did.datastructures.fieldsearch(A,searchstruct.param2));
+            for k = 1:numel(operands)
+                if did.datastructures.fieldsearch(A, operands{k})
+                    b = 1;
+                    break
+                end
+            end
         otherwise
             error(['Unknown search operation ' searchstruct.operation ]);
     end
