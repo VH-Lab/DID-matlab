@@ -1053,7 +1053,6 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
             param1Like = did.database.sqlEscapeLiteral( ...
                 regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'}));
-            param2Esc = did.database.sqlEscapeLiteral(num2str(param2));
             field_check = ['fields.field_name="' field '"'];
             op = strtrim(lower(query_struct.operation));
             isNot = op(1)=='~';
@@ -1101,8 +1100,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     sql_str = [field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\"'];
                 case 'depends_on'
+                    % Matched exactly as did.query/fieldsearch do (see
+                    % dependsOnSqlMatch); a query that cannot be is searched
+                    % by brute force in search_doc_ids and never gets here
+                    valueMatch = did.database.dependsOnSqlMatch(param1, param2);
+                    if isempty(valueMatch)
+                        error('DID:Database:SQL', ['depends_on with name "%s" and value "%s" ' ...
+                            'cannot be searched in SQL'], num2str(param1), num2str(param2));
+                    end
                     field_check = 'fields.field_name="meta.depends_on"';
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like ',' param2Esc ';%" ESCAPE "\"'];
+                    sql_str = [field_check ' AND ' notStr valueMatch];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasanysubfield_contains_string'  %TODO
@@ -1238,7 +1245,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     termOp(termOp=='~') = '';
                     if did.database.baseIdLookupValues(query_struct(i))
                         rank(i) = 1;
-                    elseif any(strcmp(termOp, {'regexp','contains_string','hasmember'}))
+                    elseif any(strcmp(termOp, {'regexp','contains_string','hasmember'})) ...
+                            || did.database.isBruteForceDependsOn(query_struct(i))
                         rank(i) = 4;
                     elseif strcmp(char(query_struct(i).field), 'base.session_id')
                         rank(i) = 3;
@@ -1287,6 +1295,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     if size(doc_ids,1)==1 && size(doc_ids,2)>1
                         doc_ids = doc_ids';  % ensure column vector
                     end
+                elseif did.database.isBruteForceDependsOn(query_struct)
+                    doc_ids = brute_force_search(sqlitedb_obj, query_struct, branch_id, candidate_ids);
                 else  % leaf scalar query
                     query_str = get_sql_query_str(sqlitedb_obj, query_struct, branch_id, candidate_ids);
                     doc_ids = run_sql_query(sqlitedb_obj, query_str);
@@ -1294,6 +1304,34 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
             if numel(doc_ids)==1 && iscell(doc_ids{1})
                 doc_ids = doc_ids{1};  %de-cell
+            end
+        end
+        function doc_ids = brute_force_search(sqlitedb_obj, query_struct, branch_id, candidate_ids)
+            % brute_force_search - test documents one by one against a query
+            %
+            % DOC_IDS = brute_force_search(SQLITEDB_OBJ, QUERY_STRUCT, BRANCH_ID, [CANDIDATE_IDS])
+            %
+            % Loads every document of BRANCH_ID - or, if CANDIDATE_IDS is a
+            % cell array of document ids, only those - and returns the ids of
+            % the ones that did.datastructures.fieldsearch matches against the
+            % search structure of QUERY_STRUCT (see did.query/to_searchstructure).
+            % Used for the queries that SQL cannot match exactly (see
+            % isBruteForceDependsOn), as DID-python does.
+            if nargin > 3 && iscell(candidate_ids)
+                ids = candidate_ids;
+            else
+                ids = sqlitedb_obj.get_doc_ids(branch_id);
+            end
+            doc_ids = cell(0,1);
+            if isempty(ids)
+                return
+            end
+            searchstruct = did.query(query_struct).to_searchstructure();
+            docs = sqlitedb_obj.get_docs(ids);
+            for k = 1 : numel(docs)
+                if did.datastructures.fieldsearch(docs(k).document_properties, searchstruct)
+                    doc_ids{end+1,1} = docs(k).id(); %#ok<AGROW>
+                end
             end
         end
         function doc_ids = search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids)
@@ -2126,6 +2164,75 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 values, 'UniformOutput', false);
             s = strjoin(values, ',');
         end % sqlStringList()
+
+        function valueMatch = dependsOnSqlMatch(name, value)
+            % dependsOnSqlMatch - SQL test of meta.depends_on for depends_on(NAME, VALUE)
+            %
+            % VALUE_MATCH = dependsOnSqlMatch(NAME, VALUE)
+            %
+            % Returns the SQL condition on doc_data.value (the document's
+            % meta.depends_on row) that is true exactly when the document
+            % has a dependency named NAME (any name, if NAME is '*') with
+            % value VALUE - as did.query/to_searchstructure and fieldsearch
+            % match it: case-sensitive, and only '*' is a wildcard.
+            %
+            % doc2sql stores the dependencies as 'name1,value1;name2,value2;',
+            % so the test is whether that string, with ';' put in front,
+            % contains ';NAME,VALUE;' (or, for '*', whether it contains
+            % ',VALUE;'). instr is a plain case-sensitive substring test; a
+            % LIKE "%NAME,VALUE;%" was neither anchored ('id,X;' also matched
+            % 'subject_id,X;', and an empty NAME matched any name) nor
+            % case-sensitive. This mirrors DID-python's _depends_on_sql_clause.
+            %
+            % The test is exact only if NAME and VALUE are non-empty text
+            % without the ',' and ';' separators. Otherwise VALUE_MATCH is ''
+            % and the query is searched by brute force (see
+            % isBruteForceDependsOn).
+            valueMatch = '';
+            if ~did.database.isDependsOnToken(value)
+                return
+            end
+            value = char(value);
+            if (ischar(name) || isStringScalar(name)) && strcmp(name, '*')
+                haystack = 'ifnull(doc_data.value,'''')';
+                pattern = [',' value ';'];
+            elseif did.database.isDependsOnToken(name)
+                haystack = '('';'' || ifnull(doc_data.value,''''))';
+                pattern = [';' char(name) ',' value ';'];
+            else
+                return
+            end
+            % ifnull, so that a document with no dependencies is matched by
+            % the negated (NOT ...) test as well
+            valueMatch = ['(instr(' haystack ',' did.database.sqlStringList({pattern}) ') > 0)'];
+        end % dependsOnSqlMatch()
+
+        function tf = isDependsOnToken(s)
+            % isDependsOnToken - can S be matched within meta.depends_on?
+            %
+            % TF = isDependsOnToken(S)
+            %
+            % True if S is non-empty text with no ',' or ';' (the separators
+            % of the stored 'name,value;' list). See dependsOnSqlMatch.
+            tf = (ischar(s) || isStringScalar(s)) && ~isempty(char(s)) ...
+                && ~any(char(s) == ',' | char(s) == ';');
+        end % isDependsOnToken()
+
+        function tf = isBruteForceDependsOn(query_struct)
+            % isBruteForceDependsOn - must a depends_on query be brute-forced?
+            %
+            % TF = isBruteForceDependsOn(QUERY_STRUCT)
+            %
+            % True if QUERY_STRUCT (a single search structure) is a depends_on
+            % or ~depends_on query that SQL cannot match exactly (see
+            % dependsOnSqlMatch), such as one with an empty name. Such a query
+            % is tested document by document with fieldsearch instead, so it
+            % gives the same answer as on any other DID backend.
+            op = strtrim(lower(char(query_struct.operation)));
+            op(op=='~') = '';
+            tf = strcmp(op, 'depends_on') && ...
+                isempty(did.database.dependsOnSqlMatch(query_struct.param1, query_struct.param2));
+        end % isBruteForceDependsOn()
 
         function [tf, ids] = baseIdLookupValues(query_struct)
             % baseIdLookupValues - is a search structure a lookup by base.id?
