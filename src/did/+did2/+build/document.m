@@ -69,6 +69,9 @@ function doc = document(className, fields, options)
 %   'ValueKind' and never writes the joined name.
 %
 %   Errors, all raised BEFORE any document is returned:
+%     did2:build:retiredClass     CLASSNAME is listed retired by the schema's
+%                                 class_disposition_meta.json (strictMode
+%                                 'RetiredClasses', armed; off in did2.convert)
 %     did2:build:abstractClass    CLASSNAME is abstract
 %     did2:build:missingValueKind a direction that takes a value kind, given none
 %     did2:build:unknownField     a name no block declares (also nested)
@@ -109,6 +112,9 @@ end
 
 cache = schemaCache(options.SchemaCache);
 [className, kind] = resolveLeaf(cache, className, options.ValueKind);
+% a retired class takes no new documents (Jess Haley, 2026-10-24,
+% [V2 builder refuses retired]; strictMode 'RetiredClasses', armed)
+checkRetired(cache, className);
 classSchema = cache.getClass(className);
 dc = classSchema.document_class;
 if isfield(dc, 'abstract') && isequal(dc.abstract, true)

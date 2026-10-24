@@ -402,12 +402,10 @@ end
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-
-% a migrator transcribes the v1 source's own terms, which the term
-% registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
-% is for imports, so it is off while this runs and restored after
-prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
-restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+% The generic migration is not affected by [V2 builder refuses retired]
+% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
+prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
+restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
 
 % DENOMINATOR FIRST AND UNCONDITIONALLY (Operating Rule 5). The report is
 % attached BEFORE a single document is read, so "the pass never ran" and "the

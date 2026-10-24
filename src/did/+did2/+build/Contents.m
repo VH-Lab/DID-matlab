@@ -72,6 +72,12 @@
 %   fit's coefficient names are the fit's own and are not checked.
 %   unregisteredTerms collects them instead, so one run can list them all.
 %
+%   A class the schema's class_disposition_meta.json lists as retired takes no
+%   new document (Jess Haley, 2026-10-24, [V2 builder refuses retired];
+%   strictMode 'RetiredClasses', armed; off while did2.convert migrates):
+%   did2:build:retiredClass, naming the replacement and the decision. A schema
+%   without that file refuses nothing.
+%
 %   Not checked here: the binding constraint (T8) -- that is
 %   did2.schema.cache's strictMode('BindingConformance'), off by default -- and
 %   batch checks that need other documents (an edge's referent existing, family

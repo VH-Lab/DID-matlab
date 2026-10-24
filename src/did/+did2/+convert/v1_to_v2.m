@@ -129,6 +129,10 @@ end
 % is for imports, so it is off while this runs and restored after
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+% The generic migration is not affected by [V2 builder refuses retired]
+% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
+prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
+restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
 
 bodies = normaliseInput(v1Bodies);
 
