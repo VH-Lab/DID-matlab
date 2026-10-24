@@ -1095,11 +1095,22 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 case 'hasmember'
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     field_check = ['(' field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\")'];
-                    %value_check= ['(doc_data.value like "%' param1 ',%"' ...
-                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' did.database.sqlEscapeLiteral(param1RegexEsc) '\s*(,.*)*$") NOT NULL' ...
-                        ' OR doc_data.value='  param1StrEsc ...
-                        ' OR doc_data.value="' param1StrEsc '")'];
-                    sql_str = [field_check ' AND ' notStr value_check];
+                    % PARAM1 is a member of a comma-separated list, or the
+                    % whole value. The text tests use single-quoted literals
+                    % (see sqlStringList): a double-quoted "value" is read as
+                    % the column doc_data.value, and an unquoted value as SQL
+                    % (issue #236). doc2sql stores a number as a number, which
+                    % never equals a text literal, so a finite numeric PARAM1
+                    % is also compared as a number, written by sprintf so it
+                    % can only be a numeric literal.
+                    memberRegex = did.database.sqlStringList({['^(.*,\s*)*' param1RegexEsc '\s*(,.*)*$']});
+                    value_check = ['regex(doc_data.value,' memberRegex ') NOT NULL' ...
+                        ' OR doc_data.value=' did.database.sqlStringList({param1Str})];
+                    if (isnumeric(param1) || islogical(param1)) && isscalar(param1) ...
+                            && isreal(param1) && isfinite(param1)
+                        value_check = [value_check ' OR doc_data.value=' param1Val];
+                    end
+                    sql_str = [field_check ' AND ' notStr '(' value_check ')'];
                 case 'hasfield'
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     sql_str = [field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\"'];
