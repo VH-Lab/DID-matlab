@@ -78,14 +78,13 @@ classdef TestBatchedOr < matlab.unittest.TestCase
                 did.query('demoA.value', 'lessthaneq', 3)
                 did.query('demoB.value', 'greaterthan', 138)
                 did.query('demoB.value', 'greaterthaneq', 138)
-                did.query('demoC.value', 'hasmember', 205)
                 did.query('demoB', 'hasfield')
                 did.query('', 'depends_on', 'item1', testCase.idsA{4})
                 did.query('base.name', 'regexp', '^c2')
                 did.query('', 'isa', 'demoB')
                 did.query('', 'isa', 'demoC')
                 };
-            negatable = terms([1:9 11:14]);
+            negatable = terms([1:8 10:13]);
             for k = 1:numel(negatable)
                 s = negatable{k}.searchstructure;
                 s.operation = ['~' s.operation];
@@ -252,6 +251,22 @@ classdef TestBatchedOr < matlab.unittest.TestCase
                 q2 = [testCase.toStruct(did.query('', 'isa', 'demoC')), q];
                 testCase.verifyBatchedMatchesPerOperand(q2, ...
                     [s.operation ' with an empty name, in an OR inside an AND']);
+            end
+        end
+
+        function testBruteForceHasMemberInAnOr(testCase)
+            % hasmember is always searched by brute_force_search (see
+            % did.database/isBruteForceTerm), on its own, not in a batch
+            member = did.query('demoC.value', 'hasmember', 205);
+            notMember = member.searchstructure;
+            notMember.operation = '~hasmember';
+            for term = {member, notMember}
+                s = testCase.toStruct(term{1});
+                q = testCase.orOf({term{1}, did.query('base.name', 'exact_string', 'n3'), ...
+                    did.query('', 'isa', 'demoB')});
+                testCase.verifyBatchedMatchesPerOperand(q, [s.operation ' in an OR']);
+                q2 = [testCase.toStruct(did.query('', 'isa', 'demoC')), q];
+                testCase.verifyBatchedMatchesPerOperand(q2, [s.operation ' in an OR inside an AND']);
             end
         end
 
