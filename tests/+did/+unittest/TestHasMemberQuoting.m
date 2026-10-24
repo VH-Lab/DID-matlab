@@ -183,6 +183,17 @@ classdef TestHasMemberQuoting < matlab.unittest.TestCase
                 'hasmember 3 in the number 3');
         end
 
+        function testNumbersNoValueHolds(testCase)
+            % Inf is written as 9e999 and NaN is a member of nothing; no
+            % document holds either, so ~hasmember matches every one
+            for member = {Inf, -Inf, NaN}
+                msg = sprintf('hasmember %g', member{1});
+                testCase.verifyIds(testCase.hasMember('demoA.value', member{1}, false), [], msg);
+                testCase.verifyIds(testCase.hasMember('demoA.value', member{1}, true), ...
+                    1:numel(testCase.names), ['~' msg]);
+            end
+        end
+
         function testStructField(testCase)
             % A struct (base) has no members: its fields are not searched
             testCase.verifyIds(testCase.hasMember('base', 'value', false), [], ...
