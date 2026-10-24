@@ -236,6 +236,25 @@ classdef TestBatchedOr < matlab.unittest.TestCase
             testCase.verifyEqual(found, testCase.searchWith(q2, 1));
         end
 
+        function testBruteForceDependsOnInAnOr(testCase)
+            % A depends_on that SQL cannot match exactly (an empty name; see
+            % did.database/isBruteForceDependsOn) has no SQL form, so it is
+            % searched by brute_force_search on its own, not in a batch
+            value = testCase.idsA{4};
+            emptyName = did.query('', 'depends_on', '', value);
+            notEmptyName = did.query('', 'depends_on', '', value).searchstructure;
+            notEmptyName.operation = '~depends_on';
+            for term = {emptyName, notEmptyName}
+                s = testCase.toStruct(term{1});
+                q = testCase.orOf({term{1}, did.query('base.name', 'exact_string', 'n3'), ...
+                    did.query('', 'isa', 'demoC'), did.query('', 'depends_on', 'item1', value)});
+                testCase.verifyBatchedMatchesPerOperand(q, [s.operation ' with an empty name, in an OR']);
+                q2 = [testCase.toStruct(did.query('', 'isa', 'demoC')), q];
+                testCase.verifyBatchedMatchesPerOperand(q2, ...
+                    [s.operation ' with an empty name, in an OR inside an AND']);
+            end
+        end
+
         function testWithoutSearchIndexes(testCase)
             % Without the indexes there are no candidates and no batched
             % id lookups; the batch is a UNION over the whole branch
