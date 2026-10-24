@@ -12,9 +12,6 @@
 %   did-schema checkout's schemas/V_eta/stable. The CI workflows copy the
 %   three tiers into one directory and set DID_SCHEMA_PATH to it.
 %
-%   docs/v2/PLAN.md is the original design and order of work; it predates
-%   V_eta and is historical where it disagrees with the code.
-%
 %   Files
 %     document      - document object (load / validate / serialise /
 %                     dot-path access).

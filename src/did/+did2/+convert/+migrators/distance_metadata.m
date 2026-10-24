@@ -1,5 +1,5 @@
 function v2Body = distance_metadata(preBody)
-%DISTANCE_METADATA Migrate a did_v1 distance_metadata body to V_delta.
+%DISTANCE_METADATA Base migrator: did_v1 distance_metadata body -> the class-preserving V2 shape.
 %
 %   v1 carries a paired A/B endpoint structure:
 %
@@ -11,7 +11,7 @@ function v2Body = distance_metadata(preBody)
 %       (same set for endpoint B)
 %       distance_metadata.units                   (CURIE)
 %
-%   V_delta collapses both endpoints into a single
+%   V2 collapses both endpoints into a single
 %   `endpoints` array-of-records (mirrors the position_metadata
 %   dimensions pattern) with explicit per-endpoint `label`s
 %   preserved from v1:
@@ -85,7 +85,7 @@ labels = sort(labels);
 end
 
 function ep = buildEndpoint(block, label)
-% Build one V_delta endpoint record from v1's per-label fields.
+% Build one V2 endpoint record from v1's per-label fields.
 % All fields are tolerant of absence: missing v1 fields default to
 % empty values of the right type.
 nodeKey       = sprintf('ontology_node_%s',           lower(label));

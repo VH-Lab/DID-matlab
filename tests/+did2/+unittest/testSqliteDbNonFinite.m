@@ -27,7 +27,7 @@ function tests = testSqliteDbNonFinite
 %        json_extract gives, and every query answers as the in-memory
 %        evaluator (did2.query.matches) does.
 %
-%   The schema is a hermetic copy of the V_delta fixtures plus one class,
+%   The schema is a hermetic copy of the V2 fixtures plus one class,
 %   demoNumeric, written by this file (a double scalar, a matrix, and an
 %   array of structures with a double sub-field, all queryable).
 %
@@ -41,7 +41,7 @@ end
 
 function setupOnce(testCase)
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');
 schemaDir = tempname();
 mkdir(schemaDir);
 copyfile(fullfile(fixtureDir, '*.json'), schemaDir);

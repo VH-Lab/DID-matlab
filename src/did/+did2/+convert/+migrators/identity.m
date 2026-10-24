@@ -8,9 +8,8 @@ function v2Body = identity(preBody)
 %   have already been applied by the dispatcher; this function exists
 %   so the dispatcher always has a callable.
 %
-%   Note on naming: PLAN.md §9.6 (sub-step 6a) labels this file
-%   `_identity.m`, but a leading underscore is not a valid MATLAB
-%   identifier, so the file is named `identity` here.
+%   Note on naming: a leading underscore (`_identity`) is not a valid
+%   MATLAB identifier, so the file is named `identity`.
 
 arguments
     preBody (1,1) struct

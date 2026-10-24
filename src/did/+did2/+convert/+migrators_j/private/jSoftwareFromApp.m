@@ -83,7 +83,7 @@ function [software, swId, execEnv, appLeftover] = jSoftwareFromApp(preBody, opts
 %       app.name    -> app.app_name
 %       app.version -> app.app_version
 %
-%   (V_delta's `app` class spells them with the `app_` prefix.) The previous
+%   (V2's `app` class spells them with the `app_` prefix.) The previous
 %   implementation of this fold lived as a local function inside jCalculation.m
 %   and read `app.name` / `app.version` ONLY. On the real pipeline
 %   (did2.convert.v1_to_v2, which calls universalRenames FIRST) that field does

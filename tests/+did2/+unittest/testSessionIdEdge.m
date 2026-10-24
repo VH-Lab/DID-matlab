@@ -116,14 +116,6 @@ verifyFalse(testCase, isfield(s.base, 'session_id'));
 verifyEqual(testCase, edgeTargets(s, 'session_id'), {'sess_A'});
 end
 
-function testVDeltaKeepsTheField(testCase)
-useShape(testCase, 'edge');
-out = did2.convert.v1_to_v2(passthroughV1('sess_A', struct('name', {}, 'value', {})), ...
-    'Validate', false);
-s = out.migrated{1}.toStruct();
-verifyEqual(testCase, s.base.session_id, 'sess_A');
-end
-
 % ---- the session entity takes its session id as its id ------------------------
 
 function testTheSessionIsReIdOnlyOnTheEdgeShape(testCase)

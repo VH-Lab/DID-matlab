@@ -372,7 +372,7 @@ function [result, report] = epochMint(result, options)
 %   Options (name-value), mirroring the sibling passes:
 %     Validate       (1,1 logical, default true)  validate minted/changed bodies
 %     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
-%     TargetVersion  (1,:) char, default 'V_eta'  no-op on other targets
+%     TargetVersion  (1,:) char, default 'V_eta'  the only target accepted
 %     ArmingMigrators ([] or struct)              source class -> migrator
 %                    handle. [] means the production table (one row today).
 %                    Exists so the 1 -> N carry can be DRIVEN by a test; see
@@ -386,7 +386,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
     options.ArmingMigrators = []
 end
 
@@ -599,9 +599,6 @@ report = struct( ...
                           'epoch_document_id', {}));
 result.epoch_mint = report;
 
-if ~strcmp(options.TargetVersion, 'V_eta')
-    return;     % `epoch` exists only in V_eta; other targets are untouched.
-end
 if ~isfield(result, 'migrated') || isempty(result.migrated)
     report.ran = true;
     result.epoch_mint = report;

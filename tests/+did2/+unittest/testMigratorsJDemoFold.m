@@ -84,7 +84,7 @@ end
 function assumeVEtaSchemas(testCase)
 %ASSUMEVETASCHEMAS Skip unless the schema cache can resolve `demo`.
 %   installSchemaPath only checks that SOME folder of *.json exists, so a
-%   V_delta-only checkout would satisfy it and then fail these tests for the
+%   checkout of an older schema set would satisfy it and then fail these tests for the
 %   wrong reason. Probing the class the fold emits turns that into an honest skip.
 did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the V_eta demo-fold validation test');

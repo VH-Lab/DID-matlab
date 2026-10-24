@@ -330,16 +330,13 @@ verifyEqual(testCase, rep.documents_inspected, 0);
 verifyTrue(testCase, isfield(out, 'session_anchor_fold'));
 end
 
-function testANonEtaTargetIsUntouched(testCase)
-% relative_reference exists only in V_eta. The pass must be a no-op on any
-% other target (V_delta here; V_zeta/V_epsilon and their migrators were deleted
-% with did-schema #88) -- `ran` false is the proof it
-% declined rather than silently found nothing.
-out = runJ({anchorBody('anchor_1', 'SID_1', 'during')});
-[out, rep] = did2.convert.resolveSessionAnchors(out, ...
-    'Validate', false, 'TargetVersion', 'V_delta');
-verifyFalse(testCase, rep.ran);
-verifyEqual(testCase, classNames(out), {'session_relative_reference'});
+function testANonEtaTargetIsRefused(testCase)
+% relative_reference exists only in V_eta, and V_eta is the only migration
+% target: another target is an argument error, not a no-op.
+r = struct('migrated', {{}}, 'quarantine', [], ...
+    'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
+verifyError(testCase, @() did2.convert.resolveSessionAnchors(r, ...
+    'Validate', false, 'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 % ===================== the fold itself =================================

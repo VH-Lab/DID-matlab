@@ -1,4 +1,4 @@
-% +migrators  Per-class did_v1 -> V_delta migrator functions.
+% +migrators  Per-class did_v1 -> V2 migrator functions.
 %
 %   Each file in this package is named after the post-universal-rename
 %   v1 class name (snake_case) and exports a single function:
@@ -11,8 +11,7 @@
 %   which returns the post-universal body unchanged.
 %
 %   Currently registered migrators implement the four 2.0.0-bumped
-%   classes from PLAN.md §7 plus the PRED-driven §9.6 sub-step 6d
-%   additions:
+%   classes plus the PRED-driven additions:
 %
 %     identity            - default passthrough.
 %     probe_location      - collapse (ontology_name, name) -> location.
@@ -58,13 +57,13 @@
 %     stimulus_bath       - rename location.ontologyNode -> .node;
 %                           parse the v1 CSV mixture_table into a
 %                           mixture array-of-records; each amount is a
-%                           V_delta `concentration` composite with
+%                           V2 `concentration` composite with
 %                           source_unit / source_value preserved and
 %                           the appropriate canonical sub-field (molar,
 %                           grams_per_liter, mass_fraction,
 %                           volume_fraction) populated when computable.
 %
-%   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
+%   Calculator-base wrappers (20211116-driven):
 %   each calls did2.convert.calcCommon to move v1's
 %   `<class>.input_parameters` into a new inherited `calculator` block.
 %   The calculator-identity string lives in `app.app_name` (carried in
@@ -78,5 +77,5 @@
 %     temporal_frequency_tuning_calc, simple_calc
 %
 %   See did-schema's
-%   schemas/V_delta/conversions/from_did_v1/<class_name>.md for the
+%   did-schema's per-class conversion notes (deleted with did-schema #88) for the
 %   per-class specifications.

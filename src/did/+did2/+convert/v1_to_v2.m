@@ -1,26 +1,28 @@
 function result = v1_to_v2(v1Bodies, options)
-%V1_TO_V2 Convert did_v1 document bodies to V_delta.
+%V1_TO_V2 Convert did_v1 document bodies to V_eta (pass 1, per document).
 %
 %   RESULT = did2.convert.v1_to_v2(V1BODIES) takes one or more
 %   did_v1-shaped document bodies (struct, struct array, cell array, or
 %   JSON char) and runs each through this pipeline:
 %
 %     1. did2.convert.universalRenames    (cross-cutting renames)
-%     2. matching superclass migrators under
-%        +did2.+convert.+migrators.<superclass_name>, or, when
-%        TargetVersion is 'V_eta' and one exists,
-%        +did2.+convert.+migrators_j.+super.<superclass_name>
-%     3. concrete-class migrator under
-%        +did2.+convert.+migrators.<class_name>  (identity fallback)
+%     2. matching superclass migrators: the V_eta override under
+%        +did2.+convert.+migrators_j.+super.<superclass_name> when one
+%        exists, else the base migrator under
+%        +did2.+convert.+migrators.<superclass_name>
+%     3. concrete-class migrator: the V_eta split/fold migrator under
+%        +did2.+convert.+migrators_j.<class_name> when one exists, else
+%        the base migrator under +did2.+convert.+migrators.<class_name>
+%        (identity fallback)
 %     4. ensureClassBlocks: pad empty `struct()` property blocks for
-%        every class in the V_delta inheritance chain that the v1
+%        every class in the V_eta inheritance chain that the v1
 %        source or the migrators did not already produce. Lets the
 %        validator pass without each migrator having to manufacture
 %        placeholder blocks for inherited classes. Silent no-op if
 %        the schema cache cannot resolve the chain.
 %
-%   Bodies that are already V_delta-shaped
-%   (document_class.schema_version == 'V_delta' AND no v1-only
+%   Bodies that are already at the target
+%   (document_class.schema_version ranks at or beyond 'V_eta' AND no v1-only
 %   underscore-prefixed top-level markers) short-circuit steps 1-3 and
 %   go straight to ensureClassBlocks + validate. Makes the converter
 %   safely re-runnable so a partial normalisation or migration run can
@@ -67,7 +69,7 @@ function result = v1_to_v2(v1Bodies, options)
 %                      read paths whose bodies still spell their
 %                      identifiers in the legacy (camelCase) form so
 %                      the body stays schema-compatible while still
-%                      gaining the V_delta shape transformations.
+%                      gaining the shared shape transformations.
 %     Audits           (1,1 logical, default true) - run the report-only
 %                      census instruments over the batch (silentLoss,
 %                      fileList, timeReferenceFamilies) into
@@ -80,10 +82,10 @@ function result = v1_to_v2(v1Bodies, options)
 %                      each of the three fields is struct('audit_skipped',
 %                      true) -- never an empty census, which would read as
 %                      clean.
-%     TargetVersion    (1,:) char, default 'V_delta') - migration target,
-%                      'V_delta' or 'V_eta'.
-%                      'V_delta' (default) preserves the historical
-%                      class-preserving 1->1 behaviour.
+%     TargetVersion    (1,:) char, default 'V_eta') - migration target.
+%                      'V_eta' is the only target; any other name is an
+%                      argument-validation error. The option is kept so
+%                      callers can name the target they mean.
 %                      'V_eta' routes classes that have a Brainstorm-J
 %                      split/fold migrator under +did2.+convert.+migrators_j
 %                      through that migrator, targeting the V_eta model
@@ -95,6 +97,9 @@ function result = v1_to_v2(v1Bodies, options)
 %                      takes its +migrators one (identity fallback). A 'V_eta'
 %                      target stamps
 %                      document_class.schema_version with the target name.
+%                      THIS IS PASS 1 ONLY: the batch post-passes and the
+%                      NDI second pass that complete a V_eta migration
+%                      run in ndi.migrate.local, not here.
 %                      The 'V_epsilon' and 'V_zeta' targets (+migrators_e,
 %                      +migrators_i) were removed with did-schema #88, which
 %                      deleted schemas/V_alpha .. V_zeta (OPEN_WORK #128);
@@ -105,8 +110,7 @@ function result = v1_to_v2(v1Bodies, options)
 %   EXECUTED. Neither is available in the environment it was written in, so
 %   CI is the first run of this code.
 %
-%   See also: did2.convert.universalRenames, did2.convert.migrators,
-%   docs/v2/PLAN.md §9.6.
+%   See also: did2.convert.universalRenames, did2.convert.migrators.
 
 arguments
     v1Bodies
@@ -116,7 +120,7 @@ arguments
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_delta', 'V_eta'})} = 'V_delta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
     options.Audits (1,1) logical = true
 end
 
@@ -132,10 +136,7 @@ bodies = normaliseInput(v1Bodies);
 % `base` declare `session_id` as an edge (did-schema
 % V_eta_relation_inheritance_plan.md, 2026-10-20) or as the field it always
 % was? See renameOutboundBaseFields.
-sessionEdge = false;
-if strcmp(options.TargetVersion, 'V_eta')
-    sessionEdge = outboundSchemaCache(options.SchemaCache).sessionIdIsEdge();
-end
+sessionEdge = outboundSchemaCache(options.SchemaCache).sessionIdIsEdge();
 
 migrated = {};
 quarantine = struct( ...
@@ -236,9 +237,9 @@ for k = 1:numel(bodies)
         preBody = ensureStruct(rawBody);
         refuseUnknownSchemaVersion(preBody);
         if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
-            % Idempotency short-circuit: the body is already V_delta,
-            % so skip universalRenames and the per-class migrators.
-            % ensureClassBlocks still runs (it rebuilds the V_delta
+            % Idempotency short-circuit: the body is already at the
+            % target, so skip universalRenames and the per-class migrators.
+            % ensureClassBlocks still runs (it rebuilds the target's
             % superclass chain — required) and validate still runs
             % (gate against drift). Keeps the database normalisation
             % and migration commands safely re-runnable after an
@@ -273,11 +274,9 @@ for k = 1:numel(bodies)
             v2Body = applySuperclassMigrators(postUniversalBody, className, ...
                 options.TargetVersion);
             % runConcreteMigrator returns a CELL of one-or-more bodies.
-            % Default (TargetVersion 'V_delta') always returns a single
-            % body via the existing per-class migrator, so behaviour is
-            % unchanged. Under TargetVersion 'V_eta' (+migrators_j) a class
-            % with a split/fold migrator (treatment, ontology_table_row, ...)
-            % may fan out to several bodies (1 -> N).
+            % A class with a base migrator only returns a single body; a
+            % class with a +migrators_j split/fold migrator (treatment,
+            % ontology_table_row, ...) may fan out to several (1 -> N).
             v2Bodies = runConcreteMigrator(v2Body, className, ...
                 options.TargetVersion);
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
@@ -321,8 +320,7 @@ for k = 1:numel(bodies)
         for bi = 1:numel(v2Bodies)
             outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
             outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
-            if ~strcmp(options.TargetVersion, 'V_delta') ...
-                    && isfield(outBody, 'document_class') ...
+            if isfield(outBody, 'document_class') ...
                     && isstruct(outBody.document_class)
                 outBody.document_class.schema_version = options.TargetVersion;
             end
@@ -614,9 +612,9 @@ end
 
 function bodies = runConcreteMigrator(v2Body, className, targetVersion)
 %RUNCONCRETEMIGRATOR Run the concrete-class migrator, return a cell of bodies.
-%   Default ('V_delta') preserves the historical 1 -> 1 behaviour: the
-%   per-class migrator under +did2.+convert.+migrators is applied and a
-%   single-element cell is returned. Under 'V_eta', a class that has
+%   A class with no +migrators_j migrator gets its base migrator under
+%   +did2.+convert.+migrators (identity when it has none) and a
+%   single-element cell is returned. A class that has
 %   a Brainstorm-J split/fold migrator under +did2.+convert.+migrators_j is
 %   routed there instead; that migrator may return either a single body
 %   (struct) or several (struct array / cell), enabling the treatment ->
@@ -694,9 +692,6 @@ function body = renameOutboundBaseFields(body, targetVersion, sessionEdge)
 %   reach a body, that body keeps `base.datestamp` -- an undeclared field
 %   under V_eta -- and quarantines. The dangerous direction (a silently
 %   wrong timestamp) is not reachable from here.
-%
-%   V_delta IS UNTOUCHED. The rename is a V_eta spelling change; a V_delta run
-%   must keep emitting `datestamp` or its own schema rejects the document.
 %
 %   STATUS: NOT VERIFIED BY EXECUTION -- no MATLAB in the authoring
 %   environment.
@@ -819,9 +814,9 @@ function body = applySuperclassMigrators(body, concreteClassName, targetVersion)
 % This step was NOT bypassed by the migrators_j split, and that was a
 % silent data loss rather than a design: runConcreteMigrator routes a
 % class to +migrators_j INSTEAD of +migrators, but the SUPERCLASS pass
-% above it kept running the V_delta migrators unconditionally. So under
+% above it kept running the base migrators unconditionally. So under
 % TargetVersion 'V_eta', +migrators/ngrid.m -- whose whole job is the
-% V_delta reshape (data_dim -> dim_sizes, derive ndims, rmfield
+% earlier class-preserving reshape (data_dim -> dim_sizes, derive ndims, rmfield
 % coordinates, rmfield data_size) -- was deleting `coordinates` on every
 % ontologyImage and every hartley_calc document before the J migrator
 % ever saw the body. testMigratorsJ records the symptom in its own
@@ -842,7 +837,7 @@ function body = applySuperclassMigrators(body, concreteClassName, targetVersion)
 % A superclass override must return exactly one body: it reshapes a
 % property block, it does not split documents.
 if nargin < 3 || isempty(targetVersion)
-    targetVersion = 'V_delta';
+    targetVersion = 'V_eta';
 end
 superPackage = '';
 if strcmp(targetVersion, 'V_eta')

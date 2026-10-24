@@ -1,8 +1,8 @@
 function v2Body = ontology_label(preBody)
-%ONTOLOGY_LABEL Migrate a did_v1 ontologyLabel body to V_delta.
+%ONTOLOGY_LABEL Base migrator: did_v1 ontologyLabel body -> the class-preserving V2 shape.
 %
 %   The class is renamed from ontologyLabel (camelCase, V_alpha) to
-%   ontology_label (snake_case, V_delta) by
+%   ontology_label (snake_case, V2) by
 %   did2.convert.universalRenames; this migrator produces a single
 %   `term` field of `ontology_term` composite type from one of two
 %   did_v1 idioms it has to support:
@@ -24,12 +24,12 @@ function v2Body = ontology_label(preBody)
 %   the migrator dispatches to it to populate `term.name`. If the
 %   lookup throws (curie not found, ontology data unavailable,
 %   library not installed), the migrator falls back to leaving
-%   `term.name` empty rather than quarantining -- the V_delta
+%   `term.name` empty rather than quarantining -- the V2
 %   `ontology_term` composite type only requires the value to be a
 %   struct; the inner field shape is open.
 %
 %   See did-schema's
-%   schemas/V_delta/conversions/from_did_v1/ontology_label.md.
+%   did-schema's per-class conversion notes (deleted with did-schema #88).
 
 arguments
     preBody (1,1) struct
@@ -78,7 +78,7 @@ end
 
 function name = lookupOntologyName(curie)
 % Resolve the human-readable label for a CURIE via ndi.ontology.
-% Returns '' if the lookup is unavailable or fails; the V_delta
+% Returns '' if the lookup is unavailable or fails; the V2
 % ontology_term composite type tolerates an empty name (the
 % validator only requires the value to be a struct).
 try

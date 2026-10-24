@@ -1,14 +1,13 @@
 classdef sqlitedb < handle
-    % did2.database.sqlitedb  SQLite + JSON1 backend for V_delta documents.
+    % did2.database.sqlitedb  SQLite + JSON1 backend for V2 (V_eta) documents.
     %
     %   First database backend in the v2 line. Stores each document's full
-    %   V_delta JSON body in a single TEXT column on the `documents`
+    %   V2 JSON body in a single TEXT column on the `documents`
     %   table; the `superclasses` and `depends_on` sidecar tables hold
     %   the entries needed for `isa` and `depends_on` queries without
     %   walking JSON.
     %
-    %   This is the "JSON1 fallback only" backend called for in
-    %   docs/v2/PLAN.md §9 step 3: every body predicate compiles to
+    %   This is the "JSON1 fallback only" backend: every body predicate compiles to
     %   sqlite3 json_extract / json_each via did2.database.compileQuery,
     %   and the result set is post-filtered through the reference
     %   in-memory evaluator (did2.query.matches) to guarantee correctness
@@ -56,8 +55,13 @@ classdef sqlitedb < handle
     %   the bytes it ingested, unless another document still records the
     %   same uid.
     %
-    %   See also: did2.query, did2.database.compileQuery, did2.document,
-    %             docs/v2/PLAN.md.
+    %   THE SCHEMA-GENERATION STAMP. `meta.schema_generation` names the
+    %   generation of the database layout: 'V2' (SchemaGeneration). What
+    %   each document is, is in its own document_class.schema_version. A
+    %   database carrying any other stamp is refused on open; re-create it
+    %   with the current DID-matlab (re-run the import or migration).
+    %
+    %   See also: did2.query, did2.database.compileQuery, did2.document.
 
     properties (SetAccess = private)
         filename (1,:) char = ''
@@ -83,6 +87,9 @@ classdef sqlitedb < handle
 
     properties (Constant, Access = private)
         SchemaVersion = 1
+        % The meta.schema_generation stamp a new database gets, and the only
+        % one assertSchema accepts (see the class help).
+        SchemaGeneration = 'V2'
     end
 
     methods
@@ -153,7 +160,7 @@ classdef sqlitedb < handle
             %   db.add(doc)
             %   db.add({doc1, doc2, ...})
             %   db.add(docs, Validate=false) skips schema validation
-            %       (PLAN.md §1 "unsafe_insert" escape hatch).
+            %       (the "unsafe_insert" escape hatch).
             arguments
                 obj
                 docOrList
@@ -560,7 +567,7 @@ classdef sqlitedb < handle
                     'schema_version', num2str(obj.SchemaVersion));
                 mksqlite(obj.dbid, ...
                     'INSERT INTO meta(key, value) VALUES(?, ?)', ...
-                    'schema_generation', 'V_delta');
+                    'schema_generation', obj.SchemaGeneration);
                 mksqlite(obj.dbid, ...
                     'INSERT INTO meta(key, value) VALUES(?, ?)', ...
                     'queryable_array_paths', ...
@@ -845,7 +852,7 @@ classdef sqlitedb < handle
             % Drop every sidecar row and rebuild from the stored
             % document bodies under the currently-configured array
             % path set. O(numDocuments * numArrayPaths * elemsPerArray);
-            % acceptable while DBs are small (see PLAN.md Decision 9).
+            % acceptable while DBs are small (a design decision of the v2 line).
             mksqlite(obj.dbid, 'BEGIN IMMEDIATE');
             try
                 mksqlite(obj.dbid, 'DELETE FROM queryable_array_elem');
@@ -1114,9 +1121,17 @@ classdef sqlitedb < handle
                     '%s is not a v2 SQLite database (missing meta table).', ...
                     obj.filename);
             end
-            if isempty(row) || ~strcmp(row(1).value, 'V_delta')
+            if isempty(row) || ~strcmp(char(row(1).value), obj.SchemaGeneration)
+                found = '<none>';
+                if ~isempty(row)
+                    found = char(row(1).value);
+                end
                 error('did2:database:notV2Database', ...
-                    '%s is not a V_delta database.', obj.filename);
+                    ['%s is stamped ''%s'' (meta.schema_generation); this ' ...
+                     'version opens only ''%s'' databases. Re-create this ' ...
+                     'database with the current DID-matlab (re-run the import ' ...
+                     'or ndi.migrate.local).'], ...
+                    obj.filename, found, obj.SchemaGeneration);
             end
             obj.migrateDependsOnValueToDocumentId();
             obj.migrateDependsOnKeyForRepeatedEdges();
@@ -1594,7 +1609,7 @@ classdef sqlitedb < handle
                 if ~isstruct(e) || ~isfield(e, 'name')
                     continue;
                 end
-                % V_delta uses `document_id`; tolerate the earlier
+                % V2 uses `document_id`; tolerate the earlier
                 % `value` draft and the raw v1 `id` so mid-migration
                 % bodies still write their sidecar rows.
                 if isfield(e, 'document_id')

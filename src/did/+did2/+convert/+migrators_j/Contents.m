@@ -531,7 +531,7 @@
 %   SUPERCLASS OVERRIDES live in +super/ -- a SEPARATE subpackage, and the
 %   separation is load-bearing. The dispatcher's superclass pass
 %   (v1_to_v2.applySuperclassMigrators) was never bypassed by the migrators_j
-%   split, so the V_delta superclass migrators kept running under V_eta; a
+%   split, so the base (+migrators) superclass migrator kept running under V_eta; a
 %   V_eta class needing different superclass-block handling puts a file in
 %   +super/ and the dispatcher prefers it. It may NOT live in +migrators_j
 %   itself: half the names here (element, subject, image, measurement,
@@ -540,7 +540,7 @@
 %   superclass pass is contracted to return one struct. A superclass override
 %   must return exactly one body.
 %     +super/ngrid.m   carries the did_v1 ngrid block VERBATIM (data_size,
-%                      data_type, data_dim, coordinates). The V_delta one
+%                      data_type, data_dim, coordinates). The base one
 %                      rmfield'd `coordinates` and `data_size` on every
 %                      ontologyImage and hartley_calc document before the
 %                      concrete J migrator ever saw them. #46/#47.

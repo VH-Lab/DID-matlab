@@ -1,7 +1,7 @@
 function tests = testSqliteDb
 % testSqliteDb - did2.database.sqlitedb integration tests.
 %
-%   Round-trips V_delta documents through a real SQLite file via
+%   Round-trips V2 documents through a real SQLite file via
 %   mksqlite, and verifies that the JSON1 query compiler + post-filter
 %   returns the same hits as the in-memory reference evaluator
 %   (did2.query.matches).
@@ -23,7 +23,7 @@ if isempty(which('mksqlite'))
         'mksqlite is not on the MATLAB path; skipping the v2 SQLite tests.');
 end
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal');
 did2.schema.cache.setSchemaPath(fixtureDir);
 testCase.TestData.fixtureDir = fixtureDir;
 end
@@ -81,6 +81,41 @@ verifyError(testCase, ...
     'did2:database:notV2Database');
 end
 
+% ---- the schema-generation stamp (DID-matlab #223) ----
+
+function testANewDatabaseIsStampedV2(testCase)
+% A database created now carries the generation stamp 'V2'.
+verifyEqual(testCase, schemaGenerationOf(testCase.TestData.db), 'V2');
+end
+
+function testAnyOtherSchemaGenerationIsRefusedNamingTheFix(testCase)
+% A stamp other than 'V2' is refused, naming the stamp it found and saying to
+% re-create the database.
+db = testCase.TestData.db;
+setSchemaGeneration(db, 'V_none');
+db.close();
+verifyError(testCase, ...
+    @() did2.database.sqlitedb(testCase.TestData.tmpFile), ...
+    'did2:database:notV2Database');
+try
+    did2.database.sqlitedb(testCase.TestData.tmpFile);
+catch err
+    verifySubstring(testCase, err.message, 'V_none');
+    verifySubstring(testCase, err.message, 'Re-create this database');
+end
+end
+
+function g = schemaGenerationOf(db)
+row = mksqlite(db.testHookDbId(), ...
+    'SELECT value FROM meta WHERE key = ?', 'schema_generation');
+g = char(row(1).value);
+end
+
+function setSchemaGeneration(db, value)
+mksqlite(db.testHookDbId(), ...
+    'UPDATE meta SET value = ? WHERE key = ?', value, 'schema_generation');
+end
+
 % ---- add / get / remove ----
 
 function testAddSingleDocument(testCase)
@@ -122,7 +157,7 @@ end
 
 function testValidateFalseSkipsSchemaCheck(testCase)
 % A document missing a required field should still be insertable when
-% Validate=false (the bulk-load escape hatch documented in PLAN.md §1).
+% Validate=false (the bulk-load escape hatch).
 db = testCase.TestData.db;
 doc = makeDemoA('alice', 'a1');
 % Wipe the session_id (mustBeNonEmpty in base.json) and prove that the

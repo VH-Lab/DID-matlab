@@ -16,7 +16,7 @@ function bodies = simple_calc(preBody)
 %
 %       simple_calc:  { input_parameters: { answer: N }, answer: N }
 %       depends_on:   document_id     <- the INPUT DOCUMENT, not a subject
-%       superclasses: base, app       <- `calculator` is a V_delta invention
+%       superclasses: base, app       <- `calculator` is a V2 invention
 %
 %   Three separate problems, only the first of which is a rename:
 %

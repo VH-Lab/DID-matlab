@@ -1,13 +1,12 @@
 function tests = testMigrators
-%TESTMIGRATORS Per-class did_v1 -> V_delta migrator tests.
+%TESTMIGRATORS Per-class did_v1 -> V2 migrator tests.
 %
-%   Exercises the four 2.0.0-bumped class migrators (PLAN.md §9.6
-%   sub-step 6c) against the worked examples in
-%   did-schema/schemas/V_delta/conversions/from_did_v1/<class>.md.
+%   Exercises the base class migrators against the worked examples of
+%   did-schema's per-class conversion notes (deleted with did-schema #88).
 %
 %   Tests run with Validate=false on the end-to-end dispatcher case
 %   so they do not depend on the schema cache being able to resolve
-%   V_delta schemas at the test-runner working directory.
+%   V2 schemas at the test-runner working directory.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testMigrators');
@@ -30,42 +29,6 @@ v1.base = struct( ...
     'name',       'migrator-example', ...
     'datestamp',  '2024-06-01T12:00:00.000Z');
 v1.(blockKey) = block;
-end
-
-function testProbeLocationPassesThroughFlatV1Shape(testCase)
-v1 = wrap('probe_location', 'probe_location', struct( ...
-    'ontology_name', 'uberon:0002436', ...
-    'name',          'primary visual cortex'));
-out = did2.convert.v1_to_v2(v1, 'Validate', false);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('probe_location.ontology_name'), 'uberon:0002436');
-verifyEqual(testCase, doc.get('probe_location.name'), 'primary visual cortex');
-end
-
-function testTreatmentSnakeCasesCamelOntologyName(testCase)
-v1 = wrap('treatment', 'treatment', struct( ...
-    'ontologyName',  'chebi:6015', ...
-    'name',          'isoflurane', ...
-    'numeric_value', 2.0, ...
-    'string_value',  '2 percent in O2'));
-out = did2.convert.v1_to_v2(v1, 'Validate', false);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('treatment.ontology_name'), 'chebi:6015');
-verifyEqual(testCase, doc.get('treatment.name'), 'isoflurane');
-verifyEqual(testCase, doc.get('treatment.numeric_value'), 2.0);
-verifyEqual(testCase, doc.get('treatment.string_value'), '2 percent in O2');
-end
-
-function testTreatmentSnakeOntologyNameRoundTrips(testCase)
-v1 = wrap('treatment', 'treatment', struct( ...
-    'ontology_name', 'chebi:6015', ...
-    'name',          'isoflurane', ...
-    'numeric_value', 2.0, ...
-    'string_value',  '2 percent in O2'));
-out = did2.convert.v1_to_v2(v1, 'Validate', false);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('treatment.ontology_name'), 'chebi:6015');
-verifyEqual(testCase, doc.get('treatment.name'), 'isoflurane');
 end
 
 function testOntologyImageRenamesClassAndCollapsesFields(testCase)
@@ -102,59 +65,10 @@ out = did2.convert.migrators.ontology_label( ...
 verifyEqual(testCase, out.ontology_label.term.node, 'allen_ccf_v3:12345');
 end
 
-function testEndToEndDispatcherForProbeLocation(testCase)
-v1 = wrap('probe_location', 'probe_location', struct( ...
-    'ontology_name', 'uberon:0002436', ...
-    'name',          'primary visual cortex'));
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, doc.get('probe_location.ontology_name'), ...
-    'uberon:0002436');
-verifyEqual(testCase, doc.get('probe_location.name'), ...
-    'primary visual cortex');
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
-end
-
-function testEndToEndDispatcherForOntologyLabel(testCase)
-v1 = wrap('ontologyLabel', 'ontologyLabel', struct( ...
-    'ontology_name', 'Allen CCF v3', ...
-    'label',         'primary visual cortex', ...
-    'label_id',      12345));
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-verifyEqual(testCase, result.summary.by_class.ontology_label, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, doc.className(), 'ontology_label');
-verifyEqual(testCase, doc.get('ontology_label.term.node'), ...
-    'allen_ccf_v3:12345');
-end
-
-function testElementBodyPassesThroughExceptDirectCoercion(testCase)
-% V_delta keeps element.name/element.type/element.reference and
-% element.ndi_element_class verbatim; only element.direct needs
-% coercion (logical -> integer) because some v1 producers emit it
-% as a JSON boolean even though the v1 schema declares it integer.
-v1 = wrap('element', 'element', struct( ...
-    'ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
-    'name',              'electrode16', ...
-    'reference',         1, ...
-    'type',              'n-trode', ...
-    'direct',            1));
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, doc.get('element.name'),               'electrode16');
-verifyEqual(testCase, doc.get('element.type'),               'n-trode');
-verifyEqual(testCase, doc.get('element.ndi_element_class'),  ...
-    'ndi.probe.timeseries.mfdaq');
-verifyEqual(testCase, doc.get('element.direct'), 1);
-end
-
 function testElementDirectLogicalCoercedToInteger(testCase)
 % The PRED corpus (and writes in the larger public corpora) emits
 % element.direct as a JSON boolean. After jsondecode that arrives
-% as MATLAB `logical`, which V_delta's validator rejects with
+% as MATLAB `logical`, which V2's validator rejects with
 % `Field "element.direct" must be integer.`. The element migrator
 % canonicalises it to a numeric integer.
 v1 = wrap('element', 'element', struct( ...
@@ -167,38 +81,6 @@ out = did2.convert.migrators.element( ...
     did2.convert.universalRenames(v1));
 verifyTrue(testCase, isnumeric(out.element.direct));
 verifyEqual(testCase, out.element.direct, 1);
-end
-
-function testDaqreaderNdrBodyPassesThroughIdentity(testCase)
-% V_delta schema keeps daqreader_ndr.ndr_reader_string and
-% daqreader_ndr.ndi_daqreader_ndr_class, so the v1 body survives the
-% dispatcher unchanged.
-v1 = wrap('daqreader_ndr', 'daqreader_ndr', struct( ...
-    'ndr_reader_string',        'intan', ...
-    'ndi_daqreader_ndr_class',  'ndi.daq.reader.mfdaq.ndr'));
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, doc.get('daqreader_ndr.ndr_reader_string'),       'intan');
-verifyEqual(testCase, doc.get('daqreader_ndr.ndi_daqreader_ndr_class'), ...
-    'ndi.daq.reader.mfdaq.ndr');
-end
-
-function testDaqmetadatareaderBodyPassesThroughIdentity(testCase)
-% V_delta schema keeps daqmetadatareader.ndi_daqmetadatareader_class and
-% the optional tab_separated_file_parameter hook.
-v1 = wrap('daqmetadatareader', 'daqmetadatareader', struct( ...
-    'ndi_daqmetadatareader_class',  'ndi.daq.metadatareader.RayoLabStims', ...
-    'tab_separated_file_parameter', 'epoch_metadata.tsv'));
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, ...
-    doc.get('daqmetadatareader.ndi_daqmetadatareader_class'), ...
-    'ndi.daq.metadatareader.RayoLabStims');
-verifyEqual(testCase, ...
-    doc.get('daqmetadatareader.tab_separated_file_parameter'), ...
-    'epoch_metadata.tsv');
 end
 
 function testEpochclocktimesSplitsTimeRange(testCase)
@@ -217,28 +99,11 @@ verifyFalse(testCase, isfield(out.epochclocktimes, 'clocktype'));
 verifyFalse(testCase, isfield(out.epochclocktimes, 't0_t1'));
 end
 
-function testEpochclocktimesSuperclassMigratorAppliedByDispatcher(testCase)
-% An unregistered concrete class with epochclocktimes as a
-% superclass: the dispatcher should run the epochclocktimes
-% migrator even though the concrete class falls back to identity.
-v1 = wrap('pyraview', 'pyraview', struct('label', 'high'));
-v1.epochclocktimes = struct('clocktype', 'dev_local_time', ...
-    't0_t1', [0 1]);
-v1.document_class.superclasses = struct( ...
-    'class_name', {'base', 'epochclocktimes'});
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, doc.get('epochclocktimes.epoch_clock'), ...
-    'dev_local_time');
-verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1);
-end
-
-% --- calc-base migrators (PLAN.md §9.6 sub-step 6d, 20211116 corpus) ---
+% --- calc-base migrators (20211116 corpus) ---
 
 function testCalcCommonKeepsInputParametersOnSubclassBlock(testCase)
-% V_delta `calculator.input_parameters` declares `placement:
-% "concrete_class"` (DID-schema V_delta calculator.json), so the
+% V2 `calculator.input_parameters` declares `placement:
+% "concrete_class"` (DID-schema V2 calculator.json), so the
 % field lives on the concrete subclass's block on instance bodies,
 % not in a `calculator` block. v1 already stores it there, so no
 % structural move is required.
@@ -251,7 +116,7 @@ verifyFalse(testCase, isfield(out, 'calculator'));
 end
 
 function testCalcCommonCoercesEmptyArrayInputParametersToStruct(testCase)
-% v1 frequently ships `input_parameters: []`. V_delta `structure`
+% v1 frequently ships `input_parameters: []`. V2 `structure`
 % type requires a struct value, so the helper coerces in place on
 % the subclass block.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
@@ -325,7 +190,7 @@ end
 end
 
 function testUniversalRenamesAppBlockNameAndVersion(testCase)
-% v1 carries app.name / app.version; V_delta uses app.app_name /
+% v1 carries app.name / app.version; V2 uses app.app_name /
 % app.app_version. The rename is in universalRenames so it applies
 % to every doc that ships an app block, not just calc docs.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
@@ -359,28 +224,6 @@ verifyFalse(testCase, isfield(out, 'app'));
 % probe_location.name is a *block field*, not the app.name field; it
 % should be left for the per-class migrator.
 verifyEqual(testCase, out.probe_location.name, 'primary visual cortex');
-end
-
-function testDispatcherPadsEmptyChainBlocks(testCase)
-% ensureClassBlocks should manufacture empty blocks for every class
-% in the V_delta chain that the migrator did not produce AND that
-% contributes a body block (i.e., not an abstract class with all
-% placement="concrete_class" fields). This test asserts the behavior
-% without requiring a real schema cache: it builds a body, lets the
-% dispatcher run (Validate=false, no SchemaCache override). The
-% helper silently no-ops when no cache is configured, so we only
-% assert that calcCommon's explicit work survives.
-v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
-    'input_parameters', []));
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-% calcCommon coerces input_parameters to a struct in place on the
-% concrete subclass block; per V_delta calculator.input_parameters
-% placement="concrete_class", the abstract `calculator` class
-% contributes no body block. Calculator-identity is on app.app_name
-% (set by universalRenames).
-verifyTrue(testCase, isstruct(doc.get('oridirtuning_calc.input_parameters')));
 end
 
 % --- element_epoch (20211116 corpus: 252 docs; JH corpus: 4156 multi-clock) ---
@@ -441,19 +284,6 @@ verifyError(testCase, ...
     'did2:convert:missingBlock');
 end
 
-function testEndToEndDispatcherForElementEpoch(testCase)
-v1 = wrap('element_epoch', 'element_epoch', struct( ...
-    'epoch_clock', 'dev_local_time', ...
-    't0_t1',       [0 42]));
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-clocks = doc.get('element_epoch.clocks');
-verifyEqual(testCase, clocks(1).name, 'dev_local_time');
-verifyEqual(testCase, clocks(1).t0, 0);
-verifyEqual(testCase, clocks(1).t1, 42);
-end
-
 % --- ngrid superclass migrator (20211116 corpus: 210 hartley_calc) ---
 
 function testNgridDerivesNdimsFromDataDim(testCase)
@@ -493,24 +323,6 @@ function testNgridDerivesFromExistingDimSizes(testCase)
 v1 = wrap('hartley_calc', 'ngrid', struct('dim_sizes', [5 5 5]));
 out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
 verifyEqual(testCase, out.ngrid.ndims, 3);
-end
-
-function testEndToEndDispatcherForHartleyCalc(testCase)
-% End-to-end: hartley_calc body with v1-shaped ngrid block migrates
-% through the calc helper, the ngrid superclass migrator, and the
-% dispatcher's chain-padding step without quarantine.
-v1 = wrap('hartley_calc', 'hartley_calc', struct('input_parameters', []));
-v1.ngrid = struct( ...
-    'data_size', 8, ...
-    'data_type', 'double', ...
-    'data_dim',  [200 200 36 2]);
-v1.document_class.superclasses = struct('class_name', ...
-    {'base', 'hartley_reverse_correlation', 'ngrid'});
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, doc.get('ngrid.ndims'), 4);
-verifyEqual(testCase, doc.get('ngrid.dim_sizes'), [200 200 36 2]);
 end
 
 % --- ontology_label node-only idiom (JH corpus: 7007 docs) ---

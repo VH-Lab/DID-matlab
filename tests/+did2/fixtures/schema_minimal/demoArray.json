@@ -22,7 +22,7 @@
             "mustNotHaveNaN": false,
             "queryable": true,
             "ontology": null,
-            "documentation": "Array of axis descriptors used by the +did2 self-tests to exercise queryable array-of-structure sub-fields (PLAN.md \u00a73.3).",
+            "documentation": "Array of axis descriptors used by the +did2 self-tests to exercise queryable array-of-structure sub-fields.",
             "constraints": {},
             "fields": [
                 {

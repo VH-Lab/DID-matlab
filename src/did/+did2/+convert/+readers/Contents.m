@@ -16,5 +16,4 @@
 %                    returns the JSON contents as a cellstr, keeping
 %                    only the latest version per document id.
 %
-%   See also: did2.convert.fromV1Database, did2.convert.v1_to_v2,
-%             docs/v2/PLAN.md §9.6.
+%   See also: did2.convert.fromV1Database, did2.convert.v1_to_v2.

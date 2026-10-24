@@ -45,7 +45,7 @@ verifyTrue(testCase, isKey(ix.legacy, 'wbstrain'));
 end
 
 function testARegistryWithNoSpellingsStillMatchesIgnoringCase(testCase)
-% V_delta's registry carries `_prefixes` (jsondecode: `x_prefixes`), and
+% V2's registry carries `_prefixes` (jsondecode: `x_prefixes`), and
 % V_zeta's entries have no `spelling`. Neither may make a reader stricter.
 ix = did2.schema.curiePrefixIndex(jsondecode( ...
     '{"_prefixes": {"uberon": {"_uri_base": "x"}}}'));

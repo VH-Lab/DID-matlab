@@ -1,7 +1,7 @@
 function v2Body = element_epoch(preBody)
-%ELEMENT_EPOCH Migrate a did_v1 element_epoch body to V_delta.
+%ELEMENT_EPOCH Base migrator: did_v1 element_epoch body -> the class-preserving V2 shape.
 %
-%   V_delta represents element_epoch timing as a single `clocks`
+%   V2 represents element_epoch timing as a single `clocks`
 %   field of array-of-records shape:
 %
 %       element_epoch.clocks(i).name   - clock identifier (char)

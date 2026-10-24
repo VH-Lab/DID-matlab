@@ -1,5 +1,5 @@
 function v2Body = epochclocktimes(preBody)
-%EPOCHCLOCKTIMES Migrate a did_v1 epochclocktimes block to V_delta.
+%EPOCHCLOCKTIMES Base migrator: did_v1 epochclocktimes block -> the class-preserving V2 shape.
 %
 %   This is a *superclass migrator*: epochclocktimes is rarely a
 %   concrete class; it ships as a superclass-contributed property
@@ -15,7 +15,7 @@ function v2Body = epochclocktimes(preBody)
 %       epochclocktimes.t0_t1     -> epochclocktimes.t0,
 %                                    epochclocktimes.t1
 %
-%   The v1 `t0_t1` field carries a 2-vector [t0 t1]; V_delta splits
+%   The v1 `t0_t1` field carries a 2-vector [t0 t1]; V2 splits
 %   them into two scalar double fields.
 
 arguments

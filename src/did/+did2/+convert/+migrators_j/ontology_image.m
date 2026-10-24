@@ -87,14 +87,14 @@ function v2Body = ontology_image(preBody)
 %         superclasses: base, ngrid             -- the raster rides an ngrid block
 %
 %   The PREVIOUS implementation read `preBody.ontology_image.region`. That
-%   field exists in NEITHER vintage -- it is the *output* of the V_delta
+%   field exists in NEITHER vintage -- it is the *output* of the base
 %   migrator (+did2/+convert/+migrators/ontology_image.m), which composes
 %   `region` from vintage A's two chars. But v1_to_v2 routes a class to
-%   migrators_j INSTEAD OF the V_delta migrator (see v1_to_v2.m, the
+%   migrators_j INSTEAD OF the base (+migrators) migrator (see v1_to_v2.m, the
 %   splitPackage branch), so a J migrator receives a body that has only been
-%   through universalRenames -- never the V_delta reshape. The read therefore
+%   through universalRenames -- never the base-migrator reshape. The read therefore
 %   never matched a real document; it matched only the unit fixture, which had
-%   been built to the V_delta output shape. The result was silent: an empty
+%   been built to the base-migrator output shape. The result was silent: an empty
 %   ontology_term still has fieldnames, so it satisfies `mustBeNonEmpty`, and
 %   an empty depends_on edge is skipped by did2.validate.references. Every
 %   ontologyImage document therefore migrated to a content-free husk that
@@ -167,7 +167,7 @@ function v2Body = ontology_image(preBody)
 %   THE GUARD. If the block matches neither vintage, this errors rather than
 %   emitting anything. Quarantine is visible; a husk is not. In particular a
 %   body presenting `region` is REJECTED BY NAME -- that shape can only come
-%   from V_delta output or from a fixture built against our own schema instead
+%   from base-migrator output or from a fixture built against our own schema instead
 %   of the real v1 document, which is the precise mistake being corrected here
 %   (and the same mistake that hid the distance_metadata bug).
 %
@@ -257,12 +257,12 @@ end
 
 if ~isVintageA
     if isfield(block, 'region')
-        error('did2:convert:ontologyImageVDeltaShape', ...
-            ['ontology_image body presents the V_delta output shape ' ...
+        error('did2:convert:ontologyImageBaseMigratorShape', ...
+            ['ontology_image body presents the base-migrator output shape ' ...
              '(`region`), which no did_v1 document has. A migrators_j ' ...
              'migrator receives a universalRenames-only body, so it must ' ...
              'read the did_v1 fields (`ontology_name`/`ontology_region`, or ' ...
-             '`ontology_nodes`) -- not the V_delta reshape.']);
+             '`ontology_nodes`) -- not the base-migrator reshape.']);
     end
     error('did2:convert:ontologyImageUnknownShape', ...
         ['ontology_image body matches no known did_v1 vintage: expected ' ...

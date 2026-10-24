@@ -203,17 +203,17 @@ if ~isfield(preBody, 'ngrid') || ~isstruct(preBody.ngrid)
 end
 block = preBody.ngrid;
 
-% The V_delta output shape cannot come from a did_v1 document; +super/ngrid.m
+% The base-migrator output shape cannot come from a did_v1 document; +super/ngrid.m
 % makes the same refusal for the same reason and with the same identifier, so a
 % body that somehow reached here past it still cannot be folded from names NDI
 % has never written.
-vdeltaOnly = intersect({'dim_sizes', 'ndims'}, fieldnames(block));
-if ~isempty(vdeltaOnly)
-    error('did2:convert:ngridVDeltaShape', ...
-        ['ngrid block presents the V_delta output shape (%s), which no did_v1 ' ...
+reshapedOnly = intersect({'dim_sizes', 'ndims'}, fieldnames(block));
+if ~isempty(reshapedOnly)
+    error('did2:convert:ngridBaseMigratorShape', ...
+        ['ngrid block presents the base-migrator output shape (%s), which no did_v1 ' ...
          'document has: NDI declares exactly {data_size, data_type, data_dim, ' ...
          'coordinates}. Check that the fixture was built from the writer and ' ...
-         'not from a DID-side schema.'], strjoin(vdeltaOnly, ', '));
+         'not from a DID-side schema.'], strjoin(reshapedOnly, ', '));
 end
 
 dataDim  = numericRow(fieldOr(block, 'data_dim', []));

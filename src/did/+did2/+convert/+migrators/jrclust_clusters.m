@@ -1,5 +1,5 @@
 function v2Body = jrclust_clusters(preBody)
-%JRCLUST_CLUSTERS Migrate a did_v1 jrclust_clusters body to V_delta.
+%JRCLUST_CLUSTERS Base migrator: did_v1 jrclust_clusters body -> the class-preserving V2 shape.
 %
 %   Lowercases the v1 `res_mat_MD5_checksum` field name to
 %   `res_mat_md5_checksum`. universalRenames's snake_case pass treats

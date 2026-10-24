@@ -7,14 +7,14 @@ function body = ensureClassBlocks(body, schemaCacheOverride)
 %   is already at its target without running the whole conversion (NDI's
 %   applyReadNormalization). Moved out of v1_to_v2 unchanged, 2026-10-06.
 %
-% Make sure every class in the V_delta schema chain for the body's
+% Make sure every class in the V2 schema chain for the body's
 % concrete class has a property block in the document, manufacturing
 % empty `struct()` blocks for any chain entry that the v1 source did
 % not provide. Also rebuilds document_class.superclasses from the
 % schema chain plus the value kind the document names, if any; the
-% V_delta schema chain so the snapshot matches the spec (same set,
-% same order, class-name-by-class-name) even when V_delta has
-% reordered or extended the chain relative to v1. V_delta's
+% V2 schema chain so the snapshot matches the spec (same set,
+% same order, class-name-by-class-name) even when V2 has
+% reordered or extended the chain relative to v1. V2's
 % validator rejects documents whose chain blocks are missing or
 % whose superclasses snapshot drifts from the schema, so this
 % padding lets the per-class migrators stay focused on real field
@@ -94,8 +94,7 @@ end
 % Drop stray EMPTY blocks left by v1 for chain classes that the target
 % schema does NOT host on the instance. v1 documents carried a property
 % block for every class in their hierarchy, including parents that became
-% abstract / fieldless in the target schema (written for V_delta/V_epsilon;
-% V_epsilon was deleted 2026-10-21) (abstract classes are new
+% abstract / fieldless in V2 (abstract classes are new
 % here). Those arrive as empty structs and would trip the strict
 % undeclared-top-level-block check. Only EMPTY such blocks are removed --
 % a non-empty one signals real data a migrator must place, so it is left

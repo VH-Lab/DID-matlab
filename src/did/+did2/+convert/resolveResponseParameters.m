@@ -214,7 +214,7 @@ function [result, report] = resolveResponseParameters(result, options)
 %   Options (name-value), mirroring the sibling passes:
 %     Validate       (1,1 logical, default true)  validate the changed bodies
 %     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
-%     TargetVersion  (1,:) char, default 'V_eta'  no-op on other targets
+%     TargetVersion  (1,:) char, default 'V_eta'  the only target accepted
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
 %   did2.convert.epochMint, did2.convert.resolveDeferredBaths,
@@ -225,7 +225,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
@@ -268,9 +268,6 @@ report = struct( ...
     'ran',                                     false);
 result.response_parameters_fold = report;
 
-if ~strcmp(options.TargetVersion, 'V_eta')
-    return;     % the harmonic_component value kind exists only in V_eta.
-end
 if ~isfield(result, 'migrated') || isempty(result.migrated)
     report.ran = true;
     result.response_parameters_fold = report;

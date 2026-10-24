@@ -235,7 +235,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
@@ -292,9 +292,6 @@ report = struct( ...
     'ran',                                  false);
 result.openminds_citations = report;
 
-if ~strcmp(options.TargetVersion, 'V_eta')
-    return;     % the entity tier exists only in V_eta.
-end
 if ~isfield(result, 'migrated') || isempty(result.migrated)
     report.ran = true;
     result.openminds_citations = report;

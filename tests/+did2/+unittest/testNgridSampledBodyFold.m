@@ -575,8 +575,8 @@ verifyError(testCase, @() did2.convert.migrators_j.ontology_image(v1), ...
     'did2:convert:ngridCoordinatesHaveNoHome');
 end
 
-function testTheVDeltaOutputShapeIsRefusedByTheFoldToo(testCase)
-% `dim_sizes`/`ndims` are the V_delta migrator's OUTPUT and have no did_v1
+function testTheBaseMigratorShapeIsRefusedByTheFoldToo(testCase)
+% `dim_sizes`/`ndims` are the base (+migrators) migrator's OUTPUT and have no did_v1
 % existence. +super/ngrid.m makes the same refusal upstream; the fold repeats it
 % because a body assembled from names NDI never wrote is a fixture-built-from-
 % our-own-schema bug, which is the mistake that hid both the ontology_image and
@@ -584,7 +584,7 @@ function testTheVDeltaOutputShapeIsRefusedByTheFoldToo(testCase)
 v1 = foldableOntologyImage();
 v1.ngrid = struct('dim_sizes', [4 4], 'ndims', 2, 'data_type', 'double');
 verifyError(testCase, @() did2.convert.migrators_j.ontology_image(v1), ...
-    'did2:convert:ngridVDeltaShape');
+    'did2:convert:ngridBaseMigratorShape');
 end
 
 % ===================== end to end, under validation ========================

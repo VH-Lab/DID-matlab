@@ -5,13 +5,11 @@
 %   per-document migrators, the batch post-passes that need a whole corpus,
 %   and the legacy-database readers.
 %
-%   THE TARGET. v1_to_v2's TargetVersion is 'V_delta' (the argument's default)
-%   or 'V_eta'. Only 'V_eta' routes through +migrators_j; the V_delta schema
-%   set the default names was deleted from did-schema (OPEN_WORK #128,
-%   2026-10-21), as were the 'V_epsilon' and 'V_zeta' targets and their
-%   +migrators_e / +migrators_i packages. The unit tests that still run the
-%   'V_delta' target read a small V_delta fixture schema
-%   (tests/+did2/fixtures/V_delta). See v1_to_v2's own help.
+%   THE TARGET. V_eta is the only migration target of v1_to_v2 (and its
+%   TargetVersion default); it routes through +migrators_j. The 'V_epsilon'
+%   and 'V_zeta' targets and their +migrators_e / +migrators_i packages were
+%   deleted with did-schema's older schema sets (OPEN_WORK #128,
+%   2026-10-21). See v1_to_v2's own help.
 %
 %   STATEMENTS. A V_eta statement's class is its direction (`observation`,
 %   `assertion`, `manipulation`, `calculation`) and its value kind (`voltage`,
@@ -56,13 +54,13 @@
 %
 %   Subpackages
 %     +migrators_j     - the did_v1 -> V_eta per-document migrators, one file
-%                        per v1 class, routed when TargetVersion is 'V_eta'.
+%                        per v1 class.
 %                        +migrators_j/+super holds the superclass migrators.
 %                        Its Contents.m carries a GENERATED roster of every
 %                        migrator (tools/check_migrator_roster.py).
-%     +migrators       - the per-class migrators for the 'V_delta' target,
-%                        and the fallback for a class with no +migrators_j
-%                        file: `identity` returns the body unchanged.
+%     +migrators       - the fallback for a class with no +migrators_j file
+%                        (`identity` returns the body unchanged), and the
+%                        helpers some +migrators_j files delegate to.
 %     +entities        - shared emitters for the entity tier (entityDoc,
 %                        relationDoc, orgFor, ...).
 %     +readers         - pure-read entry points for the two v1 DID

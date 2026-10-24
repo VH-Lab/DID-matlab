@@ -119,7 +119,7 @@ end
 function assumeVEtaSchemas(testCase)
 %ASSUMEVETASCHEMAS Skip unless the schema cache resolves the V_eta targets.
 %   installSchemaPath only checks that SOME folder of *.json exists, so a
-%   V_delta-only checkout would satisfy it and then fail these tests for the
+%   checkout of an older schema set would satisfy it and then fail these tests for the
 %   wrong reason.
 did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the V_eta daq-configuration validation tests');

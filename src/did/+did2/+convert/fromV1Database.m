@@ -1,10 +1,16 @@
 function result = fromV1Database(srcPath, dstPath, options)
-%FROMV1DATABASE End-to-end did_v1 -> V_delta database migration.
+%FROMV1DATABASE did_v1 database -> V_eta database, per-document pass only.
 %
 %   RESULT = did2.convert.fromV1Database(SRCPATH, DSTPATH) reads every
 %   document body out of the v1 source at SRCPATH, runs it through
-%   did2.convert.v1_to_v2, and inserts the successful did2.document
-%   instances into a fresh did2.database.sqlitedb at DSTPATH.
+%   did2.convert.v1_to_v2 at TargetVersion 'V_eta', and inserts the
+%   successful did2.document instances into a fresh did2.database.sqlitedb
+%   at DSTPATH.
+%
+%   THIS IS PASS 1 ONLY. The batch post-passes (epochMint,
+%   resolveSessionAnchors, ...) and the NDI second pass that complete a
+%   V_eta migration need the whole document set and run in
+%   ndi.migrate.local, which is the way to migrate an NDI dataset.
 %
 %   SRCPATH may be either:
 %     - a file (e.g. *.sqlite) - read via did2.convert.readers.sqliteV1
@@ -18,7 +24,7 @@ function result = fromV1Database(srcPath, dstPath, options)
 %
 %   Options (name-value):
 %     Validate     (1,1 logical, default true)  - validate each migrated
-%                  document against its V_delta schema.
+%                  document against its V_eta schema.
 %     SchemaCache  (default [])                 - override the shared
 %                  did2.schema.cache singleton (test plumbing).
 %     Verbose      (1,1 logical, default false) - print the v1_to_v2
@@ -83,6 +89,7 @@ else
 end
 
 result = did2.convert.v1_to_v2(bodies, ...
+    'TargetVersion', 'V_eta', ...
     'Validate', options.Validate, ...
     'SchemaCache', options.SchemaCache, ...
     'Verbose', options.Verbose);

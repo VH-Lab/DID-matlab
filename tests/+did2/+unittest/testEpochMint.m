@@ -476,18 +476,13 @@ verifyTrue(testCase, isfield(result, 'epoch_mint'), ...
     'the report rides on the result so a caller ignoring the 2nd output keeps it');
 end
 
-function testANonEtaTargetIsUntouched(testCase)
-% `epoch` exists only in V_eta. Under any other target the pass must be a no-op
-% that says so, not a silent return that looks identical to having run. The
-% batch is migrated at V_eta and the PASS is asked for another target, so this
-% tests the guard and not some other target's migration path.
-out = runJ({sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
-            elementEpochBody('ee_0', 'sess_A', 't00069', 'el_1')});
-before = numel(out.migrated);
-[out, rep] = did2.convert.epochMint(out, ...
-    'Validate', false, 'TargetVersion', 'V_delta');
-verifyFalse(testCase, rep.ran, 'a non-V_eta target must report that it did not run');
-verifyEqual(testCase, numel(out.migrated), before);
+function testANonEtaTargetIsRefused(testCase)
+% `epoch` exists only in V_eta, and V_eta is the only migration target
+% -- another target is an argument error, not a silent no-op.
+r = struct('migrated', {{}}, 'quarantine', [], ...
+    'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
+verifyError(testCase, @() did2.convert.epochMint(r, ...
+    'Validate', false, 'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 % ===================== the key is the PAIR =============================

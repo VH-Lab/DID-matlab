@@ -363,7 +363,7 @@ verifyEqual(testCase, out.migrated{1}.get('stimulus_response_scalar.response_typ
 end
 
 function testUnparseableResponseTypePassesThrough(testCase)
-% The V_delta/V_eta tombstone's own documentation claims 'peak' and 'frequency'
+% The V_eta tombstone's own documentation claims 'peak' and 'frequency'
 % are possible values; that text came from DID-schema's V_alpha snapshot, and the
 % writer can produce only 'mean' | 'F<n>'. If a document ever carries something
 % else the harmonic is unknown -- and `harmonic` is the field that makes this

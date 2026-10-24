@@ -1,9 +1,9 @@
 classdef query
-    % did2.query  Query value + in-memory evaluator for V_delta documents.
+    % did2.query  Query value + in-memory evaluator for V2 documents.
     %
     %   did2.query implements the abstract query model documented in
     %   did-schema/schemas/did_query_model.md, evaluated directly against
-    %   the V_delta class-scoped wire shape (see did2.document).
+    %   the V2 class-scoped wire shape (see did2.document).
     %
     %   The query value is a tree of search structures combined by boolean
     %   composition. A search structure has four parts:
@@ -506,7 +506,7 @@ classdef query
                 if strcmp(name, '*')
                     gotName = true;
                 end
-                % Accept document_id (V_delta canonical), value
+                % Accept document_id (V2 canonical), value
                 % (earlier draft), and id (raw v1) so this in-memory
                 % evaluator works on bodies at any stage of the
                 % migration pipeline.

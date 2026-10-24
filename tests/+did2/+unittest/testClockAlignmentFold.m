@@ -113,16 +113,12 @@ verifyTrue(testCase, out.clock_alignment_fold.ran);
 verifyEqual(testCase, out.clock_alignment_fold.syncgraphs_seen, 0);
 end
 
-function testNonEtaTargetIsUntouched(testCase)
-% A non-V_eta target leaves the batch exactly as it came in. UPDATED for #88:
-% compared against the input rather than a syncgraph count (pass 1 now folds).
-result = migrate({ ...
-    syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
-    sessionDocFixture('sessdoc_A', 'sess_A')});
-out = did2.convert.resolveClockAlignment(result, 'TargetVersion', 'V_delta');
-verifyEqual(testCase, numel(out.migrated), numel(result.migrated));
-verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), countOf(result, 'clock_alignment_policy'));
-verifyEqual(testCase, countOf(out, 'syncgraph'), countOf(result, 'syncgraph'));
+function testANonEtaTargetIsRefused(testCase)
+% V_eta is the only migration target; another one is an argument
+% error rather than a no-op.
+result = struct('migrated', {{}}, 'summary', struct('total', 0));
+verifyError(testCase, @() did2.convert.resolveClockAlignment(result, ...
+    'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 % ===================== the filefind syncrule arm ===========================

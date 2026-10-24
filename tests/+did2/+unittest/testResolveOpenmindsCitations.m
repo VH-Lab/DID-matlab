@@ -80,16 +80,12 @@ verifyEqual(testCase, out.migrated, {});
 verifyTrue(testCase, out.openminds_citations.ran);
 end
 
-function testItIsANoOpOnANonVEtaTarget(testCase)
-% The entity tier exists only in V_eta and this pass is wired into harnesses
-% that also run other targets. `ran` FALSE with every counter 0 is the
-% off-target reading, and it must not print the same as the empty-batch one.
+function testItRefusesANonVEtaTarget(testCase)
+% V_eta is the only migration target; another one is an argument
+% error rather than a no-op.
 r = emptyResult();
-[out, rep] = did2.convert.resolveOpenmindsCitations(r, ...
-    'Validate', false, 'TargetVersion', 'V_delta');
-verifyFalse(testCase, rep.ran);
-verifyEqual(testCase, rep.documents_inspected, 0);
-verifyEqual(testCase, out.migrated, {});
+verifyError(testCase, @() did2.convert.resolveOpenmindsCitations(r, ...
+    'Validate', false, 'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
 function testABatchWithNoOpenmindsDocumentsIsNotTheSameAsNotRunning(testCase)

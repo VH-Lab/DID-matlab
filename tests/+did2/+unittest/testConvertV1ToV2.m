@@ -1,12 +1,14 @@
 function tests = testConvertV1ToV2
-%TESTCONVERTV1TOV2 Smoke tests for the did2.convert v1->V_delta dispatcher.
+%TESTCONVERTV1TOV2 Smoke tests for the did2.convert v1->V_eta dispatcher.
 %
-%   Exercises the converter skeleton (PLAN.md §9.6 sub-step 6a): the
+%   Exercises the converter skeleton: the
 %   dispatcher's input normalisation, the universal-rename pass, the
 %   identity-migrator fallback, quarantine semantics, and the
 %   end-of-run summary table. Tests run with Validate=false so they do
-%   not depend on the schema cache being able to resolve V_delta
+%   not depend on the schema cache being able to resolve the V_eta
 %   schemas at the test-runner working directory.
+%
+%   'V_eta' is the only and the default target.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testConvertV1ToV2');
@@ -36,7 +38,7 @@ v1Body.base = struct( ...
 end
 
 function testUniversalRenamesSetsSchemaVersion(testCase)
-% Every v1 body picks up `document_class.schema_version = 'V_delta'`
+% Every v1 body picks up `document_class.schema_version = 'V_eta'`
 % so the next dispatcher pass takes the short-circuit. The tag lives
 % in document_class (set-version metadata, sibling of class_name /
 % class_version / superclasses), never on the base block.
@@ -44,7 +46,7 @@ v1 = makeV1Skeleton('treatment');
 v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
     'numeric_value', 2.0, 'string_value', '2 percent');
 out = did2.convert.universalRenames(v1);
-verifyEqual(testCase, out.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, out.document_class.schema_version, 'V_eta');
 verifyFalse(testCase, isfield(out.base, 'schema_version'));
 end
 
@@ -60,16 +62,16 @@ verifyEqual(testCase, out.document_class.schema_version, 'did_v1');
 end
 
 function testUniversalRenamesMigratesStaleBaseSchemaVersion(testCase)
-% Bodies emitted by an earlier V_delta-draft migrator that stamped
+% Bodies emitted by an earlier draft migrator that stamped
 % the tag on base get migrated forward: base.schema_version is moved
 % to document_class.schema_version and stripped from base. Without
 % this, the strict-fields validator would reject base.schema_version
 % as an undeclared field on the next write.
 v1 = makeV1Skeleton('treatment');
 v1.treatment = struct();
-v1.base.schema_version = 'V_delta';
+v1.base.schema_version = 'V_eta';
 out = did2.convert.universalRenames(v1);
-verifyEqual(testCase, out.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, out.document_class.schema_version, 'V_eta');
 verifyFalse(testCase, isfield(out.base, 'schema_version'));
 end
 
@@ -95,7 +97,7 @@ out = did2.convert.universalRenames(v1);
 verifyFalse(testCase, isfield(out, 'ndi_document'));
 verifyTrue(testCase, isfield(out, 'base'));
 verifyEqual(testCase, out.base.id, 'aabb1122ccdd3344_1122334455667788');
-verifyEqual(testCase, out.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, out.document_class.schema_version, 'V_eta');
 end
 
 function testUniversalRenamesSnakeCasesCamelClassName(testCase)
@@ -124,7 +126,7 @@ verifyFalse(testCase, isfield(out.depends_on, 'version'));
 end
 
 function testUniversalRenamesPreservesExistingDependsOnDocumentId(testCase)
-% Earlier V_delta drafts used `value`; the rename treats that as a
+% Earlier drafts used `value`; the rename treats that as a
 % synonym so already-migrated bodies don't lose information when
 % re-run.
 v1 = makeV1Skeleton('treatment');
@@ -272,48 +274,48 @@ verifyEqual(testCase, doc.get('epochclocktimes.t0'), 0);
 verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1.5);
 end
 
-function vDelta = makeVDeltaSkeleton(className)
-% Build a body that is already V_delta-shaped: schema_version stamped
+function target = makeTargetSkeleton(className)
+% Build a body that is already at the target: schema_version 'V_eta' stamped
 % on document_class, snake-cased class name, depends_on uses
 % `document_id` (not `id` or the earlier-draft `value`).
-vDelta = struct();
-vDelta.document_class = struct( ...
+target = struct();
+target.document_class = struct( ...
     'class_name',     className, ...
     'class_version',  '1.0.0', ...
     'superclasses',   struct( ...
         'class_name',    'base', ...
         'class_version', '1.0.0'), ...
-    'schema_version', 'V_delta');
-vDelta.depends_on = struct('name', {}, 'document_id', {});
-vDelta.base = struct( ...
+    'schema_version', 'V_eta');
+target.depends_on = struct('name', {}, 'document_id', {});
+target.base = struct( ...
     'id',         'aabb1122ccdd3344_1122334455667788', ...
     'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
     'name',       'unit-test', ...
     'datestamp',  '2024-06-01T12:00:00.000Z');
 end
 
-function testShortCircuitOnAlreadyVDeltaBody(testCase)
+function testShortCircuitOnAlreadyTargetBody(testCase)
 % A body that already declares
-% document_class.schema_version=='V_delta' skips universalRenames and
+% document_class.schema_version=='V_eta' skips universalRenames and
 % the per-class migrators. The epochclocktimes block carries
 % v1-shaped fields (clocktype, t0_t1); under the short-circuit those
 % stay verbatim because the superclass migrator never runs.
 % ensureClassBlocks still runs (rebuilds the chain) and the body
 % still becomes a did2.document.
-vDelta = makeVDeltaSkeleton('some_unregistered_class');
-vDelta.some_unregistered_class = struct('foo', 'bar');
-vDelta.epochclocktimes = struct('clocktype', 'dev_local_time', ...
+target = makeTargetSkeleton('some_unregistered_class');
+target.some_unregistered_class = struct('foo', 'bar');
+target.epochclocktimes = struct('clocktype', 'dev_local_time', ...
     't0_t1', [0 1.5]);
-vDelta.document_class.superclasses = struct( ...
+target.document_class.superclasses = struct( ...
     'class_name', {'base', 'epochclocktimes'});
-result = did2.convert.v1_to_v2(vDelta, 'Validate', false);
+result = did2.convert.v1_to_v2(target, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
 verifyEqual(testCase, result.summary.quarantine_count, 0);
 doc = result.migrated{1};
 verifyEqual(testCase, doc.get('epochclocktimes.clocktype'), ...
     'dev_local_time');
 verifyEqual(testCase, doc.get('epochclocktimes.t0_t1'), [0 1.5]);
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
 % Per-class summary keys off the unchanged class_name.
 verifyEqual(testCase, result.summary.by_class.some_unregistered_class, 1);
 end
@@ -338,7 +340,7 @@ verifyEqual(testCase, second.summary.migrated_count, 1);
 verifyEqual(testCase, second.summary.quarantine_count, 0);
 secondBody = second.migrated{1}.toStruct();
 
-verifyEqual(testCase, secondBody.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, secondBody.document_class.schema_version, 'V_eta');
 verifyEqual(testCase, secondBody.epochclocktimes.epoch_clock, ...
     'dev_local_time');
 verifyEqual(testCase, secondBody.epochclocktimes.t0, 0);
@@ -346,42 +348,40 @@ verifyEqual(testCase, secondBody.epochclocktimes.t1, 1.5);
 verifyEqual(testCase, secondBody, firstBody);
 end
 
-function testMixedBatchOfV1AndVDeltaBodies(testCase)
-% A batch with both v1 bodies (need full migration) and V_delta
+function testMixedBatchOfV1AndTargetBodies(testCase)
+% A batch with both v1 bodies (need full migration) and V_eta
 % bodies (short-circuit) migrates every document successfully.
 v1A = makeV1Skeleton('unknown_class');
 v1A.unknown_class = struct('foo', 'bar_v1');
-vDeltaA = makeVDeltaSkeleton('unknown_class');
-vDeltaA.unknown_class = struct('foo', 'bar_vdelta');
+targetA = makeTargetSkeleton('unknown_class');
+targetA.unknown_class = struct('foo', 'bar_target');
 v1B = makeV1Skeleton('some_other_class');
 v1B.some_other_class = struct('n', 42);
-vDeltaB = makeVDeltaSkeleton('some_other_class');
-vDeltaB.some_other_class = struct('n', 99);
+targetB = makeTargetSkeleton('some_other_class');
+targetB.some_other_class = struct('n', 99);
 
 result = did2.convert.v1_to_v2( ...
-    {v1A, vDeltaA, v1B, vDeltaB}, 'Validate', false);
+    {v1A, targetA, v1B, targetB}, 'Validate', false);
 
 verifyEqual(testCase, result.summary.total, 4);
 verifyEqual(testCase, result.summary.migrated_count, 4);
 verifyEqual(testCase, result.summary.quarantine_count, 0);
 verifyEqual(testCase, result.summary.by_class.unknown_class, 2);
 verifyEqual(testCase, result.summary.by_class.some_other_class, 2);
-% Every migrated doc carries the V_delta schema_version stamp on
-% document_class (v1 bodies pick it up from universalRenames;
-% V_delta bodies kept their own).
+% Every migrated doc carries the V_eta schema_version stamp on
+% document_class (v1 bodies are stamped on the way out;
+% V_eta bodies kept their own).
 for k = 1:numel(result.migrated)
     doc = result.migrated{k};
-    verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+    verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
 end
 end
 
 function testUniversalRenamesRenameClassNamesFalsePreservesClassName(testCase)
 % When RenameClassNames=false the document_class.class_name and the
-% matching top-level property block key are left untouched. This is
-% the contract callers like NDI's applyReadNormalization rely on:
-% their on-disk schemas still spell classnames in camelCase
-% (e.g., demoNDI) and the legacy v1 validator compares the strings
-% by exact match.
+% matching top-level property block key are left untouched, for callers
+% whose schemas still spell classnames in camelCase (e.g., demoNDI) and
+% whose v1 validator compares the strings by exact match.
 v1 = makeV1Skeleton('demoNDI');
 v1.demoNDI = struct('value', 5);
 out = did2.convert.universalRenames(v1, 'RenameClassNames', false);
@@ -389,9 +389,8 @@ verifyEqual(testCase, out.document_class.class_name, 'demoNDI');
 verifyTrue(testCase, isfield(out, 'demoNDI'));
 verifyFalse(testCase, isfield(out, 'demo_ndi'));
 verifyEqual(testCase, out.demoNDI.value, 5);
-% schema_version stamping still runs — that's the V_delta shape
-% transformation the gate flip actually needs.
-verifyEqual(testCase, out.document_class.schema_version, 'V_delta');
+% schema_version stamping still runs: it is not an identifier rename.
+verifyEqual(testCase, out.document_class.schema_version, 'V_eta');
 end
 
 function testUniversalRenamesRenameClassNamesFalsePreservesSuperclassNames(testCase)
@@ -442,7 +441,7 @@ verifyFalse(testCase, isfield(out.demoNDI, 'data_type'));
 end
 
 function testUniversalRenamesRenameClassNamesFalseStillRewritesDependsOn(testCase)
-% depends_on rewrites are V_delta shape changes, not identifier
+% depends_on rewrites are shape changes, not identifier
 % renames, so they still run under RenameClassNames=false.
 v1 = makeV1Skeleton('demoNDI');
 v1.demoNDI = struct();
@@ -458,8 +457,8 @@ verifyFalse(testCase, isfield(out.depends_on, 'version'));
 end
 
 function testUniversalRenamesRenameClassNamesFalseStillRewritesAppBlock(testCase)
-% app.name -> app.app_name is a V_delta field rename to match
-% V_delta's `app` schema declaration. It is not gated by
+% app.name -> app.app_name is a field rename to match
+% the V2 `app` schema declaration. It is not gated by
 % RenameClassNames (it's a fixed-target rename, not an identifier
 % sweep).
 v1 = makeV1Skeleton('demoNDI');
@@ -483,7 +482,7 @@ result = did2.convert.v1_to_v2(v1, 'Validate', false, ...
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
 verifyEqual(testCase, doc.className(), 'demoNDI');
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
 end
 
 function testShortCircuitSkippedWhenSchemaVersionMissing(testCase)
@@ -502,8 +501,8 @@ v1.depends_on = struct( ...
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
-% universalRenames ran: schema_version got stamped on document_class.
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+% the full pipeline ran: schema_version got stamped on document_class.
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
 % universalRenames ran: depends_on(1).id was promoted to
 % .document_id, and the legacy id/version keys were dropped.
 dependsOn = doc.toStruct().depends_on;
@@ -660,7 +659,7 @@ function testLegacyDeclaredBaseFieldListMatchesTheSchema(testCase)
 % fails here rather than silently inflating `moved_undeclared_field_instances`
 % on every future run.
 thisDir = fileparts(mfilename('fullpath'));
-schemaFile = fullfile(fileparts(thisDir), 'fixtures', 'V_delta', 'base.json');
+schemaFile = fullfile(fileparts(thisDir), 'fixtures', 'schema_minimal', 'base.json');
 verifyTrue(testCase, isfile(schemaFile), ...
     sprintf('base schema fixture not found at %s', schemaFile));
 schema = jsondecode(fileread(schemaFile));
@@ -710,7 +709,7 @@ function testLegacyDenominatorSeparatesTheIdempotencyShortCircuit(testCase)
 % would report every arm at 0 having looked at nothing.
 already = makeV1Skeleton('treatment');
 already.treatment = struct();
-already.document_class.schema_version = 'V_delta';
+already.document_class.schema_version = 'V_eta';
 result = did2.convert.v1_to_v2(already, 'Validate', false);
 L = result.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_total, 1);
@@ -1103,34 +1102,43 @@ end
 % took the branch that runs the migrators. These pin the ordering and the
 % refusal that replaced it.
 
-function testABodyBeyondTheTargetIsNotConverted(testCase)
-% THE BUG. A V_eta body normalised at TargetVersion V_delta -- which is what
-% ndi.database.internal.applyReadNormalization does on EVERY read -- was pushed
-% through universalRenames and the per-class migrators aimed at a version it
-% had already passed.
-v1 = makeV1Skeleton('treatment');
-v1.document_class.schema_version = 'V_eta';
-v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
-    'numeric_value', 2.0, 'string_value', '2 percent');
-r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
-verifyEmpty(testCase, r.quarantine, ...
-    'a body beyond the target must not quarantine');
-verifyNotEmpty(testCase, r.migrated, 'the body was dropped entirely');
-verifyEqual(testCase, ...
-    r.migrated{1}.toStruct().document_class.schema_version, 'V_eta', ...
-    ['the body was converted BACKWARDS -- its version was rewritten to the ' ...
-     'target it had already passed']);
-end
-
 function testABodyBelowTheTargetStillConverts(testCase)
-% The counterpart, so the ordering fix cannot pass by refusing everything.
-v1 = makeV1Skeleton('treatment');
-v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
-    'numeric_value', 2.0, 'string_value', '2 percent');
-r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+% The counterpart of the short-circuit, so the ordering cannot pass by
+% skipping everything. A body stamped with a known earlier name ('V_zeta')
+% ranks below V_eta: it is converted forward and leaves stamped 'V_eta'.
+v1 = makeV1Skeleton('unknown_class');
+v1.document_class.schema_version = 'V_zeta';
+v1.unknown_class = struct('foo', 'bar');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false);
+verifyEmpty(testCase, r.quarantine, 'a body below the target was refused');
 verifyNotEmpty(testCase, r.migrated);
 verifyEqual(testCase, ...
-    r.migrated{1}.toStruct().document_class.schema_version, 'V_delta');
+    r.migrated{1}.toStruct().document_class.schema_version, 'V_eta');
+verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 1, ...
+    'a body below the target must take the full pipeline');
+end
+
+function testAnyOtherTargetIsRefused(testCase)
+% V_eta is the only target. Asking for another (a made-up 'V_none', or an
+% earlier name such as 'V_zeta') is an argument-validation error, not a silent
+% fallback to V_eta.
+v1 = makeV1Skeleton('unknown_class');
+v1.unknown_class = struct('foo', 'bar');
+for target = {'V_none', 'V_zeta'}
+    verifyError(testCase, ...
+        @() did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', target{1}), ...
+        'MATLAB:validators:mustBeMember', target{1});
+end
+end
+
+function testTheDefaultTargetIsVEta(testCase)
+% A caller that names no target (did2.convert.fromV1Database, ndi.migrate.cloud)
+% gets V_eta.
+v1 = makeV1Skeleton('unknown_class');
+v1.unknown_class = struct('foo', 'bar');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false);
+verifyEqual(testCase, ...
+    r.migrated{1}.toStruct().document_class.schema_version, 'V_eta');
 end
 
 function testAnUnknownSchemaVersionIsREFUSEDNotConverted(testCase)
@@ -1142,7 +1150,7 @@ v1 = makeV1Skeleton('treatment');
 v1.document_class.schema_version = 'V_omega';
 v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
     'numeric_value', 2.0, 'string_value', '2 percent');
-r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false);
 verifyEmpty(testCase, r.migrated, ...
     'an unknown vintage was converted -- it must be refused');
 verifyNotEmpty(testCase, r.quarantine, ...
@@ -1155,24 +1163,23 @@ function testAMissingSchemaVersionIsDidV1AndIsNotRefused(testCase)
 % The distinction the refusal turns on. ABSENT is the ORIGIN of the line, not
 % an unknown vintage -- collapsing the two would quarantine every real did_v1
 % document in existence.
-v1 = makeV1Skeleton('treatment');
+v1 = makeV1Skeleton('unknown_class');
 verifyFalse(testCase, isfield(v1.document_class, 'schema_version'), ...
     'the fixture already declares a version; this test would prove nothing');
-v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
-    'numeric_value', 2.0, 'string_value', '2 percent');
-r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+v1.unknown_class = struct('foo', 'bar');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false);
 verifyEmpty(testCase, r.quarantine, 'a did_v1 body was refused');
 verifyNotEmpty(testCase, r.migrated);
 end
 
 function testTheVersionRankOrdersTheLineAndFlagsTheUnknown(testCase)
 [r0, k0] = did2.convert.schemaVersionRank('');
-[rd, kd] = did2.convert.schemaVersionRank('V_delta');
+[rd, kd] = did2.convert.schemaVersionRank('V_zeta');
 [re, ke] = did2.convert.schemaVersionRank('V_eta');
 [rx, kx] = did2.convert.schemaVersionRank('V_omega');
 verifyTrue(testCase, k0 && kd && ke);
 verifyEqual(testCase, r0, 0, 'did_v1 is the origin of the line');
-verifyTrue(testCase, rd < re, 'V_delta must rank before V_eta');
+verifyTrue(testCase, rd < re, 'V_zeta must rank before V_eta');
 verifyFalse(testCase, kx, 'an unknown name must not be reported as known');
 verifyTrue(testCase, isnan(rx), ...
     'an unknown name must not get rank 0 -- that is did_v1, "convert this"');
