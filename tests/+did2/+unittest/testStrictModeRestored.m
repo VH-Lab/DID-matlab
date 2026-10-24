@@ -38,6 +38,16 @@ verifyRestored(testCase, 'TermRegistry', @() did2.convert.v1_to_v2({}, ...
     'Validate', false, 'Audits', false));
 end
 
+function testFoldGenericFilesRestoresRetiredClasses(testCase)
+verifyRestored(testCase, 'RetiredClasses', @() did2.convert.foldGenericFiles( ...
+    emptyResult(), 'Validate', false, 'TargetVersion', 'V_eta'));
+end
+
+function testV1ToV2RestoresRetiredClasses(testCase)
+verifyRestored(testCase, 'RetiredClasses', @() did2.convert.v1_to_v2({}, ...
+    'Validate', false, 'Audits', false));
+end
+
 % ===================== helpers ==============================================
 
 function verifyRestored(testCase, switchName, pass)

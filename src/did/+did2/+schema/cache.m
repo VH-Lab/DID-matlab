@@ -150,6 +150,9 @@ classdef cache < handle
         curieRegistry struct = struct()
         termRegistry struct = struct()
         bindingRegistry struct = struct()
+        % class_disposition_meta.json, parsed (did2.schema.retiredIndex);
+        % empty struct when the schema has no such file
+        classDisposition struct = struct()
     end
 
     properties (Access = private)
@@ -1476,6 +1479,13 @@ classdef cache < handle
             %                           hold, raising
             %                           did2:build:unregisteredTerm. ARMED;
             %                           DID_ENFORCE_TERM_REGISTRY=0 disarms.
+            %     RetiredClasses        did2.build refuses a new document of
+            %                           a class the schema's
+            %                           class_disposition_meta.json lists
+            %                           as retired, raising
+            %                           did2:build:retiredClass. ARMED;
+            %                           DID_ENFORCE_RETIRED_CLASSES=0
+            %                           disarms. did2.convert turns it off.
             %
             %   BOTH ARE NOW ARMED (2026-08-10, team's call) -- and they were
             %   armed on OPPOSITE evidence, which must not be flattened out.
@@ -1664,6 +1674,19 @@ classdef cache < handle
                     ... nothing. DID_ENFORCE_TERM_REGISTRY=0 turns it off.
                     'TermRegistry', ...
                         ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_TERM_REGISTRY'), ...
+                    ... Decided by Jess Haley, 2026-10-24 [V2 builder refuses
+                    ... retired] (did-schema V_eta_go_forward_class_audit.md):
+                    ... "did2.build refuses to create a new document of a class
+                    ... whose disposition is retire, naming its replacement
+                    ... where one is recorded; reading v1 and the generic
+                    ... migration are not affected." ARMED BY DEFAULT, like
+                    ... TermRegistry. Only did2.build reads it; did2.convert
+                    ... turns it off while it migrates (the generic migration
+                    ... is not affected). A schema with no
+                    ... class_disposition_meta.json refuses nothing.
+                    ... DID_ENFORCE_RETIRED_CLASSES=0 turns it off.
+                    'RetiredClasses', ...
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_RETIRED_CLASSES'), ...
                     ... did-schema data_body AMENDMENT 5 (rule
                     ... value_inline_or_body on `value`, Jess Haley, signed
                     ... 2026-10-21). ARMED BY DEFAULT because the rule REPLACES
@@ -2296,6 +2319,13 @@ classdef cache < handle
             bindingFile = fullfile(obj.schemaPath, 'binding_registry_meta.json');
             if isfile(bindingFile)
                 obj.bindingRegistry = jsondecode(fileread(bindingFile));
+            end
+            % the classes the schema retires (Jess Haley, 2026-10-24,
+            % V_eta_go_forward_class_audit.md [V2 builder refuses retired]);
+            % absent before did-schema ships it, and then nothing is refused
+            dispositionFile = fullfile(obj.schemaPath, 'class_disposition_meta.json');
+            if isfile(dispositionFile)
+                obj.classDisposition = jsondecode(fileread(dispositionFile));
             end
         end
 
