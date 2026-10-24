@@ -1,6 +1,6 @@
 function bodies = hartley_calc(preBody)
 %HARTLEY_CALC Brainstorm-J migrator: the ndi.calc.vis.hartley reverse-correlation
-%   OUTPUT document -> the subject_calculation LEAF `receptive_field_calculation`
+%   OUTPUT document -> the named calculator class `receptive_field_calculation`
 %   + the `receptive_field` result composite, id- and depends_on-PRESERVED, plus
 %   the response volume in TWO `sampled_body` documents (one per plane) and the
 %   windowed spike train as a THIRD, input-side body.
@@ -226,8 +226,9 @@ function bodies = hartley_calc(preBody)
 %   frame k showed stimulus (S, KXV, KYV, ORDER)(k) at time frame_times(k), and
 %   3360 == 3360 in 210 of 210.
 %
-%   NEITHER CAN BE BUILT HERE. `timed_sequence` is DECLARED ABSTRACT
-%   (schemas/V_eta/draft/timed_sequence.json) and +did2/+schema/cache.m raises
+%   NEITHER CAN BE BUILT HERE. `timed_sequence` WAS DECLARED ABSTRACT
+%   (schemas/V_eta/draft/timed_sequence.json, replaced by `item` in did-schema
+%   c12d778, 2026-10-04; this paragraph predates that) and +did2/+schema/cache.m raises
 %   `did2:validation:abstractInstantiation` for any document naming an abstract
 %   class, so the destination cannot be instantiated at all; it belongs to the
 %   stimulus model (#31), which is out of this signature's scope.
@@ -240,7 +241,7 @@ function bodies = hartley_calc(preBody)
 %   that produced it [...] Retaining it keeps the computation reproducible" --
 %   and these two blocks ARE the reverse-correlation's regressors, i.e. exactly
 %   what makes it reproducible. It is a HOLDING SLOT, not a model decision:
-%   when #31 lands, the sequence moves to the `timed_sequence` and this key
+%   when #31 lands, the sequence moves to the `timed_sequence` (now `item`) and this key
 %   goes. Dropping them instead would be a silent loss of 5 x 3360 real values
 %   per document, which is the failure this repository's whole error history is
 %   made of. Reported as a team question.
@@ -504,7 +505,7 @@ end
 function block = datumOrderBlock()
 %DATUMORDERBLOCK The block that declares `datum_order` in the loaded schema.
 %   `data` since did-schema #88 (Haley audit D-5, 2026-10-20); `sampled_body`
-%   on did-schema main and v_eta-pre73. A migrator holds no cache handle, so
+%   on did-schema main before #88 merged (2026-10-23) and on v_eta-pre73. A migrator holds no cache handle, so
 %   it asks the shared one; `sampled_body` when no schema can be asked.
 block = '';
 try

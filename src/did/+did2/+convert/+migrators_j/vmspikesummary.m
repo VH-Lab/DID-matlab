@@ -57,7 +57,7 @@ function bodies = vmspikesummary(preBody)
 %   is now carried.
 %
 %   V_eta's tombstone declares the real shape so the passthrough validates -- see
-%   build_v_eta.py.
+%   build_v_eta.py (deleted 2026-10-21).
 %
 %   THE GUARD. A body carrying `mean_vm`, `mean_firing_rate`, `num_spikes` or
 %   `recording_duration` is REJECTED BY NAME: those are DID-side inventions from

@@ -14,7 +14,8 @@ function tf = isAlreadyTarget(body, targetVersion)
 %   (a) document_class.schema_version ranks AT OR BEYOND TARGETVERSION on the
 %       did_v1 -> V_eta line (did2.convert.schemaVersionRank), the version
 %       having been set by the last run of universalRenames, the writer, or --
-%       for 'V_epsilon' -- a context assembler such as
+%       for the former 'V_epsilon' target (deleted 2026-10-21) -- a context
+%       assembler such as
 %       ndi.migrate.internal.stimulusBathToBath that emits ready-made target
 %       bodies. This was an EQUALITY test until 2026-08-14, which made a body
 %       newer than the target indistinguishable from one older than it; an

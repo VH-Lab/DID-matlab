@@ -120,7 +120,7 @@ function bodies = epochfiles_ingested(preBody)
 %   BLOCKER 2 -- THE FOLD WOULD DESTROY `epochprobemap`, WITH NOWHERE TO PUT IT
 %                AND SINCE BLOCKER 1 FELL, THIS IS THE ONLY ONE LEFT.
 %   ---------------------------------------------------------------------------
-%   `ingestion_manifest` declares no `epochprobemap` field (build_v_eta.py drops
+%   `ingestion_manifest` declares no `epochprobemap` field (build_v_eta.py (deleted 2026-10-21) drops
 %   it), because under option B each row becomes real edges. The plan's own
 %   decision is *"B as the model, A as pass-1 behaviour"* -- A being *"keep as
 %   infra, repaired ... keep the probemap as text"*.

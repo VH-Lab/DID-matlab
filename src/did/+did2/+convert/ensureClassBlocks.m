@@ -94,7 +94,8 @@ end
 % Drop stray EMPTY blocks left by v1 for chain classes that the target
 % schema does NOT host on the instance. v1 documents carried a property
 % block for every class in their hierarchy, including parents that became
-% abstract / fieldless in V_delta/V_epsilon (abstract classes are new
+% abstract / fieldless in the target schema (written for V_delta/V_epsilon;
+% V_epsilon was deleted 2026-10-21) (abstract classes are new
 % here). Those arrive as empty structs and would trip the strict
 % undeclared-top-level-block check. Only EMPTY such blocks are removed --
 % a non-empty one signals real data a migrator must place, so it is left

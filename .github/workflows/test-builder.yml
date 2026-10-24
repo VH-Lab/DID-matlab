@@ -1,10 +1,7 @@
 name: did2.build tests (V_eta #73 schema)
 
-# The builder library (src/did/+did2/+build) targets the #73 V_eta schema --
-# did-schema `main` after PR #76. Every other workflow here is PINNED to the
-# pre-#73 tag `v_eta-pre73` until the migrators catch up (see test-code.yml),
-# and under that schema tests/+did2/+unittest/testBuild.m FILTERS itself with
-# an assumeFail message rather than passing.
+# The builder library (src/did/+did2/+build) targets the V_eta schema on
+# did-schema `main` (#88 merged 2026-10-23; the `v_eta-pre73` pin is gone).
 #
 # This job is where those tests really run. It checks out did-schema `main`
 # (or a same-named did-schema branch when one exists, for a schema change and
@@ -36,8 +33,7 @@ on:
       did_schema_ref:
         description: >-
           did-schema ref to test against. Empty resolves as on push: a
-          same-named did-schema branch, else did-schema #88's branch
-          claude/ecstatic-pascal-md91fw, else main.
+          same-named did-schema branch, else main.
         required: false
         default: ''
         type: string
@@ -69,17 +65,10 @@ jobs:
                https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then
             echo "did-schema HAS branch '$want' -- using it."
             echo "ref=$want" >> "$GITHUB_OUTPUT"
-          elif git ls-remote --exit-code --heads \
-               https://github.com/Waltham-Data-Science/did-schema.git claude/ecstatic-pascal-md91fw >/dev/null 2>&1; then
-            # FALLBACK TO #88, NOT main (2026-10-21). DID-matlab's code is ported
-            # to did-schema #88 (#219 merged into #218), so a DID-matlab branch
-            # with no did-schema twin -- e.g. claude/port-88-sampled -- measured
-            # main's schema and failed testBuild against a schema its code no
-            # longer targets (run 39668355430). Same order as the quick gate.
-            echo "did-schema has no branch '$want' -- FALLING BACK to #88's branch claude/ecstatic-pascal-md91fw."
-            echo "ref=claude/ecstatic-pascal-md91fw" >> "$GITHUB_OUTPUT"
           else
-            echo "did-schema has neither '$want' nor claude/ecstatic-pascal-md91fw -- FALLING BACK to main."
+            # did-schema #88, the shape DID-matlab's code is ported to, merged
+            # into main on 2026-10-23, so main is the fallback again.
+            echo "did-schema has no branch '$want' -- FALLING BACK to main."
             echo "ref=main" >> "$GITHUB_OUTPUT"
           fi
 

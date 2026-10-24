@@ -1,6 +1,7 @@
 function bodies = sorting_parameters(preBody)
 %SORTING_PARAMETERS Brainstorm-J migrator: did_v1 sorting_parameters -> ONE
-%   `method_parameters` document (+ the `software` entity its v1 `app` block
+%   `method` document (`method_parameters` before did-schema #88) (+ the
+%   `software` entity its v1 `app` block
 %   names).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.

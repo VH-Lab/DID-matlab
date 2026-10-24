@@ -65,7 +65,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %
 %   WHERE THE DOCUMENTS GO MEANWHILE: nowhere. Each `valid_interval` passes
 %   through to its own v1 tombstone (`schemas/V_eta/stable/valid_interval.json`,
-%   restated from the WRITER in DID-schema build_v_eta.py), which declares
+%   restated from the WRITER in DID-schema build_v_eta.py (deleted 2026-10-21)), which declares
 %   nothing required and an OPTIONAL `element_id`, so a passthrough cannot trip
 %   `mustBeNonEmpty` or `undeclaredField`. That is the same pattern every other
 %   deferred family uses.

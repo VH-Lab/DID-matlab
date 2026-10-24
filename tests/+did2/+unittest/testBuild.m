@@ -2,7 +2,8 @@ function tests = testBuild
 %TESTBUILD did2.build: V_eta documents built from the schema, checked on the way.
 %
 %   The builder targets the #73 V_eta schema (did-schema main after PR #76).
-%   The rest of this suite is pinned to the pre-#73 tag `v_eta-pre73`, so when
+%   The rest of this suite was pinned to the pre-#73 tag `v_eta-pre73` until
+%   the 2026-10-21 migrator port, so when
 %   the loaded schema predates #73 every test here is FILTERED (assumeFail)
 %   with a message saying so -- never silently passed. test-builder.yml runs
 %   this file against did-schema main and fails if anything was filtered.

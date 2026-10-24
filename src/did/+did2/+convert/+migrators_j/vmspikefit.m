@@ -1,6 +1,7 @@
 function bodies = vmspikefit(preBody)
-%VMSPIKEFIT Brainstorm-J migrator: did_v1 vmspikefit -> a fit-residual
-%   score_observation (+ the shared session anchor).
+%VMSPIKEFIT Brainstorm-J migrator: did_v1 vmspikefit -> a `calculation` with
+%   value kind `model_fit` (private/jModelFit) + the shared session anchor
+%   (+ software and run documents).
 %
 %   ---------------------------------------------------------------------
 %   FIELD NAMES CORRECTED -- AND THE QUANTITY IS NOT WHAT IT CLAIMED

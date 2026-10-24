@@ -1,6 +1,7 @@
 function bodies = kiasort_clusters(preBody)
 %KIASORT_CLUSTERS Brainstorm-J migrator: did_v1 kiasort_clusters -> the D-C
-%   analysis-tier shape (count_observation + opaque_body + session anchor).
+%   analysis-tier shape (a `calculation` with value kind `label` + opaque_body +
+%   session anchor, + software and run documents).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   kiasort_clusters is a Kiasort spike-sorting RUN: an external, session-relative

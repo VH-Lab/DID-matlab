@@ -1,7 +1,8 @@
 function v2Body = treatment_drug(preBody)
 %TREATMENT_DRUG Brainstorm-J migrator: did_v1 treatment_drug -> an immersion
-%   (`manipulation` valued by its formulation) or a dose_manipulation, decided
-%   by the recorded location.
+%   (`manipulation` valued by its formulation) or a `manipulation` with value
+%   kind `dose`, decided by the recorded location (a heat-only row: a
+%   `manipulation` with value kind `temperature`).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Strict J has no `injection` class (D8). The administered substance(s)

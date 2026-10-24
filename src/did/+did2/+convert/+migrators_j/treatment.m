@@ -1,7 +1,9 @@
 function v2Body = treatment(preBody)
-%TREATMENT Brainstorm-J split migrator: did_v1 treatment -> a data-type-named
-%   subject_manipulation leaf (+ an optional site term_observation + the shared
-%   session anchor).
+%TREATMENT Brainstorm-J split migrator: did_v1 treatment -> a `manipulation`
+%   whose value kind is chosen by the treatment (`temperature`, `dose` or
+%   `formulation` for a substance, `term` for a procedure, or the kind the
+%   treatment's term names for its number) (+ an optional site `observation`
+%   with value kind `term` + the shared session anchor).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Strict J retires the injection/bath/generic_manipulation families (D8): a

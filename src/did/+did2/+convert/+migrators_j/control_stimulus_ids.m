@@ -6,9 +6,10 @@ function bodies = control_stimulus_ids(preBody)
 %   (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08). A
 %   DERIVED annotation of WHICH presented trials are the control reference,
 %   computed by the tuning_response app. It is NOT baked into the
-%   immutable stimulus body: it REFERENCES the presentation (the timed_sequence
-%   body-of-record, id-preserved through the second-pass decompose, so the edge
-%   resolves either way) and carries the derivation method; marked derived_from
+%   immutable stimulus body: it REFERENCES the presentation (the body-of-record,
+%   then `timed_sequence`, `item` since did-schema c12d778, 2026-10-04;
+%   id-preserved through the second-pass decompose, so the edge resolves
+%   either way) and carries the derivation method; marked derived_from
 %   the presentation (T10). Drops the v1 `app` mixin (software model, R1) and the
 %   `ids` container word (T13).
 %
@@ -76,7 +77,8 @@ function bodies = control_stimulus_ids(preBody)
 %      STIMULUS `data_type` DOCUMENT(S). Those documents are minted by the
 %      second-pass decompose (see migrators_j/stimulus_presentation.m), so pass 1
 %      cannot point at them. The information is not lost: `control_stimulus`
-%      carries the trial indices and `timed_sequence_id` carries the
+%      carries the trial indices and `timed_sequence_id` (an `item` since
+%      did-schema c12d778, 2026-10-04) carries the
 %      presentation, which is everything the second pass needs to resolve them.
 %   2. `software_id` (T10 -- the plan records the designation as computed by the
 %      tuning_response app) is NOT emitted: `control_designation` declares no

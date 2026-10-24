@@ -34,7 +34,7 @@ function bodies = site2channelmap(preBody)
 %   (device-as-subject, D2).
 %
 %   V_eta's tombstone declares the real shape so the passthrough validates -- see
-%   build_v_eta.py.
+%   build_v_eta.py (deleted 2026-10-21).
 %
 %   THE GUARD. A body carrying `num_sites` or `site_to_channel` is REJECTED BY
 %   NAME: those are DID-side inventions from the V_alpha snapshot, so their

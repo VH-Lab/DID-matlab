@@ -42,17 +42,14 @@ jobs:
         # is missing (PR merged into main), fall back to main.
         run: |
           want="${{ github.head_ref || github.ref_name }}"
-          schema_pr68="claude/ecstatic-pascal-md91fw"   # did-schema #88, the shape the migrators are ported to
+          # did-schema #88 (the shape the migrators are ported to) merged into
+          # main on 2026-10-23, so its branch is no longer a fallback.
           if git ls-remote --exit-code --heads \
                https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then
             echo "did-schema HAS branch '$want' -- using it."
             echo "ref=$want" >> "$GITHUB_OUTPUT"
-          elif git ls-remote --exit-code --heads \
-               https://github.com/Waltham-Data-Science/did-schema.git "$schema_pr68" >/dev/null 2>&1; then
-            echo "did-schema HAS PR #88 branch '$schema_pr68' -- using it (the migrators are ported to it)."
-            echo "ref=$schema_pr68" >> "$GITHUB_OUTPUT"
           else
-            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- FALLING BACK to main."
+            echo "did-schema has no branch '$want' -- FALLING BACK to main."
             echo "ref=main" >> "$GITHUB_OUTPUT"
           fi
 
@@ -63,7 +60,7 @@ jobs:
           ref: ${{ steps.schema-ref.outputs.ref }}
           path: did-schema
 
-      - name: Resolve the NDI-matlab ref (same name, claude/v2-object-layer, V2, main)
+      - name: Resolve the NDI-matlab ref (same name, V2, main)
         id: ndi-ref
         # did2.unittest.testBatchPassWiring asserts that every batch post-pass
         # diverging between the corpus gate and PRODUCTION
@@ -72,7 +69,7 @@ jobs:
         # is missing it SKIPS -- loudly, but it skips.
         #
         # THE REF FALLS BACK RATHER THAN FAILING THE JOB, in the decided order
-        # (same name, claude/v2-object-layer, V2, main; [NDI ref fallback]):
+        # (same name, V2, main; [NDI ref fallback]):
         # `main` has no +ndi/+migrate, so falling straight back to it skipped
         # the divergence check. Most DID-side
         # branches have no NDI-side twin, and a fast gate that goes red
@@ -84,12 +81,11 @@ jobs:
         run: |
           want="${{ github.head_ref || github.ref_name }}"
           # Jess Haley, 2026-10-22 [NDI ref fallback] (did-schema
-          # V_eta_go_forward_class_audit.md): the same-name branch, then
-          # claude/v2-object-layer (NDI #1021's head, until #1021 merges),
-          # then V2, then main. The integration branch is removed from this
-          # list in the first commit after the merge.
+          # V_eta_go_forward_class_audit.md): the same-name branch,
+          # then V2, then main. The integration branch claude/v2-object-layer
+          # (NDI #1021's head) left this list when #1021 merged (2026-10-23).
           chosen=""
-          for ref in "$want" claude/v2-object-layer V2 main; do
+          for ref in "$want" V2 main; do
             if git ls-remote --exit-code --heads \
                  https://github.com/VH-Lab/NDI-matlab.git "$ref" >/dev/null 2>&1; then
               chosen="$ref"
@@ -98,7 +94,7 @@ jobs:
             echo "NDI-matlab has NO branch '$ref'."
           done
           if [ -z "$chosen" ]; then
-            echo "NDI-matlab: none of '$want', claude/v2-object-layer, V2, main answered -- using main."
+            echo "NDI-matlab: none of '$want', V2, main answered -- using main."
             chosen=main
           fi
           if [ "$chosen" = "$want" ]; then

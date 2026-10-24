@@ -7,13 +7,16 @@
 %   without editing it. Anything the schema does not declare is an error, and
 %   optional fields that are not given are left OUT (never filled with blanks).
 %
-%   The target is V_eta as built by did-schema tools/build_v_eta.py after #73.
+%   The target is V_eta: the JSON under did-schema schemas/V_eta, edited
+%   directly since did-schema deleted tools/build_v_eta.py (2026-10-21).
 %
 %   Documents
 %     document               any class: fields routed to blocks, edges and files
 %                            checked, schema rules checked, then validateDocument
 %     statement              an observation / assertion / manipulation /
-%                            calculation about a subject
+%                            calculation (the direction class, with its value
+%                            kind as 'ValueKind') about an entity, by its
+%                            `entity_id` edge
 %     sampledBody            the byte array holding a statement's value
 %     opaqueBody             bytes in a named container format
 %     relativeTimeReference  a time offset from another document, on a clock
@@ -49,13 +52,14 @@
 %                            method_shared_and_own)
 %
 %   Checks beyond per-field types (the list lives in private/checkRules.m):
-%     the schema's own `rules` (key_regular_origin_spacing,
-%     key_positions_one_form, key_chunk_sampled_only, datum_type_when_bytes,
-%     clock_with_start, ingredients_or_product, ingredients_match_edges,
-%     method_shared_and_own, assertion_no_time_dimension,
-%     datum_order_multidimensional, fit_metric_unit;
-%     ingredient_in_formulation is known but needs the formulation, see
-%     checkDoseIngredients) -- an UNKNOWN rule is an error,
+%     the schema's own `rules` (data_type_when_bytes, clock_with_start,
+%     end_consistent, value_inline_or_body, ingredients_or_product,
+%     ingredients_match_edges, method_shared_and_own,
+%     assertion_no_time_dimension, datum_order_multidimensional,
+%     fit_metric_unit; the `dimensions` / `covariates` rules are checked by
+%     the builder's own dimension and covariate checks whether or not the
+%     schema names them; ingredient_in_formulation is known but needs the
+%     formulation, see checkDoseIngredients) -- an UNKNOWN rule is an error,
 %     not a skip; `require_inherited`; conditions carry one value; variables are
 %     unique across covariates and conditions; parameters carry one form and
 %     are unique; beside a `method_id` edge an inline `method` has no term

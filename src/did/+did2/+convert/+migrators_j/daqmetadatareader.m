@@ -84,7 +84,7 @@ function bodies = daqmetadatareader(preBody)
 %   `acquisition_metadata_reader` with an empty optional field, no edge and no
 %   content: a hollow document that validates clean and says nothing. Pass the
 %   source through instead. Safe because `daqmetadatareader` is in
-%   build_v_eta.py's `_KEEP_INFRA` and NOT in `_DELETE_PHASE8`, so its V_eta
+%   build_v_eta.py's (deleted 2026-10-21) `_KEEP_INFRA` and NOT in `_DELETE_PHASE8`, so its V_eta
 %   source tombstone still exists and the document validates as itself.
 %
 %   A class name with no file parameter, or a file parameter with no class name,

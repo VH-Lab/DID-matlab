@@ -5,8 +5,8 @@ function tests = testBuildDatumOrder
 %   from `sampled_body` up to `data`, beside `keys` (`dimensions` since
 %   data_body AMENDMENT 6): it describes whichever array the dimensions do, an
 %   inline value or a body's own; empty means F.
-%   did-schema `main` and the pinned v_eta-pre73 still declare it on
-%   `sampled_body`. did2.build places a field by its declaration, so
+%   did-schema `main` declared it on `sampled_body` until #88 merged
+%   (2026-10-23), as does the pre-#73 tag v_eta-pre73. did2.build places a field by its declaration, so
 %   sampledBody is unchanged; a caller that writes or reads the block directly
 %   (hartley_calc, the tests) asks did2.schema.cache/datumOrderBlock.
 %

@@ -610,7 +610,7 @@ function tf = schemaSaysAbstract(classSchema)
 %   with MATLAB:class:MethodRestricted rather than failing a verification. The
 %   header is public data on the struct getClass returns.
 %
-%   ABSENCE IS CONCRETE: build_v_eta.py emits the key only on abstract classes,
+%   ABSENCE IS CONCRETE: build_v_eta.py (deleted 2026-10-21) emits the key only on abstract classes,
 %   so a concrete one carries no `abstract` field at all. Both the logical and
 %   the numeric spelling are accepted because jsondecode's shape for a JSON
 %   `true` is not something a test should assume.

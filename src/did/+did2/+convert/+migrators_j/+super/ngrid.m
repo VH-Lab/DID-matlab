@@ -75,7 +75,7 @@ function v2Body = ngrid(preBody)
 %         and NOTHING in ndi_common mentions `ndims` or `dim_sizes`.
 %
 %   So this migrator has nothing to rename. It carries the block through and
-%   the V_eta `ngrid` tombstone declares those four names (build_v_eta.py).
+%   the V_eta `ngrid` tombstone declares those four names (build_v_eta.py (deleted 2026-10-21)).
 %   The schema half and this file are LOCKSTEP: either one alone quarantines
 %   every consumer -- the tombstone alone would meet a V_delta-reshaped block,
 %   this file alone would hand four undeclared fields to the strict-fields

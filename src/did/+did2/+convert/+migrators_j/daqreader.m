@@ -86,7 +86,7 @@ function bodies = daqreader(preBody)
 %   never re-dispatches after a rename. daqreader_ndr.m now delegates here
 %   after de-encoding.
 %
-%   A passthrough is safe: `daqreader` is in build_v_eta.py's `_KEEP_INFRA` and
+%   A passthrough is safe: `daqreader` is in build_v_eta.py's (deleted 2026-10-21) `_KEEP_INFRA` and
 %   NOT in `_DELETE_PHASE8`, so the V_eta source tombstone still exists and the
 %   document validates as itself, visible in `unconverted_by_class`.
 %

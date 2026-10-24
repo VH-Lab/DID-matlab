@@ -37,7 +37,7 @@ function bodies = spike_clusters(preBody)
 %   The document is therefore carried through intact for the NDI second pass,
 %   which can read file bytes and see the migrated-id graph. V_eta's
 %   `spike_clusters` tombstone declares the real shape so the passthrough
-%   validates -- see build_v_eta.py.
+%   validates -- see build_v_eta.py (deleted 2026-10-21).
 %
 %   THE GUARD. A body carrying `num_spikes` or `num_clusters` is REJECTED BY NAME:
 %   those are DID-side inventions from the V_alpha snapshot, so their presence

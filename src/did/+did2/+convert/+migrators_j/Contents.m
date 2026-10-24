@@ -6,24 +6,35 @@
 %   +migrators/<class> one. A migrator may return a single body OR a cell /
 %   struct array of several bodies (1 -> N fan-out).
 %
-%   Brainstorm J (did-schema/schemas/V_eta) rebuilds the SUBJECT SIDE:
-%     - `subject` is a BARE identity card (no is_group / is_biological); kind
-%       is a term_assertion, group-ness is derived from member_of edges.
-%     - `subject_statement` is restored and owns `variable` (+ storage_mode);
-%       `subject_interaction` adds `method` + `sample_time`; the direction
-%       classes are `subject_observation` / `subject_manipulation`.
-%     - Leaves are named by DATA TYPE (mass_observation, ...), no scalar_
-%       prefix, no scalar/dataseries split; the single term_observation for
-%       every ontology-term value.
-%     - Manipulations are data-type-named: dose_manipulation /
-%       formulation_manipulation (dose/formulation/chemical composite values),
-%       the <quantity>_manipulation tier, and term_manipulation for
-%       payload-free acts. NO injection/bath/pharmacological family, NO escape
-%       hatch.
+%   V_eta (did-schema/schemas/V_eta, after did-schema #88) models it as:
+%     - ONE `entity` class with a bound `type` (organism, device, cell, group,
+%       session, dataset, ...). A v1 subject, element or subject_group becomes
+%       an entity with its id preserved; a group's members point at it by
+%       `member_of` directed_relations.
+%     - Statements by composition: a statement's class is its DIRECTION
+%       (`observation`, `assertion`, `manipulation`, `calculation`) and its
+%       value kind (`mass`, `term`, `dose`, `formulation`, ...) is a mixin in
+%       `superclasses`; it points at its entity by `entity_id`. The only named
+%       statement classes are the eight vision calculators. A joined name such
+%       as `term_observation` is NOT a class (did2.convert.statementKind reads
+%       one on old-vintage input; tests/+did2/+unittest/testNoOldLeafNames.m
+%       keeps code from writing one).
+%     - A substance manipulation takes value kind `dose` or `formulation`
+%       (with `chemical` / `formulation` documents); a physical one a quantity
+%       kind such as `temperature`; a payload-free act `term`. NO
+%       injection/bath/pharmacological family, NO escape hatch.
 %     - Relationships are `directed_relation` / `undirected_relation` documents.
-%     - Locus is Path S: an attributed anatomical part is its own `subject` +
+%     - Locus is Path S: an attributed anatomical part is its own entity +
 %       a part_of directed_relation (minted, deduplicated per animal, by the
 %       NDI second pass ndi.migrate -- it needs the corpus-wide subject graph).
+%
+%   NAMES IN THE NARRATIVE BELOW. Most of it was written in 2026-07/08 against
+%   the pre-#88 schema, and some entries still use that era's names: `subject`
+%   (now an `entity`), `subject_statement` / `subject_interaction` and
+%   `subject_id` (now the direction class and its `entity_id` edge), and
+%   joined leaf names such as `term_observation` (now `observation` with value
+%   kind `term`). The roster at the bottom is generated from each migrator's
+%   H1 summary and uses the current names; read it for what a migrator emits.
 %
 %   See the conversion specs under
 %   did-schema/schemas/V_eta/conversions/from_did_v1/ and the authoritative
@@ -45,40 +56,50 @@
 %
 %   Registered migrators (a NARRATIVE SUBSET -- see above):
 %
-%     subject_group      - 1 -> 1. -> bare `subject` (v3.0.0; no is_group).
-%     treatment_transfer - 1 -> 3. -> term_manipulation (the act) + a
+%     subject_group      - 1 -> 1+N. -> an `entity` of type group (id
+%                          preserved) + one member_of directed_relation per
+%                          member.
+%     treatment_transfer - 1 -> 3. -> a `manipulation` with value kind `term`
+%                          (the act) + a
 %                          provenance directed_relation (recipient <- donor,
 %                          derived_from) + the shared session anchor (D4).
-%     ontology_table_row - 1 -> N. Each column -> a subject_assertion leaf
-%                          (timeless: term_/date_assertion) OR a
-%                          subject_observation leaf (timed: <dim>_observation by
-%                          value shape / term_observation for strings);
-%                          identity columns skipped; a.u. numerics ->
-%                          intensity_observation (J §7, no escape hatch, D8).
-%                          + one shared session anchor. NOTE: this is the naive
-%                          per-column seed; the flat-table column-role model
+%     ontology_table_row - 1 -> N. Each column -> an `assertion` (timeless:
+%                          value kind `term` or `date`) OR an `observation`
+%                          (timed: a quantity value kind by value shape, `term`
+%                          for strings); identity columns skipped; a.u. numerics
+%                          -> value kind `intensity` (J §7, no escape hatch, D8).
+%                          + one shared session anchor. A table whose column
+%                          signature is recognised (the encounter and patch
+%                          geometry tables) goes through its own map instead.
+%                          NOTE: the per-column path is the naive
+%                          seed; the flat-table column-role model
 %                          (D10) and per-column subject resolution (D11) are
 %                          still OPEN, so a qualifier column (e.g. trial type) is
 %                          knowingly mis-modelled as an observation until those
 %                          resolve. See V_eta_migration_plan.md D10/D11.
-%     treatment          - 1 -> 2/3. Dispatch by structure into strict-J leaves:
-%                          temperature_manipulation (typed value),
-%                          dose_manipulation (substance -> dose/formulation
-%                          composite; the substance is the spine variable), or
-%                          term_manipulation (payload-free procedure/regime; no
-%                          escape hatch, D8). A merely-located site becomes a
-%                          term_observation value (located-by-default, D3); an
+%     treatment          - 1 -> N. Dispatch by structure into a `manipulation`
+%                          with value kind `temperature` (typed value), `dose`
+%                          or `formulation` (a substance, with its chemical and
+%                          formulation documents; the substance is the spine
+%                          variable), or `term` (payload-free procedure/regime;
+%                          no escape hatch, D8). A merely-located site becomes
+%                          an `observation` with value kind `term`
+%                          (located-by-default, D3); an
 %                          attributed site is promoted to a Path-S part-subject +
 %                          part_of by the NDI second pass. + shared anchor.
 %                          Not-a-manipulation / unresolved rows -> quarantine.
-%     treatment_drug     - 1 -> 2/3. -> dose_manipulation (mixture_table ->
-%                          dose.value.formulation.chemicals; primary drug is the
-%                          spine variable) + optional site term_observation.
-%     virus_injection    - 1 -> 2/3. -> dose_manipulation (virus is the spine
+%     treatment_drug     - 1 -> N. -> a `manipulation` with value kind `dose`
+%                          (or `formulation` for an immersion, decided by the
+%                          recorded location; the mixture_table -> chemical
+%                          and formulation documents; primary drug is the
+%                          spine variable) + optional site `observation` (value
+%                          kind `term`).
+%     virus_injection    - 1 -> N. -> a `manipulation` (value kind `dose` or
+%                          `formulation`, as treatment_drug; virus is the spine
 %                          variable + first chemical; dilution -> concentration;
 %                          diluent -> a second chemical) + optional site obs.
-%     probe_location     - 1 -> 2. -> term_observation about the probe-subject
-%                          (device-as-subject, D2/D5): variable = a spatial
+%     probe_location     - 1 -> 2. -> an `observation` with value kind `term`
+%                          about the probe's entity (a device, D2/D5): variable = a spatial
 %                          relation, value = the atlas term. + anchor.
 %     ontology_label     - 1 -> 1. DEFERRED passthrough. The label value was
 %                          never the problem; the REFERENT was. The class has
@@ -115,37 +136,40 @@
 %                                Same missing writer, so array semantics and
 %                                units are unsettleable.
 %
-%   THE SPIKE PROCESSING PARAMETERS FAMILY -> ONE method_parameters class.
-%   Four did_v1 settings classes fold to the ONE generic `method_parameters`
-%   document (TEAM-SIGN-OFF 2026-08-09, V_eta_method_parameters_plan.md). Each
-%   is 1 -> 1 with base.id AND base.name PRESERVED -- the id because three
+%   THE SPIKE PROCESSING PARAMETERS FAMILY -> ONE `method` class.
+%   Four did_v1 settings classes fold to the ONE generic `method` document
+%   (`method_parameters` until did-schema #88; TEAM-SIGN-OFF 2026-08-09,
+%   V_eta_method_parameters_plan.md), built by private/jMethodParameters. Each
+%   is 1 -> 1 with base.id PRESERVED and the v1 base.name carried as the
+%   method's `name` field -- the id because three
 %   templates point at it (spikewaves.extraction_parameters_id,
 %   spike_clusters.sorting_parameters_id/.extraction_parameters_id,
 %   spike_extraction_parameters_modification.extraction_parameters_id), the name
 %   because two apps look a protocol up by
 %   ndi.query('base.name','exact_string',...) at spikeextractor.m:372 and
 %   spikesorter.m:373. The v1 `app` block becomes a `software` entity + a
-%   software_id edge (R1), so each fold emits 2 bodies. Settings become
-%   `parameter[]` entries whose identity is a bound `variable` (no unit field,
-%   no data_type field); the tail stays whole in `other`.
+%   software_id edge (R1), so a fold emits 2 bodies when one is minted.
+%   Settings become `parameters` entries (did2.build.parameter); the rest of
+%   the block becomes further entries (jParameterList), not a separate bag.
 %     spike_extraction_parameters
 %                        - the global protocol; no v1 dependencies, so no scope
 %                          edges. 15 fields -> 4 bound entries (refractory
 %                          period, waveform window start + duration, threshold)
-%                          + the bag.
+%                          + the rest of the block as further entries.
 %     spike_extraction_parameters_modification
 %                        - the same 15 fields (v1 stores a FULL copy, never a
-%                          diff) + element_id -> subject_id and
-%                          extraction_parameters_id -> derived_from_id (LINEAGE
+%                          diff) + element_id -> entity_id and
+%                          extraction_parameters_id -> parent_id (LINEAGE
 %                          only -- precedence comes from the scope). Its epoch
 %                          scope is the WRITER's, not the template's
 %                          (spikeextractor.m:310 sets epochid.epochid on a class
-%                          declaring only base + app) and is parked in
-%                          other.epochid until the epoch pass can mint an
-%                          `epoch` document to point at (#60).
+%                          declaring only base + app): an `epoch_id` edge when
+%                          the minted `epoch` document is known, else an
+%                          `epochid` text parameter (#60).
 %     sorting_parameters - no bound variables by decision (all six fields are in
-%                          the plan's bag list by name), so the document carries
-%                          an empty parameter list and a full `other`.
+%                          the plan's bag list by name), so every non-empty field
+%                          of the block becomes a parameter entry labelled by
+%                          its v1 name.
 %     vmspikefilteringparameters
 %                        - folds ONLY when `spiketimes` is empty. `spiketimes`
 %                          is OUTPUT data sitting in a config class and has no
@@ -218,22 +242,22 @@
 %                          filenavigator's and daqmetadatareader's do. Only a body
 %                          with NO class name AND NO edges still passes through.
 %                          1 -> 1 when there is no class name to fold.
-%     image_stack        - 1 -> 3. -> a body-backed image_observation
-%                          (storage_mode: body; modality on the spine variable,
-%                          geometry/format inline on the `image` mixin) + a
-%                          sampled_body holding the carried pixel frames
-%                          (datum + sample_time; `statement` -> the observation)
-%                          + shared anchor (§C.4). The element_epoch/ingested
-%                          quartet the V_zeta fold minted collapses into the one
-%                          sampled_body; NDI-side imaging element/daqreader infra
-%                          is left to the NDI second pass (D2). 7,007 docs in JH.
-%                          The source `document_id` is CARRIED as the
-%                          observation's `ontology_table_row_id` (did-schema
-%                          6cf31f2 minted the slot), CONDITIONALLY: haley
-%                          behaviour has the edge, babu (import.m:474) does not,
-%                          and an absent or blank one is OMITTED, never emitted
-%                          empty. The subject-less haley E. coli sites keep it
-%                          on the guarded passthrough instead.
+%     image_stack        - 1 -> 3. -> a body-backed `observation` with value
+%                          kind `intensity` (a mask: a `calculation` with value
+%                          kind `logical` or `label`, + its software documents)
+%                          + a sampled_body holding the carried pixel frames
+%                          (its dimensions and covariates from the source's
+%                          dimension order) + shared anchor (§C.4). The
+%                          element_epoch/ingested quartet the V_zeta fold minted
+%                          collapses into the one sampled_body; NDI-side imaging
+%                          element/daqreader infra is left to the NDI second pass
+%                          (D2). 7,007 docs in JH.
+%                          The source `document_id` (the ontologyTableRow) is
+%                          NOT carried: did-schema #88 dropped the
+%                          `ontology_table_row_id` edge (#73 item 42), so the
+%                          row is the NDI second pass's to resolve (see the
+%                          comment in image_stack.m). The subject-less haley
+%                          E. coli sites take the guarded passthrough.
 %     metadata_editor    - 1 -> N. Decompose the NDIMetaDataEditorApp
 %                          `metadata_structure` blob into first-class entities +
 %                          relations (the dataset-metadata analogue of retiring the
@@ -282,18 +306,21 @@
 %                          TEAM-SIGN-OFF [subject measurement], jess 2026-08-06.
 %                          Routes through the EXISTING `measurement` fold (shared
 %                          private/jMeasurementFold + jQuantityLeaf) with NO new
-%                          class: subject_id carries over, `measurement` becomes
-%                          subject_statement.variable, `value` becomes the typed
-%                          value, and `datestamp` becomes the TIME ANCHOR --
-%                          time_reference_1 -> an `absolute_reference` document
-%                          (private/jAbsoluteReference), NOT a field. `measurement`
+%                          class: the v1 subject_id edge becomes the
+%                          `observation`'s entity_id, `measurement` becomes its
+%                          `variable`, `value` becomes the typed value, and
+%                          `datestamp` becomes the TIME ANCHOR -- an
+%                          `absolute_time_reference` document
+%                          (private/jAbsoluteReference), NOT a field; with no
+%                          readable datestamp, the session anchor. `measurement`
 %                          has no datestamp field at all, so a plain field mapping
 %                          would have dropped the measurement time. Signed WITH a
-%                          known gap: `value` carries no unit, so the leaf should
+%                          known gap: `value` carries no unit, so the value kind should
 %                          come from the D9 registry -- which ships no dimensional
 %                          rows yet, so jQuantityLeaf is the pass-1 stand-in and
 %                          anything it cannot type PASSES THROUGH.
-%                          THE FIRST EMITTER OF `absolute_reference`.
+%                          THE FIRST EMITTER OF `absolute_reference` (now
+%                          `absolute_time_reference`).
 %     pyraview           - (extended) the inherited `filter` superclass block now
 %                          splits off ONE `frequency_filter` document
 %                          (private/jFrequencyFilter), referenced by every level
@@ -377,9 +404,11 @@
 %   uses it to choose which stretch of signal to analyse).
 %   THE FIX IS A TOMBSTONE, NOT A MIGRATOR -- the `projectvar` shape, described
 %   under "DELIBERATELY WITHOUT A MIGRATOR" just above. Both are restated from
-%   the WRITER in DID-schema
-%   tools/build_v_eta.py and marked `retire`, so the identity fallback carries
-%   the document and the tombstone lets it validate.
+%   the WRITER in DID-schema (by tools/build_v_eta.py, which did-schema deleted
+%   on 2026-10-21; the classes are now schemas/V_eta/stable/generic_file.json
+%   and valid_interval.json, disposition `retire` in index.json), so the
+%   identity fallback carries the document and the tombstone lets it validate.
+%   (generic_file is since folded by the batch pass did2.convert.foldGenericFiles.)
 %
 %   CITATION CORRECTED 2026-08-12. This named "the vmspikefilteringparameters
 %   shape", and that class has NOT been tombstone-only since 2026-08-10: it has
@@ -410,7 +439,10 @@
 %   nothing. When it is re-armed the class it emits is `logical_observation`
 %   (renamed from `validity_observation` on 2026-08-12: the 32 `*_observation`
 %   data_types name a KIND OF VALUE, and the SEMANTIC belongs in
-%   `subject_statement.variable`). That work is a BATCH pass, not a migrator,
+%   `subject_statement.variable`). [2026-10-23: in did-schema #88's names, an
+%   `observation` with value kind `logical`, the semantic in its `variable`;
+%   `relative_reference.relative_to` is now relative_time_reference's
+%   `referent_id` edge.] That work is a BATCH pass, not a migrator,
 %   because
 %   `relative_reference.relative_to` is REQUIRED and names the `epoch` DOCUMENT
 %   while the v1 anchor names an epoch by STRING -- the same wall
@@ -450,15 +482,19 @@
 %     ontology_table_row - rewrite to the D10 column-role rule + chosen qualifier
 %                          shape and D11 per-column subject resolution once those
 %                          decisions land (the current split is the interim seed).
-%     ontology_image     - -> term_observation about the imaged subject + an
-%                          opaque_body/sampled_body for the image file (D5).
+%     ontology_image     - -> an `observation` about the imaged entity + a
+%                          sampled_body for the image raster (D5). Built for the
+%                          legacy shape (see the roster entry); the current NDI
+%                          shape still passes through.
 %
 %   Classes with no did_v1 -> V_eta split fall through to the default
 %   +migrators/<class> (1 -> 1) migrator, gaining only the schema_version tag.
 %
 %   SOFTWARE (TEAM-SIGN-OFF [software], jess 2026-08-06): the did_v1 `app` mixin
-%   is replaced by a `software` ENTITY referenced by a `software_id` edge, with the
-%   per-run os/interpreter in `execution_environment` on the interaction. The fold
+%   is replaced by a `software` ENTITY referenced by a `software_id` edge. The
+%   per-run os/interpreter was `execution_environment` on the interaction; since
+%   did-schema #88 each is its own `software` entity on a calculation's optional
+%   `operating_system_id` / `interpreter_id` edge (private/jRunEntities). The fold
 %   lives in private/jSoftwareFromApp.m (+ private/jSoftware.m, which also serves
 %   filenavigator's implementation-class entity) and is applied by jCalculation to
 %   every calculator output, so the app block -- and the program's class name --
@@ -581,10 +617,11 @@
 %         TEAM-SIGN-OFF [stimulus] 2026-08-08). A DERIVED annotation of WHICH
 %         presented trials are the control reference, computed by the tuning_response
 %         app. It is NOT baked into the immutable stimulus body: it REFERENCES the
-%         presentation (the timed_sequence body-of-record, id-preserved through the
-%         second-pass decompose, so the edge resolves either way) and carries the
-%         derivation method; marked derived_from the presentation (T10). Drops the v1
-%         `app` mixin (software model, R1) and the `ids` container word (T13).
+%         presentation (the body-of-record, then `timed_sequence`, `item` since
+%         did-schema c12d778, 2026-10-04; id-preserved through the second-pass
+%         decompose, so the edge resolves either way) and carries the derivation
+%         method; marked derived_from the presentation (T10). Drops the v1 `app` mixin
+%         (software model, R1) and the `ids` container word (T13).
 %     daqmetadatareader
 %         Brainstorm-J migrator: did_v1 daqmetadatareader ->
 %         `acquisition_metadata_reader` (+ the `software` entity for the
@@ -600,7 +637,7 @@
 %         `software` entity. 1 -> 2, base.id PRESERVED ON THE READER.
 %     daqreader_epochdata_ingested
 %         Brainstorm-J migrator: lift the epoch's clock extents out of `epochtable`
-%         into `relative_reference` documents.
+%         into `relative_time_reference` documents.
 %     daqreader_image_epochdata_ingested
 %         Brainstorm-J migrator: the camera's ingested epoch. Lifts the inherited
 %         epoch clock extents; the image fold is BLOCKED and the document is
@@ -644,29 +681,33 @@
 %     demo_ndi
 %         Brainstorm-J migrator: did_v1 `demoNDI` -> the V_eta `demo` class, 1 -> 1
 %         with base.id PRESERVED, `value` carried and `is_mock` FALSE. Part of the 3
-%         -> 1 demo collapse signed by the team on 2026-08-06 (did-schema
-%         `tools/build_v_eta.py:1817-1867`); the fold itself is in private/jDemoFold.
+%         -> 1 demo collapse signed by the team on 2026-08-06 (recorded then in
+%         did-schema `tools/build_v_eta.py`, deleted 2026-10-21; the class is now
+%         `schemas/V_eta/stable/demo.json`); the fold itself is in private/jDemoFold.
 %     demo_ndi_mock
 %         Brainstorm-J migrator: did_v1 `demoNDIMock` -> the V_eta `demo` class, 1 ->
 %         1 with base.id PRESERVED, the INHERITED `demoNDI.value` carried and
 %         `is_mock` TRUE. The other half of the 3 -> 1 demo collapse signed by the
-%         team on 2026-08-06 (did-schema `tools/build_v_eta.py:1817-1867`); the fold
-%         itself is in private/jDemoFold.
+%         team on 2026-08-06 (recorded then in did-schema `tools/build_v_eta.py`,
+%         deleted 2026-10-21; the class is now `schemas/V_eta/stable/demo.json`); the
+%         fold itself is in private/jDemoFold.
 %     distance_metadata
 %         Brainstorm-J migrator: reshape a did_v1 distance_metadata into the validated
 %         V_eta distance_metadata. 1 -> 1.
 %     electrode_offset_voltage
-%         Brainstorm-J migrator: did_v1 electrode_offset_voltage -> a
-%         voltage_observation of the probe-subject, qualified by the temperature it
-%         was measured at, + the session anchor. 1 -> 2.
+%         Brainstorm-J migrator: did_v1 electrode_offset_voltage -> an `observation`
+%         with value kind `voltage` about the probe's entity, qualified by the
+%         temperature it was measured at (a condition), + the session anchor. 1 -> 2.
 %     element
-%         Brainstorm-J migrator: did_v1 element -> subject (+ kind assertions + the
-%         raw-recording observation + a lineage relation). Strict J retires the
-%         recording-side `element` class (J:214, D2): any identifiable thing -- an
-%         organism, a device/probe, a derived signal or sorted unit -- is a `subject`.
-%         The element document therefore becomes a `subject` with its id PRESERVED, so
-%         the ~50 classes that reference it (`element_id` / `underlying_element_id` /
-%         `stimulator_id`) keep resolving -- now to a subject.
+%         Brainstorm-J migrator: did_v1 element -> an `entity` (+ kind assertions +
+%         the raw-recording observation + a lineage relation). V_eta retires the
+%         recording-side `element` class: any identifiable thing -- an organism, a
+%         device/probe, a derived signal or sorted unit -- is an `entity` with a
+%         `type` (here `cell` for a sorted unit, `group` for an ensemble, `device`
+%         otherwise; see elementEntityType). The element document therefore becomes an
+%         `entity` with its id PRESERVED, so the ~50 classes that reference it
+%         (`element_id` / `underlying_element_id` / `stimulator_id`) keep resolving --
+%         now to an entity.
 %     element_epoch
 %         Brainstorm-J migrator: element_epoch -> acquisition_epoch.
 %     epochfiles_ingested
@@ -690,8 +731,9 @@
 %         Brainstorm-J migrator: did_v1 filenavigator -> epoch_file_pattern (+ the
 %         `software` entity for the implementation class). 1 -> 1 or 1 -> 2.
 %     fitcurve
-%         Brainstorm-J migrator: did_v1 fitcurve -> a fit-residual score_observation
-%         (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 fitcurve -> a `calculation` with value kind
+%         `model_fit` (private/jModelFit) + the shared session anchor (+ software and
+%         run documents).
 %     gene_expression
 %         Brainstorm-J migrator: did_v1 geneExpression -> V_eta gene_expression, an
 %         id-preserving 1:1 passthrough. ⊂ base in V_eta; a SHAPE MIXIN, not itself an
@@ -720,25 +762,31 @@
 %         attempt to normalise or infer either. base.id is preserved.
 %     hartley_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.hartley reverse-correlation OUTPUT
-%         document -> the subject_calculation LEAF `receptive_field_calculation` + the
+%         document -> the named calculator class `receptive_field_calculation` + the
 %         `receptive_field` result composite, id- and depends_on-PRESERVED, plus the
 %         response volume in TWO `sampled_body` documents (one per plane) and the
 %         windowed spike train as a THIRD, input-side body.
 %     image
-%         Brainstorm-J migrator: did_v1 `image` -> a body-backed image_observation + a
-%         sampled_body (+ the shared session anchor). 1 -> 3.
+%         Brainstorm-J migrator: did_v1 `image` -> through image_stack: a body-backed
+%         `observation` with value kind `intensity` (a mask: a `calculation` with
+%         value kind `logical` or `label`) + a sampled_body (+ the shared session
+%         anchor). 1 -> 3.
 %     image_stack
-%         Brainstorm-J migrator: did_v1 image_stack -> a body-backed image_observation
-%         + a sampled_body (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 image_stack -> a body-backed `observation`
+%         with value kind `intensity` (a mask: a `calculation` with value kind
+%         `logical` or `label`) + a sampled_body (+ the shared session anchor).
 %     jrclust_clusters
 %         Brainstorm-J migrator: did_v1 jrclust_clusters -> a body-backed
-%         count_observation (the per-spike cluster assignments) + the session anchor.
+%         `calculation` with value kind `label` (the per-spike cluster assignments) +
+%         an opaque_body + the session anchor (+ software and run documents).
 %     kiasort_clusters
 %         Brainstorm-J migrator: did_v1 kiasort_clusters -> the D-C analysis-tier
-%         shape (count_observation + opaque_body + session anchor).
+%         shape (a `calculation` with value kind `label` + opaque_body + session
+%         anchor, + software and run documents).
 %     kilosort_clusters
 %         Brainstorm-J migrator: did_v1 kilosort_clusters -> the D-C analysis-tier
-%         shape (count_observation + opaque_body + session anchor).
+%         shape (a `calculation` with value kind `label` + opaque_body + session
+%         anchor, + software and run documents).
 %     lightsheet_zarr_level
 %         Brainstorm-J migrator: did_v1 lightsheetZarrLevel -> a `sampled_body` of the
 %         pyramid's observation when the level HOLDS bytes, or NOTHING (an empty cell)
@@ -750,9 +798,10 @@
 %         `source_file_id` join a batch pass follows to make the source's
 %         fileReference (OME-Zarr store or TIFF folder) the observation's unheld body.
 %     measurement
-%         Brainstorm-J migrator: did_v1 measurement -> a typed subject_observation
-%         leaf (+ the shared session anchor), for the rows that can be typed honestly;
-%         everything else is carried through for the second pass.
+%         Brainstorm-J migrator: did_v1 measurement -> a typed `observation` (value
+%         kind: the measured quantity, or `term`) (+ the shared session anchor), for
+%         the rows that can be typed honestly; everything else is carried through for
+%         the second pass.
 %     metadata_editor
 %         Brainstorm-J migrator: did_v1 metadata_editor -> a structured `dataset`
 %         entity + the person / organization / funding / publication / web_resource
@@ -771,28 +820,31 @@
 %         Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE. The
 %         current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the
 %         `ngrid` raster) is a GUARDED PASSTHROUGH deferred to the NDI second pass: a
-%         table row is not a subject, so pass 1 cannot fill
-%         `subject_statement.subject_id` without minting the husk the image_stack
-%         guard exists to stop. The legacy `ontology_name` + `ontology_region` shape
-%         (which the correction below shows has never existed in NDI) would migrate 1
-%         -> 2 to a term_observation about the element-subject + a session anchor. Any
-%         third shape ERRORS rather than emitting. The raster and the provenance edge
-%         are deferred with the passthrough (#47).
+%         table row is not a subject, so pass 1 cannot fill a statement's `entity_id`
+%         edge without minting the husk the image_stack guard exists to stop. The
+%         legacy `ontology_name` + `ontology_region` shape (which the correction below
+%         shows has never existed in NDI) would migrate 1 -> 2 to an `observation`
+%         with value kind `term` about the element's entity + a session anchor (with
+%         an `ngrid` raster, 1 -> 3: an `observation` with value kind `intensity` + a
+%         sampled_body + the anchor). Any third shape ERRORS rather than emitting. The
+%         raster and the provenance edge are deferred with the passthrough (#47).
 %     ontology_label
 %         Brainstorm-J migrator: did_v1 ontology_label -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
 %     ontology_table_row
-%         Brainstorm-J split migrator: did_v1 ontology_table_row -> the
-%         subject_statement tier (1 -> N).
+%         Brainstorm-J split migrator: did_v1 ontology_table_row -> one statement per
+%         column (1 -> N).
 %     openminds
 %         Brainstorm-J migrator: did_v1 `openminds` -- a GUARDED PASSTHROUGH.
 %     openminds_element
-%         Brainstorm-J migrator: did_v1 openminds_element -> term_assertion.
+%         Brainstorm-J migrator: did_v1 openminds_element -> an `assertion` with value
+%         kind `term`.
 %     openminds_stimulus
 %         Brainstorm-J migrator: did_v1 openminds_stimulus -- DEFERRED to the NDI
 %         second pass; the document is passed through UNCHANGED.
 %     openminds_subject
-%         Brainstorm-J migrator: did_v1 openminds_subject -> term_assertion.
+%         Brainstorm-J migrator: did_v1 openminds_subject -> an `assertion` with value
+%         kind `term`.
 %     oridirtuning_calc
 %         Brainstorm-J migrator -> orientation_direction_tuning_calculation
 %         (did-schema #88). Brainstorm-J migrator: the ndi.calc.vis.oridir calculator
@@ -806,18 +858,20 @@
 %         (⊂ [tuning_curve_calculation, orientation_direction_tuning]) + a session
 %         anchor + minted `software` and `runtime_environment` entities.
 %     position_metadata
-%         Brainstorm-J migrator: did_v1 position_metadata -> term_observation (WHAT
-%         kind of position was recorded) about the element-subject + a session anchor.
-%         1 -> 2.
+%         Brainstorm-J migrator: did_v1 position_metadata -> an `observation` with
+%         value kind `term` (WHAT kind of position was recorded) about the element's
+%         entity + a session anchor. 1 -> 2.
 %     probe_geometry
-%         Brainstorm-J migrator: did_v1 probe_geometry -> one length_observation PER
-%         SPATIAL AXIS about the probe-subject, plus the session anchor, plus an
-%         optional probe-model term_assertion.
+%         Brainstorm-J migrator: did_v1 probe_geometry -> one `observation` with value
+%         kind `length` PER SPATIAL AXIS about the probe's entity, plus the session
+%         anchor, plus an optional probe-model `assertion` with value kind `term`.
 %     probe_location
-%         Brainstorm-J migrator: did_v1 probe_location -> term_observation.
+%         Brainstorm-J migrator: did_v1 probe_location -> an `observation` with value
+%         kind `term`, + the session anchor.
 %     pyraview
-%         Brainstorm-J migrator: did_v1 pyraview -> a body-backed voltage_observation
-%         + a sampled_body (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 pyraview -> a body-backed `observation` with
+%         value kind `voltage` + one sampled_body per level file (+ the shared session
+%         anchor, + a frequency filter document when the source names one).
 %     session
 %         Brainstorm-J migrator: `reference` -> `local_identifier`, and drop the three
 %         V_zeta inventions. 1 -> 1, base.id PRESERVED, except where `session_id` is
@@ -834,8 +888,9 @@
 %         Brainstorm-J migrator: did_v1 site2channelmap -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
 %     sorting_parameters
-%         Brainstorm-J migrator: did_v1 sorting_parameters -> ONE `method_parameters`
-%         document (+ the `software` entity its v1 `app` block names).
+%         Brainstorm-J migrator: did_v1 sorting_parameters -> ONE `method` document
+%         (`method_parameters` before did-schema #88) (+ the `software` entity its v1
+%         `app` block names).
 %     spatial_frequency_tuning
 %         Brainstorm-J migrator -> spatial_frequency_tuning_calculation (did-schema
 %         #88). Brainstorm-J migrator: did_v1 spatial_frequency_tuning (raw
@@ -894,13 +949,13 @@
 %         Brainstorm-J migrator: did_v1 spike_clusters -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
 %     spike_extraction_parameters
-%         Brainstorm-J migrator: did_v1 spike_extraction_parameters -> ONE
-%         `method_parameters` document (+ the `software` entity its v1 `app` block
-%         names).
+%         Brainstorm-J migrator: did_v1 spike_extraction_parameters -> ONE `method`
+%         document (`method_parameters` before did-schema #88) (+ the `software`
+%         entity its v1 `app` block names).
 %     spike_extraction_parameters_modification
 %         Brainstorm-J migrator: did_v1 spike_extraction_parameters_modification -> a
-%         SECOND `method_parameters` document (+ the `software` entity its v1 `app`
-%         block names).
+%         SECOND `method` document (`method_parameters` before did-schema #88) (+ the
+%         `software` entity its v1 `app` block names).
 %     spike_interface_sorting_outputs
 %         Brainstorm-J migrator: did_v1 spike_interface_sorting_outputs -- DEFERRED to
 %         the NDI second pass; the document is passed through UNCHANGED.
@@ -935,21 +990,18 @@
 %         the raw case per issue #67) + a session anchor + minted `software` and
 %         `runtime_environment` entities.
 %     subject
-%         Brainstorm-J carry-forward for a v1 subject: guarantee a non-empty
-%         local_identifier. V_eta makes subject.local_identifier REQUIRED (a subject
-%         must be nameable); a v1 subject's handle was optional, so an empty or
-%         missing one now needs filling. Fill it from the preserved document id.
-%         Everything else is unchanged -- the body is already post-universalRenames
-%         and ensureClassBlocks runs after this (exactly as the mechanical path did
-%         before), so the only delta is the guaranteed handle.
+%         Brainstorm-J migrator: a v1 subject -> one `entity` of type `organism`, id
+%         preserved, carrying `local_identifier` and `description`. A v1 subject's
+%         handle was optional, so an empty or missing one is filled from the preserved
+%         document id (jEnsureLocalId).
 %     subject_group
-%         Brainstorm-J migrator: did_v1 subject_group -> bare subject (+ member_of
-%         relations).
+%         Brainstorm-J migrator: did_v1 subject_group -> an `entity` of type `group`,
+%         id preserved (+ one member_of directed_relation per member).
 %     subjectmeasurement
-%         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed
-%         subject_observation leaf + an `absolute_reference` carrying the measurement
-%         instant. Routed from did2.convert.v1_to_v2 only when TargetVersion ==
-%         'V_eta'.
+%         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed `observation`
+%         (value kind: the measured quantity, or `term`) + an
+%         `absolute_time_reference` carrying the measurement instant. Routed from
+%         did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %     syncgraph
 %         Brainstorm-J migrator: did_v1 `syncgraph` -> `clock_alignment_policy`.
 %     syncrule
@@ -970,16 +1022,19 @@
 %         (⊂ [tuning_curve_calculation, temporal_frequency_tuning]) + a session anchor
 %         + minted `software` and `runtime_environment` entities.
 %     treatment
-%         Brainstorm-J split migrator: did_v1 treatment -> a data-type-named
-%         subject_manipulation leaf (+ an optional site term_observation + the shared
-%         session anchor).
+%         Brainstorm-J split migrator: did_v1 treatment -> a `manipulation` whose
+%         value kind is chosen by the treatment (`temperature`, `dose` or
+%         `formulation` for a substance, `term` for a procedure, or the kind the
+%         treatment's term names for its number) (+ an optional site `observation`
+%         with value kind `term` + the shared session anchor).
 %     treatment_drug
 %         Brainstorm-J migrator: did_v1 treatment_drug -> an immersion (`manipulation`
-%         valued by its formulation) or a dose_manipulation, decided by the recorded
-%         location.
+%         valued by its formulation) or a `manipulation` with value kind `dose`,
+%         decided by the recorded location (a heat-only row: a `manipulation` with
+%         value kind `temperature`).
 %     treatment_transfer
-%         Brainstorm-J migrator: did_v1 treatment_transfer -> term_manipulation + a
-%         provenance directed_relation.
+%         Brainstorm-J migrator: did_v1 treatment_transfer -> a `manipulation` with
+%         value kind `term` + a provenance directed_relation (+ the session anchor).
 %     tuningcurve_calc
 %         Brainstorm-J migrator: the ndi.calc.stimulus.tuningcurve calculator OUTPUT
 %         document -> the CONCRETE V_eta leaf `tuningcurve_calc` (⊂
@@ -992,13 +1047,14 @@
 %         Brainstorm-J migrator: did_v1 vmneuralresponseresiduals -- DEFERRED to the
 %         NDI second pass; the document is passed through UNCHANGED.
 %     vmspikefilteringparameters
-%         Brainstorm-J migrator: did_v1 vmspikefilteringparameters -> ONE
-%         `method_parameters` document (+ the `software` entity its v1 `app` block
-%         names) -- GUARDED, because this class mixes OUTPUT DATA into a configuration
-%         document.
+%         Brainstorm-J migrator: did_v1 vmspikefilteringparameters -> ONE `method`
+%         document (`method_parameters` before did-schema #88) (+ the `software`
+%         entity its v1 `app` block names) -- GUARDED, because this class mixes OUTPUT
+%         DATA into a configuration document.
 %     vmspikefit
-%         Brainstorm-J migrator: did_v1 vmspikefit -> a fit-residual score_observation
-%         (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 vmspikefit -> a `calculation` with value kind
+%         `model_fit` (private/jModelFit) + the shared session anchor (+ software and
+%         run documents).
 %     vmspikesummary
 %         Brainstorm-J migrator: did_v1 vmspikesummary -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
