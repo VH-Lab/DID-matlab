@@ -86,7 +86,7 @@ for k = 1:numel(rows)
         'decision', textOf(r, 'decision'));
     ix.byName(name) = e;
 end
-ix.count = ix.byName.Count;
+ix.count = double(ix.byName.Count);   % Map.Count is uint64; count is a double as termIndex's is
 end
 
 function v = textOf(s, f)
