@@ -2966,17 +2966,6 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             tf = (n ~= 2);
         end
 
-        function str = groupDigits(n)
-            % groupDigits - a whole number with thousands separators
-            %
-            % STR = groupDigits(N) returns e.g. '12,345,678' for 12345678.
-            arguments
-                n (1,1) double
-            end
-            str = sprintf('%d', round(n));
-            str = regexprep(str, '(\d)(?=(\d{3})+$)', '$1,');
-        end
-
         function tf = filesAreIdentical(pathA, pathB)
             % filesAreIdentical - do two files hold exactly the same bytes?
             %
@@ -3105,6 +3094,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 rootR = [rootR sep];
             end
             tf = strncmp(pR, rootR, length(rootR));
+        end
+    end
+
+    methods (Static, Access=private)
+        function str = groupDigits(n)
+            % groupDigits - a whole number with thousands separators
+            %
+            % STR = groupDigits(N) returns e.g. '12,345,678' for 12345678.
+            arguments
+                n (1,1) double
+            end
+            str = sprintf('%d', round(n));
+            str = regexprep(str, '(\d)(?=(\d{3})+$)', '$1,');
         end
     end
 
