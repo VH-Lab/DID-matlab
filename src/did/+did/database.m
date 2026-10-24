@@ -1127,7 +1127,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         % 100,000 documents). Most documents share one of a
                         % few dozen superclass lists, so match the regex
                         % against the distinct lists only - read in order
-                        % from the doc_data_field_idx_value index - and then
+                        % from the doc_data_field_value index - and then
                         % find the documents holding a matching list through
                         % the same index. LIMIT -1 keeps SQLite from merging
                         % the inner DISTINCT query into the outer one, which
@@ -1156,7 +1156,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % are then joined with CROSS JOIN, which makes SQLite loop over
             % them in the order written: each candidate is found through the
             % unique docs.doc_id index, and its doc_data rows through the
-            % doc_data_doc_idx_field_idx index, named with INDEXED BY (a
+            % doc_data_doc_idx index, named with INDEXED BY (a
             % restricted query is only built when hasSearchIndexes says the
             % index exists). Left to choose, the query planner (which has no
             % table statistics to go on) can start instead from every
@@ -1166,7 +1166,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             restrict = nargin > 3 && iscell(candidate_ids);
             if restrict
                 from_str = ['docs CROSS JOIN branch_docs CROSS JOIN fields ' ...
-                    'CROSS JOIN doc_data INDEXED BY doc_data_doc_idx_field_idx'];
+                    'CROSS JOIN doc_data INDEXED BY doc_data_doc_idx'];
             else
                 from_str = 'docs, branch_docs, doc_data, fields';
             end
@@ -1326,7 +1326,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % and are used only when this returns true:
             %   - restricting a search term to candidate documents (see
             %     search_doc_ids), which needs each document's doc_data rows
-            %     to be found by an index (doc_idx, field_idx);
+            %     to be found by an index (doc_idx);
             %   - matching 'isa' against the distinct superclass lists only
             %     (see query_struct_to_sql_str), which needs one field's
             %     values to be read in order from an index (field_idx, value).

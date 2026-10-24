@@ -28,13 +28,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
     properties (Constant, Access=protected)
         % Indexes on doc_data that searches rely on, as {name, columns} rows.
         % The names are the same in DID-python.
-        %   doc_data_doc_idx_field_idx - a document's rows, so that a search
+        %   doc_data_doc_idx - a document's rows, so that a search
         %       term can be checked against a few candidate documents
-        %   doc_data_field_idx_value - one field's rows, in value order, so
+        %   doc_data_field_value - one field's rows, in value order, so
         %       that 'isa' can match the distinct superclass lists only
         searchIndexes = { ...
-            'doc_data_doc_idx_field_idx', '"doc_idx","field_idx"'; ...
-            'doc_data_field_idx_value',   '"field_idx","value"'}
+            'doc_data_doc_idx',     '"doc_idx"'; ...
+            'doc_data_field_value', '"field_idx","value"'}
     end
 
     methods % constructor

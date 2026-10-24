@@ -11,8 +11,8 @@ classdef TestSearchIndexes < matlab.unittest.TestCase
     % base.id terms are searched first and base.session_id terms last, each
     % later term is checked against the documents already found only, and
     % 'isa' runs its regex on the distinct superclass lists only - all
-    % through the doc_data indexes doc_data_doc_idx_field_idx and
-    % doc_data_field_idx_value. See did.database/search_doc_ids.
+    % through the doc_data indexes doc_data_doc_idx and
+    % doc_data_field_value. See did.database/search_doc_ids.
     %
     % Besides the results, these tests check the number of rows each SQL
     % query returned (did.test.helper.QueryLogSqlitedb records them): an id
@@ -21,7 +21,7 @@ classdef TestSearchIndexes < matlab.unittest.TestCase
 
     properties (Constant)
         db_filename = 'test_db_search_indexes.sqlite'
-        searchIndexNames = {'doc_data_doc_idx_field_idx', 'doc_data_field_idx_value'}
+        searchIndexNames = {'doc_data_doc_idx', 'doc_data_field_value'}
         numSessionDocs = 1500  % documents in the main session
         numOtherDocs = 100     % documents in a second session
     end
