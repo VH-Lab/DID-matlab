@@ -9,6 +9,16 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
     properties (Access=protected)
         fields_cache = cell(0,2)
+
+        % The write operation in progress, if any (see beginWrite). Each
+        % write operation is one transaction, and every statement it runs is
+        % journaled with what it returned, so that a poisoned connection can
+        % be reopened and the operation replayed - see recoverTransaction.
+        inWrite (1,1) logical = false
+        txJournal = struct('query',{},'args',{},'data',{},'changes',{})
+        txFieldsCache = cell(0,2)  % fields_cache when the write began
+        pendingFileDeletes = {}    % files to delete once the write commits
+        dbFileKey = ''             % identity of the file the connection opened
     end
 
     methods % constructor
@@ -169,6 +179,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Add the new branch to the branches table (no docs yet)
             tnow = now;
             hCleanup = this_obj.open_db(); %#ok<NASGU>
+            hTx = this_obj.beginWrite();
             this_obj.insert_into_table('branches', 'branch_id,parent_id,timestamp', branch_id, parent_branch_id, tnow);
 
             % Duplicate the docs from parent branch to the newly-created branch
@@ -180,6 +191,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     this_obj.insert_into_table('branch_docs','branch_id,doc_idx,timestamp',branch_id,doc_idx(i),tnow);
                 end
             end
+            this_obj.commitWrite(hTx);
         end % do_add_branch()
 
         function do_delete_branch(this_obj, branch_id, varargin)
@@ -198,6 +210,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % reclamation of whatever they last referenced happen on one
             % connection rather than reopening per statement
             hCleanup = this_obj.open_db(); %#ok<NASGU>
+            hTx = this_obj.beginWrite();
 
             % First remove all documents from the branch
             doc_ids = this_obj.do_get_doc_ids(branch_id); %this croaks if branch_id is invalid - good!
@@ -228,6 +241,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Now delete the branch record
             this_obj.run_sql_noOpen(['DELETE FROM branches WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+            this_obj.commitWrite(hTx);
         end % do_delete_branch()
 
         function parent_branch_id = do_get_branch_parent(this_obj, branch_id, varargin)
@@ -329,6 +343,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Open the database for update
             hCleanup = this_obj.open_db(); %#ok<NASGU>
+            % One transaction for the whole document, so a failure part-way
+            % leaves none of it behind. The early returns below (a duplicate
+            % that is ignored) have written nothing; leaving without
+            % commitWrite simply rolls back an empty transaction.
+            hTx = this_obj.beginWrite();
 
             % Get the document id
             meta_data = did.implementations.doc2sql(document_obj);
@@ -589,7 +608,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                                 % string would either do nothing or, worse,
                                 % match something unintended on disk.
                                 if thisLocation.delete_original && ~contains(sourcePath,'://')
-                                    delete(sourcePath);
+                                    % Not until the document is committed: a
+                                    % rollback must not leave the only copy of
+                                    % the file unreferenced in FileDir.
+                                    this_obj.deleteAfterCommit(sourcePath);
                                 end
                                 %this_obj.insert_doc_data_field(doc_idx, 'files', 'cached_file_path', destPath);
                                 numCachedFiles = numCachedFiles + 1;
@@ -680,7 +702,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             warning('DID:SQLiteDB:add_doc','Failed to cache "%s" %s referenced in document object: %s',memberName,file_type,errMsg);
                         else
                             if thisMember.delete_original && ~contains(sourcePath,'://')
-                                delete(sourcePath);
+                                this_obj.deleteAfterCommit(sourcePath);
                             end
                             numCachedFiles = numCachedFiles + 1;
                         end
@@ -694,6 +716,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 warning('DID:SQLiteDB:add_doc','Multiple files specified for caching in document object');
             end
             %}
+            this_obj.commitWrite(hTx);
         end % do_add_doc()
 
         function document_obj = do_get_doc(this_obj, document_id, options)
@@ -787,6 +810,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Open the database for update
             hCleanup = this_obj.open_db(); %#ok<NASGU>
+            hTx = this_obj.beginWrite();
 
             % Get the document id (ensure that we have a string if doc object was specified)
             if ~ischar(document_id)
@@ -828,6 +852,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             if isempty(remaining_ids)
                 this_obj.reclaim_unreferenced_doc(doc_idx, doc_id);
             end
+            this_obj.commitWrite(hTx);
         end % do_remove_doc()
 
         function roots = do_cachedPathRoots(this_obj)
@@ -1782,6 +1807,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % older mksqlite/sqlite without busy_timeout - non-fatal
             end
 
+            % Which file the connection holds, so a later COMMIT can tell
+            % whether the path still names it - see fileWasReplaced.
+            this_obj.dbFileKey = this_obj.fileKey();
+
             % Set the max memory cache size to 1M pages = 4GB (performance)
             % https://www.sqlite.org/pragma.html#pragma_cache_size
             mksqlite(this_obj.dbid,'pragma cache_size=1000000'); %default=-2000=2MB
@@ -1839,8 +1868,21 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             try
                 %query_str  %debug
                 data = mksqlite(this_obj.dbid, query_str, varargin{:});
+                this_obj.journalStatement(query_str, varargin, data);
                 return
             catch err
+            end
+
+            % Inside a write operation this statement is one of several in a
+            % transaction, and a reopen discards the ones before it. So a
+            % READONLY (or a connection gone) here is recovered by reopening
+            % and replaying the whole operation - see recoverTransaction -
+            % rather than by the single-statement reopen below, which is
+            % right only where each statement stands alone.
+            if this_obj.inWrite && (this_obj.isReadonlyError(err) || ...
+                    strcmpi(strtrim(err.message),'database not open'))
+                data = this_obj.recoverTransaction(err, query_str, varargin, false);
+                return
             end
 
             % Alert, reopen & retry the query if database was now actually open
@@ -1878,6 +1920,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 backoffs = [0.1 0.2 0.5 1 2 4];  % seconds to wait between attempts
                 for attempt = 1 : numel(backoffs)
                     reopenFirst = this_obj.isReadonlyError(err);
+                    if reopenFirst && this_obj.inWrite
+                        % A BUSY retry that has turned READONLY: as above, the
+                        % whole write operation is recovered, not the statement.
+                        data = this_obj.recoverTransaction(err, query_str, varargin, false);
+                        return
+                    end
                     if this_obj.debug
                         fprintf(2, ['DID:SQLITEDB retryable SQL error ' ...
                             '(attempt %d/%d, %g s backoff): %s\n%s\n'], ...
@@ -1915,6 +1963,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
                     try
                         data = mksqlite(this_obj.dbid, query_str, varargin{:});
+                        this_obj.journalStatement(query_str, varargin, data);
                         if this_obj.debug
                             fprintf(2, ['DID:SQLITEDB query succeeded on retry ' ...
                                 'attempt %d/%d%s\n'], attempt, numel(backoffs), ...
@@ -2065,6 +2114,382 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             diagStr = strjoin(lines, newline);
         end
 
+        function hTx = beginWrite(this_obj)
+            % beginWrite - Start a write operation: one transaction, journaled
+            %
+            % HTX = beginWrite(THIS_OBJ)
+            %
+            % Opens a transaction for a write operation (do_add_doc,
+            % do_remove_doc, do_add_branch, do_delete_branch) and starts
+            % journaling its statements. The operation ends it with
+            % commitWrite(HTX). HTX is an onCleanup object: if the operation
+            % leaves without committing - an error, or an early return - the
+            % transaction is rolled back and nothing of it is left behind.
+            %
+            % Before this, every statement autocommitted on its own (mksqlite
+            % issues no BEGIN), so a document that failed part-way - an error,
+            % Ctrl-C, a full disk, a poisoned handle - was left half-written.
+            %
+            % Called while another write is in progress, it joins that one:
+            % HTX is empty, and commitWrite(HTX) does nothing.
+            if this_obj.inWrite
+                hTx = [];
+                return
+            end
+            this_obj.txJournal = struct('query',{},'args',{},'data',{},'changes',{});
+            this_obj.txFieldsCache = this_obj.fields_cache;
+            this_obj.pendingFileDeletes = {};
+            this_obj.inWrite = true;
+            hTx = onCleanup(@() this_obj.abandonWrite());
+
+            % IMMEDIATE takes the write lock now, so the operation cannot
+            % deadlock upgrading a read lock later. It is also where SQLite
+            % reports a poisoned handle (SQLITE_READONLY_DBMOVED), and with
+            % nothing journaled yet recovering from it is just a reopen.
+            if this_obj.fileWasReplaced()
+                this_obj.recoverTransaction(this_obj.replacedFileError(), '', {}, false);
+                return
+            end
+            try
+                mksqlite(this_obj.dbid, 'BEGIN IMMEDIATE');
+            catch err
+                if ~this_obj.isReadonlyError(err)
+                    this_obj.inWrite = false;
+                    rethrow(err);
+                end
+                this_obj.recoverTransaction(err, '', {}, false);
+            end
+        end
+
+        function commitWrite(this_obj, hTx)
+            % commitWrite - Commit the write operation begun by beginWrite
+            %
+            % commitWrite(THIS_OBJ, HTX)
+            %
+            % Commits, recovering a READONLY failure the way a statement's is
+            % recovered (recoverTransaction), and waiting out a BUSY one on
+            % the same connection, whose transaction is still intact. Just
+            % before committing it checks that the path still names the file
+            % the connection opened: SQLite notices a replaced file only when
+            % a write transaction starts, and a COMMIT after a later swap
+            % "succeeds" into a file that no longer has a name, losing the
+            % write without an error. Files queued with deleteAfterCommit are
+            % deleted once the commit has succeeded.
+            if isempty(hTx) || ~this_obj.inWrite
+                return
+            end
+            if this_obj.fileWasReplaced()
+                this_obj.recoverTransaction(this_obj.replacedFileError(), '', {}, true);
+            else
+                try
+                    mksqlite(this_obj.dbid, 'COMMIT');
+                catch err
+                    if this_obj.isReadonlyError(err)
+                        this_obj.recoverTransaction(err, '', {}, true);
+                    elseif this_obj.isRetryableSqlError(err)
+                        this_obj.retryCommit(err);
+                    else
+                        rethrow(err);
+                    end
+                end
+            end
+            toDelete = this_obj.pendingFileDeletes;
+            this_obj.inWrite = false;
+            this_obj.txJournal = struct('query',{},'args',{},'data',{},'changes',{});
+            this_obj.pendingFileDeletes = {};
+            oldWarn = warning('off','MATLAB:DELETE:FileNotFound');
+            hRestoreWarn = onCleanup(@()warning(oldWarn)); %#ok<NASGU>
+            for k = 1 : numel(toDelete)
+                % A file that is already gone is not a failure: the point is
+                % that it must not be there afterwards.
+                try delete(toDelete{k}); catch, end
+            end
+        end
+
+        function retryCommit(this_obj, err)
+            % retryCommit - Wait out a BUSY COMMIT on the same connection
+            backoffs = [0.1 0.2 0.5 1 2 4];
+            lastErr = err;
+            for attempt = 1 : numel(backoffs)
+                pause(backoffs(attempt));
+                try
+                    mksqlite(this_obj.dbid, 'COMMIT');
+                    return
+                catch lastErr
+                end
+                if ~this_obj.isRetryableSqlError(lastErr)
+                    break
+                end
+            end
+            fprintf(2,'SQLite readonly/busy diagnostics:\n%s\n', ...
+                this_obj.collectReadonlyDiagnostics());
+            rethrow(lastErr);
+        end
+
+        function abandonWrite(this_obj)
+            % abandonWrite - Roll back a write operation that did not commit
+            %
+            % The onCleanup action of beginWrite. Restores fields_cache too:
+            % a field added during the transaction is rolled back with it, and
+            % a cached field_idx for it would point the next document's
+            % doc_data at a field that does not exist.
+            try
+                if ~this_obj.inWrite, return, end
+                if ~isempty(this_obj.dbid)
+                    try mksqlite(this_obj.dbid, 'ROLLBACK'); catch, end
+                end
+                this_obj.inWrite = false;
+                this_obj.fields_cache = this_obj.txFieldsCache;
+                this_obj.txJournal = struct('query',{},'args',{},'data',{},'changes',{});
+                this_obj.pendingFileDeletes = {};
+            catch
+                % the object may be going away; nothing more to undo
+            end
+        end
+
+        function deleteAfterCommit(this_obj, filePath)
+            % deleteAfterCommit - Delete a file once the write commits
+            %
+            % Inside a write operation the file is queued and deleted by
+            % commitWrite, so a rollback leaves it in place. Outside one it is
+            % deleted at once, as before.
+            if this_obj.inWrite
+                this_obj.pendingFileDeletes{end+1} = filePath;
+            else
+                try delete(filePath); catch, end
+            end
+        end
+
+        function journalStatement(this_obj, query_str, args, data)
+            % journalStatement - Record a statement of the write in progress
+            %
+            % Each entry keeps what the statement returned and, for one that
+            % changes rows, how many it changed, so that a replay can be
+            % checked against the original (see replayJournal).
+            if ~this_obj.inWrite, return, end
+            changes = [];
+            if ~this_obj.isReadStatement(query_str)
+                try
+                    c = mksqlite(this_obj.dbid, 'SELECT changes() AS n');
+                    changes = c(1).n;
+                catch
+                end
+            end
+            this_obj.txJournal(end+1) = struct('query', query_str, ...
+                'args', {args}, 'data', {data}, 'changes', {changes});
+        end
+
+        function replayJournal(this_obj, journal)
+            % replayJournal - Re-run a journal, checking each statement's result
+            %
+            % Every statement must do what it did the first time: return the
+            % same rows and change the same number of rows. A difference means
+            % the database changed in between - another writer, or a
+            % different file now at the path - and the decisions the operation
+            % made from what it read no longer hold, so the replay is refused
+            % (DID:SQLITEDB:ReplayDiverged) rather than committed. doc_idx and
+            % field_idx are read back with SELECTs after their INSERTs, so a
+            % different id is caught as a different row.
+            for k = 1 : numel(journal)
+                entry = journal(k);
+                try
+                    data = mksqlite(this_obj.dbid, entry.query, entry.args{:});
+                catch ex
+                    if this_obj.isRetryableSqlError(ex)
+                        rethrow(ex);  % transient: the next attempt may get through
+                    end
+                    error('DID:SQLITEDB:ReplayDiverged', ...
+                        'statement %d failed on replay: %s', k, ex.message);
+                end
+                if ~isequaln(data, entry.data)
+                    error('DID:SQLITEDB:ReplayDiverged', ...
+                        'statement %d read different rows on replay', k);
+                end
+                if ~isempty(entry.changes)
+                    c = mksqlite(this_obj.dbid, 'SELECT changes() AS n');
+                    if c(1).n ~= entry.changes
+                        error('DID:SQLITEDB:ReplayDiverged', ...
+                            'statement %d changed %d rows on replay, %d the first time', ...
+                            k, c(1).n, entry.changes);
+                    end
+                end
+            end
+        end
+
+        function data = recoverTransaction(this_obj, err, query_str, args, doCommit)
+            % recoverTransaction - Reopen, replay the write so far, carry on
+            %
+            % DATA = recoverTransaction(THIS_OBJ, ERR, QUERY_STR, ARGS, DOCOMMIT)
+            %
+            % A READONLY inside a write operation is a poisoned connection
+            % (typically SQLITE_READONLY_DBMOVED), cleared only by reopening
+            % (da83fa3). But a reopen loses the transaction's earlier
+            % statements, so after it the journal is replayed on the fresh
+            % connection and checked (replayJournal), and only then is the
+            % failed statement QUERY_STR run (or, with DOCOMMIT, the
+            % transaction committed). Only SQL is replayed: files the operation
+            % already copied stay where they are, which is why the operation
+            % is not simply run again.
+            %
+            % On the same backoff schedule as run_sql_noOpen. A replay that
+            % diverges is not retried: it is rolled back, nothing from the
+            % operation is written, and ERR is raised with the divergence as
+            % its cause. If the database file no longer exists, it is not
+            % reopened, since that would create a new, empty database there.
+            % Mirrors DID-python's SQLiteDB._recover_transaction.
+            journal = this_obj.txJournal;
+            pending = this_obj.pendingFileDeletes;
+            backoffs = [0.1 0.2 0.5 1 2 4];
+            lastErr = err;
+            data = [];
+            for attempt = 1 : numel(backoffs)
+                % Let go of the dead transaction first: its locks would hold
+                % other writers up for the length of the backoff, and its
+                % rollback journal, left next to the file, would be played
+                % back into whatever file the reopen finds there.
+                if ~isempty(this_obj.dbid)
+                    try mksqlite(this_obj.dbid, 'ROLLBACK'); catch, end
+                end
+                if this_obj.debug
+                    fprintf(2, ['DID:SQLITEDB readonly inside a write operation ' ...
+                        '(attempt %d/%d, %g s backoff): reopening and replaying ' ...
+                        '%d statement(s)\n'], attempt, numel(backoffs), ...
+                        backoffs(attempt), numel(journal));
+                end
+                pause(backoffs(attempt));
+                if ~isfile(this_obj.connection)
+                    gone = MException('DID:SQLITEDB:DatabaseFileGone', ...
+                        ['The database file %s no longer exists. It is not ' ...
+                         'reopened, which would create a new, empty database ' ...
+                         'there; nothing from this operation was written.'], ...
+                        this_obj.connection);
+                    this_obj.restoreWriteState(journal, pending);
+                    throw(addCause(err, gone));
+                end
+                this_obj.inWrite = false;  % no journaling while reopening/replaying
+                stage = 'replay';
+                try
+                    this_obj.close_db();
+                    this_obj.dbid = [];
+                    this_obj.open_db();
+                    mksqlite(this_obj.dbid, 'BEGIN IMMEDIATE');
+                    this_obj.replayJournal(journal);
+                    if ~isempty(query_str)
+                        stage = 'statement';
+                        data = mksqlite(this_obj.dbid, query_str, args{:});
+                    end
+                    if doCommit
+                        if this_obj.fileWasReplaced()
+                            % Replaced again while we replayed: go round.
+                            throw(this_obj.replacedFileError());
+                        end
+                        mksqlite(this_obj.dbid, 'COMMIT');
+                    end
+                catch replayErr
+                    this_obj.restoreWriteState(journal, pending);
+                    if strcmp(replayErr.identifier, 'DID:SQLITEDB:ReplayDiverged')
+                        if ~isempty(this_obj.dbid)
+                            try mksqlite(this_obj.dbid, 'ROLLBACK'); catch, end
+                        end
+                        fprintf(2, ['DID:SQLITEDB could not recover the write ' ...
+                            'operation: %s. Nothing from it was written.\n'], replayErr.message);
+                        throw(addCause(err, replayErr));
+                    end
+                    if strcmp(stage, 'statement') && ~this_obj.isReadonlyError(replayErr)
+                        % An ordinary failure of the statement itself, as it
+                        % would have been the first time: the replayed
+                        % transaction stays open for the caller, as SQLite
+                        % leaves it.
+                        rethrow(replayErr);
+                    end
+                    lastErr = replayErr;
+                    if ~this_obj.isRetryableSqlError(replayErr)
+                        break
+                    end
+                    continue
+                end
+
+                % Recovered: the journal still describes the open transaction
+                % (or, after a commit, nothing does).
+                this_obj.restoreWriteState(journal, pending);
+                if ~isempty(query_str)
+                    this_obj.journalStatement(query_str, args, data);
+                end
+                if this_obj.debug
+                    fprintf(2, ['DID:SQLITEDB write operation recovered on ' ...
+                        'attempt %d/%d (after reopen)\n'], attempt, numel(backoffs));
+                end
+                return
+            end
+            this_obj.restoreWriteState(journal, pending);
+            if isempty(this_obj.dbid) && isfile(this_obj.connection)
+                % Leave a connection behind if the path has come back.
+                try this_obj.open_db(); catch, end
+            end
+            fprintf(2,'SQLite readonly/busy diagnostics:\n%s\n', ...
+                this_obj.collectReadonlyDiagnostics());
+            throw(lastErr);
+        end
+
+        function restoreWriteState(this_obj, journal, pending)
+            % restoreWriteState - Put back the write state recoverTransaction suspended
+            this_obj.inWrite = true;
+            this_obj.txJournal = journal;
+            this_obj.pendingFileDeletes = pending;
+        end
+
+        function key = fileKey(this_obj)
+            % fileKey - Identity (device:inode) of the file at the path, or ''
+            %
+            % '' when the file is absent, or where Java cannot report a
+            % unix:ino (Windows, -nojvm); fileWasReplaced then does nothing.
+            key = '';
+            try
+                p = java.io.File(char(this_obj.connection)).toPath();
+                noFollow = javaArray('java.nio.file.LinkOption', 0);
+                dev = java.nio.file.Files.getAttribute(p, 'unix:dev', noFollow);
+                ino = java.nio.file.Files.getAttribute(p, 'unix:ino', noFollow);
+                key = [this_obj.javaNumberText(dev) ':' this_obj.javaNumberText(ino)];
+            catch
+            end
+        end
+
+        function txt = javaNumberText(~, value)
+            % javaNumberText - A java.lang.Long, or the double MATLAB made of it, as text
+            if isnumeric(value)
+                txt = sprintf('%.0f', value);
+            else
+                txt = char(value.toString());
+            end
+        end
+
+        function tf = fileWasReplaced(this_obj)
+            % fileWasReplaced - Does the path no longer name the file opened?
+            %
+            % The comparison SQLite's unix VFS makes for DBMOVED, made at the
+            % moment SQLite does not: just before COMMIT. A deleted file
+            % counts as replaced. A volume with unstable inode numbers can
+            % trip it falsely, which costs one replay onto the same file,
+            % since nothing has been committed yet.
+            tf = ~isempty(this_obj.dbFileKey) && ...
+                ~strcmp(this_obj.fileKey(), this_obj.dbFileKey);
+        end
+
+        function err = replacedFileError(this_obj)
+            % Worded as SQLite words DBMOVED, so it is classified the same way.
+            err = MException('DID:SQLITEDB:FileReplaced', ...
+                ['attempt to write a readonly database (the database file at ' ...
+                 '%s was replaced while it was open, so this connection would ' ...
+                 'have committed to a file that no longer has a name)'], ...
+                this_obj.connection);
+        end
+
+        function tf = isReadStatement(~, query_str)
+            % isReadStatement - Does this statement only read?
+            q = upper(strtrim(char(query_str)));
+            tf = startsWith(q, {'SELECT','PRAGMA','SHOW','EXPLAIN'});
+        end
+
         function close_db(this_obj)
             % Close the database file (ignore any errors)
 
@@ -2181,20 +2606,18 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Delete this document's cached files from disk. A files row whose
             % cached_location is empty was never ingested (do_add_doc still
             % records the row), so there is no file to delete for it.
+            %
+            % The files go only once the rows are committed (deleteAfterCommit):
+            % deleting them first and then rolling back would leave rows that
+            % point at files no longer on disk.
             cache_data = this_obj.run_sql_noOpen('SELECT cached_location FROM files WHERE doc_idx=?', doc_idx);
-            if ~isempty(cache_data)
-                oldWarn = warning('off','MATLAB:DELETE:FileNotFound');
-                hRestoreWarn = onCleanup(@()warning(oldWarn)); %#ok<NASGU>
-                for idx = 1 : numel(cache_data)
-                    this_file = cache_data(idx).cached_location;
-                    if isempty(this_file) || ~ischar(this_file), continue, end
-                    if this_obj.debug
-                        fprintf('Deleting cached file %s\n', this_file);
-                    end
-                    % A file that is already gone is not a failure: the point is
-                    % that it must not be there afterwards.
-                    try delete(this_file); catch, end
+            for idx = 1 : numel(cache_data)
+                this_file = cache_data(idx).cached_location;
+                if isempty(this_file) || ~ischar(this_file), continue, end
+                if this_obj.debug
+                    fprintf('Deleting cached file %s\n', this_file);
                 end
+                this_obj.deleteAfterCommit(this_file);
             end
 
             % Remove the document's records - dependents before the docs row

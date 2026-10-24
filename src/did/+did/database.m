@@ -484,10 +484,14 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Is validation requested?
             doValidation = options.Validate;
 
-            % Disable database journalling if no validation requested
+            % Keep the rollback journal in memory if no validation requested.
+            % It used to be turned OFF, but each document is now added in one
+            % transaction (sqlitedb/beginWrite), and with journal_mode=OFF
+            % SQLite's ROLLBACK "behaves in an undefined way". MEMORY keeps
+            % the speed of not writing a journal file and a working rollback.
             if ~doValidation
                 try
-                    database_obj.run_sql_query('pragma journal_mode=OFF');
+                    database_obj.run_sql_query('pragma journal_mode=MEMORY');
                     % Restore journalling on ANY exit, including a throw in the
                     % document loop below (e.g. an OnDuplicate UNIQUE-constraint
                     % error). Previously the restore lived only on the normal
