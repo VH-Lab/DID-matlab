@@ -1412,6 +1412,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             for k = find(~inBatch & ~isIdLookup)
                 new_doc_ids = search_doc_ids(sqlitedb_obj, operands{k}, branch_id, candidate_ids);
                 doc_ids = union(doc_ids, new_doc_ids);
+            end
+        end
         function doc_ids = brute_force_search(sqlitedb_obj, query_struct, branch_id, candidate_ids)
             % brute_force_search - test documents one by one against a query
             %
