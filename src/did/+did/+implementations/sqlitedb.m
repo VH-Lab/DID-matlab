@@ -2670,31 +2670,59 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % Databases written before these indexes existed - by DID-matlab
             % or DID-python - do not have them, so they are added when such a
-            % database is opened. That is a one-time cost, of a few seconds
-            % for a database of 100,000 documents. A database that cannot be
-            % written to (a read-only file, or one locked by another writer)
-            % is left as it is: the indexes only speed up searches, and
-            % without them searches run as they always have
-            % (searchIndexesReady stays false).
+            % database is opened. That is a one-time cost, but not a small
+            % one: doc_data_field_value holds a copy of every field value, so
+            % for a large dataset (100,000 documents can be tens of millions
+            % of doc_data rows) on a slow or synced drive it can take
+            % minutes. Each index is announced before it is built, with the
+            % approximate number of rows, and timed - otherwise the open just
+            % appears to hang. A database that cannot be written to (a
+            % read-only file, or one locked by another writer) is left as it
+            % is: the indexes only speed up searches, and without them
+            % searches run as they always have (searchIndexesReady stays
+            % false).
             %
             % mksqlite is called directly rather than through run_sql_noOpen,
             % whose retries would spend seconds on a file that is simply
             % read-only, and print an error for it.
             this_obj.searchIndexesReady = false;
-            try
-                for i = 1 : size(this_obj.searchIndexes, 1)
+            for i = 1 : size(this_obj.searchIndexes, 1)
+                indexName = this_obj.searchIndexes{i,1};
+                try
                     found = mksqlite(this_obj.dbid, ['SELECT name FROM sqlite_master ' ...
-                        'WHERE type=''index'' AND name=''' this_obj.searchIndexes{i,1} '''']);
-                    if isempty(found)
-                        mksqlite(this_obj.dbid, ['CREATE INDEX IF NOT EXISTS "' ...
-                            this_obj.searchIndexes{i,1} '" ON "doc_data" (' ...
-                            this_obj.searchIndexes{i,2} ')']);
-                    end
+                        'WHERE type=''index'' AND name=''' indexName '''']);
+                catch
+                    return  % cannot even read the schema - search without the indexes
                 end
-                this_obj.searchIndexesReady = true;
-            catch
-                % Not writable now - search without the indexes
+                if ~isempty(found)
+                    continue
+                end
+                % max(rowid) is read straight from the end of the table's
+                % b-tree, so this estimate costs nothing (count(*) would scan)
+                numRows = 0;
+                try
+                    rowData = mksqlite(this_obj.dbid, 'SELECT max(rowid) AS n FROM doc_data');
+                    if ~isempty(rowData) && isnumeric(rowData(1).n) && isscalar(rowData(1).n)
+                        numRows = double(rowData(1).n);
+                    end
+                catch
+                end
+                fprintf(['DID: adding search index %s to %s (about %s rows). ' ...
+                    'This happens once per database and can take several minutes ' ...
+                    'for a large one...\n'], indexName, this_obj.connection, ...
+                    did.implementations.sqlitedb.groupDigits(numRows));
+                buildStart = tic;
+                try
+                    mksqlite(this_obj.dbid, ['CREATE INDEX IF NOT EXISTS "' ...
+                        indexName '" ON "doc_data" (' this_obj.searchIndexes{i,2} ')']);
+                catch err
+                    fprintf(['DID: could not add search index %s (%s); ' ...
+                        'searches will run without it.\n'], indexName, strtrim(err.message));
+                    return
+                end
+                fprintf('DID: added search index %s in %.1f s.\n', indexName, toc(buildStart));
             end
+            this_obj.searchIndexesReady = true;
         end
 
         function create_deleted_docs_table(this_obj)
@@ -3066,6 +3094,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 rootR = [rootR sep];
             end
             tf = strncmp(pR, rootR, length(rootR));
+        end
+    end
+
+    methods (Static, Access=private)
+        function str = groupDigits(n)
+            % groupDigits - a whole number with thousands separators
+            %
+            % STR = groupDigits(N) returns e.g. '12,345,678' for 12345678.
+            arguments
+                n (1,1) double
+            end
+            str = sprintf('%d', round(n));
+            str = regexprep(str, '(\d)(?=(\d{3})+$)', '$1,');
         end
     end
 
