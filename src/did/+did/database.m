@@ -1276,9 +1276,30 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     doc_ids = doc_ids';  % ensure column vector
                 end
             else
-                op = strtrim(lower(query_struct.operation));
+                op = strtrim(lower(char(query_struct.operation)));
+                negated = startsWith(op, '~');
                 op(op=='~') = '';
-                if strcmpi(op,'or')
+                if strcmpi(op,'or') && negated
+                    % NOT (a OR b): the documents of the branch - or the
+                    % candidates, when restricted to them - that the OR
+                    % does not match, as did.datastructures.fieldsearch
+                    % and DID-python do. The OR itself is searched as a
+                    % plain OR, so it keeps the base.id and batched paths.
+                    plain_struct = query_struct;
+                    plain_struct.operation = 'or';
+                    matched = search_doc_ids(sqlitedb_obj, plain_struct, branch_id, candidate_ids);
+                    if iscell(candidate_ids)
+                        universe = candidate_ids;
+                    else
+                        universe = sqlitedb_obj.get_doc_ids(branch_id);
+                    end
+                    if isempty(universe)
+                        doc_ids = cell(0,1);
+                    else
+                        doc_ids = setdiff(universe(:), matched(:));
+                        doc_ids = doc_ids(:);  % column vector, whatever setdiff returns
+                    end
+                elseif strcmpi(op,'or')
                     [isIdLookup, ids] = did.database.baseIdLookupValues(query_struct);
                     if isIdLookup && sqlitedb_obj.hasSearchIndexes()
                         % base.id lookups ORed together: search all the ids at once
