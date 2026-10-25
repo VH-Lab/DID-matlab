@@ -857,3 +857,92 @@ catch
     ok = false;
 end
 end
+
+% ---- v1 documents in the V2 database ([passthrough stays v1: how]) ----
+%
+% Decided by Jess Haley, 2026-10-24 [passthrough stays v1: how] (did-schema
+% V_eta_go_forward_class_audit.md): "a v1 document is stored in the same V2
+% database, with V_eta validation skipped for it and counted". A document
+% stamped 'did_v1' is stored WITHOUT V_eta validation, add's report counts it,
+% countV1 counts what is held, and reading it back gives the stored body.
+
+function testAV1DocumentIsStoredWithoutValidationAndCounted(testCase)
+db = testCase.TestData.db;
+body = makeV1Body('aaaa1111bbbb2222_v1passthrough01');
+% The counterpart first: the same body UNSTAMPED is validated, and V_eta
+% validation refuses it (an undeclared v1 field), so a pass below is the skip.
+unstamped = body;
+unstamped.document_class = rmfield(unstamped.document_class, 'schema_version');
+refused = false;
+try
+    db.add(did2.document(unstamped));
+catch
+    refused = true;
+end
+verifyTrue(testCase, refused, ...
+    'the unstamped v1 body validated; this test would prove nothing');
+verifyEqual(testCase, db.count(), 0);
+
+report = db.add(did2.document(body));
+verifyEqual(testCase, report.documents, 1, 'the denominator comes first');
+verifyEqual(testCase, report.v1_not_validated, 1);
+verifyEqual(testCase, report.validated, 0);
+verifyEqual(testCase, report.not_validated_by_request, 0);
+[nV1, nTotal] = db.countV1();
+verifyEqual(testCase, nV1, 1);
+verifyEqual(testCase, nTotal, 1);
+end
+
+function testAV1DocumentReadsBackAsStored(testCase)
+db = testCase.TestData.db;
+body = makeV1Body('aaaa1111bbbb2222_v1passthrough02');
+db.add(did2.document(body));
+got = db.get(body.base.id).toStruct();
+verifyTrue(testCase, isequaln(got, body), ...
+    'a did_v1 document must read back as the stored body');
+hits = db.search(did2.query('base.id', 'exact_string', body.base.id));
+verifyNumElements(testCase, hits, 1);
+verifyTrue(testCase, isequaln(hits{1}.toStruct(), body));
+end
+
+function testAMixedBatchCountsEachKind(testCase)
+db = testCase.TestData.db;
+v1 = did2.document(makeV1Body('aaaa1111bbbb2222_v1passthrough03'));
+v2 = makeDemoA('mixed', 3);
+report = db.add({v2, v1});
+verifyEqual(testCase, report.documents, 2);
+verifyEqual(testCase, report.validated, 1);
+verifyEqual(testCase, report.v1_not_validated, 1);
+verifyEqual(testCase, report.validated + report.v1_not_validated ...
+    + report.not_validated_by_request, report.documents);
+[nV1, nTotal] = db.countV1();
+verifyEqual(testCase, [nV1, nTotal], [1, 2]);
+end
+
+function testValidateFalseIsCountedSeparately(testCase)
+db = testCase.TestData.db;
+report = db.add(makeDemoA('noval', 4), 'Validate', false);
+verifyEqual(testCase, report.not_validated_by_request, 1);
+verifyEqual(testCase, report.v1_not_validated, 0);
+end
+
+function b = makeV1Body(id)
+% A did_v1 body as NDI v1 writes it: a numeric class_version, superclasses by
+% `definition`, depends_on by `value`, base.datestamp, and a field the V_eta
+% class of the same name does not declare. Its class name is one the fixture
+% schema holds, so a read that rehydrated it against that class would change
+% `axes` (a 0x0 double here) to a struct array.
+b = struct();
+b.document_class = struct( ...
+    'definition', '$NDIDOCUMENTPATH/demoArray.json', ...
+    'validation', '$NDISCHEMAPATH/demoArray_schema.json', ...
+    'class_name', 'demoArray', ...
+    'property_list_name', 'demoArray', ...
+    'class_version', 1, ...
+    'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'), ...
+    'schema_version', 'did_v1');
+b.depends_on = struct('name', 'underlying', 'value', 'aaaa1111bbbb2222_0000000000000001');
+b.base = struct('id', id, 'session_id', 'aaaa1111bbbb2222_session00000001', ...
+    'name', 'v1 passthrough', 'datestamp', '2024-06-01T12:00:00.000Z');
+b.demoArray = struct('axes', [], 'legacy_v1_field', 'only v1 has this');
+end

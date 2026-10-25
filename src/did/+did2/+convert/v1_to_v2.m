@@ -32,7 +32,7 @@ function result = v1_to_v2(v1Bodies, options)
 %   Documents that fail any step land in the quarantine table; nothing
 %   is silently dropped.
 %
-%   The result struct has three fields:
+%   The result struct has these fields:
 %     migrated   - cell array of did2.document instances that survived
 %                  every step.
 %     quarantine - struct array with original_body (char, JSON-encoded
@@ -40,6 +40,14 @@ function result = v1_to_v2(v1Bodies, options)
 %                  name, or '<unknown>' if reading the header failed),
 %                  reason (char, the captured error message), and
 %                  failed_at (UTC ISO-8601 timestamp).
+%     passthrough - struct array, one per v1 document NO migrator changed
+%                  (superclass and concrete migrators returned the
+%                  universalRenames output unchanged): `input_index` (its
+%                  position in V1BODIES), `id` (base.id), `class_name`, and
+%                  `body` (the struct emitted for it). Report-only here; see
+%                  ndi.migrate.local, which stamps the ones still unchanged at
+%                  the end of the whole pipeline 'did_v1' ([passthrough stays
+%                  v1: how]). `summary.passthrough_count` is its length.
 %     summary    - struct with `total`, `migrated_count`,
 %                  `quarantine_count`, and a `by_class` struct mapping
 %                  the post-universal class name to its migrated count.
@@ -170,6 +178,17 @@ fragIds = {};
 % migrated, not quarantined, not unconverted and not a fragment.
 emptyNames = {};
 emptyValues = [];
+% PASSED THROUGH, by input position (Decided by Jess Haley, 2026-10-24
+% [passthrough stays v1] and [passthrough stays v1: how], did-schema
+% V_eta_go_forward_class_audit.md): a v1 document that no migrator changed --
+% the superclass migrators AND the concrete migrator handed back the
+% universalRenames output unchanged -- is recorded with the body this pass
+% emitted for it. Pass 1 still emits it as today (the NDI second pass keeps
+% receiving what it receives today); the caller that runs the WHOLE pipeline
+% (ndi.migrate.local) compares each recorded body with the document at the
+% end, and one still identical is stored as its v1 source, stamped 'did_v1'.
+% Recording changes no outcome here.
+passthrough = struct('input_index', {}, 'id', {}, 'class_name', {}, 'body', {});
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
 % each corpus report counts the dimensions whose term has no node, so the move
@@ -236,6 +255,7 @@ for k = 1:numel(bodies)
     rawBody = bodies{k};
     originalJSON = encodeForQuarantine(rawBody);
     className = '<unknown>';
+    passedThrough = false;
     noteMark = did2.convert.reportNote('mark');
     try
         preBody = ensureStruct(rawBody);
@@ -277,6 +297,7 @@ for k = 1:numel(bodies)
             end
             v2Body = applySuperclassMigrators(postUniversalBody, className, ...
                 options.TargetVersion);
+            superUnchanged = isequaln(v2Body, postUniversalBody);
             % runConcreteMigrator returns a CELL of one-or-more bodies.
             % A class with a base migrator only returns a single body; a
             % class with a +migrators_j split/fold migrator (treatment,
@@ -310,6 +331,7 @@ for k = 1:numel(bodies)
             elseif isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body)
                 [unconvNames, unconvValues] = bumpClassCounter( ...
                     unconvNames, unconvValues, className);
+                passedThrough = superUnchanged;
             elseif did2.validate.isFragment(v2Bodies, 'SchemaCache', options.SchemaCache)
                 % PHASE 1 REPORT-ONLY: the FRAGMENT mode. See countFragments.
                 [fragNames, fragValues] = bumpClassCounter( ...
@@ -333,6 +355,11 @@ for k = 1:numel(bodies)
                 doc.validate('SchemaCache', options.SchemaCache);
             end
             migrated{end+1} = doc; %#ok<AGROW>
+            if passedThrough
+                passthrough(end+1) = struct('input_index', k, ...
+                    'id', sourceIdOf(outBody), 'class_name', className, ...
+                    'body', outBody); %#ok<AGROW>
+            end
             outName = className;
             if isfield(outBody, 'document_class') ...
                     && isstruct(outBody.document_class) ...
@@ -356,6 +383,11 @@ for k = 1:numel(bodies)
         end
     catch err
         did2.convert.reportNote('truncate', noteMark);
+        % a body that quarantines did not pass through: drop its record if
+        % it was made before the failure (validation runs after the record)
+        if passedThrough && ~isempty(passthrough) && passthrough(end).input_index == k
+            passthrough(end) = [];
+        end
         % `identifier` is carried alongside `reason` so the rollup can group
         % by FAILURE KIND rather than by message text. Messages interpolate
         % class and edge names, so every one of the 7,233 empty-required-edge
@@ -410,6 +442,7 @@ legacy.discarded_by_class = buildByClassTable(legacyDiscNames, legacyDiscValues)
 result = struct();
 result.migrated = migrated;
 result.quarantine = quarantine;
+result.passthrough = passthrough;
 result.summary = struct( ...
     'total',            numel(bodies), ...
     'migrated_count',   numel(migrated), ...
@@ -423,6 +456,7 @@ result.summary = struct( ...
     'fragment_source_ids', {fragIds}, ...
     'emitted_nothing_count',    sum(emptyValues), ...
     'emitted_nothing_by_class', buildByClassTable(emptyNames, emptyValues), ...
+    'passthrough_count', numel(passthrough), ...
     'legacy_ndi_document', legacy, ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...

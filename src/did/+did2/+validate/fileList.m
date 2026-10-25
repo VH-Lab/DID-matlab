@@ -151,15 +151,7 @@ arguments
 end
 
 base = 1;
-if ~isstruct(body) || ~isfield(body, 'document_class') || ~isstruct(body.document_class) ...
-        || ~isfield(body.document_class, 'schema_version')
-    return;
-end
-sv = body.document_class.schema_version;
-if isstring(sv) && isscalar(sv); sv = char(sv); end
-if ~ischar(sv) || isempty(sv); return; end
-[rank, known] = did2.convert.schemaVersionRank(sv);
-if known && rank >= did2.convert.schemaVersionRank('V_eta')
+if isstruct(body) && did2.schema.isV2Stamp(body)   % 'V_eta' or 'did_v2'
     base = 0;
 end
 end
