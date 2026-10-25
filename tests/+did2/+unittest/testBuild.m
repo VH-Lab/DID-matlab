@@ -99,7 +99,7 @@ sid = testCase.TestData.sid;
 [cls, fields, supers] = subjectSpec('mouse 7');
 doc = did2.build.document(cls, fields, 'SessionId', sid);
 verifyEqual(testCase, doc.document_class.class_name, cls);
-verifyEqual(testCase, doc.document_class.schema_version, 'V_eta');
+verifyEqual(testCase, doc.document_class.schema_version, 'did_v2');
 verifyEqual(testCase, {doc.document_class.superclasses.class_name}, supers);
 verifyEqual(testCase, sessionIdWritten(doc), sid);
 verifyNotEmpty(testCase, doc.base.id);

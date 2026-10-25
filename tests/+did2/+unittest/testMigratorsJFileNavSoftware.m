@@ -81,7 +81,7 @@ sw  = out.migrated{find(strcmp(names, 'software'), 1)};
 % id, so minting a fresh one here would dangle every daqsystem in the corpus.
 verifyEqual(testCase, efp.get('base.id'), 'fn_1');
 verifyEqual(testCase, efp.get('base.session_id'), 'sess_1');
-verifyEqual(testCase, efp.get('document_class.schema_version'), 'V_eta');
+verifyEqual(testCase, efp.get('document_class.schema_version'), 'did_v2');
 
 % the two eval'd strings became declared LISTS -- parsed, never eval'd
 verifyEqual(testCase, efp.get('epoch_file_pattern.file_pattern'), ...

@@ -64,7 +64,10 @@ end
 % that got this far with an unknown version is already a contradiction -- the
 % refusal, not this line, is what decides that case.
 [svRank, svKnown] = did2.convert.schemaVersionRank(sv);
-[tgtRank, tgtKnown] = did2.convert.schemaVersionRank(targetVersion);
+% TARGETVERSION names the schema set ('V_eta'); its documents carry the stamp
+% did2.convert.targetStamp gives ('did_v2', [document stamps]).
+[tgtRank, tgtKnown] = did2.convert.schemaVersionRank( ...
+    did2.convert.targetStamp(targetVersion));
 if ~svKnown || ~tgtKnown || svRank < tgtRank
     return;
 end

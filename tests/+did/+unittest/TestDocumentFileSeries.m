@@ -745,13 +745,13 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
 end
 
 function doc = veta(doc)
-%VETA The same document, stamped as a V_eta document (schema_version V_eta),
+%VETA The same document, stamped as a V2 document (schema_version did_v2),
 %   which is how did.document/seriesMemberBase tells the vintages apart.
 arguments
     doc (1,1) did.document
 end
 
 props = doc.document_properties;
-props.document_class.schema_version = 'V_eta';
+props.document_class.schema_version = 'did_v2';
 doc = did.document(props);
 end
