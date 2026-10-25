@@ -138,7 +138,7 @@ restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClass
 % whole call, unless a caller already pinned one for a longer run.
 if isempty(did2.convert.migrationTime('get'))
     did2.convert.migrationTime('pin');
-    unpinMigrationTime = onCleanup(@() did2.convert.migrationTime('unpin')); %#ok<NASGU>
+    unpinMigrationTime = onCleanup(@() did2.convert.migrationTime('unpin'));
 end
 
 bodies = normaliseInput(v1Bodies);
