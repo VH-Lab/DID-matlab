@@ -1533,7 +1533,7 @@ if isfield(src, 'file');  body.file  = src.file;  end
 end
 
 function [sid, ds] = sessionAndTime(src)
-sid = ''; ds = '2024-01-01T00:00:00.000Z';
+sid = ''; ds = did2.convert.migrationTime();
 if isstruct(src)
     sid = char(did2.schema.cache.sessionIdOf(src));
     ds0 = creationTime(src);
@@ -1551,7 +1551,7 @@ end
 end
 
 function base = freshBase(src, id, name)
-sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
+sessionId = ''; ds = did2.convert.migrationTime();
 if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
     sessionId = did2.schema.cache.sessionIdOf(src);
     ds0 = creationTime(src);

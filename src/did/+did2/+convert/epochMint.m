@@ -1975,7 +1975,7 @@ function body = mintEpoch(epochString, sessionId, sessionDocumentId, datestamp)
 %   extents live in `daqreader_epochdata_ingested.epochtable` and the recording
 %   device needs the daq graph (#59). An edge emitted empty is the defect, not a
 %   placeholder.
-if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
 % did-schema #88: an `entity` of type epoch (the `epoch` class went,
 % V_eta_entity_composition_plan.md sec. 4), its local_identifier the v1 epoch
 % string. Its `session_id` edge names the session entity, whose base.id IS

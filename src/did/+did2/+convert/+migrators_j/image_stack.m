@@ -229,15 +229,19 @@ end
 
 stackId   = baseField(preBody, 'id', did.ido.unique_id());
 dataType = getCharField(params, 'data_type');
-dimOrder = firstNonEmpty(getCharField(params, 'dimension_order'), 'YXCZT');
+% [no invented values] (Jess Haley, 2026-10-25): a dimension order or data type
+% the source does not state is not assumed. No order means no honest key, so
+% the document passes through as v1; no data type leaves datum_type empty
+% (optional in the schema: "not stated").
+dimOrder = getCharField(params, 'dimension_order');
 dimSize  = numVec(getField(params, 'dimension_size'));
-if numel(dimSize) < numel(dimOrder)
+if isempty(dimOrder) || numel(dimSize) < numel(dimOrder)
     bodies = {preBody};   % no extent for a dimension: no honest key
     return;
 end
 
 anchor = jSessionAnchor(preBody, 'during');
-[datumType, sourceDatumType] = jDatumType(firstNonEmpty(dataType, 'uint16'));
+[datumType, sourceDatumType] = jDatumType(dataType);
 conds = [];
 ts = getField(params, 'timestamp');
 if isnumeric(ts) && isscalar(ts) && isfinite(ts)

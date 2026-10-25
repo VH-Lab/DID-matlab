@@ -1420,7 +1420,7 @@ rel = did2.build.directedRelation(char(lawnId), char(plateId), relation, ...
 end
 
 function [sid, ds] = sessionAndTime(srcBody)
-sid = ''; ds = '2024-01-01T00:00:00.000Z';
+sid = ''; ds = did2.convert.migrationTime();
 if isstruct(srcBody)
     sid = char(did2.schema.cache.sessionIdOf(srcBody));
     ds0 = creationTime(srcBody);
@@ -1436,7 +1436,7 @@ end
 end
 
 function base = freshBase(srcBody, name)
-sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
+sessionId = ''; ds = did2.convert.migrationTime();
 if isstruct(srcBody) && isfield(srcBody, 'base') && isstruct(srcBody.base)
     sessionId = did2.schema.cache.sessionIdOf(srcBody);
     ds0 = creationTime(srcBody);

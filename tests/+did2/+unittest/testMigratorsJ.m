@@ -1711,6 +1711,93 @@ verifyEqual(testCase, keys(5).n, 10);
 end
 
 
+% ---- [no invented values] (Jess Haley, 2026-10-25) ---------------------
+%
+% A value the v1 source does not state is not invented: no assumed
+% dimension order or data type, and a document with no creation time carries
+% the time the migration ran, never the old '2024-01-01T00:00:00.000Z'.
+
+function v1 = imageStackNoInventionDoc()
+v1 = struct();
+v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'is_01', 'session_id', 'sess_09', ...
+    'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image_stack = struct('format_ontology', 'edam:3382', ...
+    'label', 'a two-photon stack', 'format', 'tiff');
+v1.image_stack_parameters = struct('data_type', 'uint16', ...
+    'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
+    'dimension_scale', [0.5 0.5 1 1 1], 'clocktype', 'dev_local_time', 'timestamp', 0);
+end
+
+function testImageStackWithNoDimensionOrderPassesThroughAsV1(testCase)
+% No dimension order: no key can be built honestly, so the document passes
+% through unchanged. It used to be given 'YXCZT'.
+v1 = imageStackNoInventionDoc();
+v1.image_stack_parameters = rmfield(v1.image_stack_parameters, 'dimension_order');
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
+end
+
+function testImageStackWithNoDataTypeLeavesDatumTypeEmpty(testCase)
+% No data type: value.data_type is left empty ("not stated"). It used to be
+% given 'uint16'.
+v1 = imageStackNoInventionDoc();
+v1.image_stack_parameters = rmfield(v1.image_stack_parameters, 'data_type');
+out = runJ(v1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'observation+intensity'), 1);
+obs = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.classKey(obs), 'observation+intensity');
+s = obs.toStruct();   % not stated: the field is absent or empty
+verifyTrue(testCase, ~isfield(s.value, 'data_type') || isempty(s.value.data_type));
+end
+
+function testSourceDatestampIsKept(testCase)
+% A v1 document that states its creation time keeps it.
+out = runJ(imageStackNoInventionDoc());
+verifyEqual(testCase, out.migrated{1}.get('base.creation_timestamp'), ...
+    '2024-06-01T12:00:00.000Z');
+end
+
+function testNoSourceDatestampGetsTheMigrationTime(testCase)
+% A v1 document with no creation time carries the time the migration ran:
+% the pinned run time, the same on every document of the run.
+v1 = imageStackNoInventionDoc();
+v1.base = rmfield(v1.base, 'datestamp');
+verifyEmpty(testCase, did2.convert.migrationTime('get'));
+pinned = did2.convert.migrationTime('pin');
+unpin = onCleanup(@() did2.convert.migrationTime('unpin')); %#ok<NASGU>
+out = runJ(v1);
+verifyGreaterThan(testCase, numel(out.migrated), 1);
+for k = 1:numel(out.migrated)
+    ts = out.migrated{k}.get('base.creation_timestamp');
+    verifyEqual(testCase, ts, pinned, sprintf('document %d', k));
+    verifyNotEqual(testCase, ts, '2024-01-01T00:00:00.000Z');
+end
+end
+
+function testMigrationTimeIsPinnedPerCallAndReleased(testCase)
+% v1_to_v2 pins one time for its own call when nothing is pinned, and
+% releases it after; an explicit pin is kept and survives the call.
+verifyEmpty(testCase, did2.convert.migrationTime('get'));
+v1 = imageStackNoInventionDoc();
+v1.base = rmfield(v1.base, 'datestamp');
+out = runJ(v1);
+verifyEmpty(testCase, did2.convert.migrationTime('get'));   % released
+ts = cellfun(@(d) d.get('base.creation_timestamp'), out.migrated, ...
+    'UniformOutput', false);
+verifyEqual(testCase, numel(unique(ts)), 1);                % one time per call
+verifyMatches(testCase, ts{1}, '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$');
+verifyNotEqual(testCase, ts{1}, '2024-01-01T00:00:00.000Z');
+p = did2.convert.migrationTime('pin');
+unpin = onCleanup(@() did2.convert.migrationTime('unpin')); %#ok<NASGU>
+runJ(v1);
+verifyEqual(testCase, did2.convert.migrationTime('get'), p); % kept
+end
+
+
 % ---- image_stack: the `document_id` edge on the FOLD arm ---------------
 %
 % The guard arm (subject-less, E. coli) passes the document through INTACT and
@@ -2906,7 +2993,7 @@ end
 % detectors (unconverted_by_class sees output ~= input, isFragment sees a
 % substantive dataset, the empty-required-edge census sees no edges because
 % dataset/person declare `depends_on: []`, and the vacuous-required-field
-% census is defeated by the `(unnamed dataset)` fallback). A struct fixture
+% census was defeated by the old `(unnamed dataset)` fallback). A struct fixture
 % cannot see any of that. The round trip is the point of these tests, so do
 % NOT "simplify" them by dropping the jsonencode/jsondecode pair.
 %
@@ -2919,12 +3006,12 @@ end
 %   AuthorsSurviveTheCellDecode            9 -> 16   person 0 -> 2      YES
 %   FundingAndPublicationSurvive...       10 -> 22   funding 0 -> 2,
 %                                                    publication 0 -> 2 YES
-%   EmptyStructureStillYields...           1 ->  1             no, by design
+%   EmptyStructureYieldsADataset...        1 ->  1             no, by design
 %   StructureInsideACellIsStillRead        1 -> 16             YES
 %
 % The two insensitive ones are PINS, not proofs: the baseline pins that the
 % round trip alone changes nothing, and the empty-structure one pins that the
-% `(unnamed dataset)` fallback still fires for the NDI template's own default.
+% NDI template's own default yields one dataset with no invented name.
 
 function out = runJRoundTrip(v1)
 %RUNJROUNDTRIP Run the migrator on the shape the CORPUS delivers, not the
@@ -3063,9 +3150,10 @@ verifyEqual(testCase, globalIdsJ(again), {'doi:10.1/worms-again'});
 end
 
 
-function testMetadataEditorEmptyStructureStillYieldsTheUnnamedDataset(testCase)
-% An editor with no structure still yields the dataset entity, named
-% '(unnamed dataset)'. UPDATED for #88: the name is entity.name.
+function testMetadataEditorEmptyStructureYieldsADatasetWithNoName(testCase)
+% An editor with no structure still yields the dataset entity, with no name:
+% [dataset name not invented] (Jess Haley, 2026-10-25) retired the
+% '(unnamed dataset)' fallback. INVERTED: this test used to pin that name.
 v1 = metadataEditorDoc();
 v1.metadata_editor = struct('metadata_structure', []);
 out = runJRoundTrip(v1);
@@ -3073,7 +3161,8 @@ verifyEqual(testCase, numel(out.migrated), 1);
 ds = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(ds), 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'sess_09');
-verifyEqual(testCase, ds.get('entity.name'), '(unnamed dataset)');
+s = ds.toStruct();    % not stated: the field is absent or empty
+verifyTrue(testCase, ~isfield(s.entity, 'name') || isempty(s.entity.name));
 end
 
 
