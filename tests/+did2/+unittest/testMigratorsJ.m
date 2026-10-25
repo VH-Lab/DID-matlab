@@ -1750,7 +1750,8 @@ out = runJ(v1);
 verifyEqual(testCase, nLeafJ(out.migrated, 'observation+intensity'), 1);
 obs = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(obs), 'observation+intensity');
-verifyEmpty(testCase, obs.get('value.data_type'));
+s = obs.toStruct();   % not stated: the field is absent or empty
+verifyTrue(testCase, ~isfield(s.value, 'data_type') || isempty(s.value.data_type));
 end
 
 function testSourceDatestampIsKept(testCase)
@@ -3160,7 +3161,8 @@ verifyEqual(testCase, numel(out.migrated), 1);
 ds = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(ds), 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'sess_09');
-verifyEmpty(testCase, ds.get('entity.name'));
+s = ds.toStruct();    % not stated: the field is absent or empty
+verifyTrue(testCase, ~isfield(s.entity, 'name') || isempty(s.entity.name));
 end
 
 
