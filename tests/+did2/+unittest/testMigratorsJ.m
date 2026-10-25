@@ -737,15 +737,28 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+term');
 verifyEqual(testCase, m.get('term.value').name, 'craniotomy');
 end
 
+function testTreatmentTargetLocationLabelIsCarriedWholeAsV1(testCase)
+% INVERTS the first half of testTreatmentTargetLocationEmitsSiteObservation,
+% which asserted " Target Location" STRIPPED from the variable (the v1 label
+% kept nowhere). [generic stage is lossless] (Jess Haley, 2026-10-25, audit
+% item 14): the treatment is carried whole as v1.
+v1 = treatmentDoc('chebi:28001', 'muscimol Target Location', [], 'uberon:0002436');
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, out.migrated{1}.get('treatment.name'), 'muscimol Target Location');
+end
+
 function testTreatmentTargetLocationEmitsSiteObservation(testCase)
 % Dab "Target Location" idiom: the site rides in string_value; strict J has no
-% target_structure, so a located site becomes a term_observation (D3).
-out = runJ(treatmentDoc('chebi:28001', 'muscimol Target Location', [], 'uberon:0002436'));
+% target_structure, so a located site becomes a term_observation (D3). UPDATED
+% 2026-10-25: driven by a label with no " Target Location" suffix (a suffixed
+% label is carried as v1, the test above); the CURIE string_value alone still
+% routes the site.
+out = runJ(treatmentDoc('chebi:28001', 'muscimol', [], 'uberon:0002436'));
 % #88: dose manip + its chemical + formulation + anchor + site obs
 verifyEqual(testCase, numel(out.migrated), 5);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
 verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 1);
-% " Target Location" stripped from the manipulation's spine variable
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
@@ -958,30 +971,23 @@ function testSalinePerBodyMassIsAPlaceholderNotAnAmount(testCase)
 % +hunsberger/TreatmentCreator.m): the drug group's per-body-mass number copied
 % onto a vehicle. It is the amount of NO active ingredient (Jess Haley,
 % 2026-10-21 [dose per ingredient]), so it is not an ingredient amount and not
-% a concentration: the dose's volume is NaN, there is no ingredient entry or
-% ingredient_id edge, and the migration report carries `amount_placeholder`.
+% a concentration, and the migration report carries `amount_placeholder`.
+% INVERTED 2026-10-25: the dose used to be built with the placeholder written
+% nowhere (volume NaN). [generic stage is lossless] (Jess Haley, audit item 6):
+% the treatment is carried whole as v1, the placeholder still noted.
 v1 = treatmentDrugDoc('td_saline', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nEFO:0002677,saline,1,SNOMED:396163008,mg/kg'), ...
     'SNOMED:783351009', 'Intraperitoneal');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
-dv = d.get('dose.value');
-verifyTrue(testCase, isnan(dv.volume.liters), 'the injected volume is unrecorded');
-verifyFalse(testCase, isfield(dv, 'ingredients') && ~isempty(dv.ingredients), ...
-    'a vehicle''s placeholder is not an ingredient amount');
-verifyFalse(testCase, isfield(dv, 'amount_per_body_mass') && ~isempty(dv.amount_per_body_mass), ...
-    'nor the dose''s own amount per body mass');
-verifyEmpty(testCase, depVal(d, 'ingredient_id'));
-f = doseChainJ(out.migrated, d);
-e = f.get('formulation.value').ingredients(1);
-verifyTrue(testCase, isnan(e.concentration.source_value), 'nor a concentration');
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, out.migrated{1}.className(), 'treatment_drug');
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'amount_placeholder'), 'the placeholder was not reported');
 verifyEqual(testCase, notes.amount_placeholder.count, 1);
 verifyEqual(testCase, notes.amount_placeholder.ids, {'td_saline'});
 verifyEqual(testCase, notes.amount_placeholder.details, {'saline: 1 mg/kg'});
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+    'vehicle amount placeholder: saline: 1 mg/kg'));
 end
 
 function testEachAmountRowFillsItsOwnDoseSlot(testCase)
@@ -1082,18 +1088,18 @@ verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
 verifyTrue(testCase, isnan(v.volume.liters));
 end
 
-function testTwoDisagreeingRowsOfOneKindKeepTheFirstAndReportTheRest(testCase)
-% Two volume rows that disagree: the dose keeps the first; the second is
-% reported (`dose_amount_conflict`, with the two amounts as its detail), and is
-% not written anywhere as a concentration.
+function testTwoDisagreeingRowsOfOneKindAreCarriedWholeAsV1(testCase)
+% Two volume rows that disagree. INVERTED 2026-10-25 (was
+% testTwoDisagreeingRowsOfOneKindKeepTheFirstAndReportTheRest: the dose kept
+% the first and the second was written nowhere). [generic stage is lossless]
+% (Jess Haley): the treatment is carried whole as v1; the disagreement is still
+% reported (`dose_amount_conflict`).
 v1 = treatmentDrugDoc('td_two_vols', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,1,UO:0000098,mL\n' ...
     'NCIT:C62467,saline,2,UO:0000098,mL']), ...
     'SNOMED:783351009', 'Intraperitoneal');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-v = out.migrated{1}.get('dose.value');
-verifyEqual(testCase, v.volume.source_value, 1, 'the first row is kept');
+verifyCarriedWholeAsV1(testCase, v1, out);
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'dose_amount_conflict'), 'the disagreement was not reported');
 n = notes.dose_amount_conflict;
@@ -3942,6 +3948,10 @@ verifyError(testCase, @() did2.convert.migrators_j.vmspikesummary(body), ...
 end
 
 function testContrastTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % contrast_tuning -> the contrast_tuning_calculation leaf, id-preserved (did-schema
 % #88). UPDATED for #88: a calculation REQUIRES operating_system_id, read from the
 % v1 `app.os`, so the fixture now carries the `app` block every real calculator
@@ -3961,7 +3971,7 @@ body.contrast_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s', 'response_type', 'mean'), ...
     'tuning_curve', struct('contrast', [0 0.25 0.5 1], 'mean', [2 5 9 12]));
 
-out = did2.convert.migrators_j.contrast_tuning(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.contrast_tuning, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'contrast_tuning_calculation', 'ct_1', 'sub_8');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
@@ -3973,6 +3983,10 @@ end
 
 
 function testOrientationDirectionTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % orientation_direction_tuning -> orientation_direction_tuning_calculation,
 % id-preserved (#88). UPDATED for #88: app block added (operating_system_id is
 % required); `vector` lands on the leaf's circular_statistics, significance on
@@ -3994,7 +4008,7 @@ body.orientation_direction_tuning = struct( ...
     'significance', struct('visual_response_anova_p', 0.002), ...
     'fit', struct('hwhh', 22.0));
 
-out = did2.convert.migrators_j.orientation_direction_tuning(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.orientation_direction_tuning, body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));   % not decomposed
@@ -4016,6 +4030,10 @@ end
 
 
 function testOridirtuningCalcUndefersToLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % The ndi.calc.vis.oridir OUTPUT document folds 1 -> 1, id-preserved, into the
 % SAME leaf as its result sibling. UPDATED for #88: input_parameters ->
 % interaction.method.parameters (a list of entries); the app block -> a software
@@ -4041,7 +4059,7 @@ body.orientation_direction_tuning = struct( ...
     'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
     'vector', struct('orientation_preference', 47.5));
 
-out = did2.convert.migrators_j.oridirtuning_calc(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.oridirtuning_calc, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'oc_1', 'neuron_9');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_9');
@@ -4183,6 +4201,10 @@ end
 
 
 function testTuningcurveCalcUndefersToLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % The ndi.calc.stimulus.tuningcurve OUTPUT folds 1 -> 1, id-preserved, into the
 % concrete tuning_curve_calculation leaf (#88). element_id -> entity_id; the
 % inherited stimulus_tuningcurve block is reshaped (response_mean -> value.mean,
@@ -4206,7 +4228,7 @@ body.stimulus_tuningcurve = struct( ...
 body.tuningcurve_calc = struct('log', 'ok', ...
     'input_parameters', struct('best_algorithm', 'empirical_maximum'));
 
-out = did2.convert.migrators_j.tuningcurve_calc(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.tuningcurve_calc, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'tcc_1', 'neuron_tc');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_tc');
@@ -4222,6 +4244,10 @@ end
 
 
 function testStimulusTuningcurveRawFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % A raw ndi.app.stimulus.tuning_response curve folds to the SAME leaf class as
 % tuningcurve_calc, so stimulus_tuningcurve_id refs resolve to either. UPDATED for
 % #88: the fixture carries the `app` block ndi.app.newdocument stamps (an
@@ -4240,7 +4266,7 @@ body.stimulus_tuningcurve = struct( ...
     'independent_variable_value', [0 90 180 270], ...
     'response_mean', [10 2 9 3], 'response_units', 'Spikes/s');
 
-out = did2.convert.migrators_j.stimulus_tuningcurve(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.stimulus_tuningcurve, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'stc_1', 'neuron_rt');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_rt');
@@ -4262,6 +4288,10 @@ end
 end
 
 function testSpeedTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % speed_tuning -> speed_tuning_calculation, id-preserved (#88). UPDATED for #88:
 % app block added (an operating system is required); the two stimulus axes
 % (SF, TF) become ONE key whose positions are labelled by both values.
@@ -4277,7 +4307,7 @@ body.speed_tuning = struct( ...
     'tuning_curve', struct('spatial_frequency', [0.5 0.5 1], ...
         'temporal_frequency', [2 4 4], 'mean', [5 8 6]));
 
-out = did2.convert.migrators_j.speed_tuning(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.speed_tuning, body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
@@ -4925,6 +4955,10 @@ verifyEqual(testCase, depValue(obs, 'time_reference_id'), anchor.base.id);
 end
 
 function testSpatialFrequencyTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % spatial_frequency_tuning -> spatial_frequency_tuning_calculation, id-preserved
 % (#88). UPDATED for #88: app block added (an operating system is required);
 % significance on tuning_curve_calculation, `fitless` on the leaf's
@@ -4947,7 +4981,7 @@ body.spatial_frequency_tuning = struct( ...
         'low_pass_index', 0.3, 'high_pass_index', 0.7), ...
     'fit_dog', struct('r2', 0.95, 'pref', 0.13));
 
-out = did2.convert.migrators_j.spatial_frequency_tuning(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.spatial_frequency_tuning, body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+score')));
@@ -5106,13 +5140,17 @@ body.temporal_frequency_tuning = blk;
 end
 
 function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % did_v1 temporal_frequency_tuning -> temporal_frequency_tuning_calculation
 % (#88), from the WRITER-shaped fixture below. UPDATED for #88: the leaf is the
 % concrete *_calculation class (under tuning_curve_calculation); the consumed
 % curve -> input_id; the TF axis -> data.keys; the five co-existing fits ->
 % tuning_curve_calculation.model_fit with {model, coefficients list, goodness,
 % metrics, sampled_fit}; `fitless` -> the leaf's interpolated_values.
-out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
+out = foldPlaceable(testCase, @did2.convert.migrators_j.temporal_frequency_tuning, temporalFrequencyTuningBody());
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
@@ -5917,5 +5955,43 @@ g = {};
 s = e.get('entity');
 if isfield(s, 'global_identifier') && ~isempty(s.global_identifier)
     g = reshape(cellstr(s.global_identifier), 1, []);
+end
+end
+
+function out = foldPlaceable(testCase, migrator, body)
+%FOLDPLACEABLE [generic stage is lossless] / [partly placed is carried as v1]
+%   (Jess Haley, 2026-10-25): a writer-shaped calculator fixture that states a
+%   field the fold has no home for is CARRIED WHOLE as v1 (returned unchanged,
+%   one `carried_as_v1` note naming the fields). Asserted here. Then exactly
+%   those fields are removed and the rest is folded, so a fold test still
+%   asserts the fold of everything that IS placed.
+did2.convert.reportNote('reset');
+first = migrator(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+assertTrue(testCase, isscalar(first) && isequaln(first{1}, body), ...
+    'the writer-shaped document was not carried whole as v1');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+d = notes.carried_as_v1.distinct_details{1};
+paths = strsplit(regexprep(d, '^unplaced: ', ''), ', ');
+for k = 1:numel(paths)
+    body = removePathJ(body, strsplit(paths{k}, '.'));
+end
+out = migrator(body);
+verifyGreaterThan(testCase, numel(out), 1, ...
+    sprintf('with %s removed the document still did not fold', d));
+end
+
+function s = removePathJ(s, parts)
+%REMOVEPATHJ Remove the field PARTS (a path) from struct S, matching each part
+%   case-insensitively (the fold lower-cases fit field names).
+if ~isstruct(s) || ~isscalar(s) || isempty(parts); return; end
+fn = fieldnames(s);
+ix = find(strcmpi(fn, parts{1}), 1);
+if isempty(ix); return; end
+if isscalar(parts)
+    s = rmfield(s, fn{ix});
+else
+    s.(fn{ix}) = removePathJ(s.(fn{ix}), parts(2:end));
 end
 end

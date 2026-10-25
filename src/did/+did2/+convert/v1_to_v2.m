@@ -196,6 +196,10 @@ emptyValues = [];
 % end, and one still identical is stored as its v1 source, stamped 'did_v1'.
 % Recording changes no outcome here.
 passthrough = struct('input_index', {}, 'id', {}, 'class_name', {}, 'body', {});
+% Of those, the ones whose class has no V_eta schema (no tombstone): carried
+% as v1 without V_eta validation, by class (see the validation step).
+v1NoSchemaNames = {};
+v1NoSchemaValues = [];
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
 % each corpus report counts the dimensions whose term has no node, so the move
@@ -373,7 +377,23 @@ for k = 1:numel(bodies)
             end
             doc = did2.document(outBody);
             if options.Validate
-                doc.validate('SchemaCache', options.SchemaCache);
+                try
+                    doc.validate('SchemaCache', options.SchemaCache);
+                catch vErr
+                    % [generic stage is lossless] / [partly placed is carried
+                    % as v1] and [passthrough stays v1: how] (Jess Haley,
+                    % 2026-10-25 / 2026-10-24): a v1 document carried WHOLE
+                    % whose class V_eta keeps no tombstone for is a v1
+                    % document, stored as did_v1 without V_eta validation; it
+                    % is counted here instead of quarantined. Any other
+                    % failure, and any failure of a document a migrator
+                    % changed, still quarantines.
+                    if ~(passedThrough && strcmp(vErr.identifier, 'did2:schema:missingClass'))
+                        rethrow(vErr);
+                    end
+                    [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
+                        v1NoSchemaNames, v1NoSchemaValues, className);
+                end
             end
             migrated{end+1} = doc; %#ok<AGROW>
             if passedThrough
@@ -478,6 +498,8 @@ result.summary = struct( ...
     'emitted_nothing_count',    sum(emptyValues), ...
     'emitted_nothing_by_class', buildByClassTable(emptyNames, emptyValues), ...
     'passthrough_count', numel(passthrough), ...
+    'passthrough_unvalidated_no_schema_count', sum(v1NoSchemaValues), ...
+    'passthrough_unvalidated_no_schema_by_class', buildByClassTable(v1NoSchemaNames, v1NoSchemaValues), ...
     'legacy_ndi_document', legacy, ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...

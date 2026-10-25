@@ -105,6 +105,15 @@ rt = getf(props, {'response_type', 'responseType'});
 if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
 co = getf(props, {'coordinates'});
 if ischar(co) && ~isempty(co); value.coordinates = co; end
+% every other `properties` field was read by nothing and listed nowhere: it is
+% unplaced too ([generic stage is lossless], Jess Haley, 2026-10-25)
+readProps = {'response_units', 'responseUnits', 'response_type', 'responseType', 'coordinates'};
+otherProps = setdiff(fieldnames(props), readProps);
+for k = 1:numel(otherProps)
+    if ~isempty(props.(otherProps{k}))
+        dropped{end+1} = ['properties.' otherProps{k}]; %#ok<AGROW>
+    end
+end
 
 % ---- the curve ------------------------------------------------------------
 tc = sub(srcBlk, 'tuning_curve');
