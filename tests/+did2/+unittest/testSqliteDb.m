@@ -908,7 +908,7 @@ end
 function testAMixedBatchCountsEachKind(testCase)
 db = testCase.TestData.db;
 v1 = did2.document(makeV1Body('aaaa1111bbbb2222_v1passthrough03'));
-v2 = makeDemoA('mixed', 3);
+v2 = makeDemoA('mixed', 'm3');
 report = db.add({v2, v1});
 verifyEqual(testCase, report.documents, 2);
 verifyEqual(testCase, report.validated, 1);
@@ -921,7 +921,7 @@ end
 
 function testValidateFalseIsCountedSeparately(testCase)
 db = testCase.TestData.db;
-report = db.add(makeDemoA('noval', 4), 'Validate', false);
+report = db.add(makeDemoA('noval', 'n4'), 'Validate', false);
 verifyEqual(testCase, report.not_validated_by_request, 1);
 verifyEqual(testCase, report.v1_not_validated, 0);
 end
