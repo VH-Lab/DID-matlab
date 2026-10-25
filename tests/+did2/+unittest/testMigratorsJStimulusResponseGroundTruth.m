@@ -100,6 +100,18 @@ end
 % ===================== fixtures (from the WRITER) ==========================
 
 function v1 = responseFixture(responseType)
+%RESPONSEFIXTURE writerResponseFixture with its `stimulus_control_id` edge and
+%   its `stimulus_response.stimulator_epochid` PRESENT BUT EMPTY (the template
+%   blank): a response the fold places whole. Since [generic stage is lossless]
+%   / [partly placed is carried as v1] (Jess Haley, 2026-10-25) a response that
+%   states either -- the writer always sets both -- is carried whole as v1 (the
+%   calculation has no place for them); the tests of the fold drive this one.
+v1 = writerResponseFixture(responseType);
+v1.stimulus_response.stimulator_epochid = '';
+v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_control_id')).value = '';
+end
+
+function v1 = writerResponseFixture(responseType)
 %RESPONSEFIXTURE A did_v1 stimulus_response_scalar as tuning_response.m builds it.
 v1 = struct();
 v1.document_class = struct('class_name', 'stimulus_response_scalar', ...
@@ -172,27 +184,22 @@ end
 
 % ============ 1. WHAT THE FOLD DESTROYS ====================================
 
-function testStimulatorEpochidIsDroppedAndTheRecoveryPathIsRealNotAsserted(testCase)
-% `stimulator_epochid` does not survive the fold, and that is the DEFENSIBLE
-% half of the deletion. The writer sets it (:317) from
-% `stim_doc.document_properties.epochid.epochid` -- it is a COPY of the
-% presentation's own epoch id, not an independent fact. NDI's
-% stimulus_presentation.json declares `epochid` as a superclass, so the
-% presentation document carries the same string in its own right, and the leaf
-% points at that document as derived_from_1.
-%
-% The test therefore checks BOTH halves: the string is gone from the leaf, AND
-% the edge that makes it recoverable is present. Asserting only the first would
-% be recording a loss; asserting only the second would be assuming a recovery.
-%
-% STAMPED: the fold only runs when an `epoch` document exists (the gate), and
-% this test is about what the FOLD does.
-out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findHarmonicCalc(testCase, out);
-s    = leaf.toStruct();
-
-verifyFalse(testCase, isfield(s, 'stimulus_response'));
-verifyTrue(testCase, ismember('pres_gt01', inputSet(s)));
+function testStimulatorEpochidCarriesTheDocumentAsV1(testCase)
+% INVERTS testStimulatorEpochidIsDroppedAndTheRecoveryPathIsRealNotAsserted.
+% `stimulator_epochid` (a copy of the presentation's own epoch id, the writer's
+% :317) did not survive the fold; the leaf pointed at the presentation, from
+% which it was recoverable. Since [generic stage is lossless] / [partly placed
+% is carried as v1] (Jess Haley, 2026-10-25) a response that states it is not
+% folded at all, even stamped: it is carried whole as v1, the string on it.
+out = runJ(withEpochEdge(writerResponseFixture('F1')));
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
+verifyFalse(testCase, anyHarmonicCalc(out));
+d = out.migrated{1};
+verifyEqual(testCase, d.get('stimulus_response.stimulator_epochid'), 't00003');
+verifyEqual(testCase, numel(out.passthrough), 1);
+verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'stimulus_response.stimulator_epochid'));
 end
 
 function testElementEpochidIsCarriedAsAnEpochAnchorAndNeverSilentlyDropped(testCase)
@@ -258,7 +265,7 @@ function testWithoutTheEpochDocumentTheStringLeavesInThePassthrough(testCase)
 % corpus takes today: no `epoch` document, so guard 4 suppresses the fold and the
 % source document goes through whole with BOTH strings on it. Without this the
 % file would only describe a branch production data does not reach.
-out = runJ(responseFixture('F1'));
+out = runJ(writerResponseFixture('F1'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};

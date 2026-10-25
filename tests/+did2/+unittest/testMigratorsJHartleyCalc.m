@@ -382,28 +382,25 @@ for k = 1:numel(out)
 end
 end
 
-function testTheImpliedMethodIsReportedDropped(testCase)
-% reverse_correlation.method ('Hartley') is implied by the method term
-% ndi.calc.vis.hartley and is not carried, and its drop is in the migration
-% report, per document (Jess Haley, 2026-10-21, "a"): one
-% did2.convert.reportNote('field_dropped', 'hartley_calc', <id>,
-% 'reverse_correlation.method').
-v1 = hartleyCalcV1();
+function testTheImpliedMethodCarriesTheDocumentAsV1(testCase)
+% INVERTS testTheImpliedMethodIsReportedDropped: reverse_correlation.method
+% ('Hartley') is implied by the method term ndi.calc.vis.hartley and is written
+% nowhere; it was folded with a `field_dropped` note (Jess Haley, 2026-10-21,
+% "a"). Since [generic stage is lossless] / [partly placed is carried as v1]
+% (Jess Haley, 2026-10-25) the document is carried whole as v1, with one
+% `carried_as_v1` note naming the field.
+v1 = writerHartleyCalcV1();
 did2.convert.reportNote('reset');
 out = did2.convert.migrators_j.hartley_calc(v1);
 notes = did2.convert.reportNote('collect');
 did2.convert.reportNote('reset');
-assertTrue(testCase, numel(out) > 1, 'the document folded');
-assertTrue(testCase, isfield(notes, 'field_dropped'), 'no field_dropped note was left');
-n = notes.field_dropped;
-% counted from distinct_details (exact); ids are a capped sample, and every
-% sampled note of this one-document run names its source id
-hit = strcmp(n.distinct_details, 'reverse_correlation.method');
-verifyEqual(testCase, sum(n.distinct_detail_counts(hit)), 1, ...
-    'the implied method is reported dropped, once');
-verifyNotEmpty(testCase, n.ids, 'the sample holds no note');
-verifyTrue(testCase, all(strcmp(n.ids, char(v1.base.id))), 'per document: the source id');
-verifyTrue(testCase, isfield(n.by_class, 'hartley_calc'));
+verifyEqual(testCase, numel(out), 1, 'one document: the v1 source');
+verifyTrue(testCase, isequaln(out{1}, v1), 'returned unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+verifyEqual(testCase, notes.carried_as_v1.count, 1);
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+    'reverse_correlation.method'));
+verifyFalse(testCase, isfield(notes, 'field_dropped'), 'nothing is dropped any more');
 end
 
 function testTheStimulusSequenceIsCARRIEDRatherThanDropped(testCase)
@@ -604,7 +601,18 @@ T = [ ...
 end
 
 function v1 = hartleyCalcV1()
-%HARTLEYCALCV1 The real 20211116 shape, POST-universalRenames.
+%HARTLEYCALCV1 writerHartleyCalcV1 without `reverse_correlation.method`: a
+%   document the fold places whole. Since [generic stage is lossless] / [partly
+%   placed is carried as v1] (Jess Haley, 2026-10-25) the writer's shape, whose
+%   'Hartley' the fold writes nowhere (it is implied by the method term), is
+%   carried whole as v1 (testTheImpliedMethodCarriesTheDocumentAsV1); the
+%   tests of the fold itself drive this one.
+v1 = writerHartleyCalcV1();
+v1.reverse_correlation.method = '';
+end
+
+function v1 = writerHartleyCalcV1()
+%WRITERHARTLEYCALCV1 The real 20211116 shape, POST-universalRenames.
 %
 %   Every block, every field name and every extent is the measured one -- see
 %   the file header for the census. `spiketimes` is the one shortened array,

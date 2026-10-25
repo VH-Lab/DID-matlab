@@ -132,7 +132,10 @@ end
 % jContrastSensitivityValue, or the caller's own OPTS.Dropped) is no longer
 % dropped with a `field_dropped` note: the document is carried WHOLE as v1 for
 % the dataset's map, with one `carried_as_v1` note naming every such field.
-unplaced = [prefixed([sourceBlock '.'], reshape(dropped, 1, [])), ...
+% (rawCurve already names its paths from the block, 'stimulus_tuningcurve.x':
+% those are not prefixed a second time)
+unplaced = [cellfun(@(d) underBlock(sourceBlock, d), reshape(dropped, 1, []), ...
+    'UniformOutput', false), ...
     cellfun(@char, reshape(opts.Dropped, 1, []), 'UniformOutput', false)];
 if ~isempty(unplaced)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
@@ -243,9 +246,15 @@ if isstruct(valueAxes) && isfield(valueAxes, 'datum_order')
 end
 end
 
-function c = prefixed(p, names)
-%PREFIXED Each name in NAMES with the prefix P.
-c = cellfun(@(n) [p char(n)], names, 'UniformOutput', false);
+function p = underBlock(block, name)
+%UNDERBLOCK NAME as a path from the document: BLOCK.NAME, unless NAME already
+%   starts with BLOCK.
+name = char(name);
+if startsWith(name, [block '.'])
+    p = name;
+else
+    p = [block '.' name];
+end
 end
 
 function cn = classNameOf(preBody)

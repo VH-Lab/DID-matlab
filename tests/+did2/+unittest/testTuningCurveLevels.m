@@ -336,7 +336,41 @@ body.depends_on = struct('name', 'element_id', 'value', 'elem_flat_1');
 body.base = struct('id', 'flat_doc_1', 'session_id', 'sess_flat', 'name', 'raw', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.app = calcApp('ndi.app.stimulus.tuning_response');   % jCalculation needs app.os to fold
+% `stimid` and `stimulus_presentation_number` have no home on the calculation,
+% so since [generic stage is lossless] / [partly placed is carried as v1] (Jess
+% Haley, 2026-10-25) a curve stating them is carried whole as v1
+% (testAWriterRawCurveIsCarriedWholeAsV1). These tests are of the fold, so the
+% body they fold leaves the two out.
+for f = {'stimid', 'stimulus_presentation_number'}
+    if isfield(tc, f{1}); tc = rmfield(tc, f{1}); end
+end
 body.stimulus_tuningcurve = tc;
+end
+
+function body = writerRawBody(tc)
+%WRITERRAWBODY flatRawBody with the block exactly as the writer wrote it.
+body = flatRawBody(tc);
+body.stimulus_tuningcurve = tc;
+end
+
+function testAWriterRawCurveIsCarriedWholeAsV1(testCase)
+% [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25): the writer's raw curve states `stimid` and
+% `stimulus_presentation_number`, which the calculation does not write (they
+% were reported `field_dropped`); it is carried whole as v1, one
+% `carried_as_v1` note naming both. Empty fields (control_stimid,
+% response_units: []) are not unplaced -- they state nothing.
+body = writerRawBody(flatRawCurve());
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.stimulus_tuningcurve(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyEqual(testCase, numel(out), 1);
+verifyTrue(testCase, isequaln(out{1}, body), 'returned unchanged');
+d = notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'stimulus_tuningcurve.stimid'), d);
+verifyTrue(testCase, contains(d, 'stimulus_tuningcurve.stimulus_presentation_number'), d);
+verifyFalse(testCase, contains(d, 'control_stimid'), d);
 end
 
 % ===================== the family table ====================================
@@ -488,52 +522,51 @@ verifyFalse(testCase, any(strcmp(details, ...
     'controlMeanStddev is read into control.pooled.stddev, not dropped');
 end
 
-function testDroppedFieldsReachTheMigrationReport(testCase)
-% jTuningCurve lists the v1 fields #88 has no home for; jCalculation used to
-% discard that list. Each dropped field of a FOLDED document is now one
-% did2.convert.reportNote('field_dropped', <v1 class>, <id>, <field path>).
-% SF/TF's v1 `abs` block has no #88 home (jTuningCurve's own header names it).
+function testAnUnplacedFieldCarriesTheDocumentAsV1(testCase)
+% INVERTS testDroppedFieldsReachTheMigrationReport, which asserted a FOLDED
+% document with one `field_dropped` note per field #88 has no home for (SF/TF's
+% v1 `abs` block). [generic stage is lossless] / [partly placed is carried as
+% v1] (Jess Haley, 2026-10-25): such a document is not folded; it is carried
+% whole as v1 with ONE `carried_as_v1` note naming the fields. A field the fold
+% maps (control_mean -> value.control, control_mean_stddev -> control.pooled)
+% is not named.
 did2.convert.reportNote('reset');
 body = tuningBody('spatial_frequency_tuning', spatialCurve(), emptyUnitsProperties());
 body.spatial_frequency_tuning.abs = struct('preferred', 0.2);
-did2.convert.migrators_j.spatial_frequency_tuning(body);
+out = did2.convert.migrators_j.spatial_frequency_tuning(body);
 notes = did2.convert.reportNote('collect');
 did2.convert.reportNote('reset');
-assertTrue(testCase, isfield(notes, 'field_dropped'), ...
-    'no field_dropped note: the dropped-fields list was discarded again');
-n = notes.field_dropped;
-% ids/details are a SAMPLE (reportNote keeps the first sample_cap_per_class
-% notes of each class); the counts and distinct_details are exact. Presence
-% and absence of a field are therefore read from distinct_details: an absence
-% read from a sample would pass whenever the sample stopped short.
-verifyEqual(testCase, numel(n.ids), n.sample_kept, 'one id per sampled note');
-verifyEqual(testCase, numel(n.details), n.sample_kept, 'one detail per sampled note');
-verifyEqual(testCase, n.sample_kept, min(n.count, n.sample_cap_per_class), ...
-    'one class: the sample is the first sample_cap_per_class notes');
-verifyEqual(testCase, sum(n.distinct_detail_counts), n.count, ...
-    'every field_dropped note names its field, and each is counted once');
-verifyTrue(testCase, all(strcmp(n.ids, 'lvl_doc_1')), 'notes name the source id');
-verifyTrue(testCase, isfield(n.by_class, 'spatial_frequency_tuning'), ...
-    'notes are attributed to the v1 class');
-verifyTrue(testCase, any(strcmp(n.distinct_details, 'spatial_frequency_tuning.abs')), ...
-    'the abs block is dropped and must be reported');
-for f = {'control_mean_stddev', 'control_mean_stderr'}
-    verifyFalse(testCase, any(strcmp(n.distinct_details, ...
-        ['spatial_frequency_tuning.tuning_curve.' f{1}])), ...
-        sprintf('tuning_curve.%s is mapped to control.pooled, not dropped', f{1}));
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, body), 'carried whole, unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+verifyFalse(testCase, isfield(notes, 'field_dropped'), 'nothing is dropped');
+n = notes.carried_as_v1;
+verifyEqual(testCase, n.count, 1);
+verifyEqual(testCase, n.ids, {'lvl_doc_1'});
+verifyTrue(testCase, isfield(n.by_class, 'spatial_frequency_tuning'));
+d = n.distinct_details{1};
+verifyTrue(testCase, contains(d, 'spatial_frequency_tuning.abs'), d);
+for f = {'control_mean_stddev', 'control_mean_stderr', 'control_mean,'}
+    verifyFalse(testCase, contains([d ','], ['tuning_curve.' f{1}]), ...
+        sprintf('tuning_curve.%s is mapped, not unplaced', f{1}));
 end
-% nothing that WAS mapped is reported dropped
-verifyFalse(testCase, any(strcmp(n.distinct_details, ...
-    'spatial_frequency_tuning.tuning_curve.control_mean')), ...
-    'control_mean was mapped, not dropped');
 end
 
 function d = droppedDetails()
-% EXACT: every distinct dropped field, not the capped per-note sample
+% EXACT: every distinct unplaced field. Since [generic stage is lossless] (Jess
+% Haley, 2026-10-25) an unplaced field carries the document as v1 with one
+% `carried_as_v1` note listing the fields ('unplaced: a, b'); a `field_dropped`
+% note is no longer written. Both are read, so a field named in either counts.
 notes = did2.convert.reportNote('collect');
 d = {};
 if isfield(notes, 'field_dropped')
     d = notes.field_dropped.distinct_details;
+end
+if isfield(notes, 'carried_as_v1')
+    for k = 1:numel(notes.carried_as_v1.distinct_details)
+        t = regexprep(notes.carried_as_v1.distinct_details{k}, '^unplaced: ', '');
+        d = [d, strsplit(t, ', ')]; %#ok<AGROW>
+    end
+end
 end
 end
 
@@ -543,11 +576,14 @@ function testResponseUnitsAreReadFromProperties(testCase)
 % DEFECT B, all five families. The units live under `properties`, never on the block.
 % A real unit is used here so the test distinguishes "found the right level" from
 % "guarded a bad type" -- the empty case is a separate test below.
-% #88: the unit is a TERM, `value.response_unit` (#73 item 57). 'Hz' is a
-% spikes-per-second spelling, so the unit is the plain om:hertz (Jess Haley
-% 2026-10-22 [response variable]); it named the bare label 'Hz' before.
+% UPDATED 2026-10-25: driven by a spelling the decisions do not name ('mV'),
+% which is placed as the unit's own label. A RECOGNISED spelling ('Hz') is
+% replaced by om:hertz and kept nowhere, so since [generic stage is lossless]
+% (Jess Haley) that document is carried whole as v1 -- which also proves the
+% read reached `properties`: the carry names properties.response_units.
 fam = familyTable();
-props = struct('response_type', 'mean', 'response_units', 'Hz');
+props = struct('response_type', 'mean', 'response_units', 'mV');
+hz = struct('response_type', 'mean', 'response_units', 'Hz');
 inspected = 0;
 for k = 1:numel(fam)
     mk = fam(k).curve;
@@ -557,8 +593,20 @@ for k = 1:numel(fam)
         ['%s: value.response_unit is missing. It must come from ' ...
          'properties.response_units (the writer sets it there and nowhere else)'], ...
         fam(k).className));
-    verifyTrue(testCase, isTerm(v.response_unit, 'om:hertz', 'hertz'), sprintf( ...
-        '%s: value.response_unit is not om:hertz "hertz"', fam(k).className));
+    verifyTrue(testCase, isUnitNamed(v.response_unit, 'mV'), sprintf( ...
+        '%s: value.response_unit is not the source label "mV"', fam(k).className));
+    fn = str2func(['did2.convert.migrators_j.' fam(k).className]);
+    did2.convert.reportNote('reset');
+    body = tuningBody(fam(k).className, mk(), hz);
+    out = fn(body);
+    notes = did2.convert.reportNote('collect');
+    did2.convert.reportNote('reset');
+    verifyTrue(testCase, isscalar(out) && isequaln(out{1}, body), sprintf( ...
+        '%s: a recognised spelling must carry the document whole as v1', fam(k).className));
+    verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+        'properties.response_units'), fam(k).className);
+end
+verifyEqual(testCase, inspected, 5, 'the sweep must cover all five families');
 end
 verifyEqual(testCase, inspected, 5, 'the sweep must cover all five families');
 end
@@ -604,19 +652,20 @@ body.stimulus_tuningcurve = struct( ...
     'response_mean',   [1; 5; 9; 12], ...
     'response_stddev', [0.1; 0.2; 0.3; 0.4], ...
     'response_stderr', [0.05; 0.1; 0.15; 0.2], ...
-    'response_units',  'Spikes/s');
+    'response_units',  'mV');
 
+% UPDATED 2026-10-25: a spelling the decisions do not name ('mV'), placed as the
+% unit's label. A recognised one ('Spikes/s') is replaced by om:hertz and kept
+% nowhere, so that document is carried whole as v1 ([generic stage is lossless],
+% Jess Haley) -- testSpikeRateSpellingsCarryTheDocumentAsV1.
 leaf = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve(body));
 v = leaf.tuning_curve.value;
 assertTrue(testCase, isfield(v, 'response_unit'), ...
     'the flat raw curve carries its units at BLOCK level and must keep resolving');
-% 'Spikes/s' is a spikes-per-second spelling: the plain unit om:hertz and the
-% variable "neural firing rate" (Jess Haley 2026-10-22 [response variable]); the
-% unit named the bare label 'Spikes/s' before
-verifyTrue(testCase, isTerm(v.response_unit, 'om:hertz', 'hertz'), ...
-    'value.response_unit is not om:hertz "hertz"');
-verifyTrue(testCase, isTerm(leaf.statement.variable, 'wikidata:Q71762818', 'neural firing rate'), ...
-    'statement.variable is not wikidata:Q71762818 "neural firing rate"');
+verifyTrue(testCase, isUnitNamed(v.response_unit, 'mV'), ...
+    'value.response_unit is not the source label "mV"');
+verifyTrue(testCase, isTerm(leaf.statement.variable, 'EMPTY:0000398', 'neural response'), ...
+    'statement.variable is not EMPTY:0000398 "neural response"');
 verifyEqual(testCase, keyValues(leaf), [0.1 0.2 0.4 0.8], 'AbsTol', 1e-12);
 end
 
@@ -779,7 +828,10 @@ tc.control_response_mean   = (r / 10).';
 tc.control_response_stddev = (r / 20).';
 tc.control_response_stderr = (r / 40).';
 tc.control_individual_responses_real = repmat(r / 10, 1, 3).';
-tc.response_units = 'spikes/s';
+% EMPTY: a recognised spelling ('spikes/s') is replaced and kept nowhere, so a
+% curve stating one is carried as v1 since [generic stage is lossless]; these
+% tests are about the grid
+tc.response_units = [];
 end
 
 function testAFullGridCurveHasOneDimensionPerVariable(testCase)
@@ -885,43 +937,38 @@ end
 % Every family (the five fitted composites and the raw curve) is driven through
 % its own migrator; the counts below are the denominators.
 
-function testSpikeRateSpellingsMakeTheVariableNeuralFiringRate(testCase)
+function testSpikeRateSpellingsCarryTheDocumentAsV1(testCase)
+% INVERTS testSpikeRateSpellingsMakeTheVariableNeuralFiringRate (variable
+% wikidata:Q71762818, unit om:hertz, the spelling kept nowhere). [generic stage
+% is lossless] (Jess Haley, 2026-10-25, audit item 14): every recognised
+% spelling now carries the document whole as v1, through all six migrators.
 spellings = {'Hz', 'hz', 'Spikes/s', 'spikes/s', 'sp/s', 'SP/S', '1/s', ...
     'spikes/sec', 'Spikes per second', ' spikes/s '};
-inspected = 0;
-for j = 1:numel(spellings)
-    for leaf = responseLeaves(spellings{j})
-        L = leaf{1};
-        inspected = inspected + 1;
-        verifyTrue(testCase, isTerm(L.statement.variable, 'wikidata:Q71762818', ...
-            'neural firing rate'), sprintf('%s, ''%s'': variable is not neural firing rate', ...
-            L.document_class.class_name, spellings{j}));
-        verifyTrue(testCase, isTerm(L.tuning_curve.value.response_unit, 'om:hertz', 'hertz'), ...
-            sprintf('%s, ''%s'': response_unit is not om:hertz', ...
-            L.document_class.class_name, spellings{j}));
-    end
-end
+inspected = verifyCarriedForSpellings(testCase, spellings);
 verifyEqual(testCase, inspected, 6 * numel(spellings), ...
     'every spelling through all six tuning migrators');
 end
 
-function testDffSpellingsMakeTheVariableDff(testCase)
+function testDffSpellingsCarryTheDocumentAsV1(testCase)
+% INVERTS testDffSpellingsMakeTheVariableDff (variable EMPTY:0000397, unit
+% om:one, the spelling kept nowhere); as above.
 spellings = {'dF/F', 'df/f', 'DF/F', 'ΔF/F', 'deltaF/F', 'dff', 'dFF'};
-inspected = 0;
-for j = 1:numel(spellings)
-    for leaf = responseLeaves(spellings{j})
-        L = leaf{1};
-        inspected = inspected + 1;
-        verifyTrue(testCase, isTerm(L.statement.variable, 'EMPTY:0000397', 'dF/F'), ...
-            sprintf('%s, ''%s'': variable is not EMPTY:0000397 dF/F', ...
-            L.document_class.class_name, spellings{j}));
-        verifyTrue(testCase, isTerm(L.tuning_curve.value.response_unit, 'om:one', 'one'), ...
-            sprintf('%s, ''%s'': response_unit is not om:one', ...
-            L.document_class.class_name, spellings{j}));
-    end
-end
+inspected = verifyCarriedForSpellings(testCase, spellings);
 verifyEqual(testCase, inspected, 6 * numel(spellings), ...
     'every spelling through all six tuning migrators');
+end
+
+function inspected = verifyCarriedForSpellings(testCase, spellings)
+inspected = 0;
+for j = 1:numel(spellings)
+    [outs, bodies] = responseOutputs(spellings{j});
+    for k = 1:numel(outs)
+        inspected = inspected + 1;
+        verifyTrue(testCase, isscalar(outs{k}) && isequaln(outs{k}{1}, bodies{k}), ...
+            sprintf('%s, ''%s'': not carried whole as v1', ...
+            bodies{k}.document_class.class_name, spellings{j}));
+    end
+end
 end
 
 function testEmptyUnitsMakeTheVariableNeuralResponse(testCase)
@@ -972,9 +1019,12 @@ end
 function testTheResponseVariableIsCountedInTheReport(testCase)
 % One 'tuning_response_variable' note per folded document, its DETAIL the
 % outcome: the count is the denominator the migration report prints first.
+% UPDATED 2026-10-25: a recognised spelling ('Spikes/s', 'dF/F') now carries
+% the document whole as v1 ([generic stage is lossless], Jess Haley), so it
+% folds nothing and leaves a `carried_as_v1` note instead.
 did2.convert.reportNote('reset');
-responseLeaves('Spikes/s');
-responseLeaves('dF/F');
+responseOutputs('Spikes/s');
+responseOutputs('dF/F');
 responseLeaves([]);
 responseLeaves('mV');
 notes = did2.convert.reportNote('collect');
@@ -982,8 +1032,9 @@ did2.convert.reportNote('reset');
 assertTrue(testCase, isfield(notes, 'tuning_response_variable'), ...
     'no tuning_response_variable note was left');
 n = notes.tuning_response_variable;
-verifyEqual(testCase, n.count, 4 * 6, 'one note per folded document');
-expect = {'neural firing rate', 'dF/F', 'not stated', 'unrecognised: mV'};
+verifyEqual(testCase, n.count, 2 * 6, 'one note per folded document');
+verifyEqual(testCase, notes.carried_as_v1.count, 2 * 6, 'one carry per recognised-spelling document');
+expect = {'not stated', 'unrecognised: mV'};
 for j = 1:numel(expect)
     hit = strcmp(n.distinct_details, expect{j});
     assertTrue(testCase, any(hit), sprintf('no ''%s'' note', expect{j}));
@@ -991,6 +1042,26 @@ for j = 1:numel(expect)
         sprintf('''%s'': one note per migrator', expect{j}));
 end
 verifyEqual(testCase, sum(n.distinct_detail_counts), n.count, 'every note names its outcome');
+end
+
+function [outs, bodies] = responseOutputs(units)
+%RESPONSEOUTPUTS The raw outputs of all six tuning migrators, and the bodies
+%   they were given, for one source `response_units` value.
+outs = {};
+bodies = {};
+fam = familyTable();
+for k = 1:numel(fam)
+    props = struct('response_type', 'mean');
+    props.response_units = units;
+    mk = fam(k).curve;
+    fn = str2func(['did2.convert.migrators_j.' fam(k).className]);
+    bodies{end+1} = tuningBody(fam(k).className, mk(), props); %#ok<AGROW>
+    outs{end+1} = fn(bodies{end}); %#ok<AGROW>
+end
+tc = flatRawCurve();
+tc.response_units = units;
+bodies{end+1} = flatRawBody(tc);
+outs{end+1} = did2.convert.migrators_j.stimulus_tuningcurve(bodies{end});
 end
 
 function leaves = responseLeaves(units)

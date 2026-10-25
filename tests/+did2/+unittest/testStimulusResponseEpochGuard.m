@@ -104,6 +104,18 @@ end
 % ===================== fixture (from the WRITER) =======================
 
 function v1 = responseFixture(elementEpochid)
+%RESPONSEFIXTURE writerResponseFixture with its `stimulus_control_id` edge and
+%   its `stimulus_response.stimulator_epochid` PRESENT BUT EMPTY (the template
+%   blank): a response the fold places whole. Since [generic stage is lossless]
+%   / [partly placed is carried as v1] (Jess Haley, 2026-10-25) a response that
+%   states either -- the writer always sets both -- is carried whole as v1 (the
+%   calculation has no place for them); the tests of the fold drive this one.
+v1 = writerResponseFixture(elementEpochid);
+v1.stimulus_response.stimulator_epochid = '';
+v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_control_id')).value = '';
+end
+
+function v1 = writerResponseFixture(elementEpochid)
 %RESPONSEFIXTURE A did_v1 stimulus_response_scalar as tuning_response.m builds it.
 %
 %   The shape is copied from testMigratorsJStimulusResponse.m's fixture, which
@@ -157,9 +169,11 @@ v1.depends_on(end+1) = struct('name', 'epoch_id', 'value', epochDocId);
 end
 
 % ===================== BRANCH 2: the live branch today =================
+% (the writer's shape: suppressed whatever else holds, so the fixture is the
+% writer's own -- both strings and the control edge)
 
 function testAnEpochStringWithNoEpochDocumentSuppressesTheFold(testCase)
-out = runJ(responseFixture('t00003'));
+out = runJ(writerResponseFixture('t00003'));
 verifyEmpty(testCase, out.quarantine);
 % 1 -> 1. NOT the leaf, NOT an anchor: the source document, whole.
 verifyEqual(testCase, numel(out.migrated), 1);
@@ -171,7 +185,7 @@ end
 function testTheSuppressedPassthroughStillCarriesBothEpochStrings(testCase)
 % The whole point of suppressing. If this assertion ever fails, the suppression
 % has stopped buying anything and should be reconsidered rather than kept.
-out = runJ(responseFixture('t00003'));
+out = runJ(writerResponseFixture('t00003'));
 b = out.migrated{1}.toStruct();
 hits = did2.validate.epochStrings(b);
 verifyEqual(testCase, numel(hits), 2);
@@ -181,7 +195,7 @@ end
 function testTheSuppressionIsVisibleToTheRetentionCounter(testCase)
 % A suppression nobody counts is indistinguishable from a drop. The counter that
 % proves it: v1 pairs in, pairs still reachable out, and the subtraction.
-v1  = responseFixture('t00003');
+v1  = writerResponseFixture('t00003');
 out = runJ(v1);
 r = did2.validate.epochStringRetention({v1}, out.migrated);
 verifyTrue(testCase, r.ran);
@@ -195,7 +209,7 @@ function testTheMintCanSeeThisFamilysEpochStrings(testCase)
 % that is did2.convert.epochMint's job. Before this change its reader could not
 % see the stimulus-response family at all, so the epochs branch 1 needs would
 % never have been minted no matter how the migrator was written.
-v1  = responseFixture('t00003');
+v1  = writerResponseFixture('t00003');
 out = runJ(v1);
 [~, rep] = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
 sources = {rep.strings_by_source.source};

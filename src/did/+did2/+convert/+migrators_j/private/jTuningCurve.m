@@ -150,7 +150,7 @@ pooled = struct();
 if ~isempty(fieldnames(pooled)); ctl.pooled = pooled; end
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
 value = toGrid(value, valueAxes);
-dropped = [dropped, prefixed('tuning_curve.', setdiff(fieldnames(tc), used))];
+dropped = [dropped, prefixed('tuning_curve.', stated(tc, setdiff(fieldnames(tc), used)))];
 
 % ---- significance (tuning_curve_calculation) -----------------------------
 sig = sub(srcBlk, 'significance');
@@ -177,7 +177,7 @@ if ~isempty(fieldnames(vec))
         'direction_preference', {'direction_preference'}};
     [cs, usedV] = scalarMap(vec, map);
     if ~isempty(fieldnames(cs)); leafFields.circular_statistics = cs; end
-    dropped = [dropped, prefixed('vector.', setdiff(fieldnames(vec), usedV))];
+    dropped = [dropped, prefixed('vector.', stated(vec, setdiff(fieldnames(vec), usedV)))];
 end
 
 % ---- interpolated values (contrast / SF / TF: v1 `fitless`) ---------------
@@ -194,7 +194,7 @@ if ~isempty(fieldnames(fl))
     end
     [iv, usedF] = scalarMap(fl, map);
     if ~isempty(fieldnames(iv)); leafFields.interpolated_values = iv; end
-    dropped = [dropped, prefixed('fitless.', setdiff(fieldnames(fl), usedF))];
+    dropped = [dropped, prefixed('fitless.', stated(fl, setdiff(fieldnames(fl), usedF)))];
 end
 
 % ---- model fits -------------------------------------------------------------
@@ -219,7 +219,7 @@ known = [{'properties', 'tuning_curve', 'significance', 'vector', 'fitless'}, ..
     names(strcmp(names, 'fit') | startsWith(names, 'fit_'))'];
 fold = @(c) lower(strrep(c, '_', ''));
 rest = names(~ismember(fold(names), fold(known)));
-dropped = [dropped, reshape(rest, 1, [])];
+dropped = [dropped, reshape(stated(srcBlk, rest), 1, [])];
 end
 
 % =============================================================================
@@ -271,7 +271,19 @@ if spellingReplaced(response)
 end
 used = used(~cellfun(@isempty, used));
 rest = setdiff(fieldnames(st), used);
-dropped = prefixed('stimulus_tuningcurve.', reshape(rest, 1, []));
+dropped = prefixed('stimulus_tuningcurve.', reshape(stated(st, rest), 1, []));
+end
+
+function names = stated(s, names)
+%STATED Of NAMES (fields of S), the ones that hold a value. An empty field (the
+%   writers' template blank, e.g. control_stimid = []) states nothing, so leaving
+%   it out loses nothing ([generic stage is lossless], Jess Haley, 2026-10-25).
+if isempty(names); return; end
+keep = true(size(names));
+for k = 1:numel(names)
+    keep(k) = isfield(s, names{k}) && ~isempty(s.(names{k}));
+end
+names = names(keep);
 end
 
 function tf = spellingReplaced(response)
@@ -457,7 +469,7 @@ for g = 1:numel(prefixes)
     entries{end+1} = e; %#ok<AGROW>
     dropped = [dropped, prefixed([blockName '.' P], d)]; %#ok<AGROW>
 end
-dropped = [dropped, prefixed([blockName '.'], fn(~claimed))];
+dropped = [dropped, prefixed([blockName '.'], stated(blk, fn(~claimed)))];
 end
 
 function [e, dropped] = oneFit(s, model)
@@ -511,7 +523,7 @@ if isnumeric(y) && ~isempty(y) && ~isempty(xs) && all(cellfun(@numel, xs) == num
     e.sampled_fit = struct('independent_values', [xs{:}], 'response', double(y(:)));
     used{end+1} = yn;
 end
-dropped = setdiff(fieldnames(s), used);
+dropped = stated(s, setdiff(fieldnames(s), used));
 dropped = reshape(dropped, 1, []);
 end
 
