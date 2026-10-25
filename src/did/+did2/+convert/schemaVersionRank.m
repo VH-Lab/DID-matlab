@@ -35,13 +35,13 @@ function [rank, known] = schemaVersionRank(version)
 %   document's `document_class.schema_version` is 'did_v1' and a V2
 %   document's is 'did_v2'. 'did_v1' ranks with the empty name (0, a v1
 %   document). The V2 names, rank 6, are did2.schema.v2Stamps -- the one
-%   list, which holds 'V_eta' only while writers still stamp it ([V_eta
-%   stamp not accepted], same date: "Stop accepting veta"). Every listed
-%   name is known, so a document carrying one is never quarantined as
-%   did2:convert:unknownSchemaVersion.
+%   list. 'V_eta' is not on the line ([V_eta stamp not accepted], same
+%   date: "Stop accepting veta"; no alias, as with V_delta): a document
+%   stamped 'V_eta' is unknown and v1_to_v2 quarantines it as
+%   did2:convert:unknownSchemaVersion. Every listed name is known.
 %
 %   Example:
-%       [r, k] = did2.convert.schemaVersionRank('V_eta');     % 6, true
+%       [r, k] = did2.convert.schemaVersionRank('V_eta');     % NaN, false
 %       [r, k] = did2.convert.schemaVersionRank('did_v2');    % 6, true
 %       [r, k] = did2.convert.schemaVersionRank('did_v1');    % 0, true
 %       [r, k] = did2.convert.schemaVersionRank('');          % 0, true

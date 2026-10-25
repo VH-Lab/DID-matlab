@@ -183,7 +183,7 @@ verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
 % did-schema #88: a subject_group is an `entity` of type group
 verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'group');
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'did_v2');
 verifyEqual(testCase, doc.get('entity.local_identifier'), 'cohortA');
 % bare identity: is_group / is_biological must NOT be present in V_eta
 sub = doc.get('entity');
@@ -5569,7 +5569,7 @@ bodies = did2.convert.migrators_j.syncrule_mapping(body);
 verifyEqual(testCase, numel(bodies), 1, ...
     'the gated fold must not fire: no epoch_id_# edges on a did_v1 document');
 out = bodies{1};
-verifyEqual(testCase, out.document_class.schema_version, 'V_eta');
+verifyEqual(testCase, out.document_class.schema_version, 'did_v2');
 % epoch_clock / epoch_id are no longer bare on the node -- they moved under
 % time_reference (epoch_bounded_reference shape)
 na = out.syncrule_mapping.epochnode_a;

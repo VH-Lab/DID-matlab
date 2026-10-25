@@ -194,7 +194,7 @@ verifyEqual(testCase, numel(out.migrated), 3);
 verifyTrue(testCase, anyClass(out, 'relative_time_reference'));
 
 leaf = findHarmonicCalc(testCase, out);
-verifyEqual(testCase, leaf.get('document_class.schema_version'), 'V_eta');
+verifyEqual(testCase, leaf.get('document_class.schema_version'), 'did_v2');
 
 % ID PRESERVED. Two NDI templates declare an inbound edge to it --
 % ndi_common/database_documents/stimulus/stimulus_tuningcurve.json and

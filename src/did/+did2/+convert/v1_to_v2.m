@@ -373,7 +373,10 @@ for k = 1:numel(bodies)
             outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
             if isfield(outBody, 'document_class') ...
                     && isstruct(outBody.document_class)
-                outBody.document_class.schema_version = options.TargetVersion;
+                % the STAMP, not the set name TargetVersion (Jess Haley,
+                % 2026-10-25 [document stamps]: a V2 document is 'did_v2')
+                outBody.document_class.schema_version = ...
+                    did2.convert.targetStamp(options.TargetVersion);
             end
             doc = did2.document(outBody);
             if options.Validate

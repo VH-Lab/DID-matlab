@@ -10,13 +10,16 @@ function names = v2Stamps()
 %   Decided by Jess Haley, 2026-10-25 [V_eta stamp not accepted]: "Stop
 %   accepting veta" -- no alias, as with V_delta.
 %
-%   'V_eta' IS TRANSITIONAL. It is here only while the writers still stamp
-%   it (did-schema's schema_version_value is 'V_eta' until its next step).
-%   When the writers stamp 'did_v2', delete 'V_eta' from this line; nothing
-%   else lists it.
+%   The first entry is did2.schema.v2Stamp, the stamp every V2 writer puts.
 %
-%   See also did2.schema.isV2Stamp, did2.schema.isV1Stamp,
-%            did2.convert.schemaVersionRank.
+%   'V_eta' IS NOT A STAMP ANY MORE ([V_eta stamp not accepted]). A document
+%   stamped 'V_eta' is not read as V2: did2.convert.schemaVersionRank does
+%   not know it, so v1_to_v2 quarantines it as
+%   did2:convert:unknownSchemaVersion. There is no alias. 'V_eta' remains
+%   the name of the schema SET (TargetVersion; did2.convert.targetStamp).
+%
+%   See also did2.schema.v2Stamp, did2.schema.isV2Stamp,
+%            did2.schema.isV1Stamp, did2.convert.schemaVersionRank.
 
-names = {'did_v2', 'V_eta'};   % 'V_eta': transitional, see above
+names = {did2.schema.v2Stamp()};
 end

@@ -578,7 +578,7 @@ for k = 1:numel(superChain)
         'class_version', '1.0.0'); %#ok<AGROW>
 end
 b.document_class = struct('class_name', className, 'class_version', '1.0.0', ...
-    'superclasses', supers, 'schema_version', 'V_eta');
+    'superclasses', supers, 'schema_version', 'did_v2');
 if isempty(deps)
     b.depends_on = struct('name', {}, 'value', {});
 else

@@ -119,7 +119,7 @@ function testBuildBlankDocumentStampsSchemaVersion(testCase)
 % built blank as already at the target on a subsequent migration pass.
 doc = testCase.TestData.cache.buildBlankDocument('demoA');
 verifyTrue(testCase, isfield(doc.document_class, 'schema_version'));
-verifyEqual(testCase, doc.document_class.schema_version, 'V_eta');
+verifyEqual(testCase, doc.document_class.schema_version, 'did_v2');
 verifyFalse(testCase, isfield(doc.base, 'schema_version'));
 end
 

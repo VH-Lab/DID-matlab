@@ -7,7 +7,7 @@ function tf = isV2Stamp(v)
 %
 %   The accepted names are did2.schema.v2Stamps, the ONE list (Decided by
 %   Jess Haley, 2026-10-25 [document stamps] and [V_eta stamp not
-%   accepted]): 'did_v2', and 'V_eta' only while writers still stamp it.
+%   accepted]): 'did_v2'. 'V_eta' is not a V2 stamp (no alias).
 %   An unknown name is false, and so is every v1 stamp (did2.schema.isV1Stamp).
 %
 %   See also did2.schema.isV1Stamp, did2.schema.stampOf,

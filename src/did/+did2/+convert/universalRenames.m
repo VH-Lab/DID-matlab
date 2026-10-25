@@ -315,7 +315,8 @@ end
 
 % Migrate a stale base.schema_version (left over from an earlier draft
 % migrator that stamped the tag on the base block) to
-% document_class.schema_version, then default to 'V_eta' if absent.
+% document_class.schema_version, then default to the V2 stamp
+% (did2.schema.v2Stamp, 'did_v2') if absent.
 % base.schema_version is not a declared `base` field; leaving it on
 % base would trip the strict-fields validator on the next write.
 if isfield(postBody, 'base') && isstruct(postBody.base) ...
@@ -327,7 +328,7 @@ if isfield(postBody, 'base') && isstruct(postBody.base) ...
     postBody.base = rmfield(postBody.base, 'schema_version');
 end
 if ~isfield(postBody.document_class, 'schema_version')
-    postBody.document_class.schema_version = 'V_eta';
+    postBody.document_class.schema_version = did2.schema.v2Stamp();
 end
 end
 

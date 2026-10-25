@@ -285,7 +285,7 @@ function testExtractionFoldsToMethodParametersPreservingIdAndName(testCase)
 out = runJ(extractionBody('sep_1', 'default', 'sess_A'));
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
-verifyEqual(testCase, d.get('document_class.schema_version'), 'V_eta');
+verifyEqual(testCase, d.get('document_class.schema_version'), 'did_v2');
 verifyEqual(testCase, d.get('base.id'), 'sep_1');
 verifyEqual(testCase, d.get('method.name'), 'default');
 % and again on the declared field that exists for that query
