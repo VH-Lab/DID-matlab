@@ -4,10 +4,11 @@ function tests = testDocumentStamps
 %   Decided by Jess Haley, 2026-10-25 [document stamps] (did-schema
 %   V_eta_go_forward_class_audit.md): a v1 document's
 %   document_class.schema_version is 'did_v1' and a V2 document's is
-%   'did_v2' (it is 'V_eta' today). THIS STAGE: readers accept both 'V_eta'
-%   and 'did_v2' as V2, and 'did_v1' (or no stamp) as v1; writers still
-%   stamp 'V_eta'. 'V_eta' acceptance is transitional ([V_eta stamp not
-%   accepted], same date): it is one entry of did2.schema.v2Stamps.
+%   'did_v2'. THIS STAGE: writers stamp 'did_v2' (did2.schema.v2Stamp);
+%   readers accept both 'did_v2' and 'V_eta' as V2, and 'did_v1' (or no
+%   stamp) as v1. 'V_eta' acceptance is transitional ([V_eta stamp not
+%   accepted], same date): it is one entry of did2.schema.v2Stamps, kept
+%   only so documents written before this stage still read.
 %
 %   Also pins the pass-1 passthrough record ([passthrough stays v1: how]):
 %   v1_to_v2 records each v1 document no migrator changed, so the caller
@@ -23,6 +24,8 @@ function testTheV2StampsAreOneList(testCase)
 v2 = did2.schema.v2Stamps();
 verifyTrue(testCase, iscellstr(v2));
 verifyTrue(testCase, ismember('did_v2', v2), 'did_v2 is the V2 stamp');
+verifyEqual(testCase, v2{1}, did2.schema.v2Stamp(), ...
+    'the stamp writers put is the first stamp readers accept');
 verifyFalse(testCase, ismember('did_v1', v2));
 verifyFalse(testCase, ismember('', v2));
 end
@@ -115,17 +118,45 @@ verifyEqual(testCase, r.passthrough(1).id, b.base.id);
 verifyEqual(testCase, r.passthrough(1).class_name, 'unknown_class');
 verifyTrue(testCase, isequaln(r.passthrough(1).body, r.migrated{1}.toStruct()), ...
     'the recorded body must be the body pass 1 emitted');
-% writers still stamp 'V_eta' at this stage
-verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'V_eta');
+% writers stamp 'did_v2' ([document stamps])
+verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v2');
 end
 
 function testPassOneDoesNotRecordAShortCircuit(testCase)
 % A body already at the target took no migrator: not a passthrough.
-b = bodyStamped('V_eta');
+b = bodyStamped('did_v2');
 b.unknown_class = struct('foo', 'bar');
 r = did2.convert.v1_to_v2({b}, 'Validate', false);
 verifyEmpty(testCase, r.passthrough);
 verifyEqual(testCase, r.summary.passthrough_count, 0);
+end
+
+function testWritersStampDidV2(testCase)
+% [document stamps]: every V2 writer puts 'did_v2'. The value is written in
+% one place, did2.schema.v2Stamp.
+verifyEqual(testCase, did2.schema.v2Stamp(), 'did_v2');
+% v1_to_v2 stamps the migrated body (TargetVersion 'V_eta' is the schema
+% set it targets, not the stamp)
+b = bodyUnstamped();
+b.unknown_class = struct('foo', 'bar');
+r = did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v2');
+% universalRenames defaults an absent stamp to the V2 stamp
+out = did2.convert.universalRenames(bodyUnstamped());
+verifyEqual(testCase, out.document_class.schema_version, 'did_v2');
+% a V_eta-stamped body that short-circuits leaves stamped did_v2
+s = bodyStamped('V_eta');
+s.unknown_class = struct('foo', 'bar');
+r = did2.convert.v1_to_v2({s}, 'Validate', false);
+verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_skipped_already_target, 1);
+verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v2');
+end
+
+function testTargetStampMapsTheSetToTheStamp(testCase)
+% TargetVersion names the schema set; the stamp it writes is did_v2.
+verifyEqual(testCase, did2.convert.targetStamp('V_eta'), 'did_v2');
+verifyEqual(testCase, did2.convert.targetStamp("V_eta"), 'did_v2');
+verifyEqual(testCase, did2.convert.targetStamp('did_v2'), 'did_v2');
 end
 
 % ---- fixtures ----

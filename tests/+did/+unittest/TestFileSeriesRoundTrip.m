@@ -776,7 +776,7 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
                 locs{i} = testCase.writeMember(root, sprintf('vmember%d.bin', i), contents{i});
             end
             props = did.document('demoSeries', 'demoSeries.value', 1).document_properties;
-            props.document_class.schema_version = 'V_eta';
+            props.document_class.schema_version = 'did_v2';
             doc = did.document(props);
             doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
             db.add_docs(doc, 'Validate', false);
