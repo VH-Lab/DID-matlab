@@ -151,7 +151,7 @@ arguments
 end
 
 base = 1;
-if isstruct(body) && did2.schema.isV2Stamp(body)   % 'V_eta' or 'did_v2'
+if isstruct(body) && did2.schema.isV2Stamp(body)   % 'did_v2'
     base = 0;
 end
 end

@@ -4,11 +4,11 @@ function tests = testDocumentStamps
 %   Decided by Jess Haley, 2026-10-25 [document stamps] (did-schema
 %   V_eta_go_forward_class_audit.md): a v1 document's
 %   document_class.schema_version is 'did_v1' and a V2 document's is
-%   'did_v2'. THIS STAGE: writers stamp 'did_v2' (did2.schema.v2Stamp);
-%   readers accept both 'did_v2' and 'V_eta' as V2, and 'did_v1' (or no
-%   stamp) as v1. 'V_eta' acceptance is transitional ([V_eta stamp not
-%   accepted], same date): it is one entry of did2.schema.v2Stamps, kept
-%   only so documents written before this stage still read.
+%   'did_v2'. Writers stamp 'did_v2' (did2.schema.v2Stamp); readers accept
+%   'did_v2' as V2, and 'did_v1' (or no stamp) as v1. Decided by Jess Haley,
+%   2026-10-25 [V_eta stamp not accepted]: a document stamped 'V_eta' is no
+%   longer accepted, with no alias. The tests below that name 'V_eta' were
+%   inverted from the read-both stage, which accepted it.
 %
 %   Also pins the pass-1 passthrough record ([passthrough stays v1: how]):
 %   v1_to_v2 records each v1 document no migrator changed, so the caller
@@ -24,6 +24,7 @@ function testTheV2StampsAreOneList(testCase)
 v2 = did2.schema.v2Stamps();
 verifyTrue(testCase, iscellstr(v2));
 verifyTrue(testCase, ismember('did_v2', v2), 'did_v2 is the V2 stamp');
+verifyEqual(testCase, v2, {'did_v2'}, '[V_eta stamp not accepted]: did_v2 only');
 verifyEqual(testCase, v2{1}, did2.schema.v2Stamp(), ...
     'the stamp writers put is the first stamp readers accept');
 verifyFalse(testCase, ismember('did_v1', v2));
@@ -35,17 +36,20 @@ function testTheRankPlacesBothNewStamps(testCase)
 [r0, k0] = did2.convert.schemaVersionRank('');
 [r2, k2] = did2.convert.schemaVersionRank('did_v2');
 [re, ke] = did2.convert.schemaVersionRank('V_eta');
-verifyTrue(testCase, k1 && k0 && k2 && ke, ...
-    'did_v1, did_v2, V_eta and the empty name must all be known');
+verifyTrue(testCase, k1 && k0 && k2, ...
+    'did_v1, did_v2 and the empty name must all be known');
+% [V_eta stamp not accepted]: inverted from the read-both stage
+verifyFalse(testCase, ke, 'V_eta is not a stamp: it must be unknown');
+verifyTrue(testCase, isnan(re));
 verifyEqual(testCase, r1, 0, 'did_v1 is v1: rank 0, like the empty name');
 verifyEqual(testCase, r1, r0);
-verifyEqual(testCase, r2, re, 'did_v2 is the generation V_eta stamps today');
+verifyEqual(testCase, r2, 6, 'did_v2 is the V2 generation, after V_zeta');
 [~, kx] = did2.convert.schemaVersionRank('did_v3');
 verifyFalse(testCase, kx, 'an unknown name stays unknown');
 end
 
 function testIsV2Stamp(testCase)
-verifyTrue(testCase, did2.schema.isV2Stamp('V_eta'));
+verifyFalse(testCase, did2.schema.isV2Stamp('V_eta'), '[V_eta stamp not accepted]');
 verifyTrue(testCase, did2.schema.isV2Stamp('did_v2'));
 verifyTrue(testCase, did2.schema.isV2Stamp("did_v2"));
 verifyFalse(testCase, did2.schema.isV2Stamp('did_v1'));
@@ -53,7 +57,8 @@ verifyFalse(testCase, did2.schema.isV2Stamp(''));
 verifyFalse(testCase, did2.schema.isV2Stamp('V_zeta'), 'a brainstorm name is not V2');
 verifyFalse(testCase, did2.schema.isV2Stamp('V_omega'));
 verifyTrue(testCase, did2.schema.isV2Stamp(bodyStamped('did_v2')));
-verifyTrue(testCase, did2.schema.isV2Stamp(did2.document(bodyStamped('V_eta'))));
+verifyTrue(testCase, did2.schema.isV2Stamp(did2.document(bodyStamped('did_v2'))));
+verifyFalse(testCase, did2.schema.isV2Stamp(bodyStamped('V_eta')), '[V_eta stamp not accepted]');
 verifyFalse(testCase, did2.schema.isV2Stamp(bodyStamped('')));
 verifyFalse(testCase, did2.schema.isV2Stamp(bodyUnstamped()));
 end
@@ -82,7 +87,8 @@ end
 
 function testADidV2BodyIsAlreadyTarget(testCase)
 verifyTrue(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v2'), 'V_eta'));
-verifyTrue(testCase, did2.convert.isAlreadyTarget(bodyStamped('V_eta'), 'V_eta'));
+verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped('V_eta'), 'V_eta'), ...
+    '[V_eta stamp not accepted]: a V_eta-stamped body is not at the target');
 verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v1'), 'V_eta'));
 end
 
@@ -144,12 +150,18 @@ verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'd
 % universalRenames defaults an absent stamp to the V2 stamp
 out = did2.convert.universalRenames(bodyUnstamped());
 verifyEqual(testCase, out.document_class.schema_version, 'did_v2');
-% a V_eta-stamped body that short-circuits leaves stamped did_v2
+end
+
+function testAVEtaStampedBodyIsRefused(testCase)
+% Decided by Jess Haley, 2026-10-25 [V_eta stamp not accepted]: no alias.
+% Inverted from the read-both stage, where it short-circuited and was
+% re-stamped did_v2. Now it is an unknown vintage and quarantines.
 s = bodyStamped('V_eta');
 s.unknown_class = struct('foo', 'bar');
 r = did2.convert.v1_to_v2({s}, 'Validate', false);
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_skipped_already_target, 1);
-verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v2');
+verifyEmpty(testCase, r.migrated, 'a V_eta-stamped body was accepted');
+verifyNotEmpty(testCase, r.quarantine);
+verifyEqual(testCase, r.quarantine(1).identifier, 'did2:convert:unknownSchemaVersion');
 end
 
 function testTargetStampMapsTheSetToTheStamp(testCase)
