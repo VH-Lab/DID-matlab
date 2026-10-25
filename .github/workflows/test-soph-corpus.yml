@@ -20,8 +20,10 @@ on:
   # workflow change -- not on unrelated pushes. Once merged to the default
   # branch, the workflow_dispatch entry below becomes the on-demand trigger and
   # the push block can be dropped.
+  # PAUSED in test-code.yml's matrix 2026-10-25 (tools/corpus_matrix.py
+  # PAUSED; Jess Haley: "Can we just stop running soph for now?"). This file is
+  # the way to run Soph by hand: bump the token below and push, on any branch.
   push:
-    branches: [claude/v-eta-migration-plan-35jj1z]
     paths:
       # NARROWED TO THIS FILE, 2026-08-10. It used to fire on
       # `src/did/+did2/+convert/**`, `testCorpusSoph.m` and `+helpers/**` --
