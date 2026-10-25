@@ -30,28 +30,43 @@ function [rank, known] = schemaVersionRank(version)
 %   document. Callers decide what to do with `known = false`; this function
 %   refuses to guess.
 %
+%   THE STAMPS did_v1 AND did_v2 (Decided by Jess Haley, 2026-10-25
+%   [document stamps], did-schema V_eta_go_forward_class_audit.md): a v1
+%   document's `document_class.schema_version` is 'did_v1' and a V2
+%   document's is 'did_v2'. 'did_v1' ranks with the empty name (0, a v1
+%   document). The V2 names, rank 6, are did2.schema.v2Stamps -- the one
+%   list, which holds 'V_eta' only while writers still stamp it ([V_eta
+%   stamp not accepted], same date: "Stop accepting veta"). Every listed
+%   name is known, so a document carrying one is never quarantined as
+%   did2:convert:unknownSchemaVersion.
+%
 %   Example:
 %       [r, k] = did2.convert.schemaVersionRank('V_eta');     % 6, true
+%       [r, k] = did2.convert.schemaVersionRank('did_v2');    % 6, true
+%       [r, k] = did2.convert.schemaVersionRank('did_v1');    % 0, true
 %       [r, k] = did2.convert.schemaVersionRank('');          % 0, true
 %       [r, k] = did2.convert.schemaVersionRank('V_omega');   % NaN, false
 %
-%   See also DID2.CONVERT.V1_TO_V2
+%   See also DID2.CONVERT.V1_TO_V2, DID2.SCHEMA.ISV1STAMP, DID2.SCHEMA.ISV2STAMP
 
 arguments
     version (1,:) char = ''
 end
 
-% did_v1 carries no schema_version at all, so the empty name IS the origin of
-% the line rather than a missing value.
-ORDER = {'', 'V_alpha', 'V_beta', 'V_gamma', 'V_epsilon', ...
-         'V_zeta', 'V_eta'};
+% did_v1 documents written before [document stamps] carry no schema_version
+% at all, so the empty name IS the origin of the line rather than a missing
+% value; 'did_v1' is the same vintage, named. The V2 generation's names come
+% from did2.schema.v2Stamps and are not repeated here.
+v2 = did2.schema.v2Stamps();
+NAMES = [{'', 'did_v1', 'V_alpha', 'V_beta', 'V_gamma', 'V_epsilon', 'V_zeta'}, v2(:)'];
+RANKS = [0, 0, 1, 2, 3, 4, 5, repmat(6, 1, numel(v2))];
 
-idx = find(strcmp(ORDER, version), 1);
+idx = find(strcmp(NAMES, version), 1);
 if isempty(idx)
     rank = NaN;
     known = false;
     return;
 end
-rank = idx - 1;      % '' -> 0, V_alpha -> 1, ... V_eta -> 7
+rank = RANKS(idx);   % '' and did_v1 -> 0, V_alpha -> 1, ... the V2 stamps -> 6
 known = true;
 end
