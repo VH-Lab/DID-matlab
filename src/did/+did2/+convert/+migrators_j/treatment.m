@@ -40,10 +40,14 @@ function v2Body = treatment(preBody)
 %   (jTreatmentAnchor; Jess Haley, 2026-10-21, "a").
 %
 %   1 -> 2 (manipulation + anchor), or 1 -> 3 when the row carries a site.
-%   Not-a-manipulation rows (date of birth, experiment time) and rows whose
-%   branch cannot be resolved raise an error so the dispatcher routes the source
-%   body to quarantine with a descriptive reason -- nothing is forced into a
-%   residual family. Branch resolution is a keyword/CURIE-prefix HEURISTIC seed;
+%   Not-a-manipulation rows (date of birth, experiment time), rows whose
+%   branch cannot be resolved, rows whose label ends "target location" (the
+%   suffix would be stripped from the variable) and substance rows whose dose
+%   amounts cannot all be placed are returned UNCHANGED, carried whole as v1
+%   with a `carried_as_v1` note ([generic stage is lossless], [partly placed is
+%   carried as v1], Jess Haley, 2026-10-25). Until then the first two raised
+%   did2:convert:notAManipulation / unresolvedTreatment and were quarantined.
+%   Nothing is forced into a residual family. Branch resolution is a keyword/CURIE-prefix HEURISTIC seed;
 %   the authoritative per-term branch list is finalised in discovery mode
 %   against the corpora (Dab = the Target-Location locus pattern; JH =
 %   food-restriction regime).
@@ -68,20 +72,30 @@ variable = jOntologyTerm(node, label);
 hay = lower([node ' ' label]);
 
 % --- Dab "Target Location" idiom: string_value is an ontology site, not prose.
+% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): each refusal below
+% returns the v1 document UNCHANGED (carried whole as v1, noted
+% `carried_as_v1`) instead of rewriting or quarantining it.
+if endsWith(lower(strtrim(label)), 'target location')
+    % the variable would be the label with its "target location" suffix
+    % stripped, and the v1 spelling kept nowhere
+    v2Body = carryAsV1(preBody, 'treatment.name (the "target location" suffix would be stripped)');
+    return;
+end
 siteTerm = struct('node', {}, 'name', {});   % empty ontology_term array
-if endsWith(lower(strtrim(label)), 'target location') || looksLikeCURIE(strValue)
+if looksLikeCURIE(strValue)
     siteTerm = jOntologyTerm(strValue, '');
     variable.name = strtrim(regexprep(label, '(?i)\s*target location$', ''));
     strValue = '';
 end
 notesText = strValue;
 
-% --- not-a-manipulation rows -> quarantine with reason -----------------
+% --- not-a-manipulation rows -> carried as v1 (were quarantined) --------
 if containsAny(hay, {'date of birth', 'non-survival experiment time', ...
         'experiment time'})
-    error('did2:convert:notAManipulation', ...
-        ['treatment "%s" is not a manipulation; route out of tier ', ...
-         '(observation/session metadata) per treatment.md.'], label);
+    v2Body = carryAsV1(preBody, sprintf(['treatment "%s" is not a manipulation ' ...
+        '(was did2:convert:notAManipulation)'], label));
+    return;
 end
 
 % --- branch dispatch into strict-J leaves (first match wins) -----------
@@ -118,8 +132,12 @@ if containsAny(hay, {'cool', 'cold', 'heat', 'warm', 'thermal', 'temperature'})
 elseif containsAny(hay, {'inject', 'virus', 'aav', 'tracer', 'drug', ...
         'vehicle', 'bath', 'infusion', 'perfusate'}) ...
         || startsWith(lower(node), 'chebi:')
-    [manip, route] = makeSubstanceManipulation(preBody, variable, notesText, ...
+    [manip, route, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, ...
         numberCondition, siteTerm, anchor.base.id);
+    if ~isempty(unplaced)
+        v2Body = carryAsV1(preBody, strjoin(unplaced, '; '));
+        return;
+    end
     if any(strcmp(route, {'immersion', 'exposure'}))
         siteTerm = struct('node', {}, 'name', {});   % a bath / medium is no site on the subject
     end
@@ -132,9 +150,9 @@ elseif containsAny(hay, {'craniotomy', 'implant', 'lesion', 'perfus', ...
         'restraint', 'fast', 'regime'})
     manip = makeTermManipulation(preBody, variable, notesText, numberCondition, anchor.base.id);
 else
-    error('did2:convert:unresolvedTreatment', ...
-        ['treatment "%s" (%s) could not be routed to a manipulation ', ...
-         'leaf; curator review required.'], label, node);
+    v2Body = carryAsV1(preBody, sprintf(['treatment "%s" (%s) could not be ' ...
+        'routed to a manipulation (was did2:convert:unresolvedTreatment)'], label, node));
+    return;
 end
 
 if ~isempty(numberCondition)
@@ -168,7 +186,7 @@ docs = {jStatement(preBody, 'manipulation', jSubjectOf(preBody), variable, ...
     'Id', char(preBody.base.id), 'ValueKind', 'temperature')};
 end
 
-function [docs, route] = makeSubstanceManipulation(preBody, variable, notesText, numberCondition, siteTerm, anchorId)
+function [docs, route, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, numberCondition, siteTerm, anchorId)
 % A delivered substance, routed by its recorded location (jTreatmentRoute,
 % Jess Haley, 2026-10-21): the bath -> an immersion (a `manipulation` valued
 % by its formulation through `value_id`); any other site -> a dose; no site
@@ -183,7 +201,7 @@ loc = [];
 if ~isempty(siteTerm)
     loc = siteTerm(1);
 end
-[docs, route] = jTreatmentBodies(preBody, variable, chem, loc, anchorId, ...
+[docs, route, unplaced] = jTreatmentBodies(preBody, variable, chem, loc, anchorId, ...
     'Notes', notesText, 'Conditions', numberCondition);
 end
 
@@ -224,6 +242,15 @@ for k = 1:size(T, 1)
         return;
     end
 end
+end
+
+function v2Body = carryAsV1(preBody, why)
+%CARRYASV1 The v1 treatment, unchanged, as the generic stage's output ([generic
+%   stage is lossless], [partly placed is carried as v1], Jess Haley,
+%   2026-10-25), noted with WHY.
+did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
+    char(preBody.base.id), why);
+v2Body = {preBody};
 end
 
 function tf = looksLikeCURIE(s)

@@ -61,11 +61,12 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %       circular_statistics, interpolated_values)
 %
 %   V1 FIELDS WITH NO HOME are listed by jTuningCurve / jContrastSensitivityValue
-%   and dropped; each one is REPORTED, never silently: one
-%   did2.convert.reportNote('field_dropped', <v1 class>, <id>, <field path>)
-%   per dropped field of a document that folds (a document that passes through
-%   drops nothing, so it leaves no note). The report's
-%   summary.migration_notes.field_dropped carries them.
+%   (and OPTS.Dropped). Until 2026-10-25 they were dropped with one
+%   `field_dropped` note each. Since [generic stage is lossless] and [partly
+%   placed is carried as v1] (Jess Haley, 2026-10-25) a document with any such
+%   field is NOT folded: it is carried whole as v1 (returned unchanged), with
+%   one did2.convert.reportNote('carried_as_v1', <v1 class>, <id>,
+%   'unplaced: <field paths>'). A folded document drops nothing.
 %
 %   Returns {leaf, anchor, software..., run entities...}.
 
@@ -125,6 +126,20 @@ elseif strcmp(family, 'rf')
 else
     [value, valueAxes, leafFields, dropped, response] = jTuningCurve(srcBlk, family);
 end
+% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): a v1 field the value
+% mapping has no home for (DROPPED, from jTuningCurve /
+% jContrastSensitivityValue, or the caller's own OPTS.Dropped) is no longer
+% dropped with a `field_dropped` note: the document is carried WHOLE as v1 for
+% the dataset's map, with one `carried_as_v1` note naming every such field.
+unplaced = [prefixed([sourceBlock '.'], reshape(dropped, 1, [])), ...
+    cellfun(@char, reshape(opts.Dropped, 1, []), 'UniformOutput', false)];
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
+        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
+    bodies = {preBody};
+    return;
+end
 variable = jLabel(variableName);
 if isstruct(response) && isstruct(response.variable)
     variable = response.variable;   % [response variable]: what was measured
@@ -171,19 +186,9 @@ leaf = jStatement(preBody, leafClass, subjectId, ...
 
 bodies = [{leaf, anchor}, software, runDocs];
 
-% the v1 fields the value mapping had no home for: reported, one note each
-className = '';
-if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
-    className = char(preBody.document_class.class_name);
-end
-for k = 1:numel(dropped)
-    did2.convert.reportNote('field_dropped', className, ...
-        char(preBody.base.id), [sourceBlock '.' dropped{k}]);
-end
-for k = 1:numel(opts.Dropped)   % the caller's own drops, full paths
-    did2.convert.reportNote('field_dropped', className, ...
-        char(preBody.base.id), char(opts.Dropped{k}));
-end
+% (a field the value mapping had no home for carried the document as v1 above:
+% a folded document dropped nothing)
+className = classNameOf(preBody);
 % the response variable: one note per folded document, the denominator
 if isstruct(response)
     did2.convert.reportNote('tuning_response_variable', className, ...
@@ -235,5 +240,17 @@ function o = datumOrderOf(valueAxes)
 o = '';
 if isstruct(valueAxes) && isfield(valueAxes, 'datum_order')
     o = char(valueAxes.datum_order);
+end
+end
+
+function c = prefixed(p, names)
+%PREFIXED Each name in NAMES with the prefix P.
+c = cellfun(@(n) [p char(n)], names, 'UniformOutput', false);
+end
+
+function cn = classNameOf(preBody)
+cn = '';
+if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
+    cn = char(preBody.document_class.class_name);
 end
 end

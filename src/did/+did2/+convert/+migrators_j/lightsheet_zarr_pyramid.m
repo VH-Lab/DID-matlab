@@ -171,6 +171,18 @@ end
 blk = block(preBody, 'lightsheet_zarr_pyramid');
 [obsId, sessionId, created] = baseOf(preBody);
 
+% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): `pyramid_type` has
+% no place on the observation (it was dropped, Jess 2026-10-15, above), so a
+% pyramid that states one is carried whole as v1 for the dataset's map.
+pyramidType = field(blk, 'pyramid_type', '');
+if ~isempty(pyramidType) && ~(ischar(pyramidType) && isempty(strtrim(pyramidType)))
+    did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_pyramid', obsId, ...
+        'unplaced: lightsheet_zarr_pyramid.pyramid_type');
+    bodies = {preBody};
+    return;
+end
+
 subjectId = depValue(preBody, 'subject_id');
 elementId = depValue(preBody, 'element_id');
 sourceId  = depValue(preBody, 'source_file_id');

@@ -77,6 +77,12 @@ function bodies = stimulus_response_scalar(preBody)
 %
 %   THE GUARDS, each returning the document UNCHANGED:
 %     1. no `element_id` -> no subject (#88 requires `entity_id`).
+%     1b. a non-empty `stimulus_response.stimulator_epochid` or
+%        `stimulus_control_id` -> neither has a place on the calculation, so
+%        the document is carried whole as v1 ([generic stage is lossless],
+%        [partly placed is carried as v1], Jess Haley, 2026-10-25). The two
+%        MAPPING rows above that say "DROPPED" / "NOT CARRIED" describe the
+%        dataset map's choice, not the generic stage's.
 %     2. `response_type` not 'mean' | 'F<n>' -> the harmonic is unknown.
 %     3. `responses.response_real` absent or empty -> no value.
 %     4. an `element_epochid` string with no `epoch` document (jEpochDocId '')
@@ -102,6 +108,27 @@ subjectId = jSubjectOf(preBody, {'element_id'});
 harmonic  = harmonicFromResponseType(charAny(blk, {'response_type', 'responseType'}));
 realPart  = numAny(resp, {'response_real', 'responseReal'});
 if isempty(subjectId) || isempty(harmonic) || isempty(realPart)
+    bodies = {preBody};
+    return;
+end
+
+% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): the calculation has
+% no place for `stimulus_response.stimulator_epochid` (dropped by the plan) or
+% for the `stimulus_control_id` edge ([control as covariate]: not carried). A
+% response that states either is carried WHOLE as v1 for the dataset's map,
+% instead of being folded with a `field_dropped` / `stimulus_control_id` note.
+unplaced = {};
+srBlock = subBlock(preBody, 'stimulus_response');
+if ~isempty(charAny(srBlock, {'stimulator_epochid', 'stimulatorEpochid'}))
+    unplaced{end+1} = 'stimulus_response.stimulator_epochid';
+end
+if ~isempty(jDependency(preBody, 'stimulus_control_id'))
+    unplaced{end+1} = 'depends_on stimulus_control_id';
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar', ...
+        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
     return;
 end
@@ -194,26 +221,14 @@ calc = jStatement(preBody, 'calculation', subjectId, ...
 
 bodies = [{calc, anchor}, software, runDocs];
 
-% stimulator_epochid is dropped by the signed plan: reported, never silent.
-sr = subBlock(preBody, 'stimulus_response');
-if ~isempty(charAny(sr, {'stimulator_epochid', 'stimulatorEpochid'}))
-    did2.convert.reportNote('field_dropped', 'stimulus_response_scalar', ...
-        char(preBody.base.id), 'stimulus_response.stimulator_epochid');
-end
-
-% The v1 `stimulus_control_id` edge is not carried ([control as covariate],
-% above). Counted, with its denominator, as Jess Haley 2026-10-22 decided
-% ([covariate rules named], answer "A" to 6.4: "migration reports count the
-% v1 `stimulus_control_id` edges dropped"): ONE note per response document
-% this migrator converts, its DETAIL 'dropped' (the edge named a document) or
-% 'none' (the edge was empty), so the note count is the denominator and
-% v1_to_v2's report prints both.
-controlEdge = 'none';
-if ~isempty(jDependency(preBody, 'stimulus_control_id'))
-    controlEdge = 'dropped';
-end
+% The v1 `stimulus_control_id` edge: ONE note per response document this
+% migrator converts, as Jess Haley 2026-10-22 decided ([covariate rules named],
+% answer "A" to 6.4), so the note count stays the denominator. Since
+% [generic stage is lossless] (2026-10-25) a response whose edge names a
+% document is carried as v1 above, so a converted one's DETAIL is always
+% 'none' (the edge was empty); 'dropped' is no longer written.
 did2.convert.reportNote('stimulus_control_id', 'stimulus_response_scalar', ...
-    char(preBody.base.id), controlEdge);
+    char(preBody.base.id), 'none');
 end
 
 % ===================== helpers =============================================

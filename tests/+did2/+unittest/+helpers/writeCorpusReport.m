@@ -414,7 +414,8 @@ end
 % `generic_files_seen` with `files_folded` below it; `refused_no_label`,
 % `refused_ambiguous_label`, `refused_no_document_id` and
 % `refused_referent_not_in_batch` then say which reason, and
-% `date_fields_dropped` counts a loss the model has not yet closed.
+% `refused_unplaced_dates` counts the files carried whole as v1 because the
+% fold has no place for their dates ([generic stage is lossless], 2026-10-25).
 % `epochMint`'s near miss is the thing this line prevents: a pass wired
 % everywhere, persisted nowhere, whose number existed and could not be seen.
 if isfield(result, 'generic_file_fold')

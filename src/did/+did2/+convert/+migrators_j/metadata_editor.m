@@ -145,6 +145,32 @@ if isfield(preBody, 'metadata_editor') && isstruct(preBody.metadata_editor)
 end
 ms = getScalarStruct(block, 'metadata_structure');
 
+% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): two things this
+% migrator cannot place carry the document WHOLE as v1 instead of being dropped:
+%   - an EthicsAssessment that did2.convert.ethicsJurisdiction does not
+%     recognise (it made no statement, only a report note);
+%   - an author with two or more affiliations (only a scalar affiliation was
+%     read, so every one of them was lost; see "OPEN" in the header).
+unplaced = {};
+ethicsText = getChar(ms, 'EthicsAssessment');
+if ~isempty(strtrim(ethicsText)) && isempty(did2.convert.ethicsJurisdiction(ethicsText))
+    unplaced{end+1} = sprintf('EthicsAssessment "%s"', strtrim(ethicsText));
+end
+authorList = getStructArray(ms, 'Author');
+for i = 1:numel(authorList)
+    if isfield(authorList(i), 'affiliation') && numel(authorList(i).affiliation) > 1
+        unplaced{end+1} = sprintf('Author(%d).affiliation (%d affiliations)', ...
+            i, numel(authorList(i).affiliation)); %#ok<AGROW>
+    end
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...
+        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
+    v2Body = {preBody};
+    return;
+end
+
 % The dataset entity is keyed on the DATASET id (D.id() = base.session_id), the
 % id every dataset-level doc and every dataset-referencing relation converges on
 % -- NOT this metadata_editor doc's own base.id. That is what makes the

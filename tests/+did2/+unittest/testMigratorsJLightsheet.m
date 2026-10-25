@@ -1158,8 +1158,32 @@ end
 % ===================== fixtures, built from the writer ======================
 
 function v1 = pyramidV1()
-%PYRAMIDV1 A lightsheetZarrPyramid as makePyramid writes one from an OME-Zarr
-%   store (fromOMEZarr): dtype from `.zarray`, two channels, a t axis.
+%PYRAMIDV1 writerPyramidV1 with `pyramid_type` empty: a pyramid the migrator
+%   places whole. Since [generic stage is lossless] / [partly placed is carried
+%   as v1] (Jess Haley, 2026-10-25) a pyramid that states its pyramid_type
+%   (which the observation has no place for) is carried whole as v1
+%   (testAPyramidStatingItsTypeIsCarriedWholeAsV1); the tests of the fold drive
+%   this one.
+v1 = writerPyramidV1();
+v1.lightsheetZarrPyramid.pyramid_type = '';
+end
+
+function testAPyramidStatingItsTypeIsCarriedWholeAsV1(testCase)
+% INVERTS the old fold of the writer's shape, which dropped `pyramid_type`
+% (Jess 2026-10-15). [generic stage is lossless] (Jess Haley, 2026-10-25).
+v1 = writerPyramidV1();
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+verifyEqual(testCase, char(out.migrated{1}.get('base.id')), 'pyr_ls_1');
+verifyEqual(testCase, char(out.migrated{1}.get('lightsheet_zarr_pyramid.pyramid_type')), 'mean');
+verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'unplaced: lightsheet_zarr_pyramid.pyramid_type');
+end
+
+function v1 = writerPyramidV1()
+%WRITERPYRAMIDV1 A lightsheetZarrPyramid as makePyramid writes one from an
+%   OME-Zarr store (fromOMEZarr): dtype from `.zarray`, two channels, a t axis.
 v1 = struct();
 v1.document_class = struct( ...
     'definition', '$NDIDOCUMENTPATH/data/lightsheetZarrPyramid.json', ...

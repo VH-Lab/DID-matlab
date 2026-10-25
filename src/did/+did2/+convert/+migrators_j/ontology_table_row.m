@@ -70,10 +70,36 @@ end
 % seed below (still knowingly-wrong for qualifiers; retired table by table).
 cols = extractColumns(preBody.ontology_table_row);
 if isEncounterTable(cols)
+    % [generic stage is lossless] and [partly placed is carried as v1] (Jess
+    % Haley, 2026-10-25, did-schema V_eta_go_forward_class_audit.md): the
+    % encounter map writes only the window, the relation and its 8 measures. A
+    % row with any other non-empty cell (EncounterIdentifier, which the map
+    % calls derived, is one), a window bound it cannot read, or a column node
+    % it does not write, is carried WHOLE as v1 for the dataset's map. The map
+    % itself stays, unchanged, for the JH dataset map.
+    unplaced = encounterUnplaced(cols);
+    if ~isempty(unplaced)
+        did2.convert.reportNote('carried_as_v1', 'ontology_table_row', ...
+            sourceIdOf(preBody), ['encounter map cannot place: ' strjoin(unplaced, ', ')]);
+        bodies = {preBody};
+        return;
+    end
     bodies = preserveSourceId(preBody, applyEncounterMap(preBody, cols));
     return;
 end
 if isPatchGeometryTable(cols)
+    % [no invented values] / [generic stage is lossless] (Jess Haley,
+    % 2026-10-25): without both the plate and the patch identifier the patch
+    % handle would be invented from the document id (jPatchLocalId ->
+    % jEnsureLocalId); the row is carried whole as v1 instead.
+    if isempty(colVal(cols, 'BacterialPlateIdentifier')) ...
+            || isempty(colVal(cols, 'BacterialPatchIdentifier'))
+        did2.convert.reportNote('carried_as_v1', 'ontology_table_row', ...
+            sourceIdOf(preBody), ['patch map cannot place: no plate or patch ' ...
+            'identifier (the patch local_identifier would be invented)']);
+        bodies = {preBody};
+        return;
+    end
     bodies = preserveSourceId(preBody, applyPatchGeometryMap(preBody, cols));
     return;
 end
@@ -198,6 +224,53 @@ end
 function tf = isEncounterTable(cols)
 tf = ~isempty(colByKey(cols, 'CElegansBehavioralAssay_EncounterIdentifier')) ...
     && ~isempty(colByKey(cols, 'BacterialPatchDocumentIdentifier'));
+end
+
+function unplaced = encounterUnplaced(cols)
+%ENCOUNTERUNPLACED The cells of an encounter row applyEncounterMap would not
+%   write: a non-empty value in a column the map does not read, a measure or
+%   window bound whose value is not a number, a missing window bound (the map
+%   would write 0 for it), a missing worm or patch, and any column ontology
+%   node (the map writes none). Empty when the map places the whole row.
+P = 'CElegansBehavioralAssay_';
+measureKeys = strcat(P, {'DecelerationUponEncounter', ...
+    'MinimumVelocityDuringEncounter', 'PeakVelocityBeforeEncounterOnset', ...
+    'MinimumVelocityAfterEncounterOffset', 'PosteriorProbabilityOfExploitation', ...
+    'PosteriorProbabilityOfSensing', 'RelativeDensityOfEncounteredBacteria', ...
+    'RelativeDensityOfCultivationBacteria'});
+numericKeys = [measureKeys, strcat(P, {'EncounterOnsetTime', 'EncounterOffsetTime'})];
+idKeys = {'SubjectDocumentIdentifier', 'BacterialPatchDocumentIdentifier'};
+unplaced = {};
+for i = 1:numel(cols)
+    c = cols{i};
+    if ~isempty(strtrim(char(c.node)))
+        unplaced{end+1} = [c.key ' (ontology node)']; %#ok<AGROW>
+    end
+    if isEmptyCell(c.value); continue; end
+    if any(strcmp(c.key, numericKeys))
+        if ~numericValue(c); unplaced{end+1} = c.key; end %#ok<AGROW>
+    elseif ~any(strcmp(c.key, idKeys))
+        unplaced{end+1} = c.key; %#ok<AGROW>
+    end
+end
+required = [idKeys, strcat(P, {'EncounterOnsetTime', 'EncounterOffsetTime'})];
+for i = 1:numel(required)
+    c = colByKey(cols, required{i});
+    if isempty(c) || isEmptyCell(c{1}.value)
+        unplaced{end+1} = [required{i} ' (missing)']; %#ok<AGROW>
+    end
+end
+end
+
+function tf = isEmptyCell(v)
+tf = isempty(v) || ((ischar(v) || (isstring(v) && isscalar(v))) && isempty(strtrim(char(v))));
+end
+
+function id = sourceIdOf(preBody)
+id = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    id = char(preBody.base.id);
+end
 end
 
 function bodies = applyEncounterMap(preBody, cols)

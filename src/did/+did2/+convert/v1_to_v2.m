@@ -290,7 +290,7 @@ for k = 1:numel(bodies)
             % failures would be the "all-zero reads as clean" defect again.
             legacy.bodies_reaching_universal_renames = ...
                 legacy.bodies_reaching_universal_renames + 1;
-            [postUniversalBody, legacyReport] = did2.convert.universalRenames( ...
+            [postUniversalBody, legacyReport, renameDropped] = did2.convert.universalRenames( ...
                 preBody, 'RenameClassNames', options.RenameClassNames);
             className = char(postUniversalBody.document_class.class_name);
             legacy = accumulateLegacyReport(legacy, legacyReport);
@@ -302,15 +302,29 @@ for k = 1:numel(bodies)
                 [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
                     legacyDiscNames, legacyDiscValues, className);
             end
-            v2Body = applySuperclassMigrators(postUniversalBody, className, ...
-                options.TargetVersion);
-            superUnchanged = isequaln(v2Body, postUniversalBody);
-            % runConcreteMigrator returns a CELL of one-or-more bodies.
-            % A class with a base migrator only returns a single body; a
-            % class with a +migrators_j split/fold migrator (treatment,
-            % ontology_table_row, ...) may fan out to several (1 -> N).
-            v2Bodies = runConcreteMigrator(v2Body, className, ...
-                options.TargetVersion);
+            if isempty(renameDropped)
+                v2Body = applySuperclassMigrators(postUniversalBody, className, ...
+                    options.TargetVersion);
+                superUnchanged = isequaln(v2Body, postUniversalBody);
+                % runConcreteMigrator returns a CELL of one-or-more bodies.
+                % A class with a base migrator only returns a single body; a
+                % class with a +migrators_j split/fold migrator (treatment,
+                % ontology_table_row, ...) may fan out to several (1 -> N).
+                v2Bodies = runConcreteMigrator(v2Body, className, ...
+                    options.TargetVersion);
+            else
+                % [generic stage is lossless] / [partly placed is carried as
+                % v1] (Jess Haley, 2026-10-25): universalRenames discarded v1
+                % content it keeps nowhere, so no migrator runs and the body is
+                % a passthrough, carried whole as v1 (its v1 source is what the
+                % end of ndi.migrate.local stores).
+                did2.convert.reportNote('carried_as_v1', className, ...
+                    sourceIdOf(preBody), ['universalRenames would discard: ' ...
+                    strjoin(renameDropped, ', ')]);
+                v2Body = postUniversalBody;
+                superUnchanged = true;
+                v2Bodies = {v2Body};
+            end
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
             % hand its input straight back? `bodies = {preBody}` is how a
             % migrator says "nothing to do here". It is used BOTH deliberately

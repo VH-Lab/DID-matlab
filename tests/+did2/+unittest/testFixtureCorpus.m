@@ -84,11 +84,17 @@ end
 % ----- batch 6: the generic_file fold (TEAM DECISION 2026-08-11) -----------
 % Written 2026-08-11, NEVER EXECUTED (no MATLAB in this container).
 %
-% TWO documents on purpose, because the pass has two outcomes and a fixture
-% that only exercises the happy one cannot tell "folded" from "did nothing":
+% THREE documents on purpose, because the pass has three outcomes and a
+% fixture that only exercises the happy one cannot tell "folded" from "did
+% nothing":
 %
-%   om_gf_01  HAS a sibling ontologyLabel -> FOLDS to term_observation
-%             (base.id om_gf_01, PRESERVED) + a fresh opaque_body.
+%   om_gf_01  HAS a sibling ontologyLabel and states its dates -> REFUSED
+%             (refused_unplaced_dates): the fold has no place for the dates,
+%             so since [generic stage is lossless] (Jess Haley, 2026-10-25)
+%             it is carried whole as v1. This is the writer's shape.
+%   om_gf_03  HAS a sibling ontologyLabel and NO dates -> FOLDS to
+%             term_observation (base.id om_gf_03, PRESERVED) + a fresh
+%             opaque_body.
 %   om_gf_02  has NO label -> REFUSED, and must still validate as a
 %             `generic_file` tombstone. This arm is the one that matters for
 %             the 0-quarantine gate: it is why the class is not phase-8
@@ -99,7 +105,7 @@ end
 % :526-537 (plasmid) as universalRenames leaves them: formatOntology ->
 % format_ontology, dateCreated -> date_created, dateUpdated -> date_updated;
 % checksum and filename are already snake/flat. The datenums are real-shaped
-% doubles, so `date_fields_dropped` counts them.
+% doubles, so `refused_unplaced_dates` counts om_gf_01.
 function batch = genericFileBatch()
 sub = subjDoc('om_gf_subj', 'plasmidHostStrain');
 
@@ -138,7 +144,16 @@ gf2.generic_file = struct('filename', 'misc/notes.txt', ...
     'format_ontology', '', 'checksum', '', ...
     'date_created', 739002.5, 'date_updated', 739002.5);
 
-batch = { sub, gf1, ol2, gf2 };
+% om_gf_03: om_gf_01 without its dates, with its own label, so the fold's happy
+% path is still driven under validation.
+gf3 = gf1;
+gf3.base.id = 'om_gf_03';
+gf3.generic_file = rmfield(gf3.generic_file, {'date_created', 'date_updated'});
+ol3 = ol2;
+ol3.base.id = 'om_gf_lbl3';
+ol3.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_03'});
+
+batch = { sub, gf1, ol2, gf2, gf3, ol3 };
 end
 
 % ----- batch 4: the new-on-main NDI app outputs (ex-ledger gaps). kilosort_clusters
@@ -530,29 +545,33 @@ fprintf(['\n--- generic_file fold: %d inspected, %d generic_file(s), ' ...
     rep.documents_inspected, rep.generic_files_seen, ...
     rep.ontology_labels_seen, rep.labels_pointing_at_a_file);
 fprintf(['  folded %d   refused %d (no label %d / ambiguous %d / node empty ' ...
-         '%d / no document_id %d / referent absent %d)   quarantined %d   ' ...
-         'dates dropped %d\n'], ...
+         '%d / no document_id %d / referent absent %d / unplaced dates %d)   ' ...
+         'quarantined %d\n'], ...
     rep.files_folded, rep.refused_total, rep.refused_no_label, ...
     rep.refused_ambiguous_label, rep.refused_label_node_empty, ...
     rep.refused_no_document_id, rep.refused_referent_not_in_batch, ...
-    rep.fold_quarantined, rep.date_fields_dropped);
+    rep.refused_unplaced_dates, rep.fold_quarantined);
 verifyTrue(testCase, rep.ran, 'the generic_file fold did not run');
-verifyEqual(testCase, rep.generic_files_seen, 2);
+verifyEqual(testCase, rep.generic_files_seen, 3);
 verifyEqual(testCase, rep.files_folded, 1);
 verifyEqual(testCase, rep.refused_no_label, 1);
-verifyEqual(testCase, rep.refused_total, 1);
+% INVERTED 2026-10-25: this used to assert `date_fields_dropped` 1 (om_gf_01
+% folded and lost its dates). [generic stage is lossless] (Jess Haley): a file
+% whose dates the fold cannot place is refused and carried whole as v1.
+verifyEqual(testCase, rep.refused_unplaced_dates, 1);
+verifyEqual(testCase, rep.refused_total, 2);
 verifyEqual(testCase, rep.fold_quarantined, 0);
-% The loss is ASSERTED, not merely mentioned: both source documents carry
-% date_created/date_updated and the fold has nowhere to put them, so this
-% counter is 1 for the one document that folded. If a home is ever built, this
-% line is what says so.
-verifyEqual(testCase, rep.date_fields_dropped, 1);
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_01'), 'generic_file', ...
+    'a generic_file whose dates cannot be placed was folded anyway');
+verifyEqual(testCase, result.migrated{strcmp(cellfun(@(d) char(d.get('base.id')), ...
+    result.migrated, 'UniformOutput', false), 'om_gf_01')}.get('generic_file.date_created'), ...
+    739000.5, 'the carried file keeps its dates');
 
 % THE ID IS PRESERVED and the class changed under it.
-verifyEqual(testCase, classOf(result.migrated, 'om_gf_01'), 'observation+term', ...
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_03'), 'observation+term', ...
     ['the folded generic_file did not keep its id -- a changed id is the ' ...
      'dissolution that produced 11,448 orphans in Soph']);
-verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_01', 'entity_id'), ...
+verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_03', 'entity_id'), ...
     'om_gf_subj', 'the statement lost the subject the file belonged to');
 
 % THE REFUSED ONE IS UNTOUCHED AND STILL VALIDATES. This is the assertion that
@@ -565,7 +584,10 @@ verifyEqual(testCase, classOf(result.migrated, 'om_gf_02'), 'generic_file', ...
 verifyEqual(testCase, classOf(result.migrated, 'om_gf_lbl'), 'ontology_label', ...
     'the sibling label was consumed; it must pass through untouched');
 verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_lbl', 'document_id'), ...
-    'om_gf_01', 'the label''s only join stopped resolving after the fold');
+    'om_gf_01', 'the label''s only join stopped resolving');
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_lbl3'), 'ontology_label');
+verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_lbl3', 'document_id'), ...
+    'om_gf_03', 'the label''s only join stopped resolving after the fold');
 verifyEqual(testCase, rep.labels_deleted, 0);
 verifyEqual(testCase, rep.labels_modified, 0);
 
@@ -574,7 +596,7 @@ verifyEqual(testCase, rep.labels_modified, 0);
 bodyIdx = [];
 for k = 1:numel(result.migrated)
     if strcmp(result.migrated{k}.className(), 'opaque_body') ...
-            && strcmp(char(edgeOfDoc(result.migrated{k}, 'owner_id')), 'om_gf_01')   % `statement` before did-schema #88
+            && strcmp(char(edgeOfDoc(result.migrated{k}, 'owner_id')), 'om_gf_03')   % `statement` before did-schema #88
         bodyIdx(end+1) = k; %#ok<AGROW>
     end
 end

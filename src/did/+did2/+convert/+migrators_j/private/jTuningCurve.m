@@ -98,6 +98,9 @@ end
 % ---- properties -----------------------------------------------------------
 props = sub(srcBlk, 'properties');
 [value, response] = putUnit(value, getf(props, {'response_units', 'responseUnits'}));
+if spellingReplaced(response)
+    dropped{end+1} = 'properties.response_units';
+end
 rt = getf(props, {'response_type', 'responseType'});
 if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
 co = getf(props, {'coordinates'});
@@ -254,9 +257,23 @@ if ~isempty(fieldnames(ctl)); value.control = ctl; end
 value = toGrid(value, valueAxes);
 [u, nm] = getfn(st, {'response_units'}); used{end+1} = nm;
 [value, response] = putUnit(value, u);
+if spellingReplaced(response)
+    used = setdiff(used, {nm}, 'stable');   % its spelling is not kept
+end
 used = used(~cellfun(@isempty, used));
 rest = setdiff(fieldnames(st), used);
 dropped = prefixed('stimulus_tuningcurve.', reshape(rest, 1, []));
+end
+
+function tf = spellingReplaced(response)
+%SPELLINGREPLACED A recognised `response_units` spelling is written as the
+%   registered unit (om:hertz, om:one) and variable, and the v1 spelling itself
+%   is kept nowhere (putUnit). [generic stage is lossless] (Jess Haley,
+%   2026-10-25) lists that rewrite: the field counts as unplaced, so
+%   jCalculation carries the document whole as v1. An unrecognised spelling is
+%   kept as the unit's label and is placed.
+tf = isstruct(response) && isfield(response, 'outcome') ...
+    && any(strcmp(response.outcome, {'neural firing rate', 'dF/F'}));
 end
 
 function valueAxes = makeAxes(names, cols)

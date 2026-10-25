@@ -218,8 +218,15 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %   explicitly; the did_v1 corpus migration does not"), and the built schema
 %   declares it `ontology_term` with mustBeScalar FALSE, i.e. a list.
 %
-%   AN AUTHOR'S SECOND AND LATER AFFILIATIONS ARE DROPPED, and that is
-%   deliberate restraint rather than an oversight. metadata_editor's header
+%   AN AUTHOR'S SECOND AND LATER AFFILIATIONS WERE DROPPED. SINCE 2026-10-25
+%   A COMPONENT THAT HOLDS ANY IS WITHHELD instead ([generic stage is lossless],
+%   [partly placed is carried as v1], Jess Haley): nothing in it is consumed,
+%   its openMINDS documents are carried as v1, and it is counted in
+%   components_withheld_unplaced. The report's
+%   `affiliations_beyond_first_dropped` is summed from consumed components
+%   only, so it now reads 0; the text below is why the build takes only the
+%   first. Originally, that was deliberate restraint rather than an
+%   oversight. metadata_editor's header
 %   records the same loss and says it "needs a team call on whether a person
 %   gets one `affiliated_with` edge per affiliation". This pass COULD emit one
 %   edge each -- every affiliation is its own document here -- and emitting
@@ -268,6 +275,7 @@ report = struct( ...
     'components_consumed',                  0, ...
     'components_withheld',                  0, ...
     'components_reverted_on_validation',    0, ...
+    'components_withheld_unplaced',         0, ...
     'withheld_reasons',                     {{}}, ...
     'documents_consumed',                   0, ...
     ... % --- what was emitted
@@ -461,6 +469,21 @@ for c = 1:nComp
 
     % --- EMIT --------------------------------------------------------------
     [newBodies, tally] = buildComponent(root, bodies, byId, orgIds);
+
+    % --- (4b) LOSSLESS: nothing consumed that cannot be placed --------------
+    % [generic stage is lossless] and [partly placed is carried as v1] (Jess
+    % Haley, 2026-10-25, did-schema V_eta_go_forward_class_audit.md): an author's
+    % second and later affiliations have no place in this build (header), so a
+    % component that holds any is WITHHELD, all or none like (3): nothing is
+    % consumed, nothing emitted, and its openMINDS documents are carried as v1.
+    if tally.affiliations_beyond_first_dropped > 0
+        report.components_withheld = report.components_withheld + 1;
+        report.components_withheld_unplaced = report.components_withheld_unplaced + 1;
+        report.withheld_reasons{end+1} = sprintf(['component %d: %d author ' ...
+            'affiliation(s) beyond the first have no place -- carried as v1'], ...
+            c, tally.affiliations_beyond_first_dropped);
+        continue;
+    end
 
     % --- (5) VALIDATION IS ALSO ALL-OR-NONE --------------------------------
     [survived, quarantined] = validateBodies(newBodies, options);
