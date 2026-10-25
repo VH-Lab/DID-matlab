@@ -1175,11 +1175,11 @@ end
 function testTheVersionRankOrdersTheLineAndFlagsTheUnknown(testCase)
 [r0, k0] = did2.convert.schemaVersionRank('');
 [rd, kd] = did2.convert.schemaVersionRank('V_zeta');
-[re, ke] = did2.convert.schemaVersionRank('V_eta');
+[re, ke] = did2.convert.schemaVersionRank('did_v2');
 [rx, kx] = did2.convert.schemaVersionRank('V_omega');
 verifyTrue(testCase, k0 && kd && ke);
 verifyEqual(testCase, r0, 0, 'did_v1 is the origin of the line');
-verifyTrue(testCase, rd < re, 'V_zeta must rank before V_eta');
+verifyTrue(testCase, rd < re, 'V_zeta must rank before did_v2');
 verifyFalse(testCase, kx, 'an unknown name must not be reported as known');
 verifyTrue(testCase, isnan(rx), ...
     'an unknown name must not get rank 0 -- that is did_v1, "convert this"');

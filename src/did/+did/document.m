@@ -895,8 +895,8 @@ classdef document
             % version it does not recognise is treated as v1 (base 1), which
             % is what every document written before V_eta is.
             % did2.schema.isV2Stamp is that ranking's question, and it reads
-            % both V2 stamps, 'V_eta' and 'did_v2' (Decided by Jess Haley,
-            % 2026-10-25 [document stamps]).
+            % the V2 stamp 'did_v2' (Decided by Jess Haley, 2026-10-25
+            % [document stamps]; 'V_eta' is not accepted, same date).
             base = 1;
             if did2.schema.isV2Stamp(did_document_obj.document_properties)
                 base = 0;

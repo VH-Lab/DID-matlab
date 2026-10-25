@@ -12,13 +12,14 @@ function names = v2Stamps()
 %
 %   The first entry is did2.schema.v2Stamp, the stamp every V2 writer puts.
 %
-%   'V_eta' IS TRANSITIONAL. The writers now stamp 'did_v2'; 'V_eta' stays
-%   here only so documents written before that (the existing V2 imports)
-%   still read until the next step removes it ([V_eta stamp not accepted]).
-%   Delete 'V_eta' from this line then; nothing else lists it as a stamp.
+%   'V_eta' IS NOT A STAMP ANY MORE ([V_eta stamp not accepted]). A document
+%   stamped 'V_eta' is not read as V2: did2.convert.schemaVersionRank does
+%   not know it, so v1_to_v2 quarantines it as
+%   did2:convert:unknownSchemaVersion. There is no alias. 'V_eta' remains
+%   the name of the schema SET (TargetVersion; did2.convert.targetStamp).
 %
 %   See also did2.schema.v2Stamp, did2.schema.isV2Stamp,
 %            did2.schema.isV1Stamp, did2.convert.schemaVersionRank.
 
-names = {did2.schema.v2Stamp(), 'V_eta'};   % 'V_eta': transitional, see above
+names = {did2.schema.v2Stamp()};
 end
