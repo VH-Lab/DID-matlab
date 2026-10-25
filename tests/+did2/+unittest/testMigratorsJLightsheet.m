@@ -1180,17 +1180,14 @@ verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 obs = pickById(out, 'pyr_ls_1');
 verifyEqual(testCase, blockField(obs, 'notes'), sprintf(['brain 7 cleared\n-- store body: ' ...
     'NGFF multiscales name "mean"; NGFF multiscales type "mean"']));
-[out, ~] = runWithPass({writerPyramidV1()});
+% the store body is built from the fileReference record, so the batch needs it
+assumeClass(testCase, 'file_reference');
+[out, ~] = runWithPass({writerPyramidV1(), fileReferenceV1('fref_store_1')});
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
-found = false;
-for k = 1:numel(out.migrated)
-    d = out.migrated{k}.toStruct();
-    if isstruct(d) && isfield(d, 'data_body') && isfield(d.data_body, 'description') ...
-            && contains(d.data_body.description, 'NGFF multiscales type "mean"')
-        found = true;
-    end
-end
-verifyTrue(testCase, found, 'no store body description holds the NGFF multiscales type');
+bodies = pickByClass(out, 'opaque_body');
+assertEqual(testCase, numel(bodies), 1, reasonsOf(out));
+verifyTrue(testCase, contains(bodies{1}.data_body.description, ...
+    'NGFF multiscales name "mean"; NGFF multiscales type "mean"'), bodies{1}.data_body.description);
 end
 
 function testANoSourcePyramidWithANameIsCarriedAsV1(testCase)
