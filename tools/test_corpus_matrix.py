@@ -52,6 +52,16 @@ class TestMatrix(unittest.TestCase):
         m = cm.build_matrix(["A", "B"], ["A", "B"])
         self.assertEqual([e["group"] for e in m["include"]], ["A", "B"])
 
+    def test_paused_corpus_leaves_the_matrix(self):
+        m = cm.build_matrix(["A", "B", "C"], ["A", "B"], paused=("B",))
+        self.assertEqual(m["include"], [
+            {"group": "A", "corpora": "A"},
+            {"group": cm.OTHERS, "corpora": "C"}])
+
+    def test_soph_is_paused(self):
+        # Jess Haley, 2026-10-25: "Can we just stop running soph for now?"
+        self.assertIn("Soph", cm.PAUSED)
+
     def test_discover_reads_the_real_tree(self):
         names = cm.discover()
         self.assertGreater(len(names), 0)
@@ -94,6 +104,18 @@ class TestCheck(unittest.TestCase):
         rc, out = self.run_check(repo, [os.path.join(tempfile.mkdtemp(), "no")])
         self.assertEqual(rc, 1)
         self.assertIn("root(s) absent", out)
+
+    def test_paused_corpus_is_not_expected_and_says_not_measured(self):
+        repo = fake_repo(["A", "B"])
+        root = tempfile.mkdtemp()
+        write_report(root, "A")
+        buf = io.StringIO()
+        rc = cm.check([root], repo=repo, out=lambda s: buf.write(s + "\n"),
+                      paused=("B",))
+        out = buf.getvalue()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("found    1 of 1 expected", out)
+        self.assertIn("paused   1 (not expected, NOT MEASURED here): B", out)
 
     def test_denominator_prints_first(self):
         repo = fake_repo(["A"])

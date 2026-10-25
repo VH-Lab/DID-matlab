@@ -36,6 +36,12 @@ when:
     failed API call is not measured, and not measured runs), or
   - a changed file starts with one of MIGRATION_PATHS.
 Otherwise they are skipped, and the step says which files it read.
+
+PAUSED corpora leave the matrix and the expected set. Jess Haley, 2026-10-25:
+"Can we just stop running soph for now?" -- Soph alone is ~2.5 h of every
+corpus run and its NDI end-to-end outgrew its 350-minute limit. A paused
+corpus is printed as PAUSED (not measured), never as present or passed; it
+still runs by hand through test-soph-corpus.yml (workflow_dispatch).
 """
 from __future__ import annotations
 
@@ -60,6 +66,9 @@ MIGRATION_PATHS = (
     "tools/corpus_matrix.py",
     ".github/workflows/test-code.yml",
 )
+# Corpora left out of the matrix and the expected set for now (see the
+# docstring). Removing a name puts it back.
+PAUSED = ("Soph",)
 
 
 def discover(repo=REPO):
@@ -74,11 +83,13 @@ def discover(repo=REPO):
     return names
 
 
-def build_matrix(names, alone):
+def build_matrix(names, alone, paused=PAUSED):
     unknown = [a for a in alone if a not in names]
     if unknown:
         raise SystemExit("corpus_matrix: --alone names %s with no %s<NAME>.m "
                          "(known: %s)" % (unknown, PREFIX, " ".join(names)))
+    names = [n for n in names if n not in paused]
+    alone = [a for a in alone if a not in paused]
     include = [{"group": a, "corpora": a} for a in alone]
     rest = [n for n in names if n not in alone]
     if rest:
@@ -102,8 +113,10 @@ def find_reports(roots):
     return found, missing_roots
 
 
-def check(roots, repo=REPO, out=print):
-    names = discover(repo)
+def check(roots, repo=REPO, out=print, paused=PAUSED):
+    every = discover(repo)
+    names = [n for n in every if n not in paused]
+    held = [n for n in every if n in paused]
     found, missing_roots = find_reports(roots)
     got = {f[:-len(REPORT_SUFFIX)] for f in found}
     missing = [n for n in names if n not in got]
@@ -115,6 +128,9 @@ def check(roots, repo=REPO, out=print):
     out("  found    %d of %d expected; %d report file(s) in total under %s"
         % (len(present), len(names), sum(len(v) for v in found.values()),
            " ".join(roots)))
+    if held:
+        out("  paused   %d (not expected, NOT MEASURED here): %s"
+            % (len(held), " ".join(held)))
     if missing_roots:
         out("  root(s) absent: %s" % " ".join(missing_roots))
     for n in names:
@@ -179,8 +195,11 @@ def main(argv=None):
         names = discover()
         alone = [a for a in re.split(r"[,\s]+", args.alone) if a]
         mat = build_matrix(names, alone)
-        print("DENOMINATOR: %d corpus test file(s) -> %d job(s)"
-              % (len(names), len(mat["include"])))
+        held = [n for n in names if n in PAUSED]
+        print("DENOMINATOR: %d corpus test file(s), %d paused -> %d job(s)"
+              % (len(names), len(held), len(mat["include"])))
+        if held:
+            print("  PAUSED (not run, not measured): %s" % " ".join(held))
         for e in mat["include"]:
             print("  job %-8s runs: %s" % (e["group"], e["corpora"]))
         line = "matrix=" + json.dumps(mat, separators=(",", ":"))
