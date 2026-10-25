@@ -171,21 +171,27 @@ end
 blk = block(preBody, 'lightsheet_zarr_pyramid');
 [obsId, sessionId, created] = baseOf(preBody);
 
-% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
-% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): `pyramid_type` has
-% no place on the observation (it was dropped, Jess 2026-10-15, above), so a
-% pyramid that states one is carried whole as v1 for the dataset's map.
-pyramidType = field(blk, 'pyramid_type', '');
-if ~isempty(pyramidType) && ~(ischar(pyramidType) && isempty(strtrim(pyramidType)))
-    did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_pyramid', obsId, ...
-        'unplaced: lightsheet_zarr_pyramid.pyramid_type');
-    bodies = {preBody};
-    return;
-end
-
 subjectId = depValue(preBody, 'subject_id');
 elementId = depValue(preBody, 'element_id');
 sourceId  = depValue(preBody, 'source_file_id');
+
+% `pyramid_name` and `pyramid_type` are the source store's own NGFF
+% multiscales name and type, kept VERBATIM as free text in the store body's
+% description ([pyramid type kept as text], Jess Haley, 2026-10-25, "4d";
+% replaces the 2026-10-15 drop of pyramid_type). The type is descriptive only:
+% NDI's lightsheetZarrPyramid.md says an earlier writer labelled mean pyramids
+% `gaussian`; the level documents' reduction_function is the reduction code
+% branches on. A pyramid with NO source file has no store body to hold them
+% ([generic stage is lossless], [partly placed is carried as v1]): it is
+% carried whole as v1 when it states either.
+pyramidName = strtrim(char(field(blk, 'pyramid_name', '')));
+pyramidType = strtrim(char(string(field(blk, 'pyramid_type', ''))));
+if isempty(sourceId) && (~isempty(pyramidName) || ~isempty(pyramidType))
+    did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_pyramid', obsId, ...
+        'unplaced: lightsheet_zarr_pyramid.pyramid_name/pyramid_type (no source file, so no store body)');
+    bodies = {preBody};
+    return;
+end
 
 [dataType, sourceDataType] = jDatumType(field(blk, 'dtype', ''));
 
@@ -217,12 +223,19 @@ end
 % ---- the label, and what the store-record pass needs (header, item 3) ---
 % The label stays on the observation's notes for good (Jess 2026-10-15). With
 % a source, the NGFF multiscales name rides after NOTES_SEPARATOR for the pass
-% to move into the store body's description. pyramid_type is dropped.
+% to move into the store body's description, and so does the NGFF multiscales
+% type ([pyramid type kept as text], above).
 carryStore = ~isempty(sourceId);
 notes = strtrim(char(field(blk, 'label', '')));
-pyramidName = strtrim(char(field(blk, 'pyramid_name', '')));
-if carryStore && ~isempty(pyramidName)
-    notes = [notes NOTES_SEPARATOR() sprintf('NGFF multiscales name "%s"', pyramidName)];
+tail = {};
+if ~isempty(pyramidName)
+    tail{end+1} = sprintf('NGFF multiscales name "%s"', pyramidName);
+end
+if ~isempty(pyramidType)
+    tail{end+1} = sprintf('NGFF multiscales type "%s"', pyramidType);
+end
+if carryStore && ~isempty(tail)
+    notes = [notes NOTES_SEPARATOR() strjoin(tail, '; ')];
 end
 carried = {};
 if ~isempty(notes)

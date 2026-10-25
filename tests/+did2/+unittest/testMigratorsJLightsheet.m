@@ -167,12 +167,13 @@ verifyFalse(testCase, isfield(b.data_body, 'content_hash') && ~isempty(b.data_bo
 verifyTrue(testCase, contains(b.data_body.description, '0123456789abcdef0123456789abcdef'));
 verifyTrue(testCase, contains(b.data_body.description, '.zattrs'));
 % Jess 2026-10-15: the NGFF multiscales name goes to the description; the
-% label stays on the observation; pyramid_type is dropped.
+% label stays on the observation. (pyramidV1 states no pyramid_type; the
+% writer's type is kept as text: testAPyramidsTypeIsKeptAsTextInTheDescription.)
 verifyTrue(testCase, contains(b.data_body.description, 'NGFF multiscales name "mean"'));
 verifyFalse(testCase, contains(b.data_body.description, 'brain 7 cleared'), ...
     'the label is the observation''s, not the store body''s');
 verifyFalse(testCase, contains(b.data_body.description, 'multiscales type'), ...
-    'pyramid_type is dropped');
+    'this fixture states no pyramid_type');
 verifyFalse(testCase, contains(b.data_body.description, '-- store body:'), ...
     'the separator is not copied into the description');
 % recorded BY LOCATION, NOT INGESTED
@@ -260,6 +261,7 @@ function testEveryPyramidsMethodIsLightSheetMicroscopy(testCase)
 assumeCompositionSchema(testCase);
 noSource = pyramidV1();
 noSource.depends_on = noSource.depends_on(~strcmp({noSource.depends_on.name}, 'source_file_id'));
+noSource.lightsheetZarrPyramid.pyramid_name = '';   % no store body to hold it (see testANoSourcePyramidWithANameIsCarriedAsV1)
 cases = {pyramidV1(), smartSpimPyramidV1(), noSource};
 for c = 1:numel(cases)
     out = runJ(cases{c});
@@ -281,15 +283,16 @@ out = runJ(pyramidV1());
 obs = pickById(out, 'pyr_ls_1');
 verifyEqual(testCase, blockField(obs, 'notes'), ...
     sprintf('brain 7 cleared\n-- store body: NGFF multiscales name "mean"'));
-verifyFalse(testCase, contains(jsonencode(obs), 'multiscales type'), 'pyramid_type is dropped');
+verifyFalse(testCase, contains(jsonencode(obs), 'multiscales type'), 'this fixture states no pyramid_type');
 end
 
 function testAPyramidWithNoSourceKeepsJustItsLabel(testCase)
-% No source_file_id: no store body, so nothing to carry -- the notes are the
-% label alone, before and after the pass.
+% No source_file_id and no NGFF name or type: no store body and nothing for it
+% to hold -- the notes are the label alone, before and after the pass.
 assumeCompositionSchema(testCase);
 v1 = pyramidV1();
 v1.depends_on = v1.depends_on(~strcmp({v1.depends_on.name}, 'source_file_id'));
+v1.lightsheetZarrPyramid.pyramid_name = '';
 out = runJ(v1);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 obs = pickById(out, 'pyr_ls_1');
@@ -1158,27 +1161,49 @@ end
 % ===================== fixtures, built from the writer ======================
 
 function v1 = pyramidV1()
-%PYRAMIDV1 writerPyramidV1 with `pyramid_type` empty: a pyramid the migrator
-%   places whole. Since [generic stage is lossless] / [partly placed is carried
-%   as v1] (Jess Haley, 2026-10-25) a pyramid that states its pyramid_type
-%   (which the observation has no place for) is carried whole as v1
-%   (testAPyramidStatingItsTypeIsCarriedWholeAsV1); the tests of the fold drive
-%   this one.
+%PYRAMIDV1 writerPyramidV1 with `pyramid_type` empty, so the tests of the
+%   fold keep their exact notes and descriptions; the writer's own type is kept
+%   as text ([pyramid type kept as text], Jess Haley, 2026-10-25,
+%   testAPyramidsTypeIsKeptAsTextInTheDescription).
 v1 = writerPyramidV1();
 v1.lightsheetZarrPyramid.pyramid_type = '';
 end
 
-function testAPyramidStatingItsTypeIsCarriedWholeAsV1(testCase)
-% INVERTS the old fold of the writer's shape, which dropped `pyramid_type`
-% (Jess 2026-10-15). [generic stage is lossless] (Jess Haley, 2026-10-25).
+function testAPyramidsTypeIsKeptAsTextInTheDescription(testCase)
+% [pyramid type kept as text] (Jess Haley, 2026-10-25, "4d"; replaces the
+% 2026-10-15 drop): the writer's NGFF multiscales type rides the notes tail
+% beside the name and the pass moves both into the store body's description,
+% verbatim. INVERTS testAPyramidStatingItsTypeIsCarriedWholeAsV1.
+assumeCompositionSchema(testCase);
+out = runJ(writerPyramidV1());
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+obs = pickById(out, 'pyr_ls_1');
+verifyEqual(testCase, blockField(obs, 'notes'), sprintf(['brain 7 cleared\n-- store body: ' ...
+    'NGFF multiscales name "mean"; NGFF multiscales type "mean"']));
+[out, ~] = runWithPass({writerPyramidV1()});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+found = false;
+for k = 1:numel(out.migrated)
+    d = out.migrated{k}.toStruct();
+    if isstruct(d) && isfield(d, 'data_body') && isfield(d.data_body, 'description') ...
+            && contains(d.data_body.description, 'NGFF multiscales type "mean"')
+        found = true;
+    end
+end
+verifyTrue(testCase, found, 'no store body description holds the NGFF multiscales type');
+end
+
+function testANoSourcePyramidWithANameIsCarriedAsV1(testCase)
+% No source file: no store body to hold the NGFF name/type, so the pyramid is
+% carried whole as v1 ([generic stage is lossless], [partly placed is carried
+% as v1]) rather than dropping them.
 v1 = writerPyramidV1();
+v1.depends_on = v1.depends_on(~strcmp({v1.depends_on.name}, 'source_file_id'));
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
 verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
-verifyEqual(testCase, char(out.migrated{1}.get('base.id')), 'pyr_ls_1');
-verifyEqual(testCase, char(out.migrated{1}.get('lightsheet_zarr_pyramid.pyramid_type')), 'mean');
-verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'unplaced: lightsheet_zarr_pyramid.pyramid_type');
+verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'no source file'));
 end
 
 function v1 = writerPyramidV1()

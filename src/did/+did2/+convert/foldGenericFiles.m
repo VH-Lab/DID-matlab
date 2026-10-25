@@ -281,8 +281,9 @@ function [result, report] = foldGenericFiles(result, options)
 %   data_body AMENDMENT 6), and the pyramid's NGFF multiscales name as
 %   the TAIL of `statement.notes`: notes is the pyramid's label (which STAYS
 %   on the observation, Jess 2026-10-15), then NOTES_SEPARATOR, then
-%   'NGFF multiscales name "..."'. pyramid_type is not carried (dropped, Jess
-%   2026-10-15). WHICH SOURCE it is (OME-Zarr store or SmartSPIM
+%   'NGFF multiscales name "..."', then '; NGFF multiscales type "..."' when
+%   the pyramid states one ([pyramid type kept as text], Jess Haley,
+%   2026-10-25; it was dropped before, Jess 2026-10-15). WHICH SOURCE it is (OME-Zarr store or SmartSPIM
 %   TIFF folder) is read here exactly as the migrator reads it, off the
 %   pyramid's dtype: the observation's `value.source_data_type` is an NGFF
 %   typestring ('<u2') for an OME-Zarr pyramid and absent for a SmartSPIM one
