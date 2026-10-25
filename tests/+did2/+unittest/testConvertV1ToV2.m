@@ -1105,7 +1105,7 @@ end
 function testABodyBelowTheTargetStillConverts(testCase)
 % The counterpart of the short-circuit, so the ordering cannot pass by
 % skipping everything. A body stamped with a known earlier name ('V_zeta')
-% ranks below V_eta: it is converted forward and leaves stamped 'V_eta'.
+% ranks below V_eta: it is converted forward and leaves stamped 'did_v2'.
 v1 = makeV1Skeleton('unknown_class');
 v1.document_class.schema_version = 'V_zeta';
 v1.unknown_class = struct('foo', 'bar');
