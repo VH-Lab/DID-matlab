@@ -508,6 +508,14 @@ classdef cache < handle
             if isempty(className) || ~obj.hasClass(className)
                 return;
             end
+            % A document STAMPED v1 ('did_v1') is a v1 document stored in a
+            % V2 database (Decided by Jess Haley, 2026-10-24 [passthrough
+            % stays v1: how]): its body is the v1 body, and reshaping it
+            % against the V_eta class of the same name would change it.
+            % Returned as stored. An unstamped body is rehydrated as before.
+            if did2.schema.isV1Stamp(s, 'Explicit', true)
+                return;
+            end
 
             % `depends_on` first: it is the one non-`fields` member with the
             % same shape, and the same writer idiom produces it
@@ -583,8 +591,8 @@ classdef cache < handle
                     && isfield(s.document_class, 'class_name')
                 className = char(s.document_class.class_name);
             end
-            if isempty(className)
-                return;
+            if isempty(className) || did2.schema.isV1Stamp(s, 'Explicit', true)
+                return;   % a 'did_v1' body is not read against V_eta (see rehydrate)
             end
             unknownKey = ['?' className];
             if isKey(obj.matrixPathMemo, unknownKey)

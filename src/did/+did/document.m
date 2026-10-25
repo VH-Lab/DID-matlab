@@ -885,7 +885,7 @@ classdef document
             %   1  a did_v1 document (no document_class.schema_version, or one
             %      before V_eta): NAME_1 is manifest slot 0, the live
             %      convention of ingested epoch data and NDI's series writers.
-            %   0  a V_eta document (schema_version V_eta or later): member
+            %   0  a V2 document (schema_version V_eta or did_v2): member
             %      NAME_k is chunk k is manifest slot k, so an unchunked body is
             %      body_data_0 (DID-schema #73 item 17, kept by Jess 2026-10-14).
             % The manifest format is the same either way; only the names differ.
@@ -894,18 +894,11 @@ classdef document
             % one ordering of the schema line the converter already uses. A
             % version it does not recognise is treated as v1 (base 1), which
             % is what every document written before V_eta is.
+            % did2.schema.isV2Stamp is that ranking's question, and it reads
+            % both V2 stamps, 'V_eta' and 'did_v2' (Decided by Jess Haley,
+            % 2026-10-25 [document stamps]).
             base = 1;
-            props = did_document_obj.document_properties;
-            if ~isfield(props, 'document_class') || ~isstruct(props.document_class) ...
-                    || ~isfield(props.document_class, 'schema_version')
-                return;
-            end
-            sv = props.document_class.schema_version;
-            if isstring(sv) && isscalar(sv), sv = char(sv); end
-            if ~ischar(sv) || isempty(sv), return; end
-            [rank, known] = did2.convert.schemaVersionRank(sv);
-            etaRank = did2.convert.schemaVersionRank('V_eta');
-            if known && rank >= etaRank
+            if did2.schema.isV2Stamp(did_document_obj.document_properties)
                 base = 0;
             end
         end % seriesMemberBase()

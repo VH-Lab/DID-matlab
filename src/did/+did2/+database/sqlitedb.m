@@ -24,6 +24,7 @@ classdef sqlitedb < handle
     %       close        - close the underlying mksqlite connection.
     %       isOpen       - has this instance an open connection?
     %       add          - insert one document or a list of documents.
+    %       countV1      - how many stored documents are v1 ('did_v1'), of all.
     %       remove       - delete by id (string) or by did2.document.
     %       has          - true if a document with the given id exists.
     %       get          - fetch the did2.document for an id.
@@ -54,6 +55,17 @@ classdef sqlitedb < handle
     %   files copied for it are deleted again. Removing a document deletes
     %   the bytes it ingested, unless another document still records the
     %   same uid.
+    %
+    %   V1 DOCUMENTS (Decided by Jess Haley, 2026-10-24 [passthrough stays v1:
+    %   how], did-schema V_eta_go_forward_class_audit.md): "a v1 document is
+    %   stored in the same V2 database, with V_eta validation skipped for it
+    %   and counted". A document whose document_class.schema_version is
+    %   'did_v1' (did2.schema.isV1Stamp, 'Explicit') is stored WITHOUT V_eta
+    %   validation, and add's REPORT counts it (denominator first); countV1
+    %   counts what the database holds. It is read back as stored: the schema
+    %   cache neither rehydrates it nor writes its matrices (cache.rehydrate,
+    %   cache.matrixFieldPaths). An UNSTAMPED body is validated as before;
+    %   only the declaration skips validation.
     %
     %   THE SCHEMA-GENERATION STAMP. `meta.schema_generation` names the
     %   generation of the database layout: 'V2' (SchemaGeneration). What
@@ -154,13 +166,19 @@ classdef sqlitedb < handle
             tf = ~obj.closedByOwner;
         end
 
-        function add(obj, docOrList, opts)
+        function report = add(obj, docOrList, opts)
             % add - insert one document or a list of documents.
             %
             %   db.add(doc)
             %   db.add({doc1, doc2, ...})
             %   db.add(docs, Validate=false) skips schema validation
             %       (the "unsafe_insert" escape hatch).
+            %   REPORT = db.add(...) also says what was validated, denominator
+            %       first: `documents` (the number given), `validated`,
+            %       `v1_not_validated` (stamped 'did_v1': stored without V_eta
+            %       validation, see the class help) and
+            %       `not_validated_by_request` (Validate=false). The last
+            %       three sum to `documents` whenever the add succeeds.
             arguments
                 obj
                 docOrList
@@ -168,6 +186,8 @@ classdef sqlitedb < handle
             end
             obj.ensureConnection();
             list = obj.normaliseDocList(docOrList);
+            report = struct('documents', numel(list), 'validated', 0, ...
+                'v1_not_validated', 0, 'not_validated_by_request', 0);
             if isempty(list)
                 return;
             end
@@ -185,7 +205,8 @@ classdef sqlitedb < handle
             mksqlite(obj.dbid, 'BEGIN');
             try
                 for k = 1:numel(list)
-                    obj.insertRows(list{k}, opts.Validate);
+                    how = obj.insertRows(list{k}, opts.Validate);
+                    report.(how) = report.(how) + 1;
                 end
                 obj.insertFileRows(plan);
                 mksqlite(obj.dbid, 'COMMIT');
@@ -326,6 +347,22 @@ classdef sqlitedb < handle
             obj.ensureConnection();
             row = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM documents');
             n = double(row(1).n);
+        end
+
+        function [nV1, nTotal] = countV1(obj)
+            % countV1 - how many stored documents are v1 documents, of all.
+            %
+            %   [NV1, NTOTAL] = db.countV1(): NV1 is the number of documents
+            %   whose document_class.schema_version is 'did_v1' (stored
+            %   without V_eta validation, see the class help); NTOTAL, the
+            %   denominator, is db.count(). One query each, no body decoded.
+            obj.ensureConnection();
+            row = mksqlite(obj.dbid, ...
+                ['SELECT COUNT(*) AS n FROM documents WHERE ' ...
+                 'json_extract(body, ''$.document_class.schema_version'') = ?'], ...
+                'did_v1');
+            nV1 = double(row(1).n);
+            nTotal = obj.count();
         end
 
         function docs = search(obj, q)
@@ -1235,15 +1272,24 @@ classdef sqlitedb < handle
             obj.add(doc, 'Validate', doValidate);
         end
 
-        function insertRows(obj, doc, doValidate)
+        function how = insertRows(obj, doc, doValidate)
             % The row-level inserts for one document, WITHOUT any transaction
             % control -- the caller owns BEGIN/COMMIT (addOne for a single doc,
             % add for a batch). All statements for one document still go in
             % together, so a batch transaction stays consistent per document.
-            if doValidate
-                doc.validate('SchemaCache', obj.resolveSchemaCache());
-            end
+            %
+            % HOW names add's report counter for this document. A document
+            % stamped 'did_v1' is a v1 document and is stored without V_eta
+            % validation (see the class help); it is counted, never silent.
             s = doc.toStruct();
+            if did2.schema.isV1Stamp(s, 'Explicit', true)
+                how = 'v1_not_validated';
+            elseif doValidate
+                doc.validate('SchemaCache', obj.resolveSchemaCache());
+                how = 'validated';
+            else
+                how = 'not_validated_by_request';
+            end
             id = obj.requireField(s, 'base', 'id');
             classname = obj.requireDocumentClassField(s, 'class_name');
             classVersion = obj.requireDocumentClassField(s, 'class_version');
@@ -1566,7 +1612,14 @@ classdef sqlitedb < handle
                     'Document is missing required field "document_class.%s".', ...
                     fieldName);
             end
-            value = char(s.document_class.(fieldName));
+            value = s.document_class.(fieldName);
+            % A v1 document's class_version is a NUMBER (NDI writes
+            % "class_version": 1); char(1) would be the control character
+            % U+0001, not '1'.
+            if isnumeric(value) && isscalar(value)
+                value = num2str(value);
+            end
+            value = char(value);
         end
 
         function chain = classChainFromStruct(~, s)
