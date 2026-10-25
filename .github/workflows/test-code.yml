@@ -351,6 +351,38 @@ jobs:
                 sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
                     verdict.n_failed));
 
+      - name: Run the did.unittest suite (tests/+did/+unittest)
+        # The did package's own tests (document, database, file cache, binary
+        # table, query) never ran in CI before 2026-10-25: this workflow ran
+        # only did2.unittest. Same runner and verdict as the step above, kept
+        # as its own step so a failure names which package it came from.
+        uses: matlab-actions/run-command@v2
+        if: always()
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            runner = TestRunner.withTextOutput;
+            suite = TestSuite.fromPackage("did.unittest", "IncludingSubpackages", true);
+            fprintf("DID.UNITTEST SUITE: %d test(s) discovered\n", numel(suite));
+            results = runner.run(suite);
+            disp(table(results));
+            verdict = struct('n_run', numel(results), ...
+                'n_failed', sum([results.Failed]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(results, "did.unittest suite");
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_run > 0, ...
+                "the suite selected NO tests -- that is a broken filter, not a pass");
+            assert(verdict.n_failed == 0, ...
+                sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
+                    verdict.n_failed));
+
       - name: Upload unit-suite corpus reports (if any)
         # testFailureFixtures runs the corpus harness over each folder under
         # tests/+did2/fixtures/corpus_failures/ and writes fixture-<name>
