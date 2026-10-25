@@ -261,7 +261,6 @@ function testEveryPyramidsMethodIsLightSheetMicroscopy(testCase)
 assumeCompositionSchema(testCase);
 noSource = pyramidV1();
 noSource.depends_on = noSource.depends_on(~strcmp({noSource.depends_on.name}, 'source_file_id'));
-noSource.lightsheetZarrPyramid.pyramid_name = '';   % no store body to hold it (see testANoSourcePyramidWithANameIsCarriedAsV1)
 cases = {pyramidV1(), smartSpimPyramidV1(), noSource};
 for c = 1:numel(cases)
     out = runJ(cases{c});
@@ -287,8 +286,8 @@ verifyFalse(testCase, contains(jsonencode(obs), 'multiscales type'), 'this fixtu
 end
 
 function testAPyramidWithNoSourceKeepsJustItsLabel(testCase)
-% No source_file_id and no NGFF name or type: no store body and nothing for it
-% to hold -- the notes are the label alone, before and after the pass.
+% No source_file_id and no NGFF name or type: the notes are the label alone,
+% before and after the pass, and the file-less store body holds no NGFF text.
 assumeCompositionSchema(testCase);
 v1 = pyramidV1();
 v1.depends_on = v1.depends_on(~strcmp({v1.depends_on.name}, 'source_file_id'));
@@ -301,6 +300,10 @@ verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared');
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 obs = pickById(out, 'pyr_ls_1');
 verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared');
+bodies = pickByClass(out, 'opaque_body');
+assertEqual(testCase, numel(bodies), 1, 'the file-less store body');
+verifyFalse(testCase, contains(bodies{1}.data_body.description, 'NGFF'), ...
+    bodies{1}.data_body.description);
 end
 
 function testAnEmptyLabelLeavesNoNotesAfterThePass(testCase)
@@ -1190,17 +1193,50 @@ verifyTrue(testCase, contains(bodies{1}.data_body.description, ...
     'NGFF multiscales name "mean"; NGFF multiscales type "mean"'), bodies{1}.data_body.description);
 end
 
-function testANoSourcePyramidWithANameIsCarriedAsV1(testCase)
-% No source file: no store body to hold the NGFF name/type, so the pyramid is
-% carried whole as v1 ([generic stage is lossless], [partly placed is carried
-% as v1]) rather than dropping them.
+function testANoSourcePyramidGetsAFileLessStoreBody(testCase)
+% [no-source pyramid gets a file-less store body] (Jess Haley, 2026-10-25;
+% replaces [no-source pyramid carried as v1], which INVERTED this test): with no
+% source file the migrator itself mints the store body, an opaque_body of the
+% observation with no file member, its format from the dtype ('<u2' is an NGFF
+% typestring: OME-Zarr), holding the NGFF name and type and saying the source's
+% location is not recorded. It validates, and the pass leaves it alone.
+assumeCompositionSchema(testCase);
 v1 = writerPyramidV1();
 v1.depends_on = v1.depends_on(~strcmp({v1.depends_on.name}, 'source_file_id'));
+for pass = [false true]
+    if pass
+        [out, ~] = runWithPass({v1});
+    else
+        out = runJ(v1);
+    end
+    verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+    verifyEqual(testCase, numel(out.passthrough), 0, 'nothing is carried as v1');
+    bodies = pickByClass(out, 'opaque_body');
+    assertEqual(testCase, numel(bodies), 1, reasonsOf(out));
+    b = bodies{1};
+    verifyEqual(testCase, edge(b, 'owner_id'), 'pyr_ls_1');
+    verifyEqual(testCase, b.data_body.format.node, 'EMPTY:0000259');
+    verifyTrue(testCase, ~isfield(b, 'files') || isempty(b.files) ...
+        || ~isfield(b.files, 'file_list') || isempty(b.files.file_list), 'no file member');
+    d = b.data_body.description;
+    verifyTrue(testCase, contains(d, 'NGFF multiscales name "mean"; NGFF multiscales type "mean"'), d);
+    verifyTrue(testCase, contains(d, 'location is not recorded'), d);
+    obs = pickById(out, 'pyr_ls_1');
+    verifyFalse(testCase, contains(jsonencode(obs), 'NGFF'), 'the NGFF text is on the body only');
+end
+end
+
+function testANoSourcePyramidWithNoDtypeIsCarriedAsV1(testCase)
+% No source file and no dtype: the store body's format cannot be read, so the
+% pyramid is carried whole as v1 rather than given an invented format.
+v1 = writerPyramidV1();
+v1.depends_on = v1.depends_on(~strcmp({v1.depends_on.name}, 'source_file_id'));
+v1.lightsheetZarrPyramid.dtype = '';
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
 verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'no source file'));
+    'no dtype'));
 end
 
 function v1 = writerPyramidV1()

@@ -65,7 +65,9 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %      program that writes every v1 pyramid (point 5), always; plus a
 %      `text_assertion` 'version' about it carrying pipeline_version when that
 %      is non-empty.
-%   3. NO STORE BODY. The OME-Zarr store's body is the v1 `fileReference` the
+%   3. NO STORE BODY, when the pyramid names a source file (a pyramid with
+%      none gets a FILE-LESS store body from this migrator; see
+%      sourcelessStoreBody). The OME-Zarr store's body is the v1 `fileReference` the
 %      pyramid's `source_file_id` names, folded by a BATCH PASS
 %      (did2.convert.foldGenericFiles, its store-record half) into an UNHELD
 %      `opaque_body` owned by this observation, with the fileReference's id
@@ -111,7 +113,8 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %      '<label><newline>-- store body: NGFF multiscales name "<name>"'.
 %      Every DID-side harness and ndi.migrate.local run the pass.
 %
-%   Returns {observation, software, versionAssertion?}.
+%   Returns {observation, storeBody?, software, versionAssertion?}; the store
+%   body only for a pyramid with no source file (see sourcelessStoreBody).
 %
 %   ---------------------------------------------------------------------
 %   OPEN POINTS -- RECORDED, NOT RESOLVED (the design does not say)
@@ -181,14 +184,19 @@ sourceId  = depValue(preBody, 'source_file_id');
 % replaces the 2026-10-15 drop of pyramid_type). The type is descriptive only:
 % NDI's lightsheetZarrPyramid.md says an earlier writer labelled mean pyramids
 % `gaussian`; the level documents' reduction_function is the reduction code
-% branches on. A pyramid with NO source file has no store body to hold them
-% ([generic stage is lossless], [partly placed is carried as v1]): it is
-% carried whole as v1 when it states either.
+% branches on. A pyramid with NO source file still gets its store body, one
+% with no file ([no-source pyramid gets a file-less store body], Jess Haley,
+% 2026-10-25, replacing [no-source pyramid carried as v1]): this migrator mints
+% it, since there is no fileReference for the batch pass to fold. Its format
+% comes from the dtype by the pass's own rule (an NGFF typestring is OME-Zarr,
+% else TIFF); with NO dtype the format is unknown, so the pyramid is carried
+% whole as v1 rather than guessing one ([no invented values]).
 pyramidName = strtrim(char(field(blk, 'pyramid_name', '')));
 pyramidType = strtrim(char(string(field(blk, 'pyramid_type', ''))));
-if isempty(sourceId) && (~isempty(pyramidName) || ~isempty(pyramidType))
+rawDtype = strtrim(char(string(field(blk, 'dtype', ''))));
+if isempty(sourceId) && isempty(rawDtype)
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_pyramid', obsId, ...
-        'unplaced: lightsheet_zarr_pyramid.pyramid_name/pyramid_type (no source file, so no store body)');
+        'unplaced: lightsheet_zarr_pyramid (no source file and no dtype, so the store body''s format is unknown)');
     bodies = {preBody};
     return;
 end
@@ -298,6 +306,10 @@ end
 obs.depends_on(end+1) = edgeEntry(obs.depends_on, ...
     did2.convert.mintSessionDuring('marker'), obsId);
 bodies{end+1} = obs;
+if ~carryStore
+    bodies{end+1} = sourcelessStoreBody(obsId, rawDtype, tail, carried, ...
+        sessionId, created);
+end
 bodies{end+1} = software;
 if ~isempty(versionAssertion)
     bodies{end+1} = versionAssertion;
@@ -305,6 +317,51 @@ end
 end
 
 % ===================== helpers =============================================
+
+function body = sourcelessStoreBody(obsId, rawDtype, tail, carried, sessionId, created)
+%SOURCELESSSTOREBODY The store body of a pyramid that names no source file: an
+%   UNHELD opaque_body of the observation with NO file member, described as
+%   did2.convert.foldGenericFiles describes a folded one, plus that the
+%   source's location is not recorded ([no-source pyramid gets a file-less
+%   store body], Jess Haley, 2026-10-25). The format rule is the pass's
+%   isNgffSource rule, applied to the v1 dtype.
+arguments
+    obsId {mustBeText}
+    rawDtype {mustBeText}
+    tail cell
+    carried cell
+    sessionId {mustBeText}
+    created {mustBeText}
+end
+
+fields = struct();
+isOmeZarr = ~isempty(regexp(rawDtype, '^[<>|][uifcb]\d+$', 'once'));
+if isOmeZarr
+    parts = {'OME-Zarr store, not held in the database'};
+    format = 'EMPTY:0000259';   % did2.build.formatTerm names it
+else
+    parts = {['the folder of raw TIFF slices the levels were stitched from, ' ...
+        'not held in the database']};
+    format = 'EDAM:format_3591';
+    fields.redundant = false;
+end
+if ~isempty(tail); parts{end+1} = strjoin(tail, '; '); end
+parts{end+1} = 'its location is not recorded: the v1 pyramid names no source file';
+opts = {};
+if isOmeZarr
+    at = find(strcmp(carried(1:2:end), 'Dimensions'), 1);
+    if ~isempty(at)
+        opts = {'Dimensions', carried{2*at}, 'Covariates', carried{2*at + 2}};
+    end
+end
+body = did2.build.opaqueBody(obsId, format, opts{:}, ...
+    'Description', strjoin(parts, '; '), ...
+    'Fields', fields, ...
+    'SessionId', sessionId, 'CreationTimestamp', created, ...
+    'Validate', false);
+% NO FILE: the builder defaults to one member; this body has none.
+if isfield(body, 'files'); body = rmfield(body, 'files'); end
+end
 
 function e = edgeEntry(deps, name, value)
 % One depends_on entry shaped like the builder's own (its field names).
