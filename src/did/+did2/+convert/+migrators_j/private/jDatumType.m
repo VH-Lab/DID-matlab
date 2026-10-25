@@ -35,9 +35,8 @@ function [datumType, sourceDatumType, byteOrder] = jDatumType(raw)
 %   claim. The source spelling still reaches the document, so nothing is lost
 %   and the gap is visible in the corpus rather than hidden behind a default.
 %
-%   NOTE `image_stack.m` carries `firstNonEmpty(dataType, 'uint16')`, so a
-%   silent default is not hypothetical there; that is its own defect and is not
-%   papered over here.
+%   `image_stack.m` used to default a missing type to 'uint16'; it no longer
+%   does ([no invented values], Jess Haley, 2026-10-25).
 arguments
     raw % a dtype as text (or a MATLAB class name); char() below
 end

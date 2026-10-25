@@ -14,12 +14,12 @@ function b = jBase(id, sessionId, name, datestamp)
 %
 %       base.datestamp is mustBeNonEmpty, and a v1 document may carry none.
 %
-%   Every site that noticed that fell back to the same literal --
-%   '2024-01-01T00:00:00.000Z' -- and every site that did NOT notice emits a
-%   document which cannot validate. The literal was copy-pasted into at least
-%   jSoftware and jSessionAnchor, each with its own comment explaining it. A
-%   rule stated in N places is a rule that is true in N-1 places eventually;
-%   this is the one place.
+%   Every site that noticed that fell back to the same invented literal
+%   ('2024-01-01', since replaced) and every site that did NOT notice emits a
+%   document which cannot validate. A rule stated in N places is a rule that is
+%   true in N-1 places eventually; this is the one place. The fallback is now
+%   the time the migration ran (did2.convert.migrationTime; [no invented
+%   values], Jess Haley, 2026-10-25).
 %
 %   base.id is deliberately NOT defaulted. A missing id is never a sentinel
 %   situation -- it is either a preserved source id (the caller has it) or a
@@ -48,10 +48,10 @@ end
 
 ds = datestamp;
 if isempty(ds)
-    % THE SENTINEL, and it is a stated fallback rather than a silent one: a
+    % THE FALLBACK, and it is a stated one rather than a silent one: a
     % document with no creation time is still a real document, and refusing to
     % emit it would lose data to satisfy a formatting rule.
-    ds = '2024-01-01T00:00:00.000Z';
+    ds = did2.convert.migrationTime();
 end
 
 b = struct('id', id, 'session_id', sessionId, 'name', name, 'datestamp', ds);

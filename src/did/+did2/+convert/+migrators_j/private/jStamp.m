@@ -1,8 +1,8 @@
 function ts = jStamp(preBody)
 %JSTAMP The creation timestamp a document built from PREBODY carries: the v1
-%   `base.datestamp` (or `creation_timestamp`), else the sentinel jBase states
-%   ('2024-01-01T00:00:00.000Z': base.creation_timestamp is required and a v1
-%   document may carry none).
+%   `base.datestamp` (or `creation_timestamp`), else the time the migration ran
+%   (did2.convert.migrationTime; base.creation_timestamp is required and a v1
+%   document may carry none; [no invented values], Jess Haley, 2026-10-25).
 
 ts = '';
 if isstruct(preBody) && isfield(preBody, 'base') && isstruct(preBody.base) ...
@@ -16,6 +16,6 @@ if isstruct(preBody) && isfield(preBody, 'base') && isstruct(preBody.base) ...
     end
 end
 if isempty(ts)
-    ts = '2024-01-01T00:00:00.000Z';
+    ts = did2.convert.migrationTime();
 end
 end

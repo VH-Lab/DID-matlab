@@ -133,6 +133,13 @@ restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry',
 % (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
 prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
 restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% A document whose v1 source states no creation time carries the time the
+% migration ran ([no invented values], Jess Haley, 2026-10-25): one time for the
+% whole call, unless a caller already pinned one for a longer run.
+if isempty(did2.convert.migrationTime('get'))
+    did2.convert.migrationTime('pin');
+    unpinMigrationTime = onCleanup(@() did2.convert.migrationTime('unpin')); %#ok<NASGU>
+end
 
 bodies = normaliseInput(v1Bodies);
 

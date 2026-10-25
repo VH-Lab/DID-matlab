@@ -68,7 +68,7 @@ blk = getBlock(preBody, 'jrclust_clusters');
 subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
     dependencyValue(preBody, 'subject_id'));
 sessionId = baseField(preBody, 'session_id', '');
-datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
+datestamp = baseField(preBody, 'datestamp', did2.convert.migrationTime());
 obsId     = baseField(preBody, 'id', did.ido.unique_id());
 
 % did-schema #88: built through did2.build. The cluster assignment is a

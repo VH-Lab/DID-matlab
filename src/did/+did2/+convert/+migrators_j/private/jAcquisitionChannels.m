@@ -97,7 +97,7 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
     if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
     if isfield(preBody.base, 'datestamp');  datestamp  = preBody.base.datestamp;  end
 end
-if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
 
 % The v1 prefix becomes its channel type term (Jess Haley 2026-10-22 [channel
 % types]: ai ao di do t ax e mk md tx). NDI's eight derived read modes (a

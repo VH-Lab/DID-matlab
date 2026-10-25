@@ -85,8 +85,8 @@ function v2Body = metadata_editor(preBody)
 %   sees output ~= input (a `dataset` IS emitted), `isFragment` sees a
 %   substantive `dataset`, the empty-required-edge census sees nothing
 %   (`dataset`/`person` declare `depends_on: []`), and the vacuous-required-
-%   field census is defeated by the `full_name = '(unnamed dataset)'` fallback
-%   at the top of the body. So the only thing that can catch it is a test that
+%   field census was defeated by the old `full_name = '(unnamed dataset)'`
+%   fallback (retired 2026-10-25, [dataset name not invented]). So the only thing that can catch it is a test that
 %   drives the migrator through a real jsonencode/jsondecode round trip --
 %   testMigratorsJ.m's `runJRoundTrip` block.
 %
@@ -158,7 +158,9 @@ bodies = {};
 % Scalar fields via struct(); list/term fields assigned after (a cell/array value
 % inside struct() would fan the struct into an array -- MATLAB gotcha).
 fullName = firstChar(getChar(ms, 'DatasetFullName'), getChar(ms, 'DatasetShortName'));
-if isempty(fullName); fullName = '(unnamed dataset)'; end   % full_name is required
+% No form name: full_name is left empty ("not stated"), never '(unnamed
+% dataset)'. The dataset is identified by its local_identifier, the v1 reference
+% ([dataset name not invented], Jess Haley, 2026-10-25).
 datasetBlock = struct( ...
     'full_name',          fullName, ...
     'short_name',         getChar(ms, 'DatasetShortName'), ...
@@ -302,7 +304,7 @@ function s = getScalarStruct(block, name)
 %   returns for a heterogeneous array. `struct()` -- the answer for the NDI
 %   template's own `"metadata_structure": []`, which decodes to a 0x0 double --
 %   is UNCHANGED behaviour: every reader below then returns blank, the
-%   `(unnamed dataset)` fallback fires, and one bare `dataset` body is emitted,
+%   dataset is left unnamed, and one bare `dataset` body is emitted,
 %   which is the right answer for a document that states no metadata.
 s = struct();
 if ~(isstruct(block) && isfield(block, name)); return; end

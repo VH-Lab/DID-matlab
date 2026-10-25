@@ -538,7 +538,7 @@ for k = 1:n
     epochDocId = epochIdByKey(epochKey(sid, es));
     datestamp = baseField(b, 'creation_timestamp');
     if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
-    if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+    if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
     fnId = depValueOf(b, 'filenavigator_id');
 
     % did-schema #88 (#73 review item 39): ingestion_manifest carries NO
@@ -882,7 +882,7 @@ for i = 1:numel(acqEpochIdx)
     epochDocId = epochIdByKey(epochKey(sid, es));
     datestamp = baseField(b, 'creation_timestamp');
     if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
-    if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+    if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
     sec = struct('node', 'om:second-Time', 'name', 'second');
     anchor = did2.build.relativeTimeReference(char(epochDocId), 'Clock', clk, ...
         'Start', t0, 'StartSourceValue', t0, 'StartSourceUnit', sec, ...
@@ -2447,7 +2447,7 @@ for i = 1:numel(idxs)
     sid = did2.schema.cache.sessionIdOf(ab);
     ds = baseField(ab, 'creation_timestamp');
     if isempty(ds); ds = baseField(ab, 'datestamp'); end
-    if isempty(ds); ds = '2024-01-01T00:00:00.000Z'; end
+    if isempty(ds); ds = did2.convert.migrationTime(); end
     try
         body = did2.build.opaqueBody(owners, ndiBinaryFormat(), ...
             'Id', char(baseField(ab, 'id')), 'Fields', flds, ...
@@ -2514,7 +2514,7 @@ for i = 1:numel(ks)
     fi = vhsbFileInfo(b);
     datestamp = baseField(b, 'creation_timestamp');
     if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
-    if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+    if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
     body = did2.build.opaqueBody(g, binaryFormat(), ...
         'Fields', struct('filename', 'epoch_binary_data.vhsb'), ...
         'Description', sprintf(['The (timepoints, datapoints) series of epoch %s: ' ...

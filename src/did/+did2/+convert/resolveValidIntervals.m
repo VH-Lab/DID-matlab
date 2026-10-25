@@ -1124,7 +1124,7 @@ end
 end
 
 function base = freshBase(src, name)
-sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
+sessionId = ''; ds = did2.convert.migrationTime();
 if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
     sessionId = did2.schema.cache.sessionIdOf(src);
     ds0 = creationTime(src);

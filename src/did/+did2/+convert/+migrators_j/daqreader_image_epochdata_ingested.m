@@ -307,7 +307,7 @@ end
 blk = getBlock(preBody, 'daqreader_epochdata_ingested');
 refs = jEpochClockReferences(getSubStruct(blk, 'epochtable'), epochDocId, ...
     baseField(preBody, 'session_id', ''), ...
-    baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'));
+    baseField(preBody, 'datestamp', did2.convert.migrationTime()));
 
 % NOTE the asymmetry with the parent class's `clocktype` field: this document
 % ALSO carries a scalar `clocktype` in its own header (image.m:203-207, the first

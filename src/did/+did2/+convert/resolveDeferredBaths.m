@@ -420,7 +420,7 @@ function bodies = makeBathVEta(v1Body, subjectId)
 % location.
 sessionId = baseField(v1Body, 'session_id', '');
 datestamp = baseField(v1Body, 'datestamp', '');
-if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
 bathId    = baseField(v1Body, 'id', '');
 mixture   = parseMixture(v1Body);
 variable  = primaryChemical(mixture);
@@ -516,7 +516,7 @@ end
 
 function obs = makeLocationObs(v1Body, subjectId, anchorId, loc)
 datestamp = baseField(v1Body, 'datestamp', '');
-if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
 obs = did2.build.statement('observation', char(subjectId), ...
     did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), ...
     did2.convert.registeredTerm(loc.node, loc.name), ...
