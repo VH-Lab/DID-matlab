@@ -47,11 +47,15 @@ function bodies = probe_geometry(preBody)
 %   `probe_model` (formerly read as the non-existent `probe_type`) becomes a
 %   timeless `term_assertion` about the same probe-subject when non-empty.
 %
-%   STILL DEFERRED, and now itemised rather than implied: `shank_id`,
-%   `contact_shape` + its width/height/radius, `manufacturer`,
-%   `has_planar_contour` and `contour_x`/`contour_y`. These were dropped silently
-%   before and are still dropped -- carrying them needs a contact-geometry model
-%   (a shape composite and a per-site shank axis), which is modelling, not repair.
+%   NO HOME YET, AND NOW CARRIED: `shank_id`, `contact_shape` + its
+%   width/height/radius, `manufacturer`, `has_planar_contour` and
+%   `contour_x`/`contour_y`. These were dropped ("still deferred") until
+%   2026-10-26; a home needs a contact-geometry model (a shape composite and a
+%   per-site shank axis), which is modelling, not repair. [probe contact geometry
+%   carried] (Jess Haley, 2026-10-26): a document that sets ANY of them is
+%   carried whole as v1 until V2 has that model. `has_planar_contour` counts as
+%   set whenever it holds a value (the NDI template default is 1 and
+%   fromStruct.m writes 0), so a writer-shaped document carrying it is carried.
 %
 %   THE GUARD. A body carrying `channel_positions`, `position_units` or
 %   `probe_type` is REJECTED BY NAME: those are V_alpha inventions, so their
@@ -76,6 +80,18 @@ if isfield(blk, 'channel_positions') || isfield(blk, 'position_units') ...
          '`site_locations_leftright`/`_frontback`/`_depth`, `unit` and ' ...
          '`probe_model`. This shape can only come from the V_alpha snapshot ' ...
          'or a fixture built against it.']);
+end
+
+% [probe contact geometry carried] (Jess Haley, 2026-10-26): no V2 home yet
+unplacedNames = {'shank_id', 'contact_shape', 'contact_shape_width', ...
+    'contact_shape_height', 'contact_shape_radius', 'manufacturer', ...
+    'has_planar_contour', 'contour_x', 'contour_y'};
+isSet = cellfun(@(f) isfield(blk, f) && ~isBlank(blk.(f)), unplacedNames);
+if any(isSet)
+    did2.convert.reportNote('carried_as_v1', 'probe_geometry', char(preBody.base.id), ...
+        ['unplaced: ' strjoin(strcat('probe_geometry.', unplacedNames(isSet)), ', ')]);
+    bodies = {preBody};
+    return;
 end
 
 unit = jGetChar(blk, 'unit');
@@ -131,4 +147,9 @@ v = blk.(name);
 if isnumeric(v) && ~isempty(v)
     vals = double(v(:))';
 end
+end
+
+function tf = isBlank(v)
+%ISBLANK [] / '' / whitespace-only text / an empty cell or struct: nothing set.
+tf = isempty(v) || ((ischar(v) || isstring(v)) && all(strlength(strtrim(string(v))) == 0));
 end

@@ -44,8 +44,13 @@ function bodies = syncrule(preBody)
 %   between rules for the same fact -- `daqsystem1_name` (ctoe, randomPulses) vs
 %   `daqsystem1` (filefind) -- and both are read below.
 %
-%   `errorOnFailure` is DROPPED (repair 5 in the plan): throw-or-return-quietly
-%   is runtime behaviour, not a fact about the experiment.
+%   `errorOnFailure` WAS DROPPED (repair 5 in the plan): throw-or-return-quietly
+%   is runtime behaviour, not a fact about the experiment. [small unread
+%   settings] (3) (Jess Haley, 2026-10-26): on the configuration arms every
+%   parameter the migrator does not read (errorOnFailure, filefind's
+%   daqsystem1/2 when no stamped system pair reads them, ...) becomes one more
+%   method parameter (jParameterList's entry); one that cannot be written (a
+%   number that is not finite) carries the rule whole as v1.
 %
 %   ---------------------------------------------------------------------
 %   THE GUARD: NO DEVICE PAIR => NO CONFIGURATION. PASS THE DOCUMENT THROUGH.
@@ -162,6 +167,10 @@ isFileBased = ~isempty(minPaths);
 resolved = stampedSystemIds(preBody);
 if numel(resolved) == 2 && ~isempty(name1) && ~isempty(name2) ...
         && isempty(ch1) && isempty(ch2)
+    if carryUnwritable(preBody, params, true)
+        bodies = {preBody};
+        return;
+    end
     channelDocs = cell(1, 2);
     channelIds  = cell(1, 2);
     for k = 1:2
@@ -169,7 +178,7 @@ if numel(resolved) == 2 && ~isempty(name1) && ~isempty(name2) ...
         channelDocs{k} = did2.build.document('acquisition_channels', struct(), co{:});
         channelIds{k}  = char(channelDocs{k}.base.id);
     end
-    [cfg, software] = configuration(preBody, block, channelIds);
+    [cfg, software] = configuration(preBody, block, channelIds, true);
     bodies = [{cfg}, channelDocs, software];
     return;
 end
@@ -179,11 +188,84 @@ if ~(haveNeither && isFileBased)
     return;
 end
 
-[cfg, software] = configuration(preBody, block, {});
+if carryUnwritable(preBody, params, false)
+    bodies = {preBody};
+    return;
+end
+[cfg, software] = configuration(preBody, block, {}, false);
 bodies = [{cfg}, software];
 end
 
-function [cfg, software] = configuration(preBody, block, channelIds)
+function tf = carryUnwritable(preBody, params, namesRead)
+%CARRYUNWRITABLE True (with a `carried_as_v1` note) when an unread parameter
+%   cannot be written as a method parameter ([small unread settings] (3), Jess
+%   Haley, 2026-10-26).
+[~, unwritable] = unreadParameters(params, namesRead);
+tf = ~isempty(unwritable);
+if tf
+    did2.convert.reportNote('carried_as_v1', 'syncrule', char(preBody.base.id), ...
+        ['unplaced: ' strjoin(strcat('syncrule.parameters.', unwritable), ', ')]);
+end
+end
+
+function [entries, unwritable] = unreadParameters(params, namesRead)
+%UNREADPARAMETERS The parameters configuration() does not read, as method
+%   parameter entries (jParameterList: a number as `quantity`, text as `text`,
+%   anything else JSON-encoded as `text`), and the names of those that cannot
+%   be written: a number that is not finite (an entry's quantity is finite, and
+%   JSON-encoding loses NaN / Inf). NAMESREAD: the stamped-pair arm read the
+%   two DAQ system names (they resolved the pair).
+entries = [];
+unwritable = {};
+if ~isstruct(params) || ~isscalar(params)
+    return;
+end
+read = {};
+read = [read, consumedChar(params, {'syncfilename', 'syncFilename', 'sync_filename'})];
+read = [read, consumedChar(params, {'epochclocktype', 'epochClockType', 'epoch_clock_type'})];
+read = [read, consumedNumber(params, {'number_fullpath_matches', 'numberFullpathMatches'})];
+read = [read, consumedNumber(params, {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'})];
+if namesRead
+    read = [read, consumedChar(params, {'daqsystem1_name', 'daqsystem1', 'daqsystem1Name'}), ...
+        consumedChar(params, {'daqsystem2_name', 'daqsystem2', 'daqsystem2Name'})];
+end
+rest = struct();
+fns = fieldnames(params);
+for k = 1:numel(fns)
+    if any(strcmp(read, fns{k})); continue; end
+    v = params.(fns{k});
+    if (isnumeric(v) || islogical(v)) && ~isempty(v) && ~all(isfinite(double(v(:))))
+        unwritable{end+1} = fns{k}; %#ok<AGROW>
+        continue;
+    end
+    rest.(fns{k}) = v;
+end
+entries = jParameterList(rest);
+end
+
+function name = consumedChar(params, names)
+% the field jGetCharAny reads for NAMES ({} when none)
+name = {};
+for k = 1:numel(names)
+    if ~isempty(jGetChar(params, names{k}))
+        name = names(k);
+        return;
+    end
+end
+end
+
+function name = consumedNumber(params, names)
+% the field readNumber reads for NAMES ({} when none)
+name = {};
+for k = 1:numel(names)
+    if ~isempty(readNumber(params, names(k)))
+        name = names(k);
+        return;
+    end
+end
+end
+
+function [cfg, software] = configuration(preBody, block, channelIds, namesRead)
 %CONFIGURATION The `clock_alignment_configuration` both folding branches emit.
 %   One builder for the file-based (filematch) branch and the resolved
 %   device-pair (filefind) branch, so the two cannot drift: base.id preserved,
@@ -212,6 +294,12 @@ minOverlap = readNumber(params0(block), {'minEmbeddedFileOverlap', 'min_embedded
 if ~isempty(minOverlap)
     entries{end+1} = did2.build.parameter( ...
         jLabel('minimum embedded file overlap'), 'Value', minOverlap);
+end
+% the parameters read nowhere above, written as method parameters too
+% ([small unread settings] (3), Jess Haley, 2026-10-26)
+unread = unreadParameters(params0(block), namesRead);
+if ~isempty(unread)
+    entries{end+1} = unread;
 end
 params = [];
 if ~isempty(entries)

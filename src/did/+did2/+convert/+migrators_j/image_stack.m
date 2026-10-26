@@ -19,8 +19,11 @@ function bodies = image_stack(preBody)
 %                           the file format), the inline image geometry on the
 %                           `image` mixin, and `storage_mode: body` (so the
 %                           statement carries no sample_time -- the cadence lives
-%                           in the body, D1/§A.7). The prose `label` and the
-%                           `format_ontology` file-type are dropped as derivable.
+%                           in the body, D1/§A.7). The `format_ontology`
+%                           file-type (an `image`'s `format`) and an `image`'s
+%                           `compression` go on the body's `format` and
+%                           `compression` ([image file details placed], Jess
+%                           Haley, 2026-10-26; dropped as derivable before).
 %       sampled_body        the DIGITAL frames: datum (kind/dtype/unit/shape) +
 %                           sample_time (t0/dt/n) + the carried pixel bytes;
 %                           `statement` -> the image_observation it belongs to.
@@ -201,6 +204,30 @@ if ~isempty(tableRowId)
     bodies = {preBody};
     return;
 end
+% [image file details placed] (Jess Haley, 2026-10-26): the four details a v1
+% image / imageStack dropped. `format` and `compression` go on the body (below).
+% The `imageCollection_id` edge becomes a `member_of` relation to a group
+% entity, a later step: until then a document that names one is carried whole
+% as v1. `data_limits` is left unwritten when it is its data type's range
+% ([intmin intmax], [0 1] for logical: recoverable from the datum type,
+% [lossless means round trip]); a range that differs becomes a "value range"
+% condition, whose term is not registered yet, so until then such a document
+% is carried whole as v1 ([no invented values]: no term is made up here).
+unplaced = {};
+if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
+        dependencyValue(preBody, 'image_collection_id')))
+    unplaced{end+1} = 'depends_on imageCollection_id';
+end
+limits = getField(params, 'data_limits');
+if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
+    unplaced{end+1} = 'image_stack_parameters.data_limits (not the data type''s range)';
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
+        baseField(preBody, 'id', ''), ['unplaced: ' strjoin(unplaced, ', ')]);
+    bodies = {preBody};
+    return;
+end
 
 % ---- did-schema #88: what the raster IS (#73 review item 51, decided
 % 2026-09-25): "a raster goes by what its pixels measure, keyed [y, x,
@@ -293,11 +320,53 @@ end
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).
 o = jOpts(preBody, 'DatumOrder', 'F');
+% the file's format and compression ([image file details placed]): an
+% imageStack's `formatOntology`, an image's `format` and `compression`
+imageBlk = getBlock(preBody, 'image');
+fileFormat = firstNonEmpty(getCharField(getBlock(preBody, 'image_stack'), 'format_ontology'), ...
+    getCharField(getBlock(preBody, 'image_stack'), 'formatOntology'), ...
+    getCharField(imageBlk, 'format'));
+if ~isempty(strtrim(fileFormat))
+    o = [o, {'Format', strtrim(fileFormat)}];
+end
+compression = getCharField(imageBlk, 'compression');
+if ~isempty(strtrim(compression))
+    o = [o, {'Compression', compression}];
+end
 [dims, covs] = imageAxes(dimOrder, dimSize, params);
 body = did2.build.sampledBody(stackId, dims, 'Covariates', covs, o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software];
+end
+
+function tf = isTypeRange(limits, dataType)
+%ISTYPERANGE True when LIMITS is exactly DATATYPE's range: [intmin intmax] of
+%   an integer class, [0 1] for logical -- how every NDI main writer sets it
+%   (babu import.m, haley doImport.m). Any other type has no range rule here.
+tf = false;
+if ~isnumeric(limits) && ~islogical(limits)
+    return;
+end
+limits = double(limits(:)');
+cls = lower(strtrim(char(dataType)));
+switch cls
+    case {'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64'}
+        range = double([intmin(cls) intmax(cls)]);
+    case {'logical', 'bool'}
+        range = [0 1];
+    otherwise
+        return;
+end
+tf = isequal(limits, range);
+end
+
+function nm = classNameOf(b)
+nm = 'image_stack';
+if isfield(b, 'document_class') && isstruct(b.document_class) ...
+        && isfield(b.document_class, 'class_name') && ~isempty(b.document_class.class_name)
+    nm = char(b.document_class.class_name);
+end
 end
 
 function r = maskRegionOf(label)

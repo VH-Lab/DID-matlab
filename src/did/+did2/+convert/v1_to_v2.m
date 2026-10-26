@@ -151,6 +151,13 @@ end
 
 bodies = normaliseInput(v1Bodies);
 
+% The generator settings of every v1 stimulus_presentation in this batch, read
+% by a migrator that must compare a copy against them and cannot follow an
+% edge itself (hartley_calc: [hartley leftovers checked], Jess Haley,
+% 2026-10-26). Reset per batch, like the notes below.
+did2.convert.stimulusPresentationSpecs('reset');
+did2.convert.stimulusPresentationSpecs('load', bodies);
+
 % Asked ONCE per call, of the schema the documents validate against: does
 % `base` declare `session_id` as an edge (did-schema
 % V_eta_relation_inheritance_plan.md, 2026-10-20) or as the field it always
@@ -180,8 +187,8 @@ fragValues = [];
 % Complete (one short id per fragment); the counts above stay the census.
 fragIds = {};
 % Report-only: documents a migrator CONSUMED and EMITTED NOTHING for -- an empty
-% cell back from a split migrator (e.g. a metadata-only lightsheetZarrLevel,
-% #73 L3(c)). Without this the source would vanish from every count: it is not
+% cell back from a split migrator (a metadata-only lightsheetZarrLevel was one,
+% #73 L3(c), until it became a file-less body on 2026-10-26). Without this the source would vanish from every count: it is not
 % migrated, not quarantined, not unconverted and not a fragment.
 emptyNames = {};
 emptyValues = [];

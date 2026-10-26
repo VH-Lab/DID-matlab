@@ -139,13 +139,40 @@ end
 end
 
 function blk = predFilterBlock()
-% VERBATIM from filterData.m:32,47-53 (the 'high' branch), which is also the
-% shape of the only real corpus document read for this family
-% (PRED/41269628e2d51bf1_40a0cb9f87794ccb.json).
+% filterData.m:32,47-53 (the 'high' branch), which is also the shape of the
+% only real corpus document read for this family
+% (PRED/41269628e2d51bf1_40a0cb9f87794ccb.json) -- LESS its `sampleFrequency`
+% (2026-10-26). [small unread settings] (2) (Jess Haley, 2026-10-26) makes it
+% a method parameter; on a schema whose sampled_body still declares filter_id
+% (the frequency_filter path) it has no home and the document is carried as
+% v1, so the fold tests use the block without it. writerFilterBlock is verbatim.
 blk = struct('label', 'high', 'type', 'high', 'algorithm', 'chebyshev_1', ...
-    'parameters', struct('sampleFrequency', 20000, 'order', 4, ...
+    'parameters', struct('order', 4, ...
         'filterFrequency', 300, 'passBandRipple', 0.8, ...
         'stopbandAttentuation', NaN));
+end
+
+function blk = writerFilterBlock()
+% VERBATIM from filterData.m:32,47-53, sampleFrequency included
+blk = predFilterBlock();
+blk.parameters.sampleFrequency = 20000;
+end
+
+function tf = loadedSchemaTakesFilterId()
+% the frequency_filter path: the loaded sampled_body still declares filter_id
+txt = fileread(fullfile(did2.schema.cache.shared().schemaPath, 'sampled_body.json'));
+tf = contains(txt, '"filter_id"');
+end
+
+function verifyPyraviewCarried(testCase, out, detailPart)
+% one document, the v1 pyraview, with a `carried_as_v1` note naming DETAILPART
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
+verifyEqual(testCase, classNames(out), {'pyraview'});
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, detailPart), ...
+    notes.carried_as_v1.distinct_details{1});
 end
 
 % ===================== FAMILY 1: subjectmeasurement ========================
@@ -483,17 +510,45 @@ verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.source_unit'
 verifyFalse(testCase, isfield(ff.get('frequency_filter'), 'passband_ripple'));
 end
 
-function testSampleFrequencyAndLabelAreNotCarried(testCase)
-% NO sample_rate: the document is a SPECIFICATION ("4th-order Chebyshev-I
-% high-pass at 300 Hz"), which is what lets it be shared across every recording
-% that used it; the rate is already on the recording. And `label` is the same
-% fact as `band` in every real document (both "high"), so it is not duplicated.
+function testLabelEqualToTypeIsNotDuplicated(testCase)
+% `label` is the same fact as `band` in every real document (both "high"), so
+% it is not written. (Until 2026-10-26 this also asserted that sampleFrequency
+% was not carried; [small unread settings] (2) makes it a method parameter --
+% testOnTheFrequencyFilterPathASampleFrequencyCarriesTheDocument and
+% testAFilterIsAMethodOnceTheBodyTakesMethodId.)
 out = runJ(pyraviewBody(predFilterBlock()));
 ff = docOfClass(testCase, out, 'frequency_filter');
 blk = ff.get('frequency_filter');
-verifyFalse(testCase, isfield(blk, 'sample_rate'));
-verifyFalse(testCase, isfield(blk, 'sample_frequency'));
 verifyFalse(testCase, isfield(blk, 'label'));
+end
+
+function testOnTheFrequencyFilterPathASampleFrequencyCarriesTheDocument(testCase)
+% INVERTS what testSampleFrequencyAndLabelAreNotCarried asserted (the rate was
+% dropped). [small unread settings] (2) (Jess Haley, 2026-10-26): the rate is a
+% method parameter; frequency_filter has no sample rate, so on that path the
+% pyraview is carried whole as v1.
+assumeTrue(testCase, loadedSchemaTakesFilterId(), ...
+    'the loaded sampled_body takes method_id: the rate has a home');
+out = runJ(pyraviewBody(writerFilterBlock()));
+verifyPyraviewCarried(testCase, out, 'sampleFrequency');
+end
+
+function testALabelThatDiffersFromItsTypeCarriesTheDocument(testCase)
+% [small unread settings] (2): `label` is left unwritten only when it equals
+% `type`; otherwise the pyraview is carried whole as v1.
+blk = predFilterBlock();
+blk.label = 'my high-pass';
+out = runJ(pyraviewBody(blk));
+verifyPyraviewCarried(testCase, out, 'filter.label');
+end
+
+function testAFractionalOrderCarriesTheDocument(testCase)
+% [small unread settings] (2): `order` is an integer field; a fractional one
+% was dropped, and now carries the pyraview whole as v1.
+blk = predFilterBlock();
+blk.parameters.order = 4.5;
+out = runJ(pyraviewBody(blk));
+verifyPyraviewCarried(testCase, out, 'order');
 end
 
 function testEveryLevelBodyPointsAtTheOneFilter(testCase)
@@ -540,7 +595,7 @@ fid = fopen(f, 'w'); fwrite(fid, txt); fclose(fid);
 did2.schema.cache.setSchemaPath(tmp);
 testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
 
-out = runJ(pyraviewBody(predFilterBlock()));
+out = runJ(pyraviewBody(writerFilterBlock()));
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
 verifyEqual(testCase, sum(strcmp(names, 'frequency_filter')), 0, 'no frequency_filter');
@@ -566,6 +621,12 @@ verifyEqual(testCase, p(strcmp(vars, 'filter order')).variable.node, 'EMPTY:0000
 verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).quantity.value, 0.8);
 verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).variable.node, 'EMPTY:0000395');
 verifyFalse(testCase, any(strcmp(vars, 'stopband attenuation')), 'NaN is absent');
+% the design's sample frequency, a parameter in hertz ([small unread settings]
+% (2), Jess Haley, 2026-10-26)
+sf = p(strcmp(vars, 'sample frequency'));
+assertNumElements(testCase, sf, 1);
+verifyEqual(testCase, sf.quantity.value, 20000);
+verifyEqual(testCase, sf.unit.node, 'om:hertz');
 bodies = out.migrated(strcmp(names, 'sampled_body'));
 verifyEqual(testCase, numel(bodies), 2);
 for k = 1:numel(bodies)
@@ -622,6 +683,7 @@ edgeNodes = struct('low', 'EMPTY:0000390', 'high', 'EMPTY:0000391');
 for b = 1:size(bands, 1)
     blk = predFilterBlock();
     blk.type = bands{b, 1};
+    blk.label = bands{b, 1};   % a label that differs from the type is carried
     blk.parameters.filterFrequency = bands{b, 2};
     blk.parameters.stopbandAttentuation = 40;
     m = filterMethodOf(testCase, blk);
@@ -665,9 +727,11 @@ function testAllPassEmitsNoFilterAndNoEdge(testCase)
 % filterData.m:34-42: an all-pass records type 'none' and algorithm 'none'. The
 % model's `band` and `algorithm` are both mustBeNonEmpty with value_sets that
 % have no 'none' member -- an all-pass is not a filter. Emit nothing, and leave
-% the bodies exactly as they were before this change.
-blk = struct('label', 'all', 'type', 'none', 'algorithm', 'none', ...
-    'parameters', struct('sampleFrequency', 20000, 'order', NaN, ...
+% the bodies exactly as they were before this change. 2026-10-26: label 'none'
+% (the read-back path) and no sample frequency; the creation path's label
+% 'all' and its rate carry the document (testTheWritersAllPassIsCarriedAsV1).
+blk = struct('label', 'none', 'type', 'none', 'algorithm', 'none', ...
+    'parameters', struct('sampleFrequency', NaN, 'order', NaN, ...
         'filterFrequency', NaN, 'passBandRipple', NaN, ...
         'stopbandAttentuation', NaN));
 out = runJ(pyraviewBody(blk));
@@ -681,20 +745,36 @@ for k = 1:numel(bodies)
 end
 end
 
-function testUnknownVocabularyEmitsNothing(testCase)
-% v1 has no spelling for a notch, and no design family outside the six in the
-% value_set. An unrecognised value is a GUARD, not a guess: no document, no
-% edge. (Compare: mapping an unknown band onto band_pass would have produced a
-% confident, wrong, cleanly-validating specification.)
+function testTheWritersAllPassIsCarriedAsV1(testCase)
+% filterData.m:29-42 on the creation path: label 'all', type 'none', and the
+% probe's rate. The label differs from the type and the rate has no method to
+% hold it, so the pyraview is carried whole as v1 ([small unread settings]
+% (2), Jess Haley, 2026-10-26).
+blk = struct('label', 'all', 'type', 'none', 'algorithm', 'none', ...
+    'parameters', struct('sampleFrequency', 20000, 'order', NaN, ...
+        'filterFrequency', NaN, 'passBandRipple', NaN, ...
+        'stopbandAttentuation', NaN));
+out = runJ(pyraviewBody(blk));
+verifyPyraviewCarried(testCase, out, 'filter.label');
+end
+
+function testUnknownVocabularyIsCarriedNotGuessed(testCase)
+% INVERTED 2026-10-26 (was testUnknownVocabularyEmitsNothing, which dropped the
+% filter). v1 has no spelling for a notch, and no design family outside the
+% six in the value_set. An unrecognised value is still never guessed (mapping
+% an unknown band onto band_pass would be a confident, wrong, cleanly-validating
+% specification); the pyraview is carried whole as v1 instead of losing its
+% filter ([generic stage is lossless], Jess Haley, 2026-10-25).
 blk = predFilterBlock();
 blk.type = 'notch';
+blk.label = 'notch';
 out = runJ(pyraviewBody(blk));
-verifyFalse(testCase, any(strcmp(classNames(out), 'frequency_filter')));
+verifyPyraviewCarried(testCase, out, 'no mapping');
 
 blk = predFilterBlock();
 blk.algorithm = 'savitzky_golay';
 out = runJ(pyraviewBody(blk));
-verifyFalse(testCase, any(strcmp(classNames(out), 'frequency_filter')));
+verifyPyraviewCarried(testCase, out, 'no mapping');
 end
 
 function testPyraviewWithNoFilterBlockIsUnchanged(testCase)
@@ -715,6 +795,7 @@ function testBandPassNeedsTwoEdges(testCase)
 % gives one -- there is no way to know which end a single number is.
 blk = predFilterBlock();
 blk.type = 'bandpass';
+blk.label = 'bandpass';
 blk.parameters.filterFrequency = [300 3000];
 out = runJ(pyraviewBody(blk));
 ff = docOfClass(testCase, out, 'frequency_filter');

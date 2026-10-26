@@ -358,6 +358,37 @@ verifyEqual(testCase, depVal(rel, 'child_id'), 'el_1');
 verifyEqual(testCase, depVal(rel, 'parent_id'), 'probe_1');
 end
 
+function testElementKeepsTheSortingRunItWasDerivedFrom(testCase)
+% [neuron derived from its sorting run] (Jess Haley, 2026-10-25): a sorted
+% neuron whose `jrclust_clusters_id` names a JRCLUST run keeps that link as a
+% `prov:wasDerivedFrom` relation from the neuron entity to the JRCLUST
+% calculation (whose id jrclust_clusters.m keeps), beside its `derived_from`
+% the electrode. INVERTS the old behaviour: element.m read only `subject_id`
+% and `underlying_element_id`, and the edge was dropped (1,554 Soph and 21
+% 20211116 elements, drop census).
+v1 = elementDoc('leftcortex_17', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1');
+v1.depends_on(end+1) = struct('name', 'jrclust_clusters_id', 'value', 'jrc_run_1');
+out = runJ(v1);
+rels = allOfClassJ(out.migrated, 'directed_relation');
+parents = cellfun(@(r) depVal(r, 'parent_id'), rels, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(parents, 'probe_1')), 'the electrode lineage is still there');
+ix = find(strcmp(parents, 'jrc_run_1'));
+verifyNumElements(testCase, ix, 1, 'the sorting-run edge was dropped');
+if isscalar(ix)
+    r = rels{ix};
+    verifyEqual(testCase, depVal(r, 'child_id'), 'el_1');
+    t = r.get('directed_relation.relation');
+    verifyEqual(testCase, char(t.node), 'prov:wasDerivedFrom');
+    verifyEqual(testCase, char(t.name), 'wasDerivedFrom');
+end
+end
+
+function testElementWithNoSortingRunEmitsNoSortingRunEdge(testCase)
+% the other half: no `jrclust_clusters_id`, so exactly the one lineage edge
+out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
+verifyNumElements(testCase, allOfClassJ(out.migrated, 'directed_relation'), 1);
+end
+
 function testElementDirectDeviceObservesSpecimen(testCase)
 % INVERTED AGAIN 2026-10-21 -- the name is true again. From 2026-08-10 this
 % asserted that pass 1 drops the loose `observes` relation because element.m
@@ -1471,8 +1502,11 @@ v1 = struct();
 v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
                            'class_version', {'1.0.0', '1.0.0'}));
+% 2026-10-26: the collection edge is empty (the template's own placeholder): an
+% image that names a collection is carried whole as v1 ([image file details
+% placed]; testDidV1ImageInACollectionIsCarriedAsV1)
 v1.depends_on = [ struct('name', 'subject_id', 'value', 'subj_007'), ...
-                  struct('name', 'imageCollection_id', 'value', 'coll_1')];
+                  struct('name', 'imageCollection_id', 'value', '')];
 v1.base = struct('id', 'img_01', 'session_id', 'sess_09', ...
     'name', 'img', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.image = struct('label', 'a histology section', 'format', 'tiff', ...
@@ -1493,15 +1527,23 @@ verifyEqual(testCase, obs.get('value.data_type'), 'uint8');
 names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
     'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'image')));
+% [image file details placed] (Jess Haley, 2026-10-26): the file's format and
+% compression are the body's (they were dropped as "deferred")
+body = out.migrated{strcmp(names, 'sampled_body')};
+fmt = body.get('data_body.format');
+if isstruct(fmt); fmt = fmt.name; end
+verifyEqual(testCase, char(fmt), 'tiff');
+verifyEqual(testCase, body.get('data_body.compression'), 'lzw');
 end
 
 
-function testDidV1ImageDoesNotMintADanglingCollectionEdge(testCase)
-% imageCollection has NO V_eta class and NO migrator, so carrying
-% imageCollection_id would reference a document that does not exist after
-% migration -- a GATING orphan, not a cosmetic gap. (Dissolving referenced
-% documents without preserving ids once cost 11,448 orphans.) The grouping is
-% real and wants the second pass, once imageCollection has a home.
+function testDidV1ImageInACollectionIsCarriedAsV1(testCase)
+% INVERTED 2026-10-26 (was testDidV1ImageDoesNotMintADanglingCollectionEdge,
+% which folded the image and dropped the edge). [image file details placed]
+% (Jess Haley, 2026-10-26): the imageCollection_id edge becomes a `member_of`
+% relation to a group entity -- a later step -- so until then an image that
+% names a collection is carried whole as v1. Still no dangling edge: the v1
+% document is carried, not a V2 one naming a document that does not exist.
 v1 = struct();
 v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
@@ -1516,15 +1558,40 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
     'dimension_scale', [1 1 1], 'clocktype', 'no_time', 'timestamp', 0);
 
 out = runJ(v1);
-% DENOMINATOR FIRST. The loop below is vacuously true over an empty batch, so
-% a migrator that emitted NOTHING would have passed this test unchanged -- the
-% "all-zero reads as clean" defect in a two-line sweep. Assert the fold ran.
-verifyEqual(testCase, numel(out.migrated), 3, ...
-    'the 1 -> 3 fold must have run, or the sweep below checked nothing');
-for k = 1:numel(out.migrated)
-    verifyEqual(testCase, depVal(out.migrated{k}, 'imageCollection_id'), '');
-    verifyEqual(testCase, depVal(out.migrated{k}, 'image_collection_id'), '');
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image');
+verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'imageCollection_id'));
 end
+
+function testImageStackDataLimitsOtherThanItsTypeRangeAreCarriedAsV1(testCase)
+% [image file details placed] (Jess Haley, 2026-10-26): `data_limits` is left
+% unwritten when it is its data type's range ([intmin intmax], [0 1] for
+% logical; recoverable from the datum type). Another range is a "value range"
+% condition whose term is not registered yet, so the stack is carried as v1.
+v1 = foldableBehaviourImageStack();
+v1.image_stack_parameters.data_type = 'uint8';
+v1.image_stack_parameters.data_limits = [0 255];
+out = runJ(v1);
+verifyGreaterThan(testCase, numel(out.migrated), 1, 'the type''s range folds');
+v1.image_stack_parameters.data_limits = [10 200];
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'data_limits'));
+end
+
+function testImageStackFormatOntologyIsTheBodysFormat(testCase)
+% [image file details placed]: an imageStack's `formatOntology` is the body's
+% `format` (it was dropped as derivable)
+v1 = foldableBehaviourImageStack();
+v1.image_stack.format_ontology = 'NCIT:C85437';
+out = runJ(v1);
+body = firstOfClassJ(out.migrated, 'sampled_body');
+assertNotEmpty(testCase, body);
+fmt = body.get('data_body.format');
+if isstruct(fmt); fmt = fmt.node; end
+verifyEqual(testCase, char(fmt), 'NCIT:C85437');
 end
 
 % ---- the subject-less did_v1 `image`: refused, because it cannot pass through --
@@ -3520,6 +3587,31 @@ v1.base = struct('id', 'grp_9', 'session_id', 'aa_99', ...
 v1.subject_group = struct('group_name', 'cohortC', 'description', '');
 end
 
+function testDaqreaderNdrWithADifferentNdrClassIsCarriedAsV1(testCase)
+% [restated values checked] (Jess Haley, 2026-10-26): `ndi_daqreader_ndr_class`
+% is dropped only when it restates `daqreader.ndi_daqreader_class` (equal in
+% the one Dab document); one that differs is carried whole as v1.
+body = struct();
+body.document_class = struct('class_name', 'daqreader_ndr', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base',      'class_version', '1.0.0'), ...
+                      struct('class_name', 'daqreader', 'class_version', '1.0.0')]);
+body.depends_on = struct('name', {}, 'value', {});
+body.base = struct('id', 'ndr_2', 'session_id', 'sess_09', ...
+    'name', 'reader', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.daqreader = struct('ndi_daqreader_class', 'ndi.daq.reader.mfdaq.ndr');
+body.daqreader_ndr = struct('ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.other', ...
+    'ndr_reader_string', 'intan');
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.daqreader_ndr(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, iscell(out) && isscalar(out) && isequaln(out{1}, body), ...
+    'returned unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+    'ndi_daqreader_ndr_class'));
+end
+
 function testDaqreaderNdrDeEncodesToDaqreader(testCase)
 % Chunk c: daqreader_ndr de-encodes onto daqreader -- the ndr subtype fields move
 % (ndr_reader_string -> reader_string, ndi_daqreader_ndr_class dropped) and the
@@ -4074,6 +4166,59 @@ verifyEqual(testCase, depValue(leaf, 'interpreter_id'), it.base.id);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
 end
 
+
+function testACalculatorsInnerDependsOnThatRestatesTheEdgesIsNotACarry(testCase)
+% [restated values checked] (Jess Haley, 2026-10-26): the calculator block's
+% inner `depends_on` copy is left unwritten when it restates the top-level
+% edges (measured equal on every held document), so it is never the reason a
+% document is carried.
+body = oridirCalcInnerDepsBodyJ();
+did2.convert.reportNote('reset');
+did2.convert.migrators_j.oridirtuning_calc(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+if isfield(notes, 'carried_as_v1')
+    verifyFalse(testCase, contains(notes.carried_as_v1.distinct_details{1}, 'depends_on'), ...
+        notes.carried_as_v1.distinct_details{1});
+end
+end
+
+function testACalculatorsInnerDependsOnThatDiffersIsCarriedAsV1(testCase)
+% ... and one that does NOT restate them is carried whole as v1, the copy named.
+body = oridirCalcInnerDepsBodyJ();
+body.oridirtuning_calc.depends_on(2).value = 'tc_OTHER';
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.oridirtuning_calc(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, body), 'returned unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+d = notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'oridirtuning_calc.depends_on (stimulus_tuningcurve_id'), d);
+end
+
+function body = oridirCalcInnerDepsBodyJ()
+% testOridirtuningCalcUndefersToLeaf's body, with the inner copy NDI's
+% calculator writes on its own block (equal to the top-level edges).
+body = struct();
+body.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'orientation_direction_tuning'; 'tuning_fit'}, ...
+                           'class_version', {'1.0.0'; '1.0.0'; '1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_9'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_9')];
+body.base = struct('id', 'oc_1', 'session_id', 'sess_09', 'name', 'oc', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = struct('name', 'ndi.calc.vis.oridir', 'version', '1.2', ...
+    'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
+    'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
+body.oridirtuning_calc = struct('input_parameters', ...
+    struct('independent_variable', 'direction'), ...
+    'depends_on', body.depends_on);
+body.orientation_direction_tuning = struct( ...
+    'properties', struct('response_units', 'spikes/s'), ...
+    'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
+    'vector', struct('orientation_preference', 47.5));
+end
 
 function testContrastSensitivityCalcUndefersToLeaf(testCase)
 % The aggregate ndi.calc.vis.contrast_sensitivity output folds 1 -> 1,
@@ -4814,7 +4959,10 @@ v1.probe_geometry = struct( ...
     'site_locations_frontback', [0 0], ...
     'site_locations_depth', [], ...
     'ndim', 2, 'unit', 'um', ...
-    'probe_model', 'linear', 'manufacturer', 'acme');
+    'probe_model', 'linear');
+% 2026-10-26: no `manufacturer` (it was 'acme'): a document that sets one is
+% carried whole as v1 ([probe contact geometry carried];
+% testProbeGeometryWithContactGeometryIsCarriedAsV1).
 
 out = did2.convert.migrators_j.probe_geometry(v1);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
@@ -4841,6 +4989,41 @@ verifyEqual(testCase, lr.length.value(2).meters, 2e-5, 'AbsTol', 1e-12);
 assertion = out{find(strcmp(names, 'assertion+term'), 1)};
 verifyEqual(testCase, assertion.statement.variable.name, 'probe model');
 verifyEqual(testCase, assertion.term.value.name, 'linear');
+end
+
+function testProbeGeometryWithContactGeometryIsCarriedAsV1(testCase)
+% [probe contact geometry carried] (Jess Haley, 2026-10-26): `shank_id`, the
+% contact shape and its width / height / radius, `manufacturer`,
+% `has_planar_contour` and the contour have no V2 home until a contact-geometry
+% model exists, so a document that sets any of them is carried whole as v1
+% (they were dropped as "still deferred"). One field at a time.
+fields = {'shank_id', [1 1]; 'contact_shape', 'circle'; ...
+    'contact_shape_width', 12; 'contact_shape_height', 12; ...
+    'contact_shape_radius', 6; 'manufacturer', 'acme'; ...
+    'has_planar_contour', 0; 'contour_x', [0 1 1 0]; 'contour_y', [0 0 1 1]};
+for k = 1:size(fields, 1)
+    v1 = struct();
+    v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
+        'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_5'});
+    v1.base = struct('id', 'pg_3', 'session_id', 'sess_09', 'name', 'pg', ...
+        'datestamp', '2024-06-01T12:00:00.000Z');
+    v1.probe_geometry = struct('site_locations_leftright', [0 20], ...
+        'site_locations_frontback', [0 0], 'ndim', 2, 'unit', 'um', ...
+        'probe_model', 'linear');
+    v1.probe_geometry.(fields{k, 1}) = fields{k, 2};
+    did2.convert.reportNote('reset');
+    out = did2.convert.migrators_j.probe_geometry(v1);
+    notes = did2.convert.reportNote('collect');
+    did2.convert.reportNote('reset');
+    verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), ...
+        sprintf('%s set: not returned unchanged', fields{k, 1}));
+    verifyTrue(testCase, isfield(notes, 'carried_as_v1'), fields{k, 1});
+    if isfield(notes, 'carried_as_v1')
+        verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+            ['probe_geometry.' fields{k, 1}]), notes.carried_as_v1.distinct_details{1});
+    end
+end
 end
 
 function testProbeGeometryRejectsInventedShape(testCase)

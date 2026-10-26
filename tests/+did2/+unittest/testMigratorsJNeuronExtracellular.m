@@ -294,18 +294,32 @@ verifyEqual(testCase, numel(out), 11, ...   % the 12 of the full fold, less the 
 end
 
 
-function testACountThatDisagreesWithTheArrayShapeIsRefused(testCase)
+function testACountThatDisagreesWithTheArrayShapeIsCarriedAsV1(testCase)
+% INVERTED 2026-10-26 (was testACountThatDisagreesWithTheArrayShapeIsRefused,
+% which asserted did2:convert:neuronWaveformShapeMismatch, a quarantine).
 % `number_of_samples_per_channel` and `number_of_channels` are DROPPED as
 % derivable -- the writer assigns them from size(...,1)/size(...,2) itself. But
-% redundancy is a property of the DOCUMENT, not of the class: a disagreement
-% means one of the two is wrong, and silently preferring the matrix would drop a
-% real discrepancy. It holds on 21 of 21 real documents, so refusing costs
-% nothing today and refuses an unknown writer tomorrow.
+% redundancy is a property of the DOCUMENT, not of the class: a count that
+% disagrees with the matrix restates nothing, so the document is carried whole
+% as v1 ([restated values checked], Jess Haley, 2026-10-26).
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular.number_of_channels = 64;      % the matrix says 32
-verifyError(testCase, ...
-    @() did2.convert.migrators_j.neuron_extracellular(v1), ...
-    'did2:convert:neuronWaveformShapeMismatch');
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'returned unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+    'number_of_channels'), notes.carried_as_v1.distinct_details{1});
+end
+
+function testAFractionalCountIsCarriedAsV1(testCase)
+% A count of 31.6 does not restate the 32 columns (it was rounded and dropped).
+v1 = neuronExtracellularV1();
+v1.neuron_extracellular.number_of_channels = 31.6;
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'returned unchanged');
 end
 
 function testAnAbsentCountIsNotAnErrorBecauseThereIsNothingToCheck(testCase)

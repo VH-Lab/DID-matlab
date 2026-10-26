@@ -90,6 +90,7 @@ ndiClass   = jGetChar(block, 'ndi_element_class');
 isDirect   = isTruthy(getField(block, 'direct'));
 specimenId   = depValue(preBody, 'subject_id');
 underlyingId = depValue(preBody, 'underlying_element_id');
+sortingRunId = depValue(preBody, 'jrclust_clusters_id');
 
 localId = name;
 if ~isempty(reference); localId = strtrim(sprintf('%s (ref %s)', name, reference)); end
@@ -196,6 +197,18 @@ elseif isDirect && ~isempty(specimenId)
     end
 elseif ~isempty(specimenId)
     bodies{end+1} = lineageRelation(preBody, elementId, specimenId, 'derived_from');
+end
+
+% --- the sorting run a neuron was derived from ------------------------------
+% ([neuron derived from its sorting run], Jess Haley, 2026-10-25) a sorted
+% neuron whose `jrclust_clusters_id` names a JRCLUST run keeps that link as a
+% `prov:wasDerivedFrom` relation from the neuron entity to the JRCLUST
+% calculation, beside its `derived_from` the electrode. jrclust_clusters.m keeps
+% the v1 id, so the edge resolves as written. It was dropped before (depValue
+% read only `subject_id` and `underlying_element_id`).
+if ~isempty(sortingRunId)
+    bodies{end+1} = jEntityRelation(preBody, elementId, sortingRunId, ...
+        'wasDerivedFrom', '', 'prov:wasDerivedFrom');
 end
 
 v2Body = [bodies, recordingBodies];

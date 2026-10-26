@@ -63,11 +63,14 @@ function bodies = jMethodParameters(preBody, entries, other, opts)
 %   (ndi.app/newdocument sets app.name/version/url/os/os_version/interpreter/
 %   interpreter_version at src/ndi/+ndi/app.m:105-114). Rather than drop it:
 %     - name + version + url  -> the `software` entity (R1, app -> software).
-%     - os / os_version / interpreter / interpreter_version -> parked in
-%       `other.execution_environment`. `execution_environment` is a
-%       subject_interaction field and method_parameters is not a statement, so
-%       these four have NO TYPED HOME on this class. Parked, not dropped, and
-%       reported as an open question.
+%     - os / os_version / interpreter / interpreter_version -> NO HOME on a
+%       method, by design: [small unread settings] (1) (Jess Haley,
+%       2026-10-26) -- the OS is where the settings were SAVED (ndi.app/
+%       newdocument stamps every app document), not a property of the recipe;
+%       V2 puts a run's OS and interpreter on the CALCULATION, and `method` is
+%       NOT to gain OS or interpreter links. A document whose app block names
+%       any of the four is CARRIED WHOLE AS V1 (they were dropped, reported,
+%       until 2026-10-26).
 %   When the app block names no software, or base.session_id is empty (a minted
 %   entity could not satisfy base's required session_id and would quarantine the
 %   whole source body), the WHOLE app block is parked in `other.app` instead and
@@ -95,10 +98,28 @@ end
 % (and, before #88, the parked epoch string and execution environment), has
 % no block of its own on #88: each of its leaves becomes one more parameter
 % (jParameterList), so nothing is dropped -- a CONSERVATIVE CHOICE, recorded.
-% The run environment is not a method's (the software edge is) and is
-% dropped, reported. The epoch STRING is parked as a parameter named
+% The run environment is not a method's (the software edge is): a document
+% that states one is carried whole as v1 below ([small unread settings]). The
+% epoch STRING is parked as a parameter named
 % 'epochid' (text); did2.convert.epochMint stamps the `epoch_id` edge from it
 % and removes the entry.
+% [small unread settings] (1) (Jess Haley, 2026-10-26): an app block that names
+% the OS or interpreter the settings were saved on carries the document whole
+% as v1; `method` gains no OS or interpreter link.
+envNamed = {};
+if isfield(preBody, 'app') && isstruct(preBody.app) && isscalar(preBody.app)
+    for f = {'os', 'os_version', 'interpreter', 'interpreter_version'}
+        if ~isempty(jGetChar(preBody.app, f{1}))
+            envNamed{end+1} = ['app.' f{1}]; %#ok<AGROW>
+        end
+    end
+end
+if ~isempty(envNamed)
+    did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
+        char(preBody.base.id), ['unplaced: ' strjoin(envNamed, ', ')]);
+    bodies = {preBody};
+    return;
+end
 [software, softwareId, ~, appLeftover] = ...
     jSoftwareFromApp(preBody, 'RequireSession', true);
 if ~isempty(fieldnames(appLeftover))
@@ -149,6 +170,13 @@ if ~isempty(softwareId); edges.software_id = softwareId; end
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
 mp = did2.build.document('method', f, o{:});
 bodies = [{mp}, software];
+end
+
+function cn = classNameOf(preBody)
+cn = '';
+if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
+    cn = char(preBody.document_class.class_name);
+end
 end
 
 function n = baseName(preBody)
