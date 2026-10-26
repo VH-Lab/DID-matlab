@@ -5,6 +5,9 @@ function result = v1_to_v2(v1Bodies, options)
 %   did_v1-shaped document bodies (struct, struct array, cell array, or
 %   JSON char) and runs each through this pipeline:
 %
+%     0. a class listed by did2.convert.rawV1Classes skips steps 1-2: its
+%        +migrators_j migrator reads the RAW v1 document (Decided by Jess
+%        Haley, 2026-10-26 [migrators read raw v1]); see 'RawV1Classes'
 %     1. did2.convert.universalRenames    (cross-cutting renames)
 %     2. matching superclass migrators: the V_eta override under
 %        +did2.+convert.+migrators_j.+super.<superclass_name> when one
@@ -80,6 +83,14 @@ function result = v1_to_v2(v1Bodies, options)
 %                      identifiers in the legacy (camelCase) form so
 %                      the body stays schema-compatible while still
 %                      gaining the shared shape transformations.
+%     RawV1Classes     (cellstr, default did2.convert.rawV1Classes()) - the
+%                      v1 classes whose migrator takes the RAW v1 document:
+%                      no universalRenames, no superclass migrators, and a
+%                      carry is the untouched v1 source ([migrators read raw
+%                      v1]). Counted as `bodies_read_raw_v1` in
+%                      summary.legacy_ndi_document. Pass {} to run every
+%                      class through universalRenames as before the switch
+%                      (testRawV1RoundTrip compares the two).
 %     Audits           (1,1 logical, default true) - run the report-only
 %                      census instruments over the batch (silentLoss,
 %                      fileList, timeReferenceFamilies) into
@@ -132,6 +143,7 @@ arguments
     options.RenameClassNames (1,1) logical = true
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
     options.Audits (1,1) logical = true
+    options.RawV1Classes cell = did2.convert.rawV1Classes()
 end
 
 % a migrator transcribes the v1 source's own terms, which the term
@@ -254,6 +266,7 @@ legacy = struct( ...
     'bodies_total',                        numel(bodies), ...
     'bodies_reaching_universal_renames',   0, ...
     'bodies_skipped_already_target',       0, ...
+    'bodies_read_raw_v1',                  0, ...
     'bodies_unreached',                    0, ...
     'ndi_document_block_seen',             0, ...
     'moved_wholesale_no_base',             0, ...
@@ -317,68 +330,87 @@ for k = 1:numel(bodies)
             legacy.bodies_skipped_already_target = ...
                 legacy.bodies_skipped_already_target + 1;
         else
-            % Incremented BEFORE the call: a body that throws inside the pass
-            % still reached it, and a denominator that quietly excluded the
-            % failures would be the "all-zero reads as clean" defect again.
-            legacy.bodies_reaching_universal_renames = ...
-                legacy.bodies_reaching_universal_renames + 1;
-            [postUniversalBody, legacyReport, renameDropped] = did2.convert.universalRenames( ...
-                preBody, 'RenameClassNames', options.RenameClassNames);
-            className = char(postUniversalBody.document_class.class_name);
-            legacy = accumulateLegacyReport(legacy, legacyReport);
-            if legacyReport.moved_wholesale_no_base
-                [legacyMovedNames, legacyMovedValues] = bumpClassCounter( ...
-                    legacyMovedNames, legacyMovedValues, className);
-            end
-            if legacyReport.discarded_ndi_document_base_present
-                [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
-                    legacyDiscNames, legacyDiscValues, className);
-            end
-            if isempty(renameDropped)
-                v2Body = applySuperclassMigrators(postUniversalBody, className, ...
-                    options.TargetVersion);
-                superUnchanged = isequaln(v2Body, postUniversalBody);
-                % runConcreteMigrator returns a CELL of one-or-more bodies.
-                % A class with a base migrator only returns a single body; a
-                % class with a +migrators_j split/fold migrator (treatment,
-                % ontology_table_row, ...) may fan out to several (1 -> N).
-                v2Bodies = runConcreteMigrator(v2Body, className, ...
-                    options.TargetVersion);
-                % A CARRY IS THE V1 SOURCE, NOT THE SUPERCLASS-RESHAPED BODY.
-                % A migrator carries a document by returning its input
-                % unchanged with a `carried_as_v1` note ([generic stage is
-                % lossless], [partly placed is carried as v1], Jess Haley,
-                % 2026-10-25). Its input is the body AFTER the superclass
-                % migrators, which may have reshaped it (+migrators/filter.m
-                % renames `type` -> `filter_type`; the image_stack_parameters
-                % override strips an empty `timestamp`), and such a body was
-                % not recorded as a passthrough, so it came out under its
-                % tombstone stamped did_v2. The carried document is the
-                % universalRenames output instead -- the same body every other
-                % passthrough is -- recorded as a passthrough, so the caller
-                % stores its untouched v1 source, stamped did_v1.
-                if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body) ...
+            rawClass = rawV1ClassNameOf(preBody);
+            if any(strcmp(rawClass, options.RawV1Classes))
+                % A CLASS SWITCHED TO RAW v1 (did2.convert.rawV1Classes;
+                % Decided by Jess Haley, 2026-10-26 [migrators read raw v1]):
+                % its migrator reads the document exactly as v1 wrote it. No
+                % universalRenames, no superclass migrators; a carry is the
+                % untouched v1 source. Counted in the denominator below
+                % (`bodies_read_raw_v1`), so a raw body is never "unreached".
+                legacy.bodies_read_raw_v1 = legacy.bodies_read_raw_v1 + 1;
+                className = rawClass;
+                v2Body = preBody;
+                superUnchanged = true;
+                v2Bodies = runRawV1Migrator(preBody, className);
+                if isscalar(v2Bodies) && isequaln(v2Bodies{1}, preBody) ...
                         && did2.convert.reportNote('pending', 'carried_as_v1') > 0
-                    v2Body = postUniversalBody;
-                    v2Bodies = {postUniversalBody};
-                    superUnchanged = true;
                     carried = true;
                 end
             else
-                % [generic stage is lossless] / [partly placed is carried as
-                % v1] (Jess Haley, 2026-10-25): universalRenames discarded v1
-                % content it keeps nowhere, so no migrator runs and the body is
-                % a passthrough, carried whole as v1 (its v1 source is what the
-                % end of ndi.migrate.local stores).
-                % carry-register: carry-049 (v1_class '*', temporary: [renames
-                % carry is temporary], removed with the pass)
-                did2.convert.reportNote('carried_as_v1', className, ...
-                    sourceIdOf(preBody), ['[carry-049] universalRenames would discard: ' ...
-                    strjoin(renameDropped, ', ')]);
-                v2Body = postUniversalBody;
-                superUnchanged = true;
-                v2Bodies = {v2Body};
-                carried = true;
+                % Incremented BEFORE the call: a body that throws inside the pass
+                % still reached it, and a denominator that quietly excluded the
+                % failures would be the "all-zero reads as clean" defect again.
+                legacy.bodies_reaching_universal_renames = ...
+                    legacy.bodies_reaching_universal_renames + 1;
+                [postUniversalBody, legacyReport, renameDropped] = did2.convert.universalRenames( ...
+                    preBody, 'RenameClassNames', options.RenameClassNames);
+                className = char(postUniversalBody.document_class.class_name);
+                legacy = accumulateLegacyReport(legacy, legacyReport);
+                if legacyReport.moved_wholesale_no_base
+                    [legacyMovedNames, legacyMovedValues] = bumpClassCounter( ...
+                        legacyMovedNames, legacyMovedValues, className);
+                end
+                if legacyReport.discarded_ndi_document_base_present
+                    [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
+                        legacyDiscNames, legacyDiscValues, className);
+                end
+                if isempty(renameDropped)
+                    v2Body = applySuperclassMigrators(postUniversalBody, className, ...
+                        options.TargetVersion);
+                    superUnchanged = isequaln(v2Body, postUniversalBody);
+                    % runConcreteMigrator returns a CELL of one-or-more bodies.
+                    % A class with a base migrator only returns a single body; a
+                    % class with a +migrators_j split/fold migrator (treatment,
+                    % ontology_table_row, ...) may fan out to several (1 -> N).
+                    v2Bodies = runConcreteMigrator(v2Body, className, ...
+                        options.TargetVersion);
+                    % A CARRY IS THE V1 SOURCE, NOT THE SUPERCLASS-RESHAPED BODY.
+                    % A migrator carries a document by returning its input
+                    % unchanged with a `carried_as_v1` note ([generic stage is
+                    % lossless], [partly placed is carried as v1], Jess Haley,
+                    % 2026-10-25). Its input is the body AFTER the superclass
+                    % migrators, which may have reshaped it (+migrators/filter.m
+                    % renames `type` -> `filter_type`; the image_stack_parameters
+                    % override strips an empty `timestamp`), and such a body was
+                    % not recorded as a passthrough, so it came out under its
+                    % tombstone stamped did_v2. The carried document is the
+                    % universalRenames output instead -- the same body every other
+                    % passthrough is -- recorded as a passthrough, so the caller
+                    % stores its untouched v1 source, stamped did_v1.
+                    if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body) ...
+                            && did2.convert.reportNote('pending', 'carried_as_v1') > 0
+                        v2Body = postUniversalBody;
+                        v2Bodies = {postUniversalBody};
+                        superUnchanged = true;
+                        carried = true;
+                    end
+                else
+                    % [generic stage is lossless] / [partly placed is carried as
+                    % v1] (Jess Haley, 2026-10-25): universalRenames discarded v1
+                    % content it keeps nowhere, so no migrator runs and the body is
+                    % a passthrough, carried whole as v1 (its v1 source is what the
+                    % end of ndi.migrate.local stores).
+                    % carry-register: carry-049 (v1_class '*', temporary: [renames
+                    % carry is temporary], removed with the pass)
+                    did2.convert.reportNote('carried_as_v1', className, ...
+                        sourceIdOf(preBody), ['[carry-049] universalRenames would discard: ' ...
+                        strjoin(renameDropped, ', ')]);
+                    v2Body = postUniversalBody;
+                    superUnchanged = true;
+                    v2Bodies = {v2Body};
+                    carried = true;
+                end
             end
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
             % hand its input straight back? `bodies = {preBody}` is how a
@@ -539,12 +571,14 @@ for k = 1:numel(bodies)
 end
 
 % `bodies_unreached` closes the denominator: every body either reached
-% universalRenames, took the idempotency short-circuit, or failed before
-% either (a non-struct input, undecodable JSON). Written as a subtraction so
-% the three sum to `total` by construction rather than by hope.
+% universalRenames, took the idempotency short-circuit, was read raw by a
+% switched class's migrator (did2.convert.rawV1Classes), or failed before
+% any of them (a non-struct input, undecodable JSON). Written as a subtraction
+% so the four sum to `total` by construction rather than by hope.
 legacy.bodies_unreached = legacy.bodies_total ...
     - legacy.bodies_reaching_universal_renames ...
-    - legacy.bodies_skipped_already_target;
+    - legacy.bodies_skipped_already_target ...
+    - legacy.bodies_read_raw_v1;
 % THE VINTAGE PARTITION, CHECKED RATHER THAN ASSUMED. Six buckets classify
 % every body that took the wholesale-move arm, and a body falling through all
 % six is exactly what the `unknown` bucket exists to catch -- so if the sum ever
@@ -785,6 +819,31 @@ if isstruct(body) && isscalar(body) && isfield(body, 'base') ...
     v = body.base.id;
     if ischar(v); id = v; elseif isstring(v) && isscalar(v); id = char(v); end
 end
+end
+
+function name = rawV1ClassNameOf(body)
+%RAWV1CLASSNAMEOF A raw v1 body's class name, as v1 spells it ('' if none).
+%   The switch (did2.convert.rawV1Classes) is keyed on the v1 spelling, read by
+%   did2.convert.v1read.readStamp, never on a universalRenames output.
+stamp = did2.convert.v1read.readStamp(body);
+name = stamp.class_name;
+if ~ischar(name)
+    name = '';
+end
+end
+
+function bodies = runRawV1Migrator(rawBody, className)
+%RUNRAWV1MIGRATOR Run a switched class's migrator on the RAW v1 body.
+%   A class listed by did2.convert.rawV1Classes has its own +migrators_j
+%   migrator by definition ([early migration pieces fixed] (1): no identity
+%   fallback), so a missing one is an error, which quarantines the document.
+fqn = ['did2.convert.migrators_j.', className];
+if isempty(which(fqn))
+    error('did2:convert:rawV1NoMigrator', ...
+        ['%s is listed by did2.convert.rawV1Classes but has no ' ...
+        '+migrators_j migrator.'], className);
+end
+bodies = normaliseMigratorOutput(feval(str2func(fqn), rawBody));
 end
 
 function fcn = lookupMigrator(className)
@@ -1324,9 +1383,9 @@ function printLegacyNdiDocument(result)
 if ~isfield(result.summary, 'legacy_ndi_document'); return; end
 L = result.summary.legacy_ndi_document;
 fprintf(['  legacy ndi_document: %d body(ies) reached universalRenames ' ...
-    '(of %d; %d already at target, %d never reached it)\n'], ...
+    '(of %d; %d already at target, %d read raw v1, %d never reached it)\n'], ...
     L.bodies_reaching_universal_renames, L.bodies_total, ...
-    L.bodies_skipped_already_target, L.bodies_unreached);
+    L.bodies_skipped_already_target, L.bodies_read_raw_v1, L.bodies_unreached);
 fprintf('      %8d  carried an `ndi_document` block\n', ...
     L.ndi_document_block_seen);
 fprintf('      %8d  MOVED WHOLESALE into `base` (no `base` present)\n', ...
