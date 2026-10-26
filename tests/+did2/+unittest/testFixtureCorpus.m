@@ -366,7 +366,8 @@ s.subject = struct('local_identifier', name, 'description', '');
 end
 
 % ----- manipulation / observation proof batch (one shared animal + probe) -----
-% Covers: treatment->temperature_manipulation, treatment_drug->dose_manipulation
+% Covers: treatment carried as v1 (a temperature read from label words,
+% [one correct reading]), treatment_drug->dose_manipulation
 % (+ site term_observation), probe_location->term_observation, element->subject
 % (+ observes relation) -- exercising the manipulation leaf, dose, term_observation,
 % session anchor, derived subject, and directed_relation patterns. Every doc rides

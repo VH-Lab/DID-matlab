@@ -81,41 +81,28 @@ for i = 1:numel(out)
 end
 end
 
-function testRowWithARealSubjectStillMigrates(testCase)
-% The guard must not disable the migrator wholesale. A row that DOES carry a
-% resolvable subject still fans out into statements.
-%
-% NOTE THE `rows` FIELD, and see testRealWriterShapeHasNoRowsField below. The
-% per-column path is reached only through extractRows(), which reads
-% `block.rows` and nothing else -- so this fixture deliberately uses the shape
-% that ACTUALLY reaches that path, which is NOT the shape the current NDI writer
-% produces. Which corpus documents carry `rows` is an open question recorded in
-% the migrator; this test pins the guard's behaviour on the path that emitted
-% the 76,766 hollow documents, whatever vintage produced them.
+function testRowWithARealSubjectIsCarriedNotGuessed(testCase)
+% INVERTS testRowWithARealSubjectStillMigrates. A row WITH a resolvable subject
+% used to fan out into statements whose direction and value kind were chosen
+% from label words. Decided by Jess Haley, 2026-10-26 [one correct reading],
+% [dataset audit batch 1 and 2] (4): it is carried whole as v1 -- one body,
+% the source unchanged -- with a `needs_mapping` note.
 pre = makeRealRow();
 pre.ontology_table_row = struct('rows', struct( ...
     'ontology_name', 'NCIT:C1', 'name', 'Speed', 'value', '3.5'));
 pre.depends_on = [struct('name', 'document_id', 'value', 'doc-123'), ...
                   struct('name', 'subject_id',  'value', 'subj-9')];
+did2.convert.reportNote('reset');
 out = did2.convert.migrators_j.ontology_table_row(pre);
-verifyGreaterThan(testCase, numel(out), 1, ...
-    'a row WITH a subject must still migrate into statements');
-sawSubject = false;
-for i = 1:numel(out)
-    b = out{i};
-    if ~isfield(b, 'depends_on') || ~isstruct(b.depends_on); continue; end
-    for k = 1:numel(b.depends_on)
-        % #88: the subject edge is `entity_id`, written {name, document_id}
-        if strcmp(b.depends_on(k).name, 'entity_id')
-            d = b.depends_on(k);
-            if isfield(d, 'document_id'); v = d.document_id; else; v = d.value; end
-            verifyEqual(testCase, v, 'subj-9');
-            sawSubject = true;
-        end
-    end
+verifyEqual(testCase, numel(out), 1, 'the v1 row, alone');
+verifyEqual(testCase, out{1}, pre, 'returned unchanged');
+notes = did2.convert.reportNote('collect');
+verifyTrue(testCase, isfield(notes, 'carried_as_v1'));
+if isfield(notes, 'carried_as_v1')
+    verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, ...
+        'needs_mapping:'), notes.carried_as_v1.distinct_details{1});
 end
-verifyTrue(testCase, sawSubject, ...
-    'at least one emitted statement should carry the resolved subject');
+did2.convert.reportNote('reset');
 end
 
 function testRealWriterShapeHasNoRowsField(testCase)

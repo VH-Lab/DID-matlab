@@ -1,29 +1,15 @@
 function bodies = ontology_table_row(preBody)
-%ONTOLOGY_TABLE_ROW Brainstorm-J split migrator: did_v1 ontology_table_row
-%   -> one statement per column (1 -> N).
+%ONTOLOGY_TABLE_ROW Brainstorm-J migrator: did_v1 ontology_table_row -> the v1
+%   row, carried whole (1 -> 1).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   Each column of the legacy open key/value table becomes its own statement,
-%   classified by TIMELESSNESS then by the value's SHAPE (see
-%   did-schema/schemas/V_eta_migration_plan.md Part D and
-%   V_eta_discovery_notes.md):
-%
-%     timeless fact  -> a subject_assertion leaf
-%                         species/sex/strain/genotype -> term_assertion
-%                         date of birth / a timestamp -> date_assertion
-%     timed measure  -> a subject_observation leaf, class by value SHAPE:
-%                         numeric -> a data-type leaf (<dim>_observation), the
-%                                    dimension chosen from the property term;
-%                                    unrecognised a.u. -> intensity_observation
-%                                    (J's one dimensionless numeric; NO generic
-%                                    escape hatch, D8)
-%                         string  -> term_observation (bound term value)
-%     identity col   -> skipped (SubjectLocalIdentifier/DocumentIdentifier IS
-%                         the subject, not a measurement)
-%
-%   Brainstorm J puts identity on the spine `variable` (owned by
-%   subject_statement), the verb on subject_interaction.method, and the
-%   per-sample cadence in subject_interaction.sample_time (D1).
+%   A row with no `subject_id` edge (every row NDI's writer makes) passes
+%   through for the NDI second pass, which finds its subject. A row WITH a
+%   subject is carried whole as v1 with a `needs_mapping` note: which entity
+%   each column is about, its direction and its value kind are not stated by
+%   the v1 row, and the per-column seed that chose them from label words left
+%   the generic stage ([one correct reading], [dataset audit batch 1 and 2]
+%   (4), Jess Haley, 2026-10-26).
 %
 %   NO PER-TABLE MAPS (Decided by Jess Haley, 2026-10-26 [dataset-specific
 %   logic leaves the generic migration], [dataset audit batch 1 and 2], did-schema
@@ -78,72 +64,22 @@ if isempty(rows)
     return;
 end
 
-anchor = makeSessionAnchor(preBody, 'during');
-bodies = {};
-usedAnchor = false;
-for k = 1:numel(rows)
-    [b, isObservation] = migrateRow(preBody, rows{k}, '', anchor.base.id);
-    if isempty(b)
-        continue;   % skipped column (identity, empty)
-    end
-    usedAnchor = usedAnchor || isObservation;
-    bodies{end+1} = b; %#ok<AGROW>
-end
-if usedAnchor
-    bodies{end+1} = anchor;
-end
-if isempty(bodies)
-    bodies = {preBody};   % every column skipped -> carry unchanged
-end
-bodies = preserveSourceId(preBody, bodies);
-end
-
-function bodies = preserveSourceId(preBody, bodies)
-%PRESERVESOURCEID Keep the source document's id on exactly ONE emitted body.
-%
-%   WHY. This migrator dissolves one document into many. Until now every
-%   emitted body got a fresh id, so after migration NOTHING carried the source
-%   row's id -- and any document pointing at that row was left pointing at an
-%   id that no longer exists. An `ontologyImage` names its row via
-%   `ontologyTableRow_id` and needs to follow it to reach its subject, so that
-%   edge has to land somewhere real. There is no old-id -> new-id map anywhere
-%   in the converter, so id preservation is the ONLY mechanism that can make
-%   such an edge resolve.
-%
-%   This is the lesson the calculator work already paid for: dissolving a
-%   referenced document without preserving its id produced 11448 orphans, and
-%   preserving it is what fixed them (T10). `must_refer` is existence-only, so
-%   a resolvable id is all a referrer needs.
-%
-%   WHICH BODY. Any of them works as a landing point, because every statement
-%   this migrator emits carries `subject_id` -- so a follower lands on one
-%   document and reads the subject straight off it, no search. The FIRST
-%   emitted body takes it and the rest keep their fresh ids, matching the
-%   primary/sibling convention jStartInteraction uses elsewhere in migrators_j.
-%
-%   EXCEPT when an emitted body already carries it: this checks first and
-%   leaves an existing preservation alone; stamping again would mint two
-%   documents sharing one id.
-%
-%   Safe to apply after the bodies are built: no emitted body references
-%   another body's id. Internal edges point at the shared time_reference and at
-%   the carried subject, never at a sibling statement.
-if isempty(bodies); return; end
-if ~isfield(preBody, 'base') || ~isstruct(preBody.base) ...
-        || ~isfield(preBody.base, 'id') || isempty(preBody.base.id)
-    return;
-end
-srcId = preBody.base.id;
-for k = 1:numel(bodies)
-    b = bodies{k};
-    if isstruct(b) && isfield(b, 'base') && isstruct(b.base) ...
-            && isfield(b.base, 'id') && isequal(b.base.id, srcId)
-        return;   % already carried (a passthrough)
-    end
-end
-if isfield(bodies{1}, 'base') && isstruct(bodies{1}.base)
-    bodies{1}.base.id = srcId;
-end
+% --- ONE CORRECT READING: a row with a subject is CARRIED, not guessed -------
+% Decided by Jess Haley, 2026-10-26 [one correct reading] and [dataset audit
+% batch 1 and 2] (4) (did-schema V_eta_go_forward_class_audit.md): "table
+% columns ... whose kind, direction or unit is chosen from label words carry as
+% v1 with `needs_mapping` rows instead of a guessed reading". The per-column
+% seed this replaced chose every column's direction (assertion / observation)
+% and value kind (mass, length, time, ..., intensity by default) from words in
+% its label; nothing in a v1 ontologyTableRow states either (a Dab "percent
+% time" column read as a time, an "administration" column as an observation).
+% So the row is carried whole as v1, its note naming the V2 homes and what
+% decides between them: the table's column map in its dataset.
+did2.convert.reportNote('carried_as_v1', 'ontology_table_row', sourceIdOf(preBody), ...
+    ['needs_mapping: assertion | observation | manipulation per column (its ' ...
+     'entity, direction, value kind and unit); decided by the table''s column ' ...
+     'map in its dataset']);
+bodies = {preBody};
 end
 
 function id = sourceIdOf(preBody)
@@ -154,172 +90,7 @@ end
 end
 
 
-% ===================== per-row migration ===============================
-
-function [body, isObservation] = migrateRow(preBody, row, subjectId, anchorId)
-%MIGRATEROW One column -> one statement.
-%   SUBJECTID (optional) names the subject explicitly. Omit it on the
-%   per-column fallback path, where the subject is CARRIED from the source
-%   document's `subject_id` dependency (and the caller has already guarded on
-%   there being one). Pass it from a per-table map, which MINTS its subject --
-%   `carrySubject` would raise there, because a real ontologyTableRow declares
-%   only `document_id`.
-if nargin < 3; subjectId = ''; end
-if nargin < 4; anchorId = ''; end
-node  = getCharField(row, 'ontology_name');
-label = getCharField(row, 'name');
-variable = struct('node', node, 'name', label);
-hay = lower([node ' ' label]);
-body = []; isObservation = false;
-
-% identity columns are the subject itself, not a measurement
-if containsAny(hay, {'local identifier', 'localidentifier', ...
-        'document identifier', 'documentidentifier', 'subject id'})
-    return;
-end
-
-[isNumeric, numVal] = rowNumericValue(row);
-
-% timeless facts -> assertions (no act, optional time)
-if containsAny(hay, {'species', 'sex', 'strain', 'genotype', 'taxon'})
-    body = makeTermAssertion(preBody, variable, valueTerm(row), subjectId);
-    return;
-elseif containsAny(hay, {'date of birth', 'birth date', 'dob'})
-    body = makeDateAssertion(preBody, variable, row, subjectId);
-    return;
-elseif ~isNumeric && looksLikeTimestamp(getCharField(row, 'value'))
-    body = makeDateAssertion(preBody, variable, row, subjectId);
-    return;
-end
-
-% timed measurements -> observations
-isObservation = true;
-if isNumeric
-    [shapeClass, valueStruct] = dispatchNumeric(hay, row, numVal);
-    body = makeNumericObservation(preBody, shapeClass, variable, ...
-        valueStruct, subjectId, anchorId);
-else
-    body = makeTermObservation(preBody, variable, valueTerm(row), subjectId, anchorId);
-end
-end
-
-function [shapeClass, valueStruct] = dispatchNumeric(hay, row, numVal)
-%DISPATCHNUMERIC Choose the value kind by the property's DIMENSION. The
-%   property rides on the spine `variable`; word-boundary matching only.
-unit = getCharField(row, 'unit');
-if containsAny(hay, {'body weight', 'body mass', 'weight', 'mass'})
-    shapeClass = 'mass';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'radius', 'body length', 'length', 'diameter', 'distance', 'size'})
-    shapeClass = 'length';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'sampling rate', 'heart rate', 'respiration rate', 'frequency', 'rate'})
-    shapeClass = 'frequency';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'deceleration', 'acceleration'})
-    shapeClass = 'acceleration';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'velocity', 'speed'})
-    shapeClass = 'velocity';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'onset time', 'offset time', 'age', 'duration', 'latency', 'time'})
-    % `time`, not `duration`: the V_eta shape mixin was renamed by
-    % TEAM-SIGN-OFF [time dtype] (DID-schema V_eta_tenet_audit.md, 2026-08-17).
-    % The HAYSTACK words are unchanged -- they match the source column's label,
-    % which is did_v1 text and did not move.
-    shapeClass = 'time';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'volume'})
-    shapeClass = 'volume';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'temperature'})
-    shapeClass = 'temperature';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'pressure'})
-    shapeClass = 'pressure';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'voltage', 'membrane potential'})
-    shapeClass = 'voltage';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'current'})
-    shapeClass = 'current';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'concentration', 'density', 'titer', 'titre', 'glucose'})
-    shapeClass = 'concentration';
-    valueStruct = sourceCell(unit, numVal);
-elseif containsAny(hay, {'number of', 'count', 'entries', 'trial number', 'identifier', 'samples'})
-    shapeClass = 'count';
-    valueStruct = did2.build.valueCell('count', round(numVal), 'Approximate', false);
-elseif containsAny(hay, {'percent', 'probability', 'circularity', 'score', 'condition'})
-    shapeClass = 'score';
-    valueStruct = did2.build.composite('score', 'value', ...
-        struct('score', numVal, 'approximate', false));
-else
-    % J §7: intensity is the one dimensionless numeric (a.u.) -- the home for
-    % amplitudes / fluorescence / ratios / unrecognised numerics. No generic
-    % escape hatch (D8); a genuinely mis-dimensioned value is caught in
-    % discovery-mode review, not silently dropped.
-    shapeClass = 'intensity';
-    valueStruct = sourceCell(unit, numVal);
-end
-if ~any(strcmp(shapeClass, {'count', 'score'}))
-    valueStruct = jQuantity(shapeClass, valueStruct.source_value, ...
-        valueStruct.source_unit, 'approximate', false);
-end
-end
-
-% ===================== destination builders ============================
-
-function body = makeNumericObservation(preBody, shapeClass, variable, valueStruct, subjectId, anchorId)
-% did-schema #88: an `observation` with the value-kind mixin SHAPECLASS
-body = jStatement(preBody, 'observation', subjectOrCarried(preBody, subjectId), ...
-    variable, valueStruct, 'TimeReferenceIds', {anchorId}, 'ValueKind', shapeClass);
-end
-
-function body = makeTermObservation(preBody, variable, valueT, subjectId, anchorId)
-body = jStatement(preBody, 'observation', subjectOrCarried(preBody, subjectId), ...
-    variable, valueT, 'TimeReferenceIds', {anchorId}, 'ValueKind', 'term');
-end
-
-function body = makeTermAssertion(preBody, variable, valueT, subjectId)
-body = jStatement(preBody, 'assertion', subjectOrCarried(preBody, subjectId), ...
-    variable, valueT, 'ValueKind', 'term');
-end
-
-function body = makeDateAssertion(preBody, variable, row, subjectId)
-raw = getCharField(row, 'value');
-v = did2.build.composite('date', 'value', ...
-    struct('instant', raw, 'precision', 'second', 'source_value', raw));
-body = jStatement(preBody, 'assertion', subjectOrCarried(preBody, subjectId), ...
-    variable, v, 'ValueKind', 'date');
-end
-
-function id = subjectOrCarried(preBody, subjectId)
-id = char(subjectId);
-if isempty(id)
-    id = resolvedSubject(preBody);
-    if isempty(id)
-        error('did2:convert:noSubject', ...
-            ['ontology_table_row: refusing to emit a statement with an empty ' ...
-             'entity_id. A real ontologyTableRow declares only `document_id`, ' ...
-             'so the caller must guard on resolvedSubject() and pass the ' ...
-             'document through for the second pass instead.']);
-    end
-end
-end
-
-function c = sourceCell(unit, numVal)
-c = struct('source_unit', char(unit), 'source_value', double(numVal), ...
-    'approximate', false);
-end
-
-function valueT = valueTerm(row)
-termValue = getCharField(row, 'value');
-if isempty(termValue)
-    termValue = getCharField(row, 'string_value');
-end
-valueT = struct('node', '', 'name', termValue);   % free label -> name; node backfilled
-end
+% ===================== helpers =========================================
 
 function subjectVal = resolvedSubject(preBody)
 %RESOLVEDSUBJECT The subject this row is about, or '' when there is none.
@@ -343,10 +114,6 @@ if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
         end
     end
 end
-end
-
-function anchor = makeSessionAnchor(preBody, relation)
-anchor = jSessionAnchor(preBody, relation);
 end
 
 function rows = extractRows(block)
@@ -389,25 +156,6 @@ raw = strsplit(char(s), ',');
 parts = cellfun(@strtrim, raw, 'UniformOutput', false);
 end
 
-function [isNumeric, numVal] = rowNumericValue(row)
-isNumeric = false; numVal = [];
-if isfield(row, 'value')
-    v = row.value;
-    if isnumeric(v) && isscalar(v) && isfinite(v); isNumeric = true; numVal = double(v); end
-elseif isfield(row, 'numeric_value')
-    v = row.numeric_value;
-    if isnumeric(v) && ~isempty(v); isNumeric = true; numVal = double(v(1)); end
-end
-end
-
-function tf = looksLikeTimestamp(s)
-tf = false;
-if isempty(s) || ~ischar(s); return; end
-% a date-ish string: contains a slash-or-dash date and/or a time
-tf = ~isempty(regexp(s, '\d{1,4}[/-]\d{1,2}[/-]\d{1,4}', 'once')) || ...
-     ~isempty(regexp(s, '\d{1,2}:\d{2}', 'once'));
-end
-
 function s = getCharField(block, name)
 s = '';
 if isfield(block, name)
@@ -415,13 +163,5 @@ if isfield(block, name)
     if ischar(v); s = v;
     elseif isstring(v) && isscalar(v); s = char(v);
     elseif isnumeric(v) && isscalar(v); s = num2str(v); end
-end
-end
-
-function tf = containsAny(hay, needles)
-tf = false;
-for k = 1:numel(needles)
-    pat = ['\<', regexptranslate('escape', needles{k}), '\>'];
-    if ~isempty(regexp(hay, pat, 'once')); tf = true; return; end
 end
 end

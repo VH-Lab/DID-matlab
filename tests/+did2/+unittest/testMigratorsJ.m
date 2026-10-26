@@ -524,59 +524,21 @@ otr.ontology_table_row = struct( ...
         'TrialType', 'Startle 95 dB', 'SubjectLocalIdentifier', 'rat_1'));
 end
 
-function testOntologyTableRowSplitsByShape(testCase)
-out = runJ(tableRow());
-% 3 kept columns (identity skipped) + 1 shared anchor
-verifyEqual(testCase, numel(out.migrated), 4);
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+mass'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+intensity'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 1);
-% identity column is skipped, not an observation
-verifyFalse(testCase, isfield(out.summary.by_class, 'local_identifier'));
-end
-
-function testOntologyTableRowPreservesSourceIdOnFirstBody(testCase)
-% The row dissolves 1 -> N. Exactly ONE emitted body must keep the source id,
-% otherwise anything pointing at the row (an ontologyImage names it via
-% ontologyTableRow_id and follows it to reach its subject) is left pointing at
-% an id that no longer exists. There is no old-id -> new-id map in the
-% converter, so preservation is the only thing that can make such an edge
-% resolve. Same lesson as the calculator fold (T10).
-out = runJ(tableRow());
-ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
-verifyEqual(testCase, sum(strcmp(ids, 'otr_01')), 1, ...
-    'exactly one emitted body must carry the source id');
-verifyEqual(testCase, out.migrated{1}.get('base.id'), 'otr_01', ...
-    'the first emitted body is the one that carries it');
-% and the siblings must NOT collide with it or each other
-verifyEqual(testCase, numel(unique(ids)), numel(ids), 'emitted ids must be unique');
-end
-
-function testOntologyTableRowNumericColumn(testCase)
-out = runJ(tableRow());
-mass = out.migrated{1};   % BodyWeight -> mass_observation
-verifyEqual(testCase, did2.unittest.helpers.classKey(mass), 'observation+mass');
-% identity is on the statement variable, value on the mass block
-verifyEqual(testCase, mass.get('statement.variable').name, 'body weight');
-verifyEqual(testCase, mass.get('mass.value').source_value, 24.3);
-% the spine: subject_id carried, shared time anchor wired on
-verifyEqual(testCase, depVal(mass, 'entity_id'), 'subj_001');
-verifyEqual(testCase, depVal(mass, 'time_reference_id'), out.migrated{4}.get('base.id'));
-end
-
-function testOntologyTableRowStringColumnIsTermObservation(testCase)
-out = runJ(tableRow());
-term = out.migrated{3};   % TrialType -> term_observation (string value)
-verifyEqual(testCase, did2.unittest.helpers.classKey(term), 'observation+term');
-verifyEqual(testCase, term.get('term.value').name, 'Startle 95 dB');
-end
-
-function testOntologyTableRowAmplitudeIsIntensity(testCase)
-out = runJ(tableRow());
-amp = out.migrated{2};   % a.u. amplitude -> intensity_observation (J §7)
-verifyEqual(testCase, did2.unittest.helpers.classKey(amp), 'observation+intensity');
-verifyEqual(testCase, amp.get('intensity.value').source_value, 38);
+function testAnOntologyTableRowWithASubjectIsCarriedNeedingAMapping(testCase)
+% INVERTS testOntologyTableRowSplitsByShape, ...PreservesSourceIdOnFirstBody,
+% ...NumericColumn, ...StringColumnIsTermObservation and ...AmplitudeIsIntensity:
+% each column's direction and value kind was chosen from words in its label
+% ("body weight" -> mass, an unrecognised number -> intensity, a string -> a
+% term observation). Decided by Jess Haley, 2026-10-26 [one correct reading],
+% [dataset audit batch 1 and 2] (4): the row is carried whole as v1, its note
+% naming the V2 homes and what decides between them.
+v1 = tableRow();
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'ontology_table_row');
+verifyEqual(testCase, out.migrated{1}.get('ontology_table_row.data'), v1.ontology_table_row.data);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, 'needs_mapping: assertion | observation | manipulation'), d);
 end
 
 % ===================== treatment -> manipulation leaves ================
@@ -594,16 +556,27 @@ if nargin >= 4 && ~isempty(stringValue); t.string_value = stringValue; end
 v1.treatment = t;
 end
 
-function testTreatmentTemperatureIsTemperatureManipulation(testCase)
-out = runJ(treatmentDoc('', 'cold exposure', 4.0, ''));
-verifyEqual(testCase, numel(out.migrated), 2);   % manip + anchor
-m = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+temperature');
-verifyEqual(testCase, m.get('temperature.value').source_value, 4.0);
-verifyEqual(testCase, m.get('statement.variable').name, 'cold exposure');
-verifyEqual(testCase, depVal(m, 'entity_id'), 'subj_007');
-% shared session anchor wired on as the time_reference
-verifyEqual(testCase, depVal(m, 'time_reference_id'), out.migrated{2}.get('base.id'));
+function testATreatmentRoutedByLabelWordsIsCarriedNeedingAMapping(testCase)
+% INVERTS testTreatmentTemperatureIsTemperatureManipulation,
+% testTreatmentProcedureIsTermManipulation and
+% testUnlabelledTreatmentNumberOnATermManipulation: a treatment whose reading
+% was chosen from words in its label ("cold" -> a temperature in degrees C,
+% "craniotomy" -> a term manipulation) is carried whole as v1 with a
+% `needs_mapping` note (Decided by Jess Haley, 2026-10-26 [one correct
+% reading], [dataset audit batch 1 and 2] (4)).
+cases = {treatmentDoc('', 'cold exposure', 4.0, ''), ...
+    treatmentDoc('', 'craniotomy', [], ''), ...
+    treatmentDoc('', 'craniotomy', 3, ''), ...
+    treatmentDoc('NCIT:C1', 'drug injection', [], '')};
+for k = 1:numel(cases)
+    v1 = cases{k};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'treatment');
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation'), d);
+    verifyFalse(testCase, isfield(out.summary.migration_notes, 'treatment_number_unlabelled'));
+end
 end
 
 function testTreatmentSubstanceIsDoseManipulation(testCase)
@@ -674,21 +647,6 @@ verifyFalse(testCase, isfield(notes, 'treatment_number_unlabelled'));
 verifyFalse(testCase, isfield(notes, 'route_unknown'));
 end
 
-function testUnlabelledTreatmentNumberOnATermManipulation(testCase)
-% A procedure term that does not say what its number is: the number is kept,
-% unlabelled, as a condition, and the report notes it.
-out = runJ(treatmentDoc('', 'craniotomy', 3, ''));
-verifyEmpty(testCase, out.quarantine);
-m = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+term');
-mp = m.toStruct();
-cnd = mp.statement.conditions;
-verifyEqual(testCase, cnd.variable.name, 'numeric value');
-verifyEqual(testCase, cnd.quantity.value, 3);
-verifyEqual(testCase, out.summary.migration_notes.treatment_number_unlabelled.details, ...
-    {'craniotomy: 3'});
-end
-
 function testTreatmentDrugAnchoredAtItsAdministrationOnset(testCase)
 % Jess Haley, 2026-10-21 ("a"): a treatment is anchored at the recorded
 % administration_onset_time, and at the session only when none is recorded.
@@ -738,13 +696,6 @@ a = firstOfClassJ(out.migrated, 'relative_time_reference');
 verifyNotEmpty(testCase, a);
 verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
 verifyEmpty(testCase, firstOfClassJ(out.migrated, 'absolute_time_reference'));
-end
-
-function testTreatmentProcedureIsTermManipulation(testCase)
-out = runJ(treatmentDoc('', 'craniotomy', [], ''));
-m = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+term');
-verifyEqual(testCase, m.get('term.value').name, 'craniotomy');
 end
 
 function testTreatmentTargetLocationLabelIsCarriedWholeAsV1(testCase)

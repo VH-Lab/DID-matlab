@@ -1,56 +1,43 @@
 function v2Body = treatment(preBody)
-%TREATMENT Brainstorm-J split migrator: did_v1 treatment -> a `manipulation`
-%   whose value kind is chosen by the treatment (`temperature`, `dose` or
-%   `formulation` for a substance, `term` for a procedure, or the kind the
-%   treatment's term names for its number) (+ an optional site `observation`
-%   with value kind `term` + the shared session anchor).
+%TREATMENT Brainstorm-J migrator: did_v1 treatment -> a `manipulation` whose
+%   value kind is the one the treatment's term states for its number, or a
+%   dose / immersion for a ChEBI substance (+ an optional site `observation`
+%   with value kind `term` + the shared session anchor); otherwise the v1
+%   document carried whole.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   Strict J retires the injection/bath/generic_manipulation families (D8): a
-%   treatment row is dispatched by the STRUCTURE its data needs into one of the
-%   data-type leaves (V_eta_migration_plan.md Parts C-D; treatment.md):
+%   ONE CORRECT READING (Decided by Jess Haley, 2026-10-26 [one correct
+%   reading], [dataset audit batch 1 and 2] (4), did-schema
+%   V_eta_go_forward_class_audit.md): a treatment is placed only where the v1
+%   document states its reading by itself:
 %
-%       temperature_manipulation  imposed heat/cold -> a typed temperature value
-%       dose_manipulation         a delivered substance -> a dose naming a
-%                                 formulation (the substance is the spine
-%                                 identity); an immersion (bath site) is a
-%                                 `manipulation` valued by the formulation
-%                                 instead, and a row with no site is a dose
-%                                 reported as route_unknown (jTreatmentBodies)
-%       term_manipulation         a payload-free procedure or husbandry regime
-%                                 -> the act as a bound ontology term (no escape
-%                                 hatch)
+%       a term that states its number's kind (termNumberKind; e.g.
+%           EMPTY:0000199, a duration in hours) -> a manipulation of that
+%           value kind, valued by the number;
+%       a ChEBI substance node -> routed by its recorded location
+%           (jTreatmentRoute, [treatment routes by location]): the bath -> an
+%           immersion valued by its formulation; a body site -> a dose; no
+%           location -> a dose with a NaN amount, noted route_unknown; an
+%           environmental medium -> carried (needs_mapping).
 %
-%   In J the identity rides on the spine `subject_statement.variable` (the
-%   queryable "what"); the verb would go on `subject_interaction.method` (left
-%   blank -- the leaf class names the act); prose on `subject_manipulation.notes`.
-%   There is NO `target_structure` in J: a focal site is Path S. A merely-located
-%   site becomes a `term_observation` value here (located-by-default, D3); an
-%   ATTRIBUTED site is promoted to a part-`subject` + a `part_of`
-%   `directed_relation` by the NDI second pass (ndi.migrate), which has the
-%   corpus-wide subject graph the single-document migrator lacks.
+%   Everything else -- a treatment whose temperature, substance or procedure
+%   reading would be chosen from words in its label -- is returned UNCHANGED,
+%   carried whole as v1 with a `carried_as_v1` note beginning `needs_mapping:`
+%   that names the V2 homes and what decides between them.
 %
-%   numeric_value: NEVER an amount. A term that says what its number is
-%   (termNumberKind; e.g. EMPTY:0000199, a duration in hours) makes a
-%   manipulation of that value kind, valued by it; a temperature term keeps the number as
-%   its temperature; otherwise the number is an unlabelled condition
-%   ('numeric value') and a `treatment_number_unlabelled` report note (Jess
-%   Haley, 2026-10-21, "yes"). The anchor is the recorded
-%   administration onset when there is one, else the session
-%   (jTreatmentAnchor; Jess Haley, 2026-10-21, "a").
+%   numeric_value: NEVER an amount (Jess Haley, 2026-10-21, "yes"). Without a
+%   term that states its kind, the number is an unlabelled condition ('numeric
+%   value') and a `treatment_number_unlabelled` report note. The anchor is the
+%   recorded administration onset when there is one, else the session
+%   (jTreatmentAnchor; Jess Haley, 2026-10-21, "a"). A merely-located site
+%   becomes a `term_observation` (D3); an ATTRIBUTED site is promoted by the
+%   NDI second pass.
 %
-%   1 -> 2 (manipulation + anchor), or 1 -> 3 when the row carries a site.
-%   Not-a-manipulation rows (date of birth, experiment time), rows whose
-%   branch cannot be resolved, rows whose label ends "target location" (the
-%   suffix would be stripped from the variable) and substance rows whose dose
-%   amounts cannot all be placed are returned UNCHANGED, carried whole as v1
-%   with a `carried_as_v1` note ([generic stage is lossless], [partly placed is
-%   carried as v1], Jess Haley, 2026-10-25). Until then the first two raised
-%   did2:convert:notAManipulation / unresolvedTreatment and were quarantined.
-%   Nothing is forced into a residual family. Branch resolution is a keyword/CURIE-prefix HEURISTIC seed;
-%   the authoritative per-term branch list is finalised in discovery mode
-%   against the corpora (Dab = the Target-Location locus pattern; JH =
-%   food-restriction regime).
+%   Not-a-manipulation rows (date of birth, experiment time), rows whose label
+%   ends "target location" (the suffix would be stripped from the variable)
+%   and substance rows whose dose amounts cannot all be placed are also
+%   carried whole as v1 ([generic stage is lossless], [partly placed is
+%   carried as v1], Jess Haley, 2026-10-25).
 
 arguments
     preBody (1,1) struct
@@ -125,13 +112,17 @@ if hasNumber && isfinite(double(numValue(1)))
         'Value', double(numValue(1)));
 end
 
-if containsAny(hay, {'cool', 'cold', 'heat', 'warm', 'thermal', 'temperature'})
-    % the term says what the number is: a temperature
-    manip = makeTemperatureManipulation(preBody, variable, notesText, numValue, anchor.base.id);
-    numberCondition = [];
-elseif containsAny(hay, {'inject', 'virus', 'aav', 'tracer', 'drug', ...
-        'vehicle', 'bath', 'infusion', 'perfusate'}) ...
-        || startsWith(lower(node), 'chebi:')
+% --- ONE CORRECT READING (Decided by Jess Haley, 2026-10-26 [one correct
+% reading] and [dataset audit batch 1 and 2] (4), did-schema
+% V_eta_go_forward_class_audit.md): "`treatment` rows whose kind, direction or
+% unit is chosen from label words carry as v1 with `needs_mapping` rows instead
+% of a guessed reading". The temperature, substance and procedure word lists
+% that routed a treatment by its label are gone (a "cold-water swim" number is
+% not a temperature; "natural eye opening" is no act of the experimenter). What
+% stays is what the document states by itself: a term that states its number's
+% kind (termNumberKind, above), and a ChEBI substance node, routed by its
+% recorded location ([treatment routes by location], jTreatmentRoute).
+if startsWith(lower(node), 'chebi:')
     [manip, route, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, ...
         numberCondition, siteTerm, anchor.base.id);
     if ~isempty(unplaced)
@@ -141,17 +132,10 @@ elseif containsAny(hay, {'inject', 'virus', 'aav', 'tracer', 'drug', ...
     if strcmp(route, 'immersion')
         siteTerm = struct('node', {}, 'name', {});   % a bath is no site on the subject
     end
-elseif containsAny(hay, {'craniotomy', 'implant', 'lesion', 'perfus', ...
-        'eye opening', 'eyelid', 'ear notch', 'ear punch', 'tail clip', ...
-        'toe clip', 'whisker', 'suture', 'surgery', 'transection', ...
-        'resection', 'enucleation', 'dissection', 'procedure', 'optogenetic', ...
-        'rear', 'deprivation', 'isolation', 'enrichment', 'housing', ...
-        'light', 'dark', 'restriction', 'diet', 'training', 'habituation', ...
-        'restraint', 'fast', 'regime'})
-    manip = makeTermManipulation(preBody, variable, notesText, numberCondition, anchor.base.id);
 else
-    v2Body = carryAsV1(preBody, sprintf(['treatment "%s" (%s) could not be ' ...
-        'routed to a manipulation (was did2:convert:unresolvedTreatment)'], label, node));
+    v2Body = carryAsV1(preBody, ['needs_mapping: manipulation (dose | exposure | ' ...
+        'temperature | term) or observation; decided by the treatment''s meaning ' ...
+        'in its dataset']);
     return;
 end
 
@@ -176,16 +160,6 @@ end
 % anchor's id: did-schema #88 builds the whole statement at once (did2.build),
 % so the time reference is made before it.
 
-function docs = makeTemperatureManipulation(preBody, variable, notesText, numValue, anchorId)
-value = [];
-if ~isempty(numValue) && isnumeric(numValue)
-    value = jQuantity('temperature', double(numValue(1)), 'celsius', 'approximate', false);
-end
-docs = {jStatement(preBody, 'manipulation', jSubjectOf(preBody), variable, ...
-    value, 'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
-    'Id', char(preBody.base.id), 'ValueKind', 'temperature')};
-end
-
 function [docs, route, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, numberCondition, siteTerm, anchorId)
 % A delivered substance, routed by its recorded location (jTreatmentRoute,
 % Jess Haley, 2026-10-21): the bath -> an immersion (a `manipulation` valued
@@ -203,16 +177,6 @@ if ~isempty(siteTerm)
 end
 [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chem, loc, anchorId, ...
     'Notes', notesText, 'Conditions', numberCondition);
-end
-
-function docs = makeTermManipulation(preBody, variable, notesText, numberCondition, anchorId)
-extra = {};
-if ~isempty(numberCondition)
-    extra = {'Conditions', numberCondition};
-end
-docs = {jStatement(preBody, 'manipulation', jSubjectOf(preBody), variable, ...
-    variable, 'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
-    'Id', char(preBody.base.id), extra{:}, 'ValueKind', 'term')};
 end
 
 function [kind, unit] = termNumberKind(node, label)
