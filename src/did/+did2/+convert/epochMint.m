@@ -476,6 +476,7 @@ report = struct( ...
     'epoch_extent_duplicate_clock',        0, ...
     'epoch_extent_conflicting_clock',      0, ...
     'epoch_extent_refused_no_system',      0, ...
+    'epoch_extent_untied_session_anchored', 0, ...
     'epoch_extent_carried_sources',        0, ...
     'epoch_extent_carried_source_ids',     {{}}, ...
     'epoch_extent_vacuous',             true, ...
@@ -846,9 +847,18 @@ end
 % is the second of two sources disagreeing about ONE system's clock (4).
 % Uniqueness is by clock AND referent (the amended [time_reference uniqueness
 % rule]).
+%
+% [untied epochs keep the session anchor] (Decided by Jess Haley, 2026-10-26):
+% an epoch that cannot be tied to an acquisition system "is not carried when
+% all of its extents come from one untied source and agree: it keeps a
+% session-anchored time reference, using only the times the epoch states.
+% Extents that come from several sources, or disagree, still carry it." So
+% an untied source is held aside (untiedByKey) and decided after the loop.
 sysIdx = deviceClockIndex(bodies, rows, n);
 carriedSources = {};
 clocksByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
+untiedByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
+SESSION_ANCHOR = char([0 'session']);   % referent placeholder: the session document
 for k = 1:n
     if ~strcmp(rows(k).class_name, 'acquisition_epoch'); continue; end
     report.epoch_extent_sources_seen = report.epoch_extent_sources_seen + 1;
@@ -873,7 +883,11 @@ for k = 1:n
     if isempty(sysId)
         report.epoch_extent_refused_no_system = ...
             report.epoch_extent_refused_no_system + 1;
-        carriedSources{end+1} = rows(k).doc_id; %#ok<AGROW>
+        ukey = pairKey(rows(k).session_id, es);
+        held = {};
+        if isKey(untiedByKey, ukey); held = untiedByKey(ukey); end
+        held{end+1} = struct('source', rows(k).doc_id, 'entries', {entries}); %#ok<AGROW>
+        untiedByKey(ukey) = held;
         continue;
     end
     for i = 1:numel(entries)
@@ -885,6 +899,28 @@ for k = 1:n
         clocksByKey(key) = [clocksByKey(key), entries];
     else
         clocksByKey(key) = entries;
+    end
+end
+% [untied epochs keep the session anchor]: an epoch whose extents ALL come
+% from ONE untied source (no tied extent for it either) and agree keeps them,
+% anchored on the session document; otherwise every untied source is carried.
+untiedKeys = untiedByKey.keys();
+for u = 1:numel(untiedKeys)
+    held = untiedByKey(untiedKeys{u});
+    if isscalar(held) && ~isKey(clocksByKey, untiedKeys{u}) ...
+            && untiedEntriesAgree(held{1}.entries)
+        entries = held{1}.entries;
+        for i = 1:numel(entries)
+            entries{i}.system = SESSION_ANCHOR;
+            entries{i}.source = held{1}.source;
+        end
+        clocksByKey(untiedKeys{u}) = entries;
+        report.epoch_extent_untied_session_anchored = ...
+            report.epoch_extent_untied_session_anchored + 1;
+    else
+        for h = 1:numel(held)
+            carriedSources{end+1} = held{h}.source; %#ok<AGROW>
+        end
     end
 end
 report.epoch_extent_vacuous = (report.epoch_extent_sources_seen == 0);
@@ -957,7 +993,13 @@ for m = 1:numel(minted)
             report.epoch_extent_refused_no_session_document + 1;
         continue;
     end
-    [refs, stats] = epochExtentReferences(clocksByKey(key), ...
+    entriesHere = clocksByKey(key);
+    for i = 1:numel(entriesHere)
+        if strcmp(entriesHere{i}.system, SESSION_ANCHOR)
+            entriesHere{i}.system = sessionDocumentId;   % [untied epochs keep the session anchor]
+        end
+    end
+    [refs, stats] = epochExtentReferences(entriesHere, ...
         sessionDocumentId, did2.schema.cache.sessionIdOf(epochBody), creationTime(epochBody));
     report.epoch_extent_skipped_no_time = ...
         report.epoch_extent_skipped_no_time + stats.no_time;
@@ -3420,5 +3462,25 @@ end
 sid = did2.schema.cache.sessionIdOf(b);
 if ~isempty(sid)
     b.base.session_id = sid;
+end
+end
+
+function tf = untiedEntriesAgree(entries)
+%UNTIEDENTRIESAGREE True when one untied source states no clock twice with
+%   different times ([untied epochs keep the session anchor], Jess Haley,
+%   2026-10-26: "Extents that ... disagree, still carry it").
+tf = true;
+seen = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:numel(entries)
+    e = entries{k};
+    if isKey(seen, e.name)
+        p = seen(e.name);
+        if ~isequaln(p, [e.t0 e.t1])
+            tf = false;
+            return;
+        end
+    else
+        seen(e.name) = [e.t0 e.t1];
+    end
 end
 end

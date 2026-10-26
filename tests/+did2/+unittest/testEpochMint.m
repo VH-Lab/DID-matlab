@@ -252,19 +252,36 @@ verifyEqual(testCase, rep.epoch_extent_sources_seen, 0);
 verifyFalse(testCase, rep2.epoch_extent_vacuous);
 end
 
-function testAnExtentTiedToNoSystemIsCarried(testCase)
-% [device clocks on one epoch] (Jess Haley, 2026-10-26): "an epoch extent you
-% cannot tie to exactly one system carries its source". No probemap names the
-% element's probe, so no reference is minted and the source is listed as
-% carried (resolveEpochProbemap keeps it).
+function testAnUntiedEpochFromOneSourceKeepsTheSessionAnchor(testCase)
+% INVERTS testAnExtentTiedToNoSystemIsCarried. [untied epochs keep the session
+% anchor] (Jess Haley, 2026-10-26): an epoch that cannot be tied to an
+% acquisition system (20211116-shaped: no epochprobemap, so no rig) "is not
+% carried when all of its extents come from one untied source and agree: it
+% keeps a session-anchored time reference, using only the times the epoch
+% states".
 [out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
 verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1, 'the epoch is still minted');
-verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
+refs = ofClass(out, 'relative_time_reference');
+assertEqual(testCase, numel(refs), 1, 'one session-anchored reference');
+verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), 'sess_doc_1', ...
+    'anchored on the session document');
 verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, 'the DENOMINATOR');
 verifyEqual(testCase, rep.epoch_extent_refused_no_system, 1);
-verifyEqual(testCase, rep.epoch_extent_carried_source_ids, {'ee_1'});
-verifyEqual(testCase, numel(ofClass(out, 'acquisition_epoch')), 1, 'the source stays');
+verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 1);
+verifyEmpty(testCase, rep.epoch_extent_carried_source_ids);
+end
+
+function testUntiedExtentsFromSeveralSourcesAreCarried(testCase)
+% [untied epochs keep the session anchor]: "Extents that come from several
+% sources, or disagree, still carry it." Two untied sources of one epoch: no
+% reference, both sources carried.
+a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+[out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b});
+verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
+verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 0);
+verifyEqual(testCase, sort(rep.epoch_extent_carried_source_ids), {'ee_1', 'ee_2'});
 end
 
 function testTwoSystemsOnOneEpochGiveTwoReferencesOfOneClock(testCase)

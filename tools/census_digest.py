@@ -450,7 +450,13 @@ POST_PASSES = [
         # exactly one system is carried, as is the second of two disagreeing
         # sources (resolveEpochProbemap keeps those acquisition_epochs).
         ("epoch_extent_refused_no_system",
-         "  REFUSED: not tied to exactly one acquisition system (carried)"),
+         "  not tied to exactly one acquisition system (sources)"),
+        # [untied epochs keep the session anchor] (Jess Haley, 2026-10-26): an
+        # epoch whose extents all come from ONE untied source and agree keeps
+        # a session-anchored reference; several sources or disagreeing ones
+        # are carried (counted in epoch_extent_carried_sources below).
+        ("epoch_extent_untied_session_anchored",
+         "  of those, epochs kept on the SESSION anchor (one source, agreeing)"),
         ("epoch_extent_carried_sources",
          "  acquisition_epoch sources CARRIED (untied or conflicting)"),
         ("arming_edge_declaration_unchecked",
