@@ -159,6 +159,11 @@ bodies = normaliseInput(v1Bodies);
 % 2026-10-26). Reset per batch, like the notes below.
 did2.convert.stimulusPresentationSpecs('reset');
 did2.convert.stimulusPresentationSpecs('load', bodies);
+% The reference of every v1 session in this batch, read by jMembershipBodies
+% to compare an ingested session's session_reference ([ingested session
+% membership], Jess Haley, 2026-10-26).
+did2.convert.sessionReferences('reset');
+did2.convert.sessionReferences('load', bodies);
 
 % Asked ONCE per call, of the schema the documents validate against: does
 % `base` declare `session_id` as an edge (did-schema

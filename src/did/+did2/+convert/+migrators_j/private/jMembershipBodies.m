@@ -19,10 +19,15 @@ function bodies = jMembershipBodies(preBody, entries)
 %   variable EMPTY:0000401 "software class") and its path
 %   (`session_creator_input2`; variable NCIT:C47922 Pathname). An input that
 %   only restates the session's reference or id is dropped as a copy.
+%   An INGESTED session ([ingested session membership], Jess Haley,
+%   2026-10-26): its `session_reference` is dropped when it equals the session
+%   entity's local_identifier (did2.convert.sessionReferences), and its opener
+%   class is a "software class" parameter of the "database ingestion" method.
 %   Everything else is carried: with any part of an entry unplaced -- no
-%   `is_linked`, a `session_reference`, an ingested session's opener class, any
-%   other input -- the document is returned UNCHANGED, carried whole as v1
-%   ([generic stage is lossless]; the open cases go to the team).
+%   `is_linked`, an ingested session's reference that differs (carry-060) or
+%   whose session is not in the batch, a linked session's reference, any other
+%   input -- the document is returned UNCHANGED, carried whole as v1
+%   ([generic stage is lossless]).
 %   Shared Brainstorm-J (+migrators_j) helper.
 
 datasetId = jDatasetId(preBody);
@@ -47,7 +52,10 @@ for k = 1:numel(entries)
         relation, method, params); %#ok<AGROW>
 end
 if ~isempty(unplaced)
-    % carry-register: none
+    % carry-register: carry-060 (an ingested session's reference that differs
+    % from its local_identifier); none for: is_linked not stated or not
+    % readable, a linked session's reference, a session not in the batch, or a
+    % creator input that is not a copy
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     bodies = {preBody};
@@ -86,8 +94,26 @@ end
 linked = logical(linked);
 reference = jGetChar(e, 'session_reference');
 if ~isempty(strtrim(reference))
-    why = 'session_reference (open: no home decided)';
-    return;
+    if linked
+        why = 'session_reference of a linked session (open: no home decided)';
+        return;
+    end
+    % [ingested session membership] (Jess Haley, 2026-10-26): an ingested
+    % session's reference is dropped when it equals the session entity's
+    % local_identifier (recoverable from it); when it differs the document is
+    % carried as v1 (carry-060). The session is read from the batch
+    % (did2.convert.sessionReferences); one not in the batch cannot be compared.
+    [li, found] = did2.convert.sessionReferences('get', memberSession);
+    if ~found
+        why = ['session_reference (the session is not in the batch, so it ' ...
+            'was not compared with its local_identifier)'];
+        return;
+    end
+    if ~strcmp(li, reference)
+        why = sprintf(['[carry-060] session_reference "%s" (differs from the ' ...
+            'session''s local_identifier "%s")'], reference, li);
+        return;
+    end
 end
 creator = strtrim(jGetChar(e, 'session_creator'));
 path = '';
@@ -116,11 +142,13 @@ if linked
     end
     if ~isempty(p); params = did2.build.list(p{:}); end
 else
-    if ~isempty(creator)
-        why = 'session_creator of an ingested session (open: no home decided)';
-        return;
-    end
+    % [ingested session membership] (Jess Haley, 2026-10-26): the creator class
+    % is a parameter of the "database ingestion" method
     method = did2.convert.registeredTerm('EMPTY:0000399', 'database ingestion');
+    if ~isempty(creator)
+        params = did2.build.list(did2.build.parameter( ...
+            did2.convert.registeredTerm('EMPTY:0000401', 'software class'), 'Text', creator));
+    end
 end
 end
 

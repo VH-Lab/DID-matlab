@@ -3266,17 +3266,59 @@ verifyEqual(testCase, sort(texts), sort({'ndi.session.dir', '/data/exp_demo'}));
 end
 
 function testSessionMembershipOpenCasesAreCarried(testCase)
-% The open cases -- a `session_reference`, an ingested session's opener class
-% -- carry the document whole as v1 for now ([generic stage is lossless]).
+% The open cases carry the document whole as v1 ([generic stage is lossless]):
+% an ingested session's `session_reference` whose session is not in the batch
+% (it cannot be compared with the session's local_identifier), and a LINKED
+% session's reference.
 v1 = writerSessionInADatasetDoc('member_sess_9');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
-v1.session_in_a_dataset.session_reference = '';
-v1.session_in_a_dataset.session_creator_input1 = '';
-out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'session_creator'));
+    'not in the batch'));
+v1.session_in_a_dataset.is_linked = 1;
+out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.count, 1);
+end
+
+function testAnIngestedSessionsEqualReferenceIsDroppedAndItsCreatorKept(testCase)
+% [ingested session membership] (Jess Haley, 2026-10-26): for an INGESTED
+% session, `session_reference` equal to the session entity's local_identifier
+% is dropped, and the creator class is a "software class" (EMPTY:0000401)
+% parameter of the "database ingestion" (EMPTY:0000399) method.
+v1 = writerSessionInADatasetDoc('member_sess_9');
+out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+    'the membership was carried');
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+assertNotEmpty(testCase, rel);
+m = rel.get('relation.method');
+verifyEqual(testCase, char(m.term.node), 'EMPTY:0000399');
+p = m.parameters;
+if iscell(p); p = [p{:}]; end
+verifyEqual(testCase, numel(p), 1);
+verifyEqual(testCase, char(p(1).variable.node), 'EMPTY:0000401');
+verifyEqual(testCase, char(p(1).text), 'ndi.session.dir');
+end
+
+function testAnIngestedSessionsDifferingReferenceIsCarried(testCase)
+% [ingested session membership]: a `session_reference` that differs from the
+% session entity's local_identifier carries the document as v1 (carry-060).
+v1 = writerSessionInADatasetDoc('member_sess_9');
+out = runJ({v1sessionDoc('member_sess_9', 'another_name'), v1});
+n = out.summary.migration_notes.carried_as_v1;
+verifyEqual(testCase, n.count, 1);
+verifyTrue(testCase, contains(n.distinct_details{1}, '[carry-060]'), n.distinct_details{1});
+verifyEqual(testCase, n.register_rows, {'carry-060'});
+end
+
+function v1 = v1sessionDoc(sessionId, reference)
+v1 = struct();
+v1.document_class = struct('class_name', 'session', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', sessionId, 'session_id', sessionId, ...
+    'name', 'sess', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.session = struct('reference', reference);
 end
 
 function [name, node] = membershipRelation()

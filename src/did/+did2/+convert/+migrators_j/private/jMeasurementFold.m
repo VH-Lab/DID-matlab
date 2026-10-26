@@ -83,8 +83,13 @@ if ~isempty(unplaced)
     if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
         cn = char(preBody.document_class.class_name);
     end
-    % carry-register: none
-    did2.convert.reportNote('carried_as_v1', cn, sourceId(preBody), ['unplaced: ' unplaced]);
+    % [second measurement value needs a map] (Jess Haley, 2026-10-26): carry-058
+    % for a measurement, carry-059 for a subjectmeasurement
+    row = '';
+    if strcmp(cn, 'measurement'); row = '[carry-058] '; end
+    if strcmp(cn, 'subjectmeasurement'); row = '[carry-059] '; end
+    % carry-register: carry-058 carry-059
+    did2.convert.reportNote('carried_as_v1', cn, sourceId(preBody), [row 'unplaced: ' unplaced]);
     return;
 end
 
