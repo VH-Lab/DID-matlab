@@ -7,14 +7,13 @@ function route = jTreatmentRoute(locationTerm)
 %     'immersion'  the location is the bath: the subject sat in the
 %                  formulation, so the treatment is a `manipulation` valued by
 %                  the formulation through `value_id`, not a dose;
-%     'dose'       any other location (intraperitoneal, a brain area, ...): a
-%                  body site, so the subject was given an amount -- a dose;
-%     'needs_mapping'  the location is an environmental medium -- agar plate
-%                  medium (MICRO:0000480) or ambient air (XCO:0000918): the
-%                  subject sat on or in it, so it is no body site and a dose
-%                  would be a wrong reading, while which manipulation it is
-%                  (an exposure, ...) is the dataset's meaning. The caller
-%                  carries the document whole as v1;
+%     'dose'       an UBERON location (a brain area, ...): a body site, so the
+%                  subject was given an amount -- a dose;
+%     'needs_mapping'  a location that is neither the bath nor an UBERON term:
+%                  not a body site, so a dose would be a wrong reading, while
+%                  which manipulation it is (an exposure, a temperature, ...)
+%                  is the dataset's meaning. The caller carries the document
+%                  whole as v1;
 %     'unknown'    no location at all: the caller carries the document as v1
 %                  ([one-reading quick answers] (Q1), Jess Haley, 2026-10-26).
 %
@@ -37,15 +36,15 @@ function route = jTreatmentRoute(locationTerm)
 %   not recorded (NaN), not as a measured 0." So virus_injection is routed here
 %   too; "always a dose" no longer holds.
 %
-%   THE MEDIA ARE CARRIED, NOT ROUTED. [babu-media] (Jess Haley, 2026-10-21)
-%   routed these as exposures; superseded for the generic stage by Decided by
-%   Jess Haley, 2026-10-26 [dataset audit batch 1 and 2] (2): "the Babu
-%   media/air/heat routing ... leaves; those rows carry as v1 with a
-%   `needs_mapping` row naming exposure / temperature manipulation"
-%   ([one correct reading]: "e.g. a medium the worms live on written as a dose"
-%   is never written). The medium test is by node (CURIE key) or by the
-%   writer's label ("agar plate medium", "ambient air"); the heat row is carried
-%   in treatment_drug.m, before routing.
+%   THE BODY-SITE TEST IS UBERON. [one-reading quick answers] (Q1) (Decided by
+%   Jess Haley, 2026-10-26): a treatment at a non-body location is carried as
+%   v1. The generic test is the one already decided for anatomy: [region
+%   parts] and the UBERON decision (Jess Haley, 2026-10-21, "b", quoted in NDI
+%   ndi.migrate.internal.pathSPromotion: "a region part entity's anatomy term
+%   must be UBERON"). A location whose term is not UBERON is not a body site.
+%   This replaces the Babu media list (MICRO:0000480, XCO:0000918; [babu-media],
+%   superseded for the generic stage by [dataset audit batch 1 and 2] (2)):
+%   no dataset's terms remain here.
 %
 %   THE BATH TEST. The term is the bath when its node is NCIm:C0179246 (the
 %   node NDI's writers use: +birren/TreatmentCreator.m, createSayaTreatments.m,
@@ -74,25 +73,16 @@ if ~isBath
 end
 if isBath
     route = 'immersion';
-elseif isMedium(node, name)
-    route = 'needs_mapping';
-else
+elseif isUberon(node)
     route = 'dose';
+else
+    route = 'needs_mapping';
 end
 end
 
-function tf = isMedium(node, name)
-% An environmental medium, not a site on the subject (the two NDI writers use:
-% +babu/treatments.json `agar`, `air`). Recognised only so the row is CARRIED.
-media = {'MICRO:0000480', 'agar plate medium'; 'XCO:0000918', 'ambient air'};
-tf = false;
-for k = 1:size(media, 1)
-    if (~isempty(node) && strcmpi(curieKeyOf(node), curieKeyOf(media{k, 1}))) ...
-            || strcmpi(name, media{k, 2})
-        tf = true;
-        return;
-    end
-end
+function tf = isUberon(node)
+% An UBERON anatomy term (the prefix, either case: `UBERON:` / `uberon:`).
+tf = ~isempty(node) && strcmpi(strtok(node, ':'), 'uberon') && contains(node, ':');
 end
 
 function k = curieKeyOf(node)

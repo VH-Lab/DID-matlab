@@ -125,30 +125,19 @@ if ~isempty(epochA) && ~isempty(epochB)
 end
 
 % ---------------------------------------------------------------------
-% BRANCH 2 -- #58's passthrough repair.
+% BRANCH 2 -- carried as v1.
 % ---------------------------------------------------------------------
-out = struct();
-out.document_class = struct('class_name', 'syncrule_mapping', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', did2.schema.v2Stamp());
-if isfield(preBody, 'depends_on')
-    out.depends_on = preBody.depends_on;    % syncgraph_id + syncrule_id carry through
-else
-    out.depends_on = struct('name', {}, 'value', {});
-end
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    out.base = preBody.base;
-end
-
-smBlock = struct();
-if isfield(block, 'cost');    smBlock.cost = block.cost;       end
-if isfield(block, 'mapping'); smBlock.mapping = block.mapping; end
-smBlock.epochnode_a = reshapeEpochNode(getStructAny(block, {'epochnode_a', 'epochNodeA'}));
-smBlock.epochnode_b = reshapeEpochNode(getStructAny(block, {'epochnode_b', 'epochNodeB'}));
-out.syncrule_mapping = smBlock;
-
-bodies = {out};
+% [passthrough stays v1] and [generic stage is lossless] (Jess Haley,
+% 2026-10-24/25), with [device clocks on one epoch] (3) (2026-10-26): a mapping
+% that cannot be placed between two per-system references is carried UNTOUCHED
+% as v1 -- noted `carried_as_v1`, so v1_to_v2 stamps it did_v1 and nothing reads
+% it against V_eta. It replaces the #58 reshape (epoch_clock / epoch_id nested
+% under a time_reference, stamped did_v2), which changed the v1 document.
+% epochMint's syncrule arming reads the endpoint strings from either shape.
+did2.convert.reportNote('carried_as_v1', 'syncrule_mapping', ...
+    char(preBody.base.id), ['unplaced: the two ends are not per-system ' ...
+    'references on the epochs ([device clocks on one epoch])']);
+bodies = {preBody};
 end
 
 % ===================== the gate ============================================
@@ -169,111 +158,4 @@ idA = jSyncDependency(preBody, 'epoch_id_1');
 idB = jSyncDependency(preBody, 'epoch_id_2');
 end
 
-% ===================== #58 passthrough helpers =============================
 
-function node = reshapeEpochNode(src)
-%RESHAPEEPOCHNODE Nest epoch_clock + epoch_id under a time_reference sub-structure
-%   (epoch_bounded_reference shape); carry the node metadata through. Built with
-%   exactly the six V_eta sub-fields so the reshaped node matches the schema.
-%   The epochnode sub-fields are NESTED, so universalRenames (which snake_cases only
-%   immediate block fields) leaves their raw v1 casing untouched -- read snake-first
-%   with a camelCase fallback (jGetCharAny), as the other +migrators_j migrators do,
-%   so a camelCase source does not silently read empty.
-tr = struct('kind', 'epoch_bounded_reference', ...
-    'epoch_clock', jGetCharAny(src, {'epoch_clock', 'epochClock'}), ...
-    'epoch_id',    jGetCharAny(src, {'epoch_id', 'epochId', 'epochID'}));
-node = struct( ...
-    'time_reference',   tr, ...
-    'epoch_session_id', jGetCharAny(src, {'epoch_session_id', 'epochSessionId', 'epochSessionID'}), ...
-    'epochprobemap',    carryProbeMap(src), ...
-    'objectclass',      jGetCharAny(src, {'objectclass', 'objectClass'}), ...
-    'objectname',       jGetCharAny(src, {'objectname', 'objectName'}), ...
-    't0_t1',            getMatrixAny(src, {'t0_t1', 't0t1'}));
-end
-
-function v = carryProbeMap(src)
-%CARRYPROBEMAP The epochprobemap, VERBATIM -- and it is a CHAR, not a struct.
-%
-%   THIRD FIELD THAT WAS BEING SILENTLY DROPPED, found the same way the other
-%   two were (#58): by reading the writer instead of the V_eta schema.
-%
-%     git show origin/main:src/ndi/+ndi/+time/syncgraph.m:313-314
-%        sync_mapping_struct.epochnode_a.epochprobemap = ...
-%            sync_mapping_struct.epochnode_a.epochprobemap.serialize();
-%     git show origin/main:src/ndi/+ndi/+epoch/epochprobemap_daqsystem.m:136-143
-%        function s = serialize(...)
-%           % Create a CHARACTER ARRAY representation
-%           s = '';
-%     git show origin/main:src/ndi/ndi_common/database_documents/ingestion/syncrule_mapping.json
-%        "epochprobemap":  "",        <- line 30 and line 39, a STRING
-%
-%   Template and writer AGREE that this is a string, so there is no
-%   writer-beats-template judgement to make. The reader was
-%   `getStructAny(src, {'epochprobemap', ...})`, which requires isstruct, so on
-%   EVERY real corpus document it returned an empty struct and the serialised
-%   probe map -- name / reference / type / devicestring / subjectstring for
-%   every probe on that epoch -- went nowhere. The unit fixture that made it
-%   look correct used a struct, which no writer produces. Same shape as the
-%   distance_metadata wrong-assumed-shape bug.
-%
-%   Carried VERBATIM (char or struct) rather than coerced: the value is opaque
-%   to this migrator and the only safe transformation is none.
-%
-%   THE SCHEMA HALF HAS SINCE LANDED, AND THIS PARAGRAPH USED TO SAY IT HAD NOT.
-%   It read: "NOTE THE SCHEMA IS THE ONE THAT IS WRONG. V_eta's syncrule_mapping
-%   tombstone declares `epochnode_a.epochprobemap` as type `structure` [...] the
-%   declaration should say `char`. Schema-side, out of this change's scope;
-%   reported with the build." That was true when written and is not true now. It
-%   is corrected here rather than deleted because, left standing, it instructs a
-%   reader to go and change a schema that is ALREADY CORRECT -- and changing the
-%   V_eta schema is a separate decision with its own blast radius.
-%
-%     DID-schema tools/build_v_eta.py:6696-6710 (deleted 2026-10-21)
-%        # TYPE CORRECTED 2026-08-10: it was `structure`; it is a CHAR.
-%        subfield("epochprobemap", "string", ...
-%     DID-schema schemas/V_eta/stable/syncrule_mapping.json
-%        epochnode_a.epochprobemap: type='string'   (epochnode_b likewise)
-%
-%   `string` and not `char` because an absent value decodes as an empty double,
-%   which `char` rejects -- the generator states that reason in its own words.
-%
-%   The non-quarantine half of the old paragraph is UNCHANGED and is exactly why
-%   the wrong declaration survived unnoticed: schema/cache.m validateField
-%   type-checks only the IMMEDIATE fields of a property block, and this sits two
-%   levels down.
-v = '';
-if ~isstruct(src); return; end
-for name = {'epochprobemap', 'epochProbeMap'}
-    f = name{1};
-    if isfield(src, f) && ~isempty(src.(f))
-        v = src.(f);
-        return;
-    end
-end
-end
-
-function m = getMatrixAny(block, names)
-%GETMATRIXANY First numeric field among candidate names ([] if none). Snake-first
-%   with a camelCase fallback, like jGetCharAny.
-m = [];
-if ~isstruct(block); return; end
-for i = 1:numel(names)
-    if isfield(block, names{i}) && isnumeric(block.(names{i}))
-        m = block.(names{i});
-        return;
-    end
-end
-end
-
-function s = getStructAny(block, names)
-%GETSTRUCTANY First scalar-struct field among candidate names (empty 1x1 struct if
-%   none / not a struct). Snake-first with a camelCase fallback, like jGetCharAny.
-s = struct();
-if ~isstruct(block); return; end
-for i = 1:numel(names)
-    if isfield(block, names{i}) && isstruct(block.(names{i})) && isscalar(block.(names{i}))
-        s = block.(names{i});
-        return;
-    end
-end
-end

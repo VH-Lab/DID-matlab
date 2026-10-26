@@ -695,7 +695,7 @@ function testTreatmentDrugAnchoredAtItsAdministrationOnset(testCase)
 % carried as v1, testBabuHeatRowIsCarriedNeedingAMapping.)
 v1 = treatmentDrugDoc('td_onset', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 v1.treatment_drug.administration_onset_time = '10:32:00';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
@@ -709,7 +709,7 @@ verifyEqual(testCase, depVal(m, 'time_reference_id'), a.get('base.id'));
 % observation shares the anchor
 v1 = treatmentDrugDoc('td_onset_iso', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 v1.treatment_drug.administration_onset_time = '2024-06-01T09:15:00Z';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
@@ -727,7 +727,7 @@ function testTreatmentDrugWithNoOnsetIsAnchoredDuringTheSession(testCase)
 % No administration_onset_time (the template blank []): "during the session".
 v1 = treatmentDrugDoc('td_no_onset', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 v1.treatment_drug.administration_onset_time = [];
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
@@ -931,7 +931,27 @@ verifyEqual(testCase, m.get('statement.variable').name, 'clozapine N-oxide');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
+function testANonUberonLocationIsNotABodySiteAndCarries(testCase)
+% [one-reading quick answers] (Q1) (Jess Haley, 2026-10-26): a treatment at a
+% non-body location is carried as v1. The body-site test is UBERON ([region
+% parts]; the UBERON decision, 2026-10-21 "b"): Hunsberger's
+% SNOMED:783351009 "Intraperitoneal" and Babu's agar plate medium are not
+% UBERON terms, so neither is placed as a dose.
+for loc = {{'SNOMED:783351009', 'Intraperitoneal'}, {'MICRO:0000480', 'agar plate medium'}}
+    v1 = treatmentDrugDoc('td_loc', ...
+        sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
+        loc{1}{1}, loc{1}{2});
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
+end
+end
+
 function testTreatmentDrugIntraperitonealTakesTheSourcesAmount(testCase)
+% (Located at UBERON:0001179 peritoneal cavity since 2026-10-26: the writer's
+% SNOMED "Intraperitoneal" is not an UBERON term and carries,
+% testANonUberonLocationIsNotABodySiteAndCarries.)
 % Hunsberger writes alprazolam as a treatment_drug at Intraperitoneal
 % (SNOMED:783351009) with a mixture row `0.25 mg/kg` (SNOMED:396163008)
 % (+hunsberger/TreatmentCreator.m). A body site -> a dose "with the source's
@@ -942,7 +962,7 @@ function testTreatmentDrugIntraperitonealTakesTheSourcesAmount(testCase)
 % concentration). The whole solution's injected volume is unrecorded: NaN.
 v1 = treatmentDrugDoc('td_ip', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 % dose + chemical + formulation + site obs + anchor
@@ -966,7 +986,7 @@ verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
 e = f.get('formulation.value').ingredients(1);
 verifyTrue(testCase, isnan(e.concentration.source_value));
 site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'SNOMED:783351009');
+verifyEqual(testCase, site.get('term.value').node, 'UBERON:0001179');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
@@ -981,7 +1001,7 @@ function testSalinePerBodyMassIsAPlaceholderNotAnAmount(testCase)
 % the treatment is carried whole as v1, the placeholder still noted.
 v1 = treatmentDrugDoc('td_saline', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nEFO:0002677,saline,1,SNOMED:396163008,mg/kg'), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyEqual(testCase, out.migrated{1}.className(), 'treatment_drug');
@@ -1005,7 +1025,7 @@ function testEachAmountRowFillsItsOwnDoseSlot(testCase)
 v1 = treatmentDrugDoc('td_two_kinds', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,2,UO:0000022,mg\n' ...
     'NCIT:C62467,saline,0.5,UO:0000098,mL']), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
@@ -1035,7 +1055,7 @@ function testSubstanceAmountRowFillsSubstanceAmount(testCase)
 % 2026-10-21, "a"). INVERTED from the top-level substance_amount.
 v1 = treatmentDrugDoc('td_mol', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,3,UO:0000040,mmol']), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 v = out.migrated{1}.get('dose.value');
@@ -1051,7 +1071,7 @@ function testDoseIngredientsAreCheckedAgainstTheirFormulationInBatch(testCase)
 % (did2.validate.doseIngredients -> did2.build.checkDoseIngredients) and counts.
 v1 = treatmentDrugDoc('td_ing_chk', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg']), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 rep = did2.validate.doseIngredients(out.migrated);
@@ -1079,7 +1099,7 @@ function testANamedDrugMassRowIsThatIngredientsMass(testCase)
 % per-body-mass row on the same chemical merges into the SAME entry.
 v1 = treatmentDrugDoc('td_named_mass', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,0.5,UO:0000022,mg']), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
@@ -1101,7 +1121,7 @@ function testTwoDisagreeingRowsOfOneKindAreCarriedWholeAsV1(testCase)
 v1 = treatmentDrugDoc('td_two_vols', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,1,UO:0000098,mL\n' ...
     'NCIT:C62467,saline,2,UO:0000098,mL']), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 notes = out.summary.migration_notes;
@@ -1118,7 +1138,7 @@ function testTwoAgreeingRowsOfOneKindAreNotAConflict(testCase)
 v1 = treatmentDrugDoc('td_same_vols', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,1,UO:0000098,mL\n' ...
     'NCIT:C62467,saline,1000,UO:0000101,uL']), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 v = out.migrated{1}.get('dose.value');
@@ -1136,7 +1156,7 @@ function testAStatedAmountKindWithNoNumberPutsTheNaNInThatKind(testCase)
 % volume at the top level.
 v1 = treatmentDrugDoc('td_kind', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,,SNOMED:396163008,mg/kg'), ...
-    'SNOMED:783351009', 'Intraperitoneal');
+    'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
@@ -1240,7 +1260,7 @@ v1 = treatmentDrugDoc('td_agar', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (exposure | dose)'), d);
+verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 0);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
@@ -1269,7 +1289,7 @@ v1 = treatmentDrugDoc('td_heat', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (temperature | dose)'), d);
+verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+temperature'), 0);
 end
 
@@ -5536,17 +5556,12 @@ verifyError(testCase, @() did2.convert.migrators_j.vmneuralresponseresiduals(bod
     'did2:convert:vmResidualsInventedShape');
 end
 
-function testSyncruleMappingEpochnodeToTimeReference(testCase)
-% gov part 3: each epochnode_*'s bare epoch_clock + epoch_id are nested under a
-% time_reference sub-structure (epoch_bounded_reference shape). 1 -> 1; cost,
-% mapping, node metadata and the deps carry through.
-%
-% #58, and the FIXTURE IS INVERTED WITH THE CODE. It used to declare a
-% `syncrule_id` + `epochid` dependency pair and epoch nodes with no `objectname`
-% and no `t0_t1` -- our own invented shape, so the test could not see that the
-% reshape was dropping the field a live NDI query reads. NDI's template and schema
-% both declare `syncgraph_id` + `syncrule_id`, and the real node carries seven
-% sub-fields.
+function testAnUnplacedSyncruleMappingIsCarriedUntouched(testCase)
+% INVERTS testSyncruleMappingEpochnodeToTimeReference, which pinned the #58
+% reshape (epoch_clock / epoch_id nested under a time_reference, stamped
+% did_v2). A mapping that cannot be placed between two per-system references is
+% carried UNTOUCHED as v1 ([passthrough stays v1], [generic stage is lossless];
+% [device clocks on one epoch] (3), Jess Haley, 2026-10-26).
 body = struct();
 body.document_class = struct('class_name', 'syncrule_mapping', ...
     'class_version', '1.0.0', ...
@@ -5556,48 +5571,24 @@ body.depends_on = [ struct('name', 'syncgraph_id', 'value', 'sg_1'), ...
 body.base = struct('id', 'sm_1', 'session_id', 'sess_09', 'name', 'sm', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 nodeA = struct('epoch_clock', 'dev_local_time', 'epoch_id', 't00001', ...
-    'epoch_session_id', 'sess_09', 'epochprobemap', struct('a', 1), ...
+    'epoch_session_id', 'sess_09', 'epochprobemap', 'name\treference\n', ...
     'objectclass', 'ndi.daq.system.mfdaq', 'objectname', 'vhvis_spike2', ...
     't0_t1', [0 300]);
 nodeB = struct('epoch_clock', 'utc', 'epoch_id', 't00002', ...
-    'epoch_session_id', 'sess_09', 'epochprobemap', struct(), 'objectclass', '', ...
+    'epoch_session_id', 'sess_09', 'epochprobemap', '', 'objectclass', '', ...
     'objectname', 'vhintan', 't0_t1', [5 305]);
 body.syncrule_mapping = struct('cost', 1.0, 'mapping', [1 0; 0 1], ...
     'epochnode_a', nodeA, 'epochnode_b', nodeB);
-
-% The migrator now returns a CELL of bodies, not a bare struct: the clock
-% alignment build gave it a second branch (the clock_alignment +
-% relative_reference fold), so its contract is 1 -> N. This branch is still the
-% #58 passthrough and still 1 -> 1 -- the fold is GATED on an `epoch` document
-% that no migrator mints yet, so every did_v1 document lands here. Only the
-% container changed; every assertion below is unchanged, which is the point.
 bodies = did2.convert.migrators_j.syncrule_mapping(body);
-verifyEqual(testCase, numel(bodies), 1, ...
-    'the gated fold must not fire: no epoch_id_# edges on a did_v1 document');
-out = bodies{1};
-verifyEqual(testCase, out.document_class.schema_version, 'did_v2');
-% epoch_clock / epoch_id are no longer bare on the node -- they moved under
-% time_reference (epoch_bounded_reference shape)
-na = out.syncrule_mapping.epochnode_a;
-verifyFalse(testCase, isfield(na, 'epoch_clock'));
-verifyFalse(testCase, isfield(na, 'epoch_id'));
-verifyEqual(testCase, na.time_reference.kind, 'epoch_bounded_reference');
-verifyEqual(testCase, na.time_reference.epoch_clock, 'dev_local_time');
-verifyEqual(testCase, na.time_reference.epoch_id, 't00001');
-% node metadata retained
-verifyEqual(testCase, na.epoch_session_id, 'sess_09');
-verifyEqual(testCase, na.objectclass, 'ndi.daq.system.mfdaq');
-verifyEqual(testCase, out.syncrule_mapping.epochnode_b.time_reference.epoch_clock, 'utc');
-% #58: objectname is READ BY A LIVE NDI QUERY (syncgraph.m:406-407) and t0_t1 went
-% out with it in the same reshape. Both must survive.
-verifyEqual(testCase, na.objectname, 'vhvis_spike2');
-verifyEqual(testCase, na.t0_t1, [0 300]);
-verifyEqual(testCase, out.syncrule_mapping.epochnode_b.objectname, 'vhintan');
-verifyEqual(testCase, out.syncrule_mapping.epochnode_b.t0_t1, [5 305]);
-% cost / mapping / deps preserved -- including the syncgraph_id the query filters on
-verifyEqual(testCase, out.syncrule_mapping.cost, 1.0);
-verifyEqual(testCase, depValue(out, 'syncrule_id'), 'sr_1');
-verifyEqual(testCase, depValue(out, 'syncgraph_id'), 'sg_1');
+verifyEqual(testCase, numel(bodies), 1);
+verifyTrue(testCase, isequaln(bodies{1}, body), 'returned untouched');
+out = runJ(body);
+verifyEqual(testCase, numel(out.migrated), 1);
+d = out.migrated{1};
+verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, d.get('syncrule_mapping.epochnode_a.epoch_clock'), 'dev_local_time');
+verifyEqual(testCase, d.get('syncrule_mapping.epochnode_b.objectname'), 'vhintan');
+verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
 end
 
 % ===================== oneepoch: a class that had NO schema ===============

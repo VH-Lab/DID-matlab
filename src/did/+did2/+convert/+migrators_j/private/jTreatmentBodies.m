@@ -13,8 +13,8 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %                  empty `value` and a `value_id` edge to the formulation -- the
 %                  shape resolveDeferredBaths writes for a stimulus_bath
 %                  (DID-matlab ff6d542). No amount: the subject sat in it.
-%     'needs_mapping'  an environmental medium (jTreatmentRoute): nothing is
-%                  built; DOCS is {} and UNPLACED is the `needs_mapping:` note
+%     'needs_mapping'  a non-body (non-UBERON) location (jTreatmentRoute):
+%                  nothing is built; DOCS is {} and UNPLACED is the `needs_mapping:` note
 %                  naming the V2 homes, so the caller carries the document
 %                  whole as v1 ([one correct reading], [dataset audit batch 1
 %                  and 2] (2), Jess Haley, 2026-10-26).
@@ -88,9 +88,9 @@ switch route
         docs = {};
         return;
     case 'needs_mapping'
-        unplaced = {['needs_mapping: manipulation (exposure | dose); decided ' ...
-            'by what the treatment''s location means in its dataset (e.g. ' ...
-            'Babu: MICRO:0000480 agar plate medium -> exposure)']};
+        unplaced = {['needs_mapping: manipulation (dose | exposure | ' ...
+            'temperature); decided by what the treatment''s location (not an ' ...
+            'UBERON body site) means in its dataset']};
         docs = {};
         return;
     case 'immersion'

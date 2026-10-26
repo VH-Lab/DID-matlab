@@ -21,13 +21,11 @@ function v2Body = treatment_drug(preBody)
 %                           attributed site is promoted by the NDI second pass.
 %     no location           a dose with a NaN amount, listed in the migration
 %                           report as `route_unknown` (did2.convert.reportNote).
-%     agar plate medium /   CARRIED whole as v1 with a `needs_mapping` note
-%     ambient air           (exposure | dose), and
-%     a heat-only mixture   CARRIED whole as v1 with a `needs_mapping` note
-%                           (temperature | dose): the Babu routing left the
-%                           generic stage (Decided by Jess Haley, 2026-10-26
-%                           [dataset audit batch 1 and 2] (2), superseding
-%                           [babu-media] there).
+%     a non-UBERON location CARRIED whole as v1 with a `needs_mapping` note
+%                           (dose | exposure | temperature): not a body site
+%                           ([one-reading quick answers] (Q1), the UBERON
+%                           rule; the Babu media / heat routing left the
+%                           generic stage, [dataset audit batch 1 and 2] (2)).
 %
 %   1 -> N: the manipulation, one chemical per mixture row, the formulation
 %   and the anchor, plus the site observation for a dose at a site.
@@ -49,20 +47,6 @@ siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'location_ontology_node', 'location_ontologyNode'}), ...
     jGetCharAny(block, {'location_name'}));
 anchor = jTreatmentAnchor(preBody, block);  % the recorded onset, else the session
-if isHeatOnly(chemicals)
-    % Babu writes a heat pulse as a treatment_drug whose one mixture row is
-    % OM:Heat at 37 Degree Celsius (+babu/treatments.json `heat`). A heat row
-    % given as a dose would be a wrong reading; which manipulation it is (a
-    % temperature manipulation, ...) is the dataset's meaning, so it is carried
-    % whole as v1 (Decided by Jess Haley, 2026-10-26 [dataset audit batch 1
-    % and 2] (2), [one correct reading]).
-    did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
-        char(preBody.base.id), ['needs_mapping: manipulation (temperature | ' ...
-        'dose); decided by the treatment''s meaning in its dataset (e.g. Babu: ' ...
-        'OM:Heat -> temperature manipulation)']);
-    v2Body = {preBody};
-    return;
-end
 [bodies, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, anchor.base.id);
 if ~isempty(unplaced)
     % [generic stage is lossless] / [partly placed is carried as v1] (Jess
@@ -83,16 +67,3 @@ v2Body = bodies;
 end
 
 % ===================== local helpers ===================================
-
-function tf = isHeatOnly(chemicals)
-% Every mixture row is a heat row: node OM:Heat or name "heat". Recognised only
-% so the row is CARRIED.
-tf = ~isempty(chemicals);
-for k = 1:numel(chemicals)
-    sub = chemicals(k).substance;
-    if ~(strcmpi(strtrim(char(sub.node)), 'OM:Heat') || strcmpi(strtrim(char(sub.name)), 'heat'))
-        tf = false;
-        return;
-    end
-end
-end

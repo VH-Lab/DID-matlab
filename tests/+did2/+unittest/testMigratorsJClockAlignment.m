@@ -410,6 +410,11 @@ doc = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'syncrule_mapping');
 verifyEqual(testCase, doc.get('base.id'), 'map_0001');
 verifyEqual(testCase, doc.get('syncrule_mapping.mapping'), [1.0002 -0.5]);
+% UPDATED 2026-10-26: carried UNTOUCHED as v1 ([passthrough stays v1],
+% [generic stage is lossless]) -- stamped did_v1, the nodes not re-nested
+verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v1');
+verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
+verifyEqual(testCase, numel(out.passthrough), 1);
 end
 
 function testPassthroughKeepsEverythingTheLiveNdiQueryReads(testCase)
@@ -424,7 +429,7 @@ out = runJ(mappingFixture(false));
 doc = out.migrated{1};
 verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_a.objectname'), 'vhtaste_sync');
 verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_b.objectname'), 'vhtaste_bpod');
-verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_a.time_reference.epoch_id'), 't00001');
+verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_a.epoch_id'), 't00001');
 verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_a.t0_t1'), [0 101]);
 verifyEqual(testCase, depVal(doc, 'syncgraph_id'), 'graph_0001');
 verifyEqual(testCase, depVal(doc, 'syncrule_id'), 'rule_ctoe');
@@ -446,13 +451,13 @@ verifyEmpty(testCase, depVal(doc, 'epochid'));
 % the #58 failure exactly -- a field dropped on every real document with the
 % suite green -- so it is pinned on BOTH endpoints.
 verifyEqual(testCase, ...
-    doc.get('syncrule_mapping.epochnode_a.time_reference.epoch_clock'), 'dev_local_time');
+    doc.get('syncrule_mapping.epochnode_a.epoch_clock'), 'dev_local_time');
 verifyEqual(testCase, ...
-    doc.get('syncrule_mapping.epochnode_b.time_reference.epoch_clock'), 'dev_local_time');
+    doc.get('syncrule_mapping.epochnode_b.epoch_clock'), 'dev_local_time');
 % ...and the b-side epoch_id, which was a-side only. Both endpoints are read:
 % commonTriggersOverlappingEpochs.m:156-157 ANDs epochnode_a.epoch_id with
 % epochnode_b.epoch_id, and syncgraph.m:268,271 does the same.
-verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_b.time_reference.epoch_id'), 't00002');
+verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_b.epoch_id'), 't00002');
 end
 
 function testPassthroughNoLongerDropsTheSerialisedProbeMap(testCase)
