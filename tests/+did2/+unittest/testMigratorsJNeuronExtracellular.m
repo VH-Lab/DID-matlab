@@ -282,9 +282,12 @@ end
 % ===================== the guards ==========================================
 
 function testAWaveformlessDocumentMintsNoObservation(testCase)
+% (the counts go with the waveform: beside no waveform a 21 / 32 restates
+% nothing and is carried as v1, testWithNoWaveformOnlyTheWritersCountsAreDropped)
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
-    {'mean_waveform', 'waveform_sample_times'});
+    {'mean_waveform', 'waveform_sample_times', ...
+     'number_of_samples_per_channel', 'number_of_channels'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
 verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')));
@@ -491,7 +494,8 @@ function testNoSoftwareEntityIsEmittedWhenNothingCanReferenceIt(testCase)
 % one, so none is minted.
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
-    {'quality_number', 'quality_label', 'cluster_index', 'mean_waveform', 'waveform_sample_times'});
+    {'quality_number', 'quality_label', 'cluster_index', 'mean_waveform', 'waveform_sample_times', ...
+     'number_of_samples_per_channel', 'number_of_channels'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
 verifyEqual(testCase, numel(out), 3, 'the unit, its derived_from and the anchor');

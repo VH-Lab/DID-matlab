@@ -426,14 +426,14 @@ for k = 1:numel(bodies)
                     % A CARRIED document is v1 by definition: V_eta validation
                     % (its tombstone, if any) is not its contract, so a
                     % failure is counted, never a quarantine.
-                    if carried
-                        [carriedUnvalNames, carriedUnvalValues] = bumpClassCounter( ...
-                            carriedUnvalNames, carriedUnvalValues, className);
-                    elseif ~(passedThrough && strcmp(vErr.identifier, 'did2:schema:missingClass'))
-                        rethrow(vErr);
-                    else
+                    if passedThrough && strcmp(vErr.identifier, 'did2:schema:missingClass')
                         [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
                             v1NoSchemaNames, v1NoSchemaValues, className);
+                    elseif carried
+                        [carriedUnvalNames, carriedUnvalValues] = bumpClassCounter( ...
+                            carriedUnvalNames, carriedUnvalValues, className);
+                    else
+                        rethrow(vErr);
                     end
                 end
             end
