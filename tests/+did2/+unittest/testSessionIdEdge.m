@@ -221,8 +221,11 @@ v1.document_class = struct('class_name', 'session_in_a_dataset', 'class_version'
 v1.depends_on = struct('name', {}, 'value', {});
 v1.base = struct('id', 'sid_01', 'session_id', 'dsid_1', ...
     'name', 'sid', 'datestamp', '2024-06-01T12:00:00.000Z');
+% No session_reference: a membership that states one is carried whole as v1
+% (open case; Decided by Jess Haley, 2026-10-25 [session membership records
+% linked or ingested]), and this fixture is about the edge shape.
 v1.session_in_a_dataset = struct('session_id', 'member_sess_9', ...
-    'session_reference', 'exp_demo', 'is_linked', 0);
+    'session_reference', '', 'is_linked', 0);
 end
 
 function rel = membershipRelation(out)

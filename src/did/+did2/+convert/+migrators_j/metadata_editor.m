@@ -343,9 +343,10 @@ function row = bindingRow(reg, variableNode)
 row = [];
 if ~isstruct(reg) || ~isfield(reg, 'subject_statement_bindings'); return; end
 rows = reg.subject_statement_bindings;
-if iscell(rows); rows = [rows{:}]; end
+% A cell when the rows' fields differ (jsondecode); never concatenated.
 for k = 1:numel(rows)
-    r = rows(k);
+    if iscell(rows); r = rows{k}; else; r = rows(k); end
+    if ~isstruct(r); continue; end
     if isfield(r, 'variable') && isstruct(r.variable) && isfield(r.variable, 'node') ...
             && strcmpi(char(r.variable.node), variableNode) ...
             && isfield(r, 'values') && ~isempty(r.values)
@@ -357,11 +358,13 @@ end
 
 function t = matchValue(values, v)
 t = [];
-if iscell(values); values = [values{:}]; end
 v = strtrim(char(v));
 for k = 1:numel(values)
-    node = char(values(k).node);
-    name = char(values(k).name);
+    if iscell(values); e = values{k}; else; e = values(k); end
+    if ~isstruct(e) || ~isfield(e, 'node'); continue; end
+    node = char(e.node);
+    name = '';
+    if isfield(e, 'name'); name = char(e.name); end
     tail = node;
     cut = find(node == '/' | node == ':', 1, 'last');
     if ~isempty(cut); tail = node(cut+1:end); end
