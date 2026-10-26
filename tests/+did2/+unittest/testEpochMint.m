@@ -264,8 +264,9 @@ function testAnUntiedEpochFromOneSourceKeepsTheSessionAnchor(testCase)
 verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1, 'the epoch is still minted');
 refs = ofClass(out, 'relative_time_reference');
 assertEqual(testCase, numel(refs), 1, 'one session-anchored reference');
-verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), 'sess_doc_1', ...
-    'anchored on the session document');
+ep = ofClass(out, 'epoch');
+verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), depValueOf(ep{1}, 'session_id'), ...
+    'anchored on the session the epoch belongs to');
 verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, 'the DENOMINATOR');
 verifyEqual(testCase, rep.epoch_extent_refused_no_system, 1);
 verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 1);
