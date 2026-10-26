@@ -775,6 +775,33 @@ for k = 1:numel(bodies)
 end
 end
 
+function testAnAllPassRateEqualToTheNativeRateIsNotACarry(testCase)
+% [pass-through filter sample frequency] (Jess Haley, 2026-10-26): an all-pass
+% filter's sampleFrequency equal to the pyraview's native_rate (NDI's writer
+% sets both from one variable, makePyraviewDoc.m:53/58/157) is recoverable from
+% the body's rate: no carry, no filter document.
+blk = struct('label', 'none', 'type', 'none', 'algorithm', 'none', ...
+    'parameters', struct('sampleFrequency', 20000, 'order', NaN, ...
+        'filterFrequency', NaN, 'passBandRipple', NaN, ...
+        'stopbandAttentuation', NaN));
+out = runJ(pyraviewBody(blk));   % native_rate 20000
+verifyEmpty(testCase, out.quarantine);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+    'an all-pass rate equal to the native rate was carried');
+verifyNotEmpty(testCase, out.migrated(strcmp(classNames(out), 'sampled_body')));
+end
+
+function testAnAllPassRateThatDiffersFromTheNativeRateIsCarried(testCase)
+% [pass-through filter sample frequency]: a rate that differs is carried as v1
+% (carry-061, malformed).
+blk = struct('label', 'none', 'type', 'none', 'algorithm', 'none', ...
+    'parameters', struct('sampleFrequency', 30000, 'order', NaN, ...
+        'filterFrequency', NaN, 'passBandRipple', NaN, ...
+        'stopbandAttentuation', NaN));
+out = runJ(pyraviewBody(blk));   % native_rate 20000
+verifyPyraviewCarried(testCase, out, '[carry-061] filter.parameters.sampleFrequency');
+end
+
 function testTheWritersAllPassIsCarriedAsV1(testCase)
 % filterData.m:29-42 on the creation path: label 'all', type 'none', and the
 % probe's rate. The label differs from the type and the rate has no method to

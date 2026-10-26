@@ -156,13 +156,15 @@ end
 % the filter: a `method` document named by each body's method_id once the
 % schema declares it (Jess Haley 2026-10-22 [filters are methods]); a
 % frequency_filter by filter_id before
-[filterDoc, filterEdge, filterUnplaced] = jFrequencyFilter(preBody);
+filterRate = [];   % the stated native rate, for an all-pass's sampleFrequency
+if nativeRt > 0; filterRate = nativeRt; end
+[filterDoc, filterEdge, filterUnplaced] = jFrequencyFilter(preBody, filterRate);
 if ~isempty(filterUnplaced)
     % [small unread settings] (2) (Jess Haley, 2026-10-26): a filter block this
     % cannot place whole carries the document whole as v1
-    % carry-register: carry-006 carry-007 carry-042 via private/jFrequencyFilter.m;
-    % none for a stated sampleFrequency (on an all-pass, or with no method
-    % document to hold it)
+    % carry-register: carry-006 carry-007 carry-042 carry-061 via
+    % private/jFrequencyFilter.m; none for a sampleFrequency on the
+    % frequency_filter path (the pre-[filters are methods] schema, no rate)
     did2.convert.reportNote('carried_as_v1', 'pyraview', char(preBody.base.id), ...
         ['unplaced: ' strjoin(filterUnplaced, ', ')]);
     bodies = {preBody};

@@ -1,4 +1,4 @@
-function [ff, edgeName, unplaced] = jFrequencyFilter(preBody)
+function [ff, edgeName, unplaced] = jFrequencyFilter(preBody, nativeRate)
 %JFREQUENCYFILTER Build the document a did_v1 `filter` superclass block
 %   becomes, and name the edge a body points at it by. Returns [] when the
 %   block describes no filter (an all-pass), in which case the caller emits
@@ -11,6 +11,13 @@ function [ff, edgeName, unplaced] = jFrequencyFilter(preBody)
 %   v1], 2026-10-25): a fractional order, a `label` that differs from the
 %   `type`, a `sampleFrequency` with no method document to hold it, or a type /
 %   algorithm spelling with no mapping (other than the all-pass 'none').
+%
+%   NATIVERATE (optional, [] when not given) is the caller's own sample rate
+%   (a pyraview's `native_rate`). An all-pass's `sampleFrequency` equal to it
+%   is not a carry: the V2 body keeps that rate, so it is recoverable
+%   ([pass-through filter sample frequency], Jess Haley, 2026-10-26; NDI's
+%   writer sets both from one variable, makePyraviewDoc.m:53/58/157). One that
+%   differs carries the document, citing carry-061 (malformed).
 %
 %   FILTERS ARE METHODS (Jess Haley 2026-10-22 [filters are methods], N1a,
 %   V_eta_frequency_filter_model_plan.md): `frequency_filter` is deleted (a V2
@@ -182,8 +189,14 @@ if isempty(algorithm) || isempty(band)
         unplaced{end+1} = sprintf('[carry-042] filter.algorithm "%s" / type "%s" (no mapping)', ...
             rawAlgorithm, rawType);
     elseif ~isempty(sampleFrequency)
-        unplaced{end+1} = ['filter.parameters.sampleFrequency (an all-pass ' ...
-            'has no method document to hold it)'];
+        if nargin < 2 || isempty(nativeRate)
+            unplaced{end+1} = ['filter.parameters.sampleFrequency (an all-pass ' ...
+                'has no method document to hold it)'];
+        elseif double(sampleFrequency) ~= double(nativeRate)
+            unplaced{end+1} = sprintf(['[carry-061] filter.parameters.sampleFrequency ' ...
+                '%g (differs from the native rate %g)'], sampleFrequency, nativeRate);
+        end
+        % equal to the native rate: recoverable from the body, not written
     end
     return;
 end
