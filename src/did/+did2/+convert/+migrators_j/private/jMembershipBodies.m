@@ -9,7 +9,22 @@ function bodies = jMembershipBodies(preBody, entries)
 %   (2026-10-20) gave records their own relation, which passes nothing, and
 %   made `part_of` physical only. The same did-schema change, so one question
 %   (sessionIdIsEdge) decides both.
+%
+%   HOW THE SESSION JOINED (Decided by Jess Haley, 2026-10-25 [session membership
+%   records linked or ingested]; terms [census terms], 2026-10-26; did-schema
+%   V_eta_go_forward_class_audit.md): the relation's `method.term` is EMPTY:0000399
+%   "database ingestion" or EMPTY:0000400 "database linking", by `is_linked`
+%   (NDI ndi.dataset add_ingested_session / add_linked_session). A LINKED
+%   session's method.parameters hold its opener class (`session_creator`;
+%   variable EMPTY:0000401 "software class") and its path
+%   (`session_creator_input2`; variable NCIT:C47922 Pathname). An input that
+%   only restates the session's reference or id is dropped as a copy.
+%   Everything else is carried: with any part of an entry unplaced -- no
+%   `is_linked`, a `session_reference`, an ingested session's opener class, any
+%   other input -- the document is returned UNCHANGED, carried whole as v1
+%   ([generic stage is lossless]; the open cases go to the team).
 %   Shared Brainstorm-J (+migrators_j) helper.
+
 datasetId = jDatasetId(preBody);
 bodies = {jBareDataset(preBody, datasetId)};
 if ~isstruct(entries); return; end
@@ -17,12 +32,104 @@ relation = {'', 'part_of'};
 if sessionIdIsEdge()
     relation = {'schema:isPartOf', 'included_in'};
 end
+unplaced = {};
+rels = {};
 for k = 1:numel(entries)
     memberSession = jGetChar(entries(k), 'session_id');
     if isempty(memberSession); continue; end
     if strcmp(memberSession, datasetId); continue; end   % the dataset's own root
-    bodies{end+1} = jEntityRelation(preBody, memberSession, datasetId, ...
-        relation{2}, '', relation{1}); %#ok<AGROW>
+    [method, params, why] = membershipMethod(entries(k), memberSession);
+    if ~isempty(why)
+        unplaced{end+1} = sprintf('%s: %s', memberSession, why); %#ok<AGROW>
+        continue;
+    end
+    rels{end+1} = membershipRelation(preBody, memberSession, datasetId, ...
+        relation, method, params); %#ok<AGROW>
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
+        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
+    bodies = {preBody};
+    return;
+end
+bodies = [bodies, rels];
+end
+
+function rel = membershipRelation(preBody, childId, parentId, relation, method, params)
+if isempty(relation{1})
+    r = relation{2};
+else
+    r = did2.build.term(relation{1}, relation{2});
+end
+opts = jOpts(preBody, 'Method', method);
+if ~isempty(params)
+    opts = [opts, {'MethodParameters', params}];
+end
+rel = did2.build.directedRelation(char(childId), char(parentId), r, opts{:});
+end
+
+function [method, params, why] = membershipMethod(e, memberSession)
+%MEMBERSHIPMETHOD The method term and parameters of one membership entry, or
+%   WHY it cannot be placed whole.
+method = []; params = []; why = '';
+if ~isfield(e, 'is_linked') || isempty(e.is_linked)
+    why = 'is_linked not stated';
+    return;
+end
+linked = e.is_linked;
+if ischar(linked) || isstring(linked); linked = str2double(linked); end
+if ~(islogical(linked) || isnumeric(linked)) || ~isscalar(linked) || isnan(double(linked))
+    why = 'is_linked not readable';
+    return;
+end
+linked = logical(linked);
+reference = jGetChar(e, 'session_reference');
+if ~isempty(strtrim(reference))
+    why = 'session_reference (open: no home decided)';
+    return;
+end
+creator = strtrim(jGetChar(e, 'session_creator'));
+path = '';
+for n = 1:6
+    v = strtrim(inputText(e, sprintf('session_creator_input%d', n)));
+    if isempty(v) || strcmp(v, memberSession) || strcmp(v, strtrim(reference))
+        continue;   % absent, or a copy of the session's id / reference
+    end
+    if n == 2 && linked
+        path = v;
+    else
+        why = sprintf('session_creator_input%d', n);
+        return;
+    end
+end
+if linked
+    method = did2.convert.registeredTerm('EMPTY:0000400', 'database linking');
+    p = {};
+    if ~isempty(creator)
+        p{end+1} = did2.build.parameter( ...
+            did2.convert.registeredTerm('EMPTY:0000401', 'software class'), 'Text', creator);
+    end
+    if ~isempty(path)
+        p{end+1} = did2.build.parameter( ...
+            did2.convert.registeredTerm('NCIT:C47922', 'Pathname'), 'Text', path);
+    end
+    if ~isempty(p); params = did2.build.list(p{:}); end
+else
+    if ~isempty(creator)
+        why = 'session_creator of an ingested session (open: no home decided)';
+        return;
+    end
+    method = did2.convert.registeredTerm('EMPTY:0000399', 'database ingestion');
+end
+end
+
+function s = inputText(e, f)
+s = '';
+if ~isfield(e, f); return; end
+v = e.(f);
+if ischar(v); s = v;
+elseif isstring(v) && isscalar(v); s = char(v);
+elseif isnumeric(v) && isscalar(v); s = num2str(v);
 end
 end
 

@@ -210,17 +210,24 @@ end
 % entity, a later step: until then a document that names one is carried whole
 % as v1. `data_limits` is left unwritten when it is its data type's range
 % ([intmin intmax], [0 1] for logical: recoverable from the datum type,
-% [lossless means round trip]); a range that differs becomes a "value range"
-% condition, whose term is not registered yet, so until then such a document
-% is carried whole as v1 ([no invented values]: no term is made up here).
+% [lossless means round trip]); a range that differs becomes a body condition
+% with variable EMPTY:0000402 "value range" ([census terms] T3), its value the
+% [minimum maximum] pair.
 unplaced = {};
 if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
         dependencyValue(preBody, 'image_collection_id')))
     unplaced{end+1} = 'depends_on imageCollection_id';
 end
 limits = getField(params, 'data_limits');
+bodyConditions = [];
 if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
-    unplaced{end+1} = 'image_stack_parameters.data_limits (not the data type''s range)';
+    if isnumeric(limits) && numel(limits) == 2 && all(isfinite(double(limits(:))))
+        bodyConditions = did2.build.condition( ...
+            did2.convert.registeredTerm('EMPTY:0000402', 'value range'), ...
+            'Matrix', double(limits(:)'));
+    else
+        unplaced{end+1} = 'image_stack_parameters.data_limits (not a [minimum maximum] pair)';
+    end
 end
 if ~isempty(unplaced)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
@@ -319,6 +326,9 @@ if ~isempty(strtrim(compression))
     o = [o, {'Compression', compression}];
 end
 [dims, covs] = imageAxes(dimOrder, dimSize, params);
+if ~isempty(bodyConditions)
+    o = [o, {'Conditions', bodyConditions}];
+end
 body = did2.build.sampledBody(stackId, dims, 'Covariates', covs, o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end

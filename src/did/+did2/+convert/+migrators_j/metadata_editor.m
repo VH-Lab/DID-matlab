@@ -49,6 +49,11 @@ function v2Body = metadata_editor(preBody)
 %     dataset -cites-> publication
 %     dataset -documented_by-> web_resource
 %
+%   ExperimentalApproach, TechniquesEmployed and DataType are KEPT since
+%     2026-10-26 ([dataset form terms]): term assertions about the dataset, each
+%     value a term of its binding's closed list; a value outside it carries the
+%     form whole as v1. The text below is the record of the earlier drop.
+%
 %   Bucket 2 -- PER-SUBJECT PROJECTIONS -> not persisted on migration. Subjects
 %     (SpeciesList / StrainList / BiologicalSexList), DataType, TechniquesEmployed,
 %     and ExperimentalApproach are summaries derivable from the dataset's subject
@@ -164,6 +169,16 @@ for i = 1:numel(authorList)
             i, numel(authorList(i).affiliation)); %#ok<AGROW>
     end
 end
+% [dataset form terms] (Decided by Jess Haley, 2026-10-25, did-schema
+% V_eta_go_forward_class_audit.md; terms [census terms], 2026-10-26): the form's
+% ExperimentalApproach, TechniquesEmployed and DataType are kept as term
+% assertions about the dataset entity, each value a term of the binding's closed
+% list (experimental approach EMPTY:0000356; Technique NCIT:C16847 and
+% Scientific Data Type NCIT:C175886, valued by openMINDS terms). "A form value
+% that is not in the list carries the form whole as v1 rather than being
+% dropped."
+[formTerms, formUnplaced] = datasetFormTerms(ms);
+unplaced = [unplaced, formUnplaced];
 if ~isempty(unplaced)
     did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
@@ -276,7 +291,85 @@ if ~isempty(docIRI)
     bodies{end+1} = relationDoc(preBody, datasetId, wrId, 'documented_by', []);
 end
 
+for i = 1:size(formTerms, 1)
+    bodies{end+1} = jStatement(preBody, 'assertion', datasetId, ...
+        formTerms{i, 1}, formTerms{i, 2}, 'ValueKind', 'term'); %#ok<AGROW>
+end
+
 v2Body = bodies;
+end
+
+function [terms, unplaced] = datasetFormTerms(ms)
+%DATASETFORMTERMS {variable, value} per form value of ExperimentalApproach,
+%   TechniquesEmployed and DataType, each value matched (by label, or by its
+%   node or the node's last segment -- openMINDS's own id, e.g. "derivedData")
+%   to a term of the binding's closed `values` list in the binding registry;
+%   UNPLACED names each value that matches none (or a field whose binding the
+%   loaded schema does not have).
+fields = { ...
+    'ExperimentalApproach', 'EMPTY:0000356'; ...
+    'TechniquesEmployed',   'NCIT:C16847'; ...
+    'DataType',             'NCIT:C175886'};
+terms = cell(0, 2);
+unplaced = {};
+reg = struct();
+try
+    reg = did2.schema.cache.shared().bindingRegistry;
+catch
+end
+for f = 1:size(fields, 1)
+    vals = getStrList(ms, fields{f, 1});
+    if isempty(vals); continue; end
+    row = bindingRow(reg, fields{f, 2});
+    if isempty(row)
+        unplaced{end+1} = sprintf('%s (no %s binding in the loaded schema)', ...
+            fields{f, 1}, fields{f, 2}); %#ok<AGROW>
+        continue;
+    end
+    for k = 1:numel(vals)
+        t = matchValue(row.values, vals{k});
+        if isempty(t)
+            unplaced{end+1} = sprintf('%s "%s" (not in the closed list)', ...
+                fields{f, 1}, vals{k}); %#ok<AGROW>
+        else
+            terms(end+1, :) = {struct('node', char(row.variable.node), ...
+                'name', char(row.variable.name)), t}; %#ok<AGROW>
+        end
+    end
+end
+end
+
+function row = bindingRow(reg, variableNode)
+row = [];
+if ~isstruct(reg) || ~isfield(reg, 'subject_statement_bindings'); return; end
+rows = reg.subject_statement_bindings;
+if iscell(rows); rows = [rows{:}]; end
+for k = 1:numel(rows)
+    r = rows(k);
+    if isfield(r, 'variable') && isstruct(r.variable) && isfield(r.variable, 'node') ...
+            && strcmpi(char(r.variable.node), variableNode) ...
+            && isfield(r, 'values') && ~isempty(r.values)
+        row = r;
+        return;
+    end
+end
+end
+
+function t = matchValue(values, v)
+t = [];
+if iscell(values); values = [values{:}]; end
+v = strtrim(char(v));
+for k = 1:numel(values)
+    node = char(values(k).node);
+    name = char(values(k).name);
+    tail = node;
+    cut = find(node == '/' | node == ':', 1, 'last');
+    if ~isempty(cut); tail = node(cut+1:end); end
+    if strcmpi(v, name) || strcmpi(v, node) || strcmpi(v, tail)
+        t = struct('node', node, 'name', name);
+        return;
+    end
+end
 end
 
 % ===================== small helpers ===================================

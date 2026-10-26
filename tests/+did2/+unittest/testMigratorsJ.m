@@ -1543,21 +1543,29 @@ verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct
     'imageCollection_id'));
 end
 
-function testImageStackDataLimitsOtherThanItsTypeRangeAreCarriedAsV1(testCase)
-% [image file details placed] (Jess Haley, 2026-10-26): `data_limits` is left
-% unwritten when it is its data type's range ([intmin intmax], [0 1] for
-% logical; recoverable from the datum type). Another range is a "value range"
-% condition whose term is not registered yet, so the stack is carried as v1.
+function testImageStackDataLimitsOtherThanItsTypeRangeAreAValueRange(testCase)
+% INVERTS testImageStackDataLimitsOtherThanItsTypeRangeAreCarriedAsV1 (the term
+% was not registered then). [image file details placed] (Jess Haley,
+% 2026-10-26): `data_limits` is left unwritten when it is its data type's range;
+% another range is a body condition with variable EMPTY:0000402 "value range"
+% ([census terms] T3), its value the [minimum maximum] pair.
 v1 = foldableBehaviourImageStack();
 v1.image_stack_parameters.data_type = 'uint8';
 v1.image_stack_parameters.data_limits = [0 255];
 out = runJ(v1);
-verifyGreaterThan(testCase, numel(out.migrated), 1, 'the type''s range folds');
+b = firstOfClassJ(out.migrated, 'sampled_body');
+assertNotEmpty(testCase, b, 'the type''s range folds');
+bs = b.toStruct();
+verifyFalse(testCase, isfield(bs.data_body, 'conditions') && ~isempty(bs.data_body.conditions), ...
+    'the type''s range is not written');
 v1.image_stack_parameters.data_limits = [10 200];
 out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'data_limits'));
+b = firstOfClassJ(out.migrated, 'sampled_body');
+assertNotEmpty(testCase, b, 'another range folds too');
+c = b.toStruct().data_body.conditions;
+if iscell(c); c = c{1}; end
+verifyEqual(testCase, char(c(1).variable.node), 'EMPTY:0000402');
+verifyEqual(testCase, double(c(1).matrix(:)'), [10 200]);
 end
 
 function testACarriedImageStackIsTheV1SourceNotTheSuperclassReshape(testCase)
@@ -1568,7 +1576,7 @@ function testACarriedImageStackIsTheV1SourceNotTheSuperclassReshape(testCase)
 % recorded as a pass-1 passthrough, the timestamp still there.
 v1 = foldableBehaviourImageStack();
 v1.image_stack_parameters.timestamp = [];
-v1.image_stack_parameters.data_limits = [10 200];   % carried: not the type's range
+v1.image_stack_parameters.data_limits = 'not a pair';   % carried: not a [min max] pair
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, isfield(out.migrated{1}.get('image_stack_parameters'), 'timestamp'), ...
@@ -2680,7 +2688,7 @@ ms.License = 'CC-BY-4.0';
 ms.ReleaseDate = '2024-01-15';
 ms.VersionInnovation = 'first release';        % bucket 1 (dataset metadata) -> kept
 ms.Keyword = {'worm', 'calcium imaging'};      % bucket 1 (repeatable) -> kept
-ms.ExperimentalApproach = {'electrophysiology', 'behavior'};  % bucket 2 projection -> not stored
+ms.ExperimentalApproach = {'electrophysiology', 'behavior'};  % -> term assertions ([dataset form terms])
 % two authors, both affiliated to the SAME organization (dedup to one org)
 a1 = struct('givenName', 'Ada', 'familyName', 'Lovelace', ...
     'digitalIdentifier', struct('identifier', '0000-0001-2345-6789'), ...
@@ -2698,8 +2706,8 @@ ms.Funding = struct('funder', 'NIH', 'awardTitle', 'BRAIN Initiative', ...
 ms.RelatedPublication = struct('Publication', 'On Worms', 'DOI', '10.1/worm', ...
     'PMID', '123', 'PMCID', 'PMC9');
 ms.FullDocumentation = 'https://example.org/docs';
-% bucket 2 (projections off subject statements) -> dropped
-ms.TechniquesEmployed = 'patch clamp';
+ms.TechniquesEmployed = 'patch clamp';     % -> a Technique assertion, openMINDS term
+% subjects (projections off subject statements) -> dropped
 ms.Subjects = struct('SubjectName', 'worm_1', 'BiologicalSexList', 'male');
 v1.metadata_editor = struct('metadata_structure', ms);
 end
@@ -2714,8 +2722,8 @@ function testMetadataEditorDecomposes(testCase)
 % techniques and subjects are still not stored (projections).
 out = runJ(metadataEditorDoc());
 m = out.migrated;
-% 8 entities + 11 assertions + 8 relations
-verifyEqual(testCase, numel(m), 27);
+% 8 entities + 14 assertions + 8 relations
+verifyEqual(testCase, numel(m), 30);   % + 3 dataset form term assertions ([dataset form terms])
 verifyEqual(testCase, nLeafJ(m, 'dataset'), 1);
 verifyEqual(testCase, nLeafJ(m, 'person'), 2);
 verifyEqual(testCase, nLeafJ(m, 'organization'), 2);   % Analytical Society (deduped) + NIH
@@ -2723,7 +2731,7 @@ verifyEqual(testCase, nLeafJ(m, 'funding'), 1);
 verifyEqual(testCase, nLeafJ(m, 'publication'), 1);
 verifyEqual(testCase, nLeafJ(m, 'protocol'), 1);
 verifyEqual(testCase, nLeafJ(m, 'directed_relation'), 8);
-verifyEqual(testCase, out.summary.by_class.assertion, 11);
+verifyEqual(testCase, out.summary.by_class.assertion, 14);
 % no subject is minted and nothing about the editor's Subjects is asserted
 verifyEqual(testCase, nLeafJ(m, 'organism'), 0);
 ds = firstOfClassJ(m, 'dataset');
@@ -2755,8 +2763,32 @@ rd = assertionAboutJ(out.migrated, id, 'release date');
 verifyEqual(testCase, rd.get('date.value').instant, '2024-01-15');
 kw = textAboutJ(out.migrated, id, 'Keyword');
 verifyEqual(testCase, sort(kw), {'calcium imaging', 'worm'});
-% bucket-2 projections are not stored
-verifyEmpty(testCase, assertionAboutJ(out.migrated, id, 'experimental approach'));
+% INVERTED 2026-10-26 (they were dropped as projections): [dataset form terms]
+% (Jess Haley, 2026-10-25) -- term assertions about the dataset entity, each value
+% a term of the binding's closed list
+ea = assertionAboutJ(out.migrated, id, 'experimental approach');
+assertNotEmpty(testCase, ea);
+verifyTrue(testCase, startsWith(char(ea.get('term.value').node), 'ILX:'));
+te = assertionAboutJ(out.migrated, id, 'Technique');
+assertNotEmpty(testCase, te);
+verifyEqual(testCase, char(te.get('term.value').node), 'openminds:technique/patchClamp');
+end
+
+function testADatasetFormValueOutsideTheClosedListCarriesTheForm(testCase)
+% [dataset form terms]: "A form value that is not in the list carries the form
+% whole as v1 rather than being dropped." Soph's "derivedData" is openMINDS's own
+% id for semanticDataType derivedData, so it is in the list.
+v1 = metadataEditorDoc();
+v1.metadata_editor.metadata_structure.DataType = 'derivedData';
+out = runJ(v1);
+dt = assertionAboutJ(out.migrated, 'sess_09', 'Scientific Data Type');
+assertNotEmpty(testCase, dt);
+verifyEqual(testCase, char(dt.get('term.value').node), 'openminds:semanticDataType/derivedData');
+v1.metadata_editor.metadata_structure.TechniquesEmployed = 'interpretive dance';
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'interpretive dance'), d);
 end
 
 
@@ -2991,7 +3023,7 @@ function testMetadataEditorSurvivesTheJsonRoundTrip(testCase)
 % UPDATED for #88 (entity types, assertions; 27 documents).
 out = runJRoundTrip(metadataEditorDoc());
 m = out.migrated;
-verifyEqual(testCase, numel(m), 27);
+verifyEqual(testCase, numel(m), 30);   % + 3 dataset form term assertions ([dataset form terms])
 verifyEqual(testCase, nLeafJ(m, 'dataset'), 1);
 verifyEqual(testCase, nLeafJ(m, 'person'), 2);
 verifyEqual(testCase, nLeafJ(m, 'organization'), 2);
@@ -3043,7 +3075,7 @@ function testMetadataEditorAuthorsSurviveTheCellDecode(testCase)
 % array. UPDATED for #88.
 out = runJRoundTrip(metadataEditorDocCellShapedAuthors());
 m = out.migrated;
-verifyEqual(testCase, numel(m), 27);
+verifyEqual(testCase, numel(m), 30);   % + 3 dataset form term assertions ([dataset form terms])
 verifyEqual(testCase, nLeafJ(m, 'person'), 2);
 verifyEqual(testCase, nLeafJ(m, 'organization'), 2);      % Analytical Society + NIH
 verifyEqual(testCase, countRelsByName(m, 'has_author'), 2);
@@ -3178,6 +3210,15 @@ end
 
 
 function v1 = sessionInADatasetDoc(memberSession)
+% An INGESTED membership the generic stage places whole: no session_reference
+% and no opener class (both open cases carry the document as v1 for now,
+% testSessionMembershipOpenCasesAreCarried).
+v1 = writerSessionInADatasetDoc(memberSession);
+v1.session_in_a_dataset = struct('session_id', memberSession, 'is_linked', 0);
+end
+
+function v1 = writerSessionInADatasetDoc(memberSession)
+% session_in_a_dataset as NDI's writer fills it.
 v1 = struct();
 v1.document_class = struct('class_name', 'session_in_a_dataset', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -3190,6 +3231,52 @@ v1.session_in_a_dataset = struct('session_id', memberSession, ...
     'session_creator_input2', '', 'session_creator_input3', '', ...
     'session_creator_input4', '', 'session_creator_input5', '', ...
     'session_creator_input6', '');
+end
+
+function testAnIngestedSessionsMembershipSaysSo(testCase)
+% [session membership records linked or ingested] (Jess Haley, 2026-10-25):
+% the relation's method.term says how the session joined -- EMPTY:0000399
+% "database ingestion" ([census terms]).
+out = runJ(sessionInADatasetDoc('member_sess_9'));
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+assertNotEmpty(testCase, rel);
+m = rel.get('relation.method');
+verifyEqual(testCase, char(m.term.node), 'EMPTY:0000399');
+end
+
+function testALinkedSessionsMembershipKeepsItsOpenerAndPath(testCase)
+% A LINKED session: method EMPTY:0000400 "database linking", parameters its
+% opener class (EMPTY:0000401 "software class") and its path (NCIT:C47922
+% Pathname); an input restating the session id is dropped as a copy.
+v1 = sessionInADatasetDoc('member_sess_9');
+v1.session_in_a_dataset = struct('session_id', 'member_sess_9', 'is_linked', 1, ...
+    'session_creator', 'ndi.session.dir', 'session_creator_input1', '', ...
+    'session_creator_input2', '/data/exp_demo', 'session_creator_input3', 'member_sess_9');
+out = runJ(v1);
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+assertNotEmpty(testCase, rel);
+m = rel.get('relation.method');
+verifyEqual(testCase, char(m.term.node), 'EMPTY:0000400');
+p = m.parameters;
+if iscell(p); p = [p{:}]; end
+nodes = arrayfun(@(x) char(x.variable.node), p, 'UniformOutput', false);
+verifyEqual(testCase, sort(nodes), sort({'EMPTY:0000401', 'NCIT:C47922'}));
+texts = arrayfun(@(x) char(x.text), p, 'UniformOutput', false);
+verifyEqual(testCase, sort(texts), sort({'ndi.session.dir', '/data/exp_demo'}));
+end
+
+function testSessionMembershipOpenCasesAreCarried(testCase)
+% The open cases -- a `session_reference`, an ingested session's opener class
+% -- carry the document whole as v1 for now ([generic stage is lossless]).
+v1 = writerSessionInADatasetDoc('member_sess_9');
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+v1.session_in_a_dataset.session_reference = '';
+v1.session_in_a_dataset.session_creator_input1 = '';
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'session_creator'));
 end
 
 function [name, node] = membershipRelation()

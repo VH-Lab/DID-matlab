@@ -174,32 +174,38 @@ end
 end
 
 function [kind, unit] = termNumberKind(node, label)
-% The kind of number a treatment TERM says its numeric_value is, and the
-% unit it is given in ('' / '' when the term does not say). Keyed by the
-% term (CURIE key) or its label. One row per term whose definition states it:
-%   EMPTY:0000199 "treatment: grating direction-of-motion visual stimulation",
-%   defined "Training was provided for several hours with drifting
-%   sinusoidal gratings (provided in hours)"; NDI's one writer,
-%   +setup/+conv/+vhlab/treatmentTable.m row 1, stores duration_hours.
-T = {'EMPTY:0000199', 'treatment: grating direction-of-motion visual stimulation', 'time', 'hours'};
+% The kind of number a treatment TERM says its numeric_value is, and the unit
+% it is given in ('' / '' when the term does not say). Decided by Jess Haley,
+% 2026-10-26 [term-stated unit is generic] (did-schema
+% V_eta_go_forward_class_audit.md), superseding [termNumberKind is
+% per-dataset]: "the unit is stated on the term's row in the term registry
+% (not in migrator code), and a migrator reads it from there" -- the row's
+% `number_unit` (e.g. EMPTY:0000199 -> om:hour). The kind is the unit's
+% (jSourceUnit); a unit whose kind is not known states nothing here.
 kind = '';
 unit = '';
-lab = lower(strtrim(label));
-for k = 1:size(T, 1)
-    hit = strcmpi(lab, T{k, 2});
-    if ~hit && ~isempty(node)
-        try
-            hit = strcmp(char(did2.schema.curieKey(node)), char(did2.schema.curieKey(T{k, 1})));
-        catch
-            hit = strcmpi(strtrim(node), T{k, 1});
-        end
-    end
-    if hit
-        kind = T{k, 3};
-        unit = T{k, 4};
-        return;
+e = [];
+try
+    ix = did2.schema.termIndex();
+catch
+    return;
+end
+if ~isstruct(ix) || ~ix.present; return; end
+if ~isempty(node)
+    try
+        k = did2.schema.curieKey(node);
+        if isKey(ix.byNode, k); e = ix.byNode(k); end
+    catch
     end
 end
+if isempty(e) && ~isempty(label) && isKey(ix.byName, lower(strtrim(label)))
+    e = ix.byName(lower(strtrim(label)));
+end
+if isempty(e) || ~isfield(e, 'number_unit') || isempty(e.number_unit); return; end
+[~, ~, unitKind] = jSourceUnit(e.number_unit.name);
+if isempty(unitKind); return; end
+kind = unitKind;
+unit = e.number_unit.name;
 end
 
 function v2Body = carryAsV1(preBody, why)
