@@ -544,7 +544,7 @@ function testLabelEqualToTypeIsNotDuplicated(testCase)
 % `label` is the same fact as `band` in every real document (both "high"), so
 % it is not written. (Until 2026-10-26 this also asserted that sampleFrequency
 % was not carried; [small unread settings] (2) makes it a method parameter --
-% testOnTheFrequencyFilterPathASampleFrequencyCarriesTheDocument and
+% testOnTheFrequencyFilterPathASampleFrequencyFailsLoudly and
 % testAFilterIsAMethodOnceTheBodyTakesMethodId.)
 out = runJ(pyraviewBody(predFilterBlock()));
 ff = docOfClass(testCase, out, 'frequency_filter');
@@ -552,15 +552,32 @@ blk = ff.get('frequency_filter');
 verifyFalse(testCase, isfield(blk, 'label'));
 end
 
-function testOnTheFrequencyFilterPathASampleFrequencyCarriesTheDocument(testCase)
-% INVERTS what testSampleFrequencyAndLabelAreNotCarried asserted (the rate was
-% dropped). [small unread settings] (2) (Jess Haley, 2026-10-26): the rate is a
-% method parameter; frequency_filter has no sample rate, so on that path the
-% pyraview is carried whole as v1.
+function testOnTheFrequencyFilterPathASampleFrequencyFailsLoudly(testCase)
+% INVERTS testOnTheFrequencyFilterPathASampleFrequencyCarriesTheDocument (the
+% pyraview was carried whole as v1, with no carry register row). [pipeline
+% defects are not carries] (Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md): a document left unconverted because the
+% LOADED SCHEMA is stale (sampled_body still declares filter_id, the
+% pre-[filters are methods] frequency_filter path) is a defect, and the run
+% fails loudly instead of carrying it.
 assumeTrue(testCase, loadedSchemaTakesFilterId(), ...
     'the loaded sampled_body takes method_id: the rate has a home');
+% the migrator itself raises, naming the cause
+verifyError(testCase, ...
+    @() did2.convert.migrators_j.pyraview(pyraviewBody(writerFilterBlock())), ...
+    'did2:convert:schemaTooOld');
+try
+    did2.convert.migrators_j.pyraview(pyraviewBody(writerFilterBlock()));
+catch err
+    verifySubstring(testCase, err.message, 'loaded schema is too old');
+    verifySubstring(testCase, err.message, 'method_id');
+end
+% through the pipeline it is a quarantine with that identifier, never a carry
 out = runJ(pyraviewBody(writerFilterBlock()));
-verifyPyraviewCarried(testCase, out, 'sampleFrequency');
+assertEqual(testCase, numel(out.quarantine), 1, 'the pyraview fails, it is not carried');
+verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:schemaTooOld');
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+    'a schema defect is not a carry');
 end
 
 function testALabelThatDiffersFromItsTypeCarriesTheDocument(testCase)

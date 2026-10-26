@@ -177,12 +177,12 @@ end
 % Scientific Data Type NCIT:C175886, valued by openMINDS terms). "A form value
 % that is not in the list carries the form whole as v1 rather than being
 % dropped."
-[formTerms, formUnplaced] = datasetFormTerms(ms);
+[formTerms, formUnplaced] = datasetFormTerms(ms, char(preBody.base.id));
 unplaced = [unplaced, formUnplaced];
 if ~isempty(unplaced)
-    % carry-register: carry-043 carry-044 carry-054 (the items above); none for
-    % a form field whose binding the loaded schema does not hold (a schema
-    % that is not did-schema's, not a reason in the v1 document)
+    % carry-register: carry-043 carry-044 carry-054 (the items above). A form
+    % field whose binding the loaded schema does not hold is not a carry: it
+    % errors in datasetFormTerms ([pipeline defects are not carries])
     did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     v2Body = {preBody};
@@ -302,13 +302,15 @@ end
 v2Body = bodies;
 end
 
-function [terms, unplaced] = datasetFormTerms(ms)
+function [terms, unplaced] = datasetFormTerms(ms, docId)
 %DATASETFORMTERMS {variable, value} per form value of ExperimentalApproach,
 %   TechniquesEmployed and DataType, each value matched (by label, or by its
 %   node or the node's last segment -- openMINDS's own id, e.g. "derivedData")
 %   to a term of the binding's closed `values` list in the binding registry;
-%   UNPLACED names each value that matches none (or a field whose binding the
-%   loaded schema does not have).
+%   UNPLACED names each value that matches none. A field whose binding the
+%   loaded schema does not have is an error, did2:convert:schemaTooOld
+%   ([pipeline defects are not carries], Jess Haley, 2026-10-26); DOCID names
+%   the document in its message.
 fields = { ...
     'ExperimentalApproach', 'EMPTY:0000356'; ...
     'TechniquesEmployed',   'NCIT:C16847'; ...
@@ -325,9 +327,17 @@ for f = 1:size(fields, 1)
     if isempty(vals); continue; end
     row = bindingRow(reg, fields{f, 2});
     if isempty(row)
-        unplaced{end+1} = sprintf('%s (no %s binding in the loaded schema)', ...
-            fields{f, 1}, fields{f, 2}); %#ok<AGROW>
-        continue;
+        % [pipeline defects are not carries] (Jess Haley, 2026-10-26, did-schema
+        % V_eta_go_forward_class_audit.md): a binding the LOADED SCHEMA lacks is
+        % a defect of the pipeline, not of the v1 document, so it is never a
+        % carry. The run fails loudly; the cause is the schema it was given.
+        error('did2:convert:schemaTooOld', ...
+            ['metadata_editor "%s": the loaded schema is too old or incomplete: ' ...
+             'its binding registry has no subject_statement_bindings row with ' ...
+             'a closed `values` list for %s (the binding of the form field %s). ' ...
+             'Load a did-schema that holds it (DID_SCHEMA_PATH); the document ' ...
+             'is not carried for a schema defect.'], ...
+            docId, fields{f, 2}, fields{f, 1});
     end
     for k = 1:numel(vals)
         t = matchValue(row.values, vals{k});

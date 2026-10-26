@@ -163,8 +163,9 @@ if ~isempty(filterUnplaced)
     % [small unread settings] (2) (Jess Haley, 2026-10-26): a filter block this
     % cannot place whole carries the document whole as v1
     % carry-register: carry-006 carry-007 carry-042 carry-061 via
-    % private/jFrequencyFilter.m; none for a sampleFrequency on the
-    % frequency_filter path (the pre-[filters are methods] schema, no rate)
+    % private/jFrequencyFilter.m. A sampleFrequency on the frequency_filter
+    % path (the pre-[filters are methods] schema) is not a carry: it errors
+    % there, did2:convert:schemaTooOld ([pipeline defects are not carries])
     did2.convert.reportNote('carried_as_v1', 'pyraview', char(preBody.base.id), ...
         ['unplaced: ' strjoin(filterUnplaced, ', ')]);
     bodies = {preBody};
