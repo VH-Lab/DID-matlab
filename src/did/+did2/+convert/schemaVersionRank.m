@@ -15,6 +15,12 @@ function [rank, known] = schemaVersionRank(version)
 %   forward is the whole point; running the same pipeline over a newer one is
 %   the opposite of what is wanted, and it happened silently.
 %
+%   isAlreadyTarget NO LONGER RANKS (Decided by Jess Haley, 2026-10-26 [early
+%   migration pieces fixed] (4): "already converted" is a stamp check,
+%   did_v1 / did_v2, not a rank against V_eta). The line stays for what still
+%   reads it: KNOWN (v1_to_v2's refuseUnknownSchemaVersion) and rank 0
+%   (did2.schema.isV1Stamp).
+%
 %   THE LINE, AND WHAT IS AND IS NOT IN IT
 %   --------------------------------------
 %   The names before V_eta were BRAINSTORM iterations -- design drafts, never

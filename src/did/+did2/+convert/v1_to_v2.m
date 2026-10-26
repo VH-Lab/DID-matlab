@@ -21,9 +21,11 @@ function result = v1_to_v2(v1Bodies, options)
 %        placeholder blocks for inherited classes. Silent no-op if
 %        the schema cache cannot resolve the chain.
 %
-%   Bodies that are already at the target
-%   (document_class.schema_version ranks at or beyond 'V_eta' AND no v1-only
-%   underscore-prefixed top-level markers) short-circuit steps 1-3 and
+%   Bodies that are already converted (document_class.schema_version is a
+%   V2 stamp, 'did_v2' -- a stamp check, not a rank against 'V_eta', [early
+%   migration pieces fixed] (4), Jess Haley, 2026-10-26 -- AND no v1-only
+%   underscore-prefixed top-level markers; did2.convert.isAlreadyTarget)
+%   short-circuit steps 1-3 and
 %   go straight to ensureClassBlocks + validate. Makes the converter
 %   safely re-runnable so a partial normalisation or migration run can
 %   resume after an interruption
@@ -284,8 +286,8 @@ for k = 1:numel(bodies)
         preBody = ensureStruct(rawBody);
         refuseUnknownSchemaVersion(preBody);
         if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
-            % Idempotency short-circuit: the body is already at the
-            % target, so skip universalRenames and the per-class migrators.
+            % Idempotency short-circuit: the body is already stamped
+            % did_v2 (a stamp check), so skip universalRenames and the per-class migrators.
             % ensureClassBlocks still runs (it rebuilds the target's
             % superclass chain — required) and validate still runs
             % (gate against drift). Keeps the database normalisation

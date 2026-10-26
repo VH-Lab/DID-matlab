@@ -29,8 +29,8 @@
 %                          any migrator.
 %     ensureClassBlocks  - give a body exactly the class blocks its schema
 %                          chain hosts.
-%     isAlreadyTarget    - true when a body is already at (or past) the
-%                          target version, so a re-run skips it.
+%     isAlreadyTarget    - true when a body is already stamped did_v2 (a
+%                          stamp check), so a re-run skips it.
 %     schemaVersionRank  - where a schema version sits in the did_v1 ->
 %                          V_eta line.
 %     statementKind      - the direction class and value kind of a statement.

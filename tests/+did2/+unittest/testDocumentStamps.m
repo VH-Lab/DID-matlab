@@ -205,3 +205,15 @@ function b = bodyStamped(sv)
 b = bodyUnstamped();
 b.document_class.schema_version = sv;
 end
+
+function testAlreadyConvertedIsAStampCheckNotARank(testCase)
+% [early migration pieces fixed] (4) (Jess Haley, 2026-10-26): "already
+% converted" is a stamp check (did_v1 / did_v2), not a rank against V_eta.
+% Only a did_v2 stamp is converted already; every other known name (a v1
+% stamp, none, a brainstorm name) is converted, and 'V_eta' is not a stamp
+% ([V_eta stamp not accepted]).
+verifyTrue(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v2'), 'did_v2'));
+for sv = {'', 'did_v1', 'V_alpha', 'V_zeta', 'V_eta'}
+    verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped(sv{1}), 'V_eta'), sv{1});
+end
+end
