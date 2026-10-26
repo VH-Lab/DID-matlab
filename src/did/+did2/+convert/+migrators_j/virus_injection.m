@@ -57,7 +57,7 @@ end
 siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'virus_location_ontology_name', 'virusLocation_OntologyName'}), ...
     jGetCharAny(block, {'virus_location_name', 'virusLocation_name'}));
-anchor = jTreatmentAnchor(preBody, block)  % the recorded onset, else the session;
+anchor = jTreatmentAnchor(preBody, block);  % the recorded onset, else the session
 [bodies, route, unplaced] = jTreatmentBodies(preBody, virusTerm, chemicals, siteTerm, anchor.base.id);
 if ~isempty(unplaced)
     % [generic stage is lossless] / [partly placed is carried as v1] (Jess

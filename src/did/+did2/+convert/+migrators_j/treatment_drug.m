@@ -48,7 +48,7 @@ variable  = chemicals(1).substance;   % the primary drug is the spine identity
 siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'location_ontology_node', 'location_ontologyNode'}), ...
     jGetCharAny(block, {'location_name'}));
-anchor = jTreatmentAnchor(preBody, block)  % the recorded onset, else the session;
+anchor = jTreatmentAnchor(preBody, block);  % the recorded onset, else the session
 if isHeatOnly(chemicals)
     % Babu writes a heat pulse as a treatment_drug whose one mixture row is
     % OM:Heat at 37 Degree Celsius (+babu/treatments.json `heat`). A heat row

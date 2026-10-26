@@ -430,6 +430,18 @@ for k = 1:numel(bodies)
                 end
             end
             doc = did2.document(outBody);
+            if options.Validate && carried && passedThrough
+                % not validated, but still COUNTED when V_eta keeps no
+                % schema for its class (passthrough_unvalidated_no_schema)
+                try
+                    vc = options.SchemaCache;
+                    if isempty(vc); vc = did2.schema.cache.shared(); end
+                    vc.getClass(className);
+                catch
+                    [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
+                        v1NoSchemaNames, v1NoSchemaValues, className);
+                end
+            end
             if options.Validate && ~carried
                 try
                     doc.validate('SchemaCache', options.SchemaCache);
