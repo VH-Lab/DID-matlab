@@ -325,7 +325,6 @@ jobs:
         # `claude/carry-register-rows` while that branch exists, else main.
         # The chosen ref is PRINTED. Drop the middle step once #151 merges.
         run: |
-          python3 tools/test_check_carry_citations.py
           want="${{ github.head_ref || github.ref_name }}"
           reg_ref=main
           for ref in "$want" claude/carry-register-rows; do
@@ -346,6 +345,7 @@ jobs:
             reg_dir=did-schema-register
           fi
           echo "carry register read from did-schema ref '$reg_ref' ($reg_dir)"
+          DID_SCHEMA_ROOT="$reg_dir" python3 tools/test_check_carry_citations.py
           python3 tools/check_carry_citations.py --did-schema "$reg_dir"
 
       - name: Unminted ontology terms must not increase (#70)
