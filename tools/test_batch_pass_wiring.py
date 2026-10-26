@@ -192,6 +192,16 @@ NOT_RENDERED_YET = {
         #     census_digest._render_probemap_measurement (a dedicated block, not
         #     a POST_PASSES row), the same treatment strings_by_source gets.
         "probemap_rows_by_count",
+        # epoch_extent_carried_source_ids (added 2026-10-26, [device clocks on
+        #     one epoch]) -- NOT A COUNTER: the ids of the acquisition_epoch
+        #     sources whose extents are carried, read by resolveEpochProbemap
+        #     to keep them. Its count is rendered as
+        #     `epoch_extent_carried_sources`.
+        "epoch_extent_carried_source_ids",
+        # syncrule_endpoint_first_reason (added 2026-10-26) -- NOT A COUNTER:
+        #     the text of the first reason an endpoint was not placed. Its
+        #     count is `syncrule_endpoint_unplaced`.
+        "syncrule_endpoint_first_reason",
     },
     "openminds_citations": {
         "withheld_reasons",

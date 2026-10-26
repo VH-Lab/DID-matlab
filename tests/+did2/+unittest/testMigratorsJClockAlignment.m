@@ -153,8 +153,10 @@ values = {'graph_0001', 'rule_ctoe'};
 if withEpochEdges
     % NOT a did_v1 shape -- this is what #60's epoch pass would stamp, and it is
     % the ONLY thing that opens the conversion branch. See syncrule_mapping.m.
-    names  = [names,  {'epoch_id_1', 'epoch_id_2'}];
-    values = [values, {'epochdoc_a', 'epochdoc_b'}];
+    % and, since [device clocks on one epoch] (Jess Haley, 2026-10-26), the two
+    % per-system references epochMint places on the epochs and stamps
+    names  = [names,  {'epoch_id_1', 'epoch_id_2', 'time_reference_id_1', 'time_reference_id_2'}];
+    values = [values, {'epochdoc_a', 'epochdoc_b', 'tref_a', 'tref_b'}];
 end
 v1.depends_on = struct('name', names, 'value', values);
 v1.base = struct('id', 'map_0001', 'session_id', 'sess_0001', ...
@@ -496,10 +498,12 @@ end
 
 function testMappingConvertsWhenBothEndpointsHaveAnEpochDocument(testCase)
 out = runJ(mappingFixture(true));
-verifyEqual(testCase, numel(out.migrated), 3);
+% [device clocks on one epoch] (3): the alignment alone -- its ends are the
+% per-system references epochMint stamped; the migrator mints none
+verifyEqual(testCase, numel(out.migrated), 1);
 align = findClass(testCase, out, 'clock_alignment');
 verifyEqual(testCase, align.get('base.id'), 'map_0001');       % PRESERVED
-verifyEqual(testCase, countClass(out, 'relative_time_reference'), 2);
+verifyEqual(testCase, countClass(out, 'relative_time_reference'), 0);
 end
 
 function testPolynomialKeepsTheSourceOrderAndChecksItsDegree(testCase)
@@ -530,47 +534,28 @@ verifyEqual(testCase, depVal(align, 'clock_alignment_configuration_id'), 'rule_c
 end
 
 
-function testEndpointsBecomeDirectedReferencesThatKeepObjectname(testCase)
-% The rule is symmetric but its OUTPUT is directed. UPDATED for #88: the
-% endpoints are relative_time_reference documents on input_id / output_id, each
-% anchored at its epoch (referent_id), extent = start + duration in seconds with
-% the source unit as a registry term. The endpoint objectname rode on base.name,
-% which V_eta no longer writes, and a time reference has no other slot for it:
-% on a FOLDED mapping it is not carried (it stays on every passthrough mapping,
-% testPassthroughKeepsEverythingTheLiveNdiQueryReads). Recorded in the port
-% report as an NDI reader need.
+function testTheEndsAreThePerSystemReferencesEpochMintStamped(testCase)
+% INVERTS testEndpointsBecomeDirectedReferencesThatKeepObjectname, which had the
+% migrator mint two references anchored at the epochs. Decided by Jess Haley,
+% 2026-10-26 [device clocks on one epoch] (3): "A v1 syncrule_mapping becomes a
+% clock_alignment between those two references" -- each system's reference on
+% its epoch (referent: the acquisition system), stamped by epochMint
+% (testEpochMintSyncruleArming checks objectname / objectclass / epochprobemap).
 out = runJ(mappingFixture(true));
 align = findClass(testCase, out, 'clock_alignment');
-fromRef = docWithId(testCase, out, depVal(align, 'input_id'));
-toRef   = docWithId(testCase, out, depVal(align, 'output_id'));
-verifyEqual(testCase, did2.unittest.helpers.classKey(fromRef), 'relative_time_reference');
-verifyEqual(testCase, depVal(fromRef, 'referent_id'), 'epochdoc_a');
-verifyEqual(testCase, depVal(toRef, 'referent_id'), 'epochdoc_b');
-val = fromRef.get('relative_time_reference.value');
-verifyEqual(testCase, val.clock.name, 'dev_local_time');
-verifyEqual(testCase, val.start.seconds, 0);
-verifyFalse(testCase, isfield(val, 'end'));
-verifyEqual(testCase, val.duration.seconds, 101);
-verifyEqual(testCase, val.start.source_unit.name, 'second');
+verifyEqual(testCase, depVal(align, 'input_id'), 'tref_a');
+verifyEqual(testCase, depVal(align, 'output_id'), 'tref_b');
 end
 
-
-function testNoTimeClockYieldsNoConversionAtAll(testCase)
-% NO TIMES => NO REFERENCE. A reference whose extent is NaN is a hollow
-% document; rather than emit one, the migrator falls back to the passthrough,
-% which preserves strictly more than the converted form would have.
+function testWithoutStampedReferencesThereIsNoConversion(testCase)
+% REPLACES testNoTimeClockYieldsNoConversionAtAll and
+% testNonFiniteExtentYieldsNoConversionAtAll: the endpoint's clock and extent
+% are now checked where its system reference is placed (epochMint); a mapping
+% that reaches the migrator without the two stamped references is not folded,
+% and the passthrough preserves it.
 v1 = mappingFixture(true);
-v1.syncrule_mapping.epochnode_a.epoch_clock = 'no_time';
-out = runJ(v1);
-verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'syncrule_mapping');
-end
-
-function testNonFiniteExtentYieldsNoConversionAtAll(testCase)
-% ndi.daq.reader.mfdaq/t0_t1's own docstring: "The abstract class always returns
-% {[NaN NaN]}". Real, reachable, and not a reference.
-v1 = mappingFixture(true);
-v1.syncrule_mapping.epochnode_b.t0_t1 = [NaN NaN];
+keep = ~ismember({v1.depends_on.name}, {'time_reference_id_1', 'time_reference_id_2'});
+v1.depends_on = v1.depends_on(keep);
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'syncrule_mapping');
@@ -587,7 +572,7 @@ out = did2.convert.v1_to_v2( ...
     'Validate', false, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine);
 report = did2.validate.references(out.migrated, 'KnownIds', ...
-    [{'sess_0001', 'epochdoc_a', 'epochdoc_b'}, ...
+    [{'sess_0001', 'epochdoc_a', 'epochdoc_b', 'tref_a', 'tref_b'}, ...
      did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
 verifyGreaterThanOrEqual(testCase, report.edges_examined, 10);
@@ -658,8 +643,9 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
-verifyEqual(testCase, numel(out.migrated), 3);
-% RECORDED, NOT ASSERTED AS DESIRABLE: did2.validate.isFragment's signature is
+verifyEqual(testCase, numel(out.migrated), 1);
+% (2026-10-26: the fold is the clock_alignment alone; its fragment count is not
+% asserted.) RECORDED, NOT ASSERTED AS DESIRABLE: did2.validate.isFragment's signature is
 % STRUCTURAL -- every time_reference or relation subclass is "scaffolding" -- and
 % `clock_alignment` IS a relation subclass, so a fold consisting of one
 % clock_alignment plus two relative_references is counted as a fragment even
@@ -667,7 +653,6 @@ verifyEqual(testCase, numel(out.migrated), 3);
 % counter is REPORT-ONLY, so nothing breaks; but the census's "fragments 0"
 % invariant would stop meaning what it means today the moment #60 opens this
 % gate on real data. Flagged for the isFragment owner (#57 follow-up).
-verifyEqual(testCase, out.summary.fragment_count, 1);
 end
 
 % ===================== helpers =============================================

@@ -268,6 +268,7 @@ report = struct( ...
     'acquisition_epoch_kept_clock',   0, ...
     'acquisition_epoch_kept_not_rebuilt', 0, ...
     'acquisition_epoch_kept_ensemble_unverified', 0, ...
+    'acquisition_epoch_kept_extent_carried', 0, ...
     'element_epoch_anchors_minted',   0, ...
     'archive_docs_inspected',         0, ...
     'archive_docs_retired',           0, ...
@@ -769,10 +770,28 @@ end
 % epoch has no row here, so it keeps its acquisition_epoch, counted by type; the
 % Haley V2 import makes the worm tracks.
 seriesGroups = containers.Map('KeyType', 'double', 'ValueType', 'any');  % k -> {stmt ids}
+% [device clocks on one epoch] (Jess Haley, 2026-10-26): an acquisition_epoch
+% whose extent did2.convert.epochMint could not tie to exactly one acquisition
+% system (or the second of two sources disagreeing about one system's clock) is
+% CARRIED: it is kept whole, never dissolved, so its extent is not lost.
+extentCarried = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if isfield(result, 'epoch_mint') && isstruct(result.epoch_mint) ...
+        && isfield(result.epoch_mint, 'epoch_extent_carried_source_ids')
+    ids = result.epoch_mint.epoch_extent_carried_source_ids;
+    if ischar(ids); ids = {ids}; end
+    for i = 1:numel(ids)
+        if ~isempty(ids{i}); extentCarried(char(ids{i})) = true; end
+    end
+end
 for i = 1:numel(acqEpochIdx)
     k = acqEpochIdx(i);
     b = bodies{k};
     report.acquisition_epoch_seen = report.acquisition_epoch_seen + 1;
+    if isKey(extentCarried, docIds{k})
+        report.acquisition_epoch_kept_extent_carried = ...
+            report.acquisition_epoch_kept_extent_carried + 1;
+        continue;
+    end
     elId = depValueOf(b, 'element_id');
     elType = '';
     if ~isempty(elId) && isKey(elementTypeById, elId); elType = elementTypeById(elId); end

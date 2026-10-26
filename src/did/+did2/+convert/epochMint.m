@@ -476,6 +476,9 @@ report = struct( ...
     'epoch_extent_skipped_no_time',        0, ...
     'epoch_extent_duplicate_clock',        0, ...
     'epoch_extent_conflicting_clock',      0, ...
+    'epoch_extent_refused_no_system',      0, ...
+    'epoch_extent_carried_sources',        0, ...
+    'epoch_extent_carried_source_ids',     {{}}, ...
     'epoch_extent_vacuous',             true, ...
     'metadata_ingested_seen',              0, ...
     'metadata_ingested_already_folded',    0, ...
@@ -539,8 +542,11 @@ report = struct( ...
     'syncrule_refused_no_epoch_document',  0, ...
     'syncrule_refused_migrator_declined',  0, ...
     'syncrule_refused_unsafe_output',      0, ...
+    'syncrule_endpoint_unplaced',  0, ...
+    'syncrule_endpoint_references_minted', 0, ...
     'syncrule_refused_total',              0, ...
     'syncrule_fold_vacuous',               true, ...
+    'syncrule_endpoint_first_reason',      '', ...
     ... % ==================================================================
     ... % #2 "MEASURE FIRST" (team decision 2026-08-20) -- REPORT-ONLY.
     ... % Two numbers the epochprobemap-decomposition decision needs, taken off
@@ -826,6 +832,23 @@ end
 % own copy of the same clock. Duplicates are counted and dropped; a duplicate
 % that DISAGREES about t0/t1 is counted separately and still dropped, because
 % picking a winner would be inventing a fact neither source states.
+%
+% [device clocks on one epoch] (Decided by Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md) amends option A: an epoch is ONE RECORDING,
+% possibly from several acquisition systems, and "each system's extent is its
+% own `relative_time_reference` on the epoch ... its `referent_id` THAT
+% ACQUISITION SYSTEM's entity -- not the session". So each acquisition_epoch is
+% first tied to its system: its element, up the `derived_from` chain, to the
+% probe a probemap row of the same (session, epoch) names; the row's device
+% string before ':' names the system (acquisition_system base.name, preserved
+% from the v1 daqsystem). An extent that cannot be tied to EXACTLY ONE system
+% mints nothing and its source is CARRIED (listed in
+% `epoch_extent_carried_source_ids`, which resolveEpochProbemap keeps), and so
+% is the second of two sources disagreeing about ONE system's clock (4).
+% Uniqueness is by clock AND referent (the amended [time_reference uniqueness
+% rule]).
+sysIdx = deviceClockIndex(bodies, rows, n);
+carriedSources = {};
 clocksByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:n
     if ~strcmp(rows(k).class_name, 'acquisition_epoch'); continue; end
@@ -847,6 +870,17 @@ for k = 1:n
     end
     report.epoch_extent_clocks_read = ...
         report.epoch_extent_clocks_read + numel(entries);
+    sysId = extentSystemOf(bodies{k}, rows(k).session_id, es, sysIdx);
+    if isempty(sysId)
+        report.epoch_extent_refused_no_system = ...
+            report.epoch_extent_refused_no_system + 1;
+        carriedSources{end+1} = rows(k).doc_id; %#ok<AGROW>
+        continue;
+    end
+    for i = 1:numel(entries)
+        entries{i}.system = sysId;
+        entries{i}.source = rows(k).doc_id;
+    end
     key = pairKey(rows(k).session_id, es);
     if isKey(clocksByKey, key)
         clocksByKey(key) = [clocksByKey(key), entries];
@@ -903,6 +937,14 @@ extraBodies = {};    % bodies 2..N of every armed call, awaiting the re-fold
 % the result was a dangling reference. CI caught all three tests; this list and
 % the append loop after the mint are the repair.
 extentRefIds = {};
+% (epoch document id | system id | clock) -> {reference id, t0, t1}: the
+% per-system references a syncrule_mapping's two ends become ([device clocks on
+% one epoch] (3)), and minted index by epoch id so an endpoint may add one
+extentByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
+mintedIdxById = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for m = 1:numel(minted)
+    mintedIdxById(char(minted{m}.base.id)) = m;
+end
 for m = 1:numel(minted)
     epochBody = minted{m};
     key = pairKey(did2.schema.cache.sessionIdOf(epochBody), epochBody.entity.local_identifier);
@@ -924,6 +966,7 @@ for m = 1:numel(minted)
         report.epoch_extent_duplicate_clock + stats.duplicate;
     report.epoch_extent_conflicting_clock = ...
         report.epoch_extent_conflicting_clock + stats.conflicting;
+    carriedSources = [carriedSources, stats.carried]; %#ok<AGROW>
     if isempty(refs); continue; end
     for r = 1:numel(refs)
         % did-schema #88: one `time_reference_id` edge declared `multiple`,
@@ -934,6 +977,9 @@ for m = 1:numel(minted)
         % mint). Using only the first is what dropped them in 68a1900.
         extraBodies{end+1} = refs{r}; %#ok<AGROW>
         extentRefIds{end+1} = refs{r}.base.id; %#ok<AGROW>
+        [rc, rs, rd] = extentValue(refs{r});
+        extentByKey(extentKey(epochBody.base.id, depValueOf(refs{r}, 'referent_id'), rc)) = ...
+            {refs{r}.base.id, rs, rd};
     end
     % Code scanning flags this line as "variable appears to change size on
     % every loop iteration" (alert 218). FALSE POSITIVE, verified by reading
@@ -949,6 +995,9 @@ for m = 1:numel(minted)
     report.epoch_extent_epochs_given_extent = ...
         report.epoch_extent_epochs_given_extent + 1;
 end
+carriedSources = unique(carriedSources(~cellfun(@isempty, carriedSources)), 'stable');
+report.epoch_extent_carried_source_ids = carriedSources;
+report.epoch_extent_carried_sources = numel(carriedSources);
 
 % The epoch-edge declaration check reads the SCHEMA (epochIndex, which walks the
 % superclass chain and answers false when it cannot look). It is consulted only
@@ -1430,8 +1479,53 @@ for k = 1:n
             report.syncrule_refused_no_epoch_document + 1;
         continue;
     end
+    % [device clocks on one epoch] (3) (Jess Haley, 2026-10-26): the
+    % clock_alignment is BETWEEN the two per-system references on the epochs.
+    % Each endpoint names its system (objectname); objectname / objectclass are
+    % left unwritten only when they equal that system's name / class, the
+    % epochprobemap only when it equals the epoch's manifest, and the extent
+    % must agree with the system's reference on the epoch (or becomes it).
+    % Anything else: the mapping stays, carried.
+    [refA, whyA, newA] = syncEndpointReference(bodies{k}, {'epochnode_a', 'epochNodeA'}, ...
+        rows(k).session_id, esA, epochIdByKey(keyA), sysIdx, extentByKey, mintedIdxById);
+    [refB, whyB, newB] = syncEndpointReference(bodies{k}, {'epochnode_b', 'epochNodeB'}, ...
+        rows(k).session_id, esB, epochIdByKey(keyB), sysIdx, extentByKey, mintedIdxById);
+    if isempty(refA) || isempty(refB)
+        report.syncrule_endpoint_unplaced = ...
+            report.syncrule_endpoint_unplaced + 1;
+        report.syncrule_folds_withheld = report.syncrule_folds_withheld + 1;
+        if isempty(report.syncrule_endpoint_first_reason)
+            report.syncrule_endpoint_first_reason = firstNonEmptyText(whyA, whyB);
+        end
+        continue;
+    end
+    % an endpoint whose system has no extent on the epoch yet gives it one
+    newRefs = [newA, newB];
+    for r = 1:numel(newRefs)
+        nr = newRefs{r};
+        [rc, rs, rd] = extentValue(nr);
+        ek = extentKey(depValueOf(nr, 'epoch_holder'), depValueOf(nr, 'referent_id'), rc);
+        if isKey(extentByKey, ek)
+            % the other endpoint just minted the same one: share it
+            prior = extentByKey(ek);
+            if strcmp(refA, nr.base.id); refA = prior{1}; end
+            if strcmp(refB, nr.base.id); refB = prior{1}; end
+            continue;
+        end
+        holder = depValueOf(nr, 'epoch_holder');
+        nr = rmEpochHolder(nr);
+        m = mintedIdxById(holder);
+        minted{m} = addDep(minted{m}, 'time_reference_id', nr.base.id);
+        extraBodies{end+1} = nr; %#ok<AGROW>
+        extentRefIds{end+1} = nr.base.id; %#ok<AGROW>
+        extentByKey(ek) = {nr.base.id, rs, rd};
+        report.syncrule_endpoint_references_minted = ...
+            report.syncrule_endpoint_references_minted + 1;
+    end
     b = setDep(bodies{k}, 'epoch_id_1', epochIdByKey(keyA));
     b = setDep(b, 'epoch_id_2', epochIdByKey(keyB));
+    b = setDep(b, 'time_reference_id_1', refA);
+    b = setDep(b, 'time_reference_id_2', refB);
     report.syncrule_edges_stamped = report.syncrule_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'syncrule_mapping');
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
@@ -1624,6 +1718,7 @@ report.response_refused_total = report.response_refused_no_epoch_string ...
 report.response_fold_vacuous = (report.response_scalar_seen == 0);
 report.syncrule_refused_total = report.syncrule_refused_no_epoch_string ...
     + report.syncrule_refused_no_epoch_document ...
+    + report.syncrule_endpoint_unplaced ...
     + report.syncrule_refused_migrator_declined ...
     + report.syncrule_refused_unsafe_output;
 report.syncrule_fold_vacuous = (report.syncrule_seen == 0);
@@ -2282,6 +2377,146 @@ for k = 1:numel(sources)
 end
 end
 
+function k = extentKey(epochId, systemId, clock)
+%EXTENTKEY (epoch, system, clock): one epoch's references are unique by clock AND
+%   referent ([device clocks on one epoch]; the amended [time_reference
+%   uniqueness rule]).
+k = [char(epochId) char(0) char(systemId) char(0) char(clock)];
+end
+
+function [clk, startSec, durSec] = extentValue(ref)
+%EXTENTVALUE The clock name, start and duration (seconds) of a built reference.
+clk = ''; startSec = NaN; durSec = NaN;
+if isa(ref, 'did2.document'); ref = ref.toStruct(); end
+if ~isfield(ref, 'relative_time_reference'); return; end
+v = ref.relative_time_reference.value;
+if isfield(v, 'clock')
+    c = v.clock;
+    if isstruct(c) && isfield(c, 'name'); c = c.name; end
+    clk = char(c);
+end
+if isfield(v, 'start') && isstruct(v.start) && isfield(v.start, 'seconds')
+    startSec = double(v.start.seconds);
+end
+if isfield(v, 'duration') && isstruct(v.duration) && isfield(v.duration, 'seconds')
+    durSec = double(v.duration.seconds);
+end
+end
+
+function b = rmEpochHolder(b)
+%RMEPOCHHOLDER Drop the transient `epoch_holder` edge syncEndpointReference uses
+%   to say which epoch a new endpoint reference belongs on.
+if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
+d = b.depends_on;
+if iscell(d)
+    keep = cellfun(@(x) ~(isstruct(x) && isfield(x, 'name') && strcmp(char(x.name), 'epoch_holder')), d);
+else
+    keep = ~arrayfun(@(x) strcmp(char(x.name), 'epoch_holder'), d);
+end
+b.depends_on = d(keep);
+end
+
+function t = firstNonEmptyText(a, b)
+t = a;
+if isempty(t); t = b; end
+end
+
+function [refId, why, newRefs] = syncEndpointReference(body, nodeNames, sessionId, ...
+    epochString, epochId, sysIdx, extentByKey, mintedIdxById)
+%SYNCENDPOINTREFERENCE The per-system reference one syncrule_mapping endpoint
+%   names, or '' and WHY when the endpoint cannot be placed whole ([device
+%   clocks on one epoch] (3), Jess Haley, 2026-10-26):
+%     - `objectname` names exactly one acquisition system of the session;
+%     - `objectclass`, when stated, is that system's class (its software);
+%     - `epochprobemap`, when stated, equals the epoch's manifest (the
+%       epochfiles_ingested of that system's file pattern for this epoch);
+%     - the clock is a bound clock (an `approx_` tolerance is not placed) and
+%       t0_t1 is finite;
+%     - the system's reference on the epoch for that clock, when it exists,
+%       states the same extent; when it does not exist and the epoch was minted
+%       here, NEWREFS holds the one to add (its transient `epoch_holder` edge
+%       names the epoch).
+refId = ''; why = ''; newRefs = {};
+sm = struct();
+if isfield(body, 'syncrule_mapping') && isstruct(body.syncrule_mapping)
+    sm = body.syncrule_mapping;
+end
+node = [];
+for j = 1:numel(nodeNames)
+    if isfield(sm, nodeNames{j}) && isstruct(sm.(nodeNames{j})) && isscalar(sm.(nodeNames{j}))
+        node = sm.(nodeNames{j}); break;
+    end
+end
+if isempty(node); why = 'no endpoint node'; return; end
+objName = charField(node, {'objectname', 'objectName'});
+objClass = charField(node, {'objectclass', 'objectClass'});
+pm = charField(node, {'epochprobemap', 'epochProbeMap'});
+clk = charField(node, {'epoch_clock', 'epochClock'});
+if isempty(clk) && isfield(node, 'time_reference') && isstruct(node.time_reference)
+    clk = charField(node.time_reference, {'epoch_clock', 'epochClock'});
+end
+t = [];
+for f = {'t0_t1', 't0t1'}
+    if isfield(node, f{1}) && isnumeric(node.(f{1})); t = double(node.(f{1})(:)'); break; end
+end
+sk = pairKey(sessionId, objName);
+if isempty(objName) || ~isKey(sysIdx.systems, sk); why = 'objectname names no acquisition system'; return; end
+ids = unique(sysIdx.systems(sk));
+if numel(ids) ~= 1; why = 'objectname names more than one acquisition system'; return; end
+sysId = ids{1};
+if ~isempty(objClass)
+    cls = '';
+    if isKey(sysIdx.softwareOf, sysId) && isKey(sysIdx.lidOf, sysIdx.softwareOf(sysId))
+        cls = regexprep(sysIdx.lidOf(sysIdx.softwareOf(sysId)), '@.*$', '');
+    end
+    if ~strcmp(cls, objClass); why = 'objectclass is not the system''s class'; return; end
+end
+if ~isempty(pm)
+    man = '';
+    if isKey(sysIdx.navOf, sysId)
+        mk = [pairKey(sessionId, epochString) char(0) sysIdx.navOf(sysId)];
+        if isKey(sysIdx.manifests, mk); man = sysIdx.manifests(mk); end
+    end
+    if ~strcmp(normaliseText(man), normaliseText(pm))
+        why = 'epochprobemap is not the epoch''s manifest'; return;
+    end
+end
+if isempty(clk) || strcmp(clk, 'no_time') || strncmp(clk, 'approx_', 7)
+    why = 'clock not placed'; return;
+end
+if numel(t) < 2 || ~all(isfinite(t(1:2))); why = 'no finite t0_t1'; return; end
+ek = extentKey(epochId, sysId, clk);
+if isKey(extentByKey, ek)
+    prior = extentByKey(ek);
+    if abs(prior{2} - t(1)) > 1e-9 * max(1, abs(t(1))) ...
+            || abs(prior{3} - (t(2) - t(1))) > 1e-9 * max(1, abs(t(2) - t(1)))
+        why = 'extent disagrees with the system''s reference on the epoch'; return;
+    end
+    refId = prior{1};
+    return;
+end
+if ~isKey(mintedIdxById, epochId); why = 'epoch not minted here'; return; end
+sec = struct('node', 'om:second-Time', 'name', 'second');
+try
+    ref = did2.build.relativeTimeReference(sysId, 'Clock', clk, ...
+        'Start', t(1), 'StartSourceValue', t(1), 'StartSourceUnit', sec, ...
+        'StartApproximate', false, ...
+        'Duration', t(2) - t(1), 'DurationSourceValue', t(2) - t(1), ...
+        'DurationSourceUnit', sec, 'DurationApproximate', false, ...
+        'SessionId', sessionId, 'CreationTimestamp', did2.convert.migrationTime(), ...
+        'Validate', false);
+catch
+    why = 'clock not in the bound set'; return;
+end
+ref = addDep(ref, 'epoch_holder', epochId);
+refId = ref.base.id;
+newRefs = {ref};
+end
+
+function t = normaliseText(s)
+t = strtrim(regexprep(char(s), '\r\n?', newline));
+end
+
 function [esA, esB] = syncEndpointEpochStrings(body)
 %SYNCENDPOINTEPOCHSTRINGS The two endpoint epoch-id strings of a syncrule_mapping.
 %   Reads them off a (possibly reshaped) `syncrule_mapping` body. did_v1 stores
@@ -2929,37 +3164,27 @@ end
 end
 
 function [refs, stats] = epochExtentReferences(entries, sessionDocumentId, ...
-    sessionId, datestamp)
-%EPOCHEXTENTREFERENCES One `relative_reference` per DISTINCT clock of an epoch.
+    sessionId, datestamp) %#ok<INUSL> sessionDocumentId: the caller's guard
+%EPOCHEXTENTREFERENCES One `relative_time_reference` per DISTINCT (clock,
+%   acquisition system) of an epoch.
 %
-%   #60 option A. Each reference is anchored to the SESSION, not to the epoch --
-%   the epoch is the HOLDER (`epoch.time_reference_#`), so anchoring to it would
-%   point a document at its own holder.
+%   [device clocks on one epoch] (Jess Haley, 2026-10-26): each reference's
+%   `referent_id` is the ACQUISITION SYSTEM whose clock it is (entries{k}.system,
+%   tied by the caller), no longer the session; the epoch HOLDS the references
+%   (`time_reference_id`), as under #60 option A. Uniqueness is by clock AND
+%   referent: two systems' dev_local_time are two references.
 %
-%   THE TARGET SHAPE IS jEpochClockReferences', DELIBERATELY, FIELD FOR FIELD:
-%   class_version 2.0.0 over `time_reference` 4.0.0, `relative_to` the only
-%   edge, and `value = {clock, start, duration}` with the EXTENT stored as a
-%   duration rather than a raw end time (CHANGE 1 of the time model -- `end` is
-%   exactly recoverable as start + duration, and storing it separately lets the
-%   anchor's uncertainty contaminate the span's).
-%
-%   THIS IS NOT A SECOND IMPLEMENTATION OF THAT HELPER, and the distinction
-%   matters because "two implementations that disagree is worse than one that is
-%   missing" is a rule this project states out loud. jEpochClockReferences reads
-%   a DIFFERENT SOURCE -- `daqreader_epochdata_ingested.epochtable`, a cell of
-%   clock names beside a 2xN matrix -- and it lives in +migrators_j/private/,
-%   which MATLAB makes unreachable from this folder. What is shared is the
-%   TARGET, and five batch passes already construct relative_reference bodies
-%   locally for the same reason.
-%
-%   `relation` IS OMITTED, as there: it carries the qualitative Allen relation
-%   used when there is NO metric offset, and here the offsets are the content.
+%   `relation` IS OMITTED: it carries the qualitative Allen relation used when
+%   there is NO metric offset, and here the offsets are the content.
 %
 %   NO TIMES => NO REFERENCE. A clock with no finite t0/t1, or the `no_time`
-%   sentinel, produces nothing rather than a NaN-valued document -- the hollow
-%   document silentLoss and isFragment exist to catch.
+%   sentinel, produces nothing rather than a NaN-valued document.
+%
+%   TWO SOURCES DISAGREEING about one system's clock is malformed: the first
+%   reading stands and the second source is CARRIED (stats.carried lists its
+%   document id; [device clocks on one epoch] (4)).
 refs = {};
-stats = struct('no_time', 0, 'duplicate', 0, 'conflicting', 0);
+stats = struct('no_time', 0, 'duplicate', 0, 'conflicting', 0, 'carried', {{}});
 seen = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:numel(entries)
     e = entries{k};
@@ -2968,29 +3193,24 @@ for k = 1:numel(entries)
         stats.no_time = stats.no_time + 1;
         continue;
     end
-    if isKey(seen, e.name)
-        % `epoch.json` declares referent_unique_by {time_reference_#,
-        % value.clock}, so a second copy of one clock would violate the rule
-        % the schema already states. Several acquisition_epoch documents
-        % sharing one epoch is the NORMAL case, not an anomaly.
-        prior = seen(e.name);
+    sk = [e.name char(0) e.system];
+    if isKey(seen, sk)
+        prior = seen(sk);
         if prior.t0 ~= e.t0 || prior.t1 ~= e.t1
-            % Two sources disagree about the same clock's extent. Neither is
-            % authoritative and picking one would invent a fact -- counted
-            % separately from a harmless duplicate, and still dropped.
             stats.conflicting = stats.conflicting + 1;
+            stats.carried{end+1} = e.source;
         else
             stats.duplicate = stats.duplicate + 1;
         end
         continue;
     end
-    seen(e.name) = e;
-    % did-schema #88: a relative_time_reference onto the session entity,
+    seen(sk) = e;
+    % did-schema #88: a relative_time_reference onto the acquisition system,
     % built through did2.build. A clock name outside the bound set is refused
     % by the builder and counted, never guessed.
     sec = struct('node', 'om:second-Time', 'name', 'second');
     try
-        ref = did2.build.relativeTimeReference(sessionDocumentId, 'Clock', e.name, ...
+        ref = did2.build.relativeTimeReference(e.system, 'Clock', e.name, ...
             'Start', e.t0, 'StartSourceValue', e.t0, 'StartSourceUnit', sec, ...
             'StartApproximate', false, ...
             'Duration', e.t1 - e.t0, 'DurationSourceValue', e.t1 - e.t0, ...
@@ -3002,6 +3222,149 @@ for k = 1:numel(entries)
     end
     refs{end+1} = ref; %#ok<AGROW>
 end
+end
+
+function idx = deviceClockIndex(bodies, rows, n)
+%DEVICECLOCKINDEX What ties an acquisition_epoch to its acquisition system
+%   ([device clocks on one epoch]): acquisition systems by (session, name);
+%   entity local_identifiers by id; `derived_from` parents by child; and the
+%   probemap rows (probe local_identifier, device name) of every v1
+%   epochfiles_ingested by (session, epoch string).
+idx = struct();
+idx.systems = containers.Map('KeyType', 'char', 'ValueType', 'any');
+idx.lidOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
+idx.parentOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
+idx.probemap = containers.Map('KeyType', 'char', 'ValueType', 'any');
+idx.softwareOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
+idx.navOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
+idx.manifests = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:n
+    b = bodies{k};
+    if ~isstruct(b); continue; end
+    cn = '';
+    if isfield(b, 'document_class') && isfield(b.document_class, 'class_name')
+        cn = char(b.document_class.class_name);
+    end
+    id = rows(k).doc_id;
+    sid = rows(k).session_id;
+    switch cn
+        case 'acquisition_system'
+            nm = '';
+            if isfield(b, 'acquisition_system') && isstruct(b.acquisition_system)
+                nm = charField(b.acquisition_system, {'name'});
+            end
+            if isempty(nm); nm = baseField(b, 'name'); end
+            if isempty(nm) || isempty(id); continue; end
+            sw = depValueOf(b, 'software_id');
+            if ~isempty(sw); idx.softwareOf(id) = sw; end
+            nav = depValueOf(b, 'epoch_file_pattern_id');
+            if ~isempty(nav); idx.navOf(id) = nav; end
+            key = pairKey(sid, nm);
+            if isKey(idx.systems, key)
+                idx.systems(key) = [idx.systems(key), {id}];
+            else
+                idx.systems(key) = {id};
+            end
+        case 'entity'
+            if isfield(b, 'entity') && isstruct(b.entity) && ~isempty(id)
+                lid = charField(b.entity, {'local_identifier'});
+                if ~isempty(lid); idx.lidOf(id) = lid; end
+            end
+        case 'directed_relation'
+            r = [];
+            if isfield(b, 'directed_relation') && isstruct(b.directed_relation) ...
+                    && isfield(b.directed_relation, 'relation')
+                r = b.directed_relation.relation;
+            end
+            if ~isempty(r) && did2.build.isVocabulary(r, 'relation', 'derived_from')
+                ch = depValueOf(b, 'child_id');
+                if ~isempty(ch) && ~isKey(idx.parentOf, ch)
+                    idx.parentOf(ch) = depValueOf(b, 'parent_id');
+                end
+            end
+        case 'epochfiles_ingested'
+            if ~isfield(b, 'epochfiles_ingested') || ~isstruct(b.epochfiles_ingested)
+                continue;
+            end
+            es = charField(b.epochfiles_ingested, {'epoch_id'});
+            pm = charField(b.epochfiles_ingested, {'epochprobemap'});
+            if isempty(es) || isempty(pm); continue; end
+            key = pairKey(sid, es);
+            nav = depValueOf(b, 'filenavigator_id');
+            if ~isempty(nav); idx.manifests([key char(0) nav]) = pm; end
+            got = probemapDevices(pm);
+            if isKey(idx.probemap, key)
+                idx.probemap(key) = [idx.probemap(key), got];
+            else
+                idx.probemap(key) = got;
+            end
+    end
+end
+end
+
+function rowsOut = probemapDevices(pm)
+%PROBEMAPDEVICES {probe local_identifier, device name} per row of a v1
+%   epochprobemap (tab-separated, header `name reference type devicestring
+%   subjectstring`). The local_identifier is +migrators_j/element.m's: the name,
+%   or 'name (ref REFERENCE)'. The device is the devicestring before ':'.
+rowsOut = {};
+lines = regexp(char(pm), '\r?\n', 'split');
+if isempty(lines); return; end
+hdr = strtrim(strsplit(lines{1}, sprintf('\t')));
+iName = find(strcmp(hdr, 'name'), 1);
+iRef = find(strcmp(hdr, 'reference'), 1);
+iDev = find(strcmp(hdr, 'devicestring'), 1);
+if isempty(iName) || isempty(iDev); return; end
+for i = 2:numel(lines)
+    if isempty(strtrim(lines{i})); continue; end
+    c = strsplit(lines{i}, sprintf('\t'));
+    if numel(c) < max([iName, iDev, iRef]); continue; end
+    nm = strtrim(c{iName});
+    lid = nm;
+    if ~isempty(iRef) && ~isempty(strtrim(c{iRef}))
+        lid = sprintf('%s (ref %s)', nm, strtrim(c{iRef}));
+    end
+    dev = strtrim(c{iDev});
+    colon = find(dev == ':', 1);
+    if ~isempty(colon); dev = strtrim(dev(1:colon-1)); end
+    if isempty(dev); continue; end
+    rowsOut{end+1} = struct('lid', lid, 'device', dev); %#ok<AGROW>
+end
+end
+
+function sysId = extentSystemOf(body, sessionId, epochString, idx)
+%EXTENTSYSTEMOF The id of the ONE acquisition system whose clock an
+%   acquisition_epoch's extent is, or '' when it cannot be tied to exactly one:
+%   its element and the element's `derived_from` ancestors (a neuron -> its
+%   probe) are matched by local_identifier to the probemap rows of the same
+%   (session, epoch); the rows must name one device, and that device one
+%   acquisition_system of the session.
+sysId = '';
+key = pairKey(sessionId, epochString);
+if ~isKey(idx.probemap, key); return; end
+pmRows = idx.probemap(key);
+lids = {};
+id = depValueOf(body, 'element_id');
+for hop = 1:16
+    if isempty(id); break; end
+    if isKey(idx.lidOf, id); lids{end+1} = idx.lidOf(id); end %#ok<AGROW>
+    if ~isKey(idx.parentOf, id); break; end
+    id = idx.parentOf(id);
+end
+if isempty(lids); return; end
+devices = {};
+for r = 1:numel(pmRows)
+    if any(strcmp(pmRows{r}.lid, lids))
+        devices{end+1} = pmRows{r}.device; %#ok<AGROW>
+    end
+end
+devices = unique(devices);
+if numel(devices) ~= 1; return; end
+sk = pairKey(sessionId, devices{1});
+if ~isKey(idx.systems, sk); return; end
+ids = unique(idx.systems(sk));
+if numel(ids) ~= 1; return; end
+sysId = ids{1};
 end
 
 function ts = creationTime(body)

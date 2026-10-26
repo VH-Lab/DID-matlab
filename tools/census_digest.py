@@ -328,6 +328,9 @@ POST_PASSES = [
         ("syncrule_refused_no_epoch_document", "  no epoch document for an endpoint"),
         ("syncrule_refused_migrator_declined", "  migrator declined (no polynomial / no syncgraph_id)"),
         ("syncrule_refused_unsafe_output", "  unsafe output (id not preserved / undeclared edge)"),
+        # [device clocks on one epoch] (3) (Jess Haley, 2026-10-26)
+        ("syncrule_endpoint_unplaced", "  an endpoint not placed on its system's reference (carried)"),
+        ("syncrule_endpoint_references_minted", "  system references added to an epoch by an endpoint"),
         # ================================================================
         # #2 "MEASURE FIRST" (team 2026-08-20) -- REPORT-ONLY, no fold.
         # Two numbers the epochprobemap-decomposition decision (#60 option B)
@@ -442,6 +445,14 @@ POST_PASSES = [
         ("epoch_extent_duplicate_clock", "  duplicate clock dropped (expected)"),
         ("epoch_extent_conflicting_clock",
          "  CONFLICTING clock dropped -- two sources disagree on t0/t1"),
+        # [device clocks on one epoch] (Jess Haley, 2026-10-26): each extent's
+        # referent is its acquisition system; one that cannot be tied to
+        # exactly one system is carried, as is the second of two disagreeing
+        # sources (resolveEpochProbemap keeps those acquisition_epochs).
+        ("epoch_extent_refused_no_system",
+         "  REFUSED: not tied to exactly one acquisition system (carried)"),
+        ("epoch_extent_carried_sources",
+         "  acquisition_epoch sources CARRIED (untied or conflicting)"),
         ("arming_edge_declaration_unchecked",
          "  bodies whose edge declaration COULD NOT be consulted"),
         ("metadata_refused_unsafe_output", "  metadata fold: refused, unsafe output"),
@@ -619,6 +630,7 @@ POST_PASSES = [
         ("acquisition_epoch_kept_clock", "  KEPT: not exactly one dev_local_time clock"),
         ("acquisition_epoch_kept_not_rebuilt", "  KEPT: observation, anchor or body did not validate"),
         ("acquisition_epoch_kept_ensemble_unverified", "  KEPT: ensemble combined bytes, members' trains not verified"),
+        ("acquisition_epoch_kept_extent_carried", "  KEPT: its extent is carried (epochMint could not tie it to one system)"),
         # 2026-10-21 (Jess Haley, "a"): a v1 daqreader_*_epochdata_ingested is
         # retired only when every file it holds has a new per-epoch owner.
         ("archive_docs_inspected", "v1 ingested archives inspected  <- ARCHIVE DENOMINATOR"),

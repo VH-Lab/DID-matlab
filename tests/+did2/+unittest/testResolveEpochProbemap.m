@@ -405,7 +405,10 @@ elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp
 elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
 ee   = elementEpochBody('ee_1', 'sess_sp', 'el_neuron', 't00sp', true);
 ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', {{'tet', '1', 'n-trode', 'L'}});
-[out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ee, ing});
+% the rig the probemap's device string names ([device clocks on one epoch]:
+% an extent tied to no acquisition system is carried, not dissolved)
+daq  = daqsystemBody('daq_sp', 'sess_sp', 'vhspike2');
+[out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.spike_epochs_seen, 1);
 verifyEqual(testCase, rep.spike_trains_emitted, 1);
 verifyEqual(testCase, rep.spike_instrument_resolved, 1);
@@ -442,13 +445,17 @@ end
 function testTheTrainIsAnchoredToItsEpochWithItsOwnExtent(testCase)
 % F1: the relative reference is built from the v1 t0_t1 + epoch_clock and
 % points at the minted `epoch` entity -- not a shared 'during' anchor.
-% No epochfiles_ingested here: a non-ingested session (20211116's shape).
+% (An epochfiles_ingested and its rig are given since 2026-10-26: an extent
+% tied to no acquisition system is carried, [device clocks on one epoch];
+% testAnExtentTiedToNoSystemKeepsItsAcquisitionEpoch.)
 subj = subjectBody('specimen_sx', 'sess_sx', 'L');
 elP  = elementBody('el_probe_x', 'sess_sx', 'tet', '1', 'n-trode', 1, 'specimen_sx');
 elN  = derivedElementBody('el_neuron_x', 'sess_sx', 'n1', 'spikes', 'el_probe_x');
 ee   = elementEpochBody('ee_x', 'sess_sx', 'el_neuron_x', 't00sx', true);
 ee.element_epoch.t0_t1 = [2 579.85];
-[out, rep] = decompose({sessionBody('sd_sx', 'sess_sx', 'ref'), subj, elP, elN, ee});
+ing  = ingestedWithRows('ing_sx', 'sess_sx', 't00sx', {{'tet', '1', 'n-trode', 'L'}});
+daq  = daqsystemBody('daq_sx', 'sess_sx', 'vhspike2');
+[out, rep] = decompose({sessionBody('sd_sx', 'sess_sx', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.acquisition_epoch_dissolved, 1);
 verifyEqual(testCase, rep.element_epoch_anchors_minted, 1);
 o = docById(out, 'ee_x');
@@ -476,7 +483,9 @@ subj = subjectBody('specimen_sp2', 'sess_sp2', 'W');
 elP  = elementBody('el_probe_p', 'sess_sp2', 'cam', '1', 'camera', 1, 'specimen_sp2');
 elN  = derivedElementBody('el_lfp', 'sess_sp2', 'w1_lfp', 'lfp', 'el_probe_p');
 ee   = elementEpochBody('ee_p', 'sess_sp2', 'el_lfp', 't00sp2', true);
-[out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee});
+ing  = ingestedWithRows('ing_sp2', 'sess_sp2', 't00sp2', {{'cam', '1', 'camera', 'W'}});
+daq  = daqsystemBody('daq_sp2', 'sess_sp2', 'vhspike2');
+[out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
 verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
 verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided, 1);
@@ -543,11 +552,11 @@ patch = subjectBody('patch_1', sid, 'patch 1');
 [out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch}, els, ees, {dm}]);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
 verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
-verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided, 2);
-verifyTrue(testCase, contains(rep.acquisition_epoch_kept_types, 'position=1'), ...
-    rep.acquisition_epoch_kept_types);
-verifyTrue(testCase, contains(rep.acquisition_epoch_kept_types, 'distance=1'), ...
-    rep.acquisition_epoch_kept_types);
+% kept either way: JH's v1 holds no daqsystem and no epochprobemap, so the
+% extents tie to no acquisition system and are carried ([device clocks on one
+% epoch]); with a tie they would be kept as an undecided type
+verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided ...
+    + rep.acquisition_epoch_kept_extent_carried, 2);
 verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
 verifyEmpty(testCase, bodiesOfClass(out, 'calculation+position'));
 verifyEmpty(testCase, bodiesOfClass(out, 'calculation+length'));
@@ -555,6 +564,23 @@ verifyEmpty(testCase, bodiesOfClass(out, 'calculation+item'));
 verifyEmpty(testCase, bodiesOfClass(out, 'coordinate_system'));
 verifyFalse(testCase, isfield(rep, 'position_calculations_emitted'));
 verifyEmpty(testCase, out.quarantine);
+end
+
+function testAnExtentTiedToNoSystemKeepsItsAcquisitionEpoch(testCase)
+% [device clocks on one epoch] (Jess Haley, 2026-10-26): an epoch extent that
+% cannot be tied to exactly one acquisition system carries its source. No
+% probemap names the probe, so epochMint lists the acquisition_epoch as carried
+% and it is kept whole: no spike train is built from it.
+subj = subjectBody('specimen_su', 'sess_su', 'L');
+elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
+elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u');
+ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
+[out, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, ee});
+verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 1);
+verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
+verifyEqual(testCase, rep.spike_trains_emitted, 0);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 1);
 end
 
 function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)
@@ -565,7 +591,8 @@ elP  = elementBody('el_probe_q', 'sess_sq', 'tet', '1', 'n-trode', 1, 'specimen_
 elN  = derivedElementBody('el_neuron_q', 'sess_sq', 'n1', 'spikes', 'el_probe_q');
 ee   = elementEpochBody('ee_q', 'sess_sq', 'el_neuron_q', 't00sq', false);
 ing  = ingestedWithRows('ing_sq', 'sess_sq', 't00sq', {{'tet', '1', 'n-trode', 'L'}});
-[~, rep] = decompose({sessionBody('sd_sq', 'sess_sq', 'ref'), subj, elP, elN, ee, ing});
+daq  = daqsystemBody('daq_sq', 'sess_sq', 'vhspike2');
+[~, rep] = decompose({sessionBody('sd_sq', 'sess_sq', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.spike_epochs_seen, 1);
 verifyEqual(testCase, rep.spike_epochs_no_file, 1);
 verifyEqual(testCase, rep.spike_trains_emitted, 0);
@@ -636,7 +663,8 @@ ing  = ingestedWithRows('ing_pf', 'sess_pf', 't00pf', {{'tet', '1', 'n-trode', '
 pv   = pyraviewV1('pv_f', 'sess_pf', 'el_pf', 't00pf');
 pv.epochclocktimes.t0_t1 = pvT0T1;
 pv.pyraview.native_start_time = nativeStart;
-v1 = {sessionBody('sd_pf', 'sess_pf', 'ref'), subj, el, ing, pv};
+v1 = {sessionBody('sd_pf', 'sess_pf', 'ref'), subj, el, ing, pv, ...
+    daqsystemBody('daq_pf', 'sess_pf', 'vhspike2')};
 if withEpochExtent
     v1{end+1} = elementEpochBody('ee_pf', 'sess_pf', 'el_pf', 't00pf', false);
 end
