@@ -38,10 +38,10 @@ end
 % written either), so a document that sets one is carried whole as v1
 % ([generic stage is lossless], Jess Haley, 2026-10-25) instead of losing it.
 if ~isempty(textField(preBody, 'daqreader_ndr', 'file_extension'))
-    unplaced{end+1} = 'daqreader_ndr.file_extension';
+    unplaced{end+1} = '[carry-039] daqreader_ndr.file_extension';
 end
 if ~isempty(unplaced)
-    % carry-register: carry-017 (the reader class item); none for file_extension
+    % carry-register: carry-017 (the reader class item); carry-039 (file_extension)
     did2.convert.reportNote('carried_as_v1', 'daqreader_ndr', char(preBody.base.id), ...
         ['unplaced: ' strjoin(unplaced, ', ')]);
     v2Body = {preBody};

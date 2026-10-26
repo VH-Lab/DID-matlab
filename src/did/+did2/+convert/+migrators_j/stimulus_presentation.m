@@ -164,9 +164,9 @@ end
 % V_eta_go_forward_class_audit.md): not a V2 class; pass 1 carries the v1
 % document UNCHANGED as v1 ([passthrough stays v1]) -- stamped did_v1 by
 % v1_to_v2, never read against V_eta -- for NDI's second pass.
-% carry-register: none
+% carry-register: carry-045
 did2.convert.reportNote('carried_as_v1', 'stimulus_presentation', ...
-    char(preBody.base.id), ['retired class: decomposed by the NDI second ' ...
+    char(preBody.base.id), ['[carry-045] retired class: decomposed by the NDI second ' ...
     'pass ([stimulus_presentation retired])']);
 bodies = {preBody};
 end

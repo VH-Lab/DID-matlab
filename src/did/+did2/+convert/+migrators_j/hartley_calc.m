@@ -305,10 +305,8 @@ if isfield(rc, 'dimension_labels') && ~isEmptyValue(rc.dimension_labels)
     unplaced{end+1} = '[carry-015] reverse_correlation.dimension_labels (not empty)';
 end
 if ~isempty(unplaced)
-    % carry-register: carry-014 carry-015 (the items above); none for
-    % stimulus_properties that could not be compared (not one struct, no
-    % stimulus_presentation_id, a key outside the generator settings, or a
-    % presentation not in the batch)
+    % carry-register: carry-014 carry-015 carry-040 (the items above; carry-040
+    % for stimulus_properties that could not be compared)
     did2.convert.reportNote('carried_as_v1', 'hartley_calc', sourceId(preBody), ...
         ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
@@ -598,24 +596,24 @@ if ~isstruct(hrc) || ~isfield(hrc, 'stimulus_properties') ...
 end
 props = hrc.stimulus_properties;
 if ~isstruct(props) || ~isscalar(props)
-    unplaced{end+1} = 'hartley_reverse_correlation.stimulus_properties (not one struct)';
+    unplaced{end+1} = '[carry-040] hartley_reverse_correlation.stimulus_properties (not one struct)';
     return;
 end
 if isempty(presentationId)
-    unplaced{end+1} = ['hartley_reverse_correlation.stimulus_properties ' ...
+    unplaced{end+1} = ['[carry-040] hartley_reverse_correlation.stimulus_properties ' ...
         '(no stimulus_presentation_id to compare against)'];
     return;
 end
 extra = setdiff(fieldnames(props), keys(:, 1));
 if ~isempty(extra)
-    unplaced{end+1} = sprintf(['hartley_reverse_correlation.stimulus_properties ' ...
+    unplaced{end+1} = sprintf(['[carry-040] hartley_reverse_correlation.stimulus_properties ' ...
         '(key(s) %s not in the presentation''s generator settings)'], ...
         strjoin(reshape(extra, 1, []), ', '));
     return;
 end
 [spec, found] = did2.convert.stimulusPresentationSpecs('get', presentationId);
 if ~found || ~isstruct(spec) || isempty(fieldnames(spec))
-    unplaced{end+1} = sprintf(['hartley_reverse_correlation.stimulus_properties ' ...
+    unplaced{end+1} = sprintf(['[carry-040] hartley_reverse_correlation.stimulus_properties ' ...
         '(presentation %s not in the batch, so its values were not compared)'], ...
         presentationId);
     return;

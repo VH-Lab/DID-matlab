@@ -154,9 +154,9 @@ end
 ownerId = depValue(preBody, 'lightsheetZarrPyramid_id');
 if isempty(ownerId) && nHeld == 0
     % no bytes and no pyramid: no observation to own a file-less body either
-    % carry-register: none
+    % carry-register: carry-037
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
-        'unplaced: a level holding no bytes that names no lightsheetZarrPyramid_id');
+        '[carry-037] unplaced: a level holding no bytes that names no lightsheetZarrPyramid_id');
     bodies = {preBody};
     return;
 end

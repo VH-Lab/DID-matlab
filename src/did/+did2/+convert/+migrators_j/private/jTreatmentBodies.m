@@ -83,12 +83,14 @@ switch route
         % a treatment with no recorded location is carried as v1 instead of
         % becoming a dose with a NaN amount -- immersion or dose is decided by
         % where it was given, which the document does not say.
-        unplaced = {[treatmentRow(preBody, '[carry-023] ') 'needs_mapping: manipulation (immersion | dose); decided ' ...
+        unplaced = {[treatmentRow(preBody, '[carry-023] ', '[carry-027] ', '[carry-029] ') ...
+            'needs_mapping: manipulation (immersion | dose); decided ' ...
             'by where the treatment was given, in its dataset']};
         docs = {};
         return;
     case 'needs_mapping'
-        unplaced = {[treatmentRow(preBody, '[carry-024] ') 'needs_mapping: manipulation (dose | exposure | ' ...
+        unplaced = {[treatmentRow(preBody, '[carry-024] ', '[carry-028] ', '[carry-030] ') ...
+            'needs_mapping: manipulation (dose | exposure | ' ...
             'temperature); decided by what the treatment''s location (not an ' ...
             'UBERON body site) means in its dataset']};
         docs = {};
@@ -119,9 +121,13 @@ switch route
         % built and the caller carries the document whole as v1 (header,
         % UNPLACED). This used to keep the first amount and write the dose.
         if ~isempty(placeholders) || ~isempty(conflicts)
+            % a conflict cites carry-031 for a treatment_drug (the class that
+            % row names); a placeholder, and a conflict of the other classes,
+            % have no carry register row yet
+            conflictRow = treatmentRow(preBody, '', '[carry-031] ', '');
             unplaced = [cellfun(@(t) ['vehicle amount placeholder: ' char(t)], ...
                 reshape(placeholders, 1, []), 'UniformOutput', false), ...
-                cellfun(@(t) ['conflicting amount: ' char(t)], ...
+                cellfun(@(t) [conflictRow 'conflicting amount: ' char(t)], ...
                 reshape(conflicts, 1, []), 'UniformOutput', false)];
             docs = {};
             return;
@@ -146,16 +152,25 @@ end
 docs = [{manip}, parts];
 end
 
-function tag = treatmentRow(preBody, row)
-%TREATMENTROW ROW, the carry register row tag ('[carry-NNN] ', [carry register],
-%   Jess Haley, 2026-10-26, did-schema schemas/V_eta_carry_register.json), for
-%   a v1 `treatment`, the class those rows name; '' for the other classes this
-%   helper places (treatment_drug, virus_injection), which the register has no
-%   row for yet (tools/check_carry_citations.py lists those carries).
+function tag = treatmentRow(preBody, treatmentTag, drugTag, virusTag)
+%TREATMENTROW The carry register row tag ('[carry-NNN] ', [carry register],
+%   Jess Haley, 2026-10-26, did-schema schemas/V_eta_carry_register.json) for
+%   this document's v1 class: TREATMENTTAG for a `treatment`, DRUGTAG for a
+%   `treatment_drug`, VIRUSTAG for a `virus_injection` (each register row names
+%   one v1 class). '' for any other class, or where the register has no row
+%   (an empty tag argument).
 tag = '';
+cn = '';
 if isfield(preBody, 'document_class') && isstruct(preBody.document_class) ...
-        && isfield(preBody.document_class, 'class_name') ...
-        && strcmp(char(preBody.document_class.class_name), 'treatment')
-    tag = row;
+        && isfield(preBody.document_class, 'class_name')
+    cn = char(preBody.document_class.class_name);
+end
+switch cn
+    case 'treatment'
+        tag = treatmentTag;
+    case 'treatment_drug'
+        tag = drugTag;
+    case 'virus_injection'
+        tag = virusTag;
 end
 end

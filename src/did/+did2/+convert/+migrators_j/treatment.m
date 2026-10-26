@@ -74,8 +74,8 @@ notesText = strValue;
 % --- not-a-manipulation rows -> carried as v1 (were quarantined) --------
 if containsAny(hay, {'date of birth', 'non-survival experiment time', ...
         'experiment time'})
-    % carry-register: none
-    v2Body = carryAsV1(preBody, sprintf(['treatment "%s" is not a manipulation ' ...
+    % carry-register: carry-032
+    v2Body = carryAsV1(preBody, sprintf(['[carry-032] treatment "%s" is not a manipulation ' ...
         '(was did2:convert:notAManipulation)'], label));
     return;
 end
@@ -122,7 +122,8 @@ if startsWith(lower(node), 'chebi:')
         numberCondition, siteTerm, anchor.base.id);
     if ~isempty(unplaced)
         % carry-register: carry-023 carry-024 via private/jTreatmentBodies.m; none
-        % for an amount a dose cannot place (jCarryWhy 'unplaced: ...')
+        % for an amount a dose cannot place (a vehicle amount placeholder or a
+        % conflicting amount; jCarryWhy 'unplaced: ...')
         v2Body = carryAsV1(preBody, jCarryWhy(unplaced));
         return;
     end

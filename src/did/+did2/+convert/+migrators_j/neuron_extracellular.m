@@ -334,12 +334,14 @@ else
     % (size(meanshape,k) of an empty mean shape), or absent / [] (the
     % template). Any other count states something nothing else does
     % ([lossless means round trip], Jess Haley, 2026-10-26): carried as v1.
+    carryTag = '[carry-041] ';
     unplaced = [writerDefaultCount(blk, 'number_of_samples_per_channel'), ...
         writerDefaultCount(blk, 'number_of_channels')];
 end
 if ~isempty(unplaced)
     % carry-register: carry-018 (counts that differ from the waveform's axis
-    % lengths); none for counts with no waveform that are not the writer's default
+    % lengths); carry-041 (counts with no waveform that are not the writer's
+    % default)
     did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
         char(baseField(preBody, 'id', '')), [carryTag 'unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};

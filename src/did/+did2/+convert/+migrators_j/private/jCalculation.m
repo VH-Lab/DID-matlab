@@ -134,9 +134,12 @@ end
 % the dataset's map, with one `carried_as_v1` note naming every such field.
 % (rawCurve already names its paths from the block, 'stimulus_tuningcurve.x':
 % those are not prefixed a second time)
-unplaced = [cellfun(@(d) underBlock(sourceBlock, d), reshape(dropped, 1, []), ...
-    'UniformOutput', false), ...
-    cellfun(@char, reshape(opts.Dropped, 1, []), 'UniformOutput', false)];
+% Each such field cites carry register row carry-056 ([lossless first, homes
+% after]).
+unplaced = [cellfun(@(d) ['[carry-056] ' underBlock(sourceBlock, d)], ...
+    reshape(dropped, 1, []), 'UniformOutput', false), ...
+    cellfun(@(d) ['[carry-056] ' char(d)], reshape(opts.Dropped, 1, []), ...
+    'UniformOutput', false)];
 % The calculator block's inner `depends_on` copy (e.g.
 % `oridirtuning_calc.depends_on`) is left unwritten only when it restates the
 % top-level edges ([restated values checked], Jess Haley, 2026-10-26; measured
@@ -147,8 +150,8 @@ if ~isempty(differing)
         classNameOf(preBody), strjoin(differing, ', '));
 end
 if ~isempty(unplaced)
-    % carry-register: carry-016 (the inner depends_on item); none for a
-    % calculator field the fold has no home for
+    % carry-register: carry-016 (the inner depends_on item); carry-056 (a
+    % calculator field the fold has no home for)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};

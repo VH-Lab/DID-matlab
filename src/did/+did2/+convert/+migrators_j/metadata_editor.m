@@ -160,12 +160,12 @@ ms = getScalarStruct(block, 'metadata_structure');
 unplaced = {};
 ethicsText = getChar(ms, 'EthicsAssessment');
 if ~isempty(strtrim(ethicsText)) && isempty(did2.convert.ethicsJurisdiction(ethicsText))
-    unplaced{end+1} = sprintf('EthicsAssessment "%s"', strtrim(ethicsText));
+    unplaced{end+1} = sprintf('[carry-044] EthicsAssessment "%s"', strtrim(ethicsText));
 end
 authorList = getStructArray(ms, 'Author');
 for i = 1:numel(authorList)
     if isfield(authorList(i), 'affiliation') && numel(authorList(i).affiliation) > 1
-        unplaced{end+1} = sprintf('Author(%d).affiliation (%d affiliations)', ...
+        unplaced{end+1} = sprintf('[carry-054] Author(%d).affiliation (%d affiliations)', ...
             i, numel(authorList(i).affiliation)); %#ok<AGROW>
     end
 end
@@ -180,7 +180,9 @@ end
 [formTerms, formUnplaced] = datasetFormTerms(ms);
 unplaced = [unplaced, formUnplaced];
 if ~isempty(unplaced)
-    % carry-register: none
+    % carry-register: carry-043 carry-044 carry-054 (the items above); none for
+    % a form field whose binding the loaded schema does not hold (a schema
+    % that is not did-schema's, not a reason in the v1 document)
     did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     v2Body = {preBody};
@@ -330,7 +332,7 @@ for f = 1:size(fields, 1)
     for k = 1:numel(vals)
         t = matchValue(row.values, vals{k});
         if isempty(t)
-            unplaced{end+1} = sprintf('%s "%s" (not in the closed list)', ...
+            unplaced{end+1} = sprintf('[carry-043] %s "%s" (not in the closed list)', ...
                 fields{f, 1}, vals{k}); %#ok<AGROW>
         else
             terms(end+1, :) = {struct('node', char(row.variable.node), ...

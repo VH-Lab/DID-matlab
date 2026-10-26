@@ -76,11 +76,11 @@ elseif isfield(block, 'clocktype')
     if strcmp(strtrim(char(block.clocktype)), strtrim(char(block.epoch_clock)))
         block = rmfield(block, 'clocktype');
     else
-        why = 'element_epoch.clocktype (differs from epoch_clock)';
+        why = '[carry-038] element_epoch.clocktype (differs from epoch_clock)';
     end
 end
 if isempty(why) && (~isfield(block, 'epoch_clock') || isempty(strtrim(char(block.epoch_clock))))
-    why = 'element_epoch.epoch_clock (missing: no clock is named)';
+    why = '[carry-038] element_epoch.epoch_clock (missing: no clock is named)';
 end
 names = {};
 if isempty(why)
@@ -97,8 +97,8 @@ if ~isempty(why)
     if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
         id = char(preBody.base.id);
     end
-    % carry-register: carry-009 (t0_t1); none for a clocktype that differs from
-    % epoch_clock or a missing epoch_clock
+    % carry-register: carry-009 (t0_t1); carry-038 (a clocktype that differs
+    % from epoch_clock, or a missing epoch_clock)
     did2.convert.reportNote('carried_as_v1', cn, id, ['unplaced: ' why]);
     v2Body = preBody;   % unchanged: the callers carry it whole as v1
     return;

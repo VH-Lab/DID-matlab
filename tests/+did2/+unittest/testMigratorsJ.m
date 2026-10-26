@@ -944,7 +944,7 @@ for loc = {{'SNOMED:783351009', 'Intraperitoneal'}, {'MICRO:0000480', 'agar plat
     out = runJ(v1);
     verifyCarriedWholeAsV1(testCase, v1, out);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
+    verifyTrue(testCase, startsWith(d, '[carry-028] needs_mapping: manipulation (dose | exposure | temperature)'), d);
 end
 end
 
@@ -1181,7 +1181,7 @@ v1 = treatmentDrugDoc('td_none', 'chebi:28001,haloperidol,5', '', '');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'needs_mapping:'));
+    '[carry-027] needs_mapping:'));
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
@@ -1260,7 +1260,7 @@ v1 = treatmentDrugDoc('td_agar', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
+verifyTrue(testCase, startsWith(d, '[carry-028] needs_mapping: manipulation (dose | exposure | temperature)'), d);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 0);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
@@ -1276,7 +1276,7 @@ v1 = treatmentDrugDoc('td_air', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping:'), d);
+verifyTrue(testCase, startsWith(d, '[carry-028] needs_mapping:'), d);
 end
 
 function testBabuHeatRowIsCarriedNeedingAMapping(testCase)
@@ -1289,7 +1289,7 @@ v1 = treatmentDrugDoc('td_heat', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
+verifyTrue(testCase, startsWith(d, '[carry-028] needs_mapping: manipulation (dose | exposure | temperature)'), d);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+temperature'), 0);
 end
 
@@ -2181,7 +2181,7 @@ verifyEqual(testCase, char(d.get('document_class.class_name')), 'image_stack');
 verifyEqual(testCase, depVal(d, 'document_id'), 'otr_plate_1', 'the edge is kept');
 verifyEqual(testCase, depVal(d, 'subject_id'), 'subjgrp_7');
 verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'unplaced: depends_on document_id');
+    '[carry-052] unplaced: depends_on document_id');
 end
 
 function testImageStackFoldWithNoTableRowStillPlacesTheStack(testCase)
@@ -5035,7 +5035,7 @@ for f = {'units', 'dimensions'}
     outOne = runJ(one);
     verifyCarriedWholeAsV1(testCase, one, outOne);
     verifyEqual(testCase, outOne.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-        ['unplaced: position_metadata.' f{1}]);
+        ['[carry-053] unplaced: position_metadata.' f{1}]);
 end
 end
 
@@ -6057,7 +6057,8 @@ assertTrue(testCase, isscalar(first) && isequaln(first{1}, body), ...
     'the writer-shaped document was not carried whole as v1');
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
 d = notes.carried_as_v1.distinct_details{1};
-paths = strsplit(regexprep(d, '^unplaced: ', ''), ', ');
+% each path follows its carry register row tag ('[carry-056] ', [carry register])
+paths = strsplit(regexprep(regexprep(d, '^unplaced: ', ''), '\[carry-\d{3}\] ', ''), ', ');
 for k = 1:numel(paths)
     body = removePathJ(body, strsplit(paths{k}, '.'));
 end

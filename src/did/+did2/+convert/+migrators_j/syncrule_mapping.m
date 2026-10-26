@@ -134,9 +134,9 @@ end
 % it against V_eta. It replaces the #58 reshape (epoch_clock / epoch_id nested
 % under a time_reference, stamped did_v2), which changed the v1 document.
 % epochMint's syncrule arming reads the endpoint strings from either shape.
-% carry-register: none
+% carry-register: carry-036
 did2.convert.reportNote('carried_as_v1', 'syncrule_mapping', ...
-    char(preBody.base.id), ['unplaced: the two ends are not per-system ' ...
+    char(preBody.base.id), ['[carry-036] unplaced: the two ends are not per-system ' ...
     'references on the epochs ([device clocks on one epoch])']);
 bodies = {preBody};
 end

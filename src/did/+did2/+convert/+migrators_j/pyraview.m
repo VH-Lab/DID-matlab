@@ -160,8 +160,9 @@ end
 if ~isempty(filterUnplaced)
     % [small unread settings] (2) (Jess Haley, 2026-10-26): a filter block this
     % cannot place whole carries the document whole as v1
-    % carry-register: carry-006 carry-007 via private/jFrequencyFilter.m; none for
-    % an unmapped filter algorithm / type or a stated sampleFrequency
+    % carry-register: carry-006 carry-007 carry-042 via private/jFrequencyFilter.m;
+    % none for a stated sampleFrequency (on an all-pass, or with no method
+    % document to hold it)
     did2.convert.reportNote('carried_as_v1', 'pyraview', char(preBody.base.id), ...
         ['unplaced: ' strjoin(filterUnplaced, ', ')]);
     bodies = {preBody};

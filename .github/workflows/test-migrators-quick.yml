@@ -315,9 +315,38 @@ jobs:
         # hold, or a carry site that does not say its row, fails. Carry reasons
         # with no row yet are LISTED (the team adds the row); --strict fails on
         # them. The gate's own tests run first.
+        #
+        # THE REGISTER'S REF. The rows the carry notes cite (carry-001..056)
+        # are on did-schema branch `claude/carry-register-rows` (did-schema
+        # PR #151) until it merges, and main holds fewer, so checking against
+        # the did-schema ref above (same name, else main) would fail every
+        # citation of a newer row. The register is read from: the same-name
+        # did-schema branch when it has the register, else
+        # `claude/carry-register-rows` while that branch exists, else main.
+        # The chosen ref is PRINTED. Drop the middle step once #151 merges.
         run: |
           python3 tools/test_check_carry_citations.py
-          python3 tools/check_carry_citations.py --did-schema did-schema
+          want="${{ github.head_ref || github.ref_name }}"
+          reg_ref=main
+          for ref in "$want" claude/carry-register-rows; do
+            if git ls-remote --exit-code --heads \
+                 https://github.com/Waltham-Data-Science/did-schema.git "$ref" >/dev/null 2>&1; then
+              reg_ref="$ref"; break
+            fi
+          done
+          if [ "$reg_ref" = "$want" ] && [ -f did-schema/schemas/V_eta_carry_register.json ]; then
+            reg_dir=did-schema
+          else
+            [ "$reg_ref" = "$want" ] && reg_ref=claude/carry-register-rows
+            git ls-remote --exit-code --heads \
+              https://github.com/Waltham-Data-Science/did-schema.git "$reg_ref" >/dev/null 2>&1 \
+              || reg_ref=main
+            git clone --quiet --depth 1 --branch "$reg_ref" \
+              https://github.com/Waltham-Data-Science/did-schema.git did-schema-register
+            reg_dir=did-schema-register
+          fi
+          echo "carry register read from did-schema ref '$reg_ref' ($reg_dir)"
+          python3 tools/check_carry_citations.py --did-schema "$reg_dir"
 
       - name: Unminted ontology terms must not increase (#70)
         # Staging a term as {node: '', name: '...'} is the accepted practice --
