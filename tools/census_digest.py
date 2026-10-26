@@ -642,11 +642,7 @@ POST_PASSES = [
         # #73 review item 61: a v1 daqmetadatareader_epochdata_ingested's data.bin
         # becomes an opaque_body owned by the epoch's stimulator manipulation(s).
         ("metadata_archives_inspected", "v1 metadata archives inspected  <- METADATA ARCHIVE DENOMINATOR"),
-        ("metadata_archives_to_body", "  replaced by an opaque_body (id preserved)"),
-        ("metadata_archive_owner_links", "    owner links (stimulator manipulations)"),
-        ("metadata_archives_kept_no_owner", "  KEPT: no stimulator manipulation for the epoch"),
-        ("metadata_archives_kept_no_bytes", "  KEPT: no data.bin"),
-        ("metadata_archives_quarantined", "  body QUARANTINED (v1 document kept)"),
+        ("metadata_archives_carried_for_ndi", "  carried as v1 for NDI's second pass ([ingested stimulus file is a body of the presentation])"),
         # 2026-10-21 (Jess Haley, "a"): pyraview levels owned by the epoch's
         # recording observation; the separate observation is retired.
         ("pyraview_observations_seen", "pyraview observations seen  <- PYRAVIEW DENOMINATOR"),

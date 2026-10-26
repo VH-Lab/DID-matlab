@@ -1002,42 +1002,23 @@ v1.files = struct('file_list', {{'data.bin'}}, ...
         'parameters', '', 'location_type', 'file', 'ingest', 1)));
 end
 
-function testAMetadataArchiveBecomesTheStimulatorManipulationsBody(testCase)
+function testAMetadataArchiveIsLeftForNdisSecondPass(testCase)
+% INVERTS testAMetadataArchiveBecomesTheStimulatorManipulationsBody (#73 review
+% item 61). Decided by Jess Haley, 2026-10-26 [ingested stimulus file is a body
+% of the presentation]: the archive becomes a body of the epoch's
+% stimulus-presentation manipulation, made by NDI's second pass
+% (ndi.migrate.internal.ingestedStimulusBodies); this pass no longer folds it,
+% and the document stays the clean v1 carry, counted.
 [out, rep] = metadataDecompose('t0m');
 verifyEqual(testCase, rep.metadata_archives_inspected, 1);
-verifyEqual(testCase, rep.metadata_archives_to_body, 1);
-verifyEqual(testCase, rep.metadata_archives_kept_no_owner, 0);
-verifyEqual(testCase, rep.metadata_archives_quarantined, 0);
-manips = bodiesNamed(out, 'migrated_probemap_manipulation');
-assertEqual(testCase, numel(manips), 1);
-d = docById(out, 'mda_m');
-assertNotEmpty(testCase, d, 'the body keeps the archive''s id');
-verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), 'opaque_body');
-verifyEqual(testCase, depVals(d, 'owner_id'), {char(manips{1}.base.id)});
-% UPDATED 2026-10-22, Decided by Jess Haley [NDI binary format]:
-% EMPTY:0000367 "NDI binary format" (was EDAM:format_2333 "Binary format").
-verifyEqual(testCase, char(d.data_body.format.node), 'EMPTY:0000367');
-verifyEqual(testCase, char(d.data_body.format.name), 'NDI binary format');
-verifyEqual(testCase, char(d.data_body.filename), 'data.bin');
-verifyEqual(testCase, char(d.data_body.compression), 'gzip');
-verifyFalse(testCase, isfield(d, 'value'), 'an opaque body carries no data_type');
-fi = d.files.file_info;
-verifyEqual(testCase, char(fi(1).name), 'body_data_0');
-verifyEqual(testCase, char(fi(1).locations.location), '/tmp/abc123.nbf.tgz');
-verifyEmpty(testCase, bodiesOfClass(out, 'daqmetadatareader_epochdata_ingested'), ...
-    'the v1 document is replaced: its one file has a new owner');
-end
-
-function testAMetadataArchiveWithNoStimulatorManipulationIsKept(testCase)
-% another epoch's archive: no stimulator manipulation of ITS epoch -> kept, counted
-[out, rep] = metadataDecompose('t9z');
-verifyEqual(testCase, rep.metadata_archives_inspected, 1);
-verifyEqual(testCase, rep.metadata_archives_to_body, 0);
-verifyEqual(testCase, rep.metadata_archives_kept_no_owner, 1);
+verifyEqual(testCase, rep.metadata_archives_carried_for_ndi, 1);
 d = docById(out, 'mda_m');
 assertNotEmpty(testCase, d);
 verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), ...
     'daqmetadatareader_epochdata_ingested');
+verifyEqual(testCase, char(d.document_class.schema_version), 'did_v1');
+verifyEmpty(testCase, bodiesOfClass(out, 'opaque_body'), ...
+    'no body is made from the archive here');
 end
 
 function testARigWithNoDaqsystemGetsNoSystemAndIsCounted(testCase)
