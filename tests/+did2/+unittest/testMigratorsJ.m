@@ -749,7 +749,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol Target Location');
 site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
 function testTreatmentTargetLocationEmitsSiteObservation(testCase)
@@ -766,7 +766,7 @@ verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 1);
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 % a body site makes it a dose; no amount recorded -> NaN; the route is known
 verifyTrue(testCase, isnan(out.migrated{1}.get('dose.value').volume.liters));
 % the formulation still carries its ingredient inline (NaN concentration)
@@ -805,7 +805,7 @@ verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 % -> location_ontology_node)
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
 function v1 = virusInjectionV1(id, adminDate)
@@ -889,7 +889,7 @@ verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
 site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
 function testTreatmentDrugInTheBathIsAnImmersion(testCase)
@@ -1328,7 +1328,7 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 2);   % obs + anchor
 o = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(o), 'observation+term');
-verifyEqual(testCase, o.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, o.get('term.value').node, regNode('uberon:0002436'));
 % variable "anatomical location" is NCIT:C13717 "Anatomic Site" (Jess Haley,
 % 2026-10-21 [anatomy variable terms])
 verifyEqual(testCase, o.get('statement.variable').node, 'NCIT:C13717');
@@ -4512,7 +4512,7 @@ verifyEqual(testCase, leaf.data.dimensions(1).term.name, 'experimental condition
 covs = leaf.data.covariates;
 verifyEqual(testCase, numel(covs), 2);
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
-    {'spatial frequency', 'temporal frequency'});
+    {regName('spatial frequency'), regName('temporal frequency')});
 verifyEqual(testCase, [covs.along], [0 0]);
 verifyEqual(testCase, covs(1).quantity.value, [0.5 0.5 1]);
 verifyEqual(testCase, covs(2).quantity.value, [2 4 4]);
@@ -4591,7 +4591,7 @@ verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(o), 'observation+term');
 verifyEqual(testCase, o.statement.variable.name, 'imaged region');
-verifyEqual(testCase, o.term.value.node, 'uberon:0002436');
+verifyEqual(testCase, o.term.value.node, regNode('uberon:0002436'));
 verifyEqual(testCase, o.term.value.name, 'primary visual cortex');
 verifyEqual(testCase, depValue(o, 'entity_id'), 'elem_9');
 end
@@ -4677,7 +4677,7 @@ verifyEqual(testCase, vals(1).source_unit.name, 'volt');
 verifyEqual(testCase, vals(1).volts, 0.5, 'AbsTol', 1e-9);
 % temperature qualifies the SAME statement rather than becoming its own doc
 c = o.statement.conditions;   % #88: conditions live on `statement`
-verifyEqual(testCase, c.variable.name, 'temperature');
+verifyEqual(testCase, c.variable.name, regName('temperature'));
 verifyEqual(testCase, c.quantity.value, 11, 'AbsTol', 1e-9);
 verifyEqual(testCase, c.quantity.source_value, '11', ...
     'a condition''s source_value is text');
@@ -6216,4 +6216,19 @@ if isscalar(parts)
 else
     s.(fn{ix}) = removePathJ(s.(fn{ix}), parts(2:end));
 end
+end
+
+function n = regNode(node)
+%REGNODE NODE as the loaded term registry spells it when it holds it ([migrator
+%   writes the registry spelling], Jess Haley, 2026-10-26), else as given.
+t = did2.convert.registeredTerm(node, '');
+n = node;
+if ~isempty(t.name); n = t.node; end
+end
+
+function n = regName(name)
+%REGNAME NAME as the loaded term registry labels it when it holds it, else as
+%   given ([term labels stay as the ontology spells them]).
+t = did2.convert.registeredTerm('', name);
+n = t.name;
 end
