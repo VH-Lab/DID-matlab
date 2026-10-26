@@ -27,10 +27,13 @@ function [dims, covs] = jLightsheetAxes(axesOrder, shape, scale, translation, un
 %   CHUNKS       per-axis chunk extent, or [] (a sampled_body's dimensions
 %                only: did-schema rule dimension_chunk_sampled_only).
 %
-%   THE VARIABLES ARE NAMES WITH NO NODE: 'time', 'channel', 'z', 'y', 'x' --
-%   the proposed names of DID-schema review/73/veta_term_worksheet_73.csv rows
-%   17-21, none of which has a CURIE yet. They are passed to did2.build as
-%   names, so they reach the document as {name} with no node.
+%   THE VARIABLES ARE THE REGISTRY'S TERMS where it holds them: t, z, y and x
+%   are did2.convert.axisTerm's om:Time 'time', NCIT:C44479 'Z-Coordinate',
+%   NCIT:C44478 'Y-Coordinate' and NCIT:C44477 'X-Coordinate' ([migrator
+%   writes the registry spelling], Jess Haley, 2026-10-26), each only when the
+%   loaded term registry holds that node; an axis whose node it does not hold,
+%   and the channel axis, are written by NAME ('time', 'z', ..., 'channel'),
+%   with no node, as before. A reader finds an axis by did2.convert.axisKey.
 %
 %   UNITS ARE CONVERTED TO V_eta's CANONICAL ONES (`meter`, `second`) when the
 %   source unit is one of the UDUNITS-2 names OME-NGFF allows for a space or
@@ -109,13 +112,13 @@ for k = 1:nAx
     opts = {};
     switch axesOrder(k)
         case 't'
-            variable = 'time';
+            variable = did2.convert.axisTerm('time');
             kind = 'time';
         case 'c'
             variable = 'channel';
             kind = 'channel';
         case {'z', 'y', 'x'}
-            variable = axesOrder(k);
+            variable = did2.convert.axisTerm(axesOrder(k));
             kind = 'space';
         otherwise
             error('did2:migrators_j:lightsheet:badAxes', ...

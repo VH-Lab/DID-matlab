@@ -1178,17 +1178,17 @@ end
 end
 
 function n = dimensionName(D)
-%DIMENSIONNAME The name of a dimension's `term` (the axis is found by its term).
+%DIMENSIONNAME The axis a dimension's `term` names (the axis is found by its
+%   term): did2.convert.axisKey, so X-Coordinate (NCIT:C44477) reads 'x'.
 arguments
     D % a dimension; anything that is not a struct names nothing
 end
 
 n = '';
 if ~isstruct(D) || ~isfield(D, 'term'); return; end
-v = D.term;
-if iscell(v); v = v{1}; end
-if isstruct(v) && isfield(v, 'name'); n = char(v.name);
-elseif ischar(v) || isstring(v); n = char(v); end
+% by node first (x/y/z/time as the registry writes them, did2.convert.axisTerm),
+% then by name: 'time', 'channel', 'z', 'y', 'x', or the term's own name
+n = did2.convert.axisKey(D.term);
 end
 
 function c = keyCells(k)

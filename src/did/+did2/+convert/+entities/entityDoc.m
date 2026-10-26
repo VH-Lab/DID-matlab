@@ -107,7 +107,11 @@ for k = 1:numel(names)
     end
     if any(strcmp(f, terms))
         if strcmp(f, 'license') && (ischar(v) || (isstring(v) && isscalar(v)))
-            v = did2.build.term(['spdx:' strtrim(char(v))], strtrim(char(v)));
+            % the SPDX id is the node; a licence the term registry holds is
+            % written with the registry's label ([migrator writes the registry
+            % spelling], Jess Haley, 2026-10-26: spdx:CC-BY-4.0 'Creative
+            % Commons Attribution 4.0 International'), any other with the id
+            v = did2.convert.registeredTerm(['spdx:' strtrim(char(v))], strtrim(char(v)));
         end
         tv = asTerms(v);
         for j = 1:numel(tv)   % one assertion per term: `term.value` is one term

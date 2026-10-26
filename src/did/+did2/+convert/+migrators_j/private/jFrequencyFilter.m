@@ -113,11 +113,15 @@ function [ff, edgeName, unplaced] = jFrequencyFilter(preBody, nativeRate)
 %     parameters.sampleFrequency -> a method parameter 'sample frequency' in
 %                                hertz ([small unread settings] (2), Jess
 %                                Haley, 2026-10-26; it was not carried, as the
-%                                frequency_filter model has no sample_rate). On
-%                                the frequency_filter path (a schema whose
-%                                sampled_body still declares filter_id), or for
-%                                an all-pass (no method is built), it has no
-%                                home and the document is carried as v1.
+%                                frequency_filter model has no sample_rate). For
+%                                an all-pass (no method is built) it has no
+%                                home and the document is carried as v1. On the
+%                                frequency_filter path (a schema whose
+%                                sampled_body still declares filter_id) it is an
+%                                ERROR, did2:convert:schemaTooOld: a stale
+%                                schema is a pipeline defect, not a carry
+%                                ([pipeline defects are not carries], Jess
+%                                Haley, 2026-10-26).
 %     label                        Not written: in the real PRED document `type`
 %                                  and `label` are BOTH "high" -- the same fact
 %                                  twice. The writer sets label to the
@@ -252,13 +256,38 @@ if bodyTakesMethod()
     return;
 end
 % did-schema #88 before [filters are methods]: built through did2.build.document.
-% frequency_filter has no sample_rate, so a stated one has no home here.
+% frequency_filter has no sample_rate, so a stated one has no home here. That is
+% the LOADED SCHEMA's defect, not the document's: [pipeline defects are not
+% carries] (Jess Haley, 2026-10-26, did-schema V_eta_go_forward_class_audit.md)
+% makes it an error, never a carry.
 if ~isempty(sampleFrequency)
-    unplaced{end+1} = 'filter.parameters.sampleFrequency (frequency_filter has no sample rate)';
-    return;
+    error('did2:convert:schemaTooOld', ...
+        ['%s "%s": the loaded schema is too old: its sampled_body declares ' ...
+         '`filter_id` (the frequency_filter model, before [filters are methods], ' ...
+         'Jess Haley 2026-10-22), not `method_id`, so the filter''s ' ...
+         'parameters.sampleFrequency (%g Hz) has no home. Load a did-schema ' ...
+         'whose sampled_body declares method_id (DID_SCHEMA_PATH); the document ' ...
+         'is not carried for a schema defect.'], ...
+        classOf(preBody), idOf(preBody), sampleFrequency);
 end
 ff = did2.build.document('frequency_filter', block, o{:});
 edgeName = 'filter_id';
+end
+
+function c = classOf(preBody)
+c = 'pyraview';
+if isfield(preBody, 'document_class') && isstruct(preBody.document_class) ...
+        && isfield(preBody.document_class, 'class_name') ...
+        && ~isempty(preBody.document_class.class_name)
+    c = char(preBody.document_class.class_name);
+end
+end
+
+function i = idOf(preBody)
+i = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    i = char(preBody.base.id);
+end
 end
 
 function tf = isNone(raw)

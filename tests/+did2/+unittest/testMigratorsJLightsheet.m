@@ -186,8 +186,21 @@ verifyEqual(testCase, loc(1).location, '/data/stores/brain7.ome.zarr');
 verifyEqual(testCase, double(loc(1).ingest), 0);
 % the full-resolution keys moved onto the body
 keys = axisList(b.data);
-verifyEqual(testCase, cellfun(@(k) k.variable.name, keys, 'UniformOutput', false), ...
+verifyEqual(testCase, cellfun(@(k) did2.convert.axisKey(k.variable), keys, 'UniformOutput', false), ...
     {'time', 'channel', 'z', 'y', 'x'});
+% each axis is written as the term registry holds it ([migrator writes the
+% registry spelling], Jess Haley, 2026-10-26): X-Coordinate NCIT:C44477,
+% Y-Coordinate NCIT:C44478, Z-Coordinate NCIT:C44479, time om:Time -- each
+% only where the loaded registry holds the node (did2.convert.axisTerm)
+for a = {'time', 'z', 'y', 'x'}
+    k = keys{strcmp(cellfun(@(q) did2.convert.axisKey(q.variable), keys, ...
+        'UniformOutput', false), a{1})};
+    want = did2.convert.axisTerm(a{1});
+    verifyEqual(testCase, char(k.variable.name), want.name, [a{1} ': the registry''s label']);
+    if ~isempty(want.node)
+        verifyEqual(testCase, char(k.variable.node), want.node, [a{1} ': the registry''s node']);
+    end
+end
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 400 2048 2048]);
 verifyEqual(testCase, labelNames(keys{2}.term), {'GCaMP6s', 'tdTomato'});
 % nothing transient left on the observation; the label stays as its notes
@@ -338,7 +351,7 @@ verifyEqual(testCase, rep.level_bodies_completed, 1);
 verifyEqual(testCase, rep.level_unit_disagreements, 0);
 b = onlyBody(testCase, out);
 keys = axisList(b.data);
-names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+names = cellfun(@(k) did2.convert.axisKey(k.variable), keys, 'UniformOutput', false);
 t = keys{strcmp(names, 'time')};
 % units are OM terms (Jess 2026-10-21), node and English label from om-2.0.rdf
 verifyEqual(testCase, t.unit.name, 'second');
@@ -366,7 +379,7 @@ verifyEqual(testCase, rep.level_unit_disagreements, 1, ...
     'z: the pyramid says millimeter, the level micrometer');
 b = onlyBody(testCase, out);
 keys = axisList(b.data);
-names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+names = cellfun(@(k) did2.convert.axisKey(k.variable), keys, 'UniformOutput', false);
 z = keys{strcmp(names, 'z')};
 % the source's spelling, or on a schema where source_unit is a term
 % (V_eta_source_unit_plan.md) that spelling's OM term (Jess 2026-10-21)
@@ -386,7 +399,7 @@ verifyEqual(testCase, rep.level_bodies_seen, 0);
 verifyEqual(testCase, rep.level_bodies_without_pyramid, 1);
 b = onlyBody(testCase, out);
 keys = axisList(b.data);
-names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+names = cellfun(@(k) did2.convert.axisKey(k.variable), keys, 'UniformOutput', false);
 t = keys{strcmp(names, 'time')};
 verifyFalse(testCase, isfield(t, 'unit') && ~isempty(t.unit), 'nothing to complete it from');
 end
@@ -408,7 +421,7 @@ out = runJ(p);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 obs = pickById(out, 'pyr_ls_1');
 ax = did2.unittest.helpers.axesOf(obsAxes(obs));
-names = arrayfun(@(a) char(a.term.name), ax, 'UniformOutput', false);
+names = arrayfun(@(a) did2.convert.axisKey(a.term), ax, 'UniformOutput', false);
 verifyEqual(testCase, names, {'time', 'channel', 'z', 'y', 'x'}, 'every dimension is still written');
 verifyEqual(testCase, [ax.nCov], zeros(1, 5), 'no covariate repeats 0..n-1');
 verifyTrue(testCase, isempty(blockField(obs, 'covariates')), 'no covariates at all');
@@ -431,7 +444,7 @@ assumeCompositionSchema(testCase);
 out = runJ(pyramidV1());
 obs = pickById(out, 'pyr_ls_1');
 ax = did2.unittest.helpers.axesOf(obsAxes(obs));
-names = arrayfun(@(a) char(a.term.name), ax, 'UniformOutput', false);
+names = arrayfun(@(a) did2.convert.axisKey(a.term), ax, 'UniformOutput', false);
 c = ax(strcmp(names, 'channel'));
 verifyEqual(testCase, labelNames(c.cov.term), {'GCaMP6s', 'tdTomato'});
 z = ax(strcmp(names, 'z'));
@@ -471,7 +484,7 @@ out = runJ(p);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 obs = pickById(out, 'pyr_ls_1');
 keys = axisList(obsAxes(obs));
-names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+names = cellfun(@(k) did2.convert.axisKey(k.variable), keys, 'UniformOutput', false);
 expect = {'time', 'om:second-Time', 'second', 'millisecond', 'om:millisecond-Time', 'millisecond'; ...
           'z',    'om:metre',       'metre',  'nanometer',   'om:nanometre',        'nanometre'; ...
           'y',    'om:metre',       'metre',  'millimeter',  'om:millimetre',       'millimetre'; ...
