@@ -3123,7 +3123,7 @@ verifyEqual(testCase, nLeafJ(m, 'organization'), 3);      % Analytical Society +
 verifyEqual(testCase, countRelsByName(m, 'funded_by'), 2);
 verifyEqual(testCase, countRelsByName(m, 'issued_by'), 2);
 verifyEqual(testCase, countRelsByName(m, 'cites'), 2);
-verifyEqual(testCase, numel(m), 33);   % 11 entities + 11 assertions + 11 relations
+verifyEqual(testCase, numel(m), 36);   % 11 entities + 11 assertions + 11 relations + 3 dataset form term assertions ([dataset form terms])
 awards = allOfClassJ(m, 'funding');
 titles = cellfun(@(a) a.get('entity.name'), awards, 'UniformOutput', false);
 verifyEqual(testCase, sort(titles), {'BRAIN Initiative', 'Neural Circuits'});
@@ -3159,7 +3159,7 @@ ms = v1.metadata_editor.metadata_structure;
 other = struct('SomeOtherKey', 'ignored');
 v1.metadata_editor.metadata_structure = {ms, other};
 out = runJRoundTrip(v1);
-verifyEqual(testCase, numel(out.migrated), 27);
+verifyEqual(testCase, numel(out.migrated), 30);   % + 3 dataset form term assertions ([dataset form terms])
 ds = firstOfClassJ(out.migrated, 'dataset');
 verifyEqual(testCase, ds.get('entity.name'), 'The Big Worm Dataset');
 end
