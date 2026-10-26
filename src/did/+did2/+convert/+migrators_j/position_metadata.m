@@ -55,6 +55,25 @@ if isempty(node)
     return;               % (discovery fallback; never invent an observation)
 end
 
+% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): the observation has
+% no place for the v1 `units` and `dimensions` (DEFERRED (a) above), so a
+% document that states either is carried whole as v1 for the dataset's map.
+unplaced = {};
+for f = {'units', 'dimensions'}
+    v = [];
+    if isfield(blk, f{1}); v = blk.(f{1}); end
+    if ~isempty(v) && ~(ischar(v) && isempty(strtrim(v)))
+        unplaced{end+1} = ['position_metadata.' f{1}]; %#ok<AGROW>
+    end
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', 'position_metadata', ...
+        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
+    bodies = {preBody};
+    return;
+end
+
 measurement = jOntologyTerm(node, '');       % name resolved in NDI 2nd pass
 variable = jOntologyTerm('', 'position');    % the kind of measurement (spine "what")
 

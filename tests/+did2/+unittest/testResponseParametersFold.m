@@ -60,6 +60,18 @@ end
 % ===================== fixtures (from the WRITER) ==========================
 
 function v1 = responseFixture(responseType)
+%RESPONSEFIXTURE writerResponseFixture with its `stimulus_control_id` edge and
+%   its `stimulus_response.stimulator_epochid` PRESENT BUT EMPTY (the template
+%   blank): a response the fold places whole. Since [generic stage is lossless]
+%   / [partly placed is carried as v1] (Jess Haley, 2026-10-25) a response that
+%   states either -- the writer always sets both -- is carried whole as v1 (the
+%   calculation has no place for them); the tests of the fold drive this one.
+v1 = writerResponseFixture(responseType);
+v1.stimulus_response.stimulator_epochid = '';
+v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_control_id')).value = '';
+end
+
+function v1 = writerResponseFixture(responseType)
 %RESPONSEFIXTURE A did_v1 stimulus_response_scalar as tuning_response.m builds it.
 v1 = struct();
 v1.document_class = struct('class_name', 'stimulus_response_scalar', ...
@@ -362,7 +374,7 @@ function testTheSuppressedResponseIsLeftWhollyAloneByThisPass(testCase)
 % still be there afterwards -- a dropped source field is seen by NO counter we
 % have (silentLoss counts empty edges, vacuous fields and fragments; a field that
 % is simply gone is none of those).
-[out, ~] = runFold(testCase, {responseFixture('F1'), parametersFixture()});
+[out, ~] = runFold(testCase, {writerResponseFixture('F1'), parametersFixture()});
 src = bodyOfClass(testCase, out, 'stimulus_response_scalar');
 verifyEqual(testCase, src.stimulus_response.element_epochid, 't00003');
 verifyEqual(testCase, src.stimulus_response.stimulator_epochid, 't00003');

@@ -93,7 +93,20 @@ underlyingId = depValue(preBody, 'underlying_element_id');
 
 localId = name;
 if ~isempty(reference); localId = strtrim(sprintf('%s (ref %s)', name, reference)); end
-localId = jEnsureLocalId(localId, preBody);   % subject.local_identifier is REQUIRED
+% [generic stage is lossless] (Jess Haley, 2026-10-25): name and reference are
+% packed as '<name> (ref <reference>)'. That is read back exactly only when the
+% name holds no ' (ref ' of its own and neither value carries edge whitespace
+% (strtrim); and a required local_identifier the source does not state is not
+% invented from the document id ([no invented values]). Otherwise the element
+% is carried whole as v1.
+if isempty(strtrim(localId)) || contains(name, ' (ref ') ...
+        || ~strcmp(name, strtrim(name)) || ~strcmp(reference, strtrim(reference))
+    did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
+        sprintf('unplaced: element.name "%s" / element.reference "%s" (not packed reversibly)', ...
+        name, reference));
+    v2Body = {preBody};
+    return;
+end
 
 % --- the element as an entity (id preserved) -------------------------------
 % did-schema #88: one `entity` class with a bound `type`

@@ -1,4 +1,4 @@
-function [postBody, report] = universalRenames(preBody, options)
+function [postBody, report, dropped] = universalRenames(preBody, options)
 %UNIVERSALRENAMES Apply did_v1 -> V2 universal renames.
 %
 %   POSTBODY = did2.convert.universalRenames(PREBODY) returns a copy of
@@ -192,6 +192,19 @@ function [postBody, report] = universalRenames(preBody, options)
 %   first run of this code. The Python half of the path
 %   (tools/census_digest.py) IS covered and was run.
 %
+%   [POSTBODY, REPORT, DROPPED] = did2.convert.universalRenames(...) also
+%   returns DROPPED, a cell of the v1 field paths this pass DISCARDED with
+%   content that is not kept anywhere else in POSTBODY: a legacy
+%   `ndi_document` block beside `base`; an `app.name` / `app.version` beside a
+%   different `app_name` / `app_version`; a depends_on entry's non-empty
+%   `version`, or a legacy `value` / `id` that differs from the
+%   `document_id` that wins; a camelCase key or block field beside a
+%   snake_case one holding a different value. {} when nothing was lost.
+%   [generic stage is lossless] and [partly placed is carried as v1] (Jess
+%   Haley, 2026-10-25, did-schema V_eta_go_forward_class_audit.md):
+%   did2.convert.v1_to_v2 carries a body with a non-empty DROPPED whole as v1
+%   (no migrator runs on it). A rename that keeps the value is not a drop.
+%
 %   Throws did2:convert:missingDocumentClass when PREBODY has no
 %   document_class.class_name. A body that throws produces NO report, so the
 %   denominator v1_to_v2 keeps is incremented at the CALL SITE (bodies that
@@ -234,6 +247,7 @@ report = struct( ...
     'moved_vintage_unreadable_block',           0);
 
 postBody = preBody;
+dropped = {};
 
 if options.RenameClassNames
     v1ClassName = char(postBody.document_class.class_name);
@@ -241,6 +255,10 @@ if options.RenameClassNames
     v2ClassName = v1ToV2ClassName(v2ClassName);
     postBody.document_class.class_name = v2ClassName;
     if ~strcmp(v1ClassName, v2ClassName) && isfield(postBody, v1ClassName)
+        if isfield(postBody, v2ClassName) ...
+                && ~isequaln(postBody.(v2ClassName), postBody.(v1ClassName))
+            dropped{end+1} = v2ClassName;
+        end
         postBody.(v2ClassName) = postBody.(v1ClassName);
         postBody = rmfield(postBody, v1ClassName);
     end
@@ -257,11 +275,13 @@ end
 if isfield(postBody, 'depends_on') ...
         && isstruct(postBody.depends_on) ...
         && ~isempty(postBody.depends_on)
-    postBody.depends_on = renameDependsOnEntries(postBody.depends_on);
+    [postBody.depends_on, d] = renameDependsOnEntries(postBody.depends_on);
+    dropped = [dropped, d];
 end
 
 if options.RenameClassNames
-    postBody = snakeCasePropertyBlocks(postBody);
+    [postBody, d] = snakeCasePropertyBlocks(postBody);
+    dropped = [dropped, d];
 end
 
 if isfield(postBody, 'ndi_document')
@@ -272,6 +292,9 @@ if isfield(postBody, 'ndi_document')
         % beside a good `base` and moving a block that IS the only identity
         % are different facts, and one of them is the defect.
         report.discarded_ndi_document_base_present = 1;
+        if ~isempty(postBody.ndi_document)
+            dropped{end+1} = 'ndi_document';
+        end
         postBody = rmfield(postBody, 'ndi_document');
     else
         % THE DEFECTIVE ARM, MEASURED AND DELIBERATELY UNCHANGED. See the
@@ -286,7 +309,8 @@ end
 
 if isfield(postBody, 'app') && isstruct(postBody.app) ...
         && isscalar(postBody.app)
-    postBody.app = renameAppBlockFields(postBody.app);
+    [postBody.app, d] = renameAppBlockFields(postBody.app);
+    dropped = [dropped, d];
 end
 
 % Migrate a stale base.schema_version (left over from an earlier draft
@@ -465,23 +489,26 @@ for k = 1:numel(raw)
 end
 end
 
-function block = renameAppBlockFields(block)
+function [block, dropped] = renameAppBlockFields(block)
 % V2 `app` declares `app_name` and `app_version`; v1 carries the
 % same data under `name` and `version`. Apply the rename whenever a
 % v1 document ships an `app` block, regardless of its concrete class.
 % (7 v1 classes in the 20211116 corpus carry an app block: every
 % calculator class plus jrclust_clusters, neuron_extracellular,
 % stimulus_presentation, control_stimulus_ids.)
+dropped = {};
 if isfield(block, 'name') && ~isfield(block, 'app_name')
     block.app_name = block.name;
     block = rmfield(block, 'name');
 elseif isfield(block, 'name')
+    if ~isequaln(block.name, block.app_name); dropped{end+1} = 'app.name'; end
     block = rmfield(block, 'name');
 end
 if isfield(block, 'version') && ~isfield(block, 'app_version')
     block.app_version = block.version;
     block = rmfield(block, 'version');
 elseif isfield(block, 'version')
+    if ~isequaln(block.version, block.app_version); dropped{end+1} = 'app.version'; end
     block = rmfield(block, 'version');
 end
 end
@@ -622,13 +649,14 @@ function name = deriveClassNameFromDefinition(definition)
 [~, name, ~] = fileparts(char(definition));
 end
 
-function postBody = snakeCasePropertyBlocks(postBody)
+function [postBody, dropped] = snakeCasePropertyBlocks(postBody)
 % Rename top-level property-block keys to snake_case (so v1
 % inherited blocks with camelCase names like `imageStack_parameters`
 % match V2's snake-cased class names), and rename camelCase
 % field names inside each block to snake_case. Structural keys
 % (document_class, depends_on, file, files) are skipped.
 skip = {'document_class', 'depends_on', 'file', 'files'};
+dropped = {};
 topKeys = fieldnames(postBody);
 % First pass: snake_case top-level block keys for any property
 % block whose value is a struct. (The concrete-class block key has
@@ -648,6 +676,9 @@ for k = 1:numel(topKeys)
         if isfield(postBody, snakeKey)
             % Snake-case form already exists; drop the camel
             % duplicate to avoid clobbering.
+            if ~isequaln(postBody.(snakeKey), value)
+                dropped{end+1} = key; %#ok<AGROW>
+            end
             postBody = rmfield(postBody, key);
         else
             postBody.(snakeKey) = value;
@@ -658,6 +689,7 @@ end
 % Second pass: snake_case the field names inside each property
 % block.
 topKeys = fieldnames(postBody);
+blockDropped = {};
 for k = 1:numel(topKeys)
     key = topKeys{k};
     if any(strcmp(key, skip))
@@ -667,11 +699,14 @@ for k = 1:numel(topKeys)
     if ~isstruct(value) || ~isscalar(value)
         continue;
     end
-    postBody.(key) = snakeCaseBlockFields(value);
+    [postBody.(key), d] = snakeCaseBlockFields(value);
+    blockDropped = [blockDropped, cellfun(@(f) [key '.' f], d, 'UniformOutput', false)]; %#ok<AGROW>
 end
+dropped = [dropped, blockDropped];
 end
 
-function block = snakeCaseBlockFields(block)
+function [block, dropped] = snakeCaseBlockFields(block)
+dropped = {};
 fns = fieldnames(block);
 for k = 1:numel(fns)
     fn = fns{k};
@@ -680,6 +715,9 @@ for k = 1:numel(fns)
         if isfield(block, sc)
             % A snake_case field already exists; keep it and drop the
             % camelCase duplicate to avoid clobbering.
+            if ~isequaln(block.(sc), block.(fn))
+                dropped{end+1} = fn; %#ok<AGROW>
+            end
             block = rmfield(block, fn);
         else
             block.(sc) = block.(fn);
@@ -689,7 +727,7 @@ for k = 1:numel(fns)
 end
 end
 
-function out = renameDependsOnEntries(entries)
+function [out, dropped] = renameDependsOnEntries(entries)
 %RENAMEDEPENDSONENTRIES Migrate depends_on entries to the V2 shape.
 %
 %   V2 entries carry `name` and `document_id`. Accepts three
@@ -704,6 +742,7 @@ function out = renameDependsOnEntries(entries)
 %   else id. `version` is always dropped (V2 does not
 %   support per-document version branches).
 out = entries;
+dropped = {};
 
 hasId        = isfield(out, 'id');
 hasValue     = isfield(out, 'value');
@@ -724,6 +763,23 @@ for k = 1:n
         docIds{k} = out(k).id;
     else
         docIds{k} = '';
+    end
+end
+
+% What the precedence discards: a legacy `value` / `id` that differs from the
+% `document_id` that won, and any non-empty `version`. Each is a v1 value
+% kept nowhere else (header: DROPPED).
+for k = 1:n
+    nm = '';
+    if isfield(out, 'name'); nm = char(string(out(k).name)); end
+    for key = {'value', 'id'}
+        if isfield(out, key{1}) && ~isempty(out(k).(key{1})) ...
+                && ~isequal(char(string(out(k).(key{1}))), char(string(docIds{k})))
+            dropped{end+1} = sprintf('depends_on(%s).%s', nm, key{1}); %#ok<AGROW>
+        end
+    end
+    if isfield(out, 'version') && ~isempty(out(k).version)
+        dropped{end+1} = sprintf('depends_on(%s).version', nm); %#ok<AGROW>
     end
 end
 

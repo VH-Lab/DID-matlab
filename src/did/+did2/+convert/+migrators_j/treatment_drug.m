@@ -57,7 +57,15 @@ if isHeatOnly(chemicals)
     v2Body = {makeHeat(preBody, chemicals(1), anchor.base.id), anchor};
     return;
 end
-[bodies, route] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, anchor.base.id);
+[bodies, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, anchor.base.id);
+if ~isempty(unplaced)
+    % [generic stage is lossless] / [partly placed is carried as v1] (Jess
+    % Haley, 2026-10-25): an amount the dose cannot place carries the document
+    did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
+        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
+    v2Body = {preBody};
+    return;
+end
 if strcmp(route, 'dose')
     obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
         did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), siteTerm, ...

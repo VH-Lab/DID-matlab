@@ -41,7 +41,16 @@ end
 
 % did-schema #88: an `entity` of type group (members by `member_of`), id
 % preserved so the member edges' parent resolves.
-groupName = jEnsureLocalId(groupName, preBody);   % local_identifier is REQUIRED
+if isempty(strtrim(groupName))
+    % [no invented values] / [generic stage is lossless] (Jess Haley,
+    % 2026-10-25): a required local_identifier the source does not state is not
+    % filled with the document id (jEnsureLocalId); the document is carried
+    % whole as v1.
+    did2.convert.reportNote('carried_as_v1', 'subject_group', char(groupId), ...
+        'unplaced: no subject_group.group_name (a local_identifier would be invented)');
+    v2Body = {preBody};
+    return;
+end
 subjectDoc = jEntity(preBody, 'group', ...
     struct('local_identifier', groupName, 'description', desc), 'Id', groupId);
 bodies = {subjectDoc};

@@ -202,7 +202,11 @@ POST_PASSES = [
         ("components_without_dataset_version", "components with NO root (untouched)"),
         ("components_planned", "components PLANNED"),
         ("components_consumed", "  CONSUMED"),
-        ("components_withheld", "  WITHHELD (orphan guard)"),
+        ("components_withheld", "  WITHHELD (orphan guard, or unplaced below)"),
+        # [generic stage is lossless] (Jess Haley, 2026-10-25): of the withheld,
+        # those holding an author's second affiliation, which has no place;
+        # their openminds documents are carried as v1.
+        ("components_withheld_unplaced", "    of those: unplaced affiliations, CARRIED AS v1"),
         ("components_reverted_on_validation", "  REVERTED (a body failed validation)"),
         # A DOCUMENT count, not a component count. One component is typically
         # many documents (a person alone is five), so this must not be read
@@ -855,12 +859,11 @@ POST_PASSES = [
         ("refused_label_node_empty", "  label carries no ontologyNode"),
         ("refused_no_document_id", "  no document_id edge"),
         ("refused_referent_not_in_batch", "  referent not in this batch"),
+        # [generic stage is lossless] (Jess Haley, 2026-10-25): a file whose
+        # date_created/date_updated have no home in the data_body model is no
+        # longer folded with the dates dropped; it is refused and carried as v1.
+        ("refused_unplaced_dates", "  dates have no home: CARRIED AS v1"),
         ("fold_quarantined", "QUARANTINED by the fold"),
-        # NOT a refusal and NOT an error: a fold that SUCCEEDED and dropped two
-        # fields on the way, because date_created/date_updated have no home in
-        # the signed data_body model. Printed beside the successes so the loss
-        # is a number in the artifact rather than a sentence in a header.
-        ("date_fields_dropped", "date_created/date_updated DROPPED (lossy)"),
         # 0 by construction -- this pass writes to no ontology_label. Printed
         # because `ontology_label` is a ~7,007-document passthrough class and a
         # silent change to it would be ten times the size of the fold.

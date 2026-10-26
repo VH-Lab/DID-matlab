@@ -1,4 +1,4 @@
-function [docs, route] = jTreatmentBodies(preBody, variable, chemicals, locationTerm, anchorId, options)
+function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals, locationTerm, anchorId, options)
 %JTREATMENTBODIES The manipulation a v1 substance treatment becomes, routed
 %   by its recorded location, plus the chemical and formulation documents.
 %
@@ -25,6 +25,15 @@ function [docs, route] = jTreatmentBodies(preBody, variable, chemicals, location
 %   A vehicle row's amount per body mass (saline `1 mg/kg`) is not an amount:
 %   an `amount_placeholder` note per row (jDoseValue).
 %
+%   UNPLACED (third output). Since [generic stage is lossless] and [partly
+%   placed is carried as v1] (Jess Haley, 2026-10-25, did-schema
+%   V_eta_go_forward_class_audit.md) a dose whose rows include a vehicle
+%   placeholder amount, or two disagreeing amounts of one kind, is NOT built:
+%   the placeholder amount and the second amount would be written nowhere.
+%   DOCS is {} and UNPLACED names each such row (the jDoseValue text); the
+%   caller carries the source document whole as v1. Empty when everything is
+%   placed.
+%
 %   Options:
 %     'AlwaysDose'  route as a dose whatever the location, never noted as
 %                   route_unknown. No caller sets it since virus_injection
@@ -48,6 +57,7 @@ arguments
     options.Conditions = []
 end
 
+unplaced = {};
 if options.AlwaysDose
     route = 'dose';
 else
@@ -73,17 +83,28 @@ switch route
     otherwise
         [value, chemicals, conflicts, ingredientRows, placeholders] = jDoseValue(chemicals);
         % a vehicle's per-body-mass number (Hunsberger saline `1 mg/kg`) is a
-        % placeholder, not an amount: reported, not written (Jess Haley,
-        % 2026-10-21 [dose per ingredient])
+        % placeholder, not an amount (Jess Haley, 2026-10-21 [dose per
+        % ingredient]); two rows of one amount kind that disagree (Jess Haley,
+        % 2026-10-21, "a"). Each is still noted, as before.
         for k = 1:numel(placeholders)
             did2.convert.reportNote('amount_placeholder', ...
                 char(preBody.document_class.class_name), id, placeholders{k});
         end
-        % two rows of one amount kind that disagree: the first is the dose's,
-        % the rest are reported (Jess Haley, 2026-10-21, "a")
         for k = 1:numel(conflicts)
             did2.convert.reportNote('dose_amount_conflict', ...
                 char(preBody.document_class.class_name), id, conflicts{k});
+        end
+        % [generic stage is lossless]: the placeholder amount and the second,
+        % disagreeing amount would be written nowhere, so the dose is not
+        % built and the caller carries the document whole as v1 (header,
+        % UNPLACED). This used to keep the first amount and write the dose.
+        if ~isempty(placeholders) || ~isempty(conflicts)
+            unplaced = [cellfun(@(t) ['vehicle amount placeholder: ' char(t)], ...
+                reshape(placeholders, 1, []), 'UniformOutput', false), ...
+                cellfun(@(t) ['conflicting amount: ' char(t)], ...
+                reshape(conflicts, 1, []), 'UniformOutput', false)];
+            docs = {};
+            return;
         end
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
         % one ingredient_id edge per value.ingredients entry, to that row's

@@ -189,6 +189,18 @@ if isempty(subjectId)
     bodies = {preBody};
     return;
 end
+% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): #88 gives the
+% observation no edge for the v1 `document_id` (the ontologyTableRow this image
+% belongs to), so a stack that names one cannot be placed whole. It is carried
+% whole as v1, for the dataset's map, rather than folded without the edge.
+tableRowId = dependencyValue(preBody, 'document_id');
+if ~isempty(tableRowId)
+    did2.convert.reportNote('carried_as_v1', 'image_stack', ...
+        baseField(preBody, 'id', ''), 'unplaced: depends_on document_id');
+    bodies = {preBody};
+    return;
+end
 
 % ---- did-schema #88: what the raster IS (#73 review item 51, decided
 % 2026-09-25): "a raster goes by what its pixels measure, keyed [y, x,
@@ -253,7 +265,6 @@ if isnumeric(ts) && isscalar(ts) && isfinite(ts)
         'Value', double(ts), 'SourceValue', sprintf('%.17g', double(ts)));
 end
 extra = {};
-tableRowId = dependencyValue(preBody, 'document_id');
 software = {};
 if isMask
     [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
@@ -278,12 +289,6 @@ else
         'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
         'Conditions', conds, 'Notes', label, ...
         'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
-end
-if ~isempty(tableRowId)
-    % the v1 `document_id` (the ontologyTableRow this image belongs to): #88
-    % dropped image_observation's `ontology_table_row_id` edge (#73 item 42)
-    % and gives an observation no edge for it; the row is the NDI second
-    % pass's to resolve. Reported.
 end
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).

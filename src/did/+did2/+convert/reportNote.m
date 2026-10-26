@@ -45,6 +45,14 @@ function out = reportNote(action, arg2, arg3, arg4)
 %   did2:convert:reportNote:truncateBeforeMark rather than miscount.
 %
 %   KINDS IN USE:
+%     carried_as_v1   a v1 document the generic stage could place only in part,
+%                     so it was returned UNCHANGED and is carried whole as v1
+%                     (pass 1 records it as a passthrough; ndi.migrate.local
+%                     stores it as its v1 source, stamped 'did_v1'). DETAIL
+%                     names what could not be placed. [generic stage is
+%                     lossless] and [partly placed is carried as v1] (Jess
+%                     Haley, 2026-10-25, did-schema
+%                     V_eta_go_forward_class_audit.md).
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
 %                     location, so whether it was an immersion or a dose cannot
 %                     be read from it; it migrates as a dose with a NaN amount
@@ -64,12 +72,14 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     jTuningCurve / jContrastSensitivityValue) has no home for
 %                     on did-schema #88; DETAIL is its path in the source
 %                     document ('<block>.<field>'). One note per field.
+%                     NO LONGER WRITTEN since 2026-10-25: such a document is
+%                     carried whole as v1 (`carried_as_v1`).
 %     stimulus_control_id  ONE note per v1 stimulus response document a
 %                     response migrator (stimulus_response_scalar) converts:
-%                     DETAIL 'dropped' when its `stimulus_control_id` edge
-%                     named a document, which the V2 calculation does not
-%                     carry ([control as covariate]), 'none' when the edge was
-%                     empty. The count is the denominator (Jess Haley,
+%                     DETAIL 'none' (the edge was empty). A response whose
+%                     edge names a document is carried whole as v1 since
+%                     2026-10-25 (`carried_as_v1`), so 'dropped' is no
+%                     longer written. The count is the denominator (Jess Haley,
 %                     2026-10-22 [covariate rules named], 6.4 "A"); v1_to_v2
 %                     prints "dropped of converted".
 %     tuning_response_variable  ONE note per tuning / contrast-sensitivity

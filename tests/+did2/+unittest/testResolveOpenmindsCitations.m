@@ -292,6 +292,30 @@ verifyEqual(testCase, numel(classesOf(out, 'person')), 0);
 verifyEqual(testCase, numel(classesOf(out, 'openminds')), 12);
 end
 
+function testAComponentWithASecondAffiliationIsWithheldAndCarried(testCase)
+% [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25): an author's second affiliation has no place in the build (it
+% used to be dropped and counted in affiliations_beyond_first_dropped), so the
+% whole component is withheld: nothing consumed, every openminds document
+% left in the batch for the end of ndi.migrate.local to stamp as v1.
+bodies = citationGraph();
+for k = 1:numel(bodies)
+    if strcmp(bodies{k}.base.id, 'om_person')
+        bodies{k}.openminds.fields.affiliation = {'ndi://om_affil', 'ndi://om_affil'};
+    end
+end
+[out, rep] = runPass(testCase, bodies);
+verifyEqual(testCase, rep.components_planned, 1);
+verifyEqual(testCase, rep.components_consumed, 0);
+verifyEqual(testCase, rep.components_withheld, 1);
+verifyEqual(testCase, rep.components_withheld_unplaced, 1);
+verifyEqual(testCase, rep.documents_consumed, 0);
+verifyEqual(testCase, rep.affiliations_beyond_first_dropped, 0, 'nothing dropped');
+verifyEqual(testCase, numel(classesOf(out, 'openminds')), 12, ...
+    'every openminds document is still in the batch');
+verifyEqual(testCase, numel(classesOf(out, 'person')), 0, 'no entity emitted');
+end
+
 function testEveryEdgeResolvesInBothOutcomes(testCase)
 %TESTEVERYEDGERESOLVESINBOTHOUTCOMES The real gate, not a counter this pass
 %   computed about itself: did2.validate.references over the whole batch, which

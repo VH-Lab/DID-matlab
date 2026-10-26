@@ -196,6 +196,10 @@ emptyValues = [];
 % end, and one still identical is stored as its v1 source, stamped 'did_v1'.
 % Recording changes no outcome here.
 passthrough = struct('input_index', {}, 'id', {}, 'class_name', {}, 'body', {});
+% Of those, the ones whose class has no V_eta schema (no tombstone): carried
+% as v1 without V_eta validation, by class (see the validation step).
+v1NoSchemaNames = {};
+v1NoSchemaValues = [];
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
 % each corpus report counts the dimensions whose term has no node, so the move
@@ -290,7 +294,7 @@ for k = 1:numel(bodies)
             % failures would be the "all-zero reads as clean" defect again.
             legacy.bodies_reaching_universal_renames = ...
                 legacy.bodies_reaching_universal_renames + 1;
-            [postUniversalBody, legacyReport] = did2.convert.universalRenames( ...
+            [postUniversalBody, legacyReport, renameDropped] = did2.convert.universalRenames( ...
                 preBody, 'RenameClassNames', options.RenameClassNames);
             className = char(postUniversalBody.document_class.class_name);
             legacy = accumulateLegacyReport(legacy, legacyReport);
@@ -302,15 +306,29 @@ for k = 1:numel(bodies)
                 [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
                     legacyDiscNames, legacyDiscValues, className);
             end
-            v2Body = applySuperclassMigrators(postUniversalBody, className, ...
-                options.TargetVersion);
-            superUnchanged = isequaln(v2Body, postUniversalBody);
-            % runConcreteMigrator returns a CELL of one-or-more bodies.
-            % A class with a base migrator only returns a single body; a
-            % class with a +migrators_j split/fold migrator (treatment,
-            % ontology_table_row, ...) may fan out to several (1 -> N).
-            v2Bodies = runConcreteMigrator(v2Body, className, ...
-                options.TargetVersion);
+            if isempty(renameDropped)
+                v2Body = applySuperclassMigrators(postUniversalBody, className, ...
+                    options.TargetVersion);
+                superUnchanged = isequaln(v2Body, postUniversalBody);
+                % runConcreteMigrator returns a CELL of one-or-more bodies.
+                % A class with a base migrator only returns a single body; a
+                % class with a +migrators_j split/fold migrator (treatment,
+                % ontology_table_row, ...) may fan out to several (1 -> N).
+                v2Bodies = runConcreteMigrator(v2Body, className, ...
+                    options.TargetVersion);
+            else
+                % [generic stage is lossless] / [partly placed is carried as
+                % v1] (Jess Haley, 2026-10-25): universalRenames discarded v1
+                % content it keeps nowhere, so no migrator runs and the body is
+                % a passthrough, carried whole as v1 (its v1 source is what the
+                % end of ndi.migrate.local stores).
+                did2.convert.reportNote('carried_as_v1', className, ...
+                    sourceIdOf(preBody), ['universalRenames would discard: ' ...
+                    strjoin(renameDropped, ', ')]);
+                v2Body = postUniversalBody;
+                superUnchanged = true;
+                v2Bodies = {v2Body};
+            end
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
             % hand its input straight back? `bodies = {preBody}` is how a
             % migrator says "nothing to do here". It is used BOTH deliberately
@@ -362,7 +380,23 @@ for k = 1:numel(bodies)
             end
             doc = did2.document(outBody);
             if options.Validate
-                doc.validate('SchemaCache', options.SchemaCache);
+                try
+                    doc.validate('SchemaCache', options.SchemaCache);
+                catch vErr
+                    % [generic stage is lossless] / [partly placed is carried
+                    % as v1] and [passthrough stays v1: how] (Jess Haley,
+                    % 2026-10-25 / 2026-10-24): a v1 document carried WHOLE
+                    % whose class V_eta keeps no tombstone for is a v1
+                    % document, stored as did_v1 without V_eta validation; it
+                    % is counted here instead of quarantined. Any other
+                    % failure, and any failure of a document a migrator
+                    % changed, still quarantines.
+                    if ~(passedThrough && strcmp(vErr.identifier, 'did2:schema:missingClass'))
+                        rethrow(vErr);
+                    end
+                    [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
+                        v1NoSchemaNames, v1NoSchemaValues, className);
+                end
             end
             migrated{end+1} = doc; %#ok<AGROW>
             if passedThrough
@@ -467,6 +501,8 @@ result.summary = struct( ...
     'emitted_nothing_count',    sum(emptyValues), ...
     'emitted_nothing_by_class', buildByClassTable(emptyNames, emptyValues), ...
     'passthrough_count', numel(passthrough), ...
+    'passthrough_unvalidated_no_schema_count', sum(v1NoSchemaValues), ...
+    'passthrough_unvalidated_no_schema_by_class', buildByClassTable(v1NoSchemaNames, v1NoSchemaValues), ...
     'legacy_ndi_document', legacy, ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...

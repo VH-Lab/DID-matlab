@@ -62,6 +62,31 @@ if isnumeric(numValue) && ~isempty(numValue) && isfinite(numValue(1))
     leaf = jQuantityLeaf(hay, wordBoundary);
 end
 
+% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): each fold below
+% writes ONE value. A source that states a second one -- a string beside the
+% number a quantity leaf takes, a number beside the CURIE a term takes, or a
+% number with more than one element (only the first was read) -- is not
+% folded: {} is returned, so the caller carries the document whole as v1.
+hasNumber = isnumeric(numValue) && ~isempty(numValue);
+hasString = ~isempty(strValue) && ~(ischar(strValue) && isempty(strtrim(strValue)));
+unplaced = '';
+if hasNumber && numel(numValue) > 1
+    unplaced = sprintf('a numeric value of %d elements', numel(numValue));
+elseif ~isempty(leaf) && hasString
+    unplaced = 'the string value beside the numeric value';
+elseif isempty(leaf) && looksLikeCURIE(strValue) && hasNumber
+    unplaced = 'the numeric value beside the term value';
+end
+if ~isempty(unplaced)
+    cn = '';
+    if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
+        cn = char(preBody.document_class.class_name);
+    end
+    did2.convert.reportNote('carried_as_v1', cn, sourceId(preBody), ['unplaced: ' unplaced]);
+    return;
+end
+
 % did-schema #88: built through did2.build (jStatement): the `observation`
 % direction with the value kind as its mixin.
 entityId = jDependency(preBody, 'subject_id');

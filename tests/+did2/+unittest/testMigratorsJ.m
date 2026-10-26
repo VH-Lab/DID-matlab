@@ -191,9 +191,10 @@ verifyFalse(testCase, isfield(sub, 'is_group'));
 verifyFalse(testCase, isfield(sub, 'is_biological'));
 end
 
-function testSubjectGroupEmptyNameFallsBackToId(testCase)
-% local_identifier is REQUIRED on a V_eta subject; a subject_group with no
-% group_name must still be nameable -- it falls back to the document id.
+function testSubjectGroupEmptyNameIsCarriedWholeAsV1(testCase)
+% INVERTED 2026-10-25 (was testSubjectGroupEmptyNameFallsBackToId: the required
+% local_identifier was filled with the document id). [no invented values] /
+% [generic stage is lossless] (Jess Haley): the group is carried whole as v1.
 v1 = struct();
 v1.document_class = struct('class_name', 'subject_group', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -202,13 +203,14 @@ v1.base = struct('id', 'grp_noname', 'session_id', 'aa_99', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.subject_group = struct('group_name', '', 'description', '');
 out = runJ(v1);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('entity.local_identifier'), 'grp_noname');
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, out.migrated{1}.className(), 'subject_group');
 end
 
-function testSubjectCarryForwardFillsLocalId(testCase)
-% A plain v1 subject with an empty/missing local_identifier is filled from the
-% document id (the required-handle carry-forward path).
+function testSubjectWithNoLocalIdIsCarriedWholeAsV1(testCase)
+% INVERTED 2026-10-25 (was testSubjectCarryForwardFillsLocalId: an empty
+% local_identifier was filled from the document id). [no invented values] /
+% [generic stage is lossless] (Jess Haley): the subject is carried whole as v1.
 v1 = struct();
 v1.document_class = struct('class_name', 'subject', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -217,10 +219,8 @@ v1.base = struct('id', 'sub_bare', 'session_id', 'sess_09', ...
     'name', 'subject', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.subject = struct('local_identifier', '', 'description', '');
 out = runJ(v1);
-doc = out.migrated{1};
-% did-schema #88: a subject is an `entity` of type organism
-verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'organism');
-verifyEqual(testCase, doc.get('entity.local_identifier'), 'sub_bare');
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, out.migrated{1}.className(), 'subject');
 end
 
 function testSubjectCarryForwardPreservesLocalId(testCase)
@@ -524,8 +524,9 @@ end
 
 function testEncounterMapPreservesSourceId(testCase)
 % Same requirement on the per-table map path, which previously minted a fresh
-% id for every body it emitted.
-out = runJ(encounterRow());
+% id for every body it emitted. (A row the map places whole: a real JH row is
+% carried as v1, testAnEncounterRowTheMapCannotPlaceIsCarriedWholeAsV1.)
+out = runJ(placeableEncounterRow());
 ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
 verifyEqual(testCase, sum(strcmp(ids, 'otr_enc')), 1);
 verifyEqual(testCase, numel(unique(ids)), numel(ids));
@@ -736,15 +737,28 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+term');
 verifyEqual(testCase, m.get('term.value').name, 'craniotomy');
 end
 
+function testTreatmentTargetLocationLabelIsCarriedWholeAsV1(testCase)
+% INVERTS the first half of testTreatmentTargetLocationEmitsSiteObservation,
+% which asserted " Target Location" STRIPPED from the variable (the v1 label
+% kept nowhere). [generic stage is lossless] (Jess Haley, 2026-10-25, audit
+% item 14): the treatment is carried whole as v1.
+v1 = treatmentDoc('chebi:28001', 'muscimol Target Location', [], 'uberon:0002436');
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, out.migrated{1}.get('treatment.name'), 'muscimol Target Location');
+end
+
 function testTreatmentTargetLocationEmitsSiteObservation(testCase)
 % Dab "Target Location" idiom: the site rides in string_value; strict J has no
-% target_structure, so a located site becomes a term_observation (D3).
-out = runJ(treatmentDoc('chebi:28001', 'muscimol Target Location', [], 'uberon:0002436'));
+% target_structure, so a located site becomes a term_observation (D3). UPDATED
+% 2026-10-25: driven by a label with no " Target Location" suffix (a suffixed
+% label is carried as v1, the test above); the CURIE string_value alone still
+% routes the site.
+out = runJ(treatmentDoc('chebi:28001', 'muscimol', [], 'uberon:0002436'));
 % #88: dose manip + its chemical + formulation + anchor + site obs
 verifyEqual(testCase, numel(out.migrated), 5);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
 verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 1);
-% " Target Location" stripped from the manipulation's spine variable
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
@@ -957,30 +971,23 @@ function testSalinePerBodyMassIsAPlaceholderNotAnAmount(testCase)
 % +hunsberger/TreatmentCreator.m): the drug group's per-body-mass number copied
 % onto a vehicle. It is the amount of NO active ingredient (Jess Haley,
 % 2026-10-21 [dose per ingredient]), so it is not an ingredient amount and not
-% a concentration: the dose's volume is NaN, there is no ingredient entry or
-% ingredient_id edge, and the migration report carries `amount_placeholder`.
+% a concentration, and the migration report carries `amount_placeholder`.
+% INVERTED 2026-10-25: the dose used to be built with the placeholder written
+% nowhere (volume NaN). [generic stage is lossless] (Jess Haley, audit item 6):
+% the treatment is carried whole as v1, the placeholder still noted.
 v1 = treatmentDrugDoc('td_saline', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nEFO:0002677,saline,1,SNOMED:396163008,mg/kg'), ...
     'SNOMED:783351009', 'Intraperitoneal');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
-dv = d.get('dose.value');
-verifyTrue(testCase, isnan(dv.volume.liters), 'the injected volume is unrecorded');
-verifyFalse(testCase, isfield(dv, 'ingredients') && ~isempty(dv.ingredients), ...
-    'a vehicle''s placeholder is not an ingredient amount');
-verifyFalse(testCase, isfield(dv, 'amount_per_body_mass') && ~isempty(dv.amount_per_body_mass), ...
-    'nor the dose''s own amount per body mass');
-verifyEmpty(testCase, depVal(d, 'ingredient_id'));
-f = doseChainJ(out.migrated, d);
-e = f.get('formulation.value').ingredients(1);
-verifyTrue(testCase, isnan(e.concentration.source_value), 'nor a concentration');
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, out.migrated{1}.className(), 'treatment_drug');
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'amount_placeholder'), 'the placeholder was not reported');
 verifyEqual(testCase, notes.amount_placeholder.count, 1);
 verifyEqual(testCase, notes.amount_placeholder.ids, {'td_saline'});
 verifyEqual(testCase, notes.amount_placeholder.details, {'saline: 1 mg/kg'});
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+    'vehicle amount placeholder: saline: 1 mg/kg'));
 end
 
 function testEachAmountRowFillsItsOwnDoseSlot(testCase)
@@ -1081,18 +1088,18 @@ verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
 verifyTrue(testCase, isnan(v.volume.liters));
 end
 
-function testTwoDisagreeingRowsOfOneKindKeepTheFirstAndReportTheRest(testCase)
-% Two volume rows that disagree: the dose keeps the first; the second is
-% reported (`dose_amount_conflict`, with the two amounts as its detail), and is
-% not written anywhere as a concentration.
+function testTwoDisagreeingRowsOfOneKindAreCarriedWholeAsV1(testCase)
+% Two volume rows that disagree. INVERTED 2026-10-25 (was
+% testTwoDisagreeingRowsOfOneKindKeepTheFirstAndReportTheRest: the dose kept
+% the first and the second was written nowhere). [generic stage is lossless]
+% (Jess Haley): the treatment is carried whole as v1; the disagreement is still
+% reported (`dose_amount_conflict`).
 v1 = treatmentDrugDoc('td_two_vols', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,1,UO:0000098,mL\n' ...
     'NCIT:C62467,saline,2,UO:0000098,mL']), ...
     'SNOMED:783351009', 'Intraperitoneal');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-v = out.migrated{1}.get('dose.value');
-verifyEqual(testCase, v.volume.source_value, 1, 'the first row is kept');
+verifyCarriedWholeAsV1(testCase, v1, out);
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'dose_amount_conflict'), 'the disagreement was not reported');
 n = notes.dose_amount_conflict;
@@ -1826,7 +1833,7 @@ function testImageStackScaleUnitsAreSplitPerAxis(testCase)
 % `dimension_order`. UPDATED for #88: each key on the sampled_body carries its
 % own source_unit, written with the registry label ('micrometer' is the
 % registry's om:micrometre 'micrometre'; 'second' is om:second-Time).
-out = runJ(behaviourImageStack());
+out = runJ(foldableBehaviourImageStack());
 sb = firstOfClassJ(out.migrated, 'sampled_body');
 keys = did2.unittest.helpers.axesOf(sb.toStruct());   % AMENDMENT 6: dimensions + covariates
 verifyEqual(testCase, numel(keys), 3, 'dimension_order YXT is three dimensions');
@@ -1858,7 +1865,7 @@ cases = { ...
     'A,mA,uA',            {'om:ampere', 'ampere'; 'om:milliampere', 'milliampere'; 'om:microampere', 'microampere'}; ...
     'nA,pA,furlong',      {'om:nanoampere', 'nanoampere'; 'om:picoampere', 'picoampere'; '', 'furlong'}};
 for c = 1:size(cases, 1)
-    v1 = behaviourImageStack();
+    v1 = foldableBehaviourImageStack();
     v1.image_stack_parameters.dimension_scale_units = cases{c, 1};
     out = runJ(v1);
     sb = firstOfClassJ(out.migrated, 'sampled_body');
@@ -1881,7 +1888,7 @@ function testImageStackAxisWithNoRecordedScaleIsABareDimension(testCase)
 % is not written (Jess Haley 2026-10-22 [covariate rules named] 6.2a, and
 % "yes" to 1..n): three bare dimensions. A recorded scale, even 1, is still a
 % covariate (testImageStackBecomesBodyBackedObservation).
-v1 = behaviourImageStack();
+v1 = foldableBehaviourImageStack();
 v1.image_stack_parameters.dimension_scale = [];        % nothing recorded
 v1.image_stack_parameters.dimension_scale_units = '';
 out = runJ(v1);
@@ -1896,7 +1903,10 @@ function v1 = arenaMaskImageStack()
 %   (+setup/+conv/+haley/doImport.m, "Arena mask imageStack"): YX, logical,
 %   label = the definition ndi.ontology.lookup('EMPTY:0000130') returns,
 %   document_id = the plate row, subject_id = the subject group, no app block.
-v1 = behaviourImageStack();
+%   The plate row is left out here: a mask naming one is carried whole as v1
+%   (testImageStackNamingATableRowIsCarriedWholeAsV1); these tests are of the
+%   mask fold, which runs on a mask it can place whole.
+v1 = foldableBehaviourImageStack();
 v1.base.id = 'is_mask_01';
 v1.image_stack = struct('format_ontology', 'NCIT:C85437', 'label', ...
     ['A binary image (logical matrix) where pixels within the experimental ' ...
@@ -1980,7 +1990,7 @@ end
 
 function testAnIntensityImageStackIsStillAnObservation(testCase)
 % THE OTHER DIRECTION: the behaviour video is not a mask.
-out = did2.convert.migrators_j.image_stack(behaviourImageStack());
+out = did2.convert.migrators_j.image_stack(foldableBehaviourImageStack());
 names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
 verifyTrue(testCase, ismember('observation+intensity', names));
 verifyFalse(testCase, ismember('calculation+label', names));
@@ -2017,6 +2027,16 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
     'dimension_scale_units', 'micrometer,micrometer,second', ...
     'clocktype', 'exp_global_time', 'timestamp', 739000);
 v1.files = struct('file_list', {{'imageStack'}});
+end
+
+function v1 = foldableBehaviourImageStack()
+%FOLDABLEBEHAVIOURIMAGESTACK behaviourImageStack without its `document_id`
+%   (the plate row). Since [generic stage is lossless] (Jess Haley, 2026-10-25)
+%   a stack that names a row is carried whole as v1 (#88 has no edge for it:
+%   testImageStackNamingATableRowIsCarriedWholeAsV1), so the tests of the fold
+%   itself (axes, units, masks) drive a stack the fold can place whole.
+v1 = behaviourImageStack();
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subjgrp_7'});
 end
 
 function v1 = babuImageStack()
@@ -2109,14 +2129,27 @@ otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
     'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
 end
 
-function testImageStackFoldCarriesDocumentIdIntoTheOntologyTableRowSlot(testCase)
-% INVERTED for did-schema #88, which removed image_observation's
-% `ontology_table_row_id` slot (#73 item 42) and gives an observation no edge
-% for the ontologyTableRow an image belongs to. The fold therefore does NOT
-% carry the v1 `document_id`; resolving the image to its plate row is an NDI
-% second-pass need (listed in the port report). The whole edge set is still
-% asserted, so a dropped, invented or renamed edge fails here.
-out = runJ(behaviourImageStack());
+function testImageStackNamingATableRowIsCarriedWholeAsV1(testCase)
+% INVERTS testImageStackFoldCarriesDocumentIdIntoTheOntologyTableRowSlot, which
+% asserted the fold arm's output WITHOUT the v1 `document_id` (#88 has no edge
+% for it). Since [generic stage is lossless] and [partly placed is carried as
+% v1] (Jess Haley, 2026-10-25) a stack that names its ontologyTableRow is
+% carried whole as v1: one document, the source, the edge kept.
+v1 = behaviourImageStack();
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.migrated{1};
+verifyEqual(testCase, char(d.get('document_class.class_name')), 'image_stack');
+verifyEqual(testCase, depVal(d, 'document_id'), 'otr_plate_1', 'the edge is kept');
+verifyEqual(testCase, depVal(d, 'subject_id'), 'subjgrp_7');
+verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'unplaced: depends_on document_id');
+end
+
+function testImageStackFoldWithNoTableRowStillPlacesTheStack(testCase)
+% the fold arm itself, on a stack it can place whole (no plate row): the edge
+% set is exactly entity_id + time_reference_id, the bytes land on the body
+out = runJ(foldableBehaviourImageStack());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3, ...
     'the fold arm is 1 -> intensity_observation + sampled_body + anchor');
@@ -2125,18 +2158,13 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(obs), 'observation+intensit
 verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), ...
     {'entity_id', 'time_reference_id'});
 verifyEqual(testCase, depVal(obs, 'entity_id'), 'subjgrp_7');
-for k = 1:numel(out.migrated)
-    verifyFalse(testCase, any(strcmp(depNamesOf(out.migrated{k}), 'document_id')), ...
-        'the did_v1 edge name must not survive onto a V_eta document');
-end
 verifyEqual(testCase, obs.get('base.id'), 'is_beh_01');
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{2}), 'sampled_body');
 sbStruct = out.migrated{2}.toStruct();
 verifyTrue(testCase, isfield(sbStruct, 'files'), 'the carried bytes must land on the sampled_body');
 verifyEqual(testCase, sbStruct.files.file_list{1}, 'imageStack', ...
     'and under NDI''s own spelling -- universalRenames skips file keys');
-obsStruct = obs.toStruct();
-verifyFalse(testCase, isfield(obsStruct, 'files'), ...
+verifyFalse(testCase, isfield(obs.toStruct(), 'files'), ...
     'the observation is the handle; the bytes belong to the body');
 end
 
@@ -2158,7 +2186,9 @@ group.subject_group = struct('group_name', 'plate_worms', 'description', '');
 
 out = runJ({behaviourImageStack(), behaviourPlateRow(), group});
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 5);   % image 1->3, row 1->1, group 1->1
+% UPDATED for [generic stage is lossless] (Jess Haley, 2026-10-25): the image
+% names the row, so it is carried whole as v1 (1 -> 1), edge and all
+verifyEqual(testCase, numel(out.migrated), 3);   % image 1->1 (v1), row 1->1, group 1->1
 ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
 verifyEqual(testCase, sum(strcmp(ids, 'otr_plate_1')), 1);
 classes = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
@@ -2169,12 +2199,15 @@ rep = did2.validate.references(out.migrated, ...
 verifyGreaterThan(testCase, rep.edges_examined, 0);
 verifyEqual(testCase, rep.orphan_count, 0);
 
+% INVERTED with the carry: the v1 image keeps its `document_id`, so a batch
+% that leaves the row out has exactly that one edge dangling (the v1 truth,
+% not an invented edge); with the row present (above) nothing orphans.
 outNoRow = runJ({behaviourImageStack(), group});
 repMissing = did2.validate.references(outNoRow.migrated, ...
     'KnownIds', did2.unittest.helpers.sessionKnownIds(outNoRow.migrated));
 verifyGreaterThan(testCase, repMissing.edges_examined, 0);
-verifyEqual(testCase, repMissing.orphan_count, 0, ...
-    'no emitted edge names the plate row on #88, so its absence orphans nothing');
+verifyEqual(testCase, repMissing.orphan_count, 1, ...
+    'the carried v1 image names the absent plate row');
 end
 
 
@@ -2253,8 +2286,62 @@ for k = 1:numel(migrated)
 end
 end
 
+function otr = placeableEncounterRow()
+%PLACEABLEENCOUNTERROW An encounter row the map places WHOLE: the
+%   EncounterIdentifier column is present (it is part of the table's
+%   signature) but empty, and no column carries an ontology node. A real JH row
+%   carries both, and is carried as v1 (testAnEncounterRowTheMapCannotPlace...).
+otr = encounterRow();
+otr.ontology_table_row.data.CElegansBehavioralAssay_EncounterIdentifier = [];
+otr.ontology_table_row.ontology_nodes = '';
+end
+
+function verifyCarriedWholeAsV1(testCase, v1, out)
+%VERIFYCARRIEDWHOLEASV1 [generic stage is lossless] / [partly placed is carried
+%   as v1] (Jess Haley, 2026-10-25): the source comes back as ONE document, the
+%   v1 body unchanged, recorded in pass 1's passthrough list (which
+%   ndi.migrate.local stamps 'did_v1'), and noted `carried_as_v1`.
+verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+verifyEqual(testCase, char(out.passthrough(1).id), char(v1.base.id));
+verifyEqual(testCase, char(out.migrated{1}.get('base.id')), char(v1.base.id));
+notes = out.summary.migration_notes;
+verifyTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
+if isfield(notes, 'carried_as_v1')
+    verifyEqual(testCase, notes.carried_as_v1.count, 1);
+end
+end
+
+function testAnEncounterRowTheMapCannotPlaceIsCarriedWholeAsV1(testCase)
+% INVERTS what testEncounterTableMap asserted for this row: the map dropped
+% EncounterIdentifier ("derived") and every column's ontology node. The
+% generic stage now carries the row whole as v1 (Jess Haley, 2026-10-25
+% [generic stage is lossless], [partly placed is carried as v1]).
+v1 = encounterRow();
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), ...
+    'ontology_table_row');
+verifyEqual(testCase, out.migrated{1}.get('ontology_table_row.data'), ...
+    v1.ontology_table_row.data, 'every cell, the identifier among them, kept');
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'CElegansBehavioralAssay_EncounterIdentifier'), d);
+end
+
+function testAnEncounterRowWithNoOnsetIsCarriedNotGivenZero(testCase)
+% the map read a missing bound as 0 (colNum's default): an invented value
+v1 = placeableEncounterRow();
+v1.ontology_table_row.data.CElegansBehavioralAssay_EncounterOnsetTime = [];
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'EncounterOnsetTime (missing)'), d);
+end
+
 function testEncounterTableMap(testCase)
-out = runJ(encounterRow());
+% the map still places a row it can place whole (it stays for the JH map)
+out = runJ(placeableEncounterRow());
 % 8 worm observations + 1 relation + 1 shared time_reference
 verifyEqual(testCase, numel(out.migrated), 10);
 m = out.migrated;   % #88: by_class counts raw classes; count leaves
@@ -2360,8 +2447,10 @@ function testAPatchSubjectIsNeverLabelledJustThePatchNumber(testCase)
 %   would happily emit '0001' if the plate component were dropped again.
 %
 %   The second half drives the exact regression path: with the plate column
-%   gone, the OLD code returned the bare `patchID`. The handle must fall back to
-%   the document id instead -- unique by construction -- and never to the number.
+%   gone, the OLD code returned the bare `patchID`, and later the document id.
+%   Since [no invented values] / [generic stage is lossless] (Jess Haley,
+%   2026-10-25) no handle is invented: the row is carried whole as v1, so no
+%   patch is minted at all -- and certainly none named by the number.
 out = runJ(patchGeometryRow());
 sub = firstOfClassJ(out.migrated, 'culture');   % #88: entity of type culture
 handle = sub.get('entity.local_identifier');
@@ -2372,17 +2461,9 @@ verifyEqual(testCase, handle, 'plate/0061/patch/0017');
 
 noPlate = dropColumnJ(patchGeometryRow(), 'BacterialPlateIdentifier');
 out2 = runJ(noPlate);
-sub2 = firstOfClassJ(out2.migrated, 'culture');
-handle2 = sub2.get('entity.local_identifier');
-% DENOMINATOR FIRST: the map must still have dispatched, or this asserts nothing
-% about the handle at all -- a row that fell through to the passthrough would
-% mint no subject and firstOfClassJ would have failed instead.
-verifyEqual(testCase, sub2.get('base.id'), 'otr_patch');
-verifyEmpty(testCase, regexp(handle2, '^\d+$', 'once'), ...
-    sprintf(['with no plate column the handle fell back to the bare patch ' ...
-             'number %s -- the directive forbids exactly this'], handle2));
-verifyEqual(testCase, handle2, 'otr_patch', ...
-    'the fallback is the document id, which is unique by construction');
+verifyCarriedWholeAsV1(testCase, noPlate, out2);
+verifyEmpty(testCase, firstOfClassJ(out2.migrated, 'culture'), ...
+    'with no plate column no patch is minted under any handle');
 end
 
 function otr = dropColumnJ(otr, key)
@@ -2822,20 +2903,42 @@ verifyEmpty(testCase, assertionAboutJ(out.migrated, id, 'experimental approach')
 end
 
 
+function testMetadataEditorAuthorWithTwoAffiliationsIsCarriedWholeAsV1(testCase)
+% [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25): only a scalar affiliation was read, so an author with two lost
+% both (the header's "OPEN" note). The document is now carried whole as v1.
+v1 = metadataEditorDoc();
+two = struct('memberOf', {struct('fullName', 'Analytical Society'), ...
+    struct('fullName', 'Royal Society')});
+v1.metadata_editor.metadata_structure.Author(1).affiliation = two;
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+authors = out.migrated{1}.get('metadata_editor.metadata_structure.Author');
+verifyEqual(testCase, numel(authors(1).affiliation), 2);
+end
+
 function testMetadataEditorEthicsAssessmentIsTheJurisdiction(testCase)
 % Jess Haley 2026-10-22 [ethics assessment to jurisdiction]
 % (V_eta_term_registry_plan.md): the editor's EthicsAssessment becomes an
 % `ethics jurisdiction` (EMPTY:0000359) assertion about the dataset, through
 % did2.convert.ethicsJurisdiction; the obsolete EMPTY:0000355 `ethics
 % assessment` is never written. "EU compliant +" is the European Union with the
-% "+" kept as a note; "US compliant" the United States; "not required" (and
-% any other value) makes no statement.
+% "+" kept as a note; "US compliant" the United States. INVERTED 2026-10-25
+% for "not required" (and any other value): it made no statement and was
+% dropped; since [generic stage is lossless] / [partly placed is carried as
+% v1] (Jess Haley) the whole metadata_editor document is carried as v1.
 values = {'EU compliant', 'EU compliant +', 'US compliant', 'not required'};
 nodes = {'wikidata:Q458', 'wikidata:Q458', 'wikidata:Q30', ''};
 for k = 1:numel(values)
     v1 = metadataEditorDoc();
     v1.metadata_editor.metadata_structure.EthicsAssessment = values{k};
     out = runJ(v1);
+    if isempty(nodes{k})
+        verifyCarriedWholeAsV1(testCase, v1, out);
+        verifyEqual(testCase, out.migrated{1}.get( ...
+            'metadata_editor.metadata_structure.EthicsAssessment'), values{k});
+        continue;
+    end
     m = out.migrated;
     id = firstOfClassJ(m, 'dataset').get('base.id');
     hits = {};
@@ -2852,12 +2955,6 @@ for k = 1:numel(values)
                 hits{end+1} = d; %#ok<AGROW>
             end
         end
-    end
-    if isempty(nodes{k})
-        verifyEmpty(testCase, hits, sprintf('%s: no statement', values{k}));
-        verifyEqual(testCase, out.summary.by_class.assertion, 11, ...
-            sprintf('%s: the assertions of metadataEditorDoc alone', values{k}));
-        continue;
     end
     assertEqual(testCase, numel(hits), 1, sprintf('%s: one jurisdiction', values{k}));
     verifyEqual(testCase, hits{1}.get('term.value').node, nodes{k}, values{k});
@@ -3851,6 +3948,10 @@ verifyError(testCase, @() did2.convert.migrators_j.vmspikesummary(body), ...
 end
 
 function testContrastTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % contrast_tuning -> the contrast_tuning_calculation leaf, id-preserved (did-schema
 % #88). UPDATED for #88: a calculation REQUIRES operating_system_id, read from the
 % v1 `app.os`, so the fixture now carries the `app` block every real calculator
@@ -3870,7 +3971,7 @@ body.contrast_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s', 'response_type', 'mean'), ...
     'tuning_curve', struct('contrast', [0 0.25 0.5 1], 'mean', [2 5 9 12]));
 
-out = did2.convert.migrators_j.contrast_tuning(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.contrast_tuning, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'contrast_tuning_calculation', 'ct_1', 'sub_8');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
@@ -3882,6 +3983,10 @@ end
 
 
 function testOrientationDirectionTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % orientation_direction_tuning -> orientation_direction_tuning_calculation,
 % id-preserved (#88). UPDATED for #88: app block added (operating_system_id is
 % required); `vector` lands on the leaf's circular_statistics, significance on
@@ -3903,7 +4008,7 @@ body.orientation_direction_tuning = struct( ...
     'significance', struct('visual_response_anova_p', 0.002), ...
     'fit', struct('hwhh', 22.0));
 
-out = did2.convert.migrators_j.orientation_direction_tuning(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.orientation_direction_tuning, body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));   % not decomposed
@@ -3925,6 +4030,10 @@ end
 
 
 function testOridirtuningCalcUndefersToLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % The ndi.calc.vis.oridir OUTPUT document folds 1 -> 1, id-preserved, into the
 % SAME leaf as its result sibling. UPDATED for #88: input_parameters ->
 % interaction.method.parameters (a list of entries); the app block -> a software
@@ -3950,7 +4059,7 @@ body.orientation_direction_tuning = struct( ...
     'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
     'vector', struct('orientation_preference', 47.5));
 
-out = did2.convert.migrators_j.oridirtuning_calc(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.oridirtuning_calc, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'oc_1', 'neuron_9');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_9');
@@ -4092,6 +4201,10 @@ end
 
 
 function testTuningcurveCalcUndefersToLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % The ndi.calc.stimulus.tuningcurve OUTPUT folds 1 -> 1, id-preserved, into the
 % concrete tuning_curve_calculation leaf (#88). element_id -> entity_id; the
 % inherited stimulus_tuningcurve block is reshaped (response_mean -> value.mean,
@@ -4115,7 +4228,7 @@ body.stimulus_tuningcurve = struct( ...
 body.tuningcurve_calc = struct('log', 'ok', ...
     'input_parameters', struct('best_algorithm', 'empirical_maximum'));
 
-out = did2.convert.migrators_j.tuningcurve_calc(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.tuningcurve_calc, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'tcc_1', 'neuron_tc');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_tc');
@@ -4131,6 +4244,10 @@ end
 
 
 function testStimulusTuningcurveRawFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % A raw ndi.app.stimulus.tuning_response curve folds to the SAME leaf class as
 % tuningcurve_calc, so stimulus_tuningcurve_id refs resolve to either. UPDATED for
 % #88: the fixture carries the `app` block ndi.app.newdocument stamps (an
@@ -4149,7 +4266,7 @@ body.stimulus_tuningcurve = struct( ...
     'independent_variable_value', [0 90 180 270], ...
     'response_mean', [10 2 9 3], 'response_units', 'Spikes/s');
 
-out = did2.convert.migrators_j.stimulus_tuningcurve(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.stimulus_tuningcurve, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'stc_1', 'neuron_rt');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_rt');
@@ -4171,6 +4288,10 @@ end
 end
 
 function testSpeedTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % speed_tuning -> speed_tuning_calculation, id-preserved (#88). UPDATED for #88:
 % app block added (an operating system is required); the two stimulus axes
 % (SF, TF) become ONE key whose positions are labelled by both values.
@@ -4186,7 +4307,7 @@ body.speed_tuning = struct( ...
     'tuning_curve', struct('spatial_frequency', [0.5 0.5 1], ...
         'temporal_frequency', [2 4 4], 'mean', [5 8 6]));
 
-out = did2.convert.migrators_j.speed_tuning(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.speed_tuning, body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
@@ -4773,12 +4894,8 @@ verifyError(testCase, @() did2.convert.migrators_j.site2channelmap(body), ...
     'did2:convert:site2ChannelMapInventedShape');
 end
 
-function testPositionMetadataBecomesTermObservation(testCase)
-% position_metadata carries only DESCRIPTIVE ontology fields -- the numeric
-% coordinates live in the separate element/timeseries doc that element_id points
-% at, NOT here. So it folds to a term_observation of the element-subject naming
-% the measurement term (value = the ontologyNode CURIE), plus a session anchor.
-% 1 -> 2. No values are invented.
+function body = positionMetadataBody()
+% the JH writer's shape (+setup/+conv/+haley/doImport.m, Step 6)
 body = struct();
 body.document_class = struct('class_name', 'position_metadata', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -4787,6 +4904,41 @@ body.base = struct('id', 'pm_01', 'session_id', 'sess_09', ...
     'name', 'pm', 'datestamp', '2024-06-01T12:00:00.000Z');
 body.position_metadata = struct('ontology_node', 'EMPTY:0000200', ...
     'units', 'NCIT:C48367', 'dimensions', 'NCIT:C44477,NCIT:C44478');
+end
+
+function testPositionMetadataWithUnitsOrDimensionsIsCarriedWholeAsV1(testCase)
+% INVERTS what testPositionMetadataBecomesTermObservation asserted for the
+% writer's shape: the term observation dropped `units` and `dimensions`. Since
+% [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
+% 2026-10-25) the document is carried whole as v1, each field on its own too.
+v1 = positionMetadataBody();
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, out.migrated{1}.get('position_metadata.units'), 'NCIT:C48367');
+for f = {'units', 'dimensions'}
+    one = positionMetadataBody();
+    other = setdiff({'units', 'dimensions'}, f);
+    one.position_metadata.(other{1}) = '';
+    outOne = runJ(one);
+    verifyCarriedWholeAsV1(testCase, one, outOne);
+    verifyEqual(testCase, outOne.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+        ['unplaced: position_metadata.' f{1}]);
+end
+end
+
+function testPositionMetadataBecomesTermObservation(testCase)
+% position_metadata carries only DESCRIPTIVE ontology fields -- the numeric
+% coordinates live in the separate element/timeseries doc that element_id points
+% at, NOT here. So it folds to a term_observation of the element-subject naming
+% the measurement term (value = the ontologyNode CURIE), plus a session anchor.
+% 1 -> 2. No values are invented. UPDATED for [generic stage is lossless]
+% (Jess Haley, 2026-10-25): the fold runs only when it places the document
+% whole, i.e. when `units` and `dimensions` are empty (it has no place for
+% them); the writer's shape, with both, is carried as v1
+% (testPositionMetadataWithUnitsOrDimensionsIsCarriedWholeAsV1).
+body = positionMetadataBody();
+body.position_metadata.units = '';
+body.position_metadata.dimensions = '';
 
 bodies = did2.convert.migrators_j.position_metadata(body);
 verifyEqual(testCase, numel(bodies), 2);              % obs + anchor
@@ -4803,6 +4955,10 @@ verifyEqual(testCase, depValue(obs, 'time_reference_id'), anchor.base.id);
 end
 
 function testSpatialFrequencyTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % spatial_frequency_tuning -> spatial_frequency_tuning_calculation, id-preserved
 % (#88). UPDATED for #88: app block added (an operating system is required);
 % significance on tuning_curve_calculation, `fitless` on the leaf's
@@ -4825,7 +4981,7 @@ body.spatial_frequency_tuning = struct( ...
         'low_pass_index', 0.3, 'high_pass_index', 0.7), ...
     'fit_dog', struct('r2', 0.95, 'pref', 0.13));
 
-out = did2.convert.migrators_j.spatial_frequency_tuning(body);
+out = foldPlaceable(testCase, @did2.convert.migrators_j.spatial_frequency_tuning, body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+score')));
@@ -4984,13 +5140,17 @@ body.temporal_frequency_tuning = blk;
 end
 
 function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
+% UPDATED 2026-10-25 ([generic stage is lossless]): the fixture states a
+% field the fold has no home for, so the migrator carries it whole as v1;
+% foldPlaceable asserts that, removes exactly the fields the carry names, and
+% folds what is left -- the assertions below are about the placed fields.
 % did_v1 temporal_frequency_tuning -> temporal_frequency_tuning_calculation
 % (#88), from the WRITER-shaped fixture below. UPDATED for #88: the leaf is the
 % concrete *_calculation class (under tuning_curve_calculation); the consumed
 % curve -> input_id; the TF axis -> data.keys; the five co-existing fits ->
 % tuning_curve_calculation.model_fit with {model, coefficients list, goodness,
 % metrics, sampled_fit}; `fitless` -> the leaf's interpolated_values.
-out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
+out = foldPlaceable(testCase, @did2.convert.migrators_j.temporal_frequency_tuning, temporalFrequencyTuningBody());
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
@@ -5795,5 +5955,43 @@ g = {};
 s = e.get('entity');
 if isfield(s, 'global_identifier') && ~isempty(s.global_identifier)
     g = reshape(cellstr(s.global_identifier), 1, []);
+end
+end
+
+function out = foldPlaceable(testCase, migrator, body)
+%FOLDPLACEABLE [generic stage is lossless] / [partly placed is carried as v1]
+%   (Jess Haley, 2026-10-25): a writer-shaped calculator fixture that states a
+%   field the fold has no home for is CARRIED WHOLE as v1 (returned unchanged,
+%   one `carried_as_v1` note naming the fields). Asserted here. Then exactly
+%   those fields are removed and the rest is folded, so a fold test still
+%   asserts the fold of everything that IS placed.
+did2.convert.reportNote('reset');
+first = migrator(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+assertTrue(testCase, isscalar(first) && isequaln(first{1}, body), ...
+    'the writer-shaped document was not carried whole as v1');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+d = notes.carried_as_v1.distinct_details{1};
+paths = strsplit(regexprep(d, '^unplaced: ', ''), ', ');
+for k = 1:numel(paths)
+    body = removePathJ(body, strsplit(paths{k}, '.'));
+end
+out = migrator(body);
+verifyGreaterThan(testCase, numel(out), 1, ...
+    sprintf('with %s removed the document still did not fold', d));
+end
+
+function s = removePathJ(s, parts)
+%REMOVEPATHJ Remove the field PARTS (a path) from struct S, matching each part
+%   case-insensitively (the fold lower-cases fit field names).
+if ~isstruct(s) || ~isscalar(s) || isempty(parts); return; end
+fn = fieldnames(s);
+ix = find(strcmpi(fn, parts{1}), 1);
+if isempty(ix); return; end
+if isscalar(parts)
+    s = rmfield(s, fn{ix});
+else
+    s.(fn{ix}) = removePathJ(s.(fn{ix}), parts(2:end));
 end
 end

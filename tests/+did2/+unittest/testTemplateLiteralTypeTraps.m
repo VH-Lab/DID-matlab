@@ -339,6 +339,9 @@ function testTheBuiltPathStillReadsARealTimestamp(testCase)
 % time axis on the body.
 v1 = imageStackBody(739038.5);
 v1.depends_on(1).value = 'sub_1';          % give it a subject -> the built path
+% and no plate row: since [generic stage is lossless] (Jess Haley, 2026-10-25) a
+% stack that names one is carried whole as v1 (no edge for it on the observation)
+v1.depends_on(2).value = '';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...
@@ -356,6 +359,9 @@ function testTheBuiltPathSurvivesTheDroppedPlaceholder(testCase)
 % #88: with no timestamp the statement carries no condition at all.
 v1 = imageStackBody([]);
 v1.depends_on(1).value = 'sub_1';
+% and no plate row: since [generic stage is lossless] (Jess Haley, 2026-10-25) a
+% stack that names one is carried whole as v1 (no edge for it on the observation)
+v1.depends_on(2).value = '';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...

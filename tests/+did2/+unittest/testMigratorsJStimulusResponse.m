@@ -93,6 +93,18 @@ end
 % ===================== fixtures (from the WRITER) ==========================
 
 function v1 = responseFixture(responseType)
+%RESPONSEFIXTURE writerResponseFixture with its `stimulus_control_id` edge and
+%   its `stimulus_response.stimulator_epochid` PRESENT BUT EMPTY (the template
+%   blank): a response the fold places whole. Since [generic stage is lossless]
+%   / [partly placed is carried as v1] (Jess Haley, 2026-10-25) a response that
+%   states either -- the writer always sets both -- is carried whole as v1 (the
+%   calculation has no place for them); the tests of the fold drive this one.
+v1 = writerResponseFixture(responseType);
+v1.stimulus_response.stimulator_epochid = '';
+v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_control_id')).value = '';
+end
+
+function v1 = writerResponseFixture(responseType)
 %RESPONSEFIXTURE A did_v1 stimulus_response_scalar as tuning_response.m builds it.
 v1 = struct();
 v1.document_class = struct('class_name', 'stimulus_response_scalar', ...
@@ -408,29 +420,32 @@ end
 
 function testDroppedControlEdgesAreCountedWithTheirDenominator(testCase)
 % Jess Haley 2026-10-22 [covariate rules named], answer "A" to 6.4: migration
-% reports count the v1 `stimulus_control_id` edges dropped by [control as
-% covariate]. One note per CONVERTED response document (the denominator),
-% 'dropped' when its edge named a document, 'none' when it was absent; a
-% document that passes through (no epoch stamp) is not converted and keeps
-% its edge, so it is not counted at all.
-withCtl = withEpochEdge(responseFixture('F1'));
-noCtl = withEpochEdge(responseFixture('F1'));
+% reports count the v1 `stimulus_control_id` edges with one note per CONVERTED
+% response document (the denominator). UPDATED 2026-10-25 ([generic stage is
+% lossless], [partly placed is carried as v1], Jess Haley): a response whose
+% edge names a document is no longer converted with the edge dropped -- it is
+% carried whole as v1 (noted `carried_as_v1`), so it is not counted here; a
+% converted one's detail is 'none'. A document that passes through (no epoch
+% stamp) is not converted either.
+withCtl = withEpochEdge(writerResponseFixture('F1'));
+noCtl = withEpochEdge(writerResponseFixture('F1'));
 noCtl.base.id = 'resp_nocontrol';
 noCtl.depends_on = noCtl.depends_on(~strcmp({noCtl.depends_on.name}, 'stimulus_control_id'));
+noCtl.stimulus_response.stimulator_epochid = '';
 unstamped = responseFixture('F1');
 unstamped.base.id = 'resp_unstamped';
 out = runJ({withCtl, noCtl, unstamped});
 verifyEmpty(testCase, out.quarantine);
 n = out.summary.migration_notes.stimulus_control_id;
-verifyEqual(testCase, n.count, 2, 'DENOMINATOR: the two converted response documents');
-verifyEqual(testCase, n.by_class.stimulus_response_scalar, 2);
-[d, order] = sort(n.distinct_details);
-verifyEqual(testCase, d, {'dropped', 'none'});
-c = n.distinct_detail_counts(order);
-verifyEqual(testCase, c(:).', [1 1], 'one edge dropped, one document had none');
+verifyEqual(testCase, n.count, 1, 'DENOMINATOR: the one converted response document');
+verifyEqual(testCase, n.by_class.stimulus_response_scalar, 1);
+verifyEqual(testCase, n.distinct_details, {'none'});
+c = out.summary.migration_notes.carried_as_v1;
+verifyEqual(testCase, c.count, 1, 'the response with a control edge is carried as v1');
+verifyTrue(testCase, contains(c.distinct_details{1}, 'stimulus_control_id'));
 txt = evalc('did2.convert.v1_to_v2({withCtl, noCtl, unstamped}, ''Validate'', false, ''TargetVersion'', ''V_eta'', ''Verbose'', true);');
 verifySubstring(testCase, txt, ...
-    'stimulus_control_id edges dropped: 1 of 2 converted stimulus response document(s)');
+    'stimulus_control_id edges dropped: 0 of 1 converted stimulus response document(s)');
 end
 
 function testDimensionTermsWithNoNodeAreCountedPerClass(testCase)

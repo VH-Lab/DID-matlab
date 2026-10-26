@@ -324,11 +324,14 @@ inputs = {};
 if ~isempty(presentationId)
     inputs = {presentationId};
 end
-% reverse_correlation.method ('Hartley') is implied by the method term
-% ndi.calc.vis.hartley and is not carried; its drop is REPORTED per document
-% (Jess Haley, 2026-10-21, "a"), through jCalculation's field_dropped notes.
+% reverse_correlation.method 'Hartley' is implied by the method term
+% ndi.calc.vis.hartley: placed, not dropped ([hartley method implied], Jess
+% Haley, 2026-10-25, did-schema V_eta_go_forward_class_audit.md; earlier
+% 2026-10-21, "a"). Any OTHER method is not implied by that term, so it is
+% unplaced and jCalculation carries the document whole as v1.
 dropped = {};
-if isfield(rc, 'method') && ~isempty(rc.method)
+if isfield(rc, 'method') && ~isempty(rc.method) ...
+        && ~strcmpi(strtrim(char(string(rc.method))), 'Hartley')
     dropped{end+1} = 'reverse_correlation.method';
 end
 bodies = jCalculation(preBody, 'receptive_field_calculation', 'rf', ...

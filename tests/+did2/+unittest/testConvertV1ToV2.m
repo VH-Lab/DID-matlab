@@ -514,6 +514,52 @@ verifyFalse(testCase, isfield(dependsOn, 'version'));
 end
 
 
+function testUniversalRenamesNamesWhatItDiscards(testCase)
+% [generic stage is lossless] (Jess Haley, 2026-10-25): the third output names
+% every v1 value the pass discards and keeps nowhere; a rename is not a drop.
+v1 = makeV1Skeleton('demoNDI');
+v1.demoNDI = struct();
+v1.depends_on = struct('name', {'subject_id'}, ...
+    'id', {'aabb1122ccdd3344_aaaa1111bbbb2222'}, 'version', {'1'});
+v1.app = struct('name', 'ndi', 'version', '1.0.0');
+[~, ~, dropped] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, dropped, {'depends_on(subject_id).version'});
+
+clean = makeV1Skeleton('demoNDI');
+clean.demoNDI = struct();
+clean.app = struct('name', 'ndi', 'version', '1.0.0');   % renamed, kept
+[~, ~, none] = did2.convert.universalRenames(clean);
+verifyEmpty(testCase, none);
+
+stale = makeV1Skeleton('demoNDI');
+stale.demoNDI = struct();
+stale.ndi_document = struct('name', 'jrclust.prm');      % beside a good base
+[~, ~, d2] = did2.convert.universalRenames(stale);
+verifyEqual(testCase, d2, {'ndi_document'});
+
+twoApps = makeV1Skeleton('demoNDI');
+twoApps.demoNDI = struct();
+twoApps.app = struct('name', 'old', 'app_name', 'new', 'version', '1', 'app_version', '1');
+[~, ~, d3] = did2.convert.universalRenames(twoApps);
+verifyEqual(testCase, d3, {'app.name'}, 'equal versions lose nothing');
+end
+
+function testABodyUniversalRenamesWouldDiscardFromIsCarriedWholeAsV1(testCase)
+% ... and v1_to_v2 then runs no migrator on it: a passthrough, recorded for the
+% end of ndi.migrate.local to store as its v1 source, noted `carried_as_v1`.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct('ontology_name', 'NCIT:C0000', 'name', 'a drug', ...
+    'numeric_value', [], 'string_value', '');
+v1.ndi_document = struct('name', 'jrclust.prm');
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+verifyEqual(testCase, result.summary.passthrough_count, 1);
+verifyEqual(testCase, result.migrated{1}.className(), 'treatment', ...
+    'the treatment migrator did not run');
+verifyEqual(testCase, result.summary.migration_notes.carried_as_v1.count, 1);
+end
+
+
 % ===================== the legacy identity block ===========================
 %
 % THE COUNTER, NOT THE REPAIR. did2.convert.universalRenames handles a
