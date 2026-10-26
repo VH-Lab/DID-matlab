@@ -199,6 +199,7 @@ end
 % whole as v1, for the dataset's map, rather than folded without the edge.
 tableRowId = dependencyValue(preBody, 'document_id');
 if ~isempty(tableRowId)
+    % carry-register: none
     did2.convert.reportNote('carried_as_v1', 'image_stack', ...
         baseField(preBody, 'id', ''), 'unplaced: depends_on document_id');
     bodies = {preBody};
@@ -216,7 +217,7 @@ end
 unplaced = {};
 if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
         dependencyValue(preBody, 'image_collection_id')))
-    unplaced{end+1} = 'depends_on imageCollection_id';
+    unplaced{end+1} = '[carry-013] depends_on imageCollection_id';
 end
 limits = getField(params, 'data_limits');
 bodyConditions = [];
@@ -226,10 +227,12 @@ if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
             did2.convert.registeredTerm('EMPTY:0000402', 'value range'), ...
             'Matrix', double(limits(:)'));
     else
-        unplaced{end+1} = 'image_stack_parameters.data_limits (not a [minimum maximum] pair)';
+        unplaced{end+1} = [carryRowOf(preBody, '[carry-011] ', '[carry-012] ') ...
+            'image_stack_parameters.data_limits (not a [minimum maximum] pair)'];
     end
 end
 if ~isempty(unplaced)
+    % carry-register: carry-011 carry-012 carry-013 (the items above)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
         baseField(preBody, 'id', ''), ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
@@ -269,8 +272,10 @@ end
 % from label words carries as needs_mapping).
 label = getCharField(getBlock(preBody, 'image_stack'), 'label');
 if isMaskOrMap(label)
+    % carry-register: carry-025 (imageStack; the register has no row for image)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
-        baseField(preBody, 'id', ''), ['needs_mapping: calculation (logical ' ...
+        baseField(preBody, 'id', ''), [carryRowOf(preBody, '', '[carry-025] ') ...
+        'needs_mapping: calculation (logical ' ...
         'mask | label map) or observation (intensity); decided by what the ' ...
         'image''s pixels are, in its dataset']);
     bodies = {preBody};
@@ -354,6 +359,19 @@ switch cls
         return;
 end
 tf = isequal(limits, range);
+end
+
+function tag = carryRowOf(b, imageRow, imageStackRow)
+%CARRYROWOF The carry register row tag for this document's v1 class ([carry
+%   register], Jess Haley, 2026-10-26, did-schema
+%   schemas/V_eta_carry_register.json): IMAGEROW for a v1 `image` (which
+%   migrators_j.image routes here), IMAGESTACKROW otherwise. '' where the
+%   register has no row for that class.
+if strcmp(classNameOf(b), 'image')
+    tag = imageRow;
+else
+    tag = imageStackRow;
+end
 end
 
 function nm = classNameOf(b)

@@ -58,6 +58,16 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     lossless] and [partly placed is carried as v1] (Jess
 %                     Haley, 2026-10-25, did-schema
 %                     V_eta_go_forward_class_audit.md).
+%                     DETAIL cites the row of did-schema
+%                     schemas/V_eta_carry_register.json that covers each
+%                     reason, as a `[carry-NNN]` tag before that reason: at the
+%                     start when the whole note is one row's ('[carry-022]
+%                     needs_mapping: ...'), before each item when its items are
+%                     different rows' ([carry register], Jess Haley,
+%                     2026-10-26). Each call site says which rows it cites in
+%                     a `% carry-register:` comment above it, `none` for a
+%                     reason with no row yet; tools/check_carry_citations.py
+%                     checks both against the register and lists the `none`s.
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
 %                     location, so whether it was an immersion or a dose cannot
 %                     be read from it; it migrates as a dose with a NaN amount

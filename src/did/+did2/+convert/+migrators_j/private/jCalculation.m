@@ -143,10 +143,12 @@ unplaced = [cellfun(@(d) underBlock(sourceBlock, d), reshape(dropped, 1, []), ..
 % equal on every held document). One that differs is carried whole as v1.
 differing = innerDependsOnDiffers(preBody, classNameOf(preBody));
 if ~isempty(differing)
-    unplaced{end+1} = sprintf('%s.depends_on (%s differs from the top-level edge)', ...
+    unplaced{end+1} = sprintf('[carry-016] %s.depends_on (%s differs from the top-level edge)', ...
         classNameOf(preBody), strjoin(differing, ', '));
 end
 if ~isempty(unplaced)
+    % carry-register: carry-016 (the inner depends_on item); none for a
+    % calculator field the fold has no home for
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};

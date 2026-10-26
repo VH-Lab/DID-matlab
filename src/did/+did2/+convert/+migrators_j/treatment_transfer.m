@@ -39,6 +39,7 @@ block = preBody.treatment_transfer;
 % is not given `dev_local_time` ([no invented values]); the document is
 % carried whole as v1.
 if hasFiniteTimestamp(block) && isempty(jGetCharAny(block, {'clocktype', 'clockType'}))
+    % carry-register: none
     did2.convert.reportNote('carried_as_v1', 'treatment_transfer', char(preBody.base.id), ...
         'unplaced: treatment_transfer.timestamp names no clocktype');
     v2Body = {preBody};

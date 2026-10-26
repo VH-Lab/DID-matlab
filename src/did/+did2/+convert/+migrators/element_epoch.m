@@ -86,7 +86,7 @@ names = {};
 if isempty(why)
     names = parseClockNames(block);
     t = t0t1Mismatch(block, numel(names));
-    if ~isempty(t); why = ['element_epoch.t0_t1 (' t ')']; end
+    if ~isempty(t); why = ['[carry-009] element_epoch.t0_t1 (' t ')']; end
 end
 if ~isempty(why)
     cn = 'element_epoch';
@@ -97,6 +97,8 @@ if ~isempty(why)
     if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
         id = char(preBody.base.id);
     end
+    % carry-register: carry-009 (t0_t1); none for a clocktype that differs from
+    % epoch_clock or a missing epoch_clock
     did2.convert.reportNote('carried_as_v1', cn, id, ['unplaced: ' why]);
     v2Body = preBody;   % unchanged: the callers carry it whole as v1
     return;

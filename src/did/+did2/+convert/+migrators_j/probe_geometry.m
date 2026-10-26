@@ -98,8 +98,9 @@ if isSet(k) && isWriterDefaultContourFlag(blk.has_planar_contour)
     isSet(k) = false;
 end
 if any(isSet)
+    % carry-register: carry-001
     did2.convert.reportNote('carried_as_v1', 'probe_geometry', char(preBody.base.id), ...
-        ['unplaced: ' strjoin(strcat('probe_geometry.', unplacedNames(isSet)), ', ')]);
+        ['[carry-001] unplaced: ' strjoin(strcat('probe_geometry.', unplacedNames(isSet)), ', ')]);
     bodies = {preBody};
     return;
 end

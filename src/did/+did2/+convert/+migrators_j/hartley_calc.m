@@ -302,9 +302,13 @@ presentationId = firstDepValue(preBody, {'stimulus_presentation_id'});
 unplaced = stimulusPropertiesNotDroppable(hrc, presentationId, ...
     STIMULUS_PROPERTY_KEYS);
 if isfield(rc, 'dimension_labels') && ~isEmptyValue(rc.dimension_labels)
-    unplaced{end+1} = 'reverse_correlation.dimension_labels (not empty)';
+    unplaced{end+1} = '[carry-015] reverse_correlation.dimension_labels (not empty)';
 end
 if ~isempty(unplaced)
+    % carry-register: carry-014 carry-015 (the items above); none for
+    % stimulus_properties that could not be compared (not one struct, no
+    % stimulus_presentation_id, a key outside the generator settings, or a
+    % presentation not in the batch)
     did2.convert.reportNote('carried_as_v1', 'hartley_calc', sourceId(preBody), ...
         ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
@@ -627,7 +631,7 @@ for j = 1:size(keys, 1)
     end
 end
 if ~isempty(differing)
-    unplaced{end+1} = sprintf(['hartley_reverse_correlation.stimulus_properties ' ...
+    unplaced{end+1} = sprintf(['[carry-014] hartley_reverse_correlation.stimulus_properties ' ...
         '(%s differ from presentation %s)'], strjoin(differing, ', '), presentationId);
 end
 end

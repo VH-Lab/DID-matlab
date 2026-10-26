@@ -307,6 +307,18 @@ jobs:
         # detector and a broken repo are distinguishable from the job list alone.
         run: python3 tools/test_check_migrator_roster.py
 
+      - name: Every carry note cites a carry register row (python, <1s)
+        # [carry register] (Jess Haley, 2026-10-26, did-schema
+        # V_eta_go_forward_class_audit.md): every carry note a migrator writes
+        # cites its row of did-schema schemas/V_eta_carry_register.json, read
+        # from the did-schema checked out above. A row id the register does not
+        # hold, or a carry site that does not say its row, fails. Carry reasons
+        # with no row yet are LISTED (the team adds the row); --strict fails on
+        # them. The gate's own tests run first.
+        run: |
+          python3 tools/test_check_carry_citations.py
+          python3 tools/check_carry_citations.py --did-schema did-schema
+
       - name: Unminted ontology terms must not increase (#70)
         # Staging a term as {node: '', name: '...'} is the accepted practice --
         # a migration can go green and the CURIEs be minted after. The hazard is

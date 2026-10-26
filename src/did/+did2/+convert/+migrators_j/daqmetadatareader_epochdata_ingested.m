@@ -88,6 +88,7 @@ end
 % the v1 document UNCHANGED as v1 -- stamped did_v1 by v1_to_v2, never read
 % against V_eta -- and NDI's second pass makes it an opaque_body of the epoch's
 % stimulus-presentation manipulation (or keeps it as v1 with none).
+% carry-register: none
 did2.convert.reportNote('carried_as_v1', 'daqmetadatareader_epochdata_ingested', ...
     char(preBody.base.id), ['retired class: a body of the presentation, made ' ...
     'by the NDI second pass ([ingested stimulus file is a body of the presentation])']);

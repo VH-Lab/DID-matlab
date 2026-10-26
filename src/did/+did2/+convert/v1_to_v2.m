@@ -354,6 +354,7 @@ for k = 1:numel(bodies)
                 % content it keeps nowhere, so no migrator runs and the body is
                 % a passthrough, carried whole as v1 (its v1 source is what the
                 % end of ndi.migrate.local stores).
+                % carry-register: none
                 did2.convert.reportNote('carried_as_v1', className, ...
                     sourceIdOf(preBody), ['universalRenames would discard: ' ...
                     strjoin(renameDropped, ', ')]);

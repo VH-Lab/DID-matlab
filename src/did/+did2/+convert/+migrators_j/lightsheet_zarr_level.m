@@ -142,8 +142,9 @@ end
 extraSettings = codecSettingsBeyondName(char(field(blk, 'codec', 'raw')), ...
     field(blk, 'codec_params', ''));
 if ~isempty(extraSettings)
+    % carry-register: carry-010
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
-        ['unplaced: lightsheet_zarr_level.codec_params (' ...
+        ['[carry-010] unplaced: lightsheet_zarr_level.codec_params (' ...
          strjoin(extraSettings, ', ') ')']);
     bodies = {preBody};
     return;
@@ -153,6 +154,7 @@ end
 ownerId = depValue(preBody, 'lightsheetZarrPyramid_id');
 if isempty(ownerId) && nHeld == 0
     % no bytes and no pyramid: no observation to own a file-less body either
+    % carry-register: none
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
         'unplaced: a level holding no bytes that names no lightsheetZarrPyramid_id');
     bodies = {preBody};

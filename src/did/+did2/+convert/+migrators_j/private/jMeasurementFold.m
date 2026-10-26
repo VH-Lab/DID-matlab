@@ -83,6 +83,7 @@ if ~isempty(unplaced)
     if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
         cn = char(preBody.document_class.class_name);
     end
+    % carry-register: none
     did2.convert.reportNote('carried_as_v1', cn, sourceId(preBody), ['unplaced: ' unplaced]);
     return;
 end

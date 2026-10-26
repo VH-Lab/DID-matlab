@@ -46,6 +46,7 @@ if isempty(strtrim(groupName))
     % 2026-10-25): a required local_identifier the source does not state is not
     % filled with the document id (jEnsureLocalId); the document is carried
     % whole as v1.
+    % carry-register: none
     did2.convert.reportNote('carried_as_v1', 'subject_group', char(groupId), ...
         'unplaced: no subject_group.group_name (a local_identifier would be invented)');
     v2Body = {preBody};

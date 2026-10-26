@@ -47,6 +47,7 @@ for k = 1:numel(entries)
         relation, method, params); %#ok<AGROW>
 end
 if ~isempty(unplaced)
+    % carry-register: none
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     bodies = {preBody};

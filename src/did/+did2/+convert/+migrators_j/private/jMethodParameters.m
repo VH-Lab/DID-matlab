@@ -115,8 +115,10 @@ if isfield(preBody, 'app') && isstruct(preBody.app) && isscalar(preBody.app)
     end
 end
 if ~isempty(envNamed)
+    % carry-register: carry-002 carry-003 carry-004 carry-005 (by class: carryRowOf)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
-        char(preBody.base.id), ['unplaced: ' strjoin(envNamed, ', ')]);
+        char(preBody.base.id), [carryRowOf(classNameOf(preBody)) 'unplaced: ' ...
+        strjoin(envNamed, ', ')]);
     bodies = {preBody};
     return;
 end
@@ -170,6 +172,21 @@ if ~isempty(softwareId); edges.software_id = softwareId; end
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
 mp = did2.build.document('method', f, o{:});
 bodies = [{mp}, software];
+end
+
+function tag = carryRowOf(cn)
+%CARRYROWOF The carry register row of a settings document carried because its
+%   app block names an OS or interpreter, as the note's leading tag ([carry
+%   register], Jess Haley, 2026-10-26, did-schema
+%   schemas/V_eta_carry_register.json); '' for a class the register has no row
+%   for (tools/check_carry_citations.py lists such carries).
+switch cn
+    case 'sorting_parameters';                       tag = '[carry-002] ';
+    case 'spike_extraction_parameters';              tag = '[carry-003] ';
+    case 'spike_extraction_parameters_modification'; tag = '[carry-004] ';
+    case 'vmspikefilteringparameters';               tag = '[carry-005] ';
+    otherwise;                                       tag = '';
+end
 end
 
 function cn = classNameOf(preBody)

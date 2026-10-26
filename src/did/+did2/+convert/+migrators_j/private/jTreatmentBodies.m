@@ -83,12 +83,12 @@ switch route
         % a treatment with no recorded location is carried as v1 instead of
         % becoming a dose with a NaN amount -- immersion or dose is decided by
         % where it was given, which the document does not say.
-        unplaced = {['needs_mapping: manipulation (immersion | dose); decided ' ...
+        unplaced = {[treatmentRow(preBody, '[carry-023] ') 'needs_mapping: manipulation (immersion | dose); decided ' ...
             'by where the treatment was given, in its dataset']};
         docs = {};
         return;
     case 'needs_mapping'
-        unplaced = {['needs_mapping: manipulation (dose | exposure | ' ...
+        unplaced = {[treatmentRow(preBody, '[carry-024] ') 'needs_mapping: manipulation (dose | exposure | ' ...
             'temperature); decided by what the treatment''s location (not an ' ...
             'UBERON body site) means in its dataset']};
         docs = {};
@@ -144,4 +144,18 @@ switch route
         end
 end
 docs = [{manip}, parts];
+end
+
+function tag = treatmentRow(preBody, row)
+%TREATMENTROW ROW, the carry register row tag ('[carry-NNN] ', [carry register],
+%   Jess Haley, 2026-10-26, did-schema schemas/V_eta_carry_register.json), for
+%   a v1 `treatment`, the class those rows name; '' for the other classes this
+%   helper places (treatment_drug, virus_injection), which the register has no
+%   row for yet (tools/check_carry_citations.py lists those carries).
+tag = '';
+if isfield(preBody, 'document_class') && isstruct(preBody.document_class) ...
+        && isfield(preBody.document_class, 'class_name') ...
+        && strcmp(char(preBody.document_class.class_name), 'treatment')
+    tag = row;
+end
 end

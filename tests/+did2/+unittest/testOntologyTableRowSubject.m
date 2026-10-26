@@ -100,7 +100,7 @@ notes = did2.convert.reportNote('collect');
 verifyTrue(testCase, isfield(notes, 'carried_as_v1'));
 if isfield(notes, 'carried_as_v1')
     verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, ...
-        'needs_mapping:'), notes.carried_as_v1.distinct_details{1});
+        '[carry-026] needs_mapping:'), notes.carried_as_v1.distinct_details{1});
 end
 did2.convert.reportNote('reset');
 end

@@ -565,7 +565,7 @@ verifyCarriedWholeAsV1(testCase, v1, out);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'ontology_table_row');
 verifyEqual(testCase, out.migrated{1}.get('ontology_table_row.data'), v1.ontology_table_row.data);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: assertion | observation | manipulation'), d);
+verifyTrue(testCase, startsWith(d, '[carry-026] needs_mapping: assertion | observation | manipulation'), d);
 end
 
 % ===================== treatment -> manipulation leaves ================
@@ -601,7 +601,7 @@ for k = 1:numel(cases)
     verifyCarriedWholeAsV1(testCase, v1, out);
     verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'treatment');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation'), d);
+    verifyTrue(testCase, startsWith(d, '[carry-022] needs_mapping: manipulation'), d);
     verifyFalse(testCase, isfield(out.summary.migration_notes, 'treatment_number_unlabelled'));
 end
 end
@@ -659,7 +659,7 @@ v1 = treatmentDoc('chebi:28001', 'haloperidol', 2.5, '');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (immersion | dose)'), d);
+verifyTrue(testCase, startsWith(d, '[carry-023] needs_mapping: manipulation (immersion | dose)'), d);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
 end
 
@@ -2008,7 +2008,7 @@ for k = 1:numel(labels)
     verifyCarriedWholeAsV1(testCase, v1, out);
     verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, 'needs_mapping: calculation'), d);
+    verifyTrue(testCase, startsWith(d, '[carry-025] needs_mapping: calculation'), d);
 end
 end
 
@@ -2023,7 +2023,7 @@ v1.image_stack.label = ['An image or map where each pixel''s value is the ' ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'needs_mapping:'));
+    '[carry-025] needs_mapping:'));
 end
 
 function testAnIntensityImageStackIsStillAnObservation(testCase)

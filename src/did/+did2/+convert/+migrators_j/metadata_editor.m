@@ -180,6 +180,7 @@ end
 [formTerms, formUnplaced] = datasetFormTerms(ms);
 unplaced = [unplaced, formUnplaced];
 if ~isempty(unplaced)
+    % carry-register: none
     did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     v2Body = {preBody};

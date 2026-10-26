@@ -171,7 +171,7 @@ end
 % [small unread settings] (2) (Jess Haley, 2026-10-26): what cannot be placed
 label = readChar(blk, {'label'});
 if ~isempty(label) && ~strcmp(strtrim(label), strtrim(rawType))
-    unplaced{end+1} = sprintf('filter.label "%s" (differs from type "%s")', label, rawType);
+    unplaced{end+1} = sprintf('[carry-007] filter.label "%s" (differs from type "%s")', label, rawType);
 end
 sampleFrequency = readNumScalar(params, {'sampleFrequency', 'sample_frequency'});
 
@@ -220,7 +220,7 @@ end
 if ~isempty(order) && mod(order, 1) == 0
     block.order = order;
 elseif ~isempty(order)
-    unplaced{end+1} = sprintf('filter.parameters.order %g (not an integer)', order);
+    unplaced{end+1} = sprintf('[carry-006] filter.parameters.order %g (not an integer)', order);
 end
 if ~isempty(ripple)
     block.passband_ripple = decibels(ripple);
