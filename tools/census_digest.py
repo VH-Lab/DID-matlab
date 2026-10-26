@@ -2400,6 +2400,44 @@ def render_stimulus_control_edges(r, out):
         p("      %-40s %6s converted" % (cls, rows[cls]))
 
 
+def render_carry_register_rows(r, out):
+    """Carries by carry register row (practice (d) of [migration reliability
+    practices], Jess Haley, 2026-10-26; [carry register]): the v1 documents
+    the generic stage carried whole as v1 (the denominator, first), how many
+    of their notes cite a did-schema carry register row and how many cite
+    none, then the count per row id (a note citing two rows counts under
+    each). Absent is NOT MEASURED (the report predates the block, or no
+    migration notes were collected), never 0."""
+    p = out.append if isinstance(out, list) else out
+    e = r.get("carried_as_v1")
+    if not isinstance(e, dict):
+        p("    carried as v1 by carry register row: NOT MEASURED -- this report "
+          "carries no carried_as_v1 block")
+        return
+
+    def n(key):
+        v = e.get(key)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    def s(v):
+        return "?" if v is None else str(v)
+
+    total, cited, uncited = n("notes"), n("notes_citing_a_row"), n("notes_citing_no_row")
+    p("    carried as v1 by carry register row: %s carried document(s); "
+      "citing a row %s; citing no row %s" % (s(total), s(cited), s(uncited)))
+    if None not in (total, cited, uncited) and cited + uncited != total:
+        p("      *** the parts (%d) do not add up to the denominator (%d)"
+          % (cited + uncited, total))
+    rows = [x for x in aslist(e.get("register_rows")) if isinstance(x, str)]
+    counts = aslist(e.get("register_row_counts"))
+    if len(rows) != len(counts):
+        p("      *** %d row id(s) but %d count(s): the per-row table is not "
+          "readable" % (len(rows), len(counts)))
+        return
+    for row, c in zip(rows, counts):
+        p("      %-40s %6s" % (row, c))
+
+
 def render_tuning_response_variable(r, out):
     """The tuning response variable (Jess Haley, 2026-10-22 [response
     variable], [dF/F as variable]; 2026-10-23 [unstated response variable]):
@@ -5958,6 +5996,7 @@ def render_report(r, out):
     render_dose_ingredients(r, out)
     render_dimension_terms(r, out)
     render_stimulus_control_edges(r, out)
+    render_carry_register_rows(r, out)
     render_tuning_response_variable(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares

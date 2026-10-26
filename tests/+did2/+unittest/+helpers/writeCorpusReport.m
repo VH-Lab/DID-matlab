@@ -187,6 +187,31 @@ if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
         'edges_dropped', sum(n.distinct_detail_counts(hit)), ...
         'by_class', n.by_class);
 end
+% CARRIES BY CARRY REGISTER ROW (practice (d) of [migration reliability
+% practices], Jess Haley, 2026-10-26; [carry register]): every v1 document the
+% generic stage carried whole as v1 (the denominator), how many of their notes
+% cite a did-schema carry register row and how many cite none, and the count
+% per row id (a note citing two rows counts under each). Written whenever the
+% migration notes were collected: no carried_as_v1 note is a measured 0, not
+% "not measured".
+if isfield(result, 'summary') && isfield(result.summary, 'migration_notes')
+    report.carried_as_v1 = struct('notes', 0, 'notes_citing_a_row', 0, ...
+        'notes_citing_no_row', 0, 'register_rows', {{}}, ...
+        'register_row_counts', [], 'by_class', struct());
+    if isfield(result.summary.migration_notes, 'carried_as_v1')
+        n = result.summary.migration_notes.carried_as_v1;
+        report.carried_as_v1.notes = n.count;
+        report.carried_as_v1.by_class = n.by_class;
+        if isfield(n, 'register_rows')
+            report.carried_as_v1.notes_citing_a_row = n.notes_citing_a_row;
+            report.carried_as_v1.notes_citing_no_row = n.notes_citing_no_row;
+            report.carried_as_v1.register_rows = n.register_rows;
+            report.carried_as_v1.register_row_counts = n.register_row_counts;
+        else
+            report.carried_as_v1.notes_citing_no_row = n.count;
+        end
+    end
+end
 % THE TUNING RESPONSE VARIABLE ([response variable], [dF/F as variable],
 % 2026-10-22; [unstated response variable], 2026-10-23): folded tuning and
 % contrast-sensitivity documents (the denominator), how many had `variable`

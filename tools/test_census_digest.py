@@ -5298,6 +5298,55 @@ class TestDimensionTermsAndControlEdges(unittest.TestCase):
         self.assertIn("    render_stimulus_control_edges(r, out)\n", src)
 
 
+class TestCarryRegisterRows(unittest.TestCase):
+    """Practice (d) of [migration reliability practices] (Jess Haley,
+    2026-10-26): carries counted by carry register row, denominator first."""
+
+    def test_absent_is_not_measured(self):
+        out = []
+        census_digest.render_carry_register_rows({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_denominator_first_then_rows(self):
+        out = []
+        census_digest.render_carry_register_rows({"carried_as_v1": {
+            "notes": 7, "notes_citing_a_row": 5, "notes_citing_no_row": 2,
+            "register_rows": ["carry-023", "carry-049"],
+            "register_row_counts": [4, 1], "by_class": {"treatment": 4}}}, out)
+        self.assertIn("7 carried document(s)", out[0])
+        self.assertIn("citing a row 5", out[0])
+        self.assertIn("citing no row 2", out[0])
+        self.assertFalse(any("do not add up" in x for x in out))
+        self.assertIn("carry-023", out[1])
+        self.assertTrue(out[1].rstrip().endswith("4"))
+        self.assertIn("carry-049", out[2])
+
+    def test_one_row_arrives_as_bare_values(self):
+        # MATLAB's jsonencode writes a one-element cellstr as an array but a
+        # one-element numeric as a bare number
+        out = []
+        census_digest.render_carry_register_rows({"carried_as_v1": {
+            "notes": 1, "notes_citing_a_row": 1, "notes_citing_no_row": 0,
+            "register_rows": ["carry-033"], "register_row_counts": 1}}, out)
+        self.assertIn("carry-033", out[1])
+
+    def test_zero_carries_is_a_measured_zero(self):
+        out = []
+        census_digest.render_carry_register_rows({"carried_as_v1": {
+            "notes": 0, "notes_citing_a_row": 0, "notes_citing_no_row": 0,
+            "register_rows": [], "register_row_counts": []}}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("0 carried document(s)", out[0])
+
+    def test_a_bad_sum_is_flagged(self):
+        out = []
+        census_digest.render_carry_register_rows({"carried_as_v1": {
+            "notes": 3, "notes_citing_a_row": 1, "notes_citing_no_row": 1,
+            "register_rows": [], "register_row_counts": []}}, out)
+        self.assertTrue(any("do not add up" in x for x in out))
+
+
 class TestTuningResponseVariable(unittest.TestCase):
     """[unstated response variable] (Jess Haley, 2026-10-23): every corpus
     summary shows the set / general-term counts, denominator first."""

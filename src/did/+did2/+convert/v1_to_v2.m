@@ -1258,6 +1258,17 @@ for k = 1:numel(kinds)
     for j = 1:numel(cls)
         fprintf('      %-40s %d\n', cls{j}, n.by_class.(cls{j}));
     end
+    % carries by carry register row (practice (d) of [migration reliability
+    % practices], Jess Haley, 2026-10-26), denominator first: every carry,
+    % then those citing a row and those citing none (reportNote 'collect')
+    if isfield(n, 'register_rows')
+        fprintf(['      by carry register row: %d carry note(s); citing a row %d; ' ...
+            'citing no row %d\n'], n.count, n.notes_citing_a_row, ...
+            n.notes_citing_no_row);
+        for j = 1:numel(n.register_rows)
+            fprintf('        %-38s %d\n', n.register_rows{j}, n.register_row_counts(j));
+        end
+    end
     % what the notes name (field_dropped: the field path), distinct, counted.
     % distinct_details is exact over every note; ids/details are a sample
     % (did2.convert.reportNote), so the sample is stated, never passed off
