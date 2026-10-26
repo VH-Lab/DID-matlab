@@ -162,6 +162,20 @@ r = did2.convert.v1_to_v2({s}, 'Validate', false);
 verifyEmpty(testCase, r.migrated, 'a V_eta-stamped body was accepted');
 verifyNotEmpty(testCase, r.quarantine);
 verifyEqual(testCase, r.quarantine(1).identifier, 'did2:convert:unknownSchemaVersion');
+% the reason names the stamp as RETIRED, not as written by a newer did2
+verifyTrue(testCase, contains(r.quarantine(1).reason, 'RETIRED'), r.quarantine(1).reason);
+verifyFalse(testCase, contains(r.quarantine(1).reason, 'NEWER'), r.quarantine(1).reason);
+verifyTrue(testCase, contains(r.quarantine(1).reason, 'did_v2'), r.quarantine(1).reason);
+end
+
+function testAnUnknownStampIsStillCalledNewer(testCase)
+% A name that was never on the line still reads as written by a newer did2.
+s = bodyStamped('V_omega');
+s.unknown_class = struct('foo', 'bar');
+r = did2.convert.v1_to_v2({s}, 'Validate', false);
+verifyNotEmpty(testCase, r.quarantine);
+verifyEqual(testCase, r.quarantine(1).identifier, 'did2:convert:unknownSchemaVersion');
+verifyTrue(testCase, contains(r.quarantine(1).reason, 'NEWER'), r.quarantine(1).reason);
 end
 
 function testTargetStampMapsTheSetToTheStamp(testCase)
