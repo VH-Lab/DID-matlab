@@ -121,12 +121,12 @@ switch route
         % built and the caller carries the document whole as v1 (header,
         % UNPLACED). This used to keep the first amount and write the dose.
         if ~isempty(placeholders) || ~isempty(conflicts)
-            % for a treatment_drug (the class those rows name) a conflict
-            % cites carry-031 and a vehicle placeholder carry-057 ([vehicle
-            % rate needs a map], Jess Haley, 2026-10-26); the other classes
-            % have no carry register row for these yet
-            conflictRow = treatmentRow(preBody, '', '[carry-031] ', '');
-            placeholderRow = treatmentRow(preBody, '', '[carry-057] ', '');
+            % a conflict cites carry-071 (treatment), carry-031
+            % (treatment_drug) or carry-073 (virus_injection); a vehicle
+            % placeholder carry-070, carry-057 ([vehicle rate needs a map],
+            % Jess Haley, 2026-10-26) or carry-072
+            conflictRow = treatmentRow(preBody, '[carry-071] ', '[carry-031] ', '[carry-073] ');
+            placeholderRow = treatmentRow(preBody, '[carry-070] ', '[carry-057] ', '[carry-072] ');
             unplaced = [cellfun(@(t) [placeholderRow 'vehicle amount placeholder: ' char(t)], ...
                 reshape(placeholders, 1, []), 'UniformOutput', false), ...
                 cellfun(@(t) [conflictRow 'conflicting amount: ' char(t)], ...

@@ -322,12 +322,14 @@ jobs:
         # the did-schema ref above (same name, else main) would fail every
         # citation of a newer row. The register is read from: the same-name
         # did-schema branch when it has the register, else
+        # `claude/registry-terms` (cut from #151's branch; it adds carry-067..
+        # carry-073) while that branch exists, else
         # `claude/carry-register-rows` while that branch exists, else main.
-        # The chosen ref is PRINTED. Drop the middle step once #151 merges.
+        # The chosen ref is PRINTED. Drop the middle steps once they merge.
         run: |
           want="${{ github.head_ref || github.ref_name }}"
           reg_ref=main
-          for ref in "$want" claude/carry-register-rows; do
+          for ref in "$want" claude/registry-terms claude/carry-register-rows; do
             if git ls-remote --exit-code --heads \
                  https://github.com/Waltham-Data-Science/did-schema.git "$ref" >/dev/null 2>&1; then
               reg_ref="$ref"; break

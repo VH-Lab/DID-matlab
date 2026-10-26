@@ -121,9 +121,8 @@ if startsWith(lower(node), 'chebi:')
     [manip, route, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, ...
         numberCondition, siteTerm, anchor.base.id);
     if ~isempty(unplaced)
-        % carry-register: carry-023 carry-024 via private/jTreatmentBodies.m; none
-        % for an amount a dose cannot place (a vehicle amount placeholder or a
-        % conflicting amount; jCarryWhy 'unplaced: ...')
+        % carry-register: carry-023 carry-024 carry-070 carry-071 via
+        % private/jTreatmentBodies.m
         v2Body = carryAsV1(preBody, jCarryWhy(unplaced));
         return;
     end

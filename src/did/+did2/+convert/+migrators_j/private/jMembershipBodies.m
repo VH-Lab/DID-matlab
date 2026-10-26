@@ -53,9 +53,9 @@ for k = 1:numel(entries)
 end
 if ~isempty(unplaced)
     % carry-register: carry-060 (an ingested session's reference that differs
-    % from its local_identifier); none for: is_linked not stated or not
-    % readable, a linked session's reference, a session not in the batch, or a
-    % creator input that is not a copy
+    % from its local_identifier), carry-066 (is_linked not stated), carry-068
+    % (is_linked not readable), carry-069 (a session not in the batch); none
+    % for: a linked session's reference, or a creator input that is not a copy
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     bodies = {preBody};
@@ -82,13 +82,13 @@ function [method, params, why] = membershipMethod(e, memberSession)
 %   WHY it cannot be placed whole.
 method = []; params = []; why = '';
 if ~isfield(e, 'is_linked') || isempty(e.is_linked)
-    why = 'is_linked not stated';
+    why = '[carry-066] is_linked not stated';
     return;
 end
 linked = e.is_linked;
 if ischar(linked) || isstring(linked); linked = str2double(linked); end
 if ~(islogical(linked) || isnumeric(linked)) || ~isscalar(linked) || isnan(double(linked))
-    why = 'is_linked not readable';
+    why = '[carry-068] is_linked not readable';
     return;
 end
 linked = logical(linked);
@@ -105,7 +105,7 @@ if ~isempty(strtrim(reference))
     % (did2.convert.sessionReferences); one not in the batch cannot be compared.
     [li, found] = did2.convert.sessionReferences('get', memberSession);
     if ~found
-        why = ['session_reference (the session is not in the batch, so it ' ...
+        why = ['[carry-069] session_reference (the session is not in the batch, so it ' ...
             'was not compared with its local_identifier)'];
         return;
     end

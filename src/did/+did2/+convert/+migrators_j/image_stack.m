@@ -199,10 +199,9 @@ end
 % whole as v1, for the dataset's map, rather than folded without the edge.
 tableRowId = dependencyValue(preBody, 'document_id');
 if ~isempty(tableRowId)
-    % carry-register: carry-052 (imageStack); none for a v1 image (the
-    % register's row names imageStack)
+    % carry-register: carry-052 (imageStack), carry-067 (a v1 image)
     did2.convert.reportNote('carried_as_v1', 'image_stack', ...
-        baseField(preBody, 'id', ''), [carryRowOf(preBody, '', '[carry-052] ') ...
+        baseField(preBody, 'id', ''), [carryRowOf(preBody, '[carry-067] ', '[carry-052] ') ...
         'unplaced: depends_on document_id']);
     bodies = {preBody};
     return;

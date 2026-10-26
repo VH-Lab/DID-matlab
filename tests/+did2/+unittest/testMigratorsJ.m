@@ -3274,7 +3274,8 @@ v1 = writerSessionInADatasetDoc('member_sess_9');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'not in the batch'));
+    '[carry-069] session_reference (the session is not in the batch'), ...
+    'the note cites its carry register row');
 v1.session_in_a_dataset.is_linked = 1;
 out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
 verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.count, 1);
