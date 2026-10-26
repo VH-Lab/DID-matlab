@@ -34,6 +34,8 @@
 %     schemaVersionRank  - where a schema version sits in the did_v1 ->
 %                          V_eta line.
 %     statementKind      - the direction class and value kind of a statement.
+%     mintId             - the id of a document the migration mints, derived
+%                          from its source id and role (deterministic).
 %     fromV1Database     - end-to-end orchestrator: reads a v1 database
 %                          (file -> sqliteV1, directory -> dumbJsonV1),
 %                          runs v1_to_v2 with its default TargetVersion,

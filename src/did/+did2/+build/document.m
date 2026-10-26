@@ -171,7 +171,7 @@ givenByBlock = routeFields(info, fields, className);
 for k = 1:numel(info.blocksContributed)
     blockName = info.blocksContributed{k};
     if strcmp(blockName, 'base')
-        doc.base = baseBlock(info, options, sessionEdge);
+        doc.base = baseBlock(info, options, sessionEdge, className);
         continue;
     end
     doc.(blockName) = fillBlock(info, blockName, givenByBlock);
@@ -281,10 +281,13 @@ for f = 1:numel(entries)
 end
 end
 
-function base = baseBlock(info, options, sessionEdge)
+function base = baseBlock(info, options, sessionEdge, className)
 id = options.Id;
 if isempty(id)
-    id = did.ido.unique_id();
+    % random outside a migration; inside one, derived from the v1 source and
+    % the class (did2.convert.mintId, practice (b) of [migration reliability
+    % practices], Jess Haley, 2026-10-26)
+    id = did2.convert.mintId(['build:' className]);
 end
 ts = options.CreationTimestamp;
 if isempty(ts)

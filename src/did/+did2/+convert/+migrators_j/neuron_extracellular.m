@@ -360,7 +360,7 @@ end
 % did-schema #88: built through did2.build. The neuron is an `entity` of type
 % cell (a sorted unit); its derivation from the recording element is a
 % `derived_from` relation; its statements hang off one session anchor.
-neuronId = did.ido.unique_id();
+neuronId = did2.convert.mintId('neuron');   % derived from the source id (practice (b))
 neuron = jEntity(preBody, 'cell', struct('local_identifier', unitName, ...
     'description', 'spike-sorted extracellular unit (derived)'), 'Id', neuronId);
 rel = jEntityRelation(preBody, neuronId, recordingSubjectId, 'derived_from');   % node from the schema's row (did2.build.vocabulary)

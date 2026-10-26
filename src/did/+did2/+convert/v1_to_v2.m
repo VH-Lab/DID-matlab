@@ -274,6 +274,13 @@ legacyDiscNames  = {};   legacyDiscValues  = [];
 % reportNote), e.g. a treatment whose route is unknown. Reset per batch; a
 % quarantined body's notes are dropped, since that body did not migrate.
 did2.convert.reportNote('reset');
+% Deterministic ids for the documents a migrator MINTS (practice (b) of
+% [migration reliability practices], Jess Haley, 2026-10-26): each source body
+% opens a did2.convert.mintId context keyed on its v1 base.id, so a minted
+% document's id is derived from that id and its role, and two runs on the same
+% input give the same ids. A body with no id mints random ids, as before.
+mintDepth = did2.convert.mintId('-depth');
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth)); %#ok<NASGU>
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -282,8 +289,10 @@ for k = 1:numel(bodies)
     passedThrough = false;
     carried = false;
     noteMark = did2.convert.reportNote('mark');
+    did2.convert.mintId('-popto', mintDepth);
     try
         preBody = ensureStruct(rawBody);
+        did2.convert.mintId('-push', sourceIdOf(preBody));
         refuseUnknownSchemaVersion(preBody);
         if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already stamped
@@ -521,6 +530,7 @@ for k = 1:numel(bodies)
         [quarNames, quarValues] = bumpClassCounter(quarNames, quarValues, ...
             sprintf('%s|%s', className, err.identifier));
     end
+    did2.convert.mintId('-popto', mintDepth);
 end
 
 % `bodies_unreached` closes the denominator: every body either reached

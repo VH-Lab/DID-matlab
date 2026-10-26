@@ -490,6 +490,12 @@ arguments
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
     options.Decompose (1,1) logical = false
 end
+% Ids this pass mints are derived from their source document's id and role,
+% counted in one context for the run (did2.convert.mintId; practice (b) of
+% [migration reliability practices], Jess Haley, 2026-10-26).
+mintDepth = did2.convert.mintId('-depth');
+did2.convert.mintId('-push', '');
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth)); %#ok<NASGU>
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
 % migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
@@ -1128,7 +1134,9 @@ if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
         ds = ds0;
     end
 end
-base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+% derived from the source id and NAME (practice (b) of [migration reliability
+% practices], Jess Haley, 2026-10-26); random when the source has no id
+base = struct('id', did2.convert.mintId(name, baseField(src, 'id')), 'session_id', sessionId, ...
     'name', name, 'creation_timestamp', ds);
 end
 

@@ -236,7 +236,7 @@ for i = 1:numel(authors)
         'given_name',  getChar(a, 'givenName'), ...
         'family_name', getChar(a, 'familyName'), ...
         'email',       nestedChar(a, {'contactInformation', 'email'}));
-    personId = did.ido.unique_id();
+    personId = did2.convert.mintId('person');
     bodies = [bodies, entityDoc(preBody, 'person', personId, personBlock, ...
         buildGids({'ORCID', orcid}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, personId, 'has_author', i - 1);   % order counts from 0 ([author order from 0], Jess Haley 2026-10-21)
@@ -258,7 +258,7 @@ for i = 1:numel(funding)
     if isempty(awardTitle) && isempty(awardNumber) && isempty(getChar(f, 'funder'))
         continue;   % an empty funding slot carries nothing
     end
-    awardId = did.ido.unique_id();
+    awardId = did2.convert.mintId('award');
     bodies = [bodies, entityDoc(preBody, 'funding', awardId, ...
         struct('title', awardTitle), buildGids({'AwardNumber', awardNumber}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, awardId, 'funded_by', []);
@@ -278,7 +278,7 @@ for i = 1:numel(pubs)
     title = getChar(p, 'Publication');
     doi = getChar(p, 'DOI'); pmid = getChar(p, 'PMID'); pmcid = getChar(p, 'PMCID');
     if isempty(title) && isempty(doi) && isempty(pmid) && isempty(pmcid); continue; end
-    pubId = did.ido.unique_id();
+    pubId = did2.convert.mintId('publication');
     bodies = [bodies, entityDoc(preBody, 'publication', pubId, ...
         struct('title', title), ...
         buildGids({'DOI', doi}, {'PMID', pmid}, {'PMCID', pmcid}), true)];
@@ -288,7 +288,7 @@ end
 % --- full documentation IRI -> web_resource entity + documented_by relation --
 docIRI = getChar(ms, 'FullDocumentation');
 if ~isempty(docIRI)
-    wrId = did.ido.unique_id();
+    wrId = did2.convert.mintId('web_resource');
     bodies = [bodies, entityDoc(preBody, 'web_resource', wrId, ...
         struct('label', 'full documentation'), buildGids({'URL', docIRI}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, wrId, 'documented_by', []);

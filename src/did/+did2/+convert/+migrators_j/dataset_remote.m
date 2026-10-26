@@ -40,7 +40,7 @@ if ~isempty(cloudId)
 end
 bodies = {jEntity(preBody, 'dataset', bareFields, 'Id', datasetId, 'SessionId', datasetId)};
 if ~isempty(orgName)
-    orgId = did.ido.unique_id();
+    orgId = did2.convert.mintId('organization');
     bodies = [bodies, did2.convert.entities.entityDoc(preBody, 'organization', orgId, ...
         struct('full_name', orgName), {}, true)];
     bodies{end+1} = jEntityRelation(preBody, datasetId, orgId, 'hosted_by');

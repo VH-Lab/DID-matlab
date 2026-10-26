@@ -25,6 +25,12 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
         ds = preBody.base.datestamp;
     end
 end
-base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+srcId = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    srcId = char(preBody.base.id);
+end
+% derived from the source id and NAME (practice (b) of [migration reliability
+% practices], Jess Haley, 2026-10-26); random when the source has no id
+base = struct('id', did2.convert.mintId(name, srcId), 'session_id', sessionId, ...
     'name', name, 'datestamp', ds);
 end
