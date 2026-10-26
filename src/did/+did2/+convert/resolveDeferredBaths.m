@@ -124,7 +124,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
@@ -400,7 +400,7 @@ function bodies = makeBath(v1Body, subjectId, targetVersion)
 %   (`value_inline_or_body`, did-schema data_body AMENDMENT 5) refuses. The
 %   V_zeta/V_epsilon branch that kept the `bath` class was deleted with
 %   did-schema #88 (OPEN_WORK #128).
-if ~strcmp(targetVersion, 'V_eta')
+if ~did2.convert.isV2Set(targetVersion)
     error('did2:convert:unsupportedTarget', ...
         ['resolveDeferredBaths assembles V_eta only; TargetVersion "%s" has ' ...
          'no bath model (V_epsilon/V_zeta were deleted, did-schema #88).'], ...

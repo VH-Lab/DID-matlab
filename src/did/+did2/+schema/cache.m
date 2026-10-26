@@ -1738,6 +1738,20 @@ classdef cache < handle
         end
     end
 
+    methods (Static)
+        function p = schemaSetTierPath(schemasDir, tier)
+            % schemaSetTierPath - <schemasDir>/did_v2/<tier> when that folder
+            %   exists, else <schemasDir>/V_eta/<tier>: the V2 set's two names
+            %   ([schema set renamed did_v2], Jess Haley, 2026-10-25, step 1:
+            %   accept both, prefer did_v2). The V_eta path is returned when
+            %   neither exists, so a caller reports the name it looked for.
+            p = fullfile(schemasDir, 'did_v2', tier);
+            if ~isfolder(p)
+                p = fullfile(schemasDir, 'V_eta', tier);
+            end
+        end
+    end
+
     methods (Static, Access = private)
         function p = defaultSchemaPath()
             envOverride = getenv('DID_SCHEMA_PATH');
@@ -1757,7 +1771,10 @@ classdef cache < handle
             % this fallback reads stable/ only. The CI workflows copy all three
             % tiers into one directory and set DID_SCHEMA_PATH to it, which
             % wins over this default (above).
-            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_eta', 'stable');
+            % [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1:
+            % accept both names, preferring did_v2 when present.
+            p = did2.schema.cache.schemaSetTierPath( ...
+                fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas'), 'stable');
         end
 
         function block = coerceBlock(block, fieldDefs)

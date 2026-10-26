@@ -464,8 +464,9 @@ end
 % Same fallback shape as did2.schema.cache.defaultSchemaPath: assume
 % did-schema is a sibling of the DID-matlab checkout.
 toolboxDir = did.toolboxdir();
-candidates{end+1} = fullfile(toolboxDir, '..', '..', '..', ...
-    'did-schema', 'schemas', 'V_eta', 'stable'); %#ok<AGROW>
+% [schema set renamed did_v2], step 1: the set's new name first, then V_eta
+candidates{end+1} = did2.schema.cache.schemaSetTierPath(fullfile(toolboxDir, '..', '..', '..', ...
+    'did-schema', 'schemas'), 'stable'); %#ok<AGROW>
 
 p = '';
 for k = 1:numel(candidates)

@@ -128,7 +128,7 @@ arguments
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
     options.Audits (1,1) logical = true
 end
 
@@ -787,7 +787,7 @@ function bodies = runConcreteMigrator(v2Body, className, targetVersion)
 %   (struct) or several (struct array / cell), enabling the treatment ->
 %   manipulation and ontology_table_row -> observations (1 -> N) splits.
 splitPackage = '';
-if strcmp(targetVersion, 'V_eta')
+if did2.convert.isV2Set(targetVersion)
     splitPackage = 'did2.convert.migrators_j.';
 end
 if ~isempty(splitPackage)
@@ -877,7 +877,7 @@ arguments
     targetVersion (1,:) char
     sessionEdge (1,1) logical = false
 end
-if ~strcmp(targetVersion, 'V_eta')
+if ~did2.convert.isV2Set(targetVersion)
     return;
 end
 if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base)
@@ -1007,7 +1007,7 @@ if nargin < 3 || isempty(targetVersion)
     targetVersion = 'V_eta';
 end
 superPackage = '';
-if strcmp(targetVersion, 'V_eta')
+if did2.convert.isV2Set(targetVersion)
     superPackage = 'did2.convert.migrators_j.super.';
 end
 if ~isfield(body, 'document_class') ...

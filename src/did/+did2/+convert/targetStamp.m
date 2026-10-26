@@ -29,7 +29,7 @@ arguments
 end
 
 stamp = char(targetVersion);
-if strcmp(stamp, 'V_eta')   % the schema set (TargetVersion), not a stamp
+if strcmp(stamp, 'V_eta')   % the schema set's earlier name (TargetVersion), not a stamp
     stamp = did2.schema.v2Stamp();
 end
 end

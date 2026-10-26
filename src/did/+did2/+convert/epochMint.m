@@ -386,7 +386,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
     options.ArmingMigrators = []
 end
 
