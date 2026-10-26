@@ -24,11 +24,11 @@ verifyTrue(testCase, did.ido.isvalid(b), b);
 end
 
 function testTwoRunsGiveTheSameIds(testCase)
-ids1 = run();
-ids2 = run();
+ids1 = runOnce();
+ids2 = runOnce();
 verifyEqual(testCase, ids1, ids2);
 verifyEqual(testCase, numel(unique(ids1)), numel(ids1), 'ids within a run are distinct');
-    function ids = run()
+    function ids = runOnce()
         did2.convert.mintId('-reset');
         ids = {};
         for s = {'41e1b2c3d4e5f607_0123456789abcdef', '41e1b2c3d4e5f608_0123456789abcdef'}
@@ -36,7 +36,7 @@ verifyEqual(testCase, numel(unique(ids1)), numel(ids1), 'ids within a run are di
             ids{end+1} = did2.convert.mintId('build:chemical'); %#ok<AGROW>
             ids{end+1} = did2.convert.mintId('build:chemical'); %#ok<AGROW>
             ids{end+1} = did2.convert.mintId('build:formulation'); %#ok<AGROW>
-            ids{end+1} = did2.convert.mintId('file_uid', 'other_source'); %#ok<AGROW>
+            ids{end+1} = did2.convert.mintId('file_uid', ['other_' s{1}]); %#ok<AGROW>
             did2.convert.mintId('-pop');
         end
     end
