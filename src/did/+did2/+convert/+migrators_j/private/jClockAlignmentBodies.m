@@ -1,8 +1,10 @@
 function bodies = jClockAlignmentBodies(preBody, block, epochDocIdA, epochDocIdB)
-%JCLOCKALIGNMENTBODIES did_v1 `syncrule_mapping` -> `clock_alignment` + 2 references.
+%JCLOCKALIGNMENTBODIES did_v1 `syncrule_mapping` -> `clock_alignment` between
+%   the two per-system references epochMint names.
 %
 %   BODIES = jClockAlignmentBodies(PREBODY, BLOCK, EPOCHDOCIDA, EPOCHDOCIDB)
-%   returns {clock_alignment, from_reference, to_reference} for the signed
+%   returns {clock_alignment} (its ends the stamped `time_reference_id_1` /
+%   `_2`, [device clocks on one epoch]) for the signed
 %   sync-mapping model, or {} when the alignment cannot be stated without
 %   inventing something. BLOCK is the `syncrule_mapping` property block.
 %
@@ -48,6 +50,10 @@ function bodies = jClockAlignmentBodies(preBody, block, epochDocIdA, epochDocIdB
 %   ---------------------------------------------------------------------
 %   THE ENDPOINTS
 %   ---------------------------------------------------------------------
+%   SUPERSEDED 2026-10-26 ([device clocks on one epoch] (3)): the two ends are
+%   the per-system references did2.convert.epochMint places on the epochs and
+%   stamps here; the text below is the record of the earlier model.
+%
 %   v1's `epochnode_a` / `epochnode_b` each carry {epoch_id, epoch_session_id,
 %   epochprobemap, epoch_clock, t0_t1, objectname, objectclass}. The plan
 %   dissolves them into two `relative_reference` documents plus the `epoch`
@@ -111,12 +117,18 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
 end
 if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
 
-nodeA = subStruct(block, {'epochnode_a', 'epochNodeA'});
-nodeB = subStruct(block, {'epochnode_b', 'epochNodeB'});
-refA = referenceFor(nodeA, epochDocIdA, sessionId, datestamp);
-refB = referenceFor(nodeB, epochDocIdB, sessionId, datestamp);
-if isempty(refA) || isempty(refB)
-    return;   % NO TIMES => NO REFERENCE => no alignment
+% [device clocks on one epoch] (3) (Decided by Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md): "A v1 `syncrule_mapping` becomes a
+% `clock_alignment` between those two references" -- the per-system
+% relative_time_references on the epochs (referent: the acquisition system).
+% did2.convert.epochMint ties each endpoint to its system, checks objectname /
+% objectclass / epochprobemap against it, and stamps the two reference ids
+% (`time_reference_id_1` / `_2`); with either missing nothing is folded and the
+% mapping stays, carried. This function mints no endpoint reference of its own.
+refA = jSyncDependency(preBody, 'time_reference_id_1');
+refB = jSyncDependency(preBody, 'time_reference_id_2');
+if isempty(epochDocIdA) || isempty(epochDocIdB) || isempty(refA) || isempty(refB)
+    return;
 end
 
 % The two edges v1 already writes, and which V_eta had replaced with a phantom.
@@ -133,7 +145,7 @@ end
 % did-schema #88: `clock_alignment` < relation, polynomial, built through
 % did2.build: its two endpoints are `input_id` / `output_id`
 % (`from_reference` / `to_reference` before), each a relative_time_reference.
-edges = struct('input_id', refA.base.id, 'output_id', refB.base.id, ...
+edges = struct('input_id', refA, 'output_id', refB, ...
     'clock_alignment_configuration_id', configId, ...
     'clock_alignment_policy_id', policyId);
 o = {'SessionId', char(sessionId), 'CreationTimestamp', datestamp, ...
@@ -142,85 +154,9 @@ align = did2.build.document('clock_alignment', struct( ...
     'value', struct('coefficients', coeffs, 'degree', numel(coeffs) - 1), ...
     'relation', jLabel('temporally aligned with'), ...
     'cost', readCost(block)), o{:});
-bodies = {align, refA, refB};
+bodies = {align};
 end
 
-% ===================== the endpoint reference ==============================
-
-function ref = referenceFor(node, epochDocId, sessionId, datestamp)
-%REFERENCEFOR One epochnode -> a relative_reference anchored to its epoch document.
-ref = [];
-if ~isstruct(node) || isempty(epochDocId)
-    return;
-end
-% The epochnode sub-fields are NESTED, so universalRenames (which snake_cases
-% only the IMMEDIATE fields of a property block) leaves their raw v1 casing
-% untouched: read snake-first with a camelCase fallback, as syncrule_mapping.m
-% and every other +migrators_j nested read does.
-clockName = jGetCharAny(node, {'epoch_clock', 'epochClock'});
-% BRANCH 2 of syncrule_mapping (reshapeEpochNode) moves `epoch_clock` UNDER
-% `epochnode_a.time_reference`, and the epochMint syncrule arming re-runs this
-% migrator on that reshaped body -- so `epoch_clock` is one level down there.
-% Fall back to it when the flat read came up empty. `t0_t1` and `objectname`
-% stay at NODE level in the reshape, so their reads are unchanged; this is the
-% only node field the reshape moves that referenceFor reads.
-if isempty(clockName) && isfield(node, 'time_reference') ...
-        && isstruct(node.time_reference) && isscalar(node.time_reference)
-    clockName = jGetCharAny(node.time_reference, {'epoch_clock', 'epochClock'});
-end
-if isempty(clockName) || strcmp(clockName, 'no_time')
-    return;                                  % NO TIMES => NO REFERENCE
-end
-t = readMatrix(node, {'t0_t1', 't0t1'});
-t = double(t(:)');
-if numel(t) < 2 || ~all(isfinite(t(1:2)))
-    return;                                  % NO TIMES => NO REFERENCE
-end
-% CHANGE 4 of the signed time-model walkthrough
-% (V_eta_time_reference_model_plan.md:468, TEAM-SIGN-OFF [time_reference],
-% jess@walthamdatascience.com / 2026-08-08). 'approx_' is how NDI's own
-% clocktype vocabulary marks the ~5 s tier (+ndi/+time/clocktype.m:21,23,26 --
-% "within 5 seconds" / "within 5s" / "within 5 s"); the unprefixed forms are
-% within 0.1 ms. The prefix DE-ENCODES to a bare clock plus an explicit
-% `clock_tolerance`; it used to become a bare boolean here, which threw the five
-% seconds away, and it also emitted `approx_*` as an ontology_term name when the
-% bound vocabulary has only the FOUR unprefixed terms.
-[bareClock, toleranceSeconds] = deEncodeApprox(clockName);
-
-% did-schema #88: a relative_time_reference onto the epoch (`referent_id`),
-% built through did2.build. The endpoint's object name (the DAQ system name,
-% `epochnode_[ab].objectname`) was its base.name before; V_eta documents write
-% no base.name (#73 item 54) and a time reference has no other slot for it, so
-% on a FOLDED mapping the name is not carried. It stays on every mapping that
-% passes through (branch 2 of syncrule_mapping.m). Reported in the port report
-% as an NDI reader need: NDI's syncgraph query matches objectname by
-% exact_string, so the reader must reach the system through the configuration.
-sec = struct('node', 'om:second-Time', 'name', 'second');
-try
-ref = did2.build.relativeTimeReference(epochDocId, 'Clock', bareClock, ...
-    'Start', t(1), 'StartSourceValue', t(1), 'StartSourceUnit', sec, ...
-    'StartApproximate', false, ...
-    'Duration', t(2) - t(1), 'DurationSourceValue', t(2) - t(1), ...
-    'DurationSourceUnit', sec, 'DurationApproximate', false, ...
-    'ClockTolerance', toleranceSeconds, 'SessionId', char(sessionId), ...
-    'CreationTimestamp', datestamp, 'Validate', false);
-catch
-    ref = [];   % a clock outside the bound set: no reference, so no alignment
-end
-end
-
-function [bare, toleranceSeconds] = deEncodeApprox(clockName)
-%DEENCODEAPPROX Split NDI's `approx_` prefix into a bare clock + a TOLERANCE.
-%   Same rule, same wording, as private/jEpochClockReferences.m. Returns
-%   TOLERANCESECONDS = [] (not 0) when the clock states no tolerance, so "no
-%   stated tolerance" and "stated as zero" stay distinguishable.
-bare = clockName;
-toleranceSeconds = [];
-if numel(clockName) >= 7 && strcmp(clockName(1:7), 'approx_')
-    bare = clockName(8:end);
-    toleranceSeconds = 5;
-end
-end
 
 function v = readCost(block)
 v = 0;
@@ -236,17 +172,6 @@ if ~isstruct(block); return; end
 for k = 1:numel(names)
     if isfield(block, names{k}) && isnumeric(block.(names{k}))
         m = block.(names{k});
-        return;
-    end
-end
-end
-
-function s = subStruct(block, names)
-s = struct();
-if ~isstruct(block); return; end
-for k = 1:numel(names)
-    if isfield(block, names{k}) && isstruct(block.(names{k})) && isscalar(block.(names{k}))
-        s = block.(names{k});
         return;
     end
 end

@@ -60,6 +60,15 @@ end
 
 v2Body = preBody;
 
+% The element_epoch superclass migrator ran first; a block it did not convert
+% to `clocks` is one whose t0_t1 does not match its clocks, which it noted
+% `carried_as_v1` ([small unread settings] (4), Jess Haley, 2026-10-26). The
+% document is carried whole as v1.
+if isfield(v2Body, 'element_epoch') && isstruct(v2Body.element_epoch) ...
+        && ~isfield(v2Body.element_epoch, 'clocks')
+    return;
+end
+
 % The concrete class is unchanged -- `oneepoch` persists as a source tombstone
 % until fork A1's observation model is signed and built.
 v2Body.document_class.class_name = 'oneepoch';

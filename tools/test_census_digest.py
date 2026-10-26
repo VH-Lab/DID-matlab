@@ -2281,9 +2281,12 @@ class TestTheThreePassesAreWiredAtAll(ThreePassCase):
     def test_each_of_the_three_has_a_POST_PASSES_entry(self):
         import census_digest
         keys = dict((name, fn) for name, fn, _rows in census_digest.POST_PASSES)
-        for key, fn in (("lawn_plate_subjects",
-                         "did2.convert.resolveLawnPlateSubjects"),
-                        ("openminds_citations",
+        # lawn_plate_subjects left with did2.convert.resolveLawnPlateSubjects's
+        # call (Decided by Jess Haley, 2026-10-26 [Haley logic leaves the
+        # generic migration]): the pass is no longer composed, so an entry
+        # would be `stale`.
+        self.assertNotIn("lawn_plate_subjects", keys)
+        for key, fn in (("openminds_citations",
                          "did2.convert.resolveOpenmindsCitations"),
                         ("response_parameters_fold",
                          "did2.convert.resolveResponseParameters")):
@@ -2305,174 +2308,6 @@ class TestTheThreePassesAreWiredAtAll(ThreePassCase):
         for key in ("anchor_session_from_timeref", "anchor_session_from_document",
                     "method_from_app_block", "method_from_class_default"):
             self.assertIn(key, rows["valid_interval_decompose"])
-
-
-class TestLawnPlateRendering(ThreePassCase):
-    """The two-tier E. coli subject mint (TEAM DECISION 2026-08-11)."""
-
-    def _lp(self, **over):
-        rep = {
-            "ran": True, "documents_inspected": 1000, "documents_unreadable": 0,
-            "ontology_table_rows_seen": 500,
-            "plate_rows_seen": 10, "image_rows_seen": 20, "lawn_rows_seen": 30,
-            "exp_id_source_rows_seen": 10,
-            "sessions_with_lawn_plate_tables": 1,
-            "unclassified_rows_in_those_sessions": 5,
-            "columns_resolved_by_key": 120, "columns_resolved_by_term_name": 3,
-            "plate_rows_with_measurements": 8,
-            "plate_rows_with_values_but_none_emittable": 1,
-            "plate_rows_with_no_values_at_all": 1,
-            "plate_rows_refused_no_session_id": 0,
-            "plate_rows_refused_no_plate_key": 0,
-            "plate_rows_refused_no_exp_id": 0,
-            "plate_subjects_minted": 8, "plate_observations_emitted": 30,
-            "lawn_rows_with_measurements": 28,
-            "lawn_rows_with_values_but_none_emittable": 1,
-            "lawn_rows_with_no_values_at_all": 1,
-            "lawn_rows_refused_no_session_id": 0,
-            "lawn_rows_refused_no_identity_keys": 0,
-            "lawn_subjects_minted": 28, "lawn_observations_emitted": 200,
-            "chains_attempted": 28, "chains_resolved": 28,
-            "refused_no_image_row": 0, "refused_image_row_ambiguous": 0,
-            "refused_image_row_has_no_plate_key": 0, "refused_no_plate_row": 0,
-            "refused_plate_row_ambiguous": 0, "refused_lawn_no_exp_id": 0,
-            "contained_in_relations_emitted": 28,
-            "withheld_plate_tier_not_minted": 0,
-            "withheld_lawn_tier_not_minted": 2, "refused_total": 0,
-            "celegans_patch_subjects_seen": 40,
-            "celegans_patch_subjects_relabelled": 38,
-            "celegans_patch_subjects_already_triple": 0,
-            "celegans_patch_subjects_refused_no_exp_id": 2,
-            "celegans_patch_subjects_refused_ambiguous_exp_id": 0,
-            "celegans_patch_subjects_unparseable_handle": 0,
-            "celegans_patch_relabel_quarantined": 0,
-            "local_identifier_fallback_to_document_id": 0,
-            "local_identifier_collisions_within_batch": 0,
-            "subjects_quarantined": 0, "statements_quarantined": 0,
-            "documents_appended": 294, "source_rows_left_in_place": 60,
-        }
-        rep.update(over)
-        return rep
-
-    def test_it_is_rendered_at_all(self):
-        self._corpus("A", lawn_plate_subjects=self._lp())
-        text, failed = self.run_digest()
-        self.assertEqual(failed, [])
-        self.assertIn("did2.convert.resolveLawnPlateSubjects", text)
-        self.assertIn("SUBJECTS minted", text)
-        self.assertIn("contained_in EDGES emitted", text)
-
-    def test_the_denominator_prints_first_and_unconditionally(self):
-        self._corpus("A", lawn_plate_subjects=self._lp())
-        text, _ = self.run_digest()
-        self.assertIn("DENOMINATOR: 500 ontology_table_row document(s)", text)
-
-    def test_a_zero_denominator_says_vacuous(self):
-        self._corpus("A", lawn_plate_subjects={
-            "ran": True, "documents_inspected": 900,
-            "ontology_table_rows_seen": 0})
-        percorpus, _rollup, _f = self.halves()
-        self.assertIn("DENOMINATOR: 0 ontology_table_row", percorpus)
-        self.assertIn("above is VACUOUS -- including the spelling canary",
-                      percorpus)
-
-    def test_an_absent_denominator_is_unmeasured_not_zero(self):
-        rep = self._lp()
-        del rep["ontology_table_rows_seen"]
-        self._corpus("A", lawn_plate_subjects=rep)
-        text, _ = self.run_digest()
-        self.assertIn("`ontology_table_rows_seen` IS NOT IN THIS REPORT", text)
-        self.assertIn("UNMEASURED here. It is not zero", text)
-
-    def test_nothing_recognised_says_the_canary_could_not_fire(self):
-        # THE HONEST READING, and the reason this block was worth writing by
-        # hand: `unclassified_rows_in_those_sessions` is only counted in
-        # sessions where a table WAS recognised, so a wholly wrong column-token
-        # rule forces it to 0 and produces the same output as a corpus with no
-        # E. coli tables. The digest must not read that as clean.
-        self._corpus("A", lawn_plate_subjects=self._lp(
-            plate_rows_seen=0, image_rows_seen=0, lawn_rows_seen=0,
-            unclassified_rows_in_those_sessions=0))
-        text, _ = self.run_digest()
-        self.assertIn("NOTHING RECOGNISED, AND THIS READING IS AMBIGUOUS", text)
-        self.assertIn("cannot detect a wholly wrong one", text)
-
-    def test_the_canary_fires_when_unclassified_swamps_recognised(self):
-        self._corpus("A", lawn_plate_subjects=self._lp(
-            unclassified_rows_in_those_sessions=400))
-        text, _ = self.run_digest()
-        self.assertIn("SPELLING CANARY: 400 unclassified row(s) beside 60",
-                      text)
-        self.assertIn("That is what a WRONG", text)
-        self.assertIn("column-token rule looks like", text)
-
-    def test_a_broken_tier_partition_is_named_as_a_counter_defect(self):
-        # plate_rows_seen must equal the three states. A violation is a counter
-        # that stopped moving, not a corpus fact, and saying which matters.
-        self._corpus("A", lawn_plate_subjects=self._lp(
-            plate_rows_with_no_values_at_all=0))
-        text, _ = self.run_digest()
-        self.assertIn("the three plate-row states sum to 9, not "
-                      "plate_rows_seen", text)
-
-    def test_a_handle_collision_is_a_message_to_the_team(self):
-        self._corpus("A", lawn_plate_subjects=self._lp(
-            local_identifier_collisions_within_batch=7))
-        text, _ = self.run_digest()
-        self.assertIn("7 HANDLE COLLISION(S)", text)
-        self.assertIn("The team's directive asserts", text)
-        self.assertIn("does not", text)
-        self.assertIn("choose another scheme on its own", text)
-
-    def test_withheld_edges_are_named_as_not_a_loss(self):
-        self._corpus("A", lawn_plate_subjects=self._lp())
-        text, _ = self.run_digest()
-        self.assertIn("THIS IS NOT A LOSS AND NOT A REFUSAL", text)
-
-    def test_refused_total_says_what_it_excludes(self):
-        self._corpus("A", lawn_plate_subjects=self._lp())
-        text, _ = self.run_digest()
-        self.assertIn("EXCLUDES the C. elegans relabel", text)
-
-    def test_units_are_on_the_rows_that_are_not_documents(self):
-        # COLUMNS, SESSIONS, ROWS and EDGES all appear in one column. Labelling
-        # them is the only thing that stops a reader adding them up.
-        self._corpus("A", lawn_plate_subjects=self._lp())
-        text, _ = self.run_digest()
-        self.assertIn("COLUMNS matched by key (not rows)", text)
-        self.assertIn("SESSIONS holding any of those", text)
-        self.assertIn("contained_in EDGES emitted (edges, not rows)", text)
-        self.assertNotIn("member_of EDGES emitted", text)
-
-    def test_a_missing_counter_prints_absent_not_zero(self):
-        rep = self._lp()
-        del rep["lawn_subjects_minted"]
-        self._corpus("A", lawn_plate_subjects=rep)
-        text, _ = self.run_digest()
-        self.assertIn("(absent)    SUBJECTS minted", text)
-
-    def test_the_rollup_names_a_report_that_lacks_a_counter(self):
-        # NEVER SUMMED AS 0. This is the defect that made the digest print
-        # NO CORPUS REPORTS FOUND and exit 0, one level down.
-        rep = self._lp()
-        del rep["lawn_subjects_minted"]
-        self._corpus("A", lawn_plate_subjects=self._lp())
-        self._corpus("B", lawn_plate_subjects=rep)
-        text, _ = self.run_digest()
-        self.assertIn("lawn_subjects_minted", text)
-        self.assertIn("no such counter in: B", text)
-        self.assertIn("contributes", text)
-
-    def test_the_rollup_denominator_and_vacuity(self):
-        self._corpus("A", lawn_plate_subjects={
-            "ran": True, "documents_inspected": 1, "ontology_table_rows_seen": 0})
-        self._corpus("B", lawn_plate_subjects={
-            "ran": True, "documents_inspected": 1, "ontology_table_rows_seen": 0})
-        _percorpus, rollup_text, _f = self.halves()
-        self.assertIn("DENOMINATOR: 0 ontology_table_row document(s) across 2 "
-                      "report(s)", rollup_text)
-        self.assertIn("above is VACUOUS -- including the spelling canary",
-                      rollup_text)
 
 
 class TestOpenmindsCitationsRendering(ThreePassCase):
@@ -4207,8 +4042,12 @@ class TestThisRepositoryAgrees(unittest.TestCase):
         except ImportError:                                   # pragma: no cover
             self.skipTest("tools/test_batch_pass_wiring.py not importable")
         passes, exempt, _n = wiring.discover()
-        theirs = {name for name, _key in passes} | {n for n, _r in exempt}
+        # an exempt pass (WIRING-EXEMPT) is composed by no call site, and both
+        # derivations leave it out
+        theirs = {name for name, _key in passes}
         self.assertEqual(theirs, set(self.chain["chain"]))
+        self.assertEqual({n for n, _r in exempt},
+                         set(self.chain["package"]["exempt"]))
         keys = {name: key for name, key in passes if key}
         self.assertEqual(keys, self.chain["fields"])
         # And the passes THEY record as report-less are exactly the ones this

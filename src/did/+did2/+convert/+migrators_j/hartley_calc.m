@@ -127,8 +127,10 @@ function bodies = hartley_calc(preBody)
 %                                  (T11: the name must not read as how it was
 %                                  made).
 %     reverse_correlation.dimension_labels ''
-%                               -> DROPPED. Empty in 210 of 210, and the
-%                                  signature names it droppable.
+%                               -> DROPPED ONLY WHEN EMPTY (empty in 210 of
+%                                  210); otherwise the document is carried
+%                                  whole as v1 ([hartley leftovers checked],
+%                                  Jess Haley, 2026-10-26).
 %     hartley_calc.input_parameters {T, X_sample, Y_sample}
 %                               -> interaction.method.parameters, via
 %                                  jCalculation's shared reader.
@@ -176,30 +178,24 @@ function bodies = hartley_calc(preBody)
 %   team question and is reported as one; it is not decided here.
 %
 %   ---------------------------------------------------------------------
-%   `stimulus_properties`: THE GUARD, AND THE HALF A MIGRATOR CANNOT DO
+%   `stimulus_properties`: THE GUARD
 %   ---------------------------------------------------------------------
 %   The signature says: checked for equality against the presentation's
-%   generator spec, dropped only when equal, REFUSED AND REPORTED when not.
+%   generator spec, dropped only when equal, REFUSED AND REPORTED when not
+%   (2026-08-17; "refused" is now "carried whole as v1", below).
 %
-%   A SINGLE-DOCUMENT MIGRATOR CANNOT DO THE EQUALITY HALF. v1_to_v2 calls a
-%   migrator as `feval(fqn, v2Body)` with exactly one argument (:621); there is
-%   no batch, no database and no way to follow `stimulus_presentation_id`. This
-%   is the same division resolveResponseParameters records for #61 ("A
-%   single-document migrator cannot inline the parameters -- it cannot follow
-%   `stimulus_response_scalar_parameters_id`").
-%
-%   SO THE CHECK IS SPLIT, and each half is done where it CAN be done:
-%
-%     HERE, and it refuses:  the drop is lossless only if the referenced
-%       presentation is there to hold the spec, and only if every key in the
-%       block is one the presentation's generator spec supplies. Both are
-%       properties of THIS document, so both are checked, and a failure raises
-%       `did2:convert:hartleyStimulusPropertiesUnverifiable` -- a visible
-%       quarantine, not a silent drop.
-%     did2.validate.sourceCensus, and it reports:  the value-by-value
-%       comparison against the referenced presentation, over the v1 SOURCE
-%       batch where both documents are in hand. Report-only, with its own
-%       denominator.
+%   THE EQUALITY CHECK IS DONE HERE (2026-10-26). A migrator is called with
+%   one body and cannot follow `stimulus_presentation_id`, so v1_to_v2 indexes
+%   the generator settings of every presentation in its batch first
+%   (did2.convert.stimulusPresentationSpecs), and this migrator compares each
+%   of the eight values against them. [hartley leftovers checked] (Jess Haley,
+%   2026-10-26): the block is left unwritten only when every value equals the
+%   presentation's; when one differs, a key is outside the eight, the edge is
+%   empty, or the presentation is not in the batch, the document is CARRIED
+%   WHOLE AS V1 with a `carried_as_v1` note. Before, the key-only check here
+%   raised `did2:convert:hartleyStimulusPropertiesUnverifiable` (a quarantine)
+%   and the values were compared only by did2.validate.sourceCensus, which
+%   reports and still does.
 %
 %   THE EIGHT KEYS AND THEIR PRESENTATION COUNTERPARTS, measured over all 210
 %   documents joined to their referenced presentation (10 presentations, all
@@ -212,9 +208,8 @@ function bodies = hartley_calc(preBody)
 %       210  ALL 8 EQUAL: True
 %
 %   THAT IS A MEASUREMENT, NOT A LICENCE. It is one corpus, and the corpora are
-%   a sample; that is exactly why the guard below tests the SHAPE per document
-%   rather than trusting the number, and why the census re-measures the VALUES
-%   on every run instead of citing this block.
+%   a sample; that is exactly why the guard below compares the VALUES per
+%   document rather than trusting the number.
 %
 %   ---------------------------------------------------------------------
 %   `frame_times` + `hartley_numbers`: PARKED, AND SAID OUT LOUD
@@ -270,8 +265,15 @@ end
 % Measured against the real presentations: hartley key -> presentation key.
 %   M -> M, L_max -> L_absmax, K_max -> K_absmax, sf_max -> sfmax, fps -> fps,
 %   color_high -> chromhigh, color_low -> chromlow, rect -> rect
-STIMULUS_PROPERTY_KEYS = {'M', 'L_max', 'K_max', 'sf_max', 'fps', ...
-    'color_high', 'color_low', 'rect'};
+STIMULUS_PROPERTY_KEYS = { ...
+    'M',          'M'; ...
+    'L_max',      'L_absmax'; ...
+    'K_max',      'K_absmax'; ...
+    'sf_max',     'sfmax'; ...
+    'fps',        'fps'; ...
+    'color_high', 'chromhigh'; ...
+    'color_low',  'chromlow'; ...
+    'rect',       'rect'};
 
 rc  = blockOf(preBody, 'reverse_correlation');
 hrc = blockOf(preBody, 'hartley_reverse_correlation');
@@ -290,9 +292,24 @@ if ~isfield(preBody, 'ngrid') || ~isstruct(preBody.ngrid)
 end
 
 % ---- GUARD 2: stimulus_properties may only be dropped when it is redundant --
+% [hartley leftovers checked] (Jess Haley, 2026-10-26): `stimulus_properties`
+% is left unwritten only when its VALUES equal the referenced presentation's
+% generator settings, and `dimension_labels` only when empty, as TEAM-SIGN-OFF
+% [receptive field fold] says ("dropped only when equal"); otherwise the
+% document is carried whole as v1 ([partly placed is carried as v1], Jess
+% Haley, 2026-10-25). This replaces the key-only check, which quarantined.
 presentationId = firstDepValue(preBody, {'stimulus_presentation_id'});
-checkStimulusPropertiesAreDroppable(preBody, hrc, presentationId, ...
+unplaced = stimulusPropertiesNotDroppable(hrc, presentationId, ...
     STIMULUS_PROPERTY_KEYS);
+if isfield(rc, 'dimension_labels') && ~isEmptyValue(rc.dimension_labels)
+    unplaced{end+1} = 'reverse_correlation.dimension_labels (not empty)';
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', 'hartley_calc', sourceId(preBody), ...
+        ['unplaced: ' strjoin(unplaced, ', ')]);
+    bodies = {preBody};
+    return;
+end
 
 % ---- the axis segmentation, VERIFIED against the stored vector -------------
 % One vector per data_dim entry of ONE PLANE, in data_dim order. jNgridBody
@@ -552,49 +569,83 @@ end
 
 % ===================== the stimulus blocks =================================
 
-function checkStimulusPropertiesAreDroppable(preBody, hrc, presentationId, keys)
-%CHECKSTIMULUSPROPERTIESAREDROPPABLE Refuse a drop this document cannot justify.
+function unplaced = stimulusPropertiesNotDroppable(hrc, presentationId, keys)
+%STIMULUSPROPERTIESNOTDROPPABLE Why `stimulus_properties` cannot be left
+%   unwritten, as a cell of reasons ({} when it can).
 %
-%   TWO CONDITIONS, both properties of THIS document, because that is all a
-%   single-document migrator can see. The value-by-value comparison is the
-%   census's half -- see the header.
+%   THREE CONDITIONS, each of which carries the document whole as v1 when it
+%   fails ([hartley leftovers checked], Jess Haley, 2026-10-26):
 %
-%     (1) THE REFERENT MUST EXIST. Dropping the block is lossless only because
-%         the referenced `stimulus_presentation` holds the same spec, and that
-%         document survives migration intact (+migrators_j/stimulus_presentation.m
-%         is a guarded passthrough, deferring the decomposition to #31). With
-%         no edge there is nothing holding the spec and the drop is a deletion.
-%     (2) EVERY KEY MUST BE ONE THE SPEC SUPPLIES. A key outside the measured
-%         eight is a field no presentation is known to carry, so its redundancy
-%         has not been established for any document, let alone this one.
-%
-%   NOT TOLERANT, and deliberately so -- the same stance as jNgridBody's
-%   coordinates guard. An unexpected key means the writer changed, and
-%   "no corpus we looked at has one" is a fact about a SAMPLE.
+%     (1) THE REFERENT MUST BE NAMED AND IN HAND. Dropping the block is
+%         lossless only because the referenced `stimulus_presentation` holds the
+%         same spec and survives migration. Its settings are read from
+%         did2.convert.stimulusPresentationSpecs, which v1_to_v2 loads from the
+%         batch; a presentation not in the batch is not a pass.
+%     (2) EVERY KEY MUST BE ONE THE SPEC SUPPLIES (KEYS, column 1). A key
+%         outside the measured eight is a field no presentation is known to
+%         carry.
+%     (3) EVERY VALUE MUST EQUAL THE PRESENTATION'S (KEYS, column 2), compared
+%         as did2.validate.sourceCensus compares them: numeric vectors by their
+%         values (shape-insensitive), everything else exactly.
+unplaced = {};
 if ~isstruct(hrc) || ~isfield(hrc, 'stimulus_properties') ...
-        || ~isstruct(hrc.stimulus_properties)
+        || isEmptyValue(hrc.stimulus_properties)
     return;    % nothing to drop
 end
+props = hrc.stimulus_properties;
+if ~isstruct(props) || ~isscalar(props)
+    unplaced{end+1} = 'hartley_reverse_correlation.stimulus_properties (not one struct)';
+    return;
+end
 if isempty(presentationId)
-    error('did2:convert:hartleyStimulusPropertiesUnverifiable', ...
-        ['hartley_calc "%s" carries a `stimulus_properties` block and NO ' ...
-         '`stimulus_presentation_id` edge. The block is dropped only because ' ...
-         'the referenced presentation holds the same generator spec ' ...
-         '(TEAM-SIGN-OFF [receptive field fold]); with no referent the drop ' ...
-         'is a deletion of the only copy. All 210 documents in corpus ' ...
-         '20211116 carry the edge, populated. Refusing loudly instead.'], ...
-        sourceId(preBody));
+    unplaced{end+1} = ['hartley_reverse_correlation.stimulus_properties ' ...
+        '(no stimulus_presentation_id to compare against)'];
+    return;
 end
-extra = setdiff(fieldnames(hrc.stimulus_properties), keys);
+extra = setdiff(fieldnames(props), keys(:, 1));
 if ~isempty(extra)
-    error('did2:convert:hartleyStimulusPropertiesUnverifiable', ...
-        ['hartley_calc "%s": `stimulus_properties` carries key(s) {%s} that ' ...
-         'are outside the eight the referenced presentation''s generator spec ' ...
-         'is known to supply {%s}. Their redundancy has never been measured, ' ...
-         'so dropping them would delete data on the strength of a sample. ' ...
-         'Refusing loudly instead.'], ...
-        sourceId(preBody), strjoin(extra(:)', ', '), strjoin(keys, ', '));
+    unplaced{end+1} = sprintf(['hartley_reverse_correlation.stimulus_properties ' ...
+        '(key(s) %s not in the presentation''s generator settings)'], ...
+        strjoin(reshape(extra, 1, []), ', '));
+    return;
 end
+[spec, found] = did2.convert.stimulusPresentationSpecs('get', presentationId);
+if ~found || ~isstruct(spec) || isempty(fieldnames(spec))
+    unplaced{end+1} = sprintf(['hartley_reverse_correlation.stimulus_properties ' ...
+        '(presentation %s not in the batch, so its values were not compared)'], ...
+        presentationId);
+    return;
+end
+differing = {};
+for j = 1:size(keys, 1)
+    a = keys{j, 1};
+    c = keys{j, 2};
+    if ~isfield(props, a); continue; end
+    if ~isfield(spec, c) || ~isequaln(normaliseNumeric(props.(a)), ...
+            normaliseNumeric(spec.(c)))
+        differing{end+1} = a; %#ok<AGROW>
+    end
+end
+if ~isempty(differing)
+    unplaced{end+1} = sprintf(['hartley_reverse_correlation.stimulus_properties ' ...
+        '(%s differ from presentation %s)'], strjoin(differing, ', '), presentationId);
+end
+end
+
+function v = normaliseNumeric(v)
+%NORMALISENUMERIC Numeric vectors compare by value, whatever their orientation
+%   (did2.validate.sourceCensus's rule); nothing else is normalised.
+if isnumeric(v) && ~isscalar(v)
+    v = double(v(:))';
+elseif isnumeric(v)
+    v = double(v);
+end
+end
+
+function tf = isEmptyValue(v)
+%ISEMPTYVALUE '' / [] / an empty struct or cell, or a struct with no fields.
+tf = isempty(v) || (isstruct(v) && isempty(fieldnames(v))) ...
+    || ((ischar(v) || isstring(v)) && all(strlength(strtrim(string(v))) == 0));
 end
 
 function sequence = stimulusSequence(hrc)

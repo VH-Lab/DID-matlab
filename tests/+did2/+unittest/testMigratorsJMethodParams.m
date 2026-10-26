@@ -200,10 +200,23 @@ function a = appBlock()
 % names are `name`/`version`; did2.convert.universalRenames rewrites them to
 % `app_name`/`app_version` before the migrator sees them, so the fixture uses
 % the v1 spelling and lets the rename happen -- testing the real path.
+%
+% 2026-10-26: WITHOUT the four run-environment fields the writer also fills
+% (os, os_version, interpreter, interpreter_version). A document whose app
+% block names them is carried whole as v1 ([small unread settings] (1), Jess
+% Haley, 2026-10-26; withRunEnvironment and
+% testAnAppNamingTheRunEnvironmentIsCarriedAsV1), so the fold tests use the
+% block without them.
 a = struct('name', 'ndi_app_spikeextractor', 'version', '1.2.3', ...
-    'url', 'https://github.com/VH-Lab/NDI-matlab', ...
-    'os', 'MACA64', 'os_version', '14.5', ...
-    'interpreter', 'MATLAB', 'interpreter_version', '24.1');
+    'url', 'https://github.com/VH-Lab/NDI-matlab');
+end
+
+function v1 = withRunEnvironment(v1)
+% the four fields ndi.app/newdocument stamps beside name/version/url
+v1.app.os = 'MACA64';
+v1.app.os_version = '14.5';
+v1.app.interpreter = 'MATLAB';
+v1.app.interpreter_version = '24.1';
 end
 
 function v1 = modificationBody(id, name, sessionId, baseParamsId, elementId, epochString)
@@ -238,8 +251,7 @@ v1.depends_on = struct('name', {}, 'value', {});
 v1.base = struct('id', id, 'session_id', sessionId, 'name', name, ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 v1.app = struct('name', 'ndi_app_spikesorter', 'version', '1.2.3', ...
-    'url', '', 'os', 'MACA64', 'os_version', '14.5', ...
-    'interpreter', 'MATLAB', 'interpreter_version', '24.1');
+    'url', '');   % no run environment: see appBlock
 v1.sorting_parameters = struct('graphical_mode', 1, 'num_pca_features', 10, ...
     'interpolation', 3, 'min_clusters', 3, 'max_clusters', 10, 'num_start', 5);
 end
@@ -259,8 +271,7 @@ v1.depends_on = struct('name', 'element_id', 'value', elementId);
 v1.base = struct('id', id, 'session_id', sessionId, 'name', 'vmfilter', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 v1.app = struct('name', 'vhlab_voltage2firingrate', 'version', '0.9', ...
-    'url', '', 'os', 'MACA64', 'os_version', '14.5', ...
-    'interpreter', 'MATLAB', 'interpreter_version', '24.1');
+    'url', '');   % no run environment: see appBlock
 v1.epochid = struct('epochid', epochString);
 v1.vmspikefilteringparameters = struct( ...
     'sampling_rate',     0, ...
@@ -453,19 +464,36 @@ verifyEqual(testCase, cellstr(sw.get('entity.global_identifier')), ...
 end
 
 
-function testExtractionParksTheEnvironmentFieldsRatherThanDroppingThem(testCase)
-% INVERTED for did-schema #88. The app's os / interpreter were parked in the
-% method's settings bag. #88 has ONE method shape whose parameters are the
-% algorithm's settings, and names an operating system / interpreter only on a
-% calculation; a `method` has no slot for them. They are therefore NOT carried
-% (recorded in the port report as a loss on non-calculation documents) -- and
-% NOT smuggled in as fake algorithm parameters.
-d = onlyClass(testCase, runJ(extractionBody('sep_13', 'default', 'sess_A')), ...
-    'method');
-v = paramVariables(d);
-verifyFalse(testCase, any(contains(v, 'execution environment')));
-verifyFalse(testCase, any(contains(v, 'interpreter')));
-verifyEmpty(testCase, depValue(d, 'operating_system_id'));
+function testAnAppNamingTheRunEnvironmentIsCarriedAsV1(testCase)
+% INVERTED 2026-10-26 (was testExtractionParksTheEnvironmentFieldsRatherThan
+% DroppingThem, which asserted they were dropped from the method). [small
+% unread settings] (1) (Jess Haley, 2026-10-26): the OS is where the settings
+% were SAVED, not a property of the recipe; V2 records a run's OS and
+% interpreter on the calculation and `method` gains no such link. So a
+% settings document whose app block names any of the four is carried whole as
+% v1, for each of the four classes.
+bodies = {extractionBody('sep_13', 'default', 'sess_A'), ...
+    modificationBody('sepm_13', 'default', 'sess_A', 'sep_1', 'elem_9', 't00042'), ...
+    sortingBody('sp_13', 'default', 'sess_A'), ...
+    vmspikeBody('vm_13', 'sess_A', 'elem_9', 't00042', [])};
+for k = 1:numel(bodies)
+    v1 = withRunEnvironment(bodies{k});
+    out = runJ(v1);
+    cn = v1.document_class.class_name;
+    verifyEmpty(testCase, out.quarantine, cn);
+    verifyEqual(testCase, numel(out.migrated), 1, [cn ': one document, the v1 source']);
+    verifyEqual(testCase, numel(out.passthrough), 1, [cn ': recorded as a passthrough']);
+    verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), cn);
+    notes = out.summary.migration_notes;
+    verifyTrue(testCase, isfield(notes, 'carried_as_v1') ...
+        && contains(notes.carried_as_v1.distinct_details{1}, 'app.os'), cn);
+end
+% only the interpreter named is enough
+v1 = extractionBody('sep_14b', 'default', 'sess_A');
+v1.app.interpreter = 'MATLAB';
+out = runJ(v1);
+verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+    'spike_extraction_parameters');
 end
 
 

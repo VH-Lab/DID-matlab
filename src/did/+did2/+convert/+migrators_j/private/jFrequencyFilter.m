@@ -1,9 +1,16 @@
-function [ff, edgeName] = jFrequencyFilter(preBody)
+function [ff, edgeName, unplaced] = jFrequencyFilter(preBody)
 %JFREQUENCYFILTER Build the document a did_v1 `filter` superclass block
 %   becomes, and name the edge a body points at it by. Returns [] when the
-%   block describes no filter this model can represent, in which case the
-%   caller emits nothing and adds no edge -- an unresolvable design must never
-%   become a guessed one.
+%   block describes no filter (an all-pass), in which case the caller emits
+%   nothing and adds no edge -- an unresolvable design must never become a
+%   guessed one.
+%
+%   UNPLACED (a cell of reasons, {} when none) names what of the block this
+%   cannot place; the caller then carries its document whole as v1 ([small
+%   unread settings] (2), Jess Haley, 2026-10-26; [partly placed is carried as
+%   v1], 2026-10-25): a fractional order, a `label` that differs from the
+%   `type`, a `sampleFrequency` with no method document to hold it, or a type /
+%   algorithm spelling with no mapping (other than the all-pass 'none').
 %
 %   FILTERS ARE METHODS (Jess Haley 2026-10-22 [filters are methods], N1a,
 %   V_eta_frequency_filter_model_plan.md): `frequency_filter` is deleted (a V2
@@ -85,8 +92,9 @@ function [ff, edgeName] = jFrequencyFilter(preBody)
 %                                band_pass -> both, from a 2-element vector
 %     parameters.order           -> order, when integer-valued. The field is
 %                                typed `integer` and the validator rejects a
-%                                non-integer, so a fractional order is dropped
-%                                rather than quarantining the document.
+%                                non-integer, so a fractional order CARRIES THE
+%                                DOCUMENT AS V1 ([small unread settings] (2),
+%                                2026-10-26; it was dropped before).
 %     parameters.passBandRipple  -> passband_ripple (`gain`, canonical decibels).
 %                                cheby1's Rp argument is peak-to-peak passband
 %                                ripple IN DECIBELS -- filterData.m:66,68 passes
@@ -95,19 +103,22 @@ function [ff, edgeName] = jFrequencyFilter(preBody)
 %                                is the same number.
 %     parameters.stopbandAttentuation -> stopband_attenuation, same treatment.
 %
-%   NOT CARRIED, both deliberately:
-%     parameters.sampleFrequency   THE MODEL HAS NO sample_rate. This document is
-%                                  a SPECIFICATION ("4th-order Chebyshev-I
-%                                  high-pass at 300 Hz"), which is what makes it
-%                                  shareable; the realised coefficients depend on
-%                                  the rate, and the rate is already on the
-%                                  recording.
-%     label                        In the real PRED document `type` and `label`
-%                                  are BOTH "high" -- the same fact twice. The
-%                                  writer sets label to the user-facing band
-%                                  (filterData.m:32) and type to the schema's
-%                                  vocabulary, and they only diverge for the
-%                                  all-pass case, which emits no document at all.
+%     parameters.sampleFrequency -> a method parameter 'sample frequency' in
+%                                hertz ([small unread settings] (2), Jess
+%                                Haley, 2026-10-26; it was not carried, as the
+%                                frequency_filter model has no sample_rate). On
+%                                the frequency_filter path (a schema whose
+%                                sampled_body still declares filter_id), or for
+%                                an all-pass (no method is built), it has no
+%                                home and the document is carried as v1.
+%     label                        Not written: in the real PRED document `type`
+%                                  and `label` are BOTH "high" -- the same fact
+%                                  twice. The writer sets label to the
+%                                  user-facing band (filterData.m:32) and type
+%                                  to the schema's vocabulary; they diverge for
+%                                  the all-pass ('all' / 'none'). A `label` that
+%                                  differs from `type` carries the document as
+%                                  v1 ([small unread settings] (2)).
 %
 %   NaN MEANS INAPPLICABLE, NOT ZERO. Chebyshev-I has no stopband spec, so NDI
 %   writes NaN. Per the rule already set for time references, an inapplicable
@@ -120,6 +131,7 @@ function [ff, edgeName] = jFrequencyFilter(preBody)
 
 ff = [];
 edgeName = '';
+unplaced = {};
 
 blk = struct();
 if isfield(preBody, 'filter') && isstruct(preBody.filter) && isscalar(preBody.filter)
@@ -146,17 +158,34 @@ end
 % opposite disguise: right about the source, wrong about the pipeline. Bare
 % `type` is kept as the fallback because a direct call to this migrator (as the
 % unit tests make) has not been through the superclass pass.
-algorithm = mapAlgorithm(readChar(blk, {'algorithm'}));
-band      = mapBand(readChar(blk, {'filter_type', 'type'}));
-if isempty(algorithm) || isempty(band)
-    % 'none', blank, or a spelling v1 has never used. Guard and emit nothing;
-    % the caller leaves its bodies without a filter_id.
-    return;
-end
+rawAlgorithm = readChar(blk, {'algorithm'});
+rawType = readChar(blk, {'filter_type', 'type'});
+algorithm = mapAlgorithm(rawAlgorithm);
+band      = mapBand(rawType);
 
 params = struct();
 if isfield(blk, 'parameters') && isstruct(blk.parameters) && isscalar(blk.parameters)
     params = blk.parameters;
+end
+
+% [small unread settings] (2) (Jess Haley, 2026-10-26): what cannot be placed
+label = readChar(blk, {'label'});
+if ~isempty(label) && ~strcmp(strtrim(label), strtrim(rawType))
+    unplaced{end+1} = sprintf('filter.label "%s" (differs from type "%s")', label, rawType);
+end
+sampleFrequency = readNumScalar(params, {'sampleFrequency', 'sample_frequency'});
+
+if isempty(algorithm) || isempty(band)
+    % 'none' or blank: an all-pass, no filter document and no edge. A spelling
+    % with no mapping is not an all-pass: the caller carries the document.
+    if ~(isNone(rawAlgorithm) && isNone(rawType))
+        unplaced{end+1} = sprintf('filter.algorithm "%s" / type "%s" (no mapping)', ...
+            rawAlgorithm, rawType);
+    elseif ~isempty(sampleFrequency)
+        unplaced{end+1} = ['filter.parameters.sampleFrequency (an all-pass ' ...
+            'has no method document to hold it)'];
+    end
+    return;
 end
 
 edges = readNumVec(params, {'filterFrequency', 'filter_frequency'});
@@ -190,6 +219,8 @@ end
 
 if ~isempty(order) && mod(order, 1) == 0
     block.order = order;
+elseif ~isempty(order)
+    unplaced{end+1} = sprintf('filter.parameters.order %g (not an integer)', order);
 end
 if ~isempty(ripple)
     block.passband_ripple = decibels(ripple);
@@ -198,15 +229,27 @@ if ~isempty(attenuation)
     block.stopband_attenuation = decibels(attenuation);
 end
 
+if ~isempty(unplaced)
+    return;     % the caller carries the document whole as v1
+end
 o = jOpts(preBody);
 if bodyTakesMethod()
-    ff = filterMethod(block, preBody);
+    ff = filterMethod(block, preBody, sampleFrequency);
     edgeName = 'method_id';
     return;
 end
 % did-schema #88 before [filters are methods]: built through did2.build.document.
+% frequency_filter has no sample_rate, so a stated one has no home here.
+if ~isempty(sampleFrequency)
+    unplaced{end+1} = 'filter.parameters.sampleFrequency (frequency_filter has no sample rate)';
+    return;
+end
 ff = did2.build.document('frequency_filter', block, o{:});
 edgeName = 'filter_id';
+end
+
+function tf = isNone(raw)
+tf = any(strcmpi(strtrim(raw), {'', 'none'}));
 end
 
 function tf = bodyTakesMethod()
@@ -229,7 +272,7 @@ catch
 end
 end
 
-function m = filterMethod(block, preBody)
+function m = filterMethod(block, preBody, sampleFrequency)
 %FILTERMETHOD The filter as a `method` document ([filters are methods]): term
 %   the design (its algorithm), parameters the band, the passband edges (Hz),
 %   the order (a count) and the ripple / attenuation (dB). Every term is the
@@ -278,6 +321,14 @@ for k = 1:size(dbNames, 1)
             'Unit', did2.convert.registeredTerm('om:decibel', 'decibel'), 'SourceValue', num2str(v.source_value), ...
             'SourceUnit', jSourceUnit('dB')); %#ok<AGROW>
     end
+end
+% the design's sample frequency, as the writer states it (Hz: filterData
+% normalises by 0.5 * sr) -- [small unread settings] (2), Jess Haley,
+% 2026-10-26. The variable has no registered term yet, so it is name-only.
+if ~isempty(sampleFrequency)
+    p{end+1} = did2.build.parameter(jLabel('sample frequency'), ...
+        'Value', sampleFrequency, 'Unit', did2.convert.registeredTerm('om:hertz', 'hertz'), ...
+        'SourceValue', num2str(sampleFrequency, 17), 'SourceUnit', jSourceUnit('Hz'));
 end
 designT = designs.(block.algorithm);
 m = did2.build.method(did2.build.term(designT{1}, designT{2}), did2.build.list(p{:}), ...

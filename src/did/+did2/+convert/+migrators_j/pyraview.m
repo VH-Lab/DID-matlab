@@ -64,10 +64,12 @@ function bodies = pyraview(preBody)
 %   level body at it via `sampled_body.filter_id` (declared optional there,
 %   must_refer_to_document_class frequency_filter). The filter rides on the
 %   BODIES rather than the observation because that is where the schema puts the
-%   edge, and because it describes the samples. When the block names no
-%   representable filter -- an all-pass, or a vocabulary v1 has never used --
-%   `jFrequencyFilter` returns nothing and no `filter_id` is written, so the
-%   output is exactly what it was before.
+%   edge, and because it describes the samples. When the block is an
+%   all-pass, `jFrequencyFilter` returns nothing and no `filter_id` is written.
+%   A block it cannot place whole (a vocabulary v1 has never used, a
+%   fractional order, a `label` that differs from the `type`) carries the
+%   document whole as v1 ([small unread settings] (2), Jess Haley,
+%   2026-10-26).
 %
 %   NOTE ON MATURITY, RE-DERIVED 2026-08-13 RATHER THAN CARRIED FORWARD. This
 %   read "dataseries_observation and the *_body classes are `draft`", and half
@@ -154,7 +156,15 @@ end
 % the filter: a `method` document named by each body's method_id once the
 % schema declares it (Jess Haley 2026-10-22 [filters are methods]); a
 % frequency_filter by filter_id before
-[filterDoc, filterEdge] = jFrequencyFilter(preBody);
+[filterDoc, filterEdge, filterUnplaced] = jFrequencyFilter(preBody);
+if ~isempty(filterUnplaced)
+    % [small unread settings] (2) (Jess Haley, 2026-10-26): a filter block this
+    % cannot place whole carries the document whole as v1
+    did2.convert.reportNote('carried_as_v1', 'pyraview', char(preBody.base.id), ...
+        ['unplaced: ' strjoin(filterUnplaced, ', ')]);
+    bodies = {preBody};
+    return;
+end
 filterOpt = {};
 if ~isempty(filterDoc)
     if strcmp(filterEdge, 'method_id')

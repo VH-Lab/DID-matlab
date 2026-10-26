@@ -117,18 +117,24 @@ verifyTrue(testCase, any(strcmp(names, 'software')), ...
      'universalRenames had already rewritten']);
 end
 
-function testSettingsExecutionEnvironmentIsParkedNotDropped(testCase)
-% INVERTED for did-schema #88: a `method` names its software only; #88 names an
-% operating system / interpreter on a calculation alone, and the method's
-% parameters are the algorithm's settings. The run environment is therefore not
-% carried on a method (a loss recorded in the port report) and not disguised as
-% an algorithm setting.
-out = runJ(extractionParamsBody('ndi.app.spikeextractor', '2.1'));
-mp = firstOfClass(testCase, out, 'method');
-ps = mp.get('method.parameters');
-names = arrayfun(@(e) char(e.variable.name), ps, 'UniformOutput', false);
-verifyFalse(testCase, any(contains(names, 'execution environment')));
-verifyFalse(testCase, any(contains(names, 'interpreter')));
+function testSettingsNamingTheRunEnvironmentAreCarriedAsV1(testCase)
+% INVERTED 2026-10-26 (was testSettingsExecutionEnvironmentIsParkedNotDropped,
+% which asserted the run environment was dropped from the method). [small
+% unread settings] (1) (Jess Haley, 2026-10-26): `method` gains no OS or
+% interpreter link (V2 records a run's environment on the calculation), so a
+% settings document whose app block names one is carried whole as v1, and no
+% software entity is minted for it.
+v1 = extractionParamsBody('ndi.app.spikeextractor', '2.1');
+v1.app.os = 'Linux';
+v1.app.os_version = '22.04';
+v1.app.interpreter = 'MATLAB';
+v1.app.interpreter_version = '24.2';
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
+verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+    'spike_extraction_parameters');
+verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
 end
 
 
@@ -213,9 +219,13 @@ v1.document_class = struct('class_name', 'spike_extraction_parameters', ...
                       struct('class_name', 'app',  'class_version', '1.0.0')]);
 v1.base = struct('id', 'sep_1', 'session_id', 'sess_1', ...
     'name', 'default_extraction', 'datestamp', '2024-06-01T12:00:00.000Z');
+% 2026-10-26: the run-environment four (os, os_version, interpreter,
+% interpreter_version) are left empty: a settings document whose app block
+% names them is carried whole as v1 ([small unread settings] (1), Jess Haley,
+% 2026-10-26; testSettingsNamingTheRunEnvironmentAreCarriedAsV1).
 v1.app = struct('name', appName, 'version', appVersion, ...
-    'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
-    'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
+    'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', '', ...
+    'os_version', '', 'interpreter', '', 'interpreter_version', '');
 v1.spike_extraction_parameters = struct( ...
     'refractory_time', 0.002, 'spike_start_time', -0.001, ...
     'spike_end_time', 0.002, 'threshold_method', 'standard_deviation', ...

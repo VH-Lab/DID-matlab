@@ -629,15 +629,49 @@ end
 
 % ===================== the levels ==========================================
 
-function testAMetadataOnlyLevelFoldsToNothingAndIsCounted(testCase)
-% materializeChunks defaults to FALSE, so this is what most levels look like.
+function testAMetadataOnlyLevelBecomesAFileLessBody(testCase)
+% INVERTED 2026-10-26 (was testAMetadataOnlyLevelFoldsToNothingAndIsCounted,
+% #73 L3(c)). materializeChunks defaults to FALSE, so this is what most levels
+% look like. [compression block and empty levels] (2) (Jess Haley,
+% 2026-10-26): it becomes a FILE-LESS sampled_body that keeps the level's id,
+% dimensions and metadata and says no bytes are stored, so an edge to the level
+% still resolves.
 assumeCompositionSchema(testCase);
-out = runJ(levelV1(0, 'none', 'raw', 0, 'none'));
+v1 = levelV1(1, 'max', 'raw', 0, 'none');
+out = runJ(v1);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
-verifyEqual(testCase, numel(out.migrated), 0);
-verifyEqual(testCase, out.summary.emitted_nothing_count, 1);
-verifyEqual(testCase, out.summary.emitted_nothing_by_class.lightsheet_zarr_level, 1);
+verifyEqual(testCase, out.summary.emitted_nothing_count, 0);
 verifyEqual(testCase, out.summary.unconverted_count, 0);
+b = onlyBody(testCase, out);
+verifyEqual(testCase, b.base.id, v1.base.id, 'the level keeps its id');
+verifyEqual(testCase, edge(b, 'owner_id'), 'pyr_ls_1');
+verifyFalse(testCase, isfield(b, 'files'), 'a level holding no bytes has no file member');
+verifyTrue(testCase, contains(b.data_body.description, 'no bytes'), b.data_body.description);
+keys = axisList(b.data);
+verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 200 1024 1024]);
+verifyTrue(testCase, isequal(b.data_body.redundant, true), 'a reduced level stays redundant');
+end
+
+function testALevelWithCodecSettingsIsCarriedAsV1(testCase)
+% [compression block and empty levels] (1), interim (Jess Haley, 2026-10-26):
+% the writer's Blosc settings (clevel, shuffle, blocksize) have no home until
+% `compression` is a {term, parameters} block, so the level is carried whole
+% as v1 (they were dropped under #73 L4).
+assumeCompositionSchema(testCase);
+v1 = levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest');
+v1.lightsheetZarrLevel.codec_params = ...
+    '{"cname":"zstd","clevel":5,"shuffle":1,"blocksize":0}';   % makePyramid.m codecParamsJSON
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+verifyEqual(testCase, char(out.migrated{1}.get('base.id')), v1.base.id);
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+d = notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'clevel') && contains(d, 'shuffle'), d);
+verifyFalse(testCase, contains(d, 'cname'), ['cname "zstd" restates the codec ' ...
+    'name blosc-zstd: ' d]);
 end
 
 function testALevelCountingChunksItDoesNotCarryQuarantines(testCase)
@@ -765,7 +799,8 @@ out = runJ(levelV1(2, 'max', 'blosc-zstd', 4, 'manifest'));
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 b = onlyBody(testCase, out);
 verifyTrue(testCase, isequal(b.data_body.redundant, true));
-verifyEqual(testCase, b.data_body.compression, 'blosc');
+% the codec name verbatim (it was 'blosc', which lost the inner compressor)
+verifyEqual(testCase, b.data_body.compression, 'blosc-zstd');
 cond = b.data_body.conditions;
 if iscell(cond); cond = cond{1}; end
 verifyEqual(testCase, numel(cond), 1);
@@ -800,8 +835,10 @@ batch = {pyramidV1(), levelV1(0, 'none', 'raw', 4, 'manifest'), ...
     levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest'), levelV1(1, 'max', 'raw', 0, 'none')};
 out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
-verifyEqual(testCase, numel(pickByClass(out, 'sampled_body')), 2);
-verifyEqual(testCase, out.summary.emitted_nothing_count, 1);
+% 2026-10-26: the level holding no bytes is a file-less body ([compression
+% block and empty levels]), so three bodies and nothing emitted-nothing
+verifyEqual(testCase, numel(pickByClass(out, 'sampled_body')), 3);
+verifyEqual(testCase, out.summary.emitted_nothing_count, 0);
 % fref_store_1: the transient source_file_id (no batch pass ran here).
 ref = did2.validate.references(out.migrated, 'KnownIds', ...
     [{'subj_ls_1', 'elem_scope_1', 'fref_store_1'}, ...
@@ -1311,7 +1348,12 @@ v1.base = struct('id', sprintf('lvl_ls_%d_%s', level, reduction), ...
     'session_id', 'sess_ls_1', 'name', '', 'datestamp', '2026-10-01T12:00:00.000Z');
 codecParams = '{}';
 if strcmp(codec, 'blosc-zstd')
-    codecParams = '{"cname":"zstd","clevel":5,"shuffle":1,"blocksize":0}';
+    % NOT the writer's '{"cname":"zstd","clevel":5,"shuffle":1,"blocksize":0}'
+    % (makePyramid.m codecParamsJSON): since 2026-10-26 a level with settings
+    % beyond the codec name is carried whole as v1 ([compression block and
+    % empty levels]; testALevelWithCodecSettingsIsCarriedAsV1). The fold tests
+    % keep only the name the codec states, so they still exercise the fold.
+    codecParams = '{"cname":"zstd"}';
 end
 v1.lightsheetZarrLevel = struct( ...
     'label', sprintf('mean level %d (%s)', level, reduction), ...

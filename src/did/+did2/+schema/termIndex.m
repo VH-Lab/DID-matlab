@@ -8,7 +8,9 @@ function ix = termIndex(registry)
 %     present  false when the schema in use has no term registry (did-schema
 %              main): nothing can be checked against it
 %     count    the number of registered terms
-%     byNode   curieKey(node) -> the registered term {node, name, status}
+%     byNode   curieKey(node) -> the registered term {node, name, status,
+%              number_unit} (number_unit: [] or the {node, name} of the unit
+%              the term's number takes)
 %     byName   lower(name) -> the registered term, for every term
 %
 %   REGISTRY ([] = the shared schema cache's) is the struct jsondecode makes of
@@ -60,7 +62,7 @@ end
 ix.present = true;
 for k = 1:numel(terms)
     e = struct('node', textOf(terms(k), 'node'), 'name', textOf(terms(k), 'name'), ...
-        'status', textOf(terms(k), 'status'));
+        'status', textOf(terms(k), 'status'), 'number_unit', unitOf(terms(k)));
     if ~isempty(e.node)
         ix.byNode(did2.schema.curieKey(e.node)) = e;
     end
@@ -69,6 +71,17 @@ for k = 1:numel(terms)
     end
 end
 ix.count = numel(terms);
+end
+
+function u = unitOf(s)
+% The term's `number_unit` ({node, name}: the unit its number takes, [term-stated
+% unit is generic], Jess Haley, 2026-10-26), or [] when the row states none
+% (false, absent, or a registry that predates the field).
+u = [];
+if isfield(s, 'number_unit') && isstruct(s.number_unit) && isscalar(s.number_unit) ...
+        && isfield(s.number_unit, 'name')
+    u = struct('node', textOf(s.number_unit, 'node'), 'name', textOf(s.number_unit, 'name'));
+end
 end
 
 function v = textOf(s, f)

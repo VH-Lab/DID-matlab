@@ -134,6 +134,13 @@ end
 
 % Reuse the base clocks-block transform (parses epoch_clock / t0_t1).
 v2Body = did2.convert.migrators.element_epoch(preBody);
+if isequaln(v2Body, preBody)
+    % the base migrator converted nothing: its t0_t1 does not match its clocks,
+    % and it left a `carried_as_v1` note ([small unread settings] (4), Jess
+    % Haley, 2026-10-26). Carried whole as v1, not renamed.
+    v2Body = {preBody};
+    return;
+end
 
 % Rename the class and its property block: element_epoch -> acquisition_epoch.
 v2Body.document_class.class_name = 'acquisition_epoch';

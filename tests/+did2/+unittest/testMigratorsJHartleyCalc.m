@@ -88,6 +88,17 @@ testCase.assumeTrue(valueRuleDeclared(), ...
      'is still required and the fold cannot be stated']);
 end
 
+function setup(testCase)
+% [hartley leftovers checked] (Jess Haley, 2026-10-26): the migrator compares
+% `stimulus_properties` with the referenced presentation's settings, which
+% v1_to_v2 indexes from its batch (did2.convert.stimulusPresentationSpecs). A
+% test that calls the migrator directly loads the fixture's presentation the
+% same way; the teardown forgets it, so no test sees another's.
+did2.convert.stimulusPresentationSpecs('reset');
+did2.convert.stimulusPresentationSpecs('load', {stimulusPresentationV1()});
+testCase.addTeardown(@() did2.convert.stimulusPresentationSpecs('reset'));
+end
+
 function tf = valueRuleDeclared()
 tf = false;
 c = did2.schema.cache.shared().getClass('value');
@@ -451,29 +462,75 @@ end
 
 % ===================== the guards ==========================================
 
-function testADroppedSpecWithNoReferentIsREFUSED(testCase)
-% Without the edge there is nothing holding the spec, so the drop is a deletion
-% of the only copy. All 210 documents carry the edge, populated -- which is
-% exactly why a document that does not is worth quarantining loudly.
+function testADroppedSpecWithNoReferentIsCarriedAsV1(testCase)
+% INVERTED 2026-10-26 (was testADroppedSpecWithNoReferentIsREFUSED, which
+% asserted a quarantine). Without the edge there is nothing holding the spec,
+% so leaving the block unwritten would delete the only copy: the document is
+% carried whole as v1 ([hartley leftovers checked], Jess Haley, 2026-10-26).
 v1 = hartleyCalcV1();
 v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_7'});
-verifyError(testCase, @() did2.convert.migrators_j.hartley_calc(v1), ...
-    'did2:convert:hartleyStimulusPropertiesUnverifiable');
+verifyCarriedAsV1(testCase, v1, 'no stimulus_presentation_id');
 end
 
-function testAnUnknownStimulusPropertyKeyIsREFUSED(testCase)
-% A key outside the eight the presentation's generator spec is known to supply
-% has never been shown redundant for ANY document. "No corpus we looked at has
-% one" is a fact about a SAMPLE, so the guard turns it into a loud, dated
-% failure rather than a standing risk. Tested in BOTH directions: a guard that
-% fires on everything passes the same tests a correct one does.
+function testAnUnknownStimulusPropertyKeyIsCarriedAsV1(testCase)
+% INVERTED 2026-10-26 (was testAnUnknownStimulusPropertyKeyIsREFUSED). A key
+% outside the eight the presentation's generator spec is known to supply has
+% never been shown redundant, so the document is carried whole as v1. Tested
+% in BOTH directions: a guard that fires on everything passes the same tests a
+% correct one does.
 v1 = hartleyCalcV1();
 v1.hartley_reverse_correlation.stimulus_properties.gamma = 2.2;
-verifyError(testCase, @() did2.convert.migrators_j.hartley_calc(v1), ...
-    'did2:convert:hartleyStimulusPropertiesUnverifiable');
+verifyCarriedAsV1(testCase, v1, 'gamma');
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 verifyEqual(testCase, numel(allOf(out, 'receptive_field_calculation')), 1, ...
     'the same document without the extra key folds');
+end
+
+function testAStimulusPropertyValueThatDiffersIsCarriedAsV1(testCase)
+% [hartley leftovers checked] (Jess Haley, 2026-10-26): the VALUES are
+% compared, not only the keys. `K_max` -> `K_absmax` is a pair whose names
+% differ across the join, so this also pins that the key map is applied.
+v1 = hartleyCalcV1();
+v1.hartley_reverse_correlation.stimulus_properties.K_max = 99;
+verifyCarriedAsV1(testCase, v1, 'K_max differ');
+end
+
+function testAPresentationNotInTheBatchIsCarriedAsV1(testCase)
+% A presentation that is not in hand was not compared: not a pass.
+did2.convert.stimulusPresentationSpecs('reset');
+verifyCarriedAsV1(testCase, hartleyCalcV1(), 'not in the batch');
+end
+
+function testATransposedVectorStillCompareEqual(testCase)
+% `rect` and the colour triples compare by value whatever their orientation
+% (did2.validate.sourceCensus's rule), so a column `rect` is still equal.
+v1 = hartleyCalcV1();
+v1.hartley_reverse_correlation.stimulus_properties.rect = [-7; -138; 793; 662];
+out = did2.convert.migrators_j.hartley_calc(v1);
+verifyEqual(testCase, numel(allOf(out, 'receptive_field_calculation')), 1);
+end
+
+function testNonEmptyDimensionLabelsAreCarriedAsV1(testCase)
+% `dimension_labels` is left unwritten only when empty ('' in 210 of 210).
+v1 = hartleyCalcV1();
+v1.reverse_correlation.dimension_labels = 'x,y,lag,plane';
+verifyCarriedAsV1(testCase, v1, 'dimension_labels');
+end
+
+function testTheValueCheckRunsThroughTheDispatcher(testCase)
+% v1_to_v2 loads the batch's presentations itself: with the presentation in
+% the batch the document folds; alone, it is carried whole as v1.
+together = did2.convert.v1_to_v2({hartleyCalcV1(), stimulusPresentationV1()}, ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+names = cellfun(@(d) d.get('document_class.class_name'), together.migrated, ...
+    'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(names, 'hartley_calc')), strjoin(names, ', '));
+alone = did2.convert.v1_to_v2(hartleyCalcV1(), 'Validate', false, ...
+    'TargetVersion', 'V_eta');
+verifyEqual(testCase, numel(alone.migrated), 1);
+verifyEqual(testCase, char(alone.migrated{1}.get('document_class.class_name')), ...
+    'hartley_calc');
+verifyTrue(testCase, isfield(alone.summary.migration_notes, 'carried_as_v1'));
 end
 
 function testAMissingNgridBlockIsREFUSED(testCase)
@@ -528,13 +585,21 @@ function testTheFoldedSetVALIDATESThroughTheDispatcher(testCase)
 % the only assertion here that exercises `RequiredDependencies` (armed by
 % default) and `undeclaredField` on the real schema rather than on a fixture's
 % idea of it.
-out = did2.convert.v1_to_v2(hartleyCalcV1(), 'Validate', true, ...
-    'TargetVersion', 'V_eta');
-verifyEqual(testCase, out.summary.quarantine_count, 0, ...
+%
+% 2026-10-26: the referenced presentation is in the batch, as in a real run,
+% because the stimulus_properties VALUES are compared against it ([hartley
+% leftovers checked]); without it the document is carried as v1. The
+% presentation itself passes through, so it is counted apart.
+out = did2.convert.v1_to_v2({hartleyCalcV1(), stimulusPresentationV1()}, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
+hq = out.quarantine(strcmp({out.quarantine.class_name}, 'hartley_calc'));
+verifyEmpty(testCase, hq, ...
     sprintf('quarantined: %s', strjoin(arrayfun(@(q) ...
-        sprintf('%s|%s', q.class_name, q.identifier), out.quarantine, ...
+        sprintf('%s|%s', q.class_name, q.identifier), hq, ...
         'UniformOutput', false), '; ')));
-verifyEqual(testCase, out.summary.migrated_count, ...
+names = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+    'UniformOutput', false);
+verifyEqual(testCase, sum(~strcmp(names, 'stimulus_presentation')), ...
     numel(did2.convert.migrators_j.hartley_calc(hartleyCalcV1())));
 end
 
@@ -701,6 +766,20 @@ v1.stimulus_presentation = struct('presentation_order', 1, ...
 end
 
 % ===================== small readers =======================================
+
+function verifyCarriedAsV1(testCase, v1, detailPart)
+%VERIFYCARRIEDASV1 The migrator returns the v1 body unchanged, with one
+%   `carried_as_v1` note whose detail names DETAILPART.
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.hartley_calc(v1);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyEqual(testCase, numel(out), 1, 'one document: the v1 source');
+verifyTrue(testCase, isequaln(out{1}, v1), 'returned unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, detailPart), ...
+    notes.carried_as_v1.distinct_details{1});
+end
 
 function b = pick(bodies, className)
 %PICK The single body of CLASSNAME (its #88 leaf name), erroring rather than

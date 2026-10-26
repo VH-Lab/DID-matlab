@@ -20,7 +20,10 @@ function v2Body = calcCommon(preBody, v1ClassName)
 %        for v1 bodies that already shipped a struct.
 %     2. Drops a redundant inner `depends_on` if v1 stored one on the
 %        calc block (e.g., `oridirtuning_calc.depends_on`); V2
-%        only honors top-level `depends_on`.
+%        only honors top-level `depends_on`. Only when every inner entry
+%        restates the top-level edge of the same name ([restated values
+%        checked], Jess Haley, 2026-10-26): otherwise the body is returned
+%        unchanged, carried whole as v1, with a `carried_as_v1` note.
 %
 %   The calculator-identity string lives in `app.app_name`, not in a
 %   `calculator.calculator_name` field; that rename is handled
@@ -69,8 +72,19 @@ end
 
 % v1 sometimes stored an internal `depends_on` struct on the calc
 % block (e.g., oridirtuning_calc.depends_on); V2 only honors
-% top-level `depends_on`, so drop the redundant inner copy.
+% top-level `depends_on`, so drop the redundant inner copy -- only when it
+% IS redundant ([restated values checked], Jess Haley, 2026-10-26). A copy
+% that differs from the top-level edges carries the body whole as v1
+% ([partly placed is carried as v1], Jess Haley, 2026-10-25).
 if isfield(block, 'depends_on')
+    differing = innerDependsOnDiffers(preBody, block.depends_on);
+    if ~isempty(differing)
+        did2.convert.reportNote('carried_as_v1', v1ClassName, baseId(preBody), ...
+            sprintf('unplaced: %s.depends_on (%s differs from the top-level edge)', ...
+            v1ClassName, strjoin(differing, ', ')));
+        v2Body = preBody;
+        return;
+    end
     block = rmfield(block, 'depends_on');
 end
 
@@ -90,5 +104,64 @@ elseif iscell(value) && isempty(value)
 else
     out = value;  % leave non-empty non-struct as-is; validator will
                    % surface the type mismatch with a clear error.
+end
+end
+
+function differing = innerDependsOnDiffers(preBody, inner)
+%INNERDEPENDSONDIFFERS The names of the inner entries whose id is not the
+%   top-level edge's of the same name. Both spellings of an id are read
+%   ({name, value} and {name, document_id}).
+differing = {};
+if isempty(inner)
+    return;
+end
+if isstruct(inner)
+    inner = num2cell(inner);
+elseif ~iscell(inner)
+    differing = {'(not a list of edges)'};
+    return;
+end
+for k = 1:numel(inner)
+    d = inner{k};
+    if ~isstruct(d) || ~isscalar(d) || ~isfield(d, 'name')
+        differing{end+1} = sprintf('entry %d', k); %#ok<AGROW>
+        continue;
+    end
+    if ~strcmp(edgeId(d), topLevelEdge(preBody, char(d.name)))
+        differing{end+1} = char(d.name); %#ok<AGROW>
+    end
+end
+end
+
+function v = topLevelEdge(preBody, name)
+v = '';
+if ~isfield(preBody, 'depends_on') || isempty(preBody.depends_on)
+    return;
+end
+deps = preBody.depends_on;
+if isstruct(deps); deps = num2cell(deps); end
+for k = 1:numel(deps)
+    d = deps{k};
+    if isstruct(d) && isfield(d, 'name') && strcmp(char(d.name), name)
+        v = edgeId(d);
+        return;
+    end
+end
+end
+
+function v = edgeId(d)
+v = '';
+for key = {'document_id', 'value', 'id'}
+    if isfield(d, key{1}) && ~isempty(d.(key{1}))
+        v = char(d.(key{1}));
+        return;
+    end
+end
+end
+
+function id = baseId(preBody)
+id = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    id = char(preBody.base.id);
 end
 end

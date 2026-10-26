@@ -366,6 +366,19 @@ verifyFalse(testCase, isfield(s, 'element_epoch'), ...
     'the v1 block must be renamed in lockstep with the class');
 end
 
+function testAnElementEpochWhoseT0T1DoesNotMatchItsClocksIsCarriedAsV1(testCase)
+% [small unread settings] (4) (Jess Haley, 2026-10-26): two clocks and one
+% [t0; t1] column was zero-padded into an invented second clock; it is now
+% carried whole as v1, not renamed.
+v1 = elementEpochBody('ee_9', 'sess_A', 't00069', 'elem_1');
+v1.element_epoch.epoch_clock = 'dev_local_time,exp_global_time';
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, classNames(out), {'element_epoch'});
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
+end
+
 function testElementEpochKeepsItsClockElementAndEpochString(testCase)
 % What the class actually holds, all three preserved:
 %   clocks       -- the base migrator's array-of-records parse of epoch_clock +

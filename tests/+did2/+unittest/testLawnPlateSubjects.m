@@ -52,6 +52,12 @@ function tests = testLawnPlateSubjects
 %   this project's standing rule and it is the reason several of these tests are
 %   two lines longer than they look like they need to be.
 %
+%   NO LONGER CALLED (Decided by Jess Haley, 2026-10-26 [Haley logic leaves
+%   the generic migration]): the pass is kept, but no DID-side harness runs it
+%   and NDI-matlab removes its call. These tests pin the function while it
+%   exists; the C. elegans relabel tests left with the patch geometry map
+%   (pass 1 mints no patch subject any more).
+%
 %   Run with:  results = runtests('did2.unittest.testLawnPlateSubjects');
 
 tests = functiontests(localfunctions);
@@ -514,50 +520,6 @@ end
 
 % ===================== the C. elegans relabel ==============================
 
-function testTheCelegansPatchSubjectIsRelabelledToTheTriple(testCase)
-%TESTTHECELEGANSPATCHSUBJECTISRELABELLEDTOTHETRIPLE Directive part 2: "None
-%   should be labeled just patch #", which reaches the subjects
-%   `applyPatchGeometryMap` mints in pass 1.
-%
-%   That table has no `expID` column (doImport.m:290-292), so pass 1 can only
-%   form the PAIR; this pass upgrades it by joining plateID -> the behaviour
-%   plate row, which carries expID.
-[out, rep] = runPass(testCase, ...
-    {celegansPatchGeometryRow(), celegansBehaviourPlateRow()});
-verifyEqual(testCase, rep.celegans_patch_subjects_seen, 1, 'denominator');
-verifyEqual(testCase, rep.celegans_patch_subjects_relabelled, 1);
-verifyEqual(testCase, rep.celegans_patch_subjects_refused_no_exp_id, 0);
-verifyEqual(testCase, rep.celegans_patch_subjects_unparseable_handle, 0);
-
-patch = subjectByDescription(testCase, out, 'bacterial patch');
-verifyEqual(testCase, patch.entity.local_identifier, ...
-    'exp/0001/plate/0017/patch/0017');
-% THE RELABEL IS THE SECOND SITE THAT FORMS A HANDLE, so it must reach the
-% collision split too -- a split that only saw the mint site would under-report
-% on JH, where the C. elegans patch subjects are the larger population.
-verifyEqual(testCase, rep.local_identifier_handles_formed, 1, ...
-    'the relabelled handle is in the collision denominator');
-verifyEqual(testCase, rep.local_identifier_handles_distinct, 1);
-verifyCollisionPartition(testCase, rep);
-% THE ID IS PRESERVED. The encounter table's directed_relation names this
-% document as its parent (20,411 of them), so a relabel that re-ided it would
-% trade a naming problem for a gating orphan failure.
-verifyEqual(testCase, patch.base.id, 'otr_patch');
-end
-
-function testTheCelegansPatchKeepsThePairWhenNoExperimentNumberExists(testCase)
-%TESTTHECELEGANSPATCHKEEPSTHEPAIRWHENNOEXPERIMENTNUMBEREXISTS With no plate row
-%   to join to, the expID cannot be READ and may not be invented. The pair
-%   stands -- which still is not "just patch #" -- and the count says so rather
-%   than the report reading as if the upgrade had happened.
-[out, rep] = runPass(testCase, {celegansPatchGeometryRow()});
-verifyEqual(testCase, rep.celegans_patch_subjects_seen, 1, 'denominator');
-verifyEqual(testCase, rep.celegans_patch_subjects_relabelled, 0);
-verifyEqual(testCase, rep.celegans_patch_subjects_refused_no_exp_id, 1);
-patch = subjectByDescription(testCase, out, 'bacterial patch');
-verifyEqual(testCase, patch.entity.local_identifier, 'plate/0017/patch/0017');
-end
-
 function testNoSubjectAnywhereIsLabelledJustAPatchNumber(testCase)
 %TESTNOSUBJECTANYWHEREISLABELLEDJUSTAPATCHNUMBER The directive's own gate, and
 %   deliberately the crudest test in the file.
@@ -568,10 +530,11 @@ function testNoSubjectAnywhereIsLabelledJustAPatchNumber(testCase)
 %   It runs over the union of both populations (E. coli lawns and plates, and
 %   the C. elegans patch), including the case where the expID hop FAILS, because
 %   that is where a lazy fallback to the bare number would be written.
+% (The C. elegans patch batches left with the patch geometry map: pass 1 no
+% longer mints a patch subject, Decided by Jess Haley, 2026-10-26
+% [dataset-specific logic leaves the generic migration].)
 batches = { ...
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()}, ...
-    {celegansPatchGeometryRow(), celegansBehaviourPlateRow()}, ...
-    {celegansPatchGeometryRow()}, ...
     {ecoliImageRow(), ecoliLawnRow()}};
 nSubjects = 0;
 for b = 1:numel(batches)
@@ -588,9 +551,9 @@ for b = 1:numel(batches)
             sprintf('subject %s is labelled by patch alone', handle));
     end
 end
-% THE DENOMINATOR, without which every verify above is vacuously true: three of
-% the four batches mint at least one subject.
-verifyGreaterThanOrEqual(testCase, nSubjects, 4, ...
+% THE DENOMINATOR, without which every verify above is vacuously true: the
+% first batch mints a plate and a lawn (testTheTwoTiersAndTheContainedInEdge).
+verifyGreaterThanOrEqual(testCase, nSubjects, 2, ...
     'fewer subjects examined than the fixtures mint -- the sweep is broken');
 end
 

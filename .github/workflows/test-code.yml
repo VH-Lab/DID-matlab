@@ -247,9 +247,15 @@ jobs:
           # of the guard; losing them at validation was not.
           #
           # Safe to copy: no filename collides across tiers (checked, 245 files).
-          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
-          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
-          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          # [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1: the set's
+          # new name when did-schema has it, else V_eta; and [retired classes leave
+          # V2]: a set with no deprecated/ tier is not an error.
+          SET=did-schema/schemas/V_eta
+          if [ -d did-schema/schemas/did_v2 ]; then SET=did-schema/schemas/did_v2; fi
+          echo "schema set: $SET"
+          cp "$SET"/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp "$SET"/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          if [ -d "$SET/deprecated" ]; then cp "$SET"/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"; fi
 
       - name: Export DID_SCHEMA_PATH
         run: |
@@ -466,9 +472,15 @@ jobs:
           # of the guard; losing them at validation was not.
           #
           # Safe to copy: no filename collides across tiers (checked, 245 files).
-          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
-          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
-          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          # [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1: the set's
+          # new name when did-schema has it, else V_eta; and [retired classes leave
+          # V2]: a set with no deprecated/ tier is not an error.
+          SET=did-schema/schemas/V_eta
+          if [ -d did-schema/schemas/did_v2 ]; then SET=did-schema/schemas/did_v2; fi
+          echo "schema set: $SET"
+          cp "$SET"/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp "$SET"/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          if [ -d "$SET/deprecated" ]; then cp "$SET"/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"; fi
 
       - name: Export DID_SCHEMA_PATH
         run: |

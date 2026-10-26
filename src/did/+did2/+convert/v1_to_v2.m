@@ -128,7 +128,7 @@ arguments
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
     options.Audits (1,1) logical = true
 end
 
@@ -150,6 +150,13 @@ if isempty(did2.convert.migrationTime('get'))
 end
 
 bodies = normaliseInput(v1Bodies);
+
+% The generator settings of every v1 stimulus_presentation in this batch, read
+% by a migrator that must compare a copy against them and cannot follow an
+% edge itself (hartley_calc: [hartley leftovers checked], Jess Haley,
+% 2026-10-26). Reset per batch, like the notes below.
+did2.convert.stimulusPresentationSpecs('reset');
+did2.convert.stimulusPresentationSpecs('load', bodies);
 
 % Asked ONCE per call, of the schema the documents validate against: does
 % `base` declare `session_id` as an edge (did-schema
@@ -180,8 +187,8 @@ fragValues = [];
 % Complete (one short id per fragment); the counts above stay the census.
 fragIds = {};
 % Report-only: documents a migrator CONSUMED and EMITTED NOTHING for -- an empty
-% cell back from a split migrator (e.g. a metadata-only lightsheetZarrLevel,
-% #73 L3(c)). Without this the source would vanish from every count: it is not
+% cell back from a split migrator (a metadata-only lightsheetZarrLevel was one,
+% #73 L3(c), until it became a file-less body on 2026-10-26). Without this the source would vanish from every count: it is not
 % migrated, not quarantined, not unconverted and not a fragment.
 emptyNames = {};
 emptyValues = [];
@@ -200,6 +207,10 @@ passthrough = struct('input_index', {}, 'id', {}, 'class_name', {}, 'body', {});
 % as v1 without V_eta validation, by class (see the validation step).
 v1NoSchemaNames = {};
 v1NoSchemaValues = [];
+% Of the documents a migrator carried whole as v1, those V_eta validation
+% refused (a tombstone that does not describe the v1 shape): counted, by class.
+carriedUnvalNames = {};
+carriedUnvalValues = [];
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
 % each corpus report counts the dimensions whose term has no node, so the move
@@ -267,6 +278,7 @@ for k = 1:numel(bodies)
     originalJSON = encodeForQuarantine(rawBody);
     className = '<unknown>';
     passedThrough = false;
+    carried = false;
     noteMark = did2.convert.reportNote('mark');
     try
         preBody = ensureStruct(rawBody);
@@ -316,6 +328,26 @@ for k = 1:numel(bodies)
                 % ontology_table_row, ...) may fan out to several (1 -> N).
                 v2Bodies = runConcreteMigrator(v2Body, className, ...
                     options.TargetVersion);
+                % A CARRY IS THE V1 SOURCE, NOT THE SUPERCLASS-RESHAPED BODY.
+                % A migrator carries a document by returning its input
+                % unchanged with a `carried_as_v1` note ([generic stage is
+                % lossless], [partly placed is carried as v1], Jess Haley,
+                % 2026-10-25). Its input is the body AFTER the superclass
+                % migrators, which may have reshaped it (+migrators/filter.m
+                % renames `type` -> `filter_type`; the image_stack_parameters
+                % override strips an empty `timestamp`), and such a body was
+                % not recorded as a passthrough, so it came out under its
+                % tombstone stamped did_v2. The carried document is the
+                % universalRenames output instead -- the same body every other
+                % passthrough is -- recorded as a passthrough, so the caller
+                % stores its untouched v1 source, stamped did_v1.
+                if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body) ...
+                        && did2.convert.reportNote('pending', 'carried_as_v1') > 0
+                    v2Body = postUniversalBody;
+                    v2Bodies = {postUniversalBody};
+                    superUnchanged = true;
+                    carried = true;
+                end
             else
                 % [generic stage is lossless] / [partly placed is carried as
                 % v1] (Jess Haley, 2026-10-25): universalRenames discarded v1
@@ -328,6 +360,7 @@ for k = 1:numel(bodies)
                 v2Body = postUniversalBody;
                 superUnchanged = true;
                 v2Bodies = {v2Body};
+                carried = true;
             end
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
             % hand its input straight back? `bodies = {preBody}` is how a
@@ -369,17 +402,47 @@ for k = 1:numel(bodies)
         % N documents in `migrated` (or quarantines the whole source
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
-            outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
-            outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
-            if isfield(outBody, 'document_class') ...
-                    && isstruct(outBody.document_class)
-                % the STAMP, not the set name TargetVersion (Jess Haley,
-                % 2026-10-25 [document stamps]: a V2 document is 'did_v2')
-                outBody.document_class.schema_version = ...
-                    did2.convert.targetStamp(options.TargetVersion);
+            if carried
+                % A CARRIED DOCUMENT IS v1 END TO END ([generic stage is
+                % lossless], [passthrough stays v1: how], Jess Haley,
+                % 2026-10-24/25): the universalRenames output, no V_eta
+                % class blocks padded on, no base fields renamed, stamped
+                % 'did_v1' here and not left for the end of the pipeline --
+                % a did2_v2 stamp let a later reader (a batch pass's
+                % re-validation, NDI's second pass) validate it against the
+                % V_eta tombstone of the same name (PRED pyraview:
+                % `filter.type` refused by the `filter` tombstone). A
+                % 'did_v1' body is never validated against V_eta
+                % (did2.schema.cache.validateDocument / rehydrate).
+                outBody = v2Bodies{bi};
+                if isfield(outBody, 'document_class') && isstruct(outBody.document_class)
+                    outBody.document_class.schema_version = 'did_v1';
+                end
+            else
+                outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+                outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
+                if isfield(outBody, 'document_class') ...
+                        && isstruct(outBody.document_class)
+                    % the STAMP, not the set name TargetVersion (Jess Haley,
+                    % 2026-10-25 [document stamps]: a V2 document is 'did_v2')
+                    outBody.document_class.schema_version = ...
+                        did2.convert.targetStamp(options.TargetVersion);
+                end
             end
             doc = did2.document(outBody);
-            if options.Validate
+            if options.Validate && carried && passedThrough
+                % not validated, but still COUNTED when V_eta keeps no
+                % schema for its class (passthrough_unvalidated_no_schema)
+                try
+                    vc = options.SchemaCache;
+                    if isempty(vc); vc = did2.schema.cache.shared(); end
+                    vc.getClass(className);
+                catch
+                    [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
+                        v1NoSchemaNames, v1NoSchemaValues, className);
+                end
+            end
+            if options.Validate && ~carried
                 try
                     doc.validate('SchemaCache', options.SchemaCache);
                 catch vErr
@@ -391,11 +454,18 @@ for k = 1:numel(bodies)
                     % is counted here instead of quarantined. Any other
                     % failure, and any failure of a document a migrator
                     % changed, still quarantines.
-                    if ~(passedThrough && strcmp(vErr.identifier, 'did2:schema:missingClass'))
+                    % A CARRIED document is v1 by definition: V_eta validation
+                    % (its tombstone, if any) is not its contract, so a
+                    % failure is counted, never a quarantine.
+                    if passedThrough && strcmp(vErr.identifier, 'did2:schema:missingClass')
+                        [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
+                            v1NoSchemaNames, v1NoSchemaValues, className);
+                    elseif carried
+                        [carriedUnvalNames, carriedUnvalValues] = bumpClassCounter( ...
+                            carriedUnvalNames, carriedUnvalValues, className);
+                    else
                         rethrow(vErr);
                     end
-                    [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
-                        v1NoSchemaNames, v1NoSchemaValues, className);
                 end
             end
             migrated{end+1} = doc; %#ok<AGROW>
@@ -503,6 +573,8 @@ result.summary = struct( ...
     'passthrough_count', numel(passthrough), ...
     'passthrough_unvalidated_no_schema_count', sum(v1NoSchemaValues), ...
     'passthrough_unvalidated_no_schema_by_class', buildByClassTable(v1NoSchemaNames, v1NoSchemaValues), ...
+    'carried_failing_veta_validation_count', sum(carriedUnvalValues), ...
+    'carried_failing_veta_validation_by_class', buildByClassTable(carriedUnvalNames, carriedUnvalValues), ...
     'legacy_ndi_document', legacy, ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...
@@ -715,7 +787,7 @@ function bodies = runConcreteMigrator(v2Body, className, targetVersion)
 %   (struct) or several (struct array / cell), enabling the treatment ->
 %   manipulation and ontology_table_row -> observations (1 -> N) splits.
 splitPackage = '';
-if strcmp(targetVersion, 'V_eta')
+if did2.convert.isV2Set(targetVersion)
     splitPackage = 'did2.convert.migrators_j.';
 end
 if ~isempty(splitPackage)
@@ -805,7 +877,7 @@ arguments
     targetVersion (1,:) char
     sessionEdge (1,1) logical = false
 end
-if ~strcmp(targetVersion, 'V_eta')
+if ~did2.convert.isV2Set(targetVersion)
     return;
 end
 if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base)
@@ -935,7 +1007,7 @@ if nargin < 3 || isempty(targetVersion)
     targetVersion = 'V_eta';
 end
 superPackage = '';
-if strcmp(targetVersion, 'V_eta')
+if did2.convert.isV2Set(targetVersion)
     superPackage = 'did2.convert.migrators_j.super.';
 end
 if ~isfield(body, 'document_class') ...

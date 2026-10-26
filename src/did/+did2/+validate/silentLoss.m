@@ -542,6 +542,7 @@ report = struct( ...
     'ndi_required_denominator',  nrNewReport(), ...
     'edge_arity',                arNewReport(), ...
     'edge_arity_plural_count',   0, ...
+    'v1_docs_not_audited',       0, ...
     'skipped_docs',              0);
 
 [bodies, unreadable] = vBodies(docs);
@@ -688,6 +689,13 @@ for k = 1:numel(bodies)
         % hole of the same shape as the one this whole block exists to close.
         report.ndi_required_denominator.docs_classified = ...
             report.ndi_required_denominator.docs_classified + 1;
+        % A document STAMPED v1 ('did_v1': carried whole as v1, [passthrough
+        % stays v1: how], [generic stage is lossless]) is not a V_eta document,
+        % so no V_eta rule is audited on it; it is COUNTED, not skipped.
+        if did2.schema.isV1Stamp(body, 'Explicit', true)
+            report.v1_docs_not_audited = report.v1_docs_not_audited + 1;
+            continue;
+        end
 
         % --- 1. required depends_on edges that are empty -----------------
         required = requiredDependencies(cache, className);

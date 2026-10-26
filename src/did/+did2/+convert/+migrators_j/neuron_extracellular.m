@@ -171,10 +171,12 @@ function bodies = neuron_extracellular(preBody)
 %
 %   BUT REDUNDANT IS A PROPERTY OF THE DOCUMENT, NOT OF THE CLASS. A count that
 %   disagrees with the matrix means one of the two is wrong, and silently
-%   preferring the matrix would drop a real discrepancy. So each is compared and
-%   a disagreement ERRORS -- the hartley_calc stance for a drop a document cannot
-%   justify. It holds on 21 of 21 here. A count that is ABSENT or non-numeric is
-%   not an error: it is simply nothing to check against.
+%   preferring the matrix would drop a real discrepancy. So each is compared,
+%   and since 2026-10-26 a disagreement (or a count that is not one finite
+%   number) CARRIES THE DOCUMENT WHOLE AS V1 instead of erroring ([restated
+%   values checked], Jess Haley, 2026-10-26). It holds on 21 of 21 here. A
+%   count that is ABSENT is nothing to check against. With no waveform the
+%   counts are not compared (the writer then sets each to 1, max(size(..),1)).
 %
 %   ---------------------------------------------------------------------
 %   CLUSTER_INDEX -- A PROPOSAL, PARKED IN THE OPEN
@@ -308,6 +310,38 @@ arguments
 end
 
 blk = getBlock(preBody, 'neuron_extracellular');
+
+% ---- the two count fields are droppable only if they AGREE ------------------
+% [restated values checked] (Jess Haley, 2026-10-26): `number_of_samples_per_channel`
+% and `number_of_channels` stay unwritten because they restate the waveform's
+% axis lengths; when one does not, the document is carried whole as v1 ([partly
+% placed is carried as v1], Jess Haley, 2026-10-25). Until 2026-10-26 a
+% disagreement raised did2:convert:neuronWaveformShapeMismatch (a quarantine).
+w = getField(blk, 'mean_waveform');
+if isnumeric(w) && ~isempty(w) && ismatrix(w)
+    unplaced = [checkRedundantCount(blk, 'number_of_samples_per_channel', ...
+        size(w, 1), 'size(mean_waveform,1)'), ...
+        checkRedundantCount(blk, 'number_of_channels', size(w, 2), ...
+        'size(mean_waveform,2)')];
+else
+    % NO WAVEFORM: nothing to compare the counts with. They restate the
+    % writer's own value for an empty waveform and are dropped only then:
+    % 1 from the import writers, max(size(meanWf,k),1) (NDI-matlab
+    % +ndi/+fun/+probe/+import/+kilosort/probe.m:551-552, +kiasort/probe.m:
+    % 325-326, +jrclust/probe.m:309-310), 0 from +ndi/+app/spikesorter.m:252-253
+    % (size(meanshape,k) of an empty mean shape), or absent / [] (the
+    % template). Any other count states something nothing else does
+    % ([lossless means round trip], Jess Haley, 2026-10-26): carried as v1.
+    unplaced = [writerDefaultCount(blk, 'number_of_samples_per_channel'), ...
+        writerDefaultCount(blk, 'number_of_channels')];
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
+        char(baseField(preBody, 'id', '')), ['unplaced: ' strjoin(unplaced, ', ')]);
+    bodies = {preBody};
+    return;
+end
+
 recordingSubjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
     dependencyValue(preBody, 'subject_id'));
 
@@ -438,11 +472,8 @@ end
 nTime     = size(w, 1);
 nChannels = size(w, 2);
 
-% ---- the two count fields are droppable only if they AGREE ------------------
-checkRedundantCount(blk, 'number_of_samples_per_channel', nTime, ...
-    'size(mean_waveform,1)');
-checkRedundantCount(blk, 'number_of_channels', nChannels, ...
-    'size(mean_waveform,2)');
+% (the two count fields were checked against this shape on entry: a document
+% whose counts disagree is carried whole as v1 before anything is built)
 
 t = double(t(:));
 if numel(t) ~= nTime
@@ -499,23 +530,35 @@ obs = jStatement(preBody, 'calculation', neuronId, ...
     calcOpt{:}, 'ValueKind', 'voltage');
 end
 
-function checkRedundantCount(blk, name, derived, derivedFrom)
-%CHECKREDUNDANTCOUNT Refuse to drop a count that does not agree with the shape.
-%   ABSENT or non-numeric is not an error -- there is simply nothing to check
-%   against. A DISAGREEMENT is, because dropping the field is lossless only
-%   BECAUSE it is derivable, and a mismatch means one of the two is wrong.
+function why = writerDefaultCount(blk, name)
+%WRITERDEFAULTCOUNT {} when a count beside NO waveform is what the writers
+%   write for an empty one (absent, [], 0 or 1), else a one-element cell.
+why = {};
 v = getField(blk, name);
-if ~isnumeric(v) || ~isscalar(v) || ~isfinite(v)
+if isempty(v)
     return;
 end
-if round(double(v)) ~= derived
-    error('did2:convert:neuronWaveformShapeMismatch', ...
-        ['neuron_extracellular `%s` is %g but %s is %d. This field is DROPPED ' ...
-         'as derivable from the array shape (the writer assigns it from ' ...
-         'exactly that, kilosort/probe.m:546-547), and that drop is lossless ' ...
-         'only while the two agree -- they do in 21 of 21 real documents. ' ...
-         'Refusing rather than silently preferring one of them.'], ...
-        name, double(v), derivedFrom, derived);
+if ~isnumeric(v) || ~isscalar(v) || ~any(double(v) == [0 1])
+    why = {sprintf('neuron_extracellular.%s (no waveform to restate it)', name)};
+end
+end
+
+function why = checkRedundantCount(blk, name, derived, derivedFrom)
+%CHECKREDUNDANTCOUNT {} when the count may be dropped, else a one-element cell
+%   naming why not. ABSENT or empty is nothing to check. A value that is not
+%   one finite number, or one that disagrees with the shape, is NOT restated by
+%   the waveform, so dropping it would lose it ([restated values checked], Jess
+%   Haley, 2026-10-26): the caller carries the document whole as v1.
+why = {};
+v = getField(blk, name);
+if isempty(v)
+    return;
+end
+if ~isnumeric(v) || ~isscalar(v) || ~isfinite(v)
+    why = {sprintf('neuron_extracellular.%s (not one finite number)', name)};
+elseif double(v) ~= derived
+    why = {sprintf('neuron_extracellular.%s %g (differs from %s %d)', ...
+        name, double(v), derivedFrom, derived)};
 end
 end
 

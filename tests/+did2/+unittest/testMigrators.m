@@ -129,13 +129,37 @@ verifyFalse(testCase, isfield(out, 'calculator'));
 end
 
 function testCalcCommonDropsInnerDependsOn(testCase)
+% The inner copy restates the top-level edge, so it is dropped ([restated
+% values checked], Jess Haley, 2026-10-26). 2026-10-26: the top-level edge is
+% now in the fixture; without it the copy restates nothing (next test).
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', [], ...
+    'depends_on',       struct('name', 'stimulus_tuningcurve_id', ...
+                                'value', 'abc')));
+v1.depends_on = struct('name', 'stimulus_tuningcurve_id', 'document_id', 'abc');
+out = did2.convert.calcCommon( ...
+    did2.convert.universalRenames(v1), 'oridirtuning_calc');
+verifyFalse(testCase, isfield(out.oridirtuning_calc, 'depends_on'));
+end
+
+function testCalcCommonCarriesAnInnerDependsOnThatDiffers(testCase)
+% [restated values checked] (Jess Haley, 2026-10-26): an inner copy that does
+% not restate the top-level edge is not dropped; the body is carried whole as
+% v1, unchanged, with a `carried_as_v1` note.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', [], ...
     'depends_on',       struct('name', 'stimulus_tuningcurve_id', ...
                                 'document_id', 'abc')));
-out = did2.convert.calcCommon( ...
-    did2.convert.universalRenames(v1), 'oridirtuning_calc');
-verifyFalse(testCase, isfield(out.oridirtuning_calc, 'depends_on'));
+v1.depends_on = struct('name', 'stimulus_tuningcurve_id', 'document_id', 'xyz');
+pre = did2.convert.universalRenames(v1);
+did2.convert.reportNote('reset');
+out = did2.convert.calcCommon(pre, 'oridirtuning_calc');
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, isequaln(out, pre), 'returned unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'));
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+    'stimulus_tuningcurve_id'));
 end
 
 function testCalcCommonMissingBlockErrors(testCase)
@@ -272,6 +296,55 @@ out = did2.convert.migrators.element_epoch( ...
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.element_epoch.clocks(1).t0, 0);
 verifyEqual(testCase, out.element_epoch.clocks(1).t1, 1.5);
+verifyFalse(testCase, isfield(out.element_epoch, 'clocktype'));
+end
+
+function testElementEpochT0T1ThatDoesNotMatchItsClocksIsNotConverted(testCase)
+% [small unread settings] (4) (Jess Haley, 2026-10-26): a t0_t1 whose column
+% count is not the clock count (either direction), or that is missing or not
+% numeric, is returned UNCHANGED with a `carried_as_v1` note; the zero-padding
+% and truncation are gone ([no invented values]).
+cases = { ...
+    struct('epoch_clock', 'dev_local_time,exp_global_time', 't0_t1', [0; 930]), 'for 2 clock'; ...
+    struct('epoch_clock', 'dev_local_time', 't0_t1', [0 1 2; 3 4 5]), '3 column'; ...
+    struct('epoch_clock', 'dev_local_time'), 'missing'; ...
+    struct('epoch_clock', 'dev_local_time', 't0_t1', 'abc'), 'not numeric'};
+for k = 1:size(cases, 1)
+    pre = did2.convert.universalRenames(wrap('element_epoch', 'element_epoch', cases{k, 1}));
+    did2.convert.reportNote('reset');
+    out = did2.convert.migrators.element_epoch(pre);
+    notes = did2.convert.reportNote('collect');
+    did2.convert.reportNote('reset');
+    verifyTrue(testCase, isequaln(out, pre), sprintf('case %d: changed', k));
+    verifyTrue(testCase, isfield(notes, 'carried_as_v1') && ...
+        contains(notes.carried_as_v1.distinct_details{1}, cases{k, 2}), ...
+        sprintf('case %d: no note naming "%s"', k, cases{k, 2}));
+end
+end
+
+function testElementEpochNamingNoClockOrADifferentClocktypeIsNotConverted(testCase)
+% [no invented values]: no `epoch_clock` is not read as 'dev_local_time'; and a
+% legacy `clocktype` beside `epoch_clock` is dropped only when it restates it.
+cases = { ...
+    struct('t0_t1', [0 1]), 'epoch_clock (missing'; ...
+    struct('epoch_clock', '', 't0_t1', [0 1]), 'epoch_clock (missing'; ...
+    struct('epoch_clock', 'dev_local_time', 'clocktype', 'utc', 't0_t1', [0 1]), 'clocktype'};
+for k = 1:size(cases, 1)
+    pre = did2.convert.universalRenames(wrap('element_epoch', 'element_epoch', cases{k, 1}));
+    did2.convert.reportNote('reset');
+    out = did2.convert.migrators.element_epoch(pre);
+    notes = did2.convert.reportNote('collect');
+    did2.convert.reportNote('reset');
+    verifyTrue(testCase, isequaln(out, pre), sprintf('case %d: changed', k));
+    verifyTrue(testCase, isfield(notes, 'carried_as_v1') && ...
+        contains(notes.carried_as_v1.distinct_details{1}, cases{k, 2}), ...
+        sprintf('case %d: no note naming "%s"', k, cases{k, 2}));
+end
+% the same clock twice: the clocktype restates it and is dropped
+pre = did2.convert.universalRenames(wrap('element_epoch', 'element_epoch', ...
+    struct('epoch_clock', 'dev_local_time', 'clocktype', 'dev_local_time', 't0_t1', [0 1])));
+out = did2.convert.migrators.element_epoch(pre);
+verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyFalse(testCase, isfield(out.element_epoch, 'clocktype'));
 end
 

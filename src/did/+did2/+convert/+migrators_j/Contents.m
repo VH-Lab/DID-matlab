@@ -63,31 +63,21 @@
 %                          (the act) + a
 %                          provenance directed_relation (recipient <- donor,
 %                          derived_from) + the shared session anchor (D4).
-%     ontology_table_row - 1 -> N. Each column -> an `assertion` (timeless:
-%                          value kind `term` or `date`) OR an `observation`
-%                          (timed: a quantity value kind by value shape, `term`
-%                          for strings); identity columns skipped; a.u. numerics
-%                          -> value kind `intensity` (J §7, no escape hatch, D8).
-%                          + one shared session anchor. A table whose column
-%                          signature is recognised (the encounter and patch
-%                          geometry tables) goes through its own map instead.
-%                          NOTE: the per-column path is the naive
-%                          seed; the flat-table column-role model
-%                          (D10) and per-column subject resolution (D11) are
-%                          still OPEN, so a qualifier column (e.g. trial type) is
-%                          knowingly mis-modelled as an observation until those
-%                          resolve. See V_eta_migration_plan.md D10/D11.
-%     treatment          - 1 -> N. Dispatch by structure into a `manipulation`
-%                          with value kind `temperature` (typed value), `dose`
-%                          or `formulation` (a substance, with its chemical and
-%                          formulation documents; the substance is the spine
-%                          variable), or `term` (payload-free procedure/regime;
-%                          no escape hatch, D8). A merely-located site becomes
-%                          an `observation` with value kind `term`
-%                          (located-by-default, D3); an
-%                          attributed site is promoted to a Path-S part-subject +
-%                          part_of by the NDI second pass. + shared anchor.
-%                          Not-a-manipulation / unresolved rows -> quarantine.
+%     ontology_table_row - 1 -> 1. No subject edge: passed through for the NDI
+%                          second pass. With a subject: carried whole as v1
+%                          with a `needs_mapping` note (each column's entity,
+%                          direction and kind were chosen from label words:
+%                          [one correct reading], [dataset audit batch 1 and
+%                          2], Jess Haley, 2026-10-26).
+%     treatment          - 1 -> N. A term that states its number's kind ->
+%                          a `manipulation` of that value kind; a ChEBI
+%                          substance -> a `dose` or `formulation` (immersion)
+%                          by its recorded location, with its chemical and
+%                          formulation documents; a merely-located site -> an
+%                          `observation` (value kind `term`). + shared anchor.
+%                          Anything routed by label words is carried whole as
+%                          v1 with a `needs_mapping` note ([one correct
+%                          reading], Jess Haley, 2026-10-26).
 %     treatment_drug     - 1 -> N. -> a `manipulation` with value kind `dose`
 %                          (or `formulation` for an immersion, decided by the
 %                          recorded location; the mixture_table -> chemical
@@ -243,8 +233,8 @@
 %                          with NO class name AND NO edges still passes through.
 %                          1 -> 1 when there is no class name to fold.
 %     image_stack        - 1 -> 3. -> a body-backed `observation` with value
-%                          kind `intensity` (a mask: a `calculation` with value
-%                          kind `logical` or `label`, + its software documents)
+%                          kind `intensity` (a mask or label map, read from
+%                          label words, is carried as v1)
 %                          + a sampled_body holding the carried pixel frames
 %                          (its dimensions and covariates from the source's
 %                          dimension order) + shared anchor (§C.4). The
@@ -773,8 +763,8 @@
 %         anchor). 1 -> 3.
 %     image_stack
 %         Brainstorm-J migrator: did_v1 image_stack -> a body-backed `observation`
-%         with value kind `intensity` (a mask: a `calculation` with value kind
-%         `logical` or `label`) + a sampled_body (+ the shared session anchor).
+%         with value kind `intensity` (a mask or label map is carried as v1) + a
+%         sampled_body (+ the shared session anchor).
 %     jrclust_clusters
 %         Brainstorm-J migrator: did_v1 jrclust_clusters -> a body-backed
 %         `calculation` with value kind `label` (the per-spike cluster assignments) +
@@ -789,8 +779,9 @@
 %         anchor, + software and run documents).
 %     lightsheet_zarr_level
 %         Brainstorm-J migrator: did_v1 lightsheetZarrLevel -> a `sampled_body` of the
-%         pyramid's observation when the level HOLDS bytes, or NOTHING (an empty cell)
-%         when it does not.
+%         pyramid's observation; a FILE-LESS one when the level holds no bytes
+%         ([compression block and empty levels], Jess Haley, 2026-10-26), where it
+%         emitted NOTHING before.
 %     lightsheet_zarr_pyramid
 %         Brainstorm-J migrator: did_v1 lightsheetZarrPyramid -> an `observation` of
 %         intensity (the lightsheet volume) of its subject, id PRESERVED, plus the
@@ -832,8 +823,8 @@
 %         Brainstorm-J migrator: did_v1 ontology_label -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
 %     ontology_table_row
-%         Brainstorm-J split migrator: did_v1 ontology_table_row -> one statement per
-%         column (1 -> N).
+%         Brainstorm-J migrator: did_v1 ontology_table_row -> the v1 row, carried
+%         whole (1 -> 1).
 %     openminds
 %         Brainstorm-J migrator: did_v1 `openminds` -- a GUARDED PASSTHROUGH.
 %     openminds_element
@@ -1022,16 +1013,15 @@
 %         (⊂ [tuning_curve_calculation, temporal_frequency_tuning]) + a session anchor
 %         + minted `software` and `runtime_environment` entities.
 %     treatment
-%         Brainstorm-J split migrator: did_v1 treatment -> a `manipulation` whose
-%         value kind is chosen by the treatment (`temperature`, `dose` or
-%         `formulation` for a substance, `term` for a procedure, or the kind the
-%         treatment's term names for its number) (+ an optional site `observation`
-%         with value kind `term` + the shared session anchor).
+%         Brainstorm-J migrator: did_v1 treatment -> a `manipulation` whose value kind
+%         is the one the treatment's term states for its number, or a dose / immersion
+%         for a ChEBI substance (+ an optional site `observation` with value kind
+%         `term` + the shared session anchor); otherwise the v1 document carried
+%         whole.
 %     treatment_drug
 %         Brainstorm-J migrator: did_v1 treatment_drug -> an immersion (`manipulation`
 %         valued by its formulation) or a `manipulation` with value kind `dose`,
-%         decided by the recorded location (a heat-only row: a `manipulation` with
-%         value kind `temperature`).
+%         decided by the recorded location.
 %     treatment_transfer
 %         Brainstorm-J migrator: did_v1 treatment_transfer -> a `manipulation` with
 %         value kind `term` + a provenance directed_relation (+ the session anchor).

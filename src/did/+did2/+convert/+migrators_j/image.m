@@ -158,24 +158,20 @@ function bodies = image(preBody)
 %   WHAT IS DEFERRED, STATED RATHER THAN DROPPED
 %   ---------------------------------------------------------------------
 %   `format` + `compression` -- the FILE encoding of the carried bytes (e.g.
-%   'tiff', 'lzw'). These have no home yet: `sampled_body` has no encoding field,
-%   and adding one is a data_body model change (the 2.D collapse decided every
-%   format carrier phases into sampled_body/opaque_body with "encoding becomes a
-%   field", but that field has not been built). Carried bytes remain readable --
-%   a container format is recoverable from the file itself -- so this is a
-%   deferral, not a loss. It should land with the data_body encoding field.
+%   'tiff', 'lzw'). PLACED since 2026-10-26 on the body's `format` and
+%   `compression` ([image file details placed], Jess Haley, 2026-10-26), by
+%   image_stack, which reads this class's `image` block for them. (This read
+%   "sampled_body has no encoding field"; data_body declares both.)
 %
-%   `imageCollection_id` -- DELIBERATELY NOT CARRIED, and this one is worth
-%   knowing. `imageCollection` has NO V_eta class and NO migrator; the coverage
-%   ledger grades it "dissolved (rename/decompose)", which is not what the code
-%   does. Carrying the edge would therefore mint a reference to a document that
-%   does not exist after migration -- a dangling edge, which is a GATING orphan
-%   failure, not a cosmetic one (dissolving referenced documents without
-%   preserving ids once cost 11,448 orphans). The grouping is a real fact and
-%   wants the second pass, once imageCollection has a home. Emitting it now would
-%   trade a silent gap for a red gate and record nothing true either way.
+%   `imageCollection_id` -- becomes a `member_of` relation to a group entity
+%   (T20) under [image file details placed]; that is a later step, so until it
+%   lands an image that names a collection is CARRIED WHOLE AS V1 by
+%   image_stack (it was deliberately not carried: `imageCollection` has no
+%   V_eta class, so the edge would dangle).
 %
-%   `label` is dropped for the reason image_stack documents: it is a templated
+%   `label` (this class's `image.label`) has no home decided yet: an image
+%   that states one is CARRIED WHOLE AS V1 (2026-10-26). It used to be dropped
+%   for the reason image_stack documents: it is a templated
 %   prose definition of the image TYPE, reconstructable as a projection of the
 %   ontology term, not a per-document fact.
 
@@ -186,6 +182,16 @@ end
 % The fold is identical; see the header for why. image_stack reads only the
 % shared `image_stack_parameters` block, the dependencies, base and files, all of
 % which a did_v1 `image` body carries.
+% `image.label` has no V2 home decided yet (image_stack reads its own block's
+% label, not this one), so an image that states one is carried whole as v1
+% ([generic stage is lossless], Jess Haley, 2026-10-25) instead of losing it.
+if isfield(preBody, 'image') && isstruct(preBody.image) && isfield(preBody.image, 'label') ...
+        && ~isempty(strtrim(char(string(preBody.image.label))))
+    did2.convert.reportNote('carried_as_v1', 'image', sourceId(preBody), ...
+        'unplaced: image.label');
+    bodies = {preBody};
+    return;
+end
 bodies = did2.convert.migrators_j.image_stack(preBody);
 % did-schema #88 restated `image` as the did_v1 tombstone (deprecated/image,
 % #73 review item 51), so a document image_stack hands back unchanged now

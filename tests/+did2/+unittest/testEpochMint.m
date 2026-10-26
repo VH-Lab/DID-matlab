@@ -130,8 +130,9 @@ end
 % established a session document exists in every corpus.
 
 function testEpochGainsATimeReferencePerClock(testCase)
-out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
-    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
+out = mintFrom([{sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')}, ...
+    rigBodies('sess_1', 't00001', {'elem_1'}, 'rig1')]);
 epochs = ofClass(out, 'epoch');
 verifyEqual(testCase, numel(epochs), 1, 'one epoch for one epoch-id string');
 refs = ofClass(out, 'relative_time_reference');
@@ -146,8 +147,13 @@ verifyEqual(testCase, numel(refs), 1, 'one reference for the one clock');
 % you cannot index into the result of a function call.
 verifyEqual(testCase, depValueOf(epochs{1}, 'time_reference_id'), ...   % #88 edge name
     char(refs{1}.get('base.id')), 'the epoch HOLDS the reference');
-verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'sess_1'), ...   % #88: referent_id
-    'the reference is anchored to the SESSION, not to its own holder');
+% INVERTED 2026-10-26 (it read: anchored to the SESSION). Decided by Jess
+% Haley, 2026-10-26 [device clocks on one epoch]: the extent's referent is THAT
+% ACQUISITION SYSTEM (the v1 daqsystem's id, preserved), not the session.
+verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), 'daq_rig1', ...
+    'the reference is anchored to its acquisition system');
+verifyNotEqual(testCase, depValueOf(refs{1}, 'referent_id'), ...
+    did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'sess_1'));
 verifyNotEqual(testCase, depValueOf(refs{1}, 'referent_id'), ...
     char(epochs{1}.get('base.id')), 'anchoring to the epoch would be circular');
 
@@ -179,16 +185,18 @@ function testManyDocumentsSharingOneEpochGiveOneReferencePerClock(testCase)
 % documents over 149 distinct epoch-id strings. `epoch.json` declares
 % referent_unique_by {time_reference_#, value.clock}, so a second copy of one
 % clock would violate a rule the schema already states.
-out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+out = mintFrom([{sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1'), ...
     elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2'), ...
-    elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3')});
+    elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3')}, ...
+    rigBodies('sess_1', 't00001', {'elem_1', 'elem_2', 'elem_3'}, 'rig1')]);
 verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1);
 verifyEqual(testCase, numel(ofClass(out, 'relative_time_reference')), 1, ...
     'three documents, one epoch, one clock -> ONE reference');
-[~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+[~, rep] = mintFrom([{sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1'), ...
-    elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2')});
+    elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2')}, ...
+    rigBodies('sess_1', 't00001', {'elem_1', 'elem_2'}, 'rig1')]);
 verifyEqual(testCase, rep.epoch_extent_sources_seen, 2, 'the DENOMINATOR');
 verifyEqual(testCase, rep.epoch_extent_references_emitted, 1);
 verifyEqual(testCase, rep.epoch_extent_duplicate_clock, 1, ...
@@ -205,11 +213,16 @@ function testTwoSourcesDisagreeingAboutOneClockAreCountedSeparately(testCase)
 a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
 b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
 b.element_epoch.t0_t1 = [0, 999.5];
-[~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b});
+[~, rep] = mintFrom([{sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b}, ...
+    rigBodies('sess_1', 't00001', {'elem_1', 'elem_2'}, 'rig1')]);
 verifyEqual(testCase, rep.epoch_extent_conflicting_clock, 1);
 verifyEqual(testCase, rep.epoch_extent_duplicate_clock, 0);
 verifyEqual(testCase, rep.epoch_extent_references_emitted, 1, ...
     'the first reading stands; the disagreeing one is dropped, not merged');
+% [device clocks on one epoch] (4): "Two sources disagreeing about ONE system's
+% clock extent is malformed and carries the second as v1"
+verifyEqual(testCase, rep.epoch_extent_carried_source_ids, {'ee_2'});
+verifyEqual(testCase, rep.epoch_extent_carried_sources, 1);
 end
 
 function testNoTimesMeansNoReference(testCase)
@@ -217,7 +230,8 @@ function testNoTimesMeansNoReference(testCase)
 % the exact thing silentLoss and isFragment exist to catch.
 v1 = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
 v1.element_epoch.epoch_clock = 'no_time';
-[out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), v1});
+[out, rep] = mintFrom([{sessionBody('sess_doc_1', 'sess_1', 'ref'), v1}, ...
+    rigBodies('sess_1', 't00001', {'elem_1'}, 'rig1')]);
 verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
 verifyEqual(testCase, rep.epoch_extent_skipped_no_time, 1);
 verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, ...
@@ -236,6 +250,74 @@ verifyEqual(testCase, rep.epoch_extent_sources_seen, 0);
 [~, rep2] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
 verifyFalse(testCase, rep2.epoch_extent_vacuous);
+end
+
+function testAnExtentTiedToNoSystemIsCarried(testCase)
+% [device clocks on one epoch] (Jess Haley, 2026-10-26): "an epoch extent you
+% cannot tie to exactly one system carries its source". No probemap names the
+% element's probe, so no reference is minted and the source is listed as
+% carried (resolveEpochProbemap keeps it).
+[out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
+verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1, 'the epoch is still minted');
+verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
+verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, 'the DENOMINATOR');
+verifyEqual(testCase, rep.epoch_extent_refused_no_system, 1);
+verifyEqual(testCase, rep.epoch_extent_carried_source_ids, {'ee_1'});
+verifyEqual(testCase, numel(ofClass(out, 'acquisition_epoch')), 1, 'the source stays');
+end
+
+function testTwoSystemsOnOneEpochGiveTwoReferencesOfOneClock(testCase)
+% "the epoch gets two relative time references which link to each device
+% entity?" -- yes (Jess Haley, 2026-10-26 [device clocks on one epoch]): one
+% recording read by two systems; each system's dev_local_time is its own
+% reference, unique by clock AND referent.
+a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+b.element_epoch.t0_t1 = [0, 120.5];
+out = mintFrom([{sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b}, ...
+    rigBodies('sess_1', 't00001', {'elem_1'}, 'rig1'), ...
+    rigBodies('sess_1', 't00001', {'elem_2'}, 'rig2')]);
+refs = ofClass(out, 'relative_time_reference');
+assertEqual(testCase, numel(refs), 2, 'one reference per system');
+referents = sort(cellfun(@(r) depValueOf(r, 'referent_id'), refs, 'UniformOutput', false));
+verifyEqual(testCase, referents, {'daq_rig1', 'daq_rig2'});
+epochs = ofClass(out, 'epoch');
+verifyEqual(testCase, numel(epochs), 1, 'ONE epoch for the one recording');
+end
+
+function c = rigBodies(sessionId, epochId, elementIds, rigName)
+%RIGBODIES What ties an acquisition_epoch to its acquisition system
+%   ([device clocks on one epoch]): one direct did_v1 element per ELEMENTIDS
+%   (named by its id, reference 1), the v1 daqsystem RIGNAME (id 'daq_<rig>',
+%   preserved onto its acquisition_system), and an epochfiles_ingested whose
+%   epochprobemap row for each element names device RIGNAME.
+c = {};
+pm = sprintf('name\treference\ttype\tdevicestring\tsubjectstring\n');
+for i = 1:numel(elementIds)
+    el = struct();
+    el.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+        'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    el.depends_on = struct('name', {'subject_id'}, 'value', {'specimen_1'});
+    el.base = struct('id', elementIds{i}, 'session_id', sessionId, ...
+        'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+    el.element = struct('ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
+        'name', elementIds{i}, 'reference', 1, 'type', 'n-trode', 'direct', 1);
+    c{end+1} = el; %#ok<AGROW>
+    pm = [pm, sprintf('%s\t1\tn-trode\t%s:ai1-4\tS\n', elementIds{i}, rigName)]; %#ok<AGROW>
+end
+daq = struct();
+daq.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+daq.base = struct('id', ['daq_' rigName], 'session_id', sessionId, ...
+    'name', rigName, 'datestamp', '2024-05-01T00:00:00.000Z');
+daq.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'id', {['nav_' rigName], ['rdr_' rigName]});
+c{end+1} = daq;
+ing = ingestedBody(['ing_' rigName], sessionId, epochId, ['nav_' rigName]);
+ing.epochfiles_ingested.epochprobemap = pm;
+c{end+1} = ing;
 end
 
 function v = depValueOf(doc, name)
@@ -426,10 +508,10 @@ v1.depends_on = [ ...
     struct('name', 'element_id',               'value', elementId)];
 v1.base = struct('id', docId, 'session_id', sessionId, 'name', 'default', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
+% (no os / interpreter: a settings document naming them is carried whole as
+% v1 since 2026-10-26, [small unread settings] (1); the mint needs the fold)
 v1.app = struct('name', 'ndi_app_spikeextractor', 'version', '1.2.3', ...
-    'url', 'https://github.com/VH-Lab/NDI-matlab', ...
-    'os', 'MACA64', 'os_version', '14.5', ...
-    'interpreter', 'MATLAB', 'interpreter_version', '24.1');
+    'url', 'https://github.com/VH-Lab/NDI-matlab');
 v1.epochid = struct('epochid', epochId);
 v1.spike_extraction_parameters_modification = struct( ...
     'center_range_time',   0.0005, 'overlap', 0.5, 'read_time', 30, ...
@@ -827,9 +909,10 @@ function testTheMintEmitsNoEdgeItCannotPopulate(testCase)
 % still asserted here for `instrument_id`, which genuinely is not derivable --
 % it needs the daq graph (#59). Declaring an edge empty is the pattern that put
 % 26,406 documents into the census while every gate stayed green.
-[out, ~] = mintFrom({ ...
+[out, ~] = mintFrom([{ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
-    elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
+    elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')}, ...
+    rigBodies('sess_A', 't00069', {'el_1'}, 'rig1')]);   % [device clocks on one epoch]
 epochs = ofClass(out, 'epoch');
 s = epochs{1}.toStruct();
 verifyFalse(testCase, hasDep(s, 'instrument_id'), ...

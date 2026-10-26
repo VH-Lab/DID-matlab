@@ -292,7 +292,10 @@ verifyEqual(testCase, depVal(doc, 'daqmetadatareader_id'), 'mdr_1');
 % the bytes survive
 verifyEqual(testCase, doc.get('files.file_list'), {'data.bin'});
 % and it is REPORTED as a passthrough rather than counted as a success
-verifyEqual(testCase, out.summary.unconverted_count, 1);
+verifyEqual(testCase, out.summary.unconverted_count, 1);% [ingested stimulus file is a body of the presentation] (Jess Haley,
+% 2026-10-26): carried UNCHANGED as v1 for NDI's second pass -- stamped did_v1
+verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v1');
+verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
 end
 
 function testMetadataIngestedFoldsWhenTheEpochEdgeIsPresent(testCase)

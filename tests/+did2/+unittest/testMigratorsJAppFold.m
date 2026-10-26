@@ -246,7 +246,7 @@ v1.depends_on = struct('name', {'element_id'}, 'value', {'rec_sub_1'});
 v1.base = struct('id', 'ne_1', 'session_id', 'sess_09', 'name', 'ne', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 if withApp; v1.app = ndiAppBlock(); end
-blk = struct('cluster_index', 7, 'number_of_channels', 4);
+blk = struct('cluster_index', 7, 'number_of_channels', 1);   % no waveform: the writers' 1 (a 4 would be carried as v1)
 if withQuality; blk.quality_number = 3; end
 v1.neuron_extracellular = blk;
 end

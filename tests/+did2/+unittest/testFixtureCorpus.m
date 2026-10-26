@@ -366,7 +366,8 @@ s.subject = struct('local_identifier', name, 'description', '');
 end
 
 % ----- manipulation / observation proof batch (one shared animal + probe) -----
-% Covers: treatment->temperature_manipulation, treatment_drug->dose_manipulation
+% Covers: treatment carried as v1 (a temperature read from label words,
+% [one correct reading]), treatment_drug->dose_manipulation
 % (+ site term_observation), probe_location->term_observation, element->subject
 % (+ observes relation) -- exercising the manipulation leaf, dose, term_observation,
 % session anchor, derived subject, and directed_relation patterns. Every doc rides
@@ -472,14 +473,9 @@ result = did2.convert.resolveEpochProbemap(result, ...
 % trace is strictly more informative than a captured message.
 result = did2.convert.resolveResponseParameters(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
-% TEAM DECISION 2026-08-11: the E. coli lawn/plate subject tiers, their
-% `contained_in` join, and the (experiment, plate, patch) identifier. Same
-% post-pass set and the SAME ORDER as runCorpusDiscovery and testCorpusPRED.
-% CALLED BARE, like the two passes above and for the identical reason: this test
-% writes no report, so there is nothing for the guard to protect and a raw stack
-% trace is strictly more informative than a captured message.
-result = did2.convert.resolveLawnPlateSubjects(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+% did2.convert.resolveLawnPlateSubjects is NOT run: Haley-import logic, removed
+% from the generic migration (Decided by Jess Haley, 2026-10-26 [Haley logic
+% leaves the generic migration], did-schema V_eta_go_forward_class_audit.md).
 % TEAM DECISION 2026-08-11: `generic_file` -> an `opaque_body` + a statement
 % whose `variable` comes from the sibling ontologyLabel. Same post-pass set and
 % the SAME ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE, like
@@ -846,7 +842,7 @@ d.document_class = struct('class_name','neuron_extracellular','class_version','1
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
 d.depends_on = struct('name','element_id','value','ne_sub');
 d.base = struct('id','ne_01','session_id','sess_09','name','ne','datestamp','2024-06-01T12:00:00.000Z');
-d.neuron_extracellular = struct('cluster_index',7,'quality_number',3,'number_of_channels',4);
+d.neuron_extracellular = struct('cluster_index',7,'quality_number',3,'number_of_channels',1);   % no waveform: the writers' 1
 batch = { sub, d };
 end
 
@@ -1164,7 +1160,9 @@ d.probe_geometry = struct( ...
     'site_locations_frontback',[0 0], ...
     'site_locations_depth',[], ...
     'ndim',2,'unit','um', ...
-    'probe_model','linear','manufacturer','acme');
+    'probe_model','linear');
+% no `manufacturer` (2026-10-26): one that is set carries the document whole as
+% v1 ([probe contact geometry carried]), and this fixture exercises the fold
 batch = { sub, d };
 end
 
@@ -1308,9 +1306,11 @@ end
 % ---- image (did_v1 `image`, the NAME COLLISION class) -----------------------
 % did_v1 has an `image` class and so does V_eta -- a completely different one
 % (the R6 raster data_type). The v1 class is consumed by migrators_j.image so no
-% document can reach that schema under that name. imageCollection_id is
-% deliberately NOT carried: imageCollection has no V_eta home, so the edge would
-% dangle into a gating orphan.
+% document can reach that schema under that name. Since 2026-10-26 an image
+% that names a collection, or states a label, is carried whole as v1 ([image
+% file details placed]; no home for the label yet), and a carried image's
+% collection edge would dangle here, so this fixture names neither: it
+% exercises the fold, format and compression included, under validation.
 function batch = fx_image()
 sub = subjDoc('img_sub', 'animalIMG');
 d = struct();
@@ -1318,9 +1318,9 @@ d.document_class = struct('class_name','image','class_version','1.0.0', ...
     'superclasses', struct('class_name', {'base'; 'image_stack_parameters'}, ...
                            'class_version', {'1.0.0'; '1.0.0'}));
 d.depends_on = [ struct('name','subject_id','value','img_sub'), ...
-                 struct('name','imageCollection_id','value','img_coll') ];
+                 struct('name','imageCollection_id','value','') ];
 d.base = struct('id','img_01','session_id','sess_09','name','img','datestamp','2024-06-01T12:00:00.000Z');
-d.image = struct('label','a histology section','format','tiff','compression','lzw');
+d.image = struct('label','','format','tiff','compression','lzw');
 d.image_stack_parameters = struct('data_type','uint8', ...
     'dimension_order','YXC','dimension_size',[1024 1024 3], ...
     'dimension_scale',[0.25 0.25 1],'clocktype','no_time','timestamp',0);

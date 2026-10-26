@@ -43,7 +43,9 @@
 %
 %   Shared helpers used by migrators
 %     calcCommon, channelType, epochIndex, ethicsJurisdiction,
-%     registeredTerm, reportNote, mintSessionDuring
+%     registeredTerm, reportNote, mintSessionDuring,
+%     stimulusPresentationSpecs (the batch's presentation settings, loaded
+%     by v1_to_v2)
 %
 %   Batch post-passes (run over a migrated batch, after v1_to_v2; each
 %   carries a BATCH-PASS declaration read by tools/batch_pass_declarations.py)

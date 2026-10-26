@@ -1,11 +1,10 @@
 function bodies = lightsheet_zarr_level(preBody)
 %LIGHTSHEET_ZARR_LEVEL Brainstorm-J migrator: did_v1 lightsheetZarrLevel -> a
-%   `sampled_body` of the pyramid's observation when the level HOLDS bytes, or
-%   NOTHING (an empty cell) when it does not.
+%   `sampled_body` of the pyramid's observation; a FILE-LESS one when the level
+%   holds no bytes ([compression block and empty levels], Jess Haley,
+%   2026-10-26), where it emitted NOTHING before.
 %
-%   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'. An
-%   empty return is counted there, per class, as `emitted_nothing_by_class`:
-%   "consumed, nothing emitted" is a fact the run reports, never a silence.
+%   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
 %   THE DESIGN IS NOT SIGNED. It is the #73 lightsheet walkthrough L1-L4
 %   (DID-schema review/73/OPEN_ITEMS.md, walked 2026-09-25, agreed by jess, NO
@@ -54,9 +53,16 @@ function bodies = lightsheet_zarr_level(preBody)
 %     fill_value     the level's fill_value, as the literal the owner's
 %                       data_type reads (a dense grid; `complete` was
 %                       removed by AMENDMENT 6)
-%     compression    'blosc' for codec 'blosc' / 'blosc-zstd'; absent for
-%                       'raw'; codec_params DROPPED (L4: write-time settings;
-%                       a Blosc chunk header records shuffle and typesize)
+%     compression    the codec name VERBATIM ('blosc-zstd' stays
+%                       'blosc-zstd'; it was written 'blosc', which lost the
+%                       inner compressor -- [lossless means round trip], Jess
+%                       Haley, 2026-10-26); absent for 'raw'. codec_params: [compression block and empty
+%                       levels] (Jess Haley, 2026-10-26) gives the codec's
+%                       settings a home in a `{term, parameters}` compression
+%                       block, a schema change still to come; until then a
+%                       level whose codec_params hold settings beyond the codec
+%                       name is CARRIED WHOLE AS V1 (they were dropped under
+%                       #73 L4 as write-time settings).
 %     redundant      true for every level but level 0, the measurement (L1)
 %     conditions     reduced levels (level > 0) only: `summary statistic` =
 %                       'mean' | 'maximum' from reduction_function (L1 option
@@ -70,9 +76,14 @@ function bodies = lightsheet_zarr_level(preBody)
 %                       so it keeps the level's identity, as the pyramid's
 %                       observation keeps the pyramid's. Any edge a dataset
 %                       carries to the level resolves to its body.
-%   A level holding NO bytes -> nothing (L3(c)). Its id names no document after
-%   migration, so an edge a dataset carries to it is an ORPHAN in the batch
-%   reference check, which gates.
+%   A level holding NO bytes -> a FILE-LESS sampled_body, built as above (the
+%   level's id, dimensions, covariates and the rest), its description saying no
+%   bytes are stored and its `files` removed, as lightsheet_zarr_pyramid's
+%   sourcelessStoreBody does ([compression block and empty levels] (2), Jess
+%   Haley, 2026-10-26, as [no-source pyramid gets a file-less store body]).
+%   This replaces #73 L3(c) ("a level holding NO bytes -> nothing"), which left
+%   an edge to the level orphaned. One that names no pyramid has no owner and
+%   is carried whole as v1.
 %
 %   ---------------------------------------------------------------------
 %   OPEN POINTS -- RECORDED, NOT RESOLVED
@@ -123,12 +134,30 @@ if nHeld == 0
              'chunk.bin file: its bytes are missing, not absent by design.'], ...
             baseId(preBody), nStored);
     end
-    bodies = {};      % metadata only -- folds to nothing (#73 L3(c))
+end
+
+% [compression block and empty levels] (1), interim (Jess Haley, 2026-10-26):
+% codec settings beyond the codec name have no home until `compression` is a
+% {term, parameters} block, so such a level is carried whole as v1.
+extraSettings = codecSettingsBeyondName(char(field(blk, 'codec', 'raw')), ...
+    field(blk, 'codec_params', ''));
+if ~isempty(extraSettings)
+    did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
+        ['unplaced: lightsheet_zarr_level.codec_params (' ...
+         strjoin(extraSettings, ', ') ')']);
+    bodies = {preBody};
     return;
 end
 
 [~, sessionId, created] = baseOf(preBody);
 ownerId = depValue(preBody, 'lightsheetZarrPyramid_id');
+if isempty(ownerId) && nHeld == 0
+    % no bytes and no pyramid: no observation to own a file-less body either
+    did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
+        'unplaced: a level holding no bytes that names no lightsheetZarrPyramid_id');
+    bodies = {preBody};
+    return;
+end
 if isempty(ownerId)
     error('did2:migrators_j:lightsheet:noPyramid', ...
         ['lightsheetZarrLevel %s holds bytes but names no pyramid ' ...
@@ -175,7 +204,7 @@ opts = {'DatumOrder', char(field(blk, 'chunk_order', 'C')), ...
 if ~isempty(byteOrder)
     opts = [opts, {'ByteOrder', byteOrder}];
 end
-compression = compressionOf(char(field(blk, 'codec', 'raw')), baseId(preBody));
+compression = compressionOf(char(field(blk, 'codec', 'raw')));
 if ~isempty(compression)
     opts = [opts, {'Compression', compression}];
 end
@@ -187,9 +216,62 @@ if ~isMeasurement
     end
 end
 
+if nHeld == 0
+    % a level holding no bytes (materializeChunks off, the writer's default)
+    opts = [opts, {'Description', ['a pyramid level holding no bytes: no ' ...
+        'chunk data is stored for it']}];
+end
 body = did2.build.sampledBody(ownerId, dims, 'Covariates', covs, opts{:});
-body.files = files;      % the level's own files, renamed (see header)
+if nHeld == 0
+    % NO FILE: the builder defaults to one member; this body has none
+    % (lightsheet_zarr_pyramid.m sourcelessStoreBody)
+    if isfield(body, 'files'); body = rmfield(body, 'files'); end
+else
+    body.files = files;      % the level's own files, renamed (see header)
+end
 bodies = {body};
+end
+
+function keys = codecSettingsBeyondName(codec, params)
+%CODECSETTINGSBEYONDNAME The codec_params keys that say more than the codec's
+%   name ({} when none). The writer stamps '{}' for 'raw' and, for
+%   'blosc-zstd', '{"cname":"zstd","clevel":<n>,"shuffle":1,"blocksize":0}'
+%   (NDI makePyramid.m codecParamsJSON). `cname` restates the codec only when
+%   the codec names it ('blosc-zstd' and "zstd"); every other key with a value
+%   is a write-time setting. Text that is not a JSON object is itself unplaced.
+keys = {};
+if isempty(params)
+    return;
+end
+p = params;
+if ischar(p) || isstring(p)
+    p = strtrim(char(p));
+    if isempty(p); return; end
+    try
+        p = jsondecode(p);
+    catch
+        keys = {'(not JSON)'};
+        return;
+    end
+end
+if isempty(p)
+    return;
+end
+if ~isstruct(p) || ~isscalar(p)
+    keys = {'(not one JSON object)'};
+    return;
+end
+fns = fieldnames(p);
+named = lower(strtrim(codec));
+for k = 1:numel(fns)
+    v = p.(fns{k});
+    if isempty(v); continue; end
+    if strcmp(fns{k}, 'cname') && (ischar(v) || isstring(v)) ...
+            && endsWith(named, ['-' lower(char(v))])
+        continue;   % the inner compressor the codec's own name states
+    end
+    keys{end+1} = fns{k}; %#ok<AGROW>
+end
 end
 
 % ===================== helpers =============================================
@@ -213,22 +295,17 @@ switch reduction
 end
 end
 
-function c = compressionOf(codec, id)
+function c = compressionOf(codec)
 arguments
     codec {mustBeText}
-    id {mustBeText}
 end
 
-switch lower(strtrim(codec))
-    case {'', 'raw'}
-        c = '';
-    case {'blosc', 'blosc-zstd'}
-        c = 'blosc';
-    case 'zstd'
-        c = 'zstd';
-    otherwise
-        error('did2:migrators_j:lightsheet:unknownCodec', ...
-            'lightsheetZarrLevel %s: codec "%s" has no compression mapping.', id, codec);
+% the codec name verbatim ([lossless means round trip]: 'blosc-zstd' written
+% as 'blosc' could not be read back); 'raw' is no compression
+if any(strcmpi(strtrim(codec), {'', 'raw'}))
+    c = '';
+else
+    c = strtrim(char(codec));
 end
 end
 

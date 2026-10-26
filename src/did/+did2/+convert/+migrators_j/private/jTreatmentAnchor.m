@@ -49,10 +49,23 @@ if ischar(t) || isstring(t); t = str2double(t); end
 if ~isnumeric(t) || isempty(t) || ~isfinite(double(t(1))); return; end
 t = double(t(1));
 clk = jGetCharAny(block, {'clocktype', 'clockType'});
-if isempty(clk); clk = 'dev_local_time'; end
-sec = struct('node', 'om:second-Time', 'name', 'second');
+if isempty(clk)
+    % [one-reading quick answers] (Q2): no clock type is not `dev_local_time`;
+    % treatment_transfer carries such a document before reaching here
+    return;
+end
+% (Q2) "a global-clock time is written in its true unit": NDI's
+% treatment_transfer schema states the timestamp is "a datenum (if global
+% clock) or in seconds (if local clock)", so a global clock's number is DAYS
+% (its source unit), a local clock's seconds.
+unit = struct('node', 'om:second-Time', 'name', 'second');
+startSec = t;
+if any(strcmp(regexprep(clk, '^approx_', ''), {'utc', 'dev_global_time', 'exp_global_time'}))
+    unit = struct('node', 'om:day', 'name', 'day');
+    startSec = t * 86400;
+end
 o = jOpts(preBody);
 anchor = did2.build.relativeTimeReference(jSid(preBody), 'Clock', clk, ...
-    'Start', t, 'StartSourceValue', t, 'StartSourceUnit', sec, ...
+    'Start', startSec, 'StartSourceValue', t, 'StartSourceUnit', unit, ...
     'StartApproximate', false, o{:});
 end

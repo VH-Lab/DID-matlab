@@ -282,9 +282,12 @@ end
 % ===================== the guards ==========================================
 
 function testAWaveformlessDocumentMintsNoObservation(testCase)
+% (the counts go with the waveform: beside no waveform a 21 / 32 restates
+% nothing and is carried as v1, testWithNoWaveformOnlyTheWritersCountsAreDropped)
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
-    {'mean_waveform', 'waveform_sample_times'});
+    {'mean_waveform', 'waveform_sample_times', ...
+     'number_of_samples_per_channel', 'number_of_channels'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
 verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')));
@@ -294,18 +297,49 @@ verifyEqual(testCase, numel(out), 11, ...   % the 12 of the full fold, less the 
 end
 
 
-function testACountThatDisagreesWithTheArrayShapeIsRefused(testCase)
+function testACountThatDisagreesWithTheArrayShapeIsCarriedAsV1(testCase)
+% INVERTED 2026-10-26 (was testACountThatDisagreesWithTheArrayShapeIsRefused,
+% which asserted did2:convert:neuronWaveformShapeMismatch, a quarantine).
 % `number_of_samples_per_channel` and `number_of_channels` are DROPPED as
 % derivable -- the writer assigns them from size(...,1)/size(...,2) itself. But
-% redundancy is a property of the DOCUMENT, not of the class: a disagreement
-% means one of the two is wrong, and silently preferring the matrix would drop a
-% real discrepancy. It holds on 21 of 21 real documents, so refusing costs
-% nothing today and refuses an unknown writer tomorrow.
+% redundancy is a property of the DOCUMENT, not of the class: a count that
+% disagrees with the matrix restates nothing, so the document is carried whole
+% as v1 ([restated values checked], Jess Haley, 2026-10-26).
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular.number_of_channels = 64;      % the matrix says 32
-verifyError(testCase, ...
-    @() did2.convert.migrators_j.neuron_extracellular(v1), ...
-    'did2:convert:neuronWaveformShapeMismatch');
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'returned unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+    'number_of_channels'), notes.carried_as_v1.distinct_details{1});
+end
+
+function testWithNoWaveformOnlyTheWritersCountsAreDropped(testCase)
+% No waveform, so the counts restate nothing but the writers' own value for an
+% empty one: 1 (kilosort / kiasort / jrclust probe.m, max(size(meanWf,k),1)),
+% 0 (spikesorter.m, size of an empty mean shape) or absent. Those are dropped;
+% any other count is carried whole as v1 ([lossless means round trip]).
+v1 = neuronExtracellularV1();
+v1.neuron_extracellular.mean_waveform = [];
+v1.neuron_extracellular.waveform_sample_times = [];
+v1.neuron_extracellular.number_of_samples_per_channel = 1;
+v1.neuron_extracellular.number_of_channels = 1;
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyGreaterThan(testCase, numel(out), 1, 'the writers'' 1 folds');
+v1.neuron_extracellular.number_of_channels = 32;
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'a 32 with no waveform is carried');
+end
+
+function testAFractionalCountIsCarriedAsV1(testCase)
+% A count of 31.6 does not restate the 32 columns (it was rounded and dropped).
+v1 = neuronExtracellularV1();
+v1.neuron_extracellular.number_of_channels = 31.6;
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'returned unchanged');
 end
 
 function testAnAbsentCountIsNotAnErrorBecauseThereIsNothingToCheck(testCase)
@@ -460,7 +494,8 @@ function testNoSoftwareEntityIsEmittedWhenNothingCanReferenceIt(testCase)
 % one, so none is minted.
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
-    {'quality_number', 'quality_label', 'cluster_index', 'mean_waveform', 'waveform_sample_times'});
+    {'quality_number', 'quality_label', 'cluster_index', 'mean_waveform', 'waveform_sample_times', ...
+     'number_of_samples_per_channel', 'number_of_channels'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
 verifyEqual(testCase, numel(out), 3, 'the unit, its derived_from and the anchor');

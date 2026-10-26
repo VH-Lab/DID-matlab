@@ -178,7 +178,11 @@ verifyFalse(testCase, isfield(s.stimulus_presentation.stimuli(1).parameters, 's_
 % the epoch string -- the future relative_reference's `relative_to`
 verifyEqual(testCase, d.get('epochid.epochid'), 't00003');
 % ...and the deferral is VISIBLE rather than looking like a successful migration
-verifyEqual(testCase, out.summary.unconverted_count, 1);
+verifyEqual(testCase, out.summary.unconverted_count, 1);% [stimulus_presentation retired] (Jess Haley, 2026-10-26): carried UNCHANGED
+% as v1 -- stamped did_v1 in pass 1, noted, never read against V_eta
+verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1');
+verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
+verifyEqual(testCase, numel(out.passthrough), 1);
 end
 
 function testStimulusElementIdSurvivesUnderNdisOwnName(testCase)

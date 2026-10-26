@@ -130,7 +130,8 @@ verifyEqual(testCase, char(align{1}.get('base.id')), 'map_0001', ...
 % ONLY relative_references in the batch.
 refs = ofClass(out, 'relative_time_reference');
 verifyNumElements(testCase, refs, 2, ...
-    'branch 1 emits exactly two endpoint references');
+    'the two per-system endpoint references, one on each epoch');
+verifyEqual(testCase, rep.syncrule_endpoint_references_minted, 2);
 end
 
 function testTheAlignmentAnchorsEachEndpointAtItsMintedEpoch(testCase)
@@ -164,11 +165,18 @@ verifyEqual(testCase, char(did2.unittest.helpers.classKey(fromRef)), ...
 verifyEqual(testCase, char(did2.unittest.helpers.classKey(toRef)), ...
     'relative_time_reference');
 
-% each reference anchored to ITS endpoint's minted epoch, and NOT left empty.
-anchors = sort({depValueOf(fromRef, 'referent_id'), depValueOf(toRef, 'referent_id')});
-expected = sort({epochId('t00001'), epochId('t00002')});
-verifyEqual(testCase, anchors, expected, ...
-    'the endpoints must anchor at the two minted epochs, not at any epoch');
+% INVERTED 2026-10-26 (it asserted each reference anchored at its epoch).
+% Decided by Jess Haley, 2026-10-26 [device clocks on one epoch] (3): the
+% alignment is between the two PER-SYSTEM references -- referent the
+% acquisition system the endpoint names -- each HELD by its endpoint's epoch.
+verifyEqual(testCase, depValueOf(fromRef, 'referent_id'), 'daq_sync');
+verifyEqual(testCase, depValueOf(toRef, 'referent_id'), 'daq_bpod');
+eA = docWithId(out, epochId('t00001'));
+eB = docWithId(out, epochId('t00002'));
+verifyTrue(testCase, any(strcmp(depValuesOf(eA, 'time_reference_id'), fromId)), ...
+    'epoch t00001 holds the endpoint-A reference');
+verifyTrue(testCase, any(strcmp(depValuesOf(eB, 'time_reference_id'), toId)), ...
+    'epoch t00002 holds the endpoint-B reference');
 end
 
 function testTheRestoredEdgesResolveAndTheStampsDoNotPersist(testCase)
@@ -215,6 +223,37 @@ verifyFalse(testCase, hasDep(kept{1}, 'epoch_id_1'), ...
     'a refused fold must leave no stamped edge behind on the passthrough');
 end
 
+function testAnEndpointNamingNoSystemIsCarried(testCase)
+% [device clocks on one epoch] (3): an endpoint whose objectname names no
+% acquisition system cannot be placed on a per-system reference; the mapping is
+% carried, not folded onto an epoch-anchored reference.
+v1 = batchWithBothEndpointEpochs();
+v1{end}.syncrule_mapping.epochnode_b.objectname = 'no_such_rig';
+[out, rep] = mintFrom(v1);
+verifyEqual(testCase, rep.syncrule_endpoint_unplaced, 1);
+verifyEqual(testCase, rep.syncrule_folds_emitted, 0);
+verifyEmpty(testCase, ofClass(out, 'clock_alignment'));
+verifyNumElements(testCase, ofClass(out, 'syncrule_mapping'), 1);
+end
+
+function testAnEndpointProbemapThatIsNotTheManifestIsCarried(testCase)
+% "`epochprobemap` only when it equals the epoch's manifest, else the mapping
+% is carried as v1" ([device clocks on one epoch] (3)).
+v1 = batchWithBothEndpointEpochs();
+v1{end}.syncrule_mapping.epochnode_a.epochprobemap = sprintf('name\treference\ttype\nother\t1\tn-trode\n');
+[out, rep] = mintFrom(v1);
+verifyEqual(testCase, rep.syncrule_endpoint_unplaced, 1);
+verifyEmpty(testCase, ofClass(out, 'clock_alignment'));
+end
+
+function testAnEndpointObjectclassThatIsNotTheSystemsIsCarried(testCase)
+v1 = batchWithBothEndpointEpochs();
+v1{end}.syncrule_mapping.epochnode_a.objectclass = 'ndi.daq.system.other';
+[out, rep] = mintFrom(v1);
+verifyEqual(testCase, rep.syncrule_endpoint_unplaced, 1);
+verifyEmpty(testCase, ofClass(out, 'clock_alignment'));
+end
+
 function testOnlyOneEndpointResolvingIsStillARefusal(testCase)
 % BRANCH 1 is gated on BOTH endpoints. A mapping with only endpoint A's epoch in
 % the batch cannot anchor endpoint B, so the whole fold refuses -- one endpoint
@@ -255,7 +294,8 @@ for f = {'syncrule_seen', 'syncrule_already_folded', 'syncrule_edges_stamped', .
          'syncrule_folds_emitted', 'syncrule_folds_withheld', ...
          'syncrule_refused_no_epoch_string', 'syncrule_refused_no_epoch_document', ...
          'syncrule_refused_migrator_declined', 'syncrule_refused_unsafe_output', ...
-         'syncrule_refused_total', 'syncrule_fold_vacuous'}
+         'syncrule_refused_total', 'syncrule_fold_vacuous', ...
+         'syncrule_endpoint_unplaced', 'syncrule_endpoint_references_minted'}
     verifyTrue(testCase, isfield(rep, f{1}), ...
         sprintf('the report is missing the `%s` counter', f{1}));
 end
@@ -320,11 +360,45 @@ function v1 = batchWithBothEndpointEpochs()
 %   The manifest epoch strings (t00001, t00002) and session (sess_0001) MATCH the
 %   epochnode ids and base.session_id the mapping fixture carries, so the fold
 %   resolves both endpoints.
+% [device clocks on one epoch] (3): each endpoint's objectname names a v1
+%   daqsystem (base.id 'daq_<rig>'), whose file navigator is the one its
+%   epoch's manifest was ingested by, with the endpoint's own epochprobemap.
+m = mappingFixture(false);
+efi1 = ingestedBody('efi_1', 'sess_0001', 't00001', 'nav_sync');
+efi1.epochfiles_ingested.epochprobemap = m.syncrule_mapping.epochnode_a.epochprobemap;
+efi2 = ingestedBody('efi_2', 'sess_0001', 't00002', 'nav_bpod');
+efi2.epochfiles_ingested.epochprobemap = m.syncrule_mapping.epochnode_b.epochprobemap;
 v1 = { ...
     sessionBody('sd_A', 'sess_0001', 'exp1'), ...
-    ingestedBody('efi_1', 'sess_0001', 't00001', 'nav_1'), ...
-    ingestedBody('efi_2', 'sess_0001', 't00002', 'nav_2'), ...
-    mappingFixture(false)};
+    daqsystemBody('sync'), daqsystemBody('bpod'), ...
+    efi1, efi2, m};
+end
+
+function v1 = daqsystemBody(rig)
+%DAQSYSTEMBODY A did_v1 daqsystem named vhtaste_<RIG> (base.id daq_<RIG>,
+%   preserved onto its acquisition_system), its navigator nav_<RIG>.
+v1 = struct();
+v1.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.base = struct('id', ['daq_' rig], 'session_id', 'sess_0001', ...
+    'name', ['vhtaste_' rig], 'datestamp', '2024-05-01T00:00:00.000Z');
+v1.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'id', {['nav_' rig], ['rdr_' rig]});
+end
+
+function v = depValuesOf(doc, name)
+%DEPVALUESOF Every value of a (repeated) depends_on entry.
+deps = doc.get('depends_on');
+v = {};
+for k = 1:numel(deps)
+    if iscell(deps); e = deps{k}; else; e = deps(k); end
+    if ~isstruct(e) || ~isfield(e, 'name') || ~strcmp(char(e.name), name); continue; end
+    if isfield(e, 'value') && ~isempty(e.value); v{end+1} = char(e.value); %#ok<AGROW>
+    elseif isfield(e, 'document_id') && ~isempty(e.document_id)
+        v{end+1} = char(e.document_id); %#ok<AGROW>
+    end
+end
 end
 
 function v1 = sessionBody(docId, sessionId, reference)
@@ -415,4 +489,5 @@ v1.base = struct('id', 'map_0001', 'session_id', 'sess_0001', ...
 v1.syncrule_mapping = struct('cost', 1, 'mapping', [1.0002 -0.5], ...
     'epochnode_a', epochNodeFixture('1', 'vhtaste_sync'), ...
     'epochnode_b', epochNodeFixture('2', 'vhtaste_bpod'));
+% (the v1 body is ordinary; struct() of a struct field keeps it scalar)
 end

@@ -405,7 +405,10 @@ elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp
 elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
 ee   = elementEpochBody('ee_1', 'sess_sp', 'el_neuron', 't00sp', true);
 ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', {{'tet', '1', 'n-trode', 'L'}});
-[out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ee, ing});
+% the rig the probemap's device string names ([device clocks on one epoch]:
+% an extent tied to no acquisition system is carried, not dissolved)
+daq  = daqsystemBody('daq_sp', 'sess_sp', 'vhspike2');
+[out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.spike_epochs_seen, 1);
 verifyEqual(testCase, rep.spike_trains_emitted, 1);
 verifyEqual(testCase, rep.spike_instrument_resolved, 1);
@@ -442,13 +445,17 @@ end
 function testTheTrainIsAnchoredToItsEpochWithItsOwnExtent(testCase)
 % F1: the relative reference is built from the v1 t0_t1 + epoch_clock and
 % points at the minted `epoch` entity -- not a shared 'during' anchor.
-% No epochfiles_ingested here: a non-ingested session (20211116's shape).
+% (An epochfiles_ingested and its rig are given since 2026-10-26: an extent
+% tied to no acquisition system is carried, [device clocks on one epoch];
+% testAnExtentTiedToNoSystemKeepsItsAcquisitionEpoch.)
 subj = subjectBody('specimen_sx', 'sess_sx', 'L');
 elP  = elementBody('el_probe_x', 'sess_sx', 'tet', '1', 'n-trode', 1, 'specimen_sx');
 elN  = derivedElementBody('el_neuron_x', 'sess_sx', 'n1', 'spikes', 'el_probe_x');
 ee   = elementEpochBody('ee_x', 'sess_sx', 'el_neuron_x', 't00sx', true);
 ee.element_epoch.t0_t1 = [2 579.85];
-[out, rep] = decompose({sessionBody('sd_sx', 'sess_sx', 'ref'), subj, elP, elN, ee});
+ing  = ingestedWithRows('ing_sx', 'sess_sx', 't00sx', {{'tet', '1', 'n-trode', 'L'}});
+daq  = daqsystemBody('daq_sx', 'sess_sx', 'vhspike2');
+[out, rep] = decompose({sessionBody('sd_sx', 'sess_sx', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.acquisition_epoch_dissolved, 1);
 verifyEqual(testCase, rep.element_epoch_anchors_minted, 1);
 o = docById(out, 'ee_x');
@@ -470,12 +477,15 @@ end
 function testAnUndecidedElementTypeKeepsItsAcquisitionEpochCounted(testCase)
 % F1 AMENDMENT 1: key on the element `type`. A type with no decided row keeps
 % its acquisition_epoch, counted by type -- never given a spike-shaped home.
-% (JH's `position` / `distance` got rows on 2026-10-22; `lfp` stands in.)
+% (`lfp` stands in; JH's `position` / `distance` are kept the same way since
+% 2026-10-26, testJHPositionAndDistanceEpochsStayAcquisitionEpochs.)
 subj = subjectBody('specimen_sp2', 'sess_sp2', 'W');
 elP  = elementBody('el_probe_p', 'sess_sp2', 'cam', '1', 'camera', 1, 'specimen_sp2');
 elN  = derivedElementBody('el_lfp', 'sess_sp2', 'w1_lfp', 'lfp', 'el_probe_p');
 ee   = elementEpochBody('ee_p', 'sess_sp2', 'el_lfp', 't00sp2', true);
-[out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee});
+ing  = ingestedWithRows('ing_sp2', 'sess_sp2', 't00sp2', {{'cam', '1', 'camera', 'W'}});
+daq  = daqsystemBody('daq_sp2', 'sess_sp2', 'vhspike2');
+[out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
 verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
 verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided, 1);
@@ -484,7 +494,7 @@ verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 1);
 verifyEqual(testCase, rep.spike_epochs_seen, 0);
 end
 
-% ===================== JH position and distance (2026-10-22) ============
+% ===================== JH position and distance (left 2026-10-26) =======
 
 function [els, ees, dm] = jhWorm(sid, stem, wormId, withPatch)
 %JHWORM A v1 JH worm body part as ndi.setup.conv.haley doImport writes it
@@ -528,71 +538,49 @@ v1.element_epoch = struct('epoch_clock', 'dev_local_time,exp_global_time', ...
     't0_t1', [0 739081.594; 3599.8 739081.636]);
 end
 
-function testJHPositionAndDistanceDissolveIntoTrackCalculations(testCase)
-% Decided by Jess Haley, 2026-10-22 [JH position and distance]: a position
-% epoch -> a position calculation of the worm; a distance epoch -> a length
-% calculation (signed distance to region boundary) and an item calculation
-% (nearest bacterial patch), input the position calculation; each anchored to
-% its epoch; the .vhsb carried as one opaque_body.
+function testJHPositionAndDistanceEpochsStayAcquisitionEpochs(testCase)
+% INVERTS testJHPositionAndDistanceDissolveIntoTrackCalculations: the JH worm
+% track shapes left the generic migration (Decided by Jess Haley, 2026-10-26
+% [dataset audit batch 1 and 2] (1), superseding [JH position and distance] for
+% the generic stage). A `position` or `distance` epoch has no row, so it keeps
+% its acquisition_epoch, counted by type; no track calculation, coordinate
+% system or nearest-patch item is written.
 sid = 'sess_jh';
 worm = subjectBody('worm_1', sid, 'N2_worm0001');
 patch = subjectBody('patch_1', sid, 'patch 1');
-patch2 = subjectBody('patch_2', sid, 'patch 2');
-% two patches: the migrated endpoint is a STRING ARRAY of ids (corpus JH run
-% 39868711230 failed on that shape: MATLAB:REGEXP:invalidInputs)
-[els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1,patch_2');
-dm.distance_metadata.integerIDs_B = [1 2];
-[out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch, patch2}, els, ees, {dm}]);
+[els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1');
+[out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch}, els, ees, {dm}]);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
-verifyEqual(testCase, rep.acquisition_epoch_dissolved, 2);
-verifyEqual(testCase, rep.position_calculations_emitted, 1);
-verifyEqual(testCase, rep.distance_calculations_emitted, 1);
-verifyEqual(testCase, rep.nearest_patch_calculations_emitted, 1);
-verifyEqual(testCase, rep.coordinate_systems_minted, 1);
-verifyEqual(testCase, rep.distance_without_position, 0);
-verifyEqual(testCase, rep.nearest_patch_without_patches, 0);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
+% kept either way: JH's v1 holds no daqsystem and no epochprobemap, so the
+% extents tie to no acquisition system and are carried ([device clocks on one
+% epoch]); with a tie they would be kept as an undecided type
+verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided ...
+    + rep.acquisition_epoch_kept_extent_carried, 2);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+verifyEmpty(testCase, bodiesOfClass(out, 'calculation+position'));
+verifyEmpty(testCase, bodiesOfClass(out, 'calculation+length'));
+verifyEmpty(testCase, bodiesOfClass(out, 'calculation+item'));
+verifyEmpty(testCase, bodiesOfClass(out, 'coordinate_system'));
+verifyFalse(testCase, isfield(rep, 'position_calculations_emitted'));
 verifyEmpty(testCase, out.quarantine);
-pos = docById(out, 'ee_N2_x_midpoint_pos');
-assertNotEmpty(testCase, pos, 'the position calculation keeps the epoch id');
-verifyEqual(testCase, char(did2.unittest.helpers.classKey(pos)), 'calculation+position');
-verifyEqual(testCase, depVal(pos, 'entity_id'), 'worm_1', 'about the worm');
-verifyEqual(testCase, depVal(pos, 'instrument_id'), 'el_N2_x_midpoint_pos');
-verifyEqual(testCase, char(pos.statement.variable.node), 'PATO:0000140');
-verifyEqual(testCase, char(pos.interaction.method.term.node), 'EMPTY:0000301');
-cs = docById(out, depVal(pos, 'coordinate_system_id'));
-assertNotEmpty(testCase, cs);
-verifyEqual(testCase, char(cs.coordinate_system.reference_point.node), 'EMPTY:0000310');
-ref = docById(out, depVal(pos, 'time_reference_id'));
-verifyEqual(testCase, char(ref.relative_time_reference.value.clock.name), 'dev_local_time');
-verifyEqual(testCase, ref.relative_time_reference.value.end.seconds, 3599.8, 'AbsTol', 1e-9);
-len = docById(out, 'ee_N2_x_midpoint_dist');
-assertNotEmpty(testCase, len);
-verifyEqual(testCase, char(did2.unittest.helpers.classKey(len)), 'calculation+length');
-verifyEqual(testCase, char(len.statement.variable.node), 'EMPTY:0000384');
-verifyEqual(testCase, depVals(len, 'input_id'), {'ee_N2_x_midpoint_pos'});
-items = bodiesOfClass(out, 'calculation+item');
-assertEqual(testCase, numel(items), 1);
-verifyEqual(testCase, char(items{1}.statement.variable.node), 'EMPTY:0000297');
-verifyEqual(testCase, depVals(items{1}, 'item_id'), {'patch_1', 'patch_2'});
-verifyEqual(testCase, depVals(items{1}, 'input_id'), {'ee_N2_x_midpoint_pos'});
-ob = bodiesOfClass(out, 'opaque_body');
-owners = {};
-for i = 1:numel(ob); owners{end+1} = sort(depVals(ob{i}, 'owner_id')); end %#ok<AGROW>
-verifyTrue(testCase, any(cellfun(@(o) isequal(o, sort({'ee_N2_x_midpoint_dist', char(items{1}.base.id)})), owners)), ...
-    'the distance .vhsb is one body owned by both distance calculations');
 end
 
-function testAJHDistanceWithNoPositionHasNoInputCounted(testCase)
-sid = 'sess_jh2';
-worm = subjectBody('worm_2', sid, 'N2_worm0002');
-[els, ees] = jhWorm(sid, 'N2_y_head', 'worm_2', '');
-[out, rep] = decompose({sessionBody('sd_jh2', sid, 'ref'), worm, els{2}, ees{2}});
-verifyEqual(testCase, rep.acquisition_epoch_dissolved, 1);
-verifyEqual(testCase, rep.distance_without_position, 2, 'both distance statements');
-verifyEqual(testCase, rep.nearest_patch_without_patches, 1);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
-verifyEmpty(testCase, out.quarantine);
+function testAnExtentTiedToNoSystemKeepsItsAcquisitionEpoch(testCase)
+% [device clocks on one epoch] (Jess Haley, 2026-10-26): an epoch extent that
+% cannot be tied to exactly one acquisition system carries its source. No
+% probemap names the probe, so epochMint lists the acquisition_epoch as carried
+% and it is kept whole: no spike train is built from it.
+subj = subjectBody('specimen_su', 'sess_su', 'L');
+elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
+elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u');
+ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
+[out, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, ee});
+verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 1);
+verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
+verifyEqual(testCase, rep.spike_trains_emitted, 0);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 1);
 end
 
 function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)
@@ -603,7 +591,8 @@ elP  = elementBody('el_probe_q', 'sess_sq', 'tet', '1', 'n-trode', 1, 'specimen_
 elN  = derivedElementBody('el_neuron_q', 'sess_sq', 'n1', 'spikes', 'el_probe_q');
 ee   = elementEpochBody('ee_q', 'sess_sq', 'el_neuron_q', 't00sq', false);
 ing  = ingestedWithRows('ing_sq', 'sess_sq', 't00sq', {{'tet', '1', 'n-trode', 'L'}});
-[~, rep] = decompose({sessionBody('sd_sq', 'sess_sq', 'ref'), subj, elP, elN, ee, ing});
+daq  = daqsystemBody('daq_sq', 'sess_sq', 'vhspike2');
+[~, rep] = decompose({sessionBody('sd_sq', 'sess_sq', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.spike_epochs_seen, 1);
 verifyEqual(testCase, rep.spike_epochs_no_file, 1);
 verifyEqual(testCase, rep.spike_trains_emitted, 0);
@@ -674,7 +663,8 @@ ing  = ingestedWithRows('ing_pf', 'sess_pf', 't00pf', {{'tet', '1', 'n-trode', '
 pv   = pyraviewV1('pv_f', 'sess_pf', 'el_pf', 't00pf');
 pv.epochclocktimes.t0_t1 = pvT0T1;
 pv.pyraview.native_start_time = nativeStart;
-v1 = {sessionBody('sd_pf', 'sess_pf', 'ref'), subj, el, ing, pv};
+v1 = {sessionBody('sd_pf', 'sess_pf', 'ref'), subj, el, ing, pv, ...
+    daqsystemBody('daq_pf', 'sess_pf', 'vhspike2')};
 if withEpochExtent
     v1{end+1} = elementEpochBody('ee_pf', 'sess_pf', 'el_pf', 't00pf', false);
 end
@@ -1012,42 +1002,23 @@ v1.files = struct('file_list', {{'data.bin'}}, ...
         'parameters', '', 'location_type', 'file', 'ingest', 1)));
 end
 
-function testAMetadataArchiveBecomesTheStimulatorManipulationsBody(testCase)
+function testAMetadataArchiveIsLeftForNdisSecondPass(testCase)
+% INVERTS testAMetadataArchiveBecomesTheStimulatorManipulationsBody (#73 review
+% item 61). Decided by Jess Haley, 2026-10-26 [ingested stimulus file is a body
+% of the presentation]: the archive becomes a body of the epoch's
+% stimulus-presentation manipulation, made by NDI's second pass
+% (ndi.migrate.internal.ingestedStimulusBodies); this pass no longer folds it,
+% and the document stays the clean v1 carry, counted.
 [out, rep] = metadataDecompose('t0m');
 verifyEqual(testCase, rep.metadata_archives_inspected, 1);
-verifyEqual(testCase, rep.metadata_archives_to_body, 1);
-verifyEqual(testCase, rep.metadata_archives_kept_no_owner, 0);
-verifyEqual(testCase, rep.metadata_archives_quarantined, 0);
-manips = bodiesNamed(out, 'migrated_probemap_manipulation');
-assertEqual(testCase, numel(manips), 1);
-d = docById(out, 'mda_m');
-assertNotEmpty(testCase, d, 'the body keeps the archive''s id');
-verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), 'opaque_body');
-verifyEqual(testCase, depVals(d, 'owner_id'), {char(manips{1}.base.id)});
-% UPDATED 2026-10-22, Decided by Jess Haley [NDI binary format]:
-% EMPTY:0000367 "NDI binary format" (was EDAM:format_2333 "Binary format").
-verifyEqual(testCase, char(d.data_body.format.node), 'EMPTY:0000367');
-verifyEqual(testCase, char(d.data_body.format.name), 'NDI binary format');
-verifyEqual(testCase, char(d.data_body.filename), 'data.bin');
-verifyEqual(testCase, char(d.data_body.compression), 'gzip');
-verifyFalse(testCase, isfield(d, 'value'), 'an opaque body carries no data_type');
-fi = d.files.file_info;
-verifyEqual(testCase, char(fi(1).name), 'body_data_0');
-verifyEqual(testCase, char(fi(1).locations.location), '/tmp/abc123.nbf.tgz');
-verifyEmpty(testCase, bodiesOfClass(out, 'daqmetadatareader_epochdata_ingested'), ...
-    'the v1 document is replaced: its one file has a new owner');
-end
-
-function testAMetadataArchiveWithNoStimulatorManipulationIsKept(testCase)
-% another epoch's archive: no stimulator manipulation of ITS epoch -> kept, counted
-[out, rep] = metadataDecompose('t9z');
-verifyEqual(testCase, rep.metadata_archives_inspected, 1);
-verifyEqual(testCase, rep.metadata_archives_to_body, 0);
-verifyEqual(testCase, rep.metadata_archives_kept_no_owner, 1);
+verifyEqual(testCase, rep.metadata_archives_carried_for_ndi, 1);
 d = docById(out, 'mda_m');
 assertNotEmpty(testCase, d);
 verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), ...
     'daqmetadatareader_epochdata_ingested');
+verifyEqual(testCase, char(d.document_class.schema_version), 'did_v1');
+verifyEmpty(testCase, bodiesOfClass(out, 'opaque_body'), ...
+    'no body is made from the archive here');
 end
 
 function testARigWithNoDaqsystemGetsNoSystemAndIsCounted(testCase)

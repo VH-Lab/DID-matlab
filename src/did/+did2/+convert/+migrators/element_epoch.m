@@ -38,6 +38,18 @@ function v2Body = element_epoch(preBody)
 %
 %   A legacy `clocktype` v1 spelling (matching the epochclocktimes
 %   superclass naming) is also accepted defensively and renamed.
+%
+%   t0_t1 MUST MATCH THE CLOCKS ([small unread settings] (4), Jess Haley,
+%   2026-10-26). A t0_t1 that is missing, not numeric, or whose column count
+%   is not the clock count (either direction) is not converted: the body is
+%   returned UNCHANGED with a `carried_as_v1` note, and the callers
+%   (+migrators_j/element_epoch, +migrators_j/oneepoch) carry the document
+%   whole as v1. Until 2026-10-26 the clocks were zero-padded (a start-0 /
+%   end-0 clock the source never stated) or truncated (extents dropped);
+%   both invented or lost values ([no invented values], Jess Haley,
+%   2026-10-25). So is a body naming no clock (it was read as
+%   'dev_local_time'), and one whose legacy `clocktype` differs from its
+%   `epoch_clock` (the clocktype was dropped).
 
 arguments
     preBody (1,1) struct
@@ -52,15 +64,44 @@ end
 
 block = v2Body.element_epoch;
 
+% The clock names must be stated ([no invented values], Jess Haley,
+% 2026-10-25): no `epoch_clock` (nor legacy `clocktype`) is not read as
+% 'dev_local_time'; and `clocktype` beside `epoch_clock` is dropped only when it
+% restates it ([lossless means round trip]). Otherwise the body is carried.
+why = '';
 if isfield(block, 'clocktype') && ~isfield(block, 'epoch_clock')
     block.epoch_clock = char(block.clocktype);
     block = rmfield(block, 'clocktype');
 elseif isfield(block, 'clocktype')
-    block = rmfield(block, 'clocktype');
+    if strcmp(strtrim(char(block.clocktype)), strtrim(char(block.epoch_clock)))
+        block = rmfield(block, 'clocktype');
+    else
+        why = 'element_epoch.clocktype (differs from epoch_clock)';
+    end
 end
-
-names = parseClockNames(block);
-pairs = parseT0T1Matrix(block, numel(names));
+if isempty(why) && (~isfield(block, 'epoch_clock') || isempty(strtrim(char(block.epoch_clock))))
+    why = 'element_epoch.epoch_clock (missing: no clock is named)';
+end
+names = {};
+if isempty(why)
+    names = parseClockNames(block);
+    t = t0t1Mismatch(block, numel(names));
+    if ~isempty(t); why = ['element_epoch.t0_t1 (' t ')']; end
+end
+if ~isempty(why)
+    cn = 'element_epoch';
+    if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
+        cn = char(preBody.document_class.class_name);
+    end
+    id = '';
+    if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+        id = char(preBody.base.id);
+    end
+    did2.convert.reportNote('carried_as_v1', cn, id, ['unplaced: ' why]);
+    v2Body = preBody;   % unchanged: the callers carry it whole as v1
+    return;
+end
+pairs = parseT0T1Matrix(block);
 
 clocks = buildClockRecords(names, pairs);
 
@@ -86,9 +127,45 @@ for k = 1:numel(parts)
 end
 end
 
-function pairs = parseT0T1Matrix(block, nClocks)
+function why = t0t1Mismatch(block, nClocks)
+%T0T1MISMATCH '' when t0_t1 states exactly one [t0, t1] per clock, else why not.
+if ~isfield(block, 't0_t1')
+    why = 'missing';
+    return;
+end
+raw = block.t0_t1;
+if ~isnumeric(raw) || isempty(raw)
+    why = 'not numeric';
+    return;
+end
+n = nColumns(raw);
+if isnan(n)
+    why = sprintf('a %dx%d matrix is not one [t0; t1] per clock', size(raw, 1), size(raw, 2));
+elseif n ~= nClocks
+    why = sprintf('%d column(s) for %d clock(s)', n, nClocks);
+else
+    why = '';
+end
+end
+
+function n = nColumns(raw)
+%NCOLUMNS How many clocks a numeric t0_t1 states, by the shapes parseT0T1Matrix
+%   reads; NaN for any other shape.
+if isvector(raw) && numel(raw) == 2
+    n = 1;
+elseif ismatrix(raw) && size(raw, 1) == 2 && size(raw, 2) >= 1
+    n = size(raw, 2);
+elseif ismatrix(raw) && size(raw, 2) == 2
+    n = size(raw, 1);
+else
+    n = NaN;
+end
+end
+
+function pairs = parseT0T1Matrix(block)
 % Returns an N-by-2 numeric matrix where row k is clock k's [t0, t1],
-% the format buildClockRecords consumes.
+% the format buildClockRecords consumes. Called only once t0t1Mismatch has
+% found exactly one [t0, t1] per clock (no padding, no truncation).
 %
 % Canonical did_v1 storage is 2-by-N (rows = [t0; t1], columns =
 % clocks) per NDI element_epoch_schema.json. A length-2 row/column
@@ -97,38 +174,16 @@ function pairs = parseT0T1Matrix(block, nClocks)
 % the transpose; for N = 2 the canonical 2-by-N branch matches
 % first, which is the unambiguous interpretation matching what
 % ndi.element.addepoch / oneepoch actually write.
-if ~isfield(block, 't0_t1')
-    pairs = zeros(nClocks, 2);
-    return;
-end
 raw = block.t0_t1;
-if ~isnumeric(raw)
-    pairs = zeros(nClocks, 2);
-    return;
-end
 if isvector(raw) && numel(raw) == 2
     % Single-clock degenerate: [t0 t1] (row) or [t0; t1] (column).
     pairs = double(reshape(raw, 1, 2));
-elseif size(raw, 1) == 2 && size(raw, 2) >= 1
+elseif size(raw, 1) == 2
     % Canonical 2-by-N: rows = [t0; t1], columns = clocks.
     pairs = double(raw.');
-elseif size(raw, 2) == 2
+else
     % Defensive: N-by-2 (N >= 3) where each row is a clock's [t0 t1].
     pairs = double(raw);
-else
-    pairs = zeros(nClocks, 2);
-    if numel(raw) >= 1
-        pairs(1, 1) = double(raw(1));
-        if numel(raw) >= 2
-            pairs(1, 2) = double(raw(2));
-        end
-    end
-end
-if size(pairs, 1) < nClocks
-    pad = zeros(nClocks - size(pairs, 1), 2);
-    pairs = [pairs; pad];
-elseif size(pairs, 1) > nClocks
-    pairs = pairs(1:nClocks, :);
 end
 end
 

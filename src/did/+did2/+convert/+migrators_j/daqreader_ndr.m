@@ -21,6 +21,32 @@ arguments
     preBody (1,1) struct
 end
 
+% `ndi_daqreader_ndr_class` is dropped only when it restates
+% `daqreader.ndi_daqreader_class` ([restated values checked], Jess Haley,
+% 2026-10-26; TEAM-SIGN-OFF [daq configuration], "dropped as redundant").
+% One that differs carries the document whole as v1 ([partly placed is carried
+% as v1], Jess Haley, 2026-10-25).
+ndrClass = textField(preBody, 'daqreader_ndr', 'ndi_daqreader_ndr_class');
+readerClass = textField(preBody, 'daqreader', 'ndi_daqreader_class');
+unplaced = {};
+if ~isempty(ndrClass) && ~strcmp(ndrClass, readerClass)
+    unplaced{end+1} = sprintf(['daqreader_ndr.ndi_daqreader_ndr_class "%s" (differs ' ...
+        'from daqreader.ndi_daqreader_class "%s")'], ndrClass, readerClass);
+end
+% `file_extension` is restated nowhere on the V2 output (the acquisition_reader
+% and its software entity hold no extension; see below for why it is not
+% written either), so a document that sets one is carried whole as v1
+% ([generic stage is lossless], Jess Haley, 2026-10-25) instead of losing it.
+if ~isempty(textField(preBody, 'daqreader_ndr', 'file_extension'))
+    unplaced{end+1} = 'daqreader_ndr.file_extension';
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', 'daqreader_ndr', char(preBody.base.id), ...
+        ['unplaced: ' strjoin(unplaced, ', ')]);
+    v2Body = {preBody};
+    return;
+end
+
 v2Body = preBody;
 v2Body.document_class.class_name = 'daqreader';
 v2Body.document_class.class_version = '2.0.0';
@@ -88,4 +114,13 @@ end
 % Both PRED `daqreader_ndr` documents carry reader_string 'intan', which is
 % precisely the case the old guard passed through.
 v2Body = did2.convert.migrators_j.daqreader(v2Body);
+end
+
+function v = textField(body, blockName, fieldName)
+%TEXTFIELD BODY.(BLOCKNAME).(FIELDNAME) as char, '' when absent.
+v = '';
+if isfield(body, blockName) && isstruct(body.(blockName)) && isscalar(body.(blockName)) ...
+        && isfield(body.(blockName), fieldName) && ~isempty(body.(blockName).(fieldName))
+    v = char(string(body.(blockName).(fieldName)));
+end
 end

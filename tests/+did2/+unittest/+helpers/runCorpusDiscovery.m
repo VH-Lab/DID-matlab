@@ -293,39 +293,10 @@ if strcmp(options.TargetVersion, 'V_eta')
         @(r) did2.convert.resolveResponseParameters(r, ...
             'Validate', true, 'TargetVersion', options.TargetVersion));
 
-    % TEAM DECISION 2026-08-11: the E. coli lawns and plates are subjects, in
-    % two tiers, with `lawn --contained_in--> plate` (was member_of until
-    % did-schema [lawn in plate], Jess Haley 2026-10-22); a tier is minted only where
-    % it has something measured about it; and a patch subject's
-    % `local_identifier` is the (experiment, plate, patch) triple. All three
-    % need documents a single-document migrator cannot see -- the patch row
-    % keys on `imageID`, not `plateID` (doImport.m:720), so both the membership
-    % and the identifier come off the SAME two-hop chain
-    % patch -> image -> plate.
-    %
-    % ORDER: last, and it commutes with all four passes above. It reads
-    % `ontology_table_row` and `subject` documents; epochMint appends `epoch`
-    % documents, resolveSessionAnchors rewrites only the two session_*_reference
-    % classes, resolveResponseParameters touches only the two stimulus-response
-    % classes, and resolveDatasetEntities drops only duplicate `dataset`
-    % entities and unresolvable membership relations -- none of which this pass
-    % reads or writes. Running last makes `documents_inspected` the denominator
-    % of the batch as every other pass left it.
-    %
-    % READ ITS ZEROS WITH `unclassified_rows_in_those_sessions` BESIDE THEM.
-    % Every counter at 0 with 0 recognised rows is "this corpus holds no E. coli
-    % tables", which is true of five of the six corpora. Zeros beside a non-zero
-    % unclassified count would mean the column-token rule is wrong. The pass
-    % prints both; do not read one without the other.
-    %
-    % GUARDED for the same reason as the three above: writeCorpusReport is
-    % ~30 lines below and an uncaught error here costs the corpus its entire
-    % census for a run that already spent an hour. A failure leaves every
-    % document in its pass-1 form, which is the state the corpus is green in.
-    result = did2.unittest.helpers.runBatchPass(result, ...
-        'did2.convert.resolveLawnPlateSubjects', 'lawn_plate_subjects', ...
-        @(r) did2.convert.resolveLawnPlateSubjects(r, ...
-            'Validate', true, 'TargetVersion', options.TargetVersion));
+    % did2.convert.resolveLawnPlateSubjects, the JH E. coli lawn / plate
+    % subjects pass, is NOT run: Haley-import logic, removed from the generic
+    % migration (Decided by Jess Haley, 2026-10-26 [Haley logic leaves the
+    % generic migration], did-schema V_eta_go_forward_class_audit.md).
 
     % TEAM DECISION 2026-08-11: `generic_file` folds to an `opaque_body` + a
     % statement whose `variable` comes from the SIBLING ontologyLabel. Batch,
@@ -1071,7 +1042,6 @@ expected = { ...
     'session_anchor_fold',      'did2.convert.resolveSessionAnchors'; ...
     'epoch_probemap_fold',      'did2.convert.resolveEpochProbemap'; ...
     'response_parameters_fold', 'did2.convert.resolveResponseParameters'; ...
-    'lawn_plate_subjects',      'did2.convert.resolveLawnPlateSubjects'; ...
     'generic_file_fold',        'did2.convert.foldGenericFiles'; ...
     'valid_interval_decompose', 'did2.convert.resolveValidIntervals'; ...
     'clock_alignment_fold',     'did2.convert.resolveClockAlignment'};

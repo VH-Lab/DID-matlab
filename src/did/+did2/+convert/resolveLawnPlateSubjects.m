@@ -30,6 +30,14 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   coverage.py joins on either spelling rather than on a guess about casing.
 %   ---------------------------------------------------------------------
 %
+%   NOT CALLED BY THE GENERIC MIGRATION (Decided by Jess Haley, 2026-10-26
+%   [Haley logic leaves the generic migration], did-schema
+%   V_eta_go_forward_class_audit.md): this is Haley-import logic; the Haley
+%   dataset's V2 shape comes from its V2 re-import
+%   (ndi.setup.conv.haley.import_V2). The function stays; no DID-side harness
+%   calls it, and NDI-matlab removes its call in ndi.migrate.local.
+% WIRING-EXEMPT: Haley-import logic, removed from the generic migration ([Haley logic leaves the generic migration], Jess Haley 2026-10-26)
+%
 %   STATUS: WRITTEN 2026-08-11 IN A CONTAINER WITH NO MATLAB, and still edited
 %   from one -- `command -v matlab octave octave-cli` finds nothing here, so no
 %   line of this file has ever been run in this session. It HAS now been run by
@@ -451,7 +459,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta'})} = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a

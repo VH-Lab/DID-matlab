@@ -14,6 +14,12 @@ function v2Body = session_in_a_dataset(preBody)
 %                          so resolveDatasetEntities drops the edge if the child
 %                          does not resolve (best-effort, like the deferred baths).
 %
+%   SINCE 2026-10-26 nothing is dropped ([session membership records linked or
+%   ingested], Jess Haley, 2026-10-25): the relation's method says ingested or
+%   linked, a linked session's opener class and path are its parameters, and
+%   anything else carries the document as v1 (jMembershipBodies). The text below
+%   is the record of the earlier drop:
+%
 %   Dropped: is_linked / session_creator / session_creator_input1..6 /
 %   session_reference are NDI-internal session-assembly reconstruction handles
 %   (how the session was linked/rebuilt into the dataset), not go-forward schema

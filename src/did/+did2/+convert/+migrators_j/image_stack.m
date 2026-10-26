@@ -1,7 +1,7 @@
 function bodies = image_stack(preBody)
 %IMAGE_STACK Brainstorm-J migrator: did_v1 image_stack -> a body-backed
-%   `observation` with value kind `intensity` (a mask: a `calculation` with
-%   value kind `logical` or `label`) + a sampled_body (+ the shared session
+%   `observation` with value kind `intensity` (a mask or label map is carried
+%   as v1) + a sampled_body (+ the shared session
 %   anchor).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
@@ -19,8 +19,11 @@ function bodies = image_stack(preBody)
 %                           the file format), the inline image geometry on the
 %                           `image` mixin, and `storage_mode: body` (so the
 %                           statement carries no sample_time -- the cadence lives
-%                           in the body, D1/§A.7). The prose `label` and the
-%                           `format_ontology` file-type are dropped as derivable.
+%                           in the body, D1/§A.7). The `format_ontology`
+%                           file-type (an `image`'s `format`) and an `image`'s
+%                           `compression` go on the body's `format` and
+%                           `compression` ([image file details placed], Jess
+%                           Haley, 2026-10-26; dropped as derivable before).
 %       sampled_body        the DIGITAL frames: datum (kind/dtype/unit/shape) +
 %                           sample_time (t0/dt/n) + the carried pixel bytes;
 %                           `statement` -> the image_observation it belongs to.
@@ -201,6 +204,37 @@ if ~isempty(tableRowId)
     bodies = {preBody};
     return;
 end
+% [image file details placed] (Jess Haley, 2026-10-26): the four details a v1
+% image / imageStack dropped. `format` and `compression` go on the body (below).
+% The `imageCollection_id` edge becomes a `member_of` relation to a group
+% entity, a later step: until then a document that names one is carried whole
+% as v1. `data_limits` is left unwritten when it is its data type's range
+% ([intmin intmax], [0 1] for logical: recoverable from the datum type,
+% [lossless means round trip]); a range that differs becomes a body condition
+% with variable EMPTY:0000402 "value range" ([census terms] T3), its value the
+% [minimum maximum] pair.
+unplaced = {};
+if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
+        dependencyValue(preBody, 'image_collection_id')))
+    unplaced{end+1} = 'depends_on imageCollection_id';
+end
+limits = getField(params, 'data_limits');
+bodyConditions = [];
+if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
+    if isnumeric(limits) && numel(limits) == 2 && all(isfinite(double(limits(:))))
+        bodyConditions = did2.build.condition( ...
+            did2.convert.registeredTerm('EMPTY:0000402', 'value range'), ...
+            'Matrix', double(limits(:)'));
+    else
+        unplaced{end+1} = 'image_stack_parameters.data_limits (not a [minimum maximum] pair)';
+    end
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
+        baseField(preBody, 'id', ''), ['unplaced: ' strjoin(unplaced, ', ')]);
+    bodies = {preBody};
+    return;
+end
 
 % ---- did-schema #88: what the raster IS (#73 review item 51, decided
 % 2026-09-25): "a raster goes by what its pixels measure, keyed [y, x,
@@ -221,22 +255,26 @@ end
 % calculation with the `logical` value kind (one per mask, 1 = inside), its
 % variable the region it marks, as the native Haley import writes masks ...;
 % no method, because none is recorded. Replaces the label value kind and the
-% 'pixel label' variable." The region is read from the label (the definition
-% NDI's writer looked up: EMPTY:0000130 arena, :0000131 bacterial patches) and
-% named as the native import names it (ndi.setup.conv.haley.geometryDocuments:
-% `arena region`, `bacterial lawn region`, `reference mark region`). A mask
-% whose region cannot be read passes through rather than being given one.
-% A MAP (each pixel an identifier, EMPTY:0000132) is not a mask: it stays a
-% `label` calculation; that decision does not cover it.
+% 'pixel label' variable."
+%
+% THE REGION WORDS LEFT (Decided by Jess Haley, 2026-10-26 [dataset-specific
+% logic leaves the generic migration], [one correct reading]): the region a mask
+% marks was read from Haley label words ("arena", "bacteria" / "lawn",
+% "reference mark") and named as the Haley V2 import names it
+% (ndi.setup.conv.haley.geometryDocuments). No rule that holds for every dataset
+% reads a region from a label, so a mask is carried whole as v1, naming its V2
+% home and what decides it. A MAP (each pixel an identifier, EMPTY:0000132) is
+% recognised by label words too, so it is carried the same way ([one-reading
+% quick answers] (Q3), Jess Haley, 2026-10-26: "mask or map detection" chosen
+% from label words carries as needs_mapping).
 label = getCharField(getBlock(preBody, 'image_stack'), 'label');
-isMask = isMaskOrMap(label);
-maskRegion = '';
-if isMask && contains(lower(label), 'mask')
-    maskRegion = maskRegionOf(label);
-    if isempty(maskRegion)
-        bodies = {preBody};
-        return;
-    end
+if isMaskOrMap(label)
+    did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
+        baseField(preBody, 'id', ''), ['needs_mapping: calculation (logical ' ...
+        'mask | label map) or observation (intensity); decided by what the ' ...
+        'image''s pixels are, in its dataset']);
+    bodies = {preBody};
+    return;
 end
 
 stackId   = baseField(preBody, 'id', did.ido.unique_id());
@@ -266,54 +304,63 @@ if isnumeric(ts) && isscalar(ts) && isfinite(ts)
 end
 extra = {};
 software = {};
-if isMask
-    [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
-    [runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
-    software = [software, runDocs];
-    if ~isempty(maskRegion)
-        variable = jLabel(maskRegion);
-        kind = 'logical';
-    else
-        variable = jLabel('pixel label');   % a map; not covered by the mask decision
-        kind = 'label';
-    end
-    obs = jStatement(preBody, 'calculation', subjectId, ...
-        variable, [], ...
-        'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-        'Conditions', conds, 'Notes', label, ...
-        'SoftwareId', swId, 'OperatingSystemId', osId, 'InterpreterId', interpreterId, ...
-        'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', kind);
-else
-    obs = jStatement(preBody, 'observation', subjectId, ...
-        jLabel('image intensity'), [], ...
-        'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-        'Conditions', conds, 'Notes', label, ...
-        'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
-end
+obs = jStatement(preBody, 'observation', subjectId, ...
+    jLabel('image intensity'), [], ...
+    'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+    'Conditions', conds, 'Notes', label, ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).
 o = jOpts(preBody, 'DatumOrder', 'F');
+% the file's format and compression ([image file details placed]): an
+% imageStack's `formatOntology`, an image's `format` and `compression`
+imageBlk = getBlock(preBody, 'image');
+fileFormat = firstNonEmpty(getCharField(getBlock(preBody, 'image_stack'), 'format_ontology'), ...
+    getCharField(getBlock(preBody, 'image_stack'), 'formatOntology'), ...
+    getCharField(imageBlk, 'format'));
+if ~isempty(strtrim(fileFormat))
+    o = [o, {'Format', strtrim(fileFormat)}];
+end
+compression = getCharField(imageBlk, 'compression');
+if ~isempty(strtrim(compression))
+    o = [o, {'Compression', compression}];
+end
 [dims, covs] = imageAxes(dimOrder, dimSize, params);
+if ~isempty(bodyConditions)
+    o = [o, {'Conditions', bodyConditions}];
+end
 body = did2.build.sampledBody(stackId, dims, 'Covariates', covs, o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software];
 end
 
-function r = maskRegionOf(label)
-%MASKREGIONOF The region a mask marks, named as the native Haley import names
-%   it; '' when the label does not say. Read from NDI's own definitions:
-%   EMPTY:0000130 "...pixels within the experimental arena ... This mask ...",
-%   EMPTY:0000131 "...the union of all individually detected bacterial patch
-%   areas ...". 'reference mark' is the native import's third mask (refMask).
-l = lower(label);
-r = '';
-if contains(l, 'arena') && ~contains(l, 'bacteria')
-    r = 'arena region';
-elseif contains(l, 'bacteria') || contains(l, 'lawn')
-    r = 'bacterial lawn region';
-elseif contains(l, 'reference mark')
-    r = 'reference mark region';
+function tf = isTypeRange(limits, dataType)
+%ISTYPERANGE True when LIMITS is exactly DATATYPE's range: [intmin intmax] of
+%   an integer class, [0 1] for logical -- how every NDI main writer sets it
+%   (babu import.m, haley doImport.m). Any other type has no range rule here.
+tf = false;
+if ~isnumeric(limits) && ~islogical(limits)
+    return;
+end
+limits = double(limits(:)');
+cls = lower(strtrim(char(dataType)));
+switch cls
+    case {'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64'}
+        range = double([intmin(cls) intmax(cls)]);
+    case {'logical', 'bool'}
+        range = [0 1];
+    otherwise
+        return;
+end
+tf = isequal(limits, range);
+end
+
+function nm = classNameOf(b)
+nm = 'image_stack';
+if isfield(b, 'document_class') && isstruct(b.document_class) ...
+        && isfield(b.document_class, 'class_name') && ~isempty(b.document_class.class_name)
+    nm = char(b.document_class.class_name);
 end
 end
 

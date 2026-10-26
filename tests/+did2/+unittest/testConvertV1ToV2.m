@@ -501,8 +501,11 @@ v1.depends_on = struct( ...
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
-% the full pipeline ran: schema_version got stamped on document_class.
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'did_v2');
+% the full pipeline ran: schema_version got stamped on document_class. The
+% legacy `version` key universalRenames drops carries the document whole as v1
+% ([generic stage is lossless]), and a carried document is stamped 'did_v1' in
+% pass 1 (2026-10-26: never read against V_eta afterwards).
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'did_v1');
 % universalRenames ran: depends_on(1).id was promoted to
 % .document_id, and the legacy id/version keys were dropped.
 dependsOn = doc.toStruct().depends_on;

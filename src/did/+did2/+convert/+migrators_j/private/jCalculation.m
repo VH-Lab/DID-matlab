@@ -137,6 +137,15 @@ end
 unplaced = [cellfun(@(d) underBlock(sourceBlock, d), reshape(dropped, 1, []), ...
     'UniformOutput', false), ...
     cellfun(@char, reshape(opts.Dropped, 1, []), 'UniformOutput', false)];
+% The calculator block's inner `depends_on` copy (e.g.
+% `oridirtuning_calc.depends_on`) is left unwritten only when it restates the
+% top-level edges ([restated values checked], Jess Haley, 2026-10-26; measured
+% equal on every held document). One that differs is carried whole as v1.
+differing = innerDependsOnDiffers(preBody, classNameOf(preBody));
+if ~isempty(differing)
+    unplaced{end+1} = sprintf('%s.depends_on (%s differs from the top-level edge)', ...
+        classNameOf(preBody), strjoin(differing, ', '));
+end
 if ~isempty(unplaced)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
@@ -254,6 +263,47 @@ if startsWith(name, [block '.'])
     p = name;
 else
     p = [block '.' name];
+end
+end
+
+function differing = innerDependsOnDiffers(preBody, blockName)
+%INNERDEPENDSONDIFFERS The names of the inner depends_on entries of block
+%   BLOCKNAME whose id is not the top-level edge's of the same name ({} when
+%   the block has no inner copy, or every entry restates the top level).
+%   Both spellings of an entry's id are read ({name, value} and
+%   {name, document_id}), as jDependency reads the top level.
+differing = {};
+if isempty(blockName) || ~isfield(preBody, blockName) ...
+        || ~isstruct(preBody.(blockName)) || ~isscalar(preBody.(blockName)) ...
+        || ~isfield(preBody.(blockName), 'depends_on')
+    return;
+end
+inner = preBody.(blockName).depends_on;
+if isempty(inner)
+    return;
+end
+if isstruct(inner)
+    inner = num2cell(inner);
+elseif ~iscell(inner)
+    differing = {'(not a list of edges)'};
+    return;
+end
+for k = 1:numel(inner)
+    d = inner{k};
+    if ~isstruct(d) || ~isscalar(d) || ~isfield(d, 'name')
+        differing{end+1} = sprintf('entry %d', k); %#ok<AGROW>
+        continue;
+    end
+    v = '';
+    for key = {'document_id', 'value', 'id'}
+        if isfield(d, key{1}) && ~isempty(d.(key{1}))
+            v = char(d.(key{1}));
+            break;
+        end
+    end
+    if ~strcmp(v, jDependency(preBody, char(d.name)))
+        differing{end+1} = char(d.name); %#ok<AGROW>
+    end
 end
 end
 
