@@ -114,10 +114,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   `logical_observation`. The 32 `*_observation` data_types name a KIND OF
 %   VALUE (length, intensity, count, score, term, image); `validity` was the
 %   only one naming a SEMANTIC -- what the measurement is ABOUT -- and the
-%   semantic belongs in `subject_statement.variable`. That is not a proposal:
-%   `resolveLawnPlateSubjects.m:1106-1113` already sends six distinct
-%   fluorescence semantics to ONE `intensity_observation`, told apart only by
-%   `variable` (`:689 variableTerm(c{1})` -> `:1317`). It is also the error
+%   semantic belongs in `subject_statement.variable`. It is also the error
 %   R2/R3 fixed for tuning, where six classes named by their independent
 %   variable collapsed into one `tuning_curve`. `boolean` was impossible as the
 %   class name -- it is a hard-coded primitive in the validator's type switch
@@ -181,7 +178,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   pattern this project has now counted 26,406 documents of.
 %
 %   ORDER IS LOAD-BEARING HERE, UNLIKE THE SIBLING PASSES. resolveSessionAnchors
-%   and resolveLawnPlateSubjects commute with their neighbours; this one does
+%   commutes with its neighbours; this one does
 %   NOT. It reads the `epoch` documents epochMint appends, so it MUST run after
 %   epochMint. It reads them out of `result.migrated` rather than out of
 %   `result.epoch_mint.epoch_index` deliberately: one source of truth (the
@@ -484,8 +481,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %                    axis), not a boolean.
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
-%   did2.convert.resolveSessionAnchors, did2.convert.resolveResponseParameters,
-%   did2.convert.resolveLawnPlateSubjects.
+%   did2.convert.resolveSessionAnchors, did2.convert.resolveResponseParameters.
 
 arguments
     result (1,1) struct
@@ -1289,8 +1285,7 @@ function [survived, quarantined] = validateBodies(newBodies, options)
 %   SURVIVED is a containers.Map from base.id to the produced did2.document, so
 %   a caller can ask "did THIS body land" rather than matching on position -- a
 %   quarantined body leaves no slot, and the id is the one thing this pass
-%   guarantees is unchanged. Mirrors the helper of the same name in
-%   did2.convert.resolveLawnPlateSubjects.
+%   guarantees is unchanged.
 survived = containers.Map('KeyType', 'char', 'ValueType', 'any');
 quarantined = {};
 if isempty(newBodies); return; end

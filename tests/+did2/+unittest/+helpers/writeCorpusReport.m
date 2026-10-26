@@ -405,10 +405,6 @@ if isfield(result, 'response_parameters_fold')
     report.response_parameters_fold = result.response_parameters_fold;
 end
 
-% (did2.convert.resolveLawnPlateSubjects's `lawn_plate_subjects` is no longer
-% composed: Decided by Jess Haley, 2026-10-26 [Haley logic leaves the generic
-% migration].)
-
 % `generic_file_fold` (TEAM DECISION 2026-08-11). PERSISTED FOR THE SAME
 % REASON AS ITS SIBLINGS, and with one reading instruction attached: all six
 % corpora held ZERO `generic_file` documents at run 31327383671, so the

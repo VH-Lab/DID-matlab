@@ -63,8 +63,7 @@ function [result, report] = epochMint(result, options)
 %
 %   THE NAME IS THE MIGRATED ONE ON PURPOSE. This pass runs AFTER the per-class
 %   migrators, so the batch carries `acquisition_epoch`, never the did_v1
-%   `element_epoch` it was renamed from. `resolveLawnPlateSubjects` declares
-%   `ontology_table_row` for the same reason. Whether DID-schema's ledger can
+%   `element_epoch` it was renamed from. Whether DID-schema's ledger can
 %   JOIN that name to the `element_epoch` row is a question about the ledger,
 %   not about this sentence: both rows currently carry `veta_class = None`, so
 %   the join may not reach them. Declaring what the code does is right either

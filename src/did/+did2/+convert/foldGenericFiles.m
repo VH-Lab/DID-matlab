@@ -390,7 +390,6 @@ function [result, report] = foldGenericFiles(result, options)
 %   `store_records_left_passthrough`.
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
-%   did2.convert.resolveLawnPlateSubjects,
 %   did2.unittest.testFoldGenericFiles, did2.unittest.testBatchPassWiring.
 
 arguments

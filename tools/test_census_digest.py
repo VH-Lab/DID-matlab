@@ -2281,8 +2281,8 @@ class TestTheThreePassesAreWiredAtAll(ThreePassCase):
     def test_each_of_the_three_has_a_POST_PASSES_entry(self):
         import census_digest
         keys = dict((name, fn) for name, fn, _rows in census_digest.POST_PASSES)
-        # lawn_plate_subjects left with did2.convert.resolveLawnPlateSubjects's
-        # call (Decided by Jess Haley, 2026-10-26 [Haley logic leaves the
+        # lawn_plate_subjects left with its pass, deleted from DID-matlab
+        # (Decided by Jess Haley, 2026-10-26 [Haley logic leaves the
         # generic migration]): the pass is no longer composed, so an entry
         # would be `stale`.
         self.assertNotIn("lawn_plate_subjects", keys)

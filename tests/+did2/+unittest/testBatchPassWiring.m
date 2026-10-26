@@ -717,8 +717,7 @@ function testProductionCallSiteIsReportedNotAsserted(testCase)
 % THIS TEST IS NO LONGER THE ONLY THING WATCHING THE FOURTH CALL SITE, and its
 % header used to name two absences as the whole story. Both have since been
 % closed: resolveDatasetEntities was wired 2026-08-10 (it was the one this
-% file's report caught), and resolveResponseParameters + resolveLawnPlateSubjects
-% were wired 2026-08-11. The ASSERTING gate is
+% file's report caught), and resolveResponseParameters was wired 2026-08-11. The ASSERTING gate is
 % testCrossRepoDivergenceIsExactlyTheCheckedInTable below; this test is kept,
 % unweakened and still report-only, because a printed per-pass line is what a
 % human reads out of a log tail and the gate prints a set-difference.

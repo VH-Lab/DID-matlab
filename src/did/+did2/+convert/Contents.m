@@ -50,9 +50,9 @@
 %   Batch post-passes (run over a migrated batch, after v1_to_v2; each
 %   carries a BATCH-PASS declaration read by tools/batch_pass_declarations.py)
 %     epochMint, foldGenericFiles, resolveClockAlignment, resolveDatasetEntities,
-%     resolveDeferredBaths, resolveEpochProbemap, resolveLawnPlateSubjects,
-%     resolveOpenmindsCitations, resolveResponseParameters,
-%     resolveSessionAnchors, resolveValidIntervals (census only)
+%     resolveDeferredBaths, resolveEpochProbemap, resolveOpenmindsCitations,
+%     resolveResponseParameters, resolveSessionAnchors, resolveValidIntervals
+%     (census only)
 %
 %   Subpackages
 %     +migrators_j     - the did_v1 -> V_eta per-document migrators, one file

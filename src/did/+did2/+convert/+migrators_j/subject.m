@@ -9,8 +9,7 @@ function v2Body = subject(preBody)
 %   `local_identifier` and `description` carried, and `type` 'organism' -- the
 %   v1 subject class names the animal an experiment is about. That default is
 %   PROPOSED, not signed: a v1 subject that is a culture or a plate takes it too
-%   until a source field says otherwise (the Haley lawn/plate subjects are typed
-%   by resolveLawnPlateSubjects, not here).
+%   until a source field says otherwise.
 
 arguments
     preBody (1,1) struct

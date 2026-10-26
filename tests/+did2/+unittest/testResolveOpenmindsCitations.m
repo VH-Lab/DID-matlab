@@ -8,8 +8,8 @@ function tests = testResolveOpenmindsCitations
 %   it tests. CI is the first execution. Block structure was checked with a
 %   bracket-aware token counter validated against known-good files in the same
 %   directory; that is a syntax balance check, not a run, and it cannot see a
-%   type mismatch -- which is exactly what made two of testLawnPlateSubjects'
-%   first-run tests red (a uint64 Map.Count assigned into a double field).
+%   type mismatch -- which is exactly what made two first-run tests of an
+%   earlier batch pass red (a uint64 Map.Count assigned into a double field).
 %
 %   ---------------------------------------------------------------------
 %   WHAT THESE TESTS ARE FOR

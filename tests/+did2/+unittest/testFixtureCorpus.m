@@ -473,9 +473,6 @@ result = did2.convert.resolveEpochProbemap(result, ...
 % trace is strictly more informative than a captured message.
 result = did2.convert.resolveResponseParameters(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
-% did2.convert.resolveLawnPlateSubjects is NOT run: Haley-import logic, removed
-% from the generic migration (Decided by Jess Haley, 2026-10-26 [Haley logic
-% leaves the generic migration], did-schema V_eta_go_forward_class_audit.md).
 % TEAM DECISION 2026-08-11: `generic_file` -> an `opaque_body` + a statement
 % whose `variable` comes from the sibling ontologyLabel. Same post-pass set and
 % the SAME ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE, like
