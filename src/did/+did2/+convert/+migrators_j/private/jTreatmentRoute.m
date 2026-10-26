@@ -15,8 +15,8 @@ function route = jTreatmentRoute(locationTerm)
 %                  would be a wrong reading, while which manipulation it is
 %                  (an exposure, ...) is the dataset's meaning. The caller
 %                  carries the document whole as v1;
-%     'unknown'    no location at all: migrates as a dose with a NaN amount,
-%                  and the migration report lists it as route unknown.
+%     'unknown'    no location at all: the caller carries the document as v1
+%                  ([one-reading quick answers] (Q1), Jess Haley, 2026-10-26).
 %
 %   Decided by Jess Haley, 2026-10-21 (did-schema
 %   V_eta_go_forward_class_audit.md): "The v1 treatment migrators decide by

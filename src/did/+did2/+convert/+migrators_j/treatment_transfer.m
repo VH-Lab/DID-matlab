@@ -34,6 +34,17 @@ if ~isfield(preBody, 'treatment_transfer') || ~isstruct(preBody.treatment_transf
 end
 block = preBody.treatment_transfer;
 
+% [one-reading quick answers] (Q2) (Decided by Jess Haley, 2026-10-26,
+% did-schema V_eta_go_forward_class_audit.md): a timestamp with no clock type
+% is not given `dev_local_time` ([no invented values]); the document is
+% carried whole as v1.
+if hasFiniteTimestamp(block) && isempty(jGetCharAny(block, {'clocktype', 'clockType'}))
+    did2.convert.reportNote('carried_as_v1', 'treatment_transfer', char(preBody.base.id), ...
+        'unplaced: treatment_transfer.timestamp names no clocktype');
+    v2Body = {preBody};
+    return;
+end
+
 recipientId = namedDep(preBody, 'recipient_id');
 donorId     = namedDep(preBody, 'donor_id');
 
@@ -81,4 +92,12 @@ if isfield(block, name)
     if ischar(v); s = v;
     elseif isstring(v) && isscalar(v); s = char(v); end
 end
+end
+
+function tf = hasFiniteTimestamp(block)
+tf = false;
+if ~isfield(block, 'timestamp'); return; end
+t = block.timestamp;
+if ischar(t) || isstring(t); t = str2double(t); end
+tf = isnumeric(t) && ~isempty(t) && isfinite(double(t(1)));
 end

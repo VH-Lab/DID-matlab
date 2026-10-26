@@ -457,6 +457,33 @@ verifyTrue(testCase, contains(char(v.clock.name), 'dev_local_time') || ...
     contains(lower(char(v.clock.name)), 'local'), 'the session''s local clock');
 end
 
+function testATransferWithNoClocktypeIsCarried(testCase)
+% [one-reading quick answers] (Q2) (Jess Haley, 2026-10-26): a timestamp with
+% no clock type is not given dev_local_time ([no invented values]); the
+% document is carried whole as v1.
+v1 = babuTransferV1('tt_noclk', -72000);
+v1.treatment_transfer.clocktype = '';
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'clocktype'), d);
+end
+
+function testAGlobalClockTransferTimeIsInDays(testCase)
+% (Q2) "a global-clock time is written in its true unit (NDI stores days, not
+% seconds)": NDI's treatment_transfer schema, "a datenum (if global clock) or in
+% seconds (if local clock)".
+v1 = babuTransferV1('tt_glob', 739000.5);
+v1.treatment_transfer.clocktype = 'exp_global_time';
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+a = firstOfClassJ(out.migrated, 'relative_time_reference');
+v = a.get('relative_time_reference.value');
+verifyEqual(testCase, v.start.source_value, 739000.5);
+verifyEqual(testCase, char(v.start.source_unit.name), 'day');
+verifyEqual(testCase, v.start.seconds, 739000.5 * 86400, 'RelTol', 1e-12);
+end
+
 function testTransferWithNoTimestampIsDuringTheSession(testCase)
 % NaN (Babu's TransferTime is NaN where no transfer time was recorded) or
 % absent: "during the session".
@@ -580,7 +607,10 @@ end
 end
 
 function testTreatmentSubstanceIsDoseManipulation(testCase)
-out = runJ(treatmentDoc('chebi:28001', 'haloperidol', 2.5, ''));
+% (Located at a body site since 2026-10-26: with no location a treatment is
+% carried as v1, [one-reading quick answers] (Q1),
+% testATreatmentWithNoLocationIsCarried.)
+out = runJ(treatmentDoc('chebi:28001', 'haloperidol', 2.5, 'uberon:0002436'));
 m = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+dose');
 % did-schema #88: the dose names a `formulation` document (formulation_id),
@@ -600,8 +630,7 @@ if ~isempty(c)
 end
 verifyNotEmpty(testCase, f, 'the formulation the dose names is not in the batch');
 verifyEqual(testCase, m.get('statement.variable').node, 'chebi:28001');
-% A generic treatment with no location: "stays a dose with NaN and is listed
-% in the migration report as route unknown" (Jess Haley, 2026-10-21).
+% No amount recorded: NaN in the dose's volume.
 % numeric_value is NEVER an amount -- not the dose's, not the ingredient's
 % (Jess Haley, 2026-10-21, "yes"): the term (haloperidol) does not say what
 % kind of number 2.5 is, so it is an unlabelled condition, and noted.
@@ -619,8 +648,19 @@ verifyFalse(testCase, isfield(cnd, 'unit'), 'an unlabelled number has no unit');
 n = out.summary.migration_notes.treatment_number_unlabelled;
 verifyEqual(testCase, n.ids, {'tr_01'});
 verifyEqual(testCase, n.details, {'haloperidol: 2.5'});
-verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 1);
-verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'tr_01'});
+verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
+end
+
+function testATreatmentWithNoLocationIsCarried(testCase)
+% [one-reading quick answers] (Q1) (Jess Haley, 2026-10-26): a treatment with
+% no recorded location is carried as v1 instead of becoming a dose with a NaN
+% amount (it was "a dose with NaN ... listed as route unknown", 2026-10-21).
+v1 = treatmentDoc('chebi:28001', 'haloperidol', 2.5, '');
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (immersion | dose)'), d);
+verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
 end
 
 function testVhlabGratingTrainingHoursIsADurationOfTheTerm(testCase)
@@ -698,15 +738,18 @@ verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
 verifyEmpty(testCase, firstOfClassJ(out.migrated, 'absolute_time_reference'));
 end
 
-function testTreatmentTargetLocationLabelIsCarriedWholeAsV1(testCase)
-% INVERTS the first half of testTreatmentTargetLocationEmitsSiteObservation,
-% which asserted " Target Location" STRIPPED from the variable (the v1 label
-% kept nowhere). [generic stage is lossless] (Jess Haley, 2026-10-25, audit
-% item 14): the treatment is carried whole as v1.
+function testTreatmentTargetLocationLabelIsKeptAsTheVariableName(testCase)
+% INVERTS testTreatmentTargetLocationLabelIsCarriedWholeAsV1. [one-reading
+% quick answers] (Q4) (Jess Haley, 2026-10-26): the name is kept unchanged as
+% the variable's name -- the "Target Location" suffix is not stripped -- so the
+% row is no longer carried for it.
 v1 = treatmentDoc('chebi:28001', 'muscimol Target Location', [], 'uberon:0002436');
 out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-verifyEqual(testCase, out.migrated{1}.get('treatment.name'), 'muscimol Target Location');
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
+verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol Target Location');
+site = firstOfClassJ(out.migrated, 'observation+term');
+verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
 
 function testTreatmentTargetLocationEmitsSiteObservation(testCase)
@@ -1111,23 +1154,15 @@ verifyTrue(testCase, isnan(v.volume.liters));
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
 end
 
-function testTreatmentDrugWithNoLocationIsRouteUnknown(testCase)
-% No location recorded: the route cannot be read, so a dose with a NaN amount
-% and a `route_unknown` note in the migration report; no site observation.
+function testTreatmentDrugWithNoLocationIsCarried(testCase)
+% INVERTS testTreatmentDrugWithNoLocationIsRouteUnknown: [one-reading quick
+% answers] (Q1) (Jess Haley, 2026-10-26) -- no location, carried as v1.
 v1 = treatmentDrugDoc('td_none', 'chebi:28001,haloperidol,5', '', '');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 4);   % dose + chemical + formulation + anchor
-d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
-verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 0);
-verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 1);
-verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'td_none'});
-% the notes are per batch: a second run does not carry the first one's note
-out2 = runJ(treatmentDrugDoc('td_v1', 'chebi:28001,haloperidol,5', ...
-    'uberon:0002436', 'primary visual cortex'));
-verifyEqual(testCase, routeUnknownCount(out2, 'treatment_drug'), 0);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'needs_mapping:'));
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
 function testVirusInjectionAtTheBathIsAnImmersion(testCase)
@@ -1177,9 +1212,9 @@ end
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 end
 
-function testVirusInjectionWithNoLocationIsRouteUnknown(testCase)
-% With no location a virus_injection behaves like the other treatments: a dose
-% with a NaN amount, listed as route_unknown, no site observation.
+function testVirusInjectionWithNoLocationIsCarried(testCase)
+% INVERTS testVirusInjectionWithNoLocationIsRouteUnknown: [one-reading quick
+% answers] (Q1) (Jess Haley, 2026-10-26) -- no location, carried as v1.
 v1 = struct();
 v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -1189,15 +1224,8 @@ v1.base = struct('id', 'vi_none', 'session_id', 'sess_09', ...
 v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
     'virus_name', 'AAV-ChR2', 'dilution', 1000);
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
-verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 0);
-verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 1);
-verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'vi_none'});
-[f, ~] = doseChainJ(out.migrated, d);
-verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 1000);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 end
 
 function testBabuAgarMediumIsCarriedNeedingAMapping(testCase)
@@ -1952,34 +1980,22 @@ for k = 1:numel(labels)
     verifyCarriedWholeAsV1(testCase, v1, out);
     verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, 'needs_mapping: calculation+logical'), d);
+    verifyTrue(testCase, startsWith(d, 'needs_mapping: calculation'), d);
 end
 end
 
-function testAClosestPatchMapIsNotAMaskAndStaysALabel(testCase)
-% THE OTHER DIRECTION. EMPTY:0000132's map ("each pixel's value is the
-% identifier of the bacterial patch closest ...") is not a mask; the mask
-% decision does not cover it, so it stays the `label` calculation.
+function testAClosestPatchMapIsCarriedNeedingAMapping(testCase)
+% INVERTS testAClosestPatchMapIsNotAMaskAndStaysALabel: a map is recognised by
+% words in its label ("each pixel's value is the identifier"), so it is carried
+% as v1 with a needs_mapping note ([one-reading quick answers] (Q3), Jess Haley,
+% 2026-10-26).
 v1 = arenaMaskImageStack();
 v1.image_stack.label = ['An image or map where each pixel''s value is the ' ...
     'identifier of the bacterial patch closest to that pixel''s location.'];
-out = did2.convert.migrators_j.image_stack(v1);
-names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
-verifyTrue(testCase, ismember('calculation+label', names));
-verifyFalse(testCase, ismember('calculation+logical', names));
-end
-
-function testImageStackMapValidatesWithoutSoftware(testCase)
-% Validation ON: the calculation's require_inherited is read from the schema
-% (did2.build checkRules), so this is red against a did-schema that still
-% requires software_id and green once it does not. (A map since 2026-10-26: a
-% mask is carried as v1, testAMaskIsCarriedWholeAsV1NamingItsHome.)
-v1 = arenaMaskImageStack();
-v1.image_stack.label = ['An image or map where each pixel''s value is the ' ...
-    'identifier of the bacterial patch closest to that pixel''s location.'];
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
-verifyEqual(testCase, out.summary.quarantine_count, 0);
-verifyEqual(testCase, out.summary.migrated_count, 3);
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'needs_mapping:'));
 end
 
 function testAnIntensityImageStackIsStillAnObservation(testCase)

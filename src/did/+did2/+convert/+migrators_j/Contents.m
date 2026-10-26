@@ -233,9 +233,8 @@
 %                          with NO class name AND NO edges still passes through.
 %                          1 -> 1 when there is no class name to fold.
 %     image_stack        - 1 -> 3. -> a body-backed `observation` with value
-%                          kind `intensity` (a label map: a `calculation` with
-%                          value kind `label`, + its software documents; a mask
-%                          is carried as v1)
+%                          kind `intensity` (a mask or label map, read from
+%                          label words, is carried as v1)
 %                          + a sampled_body holding the carried pixel frames
 %                          (its dimensions and covariates from the source's
 %                          dimension order) + shared anchor (§C.4). The
@@ -764,9 +763,8 @@
 %         anchor). 1 -> 3.
 %     image_stack
 %         Brainstorm-J migrator: did_v1 image_stack -> a body-backed `observation`
-%         with value kind `intensity` (a label map: a `calculation` with value kind
-%         `label`; a mask is carried as v1) + a sampled_body (+ the shared session
-%         anchor).
+%         with value kind `intensity` (a mask or label map is carried as v1) + a
+%         sampled_body (+ the shared session anchor).
 %     jrclust_clusters
 %         Brainstorm-J migrator: did_v1 jrclust_clusters -> a body-backed
 %         `calculation` with value kind `label` (the per-spike cluster assignments) +

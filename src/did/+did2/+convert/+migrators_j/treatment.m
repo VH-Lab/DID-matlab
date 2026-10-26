@@ -17,7 +17,7 @@ function v2Body = treatment(preBody)
 %       a ChEBI substance node -> routed by its recorded location
 %           (jTreatmentRoute, [treatment routes by location]): the bath -> an
 %           immersion valued by its formulation; a body site -> a dose; no
-%           location -> a dose with a NaN amount, noted route_unknown; an
+%           location -> carried (needs_mapping, [one-reading quick answers]); an
 %           environmental medium -> carried (needs_mapping).
 %
 %   Everything else -- a treatment whose temperature, substance or procedure
@@ -33,9 +33,7 @@ function v2Body = treatment(preBody)
 %   becomes a `term_observation` (D3); an ATTRIBUTED site is promoted by the
 %   NDI second pass.
 %
-%   Not-a-manipulation rows (date of birth, experiment time), rows whose label
-%   ends "target location" (the suffix would be stripped from the variable)
-%   and substance rows whose dose amounts cannot all be placed are also
+%   Not-a-manipulation rows (date of birth, experiment time) and substance rows whose dose amounts cannot all be placed are also
 %   carried whole as v1 ([generic stage is lossless], [partly placed is
 %   carried as v1], Jess Haley, 2026-10-25).
 
@@ -63,16 +61,12 @@ hay = lower([node ' ' label]);
 % 2026-10-25, did-schema V_eta_go_forward_class_audit.md): each refusal below
 % returns the v1 document UNCHANGED (carried whole as v1, noted
 % `carried_as_v1`) instead of rewriting or quarantining it.
-if endsWith(lower(strtrim(label)), 'target location')
-    % the variable would be the label with its "target location" suffix
-    % stripped, and the v1 spelling kept nowhere
-    v2Body = carryAsV1(preBody, 'treatment.name (the "target location" suffix would be stripped)');
-    return;
-end
+% [one-reading quick answers] (Q4) (Decided by Jess Haley, 2026-10-26): the
+% name is kept unchanged as the variable's name -- the "Target Location" suffix
+% is no longer stripped (it was, and then such a row was carried).
 siteTerm = struct('node', {}, 'name', {});   % empty ontology_term array
 if looksLikeCURIE(strValue)
     siteTerm = jOntologyTerm(strValue, '');
-    variable.name = strtrim(regexprep(label, '(?i)\s*target location$', ''));
     strValue = '';
 end
 notesText = strValue;

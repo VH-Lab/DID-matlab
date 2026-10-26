@@ -21,8 +21,10 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %     'dose'       a `dose_manipulation` whose `formulation_id` names the
 %                  formulation and whose value is the amount (jDoseValue: the
 %                  source's amount, else NaN in `volume.liters`).
-%     'unknown'    the same dose, and a `route_unknown` note in the migration
-%                  report (did2.convert.reportNote).
+%     'unknown'    no location: nothing is built; UNPLACED is a
+%                  `needs_mapping:` note and the caller carries the document
+%                  whole as v1 ([one-reading quick answers] (Q1), Jess Haley,
+%                  2026-10-26; it was a NaN-amount dose noted route_unknown).
 %   A dose whose rows give two DIFFERENT amounts of one kind keeps the first
 %   and leaves a `dose_amount_conflict` note per other (jDoseValue).
 %   A vehicle row's amount per body mass (saline `1 mg/kg`) is not an amount:
@@ -76,6 +78,15 @@ if ~isempty(options.Conditions)
 end
 
 switch route
+    case 'unknown'
+        % [one-reading quick answers] (Q1) (Decided by Jess Haley, 2026-10-26):
+        % a treatment with no recorded location is carried as v1 instead of
+        % becoming a dose with a NaN amount -- immersion or dose is decided by
+        % where it was given, which the document does not say.
+        unplaced = {['needs_mapping: manipulation (immersion | dose); decided ' ...
+            'by where the treatment was given, in its dataset']};
+        docs = {};
+        return;
     case 'needs_mapping'
         unplaced = {['needs_mapping: manipulation (exposure | dose); decided ' ...
             'by what the treatment''s location means in its dataset (e.g. ' ...

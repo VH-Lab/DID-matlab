@@ -83,5 +83,13 @@ end
 % tombstone, unchanged; did2.convert.resolveEpochProbemap
 % (mkMetadataArchiveBodies) joins it to that manipulation and replaces it with
 % the opaque_body, id preserved, or keeps it and counts why.
+% [ingested stimulus file is a body of the presentation] (Decided by Jess
+% Haley, 2026-10-26, did-schema V_eta_go_forward_class_audit.md): pass 1 carries
+% the v1 document UNCHANGED as v1 -- stamped did_v1 by v1_to_v2, never read
+% against V_eta -- and NDI's second pass makes it an opaque_body of the epoch's
+% stimulus-presentation manipulation (or keeps it as v1 with none).
+did2.convert.reportNote('carried_as_v1', 'daqmetadatareader_epochdata_ingested', ...
+    char(preBody.base.id), ['retired class: a body of the presentation, made ' ...
+    'by the NDI second pass ([ingested stimulus file is a body of the presentation])']);
 bodies = {preBody};
 end
