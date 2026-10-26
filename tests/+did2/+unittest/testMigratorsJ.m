@@ -5062,10 +5062,12 @@ function testProbeGeometryWithContactGeometryIsCarriedAsV1(testCase)
 % `has_planar_contour` and the contour have no V2 home until a contact-geometry
 % model exists, so a document that sets any of them is carried whole as v1
 % (they were dropped as "still deferred"). One field at a time.
+% (has_planar_contour 2: neither writer default -- 0 and 1 count as not set,
+% testProbeGeometryWritersContourFlagDoesNotCarry)
 fields = {'shank_id', [1 1]; 'contact_shape', 'circle'; ...
     'contact_shape_width', 12; 'contact_shape_height', 12; ...
     'contact_shape_radius', 6; 'manufacturer', 'acme'; ...
-    'has_planar_contour', 0; 'contour_x', [0 1 1 0]; 'contour_y', [0 0 1 1]};
+    'has_planar_contour', 2; 'contour_x', [0 1 1 0]; 'contour_y', [0 0 1 1]};
 for k = 1:size(fields, 1)
     v1 = struct();
     v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
@@ -5089,6 +5091,30 @@ for k = 1:size(fields, 1)
             ['probe_geometry.' fields{k, 1}]), notes.carried_as_v1.distinct_details{1});
     end
 end
+end
+
+function testProbeGeometryWritersContourFlagDoesNotCarry(testCase)
+% [writer default is not set] (Jess Haley, 2026-10-26): has_planar_contour
+% equal to an NDI writer's fixed default -- 1 (template probe_geometry.json:33)
+% or 0 (fromStruct.m:73) -- counts as not set, so it alone does not carry the
+% document; the fold runs. A non-default value still carries it.
+for v = {1, 0, true}
+    v1 = struct();
+    v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
+        'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_5'});
+    v1.base = struct('id', 'pg_4', 'session_id', 'sess_09', 'name', 'pg', ...
+        'datestamp', '2024-06-01T12:00:00.000Z');
+    v1.probe_geometry = struct('site_locations_leftright', [0 20], ...
+        'site_locations_frontback', [0 0], 'ndim', 2, 'unit', 'um', ...
+        'probe_model', 'linear', 'has_planar_contour', v{1});
+    out = did2.convert.migrators_j.probe_geometry(v1);
+    verifyGreaterThan(testCase, numel(out), 1, ...
+        sprintf('has_planar_contour %g alone carried the document', double(v{1})));
+end
+v1.probe_geometry.has_planar_contour = 3;
+out = did2.convert.migrators_j.probe_geometry(v1);
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'a non-default value carries');
 end
 
 function testProbeGeometryRejectsInventedShape(testCase)

@@ -53,9 +53,13 @@ function bodies = probe_geometry(preBody)
 %   2026-10-26; a home needs a contact-geometry model (a shape composite and a
 %   per-site shank axis), which is modelling, not repair. [probe contact geometry
 %   carried] (Jess Haley, 2026-10-26): a document that sets ANY of them is
-%   carried whole as v1 until V2 has that model. `has_planar_contour` counts as
-%   set whenever it holds a value (the NDI template default is 1 and
-%   fromStruct.m writes 0), so a writer-shaped document carrying it is carried.
+%   carried whole as v1 until V2 has that model. `has_planar_contour` equal
+%   to a v1 writer's own fixed default counts as NOT set ([writer default is
+%   not set], Jess Haley, 2026-10-26: the default is recoverable): 1, the NDI
+%   template's (src/ndi/ndi_common/database_documents/probe/probe_geometry.json:33)
+%   and 0, fromStruct's (src/ndi/+ndi/+fun/+probe/+geometry/fromStruct.m:73),
+%   both at NDI-matlab main 3cb19a8 (the did-schema sibling lock). Any other
+%   value carries the document as before.
 %
 %   THE GUARD. A body carrying `channel_positions`, `position_units` or
 %   `probe_type` is REJECTED BY NAME: those are V_alpha inventions, so their
@@ -87,6 +91,12 @@ unplacedNames = {'shank_id', 'contact_shape', 'contact_shape_width', ...
     'contact_shape_height', 'contact_shape_radius', 'manufacturer', ...
     'has_planar_contour', 'contour_x', 'contour_y'};
 isSet = cellfun(@(f) isfield(blk, f) && ~isBlank(blk.(f)), unplacedNames);
+% [writer default is not set] (Jess Haley, 2026-10-26): the writers' fixed
+% has_planar_contour (template 1, fromStruct 0) does not by itself carry
+k = strcmp(unplacedNames, 'has_planar_contour');
+if isSet(k) && isWriterDefaultContourFlag(blk.has_planar_contour)
+    isSet(k) = false;
+end
 if any(isSet)
     did2.convert.reportNote('carried_as_v1', 'probe_geometry', char(preBody.base.id), ...
         ['unplaced: ' strjoin(strcat('probe_geometry.', unplacedNames(isSet)), ', ')]);
@@ -147,6 +157,12 @@ v = blk.(name);
 if isnumeric(v) && ~isempty(v)
     vals = double(v(:))';
 end
+end
+
+function tf = isWriterDefaultContourFlag(v)
+%ISWRITERDEFAULTCONTOURFLAG True for 1 (NDI probe_geometry.json:33) or 0
+%   (fromStruct.m:73), as one number or logical.
+tf = (isnumeric(v) || islogical(v)) && isscalar(v) && any(double(v) == [0 1]);
 end
 
 function tf = isBlank(v)
