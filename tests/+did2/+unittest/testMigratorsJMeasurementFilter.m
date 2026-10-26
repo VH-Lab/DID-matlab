@@ -180,6 +180,29 @@ verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrou
 f = out.migrated{1}.get('filter');
 verifyTrue(testCase, isfield(f, 'type') && ~isfield(f, 'filter_type'), ...
     'the carried pyraview is the superclass-reshaped body, not the v1 source');
+% stamped did_v1 in pass 1, so nothing downstream reads it against V_eta
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
+end
+
+function testACarriedPyraviewIsValidatedNowhereAgainstVEta(testCase)
+% NDI e2e run 40275711411: 9 PRED tests failed with `Property block "filter"
+% carries undeclared field "type"` -- a carried pyraview (the v1 source, with
+% `filter.type`) was validated against the V_eta `filter` tombstone. A carried
+% document is v1 end to end ([passthrough stays v1: how], [generic stage is
+% lossless], Jess Haley): stamped 'did_v1' by pass 1, not validated by it (with
+% Validate ON), and refused by no V_eta validation after it.
+blk = predFilterBlock();
+blk.label = 'my high-pass';            % carries the pyraview whole as v1
+out = did2.convert.v1_to_v2(pyraviewBody(blk), 'Validate', true, 'TargetVersion', 'V_eta');
+verifyEmpty(testCase, out.quarantine, 'a carried document is never quarantined by V_eta');
+assertEqual(testCase, numel(out.migrated), 1);
+d = out.migrated{1};
+verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1');
+f = d.get('filter');
+verifyTrue(testCase, isfield(f, 'type'), 'filter.type is kept');
+% and a later reader validating it does not read it against V_eta
+verifyWarningFree(testCase, @() did2.schema.cache.shared().validateDocument(d));
+d.validate();   % no error: a did_v1 body is not validated against V_eta
 end
 
 % ===================== FAMILY 1: subjectmeasurement ========================

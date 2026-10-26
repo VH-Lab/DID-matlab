@@ -293,8 +293,8 @@ if strcmp(options.TargetVersion, 'V_eta')
         @(r) did2.convert.resolveResponseParameters(r, ...
             'Validate', true, 'TargetVersion', options.TargetVersion));
 
-    % did2.convert.resolveLawnPlateSubjects (the JH E. coli lawn / plate
-    % subjects) is NOT run: Haley-import logic, removed from the generic
+    % did2.convert.resolveLawnPlateSubjects, the JH E. coli lawn / plate
+    % subjects pass, is NOT run: Haley-import logic, removed from the generic
     % migration (Decided by Jess Haley, 2026-10-26 [Haley logic leaves the
     % generic migration], did-schema V_eta_go_forward_class_audit.md).
 

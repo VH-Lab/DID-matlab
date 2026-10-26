@@ -360,6 +360,7 @@ for k = 1:numel(bodies)
                 v2Body = postUniversalBody;
                 superUnchanged = true;
                 v2Bodies = {v2Body};
+                carried = true;
             end
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
             % hand its input straight back? `bodies = {preBody}` is how a
@@ -401,17 +402,35 @@ for k = 1:numel(bodies)
         % N documents in `migrated` (or quarantines the whole source
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
-            outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
-            outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
-            if isfield(outBody, 'document_class') ...
-                    && isstruct(outBody.document_class)
-                % the STAMP, not the set name TargetVersion (Jess Haley,
-                % 2026-10-25 [document stamps]: a V2 document is 'did_v2')
-                outBody.document_class.schema_version = ...
-                    did2.convert.targetStamp(options.TargetVersion);
+            if carried
+                % A CARRIED DOCUMENT IS v1 END TO END ([generic stage is
+                % lossless], [passthrough stays v1: how], Jess Haley,
+                % 2026-10-24/25): the universalRenames output, no V_eta
+                % class blocks padded on, no base fields renamed, stamped
+                % 'did_v1' here and not left for the end of the pipeline --
+                % a did2_v2 stamp let a later reader (a batch pass's
+                % re-validation, NDI's second pass) validate it against the
+                % V_eta tombstone of the same name (PRED pyraview:
+                % `filter.type` refused by the `filter` tombstone). A
+                % 'did_v1' body is never validated against V_eta
+                % (did2.schema.cache.validateDocument / rehydrate).
+                outBody = v2Bodies{bi};
+                if isfield(outBody, 'document_class') && isstruct(outBody.document_class)
+                    outBody.document_class.schema_version = 'did_v1';
+                end
+            else
+                outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+                outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
+                if isfield(outBody, 'document_class') ...
+                        && isstruct(outBody.document_class)
+                    % the STAMP, not the set name TargetVersion (Jess Haley,
+                    % 2026-10-25 [document stamps]: a V2 document is 'did_v2')
+                    outBody.document_class.schema_version = ...
+                        did2.convert.targetStamp(options.TargetVersion);
+                end
             end
             doc = did2.document(outBody);
-            if options.Validate
+            if options.Validate && ~carried
                 try
                     doc.validate('SchemaCache', options.SchemaCache);
                 catch vErr

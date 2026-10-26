@@ -1212,6 +1212,14 @@ classdef cache < handle
                 error('did2:validation:missingClassName', ...
                     'Document has no document_class.class_name; cannot validate.');
             end
+            % A document STAMPED v1 ('did_v1') is a v1 document carried into
+            % a V2 database (Decided by Jess Haley, 2026-10-24 [passthrough
+            % stays v1: how]); V_eta is not its contract, so it is never
+            % validated against the V_eta class of the same name (rehydrate
+            % and the database skip it the same way).
+            if did2.schema.isV1Stamp(s, 'Explicit', true)
+                return;
+            end
             className = char(dc.class_name);
             classSchema = obj.getClass(className);
             if isfield(classSchema, 'document_class') ...
