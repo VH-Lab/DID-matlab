@@ -612,6 +612,77 @@ if isscalar(bodyIdx)
 end
 end
 
+function testUnregisteredTermsTheMigrationWrites(testCase)
+% REPORT ONLY. [early migration pieces fixed] (3) (Jess Haley, 2026-10-26,
+% did-schema V_eta_go_forward_class_audit.md): the TermRegistry strict check is
+% to stay ON during migration, an unregistered term becoming a carry with a
+% register row or a registry row. v1_to_v2 and epochMint still turn it off.
+% This measures what turning it on would refuse: every fixture body is
+% migrated ALONE (so each term is attributed to its v1 class) with the check
+% off and did2.build.unregisteredTerms collecting, then the whole batch goes
+% through the batch passes the same way. Each line is
+% 'UNREGISTERED-TERM <v1 class> | <field> | <node> | <name> | <reason>'.
+% Denominator first: the bodies run. It asserts only that something was run.
+if isempty(getenv('DID_SCHEMA_PATH'))
+    assumeFail(testCase, ...
+        'DID_SCHEMA_PATH not set; run under test-fixtures.yml (assembled V_eta schema).');
+end
+prevCollect = did2.build.unregisteredTerms('-collect', true);
+testCase.addTeardown(@() did2.build.unregisteredTerms('-collect', prevCollect));
+bodies = v1Fixtures();
+fprintf('\nUNREGISTERED-TERMS DENOMINATOR: %d fixture body(ies), each migrated alone\n', ...
+    numel(bodies));
+nLines = 0;
+classesWithTerms = {};
+for k = 1:numel(bodies)
+    b = bodies{k};
+    cn = '<unknown>';
+    if isfield(b, 'document_class') && isfield(b.document_class, 'class_name')
+        cn = char(b.document_class.class_name);
+    end
+    did2.build.unregisteredTerms('-reset');
+    try
+        did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'V_eta');
+    catch err
+        fprintf('UNREGISTERED-TERMS %s: the run threw %s (not measured)\n', ...
+            cn, err.identifier);
+        continue;
+    end
+    rows = did2.build.unregisteredTerms();
+    for r = 1:numel(rows)
+        fprintf('UNREGISTERED-TERM %s | %s | %s | %s | %s (x%d)\n', cn, ...
+            rows(r).field, rows(r).node, rows(r).name, rows(r).reason, rows(r).count);
+        nLines = nLines + 1;
+    end
+    if ~isempty(rows); classesWithTerms{end+1} = cn; end %#ok<AGROW>
+end
+fprintf(['UNREGISTERED-TERMS per-document: %d term line(s); %d of %d body(ies) ' ...
+    'write one (classes: %s)\n'], nLines, numel(classesWithTerms), numel(bodies), ...
+    strjoin(unique(classesWithTerms), ', '));
+% the batch passes, on the whole batch
+did2.build.unregisteredTerms('-reset');
+try
+    result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+    did2.build.unregisteredTerms('-reset');
+    result = did2.convert.resolveDeferredBaths(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.resolveOpenmindsCitations(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.resolveDatasetEntities(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.resolveSessionAnchors(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    did2.convert.resolveEpochProbemap(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    rows = did2.build.unregisteredTerms();
+    for r = 1:numel(rows)
+        fprintf('UNREGISTERED-TERM <batch pass> | %s | %s | %s | %s (x%d)\n', ...
+            rows(r).field, rows(r).node, rows(r).name, rows(r).reason, rows(r).count);
+    end
+    fprintf('UNREGISTERED-TERMS batch passes: %d term line(s)\n', numel(rows));
+catch err
+    fprintf('UNREGISTERED-TERMS batch passes: threw %s: %s (not measured)\n', ...
+        err.identifier, err.message);
+end
+verifyGreaterThan(testCase, numel(bodies), 0, 'the measurement ran on nothing');
+end
+
 function testACarriedCalculatorWithNoTombstoneIsCountedNotQuarantined(testCase)
 % [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
 % 2026-10-25): the writer-shaped contrast_tuning states a field the fold has no
