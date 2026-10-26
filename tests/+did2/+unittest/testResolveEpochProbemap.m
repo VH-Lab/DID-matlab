@@ -470,7 +470,8 @@ end
 function testAnUndecidedElementTypeKeepsItsAcquisitionEpochCounted(testCase)
 % F1 AMENDMENT 1: key on the element `type`. A type with no decided row keeps
 % its acquisition_epoch, counted by type -- never given a spike-shaped home.
-% (JH's `position` / `distance` got rows on 2026-10-22; `lfp` stands in.)
+% (`lfp` stands in; JH's `position` / `distance` are kept the same way since
+% 2026-10-26, testJHPositionAndDistanceEpochsStayAcquisitionEpochs.)
 subj = subjectBody('specimen_sp2', 'sess_sp2', 'W');
 elP  = elementBody('el_probe_p', 'sess_sp2', 'cam', '1', 'camera', 1, 'specimen_sp2');
 elN  = derivedElementBody('el_lfp', 'sess_sp2', 'w1_lfp', 'lfp', 'el_probe_p');
@@ -484,7 +485,7 @@ verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 1);
 verifyEqual(testCase, rep.spike_epochs_seen, 0);
 end
 
-% ===================== JH position and distance (2026-10-22) ============
+% ===================== JH position and distance (left 2026-10-26) =======
 
 function [els, ees, dm] = jhWorm(sid, stem, wormId, withPatch)
 %JHWORM A v1 JH worm body part as ndi.setup.conv.haley doImport writes it
@@ -528,70 +529,31 @@ v1.element_epoch = struct('epoch_clock', 'dev_local_time,exp_global_time', ...
     't0_t1', [0 739081.594; 3599.8 739081.636]);
 end
 
-function testJHPositionAndDistanceDissolveIntoTrackCalculations(testCase)
-% Decided by Jess Haley, 2026-10-22 [JH position and distance]: a position
-% epoch -> a position calculation of the worm; a distance epoch -> a length
-% calculation (signed distance to region boundary) and an item calculation
-% (nearest bacterial patch), input the position calculation; each anchored to
-% its epoch; the .vhsb carried as one opaque_body.
+function testJHPositionAndDistanceEpochsStayAcquisitionEpochs(testCase)
+% INVERTS testJHPositionAndDistanceDissolveIntoTrackCalculations: the JH worm
+% track shapes left the generic migration (Decided by Jess Haley, 2026-10-26
+% [dataset audit batch 1 and 2] (1), superseding [JH position and distance] for
+% the generic stage). A `position` or `distance` epoch has no row, so it keeps
+% its acquisition_epoch, counted by type; no track calculation, coordinate
+% system or nearest-patch item is written.
 sid = 'sess_jh';
 worm = subjectBody('worm_1', sid, 'N2_worm0001');
 patch = subjectBody('patch_1', sid, 'patch 1');
-patch2 = subjectBody('patch_2', sid, 'patch 2');
-% two patches: the migrated endpoint is a STRING ARRAY of ids (corpus JH run
-% 39868711230 failed on that shape: MATLAB:REGEXP:invalidInputs)
-[els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1,patch_2');
-dm.distance_metadata.integerIDs_B = [1 2];
-[out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch, patch2}, els, ees, {dm}]);
+[els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1');
+[out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch}, els, ees, {dm}]);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
-verifyEqual(testCase, rep.acquisition_epoch_dissolved, 2);
-verifyEqual(testCase, rep.position_calculations_emitted, 1);
-verifyEqual(testCase, rep.distance_calculations_emitted, 1);
-verifyEqual(testCase, rep.nearest_patch_calculations_emitted, 1);
-verifyEqual(testCase, rep.coordinate_systems_minted, 1);
-verifyEqual(testCase, rep.distance_without_position, 0);
-verifyEqual(testCase, rep.nearest_patch_without_patches, 0);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
-verifyEmpty(testCase, out.quarantine);
-pos = docById(out, 'ee_N2_x_midpoint_pos');
-assertNotEmpty(testCase, pos, 'the position calculation keeps the epoch id');
-verifyEqual(testCase, char(did2.unittest.helpers.classKey(pos)), 'calculation+position');
-verifyEqual(testCase, depVal(pos, 'entity_id'), 'worm_1', 'about the worm');
-verifyEqual(testCase, depVal(pos, 'instrument_id'), 'el_N2_x_midpoint_pos');
-verifyEqual(testCase, char(pos.statement.variable.node), 'PATO:0000140');
-verifyEqual(testCase, char(pos.interaction.method.term.node), 'EMPTY:0000301');
-cs = docById(out, depVal(pos, 'coordinate_system_id'));
-assertNotEmpty(testCase, cs);
-verifyEqual(testCase, char(cs.coordinate_system.reference_point.node), 'EMPTY:0000310');
-ref = docById(out, depVal(pos, 'time_reference_id'));
-verifyEqual(testCase, char(ref.relative_time_reference.value.clock.name), 'dev_local_time');
-verifyEqual(testCase, ref.relative_time_reference.value.end.seconds, 3599.8, 'AbsTol', 1e-9);
-len = docById(out, 'ee_N2_x_midpoint_dist');
-assertNotEmpty(testCase, len);
-verifyEqual(testCase, char(did2.unittest.helpers.classKey(len)), 'calculation+length');
-verifyEqual(testCase, char(len.statement.variable.node), 'EMPTY:0000384');
-verifyEqual(testCase, depVals(len, 'input_id'), {'ee_N2_x_midpoint_pos'});
-items = bodiesOfClass(out, 'calculation+item');
-assertEqual(testCase, numel(items), 1);
-verifyEqual(testCase, char(items{1}.statement.variable.node), 'EMPTY:0000297');
-verifyEqual(testCase, depVals(items{1}, 'item_id'), {'patch_1', 'patch_2'});
-verifyEqual(testCase, depVals(items{1}, 'input_id'), {'ee_N2_x_midpoint_pos'});
-ob = bodiesOfClass(out, 'opaque_body');
-owners = {};
-for i = 1:numel(ob); owners{end+1} = sort(depVals(ob{i}, 'owner_id')); end %#ok<AGROW>
-verifyTrue(testCase, any(cellfun(@(o) isequal(o, sort({'ee_N2_x_midpoint_dist', char(items{1}.base.id)})), owners)), ...
-    'the distance .vhsb is one body owned by both distance calculations');
-end
-
-function testAJHDistanceWithNoPositionHasNoInputCounted(testCase)
-sid = 'sess_jh2';
-worm = subjectBody('worm_2', sid, 'N2_worm0002');
-[els, ees] = jhWorm(sid, 'N2_y_head', 'worm_2', '');
-[out, rep] = decompose({sessionBody('sd_jh2', sid, 'ref'), worm, els{2}, ees{2}});
-verifyEqual(testCase, rep.acquisition_epoch_dissolved, 1);
-verifyEqual(testCase, rep.distance_without_position, 2, 'both distance statements');
-verifyEqual(testCase, rep.nearest_patch_without_patches, 1);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
+verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided, 2);
+verifyTrue(testCase, contains(rep.acquisition_epoch_kept_types, 'position=1'), ...
+    rep.acquisition_epoch_kept_types);
+verifyTrue(testCase, contains(rep.acquisition_epoch_kept_types, 'distance=1'), ...
+    rep.acquisition_epoch_kept_types);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+verifyEmpty(testCase, bodiesOfClass(out, 'calculation+position'));
+verifyEmpty(testCase, bodiesOfClass(out, 'calculation+length'));
+verifyEmpty(testCase, bodiesOfClass(out, 'calculation+item'));
+verifyEmpty(testCase, bodiesOfClass(out, 'coordinate_system'));
+verifyFalse(testCase, isfield(rep, 'position_calculations_emitted'));
 verifyEmpty(testCase, out.quarantine);
 end
 

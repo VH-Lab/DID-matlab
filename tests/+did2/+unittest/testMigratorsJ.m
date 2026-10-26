@@ -553,28 +553,6 @@ verifyEqual(testCase, out.migrated{1}.get('base.id'), 'otr_01', ...
 verifyEqual(testCase, numel(unique(ids)), numel(ids), 'emitted ids must be unique');
 end
 
-function testEncounterMapPreservesSourceId(testCase)
-% Same requirement on the per-table map path, which previously minted a fresh
-% id for every body it emitted. (A row the map places whole: a real JH row is
-% carried as v1, testAnEncounterRowTheMapCannotPlaceIsCarriedWholeAsV1.)
-out = runJ(placeableEncounterRow());
-ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
-verifyEqual(testCase, sum(strcmp(ids, 'otr_enc')), 1);
-verifyEqual(testCase, numel(unique(ids)), numel(ids));
-end
-
-function testPatchGeometryMapDoesNotDoubleStampSourceId(testCase)
-% makePatchSubject ALREADY preserves the id deliberately (the encounter
-% relation names that document as its parent). Stamping again would mint two
-% documents sharing one id, so the preservation step must detect it and leave
-% it alone.
-out = runJ(patchGeometryRow());
-ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
-verifyEqual(testCase, sum(strcmp(ids, 'otr_patch')), 1, ...
-    'the id must be carried exactly once, not stamped twice');
-verifyEqual(testCase, numel(unique(ids)), numel(ids));
-end
-
 function testOntologyTableRowNumericColumn(testCase)
 out = runJ(tableRow());
 mass = out.migrated{1};   % BodyWeight -> mass_observation
@@ -715,16 +693,17 @@ function testTreatmentDrugAnchoredAtItsAdministrationOnset(testCase)
 % Jess Haley, 2026-10-21 ("a"): a treatment is anchored at the recorded
 % administration_onset_time, and at the session only when none is recorded.
 % Babu writes the onset as a time of day (+babu/TreatmentCreator.m:70,
-% string(..., 'hh:mm:ss')) on a heat pulse.
+% string(..., 'hh:mm:ss')). (On a dose since 2026-10-26: Babu's heat pulse is
+% carried as v1, testBabuHeatRowIsCarriedNeedingAMapping.)
 v1 = treatmentDrugDoc('td_onset', ...
-    sprintf('ontologyName,name,value,ontologyUnit,unitName\nOM:Heat,heat,37,NCIT:C42559,Degree Celsius'), ...
-    'MICRO:0000480', 'agar plate medium');
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
+    'SNOMED:783351009', 'Intraperitoneal');
 v1.treatment_drug.administration_onset_time = '10:32:00';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 m = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+temperature');
-a = out.migrated{2};
+verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+dose');
+a = firstOfClassJ(out.migrated, 'absolute_time_reference');
 verifyEqual(testCase, a.get('document_class.class_name'), 'absolute_time_reference');
 verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '10:32:00');
 verifyEqual(testCase, depVal(m, 'time_reference_id'), a.get('base.id'));
@@ -1270,71 +1249,49 @@ verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'vi_none'}
 verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 1000);
 end
 
-function testBabuAgarMediumIsAnExposure(testCase)
-% Babu writes a chemical training row as a treatment_drug located at agar plate
-% medium (MICRO:0000480, +babu/treatments.json `agar`). "Babu treatments located
-% at agar plate medium (MICRO:0000480) or ambient air (XCO:0000918) are
-% exposures of the worms: a manipulation of the worm subject valued by the
-% formulation through value_id, not a dose, with no anatomical-location
-% observation" (Jess Haley, 2026-10-21 [babu-media]).
+function testBabuAgarMediumIsCarriedNeedingAMapping(testCase)
+% INVERTS testBabuAgarMediumIsAnExposure: the Babu media routing left the
+% generic stage (Decided by Jess Haley, 2026-10-26 [dataset audit batch 1 and
+% 2] (2), superseding [babu-media] there; [one correct reading]: "a medium the
+% worms live on written as a dose" is never written). A treatment_drug at agar
+% plate medium is carried whole as v1, its note naming the V2 homes.
 v1 = treatmentDrugDoc('td_agar', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nCHEBI:82021,imazapyr,0.08,OM:MolarVolumeUnit,Molar'), ...
     'MICRO:0000480', 'agar plate medium');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 4);   % manipulation + chemical + formulation + anchor
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+formulation'), 1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (exposure | dose)'), d);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 0);
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 0);
-m = out.migrated{1};
-verifyEqual(testCase, m.get('base.id'), 'td_agar');
-verifyEqual(testCase, depVal(m, 'entity_id'), 'subj_007');
-verifyNotEmpty(testCase, depVal(m, 'value_id'));
-verifyEmpty(testCase, depVal(m, 'formulation_id'));
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
-function testBabuAmbientAirIsAnExposure(testCase)
-% Babu's odour training rows are located in ambient air (XCO:0000918); the
-% diacetyl mixture has two rows, both kept as ingredients.
+function testBabuAmbientAirIsCarriedNeedingAMapping(testCase)
+% INVERTS testBabuAmbientAirIsAnExposure (same decision): Babu's odour training
+% rows, located in ambient air (XCO:0000918), are carried whole as v1.
 v1 = treatmentDrugDoc('td_air', ...
     sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
              'CHEBI:16583,"butane-2,3-dione",1,NCIT:C48571,Percent Volume per Volume\n' ...
              'CHEBI:16236,ethanol,99,NCIT:C48571,Percent Volume per Volume']), ...
     'XCO:0000918', 'ambient air');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 5);   % manipulation + 2 chemicals + formulation + anchor
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+formulation'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 0);
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 0);
-m = out.migrated{1};
-verifyEqual(testCase, m.get('statement.variable').name, 'butane-2,3-dione');
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, 'needs_mapping:'), d);
 end
 
-function testBabuHeatRowIsATemperatureManipulation(testCase)
-% Babu's heat pulse: a treatment_drug at agar plate medium whose one mixture row
-% is OM:Heat, 37, NCIT:C42559 "Degree Celsius". "a heat row (OM:Heat, 37 °C) is
-% a temperature manipulation of the worms at each training time" (Jess Haley,
-% 2026-10-21 [babu-media]). No formulation, no chemical, no location observation.
+function testBabuHeatRowIsCarriedNeedingAMapping(testCase)
+% INVERTS testBabuHeatRowIsATemperatureManipulation (same decision): Babu's
+% heat pulse (one mixture row OM:Heat, 37 Degree Celsius) is carried whole as
+% v1, its note naming a temperature manipulation as a V2 home.
 v1 = treatmentDrugDoc('td_heat', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nOM:Heat,heat,37,NCIT:C42559,Degree Celsius'), ...
     'MICRO:0000480', 'agar plate medium');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 2);   % temperature manipulation + anchor
-m = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+temperature');
-verifyEqual(testCase, m.get('base.id'), 'td_heat');
-verifyEqual(testCase, depVal(m, 'entity_id'), 'subj_007');
-t = m.get('temperature.value');
-verifyEqual(testCase, t(1).celsius, 37);
-verifyEqual(testCase, t(1).source_value, 37);
-verifyEqual(testCase, t(1).source_unit.node, 'NCIT:C42559');
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+formulation'), 0);
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 0);
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 0);
-verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (temperature | dose)'), d);
+verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+temperature'), 0);
 end
 
 function v1 = treatmentDrugDoc(id, mixtureTable, locNode, locName)
@@ -2024,41 +1981,28 @@ v1.image_stack_parameters = struct('data_type', 'logical', ...
     'dimension_scale_units', 'micrometer,micrometer', 'data_limits', [0 1]);
 end
 
-function testImageStackMaskIsALogicalCalculationOfItsRegion(testCase)
-% INVERTED 2026-10-22 (was ...BecomesALabelCalculationWithNoInventedSoftware,
-% label value kind, variable 'pixel label'). Decided by Jess Haley, 2026-10-22
-% [migrated masks are logical]: a calculation with the `logical` value kind,
-% its variable the region it marks, as the native Haley import names it
-% ('arena region'); no method; no software, because the source records none
-% ([calculation-software-optional decided]).
-out = did2.convert.migrators_j.image_stack(arenaMaskImageStack());
-names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
-verifyEqual(testCase, sort(names), sort({'calculation+logical', 'sampled_body', ...
-    'relative_time_reference'}), strjoin(names, ', '));
-calc = out{strcmp(names, 'calculation+logical')};
-verifyEqual(testCase, calc.base.id, 'is_mask_01', 'id preserved');
-verifyEqual(testCase, calc.statement.variable.name, 'arena region');
-verifyEqual(testCase, depValue(calc, 'entity_id'), 'subjgrp_7');
-verifyEmpty(testCase, depValue(calc, 'software_id'));
-verifyFalse(testCase, ismember('software', names));
-verifyFalse(testCase, isfield(calc, 'interaction') && isfield(calc.interaction, 'method') ...
-    && ~isempty(calc.interaction.method), 'no method is recorded');
-verifyTrue(testCase, logical(calc.value.data_body));
-body = out{strcmp(names, 'sampled_body')};
-verifyEqual(testCase, depValue(body, 'owner_id'), 'is_mask_01');
-verifyEqual(testCase, numel(body.data.dimensions), 2, 'dimensions Y, X');
+function testAMaskIsCarriedWholeAsV1NamingItsHome(testCase)
+% INVERTS testImageStackMaskIsALogicalCalculationOfItsRegion and
+% testABacterialPatchMaskMarksTheBacterialLawnRegion: the region a mask marks
+% was read from Haley label words ("arena", "bacteria" / "lawn"), which left the
+% generic migration (Decided by Jess Haley, 2026-10-26 [dataset-specific logic
+% leaves the generic migration], [one correct reading]). Every mask -- the arena
+% mask, the bacterial-patch mask and one whose label names no region -- is
+% carried whole as v1 with a `needs_mapping` note naming its V2 home.
+labels = {arenaMaskImageStack().image_stack.label, ...
+    ['A binary image mask (logical matrix) representing the union of all ' ...
+     'individually detected bacterial patch areas on an assay plate. This ' ...
+     'mask defines all food-containing regions.'], ...
+    'a mask'};
+for k = 1:numel(labels)
+    v1 = arenaMaskImageStack();
+    v1.image_stack.label = labels{k};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, 'needs_mapping: calculation+logical'), d);
 end
-
-function testABacterialPatchMaskMarksTheBacterialLawnRegion(testCase)
-% NDI's EMPTY:0000131 definition, as the writer stores it in the label.
-v1 = arenaMaskImageStack();
-v1.image_stack.label = ['A binary image mask (logical matrix) representing the ' ...
-    'union of all individually detected bacterial patch areas on an assay ' ...
-    'plate. This mask defines all food-containing regions.'];
-out = did2.convert.migrators_j.image_stack(v1);
-names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
-calc = out{strcmp(names, 'calculation+logical')};
-verifyEqual(testCase, calc.statement.variable.name, 'bacterial lawn region');
 end
 
 function testAClosestPatchMapIsNotAMaskAndStaysALabel(testCase)
@@ -2074,21 +2018,15 @@ verifyTrue(testCase, ismember('calculation+label', names));
 verifyFalse(testCase, ismember('calculation+logical', names));
 end
 
-function testAMaskWhoseRegionCannotBeReadPassesThrough(testCase)
-% No region is invented for a mask whose label does not name one.
-v1 = arenaMaskImageStack();
-v1.image_stack.label = 'a mask';
-out = did2.convert.migrators_j.image_stack(v1);
-verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out{1}), 'image_stack');
-end
-
-function testImageStackMaskValidatesWithoutSoftware(testCase)
+function testImageStackMapValidatesWithoutSoftware(testCase)
 % Validation ON: the calculation's require_inherited is read from the schema
 % (did2.build checkRules), so this is red against a did-schema that still
-% requires software_id and green once it does not.
-out = did2.convert.v1_to_v2(arenaMaskImageStack(), 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+% requires software_id and green once it does not. (A map since 2026-10-26: a
+% mask is carried as v1, testAMaskIsCarriedWholeAsV1NamingItsHome.)
+v1 = arenaMaskImageStack();
+v1.image_stack.label = ['An image or map where each pixel''s value is the ' ...
+    'identifier of the bacterial patch closest to that pixel''s location.'];
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 verifyEqual(testCase, out.summary.migrated_count, 3);
 end
@@ -2344,7 +2282,7 @@ verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs)
     {'entity_id', 'time_reference_id'});
 end
 
-% ============ ontology_table_row per-table map: C. elegans encounter ====
+% ===== ontology_table_row: the JH encounter table is not mapped here ====
 
 function otr = encounterRow()
 P = 'CElegansBehavioralAssay_';
@@ -2392,10 +2330,9 @@ end
 end
 
 function otr = placeableEncounterRow()
-%PLACEABLEENCOUNTERROW An encounter row the map places WHOLE: the
-%   EncounterIdentifier column is present (it is part of the table's
-%   signature) but empty, and no column carries an ontology node. A real JH row
-%   carries both, and is carried as v1 (testAnEncounterRowTheMapCannotPlace...).
+%PLACEABLEENCOUNTERROW An encounter row the retired JH encounter map placed
+%   WHOLE: the EncounterIdentifier column is present but empty, and no column
+%   carries an ontology node. Kept to show the generic stage maps neither shape.
 otr = encounterRow();
 otr.ontology_table_row.data.CElegansBehavioralAssay_EncounterIdentifier = [];
 otr.ontology_table_row.ontology_nodes = '';
@@ -2418,63 +2355,30 @@ if isfield(notes, 'carried_as_v1')
 end
 end
 
-function testAnEncounterRowTheMapCannotPlaceIsCarriedWholeAsV1(testCase)
-% INVERTS what testEncounterTableMap asserted for this row: the map dropped
-% EncounterIdentifier ("derived") and every column's ontology node. The
-% generic stage now carries the row whole as v1 (Jess Haley, 2026-10-25
-% [generic stage is lossless], [partly placed is carried as v1]).
-v1 = encounterRow();
-out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), ...
-    'ontology_table_row');
-verifyEqual(testCase, out.migrated{1}.get('ontology_table_row.data'), ...
-    v1.ontology_table_row.data, 'every cell, the identifier among them, kept');
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, contains(d, 'CElegansBehavioralAssay_EncounterIdentifier'), d);
+function testAnEncounterRowIsNotMappedByTheGenericStage(testCase)
+% INVERTS testEncounterTableMap / testAnEncounterRowTheMapCannotPlaceIs...:
+% the JH C. elegans encounter map left the generic migration (Decided by Jess
+% Haley, 2026-10-26 [dataset-specific logic leaves the generic migration],
+% [dataset audit batch 1 and 2]). An encounter row -- even one the old map
+% placed whole -- is now an ordinary row: with no `subject_id` edge it comes
+% back as the v1 row, every cell kept, for the NDI second pass; no window, no
+% `encountered` relation and no worm observation is written.
+rows = {encounterRow(), placeableEncounterRow()};
+for r = 1:numel(rows)
+    v1 = rows{r};
+    out = runJ(v1);
+    verifyEqual(testCase, numel(out.migrated), 1, 'the v1 row, alone');
+    verifyEqual(testCase, out.summary.quarantine_count, 0);
+    d = out.migrated{1};
+    verifyEqual(testCase, char(d.get('document_class.class_name')), 'ontology_table_row');
+    verifyEqual(testCase, char(d.get('base.id')), 'otr_enc');
+    verifyEqual(testCase, d.get('ontology_table_row.data'), v1.ontology_table_row.data);
+    verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 0);
+    verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 0);
+end
 end
 
-function testAnEncounterRowWithNoOnsetIsCarriedNotGivenZero(testCase)
-% the map read a missing bound as 0 (colNum's default): an invented value
-v1 = placeableEncounterRow();
-v1.ontology_table_row.data.CElegansBehavioralAssay_EncounterOnsetTime = [];
-out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, contains(d, 'EncounterOnsetTime (missing)'), d);
-end
-
-function testEncounterTableMap(testCase)
-% the map still places a row it can place whole (it stays for the JH map)
-out = runJ(placeableEncounterRow());
-% 8 worm observations + 1 relation + 1 shared time_reference
-verifyEqual(testCase, numel(out.migrated), 10);
-m = out.migrated;   % #88: by_class counts raw classes; count leaves
-verifyEqual(testCase, nLeafJ(m, 'observation+velocity'), 3);
-verifyEqual(testCase, nLeafJ(m, 'observation+acceleration'), 1);
-verifyEqual(testCase, nLeafJ(m, 'observation+score'), 2);
-verifyEqual(testCase, nLeafJ(m, 'observation+concentration'), 2);
-verifyEqual(testCase, nLeafJ(m, 'directed_relation'), 1);
-verifyEqual(testCase, nLeafJ(m, 'relative_time_reference'), 1);   % #88: the bounded session reference
-% onset/offset are the window (not observations); encounter # is derived (dropped)
-verifyEqual(testCase, nLeafJ(m, 'observation+time'), 0);
-verifyEqual(testCase, nLeafJ(m, 'observation+count'), 0);
-% a measurement is about the worm and shares the encounter window
-tref = firstOfClassJ(out.migrated, 'relative_time_reference');
-vel = firstOfClassJ(out.migrated, 'observation+velocity');
-verifyEqual(testCase, depVal(vel, 'entity_id'), 'worm_1');
-verifyEqual(testCase, depVal(vel, 'time_reference_id'), tref.get('base.id'));
-% the relation is the encounter record: worm --encountered--> patch, same window
-rel = firstOfClassJ(out.migrated, 'directed_relation');
-verifyEqual(testCase, depVal(rel, 'child_id'), 'worm_1');
-verifyEqual(testCase, depVal(rel, 'parent_id'), 'patch_1');
-verifyEqual(testCase, did2.build.vocabularyHandle('relation', rel.get('directed_relation.relation')), 'encountered');
-verifyEqual(testCase, depVal(rel, 'time_reference_id'), tref.get('base.id'));
-% the window carries onset/offset
-verifyEqual(testCase, tref.get('relative_time_reference.value').start.seconds, 1249.72);
-end
-
-% ==== ontology_table_row per-table map: C. elegans bacterial patch ======
+% ==== ontology_table_row: the JH patch geometry table is not mapped here ==
 
 function otr = patchGeometryRow()
 keys = {'BacterialPlateIdentifier', 'BacterialPatchIdentifier', ...
@@ -2501,133 +2405,23 @@ otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
     'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
 end
 
-function testPatchGeometryTableMap(testCase)
-out = runJ(patchGeometryRow());
-% 1 subject + 6 geometry observations + the BacterialPlateIdentifier column
-% (no longer dropped -- see testPatchGeometryCarriesUnenumeratedColumns)
-% + 1 shared session anchor
-verifyEqual(testCase, numel(out.migrated), 9);
-m = out.migrated;   % #88: the patch is an entity of type culture; leaves counted
-% the patch is declared as a bare subject
-verifyEqual(testCase, nLeafJ(m, 'culture'), 1);
-% geometry -> observations (OD600, volume, radius + centre X/Y, circularity)
-verifyEqual(testCase, nLeafJ(m, 'observation+concentration'), 1);
-verifyEqual(testCase, nLeafJ(m, 'observation+volume'), 1);
-verifyEqual(testCase, nLeafJ(m, 'observation+length'), 3);   % radius + centre X + centre Y
-verifyEqual(testCase, nLeafJ(m, 'observation+score'), 1);
-verifyEqual(testCase, nLeafJ(m, 'relative_time_reference'), 1);
-% the patch's OWN identifier is its identity, not a measurement
-verifyEqual(testCase, nLeafJ(m, 'observation+count'), 0);
-% the minted subject PRESERVES the source document id (the encounter table's
-% directed_relation parent points at it) and names the patch
-sub = firstOfClassJ(out.migrated, 'culture');
-verifyEqual(testCase, sub.get('base.id'), 'otr_patch');
-% THIS ASSERTION WAS INVERTED 2026-08-11, not updated. It read '0017' -- the
-% bare `patchID` -- which is precisely what the team directive of that day
-% forbids ("None should be labeled just patch #"). A test written from the same
-% premise as the code cannot catch the code, and this one had been pinning the
-% collision rather than the fix: `patchID` is 1:numPatch WITHIN a plate
-% (doImport.m:275), so '0001' recurs on every plate in one session.
-verifyEqual(testCase, sub.get('entity.local_identifier'), ...
-    'plate/0061/patch/0017', ...
-    ['the patch handle must carry its plate; the experiment number is not a ' ...
-     'column of this table and is added by did2.convert.resolveLawnPlateSubjects']);
-% every geometry observation is about that patch and shares the anchor
-anchor = firstOfClassJ(out.migrated, 'relative_time_reference');
-od = firstOfClassJ(out.migrated, 'observation+concentration');
-verifyEqual(testCase, depVal(od, 'entity_id'), 'otr_patch');
-verifyEqual(testCase, depVal(od, 'time_reference_id'), anchor.get('base.id'));
-end
-
-function testAPatchSubjectIsNeverLabelledJustThePatchNumber(testCase)
-%TESTAPATCHSUBJECTISNEVERLABELLEDJUSTTHEPATCHNUMBER The team directive of
-%   2026-08-11, verbatim: *"each experiment #, plate #, and patch # combo should
-%   be unique and should dictate the local identifier for all patches. None
-%   should be labeled just patch #"*.
-%
-%   SEPARATE FROM THE MAP TEST ABOVE ON PURPOSE. That one pins the exact handle
-%   this table produces today; this one pins the PROHIBITION, so it stays red
-%   for any future handle that regresses to a bare number -- including through
-%   the `jEnsureLocalId` fallback, which returns its candidate unchanged and
-%   would happily emit '0001' if the plate component were dropped again.
-%
-%   The second half drives the exact regression path: with the plate column
-%   gone, the OLD code returned the bare `patchID`, and later the document id.
-%   Since [no invented values] / [generic stage is lossless] (Jess Haley,
-%   2026-10-25) no handle is invented: the row is carried whole as v1, so no
-%   patch is minted at all -- and certainly none named by the number.
-out = runJ(patchGeometryRow());
-sub = firstOfClassJ(out.migrated, 'culture');   % #88: entity of type culture
-handle = sub.get('entity.local_identifier');
-verifyNotEmpty(testCase, handle, 'local_identifier is REQUIRED on a subject');
-verifyEmpty(testCase, regexp(handle, '^\d+$', 'once'), ...
-    sprintf('the patch is labelled with the bare number %s', handle));
-verifyEqual(testCase, handle, 'plate/0061/patch/0017');
-
-noPlate = dropColumnJ(patchGeometryRow(), 'BacterialPlateIdentifier');
-out2 = runJ(noPlate);
-verifyCarriedWholeAsV1(testCase, noPlate, out2);
-verifyEmpty(testCase, firstOfClassJ(out2.migrated, 'culture'), ...
-    'with no plate column no patch is minted under any handle');
-end
-
-function otr = dropColumnJ(otr, key)
-%DROPCOLUMNJ Remove one column from an ontology_table_row fixture, keys, names,
-%   nodes and data together -- a fixture with a data key its variable_names does
-%   not list is not a shape NDI can produce.
-keys  = strsplit(otr.ontology_table_row.variable_names, ',');
-names = strsplit(otr.ontology_table_row.names, ',');
-nodes = strsplit(otr.ontology_table_row.ontology_nodes, ',');
-keep = ~strcmp(keys, key);
-otr.ontology_table_row.variable_names = strjoin(keys(keep), ',');
-otr.ontology_table_row.names = strjoin(names(keep), ',');
-otr.ontology_table_row.ontology_nodes = strjoin(nodes(keep), ',');
-if isfield(otr.ontology_table_row.data, key)
-    otr.ontology_table_row.data = rmfield(otr.ontology_table_row.data, key);
-end
-end
-
-function testPatchGeometryCarriesUnenumeratedColumns(testCase)
-%TESTPATCHGEOMETRYCARRIESUNENUMERATEDCOLUMNS A column the 6-measure enumeration
-%   does not name must still be carried, not dropped.
-%
-%   WHY THIS IS A REAL PROPERTY AND NOT A HYPOTHETICAL. The geometry table
-%   already ships a 7th column the enumeration never named --
-%   `BacterialPlateIdentifier` (doImport.m:291, `plateID`) -- and it was being
-%   dropped on every JH document this map touched. (The map's own commit,
-%   72ece64, reports 6,306; that figure is NOT quoted as the geometry-row count,
-%   because it was taken while the cultivation-plate table was ALSO dispatching
-%   here and nothing has re-measured the split since.) A dropped column
-%   is the one loss NO instrument sees: it leaves no empty edge for silentLoss,
-%   no scaffolding for isFragment and no vacuous field, so the corpus reads
-%   green while the data is gone. The table's width is set by NDI, not by us,
-%   so a fixed enumeration is the wrong shape.
-otr = patchGeometryRow();
-% a column that exists in no enumeration -- stands in for the next one NDI adds
-otr.ontology_table_row.variable_names = [ ...
-    otr.ontology_table_row.variable_names ',BacterialPatchThickness'];
-otr.ontology_table_row.names = [ ...
-    otr.ontology_table_row.names ',BacterialPatchThickness'];
-otr.ontology_table_row.ontology_nodes = [ ...
-    otr.ontology_table_row.ontology_nodes ',EMPTY:0'];
-otr.ontology_table_row.data.BacterialPatchThickness = 12.5;
-
-out = runJ(otr);
-% dimensionless numeric with no recognised dimension -> intensity (J §7, D8);
-% the point of the assertion is that it EXISTS, not which leaf it picked
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+intensity'), 1, ...
-    'an unenumerated column was dropped by the patch geometry map');
-% and it is about the patch, on the same anchor as the enumerated measures
-anchor = firstOfClassJ(out.migrated, 'relative_time_reference');
-extra = firstOfClassJ(out.migrated, 'observation+intensity');
-verifyEqual(testCase, depVal(extra, 'entity_id'), 'otr_patch');
-verifyEqual(testCase, depVal(extra, 'time_reference_id'), anchor.get('base.id'));
-% the already-shipped 7th column is carried too, as a term (its value is a label)
-plate = firstOfClassJ(out.migrated, 'observation+term');
-assertNotEmpty(testCase, plate, ...
-    'BacterialPlateIdentifier was dropped');
-verifyEqual(testCase, plate.get('term.value').name, '0061');
-verifyEqual(testCase, depVal(plate, 'entity_id'), 'otr_patch');
+function testAPatchGeometryRowIsNotMappedByTheGenericStage(testCase)
+% INVERTS testPatchGeometryTableMap: the JH bacterial-patch geometry map (a
+% `culture` entity named plate/<p>/patch/<q> and six fixed measures) left the
+% generic migration (Decided by Jess Haley, 2026-10-26 [dataset-specific logic
+% leaves the generic migration], [dataset audit batch 1 and 2]). The row comes
+% back as the v1 row, every cell kept; no patch entity is minted under any
+% handle.
+v1 = patchGeometryRow();
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 1, 'the v1 row, alone');
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+d = out.migrated{1};
+verifyEqual(testCase, char(d.get('document_class.class_name')), 'ontology_table_row');
+verifyEqual(testCase, char(d.get('base.id')), 'otr_patch');
+verifyEqual(testCase, d.get('ontology_table_row.data'), v1.ontology_table_row.data);
+verifyEqual(testCase, nLeafJ(out.migrated, 'culture'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 0);
 end
 
 % ==== ontology_table_row: the C. elegans CULTIVATION PLATE is not a patch ===
@@ -2716,35 +2510,6 @@ verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 0);
 verifyFalse(testCase, isfield(bc, 'entity'));
 % and nothing was quarantined to achieve that
 verifyEmpty(testCase, out.quarantine);
-end
-
-function testPatchGeometryStillDispatchesOnGeometryEvidence(testCase)
-%TESTPATCHGEOMETRYSTILLDISPATCHESONGEOMETRYEVIDENCE The tightening's fail-safe.
-%
-%   The added clause is ANY-of-four (radius / circularity / centre X / centre Y)
-%   rather than all-of, on purpose: the shortName strings cannot be evaluated in
-%   the repo (ndi.ontology.lookup is not here), so no SINGLE mis-spelling may be
-%   allowed to un-dispatch the geometry table -- that would strand the 20,411
-%   encounter relations whose parent is the patch document this map preserves.
-%   Each column is removed in turn and the map must still fire.
-geom = {'BacterialPatchRadius', 'BacterialPatchCircularity', ...
-    'BacterialPatchCenter_XCoordinate', 'BacterialPatchCenter_YCoordinate'};
-for k = 1:numel(geom)
-    otr = patchGeometryRow();
-    otr.ontology_table_row.data = rmfield(otr.ontology_table_row.data, geom{k});
-    kept = setdiff(strsplit(otr.ontology_table_row.variable_names, ','), ...
-        geom(k), 'stable');
-    otr.ontology_table_row.variable_names = strjoin(kept, ',');
-    otr.ontology_table_row.names = strjoin(kept, ',');
-    otr.ontology_table_row.ontology_nodes = strjoin( ...
-        repmat({'EMPTY:0'}, 1, numel(kept)), ',');
-    out = runJ(otr);
-    verifyEqual(testCase, nLeafJ(out.migrated, 'culture'), 1, ...
-        sprintf(['the patch geometry map stopped firing when %s was absent; ' ...
-                 'one missing geometry column must not un-dispatch it'], geom{k}));
-    sub = firstOfClassJ(out.migrated, 'culture');
-    verifyEqual(testCase, sub.get('base.id'), 'otr_patch');
-end
 end
 
 % ==== deferred stimulus_bath -> manipulation valued by its formulation =====

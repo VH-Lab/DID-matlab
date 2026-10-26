@@ -38,7 +38,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview, element,
 %       daqmetadatareader_epochdata_ingested
 %   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity
-%   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, calculation+position, calculation+length, calculation+item, coordinate_system, opaque_body, relative_time_reference
+%   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
 %       +migrators_j/pyraview through epochMint) are RE-POINTED to the epoch's
 %       recording observation and its separate observation retired; nothing
@@ -267,14 +267,7 @@ report = struct( ...
     'acquisition_epoch_kept_no_file', 0, ...
     'acquisition_epoch_kept_clock',   0, ...
     'acquisition_epoch_kept_not_rebuilt', 0, ...
-    'acquisition_epoch_kept_no_subject', 0, ...
     'acquisition_epoch_kept_ensemble_unverified', 0, ...
-    'position_calculations_emitted',  0, ...
-    'distance_calculations_emitted',  0, ...
-    'nearest_patch_calculations_emitted', 0, ...
-    'coordinate_systems_minted',      0, ...
-    'distance_without_position',      0, ...
-    'nearest_patch_without_patches',  0, ...
     'element_epoch_anchors_minted',   0, ...
     'archive_docs_inspected',         0, ...
     'archive_docs_retired',           0, ...
@@ -522,7 +515,6 @@ recByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'char');
 spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'double');  % obs id -> acquisition_epoch idx
 spikeAnchorByObs = containers.Map('KeyType', 'char', 'ValueType', 'char');  % obs id -> its own anchor id
 seriesKindById = containers.Map('KeyType', 'char', 'ValueType', 'char');    % stmt id -> its report counter
-csOfStmt = containers.Map('KeyType', 'char', 'ValueType', 'char');          % position stmt id -> its coordinate system
 
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
@@ -771,49 +763,12 @@ end
 % KEYED ON THE ELEMENT `type`, never on spikes (AMENDMENT 1: the .vhsb is a
 % generic (timepoints, datapoints) series). derivedSeriesKind is the one table;
 % a type with no decided row keeps its acquisition_epoch, counted by type.
-% THE JH ROWS (Decided by Jess Haley, 2026-10-22 [JH position and distance],
-% V_eta_epoch_plan.md): a `position` epoch is a position calculation of the
-% worm and a `distance` epoch a length calculation of `signed distance to
-% region boundary` plus an item calculation of `nearest bacterial patch`, the
-% shapes ndi.setup.conv.haley.trackDocuments writes. The worm is the element's
-% `derived_from` parent (+migrators_j/element.m, a derived element with no
-% underlying element); the element itself is the instrument, the one link from
-% the element to its series. A distance's inputs are the position calculation
-% of the same worm and body part (element names <stem>_position /
-% <stem>_distance); its patches (item_id) are the v1 distance_metadata's
-% endpoint B rows, in order.
-elementLid = containers.Map('KeyType', 'char', 'ValueType', 'char');
-patchIdsByElement = containers.Map('KeyType', 'char', 'ValueType', 'any');
-for k = 1:n
-    b = bodies{k};
-    if isempty(b) || isempty(docIds{k}); continue; end
-    if isKey(elementTypeById, docIds{k}) && isfield(b, 'entity') && isstruct(b.entity)
-        elementLid(docIds{k}) = charField(b.entity, {'local_identifier'});
-    end
-    if strcmp(classOf{k}, 'distance_metadata')
-        eid = depValueOf(b, 'element_id');
-        ids = distanceEndpointIds(b, 'B');
-        if ~isempty(eid) && ~isempty(ids); patchIdsByElement(eid) = ids; end
-    end
-end
-idInBatch = containers.Map('KeyType', 'char', 'ValueType', 'logical');
-for k = 1:n
-    if ~isempty(docIds{k}); idInBatch(docIds{k}) = true; end
-end
-% (session, worm, stem) -> the position calculation's id (= its epoch's id)
-positionByStem = containers.Map('KeyType', 'char', 'ValueType', 'char');
-for i = 1:numel(acqEpochIdx)
-    k = acqEpochIdx(i);
-    elId = depValueOf(bodies{k}, 'element_id');
-    if isempty(elId) || ~isKey(elementTypeById, elId) ...
-            || ~strcmp(elementTypeById(elId), 'position') || ~isKey(derivedParent, elId)
-        continue;
-    end
-    positionByStem(stemKey(sessionIds{k}, derivedParent(elId), elementLid, elId)) = docIds{k};
-end
-csByEpoch = containers.Map('KeyType', 'char', 'ValueType', 'char');
+% THE JH ROWS LEFT (Decided by Jess Haley, 2026-10-26 [dataset audit batch 1
+% and 2] (1), did-schema V_eta_go_forward_class_audit.md, superseding [JH
+% position and distance] for the generic stage): a Haley `position` / `distance`
+% epoch has no row here, so it keeps its acquisition_epoch, counted by type; the
+% Haley V2 import makes the worm tracks.
 seriesGroups = containers.Map('KeyType', 'double', 'ValueType', 'any');  % k -> {stmt ids}
-seriesInputs = containers.Map('KeyType', 'double', 'ValueType', 'char'); % k -> position id it uses
 for i = 1:numel(acqEpochIdx)
     k = acqEpochIdx(i);
     b = bodies{k};
@@ -865,20 +820,10 @@ for i = 1:numel(acqEpochIdx)
         report.acquisition_epoch_kept_clock = report.acquisition_epoch_kept_clock + 1;
         continue;
     end
-    % who the statement is about, and with what
-    if kind.aboutElement
-        entityId = elId;
-        instrumentId = '';
-        if isKey(derivedParent, elId); instrumentId = derivedParent(elId); end
-    else
-        if ~isKey(derivedParent, elId)
-            report.acquisition_epoch_kept_no_subject = ...
-                report.acquisition_epoch_kept_no_subject + 1;
-            continue;
-        end
-        entityId = derivedParent(elId);
-        instrumentId = elId;
-    end
+    % about the element, with the element it was derived from as instrument
+    entityId = elId;
+    instrumentId = '';
+    if isKey(derivedParent, elId); instrumentId = derivedParent(elId); end
     epochDocId = epochIdByKey(epochKey(sid, es));
     datestamp = baseField(b, 'creation_timestamp');
     if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
@@ -912,54 +857,17 @@ for i = 1:numel(acqEpochIdx)
             end
         end
         if ~isempty(st.conditions); args = [args, {'Conditions', st.conditions}]; end %#ok<AGROW>
-        csId = '';
-        edges = struct();
-        if strcmp(st.valueKind, 'position')
-            % the pixel grid this track is in (trackDocuments' coordinate
-            % system, uncalibrated here: the v1 element records pixels, and
-            % the scale is on the video imageStack, not on the element), one per
-            % epoch, ON the epoch it was recorded in
-            if isKey(csByEpoch, epochDocId)
-                csId = csByEpoch(epochDocId);
-            else
-                cs = mkPixelCoordinateSystem(epochDocId, sid, datestamp);
-                csId = cs.base.id;
-                csByEpoch(epochDocId) = csId;
-                acBodyById(csId) = cs;
-                report.coordinate_systems_minted = report.coordinate_systems_minted + 1;
-            end
-            edges.coordinate_system_id = csId;
-        end
-        if strcmp(st.valueKind, 'item')
-            if isKey(patchIdsByElement, elId) ...
-                    && all(cellfun(@(x) isKey(idInBatch, x), patchIdsByElement(elId)))
-                edges.item_id = patchIdsByElement(elId);
-            else
-                report.nearest_patch_without_patches = report.nearest_patch_without_patches + 1;
-            end
-        end
-        if ~isempty(fieldnames(edges)); args = [args, {'Edges', edges}]; end %#ok<AGROW>
-        if st.inputsPosition
-            pk = stemKey(sid, entityId, elementLid, elId);
-            if isKey(positionByStem, pk)
-                args = [args, {'InputIds', {positionByStem(pk)}}]; %#ok<AGROW>
-                seriesInputs(k) = positionByStem(pk);
-            else
-                report.distance_without_position = report.distance_without_position + 1;
-            end
-        end
         stmt = did2.build.statement(kind.className, char(entityId), st.variable, [], args{:});
         newBodies{end+1} = stmt;             %#ok<AGROW>
         newGroupAnchor{end+1} = anchorId;    %#ok<AGROW>
-        newGroupAc{end+1} = csId;            %#ok<AGROW>
+        newGroupAc{end+1} = '';              %#ok<AGROW> no channels
         spikeObsIds(stmt.base.id) = k;
         spikeAnchorByObs(stmt.base.id) = anchorId;
         seriesKindById(stmt.base.id) = st.counter;
-        if ~isempty(csId); csOfStmt(stmt.base.id) = csId; end
         group{end+1} = stmt.base.id; %#ok<AGROW>
     end
     seriesGroups(k) = group;
-    if ~isempty(instrumentId) && kind.aboutElement
+    if ~isempty(instrumentId)
         report.spike_instrument_resolved = report.spike_instrument_resolved + 1;
     end
 end
@@ -1155,17 +1063,6 @@ for j = 1:numel(groupKs)
     end
     okGroup(groupKs(j)) = ok;
 end
-% a distance whose position calculation (its input) did not land is
-% withdrawn too: an input edge must name a document that is emitted
-for j = 1:numel(groupKs)
-    kk = groupKs(j);
-    if okGroup(kk) && isKey(seriesInputs, kk)
-        pid = seriesInputs(kk);
-        if ~isKey(spikeObsIds, pid) || ~okGroup(spikeObsIds(pid))
-            okGroup(kk) = false;
-        end
-    end
-end
 for j = 1:numel(groupKs)
     kk = groupKs(j);
     g = seriesGroups(kk);
@@ -1184,7 +1081,6 @@ for j = 1:numel(groupKs)
             remove(emittedNewIds, tid);
         end
         if isKey(spikeAnchorByObs, tid); withdraw(spikeAnchorByObs(tid)) = true; end
-        if isKey(csOfStmt, tid); withdraw(csOfStmt(tid)) = true; end
     end
     % the group's body (owned by its statements only) goes with them
     for m = 1:numel(spikeBodies)
@@ -2169,69 +2065,25 @@ function kind = derivedSeriesKind(elementType)
 %   element_epoch .vhsb) becomes, by the element's v1 `type` -- THE ONE TABLE
 %   (F1 AMENDMENT 1: key on type, never assume spikes). [] when no row is
 %   decided: that element_epoch is kept as acquisition_epoch and counted by
-%   type (acquisition_epoch_kept_types). Each row names its direction class,
-%   whether the statements are about the ELEMENT (spikes: the neuron) or about
-%   its `derived_from` parent with the element as instrument (JH: the worm),
-%   and one entry per statement, the first keeping the epoch's id.
+%   type (acquisition_epoch_kept_types). Each row names its direction class
+%   and one entry per statement, the first keeping the epoch's id; the
+%   statements are about the element, with its `derived_from` parent as the
+%   instrument.
 %     spikes    observation + time, GO:0001508 "action potential" (Jess Haley,
 %               2026-10-21 [spike train variable]; [spike train leaf])
-%     position  calculation + position, PATO:0000140 "position", method video
-%               tracking (interpolation method linear, maximum gap filled 10
-%               s), a pixel coordinate system
-%     distance  calculation + length, EMPTY:0000384 "signed distance to region
-%               boundary" (condition Location = bacterial patch; method
-%               distance transform), and calculation + item, EMPTY:0000297
-%               "nearest bacterial patch" (item_id the patches); input: the
-%               position calculation. The .vhsb is carried whole here; NDI's
-%               second pass (ndi.migrate.internal.epochSeriesBodies) splits
-%               it where the bytes are, column 1 into the length's own body
-%               in METRES by the epoch video's scale (Decided by Jess Haley,
-%               2026-10-23 [JH signed distance in metres],
-%               V_eta_epoch_plan.md)
-%   The JH rows: Decided by Jess Haley, 2026-10-22 [JH position and distance],
-%   "the shapes the Haley V2 import already writes (trackDocuments.m)"; the
-%   terms, methods and parameters are trackDocuments' own.
+%   The JH `position` / `distance` rows left the generic stage (Decided by Jess
+%   Haley, 2026-10-26 [dataset audit batch 1 and 2] (1)): such an epoch stays
+%   a plain acquisition_epoch, and the Haley V2 import makes the tracks.
 kind = [];
 blank = struct('variable', [], 'valueKind', '', 'method', [], 'methodParameters', [], ...
-    'conditions', [], 'inputsPosition', false, 'counter', '');
+    'conditions', [], 'counter', '');
 switch lower(strtrim(char(elementType)))
     case 'spikes'
         st = blank;
         st.variable = SPIKE_TRAIN_VARIABLE(); st.valueKind = 'time';
         st.counter = 'spike_trains_emitted';
-        kind = struct('className', 'observation', 'aboutElement', true, 'statements', st);
-    case 'position'
-        st = blank;
-        st.variable = term('PATO:0000140', 'position'); st.valueKind = 'position';
-        st.method = term('EMPTY:0000301', 'video tracking');
-        st.methodParameters = did2.build.list( ...
-            did2.build.parameter(term('EMPTY:0000305', 'interpolation method'), ...
-                'Term', term('EMPTY:0000306', 'linear interpolation')), ...
-            did2.build.parameter(term('EMPTY:0000307', 'maximum gap filled'), ...
-                'Value', 10, 'Unit', term('om:second-Time', 'second')));
-        st.counter = 'position_calculations_emitted';
-        kind = struct('className', 'calculation', 'aboutElement', false, 'statements', st);
-    case 'distance'
-        d = blank;
-        d.variable = term('EMPTY:0000384', 'signed distance to region boundary');
-        d.valueKind = 'length';
-        d.method = term('EMPTY:0000302', 'distance transform');
-        d.conditions = did2.build.list(did2.build.condition(term('NCIT:C25341', 'Location'), ...
-            'Term', term('EMPTY:0000325', 'bacterial patch')));
-        d.inputsPosition = true;
-        d.counter = 'distance_calculations_emitted';
-        it = blank;
-        it.variable = term('EMPTY:0000297', 'nearest bacterial patch');
-        it.valueKind = 'item';
-        it.inputsPosition = true;
-        it.counter = 'nearest_patch_calculations_emitted';
-        kind = struct('className', 'calculation', 'aboutElement', false, ...
-            'statements', [d, it]);
+        kind = struct('className', 'observation', 'statements', st);
 end
-end
-
-function t = term(node, name)
-t = struct('node', node, 'name', name);
 end
 
 function [clk, t0, t1] = epochLocalClock(b)
@@ -2257,63 +2109,6 @@ if numel(hit) ~= 1; return; end
 a = double(hit{1}.t0); z = double(hit{1}.t1);
 if ~isscalar(a) || ~isscalar(z) || ~isfinite(a) || ~isfinite(z) || z < a; return; end
 clk = 'dev_local_time'; t0 = a; t1 = z;
-end
-
-function k = stemKey(sessionId, wormId, elementLid, elementId)
-% (session, worm, element name less its _position / _distance suffix and its
-% ' (ref N)'): the key that pairs a worm body part's position and distance
-lid = '';
-if isKey(elementLid, elementId); lid = elementLid(elementId); end
-if iscell(lid); if isempty(lid); lid = ''; else; lid = lid{1}; end; end
-lid = char(lid);
-if size(lid, 1) > 1; lid = lid(1, :); end
-lid = regexprep(lid, '\s*\(ref [^)]*\)\s*$', '');
-lid = regexprep(lid, '_(position|distance)$', '');
-k = [char(sessionId) char(0) char(wormId) char(0) lid];
-end
-
-function ids = distanceEndpointIds(b, label)
-% the document ids of a migrated distance_metadata's endpoint LABEL (v1
-% ontologyStringValues_<label>, comma-separated, in integerIDs order)
-ids = {};
-if ~isfield(b, 'distance_metadata') || ~isstruct(b.distance_metadata) ...
-        || ~isfield(b.distance_metadata, 'endpoints'); return; end
-ep = b.distance_metadata.endpoints;
-if isstruct(ep); ep = num2cell(ep); end
-for i = 1:numel(ep)
-    e = ep{i};
-    if ~isstruct(e) || ~isfield(e, 'label') || ~strcmp(char(e.label), label) ...
-            || ~isfield(e, 'string_ids'); continue; end
-    % the migrated form may be a comma-joined char, a cellstr or a string
-    % array (one id each) -- read every shape rather than assume one
-    v = e.string_ids;
-    if isstring(v); v = cellstr(v); end
-    if ischar(v); v = cellstr(v); end
-    if ~iscell(v); return; end
-    parts = {};
-    for j = 1:numel(v)
-        if ~(ischar(v{j}) || isstring(v{j})); continue; end
-        q = strtrim(strsplit(char(v{j}), ','));
-        parts = [parts, q]; %#ok<AGROW>
-    end
-    ids = parts(~cellfun(@isempty, parts));
-    return;
-end
-end
-
-function cs = mkPixelCoordinateSystem(epochDocId, sid, datestamp)
-% trackDocuments' pixel grid (ndi.setup.conv.haley.geometryDocuments):
-% reference point the image upper-left corner, x toward image right, y toward
-% image down -- with NO spacing: the v1 element records pixels, and its
-% scale is on the video imageStack, which this pass does not join (`spacing`
-% absent = uncalibrated, coordinate_system.json); ON the epoch.
-ax = @(a, an, d, dn) struct('axis', term(a, an), 'positive_direction', term(d, dn));
-cs = did2.build.document('coordinate_system', struct( ...
-    'reference_point', term('EMPTY:0000310', 'image upper-left corner'), ...
-    'axes', did2.build.list(ax('STATO:0000006', 'x-axis', 'EMPTY:0000311', 'image right'), ...
-        ax('STATO:0000008', 'y-axis', 'EMPTY:0000312', 'image down'))), ...
-    'Edges', struct('referent_id', char(epochDocId)), ...
-    'SessionId', char(sid), 'CreationTimestamp', char(datestamp), 'Validate', false);
 end
 
 function s = tallyName(s, name)
@@ -2500,8 +2295,8 @@ end
 function [out, quarantine] = mkSpikeBodies(seriesGroups, emittedIds, bodies, sessionIds, options)
 % one opaque_body per dissolved element_epoch: its epoch_binary_data.vhsb,
 % locations VERBATIM (the bytes v1 attached), owned by EVERY statement the
-% epoch became (a `distance` epoch's two calculations share it; owner_id
-% repeats, T15) -- built only when all of them survived validation
+% epoch became (owner_id repeats, T15) -- built only when all of them
+% survived validation
 out = {};
 quarantine = [];
 pending = {};

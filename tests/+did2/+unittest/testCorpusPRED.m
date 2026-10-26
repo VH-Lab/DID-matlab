@@ -192,24 +192,9 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     @(r) did2.convert.resolveResponseParameters(r, 'Validate', true, ...
         'TargetVersion', 'V_eta'));
 
-% TEAM DECISION 2026-08-11: the E. coli lawns and plates are subjects in two
-% tiers joined by `contained_in`, minted only where a tier has measurements, and a
-% patch subject's `local_identifier` is the (experiment, plate, patch) triple.
-% Kept in step with runCorpusDiscovery and testFixtureCorpus, in the SAME ORDER,
-% for the same reason as the three passes above: a post-pass wired into some
-% call sites and not others makes the corpus green while another path does
-% something else.
-%
-% WHAT IT WILL REPORT ON PRED IS NOT PREDICTED HERE. Whether PRED holds any
-% ontologyTableRow at all has not been measured, and a guess written in a
-% comment becomes a fact the next reader quotes. The pass prints its own
-% denominator; read that. It is wired here regardless -- a hard gate that skips
-% a pass is a pass one hard gate does not cover -- and it can only APPEND, so on
-% a corpus with no such tables it cannot move PRED's zero-quarantine gate.
-result = did2.unittest.helpers.runBatchPass(result, ...
-    'did2.convert.resolveLawnPlateSubjects', 'lawn_plate_subjects', ...
-    @(r) did2.convert.resolveLawnPlateSubjects(r, 'Validate', true, ...
-        'TargetVersion', 'V_eta'));
+% did2.convert.resolveLawnPlateSubjects is NOT run: Haley-import logic, removed
+% from the generic migration (Decided by Jess Haley, 2026-10-26 [Haley logic
+% leaves the generic migration], did-schema V_eta_go_forward_class_audit.md).
 
 % TEAM DECISION 2026-08-11: the `generic_file` -> opaque_body + statement fold.
 % WHAT IT WILL REPORT ON PRED IS NOT PREDICTED HERE beyond one measured fact:

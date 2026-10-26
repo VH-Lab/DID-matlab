@@ -618,15 +618,7 @@ POST_PASSES = [
         ("acquisition_epoch_kept_no_file", "  KEPT: no epoch_binary_data.vhsb named"),
         ("acquisition_epoch_kept_clock", "  KEPT: not exactly one dev_local_time clock"),
         ("acquisition_epoch_kept_not_rebuilt", "  KEPT: observation, anchor or body did not validate"),
-        ("acquisition_epoch_kept_no_subject", "  KEPT: JH element with no worm (derived_from parent)"),
         ("acquisition_epoch_kept_ensemble_unverified", "  KEPT: ensemble combined bytes, members' trains not verified"),
-        # 2026-10-22 (Jess Haley, [JH position and distance])
-        ("position_calculations_emitted", "  JH position calculations emitted"),
-        ("distance_calculations_emitted", "  JH signed-distance calculations emitted"),
-        ("nearest_patch_calculations_emitted", "  JH nearest-patch calculations emitted"),
-        ("coordinate_systems_minted", "    pixel coordinate systems minted"),
-        ("distance_without_position", "    distance statements with no position input"),
-        ("nearest_patch_without_patches", "    nearest-patch statements with no item_id"),
         # 2026-10-21 (Jess Haley, "a"): a v1 daqreader_*_epochdata_ingested is
         # retired only when every file it holds has a new per-epoch owner.
         ("archive_docs_inspected", "v1 ingested archives inspected  <- ARCHIVE DENOMINATOR"),
@@ -734,107 +726,6 @@ POST_PASSES = [
         # into a method document (id preserved), so nothing is removed. Printed
         # anyway: a non-zero would mean documents vanished from the batch.
         ("parameters_documents_deleted", "parameters documents DELETED (0 by construction: converted in place)"),
-    ]),
-    # TEAM DECISION 2026-08-11 (two of them): "each lawn can be a subject and a
-    # plate of lawns is another subject where each lawn is a member of it", and
-    # "each experiment #, plate #, and patch # combo should be unique and should
-    # dictate the local identifier for all patches. None should be labeled just
-    # patch #".
-    #
-    # READ `ontology_table_rows_seen` FIRST, THEN THE THREE `*_rows_seen`.
-    # The six tables this pass recognises are written by ONE converter --
-    # NDI origin/main +setup/+conv/+haley/doImport.m -- so a corpus not built by
-    # it recognises nothing and every row below is vacuous. That is a fact about
-    # the SAMPLE, not about the pass.
-    #
-    # UNITS DIFFER DOWN THIS BLOCK AND ARE NAMED ON EACH ROW. Rows, sessions,
-    # COLUMNS, subjects, observations, edges and handles all appear; none of the
-    # groups is summable with another and the column invites exactly that.
-    #
-    # THE PARTITIONS THAT HOLD BY CONSTRUCTION (resolveLawnPlateSubjects.m:
-    # 561-592, one exit per row):
-    #     plate_rows_seen == with_measurements + values_but_none_emittable
-    #                                          + no_values_at_all
-    #     lawn_rows_seen  == the same three lawn rows
-    # A violation is a counter that stopped moving, not a corpus fact.
-    ("lawn_plate_subjects", "did2.convert.resolveLawnPlateSubjects", [
-        ("documents_inspected", "documents inspected"),
-        ("documents_unreadable", "UNREADABLE"),
-        ("ontology_table_rows_seen", "ontology_table_row documents  <- DENOMINATOR"),
-        ("plate_rows_seen", "  PLATE rows recognised"),
-        ("image_rows_seen", "  IMAGE rows recognised (a join table, no subject)"),
-        ("lawn_rows_seen", "  LAWN rows recognised"),
-        ("exp_id_source_rows_seen", "  rows feeding the plate->expID index"),
-        ("sessions_with_lawn_plate_tables", "SESSIONS holding any of those"),
-        ("unclassified_rows_in_those_sessions", "SPELLING CANARY: unclassified ROWS in them"),
-        # COLUMNS, summed over rows -- one row contributes as many as it matches.
-        ("columns_resolved_by_key", "COLUMNS matched by key (not rows)"),
-        ("columns_resolved_by_term_name", "COLUMNS matched by term name (not rows)"),
-        ("plate_rows_with_measurements", "PLATE tier: rows with typed measurements"),
-        ("plate_rows_with_values_but_none_emittable", "  rows with values, none emittable"),
-        ("plate_rows_with_no_values_at_all", "  rows with no values at all"),
-        ("plate_rows_refused_no_session_id", "  refused: no base.session_id"),
-        ("plate_rows_refused_no_plate_key", "  refused: no plate identifier column"),
-        ("plate_rows_refused_no_exp_id", "  refused: no expID"),
-        ("plate_subjects_minted", "  SUBJECTS minted"),
-        ("plate_observations_emitted", "  OBSERVATIONS emitted"),
-        ("lawn_rows_with_measurements", "LAWN tier: rows with typed measurements"),
-        ("lawn_rows_with_values_but_none_emittable", "  rows with values, none emittable"),
-        ("lawn_rows_with_no_values_at_all", "  rows with no values at all"),
-        ("lawn_rows_refused_no_session_id", "  refused: no base.session_id"),
-        ("lawn_rows_refused_no_identity_keys", "  refused: no image/patch identifier"),
-        ("lawn_subjects_minted", "  SUBJECTS minted"),
-        ("lawn_observations_emitted", "  OBSERVATIONS emitted"),
-        ("chains_attempted", "CHAIN patch->image->plate->expID: attempted"),
-        ("chains_resolved", "  RESOLVED"),
-        ("refused_no_image_row", "  refused: no image row"),
-        ("refused_image_row_ambiguous", "  refused: two image rows claim the key"),
-        ("refused_image_row_has_no_plate_key", "  refused: image row has no plateID"),
-        ("refused_no_plate_row", "  refused: no plate row"),
-        ("refused_plate_row_ambiguous", "  refused: two plate rows claim the key"),
-        ("refused_lawn_no_exp_id", "  refused: no expID for that plate"),
-        ("contained_in_relations_emitted", "  contained_in EDGES emitted (edges, not rows)"),
-        ("withheld_plate_tier_not_minted", "  edge withheld: plate tier not minted"),
-        ("withheld_lawn_tier_not_minted", "  edge withheld: lawn tier not minted"),
-        # EXCLUDES the C. elegans relabel refusals below -- totalRefusals()
-        # (resolveLawnPlateSubjects.m:1305-1317) sums eleven counters and none
-        # of them is a `celegans_*` one. Said on the row because a reader
-        # totalling the block by eye would put them together.
-        ("refused_total", "REFUSED (total; EXCLUDES the C. elegans relabel)"),
-        ("celegans_patch_subjects_seen", "C. ELEGANS relabel: patch subjects seen"),
-        ("celegans_patch_subjects_relabelled", "  relabelled to the triple"),
-        ("celegans_patch_subjects_already_triple", "  already a triple"),
-        ("celegans_patch_subjects_refused_no_exp_id", "  left as a pair: no expID"),
-        ("celegans_patch_subjects_refused_ambiguous_exp_id", "  left as a pair: ambiguous expID"),
-        ("celegans_patch_subjects_unparseable_handle", "  unparseable handle"),
-        ("celegans_patch_relabel_quarantined", "  QUARANTINED by the relabel"),
-        ("local_identifier_fallback_to_document_id", "HANDLES that fell back to the document id"),
-        # DENOMINATORS BEFORE THE FINDING, and the three buckets after it.
-        # `_within_batch` is `formed - distinct` and the three sum to it by
-        # construction (resolveLawnPlateSubjects.m splitCollisions), so the
-        # reader never subtracts anything to get the answer.
-        #
-        # THE SPLIT EXISTS BECAUSE THE SINGLE NUMBER COULD NOT ANSWER THE
-        # QUESTION IT PROVOKED. Run 31522068566 printed 6,414 collisions and
-        # this file called the uniqueness directive "refuted on real data"; the
-        # team asked "is it not within-session unique?" and the counter --
-        # BATCH, not session, over a batch spanning both Haley sessions -- had
-        # no way to say. Read `_within_session` for the directive; a
-        # cross-session-only duplicate does not bear on it, because every index
-        # in that pass and `ndi.session.database_search` are both scoped by
-        # `base.session_id`.
-        ("local_identifier_handles_formed", "HANDLES formed (handles, not rows)  <- DENOMINATOR"),
-        ("local_identifier_handles_distinct", "  of them DISTINCT  <- DENOMINATOR"),
-        ("local_identifier_collisions_within_batch", "HANDLE COLLISIONS within the batch"),
-        ("local_identifier_collisions_within_session", "  of them WITHIN one base.session_id"),
-        ("local_identifier_collisions_across_sessions_only", "  of them ACROSS sessions only"),
-        ("local_identifier_collisions_unclassifiable_no_session_id", "  of them UNCLASSIFIABLE (no session id)"),
-        ("subjects_quarantined", "QUARANTINED: subjects"),
-        ("statements_quarantined", "QUARANTINED: observations + contained_in"),
-        ("documents_appended", "documents appended"),
-        # NOT consumed, deliberately: the typed measures are stored twice until
-        # a separate verify-before-delete step says otherwise.
-        ("source_rows_left_in_place", "source ROWS left in place (not consumed)"),
     ]),
     # TEAM DECISION 2026-08-11: generic_file -> opaque_body + a statement whose
     # `variable` comes from the sibling ontologyLabel.
@@ -1160,9 +1051,15 @@ def batch_pass_signatures(root):
     info carries the denominator -- the directory scanned and how many .m files
     were read -- because zero files and zero matches are different facts and
     the loop cannot tell them apart after it has run.
+
+    A pass whose source carries the WIRING-EXEMPT header line (the marker
+    tools/test_batch_pass_wiring.py and testBatchPassWiring.m read) is
+    deliberately composed by no call site; it is listed in info["exempt"] and
+    left out of the set, so it is neither `unwired` nor expected in a report.
     """
     pkg = os.path.join(root, CONVERT_PKG)
-    info = {"path": pkg, "files": 0, "exists": os.path.isdir(pkg)}
+    info = {"path": pkg, "files": 0, "exists": os.path.isdir(pkg),
+            "exempt": []}
     if not info["exists"]:
         return set(), info
     names = set()
@@ -1174,9 +1071,14 @@ def batch_pass_signatures(root):
             continue
         info["files"] += 1
         fn = _batch_pass_name(text.splitlines()[0] if text else "")
-        if fn:
+        if fn and _WIRING_EXEMPT.search(text):
+            info["exempt"].append(fn)
+        elif fn:
             names.add(fn)
     return names, info
+
+
+_WIRING_EXEMPT = re.compile(r"^%\s*WIRING-EXEMPT:\s*(\S[^\n\r]*)$", re.M)
 
 
 def _batch_pass_name(sig):
@@ -4608,8 +4510,6 @@ def render_post_passes(r, out, chain=None):
             _render_openminds_citations_reading(rep, p)
         if name == "response_parameters_fold":
             _render_response_parameters_reading(rep, p)
-        if name == "lawn_plate_subjects":
-            _render_lawn_plate_reading(rep, p)
         if name == "session_anchor_fold":
             _render_bounded_extent_reading(rep, p)
             survivors = 0
@@ -4987,143 +4887,6 @@ def _collision_split_reading(rep, collisions, pad, p):
         p("%s*** are collisions nobody can place, and both mint sites are" % pad)
         p("%s*** supposed to refuse a session-less row before forming a" % pad)
         p("%s*** handle. A non-zero here means one of them stopped." % pad)
-
-
-def _render_lawn_plate_reading(rep, p):
-    """Say out loud how the lawn/plate subject counters should be read."""
-    p("          THE TWO-TIER SUBJECTS -- the reading of the rows above")
-    rows = _reading_denominator(
-        rep, "ontology_table_rows_seen",
-        "ontology_table_row document(s) in the batch", p,
-        when_absent=[
-            "The pass landed 2026-08-11, so a report from before then carries",
-            "no counter of any kind for it.",
-        ],
-        when_zero=[
-            "This corpus holds no ontology_table_row at all, so every counter",
-            "above is VACUOUS -- including the spelling canary, which cannot",
-            "fire without a recognised table to anchor it.",
-        ])
-    if not rows:
-        return
-
-    plate = _int_or_none(rep.get("plate_rows_seen")) or 0
-    image = _int_or_none(rep.get("image_rows_seen")) or 0
-    lawn = _int_or_none(rep.get("lawn_rows_seen")) or 0
-    unclassified = _int_or_none(rep.get("unclassified_rows_in_those_sessions"))
-    recognised = plate + image + lawn
-    p("          %8d  of them recognised as a plate/image/lawn table"
-      % recognised)
-    if recognised == 0:
-        p("          *** NOTHING RECOGNISED, AND THIS READING IS AMBIGUOUS BY")
-        p("          *** CONSTRUCTION -- SAY SO RATHER THAN CALLING IT CLEAN.")
-        p("          *** The six tables are written by ONE converter (NDI")
-        p("          *** origin/main +setup/+conv/+haley/doImport.m), so a")
-        p("          *** corpus not built by it recognises none, and that is")
-        p("          *** the benign reading. BUT the spelling canary counts")
-        p("          *** unclassified rows only in SESSIONS WHERE SOMETHING WAS")
-        p("          *** RECOGNISED, so a column-token rule that is wrong")
-        p("          *** EVERYWHERE forces it to 0 too and produces this exact")
-        p("          *** output. The canary detects a PARTIALLY wrong rule; it")
-        p("          *** cannot detect a wholly wrong one. Nothing in this")
-        p("          *** report separates those two -- do not read this block")
-        p("          *** as evidence the token rule works.")
-        return
-    if unclassified is None:
-        p("          *** the spelling canary counter is absent, so whether the")
-        p("          *** column-token rule matched everything it should have is")
-        p("          *** UNMEASURED in this report.")
-    elif unclassified > recognised:
-        p("          *** SPELLING CANARY: %d unclassified row(s) beside %d"
-          % (unclassified, recognised))
-        p("          *** recognised, in the same sessions. That is what a WRONG")
-        p("          *** column-token rule looks like -- the pass matches")
-        p("          *** columns by a normalised term token because")
-        p("          *** ndi.ontology.lookup could not be evaluated where it was")
-        p("          *** written. Chase the tokens before reading any tier row")
-        p("          *** below as a corpus fact.")
-    else:
-        p("          %8d  unclassified row(s) in the same sessions (the"
-          % unclassified)
-        p("                    spelling canary; small beside %d recognised)"
-          % recognised)
-
-    # THE PER-TIER PARTITIONS. Each row takes exactly one of three exits.
-    for tier, seen_key, parts in (
-            ("plate", "plate_rows_seen",
-             ("plate_rows_with_measurements",
-              "plate_rows_with_values_but_none_emittable",
-              "plate_rows_with_no_values_at_all")),
-            ("lawn", "lawn_rows_seen",
-             ("lawn_rows_with_measurements",
-              "lawn_rows_with_values_but_none_emittable",
-              "lawn_rows_with_no_values_at_all"))):
-        seen = _int_or_none(rep.get(seen_key))
-        if seen is None or any(k not in rep for k in parts):
-            continue
-        total = sum(_int_or_none(rep.get(k)) or 0 for k in parts)
-        if total != seen:
-            p("          *** the three %s-row states sum to %d, not %s_rows_seen"
-              % (tier, total, tier))
-            p("          *** (%d). Every recognised row takes exactly one of"
-              % seen)
-            p("          *** them, so this is a counter that stopped moving.")
-
-    withheld_plate = _int_or_none(rep.get("withheld_plate_tier_not_minted")) or 0
-    withheld_lawn = _int_or_none(rep.get("withheld_lawn_tier_not_minted")) or 0
-    if withheld_plate or withheld_lawn:
-        p("          %8d  contained_in edge(s) WITHHELD (%d plate tier, %d lawn"
-          % (withheld_plate + withheld_lawn, withheld_plate, withheld_lawn))
-        p("                    tier). THIS IS NOT A LOSS AND NOT A REFUSAL. The")
-        p("                    team's refinement makes a tier CONDITIONAL ON THE")
-        p("                    DATA -- \"it's only necessary to make all")
-        p("                    subjects if we take measurements of both\" -- so")
-        p("                    a tier with nothing measured about it warrants no")
-        p("                    subject, and an edge needs BOTH ends.")
-
-    collisions = _int_or_none(rep.get("local_identifier_collisions_within_batch"))
-    if collisions:
-        p("          *** %d HANDLE COLLISION(S). The team's directive asserts"
-          % collisions)
-        p("          *** the (experiment, plate, patch) combo is unique, and")
-        p("          *** this is that premise measured on real data rather than")
-        p("          *** assumed. A non-zero is a fact the TEAM needs; the pass")
-        p("          *** builds the identifier exactly as directed and does not")
-        p("          *** choose another scheme on its own.")
-        _collision_split_reading(rep, collisions, "          ", p)
-    elif collisions == 0:
-        p("          %8d  handle collision(s) -- the directive's uniqueness"
-          % 0)
-        p("                    premise holds on THIS batch. The corpora are a")
-        p("                    SAMPLE.")
-
-    quar = [(k, _int_or_none(rep.get(k)) or 0) for k in
-            ("subjects_quarantined", "statements_quarantined",
-             "celegans_patch_relabel_quarantined") if k in rep]
-    if any(v for _k, v in quar):
-        p("          *** %s. A QUARANTINED SUBJECT TAKES ITS"
-          % ", ".join("%s=%d" % (k, v) for k, v in quar))
-        p("          *** OBSERVATIONS AND ITS contained_in WITH IT: the pass emits")
-        p("          *** nothing that points at a body which did not survive")
-        p("          *** validation, so an observation count that looks short is")
-        p("          *** explained here rather than upstream.")
-
-    left = _int_or_none(rep.get("source_rows_left_in_place"))
-    if left is not None:
-        p("          %8d  source row(s) LEFT IN PLACE. This equals the three"
-          % left)
-        p("                    recognised-row counts by construction; it is the")
-        p("                    verify-before-delete denominator, not a second")
-        p("                    measurement. The typed measures are stored TWICE")
-        p("                    -- once as an observation, once in the source")
-        p("                    row's `data` block -- until a separate step")
-        p("                    consumes the rows.")
-
-    p("          NOTE `refused_total` EXCLUDES the C. elegans relabel rows: it")
-    p("          sums the eleven E. coli refusals only. The relabel is a")
-    p("          DIFFERENT POPULATION (patch subjects pass 1 already minted)")
-    p("          and its 'left as a pair' outcomes are not failures -- that")
-    p("          table never had an expID column to read.")
 
 
 def _render_bounded_extent_reading(rep, p):
@@ -6792,8 +6555,6 @@ def rollup_post_passes(reports, out):
         if name == "response_parameters_fold":
             _rollup_response_parameters_reading(totals, key_missing_in,
                                                 carried, p)
-        if name == "lawn_plate_subjects":
-            _rollup_lawn_plate_reading(totals, key_missing_in, carried, p)
         if name == "session_anchor_fold":
             _rollup_bounded_extent_reading(totals, key_missing_in, carried, p)
 
@@ -6923,61 +6684,6 @@ def _rollup_response_parameters_reading(totals, key_missing_in, carried, p):
         p("      %8d  method document(s) no response uses (kept: they are" % unref)
         p("                the methods; a reading about sharing, not a deletion")
         p("                gate).")
-
-
-def _rollup_lawn_plate_reading(totals, key_missing_in, carried, p):
-    """The cross-corpus reading of the two-tier subject mint."""
-    p("      THE TWO-TIER SUBJECTS -- the reading of the totals above")
-    rows = _rollup_denominator(
-        totals, key_missing_in, carried, "ontology_table_rows_seen",
-        "ontology_table_row document(s)", p,
-        when_absent=["These counters landed 2026-08-11."],
-        when_zero=[
-            "No corpus in this run holds an ontology_table_row, so every total",
-            "above is VACUOUS -- including the spelling canary, which has no",
-            "recognised table to anchor it.",
-        ])
-    if not rows:
-        return
-    recognised = (totals.get("plate_rows_seen", 0)
-                  + totals.get("image_rows_seen", 0)
-                  + totals.get("lawn_rows_seen", 0))
-    p("      %8d  of them recognised as a plate/image/lawn table" % recognised)
-    if recognised == 0:
-        p("      *** NOTHING RECOGNISED ANYWHERE. Two different facts produce")
-        p("      *** this and the run cannot separate them: no corpus was built")
-        p("      *** by NDI's +setup/+conv/+haley/doImport.m (benign), or the")
-        p("      *** column-token rule is wrong everywhere (not benign, and it")
-        p("      *** forces the spelling canary to 0 as well). Do not read this")
-        p("      *** as the token rule confirmed.")
-        return
-    unclassified = totals.get("unclassified_rows_in_those_sessions")
-    if unclassified is None:
-        p("      *** the spelling canary is carried by no report; whether the")
-        p("      *** token rule matched everything is UNMEASURED.")
-    elif unclassified > recognised:
-        p("      *** SPELLING CANARY: %d unclassified row(s) beside %d"
-          % (unclassified, recognised))
-        p("      *** recognised, in the same sessions -- what a wrong")
-        p("      *** column-token rule looks like. Chase it before reading any")
-        p("      *** tier total as a corpus fact.")
-    collisions = totals.get("local_identifier_collisions_within_batch")
-    if collisions:
-        # THIS BLOCK USED TO SAY THE DIRECTIVE WAS "refuted on real data" AND
-        # IT COULD NOT KNOW THAT. The counter is batch-scoped and a batch spans
-        # both Haley sessions, so it conflated the case that refutes the
-        # directive with the case that does not. The verdict now comes from the
-        # split, and when the split is absent the block says UNMEASURED rather
-        # than choosing a verdict.
-        p("      *** %d HANDLE COLLISION(S) across the run, on the team's"
-          % collisions)
-        p("      *** (experiment, plate, patch) identifier. This is for the")
-        p("      *** TEAM; the pass does not choose another scheme on its own.")
-        _collision_split_reading(totals, collisions, "      ", p)
-    elif collisions == 0:
-        p("      %8d  handle collision(s) -- the uniqueness premise holds over"
-          % 0)
-        p("                these corpora, which are a SAMPLE.")
 
 
 def _rollup_bounded_extent_reading(totals, key_missing_in, carried, p):

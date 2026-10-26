@@ -135,11 +135,11 @@ elseif containsAny(hay, {'inject', 'virus', 'aav', 'tracer', 'drug', ...
     [manip, route, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, ...
         numberCondition, siteTerm, anchor.base.id);
     if ~isempty(unplaced)
-        v2Body = carryAsV1(preBody, strjoin(unplaced, '; '));
+        v2Body = carryAsV1(preBody, jCarryWhy(unplaced));
         return;
     end
-    if any(strcmp(route, {'immersion', 'exposure'}))
-        siteTerm = struct('node', {}, 'name', {});   % a bath / medium is no site on the subject
+    if strcmp(route, 'immersion')
+        siteTerm = struct('node', {}, 'name', {});   % a bath is no site on the subject
     end
 elseif containsAny(hay, {'craniotomy', 'implant', 'lesion', 'perfus', ...
         'eye opening', 'eyelid', 'ear notch', 'ear punch', 'tail clip', ...

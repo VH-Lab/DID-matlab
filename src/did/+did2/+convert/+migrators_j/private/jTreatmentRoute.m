@@ -9,12 +9,12 @@ function route = jTreatmentRoute(locationTerm)
 %                  the formulation through `value_id`, not a dose;
 %     'dose'       any other location (intraperitoneal, a brain area, ...): a
 %                  body site, so the subject was given an amount -- a dose;
-%     'exposure'   the location is an environmental medium the worms sat on or
-%                  in -- agar plate medium (MICRO:0000480) or ambient air
-%                  (XCO:0000918), the two Babu locations: the same shape as an
-%                  immersion, a `manipulation` of the worm valued by the
-%                  formulation through `value_id`, no anatomical-location
-%                  observation;
+%     'needs_mapping'  the location is an environmental medium -- agar plate
+%                  medium (MICRO:0000480) or ambient air (XCO:0000918): the
+%                  subject sat on or in it, so it is no body site and a dose
+%                  would be a wrong reading, while which manipulation it is
+%                  (an exposure, ...) is the dataset's meaning. The caller
+%                  carries the document whole as v1;
 %     'unknown'    no location at all: migrates as a dose with a NaN amount,
 %                  and the migration report lists it as route unknown.
 %
@@ -37,16 +37,15 @@ function route = jTreatmentRoute(locationTerm)
 %   not recorded (NaN), not as a measured 0." So virus_injection is routed here
 %   too; "always a dose" no longer holds.
 %
-%   Decided by Jess Haley, 2026-10-21 [babu-media]: "In the v1 migration, Babu
-%   treatments located at agar plate medium (MICRO:0000480) or ambient air
-%   (XCO:0000918) are exposures of the worms: a manipulation of the worm
-%   subject valued by the formulation through value_id, not a dose, with no
-%   anatomical-location observation; a heat row (OM:Heat, 37 °C) is a
-%   temperature manipulation of the worms at each training time. Plates are
-%   not minted in the migration; they are minted in a proper Babu V2 import
-%   from source." The medium test is by node (CURIE key) or by the writer's
-%   label ("agar plate medium", "ambient air"); the heat row is handled in
-%   treatment_drug.m, before routing.
+%   THE MEDIA ARE CARRIED, NOT ROUTED. [babu-media] (Jess Haley, 2026-10-21)
+%   routed these as exposures; superseded for the generic stage by Decided by
+%   Jess Haley, 2026-10-26 [dataset audit batch 1 and 2] (2): "the Babu
+%   media/air/heat routing ... leaves; those rows carry as v1 with a
+%   `needs_mapping` row naming exposure / temperature manipulation"
+%   ([one correct reading]: "e.g. a medium the worms live on written as a dose"
+%   is never written). The medium test is by node (CURIE key) or by the
+%   writer's label ("agar plate medium", "ambient air"); the heat row is carried
+%   in treatment_drug.m, before routing.
 %
 %   THE BATH TEST. The term is the bath when its node is NCIm:C0179246 (the
 %   node NDI's writers use: +birren/TreatmentCreator.m, createSayaTreatments.m,
@@ -76,14 +75,15 @@ end
 if isBath
     route = 'immersion';
 elseif isMedium(node, name)
-    route = 'exposure';
+    route = 'needs_mapping';
 else
     route = 'dose';
 end
 end
 
 function tf = isMedium(node, name)
-% Babu's two environmental media (+babu/treatments.json `agar`, `air`).
+% An environmental medium, not a site on the subject (the two NDI writers use:
+% +babu/treatments.json `agar`, `air`). Recognised only so the row is CARRIED.
 media = {'MICRO:0000480', 'agar plate medium'; 'XCO:0000918', 'ambient air'};
 tf = false;
 for k = 1:size(media, 1)

@@ -63,7 +63,7 @@ if ~isempty(unplaced)
     % [generic stage is lossless] / [partly placed is carried as v1] (Jess
     % Haley, 2026-10-25): an amount the dose cannot place carries the document
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
-        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
+        char(preBody.base.id), jCarryWhy(unplaced));
     v2Body = {preBody};
     return;
 end

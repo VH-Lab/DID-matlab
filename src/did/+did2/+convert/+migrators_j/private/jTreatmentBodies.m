@@ -13,8 +13,11 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %                  empty `value` and a `value_id` edge to the formulation -- the
 %                  shape resolveDeferredBaths writes for a stimulus_bath
 %                  (DID-matlab ff6d542). No amount: the subject sat in it.
-%     'exposure'   the same shape, for Babu's agar plate medium / ambient air
-%                  (Jess Haley, 2026-10-21 [babu-media]).
+%     'needs_mapping'  an environmental medium (jTreatmentRoute): nothing is
+%                  built; DOCS is {} and UNPLACED is the `needs_mapping:` note
+%                  naming the V2 homes, so the caller carries the document
+%                  whole as v1 ([one correct reading], [dataset audit batch 1
+%                  and 2] (2), Jess Haley, 2026-10-26).
 %     'dose'       a `dose_manipulation` whose `formulation_id` names the
 %                  formulation and whose value is the amount (jDoseValue: the
 %                  source's amount, else NaN in `volume.liters`).
@@ -73,7 +76,13 @@ if ~isempty(options.Conditions)
 end
 
 switch route
-    case {'immersion', 'exposure'}
+    case 'needs_mapping'
+        unplaced = {['needs_mapping: manipulation (exposure | dose); decided ' ...
+            'by what the treatment''s location means in its dataset (e.g. ' ...
+            'Babu: MICRO:0000480 agar plate medium -> exposure)']};
+        docs = {};
+        return;
+    case 'immersion'
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
         % `formulation_manipulation` is no class: did2.build reads it as the
         % direction `manipulation` with the value kind `formulation`.
