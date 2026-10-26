@@ -799,7 +799,8 @@ out = runJ(levelV1(2, 'max', 'blosc-zstd', 4, 'manifest'));
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 b = onlyBody(testCase, out);
 verifyTrue(testCase, isequal(b.data_body.redundant, true));
-verifyEqual(testCase, b.data_body.compression, 'blosc');
+% the codec name verbatim (it was 'blosc', which lost the inner compressor)
+verifyEqual(testCase, b.data_body.compression, 'blosc-zstd');
 cond = b.data_body.conditions;
 if iscell(cond); cond = cond{1}; end
 verifyEqual(testCase, numel(cond), 1);

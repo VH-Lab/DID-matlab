@@ -789,8 +789,9 @@
 %         anchor, + software and run documents).
 %     lightsheet_zarr_level
 %         Brainstorm-J migrator: did_v1 lightsheetZarrLevel -> a `sampled_body` of the
-%         pyramid's observation when the level HOLDS bytes, or NOTHING (an empty cell)
-%         when it does not.
+%         pyramid's observation; a FILE-LESS one when the level holds no bytes
+%         ([compression block and empty levels], Jess Haley, 2026-10-26), where it
+%         emitted NOTHING before.
 %     lightsheet_zarr_pyramid
 %         Brainstorm-J migrator: did_v1 lightsheetZarrPyramid -> an `observation` of
 %         intensity (the lightsheet volume) of its subject, id PRESERVED, plus the

@@ -1509,7 +1509,9 @@ v1.depends_on = [ struct('name', 'subject_id', 'value', 'subj_007'), ...
                   struct('name', 'imageCollection_id', 'value', '')];
 v1.base = struct('id', 'img_01', 'session_id', 'sess_09', ...
     'name', 'img', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image = struct('label', 'a histology section', 'format', 'tiff', ...
+% (no label: an image that states one is carried whole as v1, 2026-10-26;
+% testDidV1ImageWithALabelIsCarriedAsV1)
+v1.image = struct('label', '', 'format', 'tiff', ...
     'compression', 'lzw');
 v1.image_stack_parameters = struct('data_type', 'uint8', ...
     'dimension_order', 'YXC', 'dimension_size', [1024 1024 3], ...
@@ -1536,6 +1538,27 @@ verifyEqual(testCase, char(fmt), 'tiff');
 verifyEqual(testCase, body.get('data_body.compression'), 'lzw');
 end
 
+
+function testDidV1ImageWithALabelIsCarriedAsV1(testCase)
+% `image.label` has no V2 home decided yet (image_stack reads its own block's
+% label only), so an image that states one is carried whole as v1 rather than
+% losing it ([generic stage is lossless], Jess Haley, 2026-10-25).
+v1 = struct();
+v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'img_05', 'session_id', 'sess_09', ...
+    'name', 'img', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image = struct('label', 'a histology section', 'format', 'tiff', 'compression', '');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YX', 'dimension_size', [8 8], ...
+    'dimension_scale', [1 1], 'clocktype', 'no_time', 'timestamp', 0);
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'image.label'));
+end
 
 function testDidV1ImageInACollectionIsCarriedAsV1(testCase)
 % INVERTED 2026-10-26 (was testDidV1ImageDoesNotMintADanglingCollectionEdge,
@@ -1579,6 +1602,21 @@ out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
     'data_limits'));
+end
+
+function testACarriedImageStackIsTheV1SourceNotTheSuperclassReshape(testCase)
+% A carry emits the v1 source: the image_stack_parameters superclass override
+% strips an EMPTY `timestamp` before the concrete migrator runs, and a carried
+% stack used to come out with it stripped, unrecorded as a passthrough (so
+% stamped did_v2 under its tombstone). It is now the universalRenames output,
+% recorded as a pass-1 passthrough, the timestamp still there.
+v1 = foldableBehaviourImageStack();
+v1.image_stack_parameters.timestamp = [];
+v1.image_stack_parameters.data_limits = [10 200];   % carried: not the type's range
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTrue(testCase, isfield(out.migrated{1}.get('image_stack_parameters'), 'timestamp'), ...
+    'the carried document lost what the superclass override strips');
 end
 
 function testImageStackFormatOntologyIsTheBodysFormat(testCase)
@@ -3612,6 +3650,30 @@ verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
     'ndi_daqreader_ndr_class'));
 end
 
+function testDaqreaderNdrWithAFileExtensionIsCarriedAsV1(testCase)
+% [generic stage is lossless] (Jess Haley, 2026-10-25): `file_extension` is
+% written nowhere on the V2 output (acquisition_reader declares software_id
+% and reader_string only) and restated nowhere, so a document that sets one
+% is carried whole as v1 instead of losing it.
+body = struct();
+body.document_class = struct('class_name', 'daqreader_ndr', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base',      'class_version', '1.0.0'), ...
+                      struct('class_name', 'daqreader', 'class_version', '1.0.0')]);
+body.depends_on = struct('name', {}, 'value', {});
+body.base = struct('id', 'ndr_3', 'session_id', 'sess_09', ...
+    'name', 'reader', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.daqreader = struct('ndi_daqreader_class', 'ndi.daq.reader.mfdaq.ndr');
+body.daqreader_ndr = struct('ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr', ...
+    'ndr_reader_string', 'intan', 'file_extension', '.rhd');
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.daqreader_ndr(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, iscell(out) && isscalar(out) && isequaln(out{1}, body));
+verifyTrue(testCase, isfield(notes, 'carried_as_v1') && ...
+    contains(notes.carried_as_v1.distinct_details{1}, 'file_extension'));
+end
+
 function testDaqreaderNdrDeEncodesToDaqreader(testCase)
 % Chunk c: daqreader_ndr de-encodes onto daqreader -- the ndr subtype fields move
 % (ndr_reader_string -> reader_string, ndi_daqreader_ndr_class dropped) and the
@@ -3633,8 +3695,11 @@ body.depends_on = struct('name', {}, 'value', {});
 body.base = struct('id', 'ndr_1', 'session_id', 'sess_09', ...
     'name', 'reader', 'datestamp', '2024-06-01T12:00:00.000Z');
 body.daqreader = struct('ndi_daqreader_class', 'ndi.daq.reader.mfdaq.ndr');
+% 2026-10-26: no `file_extension` here; one that is set is carried whole as
+% v1, since nothing on the V2 output restates it
+% (testDaqreaderNdrWithAFileExtensionIsCarriedAsV1)
 body.daqreader_ndr = struct('ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr', ...
-    'ndr_reader_string', 'intan', 'file_extension', '.rhd');
+    'ndr_reader_string', 'intan');
 out = did2.convert.migrators_j.daqreader_ndr(body);
 % THE CONTRACT CHANGED 2026-08-13 AND SO DID THESE ASSERTIONS. This used to
 % assert the INTERMEDIATE -- a body whose class_name had become `daqreader` --
@@ -3673,8 +3738,8 @@ verifyEqual(testCase, depValue(reader, 'software_id'), software.base.id);
 % the field was deleted; this MATLAB twin was missed, and the migrator kept
 % copying the field with a test standing guard over the copy. Latent, not live
 % -- the source field cannot appear on a real document -- which is exactly why
-% it survived. The fixture above still SETS it, deliberately: that is what
-% makes this an assertion about the migrator rather than about the fixture.
+% it survived. (The fixture SET it until 2026-10-26, when a set extension
+% began carrying the document as v1; the sweep below still guards the output.)
 % The invented field must not survive ANYWHERE now, which is a stronger claim
 % than the old one: it used to be checked on the intermediate's `daqreader`
 % block, and that block no longer exists on either emitted body.
@@ -5406,7 +5471,7 @@ body.depends_on = struct('name', {'element_id'}, 'value', {'rec_sub_1'});
 body.base = struct('id', 'ne_1', 'session_id', 'sess_09', ...
     'name', 'ne', 'datestamp', '2024-06-01T12:00:00.000Z');
 body.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
-    'number_of_channels', 4);
+    'number_of_channels', 1);   % no waveform: the writers' 1 (a 4 is carried as v1)
 
 out = did2.convert.migrators_j.neuron_extracellular(body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);

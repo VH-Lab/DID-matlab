@@ -15,6 +15,11 @@ function out = reportNote(action, arg2, arg3, arg4)
 %   did2.convert.reportNote('reset')                  forget all notes
 %   N = did2.convert.reportNote('mark')               the number recorded so far
 %   did2.convert.reportNote('truncate', N)            keep only the first N
+%   N = did2.convert.reportNote('pending', KIND)      how many notes of KIND
+%                                                     were recorded since the
+%                                                     last 'mark' (v1_to_v2
+%                                                     reads 'carried_as_v1' to
+%                                                     know a body was carried)
 %   S = did2.convert.reportNote('collect')            the notes, summarised:
 %       S.<kind>.count       how many notes of this kind were recorded (EXACT)
 %       S.<kind>.by_class    a struct, class name -> note count (EXACT)
@@ -121,6 +126,8 @@ switch action
                  'Truncate only to the most recent mark.'], n, st.total);
         end
         st.nPending = n - st.total;
+    case 'pending'
+        out = sum(strcmp(st.pKind(1:st.nPending), char(arg2)));
     case 'collect'
         st = commitPending(st);
         out = struct();

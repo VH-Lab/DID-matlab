@@ -47,7 +47,9 @@ function v2Body = element_epoch(preBody)
 %   whole as v1. Until 2026-10-26 the clocks were zero-padded (a start-0 /
 %   end-0 clock the source never stated) or truncated (extents dropped);
 %   both invented or lost values ([no invented values], Jess Haley,
-%   2026-10-25).
+%   2026-10-25). So is a body naming no clock (it was read as
+%   'dev_local_time'), and one whose legacy `clocktype` differs from its
+%   `epoch_clock` (the clocktype was dropped).
 
 arguments
     preBody (1,1) struct
@@ -62,15 +64,30 @@ end
 
 block = v2Body.element_epoch;
 
+% The clock names must be stated ([no invented values], Jess Haley,
+% 2026-10-25): no `epoch_clock` (nor legacy `clocktype`) is not read as
+% 'dev_local_time'; and `clocktype` beside `epoch_clock` is dropped only when it
+% restates it ([lossless means round trip]). Otherwise the body is carried.
+why = '';
 if isfield(block, 'clocktype') && ~isfield(block, 'epoch_clock')
     block.epoch_clock = char(block.clocktype);
     block = rmfield(block, 'clocktype');
 elseif isfield(block, 'clocktype')
-    block = rmfield(block, 'clocktype');
+    if strcmp(strtrim(char(block.clocktype)), strtrim(char(block.epoch_clock)))
+        block = rmfield(block, 'clocktype');
+    else
+        why = 'element_epoch.clocktype (differs from epoch_clock)';
+    end
 end
-
-names = parseClockNames(block);
-why = t0t1Mismatch(block, numel(names));
+if isempty(why) && (~isfield(block, 'epoch_clock') || isempty(strtrim(char(block.epoch_clock))))
+    why = 'element_epoch.epoch_clock (missing: no clock is named)';
+end
+names = {};
+if isempty(why)
+    names = parseClockNames(block);
+    t = t0t1Mismatch(block, numel(names));
+    if ~isempty(t); why = ['element_epoch.t0_t1 (' t ')']; end
+end
 if ~isempty(why)
     cn = 'element_epoch';
     if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
@@ -80,7 +97,7 @@ if ~isempty(why)
     if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
         id = char(preBody.base.id);
     end
-    did2.convert.reportNote('carried_as_v1', cn, id, ['unplaced: element_epoch.t0_t1 (' why ')']);
+    did2.convert.reportNote('carried_as_v1', cn, id, ['unplaced: ' why]);
     v2Body = preBody;   % unchanged: the callers carry it whole as v1
     return;
 end

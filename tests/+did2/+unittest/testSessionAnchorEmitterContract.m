@@ -501,7 +501,7 @@ v1.depends_on = struct('name', {'element_id'}, 'value', {'rec_sub_1'});
 v1.base = struct('id', 'ne_1', 'session_id', sessionId, ...
     'name', 'ne', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
-    'number_of_channels', 4);
+    'number_of_channels', 1);   % no waveform: the writers' 1 (a 4 is carried as v1)
 end
 
 function v1 = imageStackBody(sessionId)

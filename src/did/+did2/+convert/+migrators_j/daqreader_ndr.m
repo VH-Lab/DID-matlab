@@ -28,10 +28,21 @@ end
 % as v1], Jess Haley, 2026-10-25).
 ndrClass = textField(preBody, 'daqreader_ndr', 'ndi_daqreader_ndr_class');
 readerClass = textField(preBody, 'daqreader', 'ndi_daqreader_class');
+unplaced = {};
 if ~isempty(ndrClass) && ~strcmp(ndrClass, readerClass)
+    unplaced{end+1} = sprintf(['daqreader_ndr.ndi_daqreader_ndr_class "%s" (differs ' ...
+        'from daqreader.ndi_daqreader_class "%s")'], ndrClass, readerClass);
+end
+% `file_extension` is restated nowhere on the V2 output (the acquisition_reader
+% and its software entity hold no extension; see below for why it is not
+% written either), so a document that sets one is carried whole as v1
+% ([generic stage is lossless], Jess Haley, 2026-10-25) instead of losing it.
+if ~isempty(textField(preBody, 'daqreader_ndr', 'file_extension'))
+    unplaced{end+1} = 'daqreader_ndr.file_extension';
+end
+if ~isempty(unplaced)
     did2.convert.reportNote('carried_as_v1', 'daqreader_ndr', char(preBody.base.id), ...
-        sprintf(['unplaced: daqreader_ndr.ndi_daqreader_ndr_class "%s" (differs ' ...
-        'from daqreader.ndi_daqreader_class "%s")'], ndrClass, readerClass));
+        ['unplaced: ' strjoin(unplaced, ', ')]);
     v2Body = {preBody};
     return;
 end

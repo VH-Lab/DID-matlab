@@ -322,6 +322,32 @@ for k = 1:size(cases, 1)
 end
 end
 
+function testElementEpochNamingNoClockOrADifferentClocktypeIsNotConverted(testCase)
+% [no invented values]: no `epoch_clock` is not read as 'dev_local_time'; and a
+% legacy `clocktype` beside `epoch_clock` is dropped only when it restates it.
+cases = { ...
+    struct('t0_t1', [0 1]), 'epoch_clock (missing'; ...
+    struct('epoch_clock', '', 't0_t1', [0 1]), 'epoch_clock (missing'; ...
+    struct('epoch_clock', 'dev_local_time', 'clocktype', 'utc', 't0_t1', [0 1]), 'clocktype'};
+for k = 1:size(cases, 1)
+    pre = did2.convert.universalRenames(wrap('element_epoch', 'element_epoch', cases{k, 1}));
+    did2.convert.reportNote('reset');
+    out = did2.convert.migrators.element_epoch(pre);
+    notes = did2.convert.reportNote('collect');
+    did2.convert.reportNote('reset');
+    verifyTrue(testCase, isequaln(out, pre), sprintf('case %d: changed', k));
+    verifyTrue(testCase, isfield(notes, 'carried_as_v1') && ...
+        contains(notes.carried_as_v1.distinct_details{1}, cases{k, 2}), ...
+        sprintf('case %d: no note naming "%s"', k, cases{k, 2}));
+end
+% the same clock twice: the clocktype restates it and is dropped
+pre = did2.convert.universalRenames(wrap('element_epoch', 'element_epoch', ...
+    struct('epoch_clock', 'dev_local_time', 'clocktype', 'dev_local_time', 't0_t1', [0 1])));
+out = did2.convert.migrators.element_epoch(pre);
+verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
+verifyFalse(testCase, isfield(out.element_epoch, 'clocktype'));
+end
+
 function testElementEpochMissingBlockErrors(testCase)
 v1 = struct( ...
     'document_class', struct('class_name', 'element_epoch'), ...

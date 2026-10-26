@@ -207,6 +207,10 @@ passthrough = struct('input_index', {}, 'id', {}, 'class_name', {}, 'body', {});
 % as v1 without V_eta validation, by class (see the validation step).
 v1NoSchemaNames = {};
 v1NoSchemaValues = [];
+% Of the documents a migrator carried whole as v1, those V_eta validation
+% refused (a tombstone that does not describe the v1 shape): counted, by class.
+carriedUnvalNames = {};
+carriedUnvalValues = [];
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
 % each corpus report counts the dimensions whose term has no node, so the move
@@ -274,6 +278,7 @@ for k = 1:numel(bodies)
     originalJSON = encodeForQuarantine(rawBody);
     className = '<unknown>';
     passedThrough = false;
+    carried = false;
     noteMark = did2.convert.reportNote('mark');
     try
         preBody = ensureStruct(rawBody);
@@ -323,6 +328,26 @@ for k = 1:numel(bodies)
                 % ontology_table_row, ...) may fan out to several (1 -> N).
                 v2Bodies = runConcreteMigrator(v2Body, className, ...
                     options.TargetVersion);
+                % A CARRY IS THE V1 SOURCE, NOT THE SUPERCLASS-RESHAPED BODY.
+                % A migrator carries a document by returning its input
+                % unchanged with a `carried_as_v1` note ([generic stage is
+                % lossless], [partly placed is carried as v1], Jess Haley,
+                % 2026-10-25). Its input is the body AFTER the superclass
+                % migrators, which may have reshaped it (+migrators/filter.m
+                % renames `type` -> `filter_type`; the image_stack_parameters
+                % override strips an empty `timestamp`), and such a body was
+                % not recorded as a passthrough, so it came out under its
+                % tombstone stamped did_v2. The carried document is the
+                % universalRenames output instead -- the same body every other
+                % passthrough is -- recorded as a passthrough, so the caller
+                % stores its untouched v1 source, stamped did_v1.
+                if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body) ...
+                        && did2.convert.reportNote('pending', 'carried_as_v1') > 0
+                    v2Body = postUniversalBody;
+                    v2Bodies = {postUniversalBody};
+                    superUnchanged = true;
+                    carried = true;
+                end
             else
                 % [generic stage is lossless] / [partly placed is carried as
                 % v1] (Jess Haley, 2026-10-25): universalRenames discarded v1
@@ -398,11 +423,18 @@ for k = 1:numel(bodies)
                     % is counted here instead of quarantined. Any other
                     % failure, and any failure of a document a migrator
                     % changed, still quarantines.
-                    if ~(passedThrough && strcmp(vErr.identifier, 'did2:schema:missingClass'))
+                    % A CARRIED document is v1 by definition: V_eta validation
+                    % (its tombstone, if any) is not its contract, so a
+                    % failure is counted, never a quarantine.
+                    if carried
+                        [carriedUnvalNames, carriedUnvalValues] = bumpClassCounter( ...
+                            carriedUnvalNames, carriedUnvalValues, className);
+                    elseif ~(passedThrough && strcmp(vErr.identifier, 'did2:schema:missingClass'))
                         rethrow(vErr);
+                    else
+                        [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
+                            v1NoSchemaNames, v1NoSchemaValues, className);
                     end
-                    [v1NoSchemaNames, v1NoSchemaValues] = bumpClassCounter( ...
-                        v1NoSchemaNames, v1NoSchemaValues, className);
                 end
             end
             migrated{end+1} = doc; %#ok<AGROW>
@@ -510,6 +542,8 @@ result.summary = struct( ...
     'passthrough_count', numel(passthrough), ...
     'passthrough_unvalidated_no_schema_count', sum(v1NoSchemaValues), ...
     'passthrough_unvalidated_no_schema_by_class', buildByClassTable(v1NoSchemaNames, v1NoSchemaValues), ...
+    'carried_failing_veta_validation_count', sum(carriedUnvalValues), ...
+    'carried_failing_veta_validation_by_class', buildByClassTable(carriedUnvalNames, carriedUnvalValues), ...
     'legacy_ndi_document', legacy, ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...

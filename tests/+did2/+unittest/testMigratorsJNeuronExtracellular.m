@@ -314,6 +314,23 @@ verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
     'number_of_channels'), notes.carried_as_v1.distinct_details{1});
 end
 
+function testWithNoWaveformOnlyTheWritersCountsAreDropped(testCase)
+% No waveform, so the counts restate nothing but the writers' own value for an
+% empty one: 1 (kilosort / kiasort / jrclust probe.m, max(size(meanWf,k),1)),
+% 0 (spikesorter.m, size of an empty mean shape) or absent. Those are dropped;
+% any other count is carried whole as v1 ([lossless means round trip]).
+v1 = neuronExtracellularV1();
+v1.neuron_extracellular.mean_waveform = [];
+v1.neuron_extracellular.waveform_sample_times = [];
+v1.neuron_extracellular.number_of_samples_per_channel = 1;
+v1.neuron_extracellular.number_of_channels = 1;
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyGreaterThan(testCase, numel(out), 1, 'the writers'' 1 folds');
+v1.neuron_extracellular.number_of_channels = 32;
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'a 32 with no waveform is carried');
+end
+
 function testAFractionalCountIsCarriedAsV1(testCase)
 % A count of 31.6 does not restate the 32 columns (it was rounded and dropped).
 v1 = neuronExtracellularV1();

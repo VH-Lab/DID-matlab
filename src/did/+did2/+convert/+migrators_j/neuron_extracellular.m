@@ -323,12 +323,23 @@ if isnumeric(w) && ~isempty(w) && ismatrix(w)
         size(w, 1), 'size(mean_waveform,1)'), ...
         checkRedundantCount(blk, 'number_of_channels', size(w, 2), ...
         'size(mean_waveform,2)')];
-    if ~isempty(unplaced)
-        did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
-            char(baseField(preBody, 'id', '')), ['unplaced: ' strjoin(unplaced, ', ')]);
-        bodies = {preBody};
-        return;
-    end
+else
+    % NO WAVEFORM: nothing to compare the counts with. They restate the
+    % writer's own value for an empty waveform and are dropped only then:
+    % 1 from the import writers, max(size(meanWf,k),1) (NDI-matlab
+    % +ndi/+fun/+probe/+import/+kilosort/probe.m:551-552, +kiasort/probe.m:
+    % 325-326, +jrclust/probe.m:309-310), 0 from +ndi/+app/spikesorter.m:252-253
+    % (size(meanshape,k) of an empty mean shape), or absent / [] (the
+    % template). Any other count states something nothing else does
+    % ([lossless means round trip], Jess Haley, 2026-10-26): carried as v1.
+    unplaced = [writerDefaultCount(blk, 'number_of_samples_per_channel'), ...
+        writerDefaultCount(blk, 'number_of_channels')];
+end
+if ~isempty(unplaced)
+    did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
+        char(baseField(preBody, 'id', '')), ['unplaced: ' strjoin(unplaced, ', ')]);
+    bodies = {preBody};
+    return;
 end
 
 recordingSubjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
@@ -517,6 +528,19 @@ obs = jStatement(preBody, 'calculation', neuronId, ...
     'Dimensions', dims, 'Covariates', covs, ...
     'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
     calcOpt{:}, 'ValueKind', 'voltage');
+end
+
+function why = writerDefaultCount(blk, name)
+%WRITERDEFAULTCOUNT {} when a count beside NO waveform is what the writers
+%   write for an empty one (absent, [], 0 or 1), else a one-element cell.
+why = {};
+v = getField(blk, name);
+if isempty(v)
+    return;
+end
+if ~isnumeric(v) || ~isscalar(v) || ~any(double(v) == [0 1])
+    why = {sprintf('neuron_extracellular.%s (no waveform to restate it)', name)};
+end
 end
 
 function why = checkRedundantCount(blk, name, derived, derivedFrom)

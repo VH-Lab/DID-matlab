@@ -53,8 +53,10 @@ function bodies = lightsheet_zarr_level(preBody)
 %     fill_value     the level's fill_value, as the literal the owner's
 %                       data_type reads (a dense grid; `complete` was
 %                       removed by AMENDMENT 6)
-%     compression    'blosc' for codec 'blosc' / 'blosc-zstd'; absent for
-%                       'raw'. codec_params: [compression block and empty
+%     compression    the codec name VERBATIM ('blosc-zstd' stays
+%                       'blosc-zstd'; it was written 'blosc', which lost the
+%                       inner compressor -- [lossless means round trip], Jess
+%                       Haley, 2026-10-26); absent for 'raw'. codec_params: [compression block and empty
 %                       levels] (Jess Haley, 2026-10-26) gives the codec's
 %                       settings a home in a `{term, parameters}` compression
 %                       block, a schema change still to come; until then a
@@ -202,7 +204,7 @@ opts = {'DatumOrder', char(field(blk, 'chunk_order', 'C')), ...
 if ~isempty(byteOrder)
     opts = [opts, {'ByteOrder', byteOrder}];
 end
-compression = compressionOf(char(field(blk, 'codec', 'raw')), baseId(preBody));
+compression = compressionOf(char(field(blk, 'codec', 'raw')));
 if ~isempty(compression)
     opts = [opts, {'Compression', compression}];
 end
@@ -293,22 +295,17 @@ switch reduction
 end
 end
 
-function c = compressionOf(codec, id)
+function c = compressionOf(codec)
 arguments
     codec {mustBeText}
-    id {mustBeText}
 end
 
-switch lower(strtrim(codec))
-    case {'', 'raw'}
-        c = '';
-    case {'blosc', 'blosc-zstd'}
-        c = 'blosc';
-    case 'zstd'
-        c = 'zstd';
-    otherwise
-        error('did2:migrators_j:lightsheet:unknownCodec', ...
-            'lightsheetZarrLevel %s: codec "%s" has no compression mapping.', id, codec);
+% the codec name verbatim ([lossless means round trip]: 'blosc-zstd' written
+% as 'blosc' could not be read back); 'raw' is no compression
+if any(strcmpi(strtrim(codec), {'', 'raw'}))
+    c = '';
+else
+    c = strtrim(char(codec));
 end
 end
 
