@@ -23,7 +23,9 @@ function tests = testRawV1RoundTripTuningResults
 %   WHAT THE WRITERS' DOCUMENTS DO TODAY. stimulus_tuningcurve is carried
 %   (carry-056: stimid and stimulus_presentation_number have no V2 home, as for
 %   tuningcurve_calc); the same document with those removed converts and loses
-%   nothing. orientation_direction_tuning converts and loses nothing. No known
+%   nothing. A field outside the template carries the document under carry-100
+%   instead (Decided by Jess Haley, 2026-10-27 [tuning stray fields are
+%   malformed]). orientation_direction_tuning converts and loses nothing. No known
 %   findings.
 %
 %   contrast_tuning, spatial_frequency_tuning, temporal_frequency_tuning and
@@ -72,14 +74,39 @@ end
 end
 
 function testAFieldTheFoldDoesNotReadCarriesTheDocument(testCase)
+% Decided by Jess Haley, 2026-10-27 [tuning stray fields are malformed]: a
+% field, block or edge outside the class's NDI template cites carry-100
+% ([fields outside the template are malformed]), not carry-056
 v1 = oridir();
 v1.orientation_direction_tuning.extra_index = 3;
-verifyCarried(testCase, v1, '[carry-056]');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: orientation_direction_tuning.extra_index');
 v1 = did2.unittest.helpers.setDependency(curveConverted(), 'probe_id', 'p_1');
-verifyCarried(testCase, v1, 'depends_on probe_id');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: depends_on probe_id');
 v1 = oridir();
 v1.app.license = 'MIT';
-verifyCarried(testCase, v1, 'app.license');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: app.license');
+end
+
+function testATemplateFieldWithNoHomeCitesCarry056(testCase)
+% [tuning stray fields are malformed]: carry-056 keeps only fields the writer
+% does write that V2 has no home for yet. The writer's own tuning curve states
+% stimid and stimulus_presentation_number (stimulus_tuningcurve.json declares
+% both); with a stray field beside them, the one note cites each by its row.
+[~, notes] = did2.unittest.helpers.carryNote({curve()});
+for f = {'stimid', 'stimulus_presentation_number'}
+    verifyEqual(testCase, did2.unittest.helpers.carryRowFor(notes, ...
+        ['stimulus_tuningcurve.' f{1}]), 'carry-056', f{1});
+end
+v1 = curve();
+v1.stimulus_tuningcurve.stray_index = 3;
+[carried, notes] = did2.unittest.helpers.carryNote({v1});
+verifyTrue(testCase, carried, 'not carried as the untouched v1 source');
+verifyEqual(testCase, did2.unittest.helpers.carryRowFor(notes, ...
+    'stimulus_tuningcurve.stray_index'), 'carry-100', notes);
+verifyEqual(testCase, did2.unittest.helpers.carryRowFor(notes, ...
+    'stimulus_tuningcurve.stimid'), 'carry-056', notes);
+verifyTrue(testCase, startsWith(notes, ['[carry-100] malformed: outside the NDI template, unplaced: ' ...
+    'stimulus_tuningcurve.stray_index; unplaced: [carry-056] ']), notes);
 end
 
 function testADifferentSourceIsReportedLost(testCase)

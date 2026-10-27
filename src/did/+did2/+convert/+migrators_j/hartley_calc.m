@@ -260,7 +260,9 @@ end
 % block in either spelling (did2.convert.v1read.readApp); `frameTimes` as v1
 % writes it (or `frame_times`, the renamed spelling). Every v1 field is
 % accounted for: a field this fold reads nowhere carries the document whole as
-% v1 (unreadFields below and jCalculation 'AccountForEveryField', carry-056).
+% v1 (unreadFields below and jCalculation 'AccountForEveryField': carry-100
+% for a field outside the NDI template, carry-056 for a template field with no
+% home, [tuning stray fields are malformed]).
 % A carry is the untouched v1 source. did2.convert.roundtrip.hartley_calc
 % rebuilds the v1 document; testRawV1RoundTripSpike compares the two on the
 % writer's own output (NDIcalc-vis-matlab mock/hartley/mock.1.json).
@@ -392,7 +394,8 @@ if isfield(rc, 'method') && ~isempty(rc.method) ...
 end
 % every other field of the four hartley blocks is accounted for (unreadFields):
 % one this fold reads nowhere is unplaced, and jCalculation carries the
-% document whole as v1 (carry-056), as it does for an unread calculator field
+% document whole as v1 (carry-100 outside the template, carry-056 inside it),
+% as it does for an unread calculator field
 dropped = [dropped, unreadFields(preBody)];
 bodies = jCalculation(preBody, 'receptive_field_calculation', 'rf', ...
     'hartley_calc', 'receptive field', 'ndi.calc.vis.hartley', ...
@@ -714,7 +717,8 @@ end
 
 function c = unreadFields(preBody)
 %UNREADFIELDS The fields of the hartley blocks this fold reads nowhere and
-%   that hold a value, as paths (jCalculation prefixes '[carry-056] ').
+%   that hold a value, as paths (jCalculation cites each: carry-100 outside
+%   the NDI template, carry-056 inside it).
 %
 %   READ (and where it lands): hartley_reverse_correlation.stimulus_properties
 %   (compared, above), .reconstruction_properties.{T,X,Y}_coords (the axes),

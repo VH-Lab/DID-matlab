@@ -178,35 +178,47 @@ end
 
 function testAFieldTheFoldDoesNotReadCarriesTheDocument(testCase)
 % jCalculation 'AccountForEveryField' (the switched migrators): a field the
-% fold reads nowhere carries the document whole as v1 (carry-056) instead of
-% being dropped from a converted one ([generic stage is lossless])
+% fold reads nowhere carries the document whole as v1 instead of being dropped
+% from a converted one ([generic stage is lossless]). Its row (Decided by Jess
+% Haley, 2026-10-27 [tuning stray fields are malformed]): carry-100 for a
+% field, block or edge outside the class's NDI template ([fields outside the
+% template are malformed]); carry-056 for a field the template defines and the
+% writer writes that V2 has no home for yet.
 v1 = convertedShape('tuningcurve_calc');
-v1.tuningcurve_calc.log = 'contrast best value is 1.';
-verifyCarriedFor(testCase, v1, 'tuningcurve_calc.log');
+v1.tuningcurve_calc.log = 'contrast best value is 1.';   % tuningcurve_calc.json: log
+verifyCarriedFor(testCase, v1, 'tuningcurve_calc.log', 'carry-056');
 
 v1 = writerOutput('oridirtuning_calc');
-v1.calculator.note = 'a calculator field';
-verifyCarriedFor(testCase, v1, 'calculator.note');
+v1.calculator.note = 'a calculator field';   % calculator.json declares none
+verifyCarriedFor(testCase, v1, 'calculator.note', 'carry-100');
 
 v1 = writerOutput('oridirtuning_calc');
 v1.app.license = 'MIT';
-verifyCarriedFor(testCase, v1, 'app.license');
+verifyCarriedFor(testCase, v1, 'app.license', 'carry-100');
 
 v1 = writerOutput('oridirtuning_calc');
 v1.depends_on(end + 1) = struct('name', 'stimulus_presentation_id', 'value', 'sp_1');
-verifyCarriedFor(testCase, v1, 'depends_on stimulus_presentation_id');
+verifyCarriedFor(testCase, v1, 'depends_on stimulus_presentation_id', 'carry-100');
 
 v1 = writerOutput('oridirtuning_calc');
 v1.orientation_direction_tuning.significance.f_test_p = 0.01;
-verifyCarriedFor(testCase, v1, 'significance.f_test_p');
+verifyCarriedFor(testCase, v1, 'orientation_direction_tuning.significance.f_test_p', 'carry-100');
 
 v1 = writerOutput('contrastsensitivity_calc');
 v1.contrastsensitivity_calc.bandwidth_RB = [1 2 3];
-verifyCarriedFor(testCase, v1, 'contrastsensitivity_calc.bandwidth_RB');
+verifyCarriedFor(testCase, v1, 'contrastsensitivity_calc.bandwidth_RB', 'carry-100');
 
 v1 = writerOutput('oridirtuning_calc');
 v1.extra_block = struct('x', 1);
-verifyCarriedFor(testCase, v1, 'extra_block');
+verifyCarriedFor(testCase, v1, 'extra_block', 'carry-100');
+
+% a stray field beside the writer's own unhomed fields: one note, each path
+% under its own row (the contrast fits' relative_max_gain is in
+% contrast_tuning.json and the writer writes it)
+v1 = writerOutput('contrasttuning_calc');
+v1.contrast_tuning.fit.naka_rushton_RB_note = 'x';
+verifyCarriedFor(testCase, v1, 'contrast_tuning.fit.naka_rushton_RB_note', 'carry-100');
+verifyCarriedFor(testCase, v1, 'contrast_tuning.fit.naka_rushton_RB_relative_max_gain', 'carry-056');
 end
 
 % ===================== a check that cannot fail proves nothing ===========
@@ -276,7 +288,9 @@ for k = 1:size(cases, 1)
 end
 end
 
-function verifyCarriedFor(testCase, v1, path)
+function verifyCarriedFor(testCase, v1, path, row)
+% V1 is carried whole as v1, and its note cites PATH under register row ROW
+% (did2.unittest.helpers.carryRowFor)
 out = runRaw(v1);
 label = sprintf('%s with %s', v1.document_class.class_name, path);
 verifyEmpty(testCase, out.quarantine, label);
@@ -289,8 +303,8 @@ verifyTrue(testCase, isequaln(stripStamp(out.migrated{1}.toStruct()), v1), ...
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), [label ': no carried_as_v1 note']);
 d = strjoin(cellstr(notes.carried_as_v1.distinct_details), ' || ');
-verifyTrue(testCase, contains(d, ['[carry-056] ' path]) || contains(d, ['.' path]), ...
-    sprintf('%s: the note does not name it: %s', label, d));
+verifyEqual(testCase, did2.unittest.helpers.carryRowFor(d, path), row, ...
+    sprintf('%s: the note does not cite it under %s: %s', label, row, d));
 end
 
 function s = describeLost(r)
