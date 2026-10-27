@@ -89,6 +89,18 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         pass-1 passthrough that resolveResponseParameters
 %                         turns into a `method`. Round trips:
 %                         testRawV1RoundTripStimulusResponse.
+%     daqreader_mfdaq_epochdata_ingested    the ingested-epoch / sync family:
+%     epochfiles_ingested                   superclasses `base` (+ `epochid`,
+%     syncrule_mapping                      + daqreader_epochdata_ingested for
+%     daqmetadatareader_epochdata_ingested  the mfdaq cache), no `app` block,
+%                         no superclass migrator. Pass 1: the mfdaq cache
+%                         de-encodes to daqreader_epochdata_ingested; the
+%                         manifest passes through; the mapping and the stimulus
+%                         file are carried (carry-036, carry-046) for
+%                         epochMint and NDI's second pass. Written by
+%                         +daq/+reader/mfdaq.m, +file/navigator.m,
+%                         +time/syncgraph.m, +daq/metadatareader.m. Round
+%                         trips: testRawV1RoundTripIngested.
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
@@ -97,7 +109,11 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'tuningcurve_calc', 'contrasttuning_calc', 'oridirtuning_calc', ...
     'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc', ...
     'contrastsensitivity_calc', 'stimulus_response_scalar', ...
-    'stimulus_response_scalar_parameters_basic'};
+    'stimulus_response_scalar_parameters_basic', ...
+    'daqreader_mfdaq_epochdata_ingested', ...
+    'epochfiles_ingested', ...
+    'syncrule_mapping', ...
+    'daqmetadatareader_epochdata_ingested'};
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
 TABLE = { ...
