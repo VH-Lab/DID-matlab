@@ -792,6 +792,8 @@ POST_PASSES = [
         ("store_carriers_stripped", "carriers stripped WITHOUT a fold (keys lost)"),
         ("store_fold_quarantined", "QUARANTINED by the store fold"),
         ("store_records_left_passthrough", "file_reference named by no observation (passthrough)"),
+        ("store_records_carried_as_v1", "file_reference carried as v1 in pass 1 (never folded)"),
+        ("store_skipped_carried_as_v1", "  carriers naming one: link kept, not folded"),
         ("store_checksums_to_description", "  .zattrs checksums put in description, not content_hash"),
         ("store_sizes_unrecorded", "  folded with file_size 0 (unrecorded: size_bytes left out)"),
         # Point 8: the pyramid's t unit and channel names onto its levels' keys.
