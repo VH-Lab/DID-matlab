@@ -60,8 +60,8 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         Round trips: testRawV1RoundTripTreatment, which
 %                         lists what V2 does not keep as known findings.
 %     element             superclass `base` only, no `app` block; the old
-%                         +migrators/element.m is never run for it (a class
-%                         with a +migrators_j migrator skips it). Written by
+%                         +migrators/element.m, never run for it (a class
+%                         with a +migrators_j migrator skips it), is deleted. Written by
 %                         ndi.element/newdocument. Round trips:
 %                         testRawV1RoundTripElement.
 %     element_epoch       superclasses `base` and `epochid` (no migrator for

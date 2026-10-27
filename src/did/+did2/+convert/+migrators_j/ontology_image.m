@@ -88,7 +88,7 @@ function v2Body = ontology_image(preBody)
 %
 %   The PREVIOUS implementation read `preBody.ontology_image.region`. That
 %   field exists in NEITHER vintage -- it is the *output* of the base
-%   migrator (+did2/+convert/+migrators/ontology_image.m), which composes
+%   migrator (+did2/+convert/+migrators/ontology_image.m, deleted 2026-10-27), which composed
 %   `region` from vintage A's two chars. But v1_to_v2 routes a class to
 %   migrators_j INSTEAD OF the base (+migrators) migrator (see v1_to_v2.m, the
 %   splitPackage branch), so a J migrator receives a body that has only been

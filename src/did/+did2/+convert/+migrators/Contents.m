@@ -18,11 +18,6 @@
 %     treatment           - collapse (ontologyName | ontology_name,
 %                           name) -> treatment_name; pass through
 %                           numeric_value and string_value.
-%     ontology_image      - collapse (ontology_name, ontology_region)
-%                           -> region.
-%     ontology_label      - collapse (ontology_name, label_id, label)
-%                           -> term, with the CURIE composed from the
-%                           first two.
 %     epochclocktimes     - SUPERCLASS migrator; rename clocktype ->
 %                           epoch_clock and split t0_t1 -> (t0, t1).
 %                           Applied by the dispatcher to any document
@@ -40,10 +35,6 @@
 %                           Applied to any document that lists ngrid
 %                           in its superclass chain (e.g., hartley_calc
 %                           via reverse_correlation).
-%     ontology_label      - extended to handle the JH single-`ontologyNode`
-%                           idiom (no label/label_id). Looks up the
-%                           name via ndi.ontology.lookup; falls back to
-%                           empty name when the lookup is unavailable.
 %
 %   The calculator-base wrappers are all deleted, with their shared helper
 %   calcCommon: the tuning family's (tuningcurve_calc, oridirtuning_calc,
@@ -59,6 +50,15 @@
 %   are deleted too: each class has a +migrators_j migrator, which reads raw v1
 %   (distance_metadata's reshapes the v1 spelling itself, where it used to hand
 %   the renamed body to the base migrator).
+%
+%   The element, ontology_image and ontology_label base migrators are deleted
+%   (2026-10-27): each class has a +migrators_j migrator that reads raw v1, and
+%   no NDI template at the locked main names element, ontologyImage or
+%   ontologyLabel as a superclass, so nothing reached them. element_epoch stays
+%   (+migrators_j/element_epoch.m and oneepoch.m call it on the raw block);
+%   epochclocktimes and filter stay for pyraview (not switched); ngrid stays as
+%   the concrete migrator of a leaf `ngrid` document (+migrators_j has only
+%   the +super guard); identity stays as v1_to_v2's fallback.
 %
 %   See did-schema's
 %   did-schema's per-class conversion notes (deleted with did-schema #88) for the

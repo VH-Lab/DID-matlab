@@ -31,58 +31,6 @@ v1.base = struct( ...
 v1.(blockKey) = block;
 end
 
-function testOntologyImageRenamesClassAndCollapsesFields(testCase)
-v1 = wrap('ontologyImage', 'ontologyImage', struct( ...
-    'ontology_name',   'allen_ccf_v3:12345', ...
-    'ontology_region', 'primary visual cortex'));
-postUniversal = did2.convert.universalRenames(v1);
-verifyEqual(testCase, postUniversal.document_class.class_name, 'ontology_image');
-out = did2.convert.migrators.ontology_image(postUniversal);
-verifyEqual(testCase, out.ontology_image.region.node, 'allen_ccf_v3:12345');
-verifyEqual(testCase, out.ontology_image.region.name, 'primary visual cortex');
-verifyFalse(testCase, isfield(out, 'ontologyImage'));
-end
-
-function testOntologyLabelComposesCURIE(testCase)
-v1 = wrap('ontologyLabel', 'ontologyLabel', struct( ...
-    'ontology_name', 'Allen CCF v3', ...
-    'label',         'primary visual cortex', ...
-    'label_id',      12345));
-out = did2.convert.migrators.ontology_label( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.document_class.class_name, 'ontology_label');
-verifyEqual(testCase, out.ontology_label.term.node, 'allen_ccf_v3:12345');
-verifyEqual(testCase, out.ontology_label.term.name, 'primary visual cortex');
-end
-
-function testOntologyLabelHandlesStringLabelId(testCase)
-v1 = wrap('ontologyLabel', 'ontologyLabel', struct( ...
-    'ontology_name', 'allen_ccf_v3', ...
-    'label',         'primary visual cortex', ...
-    'label_id',      '12345'));
-out = did2.convert.migrators.ontology_label( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.ontology_label.term.node, 'allen_ccf_v3:12345');
-end
-
-function testElementDirectLogicalCoercedToInteger(testCase)
-% The PRED corpus (and writes in the larger public corpora) emits
-% element.direct as a JSON boolean. After jsondecode that arrives
-% as MATLAB `logical`, which V2's validator rejects with
-% `Field "element.direct" must be integer.`. The element migrator
-% canonicalises it to a numeric integer.
-v1 = wrap('element', 'element', struct( ...
-    'ndi_element_class', 'ndi.probe.timeseries.stimulator', ...
-    'name',              'rayostim', ...
-    'reference',         1, ...
-    'type',              'stimulator', ...
-    'direct',            true));
-out = did2.convert.migrators.element( ...
-    did2.convert.universalRenames(v1));
-verifyTrue(testCase, isnumeric(out.element.direct));
-verifyEqual(testCase, out.element.direct, 1);
-end
-
 function testEpochclocktimesSplitsTimeRange(testCase)
 v1 = wrap('pyraview', 'pyraview', struct('label', 'high'));
 v1.epochclocktimes = struct( ...
@@ -306,22 +254,23 @@ out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
 verifyEqual(testCase, out.ngrid.ndims, 3);
 end
 
-% --- ontology_label node-only idiom (JH corpus: 7007 docs) ---
+% --- element, ontology_image, ontology_label base migrators ---
 
-function testOntologyLabelNodeOnlyV1(testCase)
-% v1 docs in some corpora carry only `ontologyNode` (the CURIE), no
-% label/label_id pair. The migrator should still produce a valid
-% term composite, with name resolved via ndi.ontology.lookup when
-% available and left empty when not (no quarantine).
-v1 = wrap('ontologyLabel', 'ontologyLabel', struct( ...
-    'ontologyNode', 'EMPTY:0000129'));
-out = did2.convert.migrators.ontology_label( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.ontology_label.term.node, 'EMPTY:0000129');
-verifyTrue(testCase, ischar(out.ontology_label.term.name));
-% The name resolution is best-effort: if ndi.ontology is not on the
-% path the lookup falls back to '' and the doc still validates
-% (ontology_term is open-struct). We only assert it is a char.
+function testTheUnreachedBaseMigratorsAreGone(testCase)
+% [early migration pieces fixed] (1) (Jess Haley, 2026-10-26): one migrator
+% per class. +migrators/element.m, ontology_image.m and ontology_label.m were
+% reached by nothing: each class has a +migrators_j migrator (which v1_to_v2
+% runs instead of the +migrators one), and no NDI template at the locked main
+% (3cb19a8) names element, ontologyImage or ontologyLabel as a superclass, so
+% the superclass pass never met them either. They are deleted. Their behaviour
+% is tested where it now lives: testRawV1RoundTripElement,
+% testRawV1RoundTripOntologyImage and testRawV1RoundTripImage (ontologyLabel).
+for cls = {'element', 'ontology_image', 'ontology_label'}
+    verifyEmpty(testCase, which(['did2.convert.migrators.' cls{1}]), ...
+        sprintf('+migrators/%s.m is back', cls{1}));
+    verifyNotEmpty(testCase, which(['did2.convert.migrators_j.' cls{1}]), ...
+        sprintf('+migrators_j/%s.m is missing', cls{1}));
+end
 end
 
 % --- position_metadata, distance_metadata, stimulus_bath ---
