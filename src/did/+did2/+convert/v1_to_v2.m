@@ -153,11 +153,6 @@ arguments
     options.UnitQualityLabels cell = {}
 end
 
-% [v1 name goes to the class's own name field] (Decided by Jess Haley,
-% 2026-10-27): the placeholder for the needs-home register row its carry cites,
-% until did-schema adds the row (it matches no `carry-NNN`).
-V1_NAME_ROW = 'carry-pending-v1-name-has-no-home';
-
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
 % is for imports, so it is off while this runs and restored after
@@ -470,8 +465,7 @@ for k = 1:numel(bodies)
             % `v1_name_statement_carried` (the count). Writing the name to
             % the own name field of the other targets is each migrator's
             % (jBaseName: entities; image_stack: its body); it is not checked
-            % here. THE REGISTER ROW IS PENDING in did-schema: the note cites
-            % the placeholder V1_NAME_ROW, which names no row.
+            % here. The register row is carry-106.
             if ~carried && ~isempty(v2Bodies) ...
                     && ~(isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body))
                 v1Name = v1NameOf(preBody);
@@ -480,11 +474,10 @@ for k = 1:numel(bodies)
                     what = 'a statement has no name field';
                     did2.convert.reportNote('v1_name_statement_carried', className, ...
                         sourceIdOf(preBody), v1Name);
-                    % carry-register: none (needs-home row pending in did-schema;
-                    %   V1_NAME_ROW)
+                    % carry-register: carry-106
                     did2.convert.reportNote('carried_as_v1', className, sourceIdOf(preBody), ...
-                        sprintf(['[%s] awaiting_home: base.name "%s" (%s; [v1 name ' ...
-                        'goes to the class''s own name field])'], V1_NAME_ROW, v1Name, what));
+                        sprintf(['[carry-106] awaiting_home: base.name "%s" (%s; [v1 name ' ...
+                        'goes to the class''s own name field])'], v1Name, what));
                     v2Body = carryBody;
                     superUnchanged = true;
                     v2Bodies = {v2Body};

@@ -588,8 +588,7 @@ function testAStatementWithAV1NameIsCarriedAndCounted(testCase)
 % [v1 name goes to the class's own name field] (Decided by Jess Haley,
 % 2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a statement with a
 % non-empty v1 name is carried whole as v1 with a needs-home register row, and
-% the number of such statements is counted in the next corpus run" (the
-% register row is pending in did-schema: the note cites the placeholder)
+% the number of such statements is counted in the next corpus run" (carry-106)
 v1 = makeV1Skeleton('treatment');
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.treatment = struct('ontologyName', 'EMPTY:0000199', ...
@@ -605,7 +604,7 @@ emitted.document_class = rmfield(emitted.document_class, 'schema_version');
 verifyTrue(testCase, isequaln(emitted, v1), 'the carry is not the v1 source');
 notes = result.summary.migration_notes;
 d = notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-pending-v1-name-has-no-home] awaiting_home: base.name "a named treatment"'), d);
+verifyTrue(testCase, startsWith(d, '[carry-106] awaiting_home: base.name "a named treatment"'), d);
 verifyEqual(testCase, notes.v1_name_statement_carried.count, 1, 'the count');
 verifyEqual(testCase, notes.v1_name_statement_carried.by_class.treatment, 1);
 % the same treatment with no name converts, and counts nothing
