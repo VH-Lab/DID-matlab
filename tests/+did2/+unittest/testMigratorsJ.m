@@ -3403,7 +3403,14 @@ verifyEqual(testCase, globalIdsJ(ds), {'ndicloud:d-12345'});
 hosted = relByName(m, 'hosted_by');
 verifyEqual(testCase, depVal(hosted, 'child_id'), 'dsid_1');
 org = firstOfClassJ(m, 'organization');
-verifyEqual(testCase, org.get('entity.name'), 'ndicloud-lab');
+% [cloud organization id is a global identifier] (Decided by Jess Haley,
+% 2026-10-27): the v1 organization_id is the NDI Cloud organization's id, so it
+% is the organization's global_identifier `ndicloud:<org id>`, not its name; no
+% name (no v1 name states one) and no local_identifier
+verifyEqual(testCase, globalIdsJ(org), {'ndicloud:ndicloud-lab'});
+e = org.get('entity');
+verifyFalse(testCase, isfield(e, 'name') && ~isempty(e.name), 'the id is not a name');
+verifyFalse(testCase, isfield(e, 'local_identifier') && ~isempty(e.local_identifier));
 verifyEqual(testCase, depVal(hosted, 'parent_id'), org.get('base.id'));
 end
 
