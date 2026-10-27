@@ -285,7 +285,7 @@ did2.convert.reportNote('reset');
 % document's id is derived from that id and its role, and two runs on the same
 % input give the same ids. A body with no id mints random ids, as before.
 mintDepth = did2.convert.mintId('-depth');
-restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth)); %#ok<NASGU>
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};

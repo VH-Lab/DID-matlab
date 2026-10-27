@@ -192,7 +192,7 @@ end
 % [migration reliability practices], Jess Haley, 2026-10-26).
 mintDepth = did2.convert.mintId('-depth');
 did2.convert.mintId('-push', '');
-restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth)); %#ok<NASGU>
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
 % migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
