@@ -94,6 +94,25 @@ function bodies = stimulus_response_scalar(preBody)
 %   With no epoch string at all, the fold runs on the 'during' session anchor.
 %
 %   1 -> 3 (calculation + anchor + software entity).
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it (NDI stimulus_response_scalar.json + stimulus_response.json
+%   + base.json at the locked NDI-matlab `main`, 3cb19a8, as
+%   ndi.app.stimulus.tuning_response/compute_stimulus_response_scalar writes
+%   it): no universalRenames, no superclass migrators (there are none for
+%   `stimulus_response` or `base`). Edges are read by name in either v1 key
+%   (`value`, the older `id`; jDependency); identity through jRawBody for a
+%   legacy-only `ndi_document`; a carry or a passthrough is the untouched v1
+%   source. What universalRenames would have discarded (a depends_on
+%   `version` or a second, different id; an `ndi_document` beside `base`; an
+%   `app` name conflict; a camelCase twin of a field read here) is carried,
+%   carry-049, as the renamed path carried it. Every v1 field and where it
+%   goes is the MAPPING above; did2.convert.roundtrip.stimulus_response_scalar
+%   rebuilds the v1 document and testRawV1RoundTripStimulusResponse compares.
+%   The writer always sets `stimulator_epochid` and `stimulus_control_id`, so
+%   every writer-shaped response is carried (carry-050); the fold runs only on
+%   a response that states neither.
 
 arguments
     preBody (1,1) struct
@@ -101,10 +120,29 @@ end
 
 RESPONSE_METHOD = 'ndi.app.stimulus.tuning_response';
 
-blk  = subBlock(preBody, 'stimulus_response_scalar');
+% READS RAW v1 (did2.convert.rawV1Classes). PREBODY is the document exactly as
+% v1 wrote it; every read below is of BODY (PREBODY, with a legacy-only
+% identity block read into `base` by jRawBody), and every carry or passthrough
+% returns PREBODY untouched. First, what universalRenames would have discarded
+% on the renamed path, which carried such a document before any migrator ran
+% (carry-049, [renames carry is temporary]): carried the same way here.
+collision = jResponseRenameCollisions(preBody, {'stimulus_response_scalar', 'responseType', 'response_type'; ...
+    'stimulus_response', 'elementEpochid', 'element_epochid'; ...
+    'stimulus_response', 'stimulatorEpochid', 'stimulator_epochid'});
+if ~isempty(collision)
+    % carry-register: carry-049 (the renamed path carried this collision)
+    did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar', ...
+        sourceIdText(preBody), ['[carry-049] universalRenames would discard: ' ...
+        strjoin(collision, ', ')]);
+    bodies = {preBody};
+    return;
+end
+body = identityBody(preBody);
+
+blk  = subBlock(body, 'stimulus_response_scalar');
 resp = subBlock(blk, 'responses');
 
-subjectId = jSubjectOf(preBody, {'element_id'});
+subjectId = jSubjectOf(body, {'element_id'});
 harmonic  = harmonicFromResponseType(charAny(blk, {'response_type', 'responseType'}));
 realPart  = numAny(resp, {'response_real', 'responseReal'});
 if isempty(subjectId) || isempty(harmonic) || isempty(realPart)
@@ -119,24 +157,24 @@ end
 % response that states either is carried WHOLE as v1 for the dataset's map,
 % instead of being folded with a `field_dropped` / `stimulus_control_id` note.
 unplaced = {};
-srBlock = subBlock(preBody, 'stimulus_response');
+srBlock = subBlock(body, 'stimulus_response');
 if ~isempty(charAny(srBlock, {'stimulator_epochid', 'stimulatorEpochid'}))
     unplaced{end+1} = 'stimulus_response.stimulator_epochid';
 end
-if ~isempty(jDependency(preBody, 'stimulus_control_id'))
+if ~isempty(jDependency(body, 'stimulus_control_id'))
     unplaced{end+1} = 'depends_on stimulus_control_id';
 end
 if ~isempty(unplaced)
     % carry-register: carry-050
     did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar', ...
-        char(preBody.base.id), ['[carry-050] unplaced: ' strjoin(unplaced, ', ')]);
+        char(body.base.id), ['[carry-050] unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
     return;
 end
 
 % GUARD 4 -- the epoch gate, read through the same reader epochMint mints from.
-epochString = epochStringOf(preBody, 'stimulus_response.element_epochid');
-epochDocId  = jEpochDocId(preBody);
+epochString = epochStringOf(body, 'stimulus_response.element_epochid');
+epochDocId  = jEpochDocId(body);
 if ~isempty(epochString) && isempty(epochDocId)
     bodies = {preBody};
     return;
@@ -177,16 +215,16 @@ end
 if ~isempty(epochDocId)
     anchor = did2.build.relativeTimeReference(epochDocId, ...
         'Clock', 'dev_local_time', 'Relation', 'intervalDuring', ...
-        'SessionId', jSid(preBody), 'CreationTimestamp', jStamp(preBody), ...
+        'SessionId', jSid(body), 'CreationTimestamp', jStamp(body), ...
         'Validate', false);
 else
-    anchor = jSessionAnchor(preBody, 'during');
+    anchor = jSessionAnchor(body, 'during');
 end
 
-[software, swId, execEnv] = jSoftwareFromApp(preBody);
-[runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
+[software, swId, execEnv] = jSoftwareFromApp(body);
+[runDocs, osId, interpreterId] = jRunEntities(body, execEnv);
 if isempty(swId)
-    [software, swId] = jSoftware(RESPONSE_METHOD, '', '', jSid(preBody), jStamp(preBody));
+    [software, swId] = jSoftware(RESPONSE_METHOD, '', '', jSid(body), jStamp(body));
 end
 
 % The presentation ONLY. Decided by Jess Haley, 2026-10-22 [control as
@@ -196,10 +234,10 @@ end
 % "responses point at the presentation only". The v1 `stimulus_control_id`
 % edge is therefore not carried (it named the control record, which is gone).
 inputs = {};
-v = jDependency(preBody, 'stimulus_presentation_id');
+v = jDependency(body, 'stimulus_presentation_id');
 if ~isempty(v); inputs{end+1} = v; end
 
-methodId = jDependency(preBody, 'stimulus_response_scalar_parameters_id');
+methodId = jDependency(body, 'stimulus_response_scalar_parameters_id');
 methodOpt = {};
 if isempty(methodId)
     methodOpt = {'Method', jLabel(RESPONSE_METHOD)};   % method.term
@@ -207,18 +245,18 @@ else
     methodOpt = {'MethodId', methodId};
 end
 
-calc = jStatement(preBody, 'calculation', subjectId, ...
+calc = jStatement(body, 'calculation', subjectId, ...
     jLabel('stimulus response'), value, ...
     'ValueKind', 'harmonic_component', ...
     'Dimensions', dims, 'Covariates', covs, ...
     'TimeReferenceIds', {anchor.base.id}, ...
-    'InstrumentId', jDependency(preBody, 'stimulator_id'), ...
+    'InstrumentId', jDependency(body, 'stimulator_id'), ...
     'InputIds', inputs, ...
     'SoftwareId', swId, ...
     'OperatingSystemId', osId, ...
     'InterpreterId', interpreterId, ...
     methodOpt{:}, ...
-    'Id', char(preBody.base.id));   % id preserved -> inbound references resolve
+    'Id', char(body.base.id));   % id preserved -> inbound references resolve
 
 bodies = [{calc, anchor}, software, runDocs];
 
@@ -229,10 +267,31 @@ bodies = [{calc, anchor}, software, runDocs];
 % document is carried as v1 above, so a converted one's DETAIL is always
 % 'none' (the edge was empty); 'dropped' is no longer written.
 did2.convert.reportNote('stimulus_control_id', 'stimulus_response_scalar', ...
-    char(preBody.base.id), 'none');
+    char(body.base.id), 'none');
 end
 
 % ===================== helpers =============================================
+
+function body = identityBody(preBody)
+%IDENTITYBODY The raw v1 document with its identity where the builders read
+%   it. A document with a `base` block is returned as it is. A pre-2023
+%   document whose only identity block is the legacy `ndi_document` (and which
+%   states an id) gets a `base` from it through jRawBody, as universalRenames'
+%   wholesale move gave the migrator before the switch. A document with no
+%   readable id is returned as it is, so it fails (or passes through) exactly
+%   where it did on the renamed path.
+body = preBody;
+b = did2.convert.v1read.readBase(preBody);
+if strcmp(b.source, 'ndi_document') && any(strcmp(b.present, 'id'))
+    body = jRawBody(preBody, 'stimulus_response_scalar');
+end
+end
+
+function id = sourceIdText(preBody)
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
+end
 
 function v = epochStringOf(preBody, wantedSource)
 %EPOCHSTRINGOF One NAMED source's epoch string, via the shared reader.

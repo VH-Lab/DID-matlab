@@ -80,6 +80,15 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         ndi.calc.stimulus.tuningcurve (NDI-matlab) and
 %                         ndi.calc.vis.* (NDIcalc-vis-matlab). Round trips:
 %                         testRawV1RoundTripTuning.
+%     stimulus_response_scalar  the stimulus-response family: superclasses
+%     stimulus_response_scalar_parameters_basic  `base` + `stimulus_response`
+%                         / `stimulus_response_scalar_parameters` (no migrator
+%                         for any of them), no `app` block. Written by
+%                         ndi.app.stimulus.tuning_response (the only writer at
+%                         the locked main). The parameters document stays a
+%                         pass-1 passthrough that resolveResponseParameters
+%                         turns into a `method`. Round trips:
+%                         testRawV1RoundTripStimulusResponse.
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
@@ -87,7 +96,8 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'treatment_transfer', 'virus_injection', 'element', 'element_epoch', ...
     'tuningcurve_calc', 'contrasttuning_calc', 'oridirtuning_calc', ...
     'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc', ...
-    'contrastsensitivity_calc'};
+    'contrastsensitivity_calc', 'stimulus_response_scalar', ...
+    'stimulus_response_scalar_parameters_basic'};
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
 TABLE = { ...
