@@ -16,45 +16,34 @@ addpath(root);
 import matlab.unittest.TestSuite;
 fprintf('MATLAB %s\n', version);
 
-fprintf('\n==== 1. default (warn): warning IDs ====\n');
-for f = {'testBadParse', 'testFixtureArgs'}
+bad = {'testBadParse', 'testFixtureArgs'};
+park = @(f) movefile(fullfile(pkg, [f '.m']), fullfile(root, [f '.m.off']));
+unpark = @(f) movefile(fullfile(root, [f '.m.off']), fullfile(pkg, [f '.m']));
+park('testBadParse'); park('testFixtureArgs');
+for b = bad
+    unpark(b{1});
+    fprintf('\n==== %s (with testGood) ====\n', b{1});
     lastwarn('', '');
-    s = TestSuite.fromFile(fullfile(pkg, [f{1} '.m'])); %#ok<NASGU>
+    s = TestSuite.fromPackage("probepkg");
     [msg, id] = lastwarn;
-    fprintf('%s: id="%s"\n  msg=%s\n', f{1}, id, strrep(msg, newline, ' | '));
-end
-lastwarn('', '');
-s = TestSuite.fromPackage("probepkg");
-[~, id] = lastwarn;
-fprintf('fromPackage default: %d tests selected; last warning id="%s"\n', numel(s), id);
-
-fprintf('\n==== 2. InvalidFileFoundAction="error", one bad file at a time ====\n');
-for f = {'testBadParse', 'testFixtureArgs'}
-    other = setdiff({'testBadParse', 'testFixtureArgs'}, f);
-    movefile(fullfile(pkg, [other{1} '.m']), fullfile(root, [other{1} '.m.off']));
+    fprintf('1. default: %d tests; warning id="%s"\n   msg=%s\n', numel(s), id, strrep(msg, newline, ' | '));
     try
         s = TestSuite.fromPackage("probepkg", "InvalidFileFoundAction", "error");
-        fprintf('%s alone: NO ERROR, %d tests selected\n', f{1}, numel(s));
+        fprintf('2. InvalidFileFoundAction="error": NO ERROR, %d tests\n', numel(s));
     catch ME
-        fprintf('%s alone: ERROR id="%s"\n  msg=%s\n', f{1}, ME.identifier, strrep(ME.message, newline, ' | '));
+        fprintf('2. InvalidFileFoundAction="error": ERROR id="%s"\n   msg=%s\n', ME.identifier, strrep(ME.message, newline, ' | '));
     end
-    movefile(fullfile(root, [other{1} '.m.off']), fullfile(pkg, [other{1} '.m']));
-end
-
-fprintf('\n==== 3. warning("error", <id>) for each captured ID ====\n');
-for f = {'testBadParse', 'testFixtureArgs'}
-    lastwarn('', '');
-    TestSuite.fromFile(fullfile(pkg, [f{1} '.m']));
-    [~, id] = lastwarn;
-    if isempty(id); fprintf('%s: no id to arm\n', f{1}); continue; end
-    old = warning('error', id); %#ok<NASGU>
-    try
-        s = TestSuite.fromPackage("probepkg");
-        fprintf('%s with warning("error","%s"): NO ERROR, %d tests\n', f{1}, id, numel(s));
-    catch ME
-        fprintf('%s with warning("error","%s"): ERROR id="%s"\n', f{1}, id, ME.identifier);
+    if ~isempty(id)
+        warning('error', id);
+        try
+            s = TestSuite.fromPackage("probepkg");
+            fprintf('3. warning("error","%s"): NO ERROR, %d tests\n', id, numel(s));
+        catch ME
+            fprintf('3. warning("error","%s"): ERROR id="%s"\n', id, ME.identifier);
+        end
+        warning('on', id);
     end
-    warning('on', id);
+    park(b{1});
 end
 fprintf('\n==== PROBE DONE ====\n');
 
