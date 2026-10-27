@@ -85,6 +85,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
         preferences
     end % properties
 
+    properties (Constant, Access=protected)
+        % Most document ids that search_doc_ids lists in one SQL query, when
+        % it restricts a search term to candidate documents
+        maxSearchCandidates = 1000
+        % Most OR operands that search_or_operands searches in one SQL
+        % query. SQLite allows 500 SELECTs in a compound SELECT and an
+        % expression depth of 1000 by default; this stays well below both.
+        maxOrBatchTerms = 200
+    end % properties
+
     % Public read/write properties
     properties (Access=public, Transient)
         debug (1,1) logical = false  % Display debug info in console? (default: false)
@@ -484,10 +494,14 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Is validation requested?
             doValidation = options.Validate;
 
-            % Disable database journalling if no validation requested
+            % Keep the rollback journal in memory if no validation requested.
+            % It used to be turned OFF, but each document is now added in one
+            % transaction (sqlitedb/beginWrite), and with journal_mode=OFF
+            % SQLite's ROLLBACK "behaves in an undefined way". MEMORY keeps
+            % the speed of not writing a journal file and a working rollback.
             if ~doValidation
                 try
-                    database_obj.run_sql_query('pragma journal_mode=OFF');
+                    database_obj.run_sql_query('pragma journal_mode=MEMORY');
                     % Restore journalling on ANY exit, including a throw in the
                     % document loop below (e.g. an OnDuplicate UNIQUE-constraint
                     % error). Previously the restore lived only on the normal
@@ -1023,8 +1037,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             roots = {};
         end % do_cachedPathRoots()
 
-        function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
+        function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct, restricted)
             % Convert a single did.query object/struct into SQL query string
+            %
+            % RESTRICTED is true when the query is limited to a list of
+            % candidate documents (see get_sql_query_str); it changes how
+            % 'isa' is matched. Default: false.
+            if nargin < 3, restricted = false; end
             sql_str = ''; %#ok<NASGU>
             % Charset-restrict the field name (interpolated into SQL below) and
             % escape every user-supplied literal to prevent SQL injection - the
@@ -1043,7 +1062,6 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
             param1Like = did.database.sqlEscapeLiteral( ...
                 regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'}));
-            param2Esc = did.database.sqlEscapeLiteral(num2str(param2));
             field_check = ['fields.field_name="' field '"'];
             op = strtrim(lower(query_struct.operation));
             isNot = op(1)=='~';
@@ -1055,8 +1073,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             op(op=='~') = '';
             switch op
                 case 'or'
-                    sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1) ' OR ' ...
-                        query_struct_to_sql_str(sqlitedb_obj, param2)];
+                    sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1, restricted) ' OR ' ...
+                        query_struct_to_sql_str(sqlitedb_obj, param2, restricted)];
                 case 'exact_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1StrEsc '"'];
                 case 'exact_string_anycase'
@@ -1080,19 +1098,24 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 case 'hassize'   %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasmember'
-                    fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
-                    field_check = ['(' field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\")'];
-                    %value_check= ['(doc_data.value like "%' param1 ',%"' ...
-                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' did.database.sqlEscapeLiteral(param1RegexEsc) '\s*(,.*)*$") NOT NULL' ...
-                        ' OR doc_data.value='  param1StrEsc ...
-                        ' OR doc_data.value="' param1StrEsc '")'];
-                    sql_str = [field_check ' AND ' notStr value_check];
+                    % Searched by brute force in search_doc_ids (see
+                    % isBruteForceTerm), so never gets here
+                    error('DID:Database:SQL', ['hasmember is searched by brute force, ' ...
+                        'not in SQL']);
                 case 'hasfield'
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     sql_str = [field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\"'];
                 case 'depends_on'
+                    % Matched exactly as did.query/fieldsearch do (see
+                    % dependsOnSqlMatch); a query that cannot be is searched
+                    % by brute force in search_doc_ids and never gets here
+                    valueMatch = did.database.dependsOnSqlMatch(param1, param2);
+                    if isempty(valueMatch)
+                        error('DID:Database:SQL', ['depends_on with name "%s" and value "%s" ' ...
+                            'cannot be searched in SQL'], num2str(param1), num2str(param2));
+                    end
                     field_check = 'fields.field_name="meta.depends_on"';
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like ',' param2Esc ';%" ESCAPE "\"'];
+                    sql_str = [field_check ' AND ' notStr valueMatch];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasanysubfield_contains_string'  %TODO
@@ -1110,66 +1133,394 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     % comma-separated superclass list, so regex-escape it (so
                     % metacharacters are literal) then SQL-escape the pattern.
                     param1regExp = did.database.sqlEscapeLiteral(['(^|, )' param1RegexEsc '(,|$)']);
+                    superclassMatch = ['regex(doc_data.value,"' param1regExp '") NOT NULL'];
+                    if ~isNot && ~restricted && sqlitedb_obj.hasSearchIndexes()
+                        % Over a whole branch, running the regex on every
+                        % document's superclass list took seconds (~5 s for
+                        % 100,000 documents). Most documents share one of a
+                        % few dozen superclass lists, so match the regex
+                        % against the distinct lists only - read in order
+                        % from the doc_data_field_value index - and then
+                        % find the documents holding a matching list through
+                        % the same index. LIMIT -1 keeps SQLite from merging
+                        % the inner DISTINCT query into the outer one, which
+                        % would run the regex on every row again.
+                        superclassMatch = ['doc_data.value IN (' ...
+                            'SELECT superclasses FROM (' ...
+                                'SELECT DISTINCT sc.value AS superclasses ' ...
+                                'FROM doc_data sc, fields scf ' ...
+                                'WHERE scf.field_name="meta.superclass" ' ...
+                                'AND sc.field_idx = scf.field_idx LIMIT -1) ' ...
+                            'WHERE regex(superclasses,"' param1regExp '") NOT NULL)'];
+                    end
                     sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1StrEsc '") OR ' ...
-                        '(fields.field_name="meta.superclass" AND ' notStr 'regex(doc_data.value,"' param1regExp '") NOT NULL)'];
+                        '(fields.field_name="meta.superclass" AND ' notStr superclassMatch ')'];
                 otherwise
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
             end
             sql_str = ['(' sql_str ')'];
             %sql_str = [notStr sql_str];
         end
-        function query_str = get_sql_query_str(sqlitedb_obj, query_structs, branch_id)
+        function query_str = get_sql_query_str(sqlitedb_obj, query_structs, branch_id, candidate_ids)
             % Convert an array of did.query objects/structs into SQL query string
+            %
+            % If CANDIDATE_IDS (a cell array of document ids) is given, only
+            % those documents are considered - see search_doc_ids. The tables
+            % are then joined with CROSS JOIN, which makes SQLite loop over
+            % them in the order written: each candidate is found through the
+            % unique docs.doc_id index, and its doc_data rows through the
+            % doc_data_doc_idx index, named with INDEXED BY (a
+            % restricted query is only built when hasSearchIndexes says the
+            % index exists). Left to choose, the query planner (which has no
+            % table statistics to go on) can start instead from every
+            % document of the branch, or reach doc_data through an index on
+            % the searched value - for base.session_id, one row per document
+            % in the session, for every candidate.
+            restrict = nargin > 3 && iscell(candidate_ids);
+            if restrict
+                from_str = ['docs CROSS JOIN branch_docs CROSS JOIN fields ' ...
+                    'CROSS JOIN doc_data INDEXED BY doc_data_doc_idx'];
+            else
+                from_str = 'docs, branch_docs, doc_data, fields';
+            end
             query_str = ['SELECT DISTINCT docs.doc_id ' ...
-                'FROM   docs, branch_docs, doc_data, fields ' ...
+                'FROM   ' from_str ' ' ...
                 'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
                 '  AND  docs.doc_idx = branch_docs.doc_idx ' ...
                 '  AND  branch_docs.branch_id = "' did.database.sqlEscapeLiteral(branch_id) '" ' ...
                 '  AND  fields.field_idx = doc_data.field_idx'];
+            if restrict
+                query_str = [query_str ...
+                    ' AND docs.doc_id IN (' did.database.sqlStringList(candidate_ids) ')'];
+            end
             %((fields.field_name = "meta.class" AND doc_data.value = "ndi_document") OR (fields.field_name = "meta.superclass" AND doc_data.value like "%ndi_document%"))')';
             for i = 1 : numel(query_structs)
-                sql_str = query_struct_to_sql_str(sqlitedb_obj, query_structs(i));
+                sql_str = query_struct_to_sql_str(sqlitedb_obj, query_structs(i), restrict);
                 if ~isempty(sql_str)
                     query_str = [query_str ' AND ' sql_str];
                 end
             end
             query_str = regexprep(query_str,' +',' ');
         end
-        function doc_ids = search_doc_ids(sqlitedb_obj, query_struct, branch_id)
+        function doc_ids = search_doc_ids(sqlitedb_obj, query_struct, branch_id, candidate_ids)
             % search_doc_ids - recursively search the database for matching doc IDs
+            %
+            % DOC_IDS = search_doc_ids(SQLITEDB_OBJ, QUERY_STRUCT, BRANCH_ID, [CANDIDATE_IDS])
+            %
+            % If CANDIDATE_IDS is a cell array of document ids, only those
+            % documents are considered, so DOC_IDS is a subset of them. Once
+            % one term of an AND has narrowed the result to a few documents
+            % (at most maxSearchCandidates), the remaining terms are checked
+            % against those documents only. So a lookup such as
+            %     base.id = ID  AND  base.session_id = SESSION_ID
+            % checks the session of one document, instead of returning every
+            % document of the session to be intersected here (which took ~1 s
+            % in a database of 100,000 documents).
+            %
+            % The terms of an AND are searched in this order: base.id lookups
+            % first, as they match at most a few documents; then the other
+            % terms in the order given; then base.session_id terms, as one
+            % session usually holds most of the documents of a database; and
+            % last the terms that must test every value they see (regexp,
+            % contains_string, hasmember), so that they test the few
+            % documents the other terms left rather than the whole branch.
+            % So 'isa daqsystem AND base.session_id = SESSION_ID AND
+            % base.name regexp ...' finds the few daqsystem documents, then
+            % checks their session, then runs the regexp on their names only.
+            %
+            % Restricting to candidates needs the indexes that
+            % hasSearchIndexes reports; without them every term is searched
+            % over the whole branch, as before.
+
+            if nargin < 4 || ~sqlitedb_obj.hasSearchIndexes()
+                candidate_ids = [];  % not a cell: all documents of the branch
+            end
+            if iscell(candidate_ids) && isempty(candidate_ids)
+                doc_ids = {};
+                return
+            end
 
             num_structs = numel(query_struct);
             if num_structs > 1  % loop over all &-ed queries
+                % Order the terms (see above): 1 = base.id lookup, 2 = other,
+                % 3 = base.session_id, 4 = a test of every value. sort is
+                % stable, so the given order is kept within each group.
+                rank = 2 * ones(1, num_structs);
+                for i = 1 : num_structs
+                    termOp = strtrim(lower(char(query_struct(i).operation)));
+                    termOp(termOp=='~') = '';
+                    if did.database.baseIdLookupValues(query_struct(i))
+                        rank(i) = 1;
+                    elseif any(strcmp(termOp, {'regexp','contains_string'})) ...
+                            || did.database.isBruteForceTerm(query_struct(i))
+                        rank(i) = 4;
+                    elseif strcmp(char(query_struct(i).field), 'base.session_id')
+                        rank(i) = 3;
+                    end
+                end
+                [~, order] = sort(rank);
                 doc_ids = {};
                 for i = 1 : num_structs
-                    new_doc_ids = search_doc_ids(sqlitedb_obj, query_struct(i), branch_id);
+                    new_doc_ids = search_doc_ids(sqlitedb_obj, query_struct(order(i)), branch_id, candidate_ids);
                     if i > 1
                         doc_ids = intersect(doc_ids, new_doc_ids);
                     else
                         doc_ids = new_doc_ids;
+                    end
+                    if isempty(doc_ids)
+                        break  % no document matches every term - skip the rest
+                    end
+                    if numel(doc_ids) <= sqlitedb_obj.maxSearchCandidates
+                        candidate_ids = doc_ids;
                     end
                 end
                 if size(doc_ids,1)==1 && size(doc_ids,2)>1
                     doc_ids = doc_ids';  % ensure column vector
                 end
             else
-                op = strtrim(lower(query_struct.operation));
+                op = strtrim(lower(char(query_struct.operation)));
+                negated = startsWith(op, '~');
                 op(op=='~') = '';
-                if strcmpi(op,'or')
-                    doc_ids1 = search_doc_ids(sqlitedb_obj, query_struct.param1, branch_id);
-                    doc_ids2 = search_doc_ids(sqlitedb_obj, query_struct.param2, branch_id);
-                    doc_ids = union(doc_ids1, doc_ids2);
+                if strcmpi(op,'or') && negated
+                    % NOT (a OR b): the documents of the branch - or the
+                    % candidates, when restricted to them - that the OR
+                    % does not match, as did.datastructures.fieldsearch
+                    % and DID-python do. The OR itself is searched as a
+                    % plain OR, so it keeps the base.id and batched paths.
+                    plain_struct = query_struct;
+                    plain_struct.operation = 'or';
+                    matched = search_doc_ids(sqlitedb_obj, plain_struct, branch_id, candidate_ids);
+                    if iscell(candidate_ids)
+                        universe = candidate_ids;
+                    else
+                        universe = sqlitedb_obj.get_doc_ids(branch_id);
+                    end
+                    if isempty(universe)
+                        doc_ids = cell(0,1);
+                    else
+                        doc_ids = setdiff(universe(:), matched(:));
+                        doc_ids = doc_ids(:);  % column vector, whatever setdiff returns
+                    end
+                elseif strcmpi(op,'or')
+                    [isIdLookup, ids] = did.database.baseIdLookupValues(query_struct);
+                    if isIdLookup && sqlitedb_obj.hasSearchIndexes()
+                        % base.id lookups ORed together: search all the ids at once
+                        doc_ids = search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids);
+                    else
+                        % Union the results of the operands. A chain of ORs
+                        % built in a loop (q = q | ...) nests one level per
+                        % term, so it is flattened first rather than searched
+                        % by recursing once per level, which overran the
+                        % recursion limit after a few hundred terms.
+                        operands = did.datastructures.orOperands(query_struct);
+                        doc_ids = search_or_operands(sqlitedb_obj, operands, branch_id, candidate_ids);
+                    end
                     if size(doc_ids,1)==1 && size(doc_ids,2)>1
                         doc_ids = doc_ids';  % ensure column vector
                     end
+                elseif did.database.isBruteForceTerm(query_struct)
+                    doc_ids = brute_force_search(sqlitedb_obj, query_struct, branch_id, candidate_ids);
                 else  % leaf scalar query
-                    query_str = get_sql_query_str(sqlitedb_obj, query_struct, branch_id);
+                    query_str = get_sql_query_str(sqlitedb_obj, query_struct, branch_id, candidate_ids);
                     doc_ids = run_sql_query(sqlitedb_obj, query_str);
                 end
             end
             if numel(doc_ids)==1 && iscell(doc_ids{1})
                 doc_ids = doc_ids{1};  %de-cell
             end
+        end
+        function doc_ids = search_or_operands(sqlitedb_obj, operands, branch_id, candidate_ids)
+            % search_or_operands - find the documents that match any of several search structures
+            %
+            % DOC_IDS = search_or_operands(SQLITEDB_OBJ, OPERANDS, BRANCH_ID, CANDIDATE_IDS)
+            %
+            % OPERANDS is a cell array of search structures, the operands of
+            % an OR (see did.datastructures.orOperands). DOC_IDS is the union
+            % of what search_doc_ids returns for each of them, but the
+            % operands that are single SQL terms are searched up to
+            % orBatchTerms at a time in one SQL query, rather than one query
+            % each: a query costs an mksqlite call and a conversion of its
+            % result, so an OR of a few hundred names or classes took that
+            % many round trips.
+            %
+            % Over a whole branch, a batch is one SELECT per operand,
+            % combined with UNION. SQLite plans each SELECT on its own, so
+            % each keeps its index (an 'exact_string' is found through
+            % doc_data_field_value; 'isa' keeps its distinct-superclass
+            % subquery). One WHERE with the operands' conditions joined by
+            % OR returns the same documents, but the planner then reads
+            % every row of doc_data: on 100,000 documents of 30 fields that
+            % took ~1 s for 10 names and ~6 s for 100, against 0.2 ms and
+            % 2 ms for the UNION.
+            %
+            % Restricted to candidate documents (CANDIDATE_IDS a cell array;
+            % see search_doc_ids), it is the other way round: each term
+            % reads every row of every candidate (~10 ms for 1,000
+            % candidates), whatever it searches for. So a batch is then one
+            % restricted query (see get_sql_query_str) with the operands'
+            % conditions joined by OR, which reads those rows once: 1,000
+            % names took 0.2 s that way, against 10 s as 1,000 queries.
+            % CROSS JOIN and INDEXED BY fix the plan, so the OR cannot make
+            % SQLite read the whole of doc_data.
+            %
+            % Either way, a document matches when one of its doc_data rows
+            % satisfies one of the conditions, so the result is exactly the
+            % union of the operands' results.
+            %
+            % ORed base.id lookups among the operands are searched together
+            % by search_base_ids, as for an OR of nothing but base.id
+            % lookups. Operands that are not single SQL terms - ANDs (struct
+            % arrays), negated ORs and the terms that are brute-forced
+            % (see isBruteForceTerm) - are searched by search_doc_ids, one
+            % at a time, as before.
+
+            batchSize = sqlitedb_obj.orBatchTerms();
+            numOperands = numel(operands);
+            inBatch = false(1, numOperands);  % searched in a batch of SQL terms
+            isIdLookup = false(1, numOperands);  % searched by search_base_ids
+            ids = cell(0,1);
+            if batchSize > 1
+                useIdLookup = sqlitedb_obj.hasSearchIndexes();
+                for k = 1:numOperands
+                    operand = operands{k};
+                    if ~(isstruct(operand) && isscalar(operand) && isfield(operand, 'operation'))
+                        continue  % an AND, or not a search structure
+                    end
+                    op = strtrim(lower(char(operand.operation)));
+                    op(op=='~') = '';
+                    if strcmp(op, 'or')
+                        continue  % a negated OR (a plain one was flattened)
+                    end
+                    if did.database.isBruteForceTerm(operand)
+                        continue  % no SQL form: brute_force_search
+                    end
+                    [isId, id] = did.database.baseIdLookupValues(operand);
+                    if isId && useIdLookup
+                        isIdLookup(k) = true;
+                        ids = [ids; id];
+                    else
+                        inBatch(k) = true;
+                    end
+                end
+            end
+
+            doc_ids = {};
+            if any(isIdLookup)
+                doc_ids = union(doc_ids, search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids));
+            end
+
+            terms = operands(inBatch);
+            restrict = iscell(candidate_ids);
+            for k = 1 : batchSize : numel(terms)
+                batch = terms(k : min(k+batchSize-1, numel(terms)));
+                if restrict
+                    conditions = cellfun(@(q) query_struct_to_sql_str(sqlitedb_obj, q, true), ...
+                        batch, 'UniformOutput', false);
+                    query_str = [get_sql_query_str(sqlitedb_obj, [], branch_id, candidate_ids) ...
+                        ' AND (' strjoin(conditions, ' OR ') ')'];
+                    % as get_sql_query_str does for a single term
+                    query_str = regexprep(query_str,' +',' ');
+                else
+                    selects = cellfun(@(q) get_sql_query_str(sqlitedb_obj, q, branch_id, candidate_ids), ...
+                        batch, 'UniformOutput', false);
+                    query_str = strjoin(selects, ' UNION ');
+                end
+                new_doc_ids = run_sql_query(sqlitedb_obj, query_str);
+                if numel(new_doc_ids)==1 && iscell(new_doc_ids{1})
+                    new_doc_ids = new_doc_ids{1};  %de-cell
+                end
+                doc_ids = union(doc_ids, new_doc_ids);
+            end
+
+            for k = find(~inBatch & ~isIdLookup)
+                new_doc_ids = search_doc_ids(sqlitedb_obj, operands{k}, branch_id, candidate_ids);
+                doc_ids = union(doc_ids, new_doc_ids);
+            end
+        end
+        function doc_ids = brute_force_search(sqlitedb_obj, query_struct, branch_id, candidate_ids)
+            % brute_force_search - test documents one by one against a query
+            %
+            % DOC_IDS = brute_force_search(SQLITEDB_OBJ, QUERY_STRUCT, BRANCH_ID, [CANDIDATE_IDS])
+            %
+            % Loads every document of BRANCH_ID - or, if CANDIDATE_IDS is a
+            % cell array of document ids, only those - and returns the ids of
+            % the ones that did.datastructures.fieldsearch matches against the
+            % search structure of QUERY_STRUCT (see did.query/to_searchstructure).
+            % Used for the queries that SQL cannot match exactly (see
+            % isBruteForceTerm), as DID-python does.
+            if nargin > 3 && iscell(candidate_ids)
+                ids = candidate_ids;
+            else
+                ids = sqlitedb_obj.get_doc_ids(branch_id);
+            end
+            doc_ids = cell(0,1);
+            if isempty(ids)
+                return
+            end
+            op = strtrim(lower(char(query_struct.operation)));
+            searchstruct = did.query(query_struct.field, op, ...
+                query_struct.param1, query_struct.param2).to_searchstructure();
+            docs = sqlitedb_obj.get_docs(ids);
+            for k = 1 : numel(docs)
+                if did.datastructures.fieldsearch(docs(k).document_properties, searchstruct)
+                    doc_ids{end+1,1} = docs(k).id(); %#ok<AGROW>
+                end
+            end
+        end
+        function doc_ids = search_base_ids(sqlitedb_obj, ids, branch_id, candidate_ids)
+            % search_base_ids - find the documents whose base.id is one of IDS
+            %
+            % DOC_IDS = search_base_ids(SQLITEDB_OBJ, IDS, BRANCH_ID, [CANDIDATE_IDS])
+            %
+            % Equivalent to ORing a base.id exact_string query for each of IDS,
+            % in one SQL query per maxSearchCandidates ids rather than one per
+            % id. A document's doc_id is its base.id (see doc2sql), so IDS also
+            % serve as the candidate documents, and are looked up through the
+            % docs.doc_id index. The doc_data condition is kept so that the
+            % result is exactly what the ORed exact_string queries return.
+            ids = unique(ids(:));
+            if nargin > 3 && iscell(candidate_ids)
+                ids = intersect(ids, candidate_ids);
+            end
+            doc_ids = cell(0,1);
+            chunk = sqlitedb_obj.maxSearchCandidates;
+            for k = 1 : chunk : numel(ids)
+                these_ids = ids(k : min(k+chunk-1, numel(ids)));
+                query_str = [get_sql_query_str(sqlitedb_obj, [], branch_id, these_ids) ...
+                    ' AND fields.field_name="base.id"' ...
+                    ' AND doc_data.value IN (' did.database.sqlStringList(these_ids) ')'];
+                new_doc_ids = run_sql_query(sqlitedb_obj, query_str);
+                if numel(new_doc_ids)==1 && iscell(new_doc_ids{1})
+                    new_doc_ids = new_doc_ids{1};  %de-cell
+                end
+                doc_ids = [doc_ids; new_doc_ids(:)];
+            end
+        end
+        function tf = hasSearchIndexes(sqlitedb_obj) %#ok<MANU>
+            % hasSearchIndexes - does the database have the doc_data search indexes?
+            %
+            % TF = hasSearchIndexes(SQLITEDB_OBJ)
+            %
+            % Two ways of searching are fast only with indexes on doc_data,
+            % and are used only when this returns true:
+            %   - restricting a search term to candidate documents (see
+            %     search_doc_ids), which needs each document's doc_data rows
+            %     to be found by an index (doc_idx);
+            %   - matching 'isa' against the distinct superclass lists only
+            %     (see query_struct_to_sql_str), which needs one field's
+            %     values to be read in order from an index (field_idx, value).
+            % Implementations that have both override this; the default is
+            % false, which searches as before.
+            tf = false;
+        end
+        function n = orBatchTerms(sqlitedb_obj)
+            % orBatchTerms - most OR operands to search in one SQL query
+            %
+            % N = orBatchTerms(SQLITEDB_OBJ)
+            %
+            % See search_or_operands. If N is 1 or less, every operand of an
+            % OR is searched by a query of its own.
+            n = sqlitedb_obj.maxOrBatchTerms;
         end
         function document_ids = do_search(sqlitedb_obj, query_obj, branch_id)
             % do_search - searches a branch for doc_ids that match specified query
@@ -2027,6 +2378,155 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % DID-python _sql_escape primitive.
             s = strrep(char(s), '"', '""');
         end % sqlEscapeLiteral()
+
+        function s = sqlStringList(values)
+            % sqlStringList - a list of SQL string literals, for an IN (...) clause
+            %
+            % S = sqlStringList(VALUES)
+            %
+            % Returns the cell array of strings VALUES as single-quoted SQL
+            % string literals separated by commas, e.g. 'a','b''c'. Single
+            % quotes are used (with ' doubled inside) because a double-quoted
+            % token that happens to equal a column name, such as "doc_id", is
+            % read by SQLite as that column rather than as a string.
+            values = cellfun(@(v) ['''' strrep(char(v), '''', '''''') ''''], ...
+                values, 'UniformOutput', false);
+            s = strjoin(values, ',');
+        end % sqlStringList()
+
+        function valueMatch = dependsOnSqlMatch(name, value)
+            % dependsOnSqlMatch - SQL test of meta.depends_on for depends_on(NAME, VALUE)
+            %
+            % VALUE_MATCH = dependsOnSqlMatch(NAME, VALUE)
+            %
+            % Returns the SQL condition on doc_data.value (the document's
+            % meta.depends_on row) that is true exactly when the document
+            % has a dependency named NAME (any name, if NAME is '*') with
+            % value VALUE - as did.query/to_searchstructure and fieldsearch
+            % match it: case-sensitive, and only '*' is a wildcard.
+            %
+            % doc2sql stores the dependencies as 'name1,value1;name2,value2;',
+            % so the test is whether that string, with ';' put in front,
+            % contains ';NAME,VALUE;' (or, for '*', whether it contains
+            % ',VALUE;'). instr is a plain case-sensitive substring test; a
+            % LIKE "%NAME,VALUE;%" was neither anchored ('id,X;' also matched
+            % 'subject_id,X;', and an empty NAME matched any name) nor
+            % case-sensitive. This mirrors DID-python's _depends_on_sql_clause.
+            %
+            % The test is exact only if NAME and VALUE are non-empty text
+            % without the ',' and ';' separators. Otherwise VALUE_MATCH is ''
+            % and the query is searched by brute force (see
+            % isBruteForceDependsOn).
+            valueMatch = '';
+            if ~did.database.isDependsOnToken(value)
+                return
+            end
+            value = char(value);
+            if (ischar(name) || isStringScalar(name)) && strcmp(name, '*')
+                haystack = 'ifnull(doc_data.value,'''')';
+                pattern = [',' value ';'];
+            elseif did.database.isDependsOnToken(name)
+                haystack = '('';'' || ifnull(doc_data.value,''''))';
+                pattern = [';' char(name) ',' value ';'];
+            else
+                return
+            end
+            % ifnull, so that a document with no dependencies is matched by
+            % the negated (NOT ...) test as well
+            valueMatch = ['(instr(' haystack ',' did.database.sqlStringList({pattern}) ') > 0)'];
+        end % dependsOnSqlMatch()
+
+        function tf = isDependsOnToken(s)
+            % isDependsOnToken - can S be matched within meta.depends_on?
+            %
+            % TF = isDependsOnToken(S)
+            %
+            % True if S is non-empty text with no ',' or ';' (the separators
+            % of the stored 'name,value;' list). See dependsOnSqlMatch.
+            tf = (ischar(s) || isStringScalar(s)) && ~isempty(char(s)) ...
+                && ~any(char(s) == ',' | char(s) == ';');
+        end % isDependsOnToken()
+
+        function tf = isBruteForceDependsOn(query_struct)
+            % isBruteForceDependsOn - must a depends_on query be brute-forced?
+            %
+            % TF = isBruteForceDependsOn(QUERY_STRUCT)
+            %
+            % True if QUERY_STRUCT (a single search structure) is a depends_on
+            % or ~depends_on query that SQL cannot match exactly (see
+            % dependsOnSqlMatch), such as one with an empty name. Such a query
+            % is tested document by document with fieldsearch instead, so it
+            % gives the same answer as on any other DID backend.
+            op = strtrim(lower(char(query_struct.operation)));
+            op(op=='~') = '';
+            tf = strcmp(op, 'depends_on') && ...
+                isempty(did.database.dependsOnSqlMatch(query_struct.param1, query_struct.param2));
+        end % isBruteForceDependsOn()
+
+        function tf = isBruteForceTerm(query_struct)
+            % isBruteForceTerm - is a search term tested by brute force?
+            %
+            % TF = isBruteForceTerm(QUERY_STRUCT)
+            %
+            % True if QUERY_STRUCT (a single search structure) is searched
+            % by brute_force_search - its documents tested one by one with
+            % did.datastructures.fieldsearch - rather than in SQL, as
+            % DID-python searches it:
+            %   - hasmember and ~hasmember, always. Their members are often
+            %     those of an array or cell, which doc2sql stores only as a
+            %     summary of its size and class ('[1 3] double'), so SQL
+            %     cannot see them (issue #236).
+            %   - the depends_on queries SQL cannot match exactly (see
+            %     isBruteForceDependsOn).
+            % search_doc_ids searches these last in an AND, so they test
+            % only the documents the other terms leave.
+            op = strtrim(lower(char(query_struct.operation)));
+            op(op=='~') = '';
+            tf = strcmp(op, 'hasmember') || did.database.isBruteForceDependsOn(query_struct);
+        end % isBruteForceTerm()
+
+        function [tf, ids] = baseIdLookupValues(query_struct)
+            % baseIdLookupValues - is a search structure a lookup by base.id?
+            %
+            % [TF, IDS] = baseIdLookupValues(QUERY_STRUCT)
+            %
+            % TF is true if QUERY_STRUCT (a single search structure) is a
+            % base.id exact_string match for a non-empty id, or an OR of such
+            % matches nested to any depth. IDS is then a cell array of the ids
+            % it looks for. Negated operations are not lookups.
+            %
+            % The OR tree is walked with a stack rather than by recursion: a
+            % query built as q = q | did.query('base.id',...) in a loop nests
+            % one level per id, deeper than MATLAB's recursion limit allows.
+            tf = false;
+            ids = {};
+            found = cell(0,1);
+            pending = {query_struct};
+            while ~isempty(pending)
+                s = pending{end};
+                pending(end) = [];
+                if ~isstruct(s) || ~isscalar(s)
+                    return
+                end
+                switch strtrim(lower(char(s.operation)))
+                    case 'exact_string'
+                        value = s.param1;
+                        if isstring(value) && isscalar(value)
+                            value = char(value);
+                        end
+                        if ~(strcmp(char(s.field), 'base.id') && ischar(value) && isrow(value))
+                            return
+                        end
+                        found{end+1,1} = value; %#ok<AGROW>
+                    case 'or'
+                        pending(end+1:end+2) = {s.param1, s.param2};
+                    otherwise
+                        return
+                end
+            end
+            tf = true;
+            ids = found;
+        end % baseIdLookupValues()
 
         function fld = validateSqlFieldName(fld)
             % validateSqlFieldName - charset-restrict a query field name

@@ -25,6 +25,10 @@ function b = fieldsearch(A, searchstruct)
     %    | 'greaterthaneq'        - is the field value greater than or equal to 'param1' (and comparable size)
     %    | 'hassize'              - does the field value have the size as indicated in 'param1' [x y z ...]
     %    | 'hasmember'            - does the field value have the member indicated in 'param1' ?
+    %    |                          Text is a member of text that is the whole value or an item of its
+    %    |                          comma-separated list; anything is a member of a cell array that holds
+    %    |                          an equal element; a number is a member of a numeric array that holds
+    %    |                          it. Text is never a member of a number, nor a number of text.
     %    | 'hasfield'             - is the field present? (no role for 'param1' or 'param2')
     %    | 'partial_struct'       - is the field value a structure that has all the fields of 'param1' with the same values?
     %    |                            (note that it may have additional fields not found in the structure in param1)
@@ -148,9 +152,7 @@ function b = fieldsearch(A, searchstruct)
             end
         case 'hasmember'
             if isthere
-                try
-                    b = ismember(searchstruct.param1,value);
-                end
+                b = hasMember(value, searchstruct.param1);
             end
         case 'hasfield'
             b = isthere;
@@ -161,8 +163,9 @@ function b = fieldsearch(A, searchstruct)
                 end
             end
         case {'hasanysubfield_contains_string','hasanysubfield_exact_string'}
-            if isthere
-                if ~ (isstruct(value) | iscell(value) ), return; end % must be a structure or cell
+            % must be a structure or cell; anything else does not match (and
+            % so, negated, does - hence no early return past the negation)
+            if isthere && (isstruct(value) || iscell(value))
                 for i=1:numel(value)
                     if isstruct(value)
                         item = value(i);
@@ -197,14 +200,54 @@ function b = fieldsearch(A, searchstruct)
                 end
             end
         case 'or'
-            if ~isstruct(searchstruct.param1) | ~isstruct(searchstruct.param2)
+            % A chain of ORs built in a loop (q = q | ...) nests one level per
+            % term, so walk its operands instead of recursing once per level,
+            % which overran the recursion limit after a few hundred terms
+            operands = did.datastructures.orOperands(searchstruct);
+            if ~all(cellfun(@isstruct, operands))
                 error('In operation ''or'', searchstruct ''param1'' and ''param2'' must be an array of structures.');
             end
-            b = (did.datastructures.fieldsearch(A,searchstruct.param1) | did.datastructures.fieldsearch(A,searchstruct.param2));
+            for k = 1:numel(operands)
+                if did.datastructures.fieldsearch(A, operands{k})
+                    b = 1;
+                    break
+                end
+            end
         otherwise
             error(['Unknown search operation ' searchstruct.operation ]);
     end
 
     if negation
         b = ~b;
+    end
+
+function tf = hasMember(value, member)
+    % HASMEMBER - is MEMBER a member of VALUE, for 'hasmember'?
+    %
+    % Text is a member of text that is the whole value or an item of its
+    % comma-separated list (white space after a comma, and before one, is
+    % ignored); anything is a member of a cell array that holds an equal
+    % element; a number is a member of a numeric or logical array that
+    % holds it. Text is never a member of a number, nor a number of text.
+    % This is what did.database's SQL search matches, and DID-python's
+    % field_search. (ismember compared text character by character.)
+    tf = false;
+    if isstring(member) && isscalar(member), member = char(member); end
+    if isstring(value) && isscalar(value), value = char(value); end
+    isNumber = @(x) (isnumeric(x) || islogical(x)) && isreal(x);
+    if ischar(member)
+        if ischar(value) && isempty(value)
+            tf = isempty(member);
+        elseif ischar(value)
+            pattern = ['(^|,\s*)' regexptranslate('escape', member) '\s*(,|$)'];
+            tf = ~isempty(regexp(value, pattern, 'once', 'start'));
+        elseif iscell(value)
+            tf = any(cellfun(@(v) ischar(v) && strcmp(v, member), value(:)));
+        end
+    elseif isNumber(member) && isscalar(member)
+        if isNumber(value)
+            tf = any(value(:) == member);
+        elseif iscell(value)
+            tf = any(cellfun(@(v) isNumber(v) && isscalar(v) && v == member, value(:)));
+        end
     end

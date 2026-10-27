@@ -59,6 +59,8 @@ classdef query
             %     |   'or'                 - are any of the searchstruct elements specified in 'param1' true?
             %     |***'isa'                - is 'param1' either a superclass or the document class itself of the DID_DOCUMENT?
             %     |***'depends_on'         - does the document depend on an item with name 'param1' and value 'param2'?
+            %     |                          'param1' '*' means any name; it is the only wildcard. Both are
+            %     |                          matched exactly and case-sensitively, by every database.
             %     |
             %     |***to be implemented
             %     |----------------------|
@@ -216,25 +218,13 @@ classdef query
                         findinmainfield.param2 = '';
                         ss_here = cat(1, findinsubfield, findinmainfield);
                     elseif strcmpi('depends_on',did_query_obj(i).searchstructure(j).operation)
-                        param1 = {'name','value'};
-                        param2 = { did_query_obj(i).searchstructure(j).param1 did_query_obj(i).searchstructure(j).param2 };
-                        if strcmp(param2{1},'*') % ignore the name
-                            param1 = param1(2);
-                            param2 = param2(2);
-                        end
-                        ss_here = struct('field','depends_on','operation','hasanysubfield_exact_string');
-                        ss_here(1).param1 = param1;
-                        ss_here(1).param2 = param2;
+                        ss_here = dependsOnSearchstructure( ...
+                            did_query_obj(i).searchstructure(j).param1, ...
+                            did_query_obj(i).searchstructure(j).param2, false);
                     elseif strcmpi('~depends_on',did_query_obj(i).searchstructure(j).operation)
-                        param1 = {'name','value'};
-                        param2 = { did_query_obj(i).searchstructure(j).param1 did_query_obj(i).searchstructure(j).param2 };
-                        if strcmp(param2{1},'*') % ignore the name
-                            param1 = param1(2);
-                            param2 = param2(2);
-                        end
-                        ss_here = struct('field','depends_on','operation','~hasanysubfield_exact_string');
-                        ss_here(1).param1 = param1;
-                        ss_here(1).param2 = param2;
+                        ss_here = dependsOnSearchstructure( ...
+                            did_query_obj(i).searchstructure(j).param1, ...
+                            did_query_obj(i).searchstructure(j).param2, true);
                     else % regular case
                         ss_here(1).operation = did_query_obj(i).searchstructure(j).operation;
                         if isa(did_query_obj(i).searchstructure(j).param1,'did_query')
@@ -319,4 +309,58 @@ classdef query
             searchstruct_out = struct('field',field,'operation',operation,'param1',param1,'param2',param2);
         end
     end % methods (Static)
+end
+
+function ss = dependsOnSearchstructure(name, value, negate)
+    % DEPENDSONSEARCHSTRUCTURE - the fieldsearch structure(s) for depends_on(NAME, VALUE)
+    %
+    % SS = DEPENDSONSEARCHSTRUCTURE(NAME, VALUE, NEGATE)
+    %
+    % A depends_on entry names its target under `document_id` (V2: the
+    % did.document constructor renames every entry's key to it), `value`
+    % (v1, and structs built without the constructor) or `id`; see
+    % did.document.i_readDependencyTarget, which doc2sql uses for the SQL
+    % search. The test is therefore whether ANY entry has name NAME (any
+    % name if NAME is '*') and VALUE under one of those keys.
+    %
+    % NEGATE false: one 'or' structure over the three keys.
+    % NEGATE true: by De Morgan, a struct array of the three negated tests,
+    % which fieldsearch ANDs.
+    arguments
+        name
+        value
+        negate (1,1) logical
+    end
+    keys = {'document_id', 'value', 'id'};
+    op = 'hasanysubfield_exact_string';
+    if negate
+        op = ['~' op];
+    end
+    alts = did.datastructures.emptystruct('field','operation','param1','param2');
+    for k = 1:numel(keys)
+        alt = did.datastructures.emptystruct('field','operation','param1','param2');
+        alt(1).field = 'depends_on';
+        alt(1).operation = op;
+        if strcmp(name,'*') % ignore the name
+            alt(1).param1 = keys(k);
+            alt(1).param2 = {value};
+        else
+            alt(1).param1 = {'name', keys{k}};
+            alt(1).param2 = {name, value};
+        end
+        alts = cat(1, alts, alt);
+    end
+    if negate
+        ss = alts;
+    else
+        ss = did.datastructures.emptystruct('field','operation','param1','param2');
+        ss(1).field = '';
+        ss(1).operation = 'or';
+        ss(1).param1 = alts(1);
+        ss(1).param2 = did.datastructures.emptystruct('field','operation','param1','param2');
+        ss(1).param2(1).field = '';
+        ss(1).param2(1).operation = 'or';
+        ss(1).param2(1).param1 = alts(2);
+        ss(1).param2(1).param2 = alts(3);
+    end
 end
