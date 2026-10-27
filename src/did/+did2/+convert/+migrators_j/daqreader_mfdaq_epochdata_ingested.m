@@ -117,7 +117,7 @@ end
 
 % Hand the de-encoded body to the parent migrator so the epoch clock extents are
 % lifted here exactly as they are for a plain daqreader_epochdata_ingested.
-bodies = did2.convert.migrators_j.daqreader_epochdata_ingested(v2Body);
+bodies = did2.convert.migrators_j.daqreader_epochdata_ingested(v2Body, true);   % accounted for above
 end
 
 % ===================== the raw read ========================================

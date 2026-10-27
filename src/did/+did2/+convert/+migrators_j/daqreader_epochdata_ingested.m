@@ -1,4 +1,4 @@
-function bodies = daqreader_epochdata_ingested(preBody)
+function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %DAQREADER_EPOCHDATA_INGESTED Brainstorm-J migrator: lift the epoch's clock
 %   extents out of `epochtable` into `relative_time_reference` documents.
 %
@@ -91,9 +91,43 @@ function bodies = daqreader_epochdata_ingested(preBody)
 %   Which entries become documents, and which correctly become nothing, is in
 %   jEpochClockReferences (NO TIMES => NO REFERENCE: `no_time` and NaN intervals
 %   are both real, reachable values here).
-
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (daqreader_epochdata_ingested.json + epochid.json +
+%   base.json at the locked NDI-matlab `main`, 3cb19a8, as
+%   +ndi/+daq/reader.m ingest_epochfiles: the epochtable and
+%   daqreader_id; that writer names an undefined ndi_daqreader_mfdaq_obj and
+%   cannot run at that `main`, so its shape is the only evidence writes it). Its blocks are snake_case already and it has no `app`
+%   block, so the raw shape is the renamed one but for v1's `value` edge key,
+%   which every reader here takes (jEpochDocId, did2.convert.epochMint, NDI's
+%   sliceTetanus). In pass 1 there is no epoch_id edge, so the document passes
+%   through as before. What the renamed path would have discarded is carried,
+%   carry-049, as before; a field, block or edge outside the template (which
+%   the passthrough met as an undeclared field) carries the document whole as
+%   v1 (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], carry-100). did2.convert.roundtrip.daqreader_epochdata_ingested rebuilds the v1
+%   document; testRawV1RoundTripIngestedEpochs compares the two.
+%
+%   DELEGATED (the second argument, true): daqreader_mfdaq_epochdata_ingested
+%   hands its de-encoded body here after accounting for every raw field itself;
+%   the raw read is skipped for it.
 arguments
     preBody (1,1) struct
+    delegated (1,1) logical = false
+end
+
+if ~delegated
+    % THE RAW READ (see READS RAW v1 above)
+    [~, collision, unplaced] = jRawAccount(preBody, struct( ...
+        'daqreader_epochdata_ingested', {{'epochtable'}}, ...
+        'epochid', {{'epochid'}}, 'files', {{'file_list', 'file_info'}}), ...
+        {'^daqreader_id$', '^epoch_id$'});
+    if jRawCarry('daqreader_epochdata_ingested', preBody, collision, unplaced, 'carry-100')
+        bodies = preBody;
+        return;
+    end
 end
 
 epochDocId = jEpochDocId(preBody);

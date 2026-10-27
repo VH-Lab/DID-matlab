@@ -1,0 +1,35 @@
+{
+	"document_class": {
+		"definition":						"$NDIDOCUMENTPATH\/apps\/vhlab_voltage2firingrate\/vmneuralresponseresiduals.json",
+		"validation":						"$NDISCHEMAPATH\/apps\/vhlab_voltage2firingrate\/vmneuralresponseresiduals_schema.json",
+		"class_name":						"vmneuralresponseresiduals",
+		"property_list_name":					"vmneuralresponseresiduals",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$NDIDOCUMENTPATH\/base.json" }
+		]
+	},
+	"depends_on": [
+		{	"name": "element_id",
+			"value": "" 
+		}
+	],
+	"vmneuralresponseresiduals": {
+		"element_epochid":                    "",
+		"parameters": {
+			"number_traces":                1,
+			"samples_per_trace":			[0],
+			"units":                        "V"
+		},
+		"column_labels": {
+		    "first_column":                 "Time (s)",
+		    "second_column":                "Raw signal",
+		    "third_column":                 "Raw signal with spikes",
+		    "fourth_column":                "Fit signal",
+		    "fifth_column":                 "Residual signal"
+		},
+		"goodness_of_fit":                  "",
+		"total_power":                      "",
+		"residual_power":                   ""
+	}
+}

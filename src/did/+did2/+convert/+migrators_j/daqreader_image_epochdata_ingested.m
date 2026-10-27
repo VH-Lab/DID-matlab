@@ -290,9 +290,36 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %
 %   NOTHING BELOW THIS LINE CHANGED. There is no MATLAB in the authoring
 %   environment; this pass added evidence and tests, not behaviour.
-
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (daqreader_image_epochdata_ingested.json +
+%   daqreader_epochdata_ingested.json + epochid.json + base.json at the locked NDI-matlab `main`, 3cb19a8, as
+%   +ndi/+daq/+reader/image.m ingest_epochfiles writes it). Its blocks are snake_case already and it has no `app`
+%   block, so the raw shape is the renamed one but for v1's `value` edge key,
+%   which every reader here takes (jEpochDocId, did2.convert.epochMint, NDI's
+%   sliceTetanus). In pass 1 there is no epoch_id edge, so the document passes
+%   through as before. What the renamed path would have discarded is carried,
+%   carry-049, as before; a field, block or edge outside the template (which
+%   the passthrough met as an undeclared field) carries the document whole as
+%   v1 (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], carry-100). did2.convert.roundtrip.daqreader_image_epochdata_ingested rebuilds the v1
+%   document; testRawV1RoundTripIngestedEpochs compares the two.
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above)
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'daqreader_image_epochdata_ingested', {{'dimension_order', 'dimension_size', ...
+        'data_type', 'num_frames', 'frametimes', 'clocktype', 'metadata'}}, ...
+    'daqreader_epochdata_ingested', {{'epochtable'}}, ...
+    'epochid', {{'epochid'}}, 'files', {{'file_list', 'file_info'}}), ...
+    {'^daqreader_id$', '^epoch_id$'});
+if jRawCarry('daqreader_image_epochdata_ingested', preBody, collision, unplaced, 'carry-100')
+    bodies = {preBody};
+    return;
 end
 
 epochDocId = jEpochDocId(preBody);

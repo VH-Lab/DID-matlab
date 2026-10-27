@@ -1,0 +1,35 @@
+{
+	"document_class": {
+		"definition":						"$NDIDOCUMENTPATH\/apps\/vhlab_voltage2firingrate\/vmspikesummary.json",
+		"validation":						"$NDISCHEMAPATH\/apps\/vhlab_voltage2firingrate\/vmspikesummary_schema.json",
+		"class_name":						"vmspikesummary",
+		"property_list_name":					"vmspikesummary",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$NDIDOCUMENTPATH\/base.json" },
+            { "definition":                 "$NDIDOCUMENTPATH\/epochid.json" }
+		]
+	},
+	"depends_on": [
+		{	"name": "element_id",
+			"value": "" 
+		},
+		{
+			"name": "spike_extraction_id",
+			"value": ""
+		}
+	],
+	"vmspikesummary": {
+		"mean_spikewave":       [],
+		"sample_times":         [],
+		"number_of_spikes":     [],
+		"median_spikekink_vm":       [],
+		"median_voltageofhalfmaximum":          [],
+		"median_fullwidthhalfmaximum":          [],
+		"median_presk_halfwidthmaximum":     [],
+		"median_postsk_halfwidthmaximum":    [],
+		"median_max_dvdt":      [],
+		"median_kink_index":    [],
+		"slope_criterion":      []
+	}
+}
