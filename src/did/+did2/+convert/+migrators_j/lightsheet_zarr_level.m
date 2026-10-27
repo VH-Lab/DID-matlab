@@ -113,6 +113,26 @@ function bodies = lightsheet_zarr_level(preBody)
 %     the series) or was a write-time aid. subject_id and source_file_id are
 %     not carried either -- the owner observation names the subject.
 %
+%   ---------------------------------------------------------------------
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess
+%   Haley, 2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md)
+%   ---------------------------------------------------------------------
+%   v1_to_v2 hands this migrator the document exactly as v1 wrote it
+%   (`lightsheetZarrLevel`, data/lightsheetZarrLevel.json at the locked
+%   NDI-matlab `main` 3cb19a8, as makePyramid.m makeOneLevel writes it). The
+%   block is read in either spelling (`lightsheetZarrLevel`, else the renamed
+%   `lightsheet_zarr_level`); its fields, edges and `files` are spelled the same
+%   on both paths, so the conversion is unchanged. The fields listed as not
+%   carried above (and `dtype`, which only checks byte_order here: the
+%   pyramid's observation states the data type; and an empty `codec_params`)
+%   are the round trip's known findings
+%   (did2.convert.roundtrip.lightsheetZarrLevel; testRawV1RoundTripLightsheet).
+%   What the renamed path would have discarded is carried, carry-049; a field,
+%   block or edge outside the template carries the document whole as v1
+%   (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], carry-100). Every carry returns the untouched v1 source.
+%
 %   STATUS: NEVER RUN LOCALLY. There is no MATLAB in the authoring container;
 %   tests/+did2/+unittest/testMigratorsJLightsheet.m is the evidence, in CI.
 
@@ -120,7 +140,25 @@ arguments
     preBody (1,1) struct
 end
 
-blk = block(preBody, 'lightsheet_zarr_level');
+% THE RAW READ (see READS RAW v1 above). SRC is the untouched source: every
+% carry returns it.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'lightsheetZarrLevel', {{'label', 'level', 'reduction_function', 'axes_order', ...
+        'shape', 'chunks', 'chunk_grid', 'n_chunks_stored', 'chunk_index_origin', ...
+        'chunk_order', 'dtype', 'fill_value', 'byte_order', 'codec', ...
+        'codec_params', 'voxel_size', 'voxel_size_units', 'translation'}}, ...
+    'files', {{'file_list', 'file_series', 'file_info', 'series_info'}}), ...
+    {'^lightsheetZarrPyramid_id$', '^subject_id$', '^source_file_id$'});
+if jRawCarry('lightsheet_zarr_level', src, collision, unplaced, 'carry-100')
+    bodies = {src};
+    return;
+end
+
+blk = block(preBody, 'lightsheetZarrLevel');
+if isempty(fieldnames(blk))
+    blk = block(preBody, 'lightsheet_zarr_level');   % the renamed spelling
+end
 [files, nHeld] = mapChunkFiles(preBody);
 nStored = double(field(blk, 'n_chunks_stored', 0));
 
@@ -146,7 +184,7 @@ if ~isempty(extraSettings)
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
         ['[carry-010] unplaced: lightsheet_zarr_level.codec_params (' ...
          strjoin(extraSettings, ', ') ')']);
-    bodies = {preBody};
+    bodies = {src};   % the untouched source
     return;
 end
 
@@ -157,7 +195,7 @@ if isempty(ownerId) && nHeld == 0
     % carry-register: carry-037
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
         '[carry-037] unplaced: a level holding no bytes that names no lightsheetZarrPyramid_id');
-    bodies = {preBody};
+    bodies = {src};   % the untouched source
     return;
 end
 if isempty(ownerId)
