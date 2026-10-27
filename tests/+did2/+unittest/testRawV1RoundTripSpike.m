@@ -247,18 +247,23 @@ verifyCarriedFor(testCase, {v1}, 'jrclust_clusters.num_clusters');
 v1 = jrclust();
 v1.depends_on(end + 1) = struct('name', 'sorting_parameters_id', 'value', 'sp_1');
 verifyCarriedFor(testCase, {v1}, 'depends_on sorting_parameters_id');
+% Decided by Jess Haley, 2026-10-27 [tuning stray fields are malformed]: a
+% field outside the class's NDI template cites carry-100 ([fields outside the
+% template are malformed]); a template field the writer writes with no V2 home
+% (or whose value the fold cannot place) cites carry-056
 v1 = hartley();
-v1.hartley_reverse_correlation.window = [0 1];
-verifyCarriedFor(testCase, {v1, presentationOf(v1)}, '[carry-056] hartley_reverse_correlation.window');
+v1.hartley_reverse_correlation.window = [0 1];   % not in the template
+verifyCarriedFor(testCase, {v1, presentationOf(v1)}, ...
+    '[carry-100] malformed: outside the NDI template, unplaced: hartley_reverse_correlation.window');
 v1 = hartley();
-v1.ngrid.data_size = 4;
+v1.ngrid.data_size = 4;   % a template field that does not restate the type
 verifyCarriedFor(testCase, {v1, presentationOf(v1)}, '[carry-056] ngrid.data_size');
 v1 = hartley();
-v1.hartley_calc.log = 'a log';
-verifyCarriedFor(testCase, {v1, presentationOf(v1)}, '[carry-056] hartley_calc.log');
+v1.hartley_calc.log = 'a log';   % hartley_calc's template declares no log
+verifyCarriedFor(testCase, {v1, presentationOf(v1)}, '[carry-100] malformed: outside the NDI template, unplaced: hartley_calc.log');
 v1 = speedOneFit();
-v1.speed_tuning.fit.Priebe_fit_note = 'x';
-verifyCarriedFor(testCase, {v1}, '[carry-056]');
+v1.speed_tuning.fit.Priebe_fit_note = 'x';   % not in speed_tuning.json
+verifyCarriedFor(testCase, {v1}, '[carry-100] malformed: outside the NDI template, unplaced: speed_tuning.fit.Priebe_fit_note');
 end
 
 % ===================== a check that cannot fail proves nothing ===========

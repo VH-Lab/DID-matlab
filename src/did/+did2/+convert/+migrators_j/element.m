@@ -85,8 +85,11 @@ function v2Body = element(preBody)
 %   testRawV1RoundTripElement compares the two:
 %
 %     base.id / session_id / datestamp -> the entity's id / session edge /
-%                                 creation_timestamp; base.name (writer: '')
-%                                 is not written (#73 item 54)
+%                                 creation_timestamp
+%     base.name                -> entity.name when not empty ('', what
+%                                 ndi.element/newdocument writes, writes
+%                                 nothing; jBaseName; Decided by Jess Haley,
+%                                 2026-10-27 [v1 name is the entity name])
 %     element.name, element.reference -> entity.local_identifier,
 %                                 '<name> | <reference>' (NDI's display form;
 %                                 did2.convert.elementLocalIdentifier, the
@@ -185,7 +188,7 @@ end
 % (V_eta_entity_composition_plan.md sec. 4), read off the v1 `type` and
 % `ndi_element_class` by elementEntityType (decided, above).
 subjectDoc = jEntity(preBody, entityType, ...
-    struct('local_identifier', localId), 'Id', elementId);
+    struct('local_identifier', localId, 'name', jBaseName(preBody)), 'Id', elementId);
 
 bodies = {subjectDoc};
 

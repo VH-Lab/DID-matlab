@@ -7,15 +7,14 @@ function [v1, spec] = subject(bodies)
 %   (subject.json + base.json at the locked NDI-matlab `main`, 3cb19a8):
 %
 %     base.id, base.session_id, base.datestamp   from the entity (rebuildBase)
-%     base.name                  the local identifier; '' is equally possible
+%     base.name                  entity.name ('' when the entity has none)
 %     subject.local_identifier   entity.local_identifier
 %     subject.description        entity.description ('' when left out)
 %
-%   SPEC.equivalents: `base.name` can only have been the local identifier
-%   (NDI ndi.subject.newdocument writes it so: a restatement of a kept value,
-%   [lossless means round trip]) or '' (the template default, written by
-%   +NDIMaker/subjectMaker: [writer default is not set]). Any other v1
-%   base.name is not recoverable, and did2.convert.roundtrip.check reports it.
+%   base.name: Decided by Jess Haley, 2026-10-27 [v1 name is the entity name]
+%   (did-schema V_eta_go_forward_class_audit.md): the migrator writes a
+%   non-empty v1 base.name to entity.name, so it is rebuilt from there and
+%   needs no equivalence.
 %
 %   SPEC.unplaced lists any emitted document that is not one organism entity.
 %
@@ -46,11 +45,7 @@ end
 li = fieldText(entity, 'local_identifier');
 v1.document_class = struct('class_name', 'subject');
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
-    'name', li, 'datestamp', base.datestamp);
+    'name', fieldText(entity, 'name'), 'datestamp', base.datestamp);
 v1.subject = struct('local_identifier', li, ...
     'description', fieldText(entity, 'description'));
-spec.equivalents(end+1) = struct('path', 'base.name', 'values', {{li, ''}}, ...
-    'why', ['ndi.subject writes the local identifier ([lossless means round ' ...
-    'trip]: a restatement); subjectMaker leaves the template default '''' ' ...
-    '([writer default is not set])']);
 end

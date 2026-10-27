@@ -984,8 +984,8 @@
 %         `runtime_environment` entities.
 %     subject
 %         Brainstorm-J migrator: a v1 subject -> one `entity` of type `organism`, id
-%         preserved, carrying `local_identifier` and `description`. A v1 subject's
-%         handle was optional; one that states none is carried whole as v1
+%         preserved, carrying `name`, `local_identifier` and `description`. A v1
+%         subject's handle was optional; one that states none is carried whole as v1
 %         (carry-033).
 %     subject_group
 %         Brainstorm-J migrator: did_v1 subject_group -> an `entity` of type `group`,

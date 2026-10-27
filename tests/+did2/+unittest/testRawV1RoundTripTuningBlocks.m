@@ -35,7 +35,9 @@ function tests = testRawV1RoundTripTuningBlocks
 %   the same. Each carries whole as v1 (carry-056: the contrast fits' relative
 %   max gain, saturation index and sensitivity; the SF and TF `abs` block; the
 %   three speed fit blocks that would all be named 'Priebe fit'), and a carry
-%   round-trips as itself. The same documents with exactly those fields
+%   round-trips as itself. A field outside the template carries under carry-100
+%   instead (Decided by Jess Haley, 2026-10-27 [tuning stray fields are
+%   malformed]). The same documents with exactly those fields
 %   removed (the "converted shape" fixtures, DID-side) convert and round trip
 %   with nothing lost. No known findings.
 tests = functiontests(localfunctions);
@@ -98,19 +100,41 @@ end
 
 function testAFieldTheFoldDoesNotReadCarriesTheDocument(testCase)
 % jCalculation 'AccountForEveryField': a field the fold reads nowhere carries
-% the document whole as v1 (carry-056) instead of being dropped
+% the document whole as v1 instead of being dropped. Each of these is outside
+% the class's NDI template, so it cites carry-100 (Decided by Jess Haley,
+% 2026-10-27 [tuning stray fields are malformed]; [fields outside the template
+% are malformed]), not carry-056
 v1 = convertedShape('contrast_tuning');
 v1.contrast_tuning.significance.f_test_p = 0.01;
-verifyCarried(testCase, v1, 'significance.f_test_p');
+verifyCarriedUnder(testCase, v1, 'contrast_tuning.significance.f_test_p', 'carry-100');
 v1 = did2.unittest.helpers.setDependency(convertedShape('spatial_frequency_tuning'), ...
     'probe_id', 'p_1');
-verifyCarried(testCase, v1, 'depends_on probe_id');
+verifyCarriedUnder(testCase, v1, 'depends_on probe_id', 'carry-100');
 v1 = convertedShape('temporal_frequency_tuning');
 v1.extra_block = struct('x', 1);
-verifyCarried(testCase, v1, 'extra_block');
+verifyCarriedUnder(testCase, v1, 'extra_block', 'carry-100');
 v1 = convertedShape('speed_tuning');
 v1.app = struct('name', 'ndi.calc.vis.speed_tuning', 'license', 'MIT');
-verifyCarried(testCase, v1, 'app.license');
+verifyCarriedUnder(testCase, v1, 'app.license', 'carry-100');
+end
+
+function testAStrayFieldCitesCarry100AndAWriterFieldCarry056(testCase)
+% [tuning stray fields are malformed] (Jess Haley, 2026-10-27): carry-056
+% keeps only fields the NDIcalc-vis writer does write that V2 has no home for
+% yet. The SF writer's `abs` block is in spatial_frequency_tuning.json and the
+% writer fills it: carry-056. A field inside `abs` the template does not
+% declare is cited on its own under carry-100, beside it, in the same note.
+v1 = writerShape('spatial_frequency_tuning');
+verifyCarriedUnder(testCase, v1, 'spatial_frequency_tuning.abs', 'carry-056');
+v1.spatial_frequency_tuning.abs.fit_dog.note = 'x';
+verifyCarriedUnder(testCase, v1, 'spatial_frequency_tuning.abs.fit_dog.note', 'carry-100');
+verifyCarriedUnder(testCase, v1, 'spatial_frequency_tuning.abs', 'carry-056');
+% a stray field alone: carry-100, and no carry-056 at all
+v1 = convertedShape('temporal_frequency_tuning');
+v1.temporal_frequency_tuning.fitless.Q50 = 3;
+[~, notes] = did2.unittest.helpers.carryNote({v1});
+verifyEqual(testCase, notes, ['[carry-100] malformed: outside the NDI template, ' ...
+    'unplaced: temporal_frequency_tuning.fitless.Q50']);
 end
 
 function testADifferentSourceIsReportedLost(testCase)
@@ -193,6 +217,16 @@ end
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+end
+
+function verifyCarriedUnder(testCase, v1, path, row)
+% V1 is carried whole as v1, and its note cites PATH under register row ROW
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+label = sprintf('%s (%s)', v1.document_class.class_name, path);
+verifyEmpty(testCase, out.quarantine, label);
+verifyTrue(testCase, carried, [label ': not carried as the untouched v1 source']);
+verifyEqual(testCase, did2.unittest.helpers.carryRowFor(notes, path), row, ...
+    sprintf('%s: the note does not cite it under %s: %s', label, row, notes));
 end
 
 function verifyCarried(testCase, v1, part)

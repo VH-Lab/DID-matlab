@@ -30,7 +30,11 @@ function v2Body = dataset_remote(preBody)
 %     base.datestamp              -> its creation_timestamp
 %     base.id                     -> NOT KEPT: a known finding, a question for
 %                                    the team
-%     base.name                   -> not kept ('' on every writer document)
+%     base.name                   -> the dataset entity's name when not empty
+%                                    ('' on every writer document writes
+%                                    nothing; jBaseName; Decided by Jess
+%                                    Haley, 2026-10-27 [v1 name is the
+%                                    entity name])
 %     dataset_remote.dataset_id   -> the dataset's global_identifier
 %                                    `ndicloud:<id>`
 %     dataset_remote.organization_id
@@ -72,7 +76,7 @@ orgName = jGetChar(block, 'organization_id');     % the remote org namespace
 % identifier, `ndicloud:<id>` (a registered prefix), on the dataset entity.
 % `hosted_by` returned 2026-10-15 with the DATASET as its child (dataset ->
 % organization), so the remote org hangs off the dataset directly.
-bareFields = struct();
+bareFields = struct('name', jBaseName(preBody));
 if ~isempty(cloudId)
     bareFields.global_identifier = {['ndicloud:' cloudId]};
 end

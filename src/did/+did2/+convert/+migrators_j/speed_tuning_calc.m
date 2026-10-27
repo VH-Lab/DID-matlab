@@ -22,7 +22,8 @@ function bodies = speed_tuning_calc(preBody)
 %   document is read exactly as v1 wrote it: identity through jRawBody, the
 %   `app` block in either spelling (did2.convert.v1read.readApp), and every
 %   other field accounted for (jCalculation 'AccountForEveryField': a field the
-%   fold reads nowhere carries the document whole as v1, carry-056). A carry is
+%   fold reads nowhere carries the document whole as v1: carry-100 outside the
+%   NDI template, carry-056 for a template field with no home). A carry is
 %   the untouched v1 source. did2.convert.roundtrip.speedtuning_calc rebuilds
 %   the v1 document; testRawV1RoundTripSpike compares the two on the writer's
 %   output.

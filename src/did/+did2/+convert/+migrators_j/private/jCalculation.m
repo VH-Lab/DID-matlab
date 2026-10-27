@@ -72,8 +72,9 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %   v1, did2.convert.rawV1Classes, [migrators read raw v1]): the fields the
 %   value mapping does not read are checked too, so that a folded document
 %   drops nothing ([generic stage is lossless], Jess Haley, 2026-10-25). Each
-%   of these, when it holds a value, is unplaced (carry-056) and carries the
-%   document whole as v1:
+%   of these, when it holds a value, is unplaced and carries the document whole
+%   as v1 (carry-100 outside the class's NDI template, carry-056 inside it:
+%   UNPLACED, BY THE TEMPLATE, below):
 %     - a top-level block other than document_class, depends_on, base, app,
 %       calculator, the calculator's own block, SOURCEBLOCK and OPTS.OtherBlocks
 %       (blocks whose fields the caller accounts for itself: hartley_calc's
@@ -89,6 +90,24 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %       subject edge and the input edges inputIds reads (and, for 'csf',
 %       stimulus_presentation_id), or a `subject_id` beside an `element_id`.
 %   Off by default: the classes not yet switched run exactly as before.
+%
+%   UNPLACED, BY THE TEMPLATE (Decided by Jess Haley, 2026-10-27 [tuning stray
+%   fields are malformed]; did2.convert.v1read.calculatorTemplate). Each
+%   unplaced field is cited by what the class's NDI template (with its
+%   writer's additions) says of it:
+%     carry-100  outside the template: a top-level block it does not declare,
+%                any `calculator` field, an `app` field outside app.json (or
+%                the `app_name` / `app_version` spelling beside a differing
+%                `name` / `version`), a depends_on edge it does not name, a
+%                field of a declared block it does not declare (a field of a
+%                declared block that is itself a struct is walked: each
+%                non-empty leaf outside the template is cited on its own);
+%     carry-056  inside the template: a field the writer writes that the fold
+%                has no home for (contrast fits' relative_max_gain, the SF /
+%                TF `abs` block, stimulus_tuningcurve.stimid, a recognised
+%                response_units spelling, tuningcurve_calc.log, ...).
+%   Field names are compared case-insensitively (the fold lower-cases fit
+%   field names). The note is jRawCarry's, as for every other family.
 %
 %   Returns {leaf, anchor, software..., run entities...}.
 
@@ -158,29 +177,36 @@ end
 % the dataset's map, with one `carried_as_v1` note naming every such field.
 % (rawCurve already names its paths from the block, 'stimulus_tuningcurve.x':
 % those are not prefixed a second time)
-% Each such field cites carry register row carry-056 ([lossless first, homes
-% after]).
-unplaced = [cellfun(@(d) ['[carry-056] ' underBlock(sourceBlock, d)], ...
-    reshape(dropped, 1, []), 'UniformOutput', false), ...
-    cellfun(@(d) ['[carry-056] ' char(d)], reshape(opts.Dropped, 1, []), ...
+% Each such field cites ONE carry register row, by what the class's NDI
+% template says of it (Decided by Jess Haley, 2026-10-27 [tuning stray fields
+% are malformed], did-schema V_eta_go_forward_class_audit.md;
+% did2.convert.v1read.calculatorTemplate):
+%   - a field, block or edge the template (or its writer) does not define:
+%     carry-100 ([fields outside the template are malformed]), through
+%     jRawCarry exactly as the other families cite it;
+%   - a field the template defines, which the writer writes, that the fold has
+%     no home for: carry-056 ([lossless first, homes after]).
+unplaced = [cellfun(@(d) underBlock(sourceBlock, d), reshape(dropped, 1, []), ...
+    'UniformOutput', false), cellfun(@char, reshape(opts.Dropped, 1, []), ...
     'UniformOutput', false)];
 if opts.AccountForEveryField
     unplaced = [unplaced, unaccounted(preBody, sourceBlock, family, opts.OtherBlocks)];
 end
+[outside, inside] = splitByTemplate(preBody, unplaced);
+reasons = cellfun(@(x) ['[carry-056] ' x], inside, 'UniformOutput', false);
 % The calculator block's inner `depends_on` copy (e.g.
 % `oridirtuning_calc.depends_on`) is left unwritten only when it restates the
 % top-level edges ([restated values checked], Jess Haley, 2026-10-26; measured
 % equal on every held document). One that differs is carried whole as v1.
 differing = innerDependsOnDiffers(preBody, classNameOf(preBody));
 if ~isempty(differing)
-    unplaced{end+1} = sprintf('[carry-016] %s.depends_on (%s differs from the top-level edge)', ...
+    reasons{end+1} = sprintf('[carry-016] %s.depends_on (%s differs from the top-level edge)', ...
         classNameOf(preBody), strjoin(differing, ', '));
 end
-if ~isempty(unplaced)
-    % carry-register: carry-016 (the inner depends_on item); carry-056 (a
-    % calculator field the fold has no home for)
-    did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
-        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
+% One `carried_as_v1` note (jRawCarry): '[carry-100] malformed: outside the NDI
+% template, unplaced: <paths>' first when there are any, then 'unplaced:
+% [carry-056] <path>, [carry-016] <path>' (each reason tagged with its row).
+if jRawCarry(classNameOf(preBody), preBody, {}, outside, 'carry-100', reasons)
     bodies = {preBody};
     return;
 end
@@ -242,7 +268,8 @@ end
 
 function c = unaccounted(preBody, sourceBlock, family, otherBlocks)
 %UNACCOUNTED The fields of PREBODY the fold does not read and that hold a
-%   value, each as '[carry-056] <path>' (see ACCOUNTED FOR in the header).
+%   value, each as a path (see ACCOUNTED FOR in the header); splitByTemplate
+%   gives each its carry register row.
 c = {};
 leaf = classNameOf(preBody);
 known = [{'document_class', 'depends_on', 'base', 'app', 'calculator', leaf, sourceBlock}, ...
@@ -304,7 +331,6 @@ for k = 1:numel(deps)
     end
     c{end+1} = ['depends_on ' nm]; %#ok<AGROW>
 end
-c = cellfun(@(x) ['[carry-056] ' x], c, 'UniformOutput', false);
 end
 
 function c = blockRest(preBody, block, read, ignoreCase)
@@ -453,5 +479,121 @@ function cn = classNameOf(preBody)
 cn = '';
 if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
     cn = char(preBody.document_class.class_name);
+end
+end
+
+function [outside, inside] = splitByTemplate(preBody, items)
+%SPLITBYTEMPLATE Split the unplaced ITEMS (paths from the document, some with a
+%   parenthesised reason after them, or 'depends_on <name>') into those
+%   OUTSIDE the class's NDI template (carry-100) and those INSIDE it
+%   (carry-056). See UNPLACED, BY THE TEMPLATE in the header.
+outside = {};
+inside = {};
+if isempty(items)
+    return;
+end
+cls = classNameOf(preBody);
+t = did2.convert.v1read.calculatorTemplate(cls);
+if ~t.found
+    error('did2:convert:jCalculation:noTemplate', ...
+        ['jCalculation has no NDI template for v1 class "%s" ' ...
+         '(did2.convert.v1read.calculatorTemplate), so it cannot tell a field ' ...
+         'outside the template (carry-100) from a writer field with no home ' ...
+         '(carry-056).'], cls);
+end
+defs = lower([t.paths, t.writer_paths]);
+edges = [t.edges, t.writer_edges];
+for k = 1:numel(items)
+    s = char(items{k});
+    if startsWith(s, 'depends_on ')
+        nm = strtrim(s(numel('depends_on ') + 1:end));
+        if any(cellfun(@(re) ~isempty(regexp(nm, re, 'once')), edges))
+            inside{end+1} = s; %#ok<AGROW>
+        else
+            outside{end+1} = s; %#ok<AGROW>
+        end
+        continue;
+    end
+    if ~isempty(regexp(s, '^app\.\w+ \(app_\w+ differs\)$', 'once'))
+        % the app_name / app_version spelling: not a field app.json declares
+        outside{end+1} = s; %#ok<AGROW>
+        continue;
+    end
+    p = regexprep(s, ' \(.*$', '');   % the path, without its reason
+    switch templateRelation(lower(p), defs)
+        case 'inside'
+            inside{end+1} = s; %#ok<AGROW>
+        case 'container'
+            % a declared block or sub-block reported whole (e.g. SF / TF `abs`):
+            % its non-empty leaves outside the template are cited on their own
+            v = valueAtPath(preBody, p);
+            if ~isstruct(v)
+                inside{end+1} = s; %#ok<AGROW>
+                continue;
+            end
+            leaves = nonEmptyLeaves(v, p);
+            isIn = cellfun(@(x) strcmp(templateRelation(lower(x), defs), 'inside'), leaves);
+            outside = [outside, leaves(~isIn)]; %#ok<AGROW>
+            if any(isIn) || isempty(leaves)
+                % (a block of template blanks the fold still reported stays
+                % cited, so the outcome is what it was)
+                inside{end+1} = s; %#ok<AGROW>
+            end
+        otherwise
+            outside{end+1} = s; %#ok<AGROW>
+    end
+end
+end
+
+function r = templateRelation(p, defs)
+%TEMPLATERELATION 'inside' when the (lower-case) path P is a template leaf or
+%   lies under one (a leaf such as input_parameters or tuning_curve.individual
+%   holds free content); 'container' when template leaves lie under P;
+%   'outside' otherwise.
+if any(strcmp(p, defs)) || any(startsWith(p, strcat(defs, '.')))
+    r = 'inside';
+elseif any(startsWith(defs, [p '.']))
+    r = 'container';
+else
+    r = 'outside';
+end
+end
+
+function v = valueAtPath(s, p)
+%VALUEATPATH The value at the dotted path P of struct S, each part matched
+%   case-insensitively; [] when it is not there.
+v = s;
+parts = strsplit(p, '.');
+for k = 1:numel(parts)
+    if ~isstruct(v) || isempty(v)
+        v = [];
+        return;
+    end
+    fns = fieldnames(v);
+    ix = find(strcmpi(fns, parts{k}), 1);
+    if isempty(ix)
+        v = [];
+        return;
+    end
+    v = v(1).(fns{ix});
+end
+end
+
+function c = nonEmptyLeaves(v, p)
+%NONEMPTYLEAVES The paths under P of every leaf of V that holds a value (a
+%   struct array's elements are read under the same path).
+c = {};
+if isstruct(v)
+    for e = 1:numel(v)
+        fns = fieldnames(v(e));
+        for k = 1:numel(fns)
+            c = [c, nonEmptyLeaves(v(e).(fns{k}), [p '.' fns{k}])]; %#ok<AGROW>
+        end
+    end
+    if ~isempty(c)
+        c = reshape(unique(c, 'stable'), 1, []);
+    end
+elseif ~isEmptyValue(v)
+    c = {p};
 end
 end

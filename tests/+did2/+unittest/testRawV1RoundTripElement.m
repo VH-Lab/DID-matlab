@@ -93,6 +93,32 @@ r2 = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
 verifyEmpty(testCase, r2.lost, describeLost(r2));
 end
 
+function testABaseNameIsTheEntityName(testCase)
+% [v1 name is the entity name] (Jess Haley, 2026-10-27): a non-empty v1
+% base.name is entity.name, and is rebuilt from it; '' (what
+% ndi.element/newdocument writes) writes nothing
+v1 = probeDoc('el_named', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
+v1.base.name = 'left cortex probe';
+out = runRaw(v1);
+docs = elementOutputs(out, v1.base.id);
+verifyEqual(testCase, char(out.migrated{1}.get('entity.name')), 'left cortex probe');
+r = did2.convert.roundtrip.check(v1, docs);
+verifyEmpty(testCase, r.lost, describeLost(r));
+verifyEmpty(testCase, r.invented, strjoin(r.invented, ', '));
+verifyTrue(testCase, any(strcmp('base.name', r.matched)));
+v0 = probeDoc('el_unnamed', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
+e0 = runRaw(v0).migrated{1}.toStruct();
+verifyFalse(testCase, isfield(e0.entity, 'name'), 'an empty base.name wrote entity.name');
+% and the named device validates
+outV = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+reasons = '';
+for k = 1:numel(outV.quarantine)
+    reasons = [reasons sprintf('%s: %s; ', outV.quarantine(k).class_name, ...
+        outV.quarantine(k).reason)]; %#ok<AGROW>
+end
+verifyEmpty(testCase, outV.quarantine, reasons);
+end
+
 % ===================== carried writer shapes ============================
 
 function testCarriedElementsCiteTheirRows(testCase)
