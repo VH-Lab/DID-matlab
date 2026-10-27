@@ -474,11 +474,12 @@ end
 function testV1ToV2RenameClassNamesFalseThreadsThrough(testCase)
 % The dispatcher option threads down to universalRenames, so a
 % caller that needs the legacy-name-preserving behaviour can pass
-% it at the top level.
+% it at the top level. The option is the renamed path's: demoNDI is read raw
+% now (did2.convert.rawV1Classes), so the call names that path.
 v1 = makeV1Skeleton('demoNDI');
 v1.demoNDI = struct('value', 5);
 result = did2.convert.v1_to_v2(v1, 'Validate', false, ...
-    'RenameClassNames', false);
+    'RenameClassNames', false, 'RawV1Classes', {});
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
 verifyEqual(testCase, doc.className(), 'demoNDI');
