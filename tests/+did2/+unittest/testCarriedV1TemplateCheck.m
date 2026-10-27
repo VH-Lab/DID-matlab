@@ -56,11 +56,11 @@ verifyFalse(testCase, r.ok, 'not checked is never valid');
 end
 
 function testV1ToV2ChecksEveryCarriedSourceAgainstItsTemplate(testCase)
-% two carries: a subject with no local identifier (carry-033: a template
-% shape, valid) and one holding a field outside the template (carry-100:
-% invalid, as it is meant to be); one subject converts and is not checked
+% two carries, both for an empty local identifier (carry-033): one in the
+% template's shape (valid), one that also holds a field outside the template
+% (invalid); one subject converts and is not checked
 bodies = {subject('tc_subj_1', 'mouse_1'), subject('tc_subj_2', '')};
-odd = subject('tc_subj_3', 'mouse_3');
+odd = subject('tc_subj_3', '');
 odd.subject.strain = 'C57BL/6';
 bodies{end+1} = odd;
 out = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'V_eta');
