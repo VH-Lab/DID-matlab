@@ -55,8 +55,10 @@ else
     if ~isempty(tok)
         blk.res_mat_MD5_checksum = tok{1};
     end
+    % the v1 attachment rides on the body as v1 wrote it; a body with none
+    % carries only the builder's own declaration, {file_list: body_data_0}
     for f = {'files', 'file'}
-        if isfield(ob, f{1})
+        if isfield(ob, f{1}) && ~isBuilderDefault(ob.(f{1}))
             v1.(f{1}) = ob.(f{1});
         end
     end
@@ -68,4 +70,10 @@ if isscalar(entity)
 else
     spec.unplaced{end+1} = sprintf('%d entity_id edges', numel(entity));
 end
+end
+
+function tf = isBuilderDefault(f)
+%ISBUILDERDEFAULT The file declaration did2.build gives a body with no v1 file.
+tf = isstruct(f) && isscalar(f) && isequal(fieldnames(f), {'file_list'}) ...
+    && isequal(cellstr(f.file_list), {'body_data_0'});
 end
