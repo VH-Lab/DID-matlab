@@ -75,7 +75,9 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %   of these, when it holds a value, is unplaced (carry-056) and carries the
 %   document whole as v1:
 %     - a top-level block other than document_class, depends_on, base, app,
-%       calculator, the calculator's own block and SOURCEBLOCK;
+%       calculator, the calculator's own block, SOURCEBLOCK and OPTS.OtherBlocks
+%       (blocks whose fields the caller accounts for itself: hartley_calc's
+%       files, hartley_reverse_correlation, ngrid, reverse_correlation);
 %     - a field of the calculator's own block other than input_parameters and
 %       depends_on (tuningcurve_calc's `log` and `stim_property_list`); for
 %       'csf' (the block IS the result), a field jContrastSensitivityValue
@@ -104,6 +106,7 @@ arguments
     opts.SourceDatumType = ''
     opts.Dropped = {}            % more dropped v1 field paths, reported verbatim
     opts.AccountForEveryField (1,1) logical = false   % see ACCOUNTED FOR below
+    opts.OtherBlocks = {}        % more top-level blocks the CALLER accounts for
 end
 
 srcBlk = struct();
@@ -162,7 +165,7 @@ unplaced = [cellfun(@(d) ['[carry-056] ' underBlock(sourceBlock, d)], ...
     cellfun(@(d) ['[carry-056] ' char(d)], reshape(opts.Dropped, 1, []), ...
     'UniformOutput', false)];
 if opts.AccountForEveryField
-    unplaced = [unplaced, unaccounted(preBody, sourceBlock, family)];
+    unplaced = [unplaced, unaccounted(preBody, sourceBlock, family, opts.OtherBlocks)];
 end
 % The calculator block's inner `depends_on` copy (e.g.
 % `oridirtuning_calc.depends_on`) is left unwritten only when it restates the
@@ -237,12 +240,13 @@ if isstruct(response)
 end
 end
 
-function c = unaccounted(preBody, sourceBlock, family)
+function c = unaccounted(preBody, sourceBlock, family, otherBlocks)
 %UNACCOUNTED The fields of PREBODY the fold does not read and that hold a
 %   value, each as '[carry-056] <path>' (see ACCOUNTED FOR in the header).
 c = {};
 leaf = classNameOf(preBody);
-known = {'document_class', 'depends_on', 'base', 'app', 'calculator', leaf, sourceBlock};
+known = [{'document_class', 'depends_on', 'base', 'app', 'calculator', leaf, sourceBlock}, ...
+    reshape(cellstr(otherBlocks), 1, [])];
 top = fieldnames(preBody);
 for k = 1:numel(top)
     if ~any(strcmp(top{k}, known)) && ~isEmptyValue(preBody.(top{k}))
@@ -259,7 +263,9 @@ if strcmp(family, 'csf')
         end
     end
     c = [c, blockRest(preBody, leaf, read, true)];
-elseif ~strcmp(leaf, sourceBlock)
+elseif ~strcmp(leaf, sourceBlock) || strcmp(family, 'rf')
+    % (receptive field: the calculator's own block is also its source block,
+    % and holds only input_parameters and depends_on)
     c = [c, blockRest(preBody, leaf, {'input_parameters', 'depends_on'}, false)];
 end
 c = [c, blockRest(preBody, 'calculator', {}, false)];
@@ -275,7 +281,8 @@ for k = 1:numel(ex)
 end
 inputs = {'element_id', 'stimulus_tuningcurve_id', 'stimulus_response_scalar_id', ...
     'stimulus_response_id'};
-if strcmp(family, 'csf')
+if any(strcmp(family, {'csf', 'rf'}))
+    % (the receptive field writes it through OPTS.ExtraInputs: hartley_calc)
     inputs{end+1} = 'stimulus_presentation_id';
 end
 % the contrast tuning inputs inputIds reads: contrasttuning_id_1, _2, ... up

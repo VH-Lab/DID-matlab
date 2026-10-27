@@ -56,7 +56,7 @@
 %                          <dst>.quarantine.json.
 %
 %   Shared helpers used by migrators
-%     axisKey, axisTerm, calcCommon, channelType, epochIndex,
+%     axisKey, axisTerm, channelType, epochIndex,
 %     ethicsJurisdiction, registeredTerm, reportNote, mintSessionDuring,
 %     stimulusPresentationSpecs (the batch's presentation settings, loaded
 %     by v1_to_v2)

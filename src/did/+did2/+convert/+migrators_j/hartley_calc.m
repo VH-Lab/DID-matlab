@@ -250,6 +250,43 @@ arguments
     preBody (1,1) struct
 end
 
+% READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+% [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+% as v1 wrote it, with no universalRenames and no superclass migrator. The one
+% superclass migrator the renamed path ran for it, +migrators_j/+super/ngrid.m
+% (a guard against a reshaped `ngrid` block; it changes nothing), is called
+% here on the raw block ([early migration pieces fixed] (1)); it stays for
+% ontology_image, which is not switched. Identity through jRawBody; the `app`
+% block in either spelling (did2.convert.v1read.readApp); `frameTimes` as v1
+% writes it (or `frame_times`, the renamed spelling). Every v1 field is
+% accounted for: a field this fold reads nowhere carries the document whole as
+% v1 (unreadFields below and jCalculation 'AccountForEveryField', carry-056).
+% A carry is the untouched v1 source. did2.convert.roundtrip.hartley_calc
+% rebuilds the v1 document; testRawV1RoundTripSpike compares the two on the
+% writer's own output (NDIcalc-vis-matlab mock/hartley/mock.1.json).
+body = jRawBody(preBody, 'hartley_calc');
+collision = jResponseRenameCollisions(preBody, cell(0, 3));
+if ~isempty(collision)
+    % what universalRenames would have discarded (a depends_on version or
+    % second id, an ndi_document beside base, two differing app spellings):
+    % the renamed path carried such a document before any migrator ran, and so
+    % does this one ([renames carry is temporary])
+    % carry-register: carry-049 (the renamed path carried this collision)
+    did2.convert.reportNote('carried_as_v1', 'hartley_calc', char(body.base.id), ...
+        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+    bodies = {preBody};
+    return;
+end
+body = did2.convert.migrators_j.super.ngrid(body);
+bodies = fold(body);
+if isscalar(bodies) && isequaln(bodies{1}, body)
+    bodies = {preBody};   % a carry (or a passthrough) is the untouched v1 source
+end
+end
+
+function bodies = fold(preBody)
+%FOLD The fold itself, on the identity-normalised raw body (jRawBody).
+
 % `receptive_field.value` declares no sub-fields (the volume is on the plane
 % bodies, #73 audit 2 D11). Until 2026-10-21 it was also REQUIRED, so no
 % document could satisfy it and this fold passed through (corpus run
@@ -353,11 +390,17 @@ if isfield(rc, 'method') && ~isempty(rc.method) ...
         && ~strcmpi(strtrim(char(string(rc.method))), 'Hartley')
     dropped{end+1} = 'reverse_correlation.method';
 end
+% every other field of the four hartley blocks is accounted for (unreadFields):
+% one this fold reads nowhere is unplaced, and jCalculation carries the
+% document whole as v1 (carry-056), as it does for an unread calculator field
+dropped = [dropped, unreadFields(preBody)];
 bodies = jCalculation(preBody, 'receptive_field_calculation', 'rf', ...
     'hartley_calc', 'receptive field', 'ndi.calc.vis.hartley', ...
     'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
     'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-    'Dropped', dropped);
+    'Dropped', dropped, 'AccountForEveryField', true, ...
+    'OtherBlocks', {'files', 'hartley_reverse_correlation', 'ngrid', ...
+    'reverse_correlation'});
 leaf = bodies{1};
 if isscalar(bodies) && strcmp(leaf.document_class.class_name, 'hartley_calc')
     return;     % passed through (no subject): no bodies
@@ -664,6 +707,78 @@ end
 if isstruct(hrc) && isfield(hrc, 'hartley_numbers') ...
         && isstruct(hrc.hartley_numbers)
     sequence.hartley_numbers = hrc.hartley_numbers;
+end
+end
+
+% ===================== every field accounted for ===========================
+
+function c = unreadFields(preBody)
+%UNREADFIELDS The fields of the hartley blocks this fold reads nowhere and
+%   that hold a value, as paths (jCalculation prefixes '[carry-056] ').
+%
+%   READ (and where it lands): hartley_reverse_correlation.stimulus_properties
+%   (compared, above), .reconstruction_properties.{T,X,Y}_coords (the axes),
+%   .spiketimes (the input body), .frameTimes / .frame_times and
+%   .hartley_numbers (the stimulus sequence parameters); ngrid.data_dim,
+%   .coordinates, .data_type (the bodies) and .data_size, left unwritten only
+%   when it restates the data type's byte size ([restated values checked],
+%   Jess Haley, 2026-10-26); reverse_correlation.method (implied, above) and
+%   .dimension_labels (empty, above). A `frameTimes` beside a differing
+%   `frame_times` states two things, and only one is read.
+c = {};
+hrc = blockOf(preBody, 'hartley_reverse_correlation');
+c = [c, rest(hrc, 'hartley_reverse_correlation', {'stimulus_properties', ...
+    'reconstruction_properties', 'spiketimes', 'frameTimes', 'frame_times', ...
+    'hartley_numbers'})];
+if isfield(hrc, 'frameTimes') && isfield(hrc, 'frame_times') ...
+        && ~isequaln(hrc.frameTimes, hrc.frame_times)
+    c{end+1} = 'hartley_reverse_correlation.frame_times (differs from frameTimes)';
+end
+if isfield(hrc, 'reconstruction_properties')
+    c = [c, rest(hrc.reconstruction_properties, ...
+        'hartley_reverse_correlation.reconstruction_properties', ...
+        {'T_coords', 'X_coords', 'Y_coords'})];
+end
+ng = blockOf(preBody, 'ngrid');
+c = [c, rest(ng, 'ngrid', {'data_size', 'data_type', 'data_dim', 'coordinates'})];
+if isfield(ng, 'data_size') && ~isEmptyValue(ng.data_size)
+    want = bytesOf(fieldOr(ng, 'data_type', ''));
+    if isempty(want) || ~isnumeric(ng.data_size) || ~isscalar(ng.data_size) ...
+            || double(ng.data_size) ~= want
+        c{end+1} = 'ngrid.data_size (does not restate the data type''s byte size)';
+    end
+end
+c = [c, rest(blockOf(preBody, 'reverse_correlation'), 'reverse_correlation', ...
+    {'method', 'dimension_labels'})];
+end
+
+function c = rest(blk, path, read)
+%REST The fields of BLK outside READ that hold a value, as 'PATH.field'.
+c = {};
+if ~isstruct(blk) || ~isscalar(blk)
+    return;
+end
+fns = fieldnames(blk);
+for k = 1:numel(fns)
+    if ~any(strcmp(fns{k}, read)) && ~isEmptyValue(blk.(fns{k}))
+        c{end+1} = [path '.' fns{k}]; %#ok<AGROW>
+    end
+end
+end
+
+function n = bytesOf(dataType)
+%BYTESOF The byte size NDI's mat2ngrid stores as `data_size` for DATATYPE
+%   ([] for a type it does not name).
+n = [];
+switch lower(strtrim(char(string(dataType))))
+    case {'double', 'int64', 'uint64'}
+        n = 8;
+    case {'single', 'int32', 'uint32'}
+        n = 4;
+    case {'int16', 'uint16'}
+        n = 2;
+    case {'int8', 'uint8', 'char', 'logical'}
+        n = 1;
 end
 end
 
