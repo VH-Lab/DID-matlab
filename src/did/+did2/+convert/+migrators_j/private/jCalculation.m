@@ -109,7 +109,46 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %   Field names are compared case-insensitively (the fold lower-cases fit
 %   field names). The note is jRawCarry's, as for every other family.
 %
-%   Returns {leaf, anchor, software..., run entities...}.
+%   THE 2026-10-27 TUNING DECISIONS (Jess Haley, did-schema
+%   V_eta_go_forward_class_audit.md), built here for the tuning families:
+%     [tuning fits use curve fitting now]  a fitted family's ('oridir',
+%         'contrast', 'sf', 'tf', 'speed') `method.term` is OBI:0200072
+%         "curve fitting data transformation" (building [method terms are
+%         general]); the fitted function is the method parameter
+%         {variable 'function', text <model>}: the model of its fits (e.g.
+%         'Naka-Rushton', jTuningCurve), or, when its fits are of several
+%         functions (the SF / TF writers' five), the JSON list of them, in
+%         order. METHODNAME stays the calculator: the `software` entity.
+%     [absolute-value fits are a second calculation]  an SF / TF `abs` block
+%         is a SECOND calculation of LEAFCLASS (its id minted, role
+%         'absolute value calculation'), the same subject, anchor, inputs and
+%         software, its value the abs fits, with the method parameter
+%         {variable 'response transform', text 'absolute value'}.
+%     [parameter names map by table]  the tuning families' v1 settings
+%         (input_parameters) are named through did2.convert.tuningNames; a
+%         setting the table does not hold carries the document (carry-056).
+%     [tuning log in notes]  tuningcurve_calc's `log`, verbatim, is the
+%         statement's `notes`.
+%     [varied properties are conditions by V2 name]  each property in
+%         tuningcurve_calc's `stim_property_list` is a condition, its variable
+%         the V2 stimulus method's (did2.convert.tuningNames), its value the
+%         v1 value; a name the table does not hold carries the curve
+%         (carry-056).
+%     [tuning stimids rebuild]  a raw curve's `stimid` and
+%         `stimulus_presentation_number` are not written: when
+%         did2.convert.tuningStimids rebuilds them exactly from the batch's
+%         presentation and response and the curve's conditions, they are
+%         placed; otherwise the curve is carried (carry-056). Every curve
+%         leaves one did2.convert.reportNote('tuning_stimid_rebuild', ...):
+%         'rebuilt exactly', 'not rebuilt' or 'none stated' (the count).
+%     [input names rebuild from the input class]  the input edges' v1 names
+%         must be what did2.convert.inputEdgeNames rebuilds from the classes
+%         of the documents they point at (two inputs of one class under
+%         different names cannot be); a document whose names are not is
+%         carried, kind malformed (carry-100).
+%
+%   Returns {leaf, anchor, software..., run entities...} ({leaf, abs leaf,
+%   anchor, ...} when an `abs` block was folded).
 
 arguments
     preBody (1,1) struct
@@ -151,6 +190,15 @@ leafFields = struct();
 dropped = {};
 response = [];   % no response variable read (receptive field)
 csfInputs = {};  % the contrast-sensitivity family's extra input (stimulus_presentation_id)
+tuningExtra = struct('abs', struct('present', false));
+isFit = any(strcmp(family, {'oridir', 'contrast', 'sf', 'tf', 'speed'}));
+useTable = isFit || any(strcmp(family, {'stimulus', 'csf'}));
+% the raw curve's notes, conditions and rebuilt stimids (family 'stimulus')
+curve = struct('rebuilt', {{}}, 'notes', '', 'conditions', [], 'reasons', {{}}, ...
+    'outcome', '');
+if strcmp(family, 'stimulus')
+    curve = curveContext(preBody, sourceBlock, srcBlk);
+end
 if strcmp(family, 'csf')
     [value, valueAxes, dropped] = jContrastSensitivityValue(srcBlk);
     % contrast_sensitivity_calc carries no response_units (NDIcalc-vis mock):
@@ -167,7 +215,8 @@ elseif strcmp(family, 'rf')
     value = struct();
     valueAxes = [];
 else
-    [value, valueAxes, leafFields, dropped, response] = jTuningCurve(srcBlk, family);
+    [value, valueAxes, leafFields, dropped, response, tuningExtra] = ...
+        jTuningCurve(srcBlk, family, 'Rebuilt', curve.rebuilt);
 end
 % [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
 % 2026-10-25, did-schema V_eta_go_forward_class_audit.md): a v1 field the value
@@ -194,6 +243,37 @@ if opts.AccountForEveryField
 end
 [outside, inside] = splitByTemplate(preBody, unplaced);
 reasons = cellfun(@(x) ['[carry-056] ' x], inside, 'UniformOutput', false);
+reasons = [reasons, curve.reasons];
+% [parameter names map by table] (Jess Haley, 2026-10-27): the tuning
+% families' settings are named through did2.convert.tuningNames
+if useTable
+    [params, unknownSettings] = jParameterList(calcInputParameters(preBody), '', ...
+        @(n) did2.convert.tuningNames('v2', n));
+    for k = 1:numel(unknownSettings)
+        reasons{end+1} = sprintf(['[carry-056] input_parameters.%s (no V2 name in ' ...
+            'the table: [parameter names map by table])'], unknownSettings{k}); %#ok<AGROW>
+    end
+else
+    params = jParameterList(calcInputParameters(preBody));
+end
+% [input names rebuild from the input class] (Jess Haley, 2026-10-27)
+reasons = [reasons, inputNameReasons(preBody, family)];
+% a held-fixed property that is also a varied variable cannot be both a
+% condition and a covariate (did2.build.statement refuses it)
+if ~isempty(curve.conditions)
+    clash = intersect(lower(variableNames(curve.conditions)), ...
+        lower(variableNames(axisPart(valueAxes, 'covariates'))));
+    if ~isempty(clash)
+        reasons{end+1} = sprintf(['[carry-056] %s.stim_property_list (%s is also ' ...
+            'a varied variable)'], classNameOf(preBody), strjoin(clash, ', '));
+    end
+end
+% [absolute-value fits are a second calculation]: abs fitless values with no
+% fit have no value to state
+if isFit && tuningExtra.abs.present && isempty(fieldnames(tuningExtra.abs.value)) ...
+        && ~isempty(fieldnames(tuningExtra.abs.leafFields))
+    reasons{end+1} = sprintf('[carry-056] %s.abs (fitless values with no fit)', sourceBlock);
+end
 % The calculator block's inner `depends_on` copy (e.g.
 % `oridirtuning_calc.depends_on`) is left unwritten only when it restates the
 % top-level edges ([restated values checked], Jess Haley, 2026-10-26; measured
@@ -202,6 +282,11 @@ differing = innerDependsOnDiffers(preBody, classNameOf(preBody));
 if ~isempty(differing)
     reasons{end+1} = sprintf('[carry-016] %s.depends_on (%s differs from the top-level edge)', ...
         classNameOf(preBody), strjoin(differing, ', '));
+end
+% [tuning stimids rebuild]: the count over all curves, one note per curve
+if strcmp(family, 'stimulus')
+    did2.convert.reportNote('tuning_stimid_rebuild', classNameOf(preBody), ...
+        char(preBody.base.id), curve.outcome);
 end
 % One `carried_as_v1` note (jRawCarry): '[carry-100] malformed: outside the NDI
 % template, unplaced: <paths>' first when there are any, then 'unplaced:
@@ -222,7 +307,6 @@ end
 
 inputs = [inputIds(preBody), csfInputs, reshape(opts.ExtraInputs, 1, [])];
 f = leafFields;
-params = jParameterList(calcInputParameters(preBody));
 if ~isempty(opts.ExtraParameters)
     if isempty(params)
         params = opts.ExtraParameters;
@@ -230,7 +314,12 @@ if ~isempty(opts.ExtraParameters)
         params = did2.build.list(params, opts.ExtraParameters);
     end
 end
-f.method = jMethod(methodName, params);
+if isFit
+    % [tuning fits use curve fitting now] (Jess Haley, 2026-10-27)
+    f.method = fitMethod(value, params, {});
+else
+    f.method = jMethod(methodName, params);
+end
 if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
     % did-schema #88: the result composite's `value` is REQUIRED (tuning_curve,
     % contrast_sensitivity). A calculator document with no curve has nothing to
@@ -252,9 +341,30 @@ leaf = jStatement(preBody, leafClass, subjectId, ...
     'Fields', f, ...
     'DataBody', opts.DataBody, 'DatumType', opts.DatumType, ...
     'SourceDatumType', opts.SourceDatumType, ...
+    'Conditions', curve.conditions, ...
+    'Notes', curve.notes, ...
     'Id', char(preBody.base.id));   % id preserved -> inbound references resolve
 
-bodies = [{leaf, anchor}, software, runDocs];
+leaves = {leaf};
+if isFit && tuningExtra.abs.present && ~isempty(fieldnames(tuningExtra.abs.value))
+    % [absolute-value fits are a second calculation] (Jess Haley, 2026-10-27):
+    % the `abs` block is a second calculation of the same class, its method
+    % saying the response was transformed to its absolute value
+    fa = tuningExtra.abs.leafFields;
+    fa.method = fitMethod(tuningExtra.abs.value, params, ...
+        {did2.build.parameter(jLabel('response transform'), 'Text', 'absolute value')});
+    leaves{end+1} = jStatement(preBody, leafClass, subjectId, ...
+        variable, tuningExtra.abs.value, ...
+        'TimeReferenceIds', {anchor.base.id}, ...
+        'InputIds', inputs, ...
+        'SoftwareId', swId, ...
+        'OperatingSystemId', osId, ...
+        'InterpreterId', interpreterId, ...
+        'Fields', fa, ...
+        'Id', did2.convert.mintId('absolute value calculation'));
+end
+
+bodies = [leaves, {anchor}, software, runDocs];
 
 % (a field the value mapping had no home for carried the document as v1 above:
 % a folded document dropped nothing)
@@ -293,7 +403,13 @@ if strcmp(family, 'csf')
 elseif ~strcmp(leaf, sourceBlock) || strcmp(family, 'rf')
     % (receptive field: the calculator's own block is also its source block,
     % and holds only input_parameters and depends_on)
-    c = [c, blockRest(preBody, leaf, {'input_parameters', 'depends_on'}, false)];
+    read = {'input_parameters', 'depends_on'};
+    if strcmp(family, 'stimulus')
+        % [tuning log in notes], [varied properties are conditions by V2 name]
+        % (Jess Haley, 2026-10-27): read by curveContext
+        read = [read, {'log', 'stim_property_list'}];
+    end
+    c = [c, blockRest(preBody, leaf, read, false)];
 end
 c = [c, blockRest(preBody, 'calculator', {}, false)];
 a = did2.convert.v1read.readApp(preBody);
@@ -374,6 +490,247 @@ elseif isstring(v)
 else
     tf = isempty(v);
 end
+end
+
+function m = fitMethod(value, params, more)
+%FITMETHOD The method of a tuning fit calculation ([tuning fits use curve
+%   fitting now], Jess Haley, 2026-10-27): term OBI:0200072 "curve fitting
+%   data transformation"; parameters: the fitted function (the models of
+%   VALUE.model_fit, one text, or the JSON list of them when they differ),
+%   then MORE (a cell of entries), then the v1 settings PARAMS.
+models = {};
+if isstruct(value) && isfield(value, 'model_fit') && ~isempty(value.model_fit)
+    mf = value.model_fit;
+    if isstruct(mf); mf = num2cell(reshape(mf, 1, [])); end
+    for k = 1:numel(mf)
+        mm = mf{k}.model;
+        if iscell(mm); mm = mm{1}; end
+        nm = char(mm.name);
+        if ~any(strcmp(models, nm))
+            models{end+1} = nm; %#ok<AGROW>
+        end
+    end
+end
+entries = {};
+if isscalar(models)
+    entries{end+1} = did2.build.parameter(jLabel('function'), 'Text', models{1});
+elseif ~isempty(models)
+    entries{end+1} = did2.build.parameter(jLabel('function'), 'Text', ...
+        char(jsonencode(models)));
+end
+entries = [entries, reshape(more, 1, [])];
+if ~isempty(params)
+    entries{end+1} = params;
+end
+p = [];
+if ~isempty(entries)
+    p = did2.build.list(entries{:});
+end
+m = jMethod(did2.convert.registeredTerm('OBI:0200072', ...
+    'curve fitting data transformation'), p);
+end
+
+function reasons = inputNameReasons(preBody, family)
+%INPUTNAMEREASONS [input names rebuild from the input class] (Jess Haley,
+%   2026-10-27): the v1 names of the input edges must be what
+%   did2.convert.inputEdgeNames rebuilds from the classes of the documents
+%   they point at (DEFAULTS: the writer's name when the class is not in the
+%   batch). A document whose names are not is carried, kind malformed
+%   (carry-100). The contrast-sensitivity and receptive-field families name
+%   their inputs by their writers' fixed layout (tuningInverse 'csf',
+%   hartley_calc) and are not checked here.
+reasons = {};
+switch family
+    case 'stimulus'
+        defaults = {'stimulus_response_scalar_id'};
+    case {'oridir', 'contrast', 'sf', 'tf', 'speed'}
+        defaults = {'stimulus_tuningcurve_id'};
+    otherwise
+        return;
+end
+[names, ids] = inputEdges(preBody);
+if isempty(ids)
+    return;
+end
+rebuilt = did2.convert.inputEdgeNames(ids, defaults);
+if ~isequal(names, rebuilt)
+    reasons{end+1} = sprintf(['[carry-100] malformed: input edges %s do not rebuild ' ...
+        'from the classes they point at (as %s): [input names rebuild from the ' ...
+        'input class]'], strjoin(names, ', '), strjoin(rebuilt, ', '));
+end
+end
+
+function c = variableNames(entries)
+%VARIABLENAMES The variable names of a list of entries (conditions,
+%   covariates).
+c = {};
+if isempty(entries); return; end
+if isstruct(entries); entries = num2cell(reshape(entries, 1, [])); end
+for k = 1:numel(entries)
+    e = entries{k};
+    if isstruct(e) && isfield(e, 'variable') && isstruct(e.variable) ...
+            && isfield(e.variable, 'name')
+        c{end+1} = char(e.variable.name); %#ok<AGROW>
+    end
+end
+end
+
+function [names, ids] = inputEdges(preBody)
+%INPUTEDGES The input edges inputIds reads, with their v1 names, in its order.
+names = {};
+ids = {};
+for nm = {'stimulus_tuningcurve_id', 'stimulus_response_scalar_id', 'stimulus_response_id'}
+    v = jDependency(preBody, nm{1});
+    if ~isempty(v)
+        names{end+1} = nm{1}; %#ok<AGROW>
+        ids{end+1} = v; %#ok<AGROW>
+    end
+end
+for k = 1:64
+    nm = sprintf('contrasttuning_id_%d', k);
+    v = jDependency(preBody, nm);
+    if isempty(v); break; end
+    names{end+1} = nm; %#ok<AGROW>
+    ids{end+1} = v; %#ok<AGROW>
+end
+end
+
+function curve = curveContext(preBody, sourceBlock, srcBlk)
+%CURVECONTEXT A raw tuning curve's notes, conditions and rebuilt stimids
+%   (family 'stimulus'; Jess Haley, 2026-10-27: [tuning log in notes],
+%   [varied properties are conditions by V2 name], [tuning stimids rebuild]).
+%   CURVE.reasons are tagged carry reasons; CURVE.rebuilt the raw-curve fields
+%   placed by the rebuild; CURVE.outcome the tuning_stimid_rebuild note.
+curve = struct('rebuilt', {{}}, 'notes', '', 'conditions', [], 'reasons', {{}}, ...
+    'outcome', 'none stated');
+cls = classNameOf(preBody);
+own = struct();
+if ~strcmp(cls, sourceBlock) && isfield(preBody, cls) && isstruct(preBody.(cls)) ...
+        && isscalar(preBody.(cls))
+    own = preBody.(cls);
+end
+% the log, verbatim
+if isfield(own, 'log') && ~isEmptyValue(own.log)
+    lg = own.log;
+    if isstring(lg) && isscalar(lg); lg = char(lg); end
+    if ischar(lg) && (isrow(lg) || isempty(lg))
+        curve.notes = lg;
+    else
+        curve.reasons{end+1} = sprintf('[carry-056] %s.log (not one text)', cls);
+    end
+end
+% the held-fixed properties, as conditions by their V2 names
+condNames = {};
+condValues = [];
+if isfield(own, 'stim_property_list') && ~isEmptyValue(own.stim_property_list)
+    [condNames, condValues, why] = propertyList(own.stim_property_list);
+    conds = {};
+    for k = 1:numel(condNames)
+        [v2, found] = did2.convert.tuningNames('v2', condNames{k});
+        if ~found
+            why = sprintf('no V2 name in the table for "%s": [varied properties are conditions by V2 name]', ...
+                condNames{k});
+            break;
+        end
+        conds{end+1} = did2.build.condition(jLabel(v2), 'Value', condValues(k)); %#ok<AGROW>
+    end
+    if ~isempty(why)
+        curve.reasons{end+1} = sprintf('[carry-056] %s.stim_property_list (%s)', cls, why);
+        condNames = {};
+        condValues = [];
+    elseif ~isempty(conds)
+        curve.conditions = did2.build.list(conds{:});
+    end
+end
+% the stimids, rebuilt from the presentation and the conditions
+v1Stimid = fieldOr(srcBlk, 'stimid');
+v1Spn = fieldOr(srcBlk, 'stimulus_presentation_number');
+stated = ~isEmptyValue(v1Stimid) || ~isEmptyValue(v1Spn);
+params = independentParameters(own, srcBlk);
+[rs, rspn, why] = did2.convert.tuningStimids(fieldOr(srcBlk, 'independent_variable_value'), ...
+    params, condNames, condValues, jDependency(preBody, 'stimulus_response_scalar_id'));
+ran = isempty(why);
+if ran && ~(isequaln(rs, normalised(v1Stimid)) && isequaln(rspn, normalised(v1Spn)))
+    % (a curve stating none whose presentation gives some is carried too: its
+    % round trip would write what v1 did not state)
+    why = 'the presentation and the response give other values';
+end
+if isempty(why)
+    if stated
+        curve.rebuilt = {'stimid', 'stimulus_presentation_number'};
+        curve.outcome = 'rebuilt exactly';
+    end
+elseif stated || ran
+    curve.outcome = 'not rebuilt';
+    curve.reasons{end+1} = sprintf(['[carry-056] %s.stimid, stimulus_presentation_number ' ...
+        '(do not rebuild exactly: %s; [tuning stimids rebuild])'], sourceBlock, why);
+end
+end
+
+function [names, values, why] = propertyList(spl)
+%PROPERTYLIST tuningcurve_calc's stim_property_list {names, values}: the
+%   names (cellstr) and their numeric values, or WHY it cannot be read.
+names = {};
+values = [];
+why = '';
+if ~isstruct(spl) || ~isscalar(spl) || ~isfield(spl, 'names') || ~isfield(spl, 'values')
+    why = 'not {names, values}';
+    return;
+end
+n = spl.names;
+if ischar(n); n = {n}; end
+if isstring(n); n = cellstr(n); end
+if ~iscell(n) || ~all(cellfun(@(x) ischar(x) && ~isempty(x), n(:)))
+    why = 'names are not text';
+    return;
+end
+v = spl.values;
+if ~(isnumeric(v) || islogical(v)) || numel(v) ~= numel(n)
+    why = 'values are not one number per name';
+    return;
+end
+names = reshape(n, 1, []);
+values = reshape(double(v), 1, []);
+end
+
+function p = independentParameters(own, srcBlk)
+%INDEPENDENTPARAMETERS The stimulus parameters the curve varies:
+%   tuningcurve_calc's input_parameters.independent_parameter (split at ',',
+%   as ndi.calc.stimulus.tuningcurve splits it), else the curve's label.
+p = {};
+src = [];
+if isfield(own, 'input_parameters') && isstruct(own.input_parameters) ...
+        && isscalar(own.input_parameters) ...
+        && isfield(own.input_parameters, 'independent_parameter')
+    src = own.input_parameters.independent_parameter;
+elseif isstruct(srcBlk) && isfield(srcBlk, 'independent_variable_label')
+    src = srcBlk.independent_variable_label;
+end
+if iscell(src)
+    src = strjoin(cellfun(@char, src(:)', 'UniformOutput', false), ',');
+end
+if isstring(src); src = char(strjoin(src, ',')); end
+if ~ischar(src) || isempty(src)
+    return;
+end
+p = strtrim(strsplit(src, ','));
+p = p(~cellfun(@isempty, p));
+end
+
+function v = fieldOr(s, name)
+v = [];
+if isstruct(s) && isscalar(s) && isfield(s, name)
+    v = s.(name);
+end
+end
+
+function v = normalised(v)
+%NORMALISED A value as JSON stores it and jsondecode reads it back.
+if isempty(v)
+    v = [];
+    return;
+end
+v = jsondecode(jsonencode(v));
 end
 
 function ids = inputIds(preBody)
