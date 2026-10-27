@@ -24,9 +24,56 @@ function v2Body = session_in_a_dataset(preBody)
 %   session_reference are NDI-internal session-assembly reconstruction handles
 %   (how the session was linked/rebuilt into the dataset), not go-forward schema
 %   content — the same disposition as the retired ndi_<x>_class config handles.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI session_in_a_dataset.json + base.json at the
+%   locked NDI-matlab `main`, 3cb19a8, as +ndi/dataset.m writes it). Every v1
+%   field and where it goes; did2.convert.roundtrip.session_in_a_dataset
+%   rebuilds the v1 document and testRawV1RoundTripSession compares the two:
+%
+%     base.session_id               -> the dataset entity's id (D.id()) and the
+%                                      relation's parent
+%     base.datestamp                -> the relation's creation_timestamp
+%     base.id                       -> NOT KEPT (the relation's id is minted):
+%                                      a known finding, a question for the team
+%     base.name                     -> not kept ('' on every writer document)
+%     session_in_a_dataset.session_id   -> the relation's child
+%     .is_linked                    -> the method term (database linking /
+%                                      database ingestion)
+%     .session_creator              -> the "software class" parameter
+%     .session_creator_input2       -> the "Pathname" parameter (a linked
+%                                      session)
+%     .session_reference            -> dropped when it equals the session
+%                                      entity's local_identifier ([ingested
+%                                      session membership]); else carried
+%     .session_creator_input1..6    -> dropped when a copy of the session's
+%                                      reference or id ([session membership
+%                                      records linked or ingested]); else
+%                                      carried (jMembershipBodies)
+%
+%   A field, block or edge outside these, which the renamed path dropped
+%   without a word, now carries the document whole as v1 (private/jRawAccount,
+%   jRawCarry; no register row yet); what the renamed path would have
+%   discarded (an `ndi_document` beside `base`, a depends_on `version`) is
+%   carried, carry-049, as before.
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above): what the migrator does not read
+% carries the untouched v1 document; a legacy identity block is read as base.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, ...
+    struct('session_in_a_dataset', {{'session_id', 'session_reference', 'is_linked', ...
+    'session_creator', 'session_creator_input1', 'session_creator_input2', ...
+    'session_creator_input3', 'session_creator_input4', 'session_creator_input5', ...
+    'session_creator_input6'}}), {});
+if jRawCarry('session_in_a_dataset', src, collision, unplaced)
+    v2Body = {src};
+    return;
 end
 
 block = struct();
@@ -34,4 +81,7 @@ if isfield(preBody, 'session_in_a_dataset') && isstruct(preBody.session_in_a_dat
     block = preBody.session_in_a_dataset;
 end
 v2Body = jMembershipBodies(preBody, block);
+if isscalar(v2Body) && isequaln(v2Body{1}, preBody)
+    v2Body = {src};     % a carry is the untouched v1 source
+end
 end

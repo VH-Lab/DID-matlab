@@ -149,7 +149,9 @@ for k = 1:numel(batches)
     raw = runRaw(b);
     old = did2.convert.v1_to_v2(b, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
     label = sprintf('batch %d (%s)', k, b{1}.document_class.class_name);
-    verifyEqual(testCase, raw.summary.legacy_ndi_document.bodies_read_raw_v1, 1, label);
+    % the presentation beside a Hartley calculation is read raw too (switched
+    % with the session family, carried for NDI's second pass)
+    verifyEqual(testCase, raw.summary.legacy_ndi_document.bodies_read_raw_v1, numel(b), label);
     verifyEmpty(testCase, raw.quarantine, label);
     verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
     verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), ...
@@ -160,7 +162,15 @@ for k = 1:numel(batches)
         continue;
     end
     for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        verifyTrue(testCase, isequaln(raw.migrated{j}.toStruct(), old.migrated{j}.toStruct()), ...
+        a = raw.migrated{j}.toStruct();
+        if strcmp(char(a.document_class.schema_version), 'did_v1')
+            % a carried presentation: the raw path carries the v1 source, the
+            % renamed path its universalRenames output; both did_v1
+            verifyEqual(testCase, char(old.migrated{j}.get('document_class.schema_version')), ...
+                'did_v1', label);
+            continue;
+        end
+        verifyTrue(testCase, isequaln(a, old.migrated{j}.toStruct()), ...
             sprintf('%s, document %d differs between the raw and the renamed path', label, j));
     end
 end

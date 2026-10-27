@@ -147,7 +147,33 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         (jrclust_clusters), ndi.calc.vis.hartley and
 %                         ndi.calc.vis.speed_tuning (NDIcalc-vis-matlab). Round
 %                         trips: testRawV1RoundTripSpike.
+%     session               the session / dataset / presentation family:
+%     session_in_a_dataset  superclass `base` (+ `epochid` and the writer's
+%     dataset_remote        `app` for stimulus_presentation), no superclass
+%     metadata_editor       migrator. The v1 names are the migrator names.
+%     stimulus_presentation What a migrator does not read carries the
+%                         document (private/jRawAccount). The presentation is
+%                         carried untouched for NDI's second pass (carry-045),
+%                         which reads it from the v1 input, so what NDI
+%                         receives is unchanged. Written by +session/dir.m,
+%                         +ndi/dataset.m, +cloud/+internal/
+%                         createRemoteDatasetDoc.m, +metadata_ds_core/
+%                         saveEditor2Doc.m, +app/+stimulus/decoder.m. Round
+%                         trips: testRawV1RoundTripSession.
 %     NOT LISTED, and why:
+%       control_stimulus_ids  its migrator passes it through (no note, so its
+%                         responses do not carry), and NDI's second pass reads
+%                         the record from pass 1's OUTPUT (ndi.migrate.local
+%                         resolveStimulusPresentations: convertResult.migrated),
+%                         not from the v1 input. Raw, the passthrough would
+%                         reach NDI as v1 spells it (`app.name`, edge `value`)
+%                         instead of renamed, and its V_eta tombstone
+%                         (superclass `app`, which declares `app_name`) refuses
+%                         `app.name` (did2:validation:undeclaredField), so a
+%                         validating run would quarantine all 1,428 corpus
+%                         records. It stays on the renamed path until NDI reads
+%                         the record from its input, or pass 1 carries it as a
+%                         handed-on v1 document (a team question).
 %       simple_calc       a pass-1 passthrough for which no corpus holds a
 %                         document; its raw passthrough (`app.name`, a
 %                         `calculator` block) would meet the V_eta
@@ -199,6 +225,11 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'stimulus_bath', ...
     'position_metadata', ...
     'distance_metadata', ...
+    'session', ...
+    'session_in_a_dataset', ...
+    'dataset_remote', ...
+    'metadata_editor', ...
+    'stimulus_presentation', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
