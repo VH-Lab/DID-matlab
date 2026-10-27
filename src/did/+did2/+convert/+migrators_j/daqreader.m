@@ -100,9 +100,38 @@ function bodies = daqreader(preBody)
 %   in private/jSoftware.m. Here the merge is additionally CONSTRAINED: base.id
 %   is preserved, so this software document's id is load-bearing for four other
 %   classes and a merger must RETARGET rather than delete.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI daqreader.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+daq/reader.m newdocument writes it).
+%   Every v1 field and where it goes; did2.convert.roundtrip.daqreader rebuilds
+%   the v1 document and testRawV1RoundTripDaq compares the two:
+%
+%     base.id, session_id, datestamp  -> the acquisition_reader's (the session
+%                                        is often ndi.session.empty_id())
+%     base.name                       -> not written (the writer leaves '')
+%     daqreader.ndi_daqreader_class   -> the software entity's name
+%
+%   What the renamed path would have discarded is carried, carry-049, as
+%   before; a field or edge no part of this migrator reads now carries the
+%   document whole as v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]).
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above). `reader_string` is not a field of
+% NDI's daqreader template; it is what daqreader_ndr.m de-encodes onto the
+% block before it hands the document on, and it is placed below.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct('daqreader', ...
+    {{'ndi_daqreader_class', 'reader_string'}}), {});
+if jRawCarry('daqreader', src, collision, unplaced, 'carry-100')
+    bodies = {src};
+    return;
 end
 
 blk = struct();
@@ -122,7 +151,7 @@ readerString = jGetChar(blk, 'reader_string');
 % a body with NEITHER a class name NOR a reader string says nothing at all,
 % and minting entities from it would be the hollow-document defect.
 if isempty(implClass) && isempty(readerString)
-    bodies = {preBody};
+    bodies = {src};
     return;
 end
 

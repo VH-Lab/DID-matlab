@@ -226,26 +226,35 @@ assertEqual(testCase, numel(out.quarantine), 1, ...
     'the unmappable value did not quarantine; the assertions below would be vacuous');
 verifyEqual(testCase, out.quarantine(1).identifier, ...
     'did2:convert:demoUnmappableValue');
-verifyEqual(testCase, out.quarantine(1).class_name, 'demo_ndi');
+% demoNDI is read raw (did2.convert.rawV1Classes): the class keeps v1's name
+verifyEqual(testCase, out.quarantine(1).class_name, 'demoNDI');
 verifyTrue(testCase, contains(out.quarantine(1).reason, 'char'), ...
     'the reason must name the shape that could not be held');
 end
 
 function testDemoRefusesAFieldItHasNoDestinationFor(testCase)
 % V_eta `demo` declares exactly `value` and `is_mock`. A did_v1 field outside
-% those two would be silently DROPPED by this fold, so it is named and refused.
-% If NDI ever adds a field to demoNDI, this test is the thing that says so --
-% loudly, on the first document, instead of at a corpus census months later.
+% those two would be silently DROPPED by this fold, so it is never dropped.
+% Read raw (did2.convert.rawV1Classes), a field outside NDI's template carries
+% the document whole as v1 ([fields outside the template are malformed],
+% carry-100, Jess Haley, 2026-10-27), named in the note; before the switch the
+% fold refused it with an error (a quarantine), which the renamed path still
+% does.
 v1 = demoNdiV1(5);
 v1.demoNDI.somethingNew = 'x';
 out = runJ(v1);
-verifyEmpty(testCase, out.migrated);
-assertEqual(testCase, numel(out.quarantine), 1, ...
-    'the unknown field did not quarantine; the assertions below would be vacuous');
-verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:demoUnknownField');
+verifyEmpty(testCase, out.quarantine);
+assertEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
+d = strjoin(cellstr(out.summary.migration_notes.carried_as_v1.distinct_details), ' | ');
+verifyTrue(testCase, contains(d, '[carry-100]') && contains(d, 'demoNDI.somethingNew'), d);
+old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+assertEqual(testCase, numel(old.quarantine), 1, ...
+    'the renamed path no longer refuses it; the assertions below would be vacuous');
+verifyEqual(testCase, old.quarantine(1).identifier, 'did2:convert:demoUnknownField');
 % universalRenames snake_cases field names inside a block, so the reason names
 % the V_eta spelling of the offending field
-verifyTrue(testCase, contains(out.quarantine(1).reason, 'something_new'), ...
+verifyTrue(testCase, contains(old.quarantine(1).reason, 'something_new'), ...
     'the reason must name the field that had no destination');
 end
 

@@ -37,8 +37,49 @@ function bodies = position_metadata(preBody)
 %   numeric coordinate body is a Path-S / element-graph job. The class is
 %   under-specified for any value-bearing leaf from this document alone.
 %   =======================================================================
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI position_metadata.json + base.json at the
+%   locked NDI-matlab `main`, 3cb19a8, as +setup/+conv/+haley/doImport.m
+%   writes it: ontologyNode the body part, units 'NCIT:C48367', dimensions
+%   'NCIT:C44477,NCIT:C44478'). Every v1 field and where it goes;
+%   did2.convert.roundtrip.position_metadata rebuilds the v1 document and
+%   testRawV1RoundTripPosition compares the two:
+%
+%     base.id, session_id, datestamp   -> the observation's
+%     base.name                        -> not written (the writer leaves '')
+%     depends_on element_id            -> the observation's entity_id
+%     position_metadata.ontologyNode   -> the value term's node
+%     position_metadata.units,         -> no place: the document is carried
+%       position_metadata.dimensions      whole as v1 (carry-053). The writer
+%                                         sets both, so every writer document
+%                                         is carried.
+%
+%   A document stating no ontologyNode has nothing to observe. Before the
+%   switch it passed through as a V2 `position_metadata` (a class whose
+%   disposition is `retire`), which NDI's final step stamps v1 again
+%   ([passthrough stays v1: how]); it is now carried as v1 at once (no register
+%   row yet), the same end state. No NDI writer at the locked main writes one. What the
+%   renamed path would have discarded is carried,
+%   carry-049, as before; a field or edge no part of this migrator reads now
+%   carries the document whole as v1 (private/jRawAccount, jRawCarry; no
+%   register row yet). The JH writer's documents also hang off an element of
+%   type `position`, which is carried (carry-063), so v1_to_v2 carries them
+%   for that too (carry-064, [dependents of a carried document carry]).
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above)
+src = preBody;
+[preBody, collision, unplacedRaw] = jRawAccount(src, ...
+    struct('position_metadata', {{'ontologyNode', 'units', 'dimensions'}}), ...
+    {'^element_id$', '^subject_id$'});
+if jRawCarry('position_metadata', src, collision, unplacedRaw, 'carry-100')
+    bodies = {src};
+    return;
 end
 
 blk = struct();
@@ -46,13 +87,20 @@ if isfield(preBody, 'position_metadata') && isstruct(preBody.position_metadata)
     blk = preBody.position_metadata;
 end
 
-% measurement CURIE: v1 `ontologyNode` (universalRenames -> ontology_node).
-node = jGetChar(blk, 'ontology_node');
-if isempty(node); node = jGetChar(blk, 'ontologyNode'); end
+% measurement CURIE: v1 `ontologyNode`; `ontology_node` is the spelling
+% universalRenames gives it, which this migrator still meets on the renamed path
+% (v1_to_v2 'RawV1Classes', {}) until that pass is deleted
+node = jGetChar(blk, 'ontologyNode');
+if isempty(node); node = jGetChar(blk, 'ontology_node'); end
 
 if isempty(node)
-    bodies = {preBody};   % no measurement term to record -> carry unchanged
-    return;               % (discovery fallback; never invent an observation)
+    % no measurement term to record: never invent an observation. Carried
+    % whole as v1, where NDI's last step put the renamed path's passthrough
+    % carry-register: none (a position_metadata naming no measurement)
+    did2.convert.reportNote('carried_as_v1', 'position_metadata', ...
+        char(preBody.base.id), 'unplaced: position_metadata (no ontologyNode: no measurement to observe)');
+    bodies = {src};
+    return;
 end
 
 % [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
@@ -71,7 +119,7 @@ if ~isempty(unplaced)
     % carry-register: carry-053
     did2.convert.reportNote('carried_as_v1', 'position_metadata', ...
         char(preBody.base.id), ['[carry-053] unplaced: ' strjoin(unplaced, ', ')]);
-    bodies = {preBody};
+    bodies = {src};
     return;
 end
 

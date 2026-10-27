@@ -120,9 +120,53 @@ function v2Body = metadata_editor(preBody)
 %   it fails identically on a hand-built struct fixture. Same silent-loss
 %   family, same four blind detectors; needs a team call on whether a person
 %   gets one `affiliated_with` edge per affiliation.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI metadata_editor.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+database/+metadata_ds_core/
+%   saveEditor2Doc.m writes it: base.id new, base.session_id = the dataset's
+%   id, the form in metadata_editor.metadata_structure via
+%   convertDatasetInfoToDocument). did2.convert.roundtrip.metadata_editor
+%   rebuilds the v1 document and testRawV1RoundTripSession compares the two.
+%   Where each v1 field goes is the bucket list above; in addition:
+%
+%     base.session_id  -> the dataset entity's id
+%     base.datestamp   -> the creation_timestamp of every emitted document
+%     base.id          -> NOT KEPT: a known finding, a question for the team
+%     base.name        -> not kept ('' on every writer document)
+%     metadata_structure.Subjects / SpeciesList / StrainList /
+%       BiologicalSexList
+%                      -> dropped as before (bucket 2, per-subject
+%                         projections)
+%
+%   A form field the migrator does not read (e.g. the writer's `Comments`,
+%   an author's `authorRole`, an affiliation's other fields), or any other
+%   field, block or edge, which the renamed path dropped without a word, now
+%   carries the document whole as v1 (private/jRawAccount, jRawCarry and
+%   formUnread below; carry-100, [fields outside the template are
+%   malformed]); what the renamed path would have
+%   discarded (an `ndi_document` beside `base`, a depends_on `version`) is
+%   carried, carry-049, as before.
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above): what the migrator does not read
+% carries the untouched v1 document; a legacy identity block is read as base.
+src = preBody;
+[preBody, collision, unplaced0] = jRawAccount(src, ...
+    struct('metadata_editor', {{'metadata_structure'}}), {});
+if isempty(collision) && isfield(preBody, 'metadata_editor') ...
+        && isstruct(preBody.metadata_editor) && isscalar(preBody.metadata_editor)
+    unplaced0 = [unplaced0, formUnread(getScalarStruct(preBody.metadata_editor, ...
+        'metadata_structure'))];
+end
+if jRawCarry('metadata_editor', src, collision, unplaced0, 'carry-100')
+    v2Body = {src};
+    return;
 end
 
 % ---------------------------------------------------------------------
@@ -185,7 +229,7 @@ if ~isempty(unplaced)
     % errors in datasetFormTerms ([pipeline defects are not carries])
     did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
-    v2Body = {preBody};
+    v2Body = {src};     % a carry is the untouched v1 source
     return;
 end
 
@@ -385,6 +429,107 @@ for k = 1:numel(values)
         t = struct('node', node, 'name', name);
         return;
     end
+end
+end
+
+function paths = formUnread(ms)
+%FORMUNREAD The form fields (metadata_structure, as NDI's editor writes it)
+%   that hold a value and that no part of this migrator reads, each as a path.
+%   Read: the bucket-1 fields; Author's givenName, familyName,
+%   contactInformation.email, digitalIdentifier.identifier and
+%   affiliation(k).memberOf.fullName; Funding's funder, awardTitle and
+%   awardNumber; RelatedPublication's Publication, DOI, PMID and PMCID; the
+%   three form-term fields. Dropped by decision (bucket 2): Subjects,
+%   SpeciesList, StrainList, BiologicalSexList.
+paths = {};
+if ~isstruct(ms) || ~isscalar(ms)
+    return;
+end
+top = {'DatasetFullName', 'DatasetShortName', 'VersionIdentifier', ...
+    'VersionInnovation', 'Description', 'HowToCite', 'License', 'Accessibility', ...
+    'EthicsAssessment', 'ReleaseDate', 'Keyword', 'SupportChannel', ...
+    'FullDocumentation', 'ExperimentalApproach', 'TechniquesEmployed', 'DataType', ...
+    'Subjects', 'SpeciesList', 'StrainList', 'BiologicalSexList'};
+lists = struct( ...
+    'Author', {{'givenName', 'familyName', 'contactInformation', ...
+        'digitalIdentifier', 'affiliation'}}, ...
+    'Funding', {{'funder', 'awardTitle', 'awardNumber'}}, ...
+    'RelatedPublication', {{'Publication', 'DOI', 'PMID', 'PMCID'}});
+fns = fieldnames(ms);
+for k = 1:numel(fns)
+    f = fns{k};
+    if any(strcmp(f, top))
+        continue;
+    end
+    if isfield(lists, f)
+        items = getStructArray(ms, f);
+        v = ms.(f);
+        if ~isempty(v) && isempty(items)
+            paths{end+1} = f; %#ok<AGROW>
+            continue;
+        end
+        for i = 1:numel(items)
+            paths = [paths, unreadOf(items(i), lists.(f), sprintf('%s(%d)', f, i))]; %#ok<AGROW>
+            if strcmp(f, 'Author')
+                paths = [paths, authorUnread(items(i), i)]; %#ok<AGROW>
+            end
+        end
+        continue;
+    end
+    if ~isEmptyValueOf(ms.(f))
+        paths{end+1} = f; %#ok<AGROW>
+    end
+end
+end
+
+function paths = authorUnread(a, i)
+paths = {};
+where = sprintf('Author(%d)', i);
+paths = [paths, unreadOf(scalarOf(a, 'contactInformation'), {'email'}, ...
+    [where '.contactInformation'])];
+paths = [paths, unreadOf(scalarOf(a, 'digitalIdentifier'), {'identifier'}, ...
+    [where '.digitalIdentifier'])];
+if isfield(a, 'affiliation') && isstruct(a.affiliation)
+    for j = 1:numel(a.affiliation)
+        af = a.affiliation(j);
+        w = sprintf('%s.affiliation(%d)', where, j);
+        paths = [paths, unreadOf(af, {'memberOf'}, w)]; %#ok<AGROW>
+        paths = [paths, unreadOf(scalarOf(af, 'memberOf'), {'fullName'}, [w '.memberOf'])]; %#ok<AGROW>
+    end
+elseif isfield(a, 'affiliation') && ~isEmptyValueOf(a.affiliation)
+    paths{end+1} = [where '.affiliation'];
+end
+end
+
+function s = scalarOf(a, f)
+s = struct();
+if isstruct(a) && isscalar(a) && isfield(a, f) && isstruct(a.(f)) && isscalar(a.(f))
+    s = a.(f);
+end
+end
+
+function paths = unreadOf(s, known, where)
+paths = {};
+if ~isstruct(s) || ~isscalar(s)
+    return;
+end
+fns = fieldnames(s);
+for k = 1:numel(fns)
+    if ~any(strcmp(fns{k}, known)) && ~isEmptyValueOf(s.(fns{k}))
+        paths{end+1} = [where '.' fns{k}]; %#ok<AGROW>
+    end
+end
+end
+
+function tf = isEmptyValueOf(v)
+if isempty(v)
+    tf = true;
+elseif isstruct(v) && isscalar(v)
+    tf = all(cellfun(@(f) isEmptyValueOf(v.(f)), fieldnames(v)));
+elseif ischar(v) || (isstring(v) && isscalar(v))
+    tf = isempty(strtrim(char(v)));
+else
+    tf = false;
 end
 end
 

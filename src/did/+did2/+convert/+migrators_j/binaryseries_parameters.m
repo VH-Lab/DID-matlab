@@ -270,6 +270,20 @@ function bodies = binaryseries_parameters(preBody)
 %   and V_eta_data_body_model_plan.md (the addendum that gives the axis its own
 %   `datum_type`, which this class is what surfaced).
 
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 would write it (data/binaryseries_parameters.json + base.json
+%   at the locked NDI-matlab `main`, 3cb19a8). NO NDI WRITER AT THAT `main`
+%   CONSTRUCTS ONE AND NO CORPUS HOLDS ONE: the template alone fixes its shape
+%   (six snake_case fields, no edges, no `app` block), so the raw document is the
+%   renamed one and the rules above apply unchanged. What the renamed path would
+%   have discarded is carried, carry-049; a field, block or edge outside the
+%   template carries the document, carry-100 (private/jRawAccount, jRawCarry),
+%   checked after the invented-field guard. did2.convert.roundtrip.
+%   binaryseries_parameters rebuilds the v1 document; testRawV1RoundTripDemo
+%   compares the two.
 arguments
     preBody (1,1) struct
 end
@@ -285,6 +299,14 @@ for invented = {'num_channels', 'sample_rate'}
              'tombstone required. This shape can only come from the V_alpha/' ...
              'V_zeta snapshot or a fixture built against it.'], invented{1});
     end
+end
+
+% THE RAW READ (see READS RAW v1 above)
+[~, collision, unplaced] = jRawAccount(preBody, struct(BLOCK, {{'time_size', 'time_type', ...
+    'data_size', 'data_type', 'data_dim', 'samples_regular_intervals'}}), {});
+if jRawCarry('binaryseries_parameters', preBody, collision, unplaced, 'carry-100')
+    bodies = {preBody};
+    return;
 end
 
 if isfield(preBody, BLOCK) && isstruct(preBody.(BLOCK))

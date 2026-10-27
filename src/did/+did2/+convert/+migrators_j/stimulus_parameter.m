@@ -98,12 +98,36 @@ function bodies = stimulus_parameter(preBody)
 %
 %   See also: did2.convert.migrators_j.binaryseries_parameters (the precedent),
 %   did2.convert.migrators_j.super.image_stack_parameters (the sibling trap).
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (stimulus_parameter.json + epochid.json + base.json
+%   at the locked NDI-matlab `main`, 3cb19a8, as
+%   +ndi/+setup/+conv/+marder/temptable2stimulusparameters.m writes it:
+%   ontology_name an NDIC node, name, value the temperature, epochid, the
+%   stimulus_element_id edge). Its blocks are snake_case already and it has no
+%   `app` block, so the raw document is the renamed one but for v1's `value`
+%   edge key; the value rule above applies unchanged.
+%   did2.convert.roundtrip.stimulus_parameter rebuilds the v1 document and
+%   testRawV1RoundTripMeasurement compares the two. What the renamed path would
+%   have discarded is carried, carry-049; a field, block or edge outside the
+%   template carries the document, carry-100 (private/jRawAccount, jRawCarry).
 
 arguments
     preBody (1,1) struct
 end
 
 BLOCK = 'stimulus_parameter';
+
+% THE RAW READ (see READS RAW v1 above)
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'stimulus_parameter', {{'ontology_name', 'name', 'value'}}, 'epochid', {{'epochid'}}), ...
+    {'^stimulus_element_id$'});
+if jRawCarry('stimulus_parameter', preBody, collision, unplaced, 'carry-100')
+    bodies = {preBody};
+    return;
+end
 
 if isfield(preBody, BLOCK) && isstruct(preBody.(BLOCK)) ...
         && isfield(preBody.(BLOCK), 'value')

@@ -494,8 +494,10 @@ v1.depends_on = struct('name', {'subject_id'}, 'value', {'sub_42'});
 v1.base = struct('id', 'me_1', 'session_id', 'sess_09', ...
     'name', 'm', 'datestamp', '2024-06-01T12:00:00.000Z');
 % NDI origin/main measurement.json: {ontologyName, name, numeric_value,
-% string_value}; universalRenames snake_cases ontologyName -> ontology_name.
-v1.measurement = struct('ontology_name', 'PATO:0000128', 'name', 'body weight', ...
+% string_value}, spelled as v1 spells it: the class reads raw v1
+% (did2.convert.rawV1Classes), so a renamed `ontology_name` is outside the
+% template and carries the document (carry-100).
+v1.measurement = struct('ontologyName', 'PATO:0000128', 'name', 'body weight', ...
     'numeric_value', 22.5, 'string_value', '');
 out = runJ(v1);
 obs = docOfClass(testCase, out, 'observation+mass');

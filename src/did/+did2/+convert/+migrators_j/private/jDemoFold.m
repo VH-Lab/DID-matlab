@@ -89,7 +89,10 @@ end
 demoBlock = struct();
 
 % ---- value, from the did_v1 `demoNDI` block (inherited by demoNDIMock) ----
-src = getBlock(preBody, 'demo_ndi');
+% v1 spells the blocks demoNDI / demoNDIMock (read raw, did2.convert.rawV1Classes);
+% universalRenames spelled them demo_ndi / demo_ndi_mock
+src = getBlock(preBody, 'demoNDI');
+if isempty(fieldnames(src)); src = getBlock(preBody, 'demo_ndi'); end
 refuseUnknownFields(src, {'value'}, 'demo_ndi', sourceClass);
 if isfield(src, 'value')
     v = src.value;
@@ -120,6 +123,8 @@ demoBlock.mock = isMock;   % #88: `mock` (`is_mock` before)
 if isMock
     % `demoNDIMock` declares NO fields -- its template property block is `{}` --
     % so anything at all on it is unmapped and is reported rather than dropped.
+    refuseUnknownFields(getBlock(preBody, 'demoNDIMock'), {}, ...
+        'demo_ndi_mock', sourceClass);
     refuseUnknownFields(getBlock(preBody, 'demo_ndi_mock'), {}, ...
         'demo_ndi_mock', sourceClass);
     mockBlock = getBlock(preBody, 'mock');
@@ -143,7 +148,7 @@ v2Body.demo = demoBlock;
 % `demo_ndi_mock` is the concrete block of the mock class and carries no fields;
 % it is listed so the removal does not depend on ensureClassBlocks' empty-block
 % sweep, which is a silent no-op when the schema cache cannot resolve the class.
-consumed = {'demo_ndi', 'demo_ndi_mock', 'mock'};
+consumed = {'demo_ndi', 'demo_ndi_mock', 'demoNDI', 'demoNDIMock', 'mock'};
 for k = 1:numel(consumed)
     if isfield(v2Body, consumed{k})
         v2Body = rmfield(v2Body, consumed{k});

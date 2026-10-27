@@ -94,6 +94,31 @@ function bodies = subjectmeasurement(preBody)
 %   up in `summary.unconverted_by_class` instead of disappearing.
 %
 %   1 -> 2 on the fold path (observation + absolute_reference), 1 -> 1 otherwise.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 would write it (subjectmeasurement.json + base.json at the
+%   locked NDI-matlab `main`, 3cb19a8). NO NDI WRITER AT THAT `main` CONSTRUCTS
+%   ONE OUTSIDE ITS TESTS (+ndi/+test/+daq/build_intan_flat_exp.m, tests/
+%   buildSession.m: measurement 'age', value 30, a datestamp) AND NO CORPUS
+%   HOLDS ONE; the template fixes its shape. Its block is snake_case already and
+%   it has no `app` block, so a passthrough is the renamed one but for v1's
+%   `value` edge key. Every v1 field and where it goes;
+%   did2.convert.roundtrip.subjectmeasurement rebuilds the v1 document and
+%   testRawV1RoundTripMeasurement compares the two:
+%
+%     base.id, session_id, datestamp     -> the observation's
+%     depends_on subject_id              -> the observation's entity_id
+%     subjectmeasurement.measurement     -> the observation's variable (name)
+%     subjectmeasurement.value           -> the quantity's source value
+%     subjectmeasurement.datestamp       -> the absolute time reference (else
+%                                           the session anchor, when empty)
+%
+%   What the renamed path would have discarded is carried, carry-049; a field,
+%   block or edge outside the template carries the document, carry-100
+%   (private/jRawAccount, jRawCarry). A passthrough and a carry return the
+%   untouched v1 source.
 
 arguments
     preBody (1,1) struct
@@ -114,7 +139,13 @@ if isfield(blk, 'ontology_name') || isfield(blk, 'numeric_value') ...
          '`datestamp` (NDI origin/main subjectmeasurement.json).']);
 end
 
+% THE RAW READ (see READS RAW v1 above); the guard above runs first
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'subjectmeasurement', {{'measurement', 'value', 'datestamp'}}), {'^subject_id$'});
 bodies = {preBody};
+if jRawCarry('subjectmeasurement', preBody, collision, unplaced, 'carry-100')
+    return;
+end
 
 % ---- guard 1: no subject => no observation ---------------------------------
 subjectId = dependencyValue(preBody, 'subject_id');

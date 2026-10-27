@@ -60,11 +60,30 @@ function v2Body = demo_ndi(preBody)
 %   UNVERIFIED: there is no MATLAB in the authoring environment. CI is the first
 %   execution of every line here.
 
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (`demoNDI`, NDI-matlab locked `main` 3cb19a8;
+%   no NDI writer at that `main` makes one alone (ndi.calc.example.simple makes
+%   demoNDIMock); no corpus holds one, and the template fixes its shape). jDemoFold reads the blocks in v1's spelling (demoNDI, demoNDIMock)
+%   or the renamed one. What the renamed path would have discarded is carried,
+%   carry-049; a field, block or edge outside the template carries the
+%   document, carry-100 (private/jRawAccount, jRawCarry), where the fold
+%   refused it before (an error, so a quarantine). did2.convert.roundtrip.demoNDI
+%   rebuilds the v1 document; testRawV1RoundTripDemo compares the two.
 arguments
     preBody (1,1) struct
 end
 
 % is_mock FALSE: a `demoNDI` document does not carry the did_v1 `mock` superclass,
 % and false is the value did-schema declares as `demo.is_mock`'s default_value.
+% THE RAW READ (see READS RAW v1 above)
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'demoNDI', {{'value'}}, 'files', {{'file_list', 'file_info'}}), {});
+if jRawCarry('demo_ndi', preBody, collision, unplaced, 'carry-100')
+    v2Body = {preBody};
+    return;
+end
 v2Body = jDemoFold(preBody, false, 'demo_ndi');
 end

@@ -23,11 +23,40 @@ function v2Body = treatment_transfer(preBody)
 %   relate THAT to the donor (Path S); that refinement is a job for the NDI
 %   second pass (ndi.migrate) which has the corpus-wide subject graph. Here we
 %   emit the recipient<-donor provenance edge directly.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it, with no universalRenames (identity through jRawBody /
+%   did2.convert.v1read.readBase; a carry is the untouched v1 source). Block
+%   fields are read in the v1 spelling first and the universalRenames spelling
+%   second, so 'RawV1Classes', {} still works. Every v1 field (NDI treatment/treatment_transfer.json +
+%   base.json at the locked NDI-matlab `main`, 3cb19a8, as
+%   +NDIMaker/treatmentMaker writes it) and where it goes;
+%   did2.convert.roundtrip.treatment_transfer rebuilds the v1 document and
+%   testRawV1RoundTripTreatment compares the two:
+%
+%     base.*                   -> as treatment.m
+%     depends_on recipient_id  -> the act's entity_id and the relation's child
+%     depends_on donor_id      -> the relation's parent
+%     entity_ontologyNode, entity_name -> the variable and the term value
+%     method_name              -> interaction.method (a label; '' becomes
+%                                 'transfer', an open finding)
+%     method_ontologyNode      -> NOT READ (an open finding)
+%     timestamp, clocktype     -> the anchor; a clock with no timestamp is
+%                                 not kept (an open finding)
 
 arguments
     preBody (1,1) struct
 end
 
+body = jRawBody(preBody, 'treatment_transfer');
+v2Body = convertTreatmentTransfer(body);
+if isscalar(v2Body) && isequaln(v2Body{1}, body)
+    v2Body = {preBody};   % a carry is the untouched v1 source
+end
+end
+
+function v2Body = convertTreatmentTransfer(preBody)
 if ~isfield(preBody, 'treatment_transfer') || ~isstruct(preBody.treatment_transfer)
     error('did2:convert:missingBlock', ...
         'treatment_transfer body is missing the treatment_transfer property block.');

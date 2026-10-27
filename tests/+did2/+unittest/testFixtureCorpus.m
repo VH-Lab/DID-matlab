@@ -1242,7 +1242,7 @@ d.document_class = struct('class_name','position_metadata','class_version','1.0.
     'superclasses', struct('class_name','base','class_version','1.0.0'));
 d.depends_on = struct('name','element_id','value','pm_sub');
 d.base = struct('id','pm_01','session_id','sess_09','name','pm','datestamp','2024-06-01T12:00:00.000Z');
-d.position_metadata = struct('ontology_node','EMPTY:0000200', ...
+d.position_metadata = struct('ontologyNode','EMPTY:0000200', ...
     'units','NCIT:C48367','dimensions','NCIT:C44477,NCIT:C44478');
 batch = { sub, d };
 end

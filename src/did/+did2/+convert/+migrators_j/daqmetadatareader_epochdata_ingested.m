@@ -72,10 +72,29 @@ function bodies = daqmetadatareader_epochdata_ingested(preBody)
 %   existence-only (declarative), so the edge resolves against the migrated
 %   reader document whatever the target class ends up being called.
 
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it (NDI daqmetadatareader_epochdata_ingested.json + epochid.json
+%   + base.json at the locked NDI-matlab `main`, 3cb19a8, as
+%   +ndi/+daq/metadatareader.m ingest_epochfiles writes it), and pass 1 carries
+%   it UNTOUCHED, whatever it holds: every field reaches NDI's second pass,
+%   which places it or carries it (carry-086, carry-087, carry-088; [extra field
+%   on an ingested stimulus file is malformed]). Its id is read through
+%   did2.convert.v1read.readBase, so a legacy `ndi_document` identity is read
+%   too. The renamed path carried a document universalRenames would have
+%   changed with carry-049 instead; both carry it.
+%   did2.convert.roundtrip.daqmetadatareader_epochdata_ingested holds no
+%   inverse of a conversion, because pass 1 converts nothing:
+%   testRawV1RoundTripIngested checks the carry.
+
 arguments
     preBody (1,1) struct
 end
 
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
 % did-schema #88 RETIRED `acquisition_metadata_file` (#73 review item 61): the
 % bytes become an opaque_body OWNED BY the stimulator term_manipulation of the
 % same epoch, which resolveEpochProbemap mints in a batch pass. A single
@@ -90,7 +109,7 @@ end
 % stimulus-presentation manipulation (or keeps it as v1 with none).
 % carry-register: carry-046
 did2.convert.reportNote('carried_as_v1', 'daqmetadatareader_epochdata_ingested', ...
-    char(preBody.base.id), ['[carry-046] retired class: a body of the presentation, made ' ...
+    id, ['[carry-046] retired class: a body of the presentation, made ' ...
     'by the NDI second pass ([ingested stimulus file is a body of the presentation])']);
 bodies = {preBody};
 end

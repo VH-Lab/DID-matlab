@@ -283,7 +283,8 @@ function testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided(testCase)
 % emitted -- and nothing is quarantined either, which the old value-less
 % observation was.
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
+    'UnitQualityLabels', {'el_1', 'single'});
 verifyEmpty(testCase, out.quarantine, 'the derived element quarantined');
 verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
 verifyNotEmpty(testCase, firstOfClass(out, 'cell'), 'the neuron must still become a subject');
@@ -416,15 +417,18 @@ for t = 1:numel(types)
 end
 end
 
-function testElementWithNoTypeAtAllIsFlaggedNotDropped(testCase)
-% A real, reachable shape: +setup/+conv/+gluckman/channelname2probename.m:29-35
-% returns probetype = '' for counter / status / ACC channels. An empty type is
-% Guard A with the ndi_element_class as the best-known label -- never a silent
-% gap, and never a guessed modality.
+function testElementWithNoTypeAtAllIsCarried(testCase)
+% INVERTS testElementWithNoTypeAtAllIsFlaggedNotDropped. A real, reachable
+% shape: +setup/+conv/+gluckman/channelname2probename.m:29-35 returns probetype
+% = '' for counter / status / ACC channels. [element types have no default]
+% (Jess Haley, 2026-10-26): an empty type is on no list, so the element is
+% carried as v1 (carry-063) instead of becoming a device flagged `modality
+% unresolved`.
 out = runJ(elementDoc('counter', '', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-flag = assertionWithVariable(out, 'modality unresolved');
-verifyNotEmpty(testCase, flag);
-verifyEqual(testCase, flag.get('term.value').name, 'ndi.probe.timeseries.mfdaq');
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.passthrough), 1);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-063] '), d);
 verifyFalse(testCase, anyObservationEmitted(out));
 end
 
@@ -484,7 +488,8 @@ function testTheSpikeTrainAlsoValidatesAgainstVEta(testCase)
 % value_inline_or_body) -- and emits NO observation until its per-epoch body is
 % decided (see testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided).
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
+    'UnitQualityLabels', {'el_1', 'single'});
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -520,7 +525,11 @@ end
 % ===================== helpers ============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+% every element here is el_1; a `spikes` one is a unit its sorting run labels
+% single ([sorted units are cells or groups], Jess Haley, 2026-10-26; without a
+% label it is carried, testRawV1RoundTripElement)
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+    'UnitQualityLabels', {'el_1', 'single'});
 end
 
 function names = classNames(out)

@@ -18,11 +18,6 @@
 %     treatment           - collapse (ontologyName | ontology_name,
 %                           name) -> treatment_name; pass through
 %                           numeric_value and string_value.
-%     ontology_image      - collapse (ontology_name, ontology_region)
-%                           -> region.
-%     ontology_label      - collapse (ontology_name, label_id, label)
-%                           -> term, with the CURIE composed from the
-%                           first two.
 %     epochclocktimes     - SUPERCLASS migrator; rename clocktype ->
 %                           epoch_clock and split t0_t1 -> (t0, t1).
 %                           Applied by the dispatcher to any document
@@ -40,41 +35,30 @@
 %                           Applied to any document that lists ngrid
 %                           in its superclass chain (e.g., hartley_calc
 %                           via reverse_correlation).
-%     ontology_label      - extended to handle the JH single-`ontologyNode`
-%                           idiom (no label/label_id). Looks up the
-%                           name via ndi.ontology.lookup; falls back to
-%                           empty name when the lookup is unavailable.
-%     position_metadata   - semantic-shape migrator: builds
-%                           measurement (ontology_term), units
-%                           (ontology_term), and dimensions
-%                           (array-of-records with axis_1, axis_2 labels)
-%                           from v1 ontologyNode/units/dimensions.
-%     distance_metadata   - paired A/B endpoint migrator: discovers
-%                           labels by regex-scanning ontology_node_X
-%                           keys and builds an endpoints array-of-records
-%                           with measurement, integer_ids, string_ids,
-%                           numeric_values per endpoint.
-%     stimulus_bath       - rename location.ontologyNode -> .node;
-%                           parse the v1 CSV mixture_table into a
-%                           mixture array-of-records; each amount is a
-%                           V2 `concentration` composite with
-%                           source_unit / source_value preserved and
-%                           the appropriate canonical sub-field (molar,
-%                           grams_per_liter, mass_fraction,
-%                           volume_fraction) populated when computable.
 %
-%   Calculator-base wrappers (20211116-driven):
-%   each calls did2.convert.calcCommon to move v1's
-%   `<class>.input_parameters` into a new inherited `calculator` block.
-%   The calculator-identity string lives in `app.app_name` (carried in
-%   v1 as `app.name`) and is handled by the universal app-block field
-%   rename in did2.convert.universalRenames; the per-class wrapper does
-%   not have to know its own calculator-name string.
+%   The calculator-base wrappers are all deleted, with their shared helper
+%   calcCommon: the tuning family's (tuningcurve_calc, oridirtuning_calc,
+%   contrast_sensitivity_calc, contrast_tuning_calc,
+%   spatial_frequency_tuning_calc, temporal_frequency_tuning_calc) and then
+%   hartley_calc, speed_tuning_calc and simple_calc, with jrclust_clusters'
+%   rename. Each class has a +migrators_j migrator, so the wrapper was never
+%   reached; the classes read raw v1 (did2.convert.rawV1Classes; simple_calc
+%   is not switched, see there; [early migration pieces fixed] (1), Jess
+%   Haley, 2026-10-26).
 %
-%     tuningcurve_calc, oridirtuning_calc, hartley_calc,
-%     contrast_sensitivity_calc, contrast_tuning_calc,
-%     spatial_frequency_tuning_calc, speed_tuning_calc,
-%     temporal_frequency_tuning_calc, simple_calc
+%   The position_metadata, distance_metadata and stimulus_bath base migrators
+%   are deleted too: each class has a +migrators_j migrator, which reads raw v1
+%   (distance_metadata's reshapes the v1 spelling itself, where it used to hand
+%   the renamed body to the base migrator).
+%
+%   The element, ontology_image and ontology_label base migrators are deleted
+%   (2026-10-27): each class has a +migrators_j migrator that reads raw v1, and
+%   no NDI template at the locked main names element, ontologyImage or
+%   ontologyLabel as a superclass, so nothing reached them. element_epoch stays
+%   (+migrators_j/element_epoch.m and oneepoch.m call it on the raw block);
+%   epochclocktimes and filter stay for pyraview (not switched); ngrid stays as
+%   the concrete migrator of a leaf `ngrid` document (+migrators_j has only
+%   the +super guard); identity stays as v1_to_v2's fallback.
 %
 %   See did-schema's
 %   did-schema's per-class conversion notes (deleted with did-schema #88) for the

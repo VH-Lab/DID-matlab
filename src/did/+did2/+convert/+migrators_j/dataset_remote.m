@@ -16,9 +16,47 @@ function v2Body = dataset_remote(preBody)
 %     - directed_relation  dataset -stored_at-> web_resource.
 %     - organization  (if a remote org namespace is given) + web_resource
 %                     -hosted_by-> organization.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI dataset_remote.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+cloud/+internal/createRemoteDatasetDoc.m
+%   writes it: base.session_id = the dataset's id, no depends_on). Every v1
+%   field and where it goes; did2.convert.roundtrip.dataset_remote rebuilds the
+%   v1 document and testRawV1RoundTripSession compares the two:
+%
+%     base.session_id             -> the dataset entity's id
+%     base.datestamp              -> its creation_timestamp
+%     base.id                     -> NOT KEPT: a known finding, a question for
+%                                    the team
+%     base.name                   -> not kept ('' on every writer document)
+%     dataset_remote.dataset_id   -> the dataset's global_identifier
+%                                    `ndicloud:<id>`
+%     dataset_remote.organization_id
+%                                 -> the organization entity's name (the
+%                                    writer stores the cloud organization's
+%                                    id here, not a name: a finding), and the
+%                                    dataset -hosted_by-> organization relation
+%
+%   A field, block or edge outside these, which the renamed path dropped
+%   without a word, now carries the document whole as v1 (private/jRawAccount,
+%   jRawCarry; carry-100, [fields outside the template are malformed]); what the renamed path would have
+%   discarded (an `ndi_document` beside `base`, a depends_on `version`) is
+%   carried, carry-049, as before.
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above): what the migrator does not read
+% carries the untouched v1 document; a legacy identity block is read as base.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, ...
+    struct('dataset_remote', {{'dataset_id', 'organization_id'}}), {});
+if jRawCarry('dataset_remote', src, collision, unplaced, 'carry-100')
+    v2Body = {src};
+    return;
 end
 
 block = struct();

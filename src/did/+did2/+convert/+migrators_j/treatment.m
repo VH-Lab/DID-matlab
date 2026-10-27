@@ -36,18 +36,54 @@ function v2Body = treatment(preBody)
 %   Not-a-manipulation rows (date of birth, experiment time) and substance rows whose dose amounts cannot all be placed are also
 %   carried whole as v1 ([generic stage is lossless], [partly placed is
 %   carried as v1], Jess Haley, 2026-10-25).
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it, with no universalRenames (identity through jRawBody /
+%   did2.convert.v1read.readBase; a carry is the untouched v1 source). Block
+%   fields are read in the v1 spelling first and the universalRenames spelling
+%   second, so 'RawV1Classes', {} still works. Every v1 field (NDI treatment.json +
+%   base.json at the locked NDI-matlab `main`, 3cb19a8, as
+%   +NDIMaker/treatmentMaker writes it) and where it goes;
+%   did2.convert.roundtrip.treatment rebuilds the v1 document and
+%   testRawV1RoundTripTreatment compares the two:
+%
+%     base.id / session_id / datestamp -> the manipulation's id / session edge /
+%                                 creation_timestamp; base.name (writers: '')
+%                                 is not written (#73 item 54)
+%     depends_on subject_id    -> the statement's entity_id
+%     depends_on manipulation_id, protocol_id
+%                              -> NOT READ: empty in every writer but
+%                                 table2treatment, whose group link is lost
+%                                 (an open finding, testRawV1RoundTripTreatment)
+%     treatment.ontologyName, name -> statement.variable (registry term)
+%     treatment.numeric_value  -> the value (termNumberKind) or the `numeric
+%                                 value` condition
+%     treatment.string_value   -> notes, or the site observation / the
+%                                 immersion when it is a CURIE
 
 arguments
     preBody (1,1) struct
 end
 
+body = jRawBody(preBody, 'treatment');
+v2Body = convertTreatment(body);
+if isscalar(v2Body) && isequaln(v2Body{1}, body)
+    v2Body = {preBody};   % a carry is the untouched v1 source
+end
+end
+
+function v2Body = convertTreatment(preBody)
 if ~isfield(preBody, 'treatment') || ~isstruct(preBody.treatment)
     error('did2:convert:missingBlock', ...
         'treatment body is missing the treatment property block.');
 end
 block = preBody.treatment;
 
-node     = jGetChar(block, 'ontology_name');
+% NDI's template and writers (treatmentMaker, table2treatment, +haley,
+% +dabrowska) spell the node `ontologyName`; `ontology_name` is the spelling of
+% a body that went through universalRenames ('RawV1Classes', {}).
+node     = jGetCharAny(block, {'ontologyName', 'ontology_name'});
 label    = jGetChar(block, 'name');
 strValue = jGetChar(block, 'string_value');
 numValue = [];

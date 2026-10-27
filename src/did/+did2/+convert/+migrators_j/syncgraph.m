@@ -119,9 +119,41 @@ function bodies = syncgraph(preBody)
 %
 %   base.id IS PRESERVED ON BOTH BRANCHES, so `syncrule_mapping`'s `syncgraph_id`
 %   edge -- and the live NDI query built on it -- resolves either way.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI syncgraph.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+time/syncgraph.m newdocument writes
+%   it; the template declares no edge, the writer adds syncrule_id_1.._N).
+%   Every v1 field and where it goes; did2.convert.roundtrip.syncgraph rebuilds
+%   the v1 document and testRawV1RoundTripDaq compares the two:
+%
+%     base.id, session_id, datestamp  -> the clock_alignment_policy's
+%     base.name                       -> not written (the writer leaves '')
+%     syncgraph.ndi_syncgraph_class   -> the software entity's name
+%     depends_on syncrule_id_1.._N    -> clock_alignment_configuration_id, in
+%                                        order (a bare syncrule_id first)
+%
+%   What the renamed path would have discarded is carried, carry-049, as
+%   before; a field or edge no part of this migrator reads now carries the
+%   document whole as v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]).
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above). A body did2.convert.
+% resolveClockAlignment hands back (stamped did_v2) was accounted for in pass
+% 1; its transient `session_document_id` stamp is read, never emitted.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, ...
+    struct('syncgraph', {{'ndi_syncgraph_class'}}), ...
+    {'^syncrule_id(_\d+)?$', '^session_document_id$'});
+if jRawCarry('syncgraph', src, collision, unplaced, 'carry-100')
+    bodies = {src};
+    return;
 end
 
 block = struct();
@@ -135,7 +167,7 @@ if isfield(preBody, 'base') && isstruct(preBody.base) ...
     sessionId = char(preBody.base.session_id);
 end
 if isempty(sessionId) || isEmptySessionSentinel(sessionId)
-    bodies = {preBody};      % THE GUARD -- see the header
+    bodies = {src};          % THE GUARD -- see the header
     return;
 end
 

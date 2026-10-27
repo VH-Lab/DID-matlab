@@ -16,9 +16,29 @@ function bodies = stimulus_tuningcurve(preBody)
 %   migrators_j.tuningcurve_calc (calc sibling of this raw class).
 %
 %   See did2.convert.migrators_j.private.jCalculation.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (stimulus_tuningcurve.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as ndi.app.stimulus.tuning_response tuning_curve
+%   writes it: the curve, + E.newdocument(), stimulus_response_scalar_id and
+%   element_id). Identity through jRawBody; the `app` block (none here) and the
+%   result fields read in either spelling by jCalculation / jTuningCurve, as for
+%   tuningcurve_calc. Every other field is accounted for (jCalculation
+%   'AccountForEveryField', carry-056 as for the calculator outputs). The
+%   writer always writes stimid and stimulus_presentation_number, which have no
+%   V2 home, so every writer document is carried (carry-056), as before. A
+%   carry is the untouched v1 source. did2.convert.roundtrip.stimulus_tuningcurve
+%   rebuilds the v1 document; testRawV1RoundTripTuningResults compares the two.
 arguments
     preBody (1,1) struct
 end
-bodies = jCalculation(preBody, 'tuning_curve_calculation', 'stimulus', ...
-    'stimulus_tuningcurve', 'stimulus tuning curve', 'ndi.app.stimulus.tuning_response');
+body = jRawBody(preBody, 'stimulus_tuningcurve');
+bodies = jCalculation(body, 'tuning_curve_calculation', 'stimulus', ...
+    'stimulus_tuningcurve', 'stimulus tuning curve', 'ndi.app.stimulus.tuning_response', ...
+    'AccountForEveryField', true);
+if isscalar(bodies) && isequaln(bodies{1}, body)
+    bodies = {preBody};   % a carry or passthrough is the untouched v1 source
+end
 end

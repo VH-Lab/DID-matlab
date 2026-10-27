@@ -53,9 +53,55 @@ function v2Body = oneepoch(preBody)
 %   re-parse or reshape anything; it only moves the result.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (oneepoch.json over element_epoch.json + epochid.json
+%   + base.json at the locked NDI-matlab `main`, 3cb19a8, as ndi.element
+%   addepoch writes it with EPOCHIDS: element_epoch.epoch_clock, .t0_t1 (a
+%   column for one clock), epochid.epochid, oneepoch.epoch_ids, element_id),
+%   with no superclass migrator run on it. So this migrator calls the one the
+%   renamed path ran, did2.convert.migrators.element_epoch (the clocks
+%   records, or its carry-009 / carry-038 carry), on the raw block itself, as
+%   +migrators_j/element_epoch.m does, and writes its edges as {name,
+%   document_id}, as the renamed path did, so the switch changes no emitted
+%   document. Every v1 field is accounted for (jRawAccount on the templates);
+%   one outside them carries the document whole as v1 ([fields outside the
+%   template are malformed], carry-100), where the strict-fields check refused
+%   it before. What universalRenames would have discarded (a depends_on
+%   version, an ndi_document beside base) carries it, carry-049, as before. A
+%   carry is the untouched v1 source. did2.convert.roundtrip.oneepoch rebuilds
+%   the v1 document; testRawV1RoundTripOneEpoch compares the two.
 
 arguments
     preBody (1,1) struct
+end
+
+src = preBody;
+if ~(isfield(preBody, 'element_epoch') && isstruct(preBody.element_epoch) ...
+        && isfield(preBody.element_epoch, 'clocks'))
+    % THE RAW READ (see READS RAW v1 above): a body the renamed path's
+    % superclass migrator has not already reshaped
+    [preBody, collision, unplaced] = jRawAccount(src, struct( ...
+        'oneepoch', {{'epoch_ids'}}, 'element_epoch', {{'epoch_clock', 't0_t1'}}, ...
+        'epochid', {{'epochid'}}, 'files', {{'file_list', 'file_info'}}), {'^element_id$'});
+    if jRawCarry('oneepoch', src, collision, unplaced, 'carry-100')
+        v2Body = {src};
+        return;
+    end
+    if isfield(preBody, 'depends_on') && ~isempty(preBody.depends_on)
+        deps = did2.convert.v1read.readDependsOn(preBody);
+        preBody.depends_on = struct('name', {deps.name}, 'document_id', {deps.document_id});
+    end
+    stamp = did2.convert.v1read.readStamp(preBody);
+    preBody.document_class.superclasses = struct('class_name', stamp.superclasses);
+    reshaped = did2.convert.migrators.element_epoch(preBody);
+    if isequaln(reshaped, preBody)
+        v2Body = {src};   % its carry (noted there): the untouched v1 source
+        return;
+    end
+    preBody = reshaped;
 end
 
 v2Body = preBody;

@@ -34,12 +34,17 @@ function [result, report] = foldGenericFiles(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set --
 %   the grammar is in the parser's docstring.
 %
-%   BATCH-PASS-CONSUMES: generic_file, ontology_label, file_reference
+%   BATCH-PASS-CONSUMES: generic_file, ontologyLabel, ontology_label, file_reference
 %   BATCH-PASS-EMITS: generic_file -> document: observation+term, opaque_body
 %   BATCH-PASS-EMITS: file_reference -> document: opaque_body
-%   BATCH-PASS-EMITS: ontology_label -> nothing: read at :446-457 (the `ontology_label` loop) for the
-%       sibling label's `ontologyNode`, which becomes the observation's
+%   BATCH-PASS-EMITS: ontologyLabel -> nothing: the v1 spelling, which pass 1
+%       hands over now that ontologyLabel reads raw v1 (did2.convert.rawV1Classes).
+%       Read in the label loop (the one guarded by isOntologyLabelClass) for
+%       the sibling label's `ontologyNode`, which becomes the observation's
 %       `variable`. The label document itself is left exactly where it is.
+%   BATCH-PASS-EMITS: ontology_label -> nothing: the renamed spelling, read in
+%       the same loop the same way. The label document itself is left exactly
+%       where it is.
 %   ---------------------------------------------------------------------
 %
 %   ---------------------------------------------------------------------
@@ -521,11 +526,14 @@ report.generic_files_seen = double(genericIdx.Count);
 % A label is matched to its target ONLY when the target is a generic_file in
 % this batch. Every other label -- the ~7,007 that are not about a file, and
 % any whose target is out of batch -- is not even looked up, and none is
-% touched either way.
+% touched either way. A label is found under either class name
+% (did2.convert.isOntologyLabelClass): `ontologyLabel` as v1 writes it and pass
+% 1 now hands it over (did2.convert.rawV1Classes), or the renamed
+% `ontology_label`; its block is read in the same two spellings.
 labelNode  = containers.Map('KeyType', 'char', 'ValueType', 'char');
 labelCount = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
-    if ~strcmp(classes{k}, 'ontology_label'); continue; end
+    if ~did2.convert.isOntologyLabelClass(classes{k}); continue; end
     report.ontology_labels_seen = report.ontology_labels_seen + 1;
     targetId = depValueOf(bodies{k}, 'document_id');
     if isempty(targetId) || ~isKey(genericIdx, targetId); continue; end
@@ -534,8 +542,11 @@ for k = 1:n
         labelCount(targetId) = labelCount(targetId) + 1;
     else
         labelCount(targetId) = 1;
-        labelNode(targetId)  = charField(blockOf(bodies{k}, 'ontology_label'), ...
-            {'ontology_node', 'ontologyNode'});
+        labelBlock = blockOf(bodies{k}, 'ontology_label');
+        if isempty(fieldnames(labelBlock))
+            labelBlock = blockOf(bodies{k}, 'ontologyLabel');
+        end
+        labelNode(targetId)  = charField(labelBlock, {'ontology_node', 'ontologyNode'});
     end
 end
 

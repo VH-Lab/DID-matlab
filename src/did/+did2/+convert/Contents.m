@@ -26,7 +26,22 @@
 %                          struct with `migrated`, `quarantine` and
 %                          `summary` fields (plus the audit censuses).
 %     universalRenames   - the cross-cutting did_v1 renames applied before
-%                          any migrator.
+%                          any migrator of a class NOT yet switched to raw
+%                          v1 (deleted once the last class has switched,
+%                          [migrators read raw v1]).
+%     rawV1Classes       - the classes whose migrator reads the RAW v1
+%                          document (no universalRenames, no superclass
+%                          migrators); one family at a time.
+%     isOntologyLabelClass - true for a label document under either class
+%                          name (`ontologyLabel`, `ontology_label`); the one
+%                          place DID-matlab decides it.
+%     +v1read            - shared raw-v1 reading helpers: readDependsOn,
+%                          readBase, readApp, readStamp. They read v1 as the
+%                          NDI templates define it and drop nothing.
+%     +roundtrip         - the round trip of a switched class
+%                          ([migration reliability practices] (a)): check
+%                          rebuilds the v1 document from the emitted V2
+%                          documents with the class's inverse and compares.
 %     ensureClassBlocks  - give a body exactly the class blocks its schema
 %                          chain hosts.
 %     isAlreadyTarget    - true when a body is already stamped did_v2 (a
@@ -44,7 +59,7 @@
 %                          <dst>.quarantine.json.
 %
 %   Shared helpers used by migrators
-%     axisKey, axisTerm, calcCommon, channelType, epochIndex,
+%     axisKey, axisTerm, channelType, epochIndex,
 %     ethicsJurisdiction, registeredTerm, reportNote, mintSessionDuring,
 %     stimulusPresentationSpecs (the batch's presentation settings, loaded
 %     by v1_to_v2)

@@ -65,6 +65,23 @@ function bodies = vmspikesummary(preBody)
 %   built against our schema instead of the real document.
 %
 %   See V_eta_migrator_vocabulary_audit.md for the evidence.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 would write it (apps/vhlab_voltage2firingrate/vmspikesummary.json + epochid.json
+%   + base.json at the locked NDI-matlab `main`,
+%   3cb19a8). NO NDI WRITER AT THAT `main` CONSTRUCTS ONE AND NO CORPUS HOLDS
+%   ONE (the vhlab_voltage2firingrate writer is in no repository we hold): the
+%   template alone fixes its shape. Its blocks are snake_case already and it
+%   has no `app` block, so the raw passthrough is the renamed one but for v1's
+%   `value` edge key, and it validates against the same V_eta class. What the
+%   renamed path would have discarded is carried, carry-049, as before; a
+%   field, block or edge outside the template (which the passthrough met as an
+%   undeclared field) carries the document whole as v1 (private/jRawAccount,
+%   jRawCarry; [fields outside the template are malformed], carry-100).
+%   did2.convert.roundtrip.vmspikesummary rebuilds the v1 document from the passthrough;
+%   testRawV1RoundTripIngestedEpochs compares the two.
 
 arguments
     preBody (1,1) struct
@@ -80,7 +97,14 @@ if isfield(blk, 'mean_vm') || isfield(blk, 'mean_firing_rate') ...
          'spike-shape metrics, all arrays. This shape can only come from the ' ...
          'V_alpha snapshot or a fixture built against it.']);
 end
-bodies = {preBody};
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'vmspikesummary', {{'mean_spikewave', 'sample_times', 'number_of_spikes', ...
+        'median_spikekink_vm', 'median_voltageofhalfmaximum', 'median_fullwidthhalfmaximum', ...
+        'median_presk_halfwidthmaximum', 'median_postsk_halfwidthmaximum', 'median_max_dvdt', ...
+        'median_kink_index', 'slope_criterion'}}, 'epochid', {{'epochid'}}), ...
+    {'^element_id$', '^spike_extraction_id$'});
+jRawCarry('vmspikesummary', preBody, collision, unplaced, 'carry-100');
+bodies = {preBody};   % a passthrough, or the carry of the untouched v1 source
 end
 
 % ===================== small helpers =======================================

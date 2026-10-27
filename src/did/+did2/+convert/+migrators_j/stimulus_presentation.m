@@ -137,6 +137,26 @@ function bodies = stimulus_presentation(preBody)
 %   did2.convert.migrators_j.control_stimulus_ids,
 %   did2.convert.migrators_j.openminds_stimulus (the invented-edge guard),
 %   did2.convert.migrators_j.epochfiles_ingested (the guarded-passthrough shape).
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI stimulus_presentation.json + epochid.json +
+%   base.json at the locked NDI-matlab `main`, 3cb19a8, with the `app` block
+%   newdocument() adds, as +ndi/+app/+stimulus/decoder.m and
+%   +ndi/+mock/+fun/stimulus_presentation.m write it), and pass 1 carries it
+%   UNTOUCHED, whatever it holds, citing carry-045: every field reaches NDI's
+%   second pass, which reads the presentation from the v1 input documents
+%   (ndi.migrate.local resolveStimulusPresentations), not from this pass's
+%   output, so what NDI receives does not change. The pass-1 carry is now the
+%   v1 source itself (before: the universalRenames output, also stamped
+%   did_v1). The renamed path carried a document universalRenames would have
+%   changed with carry-049 instead; both carry it. The edges are read with
+%   did2.convert.v1read.readDependsOn (either key, a struct or a cell), the id
+%   with readBase (a legacy `ndi_document` identity too).
+%   did2.convert.roundtrip.stimulus_presentation holds no inverse of a
+%   conversion, because pass 1 converts nothing: testRawV1RoundTripSession
+%   checks the carry.
 
 arguments
     preBody (1,1) struct
@@ -164,9 +184,12 @@ end
 % V_eta_go_forward_class_audit.md): not a V2 class; pass 1 carries the v1
 % document UNCHANGED as v1 ([passthrough stays v1]) -- stamped did_v1 by
 % v1_to_v2, never read against V_eta -- for NDI's second pass.
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
 % carry-register: carry-045
 did2.convert.reportNote('carried_as_v1', 'stimulus_presentation', ...
-    char(preBody.base.id), ['[carry-045] retired class: decomposed by the NDI second ' ...
+    id, ['[carry-045] retired class: decomposed by the NDI second ' ...
     'pass ([stimulus_presentation retired])']);
 bodies = {preBody};
 end
@@ -177,12 +200,13 @@ function tf = hasDependency(bodyStruct, name)
 %HASDEPENDENCY True when a depends_on entry with NAME is present (empty or not).
 %   Presence is the signal here, not the value: the invented edge is empty on
 %   100% of the documents that carry it, so testing the value would never fire.
+%   Read with did2.convert.v1read.readDependsOn: a struct array or the cell
+%   jsondecode gives for entries with different keys.
 tf = false;
-if ~isfield(bodyStruct, 'depends_on'); return; end
-deps = bodyStruct.depends_on;
-if ~isstruct(deps); return; end
-for k = 1:numel(deps)
-    d = deps(k);
-    if isfield(d, 'name') && strcmp(char(d.name), name); tf = true; return; end
+if ~isfield(bodyStruct, 'depends_on') || isempty(bodyStruct.depends_on) ...
+        || ~(isstruct(bodyStruct.depends_on) || iscell(bodyStruct.depends_on))
+    return;
 end
+deps = did2.convert.v1read.readDependsOn(bodyStruct);
+tf = any(strcmp({deps.name}, name));
 end

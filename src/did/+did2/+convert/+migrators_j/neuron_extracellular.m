@@ -309,6 +309,37 @@ arguments
     preBody (1,1) struct
 end
 
+% READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+% [migrators read raw v1]): the document exactly as NDI's writers wrote it
+% (+ndi/+fun/+probe/+import/+jrclust/probe.m, +kilosort/probe.m,
+% +kiasort/probe.m, +ndi/+app/spikesorter.m), with no universalRenames and no
+% superclass migrator (none exists for `base` or `app`). Identity through
+% jRawBody; the `app` block in either spelling (jSoftwareFromApp, checked by
+% did2.convert.v1read.readApp). What universalRenames would have discarded
+% carries the document as the renamed path did (carry-049). Every other v1
+% field is accounted for (unreadFields): one this fold reads nowhere carries
+% the document whole as v1. A carry is the untouched v1 source. Inverse:
+% did2.convert.roundtrip.neuron_extracellular; testRawV1RoundTripSpike.
+raw = preBody;
+preBody = jRawBody(raw, 'neuron_extracellular');
+collision = jResponseRenameCollisions(raw, cell(0, 3));
+if ~isempty(collision)
+    % carry-register: carry-049 (the renamed path carried this collision)
+    did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', char(preBody.base.id), ...
+        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+    bodies = {raw};
+    return;
+end
+unread = unreadFields(preBody);
+% a field, block or edge outside the template ([fields outside the template
+% are malformed], carry-100), or a template field whose value this fold
+% cannot place, stated as `path (why)` (no register row yet)
+isValue = contains(unread, ' (');
+if jRawCarry('neuron_extracellular', raw, {}, unread(~isValue), 'carry-100', unread(isValue))
+    bodies = {raw};
+    return;
+end
+
 blk = getBlock(preBody, 'neuron_extracellular');
 
 % ---- the two count fields are droppable only if they AGREE ------------------
@@ -344,7 +375,7 @@ if ~isempty(unplaced)
     % default)
     did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
         char(baseField(preBody, 'id', '')), [carryTag 'unplaced: ' strjoin(unplaced, ', ')]);
-    bodies = {preBody};
+    bodies = {raw};
     return;
 end
 
@@ -594,6 +625,98 @@ model = origin + spacing * (0:(n - 1))';
 span = abs(t(end) - t(1));
 tolerance = 1e-9 * max(span, eps);
 isRegular = max(abs(model - t)) <= tolerance;
+end
+
+% ===================== every field accounted for ===========================
+
+function c = unreadFields(preBody)
+%UNREADFIELDS The v1 fields this fold reads nowhere that hold a value: a
+%   top-level block other than the five NDI's template declares; a
+%   neuron_extracellular field other than its seven; an `app` field outside
+%   NDI's app.json; a depends_on edge other than element_id (or subject_id,
+%   read when there is no element_id) and spike_clusters_id. A cluster index
+%   that is not a whole number is unplaced too: the unit's name and its label
+%   calculation state it rounded.
+c = {};
+known = {'document_class', 'depends_on', 'base', 'app', 'neuron_extracellular'};
+top = fieldnames(preBody);
+for k = 1:numel(top)
+    if ~any(strcmp(top{k}, known)) && ~isEmptyValue(preBody.(top{k}))
+        c{end+1} = top{k}; %#ok<AGROW>
+    end
+end
+blk = getBlock(preBody, 'neuron_extracellular');
+read = {'number_of_samples_per_channel', 'number_of_channels', 'mean_waveform', ...
+    'waveform_sample_times', 'cluster_index', 'quality_number', 'quality_label'};
+fns = fieldnames(blk);
+for k = 1:numel(fns)
+    if ~any(strcmp(fns{k}, read)) && ~isEmptyValue(blk.(fns{k}))
+        c{end+1} = ['neuron_extracellular.' fns{k}]; %#ok<AGROW>
+    end
+end
+w = getField(blk, 'mean_waveform');
+t = getField(blk, 'waveform_sample_times');
+hasW = isnumeric(w) && ~isempty(w);
+hasT = isnumeric(t) && ~isempty(t);
+if ~isempty(w) && ~(isnumeric(w) && ismatrix(w))
+    c{end+1} = 'neuron_extracellular.mean_waveform (not a numeric matrix)';
+elseif hasW && ~hasT
+    c{end+1} = 'neuron_extracellular.mean_waveform (no waveform_sample_times to place it on)';
+end
+if ~isempty(t) && ~isnumeric(t)
+    c{end+1} = 'neuron_extracellular.waveform_sample_times (not numeric)';
+elseif hasT && ~hasW
+    c{end+1} = 'neuron_extracellular.waveform_sample_times (no mean_waveform to place them on)';
+end
+ci = getField(blk, 'cluster_index');
+if ~isempty(ci) && (~isnumeric(ci) || ~isscalar(ci) || ~isfinite(ci) || ci ~= round(ci))
+    c{end+1} = 'neuron_extracellular.cluster_index (not one whole number)';
+end
+qn = getField(blk, 'quality_number');
+if ~isempty(qn) && ~(isnumeric(qn) && isscalar(qn))
+    c{end+1} = 'neuron_extracellular.quality_number (not one number)';
+end
+ql = getField(blk, 'quality_label');
+if ~isempty(ql) && ~(ischar(ql) || (isstring(ql) && isscalar(ql)))
+    c{end+1} = 'neuron_extracellular.quality_label (not text)';
+elseif ~isempty(ql) && ~strcmp(strtrim(char(ql)), char(ql))
+    c{end+1} = 'neuron_extracellular.quality_label (surrounding spaces)';
+end
+a = did2.convert.v1read.readApp(preBody);
+ex = fieldnames(a.extra);
+for k = 1:numel(ex)
+    if ~isEmptyValue(a.extra.(ex{k}))
+        c{end+1} = ['app.' ex{k}]; %#ok<AGROW>
+    end
+end
+deps = did2.convert.v1read.readDependsOn(preBody);
+for k = 1:numel(deps)
+    nm = deps(k).name;
+    if isempty(deps(k).document_id) || any(strcmp(nm, {'element_id', 'spike_clusters_id'})) ...
+            || (strcmp(nm, 'subject_id') && isempty(dependencyValue(preBody, 'element_id')))
+        continue;
+    end
+    c{end+1} = ['depends_on ' nm]; %#ok<AGROW>
+end
+end
+
+function tf = isEmptyValue(v)
+if isstruct(v)
+    tf = true;
+    for k = 1:numel(v)
+        fns = fieldnames(v(k));
+        for j = 1:numel(fns)
+            if ~isEmptyValue(v(k).(fns{j}))
+                tf = false;
+                return;
+            end
+        end
+    end
+elseif isstring(v)
+    tf = isempty(v) || all(strlength(v) == 0);
+else
+    tf = isempty(v);
+end
 end
 
 % ===================== small helpers =======================================

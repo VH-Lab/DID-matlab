@@ -27,12 +27,66 @@ function bodies = daqreader_mfdaq_epochdata_ingested(preBody)
 %   afterwards. did2.convert.v1_to_v2 accepts either
 %   (normaliseMigratorOutput), and callers that invoke this migrator function
 %   directly keep getting the struct they get today.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it (NDI daqreader_mfdaq_epochdata_ingested.json +
+%   daqreader_epochdata_ingested.json + epochid.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+daq/+reader/mfdaq.m ingest_epochfiles
+%   writes it), identity through jRawBody. Every v1 field and where it goes;
+%   did2.convert.roundtrip.daqreader_mfdaq_epochdata_ingested rebuilds the v1
+%   document and testRawV1RoundTripIngested compares the two:
+%
+%     base.*                    -> kept (v1_to_v2 renames datestamp and makes
+%                                  session_id the edge on the way out)
+%     depends_on daqreader_id   -> kept, as {name, document_id}: the shape
+%                                  universalRenames gave it, which the batch
+%                                  passes read. An entry with a `version` or a
+%                                  second, different id is carried, as the
+%                                  renamed path carried it (carry-049)
+%     files.file_list, file_info -> kept (the recording archives)
+%     epochid.epochid           -> kept
+%     daqreader_epochdata_ingested.epochtable -> kept (lifted when an epoch
+%                                  edge exists, the parent migrator)
+%     daqreader_mfdaq_epochdata_ingested.parameters
+%                               -> daqreader_epochdata_ingested.parameters
+%
+%   An `ndi_document` block beside `base` is carried too (carry-049: the
+%   renamed path discarded it and carried the document). A field of the mfdaq
+%   block other than `parameters`, which the renamed path dropped without a
+%   word, or a legacy identity field outside base.json's four, now carries the
+%   document whole as v1 ([fields outside the template are malformed],
+%   carry-100, via private/jRawCarry).
 
 arguments
     preBody (1,1) struct
 end
 
-v2Body = preBody;
+body = jRawBody(preBody, 'daqreader_mfdaq_epochdata_ingested');
+[deps, collision] = renamedDependsOn(body);
+unplaced = unreadFields(preBody);
+if ~isempty(collision)
+    % carry-register: carry-049 (the renamed path carried this collision)
+    did2.convert.reportNote('carried_as_v1', 'daqreader_mfdaq_epochdata_ingested', ...
+        char(body.base.id), ['[carry-049] universalRenames would discard: ' ...
+        strjoin(collision, ', ')]);
+    bodies = preBody;
+    return;
+end
+if jRawCarry('daqreader_mfdaq_epochdata_ingested', preBody, {}, unplaced, 'carry-100')
+    bodies = preBody;   % [fields outside the template are malformed], carry-100
+    return;
+end
+
+v2Body = body;
+if isfield(v2Body, 'depends_on')
+    v2Body.depends_on = deps;
+end
+% the superclass list by name (did2.convert.v1read.readStamp: v1 names a
+% superclass by its definition path); v1_to_v2's ensureClassBlocks rebuilds
+% the V_eta chain from the class name, as on the renamed path
+stamp = did2.convert.v1read.readStamp(body);
+v2Body.document_class.superclasses = struct('class_name', stamp.superclasses);
 v2Body.document_class.class_name = 'daqreader_epochdata_ingested';
 v2Body.document_class.class_version = '2.0.0';
 
@@ -63,5 +117,67 @@ end
 
 % Hand the de-encoded body to the parent migrator so the epoch clock extents are
 % lifted here exactly as they are for a plain daqreader_epochdata_ingested.
-bodies = did2.convert.migrators_j.daqreader_epochdata_ingested(v2Body);
+bodies = did2.convert.migrators_j.daqreader_epochdata_ingested(v2Body, true);   % accounted for above
+end
+
+% ===================== the raw read ========================================
+
+function [deps, collision] = renamedDependsOn(body)
+%RENAMEDDEPENDSON depends_on as {name, document_id}, the shape the
+%   universalRenames pass wrote and the batch passes read, from the raw v1
+%   entries (did2.convert.v1read.readDependsOn). COLLISION lists what that pass
+%   would have discarded: an entry's `version`, or a second id that differs,
+%   and an `ndi_document` block beside `base`. (The depends_on read is
+%   +migrators_j/element_epoch.m's.)
+deps = struct('name', {}, 'document_id', {});
+collision = {};
+if isfield(body, 'ndi_document') && isfield(body, 'base') && ~isempty(body.ndi_document)
+    collision{end+1} = 'ndi_document';
+end
+if ~isfield(body, 'depends_on') || isempty(body.depends_on)
+    if isfield(body, 'depends_on')
+        deps = body.depends_on;   % an empty list stays as written, as the pass left it
+    end
+    return;
+end
+raw = did2.convert.v1read.readDependsOn(body);
+for k = 1:numel(raw)
+    deps(end+1) = struct('name', raw(k).name, 'document_id', raw(k).document_id); %#ok<AGROW>
+    if ~isempty(raw(k).version)
+        collision{end+1} = sprintf('depends_on(%s).version', raw(k).name); %#ok<AGROW>
+    end
+    others = fieldnames(raw(k).other);
+    for j = 1:numel(others)
+        collision{end+1} = sprintf('depends_on(%s).%s', raw(k).name, others{j}); %#ok<AGROW>
+    end
+end
+end
+
+function unplaced = unreadFields(preBody)
+%UNREADFIELDS What the de-encode does not read and the renamed path dropped
+%   or moved where nothing reads it: a field of the mfdaq block other than
+%   `parameters`; a legacy identity field outside base.json's four (jRawBody
+%   keeps only those four).
+unplaced = {};
+blk = 'daqreader_mfdaq_epochdata_ingested';
+if isfield(preBody, blk)
+    sub = preBody.(blk);
+    if isstruct(sub) && isscalar(sub)
+        fns = fieldnames(sub);
+        for k = 1:numel(fns)
+            if ~strcmp(fns{k}, 'parameters')
+                unplaced{end+1} = [blk '.' fns{k}]; %#ok<AGROW>
+            end
+        end
+    elseif ~isempty(sub)
+        unplaced{end+1} = blk;
+    end
+end
+b = did2.convert.v1read.readBase(preBody);
+if strcmp(b.source, 'ndi_document')
+    extra = fieldnames(b.extra);
+    for k = 1:numel(extra)
+        unplaced{end+1} = ['ndi_document.' extra{k}]; %#ok<AGROW>
+    end
+end
 end

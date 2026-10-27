@@ -59,6 +59,12 @@ if ismethod(cache, 'documentValueKind') && isfield(body.document_class, 'supercl
     for k = 1:numel(declared)
         if isstruct(declared{k}) && isfield(declared{k}, 'class_name')
             names{k} = char(declared{k}.class_name);
+        elseif isstruct(declared{k}) && isfield(declared{k}, 'definition')
+            % a RAW v1 superclass entry names its class by its definition
+            % path only (did2.convert.rawV1Classes: a switched class's
+            % passthrough is not renamed); its name is the path's basename,
+            % as universalRenames and did2.convert.v1read.readStamp read it
+            [~, names{k}] = fileparts(strrep(char(declared{k}.definition), '\/', '/'));
         else
             names{k} = char(declared{k});
         end

@@ -88,7 +88,7 @@ function v2Body = ontology_image(preBody)
 %
 %   The PREVIOUS implementation read `preBody.ontology_image.region`. That
 %   field exists in NEITHER vintage -- it is the *output* of the base
-%   migrator (+did2/+convert/+migrators/ontology_image.m), which composes
+%   migrator (+did2/+convert/+migrators/ontology_image.m, deleted 2026-10-27), which composed
 %   `region` from vintage A's two chars. But v1_to_v2 routes a class to
 %   migrators_j INSTEAD OF the base (+migrators) migrator (see v1_to_v2.m, the
 %   splitPackage branch), so a J migrator receives a body that has only been
@@ -233,9 +233,56 @@ function v2Body = ontology_image(preBody)
 %   the fold has happened. The remaining options are the same three the E. coli
 %   lawn plates got (mint a subject for what the image is of; resolve it in the
 %   NDI second pass; accept the deferral), and they are a team call.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (`ontologyImage`: data/ontologyImage.json + ngrid.json
+%   + base.json at the locked NDI-matlab `main`, 3cb19a8, as
+%   +ndi/+setup/+NDIMaker/imageDocMaker.m createOntologyImageDoc writes it: the
+%   writer sets `ontologyNodes`, where the template says `ontologyNode`, and the
+%   writer wins; ngrid from ndi.fun.data.mat2ngrid; the optional
+%   ontologyTableRow_id; the .ngrid file). The block is read in v1's spelling
+%   (`ontologyImage`, `ontologyNodes` / `ontologyNode`, and the legacy vintage's
+%   fields in either spelling) or the renamed one. The superclass migrator the
+%   renamed path ran, +migrators_j/+super/ngrid.m (a guard), is called here on
+%   the raw block first, so a reshaped ngrid block is still refused. A writer document (vintage B) passes through unchanged, as
+%   before: the raw passthrough keeps v1's class name `ontologyImage`, under
+%   which V_eta keeps no class (counted, not validated), where the renamed one
+%   met the `ontology_image` class (`retire`); NDI's last step stores the v1
+%   source either way, and no DID batch pass or NDI second-pass step reads the
+%   class by name. What universalRenames would have discarded carries,
+%   carry-049; a field, block or edge outside the template carries the
+%   document, carry-100 (private/jRawAccount, jRawCarry). A legacy (vintage A)
+%   document that names an ontologyTableRow_id, which the observation has no
+%   place for, now carries (no register row yet) where it was dropped. A
+%   carry or passthrough is the untouched v1 source.
+%   did2.convert.roundtrip.ontologyImage rebuilds the v1 document;
+%   testRawV1RoundTripOntologyImage compares the two.
 
 arguments
     preBody (1,1) struct
+end
+
+src = preBody;
+isRaw = isfield(preBody, 'ontologyImage');
+if isRaw
+    % the superclass migrator the renamed path ran first (a guard: a reshaped
+    % ngrid block is refused, as before; it changes nothing)
+    did2.convert.migrators_j.super.ngrid(src);
+    % THE RAW READ (see READS RAW v1 above)
+    [preBody, collision, unplaced] = jRawAccount(src, struct( ...
+        'ontologyImage', {{'ontologyNode', 'ontologyNodes', 'ontologyName', 'ontology_name', ...
+            'ontologyRegion', 'ontology_region'}}, ...
+        'ngrid', {{'data_size', 'data_type', 'data_dim', 'coordinates'}}, ...
+        'files', {{'file_list', 'file_info'}}), ...
+        {'^ontologyTableRow_id$', '^element_id$', '^subject_id$'});
+    if jRawCarry('ontology_image', src, collision, unplaced, 'carry-100')
+        v2Body = {src};
+        return;
+    end
+    preBody.ontology_image = preBody.ontologyImage;
+    preBody = rmfield(preBody, 'ontologyImage');
 end
 
 if ~isfield(preBody, 'ontology_image') || ~isstruct(preBody.ontology_image)
@@ -244,14 +291,16 @@ if ~isfield(preBody, 'ontology_image') || ~isstruct(preBody.ontology_image)
 end
 block = preBody.ontology_image;
 
-isVintageB = hasText(block, 'ontology_nodes') || hasText(block, 'ontology_node');
-isVintageA = hasText(block, 'ontology_name') || hasText(block, 'ontology_region');
+isVintageB = hasText(block, 'ontology_nodes') || hasText(block, 'ontology_node') ...
+    || hasText(block, 'ontologyNodes') || hasText(block, 'ontologyNode');
+isVintageA = hasText(block, 'ontology_name') || hasText(block, 'ontology_region') ...
+    || hasText(block, 'ontologyName') || hasText(block, 'ontologyRegion');
 
 if isVintageB
     % Deferred to the NDI second pass -- pass the document through intact.
     % Deliberately NOT emitting a term_observation: see the header. Vintage B
     % wins when both are somehow present, because its terms are authoritative.
-    v2Body = {preBody};
+    v2Body = {src};
     return;
 end
 
@@ -271,14 +320,20 @@ if ~isVintageA
 end
 
 % --- vintage A: the term is fully resolvable on this document -----------
-node = jGetChar(block, 'ontology_name');
-regionName = jGetChar(block, 'ontology_region');
+node = jGetCharAny(block, {'ontology_name', 'ontologyName'});
+regionName = jGetCharAny(block, {'ontology_region', 'ontologyRegion'});
 
 % did-schema #88. A document naming no subject cannot be an observation (#88
 % requires the entity_id edge), so it passes through, raster and all.
 subjectId = subjectOf(preBody);
 if isempty(subjectId)
-    v2Body = {preBody};
+    v2Body = {src};
+    return;
+end
+if isRaw && ~isempty(dependencyValue(preBody, 'ontologyTableRow_id'))
+    jRawCarry('ontology_image', src, {}, {}, 'carry-100', ...
+        {'depends_on(ontologyTableRow_id) (no place in the observation)'});
+    v2Body = {src};
     return;
 end
 anchor = jSessionAnchor(preBody, 'during');

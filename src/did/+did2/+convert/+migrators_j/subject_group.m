@@ -21,6 +21,29 @@ function v2Body = subject_group(preBody)
 %
 %   The group id is preserved on the subject so inbound references (and the
 %   member edges' parent) resolve to it.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it, with no universalRenames, so a member edge is read in its v1
+%   spelling, {name, value} (did2.convert.v1read.readDependsOn). Every v1
+%   field, from NDI's subject_group.json and base.json at the locked
+%   NDI-matlab `main` (3cb19a8), and where it goes; did2.convert.roundtrip.
+%   subject_group rebuilds the v1 document from the output:
+%
+%     base.id                  -> the group entity's base.id (preserved), and
+%                                 each member_of relation's parent_id
+%     base.session_id          -> the session_id edge (v1_to_v2, on the way out)
+%     base.datestamp           -> base.creation_timestamp (v1_to_v2)
+%     base.name                -> not written (#73 item 54); '' (the template
+%                                 default, +babu/import) or the group's name is
+%                                 recoverable; any other value is reported by
+%                                 the round trip
+%     depends_on subject_id_N  -> one member_of relation each, in order
+%     subject_group (block)    -> NDI's template block is EMPTY: a writer-shaped
+%                                 group states no name and is carried whole as
+%                                 v1 (carry-034, [unnamed groups named by the
+%                                 map]). `group_name` / `description` are read
+%                                 when a body carries them (DID-side fixtures).
 
 arguments
     preBody (1,1) struct
@@ -34,9 +57,10 @@ if isfield(preBody, 'subject_group') && isstruct(preBody.subject_group)
     desc = getCharField(sg, 'description');
 end
 
+base = did2.convert.v1read.readBase(preBody);
 groupId = '';
-if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
-    groupId = preBody.base.id;
+if strcmp(base.source, 'base')
+    groupId = base.id;
 end
 
 % did-schema #88: an `entity` of type group (members by `member_of`), id
@@ -64,20 +88,14 @@ end
 % ===================== helpers =========================================
 
 function ids = memberSubjectIds(preBody)
-%MEMBERSUBJECTIDS The non-empty member dependencies (subject_id / subject_id_N).
+%MEMBERSUBJECTIDS The non-empty member dependencies (subject_id / subject_id_N),
+%   read from the raw v1 `depends_on` (did2.convert.v1read.readDependsOn).
 ids = {};
-if ~isfield(preBody, 'depends_on') || ~isstruct(preBody.depends_on)
-    return;
-end
-for k = 1:numel(preBody.depends_on)
-    d = preBody.depends_on(k);
-    if ~isfield(d, 'name') || isempty(regexp(d.name, '^subject_id(_\d+)?$', 'once'))
-        continue;
+deps = did2.convert.v1read.readDependsOn(preBody, 'Name', '^subject_id(_\d+)?$');
+for k = 1:numel(deps)
+    if ~isempty(deps(k).document_id)
+        ids{end+1} = char(deps(k).document_id); %#ok<AGROW>
     end
-    val = '';
-    if isfield(d, 'value') && ~isempty(d.value); val = char(d.value);
-    elseif isfield(d, 'document_id') && ~isempty(d.document_id); val = char(d.document_id); end
-    if ~isempty(val); ids{end+1} = val; end %#ok<AGROW>
 end
 end
 

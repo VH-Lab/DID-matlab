@@ -74,6 +74,24 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %   subject_interaction.method_parameters and the anchor wiring; nothing
 %   here would resist that extraction.
 
+%
+%   READS RAW v1 (did2.convert.rawspatialGeneExpressionPyramidClasses, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (`spatialGeneExpressionPyramid`, NDI-matlab locked `main` 3cb19a8;
+%   as +ndi/+fun/+doc/+gene/makePyramid.m writes it). Pass 1 still hands it back UNCHANGED. The raw
+%   passthrough keeps v1's class name `spatialGeneExpressionPyramid`, under which V_eta keeps no class,
+%   so v1_to_v2 counts it as a passthrough with no schema instead of validating
+%   it against the renamed `spatial_gene_expression_pyramid` class (a `retire` class), as a raw imageStack
+%   passthrough is; NDI's last step stores its v1 source, stamped did_v1, on
+%   both paths ([passthrough stays v1: how]). No DID batch pass and no NDI
+%   second-pass step reads the class. What the renamed path would have discarded
+%   is carried, carry-049, as before; a field, block or edge outside the
+%   template carries the document whole as v1 (private/jRawAccount, jRawCarry;
+%   [fields outside the template are malformed], carry-100). The table in
+%   did2.convert.rawspatialGeneExpressionPyramidClasses joins `spatialGeneExpressionPyramid` to this migrator;
+%   did2.convert.roundtrip.spatialGeneExpressionPyramid rebuilds the v1 document from the passthrough;
+%   testRawspatialGeneExpressionPyramidRoundTripGene compares the two.
 arguments
     preBody (1,1) struct
 end
@@ -83,7 +101,16 @@ end
 % the statement reshape built on did-schema main (#70) is not part of #88. So
 % the document PASSES THROUGH and validates under its own class; nothing is
 % reshaped. Reported.
-bodies = {preBody};
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'spatialGeneExpressionPyramid', {{'label', 'chip_serial', 'pipeline_version', ...
+        'bin_sizes', 'base_pixel_size_x', 'base_pixel_size_y', 'pixel_size_units', ...
+        'origin_x', 'origin_y', 'extent_x', 'extent_y', 'tile_rows', ...
+        'tile_columns', 'index_order', 'origin_corner', 'byte_order'}}, ...
+    'files', {{'file_list', 'file_series', 'file_info'}}, ...
+    'geneExpression', {{'assay', 'count_type', 'count_units'}}), ...
+    {'^subject_id$', '^geneList_id$'});
+jRawCarry('spatial_gene_expression_pyramid', preBody, collision, unplaced, 'carry-100');
+bodies = {preBody};   % a passthrough, or the carry of the untouched v1 source
 end
 
 function tf = hasDep(body, name)

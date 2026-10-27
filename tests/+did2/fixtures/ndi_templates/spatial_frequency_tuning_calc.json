@@ -1,0 +1,24 @@
+{
+	"document_class": {
+		"definition":                       "$NDICALCDOCUMENTPATH\/calc\/spatial_frequency_tuning_calc.json",
+		"validation":                       "$NDICALCSCHEMAPATH\/calc\/spatial_frequency_tuning_calc_v2_schema.json",
+		"class_name":                       "spatial_frequency_tuning_calc",
+		"property_list_name":                   "spatial_frequency_tuning_calc", 
+		"class_version":                    2,
+		"superclasses": [
+			{ "definition":                 "$NDIDOCUMENTPATH\/calculator.json" },
+			{ "definition":                 "$NDICALCDOCUMENTPATH\/vision\/spatial_frequency_tuning.json"}
+		]
+	},
+	"spatial_frequency_tuning_calc": {
+		"input_parameters": {
+		},
+		"depends_on": [
+			{
+				"name":				"stimulus_tuningcurve_id",
+				"value":			[]
+			}
+		]
+	}
+}
+

@@ -5128,6 +5128,12 @@ def render_legacy_ndi_document(r, out):
          L.get("bodies_total", "?"),
          L.get("bodies_skipped_already_target", "?"),
          L.get("bodies_unreached", "?")))
+    if L.get("bodies_read_raw_v1"):
+        # [migrators read raw v1] (Jess Haley, 2026-10-26): a switched class's
+        # body is read raw and never reaches the pass; it is not "unreached"
+        p("  %s bod(ies) read raw v1 by a switched class's migrator "
+          "(did2.convert.rawV1Classes; not inspected by the pass)"
+          % L.get("bodies_read_raw_v1"))
     if L.get("bodies_reaching_universal_renames") == 0:
         p("  *** 0 bodies reached the rename pass -- every count below is")
         p("  *** vacuous. This is what a re-run over already-migrated bodies")

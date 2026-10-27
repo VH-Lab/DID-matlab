@@ -127,11 +127,62 @@ function v2Body = element_epoch(preBody)
 %   nobody catches it.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it (NDI element_epoch.json + epochid.json + base.json at the
+%   locked NDI-matlab `main`, 3cb19a8, as ndi.element/addepoch writes it),
+%   identity through jRawBody; a carry is the untouched v1 source. Every v1
+%   field and where it goes in this pass-1 carrier; did2.convert.roundtrip.
+%   element_epoch rebuilds the v1 document and testRawV1RoundTripElementEpoch
+%   compares the two:
+%
+%     base.*                    -> kept (v1_to_v2 renames datestamp and makes
+%                                  session_id the edge on the way out)
+%     depends_on element_id     -> kept, as {name, document_id} -- the shape
+%                                  universalRenames gave it, which the batch
+%                                  passes read. An entry with a `version` or a
+%                                  second, different id is carried, as the
+%                                  renamed path carried it (carry-049)
+%     element_epoch.epoch_clock, t0_t1 -> acquisition_epoch.clocks, one
+%                                  {name, t0, t1} per clock
+%                                  (did2.convert.migrators.element_epoch)
+%     epochid.epochid, files.file_list -> kept
+%
+%   The batch passes then dissolve this carrier (epochMint,
+%   resolveEpochProbemap: [epoch dissolution before merge], [device clocks on
+%   one epoch], [untied epochs keep the session anchor]); a carried element
+%   carries its epochs too ([dependents of a carried document carry], v1_to_v2).
 
 arguments
     preBody (1,1) struct
 end
 
+body = jRawBody(preBody, 'element_epoch');
+[deps, collision] = renamedDependsOn(body);
+if ~isempty(collision)
+    % carry-register: carry-049 (the renamed path carried this collision)
+    did2.convert.reportNote('carried_as_v1', 'element_epoch', char(body.base.id), ...
+        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+    v2Body = {preBody};
+    return;
+end
+v2Body = convertElementEpoch(body);
+if isscalar(v2Body) && iscell(v2Body)
+    v2Body = {preBody};   % carried: the untouched v1 source
+    return;
+end
+if isfield(v2Body, 'depends_on')
+    v2Body.depends_on = deps;
+end
+% the superclass list by name (did2.convert.v1read.readStamp: v1 names a
+% superclass by its definition path); v1_to_v2's ensureClassBlocks rebuilds
+% the V_eta chain from the class name, as on the renamed path
+stamp = did2.convert.v1read.readStamp(body);
+v2Body.document_class.superclasses = struct('class_name', stamp.superclasses);
+end
+
+function v2Body = convertElementEpoch(preBody)
 % Reuse the base clocks-block transform (parses epoch_clock / t0_t1).
 v2Body = did2.convert.migrators.element_epoch(preBody);
 if isequaln(v2Body, preBody)
@@ -147,5 +198,31 @@ v2Body.document_class.class_name = 'acquisition_epoch';
 if isfield(v2Body, 'element_epoch')
     v2Body.acquisition_epoch = v2Body.element_epoch;
     v2Body = rmfield(v2Body, 'element_epoch');
+end
+end
+
+function [deps, collision] = renamedDependsOn(body)
+%RENAMEDDEPENDSON depends_on as {name, document_id}, the shape the
+%   universalRenames pass wrote and the batch passes read, from the raw v1
+%   entries (did2.convert.v1read.readDependsOn). COLLISION lists what that pass
+%   would have discarded: an entry's `version`, or a second id that differs.
+deps = struct('name', {}, 'document_id', {});
+collision = {};
+if ~isfield(body, 'depends_on') || isempty(body.depends_on)
+    if isfield(body, 'depends_on')
+        deps = body.depends_on;   % an empty list stays as written, as the pass left it
+    end
+    return;
+end
+raw = did2.convert.v1read.readDependsOn(body);
+for k = 1:numel(raw)
+    deps(end+1) = struct('name', raw(k).name, 'document_id', raw(k).document_id); %#ok<AGROW>
+    if ~isempty(raw(k).version)
+        collision{end+1} = sprintf('depends_on(%s).version', raw(k).name); %#ok<AGROW>
+    end
+    others = fieldnames(raw(k).other);
+    for j = 1:numel(others)
+        collision{end+1} = sprintf('depends_on(%s).%s', raw(k).name, others{j}); %#ok<AGROW>
+    end
 end
 end

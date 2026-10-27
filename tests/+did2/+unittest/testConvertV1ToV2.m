@@ -474,11 +474,12 @@ end
 function testV1ToV2RenameClassNamesFalseThreadsThrough(testCase)
 % The dispatcher option threads down to universalRenames, so a
 % caller that needs the legacy-name-preserving behaviour can pass
-% it at the top level.
+% it at the top level. The option is the renamed path's: demoNDI is read raw
+% now (did2.convert.rawV1Classes), so the call names that path.
 v1 = makeV1Skeleton('demoNDI');
 v1.demoNDI = struct('value', 5);
 result = did2.convert.v1_to_v2(v1, 'Validate', false, ...
-    'RenameClassNames', false);
+    'RenameClassNames', false, 'RawV1Classes', {});
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
 verifyEqual(testCase, doc.className(), 'demoNDI');
@@ -554,7 +555,9 @@ v1 = makeV1Skeleton('treatment');
 v1.treatment = struct('ontology_name', 'NCIT:C0000', 'name', 'a drug', ...
     'numeric_value', [], 'string_value', '');
 v1.ndi_document = struct('name', 'jrclust.prm');
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
+% 'RawV1Classes', {}: `treatment` reads raw v1 since phase 2
+% (did2.convert.rawV1Classes); this test is about the universalRenames path.
+result = did2.convert.v1_to_v2(v1, 'Validate', false, 'RawV1Classes', {});
 verifyEqual(testCase, result.summary.migrated_count, 1);
 verifyEqual(testCase, result.summary.passthrough_count, 1);
 verifyEqual(testCase, result.migrated{1}.className(), 'treatment', ...
@@ -724,7 +727,9 @@ function testLegacyCountersReachTheBatchSummaryWithItsDenominator(testCase)
 v1 = make2019Body();
 clean = makeV1Skeleton('treatment');
 clean.treatment = struct();
-result = did2.convert.v1_to_v2({v1, clean}, 'Validate', false);
+% 'RawV1Classes', {}: `treatment` reads raw v1 since phase 2
+% (did2.convert.rawV1Classes); this test is about the universalRenames path.
+result = did2.convert.v1_to_v2({v1, clean}, 'Validate', false, 'RawV1Classes', {});
 L = result.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_total, 2);
 verifyEqual(testCase, L.bodies_reaching_universal_renames, 2);
@@ -744,7 +749,9 @@ function testLegacySummaryIsPresentAndZeroWhenNoBodyCarriesTheBlock(testCase)
 % a fact about the SAMPLE, not evidence none exist.
 clean = makeV1Skeleton('treatment');
 clean.treatment = struct();
-result = did2.convert.v1_to_v2(clean, 'Validate', false);
+% 'RawV1Classes', {}: `treatment` reads raw v1 since phase 2
+% (did2.convert.rawV1Classes); this test is about the universalRenames path.
+result = did2.convert.v1_to_v2(clean, 'Validate', false, 'RawV1Classes', {});
 L = result.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_total, 1);
 verifyEqual(testCase, L.bodies_reaching_universal_renames, 1);
@@ -1090,7 +1097,9 @@ clean = makeV1Skeleton('treatment');
 clean.treatment = struct();
 bodies{end+1} = clean;
 
-result = did2.convert.v1_to_v2(bodies, 'Validate', false);
+% 'RawV1Classes', {}: `treatment` reads raw v1 since phase 2
+% (did2.convert.rawV1Classes); this test is about the universalRenames path.
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'RawV1Classes', {});
 L = result.summary.legacy_ndi_document;
 
 verifyEqual(testCase, L.bodies_total, 9);

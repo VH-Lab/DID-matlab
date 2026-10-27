@@ -338,7 +338,7 @@ end
 epochIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
 % (b) `subject` documents by (session_id, local_identifier) -> id. This one map
 %     resolves BOTH joins: the subjectstring column (a bare local identifier)
-%     and the probe (name, reference) columns (encoded 'name (ref X)' the way
+%     and the probe (name, reference) columns (encoded 'name | X' the way
 %     +migrators_j/element.m mints a probe-subject's local_identifier).
 subjectIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
 % (c) `acquisition_system` documents by (session_id, base.name) -> id. The device
@@ -1854,17 +1854,13 @@ end
 
 function lid = probeLocalIdentifier(name, reference)
 %PROBELOCALIDENTIFIER The element-subject local_identifier a probe row maps to.
-%   Mirrors +migrators_j/element.m: localId = name, or 'name (ref REFERENCE)'
-%   when a reference is present. The probemap serialises `reference` with
-%   int2str and element.m stringifies with num2str; for the integer references
-%   probes carry these agree, which is the join's one soft spot (documented in
-%   the pass header / the build report).
-name = char(name);
-reference = char(reference);
-lid = name;
-if ~isempty(reference)
-    lid = strtrim(sprintf('%s (ref %s)', name, reference));
-end
+%   +migrators_j/element.m's, did2.convert.elementLocalIdentifier: 'name |
+%   reference', or the name alone ([element local identifier is name and
+%   reference], Jess Haley, 2026-10-26). The probemap serialises `reference`
+%   with int2str; the identifier reads the integer from that text, so the join
+%   no longer depends on two number formats agreeing. '' when the pair cannot
+%   be written reversibly (element.m carries such an element; nothing matches).
+lid = did2.convert.elementLocalIdentifier(char(name), char(reference));
 end
 
 % ===================== the epoch files as bodies (2026-10-21) ==========

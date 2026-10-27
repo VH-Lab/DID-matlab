@@ -123,9 +123,45 @@ function bodies = stimulus_response_scalar_parameters_basic(preBody)
 %   Counted as `unconverted` by v1_to_v2, which is correct and intended: an
 %   unconverted count on a class that is SUPPOSED to convert is the signal that
 %   the resolver has not landed.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it (NDI stimulus_response_scalar_parameters_basic.json +
+%   stimulus_response_scalar_parameters.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as tuning_response.m writes it) and pass 1
+%   still hands it back UNCHANGED: a passthrough, which v1_to_v2 pads and
+%   stamps as before (ensureClassBlocks reads a v1 superclass by its
+%   `definition`). did2.convert.resolveResponseParameters then reads the
+%   six knobs off it as before; it reads `base`, the block, and the session
+%   edge v1_to_v2 makes, none of which universalRenames changed for this
+%   class. What universalRenames would have discarded (a depends_on `version`
+%   or second id, an `ndi_document` beside `base`, an `app` name conflict, a
+%   camelCase twin of a knob) is carried, carry-049, as the renamed path
+%   carried it. did2.convert.roundtrip.stimulus_response_scalar_parameters_basic
+%   rebuilds the v1 document from the pass-1 passthrough or from the batch
+%   pass's `method`; testRawV1RoundTripStimulusResponse compares.
 
 arguments
     preBody (1,1) struct
+end
+knobs = {'temporalfreqfunc', 'freq_response', 'prestimulus_time', ...
+    'prestimulus_normalization', 'isspike', 'spiketrain_dt'};
+camel = {'temporalfreqfunc', 'freqResponse', 'prestimulusTime', ...
+    'prestimulusNormalization', 'isspike', 'spiketrainDt'};
+twins = cell(0, 3);
+for k = 1:numel(knobs)
+    if ~strcmp(knobs{k}, camel{k})
+        twins(end+1, :) = {'stimulus_response_scalar_parameters_basic', camel{k}, knobs{k}}; %#ok<AGROW>
+    end
+end
+collision = jResponseRenameCollisions(preBody, twins);
+if ~isempty(collision)
+    b = did2.convert.v1read.readBase(preBody);
+    id = b.id;
+    if ~ischar(id); id = ''; end
+    % carry-register: carry-049 (the renamed path carried this collision)
+    did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar_parameters_basic', ...
+        id, ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
 end
 bodies = {preBody};
 end

@@ -87,14 +87,21 @@ function out = runJ(v1)
 %   snake-cases `imageStack_parameters` -> `image_stack_parameters` before any
 %   migrator runs (universalRenames.m:302-334), and a direct call would hand the
 %   migrator a block key it never sees on the real pipeline.
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+%   ON THE RENAMED PATH ('RawV1Classes', {}): `imageStack` reads raw v1 since
+%   2026-10-27 (did2.convert.rawV1Classes), where no superclass migrator runs
+%   and a passthrough is the untouched v1 source. The superclass migrator
+%   these tests pin still runs for the v1 `image` (not switched), which shares
+%   the block; the raw path's refusals are pinned by testRawV1RoundTripImage.
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+    'RawV1Classes', {});
 end
 
 function out = runJValidated(v1)
 %RUNJVALIDATED The same, with the validator ARMED. This is the assertion that
 %   actually matters: the placeholder is only worth dropping if dropping it is
-%   what lets the document through.
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+%   what lets the document through. On the renamed path, as RUNJ.
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
+    'RawV1Classes', {});
 end
 
 function d = onlyClass(testCase, out, className)

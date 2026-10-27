@@ -42,6 +42,24 @@ function bodies = site2channelmap(preBody)
 %   instead of the real document.
 %
 %   See V_eta_migrator_vocabulary_audit.md for the evidence.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI probe/site2channelmap.json + base.json at the
+%   locked NDI-matlab `main`, 3cb19a8, as +ndi/+fun/+probe/+geometry/fromStruct.m
+%   writes it: `map` a column, edges probe_id and probe_geometry_id), and pass 1
+%   still hands it back UNCHANGED: a passthrough, which v1_to_v2 pads and stamps
+%   as before. Its raw shape is the renamed one but for v1's `value` edge key
+%   (the block, its one field and both edges are already snake_case), so it
+%   validates against the same V_eta `site2channelmap` class.
+%   did2.convert.roundtrip.site2channelmap rebuilds the v1 document from the
+%   passthrough; testRawV1RoundTripProbe compares. What the renamed path would
+%   have discarded is carried, carry-049, as before; a field, block or edge
+%   outside the template (which the passthrough would have met as an undeclared
+%   field) carries the document whole as v1 (private/jRawAccount, jRawCarry;
+%   [fields outside the template are malformed],
+%   carry-100).
 
 arguments
     preBody (1,1) struct
@@ -55,7 +73,10 @@ if isfield(blk, 'num_sites') || isfield(blk, 'site_to_channel')
          'This shape can only come from the V_alpha snapshot or a fixture built ' ...
          'against it.']);
 end
-bodies = {preBody};
+[~, collision, unplaced] = jRawAccount(preBody, struct('site2channelmap', {{'map'}}), ...
+    {'^probe_id$', '^probe_geometry_id$'});
+jRawCarry('site2channelmap', preBody, collision, unplaced, 'carry-100');
+bodies = {preBody};   % a passthrough, or the carry of the untouched v1 source
 end
 
 % ===================== small helpers =======================================

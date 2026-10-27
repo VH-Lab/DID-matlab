@@ -1,0 +1,24 @@
+{
+	"document_class": {
+		"definition":                       "$NDICALCDOCUMENTPATH\/calc\/contrasttuning_calc.json",
+		"validation":                       "$NDICALCSCHEMAPATH\/calc\/contrasttuning_calc_v2_schema.json",
+		"class_name":                       "contrasttuning_calc",
+		"property_list_name":                   "contrasttuning_calc", 
+		"class_version":                    2,
+		"superclasses": [
+			{ "definition":                 "$NDIDOCUMENTPATH\/calculator.json" },
+			{ "definition":                 "$NDICALCDOCUMENTPATH\/vision\/contrast_tuning.json"}
+		]
+	},
+	"contrasttuning_calc": {
+		"input_parameters": {
+		},
+		"depends_on": [
+			{
+				"name":				"stimulus_tuningcurve_id",
+				"value":			[]
+			}
+		]
+	}
+}
+

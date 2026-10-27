@@ -44,11 +44,35 @@ function bodies = spike_interface_sorting_outputs(preBody)
 %   instead of the real document.
 %
 %   See V_eta_migrator_vocabulary_audit.md for the evidence.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 would write it (sorting/SpikeInterfaceSortingOutputs.json +
+%   base.json at the locked NDI-matlab `main`, 3cb19a8). NO NDI WRITER AT THAT
+%   `main` CONSTRUCTS ONE AND NO CORPUS HOLDS ONE: the template alone fixes its
+%   shape (three snake_case fields, no edges, the zip in `files`), and pass 1
+%   still hands the document back UNCHANGED. The raw passthrough keeps v1's
+%   class name `SpikeInterfaceSortingOutputs`, under which V_eta keeps no class,
+%   so v1_to_v2 counts it as a passthrough with no schema instead of
+%   validating it against the `spike_interface_sorting_outputs` tombstone (a
+%   `retire` class), as a raw `imageStack` passthrough is; NDI's last step
+%   stores its v1 source, stamped did_v1, on both paths ([passthrough stays v1:
+%   how]). The guard reads the block in either spelling. What the renamed path
+%   would have discarded is carried, carry-049, as before; a field, block or
+%   edge outside the template carries the document whole as v1
+%   (private/jRawAccount, jRawCarry; [fields outside the template are malformed],
+%   carry-100).
+%   did2.convert.roundtrip.SpikeInterfaceSortingOutputs rebuilds the v1
+%   document from the passthrough; testRawV1RoundTripSpikeParameters compares.
 
 arguments
     preBody (1,1) struct
 end
-blk = getBlock(preBody, 'spike_interface_sorting_outputs');
+blk = getBlock(preBody, 'SpikeInterfaceSortingOutputs');
+if isempty(fieldnames(blk))
+    blk = getBlock(preBody, 'spike_interface_sorting_outputs');
+end
 if isfield(blk, 'num_units') || isfield(blk, 'sorter_parameters')
     error('did2:convert:sortingOutputsInventedShape', ...
         ['spike_interface_sorting_outputs body carries `num_units`/' ...
@@ -58,7 +82,11 @@ if isfield(blk, 'num_units') || isfield(blk, 'sorter_parameters')
          'sorting.sioutputs.zip. This shape can only come from the V_alpha ' ...
          'snapshot or a fixture built against it.']);
 end
-bodies = {preBody};
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'SpikeInterfaceSortingOutputs', {{'sorter_name', 'sample_rate', 'unit'}}, ...
+    'files', {{'file_list', 'file_info'}}), {});
+jRawCarry('spike_interface_sorting_outputs', preBody, collision, unplaced, 'carry-100');
+bodies = {preBody};   % a passthrough, or the carry of the untouched v1 source
 end
 
 % ===================== small helpers =======================================

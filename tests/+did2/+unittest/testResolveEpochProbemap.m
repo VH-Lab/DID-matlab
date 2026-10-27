@@ -40,7 +40,13 @@ function [out, rep] = decompose(v1)
 %DECOMPOSE Pass 1, then the batch chain up to and including this pass. Validation
 %   is ON from resolveSessionAnchors onward so the minted observations and
 %   anchors are checked against the real V_eta schema.
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+% the sorted units below are labelled single units by their sorting run:
+% [sorted units are cells or groups] (Jess Haley, 2026-10-26); an unlabelled
+% one is carried ([unlabelled units need a map])
+labels = {'el_neuron', 'single', 'el_neuron_x', 'single', 'el_neuron_u', 'single', ...
+    'el_neuron_u2', 'single', 'el_neuron_q', 'single'};
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+    'UnitQualityLabels', labels);
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
 out = did2.convert.resolveSessionAnchors(out, 'Validate', true, ...
     'TargetVersion', 'V_eta');
@@ -474,11 +480,12 @@ verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
 verifyEmpty(testCase, out.quarantine);
 end
 
-function testAnUndecidedElementTypeKeepsItsAcquisitionEpochCounted(testCase)
-% F1 AMENDMENT 1: key on the element `type`. A type with no decided row keeps
-% its acquisition_epoch, counted by type -- never given a spike-shaped home.
-% (`lfp` stands in; JH's `position` / `distance` are kept the same way since
-% 2026-10-26, testJHPositionAndDistanceEpochsStayAcquisitionEpochs.)
+function testAnElementOfNoListedTypeCarriesWithItsEpoch(testCase)
+% INVERTS testAnUndecidedElementTypeKeepsItsAcquisitionEpochCounted. [element
+% types have no default] (Jess Haley, 2026-10-26): an element whose type is not
+% on the element type list (`lfp`; `camera` is no registered probe type) is
+% carried as v1 (carry-063), and [dependents of a carried document carry]: its
+% element_epoch is carried too (carry-064), so no acquisition_epoch is made.
 subj = subjectBody('specimen_sp2', 'sess_sp2', 'W');
 elP  = elementBody('el_probe_p', 'sess_sp2', 'cam', '1', 'camera', 1, 'specimen_sp2');
 elN  = derivedElementBody('el_lfp', 'sess_sp2', 'w1_lfp', 'lfp', 'el_probe_p');
@@ -486,12 +493,13 @@ ee   = elementEpochBody('ee_p', 'sess_sp2', 'el_lfp', 't00sp2', true);
 ing  = ingestedWithRows('ing_sp2', 'sess_sp2', 't00sp2', {{'cam', '1', 'camera', 'W'}});
 daq  = daqsystemBody('daq_sp2', 'sess_sp2', 'vhspike2');
 [out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee, ing, daq});
-verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
-verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
-verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided, 1);
-verifyEqual(testCase, rep.acquisition_epoch_kept_types, 'lfp=1');
-verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 1);
-verifyEqual(testCase, rep.spike_epochs_seen, 0);
+verifyEqual(testCase, rep.acquisition_epoch_seen, 0);
+verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+carried = carriedIds(out);
+for id = {'el_probe_p', 'el_lfp', 'ee_p'}
+    verifyTrue(testCase, any(strcmp(carried, id{1})), [id{1} ' is not carried']);
+end
+verifyEmpty(testCase, out.quarantine);
 end
 
 % ===================== JH position and distance (left 2026-10-26) =======
@@ -538,26 +546,25 @@ v1.element_epoch = struct('epoch_clock', 'dev_local_time,exp_global_time', ...
     't0_t1', [0 739081.594; 3599.8 739081.636]);
 end
 
-function testJHPositionAndDistanceEpochsStayAcquisitionEpochs(testCase)
-% INVERTS testJHPositionAndDistanceDissolveIntoTrackCalculations: the JH worm
-% track shapes left the generic migration (Decided by Jess Haley, 2026-10-26
-% [dataset audit batch 1 and 2] (1), superseding [JH position and distance] for
-% the generic stage). A `position` or `distance` epoch has no row, so it keeps
-% its acquisition_epoch, counted by type; no track calculation, coordinate
-% system or nearest-patch item is written.
+function testJHPositionAndDistanceCarryWithTheirEpochs(testCase)
+% INVERTS testJHPositionAndDistanceEpochsStayAcquisitionEpochs. The JH worm
+% track shapes left the generic migration ([dataset audit batch 1 and 2] (1));
+% [element types have no default] (Jess Haley, 2026-10-26): `position` and
+% `distance` are on no element type list, so the elements are carried as v1
+% (carry-063), and [dependents of a carried document carry] carries their
+% element_epochs and the distance_metadata (carry-064). No acquisition_epoch,
+% track calculation, coordinate system or nearest-patch item is written.
 sid = 'sess_jh';
 worm = subjectBody('worm_1', sid, 'N2_worm0001');
 patch = subjectBody('patch_1', sid, 'patch 1');
 [els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1');
 [out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch}, els, ees, {dm}]);
-verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
-verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
-% kept either way: JH's v1 holds no daqsystem and no epochprobemap, so the
-% extents tie to no acquisition system and are carried ([device clocks on one
-% epoch]); with a tie they would be kept as an undecided type
-verifyEqual(testCase, rep.acquisition_epoch_kept_type_undecided ...
-    + rep.acquisition_epoch_kept_extent_carried, 2);
-verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+verifyEqual(testCase, rep.acquisition_epoch_seen, 0);
+verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+carried = carriedIds(out);
+for b = [els, ees, {dm}]
+    verifyTrue(testCase, any(strcmp(carried, b{1}.base.id)), [b{1}.base.id ' is not carried']);
+end
 verifyEmpty(testCase, bodiesOfClass(out, 'calculation+position'));
 verifyEmpty(testCase, bodiesOfClass(out, 'calculation+length'));
 verifyEmpty(testCase, bodiesOfClass(out, 'calculation+item'));
@@ -1195,7 +1202,7 @@ function el = elementBody(docId, sessionId, name, reference, typ, direct, subjec
 %ELEMENTBODY A did_v1 element. A DIRECT element drives jRecordingObservation to a
 %   #30 recording observation of the SPECIMEN, with instrument_id = docId (the
 %   element-subject, id preserved). Its subject local_identifier becomes
-%   'name (ref reference)', which is the join key a probemap row reconstructs.
+%   'name | reference', which is the join key a probemap row reconstructs.
 el = struct();
 el.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -1320,6 +1327,18 @@ for k = 1:numel(docs)
 end
 end
 
+
+function ids = carriedIds(result)
+%CARRIEDIDS base.id of every migrated document stamped did_v1 (carried as v1).
+ids = {};
+for k = 1:numel(result.migrated)
+    b = result.migrated{k}.toStruct();
+    if isfield(b, 'document_class') && isfield(b.document_class, 'schema_version') ...
+            && strcmp(char(b.document_class.schema_version), 'did_v1')
+        ids{end+1} = char(b.base.id); %#ok<AGROW>
+    end
+end
+end
 
 function out = bodiesOfClass(result, className)
 %BODIESOFCLASS Migrated bodies (as structs) of document_class className.
