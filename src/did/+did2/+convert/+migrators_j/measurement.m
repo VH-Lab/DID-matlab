@@ -63,6 +63,38 @@ function bodies = measurement(preBody)
 %   ever sets either.
 %
 %   See V_eta_tombstone_audit.md for the evidence.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (measurement.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+setup/+NDIMaker/treatmentMaker.m
+%   create_measurement_doc writes it: `ontologyName` the looked-up node, `name`
+%   its label, string_value, numeric_value, subject_id). The node is read in v1's
+%   spelling `ontologyName` (and universalRenames' `ontology_name` on the
+%   renamed path). Every v1 field and where it goes;
+%   did2.convert.roundtrip.measurement rebuilds the v1 document and
+%   testRawV1RoundTripMeasurement compares the two:
+%
+%     base.id, session_id, datestamp     -> the observation's
+%     base.name                          -> not written (the writer leaves '')
+%     depends_on subject_id              -> the observation's entity_id
+%     measurement.ontologyName, name     -> the observation's variable
+%     measurement.numeric_value          -> the quantity's source value (a
+%                                           mass / temperature / length / time
+%                                           named by the variable)
+%     measurement.string_value           -> a term value, when it is a CURIE
+%
+%   A manipulation_id or protocol_id that names a document (no writer sets one,
+%   above) has no place in the observation: it now carries the document, where
+%   the renamed path dropped it. A measurement with no V2 statement (a date, an
+%   untyped number, text) passed through before, as a V2 `measurement`
+%   (a `retire` class); its raw passthrough would meet that class's renamed
+%   field `ontology_name` as an undeclared field, so it is carried as v1 at
+%   once (no register row yet), the end state NDI's last step gave the
+%   passthrough ([passthrough stays v1: how]). What the renamed path would have
+%   discarded is carried, carry-049; a field, block or edge outside the
+%   template carries the document, carry-100 (private/jRawAccount, jRawCarry).
 
 arguments
     preBody (1,1) struct
@@ -77,7 +109,23 @@ if isfield(blk, 'measurement_class') || isfield(blk, 'parameters')
          'the V_alpha snapshot or a fixture built against it.']);
 end
 
-node  = jGetChar(blk, 'ontology_name');
+% THE RAW READ (see READS RAW v1 above); the guard above runs first
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'measurement', {{'ontologyName', 'name', 'numeric_value', 'string_value'}}), ...
+    {'^subject_id$', '^manipulation_id$', '^protocol_id$'});
+valueReasons = {};
+for e = {'manipulation_id', 'protocol_id'}
+    if ~isempty(jDependency(preBody, e{1}))
+        valueReasons{end+1} = sprintf('depends_on(%s) (no place in the observation)', e{1}); %#ok<AGROW>
+    end
+end
+if jRawCarry('measurement', src, collision, unplaced, 'carry-100', valueReasons)
+    bodies = {src};
+    return;
+end
+
+node  = jGetCharAny(blk, {'ontologyName', 'ontology_name'});
 label = jGetChar(blk, 'name');
 strValue = jGetChar(blk, 'string_value');
 numValue = [];
@@ -96,10 +144,17 @@ hay = lower([node ' ' label]);
 anchor = jSessionAnchor(preBody, 'during');
 bodies = jMeasurementFold(preBody, variable, hay, numValue, strValue, anchor, false);
 if isempty(bodies)
-    % No honest leaf -- date of birth, an untyped number, or free prose. Carry
-    % it through; the unconverted-document counter makes that visible. The
-    % anchor built above is discarded with it, so nothing is stranded.
-    bodies = {preBody};
+    % No honest leaf -- date of birth, an untyped number, or free prose. The
+    % anchor built above is discarded with it, so nothing is stranded. Carried
+    % as v1 (see READS RAW v1 above), unless jMeasurementFold already carried
+    % it (carry-058) and said so.
+    if did2.convert.reportNote('pending', 'carried_as_v1') == 0
+        jRawCarry('measurement', src, {}, {}, 'carry-100', ...
+            {'measurement (no V2 statement: a date, an untyped number or text)'});
+    end
+    bodies = {src};
+elseif isscalar(bodies) && isequaln(bodies{1}, preBody)
+    bodies = {src};
 end
 end
 
