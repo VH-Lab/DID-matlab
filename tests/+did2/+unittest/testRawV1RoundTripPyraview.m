@@ -30,11 +30,12 @@ function tests = testRawV1RoundTripPyraview
 %   entity epochMint mints. The 'all' band carries there instead
 %   (carry-007: the writer's label 'all' differs from its type 'none').
 %
-%   KNOWN FINDINGS, listed exactly (questions in the PR; today's behaviour is
-%   kept): files.file_info -- every level body keeps its file NAME only
-%   (`files.file_list`); the v1 file_info records (location, uid, ingest,
-%   delete_original, location_type) are on no emitted document. Nothing is
-%   invented or unplaced.
+%   KNOWN FINDINGS: none. files.file_info was one until [pyraview level keeps
+%   its file info] (Jess Haley, 2026-10-27): each level body now carries the
+%   v1 file_info entry of its own file name (uid, location, location_type,
+%   ingest, delete_original), and the round trip rebuilds file_info from the
+%   bodies (testEachLevelKeepsItsFileInfo). Nothing is lost, invented or
+%   unplaced.
 tests = functiontests(localfunctions);
 end
 
@@ -85,7 +86,13 @@ for b = {'high', 'low'}
     verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1, b{1});
     r = did2.convert.roundtrip.check(v1, [out.migrated, {epochEntity(v1)}]);
     verifyFalse(testCase, r.carried, b{1});
-    did2.unittest.helpers.verifyRoundTrip(testCase, r, b{1}, fileInfoPaths(v1));
+    % nothing is an expected loss: file_info used to be (fileInfoPaths), and
+    % must now come back whole
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, b{1}, {});
+    for p = fileInfoPaths(v1)
+        verifyTrue(testCase, any(strcmp(r.matched, p{1})), ...
+            sprintf('%s: %s did not come back', b{1}, p{1}));
+    end
 end
 % the writer's all-pass is carried where epochMint re-runs it, as the source
 % that re-run was handed (the v1 document with its epoch_id edge)
@@ -95,6 +102,39 @@ verifyEmpty(testCase, out.quarantine);
 r = did2.convert.roundtrip.check(s, out.migrated);
 verifyTrue(testCase, r.carried, 'all: carried?');
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'all', {});
+end
+
+function testEachLevelKeepsItsFileInfo(testCase)
+% [pyraview level keeps its file info] (Jess Haley, 2026-10-27): the level body
+% of file levelK.bin carries the v1 files.file_info entry named levelK.bin,
+% unchanged; a level the writer attached nothing to carries none
+v1 = writerShape('high');
+out = runRaw(stamped(v1));
+assertEmpty(testCase, out.quarantine);
+fi = v1.files.file_info;
+nWithInfo = 0;
+nLevels = 0;
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if ~strcmp(b.document_class.class_name, 'sampled_body'); continue; end
+    nLevels = nLevels + 1;
+    name = b.files.file_list;
+    if iscell(name); name = name{1}; end
+    hit = find(strcmp({fi.name}, name));
+    if isempty(hit)
+        verifyFalse(testCase, isfield(b.files, 'file_info'), ...
+            sprintf('%s: file_info on a level nothing was attached to', name));
+        continue;
+    end
+    nWithInfo = nWithInfo + 1;
+    assertTrue(testCase, isfield(b.files, 'file_info'), sprintf('%s: no file_info', name));
+    verifyEqual(testCase, b.files.file_info.name, fi(hit).name);
+    verifyEqual(testCase, b.files.file_info.locations.uid, fi(hit).locations.uid, name);
+    verifyEqual(testCase, b.files.file_info.locations.location, ...
+        fi(hit).locations.location, name);
+end
+verifyEqual(testCase, nLevels, numel(v1.files.file_list), 'one level body per file_list name');
+verifyEqual(testCase, nWithInfo, numel(fi), 'every file_info entry is on its level');
 end
 
 function testTheSwitchChangesNoOutcome(testCase)

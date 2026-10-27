@@ -37,7 +37,10 @@ function [v1, spec] = pyraview(bodies)
 %                                        rates = sr ./ cumprod(levels))
 %     files.file_list                    each level body's file name, in order
 %     files.file_info                    each level body's file_info, when it
-%                                        has one
+%                                        has one, in level order (the migrator
+%                                        puts each v1 entry on the level body
+%                                        of its name: [pyraview level keeps its
+%                                        file info], Jess Haley, 2026-10-27)
 %     filter.type, label, algorithm      the method's band and design terms;
 %                                        label restates type (a label that
 %                                        differs carries the document, carry-007)
