@@ -1,33 +1,63 @@
 %SCRATCH Ad-hoc MATLAB probe, run by .github/workflows/matlab-scratch.yml.
 %
-%   PROBE 11: THE LEGACY did.unittest FILE-SERIES TESTS, AFTER THE MEMBER
-%   BASE BECAME THE DOCUMENT'S VINTAGE (DID-schema #73 item 17, kept by Jess
-%   2026-10-14: a V_eta document numbers series members from 0, a did_v1 one
-%   from 1; did.document/seriesMemberBase).
-%
-%   WHY HERE. No workflow that runs on a claude/** push runs the did.unittest
-%   package: test-migrators-quick and test-builder select did2.unittest, and
-%   test-code runs only on main/V2. The change touches did.document,
-%   did.database and did.implementations.sqlitedb, whose tests live in
-%   tests/+did/+unittest/. This runs the four classes that exercise series.
+%   PROBE: does TestSuite.fromPackage(..., "InvalidFileFoundAction", "error")
+%   fail on BOTH kinds of left-out test file -- one that does not parse, and
+%   one whose fixture function declares an arguments block -- and what are the
+%   warning IDs of the default (warn) behaviour?
 
+root = tempname; mkdir(root); pkg = fullfile(root, '+probepkg'); mkdir(pkg);
+w = @(name, txt) writeFile(fullfile(pkg, [name '.m']), txt);
+w('testGood', sprintf('function tests = testGood\ntests = functiontests(localfunctions);\nend\nfunction testA(testCase)\nverifyTrue(testCase, true);\nend\n'));
+w('testBadParse', sprintf('function tests = testBadParse\ntests = functiontests(localfunctions);\nend\nfunction testA(testCase)\nverifyTrue(testCase, true);\nend\nend\n'));
+w('testFixtureArgs', sprintf(['function tests = testFixtureArgs\ntests = functiontests(localfunctions);\nend\n' ...
+    'function teardownOnce(testCase)\narguments\n    testCase (1,1) matlab.unittest.TestCase\nend\nend\n' ...
+    'function testA(testCase)\nverifyTrue(testCase, true);\nend\n']));
+addpath(root);
 import matlab.unittest.TestSuite;
-import matlab.unittest.TestRunner;
-classes = {'did.unittest.TestDocumentFileSeries', ...
-           'did.unittest.TestFileSeriesRoundTrip', ...
-           'did.unittest.TestSeriesMemberFetch', ...
-           'did.unittest.TestCustomFileHandlerContext'};
-suite = [];
-for k = 1:numel(classes)
-    suite = [suite, TestSuite.fromClass(meta.class.fromName(classes{k}))]; %#ok<AGROW>
+fprintf('MATLAB %s\n', version);
+
+fprintf('\n==== 1. default (warn): warning IDs ====\n');
+for f = {'testBadParse', 'testFixtureArgs'}
+    lastwarn('', '');
+    s = TestSuite.fromFile(fullfile(pkg, [f{1} '.m'])); %#ok<NASGU>
+    [msg, id] = lastwarn;
+    fprintf('%s: id="%s"\n  msg=%s\n', f{1}, id, strrep(msg, newline, ' | '));
 end
-results = TestRunner.withTextOutput.run(suite);
-fprintf('\n==== PROBE 11 VERDICT ====\n');
-fprintf('  tests run   %d\n', numel(results));
-fprintf('  passed      %d\n', sum([results.Passed]));
-fprintf('  FAILED      %d\n', sum([results.Failed]));
-fprintf('  incomplete  %d\n', sum([results.Incomplete]));
-failed = results([results.Failed]);
-for k = 1:numel(failed)
-    fprintf('    FAILED %s\n', failed(k).Name);
+lastwarn('', '');
+s = TestSuite.fromPackage("probepkg");
+[~, id] = lastwarn;
+fprintf('fromPackage default: %d tests selected; last warning id="%s"\n', numel(s), id);
+
+fprintf('\n==== 2. InvalidFileFoundAction="error", one bad file at a time ====\n');
+for f = {'testBadParse', 'testFixtureArgs'}
+    other = setdiff({'testBadParse', 'testFixtureArgs'}, f);
+    movefile(fullfile(pkg, [other{1} '.m']), fullfile(root, [other{1} '.m.off']));
+    try
+        s = TestSuite.fromPackage("probepkg", "InvalidFileFoundAction", "error");
+        fprintf('%s alone: NO ERROR, %d tests selected\n', f{1}, numel(s));
+    catch ME
+        fprintf('%s alone: ERROR id="%s"\n  msg=%s\n', f{1}, ME.identifier, strrep(ME.message, newline, ' | '));
+    end
+    movefile(fullfile(root, [other{1} '.m.off']), fullfile(pkg, [other{1} '.m']));
+end
+
+fprintf('\n==== 3. warning("error", <id>) for each captured ID ====\n');
+for f = {'testBadParse', 'testFixtureArgs'}
+    lastwarn('', '');
+    TestSuite.fromFile(fullfile(pkg, [f{1} '.m']));
+    [~, id] = lastwarn;
+    if isempty(id); fprintf('%s: no id to arm\n', f{1}); continue; end
+    old = warning('error', id); %#ok<NASGU>
+    try
+        s = TestSuite.fromPackage("probepkg");
+        fprintf('%s with warning("error","%s"): NO ERROR, %d tests\n', f{1}, id, numel(s));
+    catch ME
+        fprintf('%s with warning("error","%s"): ERROR id="%s"\n', f{1}, id, ME.identifier);
+    end
+    warning('on', id);
+end
+fprintf('\n==== PROBE DONE ====\n');
+
+function writeFile(p, txt)
+fid = fopen(p, 'w'); fwrite(fid, txt); fclose(fid);
 end
