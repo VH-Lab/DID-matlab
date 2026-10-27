@@ -14,9 +14,29 @@ function bodies = orientation_direction_tuning(preBody)
 %   V_eta concrete leaf per family.
 %
 %   See did2.convert.migrators_j.private.jCalculation.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (orientation_direction_tuning.json + base.json at the
+%   locked NDI-matlab `main`, 3cb19a8, as ndi.app.oridirtuning
+%   calculate_oridir_indexes writes it: properties, tuning_curve, significance,
+%   vector (the writer spells Hotelling2Test), fit, + the app's newdocument(),
+%   element_id and stimulus_tuningcurve_id). Identity through jRawBody; the
+%   `app` block and the result fields read in either spelling by jCalculation
+%   / jTuningCurve, as for oridirtuning_calc. Every other field is accounted
+%   for (jCalculation 'AccountForEveryField', carry-056 as for the calculator
+%   outputs). A carry is the untouched v1 source.
+%   did2.convert.roundtrip.orientation_direction_tuning rebuilds the v1
+%   document; testRawV1RoundTripTuningResults compares the two.
 arguments
     preBody (1,1) struct
 end
-bodies = jCalculation(preBody, 'orientation_direction_tuning_calculation', 'oridir', ...
-    'orientation_direction_tuning', 'orientation/direction tuning', 'ndi.calc.vis.oridir');
+body = jRawBody(preBody, 'orientation_direction_tuning');
+bodies = jCalculation(body, 'orientation_direction_tuning_calculation', 'oridir', ...
+    'orientation_direction_tuning', 'orientation/direction tuning', 'ndi.calc.vis.oridir', ...
+    'AccountForEveryField', true);
+if isscalar(bodies) && isequaln(bodies{1}, body)
+    bodies = {preBody};   % a carry or passthrough is the untouched v1 source
+end
 end

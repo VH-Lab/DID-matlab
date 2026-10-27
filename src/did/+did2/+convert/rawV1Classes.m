@@ -234,6 +234,14 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         treatmentMaker.m and +ndi/+setup/+conv/+marder/
 %                         temptable2stimulusparameters.m. Round trips:
 %                         testRawV1RoundTripMeasurement.
+%     stimulus_tuningcurve          the NDI apps' own tuning results:
+%     orientation_direction_tuning  superclass `base` (+ the writer's `app`
+%                         block), no superclass migrator; the same result block
+%                         as tuningcurve_calc / oridirtuning_calc, read the same
+%                         way (jRawBody; jCalculation 'AccountForEveryField').
+%                         Written by ndi.app.stimulus.tuning_response and
+%                         ndi.app.oridirtuning. Round trips:
+%                         testRawV1RoundTripTuningResults.
 %     NOT LISTED, and why:
 %       control_stimulus_ids  its migrator passes it through (no note, so its
 %                         responses do not carry), and NDI's second pass reads
@@ -262,6 +270,12 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         register row, and as raw v1 it would meet the
 %                         renamed-shape `image` tombstone under its own name
 %                         and quarantine. It stays on the renamed path.
+%       contrast_tuning   no NDI template at the locked main (their
+%       spatial_frequency_tuning  templates are NDIcalc-vis-matlab's), no
+%       temporal_frequency_tuning writer that makes a document of one alone
+%       speed_tuning      (they are the result blocks of the *_calc classes),
+%                         no corpus document: nothing fixes a raw shape to read.
+%                         They stay on the renamed path.
 %       spikewaves        pure pass-1 passthroughs (the NDI second pass is
 %       spike_clusters    meant to read them) of classes with an `app` block:
 %                         ndi.app/newdocument writes app.name / app.version,
@@ -333,6 +347,8 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'measurement', ...
     'subjectmeasurement', ...
     'stimulus_parameter', ...
+    'stimulus_tuningcurve', ...
+    'orientation_direction_tuning', ...
     'session', ...
     'session_in_a_dataset', ...
     'dataset_remote', ...
