@@ -663,7 +663,9 @@ b = onlyBody(testCase, out);
 verifyEqual(testCase, b.base.id, v1.base.id, 'the level keeps its id');
 verifyEqual(testCase, edge(b, 'owner_id'), 'pyr_ls_1');
 verifyFalse(testCase, isfield(b, 'files'), 'a level holding no bytes has no file member');
-verifyTrue(testCase, contains(b.data_body.description, 'no bytes'), b.data_body.description);
+% [light-sheet level label is a note] (Jess Haley, 2026-10-27): the level's
+% label is its description, unchanged; no files says no bytes are stored
+verifyEqual(testCase, b.data_body.description, v1.lightsheetZarrLevel.label);
 keys = axisList(b.data);
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 200 1024 1024]);
 verifyTrue(testCase, isequal(b.data_body.redundant, true), 'a reduced level stays redundant');

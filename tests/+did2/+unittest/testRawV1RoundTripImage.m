@@ -390,14 +390,15 @@ verifyFalse(testCase, r.ok);
 verifyTrue(testCase, any(strcmp('imageStack.magnification', {r.lost.path})));
 end
 
-function testANonEmptyBaseNameIsReportedLost(testCase)
-% OPEN (a team question): no writer at the locked main sets base.name on a
-% stack; V2 keeps no base.name (#73 item 54), so it is dropped, as before
+function testANonEmptyBaseNameIsKept(testCase)
+% INVERTS testANonEmptyBaseNameIsReportedLost: [image stack name goes to
+% notes] (Decided by Jess Haley, 2026-10-27) answers the open question -- the
+% name is the data body's free text, so the round trip keeps it
 v1 = babuStack('is_b_name', 'image');
 v1.base.name = 'worm plate 3';
 r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
-verifyFalse(testCase, r.ok);
-verifyTrue(testCase, any(strcmp('base.name', {r.lost.path})));
+verifyFalse(testCase, any(strcmp('base.name', {r.lost.path})));
+verifyTrue(testCase, any(strcmp('base.name', r.matched)));
 end
 
 function testADroppedBodyIsUnplaced(testCase)
