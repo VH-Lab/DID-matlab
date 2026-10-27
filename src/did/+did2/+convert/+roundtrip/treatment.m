@@ -84,7 +84,7 @@ function v = conditionNumber(conds)
 v = [];
 for c = asCell(conds)
     [~, name] = termParts(getIn(c{1}, 'variable'));
-    if strcmp(name, 'numeric value')
+    if strcmpi(name, 'numeric value')
         v = numberOf(getIn(c{1}, 'quantity', 'value'));
         return;
     end

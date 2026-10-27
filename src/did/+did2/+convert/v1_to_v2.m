@@ -1240,7 +1240,17 @@ function [migrated, passthrough, names, counts] = carryDependents(bodies, ...
 %   `carried_as_v1` citing carry-064. Repeated until nothing changes, so a
 %   chain carries to its end. A carried document outside this batch is not
 %   seen. The notes the source's conversion left stay in the report.
-carriedIds = ids(done & carried);
+%
+%   NOT A v1 END STATE, so not followed: a document pass 1 carries only to hand
+%   it to NDI's second pass, which converts it -- `stimulus_presentation`
+%   (carry-045: "a retired class, decomposed by NDI's second pass") and
+%   `daqmetadatareader_epochdata_ingested` (carry-046: "made an opaque_body of
+%   the epoch's presentation by NDI's second pass"). An edge to one of them
+%   does not end as "an edge to a v1 document", which is what the decision
+%   prevents; following it would carry every stimulus response.
+handedOn = {'stimulus_presentation', 'daqmetadatareader_epochdata_ingested'};
+isHandedOn = cellfun(@(c) ischar(c) && any(strcmp(c, handedOn)), cls);
+carriedIds = ids(done & carried & ~isHandedOn);
 carriedIds = carriedIds(~cellfun(@isempty, carriedIds));
 if isempty(carriedIds)
     return;
