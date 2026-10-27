@@ -21,7 +21,16 @@ for c = classNames()
     t = did2.convert.v1read.calculatorTemplate(c{1});
     verifyTrue(testCase, t.found, c{1});
     [paths, edges] = composed(c{1});
-    verifyEqual(testCase, sort(t.paths), sort(paths), [c{1} ': paths']);
+    % jsondecode reads a one-entry JSON list of objects (a block's inner
+    % depends_on, tuningcurve_calc's input_parameters.selection) as a struct,
+    % so its fields come back as paths under the table's leaf: compare each
+    % fixture path with the table leaf that holds it
+    held = cellfun(@(p) holder(p, t.paths), paths, 'UniformOutput', false);
+    verifyEmpty(testCase, paths(cellfun(@isempty, held)), ...
+        [c{1} ': template paths the table does not hold']);
+    verifyEqual(testCase, sort(reshape(unique(held(~cellfun(@isempty, held))), 1, [])), ...
+        sort(reshape(t.paths, 1, [])), ...
+        [c{1} ': table paths that are not template paths']);
     verifyEqual(testCase, sort(t.edges), sort(strcat('^', edges, '$')), [c{1} ': edges']);
     inspected = inspected + 1;
 end
@@ -156,6 +165,17 @@ for k = 1:numel(parts)
     v = v.(parts{k});
 end
 tf = isempty(v) || (isstruct(v) && isscalar(v) && isempty(fieldnames(v)));
+end
+
+function h = holder(p, defs)
+%HOLDER The entry of DEFS equal to P, or the one P lies under ('' if none).
+h = '';
+for k = 1:numel(defs)
+    if strcmp(p, defs{k}) || startsWith(p, [defs{k} '.'])
+        h = defs{k};
+        return;
+    end
+end
 end
 
 function tf = covered(p, defs)
