@@ -2873,8 +2873,7 @@ function testANonEmptyFormListCarriesTheForm(testCase)
 % [dataset form lists carried until homed] (Decided by Jess Haley, 2026-10-27,
 % did-schema V_eta_go_forward_class_audit.md): a dataset form whose subject,
 % species, strain or sex list is non-empty is carried whole as v1 with a
-% needs-home register row (pending in did-schema: the placeholder
-% `carry-pending-dataset-form-lists-needs-home`), not dropped.
+% needs-home register row (carry-105), not dropped.
 lists = {'Subjects', struct('SubjectName', 'worm_1', 'BiologicalSexList', 'male'); ...
     'SpeciesList', struct('name', 'Caenorhabditis elegans', 'preferredOntologyIdentifier', 'NCBITaxon:6239'); ...
     'StrainList', struct('name', 'N2'); ...
@@ -2886,7 +2885,7 @@ for k = 1:size(lists, 1)
     out = runJ(v1);
     verifyCarriedWholeAsV1(testCase, v1, out);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, contains(d, ['[carry-pending-dataset-form-lists-needs-home] ' ...
+    verifyTrue(testCase, contains(d, ['[carry-105] ' ...
         'awaiting_home: ' lists{k, 1}]), d);
 end
 % an empty list states nothing: the form converts
@@ -5870,8 +5869,8 @@ function testTheNeedsHomeClassesAreCarriedWholeAsV1(testCase)
 % [simple_calc carries as needs home] and [unbuilt spike classes carry as needs
 % home] (Decided by Jess Haley, 2026-10-27, did-schema
 % V_eta_go_forward_class_audit.md): each is carried whole as v1 through the
-% carry path, citing a needs-home register row (pending in did-schema: the
-% note cites the placeholder `carry-pending-...`), read raw so the carry is
+% carry path, citing a needs-home register row (carry-101..104), read raw so
+% the carry is
 % the untouched v1 source.
 fixtures = {simpleCalcDoc(), spikewavesBody(), spikeClustersBody(), binnedSpikeRateBody()};
 for k = 1:numel(fixtures)
@@ -5885,7 +5884,9 @@ for k = 1:numel(fixtures)
     emitted.document_class = rmfield(emitted.document_class, 'schema_version');
     verifyTrue(testCase, isequaln(emitted, v1), [cls ': the carry is not the v1 source']);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-pending-'), [cls ': ' d]);
+    rowOf = struct('simple_calc', 'carry-104', 'spikewaves', 'carry-101', ...
+        'spike_clusters', 'carry-102', 'binnedspikeratevm', 'carry-103');
+    verifyTrue(testCase, startsWith(d, ['[' rowOf.(cls) '] ']), [cls ': ' d]);
     verifyTrue(testCase, contains(d, 'awaiting_home'), [cls ': ' d]);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     verifyTrue(testCase, r.carried, cls);

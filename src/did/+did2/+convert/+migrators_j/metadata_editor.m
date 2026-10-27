@@ -234,18 +234,16 @@ unplaced = [unplaced, formUnplaced];
 % subject, species, strain or sex list is non-empty is carried whole as v1 with
 % a needs-home register row until those lists have a V2 home (likely rebuilt
 % from the subjects); revises the earlier drop under [lossless means round
-% trip]". THE REGISTER ROW IS PENDING in did-schema: until it exists the item
-% cites the placeholder FORM_LISTS_ROW, which names no row.
-FORM_LISTS_ROW = 'carry-pending-dataset-form-lists-needs-home';
+% trip]". The register row is carry-105.
 for listField = {'Subjects', 'SpeciesList', 'StrainList', 'BiologicalSexList'}
     if isstruct(ms) && isscalar(ms) && isfield(ms, listField{1}) ...
             && ~isEmptyValueOf(ms.(listField{1}))
-        unplaced{end+1} = sprintf('[%s] awaiting_home: %s', FORM_LISTS_ROW, listField{1}); %#ok<AGROW>
+        unplaced{end+1} = sprintf('[carry-105] awaiting_home: %s', listField{1}); %#ok<AGROW>
     end
 end
 if ~isempty(unplaced)
-    % carry-register: carry-043 carry-044 carry-054 (the items above); none for
-    %   the form lists (FORM_LISTS_ROW, pending in did-schema). A form field
+    % carry-register: carry-043 carry-044 carry-054 carry-105 (the items
+    %   above). A form field
     %   whose binding the loaded schema does not hold is not a carry: it
     %   errors in datasetFormTerms ([pipeline defects are not carries])
     did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...

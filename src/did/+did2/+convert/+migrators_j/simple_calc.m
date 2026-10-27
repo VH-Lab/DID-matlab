@@ -74,16 +74,13 @@ if isstruct(blk) && (isfield(blk, 'result_value') || isfield(blk, 'result_units'
          'This shape can only come from the V_alpha snapshot or a fixture built ' ...
          'against it.']);
 end
-% THE REGISTER ROW IS PENDING in did-schema: until it exists the note cites the
-% placeholder PENDING_ROW, which names no row (tools/check_carry_citations.py
-% lists this site as a reason with no row).
-PENDING_ROW = 'carry-pending-simple-calc-needs-home';
+% The register row is carry-104 (did-schema V_eta_carry_register.json).
 b = did2.convert.v1read.readBase(preBody);
 id = b.id;
 if ~ischar(id); id = ''; end
-% carry-register: none (needs-home row pending in did-schema; PENDING_ROW)
+% carry-register: carry-104
 did2.convert.reportNote('carried_as_v1', 'simple_calc', id, ...
-    ['[' PENDING_ROW '] awaiting_home: simple_calc has no V2 home yet ' ...
+    ['[carry-104] awaiting_home: simple_calc has no V2 home yet ' ...
     '([simple_calc carries as needs home])']);
 bodies = {preBody};
 end
