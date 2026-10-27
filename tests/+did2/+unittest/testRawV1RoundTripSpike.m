@@ -133,8 +133,10 @@ end
 verifyEqual(testCase, did2.convert.rawV1Classes('speedtuning_calc'), 'speed_tuning_calc');
 verifyFalse(testCase, any(strcmp(names, 'speed_tuning_calc')), ...
     'the migrator''s spelling is not the v1 name');
-verifyFalse(testCase, any(strcmp(names, 'simple_calc')), ...
-    'simple_calc stays on the renamed path (rawV1Classes, NOT LISTED)');
+% INVERTED 2026-10-27 ([simple_calc carries as needs home], Jess Haley): it is
+% read raw so that its carry is the untouched v1 source
+verifyTrue(testCase, any(strcmp(names, 'simple_calc')), ...
+    'simple_calc is read raw and carried (rawV1Classes)');
 end
 
 function testTheSwitchChangesNoConvertedDocument(testCase)
