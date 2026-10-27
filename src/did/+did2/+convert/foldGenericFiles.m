@@ -521,11 +521,14 @@ report.generic_files_seen = double(genericIdx.Count);
 % A label is matched to its target ONLY when the target is a generic_file in
 % this batch. Every other label -- the ~7,007 that are not about a file, and
 % any whose target is out of batch -- is not even looked up, and none is
-% touched either way.
+% touched either way. A label is found under either class name
+% (did2.convert.isOntologyLabelClass): `ontologyLabel` as v1 writes it and pass
+% 1 now hands it over (did2.convert.rawV1Classes), or the renamed
+% `ontology_label`; its block is read in the same two spellings.
 labelNode  = containers.Map('KeyType', 'char', 'ValueType', 'char');
 labelCount = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
-    if ~strcmp(classes{k}, 'ontology_label'); continue; end
+    if ~did2.convert.isOntologyLabelClass(classes{k}); continue; end
     report.ontology_labels_seen = report.ontology_labels_seen + 1;
     targetId = depValueOf(bodies{k}, 'document_id');
     if isempty(targetId) || ~isKey(genericIdx, targetId); continue; end
@@ -534,8 +537,11 @@ for k = 1:n
         labelCount(targetId) = labelCount(targetId) + 1;
     else
         labelCount(targetId) = 1;
-        labelNode(targetId)  = charField(blockOf(bodies{k}, 'ontology_label'), ...
-            {'ontology_node', 'ontologyNode'});
+        labelBlock = blockOf(bodies{k}, 'ontology_label');
+        if isempty(fieldnames(labelBlock))
+            labelBlock = blockOf(bodies{k}, 'ontologyLabel');
+        end
+        labelNode(targetId)  = charField(labelBlock, {'ontology_node', 'ontologyNode'});
     end
 end
 
