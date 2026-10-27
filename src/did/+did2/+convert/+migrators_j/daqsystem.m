@@ -244,9 +244,45 @@ function bodies = daqsystem(preBody)
 %   it by hand". It needs a hand edit by someone who may make one. The stale
 %   direction is the safe one (it claims LESS progress than exists), but it is
 %   recorded here rather than left to be found.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI daqsystem.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+daq/system.m newdocument writes it).
+%   Every v1 field and where it goes; did2.convert.roundtrip.daqsystem rebuilds
+%   the v1 document and testRawV1RoundTripDaq compares the two:
+%
+%     base.id, session_id, datestamp -> the acquisition_system's
+%     base.name                      -> acquisition_system.name (the join key)
+%     daqsystem.ndi_daqsystem_class  -> the software entity's name (software_id)
+%     depends_on filenavigator_id    -> epoch_file_pattern_id
+%     depends_on daqreader_id        -> reader_id
+%     depends_on daqmetadatareader_id, _1.._N
+%                                    -> epoch_parameter_reader_id, in order (the
+%                                       template's bare entry is empty on every
+%                                       writer document)
+%
+%   Edges are read with either key (`value`, as v1 writes them, or `id` /
+%   `document_id`). What the renamed path would have discarded (a depends_on
+%   `version`, a second id, an `ndi_document` beside `base`) is carried,
+%   carry-049, as before; a field or edge no part of this migrator reads, which
+%   the renamed path dropped without a word, now carries the document whole as
+%   v1 (private/jRawAccount, jRawCarry; no register row yet).
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above): what the migrator does not read
+% carries the untouched v1 document; a legacy identity block is read as base.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, ...
+    struct('daqsystem', {{'ndi_daqsystem_class'}}), ...
+    {'^filenavigator_id$', '^daqreader_id$', '^daqmetadatareader_id(_\d+)?$'});
+if jRawCarry('daqsystem', src, collision, unplaced)
+    bodies = {src};
+    return;
 end
 
 blk = struct();
@@ -288,7 +324,7 @@ if isempty(implClass) && isempty(navId) && isempty(readerId) && isempty(mdIds)
     % that can carry a document on its own, via the software_id edge, so it has
     % to be counted as something-to-declare or a class-name-only daqsystem would
     % fall into a passthrough that is no longer warranted.
-    bodies = {preBody};
+    bodies = {src};
     return;
 end
 

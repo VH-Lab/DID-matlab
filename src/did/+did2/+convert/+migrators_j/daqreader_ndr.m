@@ -16,9 +16,43 @@ function v2Body = daqreader_ndr(preBody)
 %   is the stale-header trap in the header of the very file whose allow-list
 %   entry was retired for it -- a docstring claiming MORE was carried than is,
 %   which is the reassuring direction.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI daqreader_ndr.json + daqreader.json + base.json
+%   at the locked NDI-matlab `main`, 3cb19a8, as +daq/+reader/+mfdaq/ndr.m and
+%   +daq/+reader/+image/ndr.m newdocument write it). It has NO superclass
+%   migrator to fold: neither `base` nor `daqreader` has one (+migrators_j/
+%   daqreader.m is the concrete migrator this one hands on to). Every v1 field
+%   and where it goes; did2.convert.roundtrip.daqreader_ndr rebuilds the v1
+%   document and testRawV1RoundTripDaq compares the two:
+%
+%     base.id, session_id, datestamp     -> the acquisition_reader's
+%     base.name                          -> not written (the writer leaves '')
+%     daqreader.ndi_daqreader_class      -> the software entity's name
+%     daqreader_ndr.ndr_reader_string    -> acquisition_reader.reader_string
+%     daqreader_ndr.ndi_daqreader_ndr_class
+%                                        -> not written: it restates the
+%                                           reader class (carry-017 otherwise)
+%     daqreader_ndr.file_extension       -> carried (carry-039)
+%
+%   What the renamed path would have discarded is carried, carry-049, as
+%   before; a field or edge no part of this migrator reads now carries the
+%   document whole as v1 (private/jRawAccount, jRawCarry; no register row yet).
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above)
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'daqreader', {{'ndi_daqreader_class'}}, ...
+    'daqreader_ndr', {{'ndr_reader_string', 'ndi_daqreader_ndr_class', 'file_extension'}}), {});
+if jRawCarry('daqreader_ndr', src, collision, unplaced)
+    v2Body = {src};
+    return;
 end
 
 % `ndi_daqreader_ndr_class` is dropped only when it restates
@@ -44,7 +78,7 @@ if ~isempty(unplaced)
     % carry-register: carry-017 (the reader class item); carry-039 (file_extension)
     did2.convert.reportNote('carried_as_v1', 'daqreader_ndr', char(preBody.base.id), ...
         ['unplaced: ' strjoin(unplaced, ', ')]);
-    v2Body = {preBody};
+    v2Body = {src};
     return;
 end
 

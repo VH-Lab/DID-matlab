@@ -91,9 +91,46 @@ function bodies = syncrule(preBody)
 %   .m files are the constructor read and the writer). The one live QUERY in
 %   this cluster reads `syncrule_mapping`, which this build leaves untouched --
 %   see syncrule_mapping.m.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI syncrule.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+time/syncrule.m newdocument writes it
+%   for the four rules). Every v1 field and where it goes;
+%   did2.convert.roundtrip.syncrule rebuilds the v1 document and
+%   testRawV1RoundTripDaq compares the two:
+%
+%     base.id, session_id, datestamp  -> the clock_alignment_configuration's
+%     base.name                       -> not written (the writer leaves '')
+%     syncrule.ndi_syncrule_class     -> the software entity's name
+%     syncrule.parameters.*           -> the method parameters (named), the
+%                                        clock (epochclocktype), and, on the
+%                                        resolved filefind fold, the two
+%                                        acquisition_channels (daqsystem1/2)
+%   A rule that does not fold (a channel-based rule; a filefind rule in pass 1)
+%   passes through unchanged, as before.
+%
+%   What the renamed path would have discarded is carried, carry-049, as
+%   before; a field or edge no part of this migrator reads now carries the
+%   document whole as v1 (private/jRawAccount, jRawCarry; no register row yet).
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above). Every field inside `parameters` is
+% accounted for below (read, or a method parameter, or carry-008). A body
+% did2.convert.resolveClockAlignment hands back (stamped did_v2) was accounted
+% for in pass 1; its transient `resolved_acquisition_system_id` stamps are
+% read, never emitted.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, ...
+    struct('syncrule', {{'ndi_syncrule_class', 'parameters'}}), ...
+    {'^resolved_acquisition_system_id$'});
+if jRawCarry('syncrule', src, collision, unplaced)
+    bodies = {src};
+    return;
 end
 
 block = struct();
@@ -168,7 +205,7 @@ resolved = stampedSystemIds(preBody);
 if numel(resolved) == 2 && ~isempty(name1) && ~isempty(name2) ...
         && isempty(ch1) && isempty(ch2)
     if carryUnwritable(preBody, params, true)
-        bodies = {preBody};
+        bodies = {src};
         return;
     end
     channelDocs = cell(1, 2);
@@ -184,12 +221,12 @@ if numel(resolved) == 2 && ~isempty(name1) && ~isempty(name2) ...
 end
 
 if ~(haveNeither && isFileBased)
-    bodies = {preBody};
+    bodies = {src};
     return;
 end
 
 if carryUnwritable(preBody, params, false)
-    bodies = {preBody};
+    bodies = {src};
     return;
 end
 [cfg, software] = configuration(preBody, block, {}, false);

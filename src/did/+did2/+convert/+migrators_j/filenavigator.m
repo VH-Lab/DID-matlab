@@ -112,9 +112,41 @@ function bodies = filenavigator(preBody)
 %
 %   1 -> 2 (epoch_file_pattern + software), or 1 -> 1 when the implementation
 %   class name is absent, or a passthrough when there is nothing to declare.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI filenavigator.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+file/navigator.m newdocument writes
+%   it). Every v1 field and where it goes; did2.convert.roundtrip.filenavigator
+%   rebuilds the v1 document and testRawV1RoundTripDaq compares the two:
+%
+%     base.id, session_id, datestamp     -> the epoch_file_pattern's
+%     base.name                          -> not written (the writer leaves the
+%                                           template's '')
+%     ndi_filenavigator_class            -> the software entity's name
+%     fileparameters                     -> file_pattern (the writer's
+%                                           cell2str list, parsed)
+%     epochprobemap_fileparameters       -> epoch_map_pattern (the same)
+%     epochprobemap_class                -> epoch_map_format
+%
+%   What the renamed path would have discarded is carried, carry-049, as
+%   before; a field or edge no part of this migrator reads, which the renamed
+%   path dropped without a word, now carries the document whole as v1
+%   (private/jRawAccount, jRawCarry; no register row yet).
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above)
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct('filenavigator', ...
+    {{'ndi_filenavigator_class', 'fileparameters', 'epochprobemap_class', ...
+    'epochprobemap_fileparameters'}}), {});
+if jRawCarry('filenavigator', src, collision, unplaced)
+    bodies = {src};
+    return;
 end
 
 blk = struct();
@@ -129,7 +161,7 @@ dataList   = jFileMatchList(rawField(blk, 'fileparameters'));
 mapList    = jFileMatchList(rawField(blk, 'epochprobemap_fileparameters'));
 
 if isempty(implClass) && isempty(mapFormat) && isempty(dataList) && isempty(mapList)
-    bodies = {preBody};     % nothing to declare -- see THE GUARD above
+    bodies = {src};         % nothing to declare -- see THE GUARD above
     return;
 end
 

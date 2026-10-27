@@ -91,9 +91,36 @@ function bodies = daqmetadatareader(preBody)
 %   are both REAL and both convert -- the second simply omits software_id rather
 %   than writing it empty, because +did2/+validate/references.m:90 SKIPS empty
 %   edges, so an empty edge is invisible rather than absent.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI daqmetadatareader.json + base.json at the
+%   locked NDI-matlab `main`, 3cb19a8, as +ndi/+daq/metadatareader.m
+%   newdocument writes it). Every v1 field and where it goes;
+%   did2.convert.roundtrip.daqmetadatareader rebuilds the v1 document and
+%   testRawV1RoundTripDaq compares the two:
+%
+%     base.id, session_id, datestamp  -> the epoch_parameter_reader's
+%     base.name                       -> not written (the writer leaves '')
+%     ndi_daqmetadatareader_class     -> the software entity's name
+%     tab_separated_file_parameter    -> file_regex
+%
+%   What the renamed path would have discarded is carried, carry-049, as
+%   before; a field or edge no part of this migrator reads now carries the
+%   document whole as v1 (private/jRawAccount, jRawCarry; no register row yet).
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above)
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct('daqmetadatareader', ...
+    {{'ndi_daqmetadatareader_class', 'tab_separated_file_parameter'}}), {});
+if jRawCarry('daqmetadatareader', src, collision, unplaced)
+    bodies = {src};
+    return;
 end
 
 blk = struct();
@@ -106,7 +133,7 @@ implClass   = jGetChar(blk, 'ndi_daqmetadatareader_class');
 filePattern = jGetChar(blk, 'tab_separated_file_parameter');
 
 if isempty(implClass) && isempty(filePattern)
-    bodies = {preBody};     % see THE GUARD above
+    bodies = {src};         % see THE GUARD above
     return;
 end
 
