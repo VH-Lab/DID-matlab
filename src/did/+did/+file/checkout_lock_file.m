@@ -1,4 +1,4 @@
-function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expiration)
+function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expiration, maxPollInterval)
     % CHECKOUT_LOCK_FILE Try to establish control of a lock file
     %
     %  [FID,KEY] = CHECKOUT_LOCK_FILE(FILENAME)
@@ -14,7 +14,8 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     %  file will be created and FID will return the file ID (see help fopen).
     %
     %  If instead the file already exists, the function will check
-    %  every 1 second for 30 iterations to see if the file disappears.
+    %  every 1 second for up to 30 seconds to see if the file disappears
+    %  (see MAXPOLLINTERVAL below to check more often).
     %  If the function is never able to create a new file because the
     %  old file exists, then the function will give up and return FID < 0.
     %
@@ -50,8 +51,8 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     %
     %  [FID,KEY] = CHECKOUT_LOCK_FILE(FILENAME, CHECKLOOPS)
     %
-    %  Alters the number of times the function will check (at 1 second
-    %  intervals) to see if FILENAME has disappeared.
+    %  Alters how long, in seconds, the function will keep checking to see
+    %  if FILENAME has disappeared.
     %
     %  [FID,KEY] = CHECKOUT_LOCK_FILE(FILENAME, CHECKLOOPS, THROWERROR)
     %
@@ -64,6 +65,14 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     %  CHECKOUT_LOCK_FILE will examine the file for the expiration time and
     %  ignore and remove the lock file if it is "expired". By default, EXPIRATION_SECONDS
     %  is 3600.
+    %
+    %  [FID,KEY] = CHECKOUT_LOCK_FILE(FILENAME, CHECKLOOPS, THROWERROR, EXPIRATION_SECONDS, MAXPOLLINTERVAL)
+    %
+    %  Checks again after 5 ms rather than 1 s, backing off to at most
+    %  MAXPOLLINTERVAL seconds between checks. For locks that are only ever
+    %  held briefly (the file cache's index lock passes 0.1), so a waiter
+    %  is handed the lock almost as soon as it is free. Omitted or empty,
+    %  the function checks once a second.
     %
     %  Example:
     %     % I want to make sure only my program writes to myfile.txt.
@@ -106,18 +115,44 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
         end
     end
 
+    maxDelay = 1;
+    delay = 1;
+    if nargin>4
+        if ~isempty(maxPollInterval)
+            maxDelay = max(maxPollInterval, 0.001);
+            delay = min(0.005, maxDelay);
+        end
+    end
+
     % now check
 
-    loop = 0;
+    % LOOPS is a budget in seconds (it was one check per second, LOOPS
+    % times). Checks are a second apart unless MAXPOLLINTERVAL was given.
+    waitStart = tic;
+    timedOut = ~(loops>0);
 
     expiration_time_of_file = Inf;
     isexpired = 0;
 
-    while ( isfile(filename) && loop<loops )
+    while ( ~timedOut && isfile(filename) )
+        if toc(waitStart) >= loops
+            timedOut = true;
+            break;
+        end
         file_exists = isfile(filename);
 
         if file_exists
-            C = did.file.readlines(filename);
+            try
+                C = did.file.readlines(filename);
+            catch readError
+                if ~isfile(filename)
+                    % Released between the check above and this read --
+                    % a window that checking every few milliseconds hits.
+                    % Look again; the loop condition will find it gone.
+                    continue;
+                end
+                rethrow(readError);
+            end
 
             if ~isempty(C)
                 % Both formats, and never silently: the bare try/end this
@@ -138,14 +173,14 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
             %else,
             %    disp('will not expire.');
             %end;
-            pause(1);
+            pause(delay);
+            delay = min(delay*2, maxDelay);
         else    % it is expired; we get to delete it
             delete(filename);
         end
-        loop = loop + 1;
     end
 
-    if loop<loops % we made it
+    if ~timedOut % we made it
         fid = fopen(filename,'wt','ieee-le');
         % 'UTC', not 'UTCLeapSeconds': a UTCLeapSeconds datetime accepts
         % only a Z-suffixed display format, and DID-python writes no Z --

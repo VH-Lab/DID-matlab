@@ -139,8 +139,10 @@ classdef binaryTable < handle
             key = '';
             lockfid = [];
             if binaryTableObj.hasLock == false
+                % Held for one table update (milliseconds), so look again
+                % often (at most every 0.1 s) rather than once a second.
                 [lockfid,key] = did.file.checkout_lock_file(binaryTableObj.lockFileName(),...
-                    30,1,20);
+                    30,1,20,0.1);
                 binaryTableObj.hasLock = true;
             end
         end %
@@ -527,13 +529,18 @@ classdef binaryTable < handle
             end
 
             if ~option.sorted
-                % then we just have to read each entry one by one
+                % then we just have to look at each entry, but read the
+                % column once rather than reopening the file for every row:
+                % the file cache's index has a row per cached file, and a
+                % per-row read took seconds at tens of thousands of files.
                 r = binaryTableObj.getSize();
-                for i=1:r
-                    data = binaryTableObj.readRow(i,col);
-                    if isequal(data,value)
-                        row = i;
-                        break;
+                if r>0
+                    allData = binaryTableObj.readRow(Inf,col);
+                    for i=1:r
+                        if isequal(allData(i,:),value)
+                            row = i;
+                            break;
+                        end
                     end
                 end
             else
