@@ -238,6 +238,21 @@ function bodies = epochfiles_ingested(preBody)
 %   2026-08-12, which is the corpus-wide find-or-create the mint is MODELLED on,
 %   not where it lives), did2.validate.epochStrings (which reads this class's
 %   `epoch_id` as a mint key).
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it (NDI epochfiles_ingested.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+file/navigator.m ingest writes it:
+%   base, the `filenavigator_id` edge, epoch_id / files / epochprobemap) and
+%   pass 1 still hands it back UNCHANGED: a passthrough, which v1_to_v2 pads
+%   and stamps as before. The batch passes (epochMint, resolveEpochProbemap)
+%   read its block by name and its edge with either key, so the raw `value`
+%   key where the renamed path had `document_id` changes nothing they read.
+%   What universalRenames would have discarded (a depends_on `version` or
+%   second id, an `ndi_document` beside `base`, an `epochId` beside a differing
+%   `epoch_id`) is carried, carry-049, as the renamed path carried it.
+%   did2.convert.roundtrip.epochfiles_ingested rebuilds the v1 document from
+%   the passthrough; testRawV1RoundTripIngested compares.
 
 arguments
     preBody (1,1) struct
@@ -269,6 +284,17 @@ if hasDependency(preBody, 'epochid')
          '(+ndi/+file/navigator.m:707). This edge is the V_eta invention that ' ...
          'was empty on 6,921 of 6,921 corpus documents, so a body carrying it ' ...
          'came from the V_alpha snapshot or a fixture built against it.']);
+end
+
+collision = jResponseRenameCollisions(preBody, ...
+    {'epochfiles_ingested', 'epochId', 'epoch_id'});
+if ~isempty(collision)
+    b = did2.convert.v1read.readBase(preBody);
+    id = b.id;
+    if ~ischar(id); id = ''; end
+    % carry-register: carry-049 (the renamed path carried this collision)
+    did2.convert.reportNote('carried_as_v1', 'epochfiles_ingested', id, ...
+        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
 end
 
 % Deliberate passthrough. `bodies = {preBody}` is how a migrator says

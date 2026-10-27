@@ -97,6 +97,35 @@ function bodies = syncrule_mapping(preBody)
 %   the phantom instead, empty on all 5,316 corpus documents. The body always
 %   carried the real pair through (depends_on is copied verbatim); it was the
 %   SCHEMA that named the wrong edge, so nothing pointed the query at anything.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it (NDI syncrule_mapping.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+time/syncgraph.m ingest writes it), and
+%   pass 1 carries it untouched (carry-036): no did_v1 document states the two
+%   endpoint references. When did2.convert.epochMint re-runs this migrator with
+%   the references stamped, the fold accounts for every v1 field before it
+%   folds; anything it does not place keeps the mapping carried
+%   (unplacedInFold below):
+%
+%     base.id, session_id, datestamp -> the clock_alignment
+%     base.name                  -> not written; folded only when empty (the
+%                                   writer's newdocument leaves it '')
+%     depends_on syncgraph_id    -> clock_alignment_policy_id
+%     depends_on syncrule_id     -> clock_alignment_configuration_id
+%     (the edges epochMint stamps: epoch_id_1/_2, time_reference_id_1/_2)
+%     files                      -> folded only when it lists no file (the
+%                                   writer attaches none)
+%     syncrule_mapping.cost      -> cost (a finite number)
+%     syncrule_mapping.mapping   -> value.coefficients (finite numbers)
+%     epochnode_a / epochnode_b  -> the two per-system references; epochMint
+%                                   checked epoch_id, epoch_clock, t0_t1,
+%                                   objectname, objectclass and epochprobemap
+%                                   against them; epoch_session_id is folded
+%                                   only when it is the document's own session
+%
+%   did2.convert.roundtrip.syncrule_mapping rebuilds the v1 document from the
+%   fold; testRawV1RoundTripIngested compares.
 
 arguments
     preBody (1,1) struct
@@ -111,7 +140,7 @@ end
 % BRANCH 1 -- the signed model, gated on the epoch documents existing.
 % ---------------------------------------------------------------------
 [epochA, epochB] = epochDocIds(preBody);
-if ~isempty(epochA) && ~isempty(epochB)
+if ~isempty(epochA) && ~isempty(epochB) && isempty(unplacedInFold(preBody, block))
     converted = jClockAlignmentBodies(preBody, block, epochA, epochB);
     if ~isempty(converted)
         bodies = converted;
@@ -136,7 +165,7 @@ end
 % epochMint's syncrule arming reads the endpoint strings from either shape.
 % carry-register: carry-036
 did2.convert.reportNote('carried_as_v1', 'syncrule_mapping', ...
-    char(preBody.base.id), ['[carry-036] unplaced: the two ends are not per-system ' ...
+    sourceId(preBody), ['[carry-036] unplaced: the two ends are not per-system ' ...
     'references on the epochs ([device clocks on one epoch])']);
 bodies = {preBody};
 end
@@ -160,3 +189,105 @@ idB = jSyncDependency(preBody, 'epoch_id_2');
 end
 
 
+
+% ===================== the raw read ========================================
+
+function id = sourceId(preBody)
+%SOURCEID The v1 id, read through did2.convert.v1read.readBase (a legacy
+%   `ndi_document` identity too); '' when there is none.
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
+end
+
+function unplaced = unplacedInFold(preBody, block)
+%UNPLACEDINFOLD The v1 fields the fold would not keep, as paths ({} when it
+%   keeps them all). Read off the raw v1 document (or the body the renamed path
+%   gave epochMint: its depends_on read with either key, its stamp ignored).
+unplaced = {};
+b = did2.convert.v1read.readBase(preBody);
+if ~strcmp(b.source, 'base') || ~isempty(fieldnames(b.extra)) ...
+        || ~isempty(fieldnames(b.legacy))
+    unplaced{end+1} = 'base';   % a legacy or extended identity block
+end
+if ~isempty(b.name)
+    unplaced{end+1} = 'base.name';
+end
+known = {'syncgraph_id', 'syncrule_id', 'epoch_id_1', 'epoch_id_2', ...
+    'time_reference_id_1', 'time_reference_id_2', 'session_id'};
+try
+    deps = did2.convert.v1read.readDependsOn(preBody);
+catch
+    deps = [];
+    unplaced{end+1} = 'depends_on';
+end
+for k = 1:numel(deps)
+    if ~any(strcmp(deps(k).name, known)) && ~isempty(deps(k).document_id)
+        unplaced{end+1} = sprintf('depends_on(%s)', deps(k).name); %#ok<AGROW>
+    end
+    if ~isempty(deps(k).version) || ~isempty(fieldnames(deps(k).other))
+        unplaced{end+1} = sprintf('depends_on(%s) beyond its id', deps(k).name); %#ok<AGROW>
+    end
+end
+top = setdiff(fieldnames(preBody), {'document_class', 'base', 'depends_on', ...
+    'files', 'syncrule_mapping'});
+for k = 1:numel(top)
+    if ~isEmptyValue(preBody.(top{k}))
+        unplaced{end+1} = top{k}; %#ok<AGROW>
+    end
+end
+if isfield(preBody, 'files') && ~isEmptyValue(preBody.files)
+    f = preBody.files;
+    if ~isstruct(f) || ~isscalar(f)
+        unplaced{end+1} = 'files';
+    else
+        fns = fieldnames(f);
+        for k = 1:numel(fns)
+            if ~isEmptyValue(f.(fns{k}))
+                unplaced{end+1} = ['files.' fns{k}]; %#ok<AGROW>
+            end
+        end
+    end
+end
+if ~isstruct(block) || ~isscalar(block)
+    unplaced{end+1} = 'syncrule_mapping';
+    return;
+end
+rest = setdiff(fieldnames(block), {'cost', 'mapping', 'epochnode_a', 'epochnode_b'});
+for k = 1:numel(rest)
+    unplaced{end+1} = ['syncrule_mapping.' rest{k}]; %#ok<AGROW>
+end
+if isfield(block, 'cost') && ~(isnumeric(block.cost) && isscalar(block.cost) ...
+        && isfinite(block.cost))
+    unplaced{end+1} = 'syncrule_mapping.cost';
+end
+nodeFields = {'epoch_id', 'epoch_session_id', 'epochprobemap', 'epoch_clock', ...
+    't0_t1', 'objectname', 'objectclass'};
+for nd = {'epochnode_a', 'epochnode_b'}
+    if ~isfield(block, nd{1}) || ~isstruct(block.(nd{1})) || ~isscalar(block.(nd{1}))
+        unplaced{end+1} = ['syncrule_mapping.' nd{1}]; %#ok<AGROW>
+        continue;
+    end
+    node = block.(nd{1});
+    extra = setdiff(fieldnames(node), nodeFields);
+    for k = 1:numel(extra)
+        unplaced{end+1} = sprintf('syncrule_mapping.%s.%s', nd{1}, extra{k}); %#ok<AGROW>
+    end
+    if isfield(node, 'epoch_session_id') && ~isEmptyValue(node.epoch_session_id) ...
+            && ~isequal(char(node.epoch_session_id), char(b.session_id))
+        unplaced{end+1} = sprintf('syncrule_mapping.%s.epoch_session_id', nd{1}); %#ok<AGROW>
+    end
+end
+end
+
+function tf = isEmptyValue(v)
+%ISEMPTYVALUE Empty, or a struct whose every field is empty (the writer's
+%   `files` block with no file: {file_list: [], file_info: []}).
+if isempty(v)
+    tf = true;
+elseif isstruct(v) && isscalar(v)
+    tf = all(cellfun(@(f) isEmptyValue(v.(f)), fieldnames(v)));
+else
+    tf = false;
+end
+end
