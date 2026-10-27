@@ -34,12 +34,17 @@ function [result, report] = foldGenericFiles(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set --
 %   the grammar is in the parser's docstring.
 %
-%   BATCH-PASS-CONSUMES: generic_file, ontology_label, file_reference
+%   BATCH-PASS-CONSUMES: generic_file, ontologyLabel, ontology_label, file_reference
 %   BATCH-PASS-EMITS: generic_file -> document: observation+term, opaque_body
 %   BATCH-PASS-EMITS: file_reference -> document: opaque_body
-%   BATCH-PASS-EMITS: ontology_label -> nothing: read at :446-457 (the `ontology_label` loop) for the
-%       sibling label's `ontologyNode`, which becomes the observation's
+%   BATCH-PASS-EMITS: ontologyLabel -> nothing: the v1 spelling, which pass 1
+%       hands over now that ontologyLabel reads raw v1 (did2.convert.rawV1Classes).
+%       Read in the label loop (the one guarded by isOntologyLabelClass) for
+%       the sibling label's `ontologyNode`, which becomes the observation's
 %       `variable`. The label document itself is left exactly where it is.
+%   BATCH-PASS-EMITS: ontology_label -> nothing: the renamed spelling, read in
+%       the same loop the same way. The label document itself is left exactly
+%       where it is.
 %   ---------------------------------------------------------------------
 %
 %   ---------------------------------------------------------------------
