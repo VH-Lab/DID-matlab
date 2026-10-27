@@ -144,6 +144,14 @@ POST_PASSES = [
         ("refused_no_stimulus_element_id", "  no stimulus_element_id"),
         ("refused_bath_assembly_failed", "  bath assembly failed"),
         ("refused_unexpected_error", "  UNEXPECTED error"),
+        # [one bath shape] (Jess Haley, 2026-10-27): the stimulator link and the
+        # epoch hand-off. baths_with_instrument counts the baths that LANDED.
+        ("baths_with_instrument", "baths landed WITH the stimulator as instrument_id"),
+        ("baths_without_epoch_string", "  no epoch string: session anchor kept"),
+        ("bath_clocks_from_element_epoch", "  clock read from the stimulator's element_epoch"),
+        ("bath_clocks_defaulted", "  clock defaulted to dev_local_time"),
+        ("bath_anchors_no_time", "  'no_time' clock: session anchor kept"),
+        ("bath_anchors_handed_over", "anchors handed to epochMint for their epoch"),
     ]),
 
     # `documents_removed_unattributed` IS A GATE AND MUST READ 0. It is the keep
@@ -257,6 +265,17 @@ POST_PASSES = [
         ("pairs_minus_strings", "epochs the string key would have FUSED"),
         ("epochs_found_existing", "epochs already present"),
         ("epochs_minted", "epochs minted"),
+        # [one bath shape]: resolveBathAnchors, epochAnchorFold's DID twin
+        ("bath_anchors_handed_over", "bath anchors handed over  <- denominator"),
+        ("bath_anchors_found", "  found in the batch"),
+        ("bath_anchors_repointed", "  RE-POINTED at their epoch"),
+        ("bath_anchors_clock_tolerance_applied", "    with an approx_ clock tolerance"),
+        ("bath_anchors_refused_not_in_batch", "  refused: anchor not in batch"),
+        ("bath_anchors_refused_no_epoch_document", "  refused: no epoch for (session, string)"),
+        ("bath_anchors_refused_clock_no_time", "  refused: no_time clock"),
+        ("bath_anchors_refused_clock_inherited", "  refused: inherited clock"),
+        ("bath_anchors_refused_clock_unknown", "  refused: unknown clock"),
+        ("bath_anchors_refused_invalid", "  refused: re-pointed anchor did not validate"),
         ("skipped_synthetic", "refused: synthetic whole_session_ id"),
         ("skipped_no_session_id", "refused: no base.session_id"),
         ("skipped_no_session_document", "refused: no session document"),

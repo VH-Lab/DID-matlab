@@ -53,6 +53,33 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   call +migrators_j/private/jTreatmentRoute makes for a treatment.
 %   ---------------------------------------------------------------------
 %
+%   ONE BATH SHAPE (Decided by Jess Haley, 2026-10-27 [one bath shape],
+%   did-schema V_eta_go_forward_class_audit.md): this pass keeps each bath's
+%   stimulator link and its epoch, in the shape NDI-matlab's
+%   ndi.migrate.internal.stimulusBathToBath writes (read at NDI-matlab V2
+%   a2ab2d152, its vetaBath):
+%     - the stimulator is the manipulation's `instrument_id` (T7), as there
+%       ('InstrumentId', stimulatorId);
+%     - the anchor is built "during the session" as there, and its epoch is
+%       handed on as NDI hands it to epochAnchorFold: one row per bath with an
+%       epoch string, {anchor_id, session_id, epoch_string, epoch_clock}, in
+%       RESULT.deferred_bath_anchors. did2.convert.epochMint (its
+%       resolveBathAnchors stage, the counterpart of NDI's epochAnchorFold)
+%       re-points that anchor at the epoch entity it holds for (session, epoch
+%       string), with the clock, id preserved; a bath whose epoch is not
+%       found stays anchored to its session, counted, as in NDI.
+%     - the clock is the stimulator's, read as NDI's bodyResolver
+%       epochClockOfElement reads it: the stimulator's element_epoch for that
+%       epoch (in this batch an `acquisition_epoch`, its clock names joined by
+%       ',', or a carried v1 `element_epoch`'s epoch_clock), else
+%       'dev_local_time'. NDI's second fallback (an `epochclocktimes` document
+%       of that epoch id) is not read here: pass 1 has converted those.
+%   ONE DIFFERENCE, KEPT ON PURPOSE AND COUNTED: NDI mints NO anchor for a bath
+%   with no epoch string or a 'no_time' clock, so its manipulation fails
+%   time_reference_id's min_count. Here such a bath keeps its session anchor
+%   (`baths_without_epoch_string`, `bath_anchors_no_time`) rather than turning
+%   into a quarantine; it is not handed on.
+%
 %   This is the COARSE resolver for callers without a live session (e.g. corpus
 %   discovery). The PRECISE version -- an epoch_bounded_reference on the
 %   stimulator's epoch -- is ndi.migrate.local's second pass
@@ -161,9 +188,18 @@ report = struct( ...
     'assembled_bodies_quarantined',   0, ...
     'quarantine_before',              0, ...
     'quarantine_after',               0, ...
+    'baths_with_instrument',          0, ...
+    'baths_without_epoch_string',     0, ...
+    'bath_anchors_handed_over',       0, ...
+    'bath_anchors_no_time',           0, ...
+    'bath_clocks_from_element_epoch', 0, ...
+    'bath_clocks_defaulted',          0, ...
     'unexpected_error_reasons',       {{}}, ...
     'ran',                            false);
 result.deferred_bath_resolution = report;
+% [one bath shape]: what epochMint's resolveBathAnchors re-points (one row per
+% handed-on anchor); always present, so "none handed on" is not "not run"
+result.deferred_bath_anchors = emptyBathAnchors();
 
 if ~isfield(result, 'quarantine')
     % NOT the same as an empty quarantine, and not the same as not running.
@@ -186,6 +222,7 @@ if isempty(result.quarantine)
 end
 
 [byElement, indexStats] = indexElements(result.migrated);
+clockByElementEpoch = indexElementEpochClocks(result.migrated);
 report.elements_indexed = indexStats.elements;
 report.lineage_edges_indexed = indexStats.lineage_edges;
 report.index_documents_unreadable = indexStats.unreadable;
@@ -193,6 +230,8 @@ report.index_documents_unreadable = indexStats.unreadable;
 q = result.quarantine;
 keep = true(1, numel(q));
 assembled = {};
+pendingAnchors = struct('bath_id', {}, 'anchor_id', {}, 'session_id', {}, ...
+    'epoch_string', {}, 'epoch_clock', {}, 'clock_source', {});
 seenErrorIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:numel(q)
     if ~isDeferredBath(q(k))
@@ -239,7 +278,8 @@ for k = 1:numel(q)
 
     % STAGE 4: assembly. A throw here is always a defect in this file.
     try
-        bathBodies = makeBath(v1Body, subjectId, options.TargetVersion);
+        [bathBodies, anchorInfo] = makeBath(v1Body, subjectId, stimulatorId, ...
+            clockByElementEpoch, options.TargetVersion);
     catch assembleErr
         report.refused_bath_assembly_failed = ...
             report.refused_bath_assembly_failed + 1;
@@ -249,6 +289,7 @@ for k = 1:numel(q)
     end
 
     assembled = [assembled, bathBodies]; %#ok<AGROW>
+    pendingAnchors(end+1) = anchorInfo; %#ok<AGROW>
     report.bodies_assembled = report.bodies_assembled + numel(bathBodies);
     report.baths_resolved = report.baths_resolved + 1;
     keep(k) = false;   % resolved -> drop the original deferral
@@ -276,6 +317,38 @@ sub = did2.convert.v1_to_v2(assembled, ...
 
 result.migrated = [result.migrated, sub.migrated];
 result.quarantine = [q(keep), sub.quarantine];
+% [one bath shape]: count what landed, and hand on the anchors of the baths
+% that landed (an anchor whose bath was quarantined is not re-pointed)
+landed = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:numel(sub.migrated)
+    try
+        landed(char(sub.migrated{k}.get('base.id'))) = true;
+    catch
+    end
+end
+for k = 1:numel(pendingAnchors)
+    a = pendingAnchors(k);
+    if ~isKey(landed, a.bath_id) || ~isKey(landed, a.anchor_id); continue; end
+    report.baths_with_instrument = report.baths_with_instrument + 1;
+    if isempty(a.epoch_string)
+        report.baths_without_epoch_string = report.baths_without_epoch_string + 1;
+        continue;
+    end
+    switch a.clock_source
+        case 'element_epoch'
+            report.bath_clocks_from_element_epoch = report.bath_clocks_from_element_epoch + 1;
+        otherwise
+            report.bath_clocks_defaulted = report.bath_clocks_defaulted + 1;
+    end
+    if strcmp(a.epoch_clock, 'no_time')
+        report.bath_anchors_no_time = report.bath_anchors_no_time + 1;
+        continue;
+    end
+    result.deferred_bath_anchors(end+1) = struct('anchor_id', a.anchor_id, ...
+        'session_id', a.session_id, 'epoch_string', a.epoch_string, ...
+        'epoch_clock', a.epoch_clock);
+end
+report.bath_anchors_handed_over = numel(result.deferred_bath_anchors);
 report.documents_appended = numel(sub.migrated);
 report.assembled_bodies_quarantined = numel(sub.quarantine);
 report.quarantine_after = numel(result.quarantine);
@@ -387,7 +460,8 @@ end
 
 % ===================== bath assembly (coarse) ==============================
 
-function bodies = makeBath(v1Body, subjectId, targetVersion)
+function [bodies, anchorInfo] = makeBath(v1Body, subjectId, stimulatorId, ...
+    clockByElementEpoch, targetVersion)
 %MAKEBATH Assemble the resolved bath (+ its anchor) for TARGETVERSION. Returns a
 %   cell of bodies {anchor, manipulation, ...} to fold back through v1_to_v2.
 %   Strict J (V_eta) retired the `bath`/`pharmacological_manipulation` family
@@ -406,10 +480,11 @@ if ~did2.convert.isV2Set(targetVersion)
          'no bath model (V_epsilon/V_zeta were deleted, did-schema #88).'], ...
         targetVersion);
 end
-bodies = makeBathVEta(v1Body, subjectId);
+[bodies, anchorInfo] = makeBathVEta(v1Body, subjectId, stimulatorId, clockByElementEpoch);
 end
 
-function bodies = makeBathVEta(v1Body, subjectId)
+function [bodies, anchorInfo] = makeBathVEta(v1Body, subjectId, stimulatorId, ...
+    clockByElementEpoch)
 % did-schema #88, built through did2.build: a "during the session" anchor (a
 % relative_time_reference onto the session entity, whose base.id IS the
 % session id), one `chemical` per mixture row, the `formulation` naming them
@@ -485,13 +560,92 @@ bodies{end+1} = f;
 % `formulation_manipulation` is no class: did2.build reads it as the direction
 % `manipulation` with the value kind `formulation`. Its own `value` stays empty;
 % the formulation document holds it.
+% [one bath shape]: the stimulator is the instrument, as NDI's vetaBath writes
 bath = did2.build.statement('manipulation', char(subjectId), variable, [], ...
     'TimeReferenceIds', {anchorId}, 'ValueId', f.base.id, ...
+    'InstrumentId', char(stimulatorId), ...
     'Id', char(bathId), o{:}, 'ValueKind', 'formulation');
+% and its epoch, handed on for epochMint to re-point the anchor at
+epochString = '';
+if isfield(v1Body, 'epochid') && isstruct(v1Body.epochid) ...
+        && isfield(v1Body.epochid, 'epochid')
+    epochString = charOrEmpty(v1Body.epochid.epochid);
+end
+[epochClock, clockSource] = stimulatorClock(clockByElementEpoch, stimulatorId, epochString);
+anchorInfo = struct('bath_id', char(bathId), 'anchor_id', anchorId, ...
+    'session_id', char(sessionId), 'epoch_string', epochString, ...
+    'epoch_clock', epochClock, 'clock_source', clockSource);
 bodies = [{bath}, bodies];
 loc = locationTerm(v1Body);
 if (~isempty(loc.node) || ~isempty(loc.name)) && ~isGenericBath(loc)
     bodies{end+1} = makeLocationObs(v1Body, subjectId, anchorId, loc);
+end
+end
+
+function a = emptyBathAnchors()
+a = struct('anchor_id', {}, 'session_id', {}, 'epoch_string', {}, 'epoch_clock', {});
+end
+
+function s = charOrEmpty(x)
+s = '';
+if ischar(x) || (isstring(x) && isscalar(x))
+    s = char(x);
+end
+end
+
+function idx = indexElementEpochClocks(migrated)
+%INDEXELEMENTEPOCHCLOCKS '<element id>|<epoch string>' -> the clock string, as
+%   NDI's bodyResolver epochClockOfElement reads an element_epoch's
+%   `epoch_clock`: here an `acquisition_epoch` (+migrators_j/element_epoch: the
+%   clock names of acquisition_epoch.clocks, joined by ',', as v1 wrote
+%   epoch_clock) or a v1 `element_epoch` pass 1 carried. The first document
+%   naming a key wins, as there.
+idx = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:numel(migrated)
+    try
+        cn = migrated{k}.className();
+        if ~any(strcmp(cn, {'acquisition_epoch', 'element_epoch'})); continue; end
+        b = migrated{k}.toStruct();
+        el = depFrom(docDeps(migrated{k}), 'element_id');
+        es = '';
+        if isfield(b, 'epochid') && isstruct(b.epochid) && isfield(b.epochid, 'epochid')
+            es = charOrEmpty(b.epochid.epochid);
+        end
+        if isempty(el) || isempty(es); continue; end
+        clk = '';
+        if strcmp(cn, 'acquisition_epoch')
+            if isfield(b, 'acquisition_epoch') && isstruct(b.acquisition_epoch) ...
+                    && isfield(b.acquisition_epoch, 'clocks') && isstruct(b.acquisition_epoch.clocks)
+                c = b.acquisition_epoch.clocks;
+                names = cell(1, numel(c));
+                for j = 1:numel(c)
+                    if isfield(c(j), 'name'); names{j} = charOrEmpty(c(j).name); end
+                end
+                clk = strjoin(names(~cellfun(@isempty, names)), ',');
+            end
+        elseif isfield(b, 'element_epoch') && isstruct(b.element_epoch) ...
+                && isfield(b.element_epoch, 'epoch_clock')
+            clk = charOrEmpty(b.element_epoch.epoch_clock);
+        end
+        key = [el '|' es];
+        if ~isempty(clk) && ~isKey(idx, key)
+            idx(key) = clk;
+        end
+    catch
+        % unreadable: not indexed (the bath then takes the default clock,
+        % counted in bath_clocks_defaulted)
+    end
+end
+end
+
+function [clock, source] = stimulatorClock(idx, stimulatorId, epochString)
+% the stimulator's clock for that epoch, else 'dev_local_time' (NDI's default)
+clock = 'dev_local_time';
+source = 'default';
+key = [char(stimulatorId) '|' char(epochString)];
+if ~isempty(epochString) && isKey(idx, key)
+    clock = idx(key);
+    source = 'element_epoch';
 end
 end
 

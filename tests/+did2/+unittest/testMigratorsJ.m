@@ -2722,6 +2722,95 @@ for loc = {struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Labora
 end
 end
 
+function testDeferredBathKeepsItsStimulatorAndItsEpoch(testCase)
+% Decided by Jess Haley, 2026-10-27 [one bath shape] (did-schema
+% V_eta_go_forward_class_audit.md): DID's bath step keeps the bath's link to
+% its stimulator and to its epoch, in the shape NDI-matlab's
+% ndi.migrate.internal.stimulusBathToBath writes: the stimulator is the
+% manipulation's `instrument_id`, and the anchor, built "during the session",
+% is re-pointed at the epoch entity once epochMint holds it (NDI's
+% epochAnchorFold), with the stimulator's clock, its id preserved.
+subjId = 'aabb1122ccdd3344_5500000000000021';
+stimId = 'aabb1122ccdd3344_5500000000000022';
+sessId = 'aabb1122ccdd3344_9900aabbccddeeff';
+epochId = 'aabb1122ccdd3344_55000000000000e1';
+elem = struct();
+elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
+elem.base = struct('id', stimId, 'session_id', sessId, ...
+    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+elem.element = struct('ndi_element_class', 'ndi.probe.timeseries.stimulator', 'name', 'bath_y', ...
+    'reference', 1, 'type', 'stimulator', 'direct', 0);
+% the stimulator's element_epoch for that epoch: its clock (+ndi/element.m)
+ee = struct();
+ee.document_class = struct('class_name', 'element_epoch', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+ee.depends_on = struct('name', {'element_id'}, 'value', {stimId});
+ee.base = struct('id', 'aabb1122ccdd3344_5500000000000023', 'session_id', sessId, ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+ee.epochid = struct('epochid', 'epoch_t00007');
+ee.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0 10]);
+bath = struct();
+bath.document_class = struct('class_name', 'stimulus_bath', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+bath.depends_on = struct('name', {'stimulus_element_id'}, 'value', {stimId});
+bath.base = struct('id', 'aabb1122ccdd3344_5500000000000024', 'session_id', sessId, ...
+    'name', 'bath', 'datestamp', '2024-06-01T12:00:00.000Z');
+bath.epochid = struct('epochid', 'epoch_t00007');
+bath.stimulus_bath = struct( ...
+    'location', struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Laboratory'), ...
+    'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+
+out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'V_eta');
+rep = out.deferred_bath_resolution;
+verifyEqual(testCase, rep.baths_resolved, 1);
+verifyEqual(testCase, rep.baths_with_instrument, 1);
+verifyEqual(testCase, rep.bath_anchors_handed_over, 1);
+verifyEqual(testCase, rep.bath_clocks_from_element_epoch, 1, ...
+    'the clock was not read off the stimulator''s element_epoch');
+m = firstOfClassJ(out.migrated, 'manipulation+formulation');
+assertNotEmpty(testCase, m);
+% THE STIMULATOR LINK: instrument_id, as NDI's vetaBath ('InstrumentId')
+verifyEqual(testCase, depVal(m, 'instrument_id'), stimId);
+anchorId = depVal(m, 'time_reference_id');
+a = out.deferred_bath_anchors;
+assertEqual(testCase, numel(a), 1);
+verifyEqual(testCase, a.anchor_id, anchorId);
+verifyEqual(testCase, a.epoch_string, 'epoch_t00007');
+verifyEqual(testCase, a.epoch_clock, 'dev_local_time');
+
+% THE EPOCH: epochMint holds the epoch entity for (session, string) and
+% re-points the anchor at it (an existing entity here: the find half)
+epochType = did2.convert.registeredTerm( ...
+    did2.build.vocabulary('entity_type', 'epoch'), 'recording epoch');
+e = did2.build.document('entity', ...
+    struct('type', epochType, 'local_identifier', 'epoch_t00007'), ...
+    'Id', epochId, 'SessionId', sessId, ...
+    'CreationTimestamp', '2024-06-01T12:00:00.000Z', 'Validate', false);
+out.migrated{end+1} = did2.document(e);
+out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, out.epoch_mint.bath_anchors_handed_over, 1);
+verifyEqual(testCase, out.epoch_mint.bath_anchors_repointed, 1);
+anchor = [];
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('base.id'), anchorId); anchor = out.migrated{k}; end
+end
+assertNotEmpty(testCase, anchor, 'the anchor left the batch');
+verifyEqual(testCase, anchor.get('document_class.class_name'), 'relative_time_reference');
+verifyEqual(testCase, depVal(anchor, 'referent_id'), epochId, 'the anchor does not name the epoch');
+v = anchor.get('relative_time_reference.value');
+verifyEqual(testCase, v.relation.name, 'intervalDuring');
+verifyEqual(testCase, v.clock.name, 'dev_local_time');
+% the bath still names the same anchor (id preserved)
+m = firstOfClassJ(out.migrated, 'manipulation+formulation');
+verifyEqual(testCase, depVal(m, 'time_reference_id'), anchorId);
+end
+
 % ============ metadata_editor -> dataset + entities + relations =========
 
 function ds = allOfClassJ(migrated, className)
