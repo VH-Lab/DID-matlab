@@ -110,7 +110,7 @@ b.document_class = struct('class_name', 'subjectmeasurement', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 b.depends_on = struct('name', {'subject_id'}, 'value', {'sub_42'});
 b.base = struct('id', 'sm_1', 'session_id', 'sess_09', ...
-    'name', 'Animal statistics', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 b.subjectmeasurement = struct('measurement', 'age', 'value', 30, ...
     'datestamp', '2017-03-17T19:53:57.066Z');
 end
@@ -125,7 +125,7 @@ b.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ..
                       struct('class_name', 'epochid', 'class_version', '1.0.0')]);
 b.depends_on = struct('name', {'element_id'}, 'value', {'sub_7'});
 b.base = struct('id', 'pv_1', 'session_id', 'sess_09', ...
-    'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 b.pyraview = struct('label', 'high', 'nativeRate', 20000, ...
     'nativeStartTime', 0, 'channels', 4, 'dataType', 'double', ...
     'decimationSamplingRates', [20000 200]);
@@ -493,7 +493,7 @@ v1.document_class = struct('class_name', 'measurement', 'class_version', '1.0.0'
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'sub_42'});
 v1.base = struct('id', 'me_1', 'session_id', 'sess_09', ...
-    'name', 'm', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 % NDI origin/main measurement.json: {ontologyName, name, numeric_value,
 % string_value}, spelled as v1 spells it: the class reads raw v1
 % (did2.convert.rawV1Classes), so a renamed `ontology_name` is outside the

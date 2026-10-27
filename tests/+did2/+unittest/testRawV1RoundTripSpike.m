@@ -43,9 +43,12 @@ function tests = testRawV1RoundTripSpike
 %                    loses nothing. On the renamed path it passed through
 %                    unconverted: universalRenames never mapped the writer's
 %                    spelling to the migrator.
-%     jrclust_clusters  converts. KNOWN FINDING: base.name (the writer sets it
-%                    to the parameter file's name, 'jrclust.prm') is not
-%                    written (#73 item 54); the Soph vintage whose name is in
+%     jrclust_clusters  is CARRIED as the writer writes it: the writer sets
+%                    base.name to the parameter file's name, 'jrclust.prm', and
+%                    a statement with a non-empty v1 name is carried ([v1 name
+%                    goes to the class's own name field], Jess Haley,
+%                    2026-10-27; base.name was a known finding before); with
+%                    no name it converts and loses nothing; the Soph vintage whose name is in
 %                    ndi_document.name is carried (carry-049, [one-reading
 %                    quick answers] Q5).
 %     neuron_extracellular  converts. KNOWN FINDINGS: base.id (the migrator
@@ -72,7 +75,8 @@ cases = { ...
     'hartley without its presentation', {hartley()}, true, {}; ...
     'speed writer output', {speed()}, true, {}; ...
     'speed, converted shape', {speedOneFit()}, false, {}; ...
-    'jrclust writer output', {jrclust()}, false, {'base.name'}; ...
+    'jrclust writer output', {jrclust()}, true, {}; ...
+    'jrclust with no name', {jrclustNoName()}, false, {}; ...
     'jrclust Soph vintage (ndi_document.name)', {jrclustNdiDocument()}, true, {}; ...
     'neuron writer output', {neuron()}, false, ...
         {'base.id', 'neuron_extracellular.waveform_sample_times'}; ...
@@ -142,7 +146,7 @@ function testTheSwitchChangesNoConvertedDocument(testCase)
 % the universalRenames path converted; a carry is carried on both paths, the
 % raw one the untouched v1 source
 batches = {{hartley(), presentationOf(hartley())}, {hartleyVintage(), presentationOf(hartleyVintage())}, ...
-    {hartley()}, {jrclust()}, {jrclustNdiDocument()}, {neuron()}, {neuronCorpusVintage()}, ...
+    {hartley()}, {jrclustNoName()}, {jrclustNdiDocument()}, {neuron()}, {neuronCorpusVintage()}, ...
     {neuronNoWaveform()}};
 for k = 1:numel(batches)
     b = batches{k};
@@ -216,7 +220,7 @@ end
 
 function testTheConvertedDocumentsValidate(testCase)
 % the converted documents pass the V2 schema (the corpus run validates too)
-batches = {{hartley(), presentationOf(hartley())}, {speedOneFit()}, {jrclust()}, {neuron()}, ...
+batches = {{hartley(), presentationOf(hartley())}, {speedOneFit()}, {jrclustNoName()}, {neuron()}, ...
     {neuronNoWaveform()}};
 for k = 1:numel(batches)
     out = did2.convert.v1_to_v2(batches{k}, 'Validate', true, 'TargetVersion', 'V_eta');
@@ -241,10 +245,10 @@ verifyCarriedFor(testCase, {v1}, 'cluster_index (not one whole number)');
 v1 = neuron();
 v1.neuron_extracellular.quality_label = ' single';
 verifyCarriedFor(testCase, {v1}, 'quality_label (surrounding spaces)');
-v1 = jrclust();
+v1 = jrclustNoName();
 v1.jrclust_clusters.num_clusters = 12;
 verifyCarriedFor(testCase, {v1}, 'jrclust_clusters.num_clusters');
-v1 = jrclust();
+v1 = jrclustNoName();
 v1.depends_on(end + 1) = struct('name', 'sorting_parameters_id', 'value', 'sp_1');
 verifyCarriedFor(testCase, {v1}, 'depends_on sorting_parameters_id');
 % Decided by Jess Haley, 2026-10-27 [tuning stray fields are malformed]: a
@@ -270,7 +274,7 @@ end
 
 function testABrokenEmissionIsReportedLost(testCase)
 % jrclust: the checksum in the body's description changed
-v1 = jrclust();
+v1 = jrclustNoName();
 docs = structs(runRaw({v1}).migrated);
 for k = 1:numel(docs)
     if strcmp(docs{k}.document_class.class_name, 'opaque_body')
@@ -279,7 +283,7 @@ for k = 1:numel(docs)
 end
 r = did2.convert.roundtrip.check(v1, docs);
 verifyFalse(testCase, r.ok);
-verifyEqual(testCase, sort(lostPaths(r)), sort({'base.name', 'jrclust_clusters.res_mat_MD5_checksum'}));
+verifyEqual(testCase, lostPaths(r), {'jrclust_clusters.res_mat_MD5_checksum'});
 
 % neuron: one waveform sample changed
 v1 = neuron();
@@ -326,7 +330,7 @@ end
 function testAnUnplacedDocumentFailsTheRoundTrip(testCase)
 v1 = neuron();
 out = runRaw({v1});
-extra = runRaw({jrclust()}).migrated;
+extra = runRaw({jrclustNoName()}).migrated;
 r = did2.convert.roundtrip.check(v1, [out.migrated, extra(2)]);
 verifyFalse(testCase, r.ok);
 verifyNotEmpty(testCase, r.unplaced);
@@ -468,6 +472,16 @@ d.base = struct('id', 'jc_1', 'session_id', 'sess_1', 'name', 'jrclust.prm', ...
 d.app = jrclustApp();
 d.jrclust_clusters = struct('res_mat_MD5_checksum', '0cc175b9c0f1b6a831c399e269772661');
 d = jsondecode(jsonencode(d));
+end
+
+function d = jrclustNoName()
+% the writer's document with base.name empty. The writer itself names it after
+% the parameter file ('jrclust.prm'), and a STATEMENT with a non-empty v1 name
+% is carried whole as v1 ([v1 name goes to the class's own name field], Jess
+% Haley, 2026-10-27: testWriterOutputsRoundTrip), so the conversion is driven
+% with the name blanked
+d = jrclust();
+d.base.name = '';
 end
 
 function d = jrclustNdiDocument()
