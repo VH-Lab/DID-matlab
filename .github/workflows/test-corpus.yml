@@ -268,6 +268,31 @@ jobs:
           cp "$SET"/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
           if [ -d "$SET/deprecated" ]; then cp "$SET"/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"; fi
 
+      - name: Check out NDI-matlab's v1 templates at the locked main
+        # [carried v1 validates against NDI templates] (Decided by Jess Haley,
+        # 2026-10-27, did-schema V_eta_go_forward_class_audit.md): a document
+        # carried whole as v1 is validated against NDI-matlab's v1 templates at
+        # the LOCKED NDI `main` (did-schema tools/sibling_lock.json), not
+        # against did-schema's deprecated/ tombstones. Only the templates
+        # folder is fetched, at that one commit. continue-on-error: without it
+        # the check reports NOT CHECKED (summary.carried_v1_template_check);
+        # it never turns a run red.
+        continue-on-error: true
+        run: |
+          lock=did-schema/tools/sibling_lock.json
+          if [ ! -f "$lock" ]; then echo "NO LOCK at $lock: the template check will say NOT CHECKED"; exit 0; fi
+          sha=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['siblings']['NDI-matlab']['main'])" "$lock")
+          echo "NDI-matlab locked main: $sha"
+          dir="${GITHUB_WORKSPACE}/NDI-templates"
+          git init -q "$dir"
+          git -C "$dir" remote add origin https://github.com/VH-Lab/NDI-matlab.git
+          git -C "$dir" sparse-checkout set src/ndi/ndi_common/database_documents
+          git -C "$dir" fetch -q --depth 1 --filter=blob:none origin "$sha"
+          git -C "$dir" checkout -q FETCH_HEAD
+          t="$dir/src/ndi/ndi_common/database_documents"
+          echo "templates: $(find "$t" -name '*.json' | wc -l) file(s) under $t"
+          echo "DID_NDI_TEMPLATE_PATH=$t" >> "$GITHUB_ENV"
+
       - name: Export DID_SCHEMA_PATH
         run: |
           echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" >> "$GITHUB_ENV"
