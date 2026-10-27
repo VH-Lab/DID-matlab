@@ -153,6 +153,13 @@ arguments
     options.UnitQualityLabels cell = {}
 end
 
+% [old ndi_document blocks carry] (Decided by Jess Haley, 2026-10-27): the note
+% for a document carried because it holds a legacy `ndi_document` block beside
+% `base` (hasLegacyBlockBesideBase), on either path. It keeps the words the
+% renamed path's carry-049 note used for the same block.
+LEGACY_BLOCK_NOTE = ['[carry-049] universalRenames would discard: ndi_document ' ...
+    '(a legacy identity block beside base; [old ndi_document blocks carry])'];
+
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
 % is for imports, so it is off while this runs and restored after
@@ -377,7 +384,16 @@ for k = 1:numel(bodies)
                 className = rawClass;
                 v2Body = preBody;
                 superUnchanged = true;
-                v2Bodies = runRawV1Migrator(preBody, className);
+                if hasLegacyBlockBesideBase(preBody)
+                    % [old ndi_document blocks carry] (Decided by Jess Haley,
+                    % 2026-10-27): carried whole, the block kept; no migrator runs
+                    % carry-register: carry-049
+                    did2.convert.reportNote('carried_as_v1', className, ...
+                        sourceIdOf(preBody), LEGACY_BLOCK_NOTE);
+                    v2Bodies = {preBody};
+                else
+                    v2Bodies = runRawV1Migrator(preBody, className);
+                end
                 if isscalar(v2Bodies) && isequaln(v2Bodies{1}, preBody) ...
                         && did2.convert.reportNote('pending', 'carried_as_v1') > 0
                     carried = true;
@@ -400,7 +416,23 @@ for k = 1:numel(bodies)
                     [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
                         legacyDiscNames, legacyDiscValues, className);
                 end
-                if isempty(renameDropped)
+                if hasLegacyBlockBesideBase(preBody)
+                    % [old ndi_document blocks carry] (Decided by Jess Haley,
+                    % 2026-10-27, did-schema V_eta_go_forward_class_audit.md:
+                    % "register row carry-049 widens to every class: a v1
+                    % document with an `ndi_document` block beside `base` is
+                    % carried whole as v1, never losing the block"). The carry
+                    % is the v1 source, NOT the universalRenames output, which
+                    % has discarded the block. universalRenames still ran above,
+                    % so its legacy counters still count the body.
+                    % carry-register: carry-049
+                    did2.convert.reportNote('carried_as_v1', className, ...
+                        sourceIdOf(preBody), LEGACY_BLOCK_NOTE);
+                    v2Body = preBody;
+                    superUnchanged = true;
+                    v2Bodies = {v2Body};
+                    carried = true;
+                elseif isempty(renameDropped)
                     v2Body = applySuperclassMigrators(postUniversalBody, className, ...
                         options.TargetVersion);
                     superUnchanged = isequaln(v2Body, postUniversalBody);
@@ -868,6 +900,18 @@ if isstruct(body) && isscalar(body) && isfield(body, 'base') ...
     v = body.base.id;
     if ischar(v); id = v; elseif isstring(v) && isscalar(v); id = char(v); end
 end
+end
+
+function tf = hasLegacyBlockBesideBase(body)
+%HASLEGACYBLOCKBESIDEBASE True when a v1 body holds an `ndi_document` block
+%   beside `base`: [old ndi_document blocks carry] (Decided by Jess Haley,
+%   2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-049 for
+%   every class. A block is any value but [] (the rule universalRenames uses
+%   when it reports the block discarded: a field-less struct, JSON `{}`, is a
+%   block). A body with only `ndi_document` (a pre-2023 vintage, whose block
+%   IS its identity) is not this case.
+tf = isstruct(body) && isscalar(body) && isfield(body, 'ndi_document') ...
+    && isfield(body, 'base') && ~isempty(body.ndi_document);
 end
 
 function name = rawV1ClassNameOf(body)

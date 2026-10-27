@@ -1,6 +1,6 @@
 function bodies = spikewaves(preBody)
-%SPIKEWAVES Brainstorm-J migrator: did_v1 spikewaves -- DEFERRED to the NDI
-%   second pass; the document is passed through UNCHANGED.
+%SPIKEWAVES Brainstorm-J migrator: did_v1 spikewaves -- CARRIED whole as v1
+%   under a needs-home register row (the document is returned UNCHANGED).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -55,6 +55,24 @@ if isfield(blk, 'num_spikes') || isfield(blk, 'samples_per_spike') ...
          'spikewaves.vsw binary header. This shape can only come from the ' ...
          'V_alpha snapshot or a fixture built against it.']);
 end
+% [unbuilt spike classes carry as needs home] (Decided by Jess Haley,
+% 2026-10-27, did-schema V_eta_go_forward_class_audit.md): v1 `spikewaves`,
+% `spike_clusters` and `binnedspikeratevm` are carried whole as v1 through the
+% carry path, each citing a needs-home register row, rather than passed through
+% unchanged on the old path; their dependents carry under [dependents of a
+% carried document carry] (v1_to_v2 carryDependents, carry-064). The class reads
+% raw v1 (did2.convert.rawV1Classes), so the carry is the untouched v1 source.
+% THE REGISTER ROW IS PENDING in did-schema: until it exists the note cites the
+% placeholder PENDING_ROW, which names no row (tools/check_carry_citations.py
+% lists this site as a reason with no row).
+PENDING_ROW = 'carry-pending-spike-classes-needs-home';
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
+% carry-register: none (needs-home row pending in did-schema; PENDING_ROW)
+did2.convert.reportNote('carried_as_v1', 'spikewaves', id, ...
+    ['[' PENDING_ROW '] awaiting_home: spikewaves has no V2 home yet ' ...
+    '([unbuilt spike classes carry as needs home])']);
 bodies = {preBody};
 end
 

@@ -583,6 +583,47 @@ verifyEqual(testCase, result.migrated{1}.className(), 'treatment', ...
 verifyEqual(testCase, result.summary.migration_notes.carried_as_v1.count, 1);
 end
 
+function testALegacyBlockBesideBaseIsCarriedWithTheBlockOnBothPaths(testCase)
+% [old ndi_document blocks carry] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): "register row carry-049 widens to every
+% class: a v1 document with an `ndi_document` block beside `base` is carried
+% whole as v1, never losing the block". On the renamed path the carry used to
+% be the universalRenames output, which had discarded the block; it is now the
+% v1 source. On the raw path no migrator runs.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct('ontologyName', 'NCIT:C0000', 'name', 'a drug', ...
+    'numeric_value', [], 'string_value', '');
+v1.ndi_document = struct('name', 'jrclust.prm');
+v1 = jsondecode(jsonencode(v1));
+for raw = {{}, did2.convert.rawV1Classes()}
+    result = did2.convert.v1_to_v2(v1, 'Validate', false, 'RawV1Classes', raw{1});
+    label = sprintf('RawV1Classes with %d class(es)', numel(raw{1}));
+    verifyEmpty(testCase, result.quarantine, label);
+    verifyEqual(testCase, result.summary.passthrough_count, 1, label);
+    assertEqual(testCase, numel(result.migrated), 1, label);
+    emitted = result.migrated{1}.toStruct();
+    verifyEqual(testCase, emitted.document_class.schema_version, 'did_v1', label);
+    verifyTrue(testCase, isfield(emitted, 'ndi_document'), [label ': the block was lost']);
+    emitted.document_class = rmfield(emitted.document_class, 'schema_version');
+    verifyTrue(testCase, isequaln(emitted, v1), [label ': the carry is not the v1 source']);
+    d = result.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-049] '), d);
+    verifyTrue(testCase, contains(d, 'ndi_document'), d);
+end
+% the renamed path still counts the body on its discard arm
+result = did2.convert.v1_to_v2(v1, 'Validate', false, 'RawV1Classes', {});
+verifyEqual(testCase, result.summary.legacy_ndi_document.discarded_ndi_document_base_present, 1);
+% an EMPTY block ([]) is no block: nothing to keep, the document converts or
+% carries for its own reasons
+v0 = v1;
+v0.ndi_document = [];
+result = did2.convert.v1_to_v2(v0, 'Validate', false);
+if isfield(result.summary.migration_notes, 'carried_as_v1')
+    d = strjoin(cellstr(result.summary.migration_notes.carried_as_v1.distinct_details), ' || ');
+    verifyFalse(testCase, contains(d, 'ndi_document'), d);
+end
+end
+
 
 % ===================== the legacy identity block ===========================
 %

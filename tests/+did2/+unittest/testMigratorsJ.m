@@ -2863,9 +2863,35 @@ ms.RelatedPublication = struct('Publication', 'On Worms', 'DOI', '10.1/worm', ..
     'PMID', '123', 'PMCID', 'PMC9');
 ms.FullDocumentation = 'https://example.org/docs';
 ms.TechniquesEmployed = 'patch clamp';     % -> a Technique assertion, openMINDS term
-% subjects (projections off subject statements) -> dropped
-ms.Subjects = struct('SubjectName', 'worm_1', 'BiologicalSexList', 'male');
+% subjects: a non-empty list carries the form ([dataset form lists carried
+% until homed], testANonEmptyFormListCarriesTheForm); none here
+ms.Subjects = [];
 v1.metadata_editor = struct('metadata_structure', ms);
+end
+
+function testANonEmptyFormListCarriesTheForm(testCase)
+% [dataset form lists carried until homed] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): a dataset form whose subject,
+% species, strain or sex list is non-empty is carried whole as v1 with a
+% needs-home register row (pending in did-schema: the placeholder
+% `carry-pending-dataset-form-lists-needs-home`), not dropped.
+lists = {'Subjects', struct('SubjectName', 'worm_1', 'BiologicalSexList', 'male'); ...
+    'SpeciesList', struct('name', 'Caenorhabditis elegans', 'preferredOntologyIdentifier', 'NCBITaxon:6239'); ...
+    'StrainList', struct('name', 'N2'); ...
+    'BiologicalSexList', 'hermaphrodite'};
+for k = 1:size(lists, 1)
+    v1 = metadataEditorDoc();
+    v1.metadata_editor.metadata_structure.(lists{k, 1}) = lists{k, 2};
+    v1 = jsondecode(jsonencode(v1));
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, contains(d, ['[carry-pending-dataset-form-lists-needs-home] ' ...
+        'awaiting_home: ' lists{k, 1}]), d);
+end
+% an empty list states nothing: the form converts
+out = runJ(jsondecode(jsonencode(metadataEditorDoc())));
+verifyEmpty(testCase, out.passthrough);
 end
 
 function testMetadataEditorDecomposes(testCase)
@@ -5838,6 +5864,33 @@ body = simpleCalcDoc();
 body.simple_calc = struct('result_value', 12.5, 'result_units', 'Hz');
 verifyError(testCase, @() did2.convert.migrators_j.simple_calc(body), ...
     'did2:convert:simpleCalcInventedShape');
+end
+
+function testTheNeedsHomeClassesAreCarriedWholeAsV1(testCase)
+% [simple_calc carries as needs home] and [unbuilt spike classes carry as needs
+% home] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): each is carried whole as v1 through the
+% carry path, citing a needs-home register row (pending in did-schema: the
+% note cites the placeholder `carry-pending-...`), read raw so the carry is
+% the untouched v1 source.
+fixtures = {simpleCalcDoc(), spikewavesBody(), spikeClustersBody(), binnedSpikeRateBody()};
+for k = 1:numel(fixtures)
+    v1 = jsondecode(jsonencode(fixtures{k}));
+    cls = v1.document_class.class_name;
+    verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), cls)), [cls ': read raw']);
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    emitted = out.migrated{1}.toStruct();
+    verifyEqual(testCase, emitted.document_class.schema_version, 'did_v1', cls);
+    emitted.document_class = rmfield(emitted.document_class, 'schema_version');
+    verifyTrue(testCase, isequaln(emitted, v1), [cls ': the carry is not the v1 source']);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-pending-'), [cls ': ' d]);
+    verifyTrue(testCase, contains(d, 'awaiting_home'), [cls ': ' d]);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried, cls);
+    verifyTrue(testCase, r.ok, cls);
+end
 end
 
 function body = vmResidualsBody()

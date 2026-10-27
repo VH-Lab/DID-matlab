@@ -52,7 +52,10 @@ function v2Body = metadata_editor(preBody)
 %   ExperimentalApproach, TechniquesEmployed and DataType are KEPT since
 %     2026-10-26 ([dataset form terms]): term assertions about the dataset, each
 %     value a term of its binding's closed list; a value outside it carries the
-%     form whole as v1. The text below is the record of the earlier drop.
+%     form whole as v1. Subjects, SpeciesList, StrainList and BiologicalSexList
+%     are no longer dropped either: a non-empty one carries the form whole as v1
+%     under a needs-home row ([dataset form lists carried until homed], Jess
+%     Haley, 2026-10-27). The text below is the record of the earlier drop.
 %
 %   Bucket 2 -- PER-SUBJECT PROJECTIONS -> not persisted on migration. Subjects
 %     (SpeciesList / StrainList / BiologicalSexList), DataType, TechniquesEmployed,
@@ -138,8 +141,11 @@ function v2Body = metadata_editor(preBody)
 %     base.name        -> not kept ('' on every writer document)
 %     metadata_structure.Subjects / SpeciesList / StrainList /
 %       BiologicalSexList
-%                      -> dropped as before (bucket 2, per-subject
-%                         projections)
+%                      -> NOT DROPPED any more: a form whose list is not
+%                         empty is carried whole as v1 under a needs-home
+%                         row (Decided by Jess Haley, 2026-10-27 [dataset
+%                         form lists carried until homed]); an empty list
+%                         states nothing
 %
 %   A form field the migrator does not read (e.g. the writer's `Comments`,
 %   an author's `authorRole`, an affiliation's other fields), or any other
@@ -223,10 +229,25 @@ end
 % dropped."
 [formTerms, formUnplaced] = datasetFormTerms(ms, char(preBody.base.id));
 unplaced = [unplaced, formUnplaced];
+% [dataset form lists carried until homed] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): "a v1 dataset form whose
+% subject, species, strain or sex list is non-empty is carried whole as v1 with
+% a needs-home register row until those lists have a V2 home (likely rebuilt
+% from the subjects); revises the earlier drop under [lossless means round
+% trip]". THE REGISTER ROW IS PENDING in did-schema: until it exists the item
+% cites the placeholder FORM_LISTS_ROW, which names no row.
+FORM_LISTS_ROW = 'carry-pending-dataset-form-lists-needs-home';
+for listField = {'Subjects', 'SpeciesList', 'StrainList', 'BiologicalSexList'}
+    if isstruct(ms) && isscalar(ms) && isfield(ms, listField{1}) ...
+            && ~isEmptyValueOf(ms.(listField{1}))
+        unplaced{end+1} = sprintf('[%s] awaiting_home: %s', FORM_LISTS_ROW, listField{1}); %#ok<AGROW>
+    end
+end
 if ~isempty(unplaced)
-    % carry-register: carry-043 carry-044 carry-054 (the items above). A form
-    % field whose binding the loaded schema does not hold is not a carry: it
-    % errors in datasetFormTerms ([pipeline defects are not carries])
+    % carry-register: carry-043 carry-044 carry-054 (the items above); none for
+    %   the form lists (FORM_LISTS_ROW, pending in did-schema). A form field
+    %   whose binding the loaded schema does not hold is not a carry: it
+    %   errors in datasetFormTerms ([pipeline defects are not carries])
     did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     v2Body = {src};     % a carry is the untouched v1 source
@@ -439,8 +460,9 @@ function paths = formUnread(ms)
 %   contactInformation.email, digitalIdentifier.identifier and
 %   affiliation(k).memberOf.fullName; Funding's funder, awardTitle and
 %   awardNumber; RelatedPublication's Publication, DOI, PMID and PMCID; the
-%   three form-term fields. Dropped by decision (bucket 2): Subjects,
-%   SpeciesList, StrainList, BiologicalSexList.
+%   three form-term fields. Subjects, SpeciesList, StrainList and
+%   BiologicalSexList are read by the caller: a non-empty one carries the form
+%   ([dataset form lists carried until homed], Jess Haley, 2026-10-27).
 paths = {};
 if ~isstruct(ms) || ~isscalar(ms)
     return;
