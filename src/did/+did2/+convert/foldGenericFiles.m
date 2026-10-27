@@ -395,6 +395,20 @@ function [result, report] = foldGenericFiles(result, options)
 %   passthrough; the `.gef` sources are a separate build) and counted in
 %   `store_records_left_passthrough`.
 %
+%   A `file_reference` PASS 1 CARRIED AS v1 IS NOT FOLDED (Decided by Jess
+%   Haley, 2026-10-27 [carried file references are not folded], did-schema
+%   V_eta_go_forward_class_audit.md). A carried document is the untouched v1
+%   source, stamped 'did_v1' by v1_to_v2 (did2.schema.isV1Stamp 'Explicit',
+%   the mark did2.validate.silentLoss and did2.convert.roundtrip.check read);
+%   folding it would leave it half-converted under a carry note that says it
+%   was kept whole. It is left exactly as it is, counted in
+%   `store_records_carried_as_v1`, and a carrier naming it is not folded
+%   either (`store_skipped_carried_as_v1`): the pyramid's observation KEEPS
+%   its `source_file_id` edge to the unchanged v1 document, and its notes
+%   whole (the NGFF name in the tail has no store body to go to); only its
+%   carried dimensions and covariates go, after the level completion has read
+%   them, as on every other carrier.
+%
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
 %   did2.unittest.testFoldGenericFiles, did2.unittest.testBatchPassWiring.
 
@@ -457,6 +471,8 @@ report = struct( ...
     'store_carriers_stripped',       0, ...
     'store_fold_quarantined',        0, ...
     'store_records_left_passthrough', 0, ...
+    'store_records_carried_as_v1',   0, ...
+    'store_skipped_carried_as_v1',   0, ...
     'store_checksums_to_description', 0, ...
     'store_sizes_unrecorded',        0, ...
     'level_bodies_seen',             0, ...
@@ -717,6 +733,13 @@ for k = 1:n
 end
 isRecord = cellfun(@did2.convert.isFileReferenceClass, classes);   % both spellings
 report.store_records_seen = sum(isRecord);
+% [carried file references are not folded] (Jess Haley, 2026-10-27): a record
+% pass 1 carried as v1 is stamped 'did_v1'
+isCarriedRecord = false(1, n);
+for k = find(isRecord)
+    isCarriedRecord(k) = did2.schema.isV1Stamp(bodies{k}, 'Explicit', true);
+end
+report.store_records_carried_as_v1 = sum(isCarriedRecord);
 
 % --- POINT 1: mint the session time references the migrators marked --------
 % Done first, on the structs, so every later step (stripping the store and key
@@ -807,7 +830,10 @@ for c = 1:numel(strip)
     k = strip(c);
     obs = bodies{k};
     target = depValueOf(obs, 'source_file_id');
-    [obsStripped, keys, notes] = stripCarrier(obs);
+    carriedTarget = ~isempty(target) && isKey(idIdx, target) ...
+        && isCarriedRecord(idIdx(target));
+    % a carrier naming a carried record keeps its edge and its notes
+    [obsStripped, keys, notes] = stripCarrier(obs, carriedTarget);
     recIdx = 0;
     if isempty(target)
         % a key carrier only: nothing to fold, its transient axes go
@@ -816,6 +842,10 @@ for c = 1:numel(strip)
     elseif ~did2.convert.isFileReferenceClass(classes{idIdx(target)})
         report.store_refused_not_a_file_reference = ...
             report.store_refused_not_a_file_reference + 1;
+    elseif carriedTarget
+        % [carried file references are not folded]: the record stays the
+        % untouched v1 document and the pyramid keeps its link to it
+        report.store_skipped_carried_as_v1 = report.store_skipped_carried_as_v1 + 1;
     elseif named(target) > 1
         report.store_refused_shared = report.store_refused_shared + 1;
     else
@@ -839,7 +869,7 @@ for c = 1:numel(strip)
     rebuilt{end+1} = obsStripped; %#ok<AGROW>
     if recIdx > 0
         rebuilt{end+1} = body; %#ok<AGROW>
-    elseif ~isempty(target)
+    elseif ~isempty(target) && ~carriedTarget
         report.store_carriers_stripped = report.store_carriers_stripped + 1;
     end
     plan(end+1) = struct('obsIdx', k, 'recIdx', recIdx, ...
@@ -1278,7 +1308,7 @@ end
 [~, v] = blockWith(s, field);
 end
 
-function [obs, keys, notes] = stripCarrier(obs)
+function [obs, keys, notes] = stripCarrier(obs, keepLink)
 %   KEYS is struct {dimensions, covariates} of the full-resolution array (the
 %   carried axes; `keys` until data_body AMENDMENT 6), or [] when none.
 %STRIPCARRIER Remove the three transient things the pyramid migrator carried.
@@ -1286,12 +1316,16 @@ function [obs, keys, notes] = stripCarrier(obs)
 %   NOTES_SEPARATOR); the label before it stays on the observation, and
 %   `notes` is removed only when that label is empty. Notes with no
 %   separator are all label: left exactly as they are, NOTES ''.
+%   KEEPLINK true (a carrier naming a record pass 1 carried as v1, [carried
+%   file references are not folded]) keeps the `source_file_id` edge and the
+%   notes whole; only the dimensions and covariates go.
 arguments
     obs (1,1) struct
+    keepLink (1,1) logical = false
 end
 
 keys = []; notes = '';
-if isfield(obs, 'depends_on') && ~isempty(obs.depends_on)
+if ~keepLink && isfield(obs, 'depends_on') && ~isempty(obs.depends_on)
     deps = obs.depends_on;
     keep = true(1, numel(deps));
     for k = 1:numel(deps)
@@ -1312,7 +1346,7 @@ for k = 1:numel(names)
         obs.(names{k}) = rmfield(blk, intersect({'dimensions', 'covariates'}, fieldnames(blk)));
         blk = obs.(names{k});
     end
-    if isfield(blk, 'notes')
+    if isfield(blk, 'notes') && ~keepLink
         allNotes = blk.notes;
         if ~ischar(allNotes); allNotes = char(string(allNotes)); end
         at = strfind(allNotes, NOTES_SEPARATOR());
