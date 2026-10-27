@@ -242,6 +242,26 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         Written by ndi.app.stimulus.tuning_response and
 %                         ndi.app.oridirtuning. Round trips:
 %                         testRawV1RoundTripTuningResults.
+%     contrast_tuning            the NDIcalc-vis result blocks written
+%     spatial_frequency_tuning   alone: superclass `base` only, no `app`
+%     temporal_frequency_tuning  block, no superclass migrator; the same
+%     speed_tuning               result block as contrasttuning_calc /
+%                         spatial_frequency_tuning_calc /
+%                         temporal_frequency_tuning_calc / speedtuning_calc,
+%                         read the same way (jRawBody; jCalculation
+%                         'AccountForEveryField'; speed_tuning through
+%                         private/jSpeedTuning, shared with speed_tuning_calc).
+%                         The v1 names are the migrator names. NDI-matlab's
+%                         locked main holds no template for them: the
+%                         templates are NDIcalc-vis-matlab's at 00e3e0f
+%                         (vision/<class>.json), the commit the tuning
+%                         family's fixtures are taken from. Written by the
+%                         calculators' calculate_*_indexes (ndi.calc.vis.
+%                         contrast_tuning, spatial_frequency_tuning,
+%                         temporal_frequency_tuning, speed_tuning), whose
+%                         document calculate() adds to the *_calc output; no
+%                         corpus holds one. Round trips:
+%                         testRawV1RoundTripTuningBlocks.
 %     demoNDI             the demo classes: superclasses `base` (+ `mock`,
 %     demoNDIMock         `demoNDI`), no `app` block, no superclass migrator;
 %     binaryseries_parameters  jDemoFold reads either block spelling and the
@@ -306,12 +326,6 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         register row, and as raw v1 it would meet the
 %                         renamed-shape `image` tombstone under its own name
 %                         and quarantine. It stays on the renamed path.
-%       contrast_tuning   no NDI template at the locked main (their
-%       spatial_frequency_tuning  templates are NDIcalc-vis-matlab's), no
-%       temporal_frequency_tuning writer that makes a document of one alone
-%       speed_tuning      (they are the result blocks of the *_calc classes),
-%                         no corpus document: nothing fixes a raw shape to read.
-%                         They stay on the renamed path.
 %       spikewaves        pure pass-1 passthroughs (the NDI second pass is
 %       spike_clusters    meant to read them) of classes with an `app` block:
 %                         ndi.app/newdocument writes app.name / app.version,
@@ -377,6 +391,10 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'stimulus_parameter', ...
     'stimulus_tuningcurve', ...
     'orientation_direction_tuning', ...
+    'contrast_tuning', ...
+    'spatial_frequency_tuning', ...
+    'temporal_frequency_tuning', ...
+    'speed_tuning', ...
     'demoNDI', ...
     'demoNDIMock', ...
     'binaryseries_parameters', ...
