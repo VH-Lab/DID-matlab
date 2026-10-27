@@ -57,7 +57,31 @@ function bodies = spike_extraction_parameters_modification(preBody)
 %
 %   Field disposition is identical to spike_extraction_parameters; see that
 %   migrator's header and jSpikeExtractionSettings.
-
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it:
+%     ndi.app.spikeextractor struct2doc: the settings struct, the epoch string
+%     in `epochid.epochid` (the writer wins over the template, which declares
+%     no epochid block), base.name the extraction name, edges
+%     extraction_parameters_id and element_id; NDI-matlab locked `main`,
+%     3cb19a8
+%   Its block and edges are snake_case already, and the `app` block is read
+%   in either spelling (jSoftwareFromApp), so the raw read changes nothing the
+%   fold writes; a nameless app block's leftover keeps the bag spelling the
+%   renamed path gave it (jMethodParameters). Every block field goes to a
+%   bound parameter or the bag, as before. What the renamed path would have
+%   discarded is carried, carry-049, as before; a block, base field or edge
+%   no part of this fold reads, or an `app` field outside NDI's app.json (all
+%   dropped without a word on the renamed path), now carries the document
+%   whole as v1 (private/jRawAccount, jRawCarry; [fields outside the template
+%   are malformed], marker `none` until its row reaches did-schema `main`).
+%   Every writer document carries, carry-004, as before: ndi.app/newdocument
+%   always writes the run's os and interpreter, which no method keeps. A carry
+%   is the untouched v1 source. did2.convert.roundtrip.spike_extraction_parameters_modification
+%   rebuilds the v1 document; testRawV1RoundTripSpikeParameters compares the
+%   two.
 arguments
     preBody (1,1) struct
 end
@@ -69,6 +93,25 @@ if isfield(preBody, 'spike_extraction_parameters_modification') ...
 end
 
 [entries, other] = jSpikeExtractionSettings(blk);
+
+% THE RAW READ (see READS RAW v1 above). The bag reads every field of the
+% block, so the block's own fields are all read; the other blocks, base and
+% edges are checked.
+src = preBody;
+blockFields = fieldnames(blk);
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'spike_extraction_parameters_modification', {blockFields(:)'}, ...
+    'app', {{'name', 'version', 'url', 'os', 'os_version', 'interpreter', 'interpreter_version'}}, ...
+    'epochid', {{'epochid'}}), ...
+    {'^element_id$', '^subject_id$', '^epoch_id$', '^extraction_parameters_id$'});
+if jRawCarry('spike_extraction_parameters_modification', src, collision, unplaced)
+    bodies = {src};
+    return;
+end
+
 bodies = jMethodParameters(preBody, entries, other, ...
     'DerivedFromSrc', 'extraction_parameters_id');
+if isscalar(bodies) && isequaln(bodies{1}, preBody)
+    bodies = {src};   % a carry is the untouched v1 source
+end
 end

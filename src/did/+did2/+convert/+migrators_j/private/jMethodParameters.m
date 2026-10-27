@@ -125,6 +125,15 @@ end
 [software, softwareId, ~, appLeftover] = ...
     jSoftwareFromApp(preBody, 'RequireSession', true);
 if ~isempty(fieldnames(appLeftover))
+    % a raw v1 block (did2.convert.rawV1Classes) spells name / version as v1
+    % does; the bag keeps the spelling the renamed path gave it (app_name /
+    % app_version), so the switch changes no emitted parameter
+    for f = {'name', 'version'}
+        if isfield(appLeftover, f{1}) && ~isfield(appLeftover, ['app_' f{1}])
+            appLeftover.(['app_' f{1}]) = appLeftover.(f{1});
+            appLeftover = rmfield(appLeftover, f{1});
+        end
+    end
     other.app = appLeftover;
 end
 epochDocId = jEpochDocId(preBody);

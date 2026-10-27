@@ -161,6 +161,24 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         +ndi/+fun/+probe/+geometry/fromStruct.m and
 %                         +ndi/+setup/+conv/+marder/makeVoltageOffsets.m. Round
 %                         trips: testRawV1RoundTripProbe.
+%     spike_extraction_parameters  the spike-sorting parameters family:
+%     spike_extraction_parameters_modification  superclasses `base` + `app`,
+%     sorting_parameters  no superclass migrator. The three settings
+%     kilosort_clusters   documents fold to a `method` (jMethodParameters;
+%     kiasort_clusters    every block field a bound parameter or the bag, as
+%     SpikeInterfaceSortingOutputs  before); a writer document always carries
+%                         (carry-002/003/004: ndi.app/newdocument writes the
+%                         run's os and interpreter). The cluster documents
+%                         fold to a calculation and its opaque_body
+%                         (jSorterOutput). SpikeInterfaceSortingOutputs (no
+%                         writer at the locked main, no corpus document; the
+%                         template alone fixes its shape) passes through under
+%                         its v1 name, which V_eta keeps no class for, as a raw
+%                         imageStack passthrough does; the table below joins it
+%                         to its migrator. Written by ndi.app.spikeextractor,
+%                         ndi.app.spikesorter and +ndi/+fun/+probe/+import/
+%                         +kilosort/probe.m, +kiasort/probe.m. Round trips:
+%                         testRawV1RoundTripSpikeParameters.
 %     NOT LISTED, and why:
 %       simple_calc       a pass-1 passthrough for which no corpus holds a
 %                         document; its raw passthrough (`app.name`, a
@@ -176,6 +194,17 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         register row, and as raw v1 it would meet the
 %                         renamed-shape `image` tombstone under its own name
 %                         and quarantine. It stays on the renamed path.
+%       spikewaves        pure pass-1 passthroughs (the NDI second pass is
+%       spike_clusters    meant to read them) of classes with an `app` block:
+%                         ndi.app/newdocument writes app.name / app.version,
+%                         and the V_eta `spikewaves` / `spike_clusters` classes
+%                         (`retire`) spell them app_name / app_version, so a
+%                         raw passthrough would quarantine as an undeclared
+%                         field where the renamed one validates. Carrying it in
+%                         pass 1 instead would carry every converted document
+%                         that names it ([dependents of a carried document
+%                         carry]): a question for the team. They stay on the
+%                         renamed path.
 %       ontologyLabel     ready (its migrator reads either spelling; inverse
 %                         did2.convert.roundtrip.ontologyLabel), but NDI's
 %                         second pass finds labels by the RENAMED class name
@@ -216,6 +245,12 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'probe_geometry', ...
     'site2channelmap', ...
     'electrode_offset_voltage', ...
+    'spike_extraction_parameters', ...
+    'spike_extraction_parameters_modification', ...
+    'sorting_parameters', ...
+    'kilosort_clusters', ...
+    'kiasort_clusters', ...
+    'SpikeInterfaceSortingOutputs', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
@@ -224,7 +259,8 @@ TABLE = { ...
     'contrastsensitivity_calc', 'contrast_sensitivity_calc'; ...
     'imageStack',               'image_stack'; ...
     'speedtuning_calc',         'speed_tuning_calc'; ...
-    'ontologyLabel',            'ontology_label'};
+    'ontologyLabel',            'ontology_label'; ...
+    'SpikeInterfaceSortingOutputs', 'spike_interface_sorting_outputs'};
 
 if nargin >= 1
     names = migratorOf(char(v1Name), TABLE);
