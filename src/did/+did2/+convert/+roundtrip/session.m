@@ -12,7 +12,9 @@ function [v1, spec] = session(bodies)
 %                         they differ, as they do on every writer document)
 %     base.session_id     the entity's session_id (its own id)
 %     base.datestamp      its creation_timestamp
-%     base.name           '' (the writer sets none; V2 keeps no base.name)
+%     base.name           entity.name ('' when the entity has none; the
+%                         writer sets none) ([v1 name is the entity name],
+%                         Jess Haley, 2026-10-27)
 %     session.reference   entity.local_identifier
 %     depends_on          [] (the template's)
 %
@@ -41,10 +43,11 @@ if isempty(ent)
     return;
 end
 [base, entity] = rebuildBase(ent);
-spec.unplaced = [spec.unplaced, others(entity, {'type', 'local_identifier'}, 'entity')];
+spec.unplaced = [spec.unplaced, others(entity, {'type', 'local_identifier', 'name'}, 'entity')];
 v1.document_class = struct('class_name', 'session');
 v1.depends_on = [];
-v1.base = struct('id', base.id, 'session_id', base.session_id, 'name', '', ...
+v1.base = struct('id', base.id, 'session_id', base.session_id, ...
+    'name', fieldText(entity, 'name'), ...
     'datestamp', base.datestamp);
 v1.session = struct('reference', fieldText(entity, 'local_identifier'));
 end

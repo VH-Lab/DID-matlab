@@ -34,11 +34,15 @@ function v2Body = subject_group(preBody)
 %                                 each member_of relation's parent_id
 %     base.session_id          -> the session_id edge (v1_to_v2, on the way out)
 %     base.datestamp           -> base.creation_timestamp (v1_to_v2)
-%     base.name                -> not written (#73 item 54); '' (the template
-%                                 default, +babu/import) or the group's name is
-%                                 recoverable; any other value is reported by
-%                                 the round trip
-%     depends_on subject_id_N  -> one member_of relation each, in order
+%     base.name                -> entity.name when not empty, whether or not
+%                                 it equals the group's name; '' (the template
+%                                 default, +babu/import) writes nothing
+%                                 (jBaseName; Decided by Jess Haley, 2026-10-27
+%                                 [v1 name is the entity name])
+%     depends_on subject_id_N  -> one member_of relation each, in order (a
+%                                 member edge spelled `subject_id`, with no
+%                                 number, is the same edge: [member edge
+%                                 number is notation], the round trip)
 %     subject_group (block)    -> NDI's template block is EMPTY: a writer-shaped
 %                                 group states no name and is carried whole as
 %                                 v1 (carry-034, [unnamed groups named by the
@@ -77,7 +81,8 @@ if isempty(strtrim(groupName))
     return;
 end
 subjectDoc = jEntity(preBody, 'group', ...
-    struct('local_identifier', groupName, 'description', desc), 'Id', groupId);
+    struct('local_identifier', groupName, 'description', desc, ...
+    'name', jBaseName(preBody)), 'Id', groupId);
 bodies = {subjectDoc};
 for memberId = memberSubjectIds(preBody)
     bodies{end+1} = memberOfRelation(preBody, memberId{1}, groupId); %#ok<AGROW>

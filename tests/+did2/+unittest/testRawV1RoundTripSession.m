@@ -339,6 +339,29 @@ end
 verifyEmpty(testCase, out.quarantine, reasons);
 end
 
+function testABaseNameIsTheEntityName(testCase)
+% [v1 name is the entity name] (Jess Haley, 2026-10-27): a non-empty base.name
+% on a session or a remote dataset record is the entity's name, rebuilt from
+% it; every writer leaves it '' (the tests above), which writes nothing
+s = writerSession('sd_N', 'sess_N', '2021-04-02');
+s.base.name = 'day two';
+d = writerRemote('dr_N', 'ds_N');
+d.base.name = 'the cloud copy';
+cases = {'session', s, 'sess_N', findingsFor('session'); ...
+    'dataset_remote', d, 'ds_N', findingsFor('remote')};
+for k = 1:size(cases, 1)
+    [label, v1, entId, expectedLost] = cases{k, :};
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.passthrough, [label ': carried']);
+    ent = docWithId(out, entId);
+    verifyNotEmpty(testCase, ent, label);
+    verifyEqual(testCase, char(ent.get('entity.name')), v1.base.name, label);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyRoundTrip(testCase, r, label, expectedLost);
+    verifyTrue(testCase, any(strcmp('base.name', r.matched)), label);
+end
+end
+
 % ===================== the round trip can fail ===========================
 
 function testAChangedValueIsReportedLost(testCase)

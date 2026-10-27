@@ -1,6 +1,7 @@
 function v2Body = subject(preBody)
 %SUBJECT Brainstorm-J migrator: a v1 subject -> one `entity` of type
-%   `organism`, id preserved, carrying `local_identifier` and `description`. A
+%   `organism`, id preserved, carrying `name`, `local_identifier` and
+%   `description`. A
 %   v1 subject's handle was optional; one that states none is carried whole as
 %   v1 (carry-033).
 
@@ -21,14 +22,13 @@ function v2Body = subject(preBody)
 %     base.id                  -> base.id (preserved)
 %     base.session_id          -> the session_id edge (v1_to_v2, on the way out)
 %     base.datestamp           -> base.creation_timestamp (v1_to_v2, on the way out)
-%     base.name                -> not written (#73 item 54). ndi.subject's
-%                                 newdocument writes it equal to
+%     base.name                -> entity.name when not empty, whether or not
+%                                 it equals local_identifier; '' writes
+%                                 nothing (jBaseName; Decided by Jess Haley,
+%                                 2026-10-27 [v1 name is the entity name]).
+%                                 ndi.subject's newdocument writes it equal to
 %                                 local_identifier; +NDIMaker/subjectMaker
-%                                 leaves the template's ''. Both are recoverable
-%                                 ([lossless means round trip], [writer default
-%                                 is not set]); any other value is NOT, and the
-%                                 round trip reports it (open, see
-%                                 testRawV1RoundTrip).
+%                                 leaves the template's ''.
 %     subject.local_identifier -> entity.local_identifier (empty: carry-033)
 %     subject.description      -> entity.description ('' is left out)
 %     document_class           -> the V2 document_class the builder writes
@@ -63,7 +63,7 @@ if isempty(strtrim(li))
     v2Body = {preBody};
     return;
 end
-f = struct('local_identifier', li);
+f = struct('local_identifier', li, 'name', jBaseName(preBody));
 if isfield(blk, 'description') && ~isempty(blk.description)
     f.description = char(blk.description);
 end

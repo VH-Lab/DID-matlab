@@ -21,6 +21,13 @@ function tests = testRawV1RoundTrip
 %                    add_dependency_value_n -> subject_id_1..N)
 %   plus the DID-side shape with `group_name` the subject_group migrator reads.
 %
+%   Decided by Jess Haley, 2026-10-27 (same document):
+%     [v1 name is the entity name]       a non-empty v1 base.name becomes
+%                                        entity.name, equal to the local
+%                                        identifier or not; '' writes nothing
+%     [member edge number is notation]   a member edge `subject_id` is the
+%                                        same edge as `subject_id_1`
+%
 %   Each round trip must report ok: every v1 leaf matched, restated (a value
 %   that can only have been one of a stated few), not set (empty), or exempt
 %   (the v1 document_class beyond its class name), and nothing lost, invented
@@ -106,23 +113,73 @@ for p = {'base.id', 'base.session_id', 'base.name', 'base.datestamp', ...
     verifyTrue(testCase, any(strcmp(p{1}, accounted)), ...
         sprintf('template field %s is not accounted for', p{1}));
 end
+% [v1 name is the entity name]: base.name equal to the local identifier is
+% written to entity.name, and base.name is rebuilt from it (matched, not
+% restated)
+verifyEqual(testCase, char(out.migrated{1}.get('entity.name')), 'mouse_42@lab');
+verifyTrue(testCase, any(strcmp('base.name', r.matched)));
+verifyEmpty(testCase, r.restated);
 end
 
 function testSubjectMakerShapeRoundTrips(testCase)
-% +NDIMaker/subjectMaker leaves base.name at the template's ''
+% +NDIMaker/subjectMaker leaves base.name at the template's '': nothing is
+% written for it, and nothing is carried
 v1 = ndiSubject('mouse_43', '', '');
-r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
+out = runRaw(v1);
+verifyEmpty(testCase, out.passthrough);
+ent = out.migrated{1}.toStruct();
+verifyFalse(testCase, isfield(ent.entity, 'name'), 'an empty base.name wrote entity.name');
+r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyRoundTrip(testCase, r);
-verifyTrue(testCase, any(strcmp('base.name', [r.restated, r.not_set])));
+verifyTrue(testCase, any(strcmp('base.name', [r.matched, r.not_set])));
 end
 
-function testADifferingBaseNameIsReportedLost(testCase)
-% OPEN (a team decision): a v1 subject whose base.name is neither '' nor its
-% local identifier. No NDI writer at the locked `main` writes one; V2 does not
-% keep base.name (#73 item 54), so the value is not recoverable and the round
-% trip must say so. Today the migrator converts it anyway.
+function testADifferingBaseNameIsTheEntityName(testCase)
+% INVERTED 2026-10-27 (was testADifferingBaseNameIsReportedLost, which
+% asserted the loss this decision removes): [v1 name is the entity name] (Jess
+% Haley) -- a base.name that is neither '' nor the local identifier is written
+% to entity.name, and the round trip rebuilds it exactly
 v1 = ndiSubject('mouse_44', '', 'Mouse forty-four');
-r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
+out = runRaw(v1);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEmpty(testCase, out.passthrough);
+verifyEqual(testCase, char(out.migrated{1}.get('entity.name')), 'Mouse forty-four');
+verifyEqual(testCase, char(out.migrated{1}.get('entity.local_identifier')), 'mouse_44');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyRoundTrip(testCase, r);
+verifyTrue(testCase, any(strcmp('base.name', r.matched)));
+end
+
+function testASubjectAndAGroupWithANameValidate(testCase)
+% did2.build and validation accept `name` on an organism and a group entity
+% (entity.json declares `name`, "A display name, for people")
+g = namedGroup({'41268b6f5c6a3d4e_c0d1a9e2b3f4a5b6'});
+g.base.name = 'the treated cohort, B';
+batch = {ndiSubject('mouse_47', 'a mouse', 'Mouse forty-seven'), g};
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
+reasons = '';
+for k = 1:numel(out.quarantine)
+    reasons = [reasons sprintf('%s: %s; ', out.quarantine(k).class_name, ...
+        out.quarantine(k).reason)]; %#ok<AGROW>
+end
+verifyEmpty(testCase, out.quarantine, reasons);
+names = {};
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.className(), 'entity')
+        names{end+1} = char(out.migrated{k}.get('entity.name')); %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, sort(names), sort({'Mouse forty-seven', 'the treated cohort, B'}));
+end
+
+function testAChangedEntityNameIsReportedLost(testCase)
+% the round trip can fail on the name: an entity.name changed after migration
+% no longer rebuilds the v1 base.name
+v1 = ndiSubject('mouse_48', '', 'Mouse forty-eight');
+out = runRaw(v1);
+s = out.migrated{1}.toStruct();
+s.entity.name = 'someone else';
+r = did2.convert.roundtrip.check(v1, {s});
 verifyFalse(testCase, r.ok);
 verifyEqual(testCase, {r.lost.path}, {'base.name'});
 end
@@ -174,6 +231,49 @@ verifyEqual(testCase, numel(out.migrated), 4, 'the group and three member_of edg
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyRoundTrip(testCase, r);
 verifyFalse(testCase, r.carried);
+end
+
+function testAGroupBaseNameIsTheEntityName(testCase)
+% [v1 name is the entity name]: the group's base.name, here unlike its
+% group_name, is entity.name
+v1 = namedGroup({'m_1'});
+v1.base.name = 'the treated cohort, B';
+out = runRaw(v1);
+grp = out.migrated{1};
+verifyEqual(testCase, char(grp.get('entity.name')), 'the treated cohort, B');
+verifyEqual(testCase, char(grp.get('entity.local_identifier')), 'cohortB');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyRoundTrip(testCase, r);
+end
+
+function testAMemberEdgeWithNoNumberRoundTrips(testCase)
+% [member edge number is notation] (Jess Haley, 2026-10-27): a group whose one
+% member edge is spelled `subject_id` comes back as `subject_id_1`; the same
+% edge, so the round trip is clean and nothing is carried
+v1 = namedGroup({'m_1'});
+v1.depends_on(1).name = 'subject_id';
+out = runRaw(v1);
+verifyEmpty(testCase, out.passthrough);
+verifyEqual(testCase, numel(out.migrated), 2, 'the group and one member_of edge');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyRoundTrip(testCase, r);
+verifyTrue(testCase, any(strcmp('depends_on(1).name', r.equivalent)));
+% and the numbered spelling still matches exactly
+v1n = namedGroup({'m_1'});
+rn = did2.convert.roundtrip.check(v1n, runRaw(v1n).migrated);
+verifyRoundTrip(testCase, rn);
+verifyTrue(testCase, any(strcmp('depends_on(1).name', rn.matched)));
+end
+
+function testAnotherMemberEdgeNumberIsReportedLost(testCase)
+% the equivalence is `subject_id` = `subject_id_1` only: a first member edge
+% spelled `subject_id_2` is rebuilt as `subject_id_1`, and the round trip
+% says so
+v1 = namedGroup({'m_1'});
+v1.depends_on(1).name = 'subject_id_2';
+r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
+verifyFalse(testCase, r.ok);
+verifyEqual(testCase, {r.lost.path}, {'depends_on(1).name'});
 end
 
 function testADroppedMemberEdgeIsReportedLost(testCase)
