@@ -323,6 +323,58 @@ verifyEqual(testCase, a.get('statement.variable').name, 'genetic strain type');
 verifyEqual(testCase, a.get('term.value').node, 'X:1');
 end
 
+function testAnOpenmindsIdThatDoesNotRebuildIsCarried(testCase)
+% [openMINDS subject leftovers] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): a controlled term's openminds_id is rebuilt
+% from the term through the registry's `equivalent` list, "and a document whose
+% id does not rebuild is carried"; a lab-made strain's id belongs on the strain
+% entity's global_identifier, which pass 1 does not mint, so it carries too.
+% The register rows are pending in did-schema: the notes cite placeholders.
+v1 = struct();
+v1.document_class = struct('class_name', 'openminds_subject', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'om_3', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Species', ...
+    'matlab_type', 'openminds.controlledterms.Species', ...
+    'openminds_id', 'https://openminds.om-i.org/instances/species/caenorhabditisElegans', ...
+    'fields', struct('name', 'Caenorhabditis elegans', ...
+        'preferredOntologyIdentifier', 'NCBITaxon:6239'));
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-pending-openminds-id-does-not-rebuild] '), d);
+lab = v1;
+lab.base.id = 'om_4';
+lab.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Strain', ...
+    'matlab_type', 'openminds.core.research.Strain', ...
+    'openminds_id', 'https://openminds.om-i.org/instances/strain/abc123', ...
+    'fields', struct('name', 'OP50-GFP'));
+out = runJ(lab);
+verifyCarriedWholeAsV1(testCase, lab, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-pending-openminds-lab-strain-id] '), d);
+end
+
+function testAnOpenmindsIdRebuildsThroughTheEquivalentList(testCase)
+% the rebuild reads the registry row's `equivalent` list ([term equivalents
+% recorded]); a stub registry stands in until did-schema adds the column
+reg = struct('terms', {{struct('name', 'Caenorhabditis elegans', 'node', 'NCBITaxon:6239', ...
+    'equivalent', {{'openminds:caenorhabditisElegans', 'wikidata:Q91703'}}), ...
+    struct('name', 'Mus musculus', 'node', 'NCBITaxon:10090')}});
+ix = did2.schema.termIndex(reg);
+verifyTrue(testCase, ix.present);
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/caenorhabditisElegans', ix));
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'caenorhabditisElegans', ix));
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/musMusculus', ix));
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:10090', ...
+    'musMusculus', ix), 'a row with no equivalent list rebuilds nothing');
+end
+
 % ============ element -> subject (+ kind assertions + lineage) =========
 
 function el = elementDoc(name, typ, ndiClass, direct, subjectId, underlyingId)
@@ -3557,30 +3609,46 @@ end
 
 
 function testDatasetSessionInfoAggregate(testCase)
-% One membership relation per listed session. UPDATED for #88 (dataset entity).
-v1 = struct();
-v1.document_class = struct('class_name', 'dataset_session_info', 'class_version', '1.0.0', ...
+% INVERTED 2026-10-27 (was: one membership relation per listed session).
+% [fit classes kept; session list rebuilt] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): a dataset_session_info "writes
+% no V2 document: the round trip rebuilds it from the session entities'
+% `included_in` relations to the dataset, and one that does not rebuild
+% exactly is carried whole as v1" (the register row is pending in did-schema:
+% the note cites the placeholder)
+info = struct();
+info.document_class = struct('class_name', 'dataset_session_info', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-v1.depends_on = struct('name', {}, 'value', {});
-v1.base = struct('id', 'dsi_01', 'session_id', 'dsid_1', ...
-    'name', 'dsi', 'datestamp', '2024-06-01T12:00:00.000Z');
+info.depends_on = struct('name', {}, 'value', {});
+info.base = struct('id', 'dsi_01', 'session_id', 'dsid_1', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 e1 = struct('session_id', 'member_a', 'is_linked', 0);
-e2 = struct('session_id', 'member_b', 'is_linked', 1);
-v1.dataset_session_info = struct('dataset_session_info', [e1 e2]);
-out = runJ(v1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'dataset'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 2);   % two members
-children = {};
-relName = membershipRelation();
-for k = 1:numel(out.migrated)
-    d = out.migrated{k};
-    if strcmp(d.get('document_class.class_name'), 'directed_relation')
-        verifyEqual(testCase, did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), relName);
-        verifyEqual(testCase, depVal(d, 'parent_id'), 'dsid_1');
-        children{end+1} = depVal(d, 'child_id'); %#ok<AGROW>
-    end
+e2 = struct('session_id', 'member_b', 'is_linked', 0);
+info.dataset_session_info = struct('dataset_session_info', [e1 e2]);
+m1 = sessionInADatasetDoc('member_a');
+m1.base.id = 'sid_a';
+m1.base.name = '';
+m2 = sessionInADatasetDoc('member_b');
+m2.base.id = 'sid_b';
+m2.base.name = '';
+% rebuilt exactly by the two memberships: nothing written, nothing carried
+out = did2.convert.v1_to_v2({m1, m2, info}, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEmpty(testCase, out.quarantine);
+ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(ids, 'dsi_01')), 'the list writes no V2 document');
+verifyFalse(testCase, any(strcmp({out.passthrough.id}, 'dsi_01')), 'not carried');
+% alone, another order, or another value: carried whole as v1
+v = info;
+v.dataset_session_info.dataset_session_info(2).is_linked = 1;
+for c = {{info}, {m2, m1, info}, {m1, m2, v}}
+    batch = c{1};
+    out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+    verifyEmpty(testCase, out.quarantine);
+    hit = strcmp({out.passthrough.id}, 'dsi_01');
+    verifyEqual(testCase, nnz(hit), 1, 'carried');
+    d = strjoin(cellstr(out.summary.migration_notes.carried_as_v1.distinct_details), ' || ');
+    verifyTrue(testCase, contains(d, '[carry-pending-session-list-does-not-rebuild] malformed: '), d);
 end
-verifyEqual(testCase, sort(children), {'member_a', 'member_b'});
 end
 
 
