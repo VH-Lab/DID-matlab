@@ -462,26 +462,24 @@ for k = 1:numel(bodies)
             % for a data body, to its free text; "a statement with a non-empty
             % v1 name is carried whole as v1 with a needs-home register row,
             % and the number of such statements is counted in the next corpus
-            % run". THE CHECK, for every CONVERTED source: its non-empty v1
-            % name must be held by a top-level `name`, `description` or
-            % `notes` of an emitted document's own blocks (v1NameIsKept);
-            % otherwise the source is carried whole as v1 -- a statement by
-            % the decision, any other target because writing nothing would
-            % lose the name ([lossless means round trip]). A carried STATEMENT
-            % is also noted `v1_name_statement_carried` (the count). THE
-            % REGISTER ROW IS PENDING in did-schema: the note cites the
-            % placeholder V1_NAME_ROW, which names no row.
+            % run". THE CHECK, for every CONVERTED source whose replacement
+            % (the emitted document holding its id, else the first) is a
+            % STATEMENT: a non-empty v1 name no emitted document holds (a
+            % top-level `name`, `description` or `notes` of its own blocks,
+            % v1NameIsKept) carries the source whole as v1, and is noted
+            % `v1_name_statement_carried` (the count). Writing the name to
+            % the own name field of the other targets is each migrator's
+            % (jBaseName: entities; image_stack: its body); it is not checked
+            % here. THE REGISTER ROW IS PENDING in did-schema: the note cites
+            % the placeholder V1_NAME_ROW, which names no row.
             if ~carried && ~isempty(v2Bodies) ...
                     && ~(isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body))
                 v1Name = v1NameOf(preBody);
-                if ~isempty(v1Name) && ~v1NameIsKept(v2Bodies, v1Name)
-                    isStatement = replacementIsStatement(v2Bodies, sourceIdOf(preBody));
-                    what = 'its V2 document has no field that holds it';
-                    if isStatement
-                        what = 'a statement has no name field';
-                        did2.convert.reportNote('v1_name_statement_carried', className, ...
-                            sourceIdOf(preBody), v1Name);
-                    end
+                if ~isempty(v1Name) && replacementIsStatement(v2Bodies, sourceIdOf(preBody)) ...
+                        && ~v1NameIsKept(v2Bodies, v1Name)
+                    what = 'a statement has no name field';
+                    did2.convert.reportNote('v1_name_statement_carried', className, ...
+                        sourceIdOf(preBody), v1Name);
                     % carry-register: none (needs-home row pending in did-schema;
                     %   V1_NAME_ROW)
                     did2.convert.reportNote('carried_as_v1', className, sourceIdOf(preBody), ...
