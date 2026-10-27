@@ -300,7 +300,9 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         testRawV1RoundTripOntologyImage.
 %     pyraview            superclasses epochclocktimes (+ epochid, base) and
 %                         data/filter, whose superclass migrators the renamed
-%                         path ran (+migrators/epochclocktimes, filter); the
+%                         path ran (+migrators/epochclocktimes, filter; both
+%                         deleted 2026-10-27, [unreached superclass migrators
+%                         deleted]); the
 %                         migrator and private/jFrequencyFilter read either
 %                         spelling, so the raw read needs neither. A pyraview
 %                         naming an epoch defers in pass 1, and

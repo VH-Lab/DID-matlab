@@ -534,6 +534,19 @@ report = struct( ...
     'pyraview_deferred_resolved',          0, ...
     'pyraview_deferred_unresolved',        0, ...
     'pyraview_deferred_epochs_minted',     0, ...
+    ... % [one bath shape] (Jess Haley, 2026-10-27): the bath anchors
+    ... % resolveDeferredBaths handed on, re-pointed at their epoch (see
+    ... % resolveBathAnchors). handed_over is the denominator.
+    'bath_anchors_handed_over',            0, ...
+    'bath_anchors_found',                  0, ...
+    'bath_anchors_repointed',              0, ...
+    'bath_anchors_clock_tolerance_applied', 0, ...
+    'bath_anchors_refused_not_in_batch',   0, ...
+    'bath_anchors_refused_no_epoch_document', 0, ...
+    'bath_anchors_refused_clock_no_time',  0, ...
+    'bath_anchors_refused_clock_inherited', 0, ...
+    'bath_anchors_refused_clock_unknown',  0, ...
+    'bath_anchors_refused_invalid',        0, ...
     'syncrule_already_folded',             0, ...
     'syncrule_edges_stamped',              0, ...
     'syncrule_folds_emitted',              0, ...
@@ -1782,6 +1795,7 @@ if isempty(minted) && isempty(changedIdx)
     report.arming_bodies_dropped = report.arming_bodies_offered;
     report.epoch_index_report = edgeIndex.report;
     [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
+    [result, report] = resolveBathAnchors(result, report, options);
     result.epoch_mint = report;
     return;
 end
@@ -2010,6 +2024,7 @@ result.summary = recountSummary(result);
 % (the chain lookup threw) are different problems with different owners.
 report.epoch_index_report = edgeIndex.report;
 [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
+[result, report] = resolveBathAnchors(result, report, options);
 result.epoch_mint = report;
 end
 
@@ -2111,6 +2126,158 @@ end
 result.migrated = [result.migrated, out.migrated];
 result.quarantine = [q(keep), out.quarantine];
 result.summary = recountSummary(result);
+end
+
+function [result, report] = resolveBathAnchors(result, report, options)
+%RESOLVEBATHANCHORS Re-point each resolved bath's anchor at its epoch.
+%   Decided by Jess Haley, 2026-10-27 [one bath shape] (did-schema
+%   V_eta_go_forward_class_audit.md): DID's bath step keeps the bath's epoch as
+%   NDI's does. did2.convert.resolveDeferredBaths builds the anchor "during the
+%   session" and hands on {anchor_id, session_id, epoch_string, epoch_clock} in
+%   RESULT.deferred_bath_anchors, exactly as ndi.migrate.internal.
+%   stimulusBathToBath hands its anchorInfo to epochAnchorFold; this is the
+%   DID-side counterpart of that fold, and it writes what epochAnchorFold's
+%   `reanchor` writes (NDI-matlab V2 a2ab2d152): the same relative_time_reference
+%   (id PRESERVED), its referent_id the epoch entity for (session, epoch
+%   string), relation intervalDuring, the clock named, and for an approx_
+%   clock the clock_tolerance of 5 seconds. Its refusals are epochAnchorFold's:
+%   no epoch document for the pair, a 'no_time' or 'inherited' clock, an
+%   unknown clock -- the anchor then stays on its session, counted. The epochs
+%   read are the ones this pass leaves in the batch (REPORT.epoch_index, each
+%   checked present), so no anchor names an epoch that is not there.
+if ~isfield(result, 'deferred_bath_anchors') || isempty(result.deferred_bath_anchors)
+    return;
+end
+anchors = result.deferred_bath_anchors;
+report.bath_anchors_handed_over = numel(anchors);
+present = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for k = 1:numel(result.migrated)
+    try
+        present(char(result.migrated{k}.get('base.id'))) = k;
+    catch
+    end
+end
+epochByPair = containers.Map('KeyType', 'char', 'ValueType', 'char');
+rowsIdx = report.epoch_index;
+for k = 1:numel(rowsIdx)
+    eid = char(rowsIdx(k).epoch_document_id);
+    key = pairKey(char(rowsIdx(k).session_id), char(rowsIdx(k).local_identifier));
+    if ~isempty(eid) && isKey(present, eid) && ~isKey(epochByPair, key)
+        epochByPair(key) = eid;
+    end
+end
+% the epochs resolveDeferredPyraviews minted are in the batch too
+for k = 1:numel(result.migrated)
+    try
+        b = result.migrated{k}.toStruct();
+        if ~strcmp(classNameOf(b), 'epoch'); continue; end
+        lid = '';
+        if isfield(b, 'entity') && isstruct(b.entity)
+            lid = charField(b.entity, {'local_identifier'});
+        end
+        sid = baseField(b, 'session_id');
+        if isempty(sid); sid = depValueOf(b, 'session_id'); end
+        key = pairKey(char(sid), lid);
+        if ~isempty(lid) && ~isKey(epochByPair, key)
+            epochByPair(key) = char(b.base.id);
+        end
+    catch
+    end
+end
+rebuilt = {};
+targets = [];
+for k = 1:numel(anchors)
+    a = anchors(k);
+    if ~isKey(present, a.anchor_id)
+        report.bath_anchors_refused_not_in_batch = report.bath_anchors_refused_not_in_batch + 1;
+        continue;
+    end
+    report.bath_anchors_found = report.bath_anchors_found + 1;
+    key = pairKey(a.session_id, a.epoch_string);
+    if ~isKey(epochByPair, key)
+        report.bath_anchors_refused_no_epoch_document = ...
+            report.bath_anchors_refused_no_epoch_document + 1;
+        continue;
+    end
+    [clockName, tolerance, verdict] = bathClockTerm(a.epoch_clock);
+    switch verdict
+        case 'no_time'
+            report.bath_anchors_refused_clock_no_time = report.bath_anchors_refused_clock_no_time + 1;
+            continue;
+        case 'inherited'
+            report.bath_anchors_refused_clock_inherited = report.bath_anchors_refused_clock_inherited + 1;
+            continue;
+        case 'unknown'
+            report.bath_anchors_refused_clock_unknown = report.bath_anchors_refused_clock_unknown + 1;
+            continue;
+    end
+    old = result.migrated{present(a.anchor_id)}.toStruct();
+    ts = '';
+    if isfield(old, 'base') && isfield(old.base, 'creation_timestamp')
+        ts = char(old.base.creation_timestamp);
+    end
+    opts = {'Relation', 'intervalDuring', 'Clock', clockName, ...
+        'Id', a.anchor_id, 'SessionId', a.session_id, 'CreationTimestamp', ts, ...
+        'Validate', false};
+    if tolerance > 0
+        opts = [opts, {'ClockTolerance', tolerance}]; %#ok<AGROW>
+        report.bath_anchors_clock_tolerance_applied = ...
+            report.bath_anchors_clock_tolerance_applied + 1;
+    end
+    rebuilt{end+1} = did2.build.relativeTimeReference(epochByPair(key), opts{:}); %#ok<AGROW>
+    targets(end+1) = present(a.anchor_id); %#ok<AGROW>
+end
+if isempty(rebuilt)
+    return;
+end
+out = did2.convert.v1_to_v2(rebuilt, 'Validate', options.Validate, ...
+    'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion);
+produced = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:numel(out.migrated)
+    try
+        produced(char(out.migrated{k}.get('base.id'))) = out.migrated{k};
+    catch
+    end
+end
+for j = 1:numel(rebuilt)
+    id = char(rebuilt{j}.base.id);
+    if ~isKey(produced, id)
+        % the re-pointed anchor did not validate: the session anchor stays,
+        % so the bath keeps a valid time reference; counted, never dropped
+        report.bath_anchors_refused_invalid = report.bath_anchors_refused_invalid + 1;
+        continue;
+    end
+    result.migrated{targets(j)} = produced(id);
+    report.bath_anchors_repointed = report.bath_anchors_repointed + 1;
+end
+end
+
+function [clockName, toleranceSeconds, verdict] = bathClockTerm(raw)
+% NDI's epochAnchorFold clockTerm, verbatim in effect: the v1 clock string ->
+% the V2 clock name, an approx_ clock's 5 s tolerance, or a refusal
+verdict = 'ok';
+toleranceSeconds = 0;
+clockName = '';
+raw = char(raw);
+if isempty(raw)
+    return;
+end
+switch raw
+    case {'utc', 'dev_local_time', 'dev_global_time', 'exp_global_time'}
+        clockName = raw;
+    case 'approx_utc'
+        clockName = 'utc';              toleranceSeconds = 5;
+    case 'approx_dev_global_time'
+        clockName = 'dev_global_time';  toleranceSeconds = 5;
+    case 'approx_exp_global_time'
+        clockName = 'exp_global_time';  toleranceSeconds = 5;
+    case 'no_time'
+        verdict = 'no_time';
+    case 'inherited'
+        verdict = 'inherited';
+    otherwise
+        verdict = 'unknown';
+end
 end
 
 % ===================== builders ========================================

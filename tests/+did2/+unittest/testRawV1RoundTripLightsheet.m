@@ -182,6 +182,63 @@ for k = reshape(fieldnames(a), 1, [])
 end
 end
 
+function testACarriedFileReferenceIsNotFolded(testCase)
+% Decided by Jess Haley, 2026-10-27 [carried file references are not folded]:
+% the store fold skips a fileReference pass 1 carried as v1 (stamped 'did_v1');
+% it stays the untouched v1 document, and the pyramid's observation keeps its
+% source_file_id link to it
+f = fileReferences();
+rec = f{1};
+rec.fileReference.mimeType = 'application/zarr';   % outside the template: carry-100
+% Pass 1 in ONE call carries the pyramid and its levels too ([dependents of a
+% carried document carry], carry-064), so no converted carrier would name the
+% record. The fold meets a carried record named by a converted pyramid when the
+% two came out of separate pass-1 calls, as here: the batches are joined, then
+% folded.
+first = did2.convert.v1_to_v2([{omeZarrPyramid()}, levels()], 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+second = did2.convert.v1_to_v2({rec, f{2}}, 'Validate', true, 'TargetVersion', 'V_eta');
+out = first;
+out.migrated = [first.migrated, second.migrated];
+out.quarantine = [first.quarantine, second.quarantine];
+[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'V_eta');
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, rep.store_records_seen, 2);
+verifyEqual(testCase, rep.store_records_carried_as_v1, 1, 'the carried record is seen as carried');
+verifyEqual(testCase, rep.store_skipped_carried_as_v1, 1, 'its carrier is skipped');
+verifyEqual(testCase, rep.stores_folded, 0, 'a carried record was folded');
+verifyEqual(testCase, rep.store_carriers_stripped, 0, 'the carrier lost its link');
+m = byId(out.migrated);
+assertTrue(testCase, isfield(m, 'fref_store_1'), 'the carried record left the batch');
+r = m.fref_store_1;
+verifyEqual(testCase, r.document_class.class_name, 'fileReference');
+verifyEqual(testCase, r.document_class.schema_version, 'did_v1');
+verifyEqual(testCase, r.fileReference.mimeType, 'application/zarr');
+chk = did2.convert.roundtrip.check(rec, {r});
+verifyTrue(testCase, chk.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, chk, 'carried fileReference', {});
+assertTrue(testCase, isfield(m, 'pyr_ls_1'));
+obs = m.pyr_ls_1;
+verifyEqual(testCase, edgeValue(obs, 'source_file_id'), 'fref_store_1', ...
+    'the pyramid lost its link to the carried record');
+% the levels are still completed from the pyramid's carried axes
+verifyEqual(testCase, rep.level_bodies_seen, 3);
+end
+
+function v = edgeValue(b, name)
+v = '';
+if ~isfield(b, 'depends_on'); return; end
+d = b.depends_on;
+if isstruct(d); d = num2cell(d); end
+for k = 1:numel(d)
+    if isfield(d{k}, 'name') && strcmp(d{k}.name, name)
+        if isfield(d{k}, 'value'); v = char(d{k}.value);
+        elseif isfield(d{k}, 'document_id'); v = char(d{k}.document_id); end
+        return;
+    end
+end
+end
+
 % ===================== carries ===========================================
 
 function testTheCarriesNameTheirReason(testCase)

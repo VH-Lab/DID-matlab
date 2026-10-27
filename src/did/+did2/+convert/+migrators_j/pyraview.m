@@ -91,7 +91,9 @@ function bodies = pyraview(preBody)
 %   v1], Jess Haley, 2026-10-26, did-schema
 %   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
 %   exactly as v1 wrote it, with no universalRenames and no superclass
-%   migrator (+migrators/epochclocktimes, +migrators/filter) run on it. Its
+%   migrator run on it (+migrators/epochclocktimes and +migrators/filter, which
+%   the renamed path ran, are deleted: [unreached superclass migrators
+%   deleted], Jess Haley, 2026-10-27). Its
 %   template is data/pyraview.json over epochclocktimes.json, epochid.json,
 %   data/filter.json and base.json at the locked NDI-matlab `main`, 3cb19a8;
 %   its writer is +ndi/+gui/+app/+pyraview/makePyraviewDoc.m (the `filter`
@@ -118,7 +120,10 @@ function bodies = pyraview(preBody)
 %     pyraview.decimationLevels          restated by the rates (the writer sets
 %                                        rates = nativeRate ./ cumprod(levels))
 %     filter.*                           private/jFrequencyFilter
-%     files.file_list, file_info         one level body per file_list name
+%     files.file_list, file_info         one level body per file_list name,
+%                                        carrying the file_info entry of that
+%                                        name ([pyraview level keeps its file
+%                                        info], Jess Haley, 2026-10-27)
 %
 %   The fields are read in either spelling (fieldByNormalisedName below), so a
 %   body that did come through universalRenames (v1_to_v2 'RawV1Classes', {})
@@ -145,6 +150,12 @@ src = preBody;
     'epochclocktimes', {{'clocktype', 't0_t1'}}, ...
     'epochid', {{'epochid'}}, ...
     'files', {{'file_list', 'file_info'}}), {'^element_id$', '^epoch_id$'});
+% `filter.parameters` is open in the template, so jRawAccount cannot see a key
+% there that jFrequencyFilter does not read; this does, against the list it
+% reads with (private/jFilterParameterKeys). Such a key carries the document
+% whole as v1, carry-100 (Decided by Jess Haley, 2026-10-27 [unknown filter
+% parameter is malformed], did-schema V_eta_go_forward_class_audit.md).
+unplaced = [unplaced, unreadFilterParameters(preBody)];
 if jRawCarry('pyraview', src, collision, unplaced, 'carry-100')
     bodies = {src};
     return;
@@ -268,6 +279,13 @@ if isfield(preBody, 'files') && isstruct(preBody.files) ...
     if ~iscell(fileList); fileList = {fileList}; end
 end
 if isempty(fileList); fileList = {''}; end   % at least the native body
+fileInfo = {};   % the v1 files.file_info records, one cell each
+if isfield(preBody, 'files') && isstruct(preBody.files) ...
+        && isfield(preBody.files, 'file_info') && ~isempty(preBody.files.file_info)
+    fileInfo = preBody.files.file_info;
+    if isstruct(fileInfo); fileInfo = num2cell(fileInfo(:)'); end
+    if ~iscell(fileInfo); fileInfo = {}; end
+end
 rates  = numVec(fieldByNormalisedName(blk, 'decimationsamplingrates'));
 starts = numVec(fieldByNormalisedName(blk, 'decimationstarttimes'));
 nChannels   = numScalar(channels, 0);
@@ -321,11 +339,54 @@ for k = 1:numel(fileList)
     o = jOpts(preBody, filterOpt{:}, orderOpt{:});
     b = did2.build.sampledBody(obsId, dims, 'Covariates', covs, o{:});
     b.files = struct('file_list', {fileList(k)});
+    % THE LEVEL KEEPS ITS FILE INFO (Decided by Jess Haley, 2026-10-27
+    % [pyraview level keeps its file info], did-schema
+    % V_eta_go_forward_class_audit.md): the v1 files.file_info entry whose
+    % `name` is this level's file -- the uid, the database's handle on the
+    % stored binary, its location and ingest flags -- rides on the level body
+    % beside the name, unchanged. A level the writer attached nothing to (the
+    % template lists level1..level10.bin; add_file is called once per
+    % decimation step) has no entry and gets none.
+    fi = levelFileInfo(fileInfo, fileList{k});
+    if ~isempty(fi)
+        b.files.file_info = fi;
+    end
     bodies{end+1} = b; %#ok<AGROW>
 end
 bodies{end+1} = anchor;
 if ~isempty(filterDoc)
     bodies{end+1} = filterDoc;
+end
+end
+
+function fi = levelFileInfo(fileInfo, name)
+% the file_info record whose `name` is NAME, [] when there is none
+fi = [];
+for j = 1:numel(fileInfo)
+    e = fileInfo{j};
+    if isstruct(e) && isscalar(e) && isfield(e, 'name') ...
+            && strcmp(charOf(e.name), char(name))
+        fi = e;
+        return;
+    end
+end
+end
+
+function paths = unreadFilterParameters(body)
+% `filter.parameters.<key>` for every key private/jFrequencyFilter does not
+% read, whatever it holds ([unknown filter parameter is malformed]: "holds a key
+% jFrequencyFilter does not read"). {} when the block has no parameters struct.
+paths = {};
+f = getBlock(body, 'filter');
+if ~isfield(f, 'parameters') || ~isstruct(f.parameters) || ~isscalar(f.parameters)
+    return;
+end
+[~, known] = jFilterParameterKeys();
+fn = fieldnames(f.parameters);
+for k = 1:numel(fn)
+    if ~any(strcmp(fn{k}, known))
+        paths{end+1} = ['filter.parameters.' fn{k}]; %#ok<AGROW>
+    end
 end
 end
 
