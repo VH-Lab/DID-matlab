@@ -147,20 +147,6 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         (jrclust_clusters), ndi.calc.vis.hartley and
 %                         ndi.calc.vis.speed_tuning (NDIcalc-vis-matlab). Round
 %                         trips: testRawV1RoundTripSpike.
-<<<<<<< HEAD
-%     ontologyLabel       superclass `base` only, no `app` block, no superclass
-%                         migrator. Pass 1 hands it to NDI's second pass
-%                         unchanged (or carries it, carry-064, with a carried
-%                         stack); the raw passthrough keeps the v1 class name,
-%                         block `ontologyLabel` and field `ontologyNode`. Every
-%                         reader of a label by its class name accepts both
-%                         spellings first (siblings first, did-schema
-%                         CLAUDE.md): did2.convert.isOntologyLabelClass
-%                         (did2.convert.foldGenericFiles) and NDI-matlab's
-%                         ndi.migrate.internal.isOntologyLabelClass (#1076).
-%                         Written by +setup/+conv/+haley/doImport.m and
-%                         +babu/import.m. Round trips: testRawV1RoundTripImage.
-=======
 %     session               the session / dataset / presentation family:
 %     session_in_a_dataset  superclass `base` (+ `epochid` and the writer's
 %     dataset_remote        `app` for stimulus_presentation), no superclass
@@ -174,7 +160,18 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         createRemoteDatasetDoc.m, +metadata_ds_core/
 %                         saveEditor2Doc.m, +app/+stimulus/decoder.m. Round
 %                         trips: testRawV1RoundTripSession.
->>>>>>> origin/claude/phase2
+%     ontologyLabel       superclass `base` only, no `app` block, no superclass
+%                         migrator. Pass 1 hands it to NDI's second pass
+%                         unchanged (or carries it, carry-064, with a carried
+%                         stack); the raw passthrough keeps the v1 class name,
+%                         block `ontologyLabel` and field `ontologyNode`. Every
+%                         reader of a label by its class name accepts both
+%                         spellings first (siblings first, did-schema
+%                         CLAUDE.md): did2.convert.isOntologyLabelClass
+%                         (did2.convert.foldGenericFiles) and NDI-matlab's
+%                         ndi.migrate.internal.isOntologyLabelClass (#1076).
+%                         Written by +setup/+conv/+haley/doImport.m and
+%                         +babu/import.m. Round trips: testRawV1RoundTripImage.
 %     NOT LISTED, and why:
 %       control_stimulus_ids  its migrator passes it through (no note, so its
 %                         responses do not carry), and NDI's second pass reads
