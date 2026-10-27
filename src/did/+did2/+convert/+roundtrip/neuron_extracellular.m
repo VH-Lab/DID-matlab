@@ -1,11 +1,11 @@
 function [v1, spec] = neuron_extracellular(bodies)
 %NEURON_EXTRACELLULAR Rebuild a v1 `neuron_extracellular` from what
 %   did2.convert.migrators_j.neuron_extracellular emitted when it CONVERTED it:
-%   the sorted unit (an `entity` of type cell), its derived_from relation to
-%   the recording element, the session anchor, the calculations about the unit
-%   (cluster index and quality label: `label`; mean waveform: `voltage`;
-%   quality number: `score`) and the software entities (with their version
-%   assertions).
+%   the calculations about the sorted unit (cluster index and quality label:
+%   `label`; mean waveform: `voltage`; quality number: `score`), all about the
+%   unit's entity (the element it came from, [neuron uses the sorted unit's
+%   cell], Jess Haley, 2026-10-27), the session anchor and the software
+%   entities (with their version assertions).
 %
 %   [V1, SPEC] = did2.convert.roundtrip.neuron_extracellular(BODIES). V1 is the
 %   document in the shape NDI-matlab's writers give it
@@ -13,12 +13,12 @@ function [v1, spec] = neuron_extracellular(bodies)
 %   3cb19a8; +ndi/+fun/+probe/+import/+jrclust/probe.m, +kilosort/probe.m,
 %   +kiasort/probe.m, +ndi/+app/spikesorter.m):
 %
-%     base.id, session_id, datestamp   the calculations' run (calcParts; the
-%                                      unit's id is minted, the source id is
-%                                      not kept: no inbound edge names a
-%                                      neuron_extracellular)
+%     base.id, session_id, datestamp   the FIRST calculation (calcParts): it
+%                                      holds the v1 id ([every v1 id
+%                                      survives], Jess Haley, 2026-10-27; the
+%                                      migrator emits the waveform first)
 %     app                              the calculations' software entities
-%     depends_on element_id            the relation's parent_id
+%     depends_on element_id            the calculations' entity_id
 %     depends_on spike_clusters_id     the calculations' input_id ('' when none)
 %     cluster_index                    the 'spike sorter cluster index' label
 %     quality_label                    the 'spike sort quality' label
@@ -26,16 +26,15 @@ function [v1, spec] = neuron_extracellular(bodies)
 %     mean_waveform                    the 'mean spike waveform' voltage values,
 %                                      column-major over (time, channel)
 %     waveform_sample_times            the time covariate: its values, or
-%                                      origin + spacing * (0:n-1)
+%                                      origin + spacing * (0:n-1), equal to the
+%                                      v1 times within one rounding step
+%                                      (SPEC.same; [sample times equal within
+%                                      one rounding step], Jess Haley,
+%                                      2026-10-27)
 %     number_of_samples_per_channel,   restated by the waveform's two extents
 %     number_of_channels               ([restated values checked]); with no
 %                                      waveform the writers' 1 or 0
 %                                      (SPEC.equivalents)
-%
-%   base.id: the migrator does not keep the source id on any emitted document
-%   (testMigratorsJNeuronExtracellular testTheSourceIdIsNotReusedByAnyEmittedBody),
-%   so it is REPORTED LOST by the round trip (a known finding,
-%   testRawV1RoundTripSpike; open).
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.neuron_extracellular.
 
@@ -47,25 +46,12 @@ spec = emptySpec();
 v1 = struct();
 n = numel(bodies);
 used = false(1, n);
-unitIdx = [];
-for k = 1:n
-    if isEntityOfType(bodies{k}, 'cell') && isempty(unitIdx)
-        unitIdx = k;
-    end
-end
-if isempty(unitIdx)
-    spec.unplaced{end+1} = 'no unit entity (type cell) was emitted';
-    return;
-end
-unit = bodies{unitIdx};
-used(unitIdx) = true;
-unitId = char(getIn(unit, 'base', 'id'));
-
-% the calculations about the unit, by variable and value kind
+% the calculations, by variable and value kind; all about ONE entity, the unit
 calcs = struct('kind', {}, 'variable', {}, 'body', {});
+unitIds = {};
 for k = 1:n
     b = bodies{k};
-    if ~strcmp(classNameOf(b), 'calculation') || ~isequal(edgeIds(b, 'entity_id'), {unitId})
+    if ~strcmp(classNameOf(b), 'calculation')
         continue;
     end
     [~, var] = termParts(getIn(b, 'statement', 'variable'));
@@ -74,21 +60,20 @@ for k = 1:n
         if isfield(b, kk{1}); kind = kk{1}; end
     end
     calcs(end+1) = struct('kind', kind, 'variable', var, 'body', b); %#ok<AGROW>
+    unitIds = [unitIds, edgeIds(b, 'entity_id')]; %#ok<AGROW>
     used(k) = true;
 end
 if isempty(calcs)
     spec.unplaced{end+1} = 'no calculation about the unit was emitted';
     return;
 end
+unitIds = unique(unitIds);
 relParent = '';
-for k = 1:n
-    b = bodies{k};
-    if used(k) || ~strcmp(classNameOf(b), 'directed_relation'); continue; end
-    if isequal(edgeIds(b, 'child_id'), {unitId})
-        p = edgeIds(b, 'parent_id');
-        if isscalar(p); relParent = p{1}; end
-        used(k) = true;
-    end
+if isscalar(unitIds)
+    relParent = unitIds{1};
+else
+    spec.unplaced{end+1} = sprintf('the calculations are about %d entities, not one', ...
+        numel(unitIds));
 end
 % identity, app: from the first calculation and the run entities it names
 rest = bodies(~used);
@@ -116,7 +101,6 @@ if ~isempty(inputs); sc = inputs{1}; end
 v1.depends_on = struct('name', {'element_id', 'spike_clusters_id'}, 'value', {relParent, sc});
 
 ne = struct();
-local = fieldText(getIn(unit, 'entity'), 'local_identifier');
 for c = 1:numel(calcs)
     b = calcs(c).body;
     switch [calcs(c).kind '|' calcs(c).variable]
@@ -138,12 +122,6 @@ for c = 1:numel(calcs)
                 calcs(c).variable, calcs(c).kind);
     end
 end
-% the unit's name restates its cluster index
-want = 'unit';
-if isfield(ne, 'cluster_index'); want = sprintf('unit_%d', ne.cluster_index); end
-if ~strcmp(local, want)
-    spec.unplaced{end+1} = sprintf('the unit is named "%s", not "%s"', local, want);
-end
 if ~isfield(ne, 'mean_waveform')
     % no waveform: the counts were the writers' value for an empty one
     % ([writer default is not set]: 1 from the import writers, 0 from
@@ -155,6 +133,22 @@ if ~isfield(ne, 'mean_waveform')
     end
 end
 v1.neuron_extracellular = ne;
+spec.same(end+1) = struct('path', 'neuron_extracellular.waveform_sample_times', ...
+    'fn', @(a, b) withinOneRoundingStep(a, b), 'why', ['start + step equals ' ...
+    'the v1 times within one rounding step ([sample times equal within one ' ...
+    'rounding step], Jess Haley, 2026-10-27)']);
+end
+
+function tf = withinOneRoundingStep(a, b)
+% the rule of did2.convert.migrators_j.neuron_extracellular regularTimebase:
+% every time within one ulp of the largest-magnitude v1 time
+tf = false;
+if ~isnumeric(a) || ~isnumeric(b) || numel(a) ~= numel(b) || isempty(a)
+    return;
+end
+a = double(a(:));
+b = double(b(:));
+tf = all(abs(a - b) <= eps(max(abs(a))));
 end
 
 function [w, t, bad] = waveform(b)

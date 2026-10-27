@@ -9,6 +9,14 @@ function tests = testMigratorsJNeuronExtracellular
 %   the sorting output (did-schema #73 review item 48, signed
 %   [spatial_transcriptomics_family]); the tests below were inverted to it.
 %
+%   2026-10-27, Decided by Jess Haley (did-schema
+%   V_eta_go_forward_class_audit.md), the tests below inverted again:
+%   [neuron uses the sorted unit's cell] (no entity and no derived_from of its
+%   own: every calculation is about the element it names), [every v1 id
+%   survives] (the waveform calculation, else the first calculation, keeps the
+%   v1 id), [sample times equal within one rounding step] (start + step within
+%   one rounding step, else carried as malformed).
+%
 %   STATUS: NEVER RUN LOCALLY. `command -v matlab octave` exits 1 in the
 %   container this was written in, so every assertion below is UNEXECUTED here.
 %   CI is the first execution. Treat a green run as the evidence, not this file.
@@ -101,18 +109,19 @@ end
 
 function testTheFoldEmitsSevenBodiesOnARealShapedDocument(testCase)
 % INVERTED 2026-10-21 for #73 review item 48 (signed [spatial_transcriptomics_family]):
-% every statement about the unit is a CALCULATION. A real-shaped document
-% yields TWELVE bodies (the name is kept for history): the unit, its
-% derived_from, the anchor, two label calculations (cluster_index,
+% every statement about the unit is a CALCULATION. INVERTED AGAIN 2026-10-27
+% ([neuron uses the sorted unit's cell], Jess Haley): no unit entity and no
+% derived_from. A real-shaped document yields TEN bodies (the name is kept for
+% history): the anchor, two label calculations (cluster_index,
 % quality_label), the waveform and the quality score; the app's software with
 % its version, and the run's OS and interpreter (the interpreter with its
 % version; the fixture's OS version is empty).
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 names = classNames(out);
-verifyEqual(testCase, numel(out), 12, ...
-    sprintf('expected 12 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
-verifyEqual(testCase, sum(strcmp(names, 'cell')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'directed_relation')), 1);
+verifyEqual(testCase, numel(out), 10, ...
+    sprintf('expected 10 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyEqual(testCase, sum(strcmp(names, 'cell')), 0, 'no entity of its own');
+verifyEqual(testCase, sum(strcmp(names, 'directed_relation')), 0, 'no derived_from of its own');
 verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'calculation+label')), 2);
 verifyEqual(testCase, sum(strcmp(names, 'calculation+voltage')), 1);
@@ -147,27 +156,36 @@ for k = 1:numel(out)
 end
 end
 
-function testTheWaveformIsAnObservationOfTheUNITNotOfTheRecording(testCase)
+function testTheWaveformIsAboutTheSortedUnitsOwnEntity(testCase)
+% [neuron uses the sorted unit's cell] (Decided by Jess Haley, 2026-10-27): the
+% statements point at the entity of the sorted-unit element the neuron came
+% from (its element_id, rec_sub_1, whose id migrators_j.element preserves).
+% INVERTS testTheWaveformIsAnObservationOfTheUNITNotOfTheRecording, which
+% required a second, minted unit entity.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-neuron = pick(out, 'cell');
 wobs   = pick(out, 'calculation+voltage');
-verifyEqual(testCase, depValueOf(wobs, 'entity_id'), neuron.base.id);
-verifyNotEqual(testCase, depValueOf(wobs, 'entity_id'), 'rec_sub_1');
+verifyEqual(testCase, depValueOf(wobs, 'entity_id'), 'rec_sub_1');
 verifyEqual(testCase, depValueOf(wobs, 'time_reference_id'), ...
     pick(out, 'relative_time_reference').base.id, ...
     'the waveform shares the one session anchor, it does not mint a second');
 end
 
 
-function testTheSourceIdIsNotReusedByAnyEmittedBody(testCase)
-% This migrator DISSOLVES rather than folding 1->1: it mints a fresh subject, so
-% no emitted body may claim the source id. (The calculator rule is the opposite
-% and is asserted the opposite way in testMigratorsJHartleyCalc.m -- these two
-% must not drift into each other.)
+function testTheWaveformCalculationKeepsTheSourceId(testCase)
+% [every v1 id survives] (Decided by Jess Haley, 2026-10-27): "a
+% `neuron_extracellular`'s id becomes its waveform calculation's id". INVERTS
+% testTheSourceIdIsNotReusedByAnyEmittedBody. Exactly one body holds it.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-for k = 1:numel(out)
-    verifyNotEqual(testCase, out{k}.base.id, 'ne_1');
-end
+ids = cellfun(@(b) char(b.base.id), out, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(ids, 'ne_1')), 1);
+verifyEqual(testCase, pick(out, 'calculation+voltage').base.id, 'ne_1');
+% with no waveform, the first calculation (the cluster index) keeps it
+v1 = neuronExtracellularV1();
+v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
+    {'mean_waveform', 'waveform_sample_times', ...
+     'number_of_samples_per_channel', 'number_of_channels'});
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyEqual(testCase, labelCalc(out, 'spike sorter cluster index').base.id, 'ne_1');
 end
 
 % ===================== the axes ============================================
@@ -205,16 +223,47 @@ verifyFalse(testCase, isfield(ax(1).cov, 'quantity') && ~isempty(ax(1).cov.quant
 end
 
 
-function testTheTimebaseIsCarriedAsValuesWhenItIsNotRegular(testCase)
+function testAnIrregularTimebaseIsCarriedAsMalformed(testCase)
+% [sample times equal within one rounding step] (Decided by Jess Haley,
+% 2026-10-27): "If a v1 neuron's times are really unevenly spaced, so start +
+% step misses by more than that, the neuron is carried as malformed". INVERTS
+% testTheTimebaseIsCarriedAsValuesWhenItIsNotRegular (the values arm).
 v1 = neuronExtracellularV1();
 jitter = [0; 0; 0.0004; zeros(18, 1)];       % one sample displaced
 v1.neuron_extracellular.waveform_sample_times = realTimebase() + jitter;
+did2.convert.reportNote('reset');
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
-verifyTrue(testCase, ~isfield(ax(1).cov, 'origin') || isempty(ax(1).cov.origin));
-verifyEqual(testCase, ax(1).cov.quantity.value(:), realTimebase() + jitter);
-verifyFalse(testCase, isfield(ax(1).cov, 'origin') && ~isempty(ax(1).cov.origin), ...
-    'an irregular covariate has no origin -- it has a quantity');
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'returned unchanged');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+d = notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-pending-neuron-sample-times-malformed] malformed: '), d);
+end
+
+function testOneRoundingStepIsTheLimit(testCase)
+% the real time base reconstructs to exactly one rounding step (one ulp of its
+% largest-magnitude time, 0.00075 s: 1.08e-19) and folds; the same vector with
+% one time moved by two more steps is carried
+t = realTimebase();
+step = eps(max(abs(t)));
+v1 = neuronExtracellularV1();
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyGreaterThan(testCase, numel(out), 1, 'the real time base folds');
+t2 = t;
+t2(8) = t2(8) + 3 * step;
+v1.neuron_extracellular.waveform_sample_times = t2;
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'three steps off: carried');
+end
+
+function testANeuronWithNoElementIsCarried(testCase)
+% [neuron uses the sorted unit's cell]: with no element_id there is no sorted
+% unit's entity to point at, and none is minted; the neuron is carried
+v1 = neuronExtracellularV1();
+v1.depends_on(1).value = '';
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'returned unchanged');
 end
 
 
@@ -291,8 +340,8 @@ v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
 verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')));
-verifyEqual(testCase, numel(out), 11, ...   % the 12 of the full fold, less the waveform
-    sprintf('expected 11 bodies without the waveform, got %d: %s', ...
+verifyEqual(testCase, numel(out), 9, ...   % the 10 of the full fold, less the waveform
+    sprintf('expected 9 bodies without the waveform, got %d: %s', ...
         numel(out), strjoin(names, ', ')));
 end
 
@@ -371,11 +420,9 @@ function testTheClusterIndexGetsAQueryableHomeAndNotOnlyAName(testCase)
 % LABEL, computed by the sort -- a calculation with the `label` value kind
 % whose value is the index as a string, not a count.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-neuron = pick(out, 'cell');
 cidx = labelCalc(out, 'spike sorter cluster index');
-verifyEqual(testCase, depValueOf(cidx, 'entity_id'), neuron.base.id);
+verifyEqual(testCase, depValueOf(cidx, 'entity_id'), 'rec_sub_1');
 verifyEqual(testCase, cidx.label.value.name, '7');
-verifyEqual(testCase, neuron.entity.local_identifier, 'unit_7');
 end
 
 
@@ -385,7 +432,7 @@ function testTheQualityLabelIsALabelCalculationNotDropped(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 q = labelCalc(out, 'spike sort quality');
 verifyEqual(testCase, q.label.value.name, 'multi');
-verifyEqual(testCase, depValueOf(q, 'entity_id'), pick(out, 'cell').base.id);
+verifyEqual(testCase, depValueOf(q, 'entity_id'), 'rec_sub_1');
 end
 
 
@@ -464,10 +511,9 @@ for k = 1:numel(out)
             k, out{k}.document_class.class_name, d(j).name));
     end
 end
-verifyGreaterThanOrEqual(testCase, edges, 22, ...
-    ['DENOMINATOR: 2 on the relation (child, parent), and 5 on each of the ' ...
-     'four calculations (entity_id, time_reference_id, software_id, ' ...
-     'operating_system_id, interpreter_id)']);
+verifyGreaterThanOrEqual(testCase, edges, 20, ...
+    ['DENOMINATOR: 5 on each of the four calculations (entity_id, ' ...
+     'time_reference_id, software_id, operating_system_id, interpreter_id)']);
 end
 
 
@@ -498,7 +544,9 @@ v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
      'number_of_samples_per_channel', 'number_of_channels'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
-verifyEqual(testCase, numel(out), 3, 'the unit, its derived_from and the anchor');
+% [every v1 id survives] (Jess Haley, 2026-10-27): with no calculation no V2
+% document can take the v1 id, so the neuron is carried whole as v1
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'carried unchanged');
 end
 
 function testAUnitWithNoAppBlockNamesNoSoftware(testCase)
