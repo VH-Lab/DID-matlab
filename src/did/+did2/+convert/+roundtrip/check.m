@@ -25,6 +25,12 @@ function report = check(v1Body, v2Docs)
 %                           does not keep but that can only have been one of
 %                           VALUES (a writer default, or a restatement of a
 %                           kept value), each with the decision that allows it
+%         spec.same         struct array {path, fn, why} (optional): a v1
+%                           field V2 keeps in another notation, compared by
+%                           FN(v1Value, rebuiltValue) -> true when both state
+%                           the same thing (a CSV table's rows, a CURIE's
+%                           prefix case: [spelling is notation], Jess Haley,
+%                           2026-10-26), each with the decision that allows it
 %         spec.unplaced     cellstr: emitted content the inverse could not
 %                           place (an unexpected document, a wrong type)
 %       A class with no inverse is an error (did2:convert:roundtrip:noInverse).
@@ -35,6 +41,8 @@ function report = check(v1Body, v2Docs)
 %     not_set     the v1 value is EMPTY and the rebuilt has nothing there (an
 %                 empty template default; [writer default is not set])
 %     restated    the v1 value is one of spec.equivalents' values for the path
+%     equivalent  spec.same's FN for the path says the rebuilt value states the
+%                 same thing in another notation
 %     exempt      `document_class.*` except `class_name`, on a CONVERTED
 %                 document only: the v1 stamp (template paths, class_version,
 %                 superclasses), which V2 replaces with its own and
@@ -47,7 +55,7 @@ function report = check(v1Body, v2Docs)
 %   REPORT fields, the denominator first (Operating Rule 5):
 %     fields_inspected  the number of leaf fields of V1BODY
 %     class_name, source_id, carried
-%     matched, not_set, restated, exempt   cellstr of paths
+%     matched, not_set, restated, equivalent, exempt   cellstr of paths
 %     lost       struct array {path, v1, rebuilt}
 %     invented   cellstr of paths
 %     unplaced   cellstr (from the inverse)
@@ -66,7 +74,7 @@ stamp = did2.convert.v1read.readStamp(v1Body);
 base = did2.convert.v1read.readBase(v1Body);
 report = struct('fields_inspected', 0, 'class_name', stamp.class_name, ...
     'source_id', base.id, 'carried', false, 'matched', {{}}, ...
-    'not_set', {{}}, 'restated', {{}}, 'exempt', {{}}, ...
+    'not_set', {{}}, 'restated', {{}}, 'equivalent', {{}}, 'exempt', {{}}, ...
     'lost', struct('path', {}, 'v1', {}, 'rebuilt', {}), ...
     'invented', {{}}, 'unplaced', {{}}, 'ok', false);
 
@@ -95,6 +103,10 @@ else
     end
     [rebuilt, spec] = feval(str2func(fqn), bodies);
 end
+same = struct('path', {}, 'fn', {}, 'why', {});
+if isfield(spec, 'same')
+    same = spec.same;
+end
 report.unplaced = spec.unplaced;
 
 origLeaves = flattenLeaves(v1Body);
@@ -113,6 +125,8 @@ for k = 1:numel(origLeaves)
         report.not_set{end+1} = lf.path;
     elseif isRestated(spec.equivalents, lf.path, lf.value)
         report.restated{end+1} = lf.path;
+    elseif found && isSame(same, lf.path, lf.value, rv)
+        report.equivalent{end+1} = lf.path;
     else
         if ~found
             rv = '<absent>';
@@ -162,6 +176,20 @@ for k = 1:numel(v2Docs)
         d = d.toStruct();
     end
     bodies{k} = d;
+end
+end
+
+function tf = isSame(same, path, value, rebuilt)
+tf = false;
+for k = 1:numel(same)
+    if ~strcmp(same(k).path, path)
+        continue;
+    end
+    fn = same(k).fn;
+    if fn(value, rebuilt)
+        tf = true;
+        return;
+    end
 end
 end
 

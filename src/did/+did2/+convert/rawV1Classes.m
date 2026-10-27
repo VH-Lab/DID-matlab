@@ -32,8 +32,16 @@ function names = rawV1Classes()
 %                    `app` block, no superclass migrator, and NDI writers
 %                    small enough to state every field (ndi.subject,
 %                    +NDIMaker/subjectMaker; +babu/import for subject_group).
+%     treatment           the treatment family: four classes, superclass
+%     treatment_drug      `base` only, no `app` block, no superclass migrator,
+%     treatment_transfer  sharing jTreatmentBodies / jTreatmentAnchor; written
+%     virus_injection     by +NDIMaker/treatmentMaker (all four),
+%                         table2treatment, +haley and +dabrowska (treatment).
+%                         Round trips: testRawV1RoundTripTreatment, which
+%                         lists what V2 does not keep as known findings.
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
-names = {'subject', 'subject_group'};
+names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
+    'treatment_transfer', 'virus_injection'};
 end

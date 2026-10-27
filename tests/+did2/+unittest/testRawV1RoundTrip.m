@@ -46,12 +46,12 @@ function testASwitchedClassSkipsUniversalRenames(testCase)
 % the denominator: a raw body is counted as read raw, not as reaching the pass
 % and not as unreached; a class not on the list still reaches the pass
 other = struct();
-other.document_class = struct('class_name', 'treatment', 'class_version', '1.0.0', ...
+other.document_class = struct('class_name', 'unknown_class', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 other.depends_on = struct('name', {}, 'value', {});
-other.base = struct('id', 'tr_1', 'session_id', 'sess_1', 'name', '', ...
+other.base = struct('id', 'uc_1', 'session_id', 'sess_1', 'name', '', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-other.treatment = struct();
+other.unknown_class = struct('foo', 'bar');
 r = runRaw({ndiSubject('mouse_42', '', 'mouse_42'), other});
 L = r.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_total, 2);

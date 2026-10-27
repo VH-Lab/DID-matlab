@@ -20,11 +20,40 @@ function v2Body = virus_injection(preBody)
 %   NaN in `volume.liters` (the template has no volume field) plus the site
 %   `term_observation` (Path S, D3); no location -> that dose, listed in the
 %   migration report as `route_unknown`.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it, with no universalRenames (identity through jRawBody /
+%   did2.convert.v1read.readBase; a carry is the untouched v1 source). Block
+%   fields are read in the v1 spelling first and the universalRenames spelling
+%   second, so 'RawV1Classes', {} still works. Every v1 field (NDI treatment/virus_injection.json +
+%   base.json at the locked NDI-matlab `main`, 3cb19a8, as
+%   +NDIMaker/treatmentMaker writes it) and where it goes;
+%   did2.convert.roundtrip.virus_injection rebuilds the v1 document and
+%   testRawV1RoundTripTreatment compares the two:
+%
+%     base.*, depends_on subject_id  -> as treatment.m
+%     virus_OntologyName, virus_name -> the variable and the first chemical
+%     dilution                 -> its concentration (0: NaN, [virus-location])
+%     diluent_OntologyName, diluent_name -> the second chemical
+%     virusLocation_OntologyName, virusLocation_name -> the route and the
+%                                 site observation of a dose
+%     virus_AdministrationDate -> the anchor (jTreatmentAnchor)
+%     virus_AdministrationPND  -> NOT READ (an open finding)
+%     files.file_list          -> empty in the template and the writer
 
 arguments
     preBody (1,1) struct
 end
 
+body = jRawBody(preBody, 'virus_injection');
+v2Body = convertVirusInjection(body);
+if isscalar(v2Body) && isequaln(v2Body{1}, body)
+    v2Body = {preBody};   % a carry is the untouched v1 source
+end
+end
+
+function v2Body = convertVirusInjection(preBody)
 if ~isfield(preBody, 'virus_injection') || ~isstruct(preBody.virus_injection)
     error('did2:convert:missingBlock', ...
         'virus_injection body is missing the virus_injection property block.');
