@@ -31,20 +31,18 @@ v1.base = struct( ...
 v1.(blockKey) = block;
 end
 
-function testEpochclocktimesSplitsTimeRange(testCase)
-v1 = wrap('pyraview', 'pyraview', struct('label', 'high'));
-v1.epochclocktimes = struct( ...
-    'clocktype', 'dev_local_time', ...
-    't0_t1',     [0 28.12495]);
-v1.document_class.superclasses = struct( ...
-    'class_name', {'base', 'epochclocktimes'});
-out = did2.convert.migrators.epochclocktimes( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.epochclocktimes.epoch_clock, 'dev_local_time');
-verifyEqual(testCase, out.epochclocktimes.t0, 0);
-verifyEqual(testCase, out.epochclocktimes.t1, 28.12495);
-verifyFalse(testCase, isfield(out.epochclocktimes, 'clocktype'));
-verifyFalse(testCase, isfield(out.epochclocktimes, 't0_t1'));
+function testTheUnreachedSuperclassMigratorsAreGone(testCase)
+% Decided by Jess Haley, 2026-10-27 [unreached superclass migrators deleted]
+% (did-schema V_eta_go_forward_class_audit.md): pyraview, the only class at the
+% locked NDI main that names `epochclocktimes` or `filter` as a superclass,
+% reads raw v1 (did2.convert.rawV1Classes), so no superclass pass reaches them,
+% and they are deleted. pyraview reads both blocks itself.
+for cls = {'epochclocktimes', 'filter'}
+    verifyEmpty(testCase, which(['did2.convert.migrators.' cls{1}]), ...
+        sprintf('+migrators/%s.m is back', cls{1}));
+end
+verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'pyraview')), ...
+    'pyraview no longer reads raw v1, so the superclass pass would reach it again');
 end
 
 % --- calc-base migrators (20211116 corpus) ---

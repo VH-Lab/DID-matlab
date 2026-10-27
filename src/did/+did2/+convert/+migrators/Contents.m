@@ -18,14 +18,7 @@
 %     treatment           - collapse (ontologyName | ontology_name,
 %                           name) -> treatment_name; pass through
 %                           numeric_value and string_value.
-%     epochclocktimes     - SUPERCLASS migrator; rename clocktype ->
-%                           epoch_clock and split t0_t1 -> (t0, t1).
-%                           Applied by the dispatcher to any document
-%                           that lists epochclocktimes among its
-%                           superclasses, before the concrete-class
-%                           migrator runs.
-%     element_epoch       - concrete-class twin of epochclocktimes;
-%                           splits t0_t1 -> (t0, t1). epoch_clock is
+%     element_epoch       - splits t0_t1 -> (t0, t1). epoch_clock is
 %                           already snake_case in v1, no rename
 %                           needed. Accepts the older `clocktype`
 %                           spelling defensively.
@@ -55,12 +48,14 @@
 %   (2026-10-27): each class has a +migrators_j migrator that reads raw v1, and
 %   no NDI template at the locked main names element, ontologyImage or
 %   ontologyLabel as a superclass, so nothing reached them. element_epoch stays
-%   (+migrators_j/element_epoch.m and oneepoch.m call it on the raw block);
-%   epochclocktimes and filter stay: pyraview, the only class at the locked NDI
-%   main that names either as a superclass, reads raw v1 since 2026-10-27 and
-%   no longer reaches them (its migrator reads both spellings), but each is
-%   still the concrete migrator of a leaf `epochclocktimes` / `filter`
-%   document, and whether to delete them is the team's call; ngrid stays as
+%   (+migrators_j/element_epoch.m and oneepoch.m call it on the raw block).
+%   The epochclocktimes and filter SUPERCLASS migrators are deleted (Decided by
+%   Jess Haley, 2026-10-27 [unreached superclass migrators deleted], did-schema
+%   V_eta_go_forward_class_audit.md): pyraview, the only class at the locked
+%   NDI main that names either as a superclass, reads raw v1 since DID-matlab
+%   PR #256 (did2.convert.rawV1Classes), so no superclass pass runs on it, and
+%   no writer at that main constructs a leaf `epochclocktimes` or `filter`
+%   document. ngrid stays as
 %   the concrete migrator of a leaf `ngrid` document (+migrators_j has only
 %   the +super guard); identity stays as v1_to_v2's fallback.
 %

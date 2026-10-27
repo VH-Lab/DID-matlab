@@ -42,7 +42,7 @@ Contents.m bounded on BOTH sides by a character outside [0-9A-Za-z_].
 
 A bare `X in text` substring test false-PASSES, and a false pass on a staleness
 gate is the defect being removed. `image_stack` occurs inside
-`image_stack_parameters`; `filter` occurs inside `frequency_filter`. Both are
+`image_stack_parameters`; `element` occurs inside `element_epoch`. Both are
 real names in this package, so a substring rule would report a file as
 documented on the strength of a DIFFERENT file's entry. MATLAB identifiers are
 [A-Za-z][0-9A-Za-z_]*, so a name embedded in a longer identifier is a different
@@ -167,7 +167,7 @@ def is_mentioned(name, text):
 
     `name` must appear bounded on both sides by a character outside the MATLAB
     identifier set, so `image_stack` is NOT satisfied by `image_stack_parameters`
-    and `filter` is NOT satisfied by `frequency_filter`.
+    and `element` is NOT satisfied by `element_epoch`.
     """
     return re.search(r"(?<![0-9A-Za-z_])%s(?![0-9A-Za-z_])" % re.escape(name),
                      text) is not None

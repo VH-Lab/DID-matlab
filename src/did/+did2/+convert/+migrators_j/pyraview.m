@@ -91,7 +91,9 @@ function bodies = pyraview(preBody)
 %   v1], Jess Haley, 2026-10-26, did-schema
 %   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
 %   exactly as v1 wrote it, with no universalRenames and no superclass
-%   migrator (+migrators/epochclocktimes, +migrators/filter) run on it. Its
+%   migrator run on it (+migrators/epochclocktimes and +migrators/filter, which
+%   the renamed path ran, are deleted: [unreached superclass migrators
+%   deleted], Jess Haley, 2026-10-27). Its
 %   template is data/pyraview.json over epochclocktimes.json, epochid.json,
 %   data/filter.json and base.json at the locked NDI-matlab `main`, 3cb19a8;
 %   its writer is +ndi/+gui/+app/+pyraview/makePyraviewDoc.m (the `filter`

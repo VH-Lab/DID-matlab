@@ -146,23 +146,12 @@ if isempty(fieldnames(blk))
     return;
 end
 
-% `filter_type` IS READ FIRST, AND THAT IS NOT DEFENSIVENESS -- IT IS THE NAME
-% THIS MIGRATOR ACTUALLY SEES. v1_to_v2 runs the SUPERCLASS migrators before the
-% concrete one (v1_to_v2.m:154 applySuperclassMigrators, then :162
-% runConcreteMigrator), unconditionally, for every TargetVersion. pyraview
-% declares `filter` among its superclasses, so `did2.convert.migrators.filter`
-% fires first and renames the field:
-%
-%     +migrators/filter.m:30-33   block.filter_type = char(block.type);
-%                                 block = rmfield(block, 'type');
-%
-% Reading only `type` -- the name the NDI template and the writer both use --
-% would therefore have returned '' on EVERY REAL DOCUMENT, the guard below would
-% have fired every time, and this fold would have emitted nothing while looking
-% like a correct, cautious guard. That is the ground-truth failure wearing the
-% opposite disguise: right about the source, wrong about the pipeline. Bare
-% `type` is kept as the fallback because a direct call to this migrator (as the
-% unit tests make) has not been through the superclass pass.
+% `type` is the name the NDI template and the writer use, and the name this
+% migrator sees: pyraview reads raw v1 (did2.convert.rawV1Classes), so no
+% superclass pass runs first. `filter_type` is still read, first, for a body
+% that came through the renamed path while +migrators/filter.m existed (it
+% renamed `type` -> `filter_type`; deleted by [unreached superclass migrators
+% deleted], Jess Haley, 2026-10-27).
 rawAlgorithm = readChar(blk, {'algorithm'});
 rawType = readChar(blk, {'filter_type', 'type'});
 algorithm = mapAlgorithm(rawAlgorithm);

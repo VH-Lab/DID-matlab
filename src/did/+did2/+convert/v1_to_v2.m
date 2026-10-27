@@ -416,7 +416,8 @@ for k = 1:numel(bodies)
                     % lossless], [partly placed is carried as v1], Jess Haley,
                     % 2026-10-25). Its input is the body AFTER the superclass
                     % migrators, which may have reshaped it (+migrators/filter.m
-                    % renames `type` -> `filter_type`; the image_stack_parameters
+                    % renamed `type` -> `filter_type` until it was deleted,
+                    % 2026-10-27; the image_stack_parameters
                     % override strips an empty `timestamp`), and such a body was
                     % not recorded as a passthrough, so it came out under its
                     % tombstone stamped did_v2. The carried document is the

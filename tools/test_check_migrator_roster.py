@@ -78,21 +78,21 @@ def test_a_missing_test_directory_fails_rather_than_reporting_full_coverage():
 NAIVE_TRAP = """%   Some narrative about the package.
 %     image_stack_parameters
 %         drops the template's timestamp placeholder.
-%     frequency_filter
-%         splits the inherited superclass block off into its own document.
+%     element_epoch
+%         renames element_epoch -> acquisition_epoch.
 """
 
 
 def test_the_naive_substring_rule_passes_where_the_real_rule_fails():
     """THE CASE THE RULE EXISTS FOR, shown rather than asserted.
 
-    `image_stack` occurs inside `image_stack_parameters`; `filter` occurs inside
-    `frequency_filter`. Both containers are real names in this package, so a
+    `image_stack` occurs inside `image_stack_parameters`; `element` occurs inside
+    `element_epoch`. Both containers are real names in this package, so a
     substring test would report a migrator as documented on the strength of a
     DIFFERENT file's entry -- a false PASS on a staleness gate, which is worse
     than the staleness.
     """
-    for name in ("image_stack", "filter"):
+    for name in ("image_stack", "element"):
         assert name in NAIVE_TRAP, (
             "fixture is wrong: the naive rule must PASS here, otherwise this "
             "test proves nothing about the difference between the two rules")
@@ -137,10 +137,12 @@ def test_a_matcher_that_always_says_mentioned_is_caught():
     not `image_stack`. The real matcher reports the gap; the stub reports none.
     """
     fixture = NAIVE_TRAP
-    # Both are real files -- +migrators_j/image_stack.m and +migrators/filter.m --
-    # and the fixture names only their longer containers,
-    # +migrators_j/+super/image_stack_parameters.m and `frequency_filter`.
-    names = ["image_stack", "filter"]
+    # Both are real files -- +migrators_j/image_stack.m and +migrators_j/element.m
+    # (+migrators/filter.m was the second until [unreached superclass migrators
+    # deleted], 2026-10-27) -- and the fixture names only their longer
+    # containers, +migrators_j/+super/image_stack_parameters.m and
+    # +migrators_j/element_epoch.m.
+    names = ["image_stack", "element"]
 
     real = [n for n in names if not gate.is_mentioned(n, fixture)]
     original = gate.is_mentioned

@@ -230,7 +230,8 @@ notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
 verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, detailPart), ...
     notes.carried_as_v1.distinct_details{1});
-% the v1 source, not the superclass reshape: +migrators/filter.m renames
+% the v1 source, not the superclass reshape: +migrators/filter.m (deleted
+% 2026-10-27, [unreached superclass migrators deleted]) renamed
 % `type` -> `filter_type` before pyraview runs, and a carry used to come out
 % renamed and unrecorded as a passthrough (stamped did_v2 under its tombstone)
 verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');

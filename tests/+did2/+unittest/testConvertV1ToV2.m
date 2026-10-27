@@ -256,9 +256,29 @@ verifyEqual(testCase, sc(2).class_name, 'filter');
 end
 
 function testDispatcherRunsSuperclassMigratorBeforeConcreteMigrator(testCase)
-% A document whose superclasses include `epochclocktimes` should pick
-% up the superclass migrator (split t0_t1 + rename clocktype). The
-% concrete class is unregistered so the identity fallback runs after.
+% A document whose superclasses include `image_stack_parameters` picks up that
+% superclass migrator (+migrators_j/+super/image_stack_parameters drops the
+% template's empty `timestamp` placeholder). The concrete class is unregistered
+% so the identity fallback runs after. (This used `epochclocktimes` until that
+% migrator was deleted: [unreached superclass migrators deleted], Jess Haley,
+% 2026-10-27.)
+v1 = makeV1Skeleton('some_unregistered_class');
+v1.some_unregistered_class = struct('foo', 'bar');
+v1.image_stack_parameters = struct('timestamp', [], 'label', 'kept');
+v1.document_class.superclasses = struct( ...
+    'class_name', {'base', 'image_stack_parameters'});
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+body = result.migrated{1}.toStruct();
+verifyFalse(testCase, isfield(body.image_stack_parameters, 'timestamp'), ...
+    'the superclass migrator did not run');
+verifyEqual(testCase, body.image_stack_parameters.label, 'kept');
+end
+
+function testNoSuperclassMigratorReshapesEpochclocktimes(testCase)
+% [unreached superclass migrators deleted] (Jess Haley, 2026-10-27): with
+% +migrators/epochclocktimes.m gone, an `epochclocktimes` block on a class that
+% does not read raw v1 passes the superclass pass unchanged.
 v1 = makeV1Skeleton('some_unregistered_class');
 v1.some_unregistered_class = struct('foo', 'bar');
 v1.epochclocktimes = struct('clocktype', 'dev_local_time', ...
@@ -267,11 +287,9 @@ v1.document_class.superclasses = struct( ...
     'class_name', {'base', 'epochclocktimes'});
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, doc.get('epochclocktimes.epoch_clock'), ...
-    'dev_local_time');
-verifyEqual(testCase, doc.get('epochclocktimes.t0'), 0);
-verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1.5);
+body = result.migrated{1}.toStruct();
+verifyEqual(testCase, body.epochclocktimes.clocktype, 'dev_local_time');
+verifyFalse(testCase, isfield(body.epochclocktimes, 'epoch_clock'));
 end
 
 function target = makeTargetSkeleton(className)
@@ -341,10 +359,10 @@ verifyEqual(testCase, second.summary.quarantine_count, 0);
 secondBody = second.migrated{1}.toStruct();
 
 verifyEqual(testCase, secondBody.document_class.schema_version, 'did_v2');
-verifyEqual(testCase, secondBody.epochclocktimes.epoch_clock, ...
+% no superclass migrator reshapes the block any more ([unreached superclass
+% migrators deleted], Jess Haley, 2026-10-27): it is carried as written
+verifyEqual(testCase, secondBody.epochclocktimes.clocktype, ...
     'dev_local_time');
-verifyEqual(testCase, secondBody.epochclocktimes.t0, 0);
-verifyEqual(testCase, secondBody.epochclocktimes.t1, 1.5);
 verifyEqual(testCase, secondBody, firstBody);
 end
 

@@ -320,9 +320,10 @@
 %                          2026-07-30) until Jess Haley 2026-10-22 [filters are
 %                          methods]; a schema still declaring filter_id is
 %                          did2:convert:schemaTooOld. An all-pass ('none') emits
-%                          nothing. NOTE the source field arrives as `filter_type`,
-%                          not `type`: +migrators/filter.m renames it in the
-%                          superclass pass that runs first.
+%                          nothing. The source field is v1's `type` (pyraview
+%                          reads raw v1; the +migrators/filter.m superclass
+%                          migrator that renamed it to `filter_type` is deleted,
+%                          [unreached superclass migrators deleted], 2026-10-27).
 %     binaryseries_parameters
 %                        - 1 -> 1 GUARDED PASSTHROUGH, placeholder-normalising.
 %                          TEAM-SIGN-OFF [misc singletons], jess 2026-08-09
