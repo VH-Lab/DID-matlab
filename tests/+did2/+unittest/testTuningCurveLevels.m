@@ -570,7 +570,6 @@ if isfield(notes, 'carried_as_v1')
     end
 end
 end
-end
 
 % ===================== DEFECT B ============================================
 
@@ -607,8 +606,6 @@ for k = 1:numel(fam)
         '%s: a recognised spelling must carry the document whole as v1', fam(k).className));
     verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
         'properties.response_units'), fam(k).className);
-end
-verifyEqual(testCase, inspected, 5, 'the sweep must cover all five families');
 end
 verifyEqual(testCase, inspected, 5, 'the sweep must cover all five families');
 end

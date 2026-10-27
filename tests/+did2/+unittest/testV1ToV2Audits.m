@@ -53,8 +53,6 @@ end
 verifyEqual(testCase, numel(b.quarantine), numel(a.quarantine));
 end
 
-end
-
 function testAV1BodyIsNotAtTheTarget(testCase)
 b = makeBody();
 b.document_class = rmfield(b.document_class, 'schema_version');
