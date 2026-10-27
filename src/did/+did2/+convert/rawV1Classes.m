@@ -298,6 +298,19 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         ontology_image. Written by +ndi/+setup/+NDIMaker/
 %                         imageDocMaker.m. Round trips:
 %                         testRawV1RoundTripOntologyImage.
+%     pyraview            superclasses epochclocktimes (+ epochid, base) and
+%                         data/filter, whose superclass migrators the renamed
+%                         path ran (+migrators/epochclocktimes, filter); the
+%                         migrator and private/jFrequencyFilter read either
+%                         spelling, so the raw read needs neither. A pyraview
+%                         naming an epoch defers in pass 1, and
+%                         did2.convert.epochMint re-runs it from the
+%                         quarantine's original body (the raw v1 document)
+%                         with an `epoch_id` edge stamped, which the raw read
+%                         allows; the epoch step's in-batch re-run sees only a
+%                         carry (the untouched v1 source). Written by
+%                         +ndi/+gui/+app/+pyraview/makePyraviewDoc.m. Round
+%                         trips: testRawV1RoundTripPyraview.
 %     NOT LISTED, and why:
 %       control_stimulus_ids  its migrator passes it through (no note, so its
 %                         responses do not carry), and NDI's second pass reads
@@ -406,6 +419,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'metadata_editor', ...
     'stimulus_presentation', ...
     'ontologyLabel', ...
+    'pyraview', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above

@@ -86,9 +86,68 @@ function bodies = pyraview(preBody)
 %   So the only draft classes this fold touches are the two data bodies. That is
 %   the pattern-setter for the #9 analysis-tier folds (mint observation + attach
 %   sampled_body), and pyraview stays in the schema until this is corpus-proven.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; [migrators read raw
+%   v1], Jess Haley, 2026-10-26, did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it, with no universalRenames and no superclass
+%   migrator (+migrators/epochclocktimes, +migrators/filter) run on it. Its
+%   template is data/pyraview.json over epochclocktimes.json, epochid.json,
+%   data/filter.json and base.json at the locked NDI-matlab `main`, 3cb19a8;
+%   its writer is +ndi/+gui/+app/+pyraview/makePyraviewDoc.m (the `filter`
+%   block from filterData.m). Every v1 field is accounted for (jRawAccount on
+%   the templates):
+%
+%     base.id, session_id, datestamp     the observation's id and stamps
+%     base.name                          not written (the writer leaves '')
+%     depends_on element_id              the observation's entity_id
+%     depends_on epoch_id                NOT v1: the edge did2.convert.epochMint
+%                                        stamps on the raw source it re-runs
+%                                        (resolveDeferredPyraviews), read by
+%                                        jEpochDocId
+%     epochid.epochid                    defers to epochMint, then names the epoch
+%     epochclocktimes.clocktype, t0_t1   the anchor's clock, start and duration
+%     pyraview.label                     the observation's variable
+%     pyraview.dataType                  the observation's data type
+%     pyraview.channels                  the channel dimension
+%     pyraview.nativeRate,               a level's rate and start where the
+%       nativeStartTime                  level lists give none; the rate also
+%                                        sizes an all-pass's sampleFrequency
+%     pyraview.decimationSamplingRates,  each level body's time covariate
+%       decimationStartTimes
+%     pyraview.decimationLevels          restated by the rates (the writer sets
+%                                        rates = nativeRate ./ cumprod(levels))
+%     filter.*                           private/jFrequencyFilter
+%     files.file_list, file_info         one level body per file_list name
+%
+%   The fields are read in either spelling (fieldByNormalisedName below), so a
+%   body that did come through universalRenames (v1_to_v2 'RawV1Classes', {})
+%   converts exactly as before; jRawAccount reads a V2-stamped body as already
+%   accounted for. A field, block or edge outside the templates carries the
+%   document whole as v1 (carry-100, [fields outside the template are
+%   malformed]), and what universalRenames would have discarded carries it
+%   (carry-049), BEFORE the epoch deferral, so a carry is always the untouched
+%   v1 source and never a deferred, epoch-stamped copy. A carry or deferral is
+%   the untouched v1 source. did2.convert.roundtrip.pyraview rebuilds the v1
+%   document; testRawV1RoundTripPyraview compares the two.
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above). SRC is the untouched source: every
+% carry returns it.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'pyraview', {{'label', 'nativeRate', 'nativeStartTime', 'channels', 'dataType', ...
+        'decimationLevels', 'decimationSamplingRates', 'decimationStartTimes'}}, ...
+    'filter', {{'label', 'type', 'algorithm', 'parameters'}}, ...
+    'epochclocktimes', {{'clocktype', 't0_t1'}}, ...
+    'epochid', {{'epochid'}}, ...
+    'files', {{'file_list', 'file_info'}}), {'^element_id$', '^epoch_id$'});
+if jRawCarry('pyraview', src, collision, unplaced, 'carry-100')
+    bodies = {src};
+    return;
 end
 
 blk = getBlock(preBody, 'pyraview');
@@ -171,7 +230,7 @@ if ~isempty(filterUnplaced)
     % not carries])
     did2.convert.reportNote('carried_as_v1', 'pyraview', char(preBody.base.id), ...
         ['unplaced: ' strjoin(filterUnplaced, ', ')]);
-    bodies = {preBody};
+    bodies = {src};   % the untouched source
     return;
 end
 filterOpt = {};
