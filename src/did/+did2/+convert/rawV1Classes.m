@@ -49,9 +49,20 @@ function names = rawV1Classes()
 %                         the batch passes dissolve. Written by
 %                         ndi.element/addepoch. Round trips:
 %                         testRawV1RoundTripElementEpoch (the pass-1 carrier).
+%     stimulus_response_scalar  the stimulus-response family: superclasses
+%     stimulus_response_scalar_parameters_basic  `base` + `stimulus_response`
+%                         / `stimulus_response_scalar_parameters` (no migrator
+%                         for any of them), no `app` block. Written by
+%                         ndi.app.stimulus.tuning_response (the only writer at
+%                         the locked main). The parameters document stays a
+%                         pass-1 passthrough that resolveResponseParameters
+%                         turns into a `method`. Round trips:
+%                         testRawV1RoundTripStimulusResponse.
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
 names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'treatment_transfer', 'virus_injection', 'element', 'element_epoch'};
+names{end+1} = 'stimulus_response_scalar';
+names{end+1} = 'stimulus_response_scalar_parameters_basic';
 end

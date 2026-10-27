@@ -1,0 +1,31 @@
+{
+	"document_class": {
+		"definition":						"$NDIDOCUMENTPATH\/stimulus\/stimulus_response.json",
+		"validation":						"$NDISCHEMAPATH\/stimulus\/stimulus_response_schema.json",
+		"class_name":						"stimulus_response",
+		"property_list_name":					"stimulus_response",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":                                 "$NDIDOCUMENTPATH\/base.json"}
+		]
+	},
+	"depends_on": [
+		{	"name": "element_id",
+			"value": []
+		},
+		{	"name": "stimulator_id",
+			"value": []
+		}, 
+		{	"name": "stimulus_presentation_id",
+			"value": []
+		},
+		{	"name": "stimulus_control_id",
+			"value": []
+		}
+	],
+	"stimulus_response": {
+		"stimulator_epochid":						[],
+		"element_epochid":						[]
+	}
+}
+
