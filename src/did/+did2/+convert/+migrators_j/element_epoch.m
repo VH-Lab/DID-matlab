@@ -175,6 +175,11 @@ end
 if isfield(v2Body, 'depends_on')
     v2Body.depends_on = deps;
 end
+% the superclass list by name (did2.convert.v1read.readStamp: v1 names a
+% superclass by its definition path); v1_to_v2's ensureClassBlocks rebuilds
+% the V_eta chain from the class name, as on the renamed path
+stamp = did2.convert.v1read.readStamp(body);
+v2Body.document_class.superclasses = struct('class_name', stamp.superclasses);
 end
 
 function v2Body = convertElementEpoch(preBody)
