@@ -1,4 +1,4 @@
-function names = rawV1Classes()
+function [names, migrators] = rawV1Classes(v1Name)
 %RAWV1CLASSES The v1 classes whose migrator reads the RAW v1 document.
 %
 %   NAMES = did2.convert.rawV1Classes() is a cellstr of v1 class names (the
@@ -6,6 +6,22 @@ function names = rawV1Classes()
 %   did2.convert.v1_to_v2 hands a document of one of these classes to its
 %   +migrators_j migrator UNCHANGED: no did2.convert.universalRenames, no
 %   superclass migrators. Every other class runs exactly as before.
+%
+%   [NAMES, MIGRATORS] = did2.convert.rawV1Classes() also returns, for each
+%   name, the +migrators_j migrator that converts it (the same name, except
+%   in the table below).
+%
+%   MIGRATOR = did2.convert.rawV1Classes(V1NAME) is the +migrators_j migrator
+%   for the v1 class V1NAME: its row in the table below, else V1NAME itself.
+%
+%   THE ONE TABLE OF v1 NAME -> MIGRATOR NAME. Two v1 classes are spelled
+%   differently from the migrator files that convert them: NDIcalc-vis-matlab
+%   writes `contrasttuning_calc` and `contrastsensitivity_calc`, and the
+%   migrators are +migrators_j/contrast_tuning_calc.m and
+%   contrast_sensitivity_calc.m, the names universalRenames gives those
+%   classes. THIS TABLE GOES when universalRenames is deleted and the two
+%   migrator files are renamed to the v1 names ([migrators read raw v1]); it
+%   is the only place the two spellings are joined for a switched class.
 %
 %   WHY. Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema
 %   V_eta_go_forward_class_audit.md): a migrator reads v1 exactly as v1 defines
@@ -49,9 +65,47 @@ function names = rawV1Classes()
 %                         the batch passes dissolve. Written by
 %                         ndi.element/addepoch. Round trips:
 %                         testRawV1RoundTripElementEpoch (the pass-1 carrier).
+%     tuningcurve_calc               the tuning family: six calculator
+%     contrasttuning_calc            outputs, superclasses `calculator`
+%     oridirtuning_calc              (`base` + `app`) and a result class
+%     spatial_frequency_tuning_calc  (stimulus_tuningcurve,
+%     temporal_frequency_tuning_calc contrast_tuning,
+%     contrastsensitivity_calc       orientation_direction_tuning,
+%                         spatial_frequency_tuning, temporal_frequency_tuning;
+%                         none for contrastsensitivity_calc), none of which
+%                         has a superclass migrator; the old +migrators/<calc>
+%                         wrappers (calcCommon) were never reached for them
+%                         and are deleted. The `app` block is read through
+%                         did2.convert.v1read.readApp. Written by
+%                         ndi.calc.stimulus.tuningcurve (NDI-matlab) and
+%                         ndi.calc.vis.* (NDIcalc-vis-matlab). Round trips:
+%                         testRawV1RoundTripTuning.
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
 names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
-    'treatment_transfer', 'virus_injection', 'element', 'element_epoch'};
+    'treatment_transfer', 'virus_injection', 'element', 'element_epoch', ...
+    'tuningcurve_calc', 'contrasttuning_calc', 'oridirtuning_calc', ...
+    'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc', ...
+    'contrastsensitivity_calc'};
+
+% v1 name                     migrator (+migrators_j); TEMPORARY, see above
+TABLE = { ...
+    'contrasttuning_calc',      'contrast_tuning_calc'; ...
+    'contrastsensitivity_calc', 'contrast_sensitivity_calc'};
+
+if nargin >= 1
+    names = migratorOf(char(v1Name), TABLE);
+    return;
+end
+migrators = cellfun(@(n) migratorOf(n, TABLE), names, 'UniformOutput', false);
+end
+
+function m = migratorOf(v1Name, table)
+hit = strcmp(table(:, 1), v1Name);
+if any(hit)
+    m = table{find(hit, 1), 2};
+else
+    m = v1Name;
+end
 end

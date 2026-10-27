@@ -32,10 +32,14 @@ end
 % ===================== the switch ======================================
 
 function testEverySwitchedClassHasAMigratorAndAnInverse(testCase)
-names = did2.convert.rawV1Classes();
+% the migrator by rawV1Classes' table (the v1 name, or its temporary mapping:
+% contrasttuning_calc -> contrast_tuning_calc); the inverse by the v1 name
+[names, migrators] = did2.convert.rawV1Classes();
 verifyNotEmpty(testCase, names);
+verifyEqual(testCase, numel(migrators), numel(names));
 for k = 1:numel(names)
-    verifyNotEmpty(testCase, which(['did2.convert.migrators_j.' names{k}]), ...
+    verifyEqual(testCase, did2.convert.rawV1Classes(names{k}), migrators{k});
+    verifyNotEmpty(testCase, which(['did2.convert.migrators_j.' migrators{k}]), ...
         sprintf('%s is switched to raw v1 but has no +migrators_j migrator', names{k}));
     verifyNotEmpty(testCase, which(['did2.convert.roundtrip.' names{k}]), ...
         sprintf('%s is switched to raw v1 but has no round-trip inverse', names{k}));

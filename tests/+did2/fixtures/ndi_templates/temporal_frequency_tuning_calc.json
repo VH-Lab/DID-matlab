@@ -1,0 +1,24 @@
+{
+	"document_class": {
+		"definition":                       "$NDICALCDOCUMENTPATH\/calc\/temporal_frequency_tuning_calc.json",
+		"validation":                       "$NDICALCSCHEMAPATH\/calc\/temporal_frequency_tuning_calc_v2_schema.json",
+		"class_name":                       "temporal_frequency_tuning_calc",
+		"property_list_name":                   "temporal_frequency_tuning_calc", 
+		"class_version":                    2,
+		"superclasses": [
+			{ "definition":                 "$NDIDOCUMENTPATH\/calculator.json" },
+			{ "definition":                 "$NDICALCDOCUMENTPATH\/vision\/temporal_frequency_tuning.json"}
+		]
+	},
+	"temporal_frequency_tuning_calc": {
+		"input_parameters": {
+		},
+		"depends_on": [
+			{
+				"name":				"stimulus_tuningcurve_id",
+				"value":			[]
+			}
+		]
+	}
+}
+

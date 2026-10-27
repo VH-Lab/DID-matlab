@@ -155,10 +155,19 @@ dropped = [dropped, prefixed('tuning_curve.', stated(tc, setdiff(fieldnames(tc),
 % ---- significance (tuning_curve_calculation) -----------------------------
 sig = sub(srcBlk, 'significance');
 s = struct();
+usedS = {};
 for f = {'visual_response_anova_p', 'across_stimuli_anova_p'}
-    x = getf(sig, f);
-    if isnumeric(x) && isscalar(x); s.(f{1}) = double(x); end
+    [x, nm] = getfn(sig, f);
+    if isnumeric(x) && isscalar(x)
+        s.(f{1}) = double(x);
+        usedS{end+1} = nm; %#ok<AGROW>
+    end
 end
+% any other `significance` field (or one of the two that is not one number)
+% was read by nothing and listed nowhere: it is unplaced too ([generic stage
+% is lossless], Jess Haley, 2026-10-25; found by the round trip,
+% testRawV1RoundTripTuning)
+dropped = [dropped, prefixed('significance.', stated(sig, setdiff(fieldnames(sig), usedS)))];
 if ~isempty(fieldnames(s))
     % in the value, beside the fits (Jess Haley 2026-10-22 [significance
     % with results]; tuning_curve_calculation.significance until then)

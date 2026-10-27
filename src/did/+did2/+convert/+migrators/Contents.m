@@ -71,10 +71,14 @@
 %   rename in did2.convert.universalRenames; the per-class wrapper does
 %   not have to know its own calculator-name string.
 %
-%     tuningcurve_calc, oridirtuning_calc, hartley_calc,
-%     contrast_sensitivity_calc, contrast_tuning_calc,
-%     spatial_frequency_tuning_calc, speed_tuning_calc,
-%     temporal_frequency_tuning_calc, simple_calc
+%     hartley_calc, speed_tuning_calc, simple_calc
+%
+%   The tuning family's wrappers (tuningcurve_calc, oridirtuning_calc,
+%   contrast_sensitivity_calc, contrast_tuning_calc,
+%   spatial_frequency_tuning_calc, temporal_frequency_tuning_calc) are
+%   deleted: each class has a +migrators_j migrator, so the wrapper was never
+%   reached, and the class now reads raw v1 (did2.convert.rawV1Classes;
+%   [early migration pieces fixed] (1), Jess Haley, 2026-10-26).
 %
 %   See did-schema's
 %   did-schema's per-class conversion notes (deleted with did-schema #88) for the

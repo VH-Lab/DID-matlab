@@ -885,7 +885,9 @@ function bodies = runRawV1Migrator(rawBody, className)
 %   A class listed by did2.convert.rawV1Classes has its own +migrators_j
 %   migrator by definition ([early migration pieces fixed] (1): no identity
 %   fallback), so a missing one is an error, which quarantines the document.
-fqn = ['did2.convert.migrators_j.', className];
+%   The migrator's name is the v1 name, except where rawV1Classes' one table
+%   maps it (contrasttuning_calc -> contrast_tuning_calc, temporary).
+fqn = ['did2.convert.migrators_j.', did2.convert.rawV1Classes(className)];
 if isempty(which(fqn))
     error('did2:convert:rawV1NoMigrator', ...
         ['%s is listed by did2.convert.rawV1Classes but has no ' ...

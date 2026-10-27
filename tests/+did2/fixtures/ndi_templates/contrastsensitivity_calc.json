@@ -1,0 +1,57 @@
+{
+	"document_class": {
+		"definition":                       "$NDICALCDOCUMENTPATH\/calc\/contrastsensitivity_calc.json",
+		"validation":                       "$NDICALCSCHEMAPATH\/calc\/contrastsensitivity_calc_v2_schema.json",
+		"class_name":                       "contrastsensitivity_calc",
+		"property_list_name":                   "contrastsensitivity_calc", 
+		"class_version":                    2,
+		"superclasses": [
+			{ "definition":                 "$NDIDOCUMENTPATH\/calculator.json" }
+		]
+	},
+	"depends_on": [
+		{
+			"name":				"element_id",
+			"value":			[]
+		},
+		{	"name":				"stimulus_presentation_id",
+			"value":			[]
+		},
+		{
+			"name":				"stimulus_response_scalar_id",
+			"value":			[]
+		}
+	],
+	"contrastsensitivity_calc": {
+		"input_parameters": {
+		},
+		"depends_on": [
+			{
+				"name":				"element_id",
+				"value":			[]
+			}
+		],
+		"spatial_frequencies":				[],
+		"sensitivity_RB":				[],
+		"sensitivity_RBN":				[],
+		"sensitivity_RBNS":				[],
+		"relative_max_gain_RB":				[],
+		"relative_max_gain_RBN":			[],
+		"relative_max_gain_RBNS":			[],
+		"empirical_c50_RB":				[],
+		"empirical_c50_RBN":				[],
+		"empirical_c50_RBNS":				[],
+		"saturation_index_RB":				[],
+		"saturation_index_RBN":				[],
+		"saturation_index_RBNS":			[],
+		"parameters_RB":				[],
+		"parameters_RBN":				[],
+		"parameters_RBNS":				[],
+		"fitless_interpolated_c50":			[],
+		"is_modulated_response":			0,
+		"visual_response_p_bonferroni":			[],
+		"response_varies_p_bonferroni":			[],
+		"response_type":				[]
+	}
+}
+

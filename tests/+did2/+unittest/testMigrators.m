@@ -176,12 +176,28 @@ function testCalcWrapperPipesThroughHelper(testCase)
 % wrapper produces the same shape (input_parameters preserved on
 % the subclass block, no calculator block) as a direct calcCommon
 % call.
-v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+v1 = wrap('speed_tuning_calc', 'speed_tuning_calc', struct( ...
     'input_parameters', []));
-out = did2.convert.migrators.oridirtuning_calc( ...
+out = did2.convert.migrators.speed_tuning_calc( ...
     did2.convert.universalRenames(v1));
-verifyTrue(testCase, isstruct(out.oridirtuning_calc.input_parameters));
+verifyTrue(testCase, isstruct(out.speed_tuning_calc.input_parameters));
 verifyFalse(testCase, isfield(out, 'calculator'));
+end
+
+function testTheOldTuningWrappersAreGone(testCase)
+% [early migration pieces fixed] (1) (Jess Haley, 2026-10-26): one migrator
+% per class. The tuning family reads raw v1 through its +migrators_j migrator
+% (did2.convert.rawV1Classes); the old +migrators/<class>.m wrappers were never
+% reached for them (a class with a +migrators_j migrator skips its +migrators
+% one, and no v1 class names these as a superclass) and are deleted.
+for cls = {'tuningcurve_calc', 'oridirtuning_calc', 'contrast_sensitivity_calc', ...
+        'contrast_tuning_calc', 'spatial_frequency_tuning_calc', ...
+        'temporal_frequency_tuning_calc'}
+    verifyEmpty(testCase, which(['did2.convert.migrators.' cls{1}]), ...
+        sprintf('+migrators/%s.m is back', cls{1}));
+    verifyNotEmpty(testCase, which(['did2.convert.migrators_j.' cls{1}]), ...
+        sprintf('+migrators_j/%s.m is missing', cls{1}));
+end
 end
 
 function testCalcMigratorWrappersAllResolve(testCase)
@@ -190,15 +206,11 @@ function testCalcMigratorWrappersAllResolve(testCase)
 % calculator-identity lookup is handled by app-block rename upstream),
 % but exercising each entry catches accidental deletions and ensures
 % the dispatcher can still resolve the migrator by class name.
+% (the tuning family's wrappers are deleted: those classes read raw v1 with
+% their +migrators_j migrator; testTheOldTuningWrappersAreGone)
 classes = {
-    'tuningcurve_calc';
-    'oridirtuning_calc';
     'hartley_calc';
-    'contrast_sensitivity_calc';
-    'contrast_tuning_calc';
-    'spatial_frequency_tuning_calc';
     'speed_tuning_calc';
-    'temporal_frequency_tuning_calc';
     'simple_calc';
 };
 for k = 1:numel(classes)
