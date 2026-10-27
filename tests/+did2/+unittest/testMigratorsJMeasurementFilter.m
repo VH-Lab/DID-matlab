@@ -12,11 +12,13 @@ function tests = testMigratorsJMeasurementFilter
 %     value, and `datestamp` becomes the TIME ANCHOR (time_reference_1 ->
 %     absolute_reference), NOT a field.
 %
-%   FAMILY 2 -- frequency_filter
+%   FAMILY 2 -- the pyraview filter
 %     TEAM-SIGN-OFF [frequency_filter], jess 2026-07-30
 %     (V_eta_frequency_filter_model_plan.md): the v1 `filter` superclass block on
-%     `pyraview` becomes a REFERENCED `frequency_filter` document -- band edges,
-%     typed `gain` fields, no sample_rate.
+%     `pyraview` becomes a REFERENCED document -- band edges, typed gains.
+%     Jess Haley 2026-10-22 [filters are methods]: that document is a `method`
+%     (frequency_filter is deleted) named by each body's sampled_body.method_id.
+%     A loaded schema still declaring filter_id is did2:convert:schemaTooOld.
 %
 %   THE FIXTURES ARE BUILT FROM THE WRITERS, NOT FROM A DID-SIDE SCHEMA, which is
 %   the standing ground-truth rule. Every field name and value below is copied
@@ -143,9 +145,7 @@ function blk = predFilterBlock()
 % only real corpus document read for this family
 % (PRED/41269628e2d51bf1_40a0cb9f87794ccb.json) -- LESS its `sampleFrequency`
 % (2026-10-26). [small unread settings] (2) (Jess Haley, 2026-10-26) makes it
-% a method parameter; on a schema whose sampled_body still declares filter_id
-% (the frequency_filter path) it has no home and the document is carried as
-% v1, so the fold tests use the block without it. writerFilterBlock is verbatim.
+% a method parameter, asserted on writerFilterBlock, which is verbatim.
 blk = struct('label', 'high', 'type', 'high', 'algorithm', 'chebyshev_1', ...
     'parameters', struct('order', 4, ...
         'filterFrequency', 300, 'passBandRipple', 0.8, ...
@@ -171,22 +171,13 @@ names = cellfun(@(x) char(x.name), d, 'UniformOutput', false);
 end
 
 function tf = loadedSchemaTakesFilterId()
-% the frequency_filter path: the loaded sampled_body still declares filter_id
+% a pre-[filters are methods] schema: the loaded sampled_body declares filter_id
 tf = any(strcmp(sampledBodyEdges(), 'filter_id'));
 end
 
 function tf = loadedSchemaTakesMethodId()
 % the method path: the loaded sampled_body declares method_id
 tf = any(strcmp(sampledBodyEdges(), 'method_id'));
-end
-
-function assumeFrequencyFilterPath(testCase)
-% a frequency_filter test runs only on a schema that still has frequency_filter
-assumeTrue(testCase, loadedSchemaTakesFilterId(), ...
-    ['the loaded sampled_body declares no filter_id: frequency_filter is ' ...
-     'deleted and a filter is a `method` document named by method_id (Jess ' ...
-     'Haley 2026-10-22 [filters are methods]); the method-path twin of this ' ...
-     'test asserts the same facts']);
 end
 
 function useMethodSchema(testCase)
@@ -518,137 +509,69 @@ verifyTrue(testCase, any(strcmp(classNames(out), 'relative_time_reference')));
 verifyFalse(testCase, any(strcmp(classNames(out), 'absolute_time_reference')));
 end
 
-% ===================== FAMILY 2: frequency_filter ==========================
+% ===================== FAMILY 2: the pyraview filter ========================
 
-function testFilterBlockBecomesAFrequencyFilterDocument(testCase)
-% The v1 `filter` block used to be DISCARDED by the pyraview fold -- silently,
-% because a dropped superclass block is invisible to every Phase-1 counter. It
-% is not incidental metadata: 300-Hz-high-passed voltage is a different quantity
-% from raw voltage.
-assumeFrequencyFilterPath(testCase);
-out = runJ(pyraviewBody(predFilterBlock()));
-verifyEmpty(testCase, out.quarantine);
-ff = docOfClass(testCase, out, 'frequency_filter');
-
-% type -> band; algorithm passes through the value_set unchanged. Both are
-% staged with an empty `node`: there is no CURIE authority for filter design
-% families in any repo in scope (NDIC.txt was moved out of NDI-matlab).
-verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'high_pass');
-verifyEqual(testCase, ff.get('frequency_filter.algorithm.name'), 'chebyshev_1');
-verifyEqual(testCase, ff.get('frequency_filter.order'), 4);
-
-% BAND EDGES, NOT A CUTOFF. A high-pass has a LOW edge and no high edge -- an
-% absent edge means open.
-verifyEqual(testCase, ff.get('frequency_filter.passband.low.hertz'), 300);
-% #88: a bound term; 'Hz' is the registry's om:hertz 'hertz' (jSourceUnit)
-verifyEqual(testCase, ff.get('frequency_filter.passband.low.source_unit').node, 'om:hertz');
-verifyEqual(testCase, ff.get('frequency_filter.passband.low.source_unit').name, 'hertz');
-verifyFalse(testCase, isfield(ff.get('frequency_filter.passband'), 'high'));
-
-% TYPED gain field, not a coefficients bag: `b` and `a` ARE the filter
-% coefficients, so that word is taken. cheby1's Rp is in decibels.
-verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.decibels'), 0.8);
-% 'dB' is the registry's om:decibel 'decibel' (jSourceUnit)
-verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.source_unit').node, 'om:decibel');
-verifyEqual(testCase, ff.get('frequency_filter.passband_ripple.source_unit').name, 'decibel');
+function useFilterIdSchema(testCase)
+% A pre-[filters are methods] schema: the loaded one when its sampled_body still
+% declares filter_id, else a copy with method_id renamed back to filter_id.
+if loadedSchemaTakesFilterId() && ~loadedSchemaTakesMethodId()
+    return;
+end
+src = did2.schema.cache.shared().schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+f = fullfile(tmp, 'sampled_body.json');
+txt = fileread(f);
+txt = strrep(txt, '"name": "method_id"', '"name": "filter_id"');
+txt = strrep(txt, '"must_refer_to_document_class": "method"', ...
+    '"must_refer_to_document_class": "frequency_filter"');
+fid = fopen(f, 'w'); fwrite(fid, txt); fclose(fid);
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+edges = sampledBodyEdges(tmp);
+assertTrue(testCase, any(strcmp(edges, 'filter_id')) && ~any(strcmp(edges, 'method_id')), ...
+    'the copy does not declare filter_id in place of method_id');
 end
 
-function testBandComesFromFilterTypeAfterTheSuperclassRename(testCase)
-% THE PIPELINE TRAP, made a test. v1_to_v2 runs the SUPERCLASS migrators before
-% the concrete one (v1_to_v2.m:154 then :162), and +migrators/filter.m:30-33
-% renames `filter.type` -> `filter.filter_type`. Reading only `type` -- the name
-% the NDI template AND the writer both use -- returns '' on every real document,
-% the guard fires every time, and the fold emits nothing while LOOKING like a
-% correct cautious guard.
-%
-% Driven through the FULL pipeline on purpose: a direct migrator call skips the
-% superclass pass and would pass whichever spelling the code read.
-assumeFrequencyFilterPath(testCase);
-out = runJ(pyraviewBody(predFilterBlock()));
-ff = docOfClass(testCase, out, 'frequency_filter');
-verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'high_pass');
-
-% and the direct call (no superclass pass, so the block still says `type`)
-% resolves the same band -- both spellings are live, exactly as for depends_on.
-bodies = did2.convert.migrators_j.pyraview(pyraviewBody(predFilterBlock()));
-names = cellfun(@(b) did2.unittest.helpers.classKey(b), bodies, 'UniformOutput', false);
-idx = find(strcmp(names, 'frequency_filter'), 1);
-assertNotEmpty(testCase, idx);
-verifyEqual(testCase, bodies{idx}.frequency_filter.band.name, 'high_pass');
+function testOnASchemaThatStillDeclaresFilterIdTheFilterFailsLoudly(testCase)
+% The frequency_filter path is removed ([filters are methods], Jess Haley
+% 2026-10-22). A loaded schema whose sampled_body still declares filter_id is
+% the pipeline's defect, not the document's ([pipeline defects are not
+% carries], Jess Haley, 2026-10-26, did-schema V_eta_go_forward_class_audit.md):
+% every filter that would be built fails loudly, with or without a
+% sampleFrequency, and is never carried and never a frequency_filter. (Replaces
+% testOnTheFrequencyFilterPathASampleFrequencyFailsLoudly, which covered only
+% a block with a sampleFrequency, and the frequency_filter tests.)
+useFilterIdSchema(testCase);
+blocks = {predFilterBlock(), writerFilterBlock()};
+for k = 1:numel(blocks)
+    % the migrator itself raises, naming the cause
+    verifyError(testCase, ...
+        @() did2.convert.migrators_j.pyraview(pyraviewBody(blocks{k})), ...
+        'did2:convert:schemaTooOld');
+    try
+        did2.convert.migrators_j.pyraview(pyraviewBody(blocks{k}));
+    catch err
+        verifySubstring(testCase, err.message, 'loaded schema is too old');
+        verifySubstring(testCase, err.message, 'method_id');
+    end
+    % through the pipeline it is a quarantine with that identifier, never a carry
+    out = runJ(pyraviewBody(blocks{k}));
+    assertEqual(testCase, numel(out.quarantine), 1, 'the pyraview fails, it is not carried');
+    verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:schemaTooOld');
+    verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+        'a schema defect is not a carry');
+    verifyFalse(testCase, any(strcmp(classNames(out), 'frequency_filter')));
 end
-
-function testNaNParametersAreAbsentNotCarried(testCase)
-% NaN is how NDI says "this parameter does not apply to this design" --
-% Chebyshev-I has no stopband spec. An inapplicable parameter is ABSENT, never
-% NaN (the rule already set for time references). `mustNotHaveNaN` is FALSE on
-% these fields, so a carried NaN would have validated cleanly and silently.
-assumeFrequencyFilterPath(testCase);
-out = runJ(pyraviewBody(predFilterBlock()));
-ff = docOfClass(testCase, out, 'frequency_filter');
-blk = ff.get('frequency_filter');
-verifyFalse(testCase, isfield(blk, 'stopband_attenuation'));
-% and nothing was invented for the band this design does not have
-verifyFalse(testCase, isfield(blk, 'stopband'));
-end
-
-function testMisspelledStopbandAttenuationIsRead(testCase)
-% `stopbandAttentuation` (an extra `tu`) is the spelling in the WRITER
-% (filterData.m:41,53) and in the real data. filter.md and filter_schema.json
-% both document the CORRECT spelling, which appears in no .m file on
-% origin/main. A migrator reading the correct one gets nothing, silently.
-assumeFrequencyFilterPath(testCase);
-blk = predFilterBlock();
-blk.algorithm = 'chebyshev_2';
-blk.parameters.passBandRipple = NaN;
-blk.parameters.stopbandAttentuation = 40;
+% an all-pass builds no filter, so it needs no edge and does not fail
+blk = struct('label', 'none', 'type', 'none', 'algorithm', 'none', ...
+    'parameters', struct('sampleFrequency', NaN, 'order', NaN, ...
+        'filterFrequency', NaN, 'passBandRipple', NaN, ...
+        'stopbandAttentuation', NaN));
 out = runJ(pyraviewBody(blk));
-ff = docOfClass(testCase, out, 'frequency_filter');
-verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.decibels'), 40);
-verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.source_unit').node, 'om:decibel');
-verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.source_unit').name, 'decibel');
-% chebyshev_2 has no passband ripple -- the NaN must not have been carried
-verifyFalse(testCase, isfield(ff.get('frequency_filter'), 'passband_ripple'));
-end
-
-function testLabelEqualToTypeIsNotDuplicated(testCase)
-% `label` is the same fact as `band` in every real document (both "high"), so
-% it is not written. (Until 2026-10-26 this also asserted that sampleFrequency
-% was not carried; [small unread settings] (2) makes it a method parameter --
-% testOnTheFrequencyFilterPathASampleFrequencyFailsLoudly and
-% testAFilterIsAMethodOnceTheBodyTakesMethodId.)
-assumeFrequencyFilterPath(testCase);
-out = runJ(pyraviewBody(predFilterBlock()));
-ff = docOfClass(testCase, out, 'frequency_filter');
-blk = ff.get('frequency_filter');
-verifyFalse(testCase, isfield(blk, 'label'));
-end
-
-function testOnTheFrequencyFilterPathASampleFrequencyFailsLoudly(testCase)
-% INVERTS testOnTheFrequencyFilterPathASampleFrequencyCarriesTheDocument (the
-% pyraview was carried whole as v1, with no carry register row). [pipeline
-% defects are not carries] (Jess Haley, 2026-10-26, did-schema
-% V_eta_go_forward_class_audit.md): a document left unconverted because the
-% LOADED SCHEMA is stale (sampled_body still declares filter_id, the
-% pre-[filters are methods] frequency_filter path) is a defect, and the run
-% fails loudly instead of carrying it.
-assumeTrue(testCase, loadedSchemaTakesFilterId(), ...
-    'the loaded sampled_body takes method_id: the rate has a home');
-% the migrator itself raises, naming the cause
-verifyError(testCase, ...
-    @() did2.convert.migrators_j.pyraview(pyraviewBody(writerFilterBlock())), ...
-    'did2:convert:schemaTooOld');
-try
-    did2.convert.migrators_j.pyraview(pyraviewBody(writerFilterBlock()));
-catch err
-    verifySubstring(testCase, err.message, 'loaded schema is too old');
-    verifySubstring(testCase, err.message, 'method_id');
-end
-% through the pipeline it is a quarantine with that identifier, never a carry
-out = runJ(pyraviewBody(writerFilterBlock()));
-assertEqual(testCase, numel(out.quarantine), 1, 'the pyraview fails, it is not carried');
-verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:schemaTooOld');
-verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
-    'a schema defect is not a carry');
+verifyEmpty(testCase, out.quarantine);
 end
 
 function testALabelThatDiffersFromItsTypeCarriesTheDocument(testCase)
@@ -667,27 +590,6 @@ blk = predFilterBlock();
 blk.parameters.order = 4.5;
 out = runJ(pyraviewBody(blk));
 verifyPyraviewCarried(testCase, out, 'order');
-end
-
-function testEveryLevelBodyPointsAtTheOneFilter(testCase)
-% `filter_id` is declared on `sampled_body` (optional, must_refer
-% frequency_filter), so the edge rides on the BODIES -- it describes the samples.
-% filterData is called once per document (makePyraviewDoc.m:58/:108) and the
-% decimation happens after it, so every level shares ONE filter document.
-assumeFrequencyFilterPath(testCase);
-out = runJ(pyraviewBody(predFilterBlock()));
-ff = docOfClass(testCase, out, 'frequency_filter');
-names = classNames(out);
-bodies = out.migrated(strcmp(names, 'sampled_body'));
-verifyEqual(testCase, numel(bodies), 2);
-for k = 1:numel(bodies)
-    s = bodies{k}.toStruct();
-    verifyEqual(testCase, depValue(s, 'filter_id'), ff.get('base.id'));
-    % the statement edge is untouched by the addition
-    verifyEqual(testCase, depValue(s, 'owner_id'), 'pv_1');   % #88: owner_id
-end
-% exactly one filter document, not one per level
-verifyEqual(testCase, sum(strcmp(names, 'frequency_filter')), 1);
 end
 
 function testAFilterIsAMethodOnceTheBodyTakesMethodId(testCase)
@@ -908,67 +810,17 @@ verifyFalse(testCase, any(strcmp(names, 'frequency_filter')));
 verifyFalse(testCase, any(strcmp(names, 'method')));
 end
 
-function testBandPassNeedsTwoEdges(testCase)
-% A band-pass carries both edges when the source gives a 2-element vector
-% (filter.md: "two values for bandpass filters"), and asserts NEITHER when it
-% gives one -- there is no way to know which end a single number is.
-assumeFrequencyFilterPath(testCase);
-blk = predFilterBlock();
-blk.type = 'bandpass';
-blk.label = 'bandpass';
-blk.parameters.filterFrequency = [300 3000];
-out = runJ(pyraviewBody(blk));
-ff = docOfClass(testCase, out, 'frequency_filter');
-verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'band_pass');
-verifyEqual(testCase, ff.get('frequency_filter.passband.low.hertz'), 300);
-verifyEqual(testCase, ff.get('frequency_filter.passband.high.hertz'), 3000);
-
-blk.parameters.filterFrequency = 300;
-out = runJ(pyraviewBody(blk));
-ff = docOfClass(testCase, out, 'frequency_filter');
-verifyFalse(testCase, isfield(ff.get('frequency_filter'), 'passband'));
-end
-
-function testLowPassPutsTheEdgeOnTheHighSide(testCase)
-% The reverse of the high-pass case: a low-pass keeps everything BELOW the edge,
-% so the number is the passband's HIGH edge and the low edge is open.
-assumeFrequencyFilterPath(testCase);
-blk = predFilterBlock();
-blk.type = 'low';
-blk.label = 'low';
-out = runJ(pyraviewBody(blk));
-ff = docOfClass(testCase, out, 'frequency_filter');
-verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'low_pass');
-verifyEqual(testCase, ff.get('frequency_filter.passband.high.hertz'), 300);
-verifyFalse(testCase, isfield(ff.get('frequency_filter.passband'), 'low'));
-end
-
-function testPyraviewFilterFoldValidates(testCase)
-% Validation ON: the emitted frequency_filter has to agree with
-% schemas/V_eta/stable/frequency_filter.json, and the new filter_id edge has to
-% be one the sampled_body schema declares. Nothing in the transform tests above
-% can show either.
-assumeFrequencyFilterPath(testCase);
-out = did2.convert.v1_to_v2(pyraviewBody(predFilterBlock()), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
-if ~isempty(out.quarantine)
-    verifyFail(testCase, sprintf('pyraview+filter quarantined under validation: %s', ...
-        out.quarantine(1).reason));
-end
-verifyTrue(testCase, any(strcmp(classNames(out), 'frequency_filter')));
-end
-
-% ===================== the method path: each frequency_filter test's twin ====
+% ===================== the filter method, fact by fact =======================
 % Jess Haley 2026-10-22 [filters are methods]: frequency_filter is deleted and
 % the filter is a `method` document named by sampled_body.method_id. Each test
-% below asserts, on the method document, what its frequency_filter test above
-% asserts on the frequency_filter: the design term, the band, the passband
-% edges, the order, the ripple and attenuation, and their units. Each runs on
-% the loaded schema when its sampled_body declares method_id, else on a renamed
-% copy (useMethodSchema).
+% below asserts on the method document what a frequency_filter test asserted on
+% the frequency_filter (the old tests are removed with the old path, named in
+% each comment): the design term, the band, the passband edges, the order, the
+% ripple and attenuation, and their units. Each runs on the loaded schema when
+% its sampled_body declares method_id, else on a renamed copy (useMethodSchema).
 
 function testFilterBlockBecomesAMethodDocument(testCase)
-% twin of testFilterBlockBecomesAFrequencyFilterDocument
+% was testFilterBlockBecomesAFrequencyFilterDocument (on frequency_filter)
 useMethodSchema(testCase);
 out = runJ(pyraviewBody(predFilterBlock()));
 verifyEmpty(testCase, out.quarantine);
@@ -1002,7 +854,7 @@ verifyEqual(testCase, rip.source_unit.name, 'decibel');
 end
 
 function testMethodBandComesFromFilterTypeAfterTheSuperclassRename(testCase)
-% twin of testBandComesFromFilterTypeAfterTheSuperclassRename: the full pipeline
+% was testBandComesFromFilterTypeAfterTheSuperclassRename (on frequency_filter): the full pipeline
 % (filter.type renamed filter_type by the superclass pass) and a direct call
 % (still `type`) resolve the same band
 useMethodSchema(testCase);
@@ -1020,7 +872,7 @@ verifyEqual(testCase, p(strcmp(vars, 'filter band')).term.name, 'high-pass filte
 end
 
 function testMethodNaNParametersAreAbsentNotCarried(testCase)
-% twin of testNaNParametersAreAbsentNotCarried
+% was testNaNParametersAreAbsentNotCarried (on frequency_filter)
 useMethodSchema(testCase);
 [~, vars] = methodParams(methodOf(testCase, runJ(pyraviewBody(predFilterBlock()))));
 verifyFalse(testCase, any(strcmp(vars, 'stopband attenuation')));
@@ -1029,7 +881,7 @@ verifyFalse(testCase, any(startsWith(vars, 'stopband')));
 end
 
 function testMethodMisspelledStopbandAttenuationIsRead(testCase)
-% twin of testMisspelledStopbandAttenuationIsRead
+% was testMisspelledStopbandAttenuationIsRead (on frequency_filter)
 useMethodSchema(testCase);
 blk = predFilterBlock();
 blk.algorithm = 'chebyshev_2';
@@ -1049,7 +901,7 @@ verifyFalse(testCase, any(strcmp(vars, 'passband ripple')));
 end
 
 function testMethodLabelEqualToTypeIsNotDuplicated(testCase)
-% twin of testLabelEqualToTypeIsNotDuplicated
+% was testLabelEqualToTypeIsNotDuplicated (on frequency_filter)
 useMethodSchema(testCase);
 m = methodOf(testCase, runJ(pyraviewBody(predFilterBlock())));
 [~, vars] = methodParams(m);
@@ -1058,7 +910,7 @@ verifyFalse(testCase, any(strcmp(vars, 'label')));
 end
 
 function testEveryLevelBodyPointsAtTheOneFilterMethod(testCase)
-% twin of testEveryLevelBodyPointsAtTheOneFilter: method_id rides on every
+% was testEveryLevelBodyPointsAtTheOneFilter (on frequency_filter): method_id rides on every
 % level body, and there is one method document, not one per level
 useMethodSchema(testCase);
 out = runJ(pyraviewBody(predFilterBlock()));
@@ -1076,7 +928,7 @@ verifyEqual(testCase, sum(strcmp(names, 'method')), 1);
 end
 
 function testMethodBandPassNeedsTwoEdges(testCase)
-% twin of testBandPassNeedsTwoEdges
+% was testBandPassNeedsTwoEdges (on frequency_filter)
 useMethodSchema(testCase);
 blk = predFilterBlock();
 blk.type = 'bandpass';
@@ -1094,7 +946,7 @@ verifyFalse(testCase, any(startsWith(vars, 'passband') & endsWith(vars, 'edge'))
 end
 
 function testMethodLowPassPutsTheEdgeOnTheHighSide(testCase)
-% twin of testLowPassPutsTheEdgeOnTheHighSide
+% was testLowPassPutsTheEdgeOnTheHighSide (on frequency_filter)
 useMethodSchema(testCase);
 blk = predFilterBlock();
 blk.type = 'low';
@@ -1106,7 +958,7 @@ verifyFalse(testCase, any(strcmp(vars, 'passband low edge')));
 end
 
 function testPyraviewFilterMethodFoldValidates(testCase)
-% twin of testPyraviewFilterFoldValidates: validation ON, so the method document
+% was testPyraviewFilterFoldValidates (on frequency_filter): validation ON, so the method document
 % and the bodies' method_id edge have to agree with the schema
 useMethodSchema(testCase);
 out = did2.convert.v1_to_v2(pyraviewBody(predFilterBlock()), ...
