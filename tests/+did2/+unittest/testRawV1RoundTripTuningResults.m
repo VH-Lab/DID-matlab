@@ -27,9 +27,9 @@ function tests = testRawV1RoundTripTuningResults
 %   findings.
 %
 %   contrast_tuning, spatial_frequency_tuning, temporal_frequency_tuning and
-%   speed_tuning are NOT switched: no NDI template at the locked `main` (their
-%   templates are NDIcalc-vis-matlab's), no writer that makes a document of
-%   them alone, no corpus document (did2.convert.rawV1Classes, NOT LISTED).
+%   speed_tuning (the NDIcalc-vis result blocks, templates from
+%   NDIcalc-vis-matlab 00e3e0f) are switched too; their round trips are
+%   testRawV1RoundTripTuningBlocks.
 tests = functiontests(localfunctions);
 end
 
@@ -42,9 +42,6 @@ function testTheSwitchListsTheFamily(testCase)
 names = did2.convert.rawV1Classes();
 verifyTrue(testCase, any(strcmp(names, 'stimulus_tuningcurve')));
 verifyTrue(testCase, any(strcmp(names, 'orientation_direction_tuning')));
-for c = {'contrast_tuning', 'spatial_frequency_tuning', 'temporal_frequency_tuning', 'speed_tuning'}
-    verifyFalse(testCase, any(strcmp(names, c{1})), c{1});
-end
 end
 
 function testWriterShapesRoundTrip(testCase)
