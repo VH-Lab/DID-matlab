@@ -190,8 +190,18 @@ function testACarriedFileReferenceIsNotFolded(testCase)
 f = fileReferences();
 rec = f{1};
 rec.fileReference.mimeType = 'application/zarr';   % outside the template: carry-100
-batch = [{omeZarrPyramid()}, {rec, f{2}}, levels()];
-[out, rep] = withFold(batch, {});
+% Pass 1 in ONE call carries the pyramid and its levels too ([dependents of a
+% carried document carry], carry-064), so no converted carrier would name the
+% record. The fold meets a carried record named by a converted pyramid when the
+% two came out of separate pass-1 calls, as here: the batches are joined, then
+% folded.
+first = did2.convert.v1_to_v2([{omeZarrPyramid()}, levels()], 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+second = did2.convert.v1_to_v2({rec, f{2}}, 'Validate', true, 'TargetVersion', 'V_eta');
+out = first;
+out.migrated = [first.migrated, second.migrated];
+out.quarantine = [first.quarantine, second.quarantine];
+[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, rep.store_records_seen, 2);
 verifyEqual(testCase, rep.store_records_carried_as_v1, 1, 'the carried record is seen as carried');
