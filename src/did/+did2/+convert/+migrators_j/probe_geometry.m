@@ -68,6 +68,44 @@ function bodies = probe_geometry(preBody)
 %
 %   A document with no populated site locations carries unchanged (discovery
 %   fallback); the unconverted-document counter makes that visible.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI probe/probe_geometry.json + base.json at the
+%   locked NDI-matlab `main`, 3cb19a8, as +ndi/+fun/+probe/+geometry/fromStruct.m
+%   writes it). Every v1 field and where it goes;
+%   did2.convert.roundtrip.probe_geometry rebuilds the v1 document and
+%   testRawV1RoundTripProbe compares the two:
+%
+%     base.id, session_id, datestamp      -> the first observation's (the
+%                                            others and the assertion are
+%                                            minted)
+%     base.name                           -> not written (the writer leaves '')
+%     depends_on probe_id                 -> each statement's entity_id
+%     site_locations_leftright/frontback/ -> one length observation each, the
+%       depth                                source values in order
+%     unit                                -> the source unit of every value; a
+%                                            unit no length term is known for
+%                                            has no place: carried
+%     probe_model                         -> the probe-model assertion's term
+%     ndim                                -> not written when it is 2 (fromStruct's
+%                                            and the template's default, [writer
+%                                            default is not set]); any other value
+%                                            is carried
+%     shank_id, contact_shape*, manufacturer, contour_x/_y, has_planar_contour
+%                                         -> carry-001 when set (above)
+%
+%   fromStruct always writes shank_id (ones when the caller gives none), so
+%   every writer document is carried, carry-001, as before the switch.
+%
+%   What the renamed path would have discarded is carried, carry-049, as
+%   before. A field, block or edge no part of this migrator reads, an `ndim`
+%   other than 2 and a unit with no length term (all dropped without a word on
+%   the renamed path) now carry the document whole as v1 (private/jRawAccount,
+%   jRawCarry; [fields outside the template are malformed], marker
+%   `none` until that row reaches did-schema `main`). Passthroughs and carries
+%   return the untouched v1 source.
 arguments
     preBody (1,1) struct
 end
@@ -86,6 +124,30 @@ if isfield(blk, 'channel_positions') || isfield(blk, 'position_units') ...
          'or a fixture built against it.']);
 end
 
+% THE RAW READ (see READS RAW v1 above). The guard above runs first, so a
+% V_alpha-shaped body still fails as before rather than being carried.
+TEMPLATE = {'site_locations_leftright', 'site_locations_frontback', ...
+    'site_locations_depth', 'shank_id', 'contact_shape', 'contact_shape_width', ...
+    'contact_shape_height', 'contact_shape_radius', 'probe_model', 'manufacturer', ...
+    'ndim', 'unit', 'has_planar_contour', 'contour_x', 'contour_y'};
+src = preBody;
+[preBody, collision, unplacedRaw] = jRawAccount(src, struct('probe_geometry', {TEMPLATE}), ...
+    {'^probe_id$', '^element_id$', '^subject_id$'});
+if isfield(blk, 'ndim') && ~isempty(blk.ndim) && ~isequal(double(blk.ndim), 2)
+    unplacedRaw{end+1} = 'probe_geometry.ndim (not 2, the writer''s default)';
+end
+unitText = jGetChar(blk, 'unit');
+if ~isempty(strtrim(unitText))
+    [~, ~, unitKind] = jSourceUnit(unitText);
+    if ~strcmp(unitKind, 'length')
+        unplacedRaw{end+1} = sprintf('probe_geometry.unit (no length unit is known for "%s")', unitText);
+    end
+end
+if jRawCarry('probe_geometry', src, collision, unplacedRaw)
+    bodies = {src};
+    return;
+end
+
 % [probe contact geometry carried] (Jess Haley, 2026-10-26): no V2 home yet
 unplacedNames = {'shank_id', 'contact_shape', 'contact_shape_width', ...
     'contact_shape_height', 'contact_shape_radius', 'manufacturer', ...
@@ -101,7 +163,7 @@ if any(isSet)
     % carry-register: carry-001
     did2.convert.reportNote('carried_as_v1', 'probe_geometry', char(preBody.base.id), ...
         ['[carry-001] unplaced: ' strjoin(strcat('probe_geometry.', unplacedNames(isSet)), ', ')]);
-    bodies = {preBody};
+    bodies = {src};
     return;
 end
 
@@ -133,7 +195,7 @@ for k = 1:size(axisMap, 1)
 end
 
 if isempty(obsBodies)
-    bodies = {preBody};   % nothing to fold -> carry unchanged (discovery fallback)
+    bodies = {src};   % nothing to fold -> carry unchanged (discovery fallback)
     return;
 end
 

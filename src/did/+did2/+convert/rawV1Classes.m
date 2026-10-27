@@ -147,6 +147,20 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         (jrclust_clusters), ndi.calc.vis.hartley and
 %                         ndi.calc.vis.speed_tuning (NDIcalc-vis-matlab). Round
 %                         trips: testRawV1RoundTripSpike.
+%     probe_geometry      the probe family: superclass `base` only, no `app`
+%     site2channelmap     block, no superclass migrator; the v1 names are the
+%     electrode_offset_voltage  migrator names. probe_geometry converts (a
+%                         writer document always carries, carry-001: fromStruct
+%                         writes shank_id); site2channelmap passes through for
+%                         the NDI second pass (its raw shape is the renamed one
+%                         but for the `value` edge key); electrode_offset_voltage
+%                         converts. What a migrator does not read carries the
+%                         document (private/jRawAccount; [fields outside the
+%                         template are malformed], marker `none` until its row
+%                         reaches did-schema `main`). Written by
+%                         +ndi/+fun/+probe/+geometry/fromStruct.m and
+%                         +ndi/+setup/+conv/+marder/makeVoltageOffsets.m. Round
+%                         trips: testRawV1RoundTripProbe.
 %     NOT LISTED, and why:
 %       simple_calc       a pass-1 passthrough for which no corpus holds a
 %                         document; its raw passthrough (`app.name`, a
@@ -199,6 +213,9 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'stimulus_bath', ...
     'position_metadata', ...
     'distance_metadata', ...
+    'probe_geometry', ...
+    'site2channelmap', ...
+    'electrode_offset_voltage', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above

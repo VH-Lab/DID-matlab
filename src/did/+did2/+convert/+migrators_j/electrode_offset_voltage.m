@@ -55,6 +55,31 @@ function bodies = electrode_offset_voltage(preBody)
 %
 %   A document with no numeric offset carries unchanged (discovery fallback); the
 %   unconverted-document counter makes that visible.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI probe/electrode_offset_voltage.json + base.json
+%   at the locked NDI-matlab `main`, 3cb19a8, as
+%   +ndi/+setup/+conv/+marder/makeVoltageOffsets.m writes it: one document per
+%   CSV row, `offset` the row's offsetV, `temperature` its T, NaN when not
+%   recorded, which reaches a corpus as an empty value). Every v1 field and where
+%   it goes; did2.convert.roundtrip.electrode_offset_voltage rebuilds the v1
+%   document and testRawV1RoundTripProbe compares the two:
+%
+%     base.id, session_id, datestamp     -> the observation's
+%     base.name                          -> not written (the writer leaves '')
+%     depends_on probe_id                -> the observation's entity_id
+%     electrode_offset_voltage.offset    -> the voltage value (source unit 'V')
+%     electrode_offset_voltage.temperature -> the `temperature` condition
+%
+%   What the renamed path would have discarded is carried, carry-049, as
+%   before. A field, block or edge no part of this migrator reads, and a
+%   temperature that is stated but is neither one finite number nor the
+%   writer's NaN (the renamed path dropped it without a word), now carry the document whole as v1
+%   (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], marker `none` until that row reaches did-schema
+%   `main`). A passthrough and a carry return the untouched v1 source.
 arguments
     preBody (1,1) struct
 end
@@ -71,9 +96,26 @@ if isfield(blk, 'offset_voltages') || isfield(blk, 'voltage_units')
          'snapshot or a fixture built against it.']);
 end
 
+% THE RAW READ (see READS RAW v1 above)
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, ...
+    struct('electrode_offset_voltage', {{'offset', 'temperature'}}), ...
+    {'^probe_id$', '^element_id$', '^subject_id$'});
+if isfield(blk, 'temperature') && ~isempty(blk.temperature) ...
+        && isempty(finiteScalar(blk, 'temperature')) && ~isNaNScalar(blk.temperature)
+    % NaN is the writer's "not recorded" (it skips the temperature query for
+    % it) and stays unwritten, as before; anything else that is not one finite
+    % number has no place
+    unplaced{end+1} = 'electrode_offset_voltage.temperature (not one finite number)';
+end
+if jRawCarry('electrode_offset_voltage', src, collision, unplaced)
+    bodies = {src};
+    return;
+end
+
 offset = finiteScalar(blk, 'offset');
 if isempty(offset)
-    bodies = {preBody};   % nothing to fold -> carry unchanged (discovery fallback)
+    bodies = {src};   % nothing to fold -> carry unchanged (discovery fallback)
     return;
 end
 
@@ -109,4 +151,9 @@ x = blk.(name);
 if isnumeric(x) && isscalar(x) && isfinite(x)
     v = double(x);
 end
+end
+
+function tf = isNaNScalar(x)
+%ISNANSCALAR One NaN: the writer's "temperature not recorded".
+tf = isnumeric(x) && isscalar(x) && isnan(x);
 end
