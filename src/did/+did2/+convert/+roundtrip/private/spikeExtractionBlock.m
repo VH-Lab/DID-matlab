@@ -21,7 +21,7 @@ vals = cell(1, numel(BOUND));   % the number of each bound variable, {} when abs
 for k = 1:numel(entries)
     e = entries{k};
     [~, name] = termParts(getIn(e, 'variable'));
-    hit = find(strcmp(BOUND, name), 1);
+    hit = find(strcmpi(BOUND, name), 1);
     if isempty(hit)
         rest{end+1} = e; %#ok<AGROW>
         continue;
@@ -69,6 +69,10 @@ if ~isempty(vals{5})
     blk.threshold_method = 'absolute';
     blk.threshold_parameter = vals{5};
 end
+bag = templateSpelling(bag, {'center_range_time', 'overlap', 'read_time', 'refractory_time', ...
+    'spike_start_time', 'spike_end_time', 'do_filter', 'filter_type', 'filter_low', ...
+    'filter_high', 'filter_order', 'filter_ripple', 'threshold_method', ...
+    'threshold_parameter', 'threshold_sign'});
 fns = fieldnames(bag);
 for k = 1:numel(fns)
     if isfield(blk, fns{k})

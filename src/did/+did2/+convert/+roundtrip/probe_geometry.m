@@ -55,7 +55,7 @@ for k = 1:numel(bodies)
         continue;
     end
     [~, vname] = termParts(getIn(b, 'statement', 'variable'));
-    row = find(strcmp(AXES(:, 2), vname), 1);
+    row = find(strcmpi(AXES(:, 2), vname), 1);
     if isempty(row) || isfield(blk, AXES{row, 1})
         continue;
     end
@@ -89,7 +89,7 @@ model = '';
 for k = find(~used)
     b = bodies{k};
     [~, vname] = termParts(getIn(b, 'statement', 'variable'));
-    if strcmp(classNameOf(b), 'assertion') && strcmp(vname, 'probe model') && isempty(model)
+    if strcmp(classNameOf(b), 'assertion') && strcmpi(vname, 'probe model') && isempty(model)
         [~, model] = termParts(getIn(b, 'term', 'value'));
         probes = [probes, edgeIds(b, 'entity_id')]; %#ok<AGROW>
         used(k) = true;

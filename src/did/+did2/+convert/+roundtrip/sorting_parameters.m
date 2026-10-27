@@ -29,6 +29,8 @@ end
 [blk, bad] = methodParameters(entries);
 spec.unplaced = [spec.unplaced, bad];
 [blk, v1] = parkedMethodBlocks(blk, v1);
+blk = templateSpelling(blk, {'graphical_mode', 'num_pca_features', 'interpolation', ...
+    'min_clusters', 'max_clusters', 'num_start'});
 v1.(CLASS) = blk;
 end
 

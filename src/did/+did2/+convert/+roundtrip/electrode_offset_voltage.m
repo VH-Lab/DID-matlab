@@ -44,7 +44,7 @@ if isempty(obs)
     return;
 end
 [~, vname] = termParts(getIn(obs, 'statement', 'variable'));
-if ~strcmp(vname, 'electrode offset voltage')
+if ~strcmpi(vname, 'electrode offset voltage')
     spec.unplaced{end+1} = sprintf('the observation''s variable is "%s", not electrode offset voltage', vname);
 end
 base = rebuildBase(obs);
@@ -74,7 +74,7 @@ temperature = [];
 conds = asCell(getIn(obs, 'statement', 'conditions'));
 for k = 1:numel(conds)
     [~, cname] = termParts(getIn(conds{k}, 'variable'));
-    if strcmp(cname, 'temperature') && isempty(temperature)
+    if strcmpi(cname, 'temperature') && isempty(temperature)
         temperature = numberOf(getIn(conds{k}, 'quantity', 'value'));
     else
         spec.unplaced{end+1} = sprintf('condition %d ("%s") has no place in an electrode offset voltage', ...
