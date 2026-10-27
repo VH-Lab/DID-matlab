@@ -43,11 +43,15 @@ function names = rawV1Classes()
 %                         +migrators/element.m is never run for it (a class
 %                         with a +migrators_j migrator skips it). Written by
 %                         ndi.element/newdocument. Round trips:
-%                         testRawV1RoundTripElement. element_epoch is NOT
-%                         switched yet.
+%                         testRawV1RoundTripElement.
+%     element_epoch       superclasses `base` and `epochid` (no migrator for
+%                         either); pass 1 makes the acquisition_epoch carrier
+%                         the batch passes dissolve. Written by
+%                         ndi.element/addepoch. Round trips:
+%                         testRawV1RoundTripElementEpoch (the pass-1 carrier).
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
 names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
-    'treatment_transfer', 'virus_injection', 'element'};
+    'treatment_transfer', 'virus_injection', 'element', 'element_epoch'};
 end
