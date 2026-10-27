@@ -261,7 +261,8 @@ end
 % ===================== [parameter names map by table] =====================
 
 function testParameterNamesMapByTable(testCase)
-for name = {'independent_label', 'min_xi', 'prestimulus_time', 'selection.property'}
+for name = {'independent_label', 'min_xi', 'prestimulus_time', 'selection.property', ...
+        'depends_on.name'}   % (every corpus tuningcurve_calc states input_parameters.depends_on)
     [v2, found] = did2.convert.tuningNames('v2', name{1});
     verifyTrue(testCase, found, name{1});
     [back, found] = did2.convert.tuningNames('v1', v2);
