@@ -145,7 +145,8 @@ function v2Body = metadata_editor(preBody)
 %   an author's `authorRole`, an affiliation's other fields), or any other
 %   field, block or edge, which the renamed path dropped without a word, now
 %   carries the document whole as v1 (private/jRawAccount, jRawCarry and
-%   formUnread below; no register row yet); what the renamed path would have
+%   formUnread below; carry-100, [fields outside the template are
+%   malformed]); what the renamed path would have
 %   discarded (an `ndi_document` beside `base`, a depends_on `version`) is
 %   carried, carry-049, as before.
 
@@ -163,7 +164,7 @@ if isempty(collision) && isfield(preBody, 'metadata_editor') ...
     unplaced0 = [unplaced0, formUnread(getScalarStruct(preBody.metadata_editor, ...
         'metadata_structure'))];
 end
-if jRawCarry('metadata_editor', src, collision, unplaced0)
+if jRawCarry('metadata_editor', src, collision, unplaced0, 'carry-100')
     v2Body = {src};
     return;
 end

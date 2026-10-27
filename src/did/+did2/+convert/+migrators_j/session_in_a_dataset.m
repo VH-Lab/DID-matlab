@@ -55,7 +55,7 @@ function v2Body = session_in_a_dataset(preBody)
 %
 %   A field, block or edge outside these, which the renamed path dropped
 %   without a word, now carries the document whole as v1 (private/jRawAccount,
-%   jRawCarry; no register row yet); what the renamed path would have
+%   jRawCarry; carry-100, [fields outside the template are malformed]); what the renamed path would have
 %   discarded (an `ndi_document` beside `base`, a depends_on `version`) is
 %   carried, carry-049, as before.
 
@@ -71,7 +71,7 @@ src = preBody;
     'session_creator', 'session_creator_input1', 'session_creator_input2', ...
     'session_creator_input3', 'session_creator_input4', 'session_creator_input5', ...
     'session_creator_input6'}}), {});
-if jRawCarry('session_in_a_dataset', src, collision, unplaced)
+if jRawCarry('session_in_a_dataset', src, collision, unplaced, 'carry-100')
     v2Body = {src};
     return;
 end

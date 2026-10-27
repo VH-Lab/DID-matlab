@@ -112,7 +112,8 @@ function v2Body = session(preBody)
 %
 %   A field, block or edge outside these, which the renamed path dropped
 %   without a word, now carries the document whole as v1
-%   (private/jRawAccount, jRawCarry; no register row yet); what the renamed
+%   (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]); what the renamed
 %   path would have discarded (an `ndi_document` beside `base`, a depends_on
 %   `version`) is carried, carry-049, as before.
 
@@ -125,7 +126,7 @@ end
 src = preBody;
 [preBody, collision, unplaced] = jRawAccount(src, ...
     struct('session', {{'reference', 'local_identifier', 'type', 'date', 'purpose'}}), {});
-if jRawCarry('session', src, collision, unplaced)
+if jRawCarry('session', src, collision, unplaced, 'carry-100')
     v2Body = {src};
     return;
 end

@@ -113,7 +113,8 @@ end
 
 function testAnUnreadSessionFieldOrEdgeIsCarried(testCase)
 % before the switch a field outside the template, or an edge, was dropped
-% without a word; now the document is carried whole (no register row yet)
+% without a word; now the document is carried whole, carry-100 ([fields
+% outside the template are malformed])
 v1 = writerSession('sd_X', 'sess_X', 'exp2');
 v1.session.notes = 'a stray field';
 w = writerSession('sd_Y', 'sess_Y', 'exp3');
@@ -126,6 +127,7 @@ for k = 1:size(cases, 1)
     verifyCarriedUntouched(testCase, out, body, what);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, contains(d, what), d);
+    verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
     old = runRenamed(body);
     verifyEmpty(testCase, old.passthrough, [what ': the renamed path dropped it']);
 end
@@ -202,6 +204,7 @@ assertNotEmpty(testCase, emitted);
 verifyEqual(testCase, char(emitted.get('document_class.schema_version')), 'did_v1');
 notes = strjoin(out.summary.migration_notes.carried_as_v1.distinct_details, ' | ');
 verifyTrue(testCase, contains(notes, 'session_in_a_dataset.session_path'), notes);
+verifyTrue(testCase, contains(notes, '[carry-100] '), notes);
 end
 
 % ===================== dataset_remote ===================================
@@ -253,6 +256,7 @@ for k = 1:size(cases, 1)
     verifyCarriedUntouched(testCase, out, v1, what);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, contains(d, strrep(what, 'metadata_structure.', '')), d);
+    verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
 end
 end
 
