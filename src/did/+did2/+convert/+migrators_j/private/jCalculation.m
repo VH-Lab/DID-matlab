@@ -192,7 +192,10 @@ response = [];   % no response variable read (receptive field)
 csfInputs = {};  % the contrast-sensitivity family's extra input (stimulus_presentation_id)
 tuningExtra = struct('abs', struct('present', false));
 isFit = any(strcmp(family, {'oridir', 'contrast', 'sf', 'tf', 'speed'}));
-useTable = isFit || any(strcmp(family, {'stimulus', 'csf'}));
+% (the contrast-sensitivity calculator writes no settings, NDIcalc-vis-matlab
+% 00e3e0f contrast_sensitivity.m: input_parameters struct([]); it is not a
+% tuning curve and keeps its settings' names as before)
+useTable = isFit || strcmp(family, 'stimulus');
 % the raw curve's notes, conditions and rebuilt stimids (family 'stimulus')
 curve = struct('rebuilt', {{}}, 'notes', '', 'conditions', [], 'reasons', {{}}, ...
     'outcome', '');

@@ -51,6 +51,10 @@ arguments
     v1Class
     methodName
     opts.Tuning (1,1) logical = false
+    opts.Table = []    % name the settings through the table (default: OPTS.Tuning)
+end
+if isempty(opts.Table)
+    opts.Table = opts.Tuning;
 end
 spec = emptySpec();
 v1 = struct();
@@ -154,7 +158,7 @@ entries = getIn(leaf, 'interaction', 'method', 'parameters');
 if opts.Tuning
     entries = withoutFitParameters(entries);
 end
-[params, bad] = methodParameters(entries, opts.Tuning);
+[params, bad] = methodParameters(entries, logical(opts.Table));
 spec.unplaced = [spec.unplaced, bad];
 blk = struct();
 if ~isempty(fieldnames(params))

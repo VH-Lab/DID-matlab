@@ -37,10 +37,12 @@ function tests = testRawV1RoundTripStimulusResponse
 %   documents of the corpora (20211116 and Soph; census of the corpus zips,
 %   2026-10-27).
 %
-%   Because the writer sets `stimulator_epochid` and `stimulus_control_id`
-%   on every response, every writer-shaped response is CARRIED (carry-050):
-%   its round trip is the carry. The fold is driven by the DID-side shape with
-%   both empty (testMigratorsJStimulusResponse's responseFixture).
+%   Since [response links: epoch rebuilt, control as input] (Jess Haley,
+%   2026-10-27) a writer-shaped response (its stimulator epoch the element's,
+%   its control an input) is NOT carried: in pass 1 it waits for its epoch
+%   (handed on, the epoch gate), and once epochMint stamps the epoch it
+%   converts and round trips with nothing lost. Until then every one was
+%   carried (carry-050).
 %
 %   WHAT V2 DOES NOT KEEP is listed per fixture as KNOWN FINDINGS: open
 %   questions for the team, not rules made here. Each fixture's lost paths
@@ -65,14 +67,14 @@ f = { ...
         'it against the harmonic of the converted responses using the method. ' ...
         'Every writer-shaped response is carried (carry-050), so on real data ' ...
         'no response is converted and the value is kept nowhere']; ...
-    'parameters as a method, no converted user', [P 'prestimulus_normalization'], ...
-        ['[] is written as 0 ([empty response settings] "c"; NDI: "[] or 0) ' ...
-        'No normalization"); the method cannot tell a v1 [] from a v1 0']; ...
-    'parameters as a method, with its response', [P 'prestimulus_normalization'], ...
-        'as above'; ...
     'converted response, its epoch not given', 'stimulus_response.element_epochid', ...
         ['the anchor names the epoch entity epochMint mints; the string is ' ...
-        'on that entity, not on the documents the migrator emits']};
+        'on that entity, not on the documents the migrator emits']; ...
+    'converted response, its epoch not given', 'stimulus_response.stimulator_epochid', ...
+        'rebuilt from the element epoch string ([response links: epoch rebuilt, control as input]): as above'};
+% (prestimulus_normalization [] is no longer a finding: the round trip counts
+% it equal to the 0 the method states, Decided by Jess Haley, 2026-10-27
+% [empty prestimulus normalization is zero])
 end
 
 function paths = findingsFor(fixture)
@@ -83,7 +85,6 @@ end
 function testEveryKnownFindingNamesAFixtureThatIsRun(testCase)
 f = knownFindings();
 names = {'parameters as a method, no converted user', ...
-    'parameters as a method, with its response', ...
     'converted response, its epoch not given'};
 for k = 1:size(f, 1)
     verifyTrue(testCase, any(strcmp(f{k, 1}, names)), f{k, 1});
@@ -101,9 +102,11 @@ verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, 2);
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
-% ===================== writer-shaped responses: carried =================
+% ===================== writer-shaped responses: wait for their epoch ======
 
-function testWriterShapedResponsesAreCarriedAndRoundTrip(testCase)
+function testWriterShapedResponsesWaitForTheirEpochAndRoundTrip(testCase)
+% pass 1 hands the writer's response on unconverted (the epoch gate: no epoch
+% document yet), not carried; its round trip is the passthrough
 cases = { ...
     'mean, six readings', writerResponse('resp_m', 'mean', 6); ...
     'F1, six readings', writerResponse('resp_f1', 'F1', 6); ...
@@ -114,17 +117,34 @@ for k = 1:size(cases, 1)
     out = runRaw(v1);
     verifyEmpty(testCase, out.quarantine, label);
     verifyEqual(testCase, numel(out.migrated), 1, label);
-    verifyEqual(testCase, numel(out.passthrough), 1, [label ': carried']);
-    emitted = out.migrated{1}.toStruct();
-    verifyEqual(testCase, emitted.document_class.schema_version, 'did_v1', label);
-    emitted.document_class = rmfield(emitted.document_class, 'schema_version');
-    verifyTrue(testCase, isequaln(emitted, v1), [label ': the carry is not the v1 source']);
-    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-050] '), d);
+    verifyEqual(testCase, numel(out.passthrough), 1, [label ': handed on']);
+    verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+        [label ': not carried']);
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyGreaterThan(testCase, r.fields_inspected, 0, label);
-    verifyTrue(testCase, r.carried, label);
+    verifyFalse(testCase, r.carried, label);
     verifyRoundTrip(testCase, r, label, {});
+end
+end
+
+function testAWriterShapedResponseOnItsEpochConvertsAndRoundTrips(testCase)
+% the epoch stamped as epochMint stamps it: the writer's response converts,
+% its control an input after the presentation, its stimulator epoch rebuilt
+v1 = writerResponse('resp_w2', 'F1', 6);
+stamped = v1;
+stamped.depends_on(end+1) = struct('name', 'epoch_id', 'value', 'epochdoc_w2');
+out = runRaw(stamped);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough);
+epoch = did2.build.document('entity', ...
+    struct('type', did2.convert.registeredTerm( ...
+        did2.build.vocabulary('entity_type', 'epoch'), 'recording epoch'), ...
+        'local_identifier', 't00003'), ...
+    'Id', 'epochdoc_w2', 'SessionId', v1.base.session_id, ...
+    'CreationTimestamp', v1.base.datestamp, 'Validate', false);
+r = did2.convert.roundtrip.check(v1, [out.migrated, {epoch}]);
+verifyRoundTrip(testCase, r, 'writer-shaped response, on its epoch', {});
+for p = {'stimulus_response.stimulator_epochid', 'depends_on(3).value'}
+    verifyTrue(testCase, any(strcmp(p{1}, r.matched)), p{1});
 end
 end
 
@@ -211,8 +231,7 @@ out = runFold(testCase, {convertibleResponse('resp_c3', 'F1', '', 'par_1'), v1})
 m = bodyWithId(out, 'par_1');
 calc = bodyWithId(out, 'resp_c3');
 r = did2.convert.roundtrip.check(v1, {m, calc});
-verifyRoundTrip(testCase, r, 'parameters as a method, with its response', ...
-    findingsFor('parameters as a method, with its response'));
+verifyRoundTrip(testCase, r, 'parameters as a method, with its response', {});
 verifyTrue(testCase, any(strcmp([ ...
     'stimulus_response_scalar_parameters_basic.freq_response'], r.matched)));
 end
@@ -332,6 +351,17 @@ for k = 1:numel(fixtures)
         verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1', label);
         continue;   % both carry; the raw carry is the v1 source (tested above)
     end
+    if ~isempty(raw.passthrough) && strcmp(classNameOfBody(raw.migrated{1}.toStruct()), ...
+            'stimulus_response_scalar')
+        % handed on (the epoch gate) on both paths: the raw one keeps v1's
+        % `value` edge key where the renamed one had `document_id`, and
+        % states the same edges
+        a = raw.migrated{1}.toStruct();
+        b = old.migrated{1}.toStruct();
+        verifyEqual(testCase, edgeMap(a), edgeMap(b), label);
+        verifyTrue(testCase, isequaln(rmfield(a, 'depends_on'), rmfield(b, 'depends_on')), label);
+        continue;
+    end
     for j = 1:min(numel(raw.migrated), numel(old.migrated))
         a = raw.migrated{j}.toStruct();
         b = old.migrated{j}.toStruct();
@@ -352,21 +382,23 @@ end
 verifyEqual(testCase, a.response_parameters_fold, b.response_parameters_fold);
 end
 
-function testAGuardedResponsePassesThroughOnBothPaths(testCase)
-% a response the fold cannot place (an unknown response_type) is handed back
-% unchanged on both paths; the raw one keeps v1's `value` edge key where the
-% renamed one had `document_id`, and states the same edges
+function testAnUnreadableResponseIsCarriedOnBothPaths(testCase)
+% a response the fold cannot read (an unknown response_type) is carried whole
+% as v1, kind malformed, on both paths (Decided by Jess Haley, 2026-10-27
+% [unreadable responses are malformed]; it was handed back unconverted with
+% no note before)
 v1 = convertibleResponse('resp_p', 'peak', '');
 raw = runRaw(v1);
 old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.passthrough), 1);
 verifyEqual(testCase, numel(old.passthrough), 1);
-a = raw.migrated{1}.toStruct();
-b = old.migrated{1}.toStruct();
-verifyEqual(testCase, edgeMap(a), edgeMap(b));
-verifyTrue(testCase, isequaln(rmfield(a, 'depends_on'), rmfield(b, 'depends_on')));
+verifyEqual(testCase, raw.migrated{1}.get('document_class.schema_version'), 'did_v1');
+verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1');
+d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-100] malformed: '), d);
 r = did2.convert.roundtrip.check(v1, raw.migrated);
-verifyRoundTrip(testCase, r, 'guarded response', {});
+verifyTrue(testCase, r.carried);
+verifyRoundTrip(testCase, r, 'unreadable response', {});
 end
 
 % ===================== helpers =========================================
@@ -493,11 +525,12 @@ v1 = jsondecode(jsonencode(v1));
 end
 
 function v1 = convertibleResponse(id, responseType, elementEpoch, paramId)
-% the DID-side shape the fold places whole: the writer shape with no
-% stimulator epoch and no control (both left at the template blank)
+% the writer shape on another epoch string (the stimulator's the same: it is
+% rebuilt from the element's, [response links: epoch rebuilt, control as
+% input], Jess Haley, 2026-10-27) and no control (the template blank)
 if nargin < 4; paramId = 'par_x'; end
 v1 = writerResponse(id, responseType, 6, paramId);
-v1.stimulus_response.stimulator_epochid = '';
+v1.stimulus_response.stimulator_epochid = elementEpoch;
 v1.stimulus_response.element_epochid = elementEpoch;
 v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_control_id')).value = '';
 v1 = jsondecode(jsonencode(v1));

@@ -32,9 +32,12 @@ function tests = testRawV1RoundTripTuningBlocks
 %
 %   WHAT THE WRITERS' DOCUMENTS DO TODAY: exactly what their *_calc documents
 %   do (testRawV1RoundTripTuning, testRawV1RoundTripSpike), since the block is
-%   the same. Each carries whole as v1 (carry-056: the contrast fits' relative
-%   max gain, saturation index and sensitivity; the SF and TF `abs` block; the
-%   three speed fit blocks that would all be named 'Priebe fit'), and a carry
+%   the same. SF and TF convert, their `abs` block a second calculation, and
+%   speed converts, its three fits told apart by their constraints (Jess
+%   Haley, 2026-10-27: [absolute-value fits are a second calculation],
+%   [Priebe fits are one function]); contrast carries whole as v1 (carry-056:
+%   its fits' relative max gain, saturation index and sensitivity) until
+%   did-schema declares them ([contrast metrics added]), and a carry
 %   round-trips as itself. A field outside the template carries under carry-100
 %   instead (Decided by Jess Haley, 2026-10-27 [tuning stray fields are
 %   malformed]). The same documents with exactly those fields
@@ -79,11 +82,14 @@ end
 end
 
 function testTheCarriesNameTheirReason(testCase)
-cases = { ...
-    writerShape('contrast_tuning'), 'naka_rushton_RB_relative_max_gain'; ...
-    writerShape('spatial_frequency_tuning'), '[carry-056] spatial_frequency_tuning.abs'; ...
-    writerShape('temporal_frequency_tuning'), '[carry-056] temporal_frequency_tuning.abs'; ...
-    writerShape('speed_tuning'), '[carry-056] speed_tuning.fit, speed_tuning.fit_no_speed'};
+% (SF / TF `abs` and the speed fits are placed since 2026-10-27; a speed fit
+% block no constraint tells apart still carries)
+fourFits = writerShape('speed_tuning');
+fourFits.speed_tuning.fit_other = fourFits.speed_tuning.fit;
+cases = {fourFits, '[carry-056] speed_tuning.fit'};
+if ~contrastMetricsDeclared()
+    cases(end + 1, :) = {writerShape('contrast_tuning'), 'naka_rushton_RB_relative_max_gain'};
+end
 for k = 1:size(cases, 1)
     verifyCarried(testCase, cases{k, 1}, cases{k, 2});
 end
@@ -121,14 +127,12 @@ end
 function testAStrayFieldCitesCarry100AndAWriterFieldCarry056(testCase)
 % [tuning stray fields are malformed] (Jess Haley, 2026-10-27): carry-056
 % keeps only fields the NDIcalc-vis writer does write that V2 has no home for
-% yet. The SF writer's `abs` block is in spatial_frequency_tuning.json and the
-% writer fills it: carry-056. A field inside `abs` the template does not
-% declare is cited on its own under carry-100, beside it, in the same note.
+% yet. The SF writer's `abs` block has a home since [absolute-value fits are a
+% second calculation] (2026-10-27); a field inside it the template does not
+% declare is cited on its own under carry-100.
 v1 = writerShape('spatial_frequency_tuning');
-verifyCarriedUnder(testCase, v1, 'spatial_frequency_tuning.abs', 'carry-056');
 v1.spatial_frequency_tuning.abs.fit_dog.note = 'x';
 verifyCarriedUnder(testCase, v1, 'spatial_frequency_tuning.abs.fit_dog.note', 'carry-100');
-verifyCarriedUnder(testCase, v1, 'spatial_frequency_tuning.abs', 'carry-056');
 % a stray field alone: carry-100, and no carry-056 at all
 v1 = convertedShape('temporal_frequency_tuning');
 v1.temporal_frequency_tuning.fitless.Q50 = 3;
@@ -157,7 +161,10 @@ end
 function f = fixtures()
 f = cell(0, 3);
 for c = classNames()
-    f(end + 1, :) = {[c{1} ', writer shape'], writerShape(c{1}), true}; %#ok<AGROW>
+    % only contrast's writer shape still carries (until did-schema declares
+    % its fit metrics, [contrast metrics added])
+    carried = strcmp(c{1}, 'contrast_tuning') && ~contrastMetricsDeclared();
+    f(end + 1, :) = {[c{1} ', writer shape'], writerShape(c{1}), carried}; %#ok<AGROW>
     f(end + 1, :) = {[c{1} ', converted shape'], convertedShape(c{1}), false}; %#ok<AGROW>
 end
 end
@@ -217,6 +224,11 @@ end
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+end
+
+function tf = contrastMetricsDeclared()
+tf = did2.unittest.helpers.schemaDeclares('tuning_curve', ...
+    {'value', 'model_fit', 'metrics', 'relative_max_gain'});
 end
 
 function verifyCarriedUnder(testCase, v1, path, row)

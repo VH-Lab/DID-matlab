@@ -43,7 +43,7 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %                 stimulus_presentation_number (did2.convert.tuningStimids).
 
 [v1, leaf, ins, spec, absLeaf] = calcParts(bodies, leafClass, v1Class, methodName, ...
-    'Tuning', true);
+    'Tuning', true, 'Table', ~strcmp(family, 'csf'));
 if isempty(leaf)
     return;
 end
