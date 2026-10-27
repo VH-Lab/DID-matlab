@@ -29,14 +29,14 @@ function tests = testRawV1RoundTripBath
 %   source: the manipulation (the v1 id; value kind formulation; entity the
 %   stimulator's subject), its session anchor, the formulation and one chemical
 %   per row, and a site observation for an anatomical location. The round trip
-%   is of THAT output. KNOWN FINDINGS, listed exactly (each is a question in the
-%   phase report; today's behaviour is kept):
-%     depends_on(1).value     the stimulator: the coarse pass keeps no edge to
-%                             it (NDI's stimulusBathToBath writes it as the
-%                             instrument_id)
-%     epochid.epochid         the coarse pass anchors to the session and keeps
-%                             the epoch nowhere (NDI's assembler hands it to
-%                             epochAnchorFold)
+%   is of THAT output. Since [one bath shape] (Jess Haley, 2026-10-27) the
+%   stimulator is the manipulation's instrument_id (depends_on(1).value comes
+%   back), and the epoch is handed on to did2.convert.epochMint, which re-points
+%   the anchor at the epoch entity (testTheEpochAnchoredBathRoundTrips: nothing
+%   lost but the ACSF rows below). KNOWN FINDINGS of the bath pass's own output,
+%   listed exactly:
+%     epochid.epochid         the anchor is still on the session until epochMint
+%                             re-points it
 %     stimulus_bath.mixture_table, for a table with a pH or osm row (the ACSF):
 %                             those rows go on the formulation's `ph` /
 %                             `osmolarity`, which keep no ontology node
@@ -50,7 +50,7 @@ end
 
 function testWriterBathsRoundTrip(testCase)
 % {label, the bath, carried?, known lost paths}
-coarse = {'depends_on(1).value', 'epochid.epochid'};
+coarse = {'epochid.epochid'};   % until epochMint re-points the anchor
 cases = { ...
     'Dab one drug', dabBath(oneDrug()), false, coarse; ...
     'Dab two drugs (a name with commas)', dabBath(twoDrugs()), false, coarse; ...
@@ -70,6 +70,47 @@ for k = 1:size(cases, 1)
     verifyEmpty(testCase, r.invented, sprintf('%s: invented: %s', label, strjoin(r.invented, ', ')));
     verifyEmpty(testCase, r.unplaced, sprintf('%s: unplaced: %s', label, strjoin(r.unplaced, '; ')));
 end
+end
+
+function testTheEpochAnchoredBathRoundTrips(testCase)
+% [one bath shape] (Jess Haley, 2026-10-27): once did2.convert.epochMint holds
+% the bath's epoch, the anchor names it and the bath round trips with its
+% stimulator AND its epoch
+for c = {{'Dab one drug', dabBath(oneDrug()), {}}, ...
+        {'Dab ACSF', dabBath(acsf()), {'stimulus_bath.mixture_table'}}, ...
+        {'Marder anatomical location', marderBath(), {}}}
+    [label, v1, known] = c{1}{:};
+    [mine, out] = bathOutputs(v1);
+    ids = cellfun(@(d) char(d.get('base.id')), mine, 'UniformOutput', false);
+    e = epochEntity(v1);
+    out.migrated{end+1} = did2.document(e);
+    out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+    verifyEqual(testCase, out.epoch_mint.bath_anchors_repointed, 1, label);
+    docs = {};
+    for k = 1:numel(out.migrated)
+        if any(strcmp(char(out.migrated{k}.get('base.id')), [ids, {e.base.id}]))
+            docs{end+1} = out.migrated{k}; %#ok<AGROW>
+        end
+    end
+    r = did2.convert.roundtrip.check(v1, docs);
+    verifyFalse(testCase, r.carried, label);
+    verifyEqual(testCase, sort(lostPaths(r)), sort(known), ...
+        sprintf('%s: lost %s', label, describeLost(r)));
+    verifyTrue(testCase, any(strcmp(r.matched, 'epochid.epochid')), [label ': the epoch']);
+    verifyTrue(testCase, any(strcmp(r.matched, 'depends_on(1).value')), [label ': the stimulator']);
+    verifyEmpty(testCase, r.invented, label);
+    verifyEmpty(testCase, r.unplaced, sprintf('%s: unplaced: %s', label, strjoin(r.unplaced, '; ')));
+end
+end
+
+function e = epochEntity(v1)
+% the epoch epochMint holds for (session, the bath's epoch string)
+epochType = did2.convert.registeredTerm( ...
+    did2.build.vocabulary('entity_type', 'epoch'), 'recording epoch');
+e = did2.build.document('entity', ...
+    struct('type', epochType, 'local_identifier', v1.epochid.epochid), ...
+    'Id', 'aabb1122ccdd3344_e000000000000ba1', 'SessionId', v1.base.session_id, ...
+    'CreationTimestamp', v1.base.datestamp, 'Validate', false);
 end
 
 function testEveryWriterFieldIsAccountedFor(testCase)
@@ -211,7 +252,7 @@ v1.base.datestamp = '2025-01-01T00:00:00.000Z';
 v1.stimulus_bath.location.name = 'water bath';
 r = did2.convert.roundtrip.check(v1, mine);
 verifyFalse(testCase, r.ok);
-verifyEqual(testCase, sort(lostPaths(r)), sort({'base.datestamp', 'depends_on(1).value', ...
+verifyEqual(testCase, sort(lostPaths(r)), sort({'base.datestamp', ...
     'epochid.epochid', 'stimulus_bath.location.name'}));
 end
 
