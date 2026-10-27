@@ -34,8 +34,9 @@ function [result, report] = foldGenericFiles(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set --
 %   the grammar is in the parser's docstring.
 %
-%   BATCH-PASS-CONSUMES: generic_file, ontologyLabel, ontology_label, file_reference
+%   BATCH-PASS-CONSUMES: generic_file, ontologyLabel, ontology_label, fileReference, file_reference
 %   BATCH-PASS-EMITS: generic_file -> document: observation+term, opaque_body
+%   BATCH-PASS-EMITS: fileReference -> document: opaque_body
 %   BATCH-PASS-EMITS: file_reference -> document: opaque_body
 %   BATCH-PASS-EMITS: ontologyLabel -> nothing: the v1 spelling, which pass 1
 %       hands over now that ontologyLabel reads raw v1 (did2.convert.rawV1Classes).
@@ -714,7 +715,7 @@ idIdx = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
     if ~isempty(docIds{k}); idIdx(docIds{k}) = k; end
 end
-isRecord = strcmp(classes, 'file_reference');
+isRecord = cellfun(@did2.convert.isFileReferenceClass, classes);   % both spellings
 report.store_records_seen = sum(isRecord);
 
 % --- POINT 1: mint the session time references the migrators marked --------
@@ -812,7 +813,7 @@ for c = 1:numel(strip)
         % a key carrier only: nothing to fold, its transient axes go
     elseif ~isKey(idIdx, target)
         report.store_refused_not_in_batch = report.store_refused_not_in_batch + 1;
-    elseif ~strcmp(classes{idIdx(target)}, 'file_reference')
+    elseif ~did2.convert.isFileReferenceClass(classes{idIdx(target)})
         report.store_refused_not_a_file_reference = ...
             report.store_refused_not_a_file_reference + 1;
     elseif named(target) > 1

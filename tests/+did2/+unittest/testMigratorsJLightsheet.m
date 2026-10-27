@@ -146,7 +146,8 @@ verifyEqual(testCase, rep.store_checksums_to_description, 1);
 verifyEqual(testCase, rep.store_sizes_unrecorded, 1, ...
     'makeSourceFile writes file_size 0 for a directory store');
 
-verifyEqual(testCase, numel(pickByClass(out, 'file_reference')), 0, ...
+verifyEqual(testCase, numel(pickByClass(out, 'file_reference')) ...
+    + numel(pickByClass(out, 'fileReference')), 0, ...
     'the fileReference became the body; it must not also pass through');
 bodies = pickByClass(out, 'opaque_body');
 verifyEqual(testCase, numel(bodies), 1);
@@ -236,7 +237,8 @@ verifyEqual(testCase, rep.stores_folded, 1);
 verifyEqual(testCase, rep.stores_folded_tiff_folder, 1);
 verifyEqual(testCase, rep.stores_folded_ome_zarr, 0);
 verifyEqual(testCase, rep.store_checksums_to_description, 0);
-verifyEqual(testCase, numel(pickByClass(out, 'file_reference')), 0);
+verifyEqual(testCase, numel(pickByClass(out, 'file_reference')) ...
+    + numel(pickByClass(out, 'fileReference')), 0);
 bodies = pickByClass(out, 'opaque_body');
 verifyEqual(testCase, numel(bodies), 1);
 b = bodies{1};
@@ -558,7 +560,9 @@ verifyEqual(testCase, rep.store_records_seen, 1);
 verifyEqual(testCase, rep.store_carriers_seen, 0);
 verifyEqual(testCase, rep.stores_folded, 0);
 verifyEqual(testCase, rep.store_records_left_passthrough, 1);
-verifyEqual(testCase, numel(pickByClass(out, 'file_reference')), 1);
+% the raw passthrough keeps v1's class name (did2.convert.rawV1Classes)
+verifyEqual(testCase, numel(pickByClass(out, 'fileReference')), 1);
+verifyEqual(testCase, numel(pickByClass(out, 'file_reference')), 0);
 verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0);
 end
 

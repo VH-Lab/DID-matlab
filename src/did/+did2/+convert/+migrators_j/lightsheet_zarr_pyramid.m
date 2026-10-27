@@ -164,6 +164,40 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %     and the variable 'summary statistic' stay names with no node (term
 %     worksheet).
 %
+%   ---------------------------------------------------------------------
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess
+%   Haley, 2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md)
+%   ---------------------------------------------------------------------
+%   v1_to_v2 hands this migrator the document exactly as v1 wrote it
+%   (`lightsheetZarrPyramid`, data/lightsheetZarrPyramid.json at the locked
+%   NDI-matlab `main` 3cb19a8, as makePyramid.m writes it). The block is read
+%   in either spelling (`lightsheetZarrPyramid`, else the renamed
+%   `lightsheet_zarr_pyramid`); its fields are snake_case in both, so the
+%   conversion is unchanged. Every v1 field and where it goes
+%   (did2.convert.roundtrip.lightsheetZarrPyramid rebuilds the v1 document;
+%   testRawV1RoundTripLightsheet compares the two):
+%     base.id, session_id, datestamp   the observation's id and stamps
+%     depends_on subject_id            entity_id
+%     depends_on element_id            instrument_id
+%     depends_on source_file_id        the transient join (above)
+%     label                            notes
+%     pyramid_name, pyramid_type       the notes tail (the store body's
+%                                      description after the batch pass)
+%     axes_order, shape_level0,        the full-resolution dimensions and
+%     voxel_size_level0, translation_  covariates (jLightsheetAxes)
+%     level0, axes_units,
+%     voxel_size_units, channel_names
+%     n_channels                       restated by the `c` dimension's size
+%     dtype                            value.data_type / source_data_type
+%     pipeline_version                 the version assertion
+%     byte_order                       not on the pyramid's documents: the
+%                                      levels' sampled_bodies carry it
+%   What the renamed path would have discarded is carried, carry-049; a field,
+%   block or edge outside the template carries the document whole as v1
+%   (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], carry-100). Every carry returns the untouched v1 source.
+%
 %   STATUS: NEVER RUN LOCALLY. There is no MATLAB in the authoring container;
 %   tests/+did2/+unittest/testMigratorsJLightsheet.m is the evidence, in CI.
 
@@ -171,7 +205,24 @@ arguments
     preBody (1,1) struct
 end
 
-blk = block(preBody, 'lightsheet_zarr_pyramid');
+% THE RAW READ (see READS RAW v1 above). SRC is the untouched source: every
+% carry returns it.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'lightsheetZarrPyramid', {{'label', 'pyramid_name', 'pyramid_type', ...
+        'axes_order', 'axes_units', 'channel_names', 'n_channels', ...
+        'shape_level0', 'voxel_size_level0', 'voxel_size_units', ...
+        'translation_level0', 'dtype', 'pipeline_version', 'byte_order'}}), ...
+    {'^subject_id$', '^element_id$', '^source_file_id$'});
+if jRawCarry('lightsheet_zarr_pyramid', src, collision, unplaced, 'carry-100')
+    bodies = {src};
+    return;
+end
+
+blk = block(preBody, 'lightsheetZarrPyramid');
+if isempty(fieldnames(blk))
+    blk = block(preBody, 'lightsheet_zarr_pyramid');   % the renamed spelling
+end
 [obsId, sessionId, created] = baseOf(preBody);
 
 subjectId = depValue(preBody, 'subject_id');
@@ -198,7 +249,7 @@ if isempty(sourceId) && isempty(rawDtype)
     % carry-register: carry-019
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_pyramid', obsId, ...
         '[carry-019] unplaced: lightsheet_zarr_pyramid (no source file and no dtype, so the store body''s format is unknown)');
-    bodies = {preBody};
+    bodies = {src};   % the untouched source
     return;
 end
 
