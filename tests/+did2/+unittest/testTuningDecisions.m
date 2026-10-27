@@ -56,7 +56,8 @@ end
 v1 = convertedTuningCurve();
 out = runRaw({v1});
 leaf = firstOfClass(out, 'tuning_curve_calculation');
-verifyNotEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');
+t = leaf.interaction.method.term;
+verifyFalse(testCase, isfield(t, 'node') && strcmp(char(t.node), 'OBI:0200072'));
 end
 
 function testNakaRushtonFitsAreOneModelToldApartByConstraints(testCase)
@@ -129,7 +130,13 @@ od.oridirtuning_calc.depends_on.value = tc.base.id;
 od = jsondecode(jsonencode(od));
 out = runRaw({od, tc});
 verifyEmpty(testCase, out.quarantine);
-r = did2.convert.roundtrip.check(od, outputsExcept(out, {tc.base.id}));
+verifyNotEmpty(testCase, firstOfClass(out, 'orientation_direction_tuning_calculation'), ...
+    'converted with its input''s class known');
+% the round trip of the oridir fit alone, with the tuning curve's class in the
+% batch index (as after the run above)
+own = runRaw({od});
+did2.convert.tuningBatchIndex('load', {tc});
+r = did2.convert.roundtrip.check(od, own.migrated);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'oridir with its tuning curve', {});
 end
 
@@ -166,7 +173,12 @@ function testTuningStimidsRebuildFromThePresentation(testCase)
 out = runRaw({tc, resp, pres});
 verifyEmpty(testCase, out.quarantine);
 mine = outputsOf(out, tc.base.id);
-verifyGreaterThan(testCase, numel(mine), 1, 'the writer''s tuning curve converts');
+notes = '';
+if isfield(out.summary.migration_notes, 'carried_as_v1')
+    notes = strjoin(out.summary.migration_notes.carried_as_v1.distinct_details, ' || ');
+end
+assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2', ...
+    ['the writer''s tuning curve converts; carried: ' notes]);
 n = out.summary.migration_notes.tuning_stimid_rebuild;
 verifyEqual(testCase, n.count, 1, 'one note per curve: the denominator');
 verifyEqual(testCase, n.distinct_details, {'rebuilt exactly'});
@@ -197,11 +209,11 @@ function testTuningStimidsRebuildFunction(testCase)
 [~, resp, pres] = tuningCurveBatch();
 did2.convert.tuningBatchIndex('reset');
 did2.convert.tuningBatchIndex('load', {resp, pres});
-[stimid, spn, why] = did2.convert.tuningStimids((0:0.2:1)', {'contrast'}, {}, [], resp.base.id);
+[stimid, spn, why] = did2.convert.tuningStimids([0; 0.2; 0.4; 0.6; 0.8; 1], {'contrast'}, {}, [], resp.base.id);
 verifyEmpty(testCase, why);
 verifyEqual(testCase, stimid, (1:6)');
 verifyEqual(testCase, spn, reshape(1:30, 6, 5)');
-[~, ~, why] = did2.convert.tuningStimids((0:0.2:1)', {'contrast'}, {}, [], 'no_such_response');
+[~, ~, why] = did2.convert.tuningStimids([0; 0.2; 0.4; 0.6; 0.8; 1], {'contrast'}, {}, [], 'no_such_response');
 verifyNotEmpty(testCase, why);
 end
 
@@ -423,7 +435,11 @@ verifyTrue(testCase, any(cellfun(@(b) strcmp(b.document_class.schema_version, 'd
     'the tuning curve converted');
 rep = did2.validate.references(out.migrated);
 verifyGreaterThan(testCase, rep.edges_examined, 0);
-verifyEqual(testCase, rep.orphan_count, 0);
+% (the fixtures' other edges name documents outside this batch: orphans here)
+toCurve = arrayfun(@(o) strcmp(o.edge_document_id, tc.base.id), rep.orphans);
+verifyFalse(testCase, any(toCurve), 'the carried fit''s edge to the converted curve resolves');
+verifyTrue(testCase, any(strcmp(edges(odOut{1}, 'stimulus_tuningcurve_id'), tc.base.id)), ...
+    'the carried fit keeps its edge');
 end
 
 % ===================== fixtures ===========================================
@@ -472,7 +488,7 @@ end
 resp = response(respId, 't00001', 't00001', 30);
 pres = did2.unittest.helpers.ndiDocument('stimulus_presentation', ...
     'Id', '412696f9abe1aaaa_40c2e3dda9140001', 'SessionId', tc.base.session_id);
-c = 0:0.2:1;
+c = [0 0.2 0.4 0.6 0.8 1];   % the writer's values exactly (0:0.2:1 gives 0.6000000000000001)
 st = struct('parameters', cell(1, numel(c)));
 for k = 1:numel(c)
     st(k).parameters = struct('contrast', c(k), 'sFrequency', 0.5);

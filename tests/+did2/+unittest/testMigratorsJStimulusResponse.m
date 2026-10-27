@@ -501,6 +501,7 @@ function testWithNoEpochStringTheAnchorIsStillTheDuringSessionReference(testCase
 % assertion rather than an edit to the other one.
 v1 = responseFixture('F1');
 v1.stimulus_response.element_epochid = '';
+v1.stimulus_response.stimulator_epochid = '';   % the same: rebuilt (2026-10-27)
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3);   % + the software entity (#88)
