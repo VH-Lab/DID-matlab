@@ -106,7 +106,7 @@ spec.unplaced = [spec.unplaced, leafUnplaced];
 for c = 2:numel(calcs)
     for e = {'software_id', 'operating_system_id', 'interpreter_id', 'time_reference_id', 'input_id'}
         if ~isequal(edgeIds(calcs(c).body, e{1}), edgeIds(leaf, e{1}))
-            spec.unplaced{end+1} = sprintf('calculation %d names another %s', c, e{1}); %#ok<AGROW>
+            spec.unplaced{end+1} = sprintf('calculation %d names another %s', c, e{1});
         end
     end
 end
@@ -135,7 +135,7 @@ for c = 1:numel(calcs)
             ne.waveform_sample_times = t;
         otherwise
             spec.unplaced{end+1} = sprintf('calculation "%s" (%s) has no v1 field', ...
-                calcs(c).variable, calcs(c).kind); %#ok<AGROW>
+                calcs(c).variable, calcs(c).kind);
     end
 end
 % the unit's name restates its cluster index

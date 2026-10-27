@@ -128,7 +128,7 @@ if ~isempty(planes)
     for k = 2:numel(planes)
         [e2, c2] = planeAxes(planes{k});
         if ~isequal(e2, ext) || ~isequal(c2, coords)
-            spec.unplaced{end+1} = sprintf('plane %d describes another volume', k); %#ok<AGROW>
+            spec.unplaced{end+1} = sprintf('plane %d describes another volume', k);
         end
     end
     if numel(coords) == 3

@@ -30,7 +30,7 @@ if ~isstruct(value)
 end
 covs = getIn(leaf, 'data', 'covariates');
 if iscell(covs); covs = [covs{:}]; end
-if numel(covs) == 1
+if isscalar(covs)
     [~, label] = termParts(covs.variable);
     blk.independent_variable_label = {lower(strrep(strtrim(label), ' ', '_'))};
     blk.independent_variable_value = column(getIn(covs, 'quantity', 'value'));

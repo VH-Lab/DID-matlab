@@ -56,7 +56,7 @@ v1.element_epoch = struct('epoch_clock', strjoin(names, ','), 't0_t1', t0t1);
 v1.oneepoch = struct('epoch_ids', getIn(d, 'oneepoch', 'epoch_ids'));
 fns = setdiff(fieldnames(getIn(d, 'oneepoch')), {'clocks', 'epoch_ids'});
 for k = 1:numel(fns)
-    spec.unplaced{end+1} = sprintf('oneepoch.%s has no v1 place', fns{k}); %#ok<AGROW>
+    spec.unplaced{end+1} = sprintf('oneepoch.%s has no v1 place', fns{k});
 end
 end
 

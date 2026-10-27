@@ -343,7 +343,7 @@ if isfield(ms, field)
 else
     ms.(field) = t;
 end
-if numel(ms.(field)) == 1 && ~any(strcmp(field, {'Keyword', 'SupportChannel'}))
+if isscalar(ms.(field)) && ~any(strcmp(field, {'Keyword', 'SupportChannel'}))
     ms.(field) = ms.(field){1};
 end
 end

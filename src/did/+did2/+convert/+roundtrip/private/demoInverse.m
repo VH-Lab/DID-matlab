@@ -32,7 +32,7 @@ fns = setdiff(fieldnames(v1), {'document_class', 'base', 'depends_on', 'files', 
     'demoNDI', 'demoNDIMock', 'mock'});
 for k = 1:numel(fns)
     if ~allEmpty(v1.(fns{k}))
-        spec.unplaced{end+1} = sprintf('the demo document carries a %s block', fns{k}); %#ok<AGROW>
+        spec.unplaced{end+1} = sprintf('the demo document carries a %s block', fns{k});
     end
 end
 end

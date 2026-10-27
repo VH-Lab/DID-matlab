@@ -74,7 +74,7 @@ ends = {'input_id', 'epochnode_a'; 'output_id', 'epochnode_b'};
 for e = 1:size(ends, 1)
     [node, used, why] = endpoint(bodies, used, firstId(ca, ends{e, 1}), base.session_id);
     if ~isempty(why)
-        spec.unplaced{end+1} = sprintf('%s: %s', ends{e, 2}, why); %#ok<AGROW>
+        spec.unplaced{end+1} = sprintf('%s: %s', ends{e, 2}, why);
     end
     blk.(ends{e, 2}) = node;
 end
