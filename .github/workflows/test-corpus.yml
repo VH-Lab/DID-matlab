@@ -623,8 +623,20 @@ jobs:
                 --from corpus-proven/v_eta_corpus_proven.json \
                 --run "${{ github.run_id }}" --sha "${{ github.sha }}"
             mkdir -p corpus-proven/snapshot
-            cp did-schema/schemas/V_eta_corpus_proof.json \
-               did-schema/schemas/V_eta_corpus_proof.md corpus-proven/snapshot/ || true
+            # did-schema renames V_eta_corpus_proof.* to did_v2_corpus_proof.*
+            # and moves the .md to docs/generated/ ([markdown cleanup and
+            # rename], Jess Haley, 2026-10-26): the first name present is
+            # copied, the new one first, so either did-schema reads.
+            for f in did-schema/schemas/did_v2_corpus_proof.json \
+                     did-schema/schemas/V_eta_corpus_proof.json; do
+              if [ -f "$f" ]; then cp "$f" corpus-proven/snapshot/; break; fi
+            done
+            for f in did-schema/docs/generated/did_v2_corpus_proof.md \
+                     did-schema/schemas/did_v2_corpus_proof.md \
+                     did-schema/schemas/V_eta_corpus_proof.md; do
+              if [ -f "$f" ]; then cp "$f" corpus-proven/snapshot/; break; fi
+            done
+            ls corpus-proven/snapshot/ || true
           else
             echo "no v_eta_corpus_proven.json -- the rung step produced none;"
             echo "NOT writing a snapshot, so the last real one is preserved."
