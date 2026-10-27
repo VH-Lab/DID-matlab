@@ -102,7 +102,10 @@ function v2Body = session(preBody)
 %                            item 4: "nothing in v1 refers to a session document
 %                            by its base.id"). The round trip reports it lost:
 %                            a known finding, a question for the team.
-%     base.name           -> not kept ('' on every writer document)
+%     base.name           -> entity.name when not empty ('' on every writer
+%                            document writes nothing; jBaseName; Decided by
+%                            Jess Haley, 2026-10-27 [v1 name is the entity
+%                            name])
 %     session.reference   -> entity.local_identifier
 %     session.local_identifier, .type, .date, .purpose
 %                         -> read as before: the first is the reference's other
@@ -150,5 +153,6 @@ if isfield(preBody, 'session') && isstruct(preBody.session) && isscalar(preBody.
 end
 % The value is carried, never invented: an empty reference leaves
 % local_identifier out, and validation quarantines the session (it is required).
-v2Body = jEntity(preBody, 'session', struct('local_identifier', li), 'Id', id);
+v2Body = jEntity(preBody, 'session', ...
+    struct('local_identifier', li, 'name', jBaseName(preBody)), 'Id', id);
 end

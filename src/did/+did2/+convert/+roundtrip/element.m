@@ -8,6 +8,9 @@ function [v1, spec] = element(bodies)
 %   3cb19a8, as ndi.element/newdocument writes it):
 %
 %     base.id, session_id, datestamp   the entity (rebuildBase)
+%     base.name                        entity.name ('' when the entity has
+%                                      none; [v1 name is the entity name],
+%                                      Jess Haley, 2026-10-27)
 %     element.name, element.reference  entity.local_identifier, read back by
 %                                      did2.convert.elementNameReference
 %                                      ('<name> | <reference>'; the name alone
@@ -117,7 +120,7 @@ if ~isempty(sortingRun)
 end
 v1.depends_on = struct('name', names, 'value', values);
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
-    'datestamp', base.datestamp);
+    'name', fieldText(entity, 'name'), 'datestamp', base.datestamp);
 blk = struct('ndi_element_class', ndiClass, 'name', name, 'type', type);
 blk.reference = reference;
 if ~isempty(direct)

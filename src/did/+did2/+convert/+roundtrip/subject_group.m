@@ -9,10 +9,13 @@ function [v1, spec] = subject_group(bodies)
 %   members as +babu/import writes them, add_dependency_value_n):
 %
 %     base.id, base.session_id, base.datestamp   from the group entity
-%     base.name                    the group's name; '' is equally possible
+%     base.name                    entity.name ('' when the entity has none)
 %     depends_on                   {name 'subject_id_<n>', value <member id>},
 %                                  n = 1..N in the order the relations were
-%                                  emitted (the order of the v1 entries)
+%                                  emitted (the order of the v1 entries). A v1
+%                                  member edge spelled `subject_id`, with no
+%                                  number, is the same edge as `subject_id_1`
+%                                  (SPEC.same)
 %     subject_group.group_name     entity.local_identifier
 %     subject_group.description    entity.description ('' when left out)
 %
@@ -22,10 +25,18 @@ function [v1, spec] = subject_group(bodies)
 %   `group_name` / `description` are the shape the migrator reads when a body
 %   carries them.
 %
-%   SPEC.equivalents: `base.name` can only have been the group's name or ''
-%   (the template default; +babu/import leaves it). SPEC.unplaced lists any
-%   emitted document that is neither the group entity nor a member_of relation
-%   whose parent is the group.
+%   base.name: Decided by Jess Haley, 2026-10-27 [v1 name is the entity name]
+%   (did-schema V_eta_go_forward_class_audit.md): the migrator writes a
+%   non-empty v1 base.name to entity.name, so it is rebuilt from there and
+%   needs no equivalence.
+%
+%   SPEC.same: Decided by Jess Haley, 2026-10-27 [member edge number is
+%   notation]: a member edge spelled `subject_id` and one spelled
+%   `subject_id_1` are the same edge ([spelling is notation]); each
+%   depends_on(k).name is compared with the number written or left off.
+%
+%   SPEC.unplaced lists any emitted document that is neither the group entity
+%   nor a member_of relation whose parent is the group.
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.subject_group.
 
@@ -33,8 +44,7 @@ arguments
     bodies cell
 end
 
-spec = struct('equivalents', struct('path', {}, 'values', {}, 'why', {}), ...
-    'unplaced', {{}});
+spec = emptySpec();
 v1 = struct();
 grp = [];
 rels = {};
@@ -77,14 +87,31 @@ v1.document_class = struct('class_name', 'subject_group');
 v1.depends_on = struct('name', {}, 'value', {});
 for k = 1:numel(members)
     v1.depends_on(k) = struct('name', sprintf('subject_id_%d', k), 'value', members{k});
+    spec.same(end+1) = struct('path', sprintf('depends_on(%d).name', k), ...
+        'fn', @sameMemberEdge, ...
+        'why', '[member edge number is notation] (Jess Haley, 2026-10-27)');
 end
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
-    'name', name, 'datestamp', base.datestamp);
+    'name', fieldText(entity, 'name'), 'datestamp', base.datestamp);
 v1.subject_group = struct('group_name', name, ...
     'description', fieldText(entity, 'description'));
-spec.equivalents(end+1) = struct('path', 'base.name', 'values', {{name, ''}}, ...
-    'why', ['the group''s name ([lossless means round trip]: a restatement) ' ...
-    'or the template default '''' ([writer default is not set])']);
+end
+
+function tf = sameMemberEdge(a, b)
+%SAMEMEMBEREDGE True when two member edge names are the same edge: `subject_id`
+%   and `subject_id_1` ([member edge number is notation]); otherwise only an
+%   identical name.
+tf = false;
+if ~(ischar(a) || (isstring(a) && isscalar(a))) || ~(ischar(b) || (isstring(b) && isscalar(b)))
+    return;
+end
+tf = strcmp(memberEdgeName(char(a)), memberEdgeName(char(b)));
+end
+
+function n = memberEdgeName(n)
+if strcmp(n, 'subject_id')
+    n = 'subject_id_1';
+end
 end
 
 function id = edgeOf(body, name)

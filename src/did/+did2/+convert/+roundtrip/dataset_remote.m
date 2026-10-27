@@ -13,7 +13,10 @@ function [v1, spec] = dataset_remote(bodies)
 %                                    it lost)
 %     base.session_id                the dataset entity's id
 %     base.datestamp                 its creation_timestamp
-%     base.name                      '' (the writer sets none)
+%     base.name                      the dataset entity's name ('' when it
+%                                    has none; the writer sets none) ([v1
+%                                    name is the entity name], Jess Haley,
+%                                    2026-10-27)
 %     dataset_remote.dataset_id      the dataset's `ndicloud:` global identifier
 %     dataset_remote.organization_id the organization entity's name
 %
@@ -50,7 +53,7 @@ if isempty(ds)
     return;
 end
 [base, entity] = rebuildBase(ds);
-spec.unplaced = [spec.unplaced, others(entity, {'type', 'global_identifier'}, 'dataset entity')];
+spec.unplaced = [spec.unplaced, others(entity, {'type', 'global_identifier', 'name'}, 'dataset entity')];
 cloudId = '';
 gids = asCell(getIn(ds, 'entity', 'global_identifier'));
 for k = 1:numel(gids)
@@ -80,6 +83,7 @@ if ~isempty(org) || ~isempty(rel)
     end
 end
 v1.document_class = struct('class_name', 'dataset_remote');
-v1.base = struct('session_id', base.id, 'name', '', 'datestamp', base.datestamp);
+v1.base = struct('session_id', base.id, 'name', fieldText(entity, 'name'), ...
+    'datestamp', base.datestamp);
 v1.dataset_remote = struct('dataset_id', cloudId, 'organization_id', orgName);
 end
