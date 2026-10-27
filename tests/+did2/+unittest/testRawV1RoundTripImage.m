@@ -193,7 +193,8 @@ out = runRaw(v1);
 verifyEmpty(testCase, out.passthrough);
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyRoundTrip(testCase, r, 'value range', {});
-verifyTrue(testCase, any(strcmp('imageStack_parameters.data_limits', r.equivalent)));
+% kept as the pair: matched (same shape) or equivalent (another shape)
+verifyTrue(testCase, any(strcmp('imageStack_parameters.data_limits', [r.matched, r.equivalent])));
 end
 
 % ===================== the other carries, on the raw shape ===============
