@@ -178,16 +178,16 @@ function bodies = ontology_label(preBody)
 %
 %   See V_eta_migrator_vocabulary_audit.md for the evidence.
 %
-%   READY TO READ RAW v1, NOT SWITCHED (2026-10-27). [migrators read raw v1]
-%   (Jess Haley, 2026-10-26): the guard reads the block in either spelling, so
-%   a raw v1 `ontologyLabel` (block `ontologyLabel`, field `ontologyNode`,
-%   edge in v1's `value` key) is handed back untouched, as a switched class's
-%   passthrough must be; did2.convert.roundtrip.ontologyLabel is its inverse
-%   (testRawV1RoundTripImage runs it through the 'RawV1Classes' option). It is
-%   NOT in did2.convert.rawV1Classes: the passthrough is for NDI's second pass,
-%   which finds labels by the renamed class name `ontology_label`
-%   (NDI-matlab +migrate/+internal/ontologyLabelSubjects.m, +migrate/local.m),
-%   as does did2.convert.foldGenericFiles. Those read the v1 spelling first.
+%   READS RAW v1 (switched 2026-10-27). [migrators read raw v1] (Jess Haley,
+%   2026-10-26): `ontologyLabel` is listed by did2.convert.rawV1Classes, so a
+%   label reaches this migrator as v1 wrote it (block `ontologyLabel`, field
+%   `ontologyNode`, edge in v1's `value` key) and is handed back untouched, as
+%   a switched class's passthrough must be; did2.convert.roundtrip.ontologyLabel
+%   is its inverse (testRawV1RoundTripImage). The guard reads the block in
+%   either spelling, so the renamed path ('RawV1Classes', {}) still works. The
+%   readers that find labels by class name accept both spellings:
+%   did2.convert.isOntologyLabelClass (did2.convert.foldGenericFiles) and
+%   NDI-matlab's ndi.migrate.internal.isOntologyLabelClass (#1076).
 
 arguments
     preBody (1,1) struct

@@ -251,6 +251,18 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         fixes its shape) is snake_case and read as before.
 %                         Written by +ndi/+calc/+example/simple.m (demoNDIMock).
 %                         Round trips: testRawV1RoundTripDemo.
+%     ontologyLabel       superclass `base` only, no `app` block, no superclass
+%                         migrator. Pass 1 hands it to NDI's second pass
+%                         unchanged (or carries it, carry-064, with a carried
+%                         stack); the raw passthrough keeps the v1 class name,
+%                         block `ontologyLabel` and field `ontologyNode`. Every
+%                         reader of a label by its class name accepts both
+%                         spellings first (siblings first, did-schema
+%                         CLAUDE.md): did2.convert.isOntologyLabelClass
+%                         (did2.convert.foldGenericFiles) and NDI-matlab's
+%                         ndi.migrate.internal.isOntologyLabelClass (#1076).
+%                         Written by +setup/+conv/+haley/doImport.m and
+%                         +babu/import.m. Round trips: testRawV1RoundTripImage.
 %     NOT LISTED, and why:
 %       control_stimulus_ids  its migrator passes it through (no note, so its
 %                         responses do not carry), and NDI's second pass reads
@@ -296,14 +308,6 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         that names it ([dependents of a carried document
 %                         carry]): a question for the team. They stay on the
 %                         renamed path.
-%       ontologyLabel     ready (its migrator reads either spelling; inverse
-%                         did2.convert.roundtrip.ontologyLabel), but NDI's
-%                         second pass finds labels by the RENAMED class name
-%                         (NDI-matlab +migrate/+internal/ontologyLabelSubjects.m
-%                         and +migrate/local.m compare 'ontology_label'), and
-%                         so does did2.convert.foldGenericFiles: a raw label
-%                         would reach neither. Siblings first (did-schema
-%                         CLAUDE.md, a name that code compares).
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
@@ -366,6 +370,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'dataset_remote', ...
     'metadata_editor', ...
     'stimulus_presentation', ...
+    'ontologyLabel', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above

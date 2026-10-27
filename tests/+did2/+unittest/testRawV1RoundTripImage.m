@@ -1,7 +1,6 @@
 function tests = testRawV1RoundTripImage
 %TESTRAWV1ROUNDTRIPIMAGE The imaging family read as raw v1, and its round trip:
-%   imageStack (switched); ontologyLabel (ready, not switched); image (not
-%   switched).
+%   imageStack (switched); ontologyLabel (switched); image (not switched).
 %
 %   Decided by Jess Haley, 2026-10-26 (did-schema
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1] (switched one
@@ -77,18 +76,31 @@ end
 
 % ===================== the switch ======================================
 
-function testImageStackIsSwitchedAndImageAndLabelAreNot(testCase)
+function testImageStackAndLabelAreSwitchedAndImageIsNot(testCase)
 names = did2.convert.rawV1Classes();
 verifyTrue(testCase, any(strcmp(names, 'imageStack')));
 verifyEqual(testCase, did2.convert.rawV1Classes('imageStack'), 'image_stack');
+verifyTrue(testCase, any(strcmp(names, 'ontologyLabel')));
+verifyEqual(testCase, did2.convert.rawV1Classes('ontologyLabel'), 'ontology_label');
 % not switched: see did2.convert.rawV1Classes for why
 verifyFalse(testCase, any(strcmp(names, 'image')));
-verifyFalse(testCase, any(strcmp(names, 'ontologyLabel')));
-verifyEqual(testCase, did2.convert.rawV1Classes('ontologyLabel'), 'ontology_label');
 r = runRaw({babuStack('is_b1', 'video'), haleyLabel('lab_1', 'is_b1', 'EMPTY:0000257')});
 L = r.summary.legacy_ndi_document;
-verifyEqual(testCase, L.bodies_read_raw_v1, 1, 'the stack is read raw');
-verifyEqual(testCase, L.bodies_reaching_universal_renames, 1, 'the label is not');
+verifyEqual(testCase, L.bodies_read_raw_v1, 2, 'the stack and the label are read raw');
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 0);
+verifyEqual(testCase, L.bodies_unreached, 0);
+end
+
+function testTheLabelClassHelperAcceptsBothSpellings(testCase)
+f = @did2.convert.isOntologyLabelClass;
+verifyTrue(testCase, f('ontologyLabel'));
+verifyTrue(testCase, f('ontology_label'));
+verifyTrue(testCase, f("ontologyLabel"));
+verifyFalse(testCase, f('ontologylabel'));
+verifyFalse(testCase, f('imageStack'));
+verifyFalse(testCase, f(''));
+verifyFalse(testCase, f([]));
+verifyFalse(testCase, f({'ontologyLabel'}));
 end
 
 % ===================== Haley behaviour: carried, carry-052 ===============
@@ -365,33 +377,104 @@ verifyFalse(testCase, r.ok);
 verifyNotEmpty(testCase, r.unplaced);
 end
 
-% ===================== ontologyLabel: ready, not switched =================
+% ===================== ontologyLabel: switched ===========================
 
 function testLabelsFollowTheirStack(testCase)
 % the default path: a label on a carried stack is carried (carry-064); a label
-% on a stack that passes through is handed to NDI's second pass, renamed
+% on a stack that passes through is handed to NDI's second pass as v1 wrote it
+% (NDI finds it under either name, ndi.migrate.internal.isOntologyLabelClass)
 beh = haleyBehaviourStack('is_h1', 'video');
 eco = haleyEColiStack('is_e1', 'image');
-out = runRaw({beh, haleyLabel('lab_h1', 'is_h1', 'EMPTY:0000129'), ...
-    eco, haleyLabel('lab_e1', 'is_e1', 'EMPTY:0000133')});
+labH = haleyLabel('lab_h1', 'is_h1', 'EMPTY:0000129');
+labE = haleyLabel('lab_e1', 'is_e1', 'EMPTY:0000133');
+out = runRaw({beh, labH, eco, labE});
 verifyEmpty(testCase, out.quarantine);
 lh = docWithId(out, 'lab_h1');
 le = docWithId(out, 'lab_e1');
 verifyEqual(testCase, lh.document_class.schema_version, 'did_v1', 'a label on a carried stack is carried');
-verifyEqual(testCase, le.document_class.class_name, 'ontology_label', ...
-    'the label is not switched: NDI''s second pass finds it by the renamed name');
+verifyEqual(testCase, le.document_class.class_name, 'ontologyLabel', ...
+    'the label is switched: it keeps its v1 class name');
+verifyEqual(testCase, le.ontologyLabel, labE.ontologyLabel, 'the v1 block is untouched');
+verifyEqual(testCase, edgeMap(le).document_id, 'is_e1', 'the label''s only join');
 d = out.summary.migration_notes.carried_as_v1.distinct_details;
 verifyTrue(testCase, any(startsWith(d, '[carry-064] ')), strjoin(d, ' | '));
+verifyOneRecordPerSource(testCase, out, 'default path');
+end
+
+function testACarriedLabelHasOnePassthroughRecord(testCase)
+% THE DUPLICATE-RECORD CONCERN. A label is a pass-1 passthrough (its migrator
+% hands it back with no carry note), so the loop records it; a label on a
+% carried stack is then carried by carryDependents (carry-064), which recorded
+% it again, and NDI's carryUnchangedAsV1 counted the one document twice. One
+% record per source, on both paths, and the record is the carried v1 body.
+beh = haleyBehaviourStack('is_h3', 'video');
+lab = haleyLabel('lab_h3', 'is_h3', 'EMPTY:0000129');
+paths = {{}, {'RawV1Classes', {}}};
+pathName = {'raw', 'renamed'};
+for p = 1:numel(paths)
+    out = did2.convert.v1_to_v2({beh, lab}, 'Validate', false, ...
+        'TargetVersion', 'V_eta', paths{p}{:});
+    verifyEmpty(testCase, out.quarantine, pathName{p});
+    verifyEqual(testCase, numel(out.migrated), 2, pathName{p});
+    ids = {out.passthrough.id};
+    verifyEqual(testCase, sum(strcmp(ids, 'lab_h3')), 1, ...
+        [pathName{p} ': the carried label has more than one passthrough record']);
+    verifyEqual(testCase, numel(out.passthrough), 2, pathName{p});
+    rec = out.passthrough(strcmp(ids, 'lab_h3'));
+    verifyEqual(testCase, rec.body.document_class.schema_version, 'did_v1', ...
+        [pathName{p} ': the record is not the carried body']);
+    verifyEqual(testCase, rec.input_index, 2, pathName{p});
+    verifyEqual(testCase, out.summary.passthrough_count, 2, pathName{p});
+end
+end
+
+function testTheRenamedPathStillRenamesTheLabel(testCase)
+% 'RawV1Classes', {} runs the label as before the switch
+eco = haleyEColiStack('is_e2', 'image');
+out = runRenamed({eco, haleyLabel('lab_e2', 'is_e2', 'EMPTY:0000133')});
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, docWithId(out, 'lab_e2').document_class.class_name, 'ontology_label');
+end
+
+function testTheGenericFileFoldReadsARawLabel(testCase)
+% did2.convert.foldGenericFiles finds the sibling label under either class name
+% (did2.convert.isOntologyLabelClass) and reads its node from either block
+% spelling: the raw v1 label folds the file exactly as the renamed one did
+node = 'EDAM:data_1286';
+raw = haleyLabel('gf_lbl', 'gf_1', node);
+renamed = raw;
+renamed.document_class.class_name = 'ontology_label';
+renamed = rmfield(renamed, 'ontologyLabel');
+renamed.ontology_label = struct('ontology_node', node);
+for c = {{'raw', raw}, {'renamed', renamed}}
+    label = c{1}{1};
+    result = struct('migrated', {{did2.document(foldSubject('gf_subj')), ...
+        did2.document(foldGenericFile('gf_1', 'gf_subj')), did2.document(c{1}{2})}}, ...
+        'quarantine', struct('original_body', {}, 'class_name', {}, ...
+        'identifier', {}, 'reason', {}, 'failed_at', {}));
+    [result, rep] = did2.convert.foldGenericFiles(result, 'Validate', false, ...
+        'TargetVersion', 'V_eta');
+    verifyEqual(testCase, rep.ontology_labels_seen, 1, label);
+    verifyEqual(testCase, rep.labels_pointing_at_a_file, 1, label);
+    verifyEqual(testCase, rep.files_folded, 1, label);
+    verifyEqual(testCase, rep.refused_label_node_empty, 0, label);
+    verifyEqual(testCase, rep.labels_modified, 0, label);
+    verifyEqual(testCase, rep.labels_deleted, 0, label);
+    verifyEqual(testCase, docWithId(result, 'gf_lbl'), ...
+        did2.document(c{1}{2}).toStruct(), [label ': the label was touched']);
+    folded = docWithId(result, 'gf_1');
+    verifyNotEqual(testCase, folded.document_class.class_name, 'generic_file', label);
+    verifyTrue(testCase, contains(jsonencode(folded), node), ...
+        [label ': the folded statement does not carry the label''s node']);
+end
 end
 
 function testAWriterShapedLabelReadRawRoundTrips(testCase)
-% with the label switched by the option (what rawV1Classes will list once NDI
-% reads the v1 spelling): handed back untouched, round trip exact
-names = [did2.convert.rawV1Classes(), {'ontologyLabel'}];
+% the default path (the label is switched): handed back untouched, round trip
+% exact
 for node = {'EMPTY:0000129', 'EMPTY:0000131', 'EMPTY:0000257'}
     v1 = haleyLabel(['lab_' node{1}(end-2:end)], 'is_x', node{1});
-    out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
-        'RawV1Classes', names);
+    out = runRaw(v1);
     verifyEmpty(testCase, out.quarantine, node{1});
     verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
     verifyEqual(testCase, numel(out.passthrough), 1, node{1});
@@ -402,8 +485,7 @@ end
 % and on a carried stack, carried down the chain as the raw source
 beh = haleyBehaviourStack('is_h2', 'video');
 lab = haleyLabel('lab_h2', 'is_h2', 'EMPTY:0000129');
-out = did2.convert.v1_to_v2({beh, lab}, 'Validate', false, 'TargetVersion', 'V_eta', ...
-    'RawV1Classes', names);
+out = runRaw({beh, lab});
 l = docWithId(out, 'lab_h2');
 verifyEqual(testCase, l.document_class.schema_version, 'did_v1');
 l.document_class = rmfield(l.document_class, 'schema_version');
@@ -413,8 +495,7 @@ end
 function testAnInventedLabelShapeIsStillRefusedInEitherSpelling(testCase)
 v1 = haleyLabel('lab_bad', 'is_x', 'EMPTY:0000129');
 v1.ontologyLabel.label_id = 12;
-names = [did2.convert.rawV1Classes(), {'ontologyLabel'}];
-raw = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', names);
+raw = runRaw(v1);
 old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.quarantine), 1);
 verifyEqual(testCase, numel(old.quarantine), 1);
@@ -440,6 +521,38 @@ emitted = out.migrated{1}.toStruct();
 verifyEqual(testCase, emitted.document_class.schema_version, 'did_v1', label);
 emitted.document_class = rmfield(emitted.document_class, 'schema_version');
 verifyTrue(testCase, isequaln(emitted, v1), [label ': the carry is not the v1 source']);
+end
+
+function verifyOneRecordPerSource(testCase, out, label)
+idx = [out.passthrough.input_index];
+verifyEqual(testCase, numel(unique(idx)), numel(idx), ...
+    [label ': a source has more than one passthrough record']);
+end
+
+function s = foldSubject(id)
+% any document of the id: the fold only needs the file's referent in the batch
+s = struct();
+s.document_class = struct('class_name', 'subject', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+s.depends_on = struct('name', {}, 'value', {});
+s.base = struct('id', id, 'session_id', '41269430c597c3e6_c0c9895d35d19b54', ...
+    'name', 'subject', 'datestamp', '2024-06-01T12:00:00.000Z');
+s.subject = struct('local_identifier', 'plasmidHostStrain', 'description', '');
+end
+
+function g = foldGenericFile(id, subjectId)
+% a generic_file as pass 1 hands it to the fold (testFixtureCorpus om_gf_03:
+% no dates, so it folds)
+g = struct();
+g.document_class = struct('class_name', 'generic_file', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+g.depends_on = struct('name', {'document_id'}, 'document_id', {subjectId});
+g.base = struct('id', id, 'session_id', '41269430c597c3e6_c0c9895d35d19b54', ...
+    'name', 'plasmid', 'datestamp', '2024-06-01T12:00:00.000Z');
+g.generic_file = struct('filename', 'plasmids/pXY-12.gb', ...
+    'format_ontology', 'EMPTY:0000253', ...
+    'checksum', 'd41d8cd98f00b204e9800998ecf8427e');
+g.files = struct('file_list', {{'generic_file.ext'}});
 end
 
 function b = docWithId(out, id)

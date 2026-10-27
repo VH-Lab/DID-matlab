@@ -1280,6 +1280,14 @@ while changed
         migrated{end+1} = did2.document(body); %#ok<AGROW>
         drop(end+1) = false; %#ok<AGROW>
         [names, counts] = bumpClassCounter(names, counts, cls{k});
+        % ONE RECORD PER SOURCE. A source the loop recorded as a passthrough
+        % (a migrator handed it back unchanged, no carry note: an
+        % ontologyLabel, an E. coli imageStack) and that is carried here had
+        % two records, the first naming the did_v2-stamped body that is no
+        % longer emitted; NDI's carryUnchangedAsV1 then counted the one
+        % document twice (once changed_after_pass_one, once carried_as_v1).
+        % The carry replaces that record.
+        passthrough([passthrough.input_index] == k) = [];
         passthrough(end+1) = struct('input_index', k, 'id', ids{k}, ...
             'class_name', cls{k}, 'body', body); %#ok<AGROW>
         % carry-register: carry-064

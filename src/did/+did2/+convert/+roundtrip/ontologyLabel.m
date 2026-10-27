@@ -12,9 +12,8 @@ function [v1, spec] = ontologyLabel(bodies)
 %   edge read back into base.session_id and its creation_timestamp into
 %   base.datestamp. (A label pass 1 carries, carry-064, is stamped did_v1 and
 %   is its own round trip in did2.convert.roundtrip.check.) The label is read
-%   raw only when a caller passes it in v1_to_v2's 'RawV1Classes' option: it is
-%   not in did2.convert.rawV1Classes (see there for why). What NDI's second
-%   pass makes of a label is NDI's round trip, not this one.
+%   raw: it is listed by did2.convert.rawV1Classes. What NDI's second pass
+%   makes of a label is NDI's round trip, not this one.
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.ontology_label.
 
