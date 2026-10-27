@@ -5160,14 +5160,15 @@ verifyError(testCase, @() did2.convert.migrators_j.site2channelmap(body), ...
 end
 
 function body = positionMetadataBody()
-% the JH writer's shape (+setup/+conv/+haley/doImport.m, Step 6)
+% the JH writer's shape (+setup/+conv/+haley/doImport.m, Step 6), in the v1
+% spelling the migrator reads since it reads raw v1 (did2.convert.rawV1Classes)
 body = struct();
 body.document_class = struct('class_name', 'position_metadata', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 body.depends_on = struct('name', {'element_id'}, 'value', {'pos_elem_7'});
 body.base = struct('id', 'pm_01', 'session_id', 'sess_09', ...
     'name', 'pm', 'datestamp', '2024-06-01T12:00:00.000Z');
-body.position_metadata = struct('ontology_node', 'EMPTY:0000200', ...
+body.position_metadata = struct('ontologyNode', 'EMPTY:0000200', ...
     'units', 'NCIT:C48367', 'dimensions', 'NCIT:C44477,NCIT:C44478');
 end
 

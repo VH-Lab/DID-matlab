@@ -44,24 +44,6 @@
 %                           idiom (no label/label_id). Looks up the
 %                           name via ndi.ontology.lookup; falls back to
 %                           empty name when the lookup is unavailable.
-%     position_metadata   - semantic-shape migrator: builds
-%                           measurement (ontology_term), units
-%                           (ontology_term), and dimensions
-%                           (array-of-records with axis_1, axis_2 labels)
-%                           from v1 ontologyNode/units/dimensions.
-%     distance_metadata   - paired A/B endpoint migrator: discovers
-%                           labels by regex-scanning ontology_node_X
-%                           keys and builds an endpoints array-of-records
-%                           with measurement, integer_ids, string_ids,
-%                           numeric_values per endpoint.
-%     stimulus_bath       - rename location.ontologyNode -> .node;
-%                           parse the v1 CSV mixture_table into a
-%                           mixture array-of-records; each amount is a
-%                           V2 `concentration` composite with
-%                           source_unit / source_value preserved and
-%                           the appropriate canonical sub-field (molar,
-%                           grams_per_liter, mass_fraction,
-%                           volume_fraction) populated when computable.
 %
 %   The calculator-base wrappers are all deleted, with their shared helper
 %   calcCommon: the tuning family's (tuningcurve_calc, oridirtuning_calc,
@@ -72,6 +54,11 @@
 %   reached; the classes read raw v1 (did2.convert.rawV1Classes; simple_calc
 %   is not switched, see there; [early migration pieces fixed] (1), Jess
 %   Haley, 2026-10-26).
+%
+%   The position_metadata, distance_metadata and stimulus_bath base migrators
+%   are deleted too: each class has a +migrators_j migrator, which reads raw v1
+%   (distance_metadata's reshapes the v1 spelling itself, where it used to hand
+%   the renamed body to the base migrator).
 %
 %   See did-schema's
 %   did-schema's per-class conversion notes (deleted with did-schema #88) for the
