@@ -434,8 +434,11 @@ v1.depends_on = d;
 end
 
 function v1 = setDep(v1, k, field, value)
-d = num2cell(reshape(v1.depends_on, 1, []));
-d{k}.(field) = value;
+% one entry gains FIELD; the others hold it empty (one struct array, as
+% jsondecode gives entries that share their keys)
+d = reshape(v1.depends_on, 1, []);
+[d.(field)] = deal([]);
+d(k).(field) = value;
 v1.depends_on = d;
 end
 
