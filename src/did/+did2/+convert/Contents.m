@@ -29,11 +29,13 @@
 %                          any migrator.
 %     ensureClassBlocks  - give a body exactly the class blocks its schema
 %                          chain hosts.
-%     isAlreadyTarget    - true when a body is already at (or past) the
-%                          target version, so a re-run skips it.
+%     isAlreadyTarget    - true when a body is already stamped did_v2 (a
+%                          stamp check), so a re-run skips it.
 %     schemaVersionRank  - where a schema version sits in the did_v1 ->
 %                          V_eta line.
 %     statementKind      - the direction class and value kind of a statement.
+%     mintId             - the id of a document the migration mints, derived
+%                          from its source id and role (deterministic).
 %     fromV1Database     - end-to-end orchestrator: reads a v1 database
 %                          (file -> sqliteV1, directory -> dumbJsonV1),
 %                          runs v1_to_v2 with its default TargetVersion,
@@ -42,17 +44,17 @@
 %                          <dst>.quarantine.json.
 %
 %   Shared helpers used by migrators
-%     calcCommon, channelType, epochIndex, ethicsJurisdiction,
-%     registeredTerm, reportNote, mintSessionDuring,
+%     axisKey, axisTerm, calcCommon, channelType, epochIndex,
+%     ethicsJurisdiction, registeredTerm, reportNote, mintSessionDuring,
 %     stimulusPresentationSpecs (the batch's presentation settings, loaded
 %     by v1_to_v2)
 %
 %   Batch post-passes (run over a migrated batch, after v1_to_v2; each
 %   carries a BATCH-PASS declaration read by tools/batch_pass_declarations.py)
 %     epochMint, foldGenericFiles, resolveClockAlignment, resolveDatasetEntities,
-%     resolveDeferredBaths, resolveEpochProbemap, resolveLawnPlateSubjects,
-%     resolveOpenmindsCitations, resolveResponseParameters,
-%     resolveSessionAnchors, resolveValidIntervals (census only)
+%     resolveDeferredBaths, resolveEpochProbemap, resolveOpenmindsCitations,
+%     resolveResponseParameters, resolveSessionAnchors, resolveValidIntervals
+%     (census only)
 %
 %   Subpackages
 %     +migrators_j     - the did_v1 -> V_eta per-document migrators, one file

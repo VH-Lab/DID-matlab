@@ -199,8 +199,10 @@ end
 % whole as v1, for the dataset's map, rather than folded without the edge.
 tableRowId = dependencyValue(preBody, 'document_id');
 if ~isempty(tableRowId)
+    % carry-register: carry-052 (imageStack), carry-067 (a v1 image)
     did2.convert.reportNote('carried_as_v1', 'image_stack', ...
-        baseField(preBody, 'id', ''), 'unplaced: depends_on document_id');
+        baseField(preBody, 'id', ''), [carryRowOf(preBody, '[carry-067] ', '[carry-052] ') ...
+        'unplaced: depends_on document_id']);
     bodies = {preBody};
     return;
 end
@@ -216,7 +218,7 @@ end
 unplaced = {};
 if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
         dependencyValue(preBody, 'image_collection_id')))
-    unplaced{end+1} = 'depends_on imageCollection_id';
+    unplaced{end+1} = '[carry-013] depends_on imageCollection_id';
 end
 limits = getField(params, 'data_limits');
 bodyConditions = [];
@@ -226,10 +228,12 @@ if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
             did2.convert.registeredTerm('EMPTY:0000402', 'value range'), ...
             'Matrix', double(limits(:)'));
     else
-        unplaced{end+1} = 'image_stack_parameters.data_limits (not a [minimum maximum] pair)';
+        unplaced{end+1} = [carryRowOf(preBody, '[carry-011] ', '[carry-012] ') ...
+            'image_stack_parameters.data_limits (not a [minimum maximum] pair)'];
     end
 end
 if ~isempty(unplaced)
+    % carry-register: carry-011 carry-012 carry-013 (the items above)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
         baseField(preBody, 'id', ''), ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
@@ -269,8 +273,10 @@ end
 % from label words carries as needs_mapping).
 label = getCharField(getBlock(preBody, 'image_stack'), 'label');
 if isMaskOrMap(label)
+    % carry-register: carry-025 (imageStack; the register has no row for image)
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
-        baseField(preBody, 'id', ''), ['needs_mapping: calculation (logical ' ...
+        baseField(preBody, 'id', ''), [carryRowOf(preBody, '', '[carry-025] ') ...
+        'needs_mapping: calculation (logical ' ...
         'mask | label map) or observation (intensity); decided by what the ' ...
         'image''s pixels are, in its dataset']);
     bodies = {preBody};
@@ -319,7 +325,7 @@ fileFormat = firstNonEmpty(getCharField(getBlock(preBody, 'image_stack'), 'forma
     getCharField(getBlock(preBody, 'image_stack'), 'formatOntology'), ...
     getCharField(imageBlk, 'format'));
 if ~isempty(strtrim(fileFormat))
-    o = [o, {'Format', strtrim(fileFormat)}];
+    o = [o, {'Format', formatOf(strtrim(fileFormat))}];
 end
 compression = getCharField(imageBlk, 'compression');
 if ~isempty(strtrim(compression))
@@ -356,6 +362,19 @@ end
 tf = isequal(limits, range);
 end
 
+function tag = carryRowOf(b, imageRow, imageStackRow)
+%CARRYROWOF The carry register row tag for this document's v1 class ([carry
+%   register], Jess Haley, 2026-10-26, did-schema
+%   schemas/V_eta_carry_register.json): IMAGEROW for a v1 `image` (which
+%   migrators_j.image routes here), IMAGESTACKROW otherwise. '' where the
+%   register has no row for that class.
+if strcmp(classNameOf(b), 'image')
+    tag = imageRow;
+else
+    tag = imageStackRow;
+end
+end
+
 function nm = classNameOf(b)
 nm = 'image_stack';
 if isfield(b, 'document_class') && isstruct(b.document_class) ...
@@ -373,6 +392,9 @@ end
 function [dims, covs] = imageAxes(dimOrder, dimSize, params)
 % One dimension per stack axis, its positions (origin + spacing) a covariate
 % along it (data_body AMENDMENT 6; the former keys).
+% Each axis term is the registry's where it holds the axis's node (x, y, z,
+% t: did2.convert.axisTerm, [migrator writes the registry spelling], Jess
+% Haley, 2026-10-26); any other axis is written by name, as before.
 unitList = splitScaleUnits(getCharField(params, 'dimension_scale_units'));
 names = splitScaleUnits(getCharField(params, 'dimension_labels'));
 entries = {};
@@ -383,7 +405,7 @@ for k = 1:numel(dimOrder)
     if sp ~= 0
         u = '';
         if k <= numel(unitList); u = unitList{k}; end
-        entries{end+1} = jAxis(jOntologyTerm('', nm), dimSize(k), ...
+        entries{end+1} = jAxis(did2.convert.axisTerm(nm), dimSize(k), ...
             'source_unit', u, ...
             'origin',  struct('value', 0, 'source_value', 0), ...
             'spacing', struct('value', sp, 'source_value', sp)); %#ok<AGROW>
@@ -391,7 +413,7 @@ for k = 1:numel(dimOrder)
         % no recorded scale: only the dimension's positions, so a bare
         % dimension (Jess Haley 2026-10-22, 6.2a and "yes" to 1..n; origin 1 +
         % spacing 1 until then). A recorded scale, even 1, is kept above.
-        entries{end+1} = jAxis(jOntologyTerm('', nm), dimSize(k)); %#ok<AGROW>
+        entries{end+1} = jAxis(did2.convert.axisTerm(nm), dimSize(k)); %#ok<AGROW>
     end
 end
 [dims, covs] = jDimCov(entries);
@@ -513,5 +535,21 @@ parts = strsplit(char(raw), ',');
 u = cell(1, numel(parts));
 for k = 1:numel(parts)
     u{k} = strtrim(parts{k});
+end
+end
+
+function f = formatOf(text)
+%FORMATOF The file format as the term registry writes it ([migrator writes the
+%   registry spelling], Jess Haley, 2026-10-26). A CURIE stays a CURIE
+%   (did2.build.formatTerm names and spells it); a NAME the registry holds,
+%   ignoring case, is written with the registry's node and label ('tiff' ->
+%   EDAM:format_3591 'TIFF'); any other name is written as given.
+f = text;
+if ~isempty(regexp(text, '^[A-Za-z][A-Za-z0-9_.-]*:[^\s/]+$', 'once'))
+    return;
+end
+t = did2.convert.registeredTerm('', text);
+if ~isempty(t.node)
+    f = t;
 end
 end

@@ -192,10 +192,6 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     @(r) did2.convert.resolveResponseParameters(r, 'Validate', true, ...
         'TargetVersion', 'V_eta'));
 
-% did2.convert.resolveLawnPlateSubjects is NOT run: Haley-import logic, removed
-% from the generic migration (Decided by Jess Haley, 2026-10-26 [Haley logic
-% leaves the generic migration], did-schema V_eta_go_forward_class_audit.md).
-
 % TEAM DECISION 2026-08-11: the `generic_file` -> opaque_body + statement fold.
 % WHAT IT WILL REPORT ON PRED IS NOT PREDICTED HERE beyond one measured fact:
 % run 31327383671 found ZERO `generic_file` documents in any of the six

@@ -566,21 +566,36 @@ verifyFalse(testCase, isfield(rep, 'position_calculations_emitted'));
 verifyEmpty(testCase, out.quarantine);
 end
 
-function testAnExtentTiedToNoSystemKeepsItsAcquisitionEpoch(testCase)
-% [device clocks on one epoch] (Jess Haley, 2026-10-26): an epoch extent that
-% cannot be tied to exactly one acquisition system carries its source. No
-% probemap names the probe, so epochMint lists the acquisition_epoch as carried
-% and it is kept whole: no spike train is built from it.
+function testAnUntiedEpochFromOneSourceIsNotKeptAsCarried(testCase)
+% INVERTS testAnExtentTiedToNoSystemKeepsItsAcquisitionEpoch. [untied epochs
+% keep the session anchor] (Jess Haley, 2026-10-26): an epoch extent that
+% cannot be tied to an acquisition system is NOT carried when it is the
+% epoch's one source and agrees; epochMint anchors it on the session, so the
+% acquisition_epoch is not kept as a carried extent.
 subj = subjectBody('specimen_su', 'sess_su', 'L');
 elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
 elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u');
 ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
-[out, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, ee});
+[~, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, ee});
 verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
-verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 1);
-verifyEqual(testCase, rep.acquisition_epoch_dissolved, 0);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 0);
+end
+
+function testUntiedExtentsFromTwoSourcesKeepTheirAcquisitionEpochs(testCase)
+% [untied epochs keep the session anchor]: "Extents that come from several
+% sources ... still carry it." Two untied acquisition_epochs of one epoch are
+% both carried and kept whole: no spike train is built from either.
+subj = subjectBody('specimen_su', 'sess_su', 'L');
+elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
+elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u');
+elN2 = derivedElementBody('el_neuron_u2', 'sess_su', 'n2', 'spikes', 'el_probe_u');
+ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
+ee2  = elementEpochBody('ee_u2', 'sess_su', 'el_neuron_u2', 't00su', true);
+[out, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, elN2, ee, ee2});
+verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 2);
 verifyEqual(testCase, rep.spike_trains_emitted, 0);
-verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 1);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
 end
 
 function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)

@@ -422,6 +422,12 @@ sessionId = baseField(v1Body, 'session_id', '');
 datestamp = baseField(v1Body, 'datestamp', '');
 if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
 bathId    = baseField(v1Body, 'id', '');
+% the chemicals and formulation built below take ids derived from the bath's
+% v1 id (did2.convert.mintId; practice (b) of [migration reliability
+% practices], Jess Haley, 2026-10-26)
+mintDepth = did2.convert.mintId('-depth');
+did2.convert.mintId('-push', char(bathId));
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 mixture   = parseMixture(v1Body);
 variable  = primaryChemical(mixture);
 o = {'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), 'Validate', false};

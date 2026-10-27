@@ -40,10 +40,8 @@ function doc = sampledBody(ownerId, varargin)
 %   Options (edges):
 %     'MethodId'      the `method` document of the filter these samples
 %                     passed through (Jess Haley 2026-10-22 [filters are
-%                     methods]: a body's `filter_id` becomes `method_id`); on
-%                     a schema whose sampled_body declares `method_id`
-%     'FilterId'      the `frequency_filter` these samples passed through, on
-%                     a schema that still declares `filter_id`
+%                     methods]: a body's `filter_id` became `method_id`, and
+%                     the 'FilterId' option is removed with it)
 %     'KeyIds'        cellstr: value documents a covariate takes its positions
 %                     from (a covariate's `document` indexes them)
 %     'Edges'         any other declared edge
@@ -91,7 +89,6 @@ arguments
     options.HashAlgorithm = ''
     options.Description = ''
     options.Fields (1,1) struct = struct()
-    options.FilterId = ''
     options.MethodId = ''
     options.KeyIds = {}
     options.Edges = struct()
@@ -118,9 +115,8 @@ fields = struct('dimensions', {dimensions}, 'covariates', {options.Covariates}, 
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);
 edges = struct('owner_id', {ownerIds(ownerId)}, 'key_id', {options.KeyIds});
-% each filter edge only when given, so a schema that declares one of them and
-% not the other builds ([filters are methods]: filter_id -> method_id)
-if ~isAbsent(options.FilterId); edges.filter_id = options.FilterId; end
+% the filter edge only when given, so a body with no filter builds on a schema
+% that does not declare it
 if ~isAbsent(options.MethodId); edges.method_id = options.MethodId; end
 options.Files = bodyFiles(options.Files, options.Chunks);
 doc = forward('sampled_body', fields, edges, options);

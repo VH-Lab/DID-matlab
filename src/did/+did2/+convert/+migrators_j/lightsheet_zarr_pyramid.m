@@ -195,8 +195,9 @@ pyramidName = strtrim(char(field(blk, 'pyramid_name', '')));
 pyramidType = strtrim(char(string(field(blk, 'pyramid_type', ''))));
 rawDtype = strtrim(char(string(field(blk, 'dtype', ''))));
 if isempty(sourceId) && isempty(rawDtype)
+    % carry-register: carry-019
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_pyramid', obsId, ...
-        'unplaced: lightsheet_zarr_pyramid (no source file and no dtype, so the store body''s format is unknown)');
+        '[carry-019] unplaced: lightsheet_zarr_pyramid (no source file and no dtype, so the store body''s format is unknown)');
     bodies = {preBody};
     return;
 end

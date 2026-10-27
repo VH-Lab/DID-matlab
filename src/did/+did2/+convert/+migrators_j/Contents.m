@@ -312,13 +312,14 @@
 %                          THE FIRST EMITTER OF `absolute_reference` (now
 %                          `absolute_time_reference`).
 %     pyraview           - (extended) the inherited `filter` superclass block now
-%                          splits off ONE `frequency_filter` document
+%                          splits off ONE `method` document
 %                          (private/jFrequencyFilter), referenced by every level
-%                          body's optional `sampled_body.filter_id`. It used to be
-%                          discarded outright. TEAM-SIGN-OFF [frequency_filter],
-%                          jess 2026-07-30. Band edges, typed `gain` fields, NO
-%                          sample_rate (the document is a SPECIFICATION, which is
-%                          what makes it shareable). An all-pass ('none') emits
+%                          body's optional `sampled_body.method_id`. It used to be
+%                          discarded outright. It was a `frequency_filter` named by
+%                          `filter_id` (TEAM-SIGN-OFF [frequency_filter], jess
+%                          2026-07-30) until Jess Haley 2026-10-22 [filters are
+%                          methods]; a schema still declaring filter_id is
+%                          did2:convert:schemaTooOld. An all-pass ('none') emits
 %                          nothing. NOTE the source field arrives as `filter_type`,
 %                          not `type`: +migrators/filter.m renames it in the
 %                          superclass pass that runs first.

@@ -508,7 +508,7 @@ v1.depends_on = [ ...
 v1.base = struct('id', 'tt_01', 'session_id', 'sess_09', ...
     'name', 'graft', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.treatment_transfer = struct( ...
-    'entity_ontologyNode', 'uberon:0000922', 'entity_name', 'embryonic tissue', ...
+    'entity_ontologyNode', 'UBERON:0005291', 'entity_name', 'embryonic tissue', ...
     'method_name', 'transplantation');
 out = runJ(v1);
 
@@ -565,7 +565,7 @@ verifyCarriedWholeAsV1(testCase, v1, out);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'ontology_table_row');
 verifyEqual(testCase, out.migrated{1}.get('ontology_table_row.data'), v1.ontology_table_row.data);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: assertion | observation | manipulation'), d);
+verifyTrue(testCase, startsWith(d, '[carry-026] needs_mapping: assertion | observation | manipulation'), d);
 end
 
 % ===================== treatment -> manipulation leaves ================
@@ -601,7 +601,7 @@ for k = 1:numel(cases)
     verifyCarriedWholeAsV1(testCase, v1, out);
     verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'treatment');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation'), d);
+    verifyTrue(testCase, startsWith(d, '[carry-022] needs_mapping: manipulation'), d);
     verifyFalse(testCase, isfield(out.summary.migration_notes, 'treatment_number_unlabelled'));
 end
 end
@@ -610,7 +610,7 @@ function testTreatmentSubstanceIsDoseManipulation(testCase)
 % (Located at a body site since 2026-10-26: with no location a treatment is
 % carried as v1, [one-reading quick answers] (Q1),
 % testATreatmentWithNoLocationIsCarried.)
-out = runJ(treatmentDoc('chebi:28001', 'haloperidol', 2.5, 'uberon:0002436'));
+out = runJ(treatmentDoc('CHEBI:5613', 'haloperidol', 2.5, 'uberon:0002436'));
 m = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+dose');
 % did-schema #88: the dose names a `formulation` document (formulation_id),
@@ -629,7 +629,7 @@ if ~isempty(c)
     verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
 end
 verifyNotEmpty(testCase, f, 'the formulation the dose names is not in the batch');
-verifyEqual(testCase, m.get('statement.variable').node, 'chebi:28001');
+verifyEqual(testCase, m.get('statement.variable').node, 'CHEBI:5613');
 % No amount recorded: NaN in the dose's volume.
 % numeric_value is NEVER an amount -- not the dose's, not the ingredient's
 % (Jess Haley, 2026-10-21, "yes"): the term (haloperidol) does not say what
@@ -642,7 +642,7 @@ if ~isempty(f)
 end
 p = m.toStruct();
 cnd = p.statement.conditions;
-verifyEqual(testCase, cnd.variable.name, 'numeric value');
+verifyEqual(testCase, cnd.variable.name, regName('numeric value'));
 verifyEqual(testCase, cnd.quantity.value, 2.5, 'AbsTol', 1e-12);
 verifyFalse(testCase, isfield(cnd, 'unit'), 'an unlabelled number has no unit');
 n = out.summary.migration_notes.treatment_number_unlabelled;
@@ -655,11 +655,11 @@ function testATreatmentWithNoLocationIsCarried(testCase)
 % [one-reading quick answers] (Q1) (Jess Haley, 2026-10-26): a treatment with
 % no recorded location is carried as v1 instead of becoming a dose with a NaN
 % amount (it was "a dose with NaN ... listed as route unknown", 2026-10-21).
-v1 = treatmentDoc('chebi:28001', 'haloperidol', 2.5, '');
+v1 = treatmentDoc('CHEBI:5613', 'haloperidol', 2.5, '');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (immersion | dose)'), d);
+verifyTrue(testCase, startsWith(d, '[carry-023] needs_mapping: manipulation (immersion | dose)'), d);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
 end
 
@@ -743,13 +743,13 @@ function testTreatmentTargetLocationLabelIsKeptAsTheVariableName(testCase)
 % quick answers] (Q4) (Jess Haley, 2026-10-26): the name is kept unchanged as
 % the variable's name -- the "Target Location" suffix is not stripped -- so the
 % row is no longer carried for it.
-v1 = treatmentDoc('chebi:28001', 'muscimol Target Location', [], 'uberon:0002436');
+v1 = treatmentDoc('CHEBI:7035', 'muscimol Target Location', [], 'uberon:0002436');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol Target Location');
 site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
 function testTreatmentTargetLocationEmitsSiteObservation(testCase)
@@ -758,7 +758,7 @@ function testTreatmentTargetLocationEmitsSiteObservation(testCase)
 % 2026-10-25: driven by a label with no " Target Location" suffix (a suffixed
 % label is carried as v1, the test above); the CURIE string_value alone still
 % routes the site.
-out = runJ(treatmentDoc('chebi:28001', 'muscimol', [], 'uberon:0002436'));
+out = runJ(treatmentDoc('CHEBI:7035', 'muscimol', [], 'uberon:0002436'));
 % #88: dose manip + its chemical + formulation + anchor + site obs
 verifyEqual(testCase, numel(out.migrated), 5);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
@@ -766,7 +766,7 @@ verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 1);
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 % a body site makes it a dose; no amount recorded -> NaN; the route is known
 verifyTrue(testCase, isnan(out.migrated{1}.get('dose.value').volume.liters));
 % the formulation still carries its ingredient inline (NaN concentration)
@@ -784,7 +784,7 @@ v1.document_class = struct('class_name', 'treatment_drug', 'class_version', '1.0
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.base = struct('id', 'td_01', 'session_id', 'sess_09', ...
     'name', 'td', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.treatment_drug = struct('mixture_table', 'chebi:28001,haloperidol,5', ...
+v1.treatment_drug = struct('mixture_table', 'CHEBI:5613,haloperidol,5', ...
     'location_ontologyNode', 'uberon:0002436', 'location_name', 'primary visual cortex');
 out = runJ(v1);
 % #88: dose + chemical + formulation + site obs + anchor
@@ -805,7 +805,7 @@ verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 % -> location_ontology_node)
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
 function v1 = virusInjectionV1(id, adminDate)
@@ -819,7 +819,7 @@ v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.base = struct('id', id, 'session_id', 'sess_09', ...
     'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
-    'virus_name', 'AAV-ChR2', ...
+    'virus_name', 'pAAV-hSyn-hChR2(H134R)-EYFP', ...
     'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1', ...
     'virus_AdministrationDate', adminDate, 'virus_AdministrationPND', 21, ...
     'dilution', 1000, 'diluent_OntologyName', '', 'diluent_name', '');
@@ -869,7 +869,7 @@ v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.base = struct('id', 'vi_01', 'session_id', 'sess_09', ...
     'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
-    'virus_name', 'AAV-ChR2', 'dilution', 1000, ...
+    'virus_name', 'pAAV-hSyn-hChR2(H134R)-EYFP', 'dilution', 1000, ...
     'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1');
 out = runJ(v1);
 % #88: dose + chemical + formulation + site obs + anchor
@@ -877,7 +877,7 @@ verifyEqual(testCase, numel(out.migrated), 5);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 [f, c] = doseChainJ(out.migrated, d);
-verifyEqual(testCase, c.get('chemical.value').substance.name, 'AAV-ChR2');
+verifyEqual(testCase, c.get('chemical.value').substance.name, 'pAAV-hSyn-hChR2(H134R)-EYFP');
 conc = f.get('formulation.value').ingredients(1).concentration;
 verifyEqual(testCase, conc.source_value, 1000);
 verifyEqual(testCase, conc.source_unit.name, 'dilution');
@@ -889,7 +889,7 @@ verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
 site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
 function testTreatmentDrugInTheBathIsAnImmersion(testCase)
@@ -944,7 +944,7 @@ for loc = {{'SNOMED:783351009', 'Intraperitoneal'}, {'MICRO:0000480', 'agar plat
     out = runJ(v1);
     verifyCarriedWholeAsV1(testCase, v1, out);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
+    verifyTrue(testCase, startsWith(d, '[carry-028] needs_mapping: manipulation (dose | exposure | temperature)'), d);
 end
 end
 
@@ -1177,11 +1177,11 @@ end
 function testTreatmentDrugWithNoLocationIsCarried(testCase)
 % INVERTS testTreatmentDrugWithNoLocationIsRouteUnknown: [one-reading quick
 % answers] (Q1) (Jess Haley, 2026-10-26) -- no location, carried as v1.
-v1 = treatmentDrugDoc('td_none', 'chebi:28001,haloperidol,5', '', '');
+v1 = treatmentDrugDoc('td_none', 'CHEBI:5613,haloperidol,5', '', '');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'needs_mapping:'));
+    '[carry-027] needs_mapping:'));
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
@@ -1242,7 +1242,7 @@ v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.base = struct('id', 'vi_none', 'session_id', 'sess_09', ...
     'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
-    'virus_name', 'AAV-ChR2', 'dilution', 1000);
+    'virus_name', 'pAAV-hSyn-hChR2(H134R)-EYFP', 'dilution', 1000);
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
@@ -1260,7 +1260,7 @@ v1 = treatmentDrugDoc('td_agar', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
+verifyTrue(testCase, startsWith(d, '[carry-028] needs_mapping: manipulation (dose | exposure | temperature)'), d);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 0);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
@@ -1276,7 +1276,7 @@ v1 = treatmentDrugDoc('td_air', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping:'), d);
+verifyTrue(testCase, startsWith(d, '[carry-028] needs_mapping:'), d);
 end
 
 function testBabuHeatRowIsCarriedNeedingAMapping(testCase)
@@ -1289,7 +1289,7 @@ v1 = treatmentDrugDoc('td_heat', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, 'needs_mapping: manipulation (dose | exposure | temperature)'), d);
+verifyTrue(testCase, startsWith(d, '[carry-028] needs_mapping: manipulation (dose | exposure | temperature)'), d);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+temperature'), 0);
 end
 
@@ -1328,7 +1328,7 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 2);   % obs + anchor
 o = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(o), 'observation+term');
-verifyEqual(testCase, o.get('term.value').node, 'uberon:0002436');
+verifyEqual(testCase, o.get('term.value').node, regNode('uberon:0002436'));
 % variable "anatomical location" is NCIT:C13717 "Anatomic Site" (Jess Haley,
 % 2026-10-21 [anatomy variable terms])
 verifyEqual(testCase, o.get('statement.variable').node, 'NCIT:C13717');
@@ -1489,8 +1489,14 @@ verifyFalse(testCase, any(strcmp(names, 'image')));
 % compression are the body's (they were dropped as "deferred")
 body = out.migrated{strcmp(names, 'sampled_body')};
 fmt = body.get('data_body.format');
-if isstruct(fmt); fmt = fmt.name; end
-verifyEqual(testCase, char(fmt), 'tiff');
+% [migrator writes the registry spelling] (Jess Haley, 2026-10-26): 'tiff' is
+% the registry's TIFF, EDAM:format_3591 (its media type on a char-format schema)
+if isstruct(fmt)
+    verifyEqual(testCase, char(fmt.node), 'EDAM:format_3591');
+    verifyEqual(testCase, char(fmt.name), 'TIFF');
+else
+    verifyEqual(testCase, char(fmt), 'image/tiff');
+end
 verifyEqual(testCase, body.get('data_body.compression'), 'lzw');
 end
 
@@ -1751,7 +1757,7 @@ v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0'
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.base = struct('id', 'is_01', 'session_id', 'sess_09', ...
     'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image_stack = struct('format_ontology', 'edam:3382', ...
+v1.image_stack = struct('format_ontology', 'EDAM:format_3591', ...
     'label', 'a two-photon stack', 'format', 'tiff');
 v1.image_stack_parameters = struct('data_type', 'uint16', ...
     'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
@@ -1772,9 +1778,19 @@ sb = out.migrated{2};
 verifyEqual(testCase, did2.unittest.helpers.classKey(sb), 'sampled_body');
 verifyEqual(testCase, depVal(sb, 'owner_id'), obs.get('base.id'));
 verifyEqual(testCase, sb.get('data.datum_order'), 'F');
+% the stack's formatOntology is a format term: EDAM:format_3591 TIFF (the
+% fixture's node was edam:3382, which is EDAM topic_3382 "Imaging", not a format)
+fmt = sb.get('data_body.format');
+if isstruct(fmt)
+    verifyEqual(testCase, char(fmt.node), 'EDAM:format_3591');
+    verifyEqual(testCase, char(fmt.name), 'TIFF');
+else
+    verifyEqual(testCase, char(fmt), 'image/tiff');
+end
 keys = did2.unittest.helpers.axesOf(sb.toStruct());   % AMENDMENT 6: dimensions + covariates
 verifyEqual(testCase, numel(keys), 5);               % YXCZT
-verifyEqual(testCase, keys(1).term.name, 'y');
+verifyEqual(testCase, did2.convert.axisKey(keys(1).term), 'y');
+verifyEqual(testCase, keys(1).term.name, did2.convert.axisTerm('y').name);   % Y-Coordinate where registered
 verifyEqual(testCase, keys(1).n, 512);
 verifyTrue(testCase, ~isempty(keys(1).cov.origin));
 verifyEqual(testCase, keys(1).cov.spacing.value, 0.5);
@@ -1782,10 +1798,45 @@ verifyEqual(testCase, keys(1).cov.origin.value, 0);
 % C/Z/T carry a recorded scale of 1, so they are calibrated, not index axes
 verifyEqual(testCase, keys(3).cov.spacing.value, 1);
 verifyEqual(testCase, keys(3).cov.origin.value, 0);
-verifyEqual(testCase, keys(5).term.name, 't');
+verifyEqual(testCase, did2.convert.axisKey(keys(5).term), 'time');   % 't' is time (om:Time) where registered
+verifyEqual(testCase, keys(5).term.name, did2.convert.axisTerm('t').name);
 verifyEqual(testCase, keys(5).n, 10);
 end
 
+
+function testAxisTermsAreTheRegistrysWhereItHoldsThem(testCase)
+% [migrator writes the registry spelling] and [term labels stay as the
+% ontology spells them] (Jess Haley, 2026-10-26): an axis letter is written as
+% the registry's term -- x NCIT:C44477 X-Coordinate, y NCIT:C44478
+% Y-Coordinate, z NCIT:C44479 Z-Coordinate, t/time om:Time time -- ONLY where
+% the loaded registry holds that node; otherwise by name, as before.
+want = {'x', 'NCIT:C44477', 'X-Coordinate'; 'y', 'NCIT:C44478', 'Y-Coordinate'; ...
+    'z', 'NCIT:C44479', 'Z-Coordinate'; 't', 'om:Time', 'time'; 'time', 'om:Time', 'time'};
+nHeld = 0;
+for r = 1:size(want, 1)
+    t = did2.convert.axisTerm(want{r, 1});
+    held = did2.convert.registeredTerm(want{r, 2}, '');
+    if isempty(held.name)
+        % not registered: by name, never with an unregistered node
+        verifyFalse(testCase, strcmpi(t.node, want{r, 2}), ...
+            [want{r, 1} ': an unregistered node is not written']);
+    else
+        nHeld = nHeld + 1;
+        verifyEqual(testCase, t.node, want{r, 2}, want{r, 1});
+        verifyEqual(testCase, t.name, want{r, 3}, want{r, 1});
+        verifyEqual(testCase, t.name, held.name, [want{r, 1} ': the registry''s label']);
+    end
+    % read back to its axis, whichever way it was written
+    k = did2.convert.axisKey(t);
+    if strcmp(want{r, 1}, 't'); verifyEqual(testCase, k, 'time');
+    else; verifyEqual(testCase, k, want{r, 1}); end
+end
+% any other axis name is written as before
+verifyEqual(testCase, did2.convert.axisTerm('axis_3').name, 'axis_3');
+verifyEqual(testCase, did2.convert.axisKey(struct('node', '', 'name', 'axis_3')), 'axis_3');
+fprintf('axis terms: %d of %d axis spellings resolved to a registered node\n', ...
+    nHeld, size(want, 1));
+end
 
 % ---- [no invented values] (Jess Haley, 2026-10-25) ---------------------
 %
@@ -1800,7 +1851,7 @@ v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0'
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.base = struct('id', 'is_01', 'session_id', 'sess_09', ...
     'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image_stack = struct('format_ontology', 'edam:3382', ...
+v1.image_stack = struct('format_ontology', 'EDAM:format_3591', ...
     'label', 'a two-photon stack', 'format', 'tiff');
 v1.image_stack_parameters = struct('data_type', 'uint16', ...
     'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
@@ -1906,8 +1957,8 @@ out = runJ(foldableBehaviourImageStack());
 sb = firstOfClassJ(out.migrated, 'sampled_body');
 keys = did2.unittest.helpers.axesOf(sb.toStruct());   % AMENDMENT 6: dimensions + covariates
 verifyEqual(testCase, numel(keys), 3, 'dimension_order YXT is three dimensions');
-verifyEqual(testCase, keys(1).term.name, 'y');
-verifyEqual(testCase, keys(3).term.name, 't');
+verifyEqual(testCase, keys(1).term.name, did2.convert.axisTerm('y').name);
+verifyEqual(testCase, keys(3).term.name, did2.convert.axisTerm('t').name);
 verifyEqual(testCase, keys(1).cov.source_unit.name, 'micrometre');
 verifyEqual(testCase, keys(2).cov.source_unit.name, 'micrometre');
 verifyEqual(testCase, keys(3).cov.source_unit.name, 'second');
@@ -2008,7 +2059,7 @@ for k = 1:numel(labels)
     verifyCarriedWholeAsV1(testCase, v1, out);
     verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, 'needs_mapping: calculation'), d);
+    verifyTrue(testCase, startsWith(d, '[carry-025] needs_mapping: calculation'), d);
 end
 end
 
@@ -2023,7 +2074,7 @@ v1.image_stack.label = ['An image or map where each pixel''s value is the ' ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'needs_mapping:'));
+    '[carry-025] needs_mapping:'));
 end
 
 function testAnIntensityImageStackIsStillAnObservation(testCase)
@@ -2181,7 +2232,7 @@ verifyEqual(testCase, char(d.get('document_class.class_name')), 'image_stack');
 verifyEqual(testCase, depVal(d, 'document_id'), 'otr_plate_1', 'the edge is kept');
 verifyEqual(testCase, depVal(d, 'subject_id'), 'subjgrp_7');
 verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'unplaced: depends_on document_id');
+    '[carry-052] unplaced: depends_on document_id');
 end
 
 function testImageStackFoldWithNoTableRowStillPlacesTheStack(testCase)
@@ -2758,7 +2809,16 @@ verifyEqual(testCase, textAboutJ(out.migrated, id, 'Abbreviation'), {'BigWorm'})
 verifyEqual(testCase, textAboutJ(out.migrated, id, 'version number'), {'1.0.0'});
 verifyEqual(testCase, textAboutJ(out.migrated, id, 'version innovation'), {'first release'});
 lic = assertionAboutJ(out.migrated, id, 'License');
-verifyEqual(testCase, lic.get('term.value').name, 'CC-BY-4.0');
+% [migrator writes the registry spelling] (Jess Haley, 2026-10-26): the SPDX id
+% is the node, and a licence the registry holds carries the registry's label
+verifyEqual(testCase, lic.get('term.value').node, 'spdx:CC-BY-4.0');
+reg = did2.convert.registeredTerm('spdx:CC-BY-4.0', '');
+if isempty(reg.name)
+    verifyEqual(testCase, lic.get('term.value').name, 'CC-BY-4.0');
+else
+    verifyEqual(testCase, reg.name, 'Creative Commons Attribution 4.0 International');
+    verifyEqual(testCase, lic.get('term.value').name, reg.name);
+end
 rd = assertionAboutJ(out.migrated, id, 'release date');
 verifyEqual(testCase, rd.get('date.value').instant, '2024-01-15');
 kw = textAboutJ(out.migrated, id, 'Keyword');
@@ -2791,6 +2851,40 @@ d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, contains(d, 'interpretive dance'), d);
 end
 
+
+function testAFormFieldWithNoBindingInTheLoadedSchemaFailsLoudly(testCase)
+% [pipeline defects are not carries] (Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md): a form field whose binding the LOADED
+% SCHEMA lacks is a pipeline defect, not a fact about the v1 document. It used
+% to carry the form whole as v1 (with no carry register row); now the run fails
+% loudly, naming the missing binding. The schema here is a copy of the loaded
+% one without its binding registry.
+src = did2.schema.cache.shared().schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+if isfile(fullfile(tmp, 'binding_registry_meta.json'))
+    delete(fullfile(tmp, 'binding_registry_meta.json'));
+end
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+v1 = metadataEditorDoc();
+verifyError(testCase, @() did2.convert.migrators_j.metadata_editor(v1), ...
+    'did2:convert:schemaTooOld');
+try
+    did2.convert.migrators_j.metadata_editor(v1);
+catch err
+    verifySubstring(testCase, err.message, 'loaded schema is too old');
+    verifySubstring(testCase, err.message, 'EMPTY:0000356');   % ExperimentalApproach
+end
+% through the pipeline: a quarantine with that identifier, never a carry
+out = runJ(v1);
+assertEqual(testCase, numel(out.quarantine), 1);
+verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:schemaTooOld');
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+    'a schema defect is not a carry');
+end
 
 function testMetadataEditorAuthorWithTwoAffiliationsIsCarriedWholeAsV1(testCase)
 % [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
@@ -3266,17 +3360,60 @@ verifyEqual(testCase, sort(texts), sort({'ndi.session.dir', '/data/exp_demo'}));
 end
 
 function testSessionMembershipOpenCasesAreCarried(testCase)
-% The open cases -- a `session_reference`, an ingested session's opener class
-% -- carry the document whole as v1 for now ([generic stage is lossless]).
+% The open cases carry the document whole as v1 ([generic stage is lossless]):
+% an ingested session's `session_reference` whose session is not in the batch
+% (it cannot be compared with the session's local_identifier), and a LINKED
+% session's reference.
 v1 = writerSessionInADatasetDoc('member_sess_9');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
-v1.session_in_a_dataset.session_reference = '';
-v1.session_in_a_dataset.session_creator_input1 = '';
-out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'session_creator'));
+    '[carry-069] session_reference (the session is not in the batch'), ...
+    'the note cites its carry register row');
+v1.session_in_a_dataset.is_linked = 1;
+out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.count, 1);
+end
+
+function testAnIngestedSessionsEqualReferenceIsDroppedAndItsCreatorKept(testCase)
+% [ingested session membership] (Jess Haley, 2026-10-26): for an INGESTED
+% session, `session_reference` equal to the session entity's local_identifier
+% is dropped, and the creator class is a "software class" (EMPTY:0000401)
+% parameter of the "database ingestion" (EMPTY:0000399) method.
+v1 = writerSessionInADatasetDoc('member_sess_9');
+out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+    'the membership was carried');
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+assertNotEmpty(testCase, rel);
+m = rel.get('relation.method');
+verifyEqual(testCase, char(m.term.node), 'EMPTY:0000399');
+p = m.parameters;
+if iscell(p); p = [p{:}]; end
+verifyEqual(testCase, numel(p), 1);
+verifyEqual(testCase, char(p(1).variable.node), 'EMPTY:0000401');
+verifyEqual(testCase, char(p(1).text), 'ndi.session.dir');
+end
+
+function testAnIngestedSessionsDifferingReferenceIsCarried(testCase)
+% [ingested session membership]: a `session_reference` that differs from the
+% session entity's local_identifier carries the document as v1 (carry-060).
+v1 = writerSessionInADatasetDoc('member_sess_9');
+out = runJ({v1sessionDoc('member_sess_9', 'another_name'), v1});
+n = out.summary.migration_notes.carried_as_v1;
+verifyEqual(testCase, n.count, 1);
+verifyTrue(testCase, contains(n.distinct_details{1}, '[carry-060]'), n.distinct_details{1});
+verifyEqual(testCase, n.register_rows, {'carry-060'});
+end
+
+function v1 = v1sessionDoc(sessionId, reference)
+v1 = struct();
+v1.document_class = struct('class_name', 'session', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', sessionId, 'session_id', sessionId, ...
+    'name', 'sess', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.session = struct('reference', reference);
 end
 
 function [name, node] = membershipRelation()
@@ -4375,7 +4512,7 @@ verifyEqual(testCase, leaf.data.dimensions(1).term.name, 'experimental condition
 covs = leaf.data.covariates;
 verifyEqual(testCase, numel(covs), 2);
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
-    {'spatial frequency', 'temporal frequency'});
+    {regName('spatial frequency'), regName('temporal frequency')});
 verifyEqual(testCase, [covs.along], [0 0]);
 verifyEqual(testCase, covs(1).quantity.value, [0.5 0.5 1]);
 verifyEqual(testCase, covs(2).quantity.value, [2 4 4]);
@@ -4454,7 +4591,7 @@ verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(o), 'observation+term');
 verifyEqual(testCase, o.statement.variable.name, 'imaged region');
-verifyEqual(testCase, o.term.value.node, 'uberon:0002436');
+verifyEqual(testCase, o.term.value.node, regNode('uberon:0002436'));
 verifyEqual(testCase, o.term.value.name, 'primary visual cortex');
 verifyEqual(testCase, depValue(o, 'entity_id'), 'elem_9');
 end
@@ -4540,7 +4677,7 @@ verifyEqual(testCase, vals(1).source_unit.name, 'volt');
 verifyEqual(testCase, vals(1).volts, 0.5, 'AbsTol', 1e-9);
 % temperature qualifies the SAME statement rather than becoming its own doc
 c = o.statement.conditions;   % #88: conditions live on `statement`
-verifyEqual(testCase, c.variable.name, 'temperature');
+verifyEqual(testCase, c.variable.name, regName('temperature'));
 verifyEqual(testCase, c.quantity.value, 11, 'AbsTol', 1e-9);
 verifyEqual(testCase, c.quantity.source_value, '11', ...
     'a condition''s source_value is text');
@@ -5035,7 +5172,7 @@ for f = {'units', 'dimensions'}
     outOne = runJ(one);
     verifyCarriedWholeAsV1(testCase, one, outOne);
     verifyEqual(testCase, outOne.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-        ['unplaced: position_metadata.' f{1}]);
+        ['[carry-053] unplaced: position_metadata.' f{1}]);
 end
 end
 
@@ -6057,7 +6194,8 @@ assertTrue(testCase, isscalar(first) && isequaln(first{1}, body), ...
     'the writer-shaped document was not carried whole as v1');
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
 d = notes.carried_as_v1.distinct_details{1};
-paths = strsplit(regexprep(d, '^unplaced: ', ''), ', ');
+% each path follows its carry register row tag ('[carry-056] ', [carry register])
+paths = strsplit(regexprep(regexprep(d, '^unplaced: ', ''), '\[carry-\d{3}\] ', ''), ', ');
 for k = 1:numel(paths)
     body = removePathJ(body, strsplit(paths{k}, '.'));
 end
@@ -6078,4 +6216,19 @@ if isscalar(parts)
 else
     s.(fn{ix}) = removePathJ(s.(fn{ix}), parts(2:end));
 end
+end
+
+function n = regNode(node)
+%REGNODE NODE as the loaded term registry spells it when it holds it ([migrator
+%   writes the registry spelling], Jess Haley, 2026-10-26), else as given.
+t = did2.convert.registeredTerm(node, '');
+n = node;
+if ~isempty(t.name); n = t.node; end
+end
+
+function n = regName(name)
+%REGNAME NAME as the loaded term registry labels it when it holds it, else as
+%   given ([term labels stay as the ontology spells them]).
+t = did2.convert.registeredTerm('', name);
+n = t.name;
 end

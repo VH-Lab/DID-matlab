@@ -60,12 +60,15 @@ function bodies = pyraview(preBody)
 %   QUANTITY from raw voltage, so the filter is part of what the stored numbers
 %   mean (V_eta_frequency_filter_model_plan.md, signed 2026-07-30).
 %
-%   So the fold now also emits ONE `frequency_filter` document and points every
-%   level body at it via `sampled_body.filter_id` (declared optional there,
-%   must_refer_to_document_class frequency_filter). The filter rides on the
-%   BODIES rather than the observation because that is where the schema puts the
-%   edge, and because it describes the samples. When the block is an
-%   all-pass, `jFrequencyFilter` returns nothing and no `filter_id` is written.
+%   So the fold now also emits ONE `method` document for the filter and points
+%   every level body at it via `sampled_body.method_id` (declared optional
+%   there, must_refer_to_document_class method; it was `filter_id` to a
+%   `frequency_filter` until Jess Haley 2026-10-22 [filters are methods]). A
+%   loaded schema whose sampled_body still declares filter_id is an error,
+%   did2:convert:schemaTooOld. The filter rides on the BODIES rather than the
+%   observation because that is where the schema puts the edge, and because it
+%   describes the samples. When the block is an all-pass, `jFrequencyFilter`
+%   returns nothing and no `method_id` is written.
 %   A block it cannot place whole (a vocabulary v1 has never used, a
 %   fractional order, a `label` that differs from the `type`) carries the
 %   document whole as v1 ([small unread settings] (2), Jess Haley,
@@ -76,7 +79,7 @@ function bodies = pyraview(preBody)
 %   of it was wrong in each direction -- it named a class that no longer exists,
 %   and it grouped the observation with the bodies when they now differ:
 %
-%       voltage_observation   stable      frequency_filter         stable
+%       voltage_observation   stable      method                   stable
 %       sampled_body          DRAFT       epoch_bounded_reference  stable
 %       opaque_body           DRAFT
 %
@@ -153,13 +156,19 @@ if ~isfinite(epochDur)
         strjoin(fieldnamesOf(getBlock(preBody, 'epochclocktimes')), ', '));
 end
 
-% the filter: a `method` document named by each body's method_id once the
-% schema declares it (Jess Haley 2026-10-22 [filters are methods]); a
-% frequency_filter by filter_id before
-[filterDoc, filterEdge, filterUnplaced] = jFrequencyFilter(preBody);
+% the filter: a `method` document named by each body's method_id (Jess Haley
+% 2026-10-22 [filters are methods]); a schema still declaring filter_id is
+% did2:convert:schemaTooOld, raised by jFrequencyFilter
+filterRate = [];   % the stated native rate, for an all-pass's sampleFrequency
+if nativeRt > 0; filterRate = nativeRt; end
+[filterDoc, filterEdge, filterUnplaced] = jFrequencyFilter(preBody, filterRate);
 if ~isempty(filterUnplaced)
     % [small unread settings] (2) (Jess Haley, 2026-10-26): a filter block this
     % cannot place whole carries the document whole as v1
+    % carry-register: carry-006 carry-007 carry-042 carry-061 via
+    % private/jFrequencyFilter.m. A pre-[filters are methods] schema is not a
+    % carry: it errors there, did2:convert:schemaTooOld ([pipeline defects are
+    % not carries])
     did2.convert.reportNote('carried_as_v1', 'pyraview', char(preBody.base.id), ...
         ['unplaced: ' strjoin(filterUnplaced, ', ')]);
     bodies = {preBody};
@@ -167,11 +176,9 @@ if ~isempty(filterUnplaced)
 end
 filterOpt = {};
 if ~isempty(filterDoc)
-    if strcmp(filterEdge, 'method_id')
-        filterOpt = {'MethodId', filterDoc.base.id};
-    else
-        filterOpt = {'FilterId', filterDoc.base.id};
-    end
+    assert(strcmp(filterEdge, 'method_id'), 'did2:convert:noFilterEdge', ...
+        'jFrequencyFilter named edge "%s"; only method_id exists', filterEdge);
+    filterOpt = {'MethodId', filterDoc.base.id};
 end
 
 if ~isempty(epochDocId)

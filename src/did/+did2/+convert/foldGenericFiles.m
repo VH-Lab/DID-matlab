@@ -390,7 +390,6 @@ function [result, report] = foldGenericFiles(result, options)
 %   `store_records_left_passthrough`.
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
-%   did2.convert.resolveLawnPlateSubjects,
 %   did2.unittest.testFoldGenericFiles, did2.unittest.testBatchPassWiring.
 
 arguments
@@ -399,6 +398,12 @@ arguments
     options.SchemaCache = []
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
 end
+% Ids this pass mints are derived from their source document's id and role,
+% counted in one context for the run (did2.convert.mintId; practice (b) of
+% [migration reliability practices], Jess Haley, 2026-10-26).
+mintDepth = did2.convert.mintId('-depth');
+did2.convert.mintId('-push', '');
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
 % migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
@@ -592,7 +597,7 @@ for f = 1:numel(fileIds)
         continue;
     end
 
-    bodyId = did.ido.unique_id();
+    bodyId = did2.convert.mintId('opaque_body', id);   % derived (practice (b))
     [stmt, anchor] = makeStatement(b, node, subjectId);
     rebuilt{end+1} = stmt;                                    %#ok<AGROW>
     rebuilt{end+1} = makeOpaqueBody(b, blk, bodyId, id);      %#ok<AGROW>
@@ -1173,17 +1178,17 @@ end
 end
 
 function n = dimensionName(D)
-%DIMENSIONNAME The name of a dimension's `term` (the axis is found by its term).
+%DIMENSIONNAME The axis a dimension's `term` names (the axis is found by its
+%   term): did2.convert.axisKey, so X-Coordinate (NCIT:C44477) reads 'x'.
 arguments
     D % a dimension; anything that is not a struct names nothing
 end
 
 n = '';
 if ~isstruct(D) || ~isfield(D, 'term'); return; end
-v = D.term;
-if iscell(v); v = v{1}; end
-if isstruct(v) && isfield(v, 'name'); n = char(v.name);
-elseif ischar(v) || isstring(v); n = char(v); end
+% by node first (x/y/z/time as the registry writes them, did2.convert.axisTerm),
+% then by name: 'time', 'channel', 'z', 'y', 'x', or the term's own name
+n = did2.convert.axisKey(D.term);
 end
 
 function c = keyCells(k)
@@ -1400,7 +1405,7 @@ end
 % NOT HELD: the one member is recorded BY LOCATION, ingest 0, exactly as
 % ndi.document/add_file records a file it does not take in.
 body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
-    'delete_original', 0, 'uid', did.ido.unique_id(), 'location', location, ...
+    'delete_original', 0, 'uid', did2.convert.mintId('file_uid', baseField(rec, 'id')), 'location', location, ...
     'parameters', '', 'location_type', 'file', 'ingest', 0));
 end
 

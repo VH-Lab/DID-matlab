@@ -301,7 +301,7 @@ tt.depends_on = [ ...
     struct('name', 'donor_id',     'document_id', 'om_don_1')];
 tt.base = struct('id', 'om_tt_01', 'session_id', 'sess_09', ...
     'name', 'graft', 'datestamp', '2024-06-01T12:00:00.000Z');
-tt.treatment_transfer = struct('entity_ontologyNode', 'uberon:0000922', ...
+tt.treatment_transfer = struct('entity_ontologyNode', 'UBERON:0005291', ...
     'entity_name', 'embryonic tissue', 'method_name', 'transplantation');
 
 vi = struct();
@@ -311,7 +311,7 @@ vi.depends_on = struct('name', {'subject_id'}, 'value', {'om_animal_v'});
 vi.base = struct('id', 'om_vi_01', 'session_id', 'sess_09', ...
     'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
 vi.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
-    'virus_name', 'AAV-ChR2', 'dilution', 1000, ...
+    'virus_name', 'pAAV-hSyn-hChR2(H134R)-EYFP', 'dilution', 1000, ...
     'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1');
 
 % ontology_label, built from the NDI template: ONE property field
@@ -334,7 +334,7 @@ is.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0'
 is.depends_on = struct('name', {'subject_id'}, 'value', {'om_animal_i'});
 is.base = struct('id', 'om_is_01', 'session_id', 'sess_09', ...
     'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
-is.image_stack = struct('format_ontology', 'edam:3382', ...
+is.image_stack = struct('format_ontology', 'EDAM:format_3591', ...
     'label', 'a two-photon stack', 'format', 'tiff');
 is.image_stack_parameters = struct('data_type', 'uint16', ...
     'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
@@ -390,7 +390,7 @@ drug.document_class = struct('class_name', 'treatment_drug', 'class_version', '1
 drug.depends_on = struct('name', {'subject_id'}, 'value', {'animal_1'});
 drug.base = struct('id', 'drug_01', 'session_id', 'sess_09', ...
     'name', 'td', 'datestamp', '2024-06-01T12:00:00.000Z');
-drug.treatment_drug = struct('mixture_table', 'chebi:28001,haloperidol,5', ...
+drug.treatment_drug = struct('mixture_table', 'CHEBI:5613,haloperidol,5', ...
     'location_ontologyNode', 'uberon:0002436', 'location_name', 'primary visual cortex');
 
 ploc = struct();
@@ -473,9 +473,6 @@ result = did2.convert.resolveEpochProbemap(result, ...
 % trace is strictly more informative than a captured message.
 result = did2.convert.resolveResponseParameters(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
-% did2.convert.resolveLawnPlateSubjects is NOT run: Haley-import logic, removed
-% from the generic migration (Decided by Jess Haley, 2026-10-26 [Haley logic
-% leaves the generic migration], did-schema V_eta_go_forward_class_audit.md).
 % TEAM DECISION 2026-08-11: `generic_file` -> an `opaque_body` + a statement
 % whose `variable` comes from the sibling ontologyLabel. Same post-pass set and
 % the SAME ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE, like
@@ -613,6 +610,77 @@ if isscalar(bodyIdx)
     verifyEqual(testCase, char(ob.get('data_body.filename')), ...
         'plasmids/pXY-12.gb');
 end
+end
+
+function testUnregisteredTermsTheMigrationWrites(testCase)
+% REPORT ONLY. [early migration pieces fixed] (3) (Jess Haley, 2026-10-26,
+% did-schema V_eta_go_forward_class_audit.md): the TermRegistry strict check is
+% to stay ON during migration, an unregistered term becoming a carry with a
+% register row or a registry row. v1_to_v2 and epochMint still turn it off.
+% This measures what turning it on would refuse: every fixture body is
+% migrated ALONE (so each term is attributed to its v1 class) with the check
+% off and did2.build.unregisteredTerms collecting, then the whole batch goes
+% through the batch passes the same way. Each line is
+% 'UNREGISTERED-TERM <v1 class> | <field> | <node> | <name> | <reason>'.
+% Denominator first: the bodies run. It asserts only that something was run.
+if isempty(getenv('DID_SCHEMA_PATH'))
+    assumeFail(testCase, ...
+        'DID_SCHEMA_PATH not set; run under test-fixtures.yml (assembled V_eta schema).');
+end
+prevCollect = did2.build.unregisteredTerms('-collect', true);
+testCase.addTeardown(@() did2.build.unregisteredTerms('-collect', prevCollect));
+bodies = v1Fixtures();
+fprintf('\nUNREGISTERED-TERMS DENOMINATOR: %d fixture body(ies), each migrated alone\n', ...
+    numel(bodies));
+nLines = 0;
+classesWithTerms = {};
+for k = 1:numel(bodies)
+    b = bodies{k};
+    cn = '<unknown>';
+    if isfield(b, 'document_class') && isfield(b.document_class, 'class_name')
+        cn = char(b.document_class.class_name);
+    end
+    did2.build.unregisteredTerms('-reset');
+    try
+        did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'V_eta');
+    catch err
+        fprintf('UNREGISTERED-TERMS %s: the run threw %s (not measured)\n', ...
+            cn, err.identifier);
+        continue;
+    end
+    rows = did2.build.unregisteredTerms();
+    for r = 1:numel(rows)
+        fprintf('UNREGISTERED-TERM %s | %s | %s | %s | %s (x%d)\n', cn, ...
+            rows(r).field, rows(r).node, rows(r).name, rows(r).reason, rows(r).count);
+        nLines = nLines + 1;
+    end
+    if ~isempty(rows); classesWithTerms{end+1} = cn; end %#ok<AGROW>
+end
+fprintf(['UNREGISTERED-TERMS per-document: %d term line(s); %d of %d body(ies) ' ...
+    'write one (classes: %s)\n'], nLines, numel(classesWithTerms), numel(bodies), ...
+    strjoin(unique(classesWithTerms), ', '));
+% the batch passes, on the whole batch
+did2.build.unregisteredTerms('-reset');
+try
+    result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+    did2.build.unregisteredTerms('-reset');
+    result = did2.convert.resolveDeferredBaths(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.resolveOpenmindsCitations(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.resolveDatasetEntities(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.resolveSessionAnchors(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    did2.convert.resolveEpochProbemap(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    rows = did2.build.unregisteredTerms();
+    for r = 1:numel(rows)
+        fprintf('UNREGISTERED-TERM <batch pass> | %s | %s | %s | %s (x%d)\n', ...
+            rows(r).field, rows(r).node, rows(r).name, rows(r).reason, rows(r).count);
+    end
+    fprintf('UNREGISTERED-TERMS batch passes: %d term line(s)\n', numel(rows));
+catch err
+    fprintf('UNREGISTERED-TERMS batch passes: threw %s: %s (not measured)\n', ...
+        err.identifier, err.message);
+end
+verifyGreaterThan(testCase, numel(bodies), 0, 'the measurement ran on nothing');
 end
 
 function testACarriedCalculatorWithNoTombstoneIsCountedNotQuarantined(testCase)

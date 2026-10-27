@@ -9,8 +9,7 @@ function v2Body = subject(preBody)
 %   `local_identifier` and `description` carried, and `type` 'organism' -- the
 %   v1 subject class names the animal an experiment is about. That default is
 %   PROPOSED, not signed: a v1 subject that is a culture or a plate takes it too
-%   until a source field says otherwise (the Haley lawn/plate subjects are typed
-%   by resolveLawnPlateSubjects, not here).
+%   until a source field says otherwise.
 
 arguments
     preBody (1,1) struct
@@ -29,8 +28,9 @@ if isempty(strtrim(li))
     % 2026-10-25): a required local_identifier the source does not state is not
     % filled with the document id (jEnsureLocalId); the document is carried
     % whole as v1.
+    % carry-register: carry-033
     did2.convert.reportNote('carried_as_v1', 'subject', char(preBody.base.id), ...
-        'unplaced: no subject.local_identifier (it would be invented)');
+        '[carry-033] unplaced: no subject.local_identifier (it would be invented)');
     v2Body = {preBody};
     return;
 end

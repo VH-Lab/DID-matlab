@@ -97,3 +97,29 @@ did2.convert.reportNote('reset');
 s = did2.convert.reportNote('collect');
 verifyTrue(testCase, isstruct(s) && isempty(fieldnames(s)));
 end
+
+function testCarriesAreCountedByRegisterRow(testCase)
+% practice (d) of [migration reliability practices] (Jess Haley, 2026-10-26):
+% carried_as_v1 notes are counted by the carry register row their DETAIL cites
+% ('[carry-NNN]'), with the denominator (every carry) and the carries citing
+% no row. A note citing two rows counts once under each.
+did2.convert.reportNote('reset');
+did2.convert.reportNote('carried_as_v1', 'subject', 's1', '[carry-033] unplaced: no subject.local_identifier');
+did2.convert.reportNote('carried_as_v1', 'subject', 's2', '[carry-033] unplaced: no subject.local_identifier');
+did2.convert.reportNote('carried_as_v1', 'hartley_calc', 'h1', ...
+    'unplaced: [carry-014] a, [carry-015] b, [carry-014] c');
+did2.convert.reportNote('carried_as_v1', 'pyraview', 'p1', 'unplaced: filter.parameters.sampleFrequency');
+did2.convert.reportNote('carried_as_v1', 'x', 'x1');
+s = did2.convert.reportNote('collect');
+n = s.carried_as_v1;
+verifyEqual(testCase, n.count, 5);
+verifyEqual(testCase, n.register_rows, {'carry-014', 'carry-015', 'carry-033'});
+verifyEqual(testCase, n.register_row_counts, [1 1 2]);
+verifyEqual(testCase, n.notes_citing_a_row, 3);
+verifyEqual(testCase, n.notes_citing_no_row, 2, 'an untagged note and a note with no detail');
+% other kinds are not counted by row
+did2.convert.reportNote('reset');
+did2.convert.reportNote('route_unknown', 'treatment', 't1', '[carry-023] x');
+s = did2.convert.reportNote('collect');
+verifyFalse(testCase, isfield(s.route_unknown, 'register_rows'));
+end

@@ -79,8 +79,9 @@ end
 if isfield(block, 'depends_on')
     differing = innerDependsOnDiffers(preBody, block.depends_on);
     if ~isempty(differing)
+        % carry-register: carry-016
         did2.convert.reportNote('carried_as_v1', v1ClassName, baseId(preBody), ...
-            sprintf('unplaced: %s.depends_on (%s differs from the top-level edge)', ...
+            sprintf('[carry-016] unplaced: %s.depends_on (%s differs from the top-level edge)', ...
             v1ClassName, strjoin(differing, ', ')));
         v2Body = preBody;
         return;

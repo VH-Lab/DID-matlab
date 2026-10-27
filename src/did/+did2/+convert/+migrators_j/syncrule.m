@@ -203,8 +203,9 @@ function tf = carryUnwritable(preBody, params, namesRead)
 [~, unwritable] = unreadParameters(params, namesRead);
 tf = ~isempty(unwritable);
 if tf
+    % carry-register: carry-008
     did2.convert.reportNote('carried_as_v1', 'syncrule', char(preBody.base.id), ...
-        ['unplaced: ' strjoin(strcat('syncrule.parameters.', unwritable), ', ')]);
+        ['[carry-008] unplaced: ' strjoin(strcat('syncrule.parameters.', unwritable), ', ')]);
 end
 end
 

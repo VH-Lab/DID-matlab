@@ -20,7 +20,7 @@ import affected_corpora as ac  # noqa: E402
 CENSUS = {"A": {"ontologytablerow": 5, "session": 1},
           "B": {"treatment": 3, "session": 1},
           "C": {"element": 9, "session": 1}}
-LEDGER_PASSES = {"resolveLawnPlateSubjects": {"ontologytablerow"}}
+LEDGER_PASSES = {"resolveDeferredBaths": {"ontologytablerow"}}
 
 
 def fake_repo(d):
@@ -63,7 +63,7 @@ class Mapping(unittest.TestCase):
         self.assertEqual(corpora, ["A", "B", "C"])
 
     def test_a_batch_pass_maps_to_all_unless_narrowed(self):
-        p = ac.CONVERT + "resolveLawnPlateSubjects.m"
+        p = ac.CONVERT + "resolveDeferredBaths.m"
         self.assertEqual(run([p])[1], ["A", "B", "C"])
         self.assertEqual(run([p], narrow=True)[1], ["A"])
 

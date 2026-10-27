@@ -244,6 +244,12 @@ arguments
     options.SchemaCache = []
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
 end
+% Ids this pass mints are derived from their source document's id and role,
+% counted in one context for the run (did2.convert.mintId; practice (b) of
+% [migration reliability practices], Jess Haley, 2026-10-26).
+mintDepth = did2.convert.mintId('-depth');
+did2.convert.mintId('-push', '');
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
 % migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it

@@ -492,13 +492,13 @@ for k = 1:numel(dataDim)
         % so no covariate is written (Jess Haley 2026-10-22 [covariate rules
         % named] 6.2a, and "yes" to 1..n; origin 1 + spacing 1 until then).
         % Position k (0-based) is MATLAB index k + 1.
-        entry = jAxis(jOntologyTerm('', nm), dataDim(k));
+        entry = jAxis(did2.convert.axisTerm(nm), dataDim(k));
     else
         % IRREGULAR. `values` is REQUIRED iff not regular; origin/spacing stay
         % blank, because a stored vector that is not an arithmetic progression
         % has neither. `source_values` repeats them: nothing was converted, and
         % saying so explicitly is cheaper than a reader wondering.
-        entry = jAxis(jOntologyTerm('', nm), dataDim(k), ...
+        entry = jAxis(did2.convert.axisTerm(nm), dataDim(k), ...
             'quantity', struct('value', v, 'source_value', v));
     end
     entries{end+1} = entry; %#ok<AGROW>

@@ -35,7 +35,11 @@ if isKey(orgIds, key)
     return;
 end
 if isempty(existingId)
-    orgId = did.ido.unique_id();
+    srcId = '';
+    if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+        srcId = char(preBody.base.id);
+    end
+    orgId = did2.convert.mintId(['organization:' key], srcId);   % derived (practice (b))
 else
     orgId = existingId;
 end

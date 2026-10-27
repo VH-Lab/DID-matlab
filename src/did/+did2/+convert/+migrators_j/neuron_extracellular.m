@@ -318,7 +318,9 @@ blk = getBlock(preBody, 'neuron_extracellular');
 % placed is carried as v1], Jess Haley, 2026-10-25). Until 2026-10-26 a
 % disagreement raised did2:convert:neuronWaveformShapeMismatch (a quarantine).
 w = getField(blk, 'mean_waveform');
+% carryTag (set in both branches below): the carry register row this branch's carry cites
 if isnumeric(w) && ~isempty(w) && ismatrix(w)
+    carryTag = '[carry-018] ';
     unplaced = [checkRedundantCount(blk, 'number_of_samples_per_channel', ...
         size(w, 1), 'size(mean_waveform,1)'), ...
         checkRedundantCount(blk, 'number_of_channels', size(w, 2), ...
@@ -332,12 +334,16 @@ else
     % (size(meanshape,k) of an empty mean shape), or absent / [] (the
     % template). Any other count states something nothing else does
     % ([lossless means round trip], Jess Haley, 2026-10-26): carried as v1.
+    carryTag = '[carry-041] ';
     unplaced = [writerDefaultCount(blk, 'number_of_samples_per_channel'), ...
         writerDefaultCount(blk, 'number_of_channels')];
 end
 if ~isempty(unplaced)
+    % carry-register: carry-018 (counts that differ from the waveform's axis
+    % lengths); carry-041 (counts with no waveform that are not the writer's
+    % default)
     did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
-        char(baseField(preBody, 'id', '')), ['unplaced: ' strjoin(unplaced, ', ')]);
+        char(baseField(preBody, 'id', '')), [carryTag 'unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
     return;
 end
@@ -354,7 +360,7 @@ end
 % did-schema #88: built through did2.build. The neuron is an `entity` of type
 % cell (a sorted unit); its derivation from the recording element is a
 % `derived_from` relation; its statements hang off one session anchor.
-neuronId = did.ido.unique_id();
+neuronId = did2.convert.mintId('neuron');   % derived from the source id (practice (b))
 neuron = jEntity(preBody, 'cell', struct('local_identifier', unitName, ...
     'description', 'spike-sorted extracellular unit (derived)'), 'Id', neuronId);
 rel = jEntityRelation(preBody, neuronId, recordingSubjectId, 'derived_from');   % node from the schema's row (did2.build.vocabulary)

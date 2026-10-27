@@ -187,8 +187,9 @@ end
 % ([generic stage is lossless], Jess Haley, 2026-10-25) instead of losing it.
 if isfield(preBody, 'image') && isstruct(preBody.image) && isfield(preBody.image, 'label') ...
         && ~isempty(strtrim(char(string(preBody.image.label))))
+    % carry-register: carry-051
     did2.convert.reportNote('carried_as_v1', 'image', sourceId(preBody), ...
-        'unplaced: image.label');
+        '[carry-051] unplaced: image.label');
     bodies = {preBody};
     return;
 end

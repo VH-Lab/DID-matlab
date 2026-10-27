@@ -127,8 +127,9 @@ if ~isempty(jDependency(preBody, 'stimulus_control_id'))
     unplaced{end+1} = 'depends_on stimulus_control_id';
 end
 if ~isempty(unplaced)
+    % carry-register: carry-050
     did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar', ...
-        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
+        char(preBody.base.id), ['[carry-050] unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
     return;
 end

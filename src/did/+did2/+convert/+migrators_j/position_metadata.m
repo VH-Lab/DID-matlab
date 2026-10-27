@@ -68,8 +68,9 @@ for f = {'units', 'dimensions'}
     end
 end
 if ~isempty(unplaced)
+    % carry-register: carry-053
     did2.convert.reportNote('carried_as_v1', 'position_metadata', ...
-        char(preBody.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
+        char(preBody.base.id), ['[carry-053] unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
     return;
 end

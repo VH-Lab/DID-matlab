@@ -35,6 +35,16 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                            order of first appearance (EXACT, not sampled)
 %       S.<kind>.distinct_detail_counts  how many notes carry each (EXACT);
 %                            count - sum(distinct_detail_counts) notes had none
+%     and, for S.carried_as_v1 only (practice (d) of [migration reliability
+%     practices], Jess Haley, 2026-10-26: carry counts by register row in the
+%     migration report), read from the `[carry-NNN]` tags of the DETAILs
+%     (EXACT, from distinct_details):
+%       .register_rows          every carry register row id cited, sorted
+%       .register_row_counts    how many notes cite each (a note citing two
+%                               rows counts once under each)
+%       .notes_citing_a_row     notes whose DETAIL cites at least one row
+%       .notes_citing_no_row    notes whose DETAIL cites none (count minus
+%                               the line above: the denominator is .count)
 %
 %   WHY A SAMPLE (2026-10-22). Every note used to be kept, appended one struct
 %   at a time (`notes(end+1)`) and copied again into ids/details by 'collect'.
@@ -58,6 +68,16 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     lossless] and [partly placed is carried as v1] (Jess
 %                     Haley, 2026-10-25, did-schema
 %                     V_eta_go_forward_class_audit.md).
+%                     DETAIL cites the row of did-schema
+%                     schemas/V_eta_carry_register.json that covers each
+%                     reason, as a `[carry-NNN]` tag before that reason: at the
+%                     start when the whole note is one row's ('[carry-022]
+%                     needs_mapping: ...'), before each item when its items are
+%                     different rows' ([carry register], Jess Haley,
+%                     2026-10-26). Each call site says which rows it cites in
+%                     a `% carry-register:` comment above it, `none` for a
+%                     reason with no row yet; tools/check_carry_citations.py
+%                     checks both against the register and lists the `none`s.
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
 %                     location, so whether it was an immersion or a dose cannot
 %                     be read from it; it migrates as a dose with a NaN amount
@@ -147,6 +167,14 @@ switch action
                 'sampled', K.nSample < K.count, ...
                 'distinct_details', {K.detailValues}, ...
                 'distinct_detail_counts', K.detailCounts);
+            if strcmp(K.name, 'carried_as_v1')
+                [rows, rowCounts, nCiting] = registerRowCounts( ...
+                    K.detailValues, K.detailCounts);
+                out.(K.name).register_rows = rows;
+                out.(K.name).register_row_counts = rowCounts;
+                out.(K.name).notes_citing_a_row = nCiting;
+                out.(K.name).notes_citing_no_row = K.count - nCiting;
+            end
         end
     otherwise
         % record: reportNote(KIND, CLASSNAME, DOCID)
@@ -251,4 +279,33 @@ for p = 1:st.nPending
 end
 st.total = st.total + st.nPending;
 st.nPending = 0;
+end
+
+function [rows, rowCounts, nCiting] = registerRowCounts(details, counts)
+%REGISTERROWCOUNTS The carry register rows the DETAILS cite ([carry register],
+%   Jess Haley, 2026-10-26: a `[carry-NNN]` tag before each reason it covers),
+%   each with how many notes cite it, and how many notes cite any row.
+%   DETAILS are distinct, COUNTS how many notes carry each, so the counts are
+%   exact. A note citing two rows counts once under each row and once in
+%   NCITING.
+rows = {};
+rowCounts = zeros(1, 0);
+nCiting = 0;
+for j = 1:numel(details)
+    toks = regexp(details{j}, '\[(carry-\d{3})\]', 'tokens');
+    if isempty(toks); continue; end
+    ids = unique(cellfun(@(t) t{1}, toks, 'UniformOutput', false));
+    nCiting = nCiting + counts(j);
+    for r = 1:numel(ids)
+        hit = find(strcmp(rows, ids{r}), 1);
+        if isempty(hit)
+            rows{end+1} = ids{r}; %#ok<AGROW>
+            rowCounts(end+1) = counts(j); %#ok<AGROW>
+        else
+            rowCounts(hit) = rowCounts(hit) + counts(j);
+        end
+    end
+end
+[rows, order] = sort(rows);
+rowCounts = rowCounts(order);
 end

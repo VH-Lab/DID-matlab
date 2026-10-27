@@ -102,9 +102,13 @@ if ~isempty(reference); localId = strtrim(sprintf('%s (ref %s)', name, reference
 % is carried whole as v1.
 if isempty(strtrim(localId)) || contains(name, ' (ref ') ...
         || ~strcmp(name, strtrim(name)) || ~strcmp(reference, strtrim(reference))
+    row = '[carry-055] ';
+    if isempty(strtrim(localId)); row = '[carry-048] '; end
+    % carry-register: carry-048 (no name and no reference); carry-055 (not
+    % packed reversibly)
     did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
-        sprintf('unplaced: element.name "%s" / element.reference "%s" (not packed reversibly)', ...
-        name, reference));
+        sprintf('%sunplaced: element.name "%s" / element.reference "%s" (not packed reversibly)', ...
+        row, name, reference));
     v2Body = {preBody};
     return;
 end

@@ -74,7 +74,8 @@ notesText = strValue;
 % --- not-a-manipulation rows -> carried as v1 (were quarantined) --------
 if containsAny(hay, {'date of birth', 'non-survival experiment time', ...
         'experiment time'})
-    v2Body = carryAsV1(preBody, sprintf(['treatment "%s" is not a manipulation ' ...
+    % carry-register: carry-032
+    v2Body = carryAsV1(preBody, sprintf(['[carry-032] treatment "%s" is not a manipulation ' ...
         '(was did2:convert:notAManipulation)'], label));
     return;
 end
@@ -120,6 +121,8 @@ if startsWith(lower(node), 'chebi:')
     [manip, route, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, ...
         numberCondition, siteTerm, anchor.base.id);
     if ~isempty(unplaced)
+        % carry-register: carry-023 carry-024 carry-070 carry-071 via
+        % private/jTreatmentBodies.m
         v2Body = carryAsV1(preBody, jCarryWhy(unplaced));
         return;
     end
@@ -127,7 +130,8 @@ if startsWith(lower(node), 'chebi:')
         siteTerm = struct('node', {}, 'name', {});   % a bath is no site on the subject
     end
 else
-    v2Body = carryAsV1(preBody, ['needs_mapping: manipulation (dose | exposure | ' ...
+    % carry-register: carry-022
+    v2Body = carryAsV1(preBody, ['[carry-022] needs_mapping: manipulation (dose | exposure | ' ...
         'temperature | term) or observation; decided by the treatment''s meaning ' ...
         'in its dataset']);
     return;
@@ -212,6 +216,7 @@ function v2Body = carryAsV1(preBody, why)
 %CARRYASV1 The v1 treatment, unchanged, as the generic stage's output ([generic
 %   stage is lossless], [partly placed is carried as v1], Jess Haley,
 %   2026-10-25), noted with WHY.
+% carry-register: forwarded (each caller's marker names the row its WHY cites)
 did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
     char(preBody.base.id), why);
 v2Body = {preBody};

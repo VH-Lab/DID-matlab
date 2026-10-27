@@ -160,12 +160,12 @@ ms = getScalarStruct(block, 'metadata_structure');
 unplaced = {};
 ethicsText = getChar(ms, 'EthicsAssessment');
 if ~isempty(strtrim(ethicsText)) && isempty(did2.convert.ethicsJurisdiction(ethicsText))
-    unplaced{end+1} = sprintf('EthicsAssessment "%s"', strtrim(ethicsText));
+    unplaced{end+1} = sprintf('[carry-044] EthicsAssessment "%s"', strtrim(ethicsText));
 end
 authorList = getStructArray(ms, 'Author');
 for i = 1:numel(authorList)
     if isfield(authorList(i), 'affiliation') && numel(authorList(i).affiliation) > 1
-        unplaced{end+1} = sprintf('Author(%d).affiliation (%d affiliations)', ...
+        unplaced{end+1} = sprintf('[carry-054] Author(%d).affiliation (%d affiliations)', ...
             i, numel(authorList(i).affiliation)); %#ok<AGROW>
     end
 end
@@ -177,9 +177,12 @@ end
 % Scientific Data Type NCIT:C175886, valued by openMINDS terms). "A form value
 % that is not in the list carries the form whole as v1 rather than being
 % dropped."
-[formTerms, formUnplaced] = datasetFormTerms(ms);
+[formTerms, formUnplaced] = datasetFormTerms(ms, char(preBody.base.id));
 unplaced = [unplaced, formUnplaced];
 if ~isempty(unplaced)
+    % carry-register: carry-043 carry-044 carry-054 (the items above). A form
+    % field whose binding the loaded schema does not hold is not a carry: it
+    % errors in datasetFormTerms ([pipeline defects are not carries])
     did2.convert.reportNote('carried_as_v1', 'metadata_editor', ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     v2Body = {preBody};
@@ -233,7 +236,7 @@ for i = 1:numel(authors)
         'given_name',  getChar(a, 'givenName'), ...
         'family_name', getChar(a, 'familyName'), ...
         'email',       nestedChar(a, {'contactInformation', 'email'}));
-    personId = did.ido.unique_id();
+    personId = did2.convert.mintId('person');
     bodies = [bodies, entityDoc(preBody, 'person', personId, personBlock, ...
         buildGids({'ORCID', orcid}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, personId, 'has_author', i - 1);   % order counts from 0 ([author order from 0], Jess Haley 2026-10-21)
@@ -255,7 +258,7 @@ for i = 1:numel(funding)
     if isempty(awardTitle) && isempty(awardNumber) && isempty(getChar(f, 'funder'))
         continue;   % an empty funding slot carries nothing
     end
-    awardId = did.ido.unique_id();
+    awardId = did2.convert.mintId('award');
     bodies = [bodies, entityDoc(preBody, 'funding', awardId, ...
         struct('title', awardTitle), buildGids({'AwardNumber', awardNumber}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, awardId, 'funded_by', []);
@@ -275,7 +278,7 @@ for i = 1:numel(pubs)
     title = getChar(p, 'Publication');
     doi = getChar(p, 'DOI'); pmid = getChar(p, 'PMID'); pmcid = getChar(p, 'PMCID');
     if isempty(title) && isempty(doi) && isempty(pmid) && isempty(pmcid); continue; end
-    pubId = did.ido.unique_id();
+    pubId = did2.convert.mintId('publication');
     bodies = [bodies, entityDoc(preBody, 'publication', pubId, ...
         struct('title', title), ...
         buildGids({'DOI', doi}, {'PMID', pmid}, {'PMCID', pmcid}), true)];
@@ -285,7 +288,7 @@ end
 % --- full documentation IRI -> web_resource entity + documented_by relation --
 docIRI = getChar(ms, 'FullDocumentation');
 if ~isempty(docIRI)
-    wrId = did.ido.unique_id();
+    wrId = did2.convert.mintId('web_resource');
     bodies = [bodies, entityDoc(preBody, 'web_resource', wrId, ...
         struct('label', 'full documentation'), buildGids({'URL', docIRI}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, wrId, 'documented_by', []);
@@ -299,13 +302,15 @@ end
 v2Body = bodies;
 end
 
-function [terms, unplaced] = datasetFormTerms(ms)
+function [terms, unplaced] = datasetFormTerms(ms, docId)
 %DATASETFORMTERMS {variable, value} per form value of ExperimentalApproach,
 %   TechniquesEmployed and DataType, each value matched (by label, or by its
 %   node or the node's last segment -- openMINDS's own id, e.g. "derivedData")
 %   to a term of the binding's closed `values` list in the binding registry;
-%   UNPLACED names each value that matches none (or a field whose binding the
-%   loaded schema does not have).
+%   UNPLACED names each value that matches none. A field whose binding the
+%   loaded schema does not have is an error, did2:convert:schemaTooOld
+%   ([pipeline defects are not carries], Jess Haley, 2026-10-26); DOCID names
+%   the document in its message.
 fields = { ...
     'ExperimentalApproach', 'EMPTY:0000356'; ...
     'TechniquesEmployed',   'NCIT:C16847'; ...
@@ -322,14 +327,22 @@ for f = 1:size(fields, 1)
     if isempty(vals); continue; end
     row = bindingRow(reg, fields{f, 2});
     if isempty(row)
-        unplaced{end+1} = sprintf('%s (no %s binding in the loaded schema)', ...
-            fields{f, 1}, fields{f, 2}); %#ok<AGROW>
-        continue;
+        % [pipeline defects are not carries] (Jess Haley, 2026-10-26, did-schema
+        % V_eta_go_forward_class_audit.md): a binding the LOADED SCHEMA lacks is
+        % a defect of the pipeline, not of the v1 document, so it is never a
+        % carry. The run fails loudly; the cause is the schema it was given.
+        error('did2:convert:schemaTooOld', ...
+            ['metadata_editor "%s": the loaded schema is too old or incomplete: ' ...
+             'its binding registry has no subject_statement_bindings row with ' ...
+             'a closed `values` list for %s (the binding of the form field %s). ' ...
+             'Load a did-schema that holds it (DID_SCHEMA_PATH); the document ' ...
+             'is not carried for a schema defect.'], ...
+            docId, fields{f, 2}, fields{f, 1});
     end
     for k = 1:numel(vals)
         t = matchValue(row.values, vals{k});
         if isempty(t)
-            unplaced{end+1} = sprintf('%s "%s" (not in the closed list)', ...
+            unplaced{end+1} = sprintf('[carry-043] %s "%s" (not in the closed list)', ...
                 fields{f, 1}, vals{k}); %#ok<AGROW>
         else
             terms(end+1, :) = {struct('node', char(row.variable.node), ...

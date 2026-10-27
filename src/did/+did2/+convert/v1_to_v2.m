@@ -21,9 +21,11 @@ function result = v1_to_v2(v1Bodies, options)
 %        placeholder blocks for inherited classes. Silent no-op if
 %        the schema cache cannot resolve the chain.
 %
-%   Bodies that are already at the target
-%   (document_class.schema_version ranks at or beyond 'V_eta' AND no v1-only
-%   underscore-prefixed top-level markers) short-circuit steps 1-3 and
+%   Bodies that are already converted (document_class.schema_version is a
+%   V2 stamp, 'did_v2' -- a stamp check, not a rank against 'V_eta', [early
+%   migration pieces fixed] (4), Jess Haley, 2026-10-26 -- AND no v1-only
+%   underscore-prefixed top-level markers; did2.convert.isAlreadyTarget)
+%   short-circuit steps 1-3 and
 %   go straight to ensureClassBlocks + validate. Makes the converter
 %   safely re-runnable so a partial normalisation or migration run can
 %   resume after an interruption
@@ -157,6 +159,11 @@ bodies = normaliseInput(v1Bodies);
 % 2026-10-26). Reset per batch, like the notes below.
 did2.convert.stimulusPresentationSpecs('reset');
 did2.convert.stimulusPresentationSpecs('load', bodies);
+% The reference of every v1 session in this batch, read by jMembershipBodies
+% to compare an ingested session's session_reference ([ingested session
+% membership], Jess Haley, 2026-10-26).
+did2.convert.sessionReferences('reset');
+did2.convert.sessionReferences('load', bodies);
 
 % Asked ONCE per call, of the schema the documents validate against: does
 % `base` declare `session_id` as an edge (did-schema
@@ -272,6 +279,13 @@ legacyDiscNames  = {};   legacyDiscValues  = [];
 % reportNote), e.g. a treatment whose route is unknown. Reset per batch; a
 % quarantined body's notes are dropped, since that body did not migrate.
 did2.convert.reportNote('reset');
+% Deterministic ids for the documents a migrator MINTS (practice (b) of
+% [migration reliability practices], Jess Haley, 2026-10-26): each source body
+% opens a did2.convert.mintId context keyed on its v1 base.id, so a minted
+% document's id is derived from that id and its role, and two runs on the same
+% input give the same ids. A body with no id mints random ids, as before.
+mintDepth = did2.convert.mintId('-depth');
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -280,12 +294,14 @@ for k = 1:numel(bodies)
     passedThrough = false;
     carried = false;
     noteMark = did2.convert.reportNote('mark');
+    did2.convert.mintId('-popto', mintDepth);
     try
         preBody = ensureStruct(rawBody);
+        did2.convert.mintId('-push', sourceIdOf(preBody));
         refuseUnknownSchemaVersion(preBody);
         if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
-            % Idempotency short-circuit: the body is already at the
-            % target, so skip universalRenames and the per-class migrators.
+            % Idempotency short-circuit: the body is already stamped
+            % did_v2 (a stamp check), so skip universalRenames and the per-class migrators.
             % ensureClassBlocks still runs (it rebuilds the target's
             % superclass chain — required) and validate still runs
             % (gate against drift). Keeps the database normalisation
@@ -354,8 +370,10 @@ for k = 1:numel(bodies)
                 % content it keeps nowhere, so no migrator runs and the body is
                 % a passthrough, carried whole as v1 (its v1 source is what the
                 % end of ndi.migrate.local stores).
+                % carry-register: carry-049 (v1_class '*', temporary: [renames
+                % carry is temporary], removed with the pass)
                 did2.convert.reportNote('carried_as_v1', className, ...
-                    sourceIdOf(preBody), ['universalRenames would discard: ' ...
+                    sourceIdOf(preBody), ['[carry-049] universalRenames would discard: ' ...
                     strjoin(renameDropped, ', ')]);
                 v2Body = postUniversalBody;
                 superUnchanged = true;
@@ -517,6 +535,7 @@ for k = 1:numel(bodies)
         [quarNames, quarValues] = bumpClassCounter(quarNames, quarValues, ...
             sprintf('%s|%s', className, err.identifier));
     end
+    did2.convert.mintId('-popto', mintDepth);
 end
 
 % `bodies_unreached` closes the denominator: every body either reached
@@ -1255,6 +1274,17 @@ for k = 1:numel(kinds)
     cls = fieldnames(n.by_class);
     for j = 1:numel(cls)
         fprintf('      %-40s %d\n', cls{j}, n.by_class.(cls{j}));
+    end
+    % carries by carry register row (practice (d) of [migration reliability
+    % practices], Jess Haley, 2026-10-26), denominator first: every carry,
+    % then those citing a row and those citing none (reportNote 'collect')
+    if isfield(n, 'register_rows')
+        fprintf(['      by carry register row: %d carry note(s); citing a row %d; ' ...
+            'citing no row %d\n'], n.count, n.notes_citing_a_row, ...
+            n.notes_citing_no_row);
+        for j = 1:numel(n.register_rows)
+            fprintf('        %-38s %d\n', n.register_rows{j}, n.register_row_counts(j));
+        end
     end
     % what the notes name (field_dropped: the field path), distinct, counted.
     % distinct_details is exact over every note; ids/details are a sample

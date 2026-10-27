@@ -1,4 +1,4 @@
-function [ff, edgeName, unplaced] = jFrequencyFilter(preBody)
+function [ff, edgeName, unplaced] = jFrequencyFilter(preBody, nativeRate)
 %JFREQUENCYFILTER Build the document a did_v1 `filter` superclass block
 %   becomes, and name the edge a body points at it by. Returns [] when the
 %   block describes no filter (an all-pass), in which case the caller emits
@@ -12,22 +12,29 @@ function [ff, edgeName, unplaced] = jFrequencyFilter(preBody)
 %   `type`, a `sampleFrequency` with no method document to hold it, or a type /
 %   algorithm spelling with no mapping (other than the all-pass 'none').
 %
+%   NATIVERATE (optional, [] when not given) is the caller's own sample rate
+%   (a pyraview's `native_rate`). An all-pass's `sampleFrequency` equal to it
+%   is not a carry: the V2 body keeps that rate, so it is recoverable
+%   ([pass-through filter sample frequency], Jess Haley, 2026-10-26; NDI's
+%   writer sets both from one variable, makePyraviewDoc.m:53/58/157). One that
+%   differs carries the document, citing carry-061 (malformed).
+%
 %   FILTERS ARE METHODS (Jess Haley 2026-10-22 [filters are methods], N1a,
 %   V_eta_frequency_filter_model_plan.md): `frequency_filter` is deleted (a V2
 %   invention; 0 occurrences in NDI's ground truth) and the filter is a
 %   `method` document -- term the filter design, parameters the band, the
 %   passband edges in Hz, the filter order (a count), the passband ripple and
 %   stopband attenuation in dB -- and a body's `filter_id` becomes `method_id`.
-%   Which is built follows the LOADED schema: when sampled_body declares
-%   `method_id`, a `method` document and EDGENAME 'method_id'; while it still
-%   declares `filter_id`, the `frequency_filter` below and 'filter_id'. The
-%   field-by-field reading of the source is the same for both.
+%   This builds only the `method` document (EDGENAME 'method_id'). The
+%   frequency_filter path is removed: a LOADED schema whose sampled_body still
+%   declares `filter_id` (did-schema before [filters are methods]) is an error,
+%   did2:convert:schemaTooOld, never a carry and never a frequency_filter
+%   ([pipeline defects are not carries], Jess Haley, 2026-10-26). One that
+%   declares neither edge is an error too (did2:convert:noFilterEdge).
 %
-%   TEAM-SIGN-OFF (jess, 2026-07-30, V_eta_frequency_filter_model_plan.md):
-%   "Approved the frequency_filter model as written below: a referenced document
-%   under base rather than an entity, band edges rather than a single cutoff,
-%   typed gain fields rather than a coefficients bag, no sample_rate, and the
-%   name frequency_filter."
+%   The band-edges / typed-gain reading below comes from the frequency_filter
+%   model (TEAM-SIGN-OFF, jess, 2026-07-30, V_eta_frequency_filter_model_plan.md),
+%   which [filters are methods] keeps as the method's parameters.
 %
 %   ---------------------------------------------------------------------
 %   THE SOURCE, FROM NDI origin/main -- AND THE WRITER WINS TWICE
@@ -106,10 +113,8 @@ function [ff, edgeName, unplaced] = jFrequencyFilter(preBody)
 %     parameters.sampleFrequency -> a method parameter 'sample frequency' in
 %                                hertz ([small unread settings] (2), Jess
 %                                Haley, 2026-10-26; it was not carried, as the
-%                                frequency_filter model has no sample_rate). On
-%                                the frequency_filter path (a schema whose
-%                                sampled_body still declares filter_id), or for
-%                                an all-pass (no method is built), it has no
+%                                frequency_filter model has no sample_rate). For
+%                                an all-pass (no method is built) it has no
 %                                home and the document is carried as v1.
 %     label                        Not written: in the real PRED document `type`
 %                                  and `label` are BOTH "high" -- the same fact
@@ -171,7 +176,7 @@ end
 % [small unread settings] (2) (Jess Haley, 2026-10-26): what cannot be placed
 label = readChar(blk, {'label'});
 if ~isempty(label) && ~strcmp(strtrim(label), strtrim(rawType))
-    unplaced{end+1} = sprintf('filter.label "%s" (differs from type "%s")', label, rawType);
+    unplaced{end+1} = sprintf('[carry-007] filter.label "%s" (differs from type "%s")', label, rawType);
 end
 sampleFrequency = readNumScalar(params, {'sampleFrequency', 'sample_frequency'});
 
@@ -179,11 +184,17 @@ if isempty(algorithm) || isempty(band)
     % 'none' or blank: an all-pass, no filter document and no edge. A spelling
     % with no mapping is not an all-pass: the caller carries the document.
     if ~(isNone(rawAlgorithm) && isNone(rawType))
-        unplaced{end+1} = sprintf('filter.algorithm "%s" / type "%s" (no mapping)', ...
+        unplaced{end+1} = sprintf('[carry-042] filter.algorithm "%s" / type "%s" (no mapping)', ...
             rawAlgorithm, rawType);
     elseif ~isempty(sampleFrequency)
-        unplaced{end+1} = ['filter.parameters.sampleFrequency (an all-pass ' ...
-            'has no method document to hold it)'];
+        if nargin < 2 || isempty(nativeRate)
+            unplaced{end+1} = ['filter.parameters.sampleFrequency (an all-pass ' ...
+                'has no method document to hold it)'];
+        elseif double(sampleFrequency) ~= double(nativeRate)
+            unplaced{end+1} = sprintf(['[carry-061] filter.parameters.sampleFrequency ' ...
+                '%g (differs from the native rate %g)'], sampleFrequency, nativeRate);
+        end
+        % equal to the native rate: recoverable from the body, not written
     end
     return;
 end
@@ -220,7 +231,7 @@ end
 if ~isempty(order) && mod(order, 1) == 0
     block.order = order;
 elseif ~isempty(order)
-    unplaced{end+1} = sprintf('filter.parameters.order %g (not an integer)', order);
+    unplaced{end+1} = sprintf('[carry-006] filter.parameters.order %g (not an integer)', order);
 end
 if ~isempty(ripple)
     block.passband_ripple = decibels(ripple);
@@ -232,43 +243,64 @@ end
 if ~isempty(unplaced)
     return;     % the caller carries the document whole as v1
 end
-o = jOpts(preBody);
-if bodyTakesMethod()
-    ff = filterMethod(block, preBody, sampleFrequency);
-    edgeName = 'method_id';
-    return;
+% The LOADED schema must take the filter as a method. One whose sampled_body
+% still declares filter_id is did-schema before [filters are methods]: that is
+% the pipeline's defect, not the document's, so it is an error, never a carry
+% and never a frequency_filter ([pipeline defects are not carries], Jess Haley,
+% 2026-10-26, did-schema V_eta_go_forward_class_audit.md).
+edges = sampledBodyEdges();
+if ~any(strcmp(edges, 'method_id'))
+    if any(strcmp(edges, 'filter_id'))
+        error('did2:convert:schemaTooOld', ...
+            ['%s "%s": the loaded schema is too old: its sampled_body declares ' ...
+             '`filter_id` (the frequency_filter model, before [filters are methods], ' ...
+             'Jess Haley 2026-10-22), not `method_id`, so the filter has no ' ...
+             'home. Load a did-schema whose sampled_body declares method_id ' ...
+             '(DID_SCHEMA_PATH); the document is not carried for a schema defect.'], ...
+            classOf(preBody), idOf(preBody));
+    end
+    error('did2:convert:noFilterEdge', ...
+        ['%s "%s": the loaded schema''s sampled_body declares no `method_id` ' ...
+         '(edges: %s), so the filter has no home. Load a did-schema whose ' ...
+         'sampled_body declares method_id (DID_SCHEMA_PATH).'], ...
+        classOf(preBody), idOf(preBody), strjoin(edges, ', '));
 end
-% did-schema #88 before [filters are methods]: built through did2.build.document.
-% frequency_filter has no sample_rate, so a stated one has no home here.
-if ~isempty(sampleFrequency)
-    unplaced{end+1} = 'filter.parameters.sampleFrequency (frequency_filter has no sample rate)';
-    return;
+ff = filterMethod(block, preBody, sampleFrequency);
+edgeName = 'method_id';
 end
-ff = did2.build.document('frequency_filter', block, o{:});
-edgeName = 'filter_id';
+
+function c = classOf(preBody)
+c = 'pyraview';
+if isfield(preBody, 'document_class') && isstruct(preBody.document_class) ...
+        && isfield(preBody.document_class, 'class_name') ...
+        && ~isempty(preBody.document_class.class_name)
+    c = char(preBody.document_class.class_name);
+end
+end
+
+function i = idOf(preBody)
+i = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    i = char(preBody.base.id);
+end
 end
 
 function tf = isNone(raw)
 tf = any(strcmpi(strtrim(raw), {'', 'none'}));
 end
 
-function tf = bodyTakesMethod()
-% true when the loaded schema's sampled_body (its chain) declares method_id
-tf = false;
-try
-    c = did2.schema.cache.shared();
-    chain = c.classChain('sampled_body');
-    for k = 1:numel(chain)
-        s = c.getClass(chain{k});
-        if ~isfield(s, 'depends_on') || isempty(s.depends_on); continue; end
-        d = s.depends_on;
-        if isstruct(d); d = num2cell(d); end
-        if any(cellfun(@(x) strcmp(char(x.name), 'method_id'), d))
-            tf = true;
-            return;
-        end
-    end
-catch
+function names = sampledBodyEdges()
+% the edges the loaded schema's sampled_body (its chain) declares. Not wrapped
+% in a try: a schema that cannot be read fails loudly here.
+names = {};
+c = did2.schema.cache.shared();
+chain = c.classChain('sampled_body');
+for k = 1:numel(chain)
+    s = c.getClass(chain{k});
+    if ~isfield(s, 'depends_on') || isempty(s.depends_on); continue; end
+    d = s.depends_on;
+    if isstruct(d); d = num2cell(d); end
+    names = [names, cellfun(@(x) char(x.name), d, 'UniformOutput', false)]; %#ok<AGROW>
 end
 end
 
@@ -338,7 +370,8 @@ end
 % ===================== small helpers =======================================
 
 function out = mapAlgorithm(raw)
-% The value_set from schemas/V_eta/stable/frequency_filter.json. NDI's own
+% The value_set of the deleted frequency_filter.json (each now a design term in
+% filterMethod). NDI's own
 % documented set (filter_schema.json) is the same list plus 'none', which maps
 % to nothing on purpose.
 out = '';

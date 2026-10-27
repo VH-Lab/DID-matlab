@@ -194,8 +194,11 @@ verifyEqual(testCase, [axes.n], [4 4]);                       % was `.length`
 % UPDATED 2026-10-21: keyed as #73 review item 51 records for a raster,
 % [y, x, (channel)] -- data_dim is size(image), rows first -- not positionally.
 verifyEqual(testCase, ...
-    arrayfun(@(a) a.term.name, axes, 'UniformOutput', false), ...
+    arrayfun(@(a) did2.convert.axisKey(a.term), axes, 'UniformOutput', false), ...
     {'y', 'x'});                                              % was `.name`, then `.variable`
+% written as the registry's Y-Coordinate / X-Coordinate where it holds them
+verifyEqual(testCase, arrayfun(@(a) a.term.name, axes, 'UniformOutput', false), ...
+    {did2.convert.axisTerm('y').name, did2.convert.axisTerm('x').name});
 % INVERTED 2026-10-22 (asserted origin 1, spacing 1 on each): the coordinates
 % are MATLAB's default index vector, which only repeats the dimensions'
 % positions, and such a covariate is not written (Jess Haley 2026-10-22
@@ -213,7 +216,7 @@ out = did2.convert.migrators_j.ontology_image(v1);
 axes = did2.unittest.helpers.axesOf(pick(out, 'sampled_body'));
 verifyEqual(testCase, [axes.n], [4 4 3]);
 verifyEqual(testCase, ...
-    arrayfun(@(a) lower(a.term.name), axes, 'UniformOutput', false), ...
+    arrayfun(@(a) lower(did2.convert.axisKey(a.term)), axes, 'UniformOutput', false), ...
     {'y', 'x', 'channel'});   % the registry's label (NCIT:C44170 'Channel', did-schema 34a15e2 [channel types])
 end
 
@@ -316,7 +319,7 @@ verifyEqual(testCase, v.name, 'Imaging Signal Intensity');
 c = obs.statement.conditions;
 verifyEqual(testCase, numel(c), 1, 'one condition: the area');
 verifyEqual(testCase, c(1).variable.node, 'NCIT:C13717');
-verifyEqual(testCase, c(1).term.node, 'uberon:0002436');
+verifyEqual(testCase, c(1).term.node, regNode('uberon:0002436'));
 verifyEqual(testCase, c(1).term.name, 'primary visual cortex');
 verifyEqual(testCase, depValueOf(obs, 'entity_id'), 'elem_9', ...
     'until the second pass promotes it, the observation is about the subject');
@@ -713,4 +716,19 @@ end
 function b = pickKind(bodies, direction, kind)
 %PICKKIND The single statement of DIRECTION with value kind KIND.
 b = pick(bodies, [direction '+' kind]);
+end
+
+function n = regNode(node)
+%REGNODE NODE as the loaded term registry spells it when it holds it ([migrator
+%   writes the registry spelling], Jess Haley, 2026-10-26), else as given.
+t = did2.convert.registeredTerm(node, '');
+n = node;
+if ~isempty(t.name); n = t.node; end
+end
+
+function n = regName(name)
+%REGNAME NAME as the loaded term registry labels it when it holds it, else as
+%   given ([term labels stay as the ontology spells them]).
+t = did2.convert.registeredTerm('', name);
+n = t.name;
 end

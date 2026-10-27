@@ -62,6 +62,8 @@ anchor = jTreatmentAnchor(preBody, block);  % the recorded onset, else the sessi
 if ~isempty(unplaced)
     % [generic stage is lossless] / [partly placed is carried as v1] (Jess
     % Haley, 2026-10-25): an amount the dose cannot place carries the document
+    % carry-register: carry-029 carry-030 carry-072 carry-073 via
+    % private/jTreatmentBodies.m
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
         char(preBody.base.id), jCarryWhy(unplaced));
     v2Body = {preBody};
