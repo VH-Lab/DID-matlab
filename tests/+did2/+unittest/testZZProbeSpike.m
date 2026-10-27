@@ -60,7 +60,7 @@ for k = 1:size(cases, 1)
         end
     end
 end
-verifyTrue(testCase, true);
+verifyEqual(testCase, did2.convert.rawV1Classes('speedtuning_calc'), 'speed_tuning_calc');
 end
 
 function app = jrcApp()
