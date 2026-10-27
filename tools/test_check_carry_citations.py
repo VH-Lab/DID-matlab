@@ -16,7 +16,9 @@ cannot pass these:
   4. a marker naming a row whose tag the code does not write FAILS (R4), and
      a `via` file that writes it passes;
   5. `none` passes, is listed, and FAILS under --strict;
-  6. a comment that mentions a carry call is not a site.
+  6. a comment that mentions a carry call is not a site;
+  7. the register is read by its new name (`did_v2_carry_register.json`) or
+     its old one (`V_eta_carry_register.json`), the new name first.
 
 Run: python3 tools/test_check_carry_citations.py     (or: python3 -m pytest)
 """
@@ -43,14 +45,16 @@ end
 class Tree:
     """A temp did-schema checkout (register) and a temp migrator source tree."""
 
-    def __init__(self, ids=("carry-001", "carry-002"), files=None):
+    def __init__(self, ids=("carry-001", "carry-002"), files=None,
+                 register_rel=None):
         self.root = tempfile.mkdtemp(prefix="carrycite-")
         self.schema = os.path.join(self.root, "did-schema")
         self.src = os.path.join(self.root, "src")
         os.makedirs(os.path.join(self.schema, "schemas"))
         os.makedirs(os.path.join(self.src, "private"))
         if ids is not None:
-            with open(os.path.join(self.schema, gate.REGISTER_REL), "w") as f:
+            with open(os.path.join(self.schema,
+                                   register_rel or gate.REGISTER_REL), "w") as f:
                 json.dump({"rows": [{"id": i} for i in ids]}, f)
         for name, text in (files or {"good.m": GOOD_SITE}).items():
             with open(os.path.join(self.src, name), "w") as f:
@@ -178,6 +182,32 @@ def test_a_comment_mentioning_a_carry_call_is_not_a_site():
     code, res = t.run()
     assert code == 0, t.output
     assert len(res["sites"]) == 1, t.output
+
+
+# ------------------------------------------------- 7. both register names
+
+def test_the_new_name_is_the_preferred_name():
+    assert os.path.basename(gate.REGISTER_REL) == "did_v2_carry_register.json"
+    assert os.path.basename(gate.REGISTER_REL_OLD) == "V_eta_carry_register.json"
+
+
+def test_the_old_register_name_alone_is_read():
+    t = Tree(register_rel=gate.REGISTER_REL_OLD)
+    assert gate.find_did_schema(t.schema) == t.schema
+    code, _res = t.run()
+    assert code == 0, t.output
+    assert "V_eta_carry_register.json" in t.output, t.output
+
+
+def test_the_new_name_wins_when_both_are_present():
+    # The old copy lacks carry-001, which the site cites: a pass means the new
+    # copy was the one read.
+    t = Tree(ids=("carry-002",), register_rel=gate.REGISTER_REL_OLD)
+    with open(os.path.join(t.schema, gate.REGISTER_REL), "w") as f:
+        json.dump({"rows": [{"id": "carry-001"}]}, f)
+    code, _res = t.run()
+    assert code == 0, t.output
+    assert "did_v2_carry_register.json" in t.output, t.output
 
 
 # ------------------------------------------------- the real tree
