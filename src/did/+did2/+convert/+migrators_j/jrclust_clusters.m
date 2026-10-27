@@ -62,7 +62,43 @@ arguments
     preBody (1,1) struct
 end
 
-TV  = 'V_eta';
+% READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+% [migrators read raw v1]): the document exactly as NDI's writer
+% (+ndi/+fun/+probe/+import/+jrclust/probe.m) wrote it, with no
+% universalRenames and no superclass migrator (none exists for `base` or
+% `app`; the old +migrators/jrclust_clusters.m, a rename of
+% res_mat_MD5_checksum, was never reached and is deleted). The checksum is read
+% in either spelling; identity through jRawBody; the `app` block in either
+% spelling (jSoftwareFromApp, checked by did2.convert.v1read.readApp). What
+% universalRenames would have discarded (an `ndi_document` beside `base`, e.g.
+% the Soph vintage's ndi_document.name 'jrclust.prm'; a depends_on version)
+% carries the document as the renamed path did (carry-049; [one-reading quick
+% answers] Q5, Jess Haley, 2026-10-26). Every other v1 field is accounted for
+% (unreadFields): one this fold reads nowhere carries the document whole as
+% v1. base.name, which the writer sets to the parameter file's name, is not
+% written (#73 item 54), as before the switch: the round trip lists it
+% (testRawV1RoundTripSpike, a known finding; open). A carry is the untouched
+% v1 source. Inverse: did2.convert.roundtrip.jrclust_clusters.
+raw = preBody;
+preBody = jRawBody(raw, 'jrclust_clusters');
+collision = jResponseRenameCollisions(raw, cell(0, 3));
+if ~isempty(collision)
+    % carry-register: carry-049 (the renamed path carried this collision)
+    did2.convert.reportNote('carried_as_v1', 'jrclust_clusters', char(preBody.base.id), ...
+        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+    bodies = {raw};
+    return;
+end
+unplaced = unreadFields(preBody);
+if ~isempty(unplaced)
+    % carry-register: none (a jrclust_clusters field this fold reads nowhere;
+    % no row yet)
+    did2.convert.reportNote('carried_as_v1', 'jrclust_clusters', char(preBody.base.id), ...
+        ['unplaced: ' strjoin(unplaced, ', ')]);
+    bodies = {raw};
+    return;
+end
+
 blk = getBlock(preBody, 'jrclust_clusters');
 
 subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
@@ -112,6 +148,78 @@ body = did2.build.opaqueBody(obs.base.id, did2.build.formatTerm('EDAM:format_233
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software, runDocs];
+end
+
+% ===================== every field accounted for ===========================
+
+function c = unreadFields(preBody)
+%UNREADFIELDS The v1 fields this fold reads nowhere that hold a value: a
+%   top-level block other than the five jrclust/probe.m writes (plus a `files`
+%   / `file` block, which rides on the body); a jrclust_clusters field other
+%   than the checksum, or the checksum in both spellings with different
+%   values; an `app` field outside NDI's app.json; a depends_on edge other than
+%   element_id (or subject_id, read when there is no element_id).
+c = {};
+known = {'document_class', 'depends_on', 'base', 'app', 'jrclust_clusters', ...
+    'files', 'file'};
+top = fieldnames(preBody);
+for k = 1:numel(top)
+    if ~any(strcmp(top{k}, known)) && ~isEmptyValue(preBody.(top{k}))
+        c{end+1} = top{k}; %#ok<AGROW>
+    end
+end
+blk = getBlock(preBody, 'jrclust_clusters');
+fns = fieldnames(blk);
+for k = 1:numel(fns)
+    if ~any(strcmp(fns{k}, {'res_mat_MD5_checksum', 'res_mat_md5_checksum'})) ...
+            && ~isEmptyValue(blk.(fns{k}))
+        c{end+1} = ['jrclust_clusters.' fns{k}]; %#ok<AGROW>
+    end
+end
+if isfield(blk, 'res_mat_MD5_checksum') && isfield(blk, 'res_mat_md5_checksum') ...
+        && ~isequaln(blk.res_mat_MD5_checksum, blk.res_mat_md5_checksum)
+    c{end+1} = 'jrclust_clusters.res_mat_md5_checksum (differs from res_mat_MD5_checksum)';
+end
+c = [c, appRest(preBody)];
+deps = did2.convert.v1read.readDependsOn(preBody);
+for k = 1:numel(deps)
+    nm = deps(k).name;
+    if isempty(deps(k).document_id) || strcmp(nm, 'element_id') ...
+            || (strcmp(nm, 'subject_id') && isempty(dependencyValue(preBody, 'element_id')))
+        continue;
+    end
+    c{end+1} = ['depends_on ' nm]; %#ok<AGROW>
+end
+end
+
+function c = appRest(preBody)
+c = {};
+a = did2.convert.v1read.readApp(preBody);
+ex = fieldnames(a.extra);
+for k = 1:numel(ex)
+    if ~isEmptyValue(a.extra.(ex{k}))
+        c{end+1} = ['app.' ex{k}]; %#ok<AGROW>
+    end
+end
+end
+
+function tf = isEmptyValue(v)
+if isstruct(v)
+    tf = true;
+    for k = 1:numel(v)
+        fns = fieldnames(v(k));
+        for j = 1:numel(fns)
+            if ~isEmptyValue(v(k).(fns{j}))
+                tf = false;
+                return;
+            end
+        end
+    end
+elseif isstring(v)
+    tf = isempty(v) || all(strlength(v) == 0);
+else
+    tf = isempty(v);
+end
 end
 
 % ===================== small helpers =======================================

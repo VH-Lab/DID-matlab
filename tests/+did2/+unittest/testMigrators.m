@@ -100,89 +100,10 @@ verifyFalse(testCase, isfield(out.epochclocktimes, 't0_t1'));
 end
 
 % --- calc-base migrators (20211116 corpus) ---
-
-function testCalcCommonKeepsInputParametersOnSubclassBlock(testCase)
-% V2 `calculator.input_parameters` declares `placement:
-% "concrete_class"` (DID-schema V2 calculator.json), so the
-% field lives on the concrete subclass's block on instance bodies,
-% not in a `calculator` block. v1 already stores it there, so no
-% structural move is required.
-v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
-    'input_parameters', struct('algorithm', 'best')));
-out = did2.convert.calcCommon( ...
-    did2.convert.universalRenames(v1), 'oridirtuning_calc');
-verifyEqual(testCase, out.oridirtuning_calc.input_parameters.algorithm, 'best');
-verifyFalse(testCase, isfield(out, 'calculator'));
-end
-
-function testCalcCommonCoercesEmptyArrayInputParametersToStruct(testCase)
-% v1 frequently ships `input_parameters: []`. V2 `structure`
-% type requires a struct value, so the helper coerces in place on
-% the subclass block.
-v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
-    'input_parameters', []));
-out = did2.convert.calcCommon( ...
-    did2.convert.universalRenames(v1), 'oridirtuning_calc');
-verifyTrue(testCase, isstruct(out.oridirtuning_calc.input_parameters));
-verifyTrue(testCase, isempty(fieldnames(out.oridirtuning_calc.input_parameters)));
-verifyFalse(testCase, isfield(out, 'calculator'));
-end
-
-function testCalcCommonDropsInnerDependsOn(testCase)
-% The inner copy restates the top-level edge, so it is dropped ([restated
-% values checked], Jess Haley, 2026-10-26). 2026-10-26: the top-level edge is
-% now in the fixture; without it the copy restates nothing (next test).
-v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
-    'input_parameters', [], ...
-    'depends_on',       struct('name', 'stimulus_tuningcurve_id', ...
-                                'value', 'abc')));
-v1.depends_on = struct('name', 'stimulus_tuningcurve_id', 'document_id', 'abc');
-out = did2.convert.calcCommon( ...
-    did2.convert.universalRenames(v1), 'oridirtuning_calc');
-verifyFalse(testCase, isfield(out.oridirtuning_calc, 'depends_on'));
-end
-
-function testCalcCommonCarriesAnInnerDependsOnThatDiffers(testCase)
-% [restated values checked] (Jess Haley, 2026-10-26): an inner copy that does
-% not restate the top-level edge is not dropped; the body is carried whole as
-% v1, unchanged, with a `carried_as_v1` note.
-v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
-    'input_parameters', [], ...
-    'depends_on',       struct('name', 'stimulus_tuningcurve_id', ...
-                                'document_id', 'abc')));
-v1.depends_on = struct('name', 'stimulus_tuningcurve_id', 'document_id', 'xyz');
-pre = did2.convert.universalRenames(v1);
-did2.convert.reportNote('reset');
-out = did2.convert.calcCommon(pre, 'oridirtuning_calc');
-notes = did2.convert.reportNote('collect');
-did2.convert.reportNote('reset');
-verifyTrue(testCase, isequaln(out, pre), 'returned unchanged');
-assertTrue(testCase, isfield(notes, 'carried_as_v1'));
-verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
-    'stimulus_tuningcurve_id'));
-end
-
-function testCalcCommonMissingBlockErrors(testCase)
-v1 = struct( ...
-    'document_class', struct('class_name', 'oridirtuning_calc'), ...
-    'base',           struct());
-verifyError(testCase, ...
-    @() did2.convert.calcCommon(v1, 'oridirtuning_calc'), ...
-    'did2:convert:missingBlock');
-end
-
-function testCalcWrapperPipesThroughHelper(testCase)
-% Each per-class wrapper is a thin call to calcCommon; verify the
-% wrapper produces the same shape (input_parameters preserved on
-% the subclass block, no calculator block) as a direct calcCommon
-% call.
-v1 = wrap('speed_tuning_calc', 'speed_tuning_calc', struct( ...
-    'input_parameters', []));
-out = did2.convert.migrators.speed_tuning_calc( ...
-    did2.convert.universalRenames(v1));
-verifyTrue(testCase, isstruct(out.speed_tuning_calc.input_parameters));
-verifyFalse(testCase, isfield(out, 'calculator'));
-end
+% (calcCommon and the hartley_calc / speed_tuning_calc / simple_calc wrappers
+% are deleted, never reached: testRawV1RoundTripSpike
+% testTheOldSpikeWrappersAreGone; jCalculation's inner depends_on check is
+% tested in testRawV1RoundTripTuning)
 
 function testTheOldTuningWrappersAreGone(testCase)
 % [early migration pieces fixed] (1) (Jess Haley, 2026-10-26): one migrator
@@ -197,31 +118,6 @@ for cls = {'tuningcurve_calc', 'oridirtuning_calc', 'contrast_sensitivity_calc',
         sprintf('+migrators/%s.m is back', cls{1}));
     verifyNotEmpty(testCase, which(['did2.convert.migrators_j.' cls{1}]), ...
         sprintf('+migrators_j/%s.m is missing', cls{1}));
-end
-end
-
-function testCalcMigratorWrappersAllResolve(testCase)
-% Smoke: every concrete *_calc wrapper exists and runs cleanly on a
-% minimal v1 body. The wrapper does not vary by class today (the
-% calculator-identity lookup is handled by app-block rename upstream),
-% but exercising each entry catches accidental deletions and ensures
-% the dispatcher can still resolve the migrator by class name.
-% (the tuning family's wrappers are deleted: those classes read raw v1 with
-% their +migrators_j migrator; testTheOldTuningWrappersAreGone)
-classes = {
-    'hartley_calc';
-    'speed_tuning_calc';
-    'simple_calc';
-};
-for k = 1:numel(classes)
-    cls = classes{k};
-    v1 = wrap(cls, cls, struct('input_parameters', []));
-    migratorFcn = str2func(['did2.convert.migrators.' cls]);
-    out = migratorFcn(did2.convert.universalRenames(v1));
-    verifyTrue(testCase, isstruct(out.(cls).input_parameters), ...
-        sprintf('Wrapper %s did not produce input_parameters on the subclass block', cls));
-    verifyFalse(testCase, isfield(out, 'calculator'), ...
-        sprintf('Wrapper %s synthesized a phantom calculator block', cls));
 end
 end
 

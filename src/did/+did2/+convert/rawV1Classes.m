@@ -113,7 +113,38 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         renamed. Written by +setup/+conv/+haley/doImport.m
 %                         and +babu/import.m. Round trips:
 %                         testRawV1RoundTripImage.
+%     neuron_extracellular  the spike-sorting / calculation family:
+%     jrclust_clusters      superclasses `base` + `app` (neuron,
+%     hartley_calc          jrclust), `calculator` + hartley_reverse_correlation
+%     speedtuning_calc      + reverse_correlation + ngrid (hartley_calc), and
+%                         `calculator` + speed_tuning (speedtuning_calc). The
+%                         only superclass migrator any of them met is
+%                         +migrators_j/+super/ngrid.m (a guard, no reshape),
+%                         which hartley_calc now calls on the raw block; it
+%                         stays for ontology_image (not switched). The old
+%                         +migrators wrappers (hartley_calc, speed_tuning_calc,
+%                         simple_calc: calcCommon; jrclust_clusters) were never
+%                         reached and are deleted with calcCommon. NDIcalc-vis
+%                         writes `speedtuning_calc`, which universalRenames
+%                         never mapped to the speed_tuning_calc migrator (the
+%                         renamed path passes it through unconverted); the
+%                         table below joins the two. Written by
+%                         +ndi/+fun/+probe/+import/+jrclust/probe.m,
+%                         +kilosort/probe.m, +kiasort/probe.m,
+%                         +ndi/+app/spikesorter.m (neuron), jrclust/probe.m
+%                         (jrclust_clusters), ndi.calc.vis.hartley and
+%                         ndi.calc.vis.speed_tuning (NDIcalc-vis-matlab). Round
+%                         trips: testRawV1RoundTripSpike.
 %     NOT LISTED, and why:
+%       simple_calc       a pass-1 passthrough for which no corpus holds a
+%                         document; its raw passthrough (`app.name`, a
+%                         `calculator` block) would meet the V_eta
+%                         `simple_calc` class (`app_name`) under its own name
+%                         and quarantine, where the renamed path's body
+%                         validates. It stays on the renamed path until the
+%                         open question on it (model it or retire it,
+%                         V_eta_ground_truth_plan.md) is answered; its old
+%                         +migrators wrapper is deleted (never reached).
 %       image             no NDI writer at the locked main constructs it and no
 %                         corpus holds one; its subject-less passthrough has no
 %                         register row, and as raw v1 it would meet the
@@ -141,6 +172,10 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'syncrule_mapping', ...
     'daqmetadatareader_epochdata_ingested', ...
     'imageStack', ...
+    'neuron_extracellular', ...
+    'jrclust_clusters', ...
+    'hartley_calc', ...
+    'speedtuning_calc', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
@@ -148,6 +183,7 @@ TABLE = { ...
     'contrasttuning_calc',      'contrast_tuning_calc'; ...
     'contrastsensitivity_calc', 'contrast_sensitivity_calc'; ...
     'imageStack',               'image_stack'; ...
+    'speedtuning_calc',         'speed_tuning_calc'; ...
     'ontologyLabel',            'ontology_label'};
 
 if nargin >= 1
