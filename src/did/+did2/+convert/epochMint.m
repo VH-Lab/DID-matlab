@@ -1659,6 +1659,15 @@ end
 % an epoch string through pass 1. Here the `epoch_id` edge is stamped and the
 % migrator re-run, exactly as for syncrule_mapping; the primary body is the
 % voltage observation, id preserved.
+%
+% WHAT THE RE-RUN IS HANDED, SINCE pyraview READS RAW v1 (did2.convert.
+% rawV1Classes, 2026-10-27). A pyraview naming an epoch DEFERS in pass 1 (below,
+% resolveDeferredPyraviews), so a `pyraview` row in the batch is only ever a
+% document pass 1 CARRIED, and a carry is the untouched v1 source (stamped
+% did_v1): the raw shape the migrator reads. It was universalRenames' output
+% before the switch, which the migrator also read (by normalised name). The
+% migrator accounts for it again, with the `epoch_id` stamped here allowed, and
+% a document carried for a field outside its template carries again (declined).
 for k = 1:n
     if isStatementRow(rows(k), 'observation', 'voltage') ...
             && isstruct(bodies{k}) && isfield(bodies{k}, 'pyraview')
@@ -2014,6 +2023,13 @@ function [result, report] = resolveDeferredPyraviews(result, report, epochIdByKe
 %   original body, and this stage -- once the epochs exist -- stamps `epoch_id`
 %   onto the v1 body and runs it through v1_to_v2 again. A resolved deferral
 %   leaves the quarantine; an unresolvable one stays there, counted.
+%
+%   The quarantined `original_body` is the v1 document as pass 1 received it
+%   (v1_to_v2 encodes its input before any rename), so this re-run hands the
+%   pyraview migrator the RAW v1 document plus the `epoch_id` edge, which is
+%   what it reads since pyraview reads raw v1 (did2.convert.rawV1Classes,
+%   2026-10-27); v1_to_v2 routes it raw. Before the switch the same document
+%   went through universalRenames first.
 if ~isfield(result, 'quarantine') || isempty(result.quarantine)
     return;
 end

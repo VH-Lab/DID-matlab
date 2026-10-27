@@ -56,7 +56,11 @@
 %   no NDI template at the locked main names element, ontologyImage or
 %   ontologyLabel as a superclass, so nothing reached them. element_epoch stays
 %   (+migrators_j/element_epoch.m and oneepoch.m call it on the raw block);
-%   epochclocktimes and filter stay for pyraview (not switched); ngrid stays as
+%   epochclocktimes and filter stay: pyraview, the only class at the locked NDI
+%   main that names either as a superclass, reads raw v1 since 2026-10-27 and
+%   no longer reaches them (its migrator reads both spellings), but each is
+%   still the concrete migrator of a leaf `epochclocktimes` / `filter`
+%   document, and whether to delete them is the team's call; ngrid stays as
 %   the concrete migrator of a leaf `ngrid` document (+migrators_j has only
 %   the +super guard); identity stays as v1_to_v2's fallback.
 %

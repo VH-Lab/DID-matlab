@@ -635,9 +635,9 @@ v1.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', .
 v1.depends_on = struct('name', {'element_id'}, 'value', {elementId});
 v1.base = struct('id', docId, 'session_id', sessionId, ...
     'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.pyraview = struct('label', 'high', 'native_rate', 20000, ...
-    'native_start_time', 0, 'channels', 4, 'data_type', 'double', ...
-    'decimation_sampling_rates', [20000 200]);
+v1.pyraview = struct('label', 'high', 'nativeRate', 20000, ...
+    'nativeStartTime', 0, 'channels', 4, 'dataType', 'double', ...
+    'decimationSamplingRates', [20000 200]);
 v1.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
 v1.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', [0 10]);
 v1.epochid = struct('epochid', epochId);
@@ -684,7 +684,7 @@ el   = elementBody('el_pf', 'sess_pf', 'tet', '1', 'n-trode', 1, 'specimen_pf');
 ing  = ingestedWithRows('ing_pf', 'sess_pf', 't00pf', {{'tet', '1', 'n-trode', 'L'}});
 pv   = pyraviewV1('pv_f', 'sess_pf', 'el_pf', 't00pf');
 pv.epochclocktimes.t0_t1 = pvT0T1;
-pv.pyraview.native_start_time = nativeStart;
+pv.pyraview.nativeStartTime = nativeStart;
 v1 = {sessionBody('sd_pf', 'sess_pf', 'ref'), subj, el, ing, pv, ...
     daqsystemBody('daq_pf', 'sess_pf', 'vhspike2')};
 if withEpochExtent
