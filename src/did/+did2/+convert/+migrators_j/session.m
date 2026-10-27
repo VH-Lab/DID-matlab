@@ -84,9 +84,51 @@ function v2Body = session(preBody)
 %   `local_identifier` (required for type session). The three V_zeta inventions
 %   have nowhere to go and are dropped, as before. A body with no session id
 %   keeps its own id.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (NDI session.json + base.json at the locked
+%   NDI-matlab `main`, 3cb19a8, as +ndi/+session/dir.m writes it:
+%   ndi.document('session','session.reference',...) + newdocument()). Every v1
+%   field and where it goes; did2.convert.roundtrip.session rebuilds the v1
+%   document and testRawV1RoundTripSession compares the two:
+%
+%     base.session_id     -> the session entity's base.id (and its own
+%                            session_id edge), as before
+%     base.datestamp      -> its creation_timestamp
+%     base.id             -> NOT KEPT on the edge shape: the entity takes the
+%                            session id instead (V_eta_relation_inheritance_plan
+%                            item 4: "nothing in v1 refers to a session document
+%                            by its base.id"). The round trip reports it lost:
+%                            a known finding, a question for the team.
+%     base.name           -> not kept ('' on every writer document)
+%     session.reference   -> entity.local_identifier
+%     session.local_identifier, .type, .date, .purpose
+%                         -> read as before: the first is the reference's other
+%                            spelling, the three V_zeta inventions are dropped
+%                            (TEAM-SIGN-OFF [session], above). No v1 writer
+%                            writes any of them.
+%
+%   A field, block or edge outside these, which the renamed path dropped
+%   without a word, now carries the document whole as v1
+%   (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]); what the renamed
+%   path would have discarded (an `ndi_document` beside `base`, a depends_on
+%   `version`) is carried, carry-049, as before.
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above): what the migrator does not read
+% carries the untouched v1 document; a legacy identity block is read as base.
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, ...
+    struct('session', {{'reference', 'local_identifier', 'type', 'date', 'purpose'}}), {});
+if jRawCarry('session', src, collision, unplaced, 'carry-100')
+    v2Body = {src};
+    return;
 end
 
 id = '';

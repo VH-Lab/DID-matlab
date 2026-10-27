@@ -20,10 +20,9 @@ function setup(testCase)
 did2.schema.cache.setSchemaPath(testCase.TestData.fixtureDir);
 end
 
-function teardownOnce(testCase)
-arguments
-    testCase (1,1) matlab.unittest.TestCase %#ok<INUSA> the fixture signature; only the singleton is reset
-end
+function teardownOnce(testCase) %#ok<INUSD> the fixture signature; only the singleton is reset
+% No arguments block: functiontests excludes a file whose fixture function
+% declares argument validation.
 
 did2.schema.cache.resetSingleton();
 end
