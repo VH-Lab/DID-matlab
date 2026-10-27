@@ -318,7 +318,7 @@ blk = getBlock(preBody, 'neuron_extracellular');
 % placed is carried as v1], Jess Haley, 2026-10-25). Until 2026-10-26 a
 % disagreement raised did2:convert:neuronWaveformShapeMismatch (a quarantine).
 w = getField(blk, 'mean_waveform');
-carryTag = '';   % the carry register row this branch's carry cites
+% carryTag (set in both branches below): the carry register row this branch's carry cites
 if isnumeric(w) && ~isempty(w) && ismatrix(w)
     carryTag = '[carry-018] ';
     unplaced = [checkRedundantCount(blk, 'number_of_samples_per_channel', ...

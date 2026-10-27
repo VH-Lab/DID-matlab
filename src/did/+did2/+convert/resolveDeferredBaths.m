@@ -427,7 +427,7 @@ bathId    = baseField(v1Body, 'id', '');
 % practices], Jess Haley, 2026-10-26)
 mintDepth = did2.convert.mintId('-depth');
 did2.convert.mintId('-push', char(bathId));
-restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth)); %#ok<NASGU>
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 mixture   = parseMixture(v1Body);
 variable  = primaryChemical(mixture);
 o = {'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), 'Validate', false};

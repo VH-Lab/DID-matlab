@@ -651,9 +651,7 @@ if ~isempty(f)
 end
 p = m.toStruct();
 cnd = p.statement.conditions;
-% the registry's label: did-schema main registers NCIT:C81274 "Numeric Value"
-% (since 5c0bfad); a registered term is written as the registry writes it (T19)
-verifyEqual(testCase, lower(cnd.variable.name), 'numeric value');
+verifyEqual(testCase, cnd.variable.name, regName('numeric value'));
 verifyEqual(testCase, cnd.quantity.value, 2.5, 'AbsTol', 1e-12);
 verifyFalse(testCase, isfield(cnd, 'unit'), 'an unlabelled number has no unit');
 n = out.summary.migration_notes.treatment_number_unlabelled;
