@@ -153,6 +153,11 @@ arguments
     options.UnitQualityLabels cell = {}
 end
 
+% [v1 name goes to the class's own name field] (Decided by Jess Haley,
+% 2026-10-27): the placeholder for the needs-home register row its carry cites,
+% until did-schema adds the row (it matches no `carry-NNN`).
+V1_NAME_ROW = 'carry-pending-v1-name-has-no-home';
+
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
 % is for imports, so it is off while this runs and restored after
@@ -376,6 +381,7 @@ for k = 1:numel(bodies)
                 srcRaw(k) = true;
                 className = rawClass;
                 v2Body = preBody;
+                carryBody = preBody;
                 superUnchanged = true;
                 v2Bodies = runRawV1Migrator(preBody, className);
                 if isscalar(v2Bodies) && isequaln(v2Bodies{1}, preBody) ...
@@ -391,6 +397,7 @@ for k = 1:numel(bodies)
                 [postUniversalBody, legacyReport, renameDropped] = did2.convert.universalRenames( ...
                     preBody, 'RenameClassNames', options.RenameClassNames);
                 className = char(postUniversalBody.document_class.class_name);
+                carryBody = postUniversalBody;
                 legacy = accumulateLegacyReport(legacy, legacyReport);
                 if legacyReport.moved_wholesale_no_base
                     [legacyMovedNames, legacyMovedValues] = bumpClassCounter( ...
@@ -443,6 +450,44 @@ for k = 1:numel(bodies)
                         sourceIdOf(preBody), ['[carry-049] universalRenames would discard: ' ...
                         strjoin(renameDropped, ', ')]);
                     v2Body = postUniversalBody;
+                    superUnchanged = true;
+                    v2Bodies = {v2Body};
+                    carried = true;
+                end
+            end
+            % [v1 name goes to the class's own name field] (Decided by Jess
+            % Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
+            % a v1 base.name is written to the V2 class's own name field
+            % (entity, method, acquisition_system, element, measurement) or,
+            % for a data body, to its free text; "a statement with a non-empty
+            % v1 name is carried whole as v1 with a needs-home register row,
+            % and the number of such statements is counted in the next corpus
+            % run". THE CHECK, for every CONVERTED source: its non-empty v1
+            % name must be held by a top-level `name`, `description` or
+            % `notes` of an emitted document's own blocks (v1NameIsKept);
+            % otherwise the source is carried whole as v1 -- a statement by
+            % the decision, any other target because writing nothing would
+            % lose the name ([lossless means round trip]). A carried STATEMENT
+            % is also noted `v1_name_statement_carried` (the count). THE
+            % REGISTER ROW IS PENDING in did-schema: the note cites the
+            % placeholder V1_NAME_ROW, which names no row.
+            if ~carried && ~isempty(v2Bodies) ...
+                    && ~(isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body))
+                v1Name = v1NameOf(preBody);
+                if ~isempty(v1Name) && ~v1NameIsKept(v2Bodies, v1Name)
+                    isStatement = replacementIsStatement(v2Bodies, sourceIdOf(preBody));
+                    what = 'its V2 document has no field that holds it';
+                    if isStatement
+                        what = 'a statement has no name field';
+                        did2.convert.reportNote('v1_name_statement_carried', className, ...
+                            sourceIdOf(preBody), v1Name);
+                    end
+                    % carry-register: none (needs-home row pending in did-schema;
+                    %   V1_NAME_ROW)
+                    did2.convert.reportNote('carried_as_v1', className, sourceIdOf(preBody), ...
+                        sprintf(['[%s] awaiting_home: base.name "%s" (%s; [v1 name ' ...
+                        'goes to the class''s own name field])'], V1_NAME_ROW, v1Name, what));
+                    v2Body = carryBody;
                     superUnchanged = true;
                     v2Bodies = {v2Body};
                     carried = true;
@@ -868,6 +913,72 @@ if isstruct(body) && isscalar(body) && isfield(body, 'base') ...
     v = body.base.id;
     if ischar(v); id = v; elseif isstring(v) && isscalar(v); id = char(v); end
 end
+end
+
+function name = v1NameOf(body)
+%V1NAMEOF The v1 base.name (or the legacy identity block's name) as text, ''
+%   when there is none or it is empty.
+name = '';
+b = did2.convert.v1read.readBase(body);
+v = b.name;
+if ischar(v)
+    name = v;
+elseif isstring(v) && isscalar(v)
+    name = char(v);
+end
+if isempty(strtrim(name))
+    name = '';
+end
+end
+
+function tf = v1NameIsKept(bodies, name)
+%V1NAMEISKEPT True when an emitted document holds NAME, unchanged, in a
+%   top-level `name`, `description` or `notes` field of one of its own blocks
+%   (entity.name, acquisition_system.name, method.name, data_body.description,
+%   ...). `base`, `document_class`, `depends_on`, `files` and `statement` are
+%   not read: a statement's notes are not its name.
+tf = false;
+skip = {'base', 'document_class', 'depends_on', 'files', 'file', 'statement'};
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if ~isstruct(b) || ~isscalar(b)
+        continue;
+    end
+    fns = fieldnames(b);
+    for j = 1:numel(fns)
+        if any(strcmp(fns{j}, skip)) || ~isstruct(b.(fns{j})) || ~isscalar(b.(fns{j}))
+            continue;
+        end
+        blk = b.(fns{j});
+        for f = {'name', 'description', 'notes'}
+            if isfield(blk, f{1}) && (ischar(blk.(f{1})) || (isstring(blk.(f{1})) ...
+                    && isscalar(blk.(f{1})))) && strcmp(char(blk.(f{1})), name)
+                tf = true;
+                return;
+            end
+        end
+    end
+end
+end
+
+function tf = replacementIsStatement(bodies, sourceId)
+%REPLACEMENTISSTATEMENT True when the emitted document that most directly
+%   replaces the source -- the one holding its id, else the first -- is a
+%   statement (it has a `statement` block).
+tf = false;
+pick = [];
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isstruct(b) && isscalar(b) && isfield(b, 'base') && isstruct(b.base) ...
+            && isfield(b.base, 'id') && strcmp(char(b.base.id), sourceId)
+        pick = b;
+        break;
+    end
+end
+if isempty(pick) && isstruct(bodies{1})
+    pick = bodies{1};
+end
+tf = isstruct(pick) && isscalar(pick) && isfield(pick, 'statement');
 end
 
 function name = rawV1ClassNameOf(body)

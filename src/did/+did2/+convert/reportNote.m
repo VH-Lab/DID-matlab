@@ -78,6 +78,13 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     a `% carry-register:` comment above it, `none` for a
 %                     reason with no row yet; tools/check_carry_citations.py
 %                     checks both against the register and lists the `none`s.
+%     v1_name_statement_carried  ONE note per source carried because it
+%                     would become a STATEMENT and its non-empty v1 base.name
+%                     has no home ([v1 name goes to the class's own name
+%                     field], Jess Haley, 2026-10-27: "the number of such
+%                     statements is counted in the next corpus run"); DETAIL
+%                     is the name. v1_to_v2 writes it beside the carry's own
+%                     `carried_as_v1` note.
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
 %                     location, so whether it was an immersion or a dose cannot
 %                     be read from it; it migrates as a dose with a NaN amount
