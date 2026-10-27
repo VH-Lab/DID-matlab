@@ -1,4 +1,4 @@
-function carried = jRawCarry(className, preBody, collision, unplaced)
+function carried = jRawCarry(className, preBody, collision, unplaced, row)
 %JRAWCARRY Note the carry of a raw v1 document whose fields its migrator
 %   cannot all account for (jRawAccount), and say whether it is carried.
 %
@@ -15,6 +15,13 @@ function carried = jRawCarry(className, preBody, collision, unplaced)
 %                path dropped without a word. No register row yet (a question
 %                for the team); the note says `unplaced:` and names the paths.
 %
+%   CARRIED = jRawCarry(..., 'carry-100') cites the register row for UNPLACED
+%   instead of `none`: Decided by Jess Haley [fields outside the template are
+%   malformed] (did-schema V_eta_go_forward_class_audit.md, carry-100): a field,
+%   block or edge outside the class's NDI template carries the whole document
+%   under one generic row. The families switched before that decision still
+%   pass no ROW (`none`) until they are moved over.
+%
 %   See also jRawAccount.
 
 carried = ~isempty(collision) || ~isempty(unplaced);
@@ -28,6 +35,12 @@ if ~isempty(collision)
     % carry-register: carry-049 (the renamed path carried this collision)
     did2.convert.reportNote('carried_as_v1', className, id, ...
         ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+    return;
+end
+if nargin >= 5 && strcmp(row, 'carry-100')
+    % carry-register: carry-100
+    did2.convert.reportNote('carried_as_v1', className, id, ...
+        ['[carry-100] malformed: outside the NDI template, unplaced: ' strjoin(unplaced, ', ')]);
     return;
 end
 % carry-register: none (a v1 field the migrator does not read; no row yet)

@@ -42,9 +42,10 @@ function tests = testRawV1RoundTripDaq
 %   zips, 2026-10-27), with their values.
 %
 %   WHAT V2 DOES NOT KEEP is listed per fixture as KNOWN FINDINGS (knownFindings
-%   below): every writer-shaped fixture round trips with none; the findings
-%   are shapes no NDI writer at the locked `main` makes, kept here so that the
-%   round trip is seen to report them.
+%   below): every writer-shaped fixture but one round trips with none (the
+%   Dabrowska probe location's label, below); the other findings are shapes no
+%   NDI writer at the locked `main` makes, kept here so that the round trip is
+%   seen to report them.
 tests = functiontests(localfunctions);
 end
 
@@ -116,7 +117,8 @@ f = writerFixtures();
 for k = 1:size(cases, 1)
     v1 = f{strcmp(f(:, 1), cases{k, 1}), 2};
     r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
-    accounted = [r.matched, r.not_set, r.restated, r.equivalent];
+    % a listed known finding is accounted for: the round trip reports it
+    accounted = [r.matched, r.not_set, r.restated, r.equivalent, findingsFor(cases{k, 1})];
     for p = cases{k, 2}
         verifyTrue(testCase, any(strcmp(p{1}, accounted)), ...
             sprintf('%s: %s is not accounted for', cases{k, 1}, p{1}));
@@ -319,10 +321,16 @@ end
 % ===================== known findings ===================================
 
 function f = knownFindings()
-% {fixture, path, why}. No writer-shaped fixture has one; these are shapes no
-% NDI writer at the locked `main` makes, and today's behaviour is kept for them
-% (a question for the team each):
+% {fixture, path, why}. One writer-shaped fixture has one (the Dabrowska probe
+% location, first row); the others are shapes no NDI writer at the locked
+% `main` makes, and today's behaviour is kept for them (a question for the team
+% each):
 f = { ...
+    'probe_location, Dabrowska', 'probe_location.name', ...
+        ['the writer''s "bed nucleus of stria terminalis (BNST)" is written as the ' ...
+         'registry''s label of UBERON:0001880, "bed nucleus of stria terminalis" ' ...
+         '([probe location terms], Jess Haley, 2026-10-27); whether the writer''s ' ...
+         'own spelling is also kept is open question 11e (as treatment)']; ...
     'daqreader with a base.name', 'base.name', ...
         'V2 writes no base.name (#73 item 54); the writer leaves it '''' (as subject 4a)'; ...
     'filenavigator, unbraced pattern', 'filenavigator.fileparameters', ...

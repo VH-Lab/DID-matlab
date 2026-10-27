@@ -838,6 +838,10 @@ function testAFullGridCurveHasOneDimensionPerVariable(testCase)
 % order: two dimensions (n 2 and 3), each variable's levels a covariate along
 % its own dimension, datum_order 'F', and every per-condition array reshaped
 % so that cell (i, j) is the condition (sf_i, tf_j).
+% The names are the registry's labels, as NCIT spells them (NCIT:C75389,
+% NCIT:C25515): [term labels stay as the ontology spells them] and [migrator
+% writes the registry spelling] (Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md).
 [S, T] = ndgrid([0.1 0.2], [1 2 4]);
 order = [5 2 6 1 4 3];
 sf = S(order); tf = T(order);
@@ -846,11 +850,11 @@ leaf = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve( ...
 ax = did2.unittest.helpers.axesOf(leaf);
 assertEqual(testCase, numel(ax), 2, 'one dimension per variable');
 verifyEqual(testCase, {ax(1).term.name, ax(2).term.name}, ...
-    {'spatial frequency', 'temporal frequency'}, 'each dimension''s term is its variable');
+    {'Spatial Frequency', 'Temporal Frequency'}, 'each dimension''s term is its variable');
 verifyEqual(testCase, [ax.n], [2 3]);
-verifyEqual(testCase, ax(1).cov.variable.name, 'spatial frequency');
+verifyEqual(testCase, ax(1).cov.variable.name, 'Spatial Frequency');
 verifyEqual(testCase, reshape(ax(1).cov.quantity.value, 1, []), [0.1 0.2], 'AbsTol', 1e-12);
-verifyEqual(testCase, ax(2).cov.variable.name, 'temporal frequency');
+verifyEqual(testCase, ax(2).cov.variable.name, 'Temporal Frequency');
 verifyEqual(testCase, reshape(ax(2).cov.quantity.value, 1, []), [1 2 4], 'AbsTol', 1e-12);
 verifyEqual(testCase, [ax.nCov], [1 1], 'one covariate along each, nothing else');
 verifyEqual(testCase, numel(leaf.data.covariates), 2);
@@ -887,7 +891,7 @@ verifyEqual(testCase, ax(1).n, 5);
 verifyEqual(testCase, ax(1).nCov, 2, 'one covariate per variable along the one dimension');
 covs = leaf.data.covariates;
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
-    {'spatial frequency', 'temporal frequency'});
+    {'Spatial Frequency', 'Temporal Frequency'});
 verifyEqual(testCase, reshape(covs(1).quantity.value, 1, []), reshape(sf, 1, []), 'AbsTol', 1e-12);
 verifyEqual(testCase, reshape(covs(2).quantity.value, 1, []), reshape(tf, 1, []), 'AbsTol', 1e-12);
 verifyTrue(testCase, ~isfield(leaf.data, 'datum_order') || isempty(leaf.data.datum_order), ...
@@ -921,7 +925,7 @@ leaf = tuningLeaf(did2.convert.migrators_j.speed_tuning( ...
     tuningBody('speed_tuning', tc, emptyUnitsProperties())));
 ax = did2.unittest.helpers.axesOf(leaf);
 assertEqual(testCase, numel(ax), 2);
-verifyEqual(testCase, {ax(1).term.name, ax(2).term.name}, {'spatial frequency', 'temporal frequency'});
+verifyEqual(testCase, {ax(1).term.name, ax(2).term.name}, {'Spatial Frequency', 'Temporal Frequency'});
 verifyEqual(testCase, [ax.n], [2 2]);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 9; 5 3], 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.data.datum_order, 'F');
