@@ -50,6 +50,14 @@ function tf = hasSource(hits, source)
 tf = any(strcmp({hits.source}, source));
 end
 
+function b = epochEntity(docId, sessionId, epochString)
+% did-schema #88: the shape did2.convert.epochMint mints (entity, type
+% EMPTY:0000383 "recording epoch", string in entity.local_identifier).
+b = baseOnly('entity', docId, sessionId);
+b.entity = struct('type', struct('node', 'EMPTY:0000383', 'name', 'recording epoch'), ...
+    'local_identifier', epochString);
+end
+
 function b = baseOnly(className, docId, sessionId)
 b = struct();
 b.document_class = struct('class_name', className, 'class_version', 1, ...
@@ -244,9 +252,51 @@ tc.verifyEqual(r.dropped_by_v1_class.stimulus_response_scalar, 1);
 tc.verifyEqual(r.dropped_detail(1).epoch_string, 't00003');
 end
 
-function testAMintedEpochDocumentCountsAsRetained(tc)
-% The other honest outcome: the string became a document. Matched on
-% (base.session_id, epoch.local_identifier) -- exactly epochMint's key.
+function testAMintedEpochEntityCountsAsRetained(tc)
+% The other honest outcome: the string became a minted epoch. did-schema #88
+% shape, as did2.convert.epochMint writes it: an `entity` whose type is the
+% registered node EMPTY:0000383 ("recording epoch"), the string in
+% `entity.local_identifier`. Matched on (session id, local_identifier) --
+% exactly epochMint's key. Until 2026-10-27 only the old `epoch` class was
+% read, and every corpus reported epoch_documents_seen = 0.
+v1 = baseOnly('element_epoch', 'doc1', 'sess1');
+v1.epochid = struct('epochid', 't00003');
+folded = baseOnly('acquisition_epoch', 'doc1', 'sess1');
+ep = epochEntity('epochdoc1', 'sess1', 't00003');
+r = did2.validate.epochStringRetention({v1}, {folded, ep});
+tc.verifyEqual(r.epoch_documents_seen, 1);
+tc.verifyEqual(r.retained_as_epoch_document, 1);
+tc.verifyEqual(r.retained_as_string, 0);
+tc.verifyEqual(r.pairs_dropped, 0);
+end
+
+function testAnEntityOfAnotherTypeIsNotAnEpoch(tc)
+% The type test is by node, not "any entity with a local_identifier": a
+% session entity (NCIT:C67447) spelling the same string retains nothing.
+v1 = baseOnly('element_epoch', 'doc1', 'sess1');
+v1.epochid = struct('epochid', 't00003');
+se = baseOnly('entity', 'sessdoc1', 'sess1');
+se.entity = struct('type', struct('node', 'NCIT:C67447', 'name', 'Session'), ...
+    'local_identifier', 't00003');
+r = did2.validate.epochStringRetention({v1}, {se});
+tc.verifyEqual(r.epoch_documents_seen, 0);
+tc.verifyEqual(r.retained_as_epoch_document, 0);
+tc.verifyEqual(r.pairs_dropped, 1);
+end
+
+function testAnEpochEntityInAnotherSessionIsNotRetention(tc)
+% The pair key applies to the #88 shape too.
+v1 = baseOnly('element_epoch', 'doc1', 'sess1');
+v1.epochid = struct('epochid', 't00003');
+ep = epochEntity('epochdoc1', 'sess2', 't00003');
+r = did2.validate.epochStringRetention({v1}, {ep});
+tc.verifyEqual(r.epoch_documents_seen, 1);
+tc.verifyEqual(r.retained_as_epoch_document, 0);
+tc.verifyEqual(r.pairs_dropped, 1);
+end
+
+function testAnOldEpochDocumentStillCountsAsRetained(tc)
+% FALLBACK: the pre-#88 `epoch` class, string in epoch.local_identifier.
 v1 = baseOnly('element_epoch', 'doc1', 'sess1');
 v1.epochid = struct('epochid', 't00003');
 folded = baseOnly('acquisition_epoch', 'doc1', 'sess1');

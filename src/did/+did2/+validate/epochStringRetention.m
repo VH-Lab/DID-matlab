@@ -74,9 +74,15 @@ function report = epochStringRetention(v1Bodies, migratedBodies)
 %     * a migrated document still carries the string, at any of the sources
 %       did2.validate.epochStrings reads (a passthrough, or a parked string such
 %       as jMethodParameters' `other.epochid`);
-%     * an `epoch` document exists for the pair -- matched on
-%       (base.session_id, epoch.local_identifier), which is exactly the key
-%       epochMint mints on.
+%     * a minted epoch exists for the pair -- matched on (session id, the
+%       epoch's local_identifier), which is exactly the key epochMint mints on.
+%       Since did-schema #88 epochMint writes an `entity` whose `type` resolves
+%       by node to 'epoch' (EMPTY:0000383 "recording epoch"), the string in
+%       `entity.local_identifier`; tested with did2.build.vocabularyHandle, as
+%       epochMint's own classNameOf does. The pre-#88 `epoch` class with
+%       `epoch.local_identifier` is still read as a fallback. Before
+%       2026-10-27 only the old class was read, so every corpus reported
+%       epoch_documents_seen = 0 and counted the minted strings as dropped.
 %
 %   NOT counted as retained:
 %     * a string this reader DECLINES to read on the v1 side (the
@@ -136,7 +142,8 @@ function report = epochStringRetention(v1Bodies, migratedBodies)
 %     dropped_detail               up to `DetailCap` rows {session_id,
 %                                  epoch_string, v1_classes} so a regression is
 %                                  actionable without a corpus re-run
-%     epoch_documents_seen         `epoch` documents in the migrated set
+%     epoch_documents_seen         minted epochs in the migrated set: entities
+%                                  of type epoch, plus any old `epoch` documents
 %
 %   See also: did2.validate.epochStrings, did2.convert.epochMint,
 %   did2.validate.silentLoss, did2.validate.sourceCensus.
@@ -258,14 +265,9 @@ for k = 1:numel(dstBodies)
     for j = 1:numel(hits)
         stillString(pairKey(sid, hits(j).value)) = true;
     end
-    if strcmp(classNameOf(b), 'epoch')
+    [isEpoch, lid] = mintedEpochOf(b);
+    if isEpoch
         report.epoch_documents_seen = report.epoch_documents_seen + 1;
-        lid = '';
-        if isfield(b, 'epoch') && isstruct(b.epoch) && isscalar(b.epoch) ...
-                && isfield(b.epoch, 'local_identifier')
-            x = b.epoch.local_identifier;
-            if ischar(x) || (isstring(x) && isscalar(x)); lid = char(x); end
-        end
         if ~isempty(lid)
             asEpochDoc(pairKey(sid, lid)) = true;
         end
@@ -375,6 +377,41 @@ if isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isscalar(b.document_class) ...
         && isfield(b.document_class, 'class_name')
     cn = char(b.document_class.class_name);
+end
+end
+
+function [tf, lid] = mintedEpochOf(b)
+%MINTEDEPOCHOF Is B a minted epoch, and the epoch string it keeps.
+%   did-schema #88: an `entity` whose `type` resolves to 'epoch' by node
+%   (did2.build.vocabularyHandle, the test did2.convert.epochMint/classNameOf
+%   uses), its string in `entity.local_identifier`. Fallback: the pre-#88
+%   `epoch` class, its string in `epoch.local_identifier`.
+tf = false;
+lid = '';
+switch classNameOf(b)
+    case 'entity'
+        if ~(isfield(b, 'entity') && isstruct(b.entity) && isscalar(b.entity) ...
+                && isfield(b.entity, 'type'))
+            return;
+        end
+        if ~strcmp(did2.build.vocabularyHandle('entity_type', b.entity.type), 'epoch')
+            return;
+        end
+        tf = true;
+        lid = textField(b.entity, 'local_identifier');
+    case 'epoch'
+        tf = true;
+        if isfield(b, 'epoch') && isstruct(b.epoch) && isscalar(b.epoch)
+            lid = textField(b.epoch, 'local_identifier');
+        end
+end
+end
+
+function v = textField(s, name)
+v = '';
+if isfield(s, name)
+    x = s.(name);
+    if ischar(x) || (isstring(x) && isscalar(x)); v = char(x); end
 end
 end
 
