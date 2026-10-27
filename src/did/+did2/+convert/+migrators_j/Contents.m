@@ -105,6 +105,10 @@
 %   intact for the NDI second pass, which can read file bytes and see the
 %   migrated-id graph. V_eta's tombstones declare the real did_v1 shape so the
 %   passthrough validates. See V_eta_migrator_vocabulary_audit.md.
+%   SINCE 2026-10-27 simple_calc, spike_clusters, spikewaves and
+%   binnedspikeratevm are CARRIED whole as v1 under a needs-home register row
+%   instead (Jess Haley, [simple_calc carries as needs home], [unbuilt spike
+%   classes carry as needs home]); the reasons below are why no home exists.
 %     simple_calc              - no subject-bearing edge (only document_id).
 %     spike_clusters           - the spike count is inside spike_cluster.bin.
 %     spikewaves               - both counts are in the .vsw binary header.
@@ -566,8 +570,8 @@
 %         Brainstorm-J migrator: did_v1 binaryseries_parameters -- a GUARDED
 %         PASSTHROUGH that normalises the template's own placeholders.
 %     binnedspikeratevm
-%         Brainstorm-J migrator: did_v1 binnedspikeratevm -- DEFERRED to the NDI
-%         second pass; the document is passed through UNCHANGED.
+%         Brainstorm-J migrator: did_v1 binnedspikeratevm -- CARRIED whole as v1 under
+%         a needs-home register row (the document is returned UNCHANGED).
 %     cell_type_labels
 %         Brainstorm-J migrator: did_v1 cellTypeLabels -> V_eta cell_type_labels, an
 %         id-preserving 1:1 passthrough. ⊂ base in V_eta; block fields (label,
@@ -876,8 +880,8 @@
 %         session belonging to a dataset is a `directed_relation` (session -part_of->
 %         dataset), not a bookkeeping record.
 %     simple_calc
-%         Brainstorm-J migrator: did_v1 simple_calc -- DEFERRED to the NDI second
-%         pass; the document is passed through UNCHANGED.
+%         Brainstorm-J migrator: did_v1 simple_calc -- CARRIED whole as v1 under a
+%         needs-home register row (the document is returned UNCHANGED).
 %     site2channelmap
 %         Brainstorm-J migrator: did_v1 site2channelmap -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
@@ -940,8 +944,8 @@
 %         speed_tuning]) + a session anchor + minted `software` and
 %         `runtime_environment` entities.
 %     spike_clusters
-%         Brainstorm-J migrator: did_v1 spike_clusters -- DEFERRED to the NDI second
-%         pass; the document is passed through UNCHANGED.
+%         Brainstorm-J migrator: did_v1 spike_clusters -- CARRIED whole as v1 under a
+%         needs-home register row (the document is returned UNCHANGED).
 %     spike_extraction_parameters
 %         Brainstorm-J migrator: did_v1 spike_extraction_parameters -> ONE `method`
 %         document (`method_parameters` before did-schema #88) (+ the `software`
@@ -954,8 +958,8 @@
 %         Brainstorm-J migrator: did_v1 spike_interface_sorting_outputs -- DEFERRED to
 %         the NDI second pass; the document is passed through UNCHANGED.
 %     spikewaves
-%         Brainstorm-J migrator: did_v1 spikewaves -- DEFERRED to the NDI second pass;
-%         the document is passed through UNCHANGED.
+%         Brainstorm-J migrator: did_v1 spikewaves -- CARRIED whole as v1 under a
+%         needs-home register row (the document is returned UNCHANGED).
 %     stimulus_bath
 %         Deferred: stimulus_bath migrates to a formulation-valued manipulation in the
 %         NDI layer / the coarse resolveDeferredBaths pass.
