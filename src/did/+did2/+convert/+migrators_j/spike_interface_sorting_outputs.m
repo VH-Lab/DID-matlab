@@ -61,8 +61,8 @@ function bodies = spike_interface_sorting_outputs(preBody)
 %   how]). The guard reads the block in either spelling. What the renamed path
 %   would have discarded is carried, carry-049, as before; a field, block or
 %   edge outside the template carries the document whole as v1
-%   (private/jRawAccount, jRawCarry; [fields outside the template are
-%   malformed], marker `none` until its row reaches did-schema `main`).
+%   (private/jRawAccount, jRawCarry; [fields outside the template are malformed],
+%   carry-100).
 %   did2.convert.roundtrip.SpikeInterfaceSortingOutputs rebuilds the v1
 %   document from the passthrough; testRawV1RoundTripSpikeParameters compares.
 
@@ -85,7 +85,7 @@ end
 [~, collision, unplaced] = jRawAccount(preBody, struct( ...
     'SpikeInterfaceSortingOutputs', {{'sorter_name', 'sample_rate', 'unit'}}, ...
     'files', {{'file_list', 'file_info'}}), {});
-jRawCarry('spike_interface_sorting_outputs', preBody, collision, unplaced);
+jRawCarry('spike_interface_sorting_outputs', preBody, collision, unplaced, 'carry-100');
 bodies = {preBody};   % a passthrough, or the carry of the untouched v1 source
 end
 

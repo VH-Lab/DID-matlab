@@ -268,7 +268,8 @@ function bodies = daqsystem(preBody)
 %   `version`, a second id, an `ndi_document` beside `base`) is carried,
 %   carry-049, as before; a field or edge no part of this migrator reads, which
 %   the renamed path dropped without a word, now carries the document whole as
-%   v1 (private/jRawAccount, jRawCarry; no register row yet).
+%   v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]).
 
 arguments
     preBody (1,1) struct
@@ -280,7 +281,7 @@ src = preBody;
 [preBody, collision, unplaced] = jRawAccount(src, ...
     struct('daqsystem', {{'ndi_daqsystem_class'}}), ...
     {'^filenavigator_id$', '^daqreader_id$', '^daqmetadatareader_id(_\d+)?$'});
-if jRawCarry('daqsystem', src, collision, unplaced)
+if jRawCarry('daqsystem', src, collision, unplaced, 'carry-100')
     bodies = {src};
     return;
 end

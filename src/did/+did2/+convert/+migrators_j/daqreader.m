@@ -116,7 +116,8 @@ function bodies = daqreader(preBody)
 %
 %   What the renamed path would have discarded is carried, carry-049, as
 %   before; a field or edge no part of this migrator reads now carries the
-%   document whole as v1 (private/jRawAccount, jRawCarry; no register row yet).
+%   document whole as v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]).
 
 arguments
     preBody (1,1) struct
@@ -128,7 +129,7 @@ end
 src = preBody;
 [preBody, collision, unplaced] = jRawAccount(src, struct('daqreader', ...
     {{'ndi_daqreader_class', 'reader_string'}}), {});
-if jRawCarry('daqreader', src, collision, unplaced)
+if jRawCarry('daqreader', src, collision, unplaced, 'carry-100')
     bodies = {src};
     return;
 end

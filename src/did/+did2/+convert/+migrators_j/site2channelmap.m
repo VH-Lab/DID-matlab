@@ -58,8 +58,8 @@ function bodies = site2channelmap(preBody)
 %   have discarded is carried, carry-049, as before; a field, block or edge
 %   outside the template (which the passthrough would have met as an undeclared
 %   field) carries the document whole as v1 (private/jRawAccount, jRawCarry;
-%   [fields outside the template are malformed], marker `none` until
-%   that row reaches did-schema `main`).
+%   [fields outside the template are malformed],
+%   carry-100).
 
 arguments
     preBody (1,1) struct
@@ -75,7 +75,7 @@ if isfield(blk, 'num_sites') || isfield(blk, 'site_to_channel')
 end
 [~, collision, unplaced] = jRawAccount(preBody, struct('site2channelmap', {{'map'}}), ...
     {'^probe_id$', '^probe_geometry_id$'});
-jRawCarry('site2channelmap', preBody, collision, unplaced);
+jRawCarry('site2channelmap', preBody, collision, unplaced, 'carry-100');
 bodies = {preBody};   % a passthrough, or the carry of the untouched v1 source
 end
 

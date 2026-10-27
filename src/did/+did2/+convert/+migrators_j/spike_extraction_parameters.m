@@ -81,7 +81,7 @@ function bodies = spike_extraction_parameters(preBody)
 %   no part of this fold reads, or an `app` field outside NDI's app.json (all
 %   dropped without a word on the renamed path), now carries the document
 %   whole as v1 (private/jRawAccount, jRawCarry; [fields outside the template
-%   are malformed], marker `none` until its row reaches did-schema `main`).
+%   are malformed], carry-100).
 %   Every writer document carries, carry-003, as before: ndi.app/newdocument
 %   always writes the run's os and interpreter, which no method keeps. A carry
 %   is the untouched v1 source. did2.convert.roundtrip.spike_extraction_parameters
@@ -108,7 +108,7 @@ blockFields = fieldnames(blk);
     'spike_extraction_parameters', {blockFields(:)'}, ...
     'app', {{'name', 'version', 'url', 'os', 'os_version', 'interpreter', 'interpreter_version'}}), ...
     {'^element_id$', '^subject_id$', '^epoch_id$'});
-if jRawCarry('spike_extraction_parameters', src, collision, unplaced)
+if jRawCarry('spike_extraction_parameters', src, collision, unplaced, 'carry-100')
     bodies = {src};
     return;
 end

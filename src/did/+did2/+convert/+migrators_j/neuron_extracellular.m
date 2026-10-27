@@ -331,11 +331,11 @@ if ~isempty(collision)
     return;
 end
 unread = unreadFields(preBody);
-if ~isempty(unread)
-    % carry-register: none (a neuron_extracellular field this fold reads
-    % nowhere; no row yet)
-    did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', char(preBody.base.id), ...
-        ['unplaced: ' strjoin(unread, ', ')]);
+% a field, block or edge outside the template ([fields outside the template
+% are malformed], carry-100), or a template field whose value this fold
+% cannot place, stated as `path (why)` (no register row yet)
+isValue = contains(unread, ' (');
+if jRawCarry('neuron_extracellular', raw, {}, unread(~isValue), 'carry-100', unread(isValue))
     bodies = {raw};
     return;
 end

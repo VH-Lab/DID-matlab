@@ -74,12 +74,12 @@ function bodies = electrode_offset_voltage(preBody)
 %     electrode_offset_voltage.temperature -> the `temperature` condition
 %
 %   What the renamed path would have discarded is carried, carry-049, as
-%   before. A field, block or edge no part of this migrator reads, and a
-%   temperature that is stated but is neither one finite number nor the
-%   writer's NaN (the renamed path dropped it without a word), now carry the document whole as v1
-%   (private/jRawAccount, jRawCarry; [fields outside the template are
-%   malformed], marker `none` until that row reaches did-schema
-%   `main`). A passthrough and a carry return the untouched v1 source.
+%   before. A field, block or edge no part of this migrator reads ([fields
+%   outside the template are malformed], carry-100), and a temperature that is
+%   stated but is neither one finite number nor the writer's NaN (no register
+%   row yet), both dropped without a word on the renamed path, now carry the
+%   document whole as v1 (private/jRawAccount, jRawCarry). A passthrough and a
+%   carry return the untouched v1 source.
 arguments
     preBody (1,1) struct
 end
@@ -101,14 +101,15 @@ src = preBody;
 [preBody, collision, unplaced] = jRawAccount(src, ...
     struct('electrode_offset_voltage', {{'offset', 'temperature'}}), ...
     {'^probe_id$', '^element_id$', '^subject_id$'});
+valueReasons = {};
 if isfield(blk, 'temperature') && ~isempty(blk.temperature) ...
         && isempty(finiteScalar(blk, 'temperature')) && ~isNaNScalar(blk.temperature)
     % NaN is the writer's "not recorded" (it skips the temperature query for
     % it) and stays unwritten, as before; anything else that is not one finite
     % number has no place
-    unplaced{end+1} = 'electrode_offset_voltage.temperature (not one finite number)';
+    valueReasons{end+1} = 'electrode_offset_voltage.temperature (not one finite number)';
 end
-if jRawCarry('electrode_offset_voltage', src, collision, unplaced)
+if jRawCarry('electrode_offset_voltage', src, collision, unplaced, 'carry-100', valueReasons)
     bodies = {src};
     return;
 end

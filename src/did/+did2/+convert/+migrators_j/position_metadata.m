@@ -77,7 +77,7 @@ src = preBody;
 [preBody, collision, unplacedRaw] = jRawAccount(src, ...
     struct('position_metadata', {{'ontologyNode', 'units', 'dimensions'}}), ...
     {'^element_id$', '^subject_id$'});
-if jRawCarry('position_metadata', src, collision, unplacedRaw)
+if jRawCarry('position_metadata', src, collision, unplacedRaw, 'carry-100')
     bodies = {src};
     return;
 end

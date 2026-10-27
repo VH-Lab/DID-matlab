@@ -59,7 +59,8 @@ function bodies = distance_metadata(preBody)
 %   What the renamed path would have discarded is carried, carry-049, as
 %   before; a field or edge no part of this migrator reads (e.g. an
 %   integerIDs_C with no ontologyNode_C) now carries the document whole as v1
-%   (private/jRawAccount, jRawCarry; no register row yet). The JH writer's
+%   (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]). The JH writer's
 %   documents hang off an element of type `distance`, which is carried
 %   (carry-063), so v1_to_v2 carries them too (carry-064, [dependents of a
 %   carried document carry]).
@@ -85,7 +86,7 @@ for k = 1:numel(suffixes)
 end
 [preBody, collision, unplaced] = jRawAccount(src, ...
     struct('distance_metadata', {read}), {'^element_id$'});
-if jRawCarry('distance_metadata', src, collision, unplaced)
+if jRawCarry('distance_metadata', src, collision, unplaced, 'carry-100')
     bodies = {src};
     return;
 end

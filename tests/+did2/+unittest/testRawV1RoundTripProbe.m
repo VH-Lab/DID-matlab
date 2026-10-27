@@ -8,8 +8,7 @@ function tests = testRawV1RoundTripProbe
 %   practices] (a) (a round trip per class, did2.convert.roundtrip.check) and
 %   [renames carry is temporary]; 2026-10-27 [fields outside the template are
 %   malformed] (a field the migrator does not read carries the document,
-%   under the generic "malformed" register row; marked `none` until that row
-%   reaches did-schema `main`).
+%   under the generic "malformed" register row; carry-100).
 %
 %   THE v1 DOCUMENTS are built from NDI's templates at the locked NDI-matlab
 %   `main` (3cb19a8; tests/+did2/fixtures/ndi_templates, copied verbatim:
@@ -138,7 +137,7 @@ function testAFieldTheMigratorDoesNotReadCarriesTheDocument(testCase)
 % passthrough, met the V_eta class as undeclared fields)
 v1 = writerOffset(0.012, 21.5);
 v1.electrode_offset_voltage.units = 'mV';
-verifyCarried(testCase, v1, 'unplaced: electrode_offset_voltage.units');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: electrode_offset_voltage.units');
 v1 = writerOffset(0.012, 21.5);
 v1.electrode_offset_voltage.temperature = 'room';
 verifyCarried(testCase, v1, 'electrode_offset_voltage.temperature (not one finite number)');

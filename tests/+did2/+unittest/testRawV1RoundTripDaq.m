@@ -214,7 +214,7 @@ for k = 1:size(breaks, 1)
     emitted.document_class = rmfield(emitted.document_class, 'schema_version');
     verifyTrue(testCase, isequaln(emitted, v1), [label ' + ' path ': the carry is not the v1 source']);
     d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, 'unplaced: ') && contains(d, path), d);
+    verifyTrue(testCase, startsWith(d, '[carry-100] malformed: outside the NDI template, unplaced: ') && contains(d, path), d);
     verifyTrue(testCase, did2.convert.roundtrip.check(v1, raw.migrated).ok, [label ' + ' path]);
 end
 end

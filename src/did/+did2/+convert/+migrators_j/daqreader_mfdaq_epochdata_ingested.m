@@ -55,7 +55,8 @@ function bodies = daqreader_mfdaq_epochdata_ingested(preBody)
 %   renamed path discarded it and carried the document). A field of the mfdaq
 %   block other than `parameters`, which the renamed path dropped without a
 %   word, or a legacy identity field outside base.json's four, now carries the
-%   document whole as v1 (no register row yet: a question for the team).
+%   document whole as v1 ([fields outside the template are malformed],
+%   carry-100, via private/jRawCarry).
 
 arguments
     preBody (1,1) struct
@@ -72,11 +73,8 @@ if ~isempty(collision)
     bodies = preBody;
     return;
 end
-if ~isempty(unplaced)
-    % carry-register: none (a field the de-encode does not read; no row yet)
-    did2.convert.reportNote('carried_as_v1', 'daqreader_mfdaq_epochdata_ingested', ...
-        char(body.base.id), ['unplaced: ' strjoin(unplaced, ', ')]);
-    bodies = preBody;
+if jRawCarry('daqreader_mfdaq_epochdata_ingested', preBody, {}, unplaced, 'carry-100')
+    bodies = preBody;   % [fields outside the template are malformed], carry-100
     return;
 end
 

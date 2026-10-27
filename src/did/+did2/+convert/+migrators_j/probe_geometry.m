@@ -103,8 +103,8 @@ function bodies = probe_geometry(preBody)
 %   before. A field, block or edge no part of this migrator reads, an `ndim`
 %   other than 2 and a unit with no length term (all dropped without a word on
 %   the renamed path) now carry the document whole as v1 (private/jRawAccount,
-%   jRawCarry; [fields outside the template are malformed], marker
-%   `none` until that row reaches did-schema `main`). Passthroughs and carries
+%   jRawCarry; [fields outside the template are malformed], carry-100; the
+%   ndim and unit values have no register row yet). Passthroughs and carries
 %   return the untouched v1 source.
 arguments
     preBody (1,1) struct
@@ -133,17 +133,18 @@ TEMPLATE = {'site_locations_leftright', 'site_locations_frontback', ...
 src = preBody;
 [preBody, collision, unplacedRaw] = jRawAccount(src, struct('probe_geometry', {TEMPLATE}), ...
     {'^probe_id$', '^element_id$', '^subject_id$'});
+valueReasons = {};
 if isfield(blk, 'ndim') && ~isempty(blk.ndim) && ~isequal(double(blk.ndim), 2)
-    unplacedRaw{end+1} = 'probe_geometry.ndim (not 2, the writer''s default)';
+    valueReasons{end+1} = 'probe_geometry.ndim (not 2, the writer''s default)';
 end
 unitText = jGetChar(blk, 'unit');
 if ~isempty(strtrim(unitText))
     [~, ~, unitKind] = jSourceUnit(unitText);
     if ~strcmp(unitKind, 'length')
-        unplacedRaw{end+1} = sprintf('probe_geometry.unit (no length unit is known for "%s")', unitText);
+        valueReasons{end+1} = sprintf('probe_geometry.unit (no length unit is known for "%s")', unitText);
     end
 end
-if jRawCarry('probe_geometry', src, collision, unplacedRaw)
+if jRawCarry('probe_geometry', src, collision, unplacedRaw, 'carry-100', valueReasons)
     bodies = {src};
     return;
 end

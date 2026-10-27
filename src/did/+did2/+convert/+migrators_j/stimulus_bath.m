@@ -58,7 +58,8 @@ function v2Body = stimulus_bath(preBody)
 %   A document the resolvers cannot read whole is CARRIED, not deferred: what
 %   the renamed path would have discarded (carry-049, as before), and a field,
 %   location field or edge no part of the bath reads, or a mixture_table that
-%   is not text (private/jRawAccount, jRawCarry; no register row yet). Such a
+%   is not text (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]). Such a
 %   document is stored as v1, so neither resolver sees it.
 
 arguments
@@ -69,8 +70,9 @@ end
 [~, collision, unplaced] = jRawAccount(preBody, ...
     struct('stimulus_bath', {{'location', 'mixture_table'}}, 'epochid', {{'epochid'}}), ...
     {'^stimulus_element_id$'});
-unplaced = [unplaced, unreadBathFields(preBody)];
-if jRawCarry('stimulus_bath', preBody, collision, unplaced)
+[offTemplate, valueReasons] = unreadBathFields(preBody);
+unplaced = [unplaced, offTemplate];
+if jRawCarry('stimulus_bath', preBody, collision, unplaced, 'carry-100', valueReasons)
     v2Body = {preBody};
     return;
 end
@@ -83,11 +85,12 @@ error('did2:convert:needsSessionContext', ...
      'stimulator''s epoch) require the session/element graph. Deferred.']);
 end
 
-function unplaced = unreadBathFields(body)
+function [unplaced, valueReasons] = unreadBathFields(body)
 %UNREADBATHFIELDS What jRawAccount does not look inside: the `location`
 %   struct's fields other than the two the resolvers read (ontologyNode, name),
 %   and a mixture_table that is not text (both resolvers parse text only).
-unplaced = {};
+unplaced = {};       % location fields outside the template (carry-100)
+valueReasons = {};   % template fields whose value the resolvers cannot read
 if ~isfield(body, 'stimulus_bath') || ~isstruct(body.stimulus_bath) ...
         || ~isscalar(body.stimulus_bath)
     return;
@@ -96,7 +99,7 @@ sb = body.stimulus_bath;
 if isfield(sb, 'location') && ~isempty(sb.location)
     loc = sb.location;
     if ~isstruct(loc) || ~isscalar(loc)
-        unplaced{end+1} = 'stimulus_bath.location (not one {ontologyNode, name})';
+        valueReasons{end+1} = 'stimulus_bath.location (not one {ontologyNode, name})';
     else
         fns = fieldnames(loc);
         for k = 1:numel(fns)
@@ -109,7 +112,7 @@ end
 if isfield(sb, 'mixture_table') && ~isempty(sb.mixture_table)
     mt = sb.mixture_table;
     if ~(ischar(mt) || (isstring(mt) && isscalar(mt)))
-        unplaced{end+1} = 'stimulus_bath.mixture_table (not text)';
+        valueReasons{end+1} = 'stimulus_bath.mixture_table (not text)';
     end
 end
 end

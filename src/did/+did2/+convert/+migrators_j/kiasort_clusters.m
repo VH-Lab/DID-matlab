@@ -37,8 +37,8 @@ function bodies = kiasort_clusters(preBody)
 %   carried, carry-049, as before; a block, field or edge no part of this fold
 %   reads (dropped without a word on the renamed path) now carries the
 %   document whole as v1 (private/jRawAccount, jRawCarry; [fields outside the
-%   template are malformed], marker `none` until its row reaches did-schema
-%   `main`). A carry is the untouched v1 source.
+%   template are malformed], carry-100; a rewritten checksum has no register
+%   row yet). A carry is the untouched v1 source.
 arguments
     preBody (1,1) struct
 end
@@ -50,13 +50,14 @@ src = preBody;
     'app', {{'name', 'version', 'url', 'os', 'os_version', 'interpreter', 'interpreter_version'}}), ...
     {'^element_id$', '^subject_id$'});
 md5 = '';
+valueReasons = {};
 if isfield(src, 'kiasort_clusters') && isstruct(src.kiasort_clusters)
     md5 = jGetCharAny(src.kiasort_clusters, {'curated_output_MD5_checksum', 'curated_output_md5_checksum'});
 end
 if ~isempty(md5) && ~strcmp(md5, lower(strtrim(md5)))
-    unplaced{end+1} = 'kiasort_clusters.curated_output_MD5_checksum (not lower-case hex: the body would rewrite it)';
+    valueReasons{end+1} = 'kiasort_clusters.curated_output_MD5_checksum (not lower-case hex: the body would rewrite it)';
 end
-if jRawCarry('kiasort_clusters', src, collision, unplaced)
+if jRawCarry('kiasort_clusters', src, collision, unplaced, 'carry-100', valueReasons)
     bodies = {src};
     return;
 end

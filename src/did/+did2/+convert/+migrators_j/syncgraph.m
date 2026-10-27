@@ -137,7 +137,8 @@ function bodies = syncgraph(preBody)
 %
 %   What the renamed path would have discarded is carried, carry-049, as
 %   before; a field or edge no part of this migrator reads now carries the
-%   document whole as v1 (private/jRawAccount, jRawCarry; no register row yet).
+%   document whole as v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
+%   are malformed]).
 
 arguments
     preBody (1,1) struct
@@ -150,7 +151,7 @@ src = preBody;
 [preBody, collision, unplaced] = jRawAccount(src, ...
     struct('syncgraph', {{'ndi_syncgraph_class'}}), ...
     {'^syncrule_id(_\d+)?$', '^session_document_id$'});
-if jRawCarry('syncgraph', src, collision, unplaced)
+if jRawCarry('syncgraph', src, collision, unplaced, 'carry-100')
     bodies = {src};
     return;
 end

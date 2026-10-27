@@ -156,8 +156,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         but for the `value` edge key); electrode_offset_voltage
 %                         converts. What a migrator does not read carries the
 %                         document (private/jRawAccount; [fields outside the
-%                         template are malformed], marker `none` until its row
-%                         reaches did-schema `main`). Written by
+%                         template are malformed], carry-100). Written by
 %                         +ndi/+fun/+probe/+geometry/fromStruct.m and
 %                         +ndi/+setup/+conv/+marder/makeVoltageOffsets.m. Round
 %                         trips: testRawV1RoundTripProbe.

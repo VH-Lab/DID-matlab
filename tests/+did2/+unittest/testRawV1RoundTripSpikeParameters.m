@@ -156,7 +156,7 @@ end
 function testAFieldTheMigratorDoesNotReadCarriesTheDocument(testCase)
 v1 = convertedShape(writerExtraction());
 v1.app.license = 'MIT';
-verifyCarried(testCase, v1, 'app.license');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: app.license');
 v1 = convertedShape(writerExtraction());
 v1.epochid = struct('epochid', 't00001');
 verifyCarried(testCase, v1, 'epochid');

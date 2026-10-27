@@ -90,11 +90,11 @@ if ~isempty(collision)
     return;
 end
 unplaced = unreadFields(preBody);
-if ~isempty(unplaced)
-    % carry-register: none (a jrclust_clusters field this fold reads nowhere;
-    % no row yet)
-    did2.convert.reportNote('carried_as_v1', 'jrclust_clusters', char(preBody.base.id), ...
-        ['unplaced: ' strjoin(unplaced, ', ')]);
+% a field, block or edge outside the template ([fields outside the template
+% are malformed], carry-100), or a template field whose value this fold
+% cannot place, stated as `path (why)` (no register row yet)
+isValue = contains(unplaced, ' (');
+if jRawCarry('jrclust_clusters', raw, {}, unplaced(~isValue), 'carry-100', unplaced(isValue))
     bodies = {raw};
     return;
 end
