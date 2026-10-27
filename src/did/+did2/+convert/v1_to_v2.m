@@ -310,7 +310,10 @@ for k = 1:numel(bodies)
     did2.convert.mintId('-popto', mintDepth);
     try
         preBody = ensureStruct(rawBody);
-        did2.convert.mintId('-push', sourceIdOf(preBody));
+        % the mint key: base.id, else the legacy identity, else the source's
+        % JSON (did2.convert.mintKey), so a base-less document mints the same
+        % ids on every run too (practice (b))
+        did2.convert.mintId('-push', did2.convert.mintKey(preBody));
         refuseUnknownSchemaVersion(preBody);
         if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already stamped

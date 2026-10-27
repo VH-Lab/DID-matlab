@@ -89,3 +89,46 @@ function ids = idsOf(r)
 ids = cellfun(@(d) char(d.get('base.id')), r.migrated, 'UniformOutput', false);
 ids = sort(ids);
 end
+
+% ===== the mint key: a document with no `base` block (practice (b)) =====
+
+function testTheMintKeyIsBaseIdThenTheLegacyIdThenTheJson(testCase)
+withBase = struct('base', struct('id', '41e1b2c3d4e5f60a_0123456789abcdef'));
+verifyEqual(testCase, did2.convert.mintKey(withBase), '41e1b2c3d4e5f60a_0123456789abcdef');
+v2020 = struct('ndi_document', struct('id', '41e1b2c3d4e5f60b_0123456789abcdef', ...
+    'session_id', 's', 'name', '', 'type', '', 'datestamp', '', 'database_version', 1));
+verifyEqual(testCase, did2.convert.mintKey(v2020), '41e1b2c3d4e5f60b_0123456789abcdef');
+v2019 = struct('ndi_document', struct('experiment_unique_reference', 'e', ...
+    'document_unique_reference', '41e1b2c3d4e5f60c_0123456789abcdef', 'name', '', ...
+    'type', '', 'datestamp', '', 'database_version', 1));
+verifyEqual(testCase, did2.convert.mintKey(v2019), '41e1b2c3d4e5f60c_0123456789abcdef');
+noId = struct('document_class', struct('class_name', 'x'), 'x', struct('a', 1));
+k1 = did2.convert.mintKey(noId);
+verifyTrue(testCase, startsWith(k1, 'json:'), k1);
+verifyEqual(testCase, did2.convert.mintKey(noId), k1, 'the same input gives the same key');
+noId.x.a = 2;
+verifyNotEqual(testCase, did2.convert.mintKey(noId), k1, 'another input another key');
+end
+
+function testABaseLessDocumentMintsTheSameIdsTwice(testCase)
+% a 2020-vintage treatment (identity only in `ndi_document`) whose migration
+% mints an anchor: converting it twice gives identical ids, on the raw path and
+% on the universalRenames path. (It minted random ids before mintKey.)
+v1 = struct();
+v1.document_class = struct('class_name', 'treatment', 'class_version', 1);
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_1'});
+v1.ndi_document = struct('id', '41e1b2c3d4e5f60d_0123456789abcdef', ...
+    'session_id', '41e1b2c3d4e5f60d_00000000000000a1', 'name', '', 'type', '', ...
+    'datestamp', '2021-06-01T12:00:00.000Z', 'database_version', 1);
+v1.treatment = struct('ontologyName', 'EMPTY:0000199', ...
+    'name', 'treatment: grating direction-of-motion visual stimulation', ...
+    'numeric_value', 6.5, 'string_value', '');
+for raw = {did2.convert.rawV1Classes(), {}}
+    r1 = did2.convert.v1_to_v2({v1}, 'Validate', false, 'RawV1Classes', raw{1});
+    r2 = did2.convert.v1_to_v2({v1}, 'Validate', false, 'RawV1Classes', raw{1});
+    verifyEmpty(testCase, r1.quarantine);
+    verifyGreaterThan(testCase, numel(r1.migrated), 1, 'the anchor was not minted');
+    verifyEqual(testCase, cellfun(@(d) d.get('base.id'), r1.migrated, 'UniformOutput', false), ...
+        cellfun(@(d) d.get('base.id'), r2.migrated, 'UniformOutput', false));
+end
+end
