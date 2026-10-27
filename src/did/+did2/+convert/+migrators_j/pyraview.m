@@ -147,6 +147,12 @@ src = preBody;
     'epochclocktimes', {{'clocktype', 't0_t1'}}, ...
     'epochid', {{'epochid'}}, ...
     'files', {{'file_list', 'file_info'}}), {'^element_id$', '^epoch_id$'});
+% `filter.parameters` is open in the template, so jRawAccount cannot see a key
+% there that jFrequencyFilter does not read; this does, against the list it
+% reads with (private/jFilterParameterKeys). Such a key carries the document
+% whole as v1, carry-100 (Decided by Jess Haley, 2026-10-27 [unknown filter
+% parameter is malformed], did-schema V_eta_go_forward_class_audit.md).
+unplaced = [unplaced, unreadFilterParameters(preBody)];
 if jRawCarry('pyraview', src, collision, unplaced, 'carry-100')
     bodies = {src};
     return;
@@ -328,6 +334,24 @@ end
 bodies{end+1} = anchor;
 if ~isempty(filterDoc)
     bodies{end+1} = filterDoc;
+end
+end
+
+function paths = unreadFilterParameters(body)
+% `filter.parameters.<key>` for every key private/jFrequencyFilter does not
+% read, whatever it holds ([unknown filter parameter is malformed]: "holds a key
+% jFrequencyFilter does not read"). {} when the block has no parameters struct.
+paths = {};
+f = getBlock(body, 'filter');
+if ~isfield(f, 'parameters') || ~isstruct(f.parameters) || ~isscalar(f.parameters)
+    return;
+end
+[~, known] = jFilterParameterKeys();
+fn = fieldnames(f.parameters);
+for k = 1:numel(fn)
+    if ~any(strcmp(fn{k}, known))
+        paths{end+1} = ['filter.parameters.' fn{k}]; %#ok<AGROW>
+    end
 end
 end
 

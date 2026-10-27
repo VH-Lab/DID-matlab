@@ -167,7 +167,8 @@ label = readChar(blk, {'label'});
 if ~isempty(label) && ~strcmp(strtrim(label), strtrim(rawType))
     unplaced{end+1} = sprintf('[carry-007] filter.label "%s" (differs from type "%s")', label, rawType);
 end
-sampleFrequency = readNumScalar(params, {'sampleFrequency', 'sample_frequency'});
+K = jFilterParameterKeys();   % the one list of what is read (and so what is not)
+sampleFrequency = readNumScalar(params, K.sampleFrequency);
 
 if isempty(algorithm) || isempty(band)
     % 'none' or blank: an all-pass, no filter document and no edge. A spelling
@@ -188,13 +189,12 @@ if isempty(algorithm) || isempty(band)
     return;
 end
 
-edges = readNumVec(params, {'filterFrequency', 'filter_frequency'});
-order = readNumScalar(params, {'order'});
-ripple = readNumScalar(params, {'passBandRipple', 'pass_band_ripple', ...
-    'passbandRipple', 'passband_ripple'});
-% MISSPELLED FIRST -- that is the spelling the writer and the data use.
-attenuation = readNumScalar(params, {'stopbandAttentuation', 'stopband_attentuation', ...
-    'stopbandAttenuation', 'stopband_attenuation'});
+edges = readNumVec(params, K.filterFrequency);
+order = readNumScalar(params, K.order);
+ripple = readNumScalar(params, K.passBandRipple);
+% MISSPELLED FIRST -- that is the spelling the writer and the data use
+% (jFilterParameterKeys lists it first).
+attenuation = readNumScalar(params, K.stopbandAttentuation);
 
 % names: the builder completes each from its field's bound value set
 block = struct('algorithm', algorithm, 'band', band);

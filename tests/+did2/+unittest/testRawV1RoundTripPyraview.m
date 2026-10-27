@@ -121,6 +121,32 @@ verifyCarried(testCase, v1, 'extra_block');
 verifyCarried(testCase, stamped(writerShape('all')), '[carry-007] filter.label "all"');
 end
 
+function testAnUnknownFilterParameterIsMalformed(testCase)
+% Decided by Jess Haley, 2026-10-27 [unknown filter parameter is malformed]:
+% `filter.parameters` is open in the template, and a key there that
+% private/jFrequencyFilter does not read carries the document whole as v1,
+% carry-100, through jRawCarry -- for a designed filter and for the all-pass
+% alike, and before the epoch deferral (pass 1 stores the untouched source)
+for b = bands()
+    v1 = writerShape(b{1});
+    v1.filter.parameters.transitionWidth = 50;
+    verifyCarried(testCase, v1, ...
+        '[carry-100] malformed: outside the NDI template, unplaced: filter.parameters.transitionWidth');
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, [b{1} ': deferred instead of carried']);
+    assertEqual(testCase, numel(out.migrated), 1, b{1});
+    verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
+        'did_v1', b{1});
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried, b{1});
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, b{1}, {});
+end
+% an EMPTY unknown key is a key all the same ("holds a key")
+v1 = writerShape('high');
+v1.filter.parameters.transitionWidth = [];
+verifyCarried(testCase, v1, 'filter.parameters.transitionWidth');
+end
+
 function testACarryIsDecidedBeforeTheDeferral(testCase)
 % a document carried for a field outside its templates is the untouched v1
 % source, stored in pass 1; it never waits in the quarantine to be re-run with
