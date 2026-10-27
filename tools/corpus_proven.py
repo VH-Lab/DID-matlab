@@ -107,11 +107,25 @@ import shutil
 import subprocess
 import sys
 
+from did_schema_names import (find_schema_file, git_show_schema_file,
+                              schema_file, schema_git_paths)
+
 REPORT_SUFFIX = "-summary.json"
-LEDGER_REL = os.path.join("schemas", "V_eta_coverage_ledger.json")
+# did-schema renames `V_eta_coverage_ledger.json` to `did_v2_coverage_ledger.json`
+# ([markdown cleanup and rename], Jess Haley, 2026-10-26). Both names are read,
+# the new one first (did_schema_names.py); LEDGER_REL and LEDGER_GIT_PATH name
+# them both for messages.
+LEDGER_BASE = "coverage_ledger.json"
 COVERAGE_REL = os.path.join("tools", "coverage.py")
 # git speaks forward slashes on every platform; `os.path.join` does not.
-LEDGER_GIT_PATH = "schemas/V_eta_coverage_ledger.json"
+LEDGER_GIT_PATH = " (else ".join(schema_git_paths(LEDGER_BASE)) + ")"
+LEDGER_REL = LEDGER_GIT_PATH
+
+
+def ledger_path(schema_repo):
+    """The ledger in `schema_repo`: `did_v2_` name if present, else `V_eta_`,
+    else (neither present) the `did_v2_` name."""
+    return schema_file(schema_repo, LEDGER_BASE)
 
 # The three rung states coverage.py emits, spelled as it spells them.
 S_YES = "yes"
@@ -318,7 +332,9 @@ def mtime_after(schema_repo):
     None is deliberately a VALUE and not an error: a run that creates a ledger
     where none existed has rewritten it, and None != any float makes that fall
     out of the comparison rather than needing a special case."""
-    path = os.path.join(schema_repo, LEDGER_REL)
+    path = find_schema_file(schema_repo, LEDGER_BASE)
+    if path is None:
+        return None
     try:
         return os.path.getmtime(path)
     except OSError:
@@ -332,7 +348,7 @@ def run_coverage(schema_repo, roots, timeout=1800):
     precise enough to act on -- an interface gap is a thing to REPORT to the
     counterpart, not to route around by computing the verdict here.
 
-    NOTE it WRITES: coverage.py regenerates `schemas/V_eta_coverage_ledger.md`
+    NOTE it WRITES: coverage.py regenerates the coverage ledger `.md`
     and `.json` in the checkout it runs in. In CI that checkout is a throwaway
     sibling clone, which is the only reason this is acceptable. `--check` is
     not an option -- it exits before stage 5's input is ever read.
@@ -412,7 +428,7 @@ def run_coverage(schema_repo, roots, timeout=1800):
 
 def read_ledger(schema_repo):
     """The regenerated ledger, or a named reason it could not be read."""
-    path = os.path.join(schema_repo, LEDGER_REL)
+    path = ledger_path(schema_repo)
     if not os.path.isfile(path):
         return None, "`%s` does not exist after the run" % path
     try:
@@ -440,10 +456,12 @@ def committed_ledger_classes(schema_repo, timeout=60):
         return None, ("`%s` is not a git checkout (no `.git`), so there is no "
                       "committed ledger to compare against"
                       % schema_repo)
-    cmd = ["git", "-C", schema_repo, "show", "HEAD:" + LEDGER_GIT_PATH]
+    # Named for the error messages below if git cannot be run at all.
+    cmd = ["git", "-C", schema_repo, "show",
+           "HEAD:" + schema_git_paths(LEDGER_BASE)[0]]
     try:
-        proc = subprocess.run(cmd, timeout=timeout, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE)
+        proc, git_path, cmd = git_show_schema_file(schema_repo, LEDGER_BASE,
+                                                   timeout=timeout)
     except OSError as err:
         return None, "`%s` could not be run: %s" % (" ".join(cmd), err)
     except subprocess.TimeoutExpired:
@@ -457,10 +475,10 @@ def committed_ledger_classes(schema_repo, timeout=60):
         doc = json.loads(proc.stdout.decode("utf-8", "replace"))
     except json.JSONDecodeError as err:
         return None, "the committed `%s` is not readable JSON: %s" % (
-            LEDGER_GIT_PATH, err)
+            git_path, err)
     rows = doc.get("rows")
     if not isinstance(rows, list) or not rows:
-        return None, "the committed `%s` carries no `rows`" % LEDGER_GIT_PATH
+        return None, "the committed `%s` carries no `rows`" % git_path
     return [r.get("v1_class") for r in rows], None
 
 
@@ -1041,10 +1059,12 @@ def publish(state, out_dir, schema_repo, text):
     if state["coverage"].get("stdout"):
         with open(os.path.join(out_dir, "coverage_stdout.txt"), "w") as fh:
             fh.write(state["coverage"]["stdout"])
-    ledger = os.path.join(schema_repo, LEDGER_REL)
-    if os.path.isfile(ledger):
+    # Copied under the name it was read by, so the artifact says which name
+    # the did-schema checkout held.
+    ledger = find_schema_file(schema_repo, LEDGER_BASE)
+    if ledger is not None:
         shutil.copyfile(ledger, os.path.join(out_dir,
-                                             "V_eta_coverage_ledger.json"))
+                                             os.path.basename(ledger)))
 
 
 def main(argv=None):

@@ -40,7 +40,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from corpus_proven import (analyse, attribution_census,  # noqa: E402
                            committed_ledger_classes, corpus_row, find_reports,
-                           norm_class, render, universe_check)
+                           norm_class, read_ledger, render, run_coverage,
+                           universe_check)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKFLOW = os.path.join(REPO, ".github", "workflows", "test-corpus.yml")
@@ -110,6 +111,11 @@ class Case(unittest.TestCase):
         self.schema = os.path.join(self.dir, "did-schema")
         os.makedirs(os.path.join(self.schema, "schemas"))
         self.ledger_rows = []
+        # The ledger's name in the fake did-schema checkout. did-schema renames
+        # V_eta_coverage_ledger.json to did_v2_coverage_ledger.json ([markdown
+        # cleanup and rename], Jess Haley, 2026-10-26); the cases below run on
+        # the old name, and the ledger-name cases at the end on the new one.
+        self.ledger_name = "V_eta_coverage_ledger.json"
 
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
@@ -130,7 +136,7 @@ class Case(unittest.TestCase):
                 return {"ran": False, "why": "stubbed as unavailable",
                         "schema_repo": schema_repo, "roots": list(roots)}
             with open(os.path.join(schema_repo, "schemas",
-                                   "V_eta_coverage_ledger.json"), "w") as fh:
+                                   self.ledger_name), "w") as fh:
                 json.dump({"rows": self.ledger_rows}, fh)
             return {"ran": True, "exit_code": exit_code, "stdout": "",
                     "command": "stub", "schema_repo": schema_repo,
@@ -147,8 +153,7 @@ class Case(unittest.TestCase):
         """
         if shutil.which("git") is None:               # pragma: no cover
             self.skipTest("git is not on PATH")
-        path = os.path.join(self.schema, "schemas",
-                            "V_eta_coverage_ledger.json")
+        path = os.path.join(self.schema, "schemas", self.ledger_name)
         with open(path, "w") as fh:
             json.dump({"rows": [ledger_row(c, [c]) for c in classes]}, fh)
         env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull,
@@ -512,6 +517,66 @@ class Case(unittest.TestCase):
         self.assertEqual(classes, ["subject", "alpha"],
                          "the baseline must come from `git show HEAD:`, never "
                          "from the working copy the run just rewrote")
+
+    # --- the ledger's two names ---------------------------------------------
+    #
+    # did-schema renames V_eta_coverage_ledger.json to did_v2_coverage_ledger.json
+    # ([markdown cleanup and rename], Jess Haley, 2026-10-26, "Siblings first").
+    # Every case above reads the OLD name; these read the new one, and both.
+
+    def test_the_new_ledger_name_is_read_end_to_end(self):
+        self.ledger_name = "did_v2_coverage_ledger.json"
+        self.write_report("corpus-reports/A-summary.json",
+                          report("A", {"subject": 5}))
+        self.commit_ledger(["subject", "alpha"])
+        self.ledger_rows = [ledger_row(c, [c], "not measured", "0 documents")
+                            for c in ("subject", "alpha")]
+        state, text = self.run_tool(["corpus-reports"])
+        self.assertIsNotNone(state["rung"], text)
+        self.assertEqual(state["rung"]["rows"], 2)
+        self.assertTrue(state["universe"]["evaluated"], text)
+        self.assertEqual(state["universe"]["committed"], 2)
+        self.assertFalse(os.path.exists(os.path.join(
+            self.schema, "schemas", "V_eta_coverage_ledger.json")))
+
+    def test_the_new_ledger_name_wins_when_both_are_present(self):
+        self.commit_ledger(["old_only"])              # V_eta_ name
+        self.ledger_name = "did_v2_coverage_ledger.json"
+        self.commit_ledger(["new_only"])              # did_v2_ name, same HEAD
+        classes, why = committed_ledger_classes(self.schema)
+        self.assertIsNone(why)
+        self.assertEqual(classes, ["new_only"])
+        rows, why = read_ledger(self.schema)
+        self.assertIsNone(why)
+        self.assertEqual([r["v1_class"] for r in rows], ["new_only"])
+
+    def test_a_ledger_written_under_the_new_name_counts_as_rewritten(self):
+        # The did-schema checkout holds the OLD name; coverage.py (after the
+        # rename) writes the NEW one. That is a write, and must read as one.
+        with open(os.path.join(self.schema, "schemas",
+                               "V_eta_coverage_ledger.json"), "w") as fh:
+            json.dump({"rows": [ledger_row("subject", ["subject"])]}, fh)
+        # An old mtime, so equal timestamps cannot pass this by accident.
+        os.utime(os.path.join(self.schema, "schemas",
+                              "V_eta_coverage_ledger.json"), (1, 1))
+        os.makedirs(os.path.join(self.schema, "tools"))
+        with open(os.path.join(self.schema, "tools", "coverage.py"), "w") as fh:
+            fh.write(
+                "# load_corpus_evidence corpus_verdict --corpus-reports\n"
+                "import json\n"
+                "json.dump({'rows': []}, open("
+                "'schemas/did_v2_coverage_ledger.json', 'w'))\n")
+        out = run_coverage(self.schema, ["x"])
+        self.assertTrue(out["ran"], out)
+        self.assertEqual(out["exit_code"], 0, out)
+        self.assertTrue(out["ledger_rewritten"], out)
+        self.assertNotIn("why", out)
+        # And a coverage.py that writes nothing still faults under the new name.
+        with open(os.path.join(self.schema, "tools", "coverage.py"), "w") as fh:
+            fh.write("# load_corpus_evidence corpus_verdict --corpus-reports\n")
+        out = run_coverage(self.schema, ["x"])
+        self.assertFalse(out["ledger_rewritten"], out)
+        self.assertIn("WITHOUT REWRITING THE LEDGER", out["why"])
 
     def test_a_same_size_ledger_with_different_names_reports_and_does_not_fault(self):
         # Nothing measured says a rename is an instrument problem. It is
