@@ -63,22 +63,15 @@
 %                           grams_per_liter, mass_fraction,
 %                           volume_fraction) populated when computable.
 %
-%   Calculator-base wrappers (20211116-driven):
-%   each calls did2.convert.calcCommon to move v1's
-%   `<class>.input_parameters` into a new inherited `calculator` block.
-%   The calculator-identity string lives in `app.app_name` (carried in
-%   v1 as `app.name`) and is handled by the universal app-block field
-%   rename in did2.convert.universalRenames; the per-class wrapper does
-%   not have to know its own calculator-name string.
-%
-%     hartley_calc, speed_tuning_calc, simple_calc
-%
-%   The tuning family's wrappers (tuningcurve_calc, oridirtuning_calc,
+%   The calculator-base wrappers are all deleted, with their shared helper
+%   calcCommon: the tuning family's (tuningcurve_calc, oridirtuning_calc,
 %   contrast_sensitivity_calc, contrast_tuning_calc,
-%   spatial_frequency_tuning_calc, temporal_frequency_tuning_calc) are
-%   deleted: each class has a +migrators_j migrator, so the wrapper was never
-%   reached, and the class now reads raw v1 (did2.convert.rawV1Classes;
-%   [early migration pieces fixed] (1), Jess Haley, 2026-10-26).
+%   spatial_frequency_tuning_calc, temporal_frequency_tuning_calc) and then
+%   hartley_calc, speed_tuning_calc and simple_calc, with jrclust_clusters'
+%   rename. Each class has a +migrators_j migrator, so the wrapper was never
+%   reached; the classes read raw v1 (did2.convert.rawV1Classes; simple_calc
+%   is not switched, see there; [early migration pieces fixed] (1), Jess
+%   Haley, 2026-10-26).
 %
 %   See did-schema's
 %   did-schema's per-class conversion notes (deleted with did-schema #88) for the

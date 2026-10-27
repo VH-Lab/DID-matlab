@@ -1,0 +1,24 @@
+{
+	"document_class": {
+		"definition":                       "$NDICALCDOCUMENTPATH\/calc\/speedtuning_calc.json",
+		"validation":                       "$NDICALCSCHEMAPATH\/calc\/speedtuning_calc_v2_schema.json",
+		"class_name":                       "speedtuning_calc",
+		"property_list_name":                   "speedtuning_calc", 
+		"class_version":                    2,
+		"superclasses": [
+			{ "definition":                 "$NDIDOCUMENTPATH\/calculator.json" },
+			{ "definition":                 "$NDICALCDOCUMENTPATH\/vision\/speed_tuning.json"}
+		]
+	},
+	"speedtuning_calc": {
+		"input_parameters": {
+		},
+		"depends_on": [
+			{
+				"name":				"stimulus_tuningcurve_id",
+				"value":			[]
+			}
+		]
+	}
+}
+
