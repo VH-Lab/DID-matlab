@@ -56,9 +56,16 @@ import os
 import re
 import sys
 
+from did_schema_names import find_schema_file, schema_rels
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "src", "did", "+did2", "+convert")
-REGISTER_REL = os.path.join("schemas", "V_eta_carry_register.json")
+# did-schema renames `V_eta_carry_register.json` to `did_v2_carry_register.json`
+# ([markdown cleanup and rename], Jess Haley, 2026-10-26). Both are read, the
+# new name first (did_schema_names.py).
+REGISTER_BASE = "carry_register.json"
+REGISTER_REL, REGISTER_REL_OLD = schema_rels(REGISTER_BASE)
+REGISTER_NAMES = "%s (or %s)" % (REGISTER_REL, REGISTER_REL_OLD)
 
 ROW_TOKEN = re.compile(r"carry-\d{3}")
 SITE = re.compile(r"reportNote\(\s*'carried_as_v1'|\bcarryAsV1\(")
@@ -78,7 +85,7 @@ def find_did_schema(explicit=None):
     candidates += [os.path.join(REPO, "did-schema"),
                    os.path.join(os.path.dirname(REPO), "did-schema")]
     for c in candidates:
-        if os.path.isfile(os.path.join(c, REGISTER_REL)):
+        if find_schema_file(c, REGISTER_BASE):
             return c
     return None
 
@@ -147,10 +154,10 @@ def check(did_schema, src=SRC, strict=False, out=sys.stdout):
     pending = []
     res = {"failures": failures, "pending": pending, "sites": []}
 
-    reg_path = os.path.join(did_schema, REGISTER_REL) if did_schema else None
-    if not reg_path or not os.path.isfile(reg_path):
+    reg_path = find_schema_file(did_schema, REGISTER_BASE)
+    if not reg_path:
         p("NOT CHECKED: no did-schema checkout holding %s (pass --did-schema, set "
-          "DID_SCHEMA_ROOT, or check did-schema out at ./did-schema)" % REGISTER_REL)
+          "DID_SCHEMA_ROOT, or check did-schema out at ./did-schema)" % REGISTER_NAMES)
         failures.append("R5 register not found")
         return 1, res
     try:
@@ -263,7 +270,7 @@ def check(did_schema, src=SRC, strict=False, out=sys.stdout):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--did-schema", default=None,
-                    help="did-schema checkout holding %s" % REGISTER_REL)
+                    help="did-schema checkout holding %s" % REGISTER_NAMES)
     ap.add_argument("--strict", action="store_true",
                     help="also fail on carry reasons with no register row")
     args = ap.parse_args(argv)

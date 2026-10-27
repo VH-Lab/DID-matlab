@@ -35,7 +35,9 @@ THE CLASS CENSUS per corpus is `tools/corpus_class_census.json` (v1 class ->
 document count, from the six S3 zips; regenerate with --write-census from
 tools/sample_corpus.py manifests), or `source_census.by_class` of corpus
 reports given with --reports. The ledger is did-schema's
-schemas/V_eta_coverage_ledger.json (--ledger, default ./did-schema/...).
+schemas/did_v2_coverage_ledger.json, or schemas/V_eta_coverage_ledger.json in
+a did-schema checkout from before the rename (--ledger, default
+./did-schema/..., the new name first).
 """
 from __future__ import annotations
 
@@ -45,6 +47,8 @@ import os
 import re
 import subprocess
 import sys
+
+from did_schema_names import schema_file
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -201,13 +205,19 @@ def write_census(manifests, path):
         fh.write("\n")
 
 
+def default_ledger(repo=REPO):
+    """./did-schema's coverage ledger: `did_v2_coverage_ledger.json` if present,
+    else `V_eta_coverage_ledger.json` (did-schema before the rename), else the
+    new name, which the "NOT FOUND" line then names."""
+    return schema_file(os.path.join(repo, "did-schema"), "coverage_ledger.json")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("files", nargs="*", help="changed files (repo-relative)")
     ap.add_argument("--diff", metavar="REF", help="use `git diff --name-only REF...HEAD`")
     ap.add_argument("--repo", default=REPO)
-    ap.add_argument("--ledger", default=os.path.join(
-        REPO, "did-schema", "schemas", "V_eta_coverage_ledger.json"))
+    ap.add_argument("--ledger", default=default_ledger())
     ap.add_argument("--census", default=CENSUS)
     ap.add_argument("--reports", action="append",
                     help="read the class census from corpus reports instead")

@@ -105,5 +105,41 @@ class Cli(unittest.TestCase):
         self.assertIn("NDI-matlab end-to-end:", out)
 
 
+class LedgerName(unittest.TestCase):
+    """did-schema renames V_eta_coverage_ledger.json to did_v2_coverage_ledger.json
+    ([markdown cleanup and rename], Jess Haley, 2026-10-26): both are read, the
+    new name first."""
+
+    def ledger_with(self, d, *prefixes):
+        schemas = os.path.join(d, "did-schema", "schemas")
+        os.makedirs(schemas, exist_ok=True)
+        for prefix in prefixes:
+            with open(os.path.join(schemas, prefix + "coverage_ledger.json"), "w") as fh:
+                json.dump({"rows": []}, fh)
+        return ac.default_ledger(d)
+
+    def test_the_old_name_alone_is_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(os.path.basename(self.ledger_with(d, "V_eta_")),
+                             "V_eta_coverage_ledger.json")
+
+    def test_the_new_name_alone_is_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(os.path.basename(self.ledger_with(d, "did_v2_")),
+                             "did_v2_coverage_ledger.json")
+
+    def test_the_new_name_wins_when_both_are_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(
+                os.path.basename(self.ledger_with(d, "V_eta_", "did_v2_")),
+                "did_v2_coverage_ledger.json")
+
+    def test_neither_present_names_the_new_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self.ledger_with(d)
+            self.assertFalse(os.path.exists(path))
+            self.assertEqual(os.path.basename(path), "did_v2_coverage_ledger.json")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
