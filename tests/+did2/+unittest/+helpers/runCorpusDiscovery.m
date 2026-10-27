@@ -416,6 +416,30 @@ catch censusErr
     result.source_census = struct('audit_failed', censusErr.message);
 end
 
+% [whole-batch round trip] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): the FINAL batch -- after every pass above --
+% taken back to v1 source by source and compared with the original
+% (did2.convert.roundtrip.wholeBatch), with the [every v1 id survives] id check.
+% REPORT-ONLY here: it is written to the summary and printed, denominators
+% first; a source a batch pass changed (no inverse for that pass yet) or a
+% class with no inverse is counted, not compared. Best-effort for the same
+% reason as the census above.
+try
+    result.whole_batch_round_trip = did2.convert.roundtrip.wholeBatch(bodies, result);
+    wb = result.whole_batch_round_trip;
+    fprintf(['[%s] WHOLE-BATCH ROUND TRIP: %d source(s), %d final document(s); ' ...
+        'quarantined %d; ids kept %d, lost %d, no id %d; compared %d, clean %d, ' ...
+        'not clean %d; changed by a batch pass %d; no inverse %d; final documents ' ...
+        'no source became %d\n'], corpusName, wb.sources_inspected, ...
+        wb.final_documents, wb.sources_quarantined, wb.ids_kept, wb.ids_lost, ...
+        wb.sources_without_id, wb.sources_compared, wb.sources_ok, ...
+        wb.failures_total, wb.sources_changed_by_batch_pass, ...
+        wb.sources_no_inverse, wb.unattributed_documents);
+catch wbErr
+    result.whole_batch_round_trip = struct('audit_failed', wbErr.message);
+    fprintf('[%s] WHOLE-BATCH ROUND TRIP NOT MEASURED: %s\n', corpusName, wbErr.message);
+end
+
 % THE EPOCH-STRING RETENTION MEASUREMENT. did2.validate.epochStringRetention was
 % written 2026-08-10 and, until this line, was called from TESTS ONLY -- 8
 % executable call sites, 7 in testEpochStrings.m and 1 in

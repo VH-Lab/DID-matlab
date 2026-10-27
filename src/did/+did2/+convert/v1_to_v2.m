@@ -328,6 +328,7 @@ srcId = cell(nBodies, 1);
 srcDepNames = cell(nBodies, 1);
 srcDepIds = cell(nBodies, 1);
 srcOut = cell(nBodies, 1);
+srcOutIds = cell(nBodies, 1);   % the base.id of each document a source became
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -586,6 +587,8 @@ for k = 1:numel(bodies)
         srcClass{k} = className;
         [srcId{k}, srcDepNames{k}, srcDepIds{k}] = sourceEdges(preBody);
         srcOut{k} = nBefore + 1:numel(migrated);
+        srcOutIds{k} = cellfun(@(d) char(d.get('base.id')), migrated(srcOut{k}), ...
+            'UniformOutput', false);
     catch err
         did2.convert.reportNote('truncate', noteMark);
         % a body that quarantines did not pass through: drop its record if
@@ -614,7 +617,7 @@ end
 % [dependents of a carried document carry] (Jess Haley, 2026-10-26, did-schema
 % V_eta_go_forward_class_audit.md): a document whose edge names a document
 % carried as v1 is carried too, down the chain (carry-064).
-[migrated, passthrough, classCountNames, classCountValues] = carryDependents( ...
+[migrated, passthrough, classCountNames, classCountValues, srcCarried] = carryDependents( ...
     bodies, migrated, passthrough, classCountNames, classCountValues, ...
     srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, srcDepNames, ...
     srcDepIds, srcOut, options.RenameClassNames);
@@ -659,6 +662,30 @@ result = struct();
 result.migrated = migrated;
 result.quarantine = quarantine;
 result.passthrough = passthrough;
+% [whole-batch round trip] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): what each source became, by id, so
+% did2.convert.roundtrip.batch can take the FINAL batch (after every batch
+% pass) back to v1 source by source. One row per input body: its index, v1 id
+% and class, whether it was carried as v1 (here or by carryDependents), and
+% the base.id of every document it became ({} when it quarantined). A carried
+% source became its own v1 document.
+srcOutRows = cell(1, nBodies);
+for k = 1:nBodies
+    outIds = srcOutIds{k};
+    if srcCarried(k)
+        outIds = {srcId{k}};
+    end
+    if isempty(outIds); outIds = {}; end
+    srcOutRows{k} = struct('input_index', k, 'id', char(srcId{k}), ...
+        'class_name', char(srcClass{k}), 'done', srcDone(k), ...
+        'carried', srcCarried(k), 'output_ids', {reshape(outIds, 1, [])});
+end
+if isempty(srcOutRows)
+    result.source_outputs = struct('input_index', {}, 'id', {}, 'class_name', {}, ...
+        'done', {}, 'carried', {}, 'output_ids', {});
+else
+    result.source_outputs = [srcOutRows{:}];
+end
 result.summary = struct( ...
     'total',            numel(bodies), ...
     'migrated_count',   numel(migrated), ...
@@ -1224,7 +1251,7 @@ catch
 end
 end
 
-function [migrated, passthrough, names, counts] = carryDependents(bodies, ...
+function [migrated, passthrough, names, counts, carried] = carryDependents(bodies, ...
         migrated, passthrough, names, counts, done, carried, raw, target, ...
         cls, ids, depNames, depIds, outs, renameClassNames)
 %CARRYDEPENDENTS [dependents of a carried document carry] (Jess Haley,
