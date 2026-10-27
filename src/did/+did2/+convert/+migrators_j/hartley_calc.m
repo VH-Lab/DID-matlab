@@ -256,7 +256,7 @@ end
 % superclass migrator the renamed path ran for it, +migrators_j/+super/ngrid.m
 % (a guard against a reshaped `ngrid` block; it changes nothing), is called
 % here on the raw block ([early migration pieces fixed] (1)); it stays for
-% ontology_image, which is not switched. Identity through jRawBody; the `app`
+% ontology_image, which calls it on its raw block too. Identity through jRawBody; the `app`
 % block in either spelling (did2.convert.v1read.readApp); `frameTimes` as v1
 % writes it (or `frame_times`, the renamed spelling). Every v1 field is
 % accounted for: a field this fold reads nowhere carries the document whole as
