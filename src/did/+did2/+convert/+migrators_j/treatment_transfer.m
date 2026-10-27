@@ -24,21 +24,18 @@ function v2Body = treatment_transfer(preBody)
 %   its inverse, did2.convert.roundtrip.treatment_transfer, is the passthrough
 %   one and is never reached for a carry.
 %
-%   THE REGISTER ROW IS PENDING in did-schema: until it exists the note cites the
-%   placeholder PENDING_ROW, which names no row (tools/check_carry_citations.py
-%   lists this site as a reason with no row).
+%   The register row is carry-107.
 
 arguments
     preBody (1,1) struct
 end
 
-PENDING_ROW = 'carry-pending-treatment-transfer-needs-mapping';
 b = did2.convert.v1read.readBase(preBody);
 id = b.id;
 if ~ischar(id); id = ''; end
-% carry-register: none (needs-mapping row pending in did-schema; PENDING_ROW)
+% carry-register: carry-107
 did2.convert.reportNote('carried_as_v1', 'treatment_transfer', id, ...
-    ['[' PENDING_ROW '] needs_mapping: a treatment transfer is read by its ' ...
+    ['[carry-107] needs_mapping: a treatment transfer is read by its ' ...
     'dataset''s import (Babu reimport) ([treatment transfer stays v1])']);
 v2Body = {preBody};
 end

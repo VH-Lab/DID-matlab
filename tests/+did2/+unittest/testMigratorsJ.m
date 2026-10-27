@@ -469,7 +469,7 @@ for k = 1:numel(cases)
     verifyCarriedWholeAsV1(testCase, v1, out);
     verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+term'), 0);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-pending-treatment-transfer-needs-mapping] needs_mapping: '), d);
+    verifyTrue(testCase, startsWith(d, '[carry-107] needs_mapping: '), d);
 end
 end
 

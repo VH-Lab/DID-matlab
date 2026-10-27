@@ -293,7 +293,7 @@ v1 = jsondecode(jsonencode(groupLinked()));
 out = runRaw(v1);
 assertEqual(testCase, numel(out.passthrough), 1, 'carried');
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-pending-treatment-group-needs-mapping] needs_mapping: '), d);
+verifyTrue(testCase, startsWith(d, '[carry-108] needs_mapping: '), d);
 verifyTrue(testCase, contains(d, '41268b6f5c6a3d4e_7a00000000000001'), d);
 out = runRaw(jsondecode(jsonencode(vhlabHours())));
 verifyEmpty(testCase, out.passthrough, 'no link: converted');
@@ -319,7 +319,7 @@ for k = 1:numel(fixtures)
     emitted.document_class = rmfield(emitted.document_class, 'schema_version');
     verifyTrue(testCase, isequaln(emitted, v1), 'the carry is not the v1 source');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-pending-treatment-transfer-needs-mapping] needs_mapping: '), d);
+    verifyTrue(testCase, startsWith(d, '[carry-107] needs_mapping: '), d);
 end
 verifyEqual(testCase, n, 3, 'the transfer fixtures were found');
 end

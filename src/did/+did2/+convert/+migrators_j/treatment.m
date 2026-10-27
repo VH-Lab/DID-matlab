@@ -88,16 +88,14 @@ block = preBody.treatment;
 % convert as usual". The link is the one table2treatment writes (NDI-matlab
 % main +database/+metadata/table2treatment.m: the group is the number the lab
 % typed in its `group` column, and only the link to the group's first row is
-% stored). THE REGISTER ROW IS PENDING in did-schema: until it exists the note
-% cites the placeholder GROUP_ROW, which names no row.
-GROUP_ROW = 'carry-pending-treatment-group-needs-mapping';
+% stored). The register row is carry-108.
 groupLink = did2.convert.v1read.readDependsOn(preBody, 'Name', '^manipulation_id$');
 if ~isempty(groupLink) && ~isempty(groupLink(1).document_id)
-    % carry-register: none (needs-mapping row pending in did-schema; GROUP_ROW)
-    v2Body = carryAsV1(preBody, sprintf(['[%s] needs_mapping: its manipulation_id ' ...
+    % carry-register: carry-108
+    v2Body = carryAsV1(preBody, sprintf(['[carry-108] needs_mapping: its manipulation_id ' ...
         'links it to treatment group %s; the dataset''s import decides what the ' ...
         'group means ([treatment groups are a dataset decision])'], ...
-        GROUP_ROW, char(groupLink(1).document_id)));
+        char(groupLink(1).document_id)));
     return;
 end
 
