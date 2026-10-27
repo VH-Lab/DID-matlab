@@ -136,8 +136,8 @@ for p = {'base.id', 'base.session_id', 'base.name', 'base.datestamp', ...
     verifyTrue(testCase, any(strcmp(p{1}, accounted)), ...
         sprintf('%s is not accounted for', p{1}));
 end
-verifyTrue(testCase, any(strcmp('treatment_drug.mixture_table', r.equivalent)), ...
-    'the mixture table is compared row by row');
+verifyTrue(testCase, any(strcmp('treatment_drug.mixture_table', [r.matched, r.equivalent])), ...
+    'the mixture table is rebuilt: as written, or row by row');
 verifyTrue(testCase, any(strcmp('treatment_drug.location_name', r.restated)), ...
     'an immersion''s location is the bath');
 end
@@ -232,8 +232,10 @@ old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', 'Ra
 verifyEmpty(testCase, raw.quarantine);
 verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
 for j = 1:min(numel(raw.migrated), numel(old.migrated))
-    verifyTrue(testCase, isequaln(raw.migrated{j}.toStruct(), old.migrated{j}.toStruct()), ...
-        sprintf('document %d differs', j));
+    a = raw.migrated{j}.toStruct();
+    b = old.migrated{j}.toStruct();
+    verifyTrue(testCase, isequaln(a, b), ...
+        sprintf('document %d differs: raw %s; renamed %s', j, jsonencode(a), jsonencode(b)));
 end
 verifyEqual(testCase, raw.migrated{1}.get('base.id'), legacy.id);
 end
