@@ -96,6 +96,14 @@ function out = runJ(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 end
 
+function out = runJUnit(v1)
+% a sorted unit (element el_1) whose sorting run labels it a single unit:
+% [sorted units are cells or groups] (Jess Haley, 2026-10-26); without a label
+% it is carried ([unlabelled units need a map], testRawV1RoundTripElement)
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+    'UnitQualityLabels', {'el_1', 'single'});
+end
+
 function tf = schemaSaysAbstract(classSchema)
 %SCHEMASAYSABSTRACT True when a schema struct's header carries `abstract: true`.
 %
@@ -345,10 +353,11 @@ function testElementDerivedBecomesSubjectDerivedFrom(testCase)
 % would keep passing if that emission regressed. It is NOT the gate for it:
 % testMigratorsJRecordingObservation.m owns that, and the note is here so the
 % next reader does not mistake a green run of this test for coverage of it.
-out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
+out = runJUnit(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
 sub = firstOfClassJ(out.migrated, 'cell');   % #88: a spikes element is an entity of type cell
 verifyEqual(testCase, sub.get('base.id'), 'el_1');                 % id preserved
-verifyEqual(testCase, sub.get('entity.local_identifier'), 'unit3 (ref 1)');
+% [element local identifier is name and reference] (Jess Haley, 2026-10-26)
+verifyEqual(testCase, sub.get('entity.local_identifier'), 'unit3 | 1');
 % type + ndi_element_class preserved as term_assertions (no silent drop)
 verifyEqual(testCase, nLeafJ(out.migrated, 'assertion+term'), 2);
 % lineage: derived_from the underlying element (safe computational lineage)
@@ -368,7 +377,7 @@ function testElementKeepsTheSortingRunItWasDerivedFrom(testCase)
 % 20211116 elements, drop census).
 v1 = elementDoc('leftcortex_17', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1');
 v1.depends_on(end+1) = struct('name', 'jrclust_clusters_id', 'value', 'jrc_run_1');
-out = runJ(v1);
+out = runJUnit(v1);
 rels = allOfClassJ(out.migrated, 'directed_relation');
 parents = cellfun(@(r) depVal(r, 'parent_id'), rels, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(parents, 'probe_1')), 'the electrode lineage is still there');
@@ -385,7 +394,7 @@ end
 
 function testElementWithNoSortingRunEmitsNoSortingRunEdge(testCase)
 % the other half: no `jrclust_clusters_id`, so exactly the one lineage edge
-out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
+out = runJUnit(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
 verifyNumElements(testCase, allOfClassJ(out.migrated, 'directed_relation'), 1);
 end
 
@@ -2581,7 +2590,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
     'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
-elem.element = struct('ndi_element_class', 'ndi.element', 'name', 'stim', ...
+% a stimulator element is an ndi.probe.timeseries.stimulator (NDI
+% probetype2object.json): [element types have no default] makes a probe type a
+% device only on an ndi.probe.* class (Jess Haley, 2026-10-26)
+elem.element = struct('ndi_element_class', 'ndi.probe.timeseries.stimulator', 'name', 'stim', ...
     'reference', 1, 'type', 'stimulator', 'direct', 0);
 
 bath = struct();
@@ -2679,7 +2691,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
     'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
-elem.element = struct('ndi_element_class', 'ndi.element', 'name', 'bath_x', ...
+% a stimulator element is an ndi.probe.timeseries.stimulator (NDI
+% probetype2object.json): [element types have no default] makes a probe type a
+% device only on an ndi.probe.* class (Jess Haley, 2026-10-26)
+elem.element = struct('ndi_element_class', 'ndi.probe.timeseries.stimulator', 'name', 'bath_x', ...
     'reference', 1, 'type', 'stimulator', 'direct', 0);
 for loc = {struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Laboratory'), ...
            struct('ontologyNode', '', 'name', 'bath')}
@@ -3576,7 +3591,7 @@ function testDirectedRelationsHaveNoSubjectRelationBlock(testCase)
 % must NOT emit a subject_relation property block, or the doc fails validation
 % with "undeclared top-level block subject_relation" and quarantines (the JH
 % 163k-orphan regression). Check the element + subject_group relation emitters.
-outs = {runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1')), ...
+outs = {runJUnit(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1')), ...
         runJ(subjectGroupWithMembers())};
 for i = 1:numel(outs)
     for k = 1:numel(outs{i}.migrated)

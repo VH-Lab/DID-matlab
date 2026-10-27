@@ -3350,8 +3350,12 @@ end
 function rowsOut = probemapDevices(pm)
 %PROBEMAPDEVICES {probe local_identifier, device name} per row of a v1
 %   epochprobemap (tab-separated, header `name reference type devicestring
-%   subjectstring`). The local_identifier is +migrators_j/element.m's: the name,
-%   or 'name (ref REFERENCE)'. The device is the devicestring before ':'.
+%   subjectstring`). The local_identifier is +migrators_j/element.m's,
+%   did2.convert.elementLocalIdentifier: 'name | reference', or the name alone
+%   ([element local identifier is name and reference], Jess Haley,
+%   2026-10-26); a row that cannot be written reversibly matches no element
+%   (element.m carries such an element). The device is the devicestring before
+%   ':'.
 rowsOut = {};
 lines = regexp(char(pm), '\r?\n', 'split');
 if isempty(lines); return; end
@@ -3365,10 +3369,12 @@ for i = 2:numel(lines)
     c = strsplit(lines{i}, sprintf('\t'));
     if numel(c) < max([iName, iDev, iRef]); continue; end
     nm = strtrim(c{iName});
-    lid = nm;
-    if ~isempty(iRef) && ~isempty(strtrim(c{iRef}))
-        lid = sprintf('%s (ref %s)', nm, strtrim(c{iRef}));
+    ref = '';
+    if ~isempty(iRef)
+        ref = strtrim(c{iRef});
     end
+    lid = did2.convert.elementLocalIdentifier(nm, ref);
+    if isempty(lid); continue; end
     dev = strtrim(c{iDev});
     colon = find(dev == ':', 1);
     if ~isempty(colon); dev = strtrim(dev(1:colon-1)); end

@@ -694,11 +694,12 @@
 %         the raw-recording observation + a lineage relation). V_eta retires the
 %         recording-side `element` class: any identifiable thing -- an organism, a
 %         device/probe, a derived signal or sorted unit -- is an `entity` with a
-%         `type` (here `cell` for a sorted unit, `group` for an ensemble, `device`
-%         otherwise; see elementEntityType). The element document therefore becomes an
-%         `entity` with its id PRESERVED, so the ~50 classes that reference it
-%         (`element_id` / `underlying_element_id` / `stimulator_id`) keep resolving --
-%         now to an entity.
+%         `type` (a device for a probe, a cell or group for a sorted unit, a group for
+%         an ensemble; anything else carried: elementEntityType, decided 2026-10-26,
+%         below). The element document therefore becomes an `entity` with its id
+%         PRESERVED, so the ~50 classes that reference it (`element_id` /
+%         `underlying_element_id` / `stimulator_id`) keep resolving -- now to an
+%         entity.
 %     element_epoch
 %         Brainstorm-J migrator: element_epoch -> acquisition_epoch.
 %     epochfiles_ingested

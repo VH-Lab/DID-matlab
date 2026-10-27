@@ -83,6 +83,12 @@ function result = v1_to_v2(v1Bodies, options)
 %                      identifiers in the legacy (camelCase) form so
 %                      the body stays schema-compatible while still
 %                      gaining the shared shape transformations.
+%     UnitQualityLabels (cell, default {}) - {ELEMENTID, LABEL, ...}: the
+%                      single/multi label of sorted units whose
+%                      neuron_extracellular is not in this batch
+%                      (did2.convert.unitQualityLabels; [sorted units are
+%                      cells or groups], Jess Haley, 2026-10-26). The batch's
+%                      own neuron_extracellular documents are read anyway.
 %     RawV1Classes     (cellstr, default did2.convert.rawV1Classes()) - the
 %                      v1 classes whose migrator takes the RAW v1 document:
 %                      no universalRenames, no superclass migrators, and a
@@ -144,6 +150,7 @@ arguments
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
     options.Audits (1,1) logical = true
     options.RawV1Classes cell = did2.convert.rawV1Classes()
+    options.UnitQualityLabels cell = {}
 end
 
 % a migrator transcribes the v1 source's own terms, which the term
@@ -176,6 +183,13 @@ did2.convert.stimulusPresentationSpecs('load', bodies);
 % membership], Jess Haley, 2026-10-26).
 did2.convert.sessionReferences('reset');
 did2.convert.sessionReferences('load', bodies);
+% The single/multi label each sorted unit's sorting run gives it (the
+% `quality_label` of the neuron_extracellular naming it), read by
+% migrators_j.element ([sorted units are cells or groups], Jess Haley,
+% 2026-10-26).
+did2.convert.unitQualityLabels('reset');
+did2.convert.unitQualityLabels('load', bodies);
+did2.convert.unitQualityLabels('add', options.UnitQualityLabels);
 
 % Asked ONCE per call, of the schema the documents validate against: does
 % `base` declare `session_id` as an edge (did-schema
@@ -300,8 +314,24 @@ did2.convert.reportNote('reset');
 mintDepth = did2.convert.mintId('-depth');
 restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth)); %#ok<NASGU>
 
+% What each source became, for [dependents of a carried document carry]
+% (carryDependents, after the loop): done (not quarantined), carried as v1,
+% read raw, already a V2 document, its class, its id, its depends_on edges, and
+% the indices of its documents in `migrated`.
+nBodies = numel(bodies);
+srcDone = false(nBodies, 1);
+srcCarried = false(nBodies, 1);
+srcRaw = false(nBodies, 1);
+srcTarget = false(nBodies, 1);
+srcClass = cell(nBodies, 1);
+srcId = cell(nBodies, 1);
+srcDepNames = cell(nBodies, 1);
+srcDepIds = cell(nBodies, 1);
+srcOut = cell(nBodies, 1);
+
 for k = 1:numel(bodies)
     rawBody = bodies{k};
+    nBefore = numel(migrated);
     originalJSON = encodeForQuarantine(rawBody);
     className = '<unknown>';
     passedThrough = false;
@@ -330,6 +360,7 @@ for k = 1:numel(bodies)
                 className = char(v2Body.document_class.class_name);
             end
             v2Bodies = {v2Body};
+            srcTarget(k) = true;
             legacy.bodies_skipped_already_target = ...
                 legacy.bodies_skipped_already_target + 1;
         else
@@ -342,6 +373,7 @@ for k = 1:numel(bodies)
                 % untouched v1 source. Counted in the denominator below
                 % (`bodies_read_raw_v1`), so a raw body is never "unreached".
                 legacy.bodies_read_raw_v1 = legacy.bodies_read_raw_v1 + 1;
+                srcRaw(k) = true;
                 className = rawClass;
                 v2Body = preBody;
                 superUnchanged = true;
@@ -548,6 +580,11 @@ for k = 1:numel(bodies)
                 dimTermNoNode(ix) = dimTermNoNode(ix) + nNoNode;
             end
         end
+        srcDone(k) = true;
+        srcCarried(k) = carried;
+        srcClass{k} = className;
+        [srcId{k}, srcDepNames{k}, srcDepIds{k}] = sourceEdges(preBody);
+        srcOut{k} = nBefore + 1:numel(migrated);
     catch err
         did2.convert.reportNote('truncate', noteMark);
         % a body that quarantines did not pass through: drop its record if
@@ -572,6 +609,14 @@ for k = 1:numel(bodies)
     end
     did2.convert.mintId('-popto', mintDepth);
 end
+
+% [dependents of a carried document carry] (Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md): a document whose edge names a document
+% carried as v1 is carried too, down the chain (carry-064).
+[migrated, passthrough, classCountNames, classCountValues] = carryDependents( ...
+    bodies, migrated, passthrough, classCountNames, classCountValues, ...
+    srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, srcDepNames, ...
+    srcDepIds, srcOut, options.RenameClassNames);
 
 % `bodies_unreached` closes the denominator: every body either reached
 % universalRenames, took the idempotency short-circuit, was read raw by a
@@ -1153,6 +1198,96 @@ elseif isstruct(rawBody)
     end
 else
     text = '';
+end
+end
+
+function [id, depNames, depIds] = sourceEdges(body)
+%SOURCEEDGES A v1 source's id (base.id, or its legacy identity block's) and
+%   its depends_on edges (did2.convert.v1read), for carryDependents.
+id = '';
+depNames = {};
+depIds = {};
+try
+    b = did2.convert.v1read.readBase(body);
+    if ischar(b.id); id = b.id; end
+    deps = did2.convert.v1read.readDependsOn(body);
+    for k = 1:numel(deps)
+        if ischar(deps(k).document_id) && ~isempty(deps(k).document_id)
+            depNames{end+1} = char(deps(k).name); %#ok<AGROW>
+            depIds{end+1} = deps(k).document_id; %#ok<AGROW>
+        end
+    end
+catch
+end
+end
+
+function [migrated, passthrough, names, counts] = carryDependents(bodies, ...
+        migrated, passthrough, names, counts, done, carried, raw, target, ...
+        cls, ids, depNames, depIds, outs, renameClassNames)
+%CARRYDEPENDENTS [dependents of a carried document carry] (Jess Haley,
+%   2026-10-26, did-schema V_eta_go_forward_class_audit.md): "a document whose
+%   edge points at a document carried as v1 (e.g. an element_epoch,
+%   position_metadata or spike train of a carried element) is carried too,
+%   down the chain, rather than converting with an edge to a v1 document"
+%   (carry-064, any class).
+%
+%   After every source has been migrated: a CONVERTED source (not carried, not
+%   quarantined, not already a V2 document) any of whose depends_on edges names
+%   the id of a CARRIED source in this batch has its documents replaced by its
+%   v1 source carried whole -- the raw document for a class read raw
+%   (did2.convert.rawV1Classes), else the universalRenames output, as every
+%   other carry -- stamped did_v1, recorded as a passthrough, and noted
+%   `carried_as_v1` citing carry-064. Repeated until nothing changes, so a
+%   chain carries to its end. A carried document outside this batch is not
+%   seen. The notes the source's conversion left stay in the report.
+carriedIds = ids(done & carried);
+carriedIds = carriedIds(~cellfun(@isempty, carriedIds));
+if isempty(carriedIds)
+    return;
+end
+drop = false(1, numel(migrated));
+changed = true;
+while changed
+    changed = false;
+    for k = reshape(find(done & ~carried & ~target), 1, [])
+        j = find(ismember(depIds{k}, carriedIds), 1);
+        if isempty(j)
+            continue;
+        end
+        body = ensureStruct(bodies{k});
+        if ~raw(k)
+            body = did2.convert.universalRenames(body, 'RenameClassNames', renameClassNames);
+        end
+        if isfield(body, 'document_class') && isstruct(body.document_class)
+            body.document_class.schema_version = 'did_v1';
+        end
+        for i = outs{k}
+            [names, counts] = dropClassCounter(names, counts, migrated{i}.className());
+        end
+        drop(outs{k}) = true;
+        migrated{end+1} = did2.document(body); %#ok<AGROW>
+        drop(end+1) = false; %#ok<AGROW>
+        [names, counts] = bumpClassCounter(names, counts, cls{k});
+        passthrough(end+1) = struct('input_index', k, 'id', ids{k}, ...
+            'class_name', cls{k}, 'body', body); %#ok<AGROW>
+        % carry-register: carry-064
+        did2.convert.reportNote('carried_as_v1', cls{k}, ids{k}, sprintf( ...
+            '[carry-064] needs_mapping: its %s edge names %s, which is carried as v1', ...
+            depNames{k}{j}, depIds{k}{j}));
+        carried(k) = true;
+        if ~isempty(ids{k})
+            carriedIds{end+1} = ids{k}; %#ok<AGROW>
+        end
+        changed = true;
+    end
+end
+migrated = migrated(~drop);
+end
+
+function [names, counts] = dropClassCounter(names, counts, name)
+idx = find(strcmp(names, name), 1);
+if ~isempty(idx) && counts(idx) > 0
+    counts(idx) = counts(idx) - 1;
 end
 end
 

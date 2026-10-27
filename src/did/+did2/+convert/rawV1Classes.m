@@ -39,9 +39,15 @@ function names = rawV1Classes()
 %                         table2treatment, +haley and +dabrowska (treatment).
 %                         Round trips: testRawV1RoundTripTreatment, which
 %                         lists what V2 does not keep as known findings.
+%     element             superclass `base` only, no `app` block; the old
+%                         +migrators/element.m is never run for it (a class
+%                         with a +migrators_j migrator skips it). Written by
+%                         ndi.element/newdocument. Round trips:
+%                         testRawV1RoundTripElement. element_epoch is NOT
+%                         switched yet.
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
 names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
-    'treatment_transfer', 'virus_injection'};
+    'treatment_transfer', 'virus_injection', 'element'};
 end

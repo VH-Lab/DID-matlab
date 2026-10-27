@@ -3,15 +3,16 @@ function v2Body = element(preBody)
 %   assertions + the raw-recording observation + a lineage relation). V_eta
 %   retires the recording-side `element` class: any identifiable thing -- an
 %   organism, a device/probe, a derived signal or sorted unit -- is an `entity`
-%   with a `type` (here `cell` for a sorted unit, `group` for an ensemble,
-%   `device` otherwise; see elementEntityType). The element document therefore
+%   with a `type` (a device for a probe, a cell or group for a sorted unit, a
+%   group for an ensemble; anything else carried: elementEntityType, decided
+%   2026-10-26, below). The element document therefore
 %   becomes an `entity` with its id PRESERVED, so the ~50 classes that reference
 %   it (`element_id` / `underlying_element_id` / `stimulator_id`) keep resolving
 %   -- now to an entity.
 %
 %   1 -> N:
-%     - subject           the element itself (id preserved; name/reference ->
-%                         local_identifier).
+%     - entity            the element itself (id preserved; name/reference ->
+%                         local_identifier '<name> | <reference>').
 %     - term_assertion(s) its kind, nothing dropped: `type` -> variable
 %                         "element type"; `ndi_element_class` -> variable "ndi
 %                         element class" (the MATLAB reconstruction handle; kept
@@ -75,16 +76,72 @@ function v2Body = element(preBody)
 %   CATCH THE CODE"). It is left alone here only because testMigratorsJ.m is
 %   outside this change's file scope and is being edited concurrently.
 
+%   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
+%   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
+%   as v1 wrote it (NDI element.json + base.json at the locked NDI-matlab
+%   `main`, 3cb19a8, as ndi.element/newdocument writes it), identity through
+%   jRawBody; a carry is the untouched v1 source. Every v1 field and where it
+%   goes; did2.convert.roundtrip.element rebuilds the v1 document and
+%   testRawV1RoundTripElement compares the two:
+%
+%     base.id / session_id / datestamp -> the entity's id / session edge /
+%                                 creation_timestamp; base.name (writer: '')
+%                                 is not written (#73 item 54)
+%     element.name, element.reference -> entity.local_identifier,
+%                                 '<name> | <reference>' (NDI's display form;
+%                                 did2.convert.elementLocalIdentifier, the
+%                                 mirror of NDI ndi.vintage's). Not reversible
+%                                 (an empty name, a non-integer reference, a
+%                                 reference-less name that reads as a pair):
+%                                 carried (carry-048 / carry-055)
+%     element.type, element.ndi_element_class -> the entity type
+%                                 (elementEntityType) and one term assertion
+%                                 each
+%     element.direct           -> which lineage relation is written
+%     depends_on subject_id, underlying_element_id -> the lineage relation
+%     depends_on jrclust_clusters_id -> a prov:wasDerivedFrom relation
+%
+%   THE ENTITY TYPE (elementEntityType): Decided by Jess Haley, 2026-10-26,
+%   did-schema V_eta_go_forward_class_audit.md --
+%     [element types have no default]   a fixed list, NO default: a type not
+%                                       on it, or a probe type on a class that
+%                                       is not ndi.probe.*, is carried
+%                                       (carry-063)
+%     a registered probe type (NDI probetype2object.json at 3cb19a8: 24 keys)
+%                                       on an ndi.probe.* class -> device; with
+%       [electrode spellings and imaging types are devices]  `electrode-<spec>`
+%                                       and `<prefix>_electrode-<spec>` too,
+%                                       and the four imaging types
+%       [event lines and environment probes are devices]  `event`,
+%                                       `lick-spout`, `reward-well`,
+%                                       `intraoral-cannula`
+%     [sorted units are cells or groups]  `spikes`, `neuron`, `cell`: the
+%                                       sorting run's label (the batch's
+%                                       neuron_extracellular `quality_label`,
+%                                       did2.convert.unitQualityLabels):
+%                                       single -> cell, multi -> group
+%     [unlabelled units need a map]     a sorted unit with no label is carried
+%                                       (carry-062)
+%     `ensemble` -> group
+
 arguments
     preBody (1,1) struct
 end
 
+body = jRawBody(preBody, 'element');
+v2Body = convertElement(body);
+if isscalar(v2Body) && isequaln(v2Body{1}, body)
+    v2Body = {preBody};   % a carry is the untouched v1 source
+end
+end
+
+function v2Body = convertElement(preBody)
 block = struct();
 if isfield(preBody, 'element') && isstruct(preBody.element); block = preBody.element; end
 
 elementId  = baseId(preBody);
-name       = jGetChar(block, 'name');
-reference  = jGetChar(block, 'reference');
+name       = getField(block, 'name');
+reference  = getField(block, 'reference');
 type       = jGetChar(block, 'type');
 ndiClass   = jGetChar(block, 'ndi_element_class');
 isDirect   = isTruthy(getField(block, 'direct'));
@@ -92,33 +149,42 @@ specimenId   = depValue(preBody, 'subject_id');
 underlyingId = depValue(preBody, 'underlying_element_id');
 sortingRunId = depValue(preBody, 'jrclust_clusters_id');
 
-localId = name;
-if ~isempty(reference); localId = strtrim(sprintf('%s (ref %s)', name, reference)); end
-% [generic stage is lossless] (Jess Haley, 2026-10-25): name and reference are
-% packed as '<name> (ref <reference>)'. That is read back exactly only when the
-% name holds no ' (ref ' of its own and neither value carries edge whitespace
-% (strtrim); and a required local_identifier the source does not state is not
-% invented from the document id ([no invented values]). Otherwise the element
-% is carried whole as v1.
-if isempty(strtrim(localId)) || contains(name, ' (ref ') ...
-        || ~strcmp(name, strtrim(name)) || ~strcmp(reference, strtrim(reference))
+% [element local identifier is name and reference] (Jess Haley, 2026-10-26):
+% '<name> | <reference>', NDI's display form, read back by splitting at the last
+% ' | '. [no invented values] / [generic stage is lossless]: an identifier
+% that would not read back exactly is not written; the element is carried.
+localId = '';
+if isempty(name) || ischar(name) || (isstring(name) && isscalar(name))
+    localId = did2.convert.elementLocalIdentifier(char(name), reference);
+end
+if isempty(localId)
+    nameText = '';
+    if ischar(name) || (isstring(name) && isscalar(name)); nameText = char(name); end
     row = '[carry-055] ';
-    if isempty(strtrim(localId)); row = '[carry-048] '; end
+    if isempty(nameText) && isEmptyRef(reference); row = '[carry-048] '; end
     % carry-register: carry-048 (no name and no reference); carry-055 (not
-    % packed reversibly)
+    % written reversibly as '<name> | <reference>')
     did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
-        sprintf('%sunplaced: element.name "%s" / element.reference "%s" (not packed reversibly)', ...
-        row, name, reference));
+        sprintf('%sunplaced: element.name "%s" / element.reference "%s" (no reversible local_identifier)', ...
+        row, nameText, refText(reference)));
+    v2Body = {preBody};
+    return;
+end
+
+[entityType, why] = elementEntityType(type, ndiClass, elementId);
+if isempty(entityType)
+    % carry-register: carry-062 (an unlabelled sorted unit); carry-063 (a type
+    % with no entity type)
+    did2.convert.reportNote('carried_as_v1', 'element', elementId, why);
     v2Body = {preBody};
     return;
 end
 
 % --- the element as an entity (id preserved) -------------------------------
 % did-schema #88: one `entity` class with a bound `type`
-% (V_eta_entity_composition_plan.md sec. 4). Which type an element is, is read
-% off its v1 `type` by elementEntityType below -- a PROPOSED mapping (device for
-% a probe, cell for a sorted unit, group for an ensemble), not a signed one.
-subjectDoc = jEntity(preBody, elementEntityType(type), ...
+% (V_eta_entity_composition_plan.md sec. 4), read off the v1 `type` and
+% `ndi_element_class` by elementEntityType (decided, above).
+subjectDoc = jEntity(preBody, entityType, ...
     struct('local_identifier', localId), 'Id', elementId);
 
 bodies = {subjectDoc};
@@ -236,17 +302,69 @@ function rel = lineageRelation(preBody, childId, parentId, relationName)
 rel = jEntityRelation(preBody, childId, parentId, relationName);
 end
 
-function t = elementEntityType(elementType)
-%ELEMENTENTITYTYPE The entity.type an element-subject takes (PROPOSED, unsigned):
-%   a sorted unit ('spikes', 'neuron') is a cell, an ensemble a group, and every
-%   other element (a probe, a stimulator, a derived signal) a device.
-switch lower(strtrim(char(elementType)))
+function [t, why] = elementEntityType(elementType, ndiClass, elementId)
+%ELEMENTENTITYTYPE The entity.type an element takes, or '' and the carry note.
+%   Decided by Jess Haley, 2026-10-26 (header): [element types have no
+%   default], [electrode spellings and imaging types are devices], [event lines
+%   and environment probes are devices], [sorted units are cells or groups],
+%   [unlabelled units need a map]. Types are compared exactly as NDI writes
+%   them (probestruct2probe matches its keys exactly), edge blanks aside.
+t = '';
+why = '';
+ty = strtrim(char(elementType));
+isProbeClass = startsWith(strtrim(char(ndiClass)), 'ndi.probe.');
+% NDI-matlab main 3cb19a8 src/ndi/ndi_common/probe/probetype2object.json
+probeTypes = {'n-trode', 'electrode-$', 'patch', 'patch-Vm', 'patch-I', ...
+    'patch-attached', 'sharp', 'sharp-Vm', 'sharp-Im', 'wide-field-imaging', ...
+    'two-photon-imaging', 'one-photon-imaging', 'brightfield-imaging', ...
+    'lick-spout', 'intraoral-cannula', 'optogenetic-fiber', 'reward-well', ...
+    'stimulator', 'ecg', 'eeg', 'accelerometer', 'thermometer', 'ppg', 'event'};
+isElectrodeSpelling = ~isempty(regexp(ty, '^([A-Za-z0-9]+_)?electrode-\S+$', 'once'));
+if any(strcmp(ty, probeTypes)) || isElectrodeSpelling
+    if isProbeClass
+        t = 'device';
+    else
+        why = sprintf(['[carry-063] needs_mapping: element type "%s" is a probe type ' ...
+            'on class "%s", not ndi.probe.* (a derived copy of its probe)'], ty, char(ndiClass));
+    end
+    return;
+end
+switch ty
     case {'spikes', 'neuron', 'cell'}
-        t = 'cell';
-    case {'ensemble'}
+        label = did2.convert.unitQualityLabels('get', elementId);
+        switch label
+            case 'single'
+                t = 'cell';
+            case 'multi'
+                t = 'group';
+            otherwise
+                if isempty(label)
+                    label = 'none';
+                end
+                why = sprintf(['[carry-062] needs_mapping: sorted unit (type "%s") ' ...
+                    'with no single/multi label from its sorting run (label: %s)'], ty, label);
+        end
+    case 'ensemble'
         t = 'group';
     otherwise
-        t = 'device';
+        why = sprintf(['[carry-063] needs_mapping: element type "%s" (class "%s") ' ...
+            'is not on the element type list'], ty, char(ndiClass));
+end
+end
+
+function tf = isEmptyRef(r)
+tf = isempty(r) || ((ischar(r) || isstring(r)) && isempty(strtrim(char(r))));
+end
+
+function s = refText(r)
+if ischar(r) || (isstring(r) && isscalar(r))
+    s = char(r);
+elseif isnumeric(r) && isscalar(r)
+    s = num2str(r, 17);
+elseif isempty(r)
+    s = '';
+else
+    s = sprintf('<%s>', class(r));
 end
 end
 
