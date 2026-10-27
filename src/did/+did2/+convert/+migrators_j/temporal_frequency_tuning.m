@@ -23,7 +23,9 @@ function bodies = temporal_frequency_tuning(preBody)
 %   Identity through jRawBody; depends_on and the result fields read in
 %   either spelling by jCalculation / jTuningCurve, as for temporal_frequency_tuning_calc.
 %   Every other field is accounted for (jCalculation
-%   'AccountForEveryField', carry-056 as for the calculator outputs).
+%   'AccountForEveryField', as for the calculator outputs: carry-100 for a
+%   field outside the NDI template, carry-056 for a template field with no
+%   home; [tuning stray fields are malformed]).
 %   A carry is the untouched v1 source. did2.convert.roundtrip.temporal_frequency_tuning
 %   rebuilds the v1 document; testRawV1RoundTripTuningBlocks compares the two.
 arguments

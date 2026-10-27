@@ -26,7 +26,8 @@ function bodies = stimulus_tuningcurve(preBody)
 %   element_id). Identity through jRawBody; the `app` block (none here) and the
 %   result fields read in either spelling by jCalculation / jTuningCurve, as for
 %   tuningcurve_calc. Every other field is accounted for (jCalculation
-%   'AccountForEveryField', carry-056 as for the calculator outputs). The
+%   'AccountForEveryField', as for the calculator outputs: carry-100 outside
+%   the template, carry-056 for a template field with no home). The
 %   writer always writes stimid and stimulus_presentation_number, which have no
 %   V2 home, so every writer document is carried (carry-056), as before. A
 %   carry is the untouched v1 source. did2.convert.roundtrip.stimulus_tuningcurve

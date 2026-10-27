@@ -25,8 +25,9 @@ function bodies = orientation_direction_tuning(preBody)
 %   element_id and stimulus_tuningcurve_id). Identity through jRawBody; the
 %   `app` block and the result fields read in either spelling by jCalculation
 %   / jTuningCurve, as for oridirtuning_calc. Every other field is accounted
-%   for (jCalculation 'AccountForEveryField', carry-056 as for the calculator
-%   outputs). A carry is the untouched v1 source.
+%   for (jCalculation 'AccountForEveryField', as for the calculator outputs:
+%   carry-100 outside the template, carry-056 for a template field with no
+%   home; [tuning stray fields are malformed]). A carry is the untouched v1 source.
 %   did2.convert.roundtrip.orientation_direction_tuning rebuilds the v1
 %   document; testRawV1RoundTripTuningResults compares the two.
 arguments

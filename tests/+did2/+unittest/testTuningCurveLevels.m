@@ -563,10 +563,11 @@ if isfield(notes, 'field_dropped')
 end
 if isfield(notes, 'carried_as_v1')
     for k = 1:numel(notes.carried_as_v1.distinct_details)
-        % each field follows its carry register row tag ('[carry-056] ')
-        t = regexprep(notes.carried_as_v1.distinct_details{k}, '^unplaced: ', '');
-        t = regexprep(t, '\[carry-\d{3}\] ', '');
-        d = [d, strsplit(t, ', ')]; %#ok<AGROW>
+        % each field follows its carry register row tag ('[carry-056] '), or
+        % the '[carry-100] malformed: ...' head of a field outside the NDI
+        % template ([tuning stray fields are malformed])
+        d = [d, did2.unittest.helpers.carryPaths( ...
+            notes.carried_as_v1.distinct_details{k})]; %#ok<AGROW>
     end
 end
 end

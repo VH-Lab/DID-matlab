@@ -28,7 +28,11 @@ function carried = jRawCarry(className, preBody, collision, unplaced, row, value
 %   cannot place or would rewrite (an ndim other than the writer's, a unit no
 %   term is known for, a fractional cluster index). Those are not malformed by
 %   that decision and have no register row yet (a question for the team); the
-%   note lists them after the row's, or alone.
+%   note lists them after the row's, or alone. A caller whose reasons DO have
+%   a row writes the tag before each item itself: jCalculation passes
+%   '[carry-056] <path>' (a field the template defines, which the writer
+%   writes, with no V2 home yet) and '[carry-016] <path>' (Decided by Jess
+%   Haley, 2026-10-27 [tuning stray fields are malformed]).
 %
 %   See also jRawAccount.
 
@@ -63,14 +67,15 @@ if ~isempty(unplaced)
     if ~isempty(rest)
         rest = ['; ' rest];
     end
-    % carry-register: carry-100; none for VALUEREASONS listed after it (a
-    %   template field whose value the migrator cannot place; no row yet)
+    % carry-register: carry-100; carry-016 carry-056 via jCalculation.m (its
+    %   VALUEREASONS carry their tags); none for an untagged VALUEREASONS item
     did2.convert.reportNote('carried_as_v1', className, id, ...
         ['[carry-100] malformed: outside the NDI template, unplaced: ' ...
         strjoin(unplaced, ', ') rest]);
     return;
 end
-% carry-register: none (a template field whose value the migrator cannot
-%   place or would rewrite; no row yet)
+% carry-register: carry-016 carry-056 via jCalculation.m (its VALUEREASONS
+%   carry their tags); none for an untagged item (a template field whose value
+%   the migrator cannot place or would rewrite; no row yet)
 did2.convert.reportNote('carried_as_v1', className, id, rest);
 end

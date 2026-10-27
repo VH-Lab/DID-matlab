@@ -6211,8 +6211,10 @@ assertTrue(testCase, isscalar(first) && isequaln(first{1}, body), ...
     'the writer-shaped document was not carried whole as v1');
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
 d = notes.carried_as_v1.distinct_details{1};
-% each path follows its carry register row tag ('[carry-056] ', [carry register])
-paths = strsplit(regexprep(regexprep(d, '^unplaced: ', ''), '\[carry-\d{3}\] ', ''), ', ');
+% each path follows its carry register row tag ('[carry-056] ', [carry register]),
+% or the '[carry-100] malformed: ...' head of a field outside the NDI template
+% ([tuning stray fields are malformed]): did2.unittest.helpers.carryPaths
+paths = did2.unittest.helpers.carryPaths(d);
 for k = 1:numel(paths)
     body = removePathJ(body, strsplit(paths{k}, '.'));
 end
