@@ -280,7 +280,8 @@ end
 
 % ----- batch 2: term_manipulation+relation, body-backed sampled_body,
 % term_assertion. Each rides on its own minted subject(s). Covers:
-% treatment_transfer->term_manipulation (+ derived_from relation),
+% treatment_transfer->carried whole as v1 ([treatment transfer stays v1], Jess
+% Haley, 2026-10-27),
 % virus_injection->dose_manipulation (+ site), ontology_label->deferred
 % passthrough (its document_id edge points at the image_stack below, whose id
 % the image_stack fold preserves, so the link still resolves after migration),

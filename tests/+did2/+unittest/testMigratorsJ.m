@@ -4,7 +4,7 @@ function tests = testMigratorsJ
 %   Exercises the did_v1 -> V_eta migrators routed by did2.convert.v1_to_v2
 %   when TargetVersion == 'V_eta'. Covers:
 %     - subject_group      -> bare `subject` (v3.0.0; no is_group/is_biological)
-%     - treatment_transfer -> term_manipulation + provenance directed_relation
+%     - treatment_transfer -> carried whole as v1 ([treatment transfer stays v1])
 %                             + session anchor (1 -> 3, D4)
 %     - ontology_table_row -> per-column assertions/observations (1 -> N), and
 %                             the per-table map for the C. elegans encounter
@@ -449,98 +449,28 @@ v1.treatment_transfer = struct('timestamp', timestamp, 'clocktype', 'dev_local_t
     'method_name', 'pick', 'method_ontologyNode', 'EMPTY:0000001');
 end
 
-function testTransferAnchoredAtItsTimestampOnTheSessionClock(testCase)
-% Jess Haley, 2026-10-21 [transfer onset]: the timestamp (20 h before ->
-% seconds(hours(-20)) = -72000) is the onset, on the session's dev_local_time.
-out = runJ(babuTransferV1('tt_ts', -72000));
-verifyEmpty(testCase, out.quarantine);
-act = out.migrated{1};
-a = firstOfClassJ(out.migrated, 'relative_time_reference');
-assertNotEmpty(testCase, a);
-verifyEqual(testCase, depVal(act, 'time_reference_id'), a.get('base.id'));
-verifyEqual(testCase, depVal(a, 'referent_id'), 'sess_babu', 'offset from the session');
-v = a.get('relative_time_reference.value');
-verifyEqual(testCase, v.start.seconds, -72000);
-verifyEqual(testCase, v.start.source_value, -72000);
-verifyTrue(testCase, contains(char(v.clock.name), 'dev_local_time') || ...
-    contains(lower(char(v.clock.name)), 'local'), 'the session''s local clock');
+function testATransferIsCarriedWholeAsV1(testCase)
+% [treatment transfer stays v1] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): "a v1 `treatment_transfer` is carried whole
+% as v1 with a needs-mapping register row, for the Babu reimport; the generic
+% stage converts none". INVERTS the conversion tests that stood here
+% (testTransferAnchoredAtItsTimestampOnTheSessionClock,
+% testAGlobalClockTransferTimeIsInDays,
+% testTransferWithNoTimestampIsDuringTheSession,
+% testTreatmentTransferBecomesTermManipulationPlusProvenance) and
+% testATransferWithNoClocktypeIsCarried, whose carry now has the one reason.
+cases = {babuTransferV1('tt_ts', -72000), babuTransferV1('tt_glob', 739000.5), ...
+    babuTransferV1('tt_nots', NaN), babuTransferV1('tt_noclk', -72000)};
+cases{2}.treatment_transfer.clocktype = 'exp_global_time';
+cases{4}.treatment_transfer.clocktype = '';
+for k = 1:numel(cases)
+    v1 = cases{k};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+term'), 0);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-pending-treatment-transfer-needs-mapping] needs_mapping: '), d);
 end
-
-function testATransferWithNoClocktypeIsCarried(testCase)
-% [one-reading quick answers] (Q2) (Jess Haley, 2026-10-26): a timestamp with
-% no clock type is not given dev_local_time ([no invented values]); the
-% document is carried whole as v1.
-v1 = babuTransferV1('tt_noclk', -72000);
-v1.treatment_transfer.clocktype = '';
-out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, contains(d, 'clocktype'), d);
-end
-
-function testAGlobalClockTransferTimeIsInDays(testCase)
-% (Q2) "a global-clock time is written in its true unit (NDI stores days, not
-% seconds)": NDI's treatment_transfer schema, "a datenum (if global clock) or in
-% seconds (if local clock)".
-v1 = babuTransferV1('tt_glob', 739000.5);
-v1.treatment_transfer.clocktype = 'exp_global_time';
-out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-a = firstOfClassJ(out.migrated, 'relative_time_reference');
-v = a.get('relative_time_reference.value');
-verifyEqual(testCase, v.start.source_value, 739000.5);
-verifyEqual(testCase, char(v.start.source_unit.name), 'day');
-verifyEqual(testCase, v.start.seconds, 739000.5 * 86400, 'RelTol', 1e-12);
-end
-
-function testTransferWithNoTimestampIsDuringTheSession(testCase)
-% NaN (Babu's TransferTime is NaN where no transfer time was recorded) or
-% absent: "during the session".
-for ts = {NaN, []}
-    out = runJ(babuTransferV1('tt_nots', ts{1}));
-    verifyEmpty(testCase, out.quarantine);
-    a = firstOfClassJ(out.migrated, 'relative_time_reference');
-    v = a.get('relative_time_reference.value');
-    verifyEqual(testCase, v.relation.name, 'intervalDuring');
-    verifyFalse(testCase, isfield(v, 'start') && ~isempty(v.start) ...
-        && isstruct(v.start) && isfield(v.start, 'seconds') && ~isempty(v.start.seconds));
-end
-end
-
-function testTreatmentTransferBecomesTermManipulationPlusProvenance(testCase)
-v1 = struct();
-v1.document_class = struct('class_name', 'treatment_transfer', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-v1.depends_on = [ ...
-    struct('name', 'recipient_id', 'document_id', 'rec_001'), ...
-    struct('name', 'donor_id',     'document_id', 'don_002')];
-v1.base = struct('id', 'tt_01', 'session_id', 'sess_09', ...
-    'name', 'graft', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.treatment_transfer = struct( ...
-    'entity_ontologyNode', 'UBERON:0005291', 'entity_name', 'embryonic tissue', ...
-    'method_name', 'transplantation');
-out = runJ(v1);
-
-% 1 -> 3: the act, the provenance relation, the anchor.
-verifyEqual(testCase, numel(out.migrated), 3);
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+term'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 1);
-
-act = out.migrated{1};
-% recipient is the patient; the material term is the value AND the variable
-verifyEqual(testCase, depVal(act, 'entity_id'), 'rec_001');
-verifyEqual(testCase, act.get('statement.variable').name, 'embryonic tissue');
-verifyEqual(testCase, act.get('term.value').name, 'embryonic tissue');
-verifyEqual(testCase, act.get('interaction.method').term.name, 'transplantation');
-
-rel = out.migrated{2};
-verifyEqual(testCase, depVal(rel, 'child_id'), 'rec_001');
-verifyEqual(testCase, depVal(rel, 'parent_id'), 'don_002');
-verifyTrue(testCase, did2.build.isVocabulary(rel.get('directed_relation.relation'), 'relation', 'derived_from'));   % by node (L1)
-
-anchor = out.migrated{3};
-verifyEqual(testCase, anchor.get('relative_time_reference.value').relation.name, 'intervalDuring');
 end
 
 % ============ ontology_table_row -> assertions/observations (1 -> N) ====

@@ -52,10 +52,11 @@ function v2Body = treatment(preBody)
 %                                 creation_timestamp; base.name (writers: '')
 %                                 is not written (#73 item 54)
 %     depends_on subject_id    -> the statement's entity_id
-%     depends_on manipulation_id, protocol_id
-%                              -> NOT READ: empty in every writer but
-%                                 table2treatment, whose group link is lost
-%                                 (an open finding, testRawV1RoundTripTreatment)
+%     depends_on manipulation_id -> a non-empty one (table2treatment's group
+%                                 link) carries the treatment whole as v1,
+%                                 needs_mapping ([treatment groups are a
+%                                 dataset decision], Jess Haley, 2026-10-27)
+%     depends_on protocol_id   -> NOT READ: empty in every writer
 %     treatment.ontologyName, name -> statement.variable (registry term)
 %     treatment.numeric_value  -> the value (termNumberKind) or the `numeric
 %                                 value` condition
@@ -79,6 +80,26 @@ if ~isfield(preBody, 'treatment') || ~isstruct(preBody.treatment)
         'treatment body is missing the treatment property block.');
 end
 block = preBody.treatment;
+
+% [treatment groups are a dataset decision] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): "a v1 `treatment` with a
+% `manipulation_id` link is carried whole as v1, `needs_mapping`, for each
+% dataset's import to decide what its groups mean; treatments without the link
+% convert as usual". The link is the one table2treatment writes (NDI-matlab
+% main +database/+metadata/table2treatment.m: the group is the number the lab
+% typed in its `group` column, and only the link to the group's first row is
+% stored). THE REGISTER ROW IS PENDING in did-schema: until it exists the note
+% cites the placeholder GROUP_ROW, which names no row.
+GROUP_ROW = 'carry-pending-treatment-group-needs-mapping';
+groupLink = did2.convert.v1read.readDependsOn(preBody, 'Name', '^manipulation_id$');
+if ~isempty(groupLink) && ~isempty(groupLink(1).document_id)
+    % carry-register: none (needs-mapping row pending in did-schema; GROUP_ROW)
+    v2Body = carryAsV1(preBody, sprintf(['[%s] needs_mapping: its manipulation_id ' ...
+        'links it to treatment group %s; the dataset''s import decides what the ' ...
+        'group means ([treatment groups are a dataset decision])'], ...
+        GROUP_ROW, char(groupLink(1).document_id)));
+    return;
+end
 
 % NDI's template and writers (treatmentMaker, table2treatment, +haley,
 % +dabrowska) spell the node `ontologyName`; `ontology_name` is the spelling of

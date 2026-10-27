@@ -28,7 +28,15 @@ function tests = testRawV1RoundTripTreatment
 %                         a body-site row
 %     treatment_transfer  treatmentMaker create_treatment_transfer_doc with
 %                         +babu/TreatmentCreator.m's pick row (a timestamp, and
-%                         NaN where no transfer time was recorded)
+%                         NaN where no transfer time was recorded): ALWAYS
+%                         carried whole as v1 ([treatment transfer stays v1],
+%                         Jess Haley, 2026-10-27)
+%
+%   Also built here, Decided by Jess Haley, 2026-10-27: [treatment groups are a
+%   dataset decision] (a treatment with a `manipulation_id` link is carried,
+%   needs_mapping) and [treatment location name is the node] (the writer's
+%   `location_ontologyName` and the template's `location_ontologyNode` are one
+%   field; both, differing, carry the document as malformed).
 %
 %   Every writer shape below converts or carries exactly as before the switch
 %   (testTheSwitchChangesNoConvertedTreatment), and its round trip reports
@@ -45,16 +53,13 @@ function f = knownFindings()
 % One row per v1 field a writer-shaped document loses today. Open questions,
 % reported to the team; nothing here is decided. {fixture, path, why}
 f = { ...
-    'table2treatment group link', 'depends_on(2).value', ...
-        ['treatment `manipulation_id` (table2treatment links every treatment ' ...
-        'of a group to the first): no migrator reads it']; ...
-    'Birren CNO in the bath', 'treatment_drug.location_ontologyName', ...
-        ['the writer spells the location node `location_ontologyName` ' ...
-        '(treatmentMaker); the template and the migrator `location_ontologyNode`, ' ...
-        'so the node is never read (the bath is found by its name)']; ...
     'Birren CNO in the bath', 'treatment_drug.administration_offset_time', ...
         'no migrator reads the offset time'; ...
     'Birren CNO in the bath', 'treatment_drug.administration_duration', ...
+        'no migrator reads the duration'; ...
+    'treatmentMaker drug at an UBERON site', 'treatment_drug.administration_offset_time', ...
+        'no migrator reads the offset time'; ...
+    'treatmentMaker drug at an UBERON site', 'treatment_drug.administration_duration', ...
         'no migrator reads the duration'; ...
     'Birren DREADD virus in the bath', 'virus_injection.virus_AdministrationPND', ...
         'no migrator reads the postnatal day'; ...
@@ -63,15 +68,7 @@ f = { ...
         'did2.convert.registeredTerm: "primary visual cortex"); the writer''s ' ...
         'label "V1" is kept nowhere']; ...
     'virus at V1', 'virus_injection.virus_AdministrationPND', ...
-        'no migrator reads the postnatal day'; ...
-    'Babu pick transfer', 'treatment_transfer.method_ontologyNode', ...
-        ['the method is written as a label only (jMethod(method_name)); ' ...
-        'its node is kept nowhere']; ...
-    'Babu transfer, no time', 'treatment_transfer.clocktype', ...
-        ['a clock with no timestamp (Babu writes NaN): the anchor is "during ' ...
-        'the session", which states no clock']; ...
-    'Babu transfer, no time', 'treatment_transfer.method_ontologyNode', ...
-        'as for the pick transfer'};
+        'no migrator reads the postnatal day'};
 end
 
 function paths = findingsFor(fixture)
@@ -85,7 +82,7 @@ function testTreatmentWriterShapesRoundTrip(testCase)
 roundTripCases(testCase, { ...
     'vhlab grating hours', vhlabHours(), false; ...
     'ChEBI substance at an UBERON site', muscimolAtV1(), false; ...
-    'table2treatment group link', groupLinked(), false; ...
+    'table2treatment group link', groupLinked(), true; ...
     'Haley food restriction onset', haleyOnset(), true; ...
     'Dabrowska target location', dabTarget(), true});
 end
@@ -93,7 +90,7 @@ end
 function testTreatmentDrugWriterShapesRoundTrip(testCase)
 roundTripCases(testCase, { ...
     'Birren CNO in the bath', birrenCno(), false; ...
-    'treatmentMaker drug at an UBERON site', drugAtSite(), true});
+    'treatmentMaker drug at an UBERON site', drugAtSite(), false});
 end
 
 function testVirusInjectionWriterShapesRoundTrip(testCase)
@@ -104,16 +101,15 @@ end
 
 function testTreatmentTransferWriterShapesRoundTrip(testCase)
 roundTripCases(testCase, { ...
-    'Babu pick transfer', babuTransfer(-72000), false; ...
-    'Babu transfer, no time', babuTransfer(NaN), false});
+    'Babu pick transfer', babuTransfer(-72000), true; ...
+    'Babu transfer, no time', babuTransfer(NaN), true});
 end
 
 function testEveryKnownFindingNamesAFixtureThatIsRun(testCase)
 % a finding whose fixture is not round-tripped would never fail
 f = knownFindings();
-names = {'table2treatment group link', 'Birren CNO in the bath', ...
-    'Birren DREADD virus in the bath', 'virus at V1', 'Babu pick transfer', ...
-    'Babu transfer, no time'};
+names = {'Birren CNO in the bath', 'treatmentMaker drug at an UBERON site', ...
+    'Birren DREADD virus in the bath', 'virus at V1'};
 for k = 1:size(f, 1)
     verifyTrue(testCase, any(strcmp(f{k, 1}, names)), f{k, 1});
 end
@@ -242,14 +238,90 @@ end
 verifyEqual(testCase, raw.migrated{1}.get('base.id'), legacy.id);
 end
 
-function testAWriterShapedDrugAtABodySiteCarriesForItsNodeSpelling(testCase)
-% FINDING (behaviour kept): treatmentMaker writes the node as
-% `location_ontologyName`, which the migrator does not read, so an UBERON site
-% is seen by its name alone, is not an UBERON term, and carries (carry-028)
+function testAWriterShapedDrugAtABodySiteIsADoseAtThatSite(testCase)
+% INVERTS testAWriterShapedDrugAtABodySiteCarriesForItsNodeSpelling.
+% [treatment location name is the node] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): treatmentMaker writes the node as
+% `location_ontologyName` (NDI-matlab main +setup/+NDIMaker/treatmentMaker.m
+% line 163), the template as `location_ontologyNode`; they are one field, so the
+% writer's UBERON site is read and the drug is a dose at that site (it was
+% carried, carry-028, because only the template spelling was read)
 out = runRaw(drugAtSite());
-verifyEqual(testCase, numel(out.passthrough), 1);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'converted, not carried');
+sites = {};
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if strcmp(b.document_class.class_name, 'observation') && isfield(b, 'term')
+        sites{end+1} = char(b.term.value.node); %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, numel(sites), 1, 'one site observation');
+verifyTrue(testCase, any(strcmpi(sites, 'UBERON:0001179')), strjoin(sites, ', '));
+end
+
+function testBothLocationSpellingsDifferingCarryTheDrugAsMalformed(testCase)
+% [treatment location name is the node]: "a document holding both with
+% different values is carried whole as v1, kind `malformed`" (the register row
+% is pending in did-schema: the note cites the placeholder)
+v1 = drugAtSite();
+v1.treatment_drug.location_ontologyNode = 'UBERON:0002436';
+v1 = jsondecode(jsonencode(v1));
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+assertEqual(testCase, numel(out.passthrough), 1, 'carried');
+emitted = out.migrated{1}.toStruct();
+emitted.document_class = rmfield(emitted.document_class, 'schema_version');
+verifyTrue(testCase, isequaln(emitted, v1), 'the carry is not the v1 source');
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-028] '), d);
+verifyTrue(testCase, startsWith(d, '[carry-pending-treatment-location-malformed] malformed: '), d);
+% the same node under both spellings (prefix case aside) is one statement
+v1.treatment_drug.location_ontologyNode = 'uberon:0001179';
+out = runRaw(v1);
+verifyEmpty(testCase, out.passthrough, 'equal nodes: converted');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyEmpty(testCase, r.invented, strjoin(r.invented, ', '));
+verifyFalse(testCase, any(strcmp({r.lost.path}, 'treatment_drug.location_ontologyNode')));
+verifyFalse(testCase, any(strcmp({r.lost.path}, 'treatment_drug.location_ontologyName')));
+end
+
+function testAGroupLinkedTreatmentIsCarriedForItsDataset(testCase)
+% [treatment groups are a dataset decision] (Decided by Jess Haley,
+% 2026-10-27): a treatment with a `manipulation_id` link (table2treatment's
+% group) is carried whole as v1, needs_mapping; without the link it converts
+v1 = jsondecode(jsonencode(groupLinked()));
+out = runRaw(v1);
+assertEqual(testCase, numel(out.passthrough), 1, 'carried');
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-pending-treatment-group-needs-mapping] needs_mapping: '), d);
+verifyTrue(testCase, contains(d, '41268b6f5c6a3d4e_7a00000000000001'), d);
+out = runRaw(jsondecode(jsonencode(vhlabHours())));
+verifyEmpty(testCase, out.passthrough, 'no link: converted');
+end
+
+function testEveryTreatmentTransferIsCarriedWholeAsV1(testCase)
+% [treatment transfer stays v1] (Decided by Jess Haley, 2026-10-27): the
+% generic stage converts no treatment_transfer; each is carried whole as v1
+% with a needs-mapping register row (pending in did-schema), for the Babu
+% reimport
+fixtures = [{babuTransfer(-72000), babuTransfer(NaN)}, didSideFixtures()];
+n = 0;
+for k = 1:numel(fixtures)
+    v1 = jsondecode(jsonencode(fixtures{k}));
+    if ~strcmp(v1.document_class.class_name, 'treatment_transfer')
+        continue;
+    end
+    n = n + 1;
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine);
+    assertEqual(testCase, numel(out.migrated), 1);
+    emitted = out.migrated{1}.toStruct();
+    emitted.document_class = rmfield(emitted.document_class, 'schema_version');
+    verifyTrue(testCase, isequaln(emitted, v1), 'the carry is not the v1 source');
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-pending-treatment-transfer-needs-mapping] needs_mapping: '), d);
+end
+verifyEqual(testCase, n, 3, 'the transfer fixtures were found');
 end
 
 % ===================== helpers =========================================

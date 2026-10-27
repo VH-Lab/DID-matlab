@@ -59,10 +59,9 @@
 %     subject_group      - 1 -> 1+N. -> an `entity` of type group (id
 %                          preserved) + one member_of directed_relation per
 %                          member.
-%     treatment_transfer - 1 -> 3. -> a `manipulation` with value kind `term`
-%                          (the act) + a
-%                          provenance directed_relation (recipient <- donor,
-%                          derived_from) + the shared session anchor (D4).
+%     treatment_transfer - 1 -> 1. Always carried whole as v1 (needs mapping,
+%                          for the Babu reimport): [treatment transfer stays
+%                          v1], Jess Haley, 2026-10-27.
 %     ontology_table_row - 1 -> 1. No subject edge: passed through for the NDI
 %                          second pass. With a subject: carried whole as v1
 %                          with a `needs_mapping` note (each column's entity,
@@ -1026,8 +1025,8 @@
 %         valued by its formulation) or a `manipulation` with value kind `dose`,
 %         decided by the recorded location.
 %     treatment_transfer
-%         Brainstorm-J migrator: did_v1 treatment_transfer -> a `manipulation` with
-%         value kind `term` + a provenance directed_relation (+ the session anchor).
+%         Brainstorm-J migrator: did_v1 treatment_transfer -- always CARRIED whole as
+%         v1 under a needs-mapping register row (the document is returned UNCHANGED).
 %     tuningcurve_calc
 %         Brainstorm-J migrator: the ndi.calc.stimulus.tuningcurve calculator OUTPUT
 %         document -> the CONCRETE V_eta leaf `tuningcurve_calc` (⊂
