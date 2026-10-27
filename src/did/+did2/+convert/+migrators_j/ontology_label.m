@@ -177,11 +177,25 @@ function bodies = ontology_label(preBody)
 %   names; this guard is on the V_eta path only.)
 %
 %   See V_eta_migrator_vocabulary_audit.md for the evidence.
+%
+%   READY TO READ RAW v1, NOT SWITCHED (2026-10-27). [migrators read raw v1]
+%   (Jess Haley, 2026-10-26): the guard reads the block in either spelling, so
+%   a raw v1 `ontologyLabel` (block `ontologyLabel`, field `ontologyNode`,
+%   edge in v1's `value` key) is handed back untouched, as a switched class's
+%   passthrough must be; did2.convert.roundtrip.ontologyLabel is its inverse
+%   (testRawV1RoundTripImage runs it through the 'RawV1Classes' option). It is
+%   NOT in did2.convert.rawV1Classes: the passthrough is for NDI's second pass,
+%   which finds labels by the renamed class name `ontology_label`
+%   (NDI-matlab +migrate/+internal/ontologyLabelSubjects.m, +migrate/local.m),
+%   as does did2.convert.foldGenericFiles. Those read the v1 spelling first.
 
 arguments
     preBody (1,1) struct
 end
 blk = getBlock(preBody, 'ontology_label');
+if isempty(fieldnames(blk))
+    blk = getBlock(preBody, 'ontologyLabel');
+end
 if isfield(blk, 'ontology_name') || isfield(blk, 'label_id') || isfield(blk, 'label')
     error('did2:convert:ontologyLabelInventedShape', ...
         ['ontology_label body carries `ontology_name`/`label_id`/`label`, ' ...

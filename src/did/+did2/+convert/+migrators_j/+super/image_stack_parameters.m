@@ -12,6 +12,15 @@ function v2Body = image_stack_parameters(preBody)
 %   `image_stack_parameters` -- i.e. on every `image_stack` document. There is
 %   no base (+migrators) migrator of this name, so nothing is being displaced.
 %
+%   SINCE 2026-10-27 a v1 `imageStack` reads RAW v1 (did2.convert.rawV1Classes,
+%   [migrators read raw v1]) and no superclass migrator runs on it: its leaf,
+%   did2.convert.migrators_j.image_stack, calls this function on the raw
+%   `imageStack_parameters` block for the REFUSALS below (same documents
+%   quarantine, same identifiers). The empty-placeholder strip has no raw
+%   counterpart: a raw passthrough is the untouched v1 source. This file stays
+%   for the v1 `image` (not switched), which runs renamed and shares the block;
+%   it goes when `image` switches or leaves.
+%
 %   ---------------------------------------------------------------------
 %   WHY A SUPERCLASS MIGRATOR AND NOT A CONCRETE ONE
 %   ---------------------------------------------------------------------

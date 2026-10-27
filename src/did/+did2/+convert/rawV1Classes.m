@@ -14,14 +14,18 @@ function [names, migrators] = rawV1Classes(v1Name)
 %   MIGRATOR = did2.convert.rawV1Classes(V1NAME) is the +migrators_j migrator
 %   for the v1 class V1NAME: its row in the table below, else V1NAME itself.
 %
-%   THE ONE TABLE OF v1 NAME -> MIGRATOR NAME. Two v1 classes are spelled
+%   THE ONE TABLE OF v1 NAME -> MIGRATOR NAME. Some v1 classes are spelled
 %   differently from the migrator files that convert them: NDIcalc-vis-matlab
 %   writes `contrasttuning_calc` and `contrastsensitivity_calc`, and the
 %   migrators are +migrators_j/contrast_tuning_calc.m and
-%   contrast_sensitivity_calc.m, the names universalRenames gives those
-%   classes. THIS TABLE GOES when universalRenames is deleted and the two
-%   migrator files are renamed to the v1 names ([migrators read raw v1]); it
-%   is the only place the two spellings are joined for a switched class.
+%   contrast_sensitivity_calc.m; NDI writes `imageStack` and `ontologyLabel`,
+%   and the migrators are +migrators_j/image_stack.m and ontology_label.m: the
+%   names universalRenames gives those classes. THIS TABLE GOES when
+%   universalRenames is deleted and the migrator files are renamed to the v1
+%   names ([migrators read raw v1]); it is the only place the two spellings are
+%   joined for a switched class. A row may name a class not (yet) in the list
+%   below: it is read only for a listed class, or for one a caller passes in
+%   v1_to_v2's 'RawV1Classes' option.
 %
 %   WHY. Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema
 %   V_eta_go_forward_class_audit.md): a migrator reads v1 exactly as v1 defines
@@ -89,6 +93,28 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         pass-1 passthrough that resolveResponseParameters
 %                         turns into a `method`. Round trips:
 %                         testRawV1RoundTripStimulusResponse.
+%     imageStack          the imaging family: superclasses `base` +
+%                         `imageStack_parameters`, no `app` block. The
+%                         superclass migrator (+super/image_stack_parameters)
+%                         is called by the leaf on the raw block, and stays for
+%                         the v1 `image` (not switched), which still runs
+%                         renamed. Written by +setup/+conv/+haley/doImport.m
+%                         and +babu/import.m. Round trips:
+%                         testRawV1RoundTripImage.
+%     NOT LISTED, and why:
+%       image             no NDI writer at the locked main constructs it and no
+%                         corpus holds one; its subject-less passthrough has no
+%                         register row, and as raw v1 it would meet the
+%                         renamed-shape `image` tombstone under its own name
+%                         and quarantine. It stays on the renamed path.
+%       ontologyLabel     ready (its migrator reads either spelling; inverse
+%                         did2.convert.roundtrip.ontologyLabel), but NDI's
+%                         second pass finds labels by the RENAMED class name
+%                         (NDI-matlab +migrate/+internal/ontologyLabelSubjects.m
+%                         and +migrate/local.m compare 'ontology_label'), and
+%                         so does did2.convert.foldGenericFiles: a raw label
+%                         would reach neither. Siblings first (did-schema
+%                         CLAUDE.md, a name that code compares).
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
@@ -97,12 +123,16 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'tuningcurve_calc', 'contrasttuning_calc', 'oridirtuning_calc', ...
     'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc', ...
     'contrastsensitivity_calc', 'stimulus_response_scalar', ...
-    'stimulus_response_scalar_parameters_basic'};
+    'stimulus_response_scalar_parameters_basic', ...
+    'imageStack', ...
+    };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
 TABLE = { ...
     'contrasttuning_calc',      'contrast_tuning_calc'; ...
-    'contrastsensitivity_calc', 'contrast_sensitivity_calc'};
+    'contrastsensitivity_calc', 'contrast_sensitivity_calc'; ...
+    'imageStack',               'image_stack'; ...
+    'ontologyLabel',            'ontology_label'};
 
 if nargin >= 1
     names = migratorOf(char(v1Name), TABLE);

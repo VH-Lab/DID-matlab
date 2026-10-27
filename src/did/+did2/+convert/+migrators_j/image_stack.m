@@ -181,12 +181,66 @@ function bodies = image_stack(preBody)
 %   testImageStackBabuShapeOmitsTheSlotRatherThanEmittingItBlank pins the babu
 %   population. testImageStackDocumentIdReferentSurvivesTheBatch now runs the
 %   REAL emitted edge through did2.validate.references instead of a probe.
+%
+%   ---------------------------------------------------------------------
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27)
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema
+%   V_eta_go_forward_class_audit.md). A v1 `imageStack` reaches this migrator
+%   exactly as NDI wrote it (imageStack.json + imageStack_parameters.json +
+%   base.json at the locked NDI-matlab `main`, 3cb19a8): the `imageStack` and
+%   `imageStack_parameters` blocks, `formatOntology`, edges in v1's `value`
+%   key. No universalRenames and no superclass migrator run on it, so:
+%     - what universalRenames would have DISCARDED (a depends_on `version` or
+%       second id, an `ndi_document` beside `base`, `formatOntology` beside a
+%       different `format_ontology`, an `imageStack` / `imageStack_parameters`
+%       block beside a different snake_case twin) carries the document,
+%       carry-049, as the renamed path carried it ([renames carry is
+%       temporary]);
+%     - the superclass migrator's work (+super/image_stack_parameters: a
+%       non-scalar, non-empty char or non-numeric `timestamp` is refused) is
+%       done here by calling it on the parameters block, so the same documents
+%       quarantine with the same identifiers; its other job, stripping an
+%       empty `timestamp` so a passthrough validates under the `image_stack`
+%       tombstone, has no raw counterpart (a raw passthrough is the untouched v1
+%       source, which V_eta keeps no schema for under the name `imageStack`);
+%     - identity is read through jRawBody (a legacy-only `ndi_document`);
+%     - every carry or passthrough returns PREBODY, the untouched v1 source.
+%   A v1 `image` (did2.convert.migrators_j.image, NOT switched) and a body
+%   already spelled the renamed way (class `image_stack`) still arrive renamed;
+%   every read below takes either spelling. Carry notes keep the class names
+%   they had ('image_stack', 'image'). The round trip is
+%   did2.convert.roundtrip.imageStack (testRawV1RoundTripImage).
 
 arguments
     preBody (1,1) struct
 end
 
-params = getBlock(preBody, 'image_stack_parameters');
+srcClass = classNameOf(preBody);
+isRaw = strcmp(srcClass, 'imageStack');
+noteClass = 'image_stack';
+if strcmp(srcClass, 'image')
+    noteClass = 'image';
+end
+if isRaw
+    collision = jResponseRenameCollisions(preBody, ...
+        {'imageStack', 'formatOntology', 'format_ontology'});
+    collision = [collision, blockTwins(preBody, ...
+        {'imageStack', 'image_stack'; 'imageStack_parameters', 'image_stack_parameters'})];
+    if ~isempty(collision)
+        % carry-register: carry-049 (the renamed path carried this collision)
+        did2.convert.reportNote('carried_as_v1', noteClass, ...
+            baseField(preBody, 'id', ''), ['[carry-049] universalRenames would discard: ' ...
+            strjoin(collision, ', ')]);
+        bodies = {preBody};
+        return;
+    end
+    % the superclass migrator's refusals, on the raw block (see the header)
+    did2.convert.migrators_j.super.image_stack_parameters(struct( ...
+        'image_stack_parameters', getBlock(preBody, 'imageStack_parameters')));
+end
+params = getBlockAny(preBody, {'imageStack_parameters', 'image_stack_parameters'});
+stackBlk = getBlockAny(preBody, {'imageStack', 'image_stack'});
 subjectId = dependencyValue(preBody, 'subject_id');
 if isempty(subjectId)
     bodies = {preBody};
@@ -234,7 +288,7 @@ if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
 end
 if ~isempty(unplaced)
     % carry-register: carry-011 carry-012 carry-013 (the items above)
-    did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
+    did2.convert.reportNote('carried_as_v1', noteClass, ...
         baseField(preBody, 'id', ''), ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
     return;
@@ -271,10 +325,10 @@ end
 % recognised by label words too, so it is carried the same way ([one-reading
 % quick answers] (Q3), Jess Haley, 2026-10-26: "mask or map detection" chosen
 % from label words carries as needs_mapping).
-label = getCharField(getBlock(preBody, 'image_stack'), 'label');
+label = getCharField(stackBlk, 'label');
 if isMaskOrMap(label)
     % carry-register: carry-025 (imageStack; the register has no row for image)
-    did2.convert.reportNote('carried_as_v1', classNameOf(preBody), ...
+    did2.convert.reportNote('carried_as_v1', noteClass, ...
         baseField(preBody, 'id', ''), [carryRowOf(preBody, '', '[carry-025] ') ...
         'needs_mapping: calculation (logical ' ...
         'mask | label map) or observation (intensity); decided by what the ' ...
@@ -283,7 +337,13 @@ if isMaskOrMap(label)
     return;
 end
 
-stackId   = baseField(preBody, 'id', did.ido.unique_id());
+% the identity a raw body states, a legacy-only `ndi_document` read into `base`
+% (jRawBody; universalRenames' wholesale move did this on the renamed path)
+src = preBody;
+if isRaw
+    src = jRawBody(preBody, 'imageStack');
+end
+stackId   = baseField(src, 'id', did.ido.unique_id());
 dataType = getCharField(params, 'data_type');
 % [no invented values] (Jess Haley, 2026-10-25): a dimension order or data type
 % the source does not state is not assumed. No order means no honest key, so
@@ -296,7 +356,7 @@ if isempty(dimOrder) || numel(dimSize) < numel(dimOrder)
     return;
 end
 
-anchor = jSessionAnchor(preBody, 'during');
+anchor = jSessionAnchor(src, 'during');
 [datumType, sourceDatumType] = jDatumType(dataType);
 conds = [];
 ts = getField(params, 'timestamp');
@@ -310,19 +370,19 @@ if isnumeric(ts) && isscalar(ts) && isfinite(ts)
 end
 extra = {};
 software = {};
-obs = jStatement(preBody, 'observation', subjectId, ...
+obs = jStatement(src, 'observation', subjectId, ...
     jLabel('image intensity'), [], ...
     'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
     'Conditions', conds, 'Notes', label, ...
     'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).
-o = jOpts(preBody, 'DatumOrder', 'F');
+o = jOpts(src, 'DatumOrder', 'F');
 % the file's format and compression ([image file details placed]): an
 % imageStack's `formatOntology`, an image's `format` and `compression`
 imageBlk = getBlock(preBody, 'image');
-fileFormat = firstNonEmpty(getCharField(getBlock(preBody, 'image_stack'), 'format_ontology'), ...
-    getCharField(getBlock(preBody, 'image_stack'), 'formatOntology'), ...
+fileFormat = firstNonEmpty(getCharField(stackBlk, 'format_ontology'), ...
+    getCharField(stackBlk, 'formatOntology'), ...
     getCharField(imageBlk, 'format'));
 if ~isempty(strtrim(fileFormat))
     o = [o, {'Format', formatOf(strtrim(fileFormat))}];
@@ -462,6 +522,32 @@ end
 function b = getBlock(bodyStruct, name)
 b = struct();
 if isfield(bodyStruct, name) && isstruct(bodyStruct.(name)); b = bodyStruct.(name); end
+end
+
+function b = getBlockAny(bodyStruct, names)
+%GETBLOCKANY The first of NAMES the body holds as a block: the raw v1 spelling
+%   (`imageStack_parameters`) or the renamed one (`image_stack_parameters`, a
+%   v1 `image` or a body already renamed). A raw body holding both with
+%   different values was carried (blockTwins) before this is read.
+b = struct();
+for k = 1:numel(names)
+    if isfield(bodyStruct, names{k}) && isstruct(bodyStruct.(names{k}))
+        b = bodyStruct.(names{k});
+        return;
+    end
+end
+end
+
+function c = blockTwins(bodyStruct, pairs)
+%BLOCKTWINS Each {CAMEL, SNAKE} row of PAIRS whose two blocks are both present
+%   with different values: universalRenames kept SNAKE and discarded CAMEL.
+c = {};
+for k = 1:size(pairs, 1)
+    if isfield(bodyStruct, pairs{k, 1}) && isfield(bodyStruct, pairs{k, 2}) ...
+            && ~isequaln(bodyStruct.(pairs{k, 1}), bodyStruct.(pairs{k, 2}))
+        c{end+1} = pairs{k, 1}; %#ok<AGROW>
+    end
+end
 end
 
 function v = getField(bodyStruct, name)
