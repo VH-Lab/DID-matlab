@@ -1,4 +1,4 @@
-function [v1, spec] = syncrule_mapping(bodies)
+function [v1, spec] = syncrule_mapping(bodies, ctx)
 %SYNCRULE_MAPPING Rebuild a v1 `syncrule_mapping` from its fold.
 %
 %   [V1, SPEC] = did2.convert.roundtrip.syncrule_mapping(BODIES). V1 is the
@@ -36,18 +36,30 @@ function [v1, spec] = syncrule_mapping(bodies)
 %   one); `files` is not rebuilt (the fold takes only one that lists no file).
 %   Any other document in BODIES, or a missing one, is unplaced.
 %
+%   IN THE WHOLE BATCH. The documents the ends are read from are not ones the
+%   mapping became: epochMint mints the references, and the epoch, the
+%   systems and the manifest come from other sources. The whole-batch round
+%   trip ([whole-batch round trip], Jess Haley, 2026-10-27) passes CTX, the
+%   index of the final batch (private/batchContext); they are then read from
+%   it, and only BODIES' own documents must each have a role. By then the
+%   manifest may be the `ingestion_manifest` did2.convert.resolveEpochProbemap
+%   renamed it to; its probe map is read back from the batch
+%   (private/manifestProbemap).
+%
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.syncrule_mapping, did2.convert.epochMint.
 
 arguments
     bodies cell
+    ctx = []
 end
 
 spec = emptySpec();
 v1 = struct();
-used = false(1, numel(bodies));
+nOwn = numel(bodies);
+used = false(1, nOwn);
 ca = [];
-for k = 1:numel(bodies)
+for k = 1:nOwn
     if strcmp(classNameOf(bodies{k}), 'clock_alignment')
         if isempty(ca)
             ca = bodies{k};
@@ -60,6 +72,10 @@ if isempty(ca)
     return;
 end
 [base, ~] = rebuildBase(ca);
+if ~isempty(ctx)
+    bodies = [bodies, endDocs(ca, ctx)];
+    used = [used, false(1, numel(bodies) - nOwn)];
+end
 
 coeffs = getIn(ca, 'polynomial', 'value', 'coefficients');
 if isempty(coeffs)
@@ -72,13 +88,13 @@ blk.cost = cost;
 blk.mapping = reshape(double(coeffs), [], 1);   % jsondecode's column
 ends = {'input_id', 'epochnode_a'; 'output_id', 'epochnode_b'};
 for e = 1:size(ends, 1)
-    [node, used, why] = endpoint(bodies, used, firstId(ca, ends{e, 1}), base.session_id);
+    [node, used, why] = endpoint(bodies, used, firstId(ca, ends{e, 1}), base.session_id, ctx);
     if ~isempty(why)
         spec.unplaced{end+1} = sprintf('%s: %s', ends{e, 2}, why);
     end
     blk.(ends{e, 2}) = node;
 end
-for k = find(~used)
+for k = find(~used(1:nOwn))
     spec.unplaced{end+1} = sprintf('emitted document %d (%s) has no role in the mapping', ...
         k, classNameOf(bodies{k}));
 end
@@ -94,7 +110,7 @@ end
 
 % ===================== helpers =========================================
 
-function [node, used, why] = endpoint(bodies, used, refId, sessionId)
+function [node, used, why] = endpoint(bodies, used, refId, sessionId, ctx)
 %ENDPOINT One epochnode, read back from the reference REFID and the documents
 %   it is tied to; WHY says what could not be read ('' when all of it was).
 node = struct('epoch_id', '', 'epoch_session_id', '', 'epochprobemap', '', ...
@@ -155,19 +171,98 @@ if ~isempty(swIds)
     end
 end
 
-% the epoch's manifest, read by the system's file navigator
+% the epoch's manifest, read by the system's file navigator: the v1
+% epochfiles_ingested, or the ingestion_manifest the batch pass renamed it to
 navIds = edgeIds(sys, 'epoch_file_pattern_id');
 for k = 1:numel(bodies)
     b = bodies{k};
-    if ~strcmp(classNameOf(b), 'epochfiles_ingested') || isempty(navIds); continue; end
-    if strcmp(fieldText(getIn(b, 'epochfiles_ingested'), 'epoch_id'), node.epoch_id) ...
-            && strcmp(char(did2.schema.cache.sessionIdOf(b)), char(sessionId)) ...
-            && any(strcmp(edgeIds(b, 'filenavigator_id'), navIds{1}))
-        node.epochprobemap = fieldText(b.epochfiles_ingested, 'epochprobemap');
-        used(k) = true;
-        break;
+    if isempty(navIds); break; end
+    switch classNameOf(b)
+        case 'epochfiles_ingested'
+            if strcmp(fieldText(getIn(b, 'epochfiles_ingested'), 'epoch_id'), node.epoch_id) ...
+                    && strcmp(char(did2.schema.cache.sessionIdOf(b)), char(sessionId)) ...
+                    && any(strcmp(edgeIds(b, 'filenavigator_id'), navIds{1}))
+                node.epochprobemap = fieldText(b.epochfiles_ingested, 'epochprobemap');
+                used(k) = true;
+                break;
+            end
+        case 'ingestion_manifest'
+            if ~isempty(epoch) && any(strcmp(edgeIds(b, 'epoch_id'), char(epoch.base.id))) ...
+                    && any(strcmp(edgeIds(b, 'epoch_file_pattern_id'), navIds{1}))
+                [pm, bad] = manifestProbemap(b, ctx);
+                node.epochprobemap = pm;
+                if ~isempty(bad)
+                    why = strjoin(bad, '; ');
+                end
+                used(k) = true;
+                break;
+            end
     end
 end
+end
+
+function docs = endDocs(ca, ctx)
+%ENDDOCS From the batch: the two references the clock_alignment names, the
+%   epochs holding them, the acquisition systems they are on, those systems'
+%   software, and the manifests those systems' file patterns read.
+docs = {};
+seen = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+refIds = [edgeIds(ca, 'input_id'), edgeIds(ca, 'output_id')];
+for r = 1:numel(refIds)
+    ref = ctxDoc(ctx, refIds{r});
+    [docs, seen] = addDoc(docs, seen, ref);
+    epochIds = {};
+    epochStrings = {};
+    for k = ctxReferrers(ctx, refIds{r})
+        if isEntityOfType(ctx.docs{k}, 'epoch')
+            [docs, seen] = addDoc(docs, seen, ctx.docs{k});
+            epochIds{end+1} = char(ctx.docs{k}.base.id); %#ok<AGROW>
+            epochStrings{end+1} = fieldText(ctx.docs{k}.entity, 'local_identifier'); %#ok<AGROW>
+        end
+    end
+    % the renamed manifests name their epoch
+    for e = 1:numel(epochIds)
+        for k = ctxReferrers(ctx, epochIds{e})
+            if strcmp(classNameOf(ctx.docs{k}), 'ingestion_manifest')
+                [docs, seen] = addDoc(docs, seen, ctx.docs{k});
+            end
+        end
+    end
+    if isempty(ref); continue; end
+    sysIds = edgeIds(ref, 'referent_id');
+    for s = 1:numel(sysIds)
+        sys = ctxDoc(ctx, sysIds{s});
+        [docs, seen] = addDoc(docs, seen, sys);
+        if isempty(sys); continue; end
+        sw = edgeIds(sys, 'software_id');
+        for w = 1:numel(sw)
+            [docs, seen] = addDoc(docs, seen, ctxDoc(ctx, sw{w}));
+        end
+        % a manifest not renamed names its epoch by string only
+        navs = edgeIds(sys, 'epoch_file_pattern_id');
+        for n = 1:numel(navs)
+            for k = ctxReferrers(ctx, navs{n})
+                b = ctx.docs{k};
+                if strcmp(classNameOf(b), 'epochfiles_ingested') ...
+                        && any(strcmp(fieldText(getIn(b, 'epochfiles_ingested'), 'epoch_id'), epochStrings))
+                    [docs, seen] = addDoc(docs, seen, b);
+                end
+            end
+        end
+    end
+end
+end
+
+function [docs, seen] = addDoc(docs, seen, b)
+if isempty(b) || ~isfield(b, 'base') || ~isfield(b.base, 'id')
+    return;
+end
+id = char(b.base.id);
+if isKey(seen, id)
+    return;
+end
+seen(id) = true;
+docs{end+1} = b;
 end
 
 function [b, idx] = withId(bodies, id)
