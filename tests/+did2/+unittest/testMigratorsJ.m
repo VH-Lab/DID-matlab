@@ -4143,7 +4143,7 @@ out = foldPlaceable(testCase, @did2.convert.migrators_j.contrast_tuning, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'contrast_tuning_calculation', 'ct_1', 'sub_8');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.contrast');
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [2 5 9 12]);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
 verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'contrast');
@@ -4183,7 +4183,7 @@ verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));   % not deco
 verifyFalse(testCase, any(strcmp(names, 'observation+angle')));
 leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'odt_1', 'neuron_1');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.oridir');
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
@@ -4220,8 +4220,10 @@ body.base = struct('id', 'oc_1', 'session_id', 'sess_09', 'name', 'oc', ...
 body.app = struct('name', 'ndi.calc.vis.oridir', 'version', '1.2', ...
     'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
     'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
+% (a setting the name table holds: [parameter names map by table], Jess Haley,
+% 2026-10-27; a name outside it carries the document)
 body.oridirtuning_calc = struct('input_parameters', ...
-    struct('independent_variable', 'direction'));
+    struct('independent_label', 'direction'));
 body.orientation_direction_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s'), ...
     'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
@@ -4231,7 +4233,7 @@ out = foldPlaceable(testCase, @did2.convert.migrators_j.oridirtuning_calc, body)
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'oc_1', 'neuron_9');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_9');
-verifyEqual(testCase, paramTextJ(leaf, 'independent variable'), 'direction');
+verifyEqual(testCase, paramTextJ(leaf, 'independent label'), 'direction');
 sw = entityByNameJ(out, 'ndi.calc.vis.oridir');
 verifyEqual(testCase, sw.entity.local_identifier, 'ndi.calc.vis.oridir@1.2');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
@@ -4288,7 +4290,7 @@ body.app = struct('name', 'ndi.calc.vis.oridir', 'version', '1.2', ...
     'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
     'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.oridirtuning_calc = struct('input_parameters', ...
-    struct('independent_variable', 'direction'), ...
+    struct('independent_label', 'direction'), ...
     'depends_on', body.depends_on);
 body.orientation_direction_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s'), ...
@@ -4533,7 +4535,7 @@ names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', fa
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
 leaf = calcLeafJ(testCase, out, 'speed_tuning_calculation', 'sp_1', 'sub_s');
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.speed');
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [5 8 6]);
 % AMENDMENT 6, [tuning grid] (Jess Haley 2026-10-22): the 3 sampled points
 % are not a full grid of the 2 x 2 frequencies, so ONE dimension of 3, its term
@@ -5274,7 +5276,7 @@ verifyFalse(testCase, any(strcmp(names, 'observation+score')));
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
 leaf = calcLeafJ(testCase, out, 'spatial_frequency_tuning_calculation', 'sf_1', 'neuron_2');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_2');
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.spatial_frequency_tuning');
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
 mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
 verifyEqual(testCase, numel(mf), 1);
 verifyEqual(testCase, lower(char(mf(1).model.name)), 'dog');
@@ -5436,19 +5438,34 @@ function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
 % curve -> input_id; the TF axis -> data.keys; the five co-existing fits ->
 % tuning_curve_calculation.model_fit with {model, coefficients list, goodness,
 % metrics, sampled_fit}; `fitless` -> the leaf's interpolated_values.
-out = foldPlaceable(testCase, @did2.convert.migrators_j.temporal_frequency_tuning, temporalFrequencyTuningBody());
+% UPDATED 2026-10-27 ([absolute-value fits are a second calculation], Jess
+% Haley): the `abs` block no longer carries the document; it is a second
+% calculation of the same class, whose method says the response was made
+% absolute.
+out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 8);
+verifyEqual(testCase, numel(out), 9);
+absCalcs = {};
+for k = 1:numel(out)
+    b = out{k};
+    if isfield(b, 'temporal_frequency_tuning_calculation') && ~strcmp(char(b.base.id), 'tft_1')
+        absCalcs{end+1} = b; %#ok<AGROW>
+    end
+end
+assertEqual(testCase, numel(absCalcs), 1, 'one absolute-value calculation');
+verifyEqual(testCase, paramTextJ(absCalcs{1}, 'response transform'), 'absolute value');
+verifyEqual(testCase, numel(absCalcs{1}.tuning_curve.value.model_fit), 1, 'the abridged abs block: fit_dog');
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
 leaf = calcLeafJ(testCase, out, 'temporal_frequency_tuning_calculation', 'tft_1', 'tf_elem_3');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_tf_9');
 verifyEqual(testCase, depValue(leaf, 'session_id'), 'sess_09');
 superNames = {leaf.document_class.superclasses.class_name};
 verifyTrue(testCase, any(strcmp(superNames, 'tuning_curve_calculation')));
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), ...
-    'ndi.calc.vis.temporal_frequency_tuning');
-verifyEqual(testCase, nParamsJ(leaf), 0, ...
-    'a bare temporal_frequency_tuning document carries no input_parameters to carry');
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
+verifyEqual(testCase, nParamsJ(leaf), 1, ...
+    'a bare temporal_frequency_tuning document carries no input_parameters: the one parameter is the function');
+verifyEqual(testCase, paramTextJ(leaf, 'function'), ...
+    '["dog","movshon","movshon c","spline","gausslog"]');
 
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [1 2 4 8]);
 verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'temporal frequency');

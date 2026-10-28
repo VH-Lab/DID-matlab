@@ -19,23 +19,82 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %                                    them: stimulus_presentation_id,
 %                                    stimulus_response_scalar_id,
 %                                    contrasttuning_id_1..N
-%   Only the order of the inputs is kept in V2, not their v1 names: a document
-%   whose edges were not the writer's set is named wrongly here, and the round
-%   trip reports it.
+%   Only the order of the inputs is kept in V2, not their v1 names. Decided
+%   by Jess Haley, 2026-10-27 [input names rebuild from the input class]
+%   (did-schema V_eta_go_forward_class_audit.md): each single-input name is
+%   rebuilt from the class of the document the input points at
+%   (did2.convert.inputEdgeNames, from the batch index), the writer's name
+%   when that document is not in the batch. The migrator carries a document
+%   whose names do not rebuild ([carry-100] malformed).
+%
+%   THE OTHER 2026-10-27 DECISIONS read back here (Jess Haley):
+%     [tuning fits use curve fitting now]   calcParts 'Tuning': the method's
+%                 own parameters ('function', 'response transform') are not
+%                 v1 settings; the rest are named back by the table
+%                 ([parameter names map by table]);
+%     [absolute-value fits are a second calculation]  the second calculation
+%                 (calcParts' ABSLEAF) is the SF / TF `abs` block, rebuilt by
+%                 tuningBlock;
+%     [tuning log in notes]   tuningcurve_calc.log is the statement's notes;
+%     [varied properties are conditions by V2 name]   tuningcurve_calc's
+%                 stim_property_list is the conditions, named back by the
+%                 table;
+%     [tuning stimids rebuild]   rawCurveBlock rebuilds stimid and
+%                 stimulus_presentation_number (did2.convert.tuningStimids).
 
-[v1, leaf, ins, spec] = calcParts(bodies, leafClass, v1Class, methodName);
+[v1, leaf, ins, spec, absLeaf] = calcParts(bodies, leafClass, v1Class, methodName, ...
+    'Tuning', true, 'Table', ~strcmp(family, 'csf'));
 if isempty(leaf)
     return;
 end
 switch family
     case 'stimulus'
-        [blk, bad] = rawCurveBlock(leaf);
+        own = struct();
+        if isfield(v1, v1Class); own = v1.(v1Class); end
+        responseId = '';
+        if ~isempty(ins); responseId = ins{1}; end
+        [blk, bad] = rawCurveBlock(leaf, own, responseId);
     case 'csf'
         [blk, bad] = csfBlock(leaf);
     otherwise
         [blk, bad] = tuningBlock(leaf, family);
 end
 spec.unplaced = [spec.unplaced, bad];
+if ~isempty(absLeaf)
+    if any(strcmp(family, {'sf', 'tf'}))
+        [ab, bad] = tuningBlock(absLeaf, family);
+        spec.unplaced = [spec.unplaced, cellfun(@(x) ['abs: ' x], bad, ...
+            'UniformOutput', false)];
+        blk.abs = ab;
+    else
+        spec.unplaced{end+1} = sprintf('an absolute-value calculation has no place in a %s', v1Class);
+    end
+end
+if strcmp(family, 'oridir')
+    % [hotelling spellings are one field] (Jess Haley, 2026-10-27): the
+    % template's `hotelling2test` and the writer's `Hotelling2Test` are one
+    % field; the round trip writes back the spelling v1 used
+    spec.spellings = struct('paths', {{[resultBlock '.vector.Hotelling2Test'], ...
+        [resultBlock '.vector.hotelling2test']}}, ...
+        'why', '[hotelling spellings are one field] (Jess Haley, 2026-10-27)');
+end
+if strcmp(family, 'stimulus')
+    % [tuning log in notes], [varied properties are conditions by V2 name]
+    % (Jess Haley, 2026-10-27): the calculator's own block
+    [extraOwn, bad] = curveOwnBlock(leaf);
+    spec.unplaced = [spec.unplaced, bad];
+    if ~isempty(fieldnames(extraOwn)) && ~strcmp(v1Class, resultBlock)
+        own = struct();
+        if isfield(v1, v1Class); own = v1.(v1Class); end
+        fns = fieldnames(extraOwn);
+        for k = 1:numel(fns)
+            own.(fns{k}) = extraOwn.(fns{k});
+        end
+        v1.(v1Class) = own;
+    elseif ~isempty(fieldnames(extraOwn))
+        spec.unplaced{end+1} = sprintf('notes or conditions have no place in a %s', v1Class);
+    end
+end
 if isfield(v1, resultBlock)
     own = v1.(resultBlock);
     fns = fieldnames(blk);
@@ -64,12 +123,14 @@ if strcmp(inputs, 'csf')
         spec.unplaced{end+1} = 'one input_id: the response and the presentation are both written';
     end
 else
-    if ~isempty(ins)
-        names{end+1} = inputs;
-        values{end+1} = ins{1};
-    end
-    for k = 2:numel(ins)
-        spec.unplaced{end+1} = sprintf('input_id %s has no v1 edge name', ins{k});
+    rebuiltNames = did2.convert.inputEdgeNames(ins, {inputs});
+    for k = 1:numel(ins)
+        if isempty(rebuiltNames{k})
+            spec.unplaced{end+1} = sprintf('input_id %s has no v1 edge name', ins{k}); %#ok<AGROW>
+            continue;
+        end
+        names{end+1} = rebuiltNames{k}; %#ok<AGROW>
+        values{end+1} = ins{k}; %#ok<AGROW>
     end
 end
 v1.depends_on = struct('name', names, 'value', values);
@@ -85,4 +146,36 @@ for k = 1:numel(names)
     spec.equivalents(end+1) = struct('path', sprintf('%s.depends_on(%d).value', v1Class, k), ...
         'values', {values}, 'why', why);
 end
+end
+
+function [own, bad] = curveOwnBlock(leaf)
+%CURVEOWNBLOCK tuningcurve_calc's `log` (the statement's notes) and
+%   `stim_property_list` (its conditions, named back through
+%   did2.convert.tuningNames), as the writer stores them and jsondecode reads
+%   them: names a cell column, values a column (one name: a 1 x 1 cell and a
+%   scalar).
+own = struct();
+bad = {};
+notes = getIn(leaf, 'statement', 'notes');
+if (ischar(notes) || isstring(notes)) && ~isempty(char(notes))
+    own.log = char(notes);
+end
+conds = asCell(getIn(leaf, 'statement', 'conditions'));
+if isempty(conds)
+    return;
+end
+names = cell(numel(conds), 1);
+values = zeros(numel(conds), 1);
+for k = 1:numel(conds)
+    [~, v2] = termParts(getIn(conds{k}, 'variable'));
+    [v1Name, found] = did2.convert.tuningNames('v1', v2);
+    q = numberOf(getIn(conds{k}, 'quantity', 'value'));
+    if ~found || isempty(q)
+        bad{end+1} = sprintf('condition "%s" is not a tuning property', v2); %#ok<AGROW>
+        continue;
+    end
+    names{k} = v1Name;
+    values(k) = q;
+end
+own.stim_property_list = struct('names', {names}, 'values', values);
 end

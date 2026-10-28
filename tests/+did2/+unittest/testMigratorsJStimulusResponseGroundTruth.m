@@ -100,14 +100,14 @@ end
 % ===================== fixtures (from the WRITER) ==========================
 
 function v1 = responseFixture(responseType)
-%RESPONSEFIXTURE writerResponseFixture with its `stimulus_control_id` edge and
-%   its `stimulus_response.stimulator_epochid` PRESENT BUT EMPTY (the template
-%   blank): a response the fold places whole. Since [generic stage is lossless]
-%   / [partly placed is carried as v1] (Jess Haley, 2026-10-25) a response that
-%   states either -- the writer always sets both -- is carried whole as v1 (the
-%   calculation has no place for them); the tests of the fold drive this one.
+%RESPONSEFIXTURE writerResponseFixture with its `stimulus_control_id` edge
+%   PRESENT BUT EMPTY (the template blank), and its `stimulator_epochid` set to
+%   its `element_epochid` (t00017): the case that is rebuilt and so not carried
+%   (Decided by Jess Haley, 2026-10-27 [response links: epoch rebuilt, control
+%   as input]). writerResponseFixture keeps the two strings DIFFERENT, which is
+%   carried (carry-050): testStimulatorEpochidCarriesTheDocumentAsV1.
 v1 = writerResponseFixture(responseType);
-v1.stimulus_response.stimulator_epochid = '';
+v1.stimulus_response.stimulator_epochid = v1.stimulus_response.element_epochid;
 v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_control_id')).value = '';
 end
 
@@ -191,6 +191,9 @@ function testStimulatorEpochidCarriesTheDocumentAsV1(testCase)
 % which it was recoverable. Since [generic stage is lossless] / [partly placed
 % is carried as v1] (Jess Haley, 2026-10-25) a response that states it is not
 % folded at all, even stamped: it is carried whole as v1, the string on it.
+% Since [response links: epoch rebuilt, control as input] (2026-10-27) only a
+% stimulator epoch that DIFFERS from the element's is carried (this fixture's
+% t00003 vs t00017); an equal one is rebuilt from the element's.
 out = runJ(withEpochEdge(writerResponseFixture('F1')));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
