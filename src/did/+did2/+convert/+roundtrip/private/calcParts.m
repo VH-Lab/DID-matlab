@@ -42,6 +42,10 @@ function [v1, leaf, inputs, spec, absLeaf] = calcParts(bodies, leafClass, v1Clas
 %     - [tuning fits use curve fitting now]: the method parameters
 %       'function' and 'response transform' are the V2 method's own (the
 %       fits' models; the transform), not v1 settings, and are not rebuilt;
+%     - [tuning best value is a condition] (2026-10-28): a parameter
+%       '<V2 stimulus variable> selection' = 'best' is the rule of a
+%       tuningcurve_calc `best` selection, whose v1 form stays in the
+%       `selection` setting: not rebuilt here (tuningInverse reads it);
 %     - [parameter names map by table]: the other parameters are named back
 %       through did2.convert.tuningNames (methodParameters(..., true)).
 
@@ -184,12 +188,25 @@ end
 
 function out = withoutFitParameters(entries)
 %WITHOUTFITPARAMETERS The method parameters less the V2 method's own
-%   ('function', 'response transform').
+%   ('function', 'response transform', and a best selection's rule '<V2
+%   stimulus variable> selection' = 'best').
 c = asCell(entries);
 keep = true(1, numel(c));
 for k = 1:numel(c)
     [~, name] = termParts(getIn(c{k}, 'variable'));
-    keep(k) = ~any(strcmp(name, {'function', 'response transform'}));
+    keep(k) = ~any(strcmp(name, {'function', 'response transform'})) ...
+        && ~isBestRule(c{k}, name);
 end
 out = c(keep);
+end
+
+function tf = isBestRule(entry, name)
+%ISBESTRULE A '<V2 stimulus variable> selection' = 'best' parameter ([tuning
+%   best value is a condition], Jess Haley, 2026-10-28).
+tf = false;
+t = regexp(name, '^(.+) selection$', 'tokens', 'once');
+if isempty(t) || ~strcmp(char(getIn(entry, 'text')), 'best')
+    return;
+end
+[~, tf] = did2.convert.tuningNames('v1', t{1});
 end
