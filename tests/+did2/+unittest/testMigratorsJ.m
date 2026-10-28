@@ -5572,10 +5572,11 @@ verifyEqual(testCase, depValue(leaf, 'session_id'), 'sess_09');
 superNames = {leaf.document_class.superclasses.class_name};
 verifyTrue(testCase, any(strcmp(superNames, 'tuning_curve_calculation')));
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
-verifyEqual(testCase, nParamsJ(leaf), 1, ...
-    'a bare temporal_frequency_tuning document carries no input_parameters: the one parameter is the function');
-verifyEqual(testCase, paramTextJ(leaf, 'function'), ...
-    '["dog","movshon","movshon c","spline","gausslog"]');
+% [one calculation per named calculator output] (Jess Haley, 2026-10-28): the
+% method holds no `function` list; the five fits name their own models
+verifyEqual(testCase, nParamsJ(leaf), 0, ...
+    'a bare temporal_frequency_tuning document carries no input_parameters, and its five models write no function list');
+verifyEqual(testCase, paramTextJ(leaf, 'function'), '');
 
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [1 2 4 8]);
 verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'temporal frequency');

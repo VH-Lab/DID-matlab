@@ -39,6 +39,11 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %     [varied properties are conditions by V2 name]   tuningcurve_calc's
 %                 stim_property_list is the conditions, named back by the
 %                 table;
+%     [tuning best value is a condition] (2026-10-28)   the conditions of
+%                 the variables a '<V2 name> selection' = 'best' parameter
+%                 names are not stim_property_list: the log (the notes) and
+%                 the v1 `selection` setting already hold them; each must be
+%                 the value the log states (did2.convert.tuningBestValues);
 %     [tuning stimids rebuild]   rawCurveBlock rebuilds stimid and
 %                 stimulus_presentation_number (did2.convert.tuningStimids).
 
@@ -81,7 +86,9 @@ end
 if strcmp(family, 'stimulus')
     % [tuning log in notes], [varied properties are conditions by V2 name]
     % (Jess Haley, 2026-10-27): the calculator's own block
-    [extraOwn, bad] = curveOwnBlock(leaf);
+    ownV1 = struct();
+    if isfield(v1, v1Class); ownV1 = v1.(v1Class); end
+    [extraOwn, bad] = curveOwnBlock(leaf, ownV1);
     spec.unplaced = [spec.unplaced, bad];
     if ~isempty(fieldnames(extraOwn)) && ~strcmp(v1Class, resultBlock)
         own = struct();
@@ -148,24 +155,29 @@ for k = 1:numel(names)
 end
 end
 
-function [own, bad] = curveOwnBlock(leaf)
+function [own, bad] = curveOwnBlock(leaf, ownV1)
 %CURVEOWNBLOCK tuningcurve_calc's `log` (the statement's notes) and
 %   `stim_property_list` (its conditions, named back through
 %   did2.convert.tuningNames), as the writer stores them and jsondecode reads
 %   them: names a cell column, values a column (one name: a 1 x 1 cell and a
-%   scalar).
+%   scalar). OWNV1 is the calculator block calcParts rebuilt (its
+%   input_parameters).
+%   The conditions of a `best` selection ([tuning best value is a condition],
+%   Jess Haley, 2026-10-28: the variables a '<V2 name> selection' = 'best'
+%   method parameter names) are not in stim_property_list: each must be the
+%   value the log states for that selection (did2.convert.tuningBestValues),
+%   and is otherwise listed in BAD.
 own = struct();
 bad = {};
 notes = getIn(leaf, 'statement', 'notes');
 if (ischar(notes) || isstring(notes)) && ~isempty(char(notes))
     own.log = char(notes);
 end
+best = bestRuleVariables(leaf);
+bestSeen = nan(1, numel(best));
 conds = asCell(getIn(leaf, 'statement', 'conditions'));
-if isempty(conds)
-    return;
-end
-names = cell(numel(conds), 1);
-values = zeros(numel(conds), 1);
+names = {};
+values = [];
 for k = 1:numel(conds)
     [~, v2] = termParts(getIn(conds{k}, 'variable'));
     [v1Name, found] = did2.convert.tuningNames('v1', v2);
@@ -174,8 +186,62 @@ for k = 1:numel(conds)
         bad{end+1} = sprintf('condition "%s" is not a tuning property', v2); %#ok<AGROW>
         continue;
     end
-    names{k} = v1Name;
-    values(k) = q;
+    ix = find(strcmpi(v2, best), 1);
+    if ~isempty(ix)
+        if ~isnan(bestSeen(ix))
+            bad{end+1} = sprintf('two conditions of the best-selected "%s"', v2); %#ok<AGROW>
+        end
+        bestSeen(ix) = q;
+        continue;
+    end
+    names{end+1, 1} = v1Name; %#ok<AGROW>
+    values(end+1, 1) = q; %#ok<AGROW>
 end
-own.stim_property_list = struct('names', {names}, 'values', values);
+if ~isempty(names)
+    own.stim_property_list = struct('names', {names}, 'values', values);
+end
+if isempty(best)
+    return;
+end
+logText = '';
+if isfield(own, 'log'); logText = own.log; end
+[props, stated, why] = did2.convert.tuningBestValues(getIn(ownV1, 'input_parameters'), logText);
+if ~isempty(why)
+    bad{end+1} = sprintf('best selection: %s', why);
+    return;
+end
+for k = 1:numel(best)
+    v1Name = did2.convert.tuningNames('v1', best{k});
+    ix = find(strcmp(props, v1Name), 1);
+    if isnan(bestSeen(k))
+        bad{end+1} = sprintf('"%s selection" = best has no condition', best{k}); %#ok<AGROW>
+    elseif isempty(ix)
+        bad{end+1} = sprintf('"%s selection" = best is not a best selection of the settings', best{k}); %#ok<AGROW>
+    elseif stated(ix) ~= bestSeen(k)
+        bad{end+1} = sprintf('condition %s = %.17g is not the %.17g the log states', ...
+            best{k}, bestSeen(k), stated(ix)); %#ok<AGROW>
+    end
+end
+if numel(props) ~= numel(best)
+    bad{end+1} = sprintf('%d best selections in the settings, %d rules in the method', ...
+        numel(props), numel(best));
+end
+end
+
+function best = bestRuleVariables(leaf)
+%BESTRULEVARIABLES The V2 variables a '<name> selection' = 'best' method
+%   parameter names ([tuning best value is a condition]).
+best = {};
+entries = asCell(getIn(leaf, 'interaction', 'method', 'parameters'));
+for k = 1:numel(entries)
+    [~, name] = termParts(getIn(entries{k}, 'variable'));
+    t = regexp(name, '^(.+) selection$', 'tokens', 'once');
+    if isempty(t) || ~strcmp(char(getIn(entries{k}, 'text')), 'best')
+        continue;
+    end
+    [~, found] = did2.convert.tuningNames('v1', t{1});
+    if found
+        best{end+1} = t{1}; %#ok<AGROW>
+    end
+end
 end
