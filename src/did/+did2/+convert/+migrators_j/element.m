@@ -19,6 +19,10 @@ function v2Body = element(preBody)
 %                         so it is not lost -- reshaping it into a typed kind is a
 %                         needs-NDI companion, the same disposition as the
 %                         config-class `ndi_*_class` fields).
+%     - term_assertion    a device's kind, variable NCIT:C178920 "Equipment
+%                         Type" (the binding registry's subject-defining
+%                         variable for a device's finer kind), for a probe type
+%                         whose device kind is decided (deviceKind, below).
 %     - <modality>_observation + sampled_body + session anchor
 %                         NO LONGER EMITTED HERE, SINCE 2026-10-21 (Jess Haley,
 %                         V_eta_recording_observation_plan.md: one observation
@@ -99,9 +103,14 @@ function v2Body = element(preBody)
 %                                 carried (carry-048 / carry-055)
 %     element.type, element.ndi_element_class -> the entity type
 %                                 (elementEntityType) and one term assertion
-%                                 each
-%     element.direct           -> which lineage relation is written
-%     depends_on subject_id, underlying_element_id -> the lineage relation
+%                                 each; a decided device kind adds one
+%                                 Equipment Type assertion (deviceKind)
+%     element.direct           -> which lineage relation is written; for a
+%                                 sorted unit on its probe, not written:
+%                                 rebuilt as 0 (unitFollowsItsProbe)
+%     depends_on subject_id, underlying_element_id -> the lineage relation; a
+%                                 sorted unit's subject_id is not written:
+%                                 rebuilt from its probe's (unitFollowsItsProbe)
 %     depends_on jrclust_clusters_id -> a prov:wasDerivedFrom relation
 %
 %   THE ENTITY TYPE (elementEntityType): Decided by Jess Haley, 2026-10-26,
@@ -114,7 +123,13 @@ function v2Body = element(preBody)
 %                                       on an ndi.probe.* class -> device; with
 %       [electrode spellings and imaging types are devices]  `electrode-<spec>`
 %                                       and `<prefix>_electrode-<spec>` too,
-%                                       and the four imaging types
+%                                       and the imaging types; narrowed by
+%       [imaging probes are microscopes or carried] (2026-10-27)
+%                                       `wide-field-imaging` and
+%                                       `brightfield-imaging` are carried
+%                                       (carry-121, needs_mapping): the v1
+%                                       document alone does not say microscope
+%                                       or camera
 %       [event lines and environment probes are devices]  `event`,
 %                                       `lick-spout`, `reward-well`,
 %                                       `intraoral-cannula`
@@ -122,10 +137,48 @@ function v2Body = element(preBody)
 %                                       sorting run's label (the batch's
 %                                       neuron_extracellular `quality_label`,
 %                                       did2.convert.unitQualityLabels):
-%                                       single -> cell, multi -> group
+%                                       single -> cell, multi -> Group
 %     [unlabelled units need a map]     a sorted unit with no label is carried
 %                                       (carry-062)
-%     `ensemble` -> group
+%     `ensemble` -> Group
+%     [migrator writes the registry spelling] (2026-10-26) the type is written
+%                                       as the registry names it: `Group`
+%                                       (NCIT:C43359), not `group`
+%
+%   THE DEVICE KIND (deviceKind): Decided by Jess Haley, 2026-10-27,
+%   did-schema V_eta_go_forward_class_audit.md --
+%     [element type is a device kind term]  each device gets a device-kind
+%                                       term, one per instrument; a type with
+%                                       no decided term keeps today's
+%                                       assertion only ((iii): patch*, sharp*,
+%                                       stimulator, lick-spout, reward-well,
+%                                       event, the electrode spellings)
+%     [n-trode is a multielectrode array]   n-trode -> wikidata:Q1952355
+%     [five probe kinds from NCIT]      accelerometer NCIT:C88166, thermometer
+%                                       NCIT:C50059, ppg NCIT:C224112,
+%                                       optogenetic-fiber NCIT:C50358,
+%                                       intraoral-cannula NCIT:C50343
+%     [ecg and eeg are recorders]       ecg OBI:0003806, eeg wikidata:Q4531135
+%     [imaging probes are microscopes or carried]  one-photon-imaging and
+%                                       two-photon-imaging OBI:0400169
+%   NOT YET BUILT HERE (DID-matlab PR body lists why): the decisions also
+%   REPLACE the "element type" assertion with the device kind, and drop the
+%   "ndi element class" assertion ([ndi element class not kept]). Both are
+%   still written: NDI-matlab's V2 object layer reads them
+%   (ndi.vintage.elementLabel / elementFields / objectClass / isEtaElement,
+%   ndi.session, +migrate/+internal/pathSPromotion), so its readers change
+%   first (did-schema CLAUDE.md, "Changes the siblings must follow land in
+%   the siblings first"). The n-trode electrode count ([number of electrodes
+%   minted]) is not on the v1 element; it is not written here.
+%
+%   A SORTED UNIT ON ITS PROBE (unitFollowsItsProbe): Decided by Jess Haley,
+%   2026-10-27, [unit direct and subject rebuild from the probe]: a unit with
+%   an underlying element is written without `direct` and `subject_id`; the
+%   round trip rebuilds `direct` as 0 and `subject_id` as the underlying
+%   element's subject (did2.convert.elementSubjects, the batch's v1
+%   elements). A unit whose `direct` is not 0, or whose subject_id is not its
+%   probe's, is carried whole as v1, malformed (carry-120: a value no NDI
+%   writer produces; ndi.element copies the underlying element's subject).
 
 arguments
     preBody (1,1) struct
@@ -177,10 +230,27 @@ end
 [entityType, why] = elementEntityType(type, ndiClass, elementId);
 if isempty(entityType)
     % carry-register: carry-062 (an unlabelled sorted unit); carry-063 (a type
-    % with no entity type)
+    % with no entity type); carry-121 (a wide-field or brightfield imaging
+    % probe: microscope or camera)
     did2.convert.reportNote('carried_as_v1', 'element', elementId, why);
     v2Body = {preBody};
     return;
+end
+if isSortedUnit(type) && ~isempty(underlyingId)
+    [why, unchecked] = unitFollowsItsProbe(getField(block, 'direct'), specimenId, underlyingId);
+    if ~isempty(why)
+        % carry-register: carry-120 (a value no NDI writer produces)
+        did2.convert.reportNote('carried_as_v1', 'element', elementId, why);
+        v2Body = {preBody};
+        return;
+    end
+    if ~isempty(unchecked)
+        % the probe is not in the batch: converted as before this decision
+        % (its subject_id and direct not written), and counted. Whether such
+        % a unit should be carried instead has no decision or register row;
+        % it is reported to the team, not guessed (PR body).
+        did2.convert.reportNote('unit_probe_not_in_batch', 'element', elementId, unchecked);
+    end
 end
 
 % --- the element as an entity (id preserved) -------------------------------
@@ -198,6 +268,11 @@ if ~isempty(type)
 end
 if ~isempty(ndiClass)
     bodies{end+1} = kindAssertion(preBody, elementId, 'ndi element class', ndiClass);
+end
+[kindTerm, kindVariable] = did2.convert.elementDeviceKind(type);
+if strcmp(entityType, 'device') && ~isempty(kindTerm)
+    bodies{end+1} = jStatement(preBody, 'assertion', elementId, ...
+        kindVariable, kindTerm, 'ValueKind', 'term');
 end
 
 % --- the recording as a typed observation (#30, and #117 for spike trains) ---
@@ -324,7 +399,14 @@ probeTypes = {'n-trode', 'electrode-$', 'patch', 'patch-Vm', 'patch-I', ...
     'stimulator', 'ecg', 'eeg', 'accelerometer', 'thermometer', 'ppg', 'event'};
 isElectrodeSpelling = ~isempty(regexp(ty, '^([A-Za-z0-9]+_)?electrode-\S+$', 'once'));
 if any(strcmp(ty, probeTypes)) || isElectrodeSpelling
-    if isProbeClass
+    if isProbeClass && any(strcmp(ty, {'wide-field-imaging', 'brightfield-imaging'}))
+        % [imaging probes are microscopes or carried] (Decided by Jess Haley,
+        % 2026-10-27): the v1 document alone does not say whether the device
+        % was a microscope (OBI:0400169) or a camera (OBI:0001048); each
+        % dataset's map decides ([one correct reading])
+        why = sprintf(['[carry-121] needs_mapping: element type "%s": microscope or ' ...
+            'digital camera, which the v1 document does not say'], ty);
+    elseif isProbeClass
         t = 'device';
     else
         why = sprintf(['[carry-063] needs_mapping: element type "%s" is a probe type ' ...
@@ -346,7 +428,7 @@ switch ty
             case {'single', 'good'}
                 t = 'cell';
             case {'multi', 'mua'}
-                t = 'group';
+                t = 'Group';
             case 'noise'
                 why = sprintf(['[carry-062] needs_mapping: sorted unit (type "%s") ' ...
                     'labelled "noise" by its sorting run: not a unit ([sorter labels map])'], ty);
@@ -358,10 +440,48 @@ switch ty
                     'with no single/multi label from its sorting run (label: %s)'], ty, label);
         end
     case 'ensemble'
-        t = 'group';
+        t = 'Group';
     otherwise
         why = sprintf(['[carry-063] needs_mapping: element type "%s" (class "%s") ' ...
             'is not on the element type list'], ty, char(ndiClass));
+end
+end
+
+function tf = isSortedUnit(elementType)
+tf = any(strcmp(strtrim(char(elementType)), {'spikes', 'neuron', 'cell'}));
+end
+
+function [why, unchecked] = unitFollowsItsProbe(direct, subjectId, underlyingId)
+%UNITFOLLOWSITSPROBE '' when a sorted unit's `direct` and `subject_id` are
+%   what the round trip rebuilds from its probe ([unit direct and subject
+%   rebuild from the probe]), else the carry note. UNCHECKED is a note when
+%   the probe is not a v1 element of the batch, so the subject cannot be
+%   compared.
+why = '';
+unchecked = '';
+if ~(isempty(direct) || ((islogical(direct) || isnumeric(direct)) && isscalar(direct) ...
+        && direct == 0))
+    why = sprintf(['[carry-120] malformed: sorted unit on underlying element %s ' ...
+        'states direct %s; NDI writes 0 for an element built on another'], ...
+        underlyingId, directText(direct));
+    return;
+end
+[probeSubject, found] = did2.convert.elementSubjects('get', underlyingId);
+if ~found
+    unchecked = sprintf(['underlying element %s is not a v1 element of the batch: ' ...
+        'subject_id "%s" not checked against the probe''s'], underlyingId, subjectId);
+elseif ~strcmp(probeSubject, subjectId)
+    why = sprintf(['[carry-120] malformed: sorted unit''s subject_id "%s" is not ' ...
+        'its underlying element %s''s subject "%s"; ndi.element copies the ' ...
+        'underlying element''s subject'], subjectId, underlyingId, probeSubject);
+end
+end
+
+function s = directText(v)
+try
+    s = jsonencode(v);
+catch
+    s = sprintf('<%s>', class(v));
 end
 end
 

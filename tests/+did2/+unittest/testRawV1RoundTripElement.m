@@ -14,8 +14,20 @@ function tests = testRawV1RoundTripElement
 %                                       a device only on an ndi.probe.* class;
 %                                       anything else carried (carry-063)
 %     [sorted units are cells or groups], [unlabelled units need a map]
-%                                       single -> cell, multi -> group, no label
+%                                       single -> cell, multi -> Group, no label
 %                                       carried (carry-062)
+%     [migrator writes the registry spelling]  entity type `Group`, as the
+%                                       registry names it
+%     [element type is a device kind term], [n-trode is a multielectrode
+%     array], [five probe kinds from NCIT], [ecg and eeg are recorders],
+%     [imaging probes are microscopes or carried]
+%                                       a device kind as an Equipment Type
+%                                       assertion; wide-field / brightfield
+%                                       imaging carried (carry-121)
+%     [unit direct and subject rebuild from the probe]
+%                                       a unit on its probe writes neither;
+%                                       rebuilt from the probe, or carried
+%                                       (carry-120) when they differ
 %
 %   THE v1 DOCUMENTS are built from NDI's element.json template at the locked
 %   NDI-matlab `main` (3cb19a8; tests/+did2/fixtures/ndi_templates) as
@@ -35,13 +47,14 @@ end
 % ===================== the known findings ===============================
 
 function f = knownFindings()
+% [unit direct and subject rebuild from the probe] (Jess Haley, 2026-10-27):
+% a unit whose probe is in the batch rebuilds both, so it has no finding. A
+% unit whose probe is NOT in the batch is converted as before (no decision
+% says otherwise; reported in the PR): its `direct` is still checked (0) and
+% rebuilt, but its subject_id cannot be read from a probe the batch lacks.
 f = { ...
-    'single unit', 'element.direct', ['an element with an underlying element ' ...
-        'writes only derived_from that element; `direct` is kept nowhere'];
-    'single unit', 'depends_on(2).value', ['its subject_id (ndi.element copies ' ...
-        'the underlying element''s subject) is kept nowhere in its own V2 documents'];
-    'multi unit', 'element.direct', 'as for the single unit';
-    'multi unit', 'depends_on(2).value', 'as for the single unit'};
+    'unit, probe not in the batch', 'depends_on(2).value', ['its subject_id is ' ...
+        'its probe''s, and the probe is not in the batch to read it from']};
 end
 
 function paths = findingsFor(fixture)
@@ -52,7 +65,8 @@ end
 % ===================== converted writer shapes ==========================
 
 function testConvertedElementsRoundTrip(testCase)
-units = {neuronDoc('ne_1', 'el_unit_s', 'single'), neuronDoc('ne_2', 'el_unit_m', 'multi')};
+units = {neuronDoc('ne_1', 'el_unit_s', 'single'), neuronDoc('ne_2', 'el_unit_m', 'multi'), ...
+    neuronDoc('ne_5', 'el_unit_x', 'single'), unitProbe()};
 cases = { ...
     'n-trode probe', probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'stimulator probe', probeDoc('el_stim', 'vhvis_spike2', 1, 'stimulator', 'ndi.probe.timeseries.stimulator'), 'device'; ...
@@ -60,7 +74,12 @@ cases = { ...
     'spelled electrode probe', probeDoc('el_e4', 'tet', 1, 'extracellular_electrode-4', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'event line probe', probeDoc('el_ev', 'vhtaste_sync', 1, 'event', 'ndi.probe.timeseries.stimulator'), 'device'; ...
     'single unit', unitDoc('el_unit_s', 'leftcortex_17', 1), 'cell'; ...
-    'multi unit', unitDoc('el_unit_m', 'leftcortex_18', 1), 'group'};
+    'multi unit', unitDoc('el_unit_m', 'leftcortex_18', 1), 'group'; ...
+    'unit, probe not in the batch', unitDoc('el_unit_x', 'leftcortex_22', 1, 'el_absent'), 'cell'; ...
+    'accelerometer probe', probeDoc('el_acc', 'acc', 1, 'accelerometer', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
+    'ecg probe', probeDoc('el_ecg', 'ecg', 1, 'ecg', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
+    'eeg probe', probeDoc('el_eeg', 'eeg', 1, 'eeg', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
+    'two-photon probe', probeDoc('el_2p', 'tp', 1, 'two-photon-imaging', 'ndi.probe.image'), 'device'};
 for k = 1:size(cases, 1)
     [label, v1, entityType] = cases{k, :};
     out = runRaw([{v1}, units]);
@@ -119,6 +138,80 @@ end
 verifyEmpty(testCase, outV.quarantine, reasons);
 end
 
+function testADecidedDeviceKindIsAnEquipmentTypeAssertion(testCase)
+% [element type is a device kind term] and the decisions naming each kind
+% (Jess Haley, 2026-10-27): one Equipment Type (NCIT:C178920) assertion with
+% the decided term; a type with no registered kind writes none ((iii): it
+% keeps today's assertion only). The `element type` and `ndi element class`
+% assertions are still written (NDI-matlab reads them; PR body).
+cases = { ...
+    'n-trode', 'ndi.probe.timeseries.mfdaq', 'wikidata:Q1952355'; ...
+    'accelerometer', 'ndi.probe.timeseries.mfdaq', 'NCIT:C88166'; ...
+    'thermometer', 'ndi.probe.timeseries.mfdaq', 'NCIT:C50059'; ...
+    'ppg', 'ndi.probe.timeseries.mfdaq', 'NCIT:C224112'; ...
+    'optogenetic-fiber', 'ndi.probe.timeseries.stimulator', 'NCIT:C50358'; ...
+    'intraoral-cannula', 'ndi.probe.timeseries.stimulator', 'NCIT:C50343'; ...
+    'ecg', 'ndi.probe.timeseries.mfdaq', 'OBI:0003806'; ...
+    'eeg', 'ndi.probe.timeseries.mfdaq', 'wikidata:Q4531135'; ...
+    'one-photon-imaging', 'ndi.probe.image', 'OBI:0400169'; ...
+    'two-photon-imaging', 'ndi.probe.image', 'OBI:0400169'; ...
+    'patch-Vm', 'ndi.probe.timeseries.mfdaq', ''; ...
+    'sharp-Im', 'ndi.probe.timeseries.mfdaq', ''; ...
+    'stimulator', 'ndi.probe.timeseries.stimulator', ''; ...
+    'lick-spout', 'ndi.probe.timeseries.mfdaq', ''; ...
+    'reward-well', 'ndi.probe.timeseries.mfdaq', ''; ...
+    'event', 'ndi.probe.timeseries.stimulator', ''; ...
+    'electrode-4', 'ndi.probe.timeseries.mfdaq', ''};
+for k = 1:size(cases, 1)
+    [ty, cls, node] = cases{k, :};
+    id = sprintf('el_kind_%d', k);
+    out = runRaw(probeDoc(id, 'p', 1, ty, cls));
+    kinds = assertionsAbout(out, id, 'Equipment Type');
+    vars = cellfun(@(b) char(b.statement.variable.name), assertionsAbout(out, id, ''), ...
+        'UniformOutput', false);
+    verifyTrue(testCase, any(strcmp(vars, 'element type')), [ty ': element type assertion']);
+    verifyTrue(testCase, any(strcmp(vars, 'ndi element class')), [ty ': ndi element class assertion']);
+    if isempty(node)
+        verifyEmpty(testCase, kinds, [ty ': a kind with no registered term was written']);
+    else
+        verifyNumElements(testCase, kinds, 1, ty);
+        verifyEqual(testCase, char(kinds{1}.statement.variable.node), 'NCIT:C178920', ty);
+        verifyEqual(testCase, char(kinds{1}.term.value.node), node, ty);
+    end
+end
+end
+
+function testGroupIsWrittenAsTheRegistryNamesIt(testCase)
+% [migrator writes the registry spelling] (Jess Haley, 2026-10-26): `Group`,
+% NCIT:C43359, not `group`
+out = runRaw({unitDoc('el_unit_m', 'leftcortex_18', 1), neuronDoc('ne_2', 'el_unit_m', 'multi'), unitProbe()});
+ent = elementOutputs(out, 'el_unit_m');
+verifyEqual(testCase, char(ent{1}.entity.type.name), 'Group');
+verifyEqual(testCase, char(ent{1}.entity.type.node), 'NCIT:C43359');
+end
+
+function testAUnitThatDisagreesWithItsProbeIsCarried(testCase)
+% [unit direct and subject rebuild from the probe] (Jess Haley, 2026-10-27):
+% a unit whose `direct` is not 0, or whose subject is not its probe's, is
+% carried whole as v1, malformed (carry-120)
+bad = unitDoc('el_unit_d', 'leftcortex_23', 1);
+bad.element.direct = true;
+other = unitDoc('el_unit_o', 'leftcortex_24', 1);
+other.depends_on(strcmp({other.depends_on.name}, 'subject_id')).value = 'subj_2';
+cases = {'direct 1', bad; 'another subject', other};
+for k = 1:size(cases, 1)
+    [label, v1] = cases{k, :};
+    out = runRaw({v1, neuronDoc(['ne_' v1.base.id], v1.base.id, 'single'), unitProbe()});
+    verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, v1.base.id))), 1, ...
+        [label ': not carried']);
+    d = carryNoteFor(out, v1.base.id);
+    verifyTrue(testCase, startsWith(d, '[carry-120] malformed: '), sprintf('%s: %s', label, d));
+    r = did2.convert.roundtrip.check(v1, elementOutputs(out, v1.base.id));
+    verifyTrue(testCase, r.carried, label);
+    verifyTrue(testCase, r.ok, sprintf('%s: %s', label, describeLost(r)));
+end
+end
+
 % ===================== carried writer shapes ============================
 
 function testCarriedElementsCiteTheirRows(testCase)
@@ -131,6 +224,8 @@ cases = { ...
     'downsampled copy of a probe', derivedCopy('el_ds'), {}, '[carry-063] '; ...
     'probe type on no probe class', probeDoc('el_np', 'x', 1, 'n-trode', 'ndi.element.timeseries'), {}, '[carry-063] '; ...
     'unlisted type', probeDoc('el_ul', 'x', 1, 'sharp-I', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-063] '; ...
+    'wide-field imaging probe', probeDoc('el_wf', 'cam', 1, 'wide-field-imaging', 'ndi.probe.image'), {}, '[carry-121] '; ...
+    'brightfield imaging probe', probeDoc('el_bf', 'cam', 1, 'brightfield-imaging', 'ndi.probe.image'), {}, '[carry-121] '; ...
     'name reads as a pair', probeDoc('el_pair', 'leftcortex | 2', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-055] '; ...
     'non-integer reference', probeDoc('el_frac', 'leftcortex', 1.5, 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-055] '; ...
     'no name, no reference', probeDoc('el_none', '', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-048] '};
@@ -229,10 +324,23 @@ for k = 1:numel(out.migrated)
         docs = [{b}, docs]; %#ok<AGROW>
     elseif strcmp(cn, 'assertion') && strcmp(edgeOf(b, 'entity_id'), elementId)
         v = b.statement.variable;
-        if isstruct(v) && any(strcmpi(char(v.name), {'element type', 'ndi element class', 'modality unresolved'}))
+        if isstruct(v) && any(strcmpi(char(v.name), {'element type', 'ndi element class', ...
+                'modality unresolved', 'Equipment Type'}))
             docs{end+1} = b; %#ok<AGROW>
         end
     elseif strcmp(cn, 'directed_relation') && strcmp(edgeOf(b, 'child_id'), elementId)
+        docs{end+1} = b; %#ok<AGROW>
+    end
+end
+end
+
+function docs = assertionsAbout(out, elementId, variableName)
+% the assertions about ELEMENTID, all of them or those of VARIABLENAME
+docs = {};
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if strcmp(char(b.document_class.class_name), 'assertion') && strcmp(edgeOf(b, 'entity_id'), elementId) ...
+            && (isempty(variableName) || strcmp(char(b.statement.variable.name), variableName))
         docs{end+1} = b; %#ok<AGROW>
     end
 end
@@ -276,11 +384,20 @@ function v1 = probeDoc(id, name, reference, type, ndiClass)
 v1 = ndiElement(id, name, reference, type, ndiClass, true, [], 'subj_1', {});
 end
 
-function v1 = unitDoc(id, name, reference)
-% ndi.neuron from a spike sorter: type spikes, direct false, on its probe,
-% the probe's subject, and the JRCLUST run it came from
-v1 = ndiElement(id, name, reference, 'spikes', 'ndi.neuron', false, 'el_probe', ...
+function v1 = unitDoc(id, name, reference, probeId)
+% ndi.neuron from a spike sorter: type spikes, direct false, on its probe
+% (unitProbe, el_uprobe, unless PROBEID names another), the probe's subject,
+% and the JRCLUST run it came from
+if nargin < 4
+    probeId = 'el_uprobe';
+end
+v1 = ndiElement(id, name, reference, 'spikes', 'ndi.neuron', false, probeId, ...
     'subj_1', {'jrclust_clusters_id', 'jrc_run_1'});
+end
+
+function v1 = unitProbe()
+% the n-trode the units are sorted from, on the same subject
+v1 = probeDoc('el_uprobe', 'leftcortex', 1, 'n-trode', 'ndi.probe.timeseries.mfdaq');
 end
 
 function v1 = jhTrack(id, name, type)

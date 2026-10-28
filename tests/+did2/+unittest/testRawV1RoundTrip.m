@@ -228,6 +228,11 @@ function testNamedGroupRoundTripsWithItsMembers(testCase)
 v1 = namedGroup({'m_1', 'm_2', 'm_3'});
 out = runRaw(v1);
 verifyEqual(testCase, numel(out.migrated), 4, 'the group and three member_of edges');
+% [migrator writes the registry spelling] (Jess Haley, 2026-10-26): the type
+% as the registry names it, `Group` (NCIT:C43359)
+grp = out.migrated{1}.toStruct();
+verifyEqual(testCase, char(grp.entity.type.name), 'Group');
+verifyEqual(testCase, char(grp.entity.type.node), 'NCIT:C43359');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyRoundTrip(testCase, r);
 verifyFalse(testCase, r.carried);

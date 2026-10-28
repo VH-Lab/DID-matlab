@@ -17,6 +17,9 @@ function [v1, spec] = element(bodies)
 %                                      for an element with no reference)
 %     element.type                     the 'element type' assertion's value
 %     element.ndi_element_class        the 'ndi element class' assertion's value
+%     (a device's Equipment Type assertion states its device kind,
+%     did2.convert.elementDeviceKind; it is placed when its node is the kind
+%     decided for the rebuilt type, and reported unplaced otherwise)
 %     element.direct, depends_on       the lineage relation, in the order the
 %                                      template lists the edges
 %                                      (underlying_element_id, subject_id) and
@@ -28,11 +31,18 @@ function [v1, spec] = element(bodies)
 %                             relation; the round trip reports that case.
 %         wasDerivedFrom R    jrclust_clusters_id R (the sorting run)
 %
+%   A SORTED UNIT ON ITS PROBE (type spikes, neuron or cell, with an
+%   underlying element): Decided by Jess Haley, 2026-10-27 [unit direct and
+%   subject rebuild from the probe] -- `direct` is rebuilt as 0 and
+%   `subject_id` as the underlying element's subject, read from the batch's
+%   v1 elements (did2.convert.elementSubjects, loaded by v1_to_v2; the
+%   migrator carries a unit whose values differ). When the underlying element
+%   is not in that index, `subject_id` is left empty and the check reports it.
+%
 %   NOT REBUILT, because V2 does not keep it (the round trip reports it): for
-%   an element with an underlying element, its `direct` and its `subject_id`
-%   (NDI's writer copies the underlying element's subject; the migrator writes
-%   only the derived_from edge). A 'modality unresolved' assertion is a
-%   worklist label made from `type` and states nothing more; it is placed.
+%   any OTHER element with an underlying element, its `direct` and its
+%   `subject_id`. A 'modality unresolved' assertion is a worklist label made
+%   from `type` and states nothing more; it is placed.
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.element.
 
@@ -64,6 +74,7 @@ underlying = '';
 subject = '';
 direct = [];
 sortingRun = '';
+kindNodes = {};
 for k = 1:numel(bodies)
     if used(k); continue; end
     b = bodies{k};
@@ -82,6 +93,10 @@ for k = 1:numel(bodies)
                     ndiClass = value;
                     used(k) = true;
                 case 'modality unresolved'
+                    used(k) = true;
+                case 'equipment type'
+                    [kindNode, ~] = termParts(getIn(b, 'term', 'value'));
+                    kindNodes{end+1} = kindNode; %#ok<AGROW>
                     used(k) = true;
             end
         case 'directed_relation'
@@ -109,6 +124,21 @@ end
 for k = find(~used)
     spec.unplaced{end+1} = sprintf('emitted document %d (%s) has no role in an element', ...
         k, classNameOf(bodies{k}));
+end
+% the device kind restates the type ([element type is a device kind term]):
+% exactly the decided kind of the rebuilt type, or it is not placed
+want = did2.convert.elementDeviceKind(type);
+for k = 1:numel(kindNodes)
+    if isempty(want) || ~sameCurie(kindNodes{k}, want.node) || numel(kindNodes) > 1
+        spec.unplaced{end+1} = sprintf(['an Equipment Type assertion (%s) is not ' ...
+            'the device kind decided for element type "%s"'], kindNodes{k}, type); %#ok<AGROW>
+    end
+end
+% [unit direct and subject rebuild from the probe] (Jess Haley, 2026-10-27)
+if ~isempty(underlying) && isempty(direct) && isempty(subject) ...
+        && any(strcmp(strtrim(type), {'spikes', 'neuron', 'cell'}))
+    direct = false;
+    subject = did2.convert.elementSubjects('get', underlying);
 end
 
 v1.document_class = struct('class_name', 'element');
