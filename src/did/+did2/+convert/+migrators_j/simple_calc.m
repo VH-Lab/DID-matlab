@@ -1,6 +1,13 @@
 function bodies = simple_calc(preBody)
-%SIMPLE_CALC Brainstorm-J migrator: did_v1 simple_calc -- DEFERRED to the NDI
-%   second pass; the document is passed through UNCHANGED.
+%SIMPLE_CALC Brainstorm-J migrator: did_v1 simple_calc -- CARRIED whole as v1
+%   under a needs-home register row (the document is returned UNCHANGED).
+%
+%   [simple_calc carries as needs home] (Decided by Jess Haley, 2026-10-27,
+%   did-schema V_eta_go_forward_class_audit.md): "v1 `simple_calc` is not
+%   retired; it is carried whole as v1 citing a needs-home register row" (NDI
+%   main writes it, +ndi/+calc/+example/simple.m); it is designed only if a
+%   real dataset ever holds one. The class reads raw v1
+%   (did2.convert.rawV1Classes), so the carry is the untouched v1 source.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -67,6 +74,14 @@ if isstruct(blk) && (isfield(blk, 'result_value') || isfield(blk, 'result_units'
          'This shape can only come from the V_alpha snapshot or a fixture built ' ...
          'against it.']);
 end
+% The register row is carry-104 (did-schema V_eta_carry_register.json).
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
+% carry-register: carry-104
+did2.convert.reportNote('carried_as_v1', 'simple_calc', id, ...
+    ['[carry-104] awaiting_home: simple_calc has no V2 home yet ' ...
+    '([simple_calc carries as needs home])']);
 bodies = {preBody};
 end
 

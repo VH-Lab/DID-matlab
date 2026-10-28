@@ -42,10 +42,14 @@ function v2Body = treatment_drug(preBody)
 %   testRawV1RoundTripTreatment compares the two:
 %
 %     base.*, depends_on subject_id  -> as treatment.m
-%     location_ontologyNode, location_name -> the route (jTreatmentRoute) and
-%                                 the site observation of a dose
-%     location_ontologyName    -> NOT READ: the WRITER's spelling of the node
-%                                 (treatmentMaker); an open finding
+%     location_ontologyNode, location_ontologyName, location_name
+%                              -> the route (jTreatmentRoute) and the site
+%                                 observation of a dose. The template's
+%                                 `location_ontologyNode` and the writer's
+%                                 `location_ontologyName` (treatmentMaker) are
+%                                 one field; both, differing, carry the
+%                                 document as malformed ([treatment location
+%                                 name is the node], Jess Haley, 2026-10-27)
 %     mixture_table            -> chemicals + formulation (+ the dose's
 %                                 per-ingredient amounts, jDoseValue)
 %     administration_onset_time -> the anchor (jTreatmentAnchor)
@@ -73,9 +77,33 @@ block = preBody.treatment_drug;
 chemicals = jMixtureTable(jGetChar(block, 'mixture_table'));
 variable  = chemicals(1).substance;   % the primary drug is the spine identity
 
-siteTerm = jOntologyTerm( ...
-    jGetCharAny(block, {'location_ontology_node', 'location_ontologyNode'}), ...
-    jGetCharAny(block, {'location_name'}));
+% [treatment location name is the node] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): the WRITER's
+% `location_ontologyName` (NDI-matlab main +setup/+NDIMaker/treatmentMaker.m
+% line 163) and the template's `location_ontologyNode` are one field: either
+% becomes the treatment's location term; a document holding both with
+% different values is carried whole as v1, kind `malformed`. Each is read in
+% its v1 spelling and in the universalRenames spelling ('RawV1Classes', {}).
+% THE REGISTER ROW IS PENDING in did-schema: until it exists the note cites the
+% placeholder LOCATION_ROW, which names no row.
+LOCATION_ROW = 'carry-pending-treatment-location-malformed';
+nodeOfTemplate = jGetCharAny(block, {'location_ontologyNode', 'location_ontology_node'});
+nodeOfWriter = jGetCharAny(block, {'location_ontologyName', 'location_ontology_name'});
+if ~isempty(strtrim(nodeOfTemplate)) && ~isempty(strtrim(nodeOfWriter)) ...
+        && ~sameNode(nodeOfTemplate, nodeOfWriter)
+    % carry-register: none (malformed row pending in did-schema; LOCATION_ROW)
+    did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
+        char(preBody.base.id), sprintf(['[%s] malformed: location_ontologyNode "%s" ' ...
+        'and location_ontologyName "%s" differ ([treatment location name is the ' ...
+        'node])'], LOCATION_ROW, strtrim(nodeOfTemplate), strtrim(nodeOfWriter)));
+    v2Body = {preBody};
+    return;
+end
+locationNode = nodeOfTemplate;
+if isempty(strtrim(locationNode))
+    locationNode = nodeOfWriter;
+end
+siteTerm = jOntologyTerm(locationNode, jGetCharAny(block, {'location_name'}));
 anchor = jTreatmentAnchor(preBody, block);  % the recorded onset, else the session
 [bodies, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, anchor.base.id);
 if ~isempty(unplaced)
@@ -99,3 +127,18 @@ v2Body = bodies;
 end
 
 % ===================== local helpers ===================================
+
+function tf = sameNode(a, b)
+%SAMENODE Two location node texts name one node: equal once edge blanks and
+%   the prefix's case are set aside ([spelling is notation]).
+a = strtrim(char(a));
+b = strtrim(char(b));
+tf = strcmp(a, b);
+if ~tf
+    try
+        tf = strcmp(char(did2.schema.curieKey(a)), char(did2.schema.curieKey(b)));
+    catch
+        tf = strcmpi(a, b);
+    end
+end
+end

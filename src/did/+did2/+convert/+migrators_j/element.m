@@ -335,11 +335,21 @@ end
 switch ty
     case {'spikes', 'neuron', 'cell'}
         label = did2.convert.unitQualityLabels('get', elementId);
+        % [sorter labels map] (Decided by Jess Haley, 2026-10-27, did-schema
+        % V_eta_go_forward_class_audit.md): a unit whose only label is a
+        % Kilosort/phy one maps -- `good` (the curator's mark for a
+        % well-isolated single unit) to a single unit, a `cell`; `mua` to a
+        % multi-unit, a `group`; a `noise` unit is not a unit and is carried
+        % whole as v1, needs_mapping (it narrows [unlabelled units need a
+        % map], so it cites carry-062)
         switch label
-            case 'single'
+            case {'single', 'good'}
                 t = 'cell';
-            case 'multi'
+            case {'multi', 'mua'}
                 t = 'group';
+            case 'noise'
+                why = sprintf(['[carry-062] needs_mapping: sorted unit (type "%s") ' ...
+                    'labelled "noise" by its sorting run: not a unit ([sorter labels map])'], ty);
             otherwise
                 if isempty(label)
                     label = 'none';

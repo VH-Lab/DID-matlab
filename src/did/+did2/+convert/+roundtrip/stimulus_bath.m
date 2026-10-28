@@ -32,10 +32,12 @@ function [v1, spec] = stimulus_bath(bodies)
 %                                      (private/treatmentRows), then the
 %                                      formulation's pH and osmolarity as rows
 %                                      named 'pH' and 'osm' with no node,
-%                                      compared row by row (sameMixture). The
-%                                      v1 node of a pH / osm row and where the
-%                                      row stood are not kept, so a table with
-%                                      either row is reported lost.
+%                                      compared row by row (sameBathMixture).
+%                                      The v1 node of a pH / osm row and where
+%                                      the row stood are not kept, and the
+%                                      round trip counts them equal ([bath ph
+%                                      and osmolarity are formulation fields],
+%                                      Jess Haley, 2026-10-27).
 %
 %   The time reference must be the session anchor the pass makes (a
 %   relative_time_reference `intervalDuring` the manipulation's session, with no
@@ -128,8 +130,10 @@ end
 v1.stimulus_bath = block;
 
 spec.same(end+1) = struct('path', 'stimulus_bath.mixture_table', ...
-    'fn', @(a, b) sameMixture(a, b), 'why', ['the same rows in another ' ...
-    'layout ([spelling is notation])']);
+    'fn', @(a, b) sameBathMixture(a, b), 'why', ['the same rows in another ' ...
+    'layout ([spelling is notation]); a pH or osmolarity row''s term id and ' ...
+    'position are not kept ([bath ph and osmolarity are formulation fields], ' ...
+    'Jess Haley, 2026-10-27)']);
 spec.same(end+1) = struct('path', 'stimulus_bath.location.ontologyNode', ...
     'fn', @(a, b) sameCurie(a, b), 'why', ['the site node in the registry''s ' ...
     'spelling ([spelling is notation]; V_eta_prefix_spelling_plan.md)']);

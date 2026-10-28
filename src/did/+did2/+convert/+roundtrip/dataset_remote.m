@@ -18,7 +18,10 @@ function [v1, spec] = dataset_remote(bodies)
 %                                    name is the entity name], Jess Haley,
 %                                    2026-10-27)
 %     dataset_remote.dataset_id      the dataset's `ndicloud:` global identifier
-%     dataset_remote.organization_id the organization entity's name
+%     dataset_remote.organization_id the organization entity's `ndicloud:`
+%                                    global identifier ([cloud organization
+%                                    id is a global identifier], Jess Haley,
+%                                    2026-10-27)
 %
 %   Any other emitted document, or a field this inverse does not read, is
 %   unplaced.
@@ -70,8 +73,17 @@ if ~isempty(org) || ~isempty(rel)
         spec.unplaced{end+1} = 'an organization without its hosted_by relation, or the reverse';
     else
         [~, oe] = rebuildBase(org);
-        spec.unplaced = [spec.unplaced, others(oe, {'type', 'name'}, 'organization entity')];
-        orgName = fieldText(oe, 'name');
+        spec.unplaced = [spec.unplaced, others(oe, {'type', 'global_identifier'}, ...
+            'organization entity')];
+        ogids = asCell(getIn(org, 'entity', 'global_identifier'));
+        for k = 1:numel(ogids)
+            g = char(ogids{k});
+            if startsWith(g, 'ndicloud:') && isempty(orgName)
+                orgName = g(numel('ndicloud:')+1:end);
+            else
+                spec.unplaced{end+1} = sprintf('the organization''s global identifier "%s"', g);
+            end
+        end
         rname = did2.build.vocabularyHandle('relation', getIn(rel, 'directed_relation', 'relation'));
         if ~strcmp(rname, 'hosted_by') ...
                 || ~isequal(edgeIds(rel, 'child_id'), {base.id}) ...

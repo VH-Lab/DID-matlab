@@ -153,6 +153,13 @@ arguments
     options.UnitQualityLabels cell = {}
 end
 
+% [old ndi_document blocks carry] (Decided by Jess Haley, 2026-10-27): the note
+% for a document carried because it holds a legacy `ndi_document` block beside
+% `base` (hasLegacyBlockBesideBase), on either path. It keeps the words the
+% renamed path's carry-049 note used for the same block.
+LEGACY_BLOCK_NOTE = ['[carry-049] universalRenames would discard: ndi_document ' ...
+    '(a legacy identity block beside base; [old ndi_document blocks carry])'];
+
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
 % is for imports, so it is off while this runs and restored after
@@ -333,6 +340,7 @@ srcId = cell(nBodies, 1);
 srcDepNames = cell(nBodies, 1);
 srcDepIds = cell(nBodies, 1);
 srcOut = cell(nBodies, 1);
+srcOutIds = cell(nBodies, 1);   % the base.id of each document a source became
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -383,7 +391,16 @@ for k = 1:numel(bodies)
                 v2Body = preBody;
                 carryBody = preBody;
                 superUnchanged = true;
-                v2Bodies = runRawV1Migrator(preBody, className);
+                if hasLegacyBlockBesideBase(preBody)
+                    % [old ndi_document blocks carry] (Decided by Jess Haley,
+                    % 2026-10-27): carried whole, the block kept; no migrator runs
+                    % carry-register: carry-049
+                    did2.convert.reportNote('carried_as_v1', className, ...
+                        sourceIdOf(preBody), LEGACY_BLOCK_NOTE);
+                    v2Bodies = {preBody};
+                else
+                    v2Bodies = runRawV1Migrator(preBody, className);
+                end
                 if isscalar(v2Bodies) && isequaln(v2Bodies{1}, preBody) ...
                         && did2.convert.reportNote('pending', 'carried_as_v1') > 0
                     carried = true;
@@ -407,7 +424,23 @@ for k = 1:numel(bodies)
                     [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
                         legacyDiscNames, legacyDiscValues, className);
                 end
-                if isempty(renameDropped)
+                if hasLegacyBlockBesideBase(preBody)
+                    % [old ndi_document blocks carry] (Decided by Jess Haley,
+                    % 2026-10-27, did-schema V_eta_go_forward_class_audit.md:
+                    % "register row carry-049 widens to every class: a v1
+                    % document with an `ndi_document` block beside `base` is
+                    % carried whole as v1, never losing the block"). The carry
+                    % is the v1 source, NOT the universalRenames output, which
+                    % has discarded the block. universalRenames still ran above,
+                    % so its legacy counters still count the body.
+                    % carry-register: carry-049
+                    did2.convert.reportNote('carried_as_v1', className, ...
+                        sourceIdOf(preBody), LEGACY_BLOCK_NOTE);
+                    v2Body = preBody;
+                    superUnchanged = true;
+                    v2Bodies = {v2Body};
+                    carried = true;
+                elseif isempty(renameDropped)
                     v2Body = applySuperclassMigrators(postUniversalBody, className, ...
                         options.TargetVersion);
                     superUnchanged = isequaln(v2Body, postUniversalBody);
@@ -630,6 +663,8 @@ for k = 1:numel(bodies)
         srcClass{k} = className;
         [srcId{k}, srcDepNames{k}, srcDepIds{k}] = sourceEdges(preBody);
         srcOut{k} = nBefore + 1:numel(migrated);
+        srcOutIds{k} = cellfun(@(d) char(d.get('base.id')), migrated(srcOut{k}), ...
+            'UniformOutput', false);
     catch err
         did2.convert.reportNote('truncate', noteMark);
         % a body that quarantines did not pass through: drop its record if
@@ -655,10 +690,19 @@ for k = 1:numel(bodies)
     did2.convert.mintId('-popto', mintDepth);
 end
 
+% [fit classes kept; session list rebuilt] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): a dataset_session_info writes no
+% V2 document; it is rebuilt from the dataset's session memberships, and one
+% that does not rebuild exactly is carried whole as v1.
+[migrated, passthrough, classCountNames, classCountValues, srcCarried] = ...
+    carryUnrebuiltSessionLists(bodies, migrated, passthrough, classCountNames, ...
+    classCountValues, srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, ...
+    srcDepIds, options.RenameClassNames);
+
 % [dependents of a carried document carry] (Jess Haley, 2026-10-26, did-schema
 % V_eta_go_forward_class_audit.md): a document whose edge names a document
 % carried as v1 is carried too, down the chain (carry-064).
-[migrated, passthrough, classCountNames, classCountValues] = carryDependents( ...
+[migrated, passthrough, classCountNames, classCountValues, srcCarried] = carryDependents( ...
     bodies, migrated, passthrough, classCountNames, classCountValues, ...
     srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, srcDepNames, ...
     srcDepIds, srcOut, options.RenameClassNames);
@@ -703,6 +747,30 @@ result = struct();
 result.migrated = migrated;
 result.quarantine = quarantine;
 result.passthrough = passthrough;
+% [whole-batch round trip] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): what each source became, by id, so
+% did2.convert.roundtrip.batch can take the FINAL batch (after every batch
+% pass) back to v1 source by source. One row per input body: its index, v1 id
+% and class, whether it was carried as v1 (here or by carryDependents), and
+% the base.id of every document it became ({} when it quarantined). A carried
+% source became its own v1 document.
+srcOutRows = cell(1, nBodies);
+for k = 1:nBodies
+    outIds = srcOutIds{k};
+    if srcCarried(k)
+        outIds = {srcId{k}};
+    end
+    if isempty(outIds); outIds = {}; end
+    srcOutRows{k} = struct('input_index', k, 'id', char(srcId{k}), ...
+        'class_name', char(srcClass{k}), 'done', srcDone(k), ...
+        'carried', srcCarried(k), 'output_ids', {reshape(outIds, 1, [])});
+end
+if isempty(srcOutRows)
+    result.source_outputs = struct('input_index', {}, 'id', {}, 'class_name', {}, ...
+        'done', {}, 'carried', {}, 'output_ids', {});
+else
+    result.source_outputs = [srcOutRows{:}];
+end
 result.summary = struct( ...
     'total',            numel(bodies), ...
     'migrated_count',   numel(migrated), ...
@@ -990,6 +1058,20 @@ if isempty(pick) && isstruct(bodies{1})
     pick = bodies{1};
 end
 tf = isstruct(pick) && isscalar(pick) && isfield(pick, 'statement');
+end
+
+function tf = hasLegacyBlockBesideBase(body)
+%HASLEGACYBLOCKBESIDEBASE True when a v1 body holds a NON-EMPTY `ndi_document`
+%   block beside `base`: [old ndi_document blocks carry] (Decided by Jess Haley,
+%   2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-049 for
+%   every class. An EMPTY block -- [], JSON `{}`, or one whose every field is
+%   empty -- states nothing and does not carry: [empty ndi_document block is
+%   notation] (Decided by Jess Haley, 2026-10-27: "Its absence is not a
+%   loss"); the document converts, and the round trip counts a missing block
+%   and an empty one as the same. A body with only `ndi_document` (a pre-2023
+%   vintage, whose block IS its identity) is not this case.
+tf = isstruct(body) && isscalar(body) && isfield(body, 'ndi_document') ...
+    && isfield(body, 'base') && ~did2.convert.isEmptyBlock(body.ndi_document);
 end
 
 function name = rawV1ClassNameOf(body)
@@ -1346,7 +1428,7 @@ catch
 end
 end
 
-function [migrated, passthrough, names, counts] = carryDependents(bodies, ...
+function [migrated, passthrough, names, counts, carried] = carryDependents(bodies, ...
         migrated, passthrough, names, counts, done, carried, raw, target, ...
         cls, ids, depNames, depIds, outs, renameClassNames)
 %CARRYDEPENDENTS [dependents of a carried document carry] (Jess Haley,
@@ -1425,6 +1507,104 @@ while changed
     end
 end
 migrated = migrated(~drop);
+end
+
+function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSessionLists( ...
+        bodies, migrated, passthrough, names, counts, done, carried, raw, target, ...
+        cls, ids, depIds, renameClassNames)
+%CARRYUNREBUILTSESSIONLISTS [fit classes kept; session list rebuilt] (Decided
+%   by Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
+%   "`dataset_session_info` (still written by NDI-matlab main +dataset/dir.m,
+%   +session/dir.m) is not retired and writes no V2 document: the round trip
+%   rebuilds it from the session entities' `included_in` relations to the
+%   dataset, and one that does not rebuild exactly is carried whole as v1".
+%
+%   migrators_j.dataset_session_info writes nothing. Here, after every source
+%   has migrated, each such source's list is rebuilt from the batch: the
+%   CONVERTED `session_in_a_dataset` sources of the same dataset (base.session_id),
+%   in batch order, each one's v1 block -- what its own round trip rebuilds
+%   from its membership relation (testRawV1RoundTripSession). The list must be
+%   the v1 `dataset_session_info.dataset_session_info` exactly: the same
+%   number of entries, in order, each equal field by field. Anything else --
+%   a member missing, carried or quarantined, an extra member, another order,
+%   another value -- carries the document whole as v1 (the v1 source for a raw
+%   read, else the universalRenames output, as every other carry). THE REGISTER
+%   ROW IS PENDING in did-schema: the note cites the placeholder below.
+%
+%   ITS ID. [a rebuilt document may lose its id] (Decided by Jess Haley,
+%   2026-10-27, amending [every v1 id survives]): a list that rebuilds writes
+%   no V2 document and so keeps no id, which is allowed only when no other
+%   document references it; a list some source in the batch names by an edge
+%   is carried whole as v1 instead.
+LIST_ROW = 'carry-pending-session-list-does-not-rebuild';
+isList = cellfun(@(c) ischar(c) && strcmp(c, 'dataset_session_info'), cls);
+for k = reshape(find(done & ~carried & ~target & isList), 1, [])
+    body = ensureStruct(bodies{k});
+    entries = struct([]);
+    if isfield(body, 'dataset_session_info') && isstruct(body.dataset_session_info) ...
+            && isfield(body.dataset_session_info, 'dataset_session_info')
+        entries = body.dataset_session_info.dataset_session_info;
+    end
+    datasetId = '';
+    if isfield(body, 'base') && isstruct(body.base) && isfield(body.base, 'session_id')
+        datasetId = char(body.base.session_id);
+    end
+    rebuilt = {};
+    for j = reshape(find(done & ~carried & ~target), 1, [])
+        if ~strcmp(cls{j}, 'session_in_a_dataset')
+            continue;
+        end
+        m = ensureStruct(bodies{j});
+        if ~isfield(m, 'base') || ~isstruct(m.base) || ~isfield(m.base, 'session_id') ...
+                || ~strcmp(char(m.base.session_id), datasetId) ...
+                || ~isfield(m, 'session_in_a_dataset') || ~isstruct(m.session_in_a_dataset)
+            continue;
+        end
+        rebuilt{end+1} = m.session_in_a_dataset; %#ok<AGROW>
+    end
+    why = '';
+    if ~isstruct(entries) && ~isempty(entries)
+        why = 'its list is not a struct array';
+    elseif numel(entries) ~= numel(rebuilt)
+        why = sprintf('%d entries; the converted memberships of dataset %s rebuild %d', ...
+            numel(entries), datasetId, numel(rebuilt));
+    else
+        for e = 1:numel(entries)
+            if ~isequaln(entries(e), rebuilt{e})
+                why = sprintf('entry %d differs from the membership the batch rebuilds', e);
+                break;
+            end
+        end
+    end
+    if isempty(why) && ~isempty(ids{k})
+        for j = reshape(find(done), 1, [])
+            if j ~= k && iscell(depIds{j}) && any(strcmp(depIds{j}, ids{k}))
+                why = sprintf(['document %s references it, so its id must survive ' ...
+                    '([a rebuilt document may lose its id])'], char(ids{j}));
+                break;
+            end
+        end
+    end
+    if isempty(why)
+        continue;
+    end
+    if ~raw(k)
+        body = did2.convert.universalRenames(body, 'RenameClassNames', renameClassNames);
+    end
+    if isfield(body, 'document_class') && isstruct(body.document_class)
+        body.document_class.schema_version = 'did_v1';
+    end
+    migrated{end+1} = did2.document(body); %#ok<AGROW>
+    [names, counts] = bumpClassCounter(names, counts, cls{k});
+    passthrough([passthrough.input_index] == k) = [];
+    passthrough(end+1) = struct('input_index', k, 'id', ids{k}, ...
+        'class_name', cls{k}, 'body', body); %#ok<AGROW>
+    % carry-register: none (row pending in did-schema; LIST_ROW)
+    did2.convert.reportNote('carried_as_v1', cls{k}, ids{k}, sprintf( ...
+        ['[%s] malformed: the session list does not rebuild from the dataset''s ' ...
+        'memberships: %s ([fit classes kept; session list rebuilt])'], LIST_ROW, why));
+    carried(k) = true;
+end
 end
 
 function [names, counts] = dropClassCounter(names, counts, name)

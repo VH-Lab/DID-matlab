@@ -4,7 +4,7 @@ function tests = testMigratorsJ
 %   Exercises the did_v1 -> V_eta migrators routed by did2.convert.v1_to_v2
 %   when TargetVersion == 'V_eta'. Covers:
 %     - subject_group      -> bare `subject` (v3.0.0; no is_group/is_biological)
-%     - treatment_transfer -> term_manipulation + provenance directed_relation
+%     - treatment_transfer -> carried whole as v1 ([treatment transfer stays v1])
 %                             + session anchor (1 -> 3, D4)
 %     - ontology_table_row -> per-column assertions/observations (1 -> N), and
 %                             the per-table map for the C. elegans encounter
@@ -323,6 +323,58 @@ verifyEqual(testCase, a.get('statement.variable').name, 'genetic strain type');
 verifyEqual(testCase, a.get('term.value').node, 'X:1');
 end
 
+function testAnOpenmindsIdThatDoesNotRebuildIsCarried(testCase)
+% [openMINDS subject leftovers] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): a controlled term's openminds_id is rebuilt
+% from the term through the registry's `equivalent` list, "and a document whose
+% id does not rebuild is carried"; a lab-made strain's id belongs on the strain
+% entity's global_identifier, which pass 1 does not mint, so it carries too.
+% The register rows are pending in did-schema: the notes cite placeholders.
+v1 = struct();
+v1.document_class = struct('class_name', 'openminds_subject', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'om_3', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Species', ...
+    'matlab_type', 'openminds.controlledterms.Species', ...
+    'openminds_id', 'https://openminds.om-i.org/instances/species/caenorhabditisElegans', ...
+    'fields', struct('name', 'Caenorhabditis elegans', ...
+        'preferredOntologyIdentifier', 'NCBITaxon:6239'));
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-pending-openminds-id-does-not-rebuild] '), d);
+lab = v1;
+lab.base.id = 'om_4';
+lab.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Strain', ...
+    'matlab_type', 'openminds.core.research.Strain', ...
+    'openminds_id', 'https://openminds.om-i.org/instances/strain/abc123', ...
+    'fields', struct('name', 'OP50-GFP'));
+out = runJ(lab);
+verifyCarriedWholeAsV1(testCase, lab, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-pending-openminds-lab-strain-id] '), d);
+end
+
+function testAnOpenmindsIdRebuildsThroughTheEquivalentList(testCase)
+% the rebuild reads the registry row's `equivalent` list ([term equivalents
+% recorded]); a stub registry stands in until did-schema adds the column
+reg = struct('terms', {{struct('name', 'Caenorhabditis elegans', 'node', 'NCBITaxon:6239', ...
+    'equivalent', {{'openminds:caenorhabditisElegans', 'wikidata:Q91703'}}), ...
+    struct('name', 'Mus musculus', 'node', 'NCBITaxon:10090')}});
+ix = did2.schema.termIndex(reg);
+verifyTrue(testCase, ix.present);
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/caenorhabditisElegans', ix));
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'caenorhabditisElegans', ix));
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/musMusculus', ix));
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:10090', ...
+    'musMusculus', ix), 'a row with no equivalent list rebuilds nothing');
+end
+
 % ============ element -> subject (+ kind assertions + lineage) =========
 
 function el = elementDoc(name, typ, ndiClass, direct, subjectId, underlyingId)
@@ -449,98 +501,28 @@ v1.treatment_transfer = struct('timestamp', timestamp, 'clocktype', 'dev_local_t
     'method_name', 'pick', 'method_ontologyNode', 'EMPTY:0000001');
 end
 
-function testTransferAnchoredAtItsTimestampOnTheSessionClock(testCase)
-% Jess Haley, 2026-10-21 [transfer onset]: the timestamp (20 h before ->
-% seconds(hours(-20)) = -72000) is the onset, on the session's dev_local_time.
-out = runJ(babuTransferV1('tt_ts', -72000));
-verifyEmpty(testCase, out.quarantine);
-act = out.migrated{1};
-a = firstOfClassJ(out.migrated, 'relative_time_reference');
-assertNotEmpty(testCase, a);
-verifyEqual(testCase, depVal(act, 'time_reference_id'), a.get('base.id'));
-verifyEqual(testCase, depVal(a, 'referent_id'), 'sess_babu', 'offset from the session');
-v = a.get('relative_time_reference.value');
-verifyEqual(testCase, v.start.seconds, -72000);
-verifyEqual(testCase, v.start.source_value, -72000);
-verifyTrue(testCase, contains(char(v.clock.name), 'dev_local_time') || ...
-    contains(lower(char(v.clock.name)), 'local'), 'the session''s local clock');
+function testATransferIsCarriedWholeAsV1(testCase)
+% [treatment transfer stays v1] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): "a v1 `treatment_transfer` is carried whole
+% as v1 with a needs-mapping register row, for the Babu reimport; the generic
+% stage converts none". INVERTS the conversion tests that stood here
+% (testTransferAnchoredAtItsTimestampOnTheSessionClock,
+% testAGlobalClockTransferTimeIsInDays,
+% testTransferWithNoTimestampIsDuringTheSession,
+% testTreatmentTransferBecomesTermManipulationPlusProvenance) and
+% testATransferWithNoClocktypeIsCarried, whose carry now has the one reason.
+cases = {babuTransferV1('tt_ts', -72000), babuTransferV1('tt_glob', 739000.5), ...
+    babuTransferV1('tt_nots', NaN), babuTransferV1('tt_noclk', -72000)};
+cases{2}.treatment_transfer.clocktype = 'exp_global_time';
+cases{4}.treatment_transfer.clocktype = '';
+for k = 1:numel(cases)
+    v1 = cases{k};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+term'), 0);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-107] needs_mapping: '), d);
 end
-
-function testATransferWithNoClocktypeIsCarried(testCase)
-% [one-reading quick answers] (Q2) (Jess Haley, 2026-10-26): a timestamp with
-% no clock type is not given dev_local_time ([no invented values]); the
-% document is carried whole as v1.
-v1 = babuTransferV1('tt_noclk', -72000);
-v1.treatment_transfer.clocktype = '';
-out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, contains(d, 'clocktype'), d);
-end
-
-function testAGlobalClockTransferTimeIsInDays(testCase)
-% (Q2) "a global-clock time is written in its true unit (NDI stores days, not
-% seconds)": NDI's treatment_transfer schema, "a datenum (if global clock) or in
-% seconds (if local clock)".
-v1 = babuTransferV1('tt_glob', 739000.5);
-v1.treatment_transfer.clocktype = 'exp_global_time';
-out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-a = firstOfClassJ(out.migrated, 'relative_time_reference');
-v = a.get('relative_time_reference.value');
-verifyEqual(testCase, v.start.source_value, 739000.5);
-verifyEqual(testCase, char(v.start.source_unit.name), 'day');
-verifyEqual(testCase, v.start.seconds, 739000.5 * 86400, 'RelTol', 1e-12);
-end
-
-function testTransferWithNoTimestampIsDuringTheSession(testCase)
-% NaN (Babu's TransferTime is NaN where no transfer time was recorded) or
-% absent: "during the session".
-for ts = {NaN, []}
-    out = runJ(babuTransferV1('tt_nots', ts{1}));
-    verifyEmpty(testCase, out.quarantine);
-    a = firstOfClassJ(out.migrated, 'relative_time_reference');
-    v = a.get('relative_time_reference.value');
-    verifyEqual(testCase, v.relation.name, 'intervalDuring');
-    verifyFalse(testCase, isfield(v, 'start') && ~isempty(v.start) ...
-        && isstruct(v.start) && isfield(v.start, 'seconds') && ~isempty(v.start.seconds));
-end
-end
-
-function testTreatmentTransferBecomesTermManipulationPlusProvenance(testCase)
-v1 = struct();
-v1.document_class = struct('class_name', 'treatment_transfer', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-v1.depends_on = [ ...
-    struct('name', 'recipient_id', 'document_id', 'rec_001'), ...
-    struct('name', 'donor_id',     'document_id', 'don_002')];
-v1.base = struct('id', 'tt_01', 'session_id', 'sess_09', ...
-    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.treatment_transfer = struct( ...
-    'entity_ontologyNode', 'UBERON:0005291', 'entity_name', 'embryonic tissue', ...
-    'method_name', 'transplantation');
-out = runJ(v1);
-
-% 1 -> 3: the act, the provenance relation, the anchor.
-verifyEqual(testCase, numel(out.migrated), 3);
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+term'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 1);
-
-act = out.migrated{1};
-% recipient is the patient; the material term is the value AND the variable
-verifyEqual(testCase, depVal(act, 'entity_id'), 'rec_001');
-verifyEqual(testCase, act.get('statement.variable').name, 'embryonic tissue');
-verifyEqual(testCase, act.get('term.value').name, 'embryonic tissue');
-verifyEqual(testCase, act.get('interaction.method').term.name, 'transplantation');
-
-rel = out.migrated{2};
-verifyEqual(testCase, depVal(rel, 'child_id'), 'rec_001');
-verifyEqual(testCase, depVal(rel, 'parent_id'), 'don_002');
-verifyTrue(testCase, did2.build.isVocabulary(rel.get('directed_relation.relation'), 'relation', 'derived_from'));   % by node (L1)
-
-anchor = out.migrated{3};
-verifyEqual(testCase, anchor.get('relative_time_reference.value').relation.name, 'intervalDuring');
 end
 
 % ============ ontology_table_row -> assertions/observations (1 -> N) ====
@@ -2863,9 +2845,34 @@ ms.RelatedPublication = struct('Publication', 'On Worms', 'DOI', '10.1/worm', ..
     'PMID', '123', 'PMCID', 'PMC9');
 ms.FullDocumentation = 'https://example.org/docs';
 ms.TechniquesEmployed = 'patch clamp';     % -> a Technique assertion, openMINDS term
-% subjects (projections off subject statements) -> dropped
-ms.Subjects = struct('SubjectName', 'worm_1', 'BiologicalSexList', 'male');
+% subjects: a non-empty list carries the form ([dataset form lists carried
+% until homed], testANonEmptyFormListCarriesTheForm); none here
+ms.Subjects = [];
 v1.metadata_editor = struct('metadata_structure', ms);
+end
+
+function testANonEmptyFormListCarriesTheForm(testCase)
+% [dataset form lists carried until homed] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): a dataset form whose subject,
+% species, strain or sex list is non-empty is carried whole as v1 with a
+% needs-home register row (carry-105), not dropped.
+lists = {'Subjects', struct('SubjectName', 'worm_1', 'BiologicalSexList', 'male'); ...
+    'SpeciesList', struct('name', 'Caenorhabditis elegans', 'preferredOntologyIdentifier', 'NCBITaxon:6239'); ...
+    'StrainList', struct('name', 'N2'); ...
+    'BiologicalSexList', 'hermaphrodite'};
+for k = 1:size(lists, 1)
+    v1 = metadataEditorDoc();
+    v1.metadata_editor.metadata_structure.(lists{k, 1}) = lists{k, 2};
+    v1 = jsondecode(jsonencode(v1));
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, contains(d, ['[carry-105] ' ...
+        'awaiting_home: ' lists{k, 1}]), d);
+end
+% an empty list states nothing: the form converts
+out = runJ(jsondecode(jsonencode(metadataEditorDoc())));
+verifyEmpty(testCase, out.passthrough);
 end
 
 function testMetadataEditorDecomposes(testCase)
@@ -3403,7 +3410,14 @@ verifyEqual(testCase, globalIdsJ(ds), {'ndicloud:d-12345'});
 hosted = relByName(m, 'hosted_by');
 verifyEqual(testCase, depVal(hosted, 'child_id'), 'dsid_1');
 org = firstOfClassJ(m, 'organization');
-verifyEqual(testCase, org.get('entity.name'), 'ndicloud-lab');
+% [cloud organization id is a global identifier] (Decided by Jess Haley,
+% 2026-10-27): the v1 organization_id is the NDI Cloud organization's id, so it
+% is the organization's global_identifier `ndicloud:<org id>`, not its name; no
+% name (no v1 name states one) and no local_identifier
+verifyEqual(testCase, globalIdsJ(org), {'ndicloud:ndicloud-lab'});
+e = org.get('entity');
+verifyFalse(testCase, isfield(e, 'name') && ~isempty(e.name), 'the id is not a name');
+verifyFalse(testCase, isfield(e, 'local_identifier') && ~isempty(e.local_identifier));
 verifyEqual(testCase, depVal(hosted, 'parent_id'), org.get('base.id'));
 end
 
@@ -3550,30 +3564,56 @@ end
 
 
 function testDatasetSessionInfoAggregate(testCase)
-% One membership relation per listed session. UPDATED for #88 (dataset entity).
-v1 = struct();
-v1.document_class = struct('class_name', 'dataset_session_info', 'class_version', '1.0.0', ...
+% INVERTED 2026-10-27 (was: one membership relation per listed session).
+% [fit classes kept; session list rebuilt] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): a dataset_session_info "writes
+% no V2 document: the round trip rebuilds it from the session entities'
+% `included_in` relations to the dataset, and one that does not rebuild
+% exactly is carried whole as v1" (the register row is pending in did-schema:
+% the note cites the placeholder)
+info = struct();
+info.document_class = struct('class_name', 'dataset_session_info', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-v1.depends_on = struct('name', {}, 'value', {});
-v1.base = struct('id', 'dsi_01', 'session_id', 'dsid_1', ...
-    'name', 'dsi', 'datestamp', '2024-06-01T12:00:00.000Z');
+info.depends_on = struct('name', {}, 'value', {});
+info.base = struct('id', 'dsi_01', 'session_id', 'dsid_1', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 e1 = struct('session_id', 'member_a', 'is_linked', 0);
-e2 = struct('session_id', 'member_b', 'is_linked', 1);
-v1.dataset_session_info = struct('dataset_session_info', [e1 e2]);
-out = runJ(v1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'dataset'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 2);   % two members
-children = {};
-relName = membershipRelation();
-for k = 1:numel(out.migrated)
-    d = out.migrated{k};
-    if strcmp(d.get('document_class.class_name'), 'directed_relation')
-        verifyEqual(testCase, did2.build.vocabularyHandle('relation', d.get('directed_relation.relation')), relName);
-        verifyEqual(testCase, depVal(d, 'parent_id'), 'dsid_1');
-        children{end+1} = depVal(d, 'child_id'); %#ok<AGROW>
-    end
+e2 = struct('session_id', 'member_b', 'is_linked', 0);
+info.dataset_session_info = struct('dataset_session_info', [e1 e2]);
+m1 = sessionInADatasetDoc('member_a');
+m1.base.id = 'sid_a';
+m1.base.name = '';
+m2 = sessionInADatasetDoc('member_b');
+m2.base.id = 'sid_b';
+m2.base.name = '';
+% rebuilt exactly by the two memberships: nothing written, nothing carried
+out = did2.convert.v1_to_v2({m1, m2, info}, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEmpty(testCase, out.quarantine);
+ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(ids, 'dsi_01')), 'the list writes no V2 document');
+verifyFalse(testCase, any(strcmp({out.passthrough.id}, 'dsi_01')), 'not carried');
+% alone, another order, or another value: carried whole as v1
+v = info;
+v.dataset_session_info.dataset_session_info(2).is_linked = 1;
+% [a rebuilt document may lose its id] (Decided by Jess Haley, 2026-10-27):
+% a list that rebuilds may lose its id only when nothing references it; one
+% another document names is carried
+ref = struct();
+ref.document_class = struct('class_name', 'unknown_class', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+ref.depends_on = struct('name', {'session_list_id'}, 'value', {'dsi_01'});
+ref.base = struct('id', 'ref_01', 'session_id', 'dsid_1', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+ref.unknown_class = struct('foo', 'bar');
+for c = {{info}, {m2, m1, info}, {m1, m2, v}, {m1, m2, info, ref}}
+    batch = c{1};
+    out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+    verifyEmpty(testCase, out.quarantine);
+    hit = strcmp({out.passthrough.id}, 'dsi_01');
+    verifyEqual(testCase, nnz(hit), 1, 'carried');
+    d = strjoin(cellstr(out.summary.migration_notes.carried_as_v1.distinct_details), ' || ');
+    verifyTrue(testCase, contains(d, '[carry-pending-session-list-does-not-rebuild] malformed: '), d);
 end
-verifyEqual(testCase, sort(children), {'member_a', 'member_b'});
 end
 
 
@@ -5600,27 +5640,25 @@ body.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
 
 out = did2.convert.migrators_j.neuron_extracellular(body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 5, ...
-    sprintf('expected 5 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
-verifyTrue(testCase, any(strcmp(names, 'cell')));   % #88: the unit is an entity of type cell
-verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
+% INVERTED 2026-10-27 ([neuron uses the sorted unit's cell], Jess Haley): no
+% unit entity and no derived_from are minted; the calculations are about the
+% element's own entity (rec_sub_1). 1 -> 3: the anchor and two calculations.
+verifyEqual(testCase, numel(out), 3, ...
+    sprintf('expected 3 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyFalse(testCase, any(strcmp(names, 'cell')), 'no entity of its own');
+verifyFalse(testCase, any(strcmp(names, 'directed_relation')), 'no derived_from of its own');
 verifyTrue(testCase, any(strcmp(names, 'calculation+score')));
 verifyTrue(testCase, any(strcmp(names, 'calculation+label')));
 verifyFalse(testCase, any(strcmp(names, 'software')), 'no software is invented');
 verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')), ...
     'no mean_waveform in this fixture -- a calculation here would be a husk');
-
-neuron = out{find(strcmp(names, 'cell'), 1)};
-verifyEqual(testCase, neuron.entity.local_identifier, 'unit_7');
-rel = out{find(strcmp(names, 'directed_relation'), 1)};
-% derived_from: unit (child) <- recording subject (parent)
-verifyEqual(testCase, depValue(rel, 'child_id'), neuron.base.id);
-verifyEqual(testCase, depValue(rel, 'parent_id'), 'rec_sub_1');
-verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, 'relation', 'derived_from'));   % by node (L1)
-% the quality observation is about the minted unit
+% the quality calculation is about the sorted unit's entity, the element
 qobs = out{find(strcmp(names, 'calculation+score'), 1)};
-verifyEqual(testCase, depValue(qobs, 'entity_id'), neuron.base.id);
+verifyEqual(testCase, depValue(qobs, 'entity_id'), 'rec_sub_1');
 verifyEqual(testCase, qobs.score.value.score, 3, 'AbsTol', 1e-9);
+% [every v1 id survives]: the first calculation (the cluster index) keeps ne_1
+lab = out{find(strcmp(names, 'calculation+label'), 1)};
+verifyEqual(testCase, lab.base.id, 'ne_1');
 end
 
 function body = spikeClustersBody()
@@ -5855,6 +5893,35 @@ body = simpleCalcDoc();
 body.simple_calc = struct('result_value', 12.5, 'result_units', 'Hz');
 verifyError(testCase, @() did2.convert.migrators_j.simple_calc(body), ...
     'did2:convert:simpleCalcInventedShape');
+end
+
+function testTheNeedsHomeClassesAreCarriedWholeAsV1(testCase)
+% [simple_calc carries as needs home] and [unbuilt spike classes carry as needs
+% home] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): each is carried whole as v1 through the
+% carry path, citing a needs-home register row (carry-101..104), read raw so
+% the carry is
+% the untouched v1 source.
+fixtures = {simpleCalcDoc(), spikewavesBody(), spikeClustersBody(), binnedSpikeRateBody()};
+for k = 1:numel(fixtures)
+    v1 = jsondecode(jsonencode(fixtures{k}));
+    cls = v1.document_class.class_name;
+    verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), cls)), [cls ': read raw']);
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    emitted = out.migrated{1}.toStruct();
+    verifyEqual(testCase, emitted.document_class.schema_version, 'did_v1', cls);
+    emitted.document_class = rmfield(emitted.document_class, 'schema_version');
+    verifyTrue(testCase, isequaln(emitted, v1), [cls ': the carry is not the v1 source']);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    rowOf = struct('simple_calc', 'carry-104', 'spikewaves', 'carry-101', ...
+        'spike_clusters', 'carry-102', 'binnedspikeratevm', 'carry-103');
+    verifyTrue(testCase, startsWith(d, ['[' rowOf.(cls) '] ']), [cls ': ' d]);
+    verifyTrue(testCase, contains(d, 'awaiting_home'), [cls ': ' d]);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried, cls);
+    verifyTrue(testCase, r.ok, cls);
+end
 end
 
 function body = vmResidualsBody()

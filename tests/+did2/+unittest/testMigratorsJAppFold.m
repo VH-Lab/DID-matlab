@@ -460,10 +460,10 @@ verifyNotEmpty(testCase, depValue(qcalc, 'operating_system_id'));
 verifyNotEmpty(testCase, depValue(qcalc, 'interpreter_id'));
 cidx = onlyClass(testCase, out, 'calculation+label');
 verifyEqual(testCase, depValue(cidx, 'software_id'), sw.get('base.id'));
-neuron = onlyClass(testCase, out, 'cell');
-verifyEmpty(testCase, depValue(neuron, 'software_id'));
-rel = onlyClass(testCase, out, 'directed_relation');
-verifyEmpty(testCase, depValue(rel, 'software_id'));
+% [neuron uses the sorted unit's cell] (Jess Haley, 2026-10-27): no unit entity
+% and no derived_from are minted, so nothing but the calculations names it
+verifyFalse(testCase, hasClass(out, 'cell'));
+verifyFalse(testCase, hasClass(out, 'directed_relation'));
 verifyFalse(testCase, hasClass(out, 'observation+score'));
 end
 

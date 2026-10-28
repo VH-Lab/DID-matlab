@@ -292,7 +292,10 @@ if isfield(postBody, 'ndi_document')
         % beside a good `base` and moving a block that IS the only identity
         % are different facts, and one of them is the defect.
         report.discarded_ndi_document_base_present = 1;
-        if ~isempty(postBody.ndi_document)
+        % an EMPTY block (JSON `{}`, or every field empty) states nothing, so
+        % discarding it loses nothing: [empty ndi_document block is notation]
+        % (Decided by Jess Haley, 2026-10-27)
+        if ~did2.convert.isEmptyBlock(postBody.ndi_document)
             dropped{end+1} = 'ndi_document';
         end
         postBody = rmfield(postBody, 'ndi_document');

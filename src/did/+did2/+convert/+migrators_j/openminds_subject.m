@@ -43,6 +43,44 @@ node = firstNonEmpty( ...
     jGetChar(flds, 'alternateIdentifier'));
 valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 
+% [openMINDS subject leftovers] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): the term's definition and synonyms are not
+% stored (read back from the term) and `matlab_type` is notation; "a controlled
+% term's `openminds_id` is rebuilt from the term through the registry's
+% `equivalent` list ([term equivalents recorded]), and a document whose id does
+% not rebuild is carried; a lab-made strain's `openminds_id` goes on the strain
+% entity's `global_identifier` as `openminds:<id>`". Pass 1 mints no strain
+% entity for an openMINDS subject document (it writes one term assertion), so a
+% lab-made strain (a Strain with no ontology node) that states an id has no
+% home here yet and is carried; and until did-schema adds the registry's
+% `equivalent` column no id rebuilds (did2.convert.openmindsIdRebuilds), so a
+% controlled term that states one is carried too. THE REGISTER ROWS ARE
+% PENDING in did-schema: the notes cite the placeholders below.
+STRAIN_ROW = 'carry-pending-openminds-lab-strain-id';
+ID_ROW = 'carry-pending-openminds-id-does-not-rebuild';
+omId = jGetChar(block, 'openminds_id');
+if ~isempty(strtrim(omId))
+    isLabStrain = strcmp(lower(typeSuffix(jGetChar(block, 'openminds_type'))), 'strain') ...
+        && isempty(node);
+    if isLabStrain
+        % carry-register: none (row pending in did-schema; STRAIN_ROW)
+        did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...
+            sprintf(['[%s] awaiting_home: openminds_id "%s" of a lab-made strain ' ...
+            '(its strain entity''s global_identifier openminds:<id>; pass 1 mints ' ...
+            'no strain entity) ([openMINDS subject leftovers])'], STRAIN_ROW, omId));
+        v2Body = {preBody};
+        return;
+    elseif ~did2.convert.openmindsIdRebuilds(node, omId)
+        % carry-register: none (row pending in did-schema; ID_ROW)
+        did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...
+            sprintf(['[%s] awaiting_home: openminds_id "%s" does not rebuild from ' ...
+            'term "%s" through the registry''s equivalent list ([openMINDS subject ' ...
+            'leftovers])'], ID_ROW, omId, node));
+        v2Body = {preBody};
+        return;
+    end
+end
+
 % term_assertion: a timeless subject_assertion leaf (no method/interaction).
 % did-schema #88: a term_assertion built through did2.build, id preserved.
 body = jStatement(preBody, 'assertion', jSubjectOf(preBody, {'subject_id'}), ...

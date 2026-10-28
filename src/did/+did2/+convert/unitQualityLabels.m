@@ -10,7 +10,8 @@ function [label, found] = unitQualityLabels(action, arg)
 %   on the element: it is `quality_label` ('single' / 'multi') of the
 %   `neuron_extracellular` document whose `element_id` names the element.
 %   [unlabelled units need a map]: a unit with no label is carried as v1
-%   (carry-062). A per-document migrator cannot follow an edge, so
+%   (carry-062). [sorter labels map] (Jess Haley, 2026-10-27): a Kilosort/phy
+%   label maps, `good` to single and `mua` to multi; `noise` is carried. A per-document migrator cannot follow an edge, so
 %   did2.convert.v1_to_v2 indexes the labels of every v1 neuron_extracellular in
 %   its batch before the first migrator runs (as stimulusPresentationSpecs).
 %
@@ -24,7 +25,11 @@ function [label, found] = unitQualityLabels(action, arg)
 %       neuron_extracellular is not in the same batch, or a test). A label the
 %       batch also states and that differs is 'conflict'.
 %   [LABEL, FOUND] = did2.convert.unitQualityLabels('get', ELEMENTID)
-%       LABEL is 'single' or 'multi' (as written, case and edge blanks aside)
+%       LABEL is 'single' or 'multi', or a Kilosort/phy curation label 'good',
+%       'mua' or 'noise' (as written, case and edge blanks aside: NDI-matlab
+%       main +ndi/+fun/+probe/+import/+kilosort/probe.m writes the cluster's
+%       label, ne.quality_label = char(cluster_labels(ci)), matched
+%       case-insensitively)
 %       when every neuron_extracellular naming ELEMENTID states that one label;
 %       '' when none in the batch names it or none states a label (FOUND
 %       false); any other label as written; 'conflict' when two state
@@ -119,7 +124,7 @@ if isfield(blk, 'quality_label')
     v = blk.quality_label;
     if ischar(v) || (isstring(v) && isscalar(v))
         lab = strtrim(char(v));
-        if any(strcmpi(lab, {'single', 'multi'}))
+        if any(strcmpi(lab, {'single', 'multi', 'good', 'mua', 'noise'}))
             lab = lower(lab);
         end
     end

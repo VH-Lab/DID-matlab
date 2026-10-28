@@ -17,9 +17,15 @@ function [v1, spec] = lightsheetZarrLevel(bodies)
 %                                        are NGFF's defaults, which
 %                                        jLightsheetAxes did not write)
 %     chunk_grid                         restated: ceil(shape ./ chunks)
-%     level                              0 for the measurement (not
-%                                        `redundant`); a reduced level's index
-%                                        is not kept (a known finding)
+%     label                              the body's description, unchanged
+%                                        ([light-sheet level label is a note],
+%                                        Jess Haley, 2026-10-27); '' when the
+%                                        description is the no-bytes sentence
+%                                        of a level with no label
+%     level                              the N of the label's "<entry name>
+%                                        level <N> (<reduction>)"; 0 for the
+%                                        measurement (not `redundant`) with no
+%                                        label
 %     reduction_function                 the `summary statistic` condition
 %                                        (Maximum -> max, Arithmetic Mean ->
 %                                        mean), 'none' without one
@@ -42,8 +48,8 @@ function [v1, spec] = lightsheetZarrLevel(bodies)
 %                                        1-based; a file-less body: the
 %                                        template's file_list / file_series
 %                                        `chunk.bin`
-%   NOT REBUILT (known findings, the migrator's header): label, a reduced
-%   level's index, dtype (the pyramid's observation states it), and the
+%   NOT REBUILT (known findings, the migrator's header): dtype (the pyramid's
+%   observation states it), and the
 %   subject_id and source_file_id edges (the owner observation names the
 %   subject; the pyramid names the store).
 %
@@ -70,7 +76,21 @@ spec.unplaced = [spec.unplaced, f.bad];
 blk = struct();
 redundant = findField(b, 'redundant');
 isMeasurement = isempty(redundant) || ~logical(firstOf(redundant));
-if isMeasurement
+NO_BYTES = 'a pyramid level holding no bytes: no chunk data is stored for it';
+label = textOf(findField(b, 'description'));
+if strcmp(label, NO_BYTES) && ~(isfield(b, 'files') && isstruct(b.files))
+    label = '';
+end
+if ~isempty(label)
+    blk.label = label;
+    tok = regexp(label, '^.* level (\d+) \(([^()]*)\)$', 'tokens', 'once');
+    if isempty(tok)
+        spec.unplaced{end+1} = sprintf(['the level''s label "%s" states no ' ...
+            'level number (the migrator carries such a level)'], label);
+    else
+        blk.level = str2double(tok{1});
+    end
+elseif isMeasurement
     blk.level = 0;
 end
 blk.reduction_function = reductionOf(findField(b, 'conditions'));
