@@ -752,6 +752,10 @@ POST_PASSES = [
         ("refused_no_fields", "  none of the five knobs present"),
         ("refused_inline_present", "  the leaf already carries inline parameters"),
         ("refused_harmonic_mismatch", "  freq_response ~= value.harmonic"),
+        # Jess Haley 2026-10-27 [parameter names map by table]: a setting the
+        # name table (did2.convert.tuningNames) does not hold keeps the
+        # parameters document v1.
+        ("refused_unknown_setting", "  a setting the name table does not hold"),
         ("fold_quarantined", "QUARANTINED by the fold"),
         ("parameters_documents_referenced_after", "SHARING: method documents some response uses"),
         ("parameters_documents_unreferenced_after", "  used by no response (evidence only)"),
@@ -4841,7 +4845,10 @@ def _render_response_parameters_reading(rep, p):
             "refused_no_fields", "refused_inline_present",
             "refused_harmonic_mismatch")]
         if None not in parts:
-            doc_refused = sum(parts)
+            # refused_unknown_setting (2026-10-27) is absent from older
+            # reports, which could not refuse for it: 0 there
+            doc_refused = sum(parts) + (
+                _int_or_none(rep.get("refused_unknown_setting")) or 0)
         quar = _int_or_none(rep.get("fold_quarantined"))
         if seen_p and minted == 0 and doc_refused == 0 and not quar:
             p("          *** %d parameters document(s) seen and NOTHING minted or"

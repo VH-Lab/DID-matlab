@@ -75,14 +75,13 @@ function bodies = stimulus_response_scalar(preBody)
 %   (resolveSoftwareDedup merges the copies); no operating_system_id (optional
 %   on #88, Jess Haley 2026-10-21 [calculation-os-optional]).
 %
-%   THE GUARDS, each returning the document UNCHANGED:
+%   THE GUARDS, each returning the document UNCHANGED (1, 2, 3 and 5 carried,
+%   kind malformed, carry-100; 1b carry-050; 4 handed on):
 %     1. no `element_id` -> no subject (#88 requires `entity_id`).
-%     1b. a non-empty `stimulus_response.stimulator_epochid` or
-%        `stimulus_control_id` -> neither has a place on the calculation, so
-%        the document is carried whole as v1 ([generic stage is lossless],
-%        [partly placed is carried as v1], Jess Haley, 2026-10-25). The two
-%        MAPPING rows above that say "DROPPED" / "NOT CARRIED" describe the
-%        dataset map's choice, not the generic stage's.
+%     1b. a `stimulus_response.stimulator_epochid` that differs from the
+%        response's `element_epochid` (one equal to it is rebuilt), or input
+%        edges whose names do not rebuild from their classes (carry-100); see
+%        THE 2026-10-27 DECISIONS below.
 %     2. `response_type` not 'mean' | 'F<n>' -> the harmonic is unknown.
 %     3. `responses.response_real` absent or empty -> no value.
 %     4. an `element_epochid` string with no `epoch` document (jEpochDocId '')
@@ -110,9 +109,29 @@ function bodies = stimulus_response_scalar(preBody)
 %   carry-049, as the renamed path carried it. Every v1 field and where it
 %   goes is the MAPPING above; did2.convert.roundtrip.stimulus_response_scalar
 %   rebuilds the v1 document and testRawV1RoundTripStimulusResponse compares.
-%   The writer always sets `stimulator_epochid` and `stimulus_control_id`, so
-%   every writer-shaped response is carried (carry-050); the fold runs only on
-%   a response that states neither.
+%
+%   THE 2026-10-27 DECISIONS (Jess Haley, did-schema
+%   V_eta_go_forward_class_audit.md), which supersede the MAPPING rows above
+%   for the two edges and the guards:
+%     [response links: epoch rebuilt, control as input] ("29 yes"): the
+%       stimulator epoch is not written: it equals the response's epoch on its
+%       time anchor (`element_epochid`), and the round trip rebuilds it from
+%       that; a response whose `stimulator_epochid` differs from its
+%       `element_epochid` is carried (carry-050). The control
+%       (`stimulus_control_id`) is an `input_id` of the calculation, after the
+%       presentation (NDI's second pass turns the control record into the
+%       pairing `calculation`, id preserved, [control pairing is a
+%       calculation], so the edge keeps resolving). Its v1 names are rebuilt
+%       from the classes of the documents they point at ([input names rebuild
+%       from the input class]; did2.convert.inputEdgeNames): a response whose
+%       input names do not rebuild (e.g. a control and no presentation) is
+%       carried, kind malformed (carry-100).
+%     [unreadable responses are malformed] ("5 yes"): a response the migrator
+%       cannot read (guards 1, 2, 3 and 5 below: no element link, an unknown
+%       response type, no response values, a stimid list of another length) is
+%       carried whole as v1, kind malformed, citing the generic malformed row
+%       (carry-100). Guard 4 (an epoch with no epoch document yet) is not
+%       unreadable: it is the pass-1 hand-on epochMint re-calls, unchanged.
 
 arguments
     preBody (1,1) struct
@@ -145,30 +164,44 @@ resp = subBlock(blk, 'responses');
 subjectId = jSubjectOf(body, {'element_id'});
 harmonic  = harmonicFromResponseType(charAny(blk, {'response_type', 'responseType'}));
 realPart  = numAny(resp, {'response_real', 'responseReal'});
-if isempty(subjectId) || isempty(harmonic) || isempty(realPart)
-    bodies = {preBody};
+% [unreadable responses are malformed] (Jess Haley, 2026-10-27): guards 1-3
+unreadable = {};
+if isempty(subjectId)
+    unreadable{end+1} = 'no element_id edge';
+end
+if isempty(harmonic)
+    unreadable{end+1} = sprintf('response_type "%s" is not mean or F<n>', ...
+        charAny(blk, {'response_type', 'responseType'}));
+end
+if isempty(realPart)
+    unreadable{end+1} = 'no responses.response_real';
+end
+if ~isempty(unreadable)
+    bodies = carryMalformed(preBody, body, unreadable);
     return;
 end
 
-% [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
-% 2026-10-25, did-schema V_eta_go_forward_class_audit.md): the calculation has
-% no place for `stimulus_response.stimulator_epochid` (dropped by the plan) or
-% for the `stimulus_control_id` edge ([control as covariate]: not carried). A
-% response that states either is carried WHOLE as v1 for the dataset's map,
-% instead of being folded with a `field_dropped` / `stimulus_control_id` note.
-unplaced = {};
+% [response links: epoch rebuilt, control as input] (Jess Haley, 2026-10-27):
+% the stimulator epoch is left unwritten when it is the response's own epoch
+% (the round trip rebuilds it from `element_epochid`); one that differs is
+% carried, as every stated one was before (carry-050).
 srBlock = subBlock(body, 'stimulus_response');
-if ~isempty(charAny(srBlock, {'stimulator_epochid', 'stimulatorEpochid'}))
-    unplaced{end+1} = 'stimulus_response.stimulator_epochid';
-end
-if ~isempty(jDependency(body, 'stimulus_control_id'))
-    unplaced{end+1} = 'depends_on stimulus_control_id';
-end
-if ~isempty(unplaced)
+stimEpoch = charAny(srBlock, {'stimulator_epochid', 'stimulatorEpochid'});
+if ~strcmp(stimEpoch, charAny(srBlock, {'element_epochid', 'elementEpochid'}))
     % carry-register: carry-050
     did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar', ...
-        char(body.base.id), ['[carry-050] unplaced: ' strjoin(unplaced, ', ')]);
+        char(body.base.id), ['[carry-050] unplaced: stimulus_response.stimulator_epochid ' ...
+        '(differs from element_epochid)']);
     bodies = {preBody};
+    return;
+end
+% the inputs, presentation then control, named back from their classes
+[inputs, inputNames] = responseInputs(body);
+if ~isequal(inputNames, did2.convert.inputEdgeNames(inputs, ...
+        {'stimulus_presentation_id', 'stimulus_control_id'}))
+    bodies = carryMalformed(preBody, body, {sprintf(['input edges %s do not rebuild ' ...
+        'from the classes they point at: [input names rebuild from the input class]'], ...
+        strjoin(inputNames, ', '))});
     return;
 end
 
@@ -180,10 +213,12 @@ if ~isempty(epochString) && isempty(epochDocId)
     return;
 end
 
-% GUARD 5 -- the reading dimension must describe the value it indexes.
+% GUARD 5 -- the reading dimension must describe the value it indexes
+% ([unreadable responses are malformed]).
 stimid = numAny(resp, {'stimid'});
 if ~isempty(stimid) && numel(stimid) ~= numel(realPart)
-    bodies = {preBody};
+    bodies = carryMalformed(preBody, body, {sprintf('%d stimid for %d readings', ...
+        numel(stimid), numel(realPart))});
     return;
 end
 
@@ -227,15 +262,10 @@ if isempty(swId)
     [software, swId] = jSoftware(RESPONSE_METHOD, '', '', jSid(body), jStamp(body));
 end
 
-% The presentation ONLY. Decided by Jess Haley, 2026-10-22 [control as
-% covariate] (did-schema V_eta_stimulus_response_model_plan.md): a v1
-% control_stimulus_ids document becomes no V2 document -- NDI's second pass
-% folds it into the presentation's `control condition` covariate -- and
-% "responses point at the presentation only". The v1 `stimulus_control_id`
-% edge is therefore not carried (it named the control record, which is gone).
-inputs = {};
-v = jDependency(body, 'stimulus_presentation_id');
-if ~isempty(v); inputs{end+1} = v; end
+% The presentation, then the control ([response links: epoch rebuilt, control
+% as input], Jess Haley, 2026-10-27; superseding "responses point at the
+% presentation only" of [control as covariate], 2026-10-22): INPUTS, read
+% above by responseInputs.
 
 methodId = jDependency(body, 'stimulus_response_scalar_parameters_id');
 methodOpt = {};
@@ -262,12 +292,47 @@ bodies = [{calc, anchor}, software, runDocs];
 
 % The v1 `stimulus_control_id` edge: ONE note per response document this
 % migrator converts, as Jess Haley 2026-10-22 decided ([covariate rules named],
-% answer "A" to 6.4), so the note count stays the denominator. Since
-% [generic stage is lossless] (2026-10-25) a response whose edge names a
-% document is carried as v1 above, so a converted one's DETAIL is always
-% 'none' (the edge was empty); 'dropped' is no longer written.
+% answer "A" to 6.4), so the note count stays the denominator. DETAIL 'input'
+% when the edge is an input_id ([response links: epoch rebuilt, control as
+% input], 2026-10-27), 'none' when it was empty; 'dropped' is no longer
+% written.
+controlDetail = 'none';
+if ~isempty(jDependency(body, 'stimulus_control_id'))
+    controlDetail = 'input';
+end
 did2.convert.reportNote('stimulus_control_id', 'stimulus_response_scalar', ...
-    char(body.base.id), 'none');
+    char(body.base.id), controlDetail);
+end
+
+function bodies = carryMalformed(preBody, body, why)
+%CARRYMALFORMED Carry a response the migrator cannot read whole as v1, kind
+%   malformed ([unreadable responses are malformed], Jess Haley, 2026-10-27),
+%   citing the generic malformed row.
+id = '';
+if isfield(body, 'base') && isstruct(body.base) && isfield(body.base, 'id')
+    id = char(body.base.id);
+end
+if isempty(id)
+    id = sourceIdText(preBody);
+end
+% carry-register: carry-100
+did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar', id, ...
+    ['[carry-100] malformed: ' strjoin(why, '; ')]);
+bodies = {preBody};
+end
+
+function [ids, names] = responseInputs(body)
+%RESPONSEINPUTS The response's input edges, presentation then control, with
+%   their v1 names.
+ids = {};
+names = {};
+for nm = {'stimulus_presentation_id', 'stimulus_control_id'}
+    v = jDependency(body, nm{1});
+    if ~isempty(v)
+        ids{end+1} = v; %#ok<AGROW>
+        names{end+1} = nm{1}; %#ok<AGROW>
+    end
+end
 end
 
 % ===================== helpers =============================================

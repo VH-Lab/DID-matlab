@@ -1,4 +1,4 @@
-function [s, bad] = methodParameters(params)
+function [s, bad] = methodParameters(params, useTable)
 %METHODPARAMETERS A v1 `input_parameters` struct rebuilt from a method's
 %   parameter entries (the inverse of +migrators_j/private/jParameterList).
 %
@@ -15,7 +15,15 @@ function [s, bad] = methodParameters(params)
 %   parameter has (a field name with a space cannot be a MATLAB field). An
 %   entry in another form (term, count, matrix, logical) is not one
 %   jParameterList writes: it is listed in BAD.
+%
+%   [S, BAD] = methodParameters(PARAMS, true) maps each name back through
+%   the name table instead (did2.convert.tuningNames 'v1'; [parameter names
+%   map by table], Jess Haley, 2026-10-27): a name the table does not hold is
+%   listed in BAD.
 
+if nargin < 2
+    useTable = false;
+end
 s = struct();
 bad = {};
 if isempty(params)
@@ -46,7 +54,16 @@ for k = 1:numel(params)
         bad{end+1} = sprintf('method parameter "%s" is not a number or text', name); %#ok<AGROW>
         continue;
     end
-    steps = strsplit(strrep(name, ' ', '_'), '.');
+    if useTable
+        [v1Name, found] = did2.convert.tuningNames('v1', name);
+        if ~found
+            bad{end+1} = sprintf('method parameter "%s" is not in the name table', name); %#ok<AGROW>
+            continue;
+        end
+        steps = strsplit(v1Name, '.');
+    else
+        steps = strsplit(strrep(name, ' ', '_'), '.');
+    end
     s = setPath(s, steps, v);
 end
 end
