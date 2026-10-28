@@ -31,6 +31,14 @@ function report = check(v1Body, v2Docs)
 %                           the same thing (a CSV table's rows, a CURIE's
 %                           prefix case: [spelling is notation], Jess Haley,
 %                           2026-10-26), each with the decision that allows it
+%         spec.twins        struct array {paths, why} (optional): two or more
+%                           v1 spellings of ONE field (e.g. the template's
+%                           `location_ontologyNode` and the writer's
+%                           `location_ontologyName`, [treatment location name
+%                           is the node], Jess Haley, 2026-10-27). The inverse
+%                           writes the value under every spelling; a spelling
+%                           the v1 document does not hold is not INVENTED
+%                           when it holds another of them
 %         spec.unplaced     cellstr: emitted content the inverse could not
 %                           place (an unexpected document, a wrong type)
 %         spec.spellings    struct array {paths, why} (optional): a v1 field
@@ -148,10 +156,17 @@ for k = 1:numel(origLeaves)
 end
 
 origPaths = {origLeaves.path};
+twins = struct('paths', {}, 'why', {});
+if isfield(spec, 'twins')
+    twins = spec.twins;
+end
 newLeaves = flattenLeaves(rebuilt);
 for k = 1:numel(newLeaves)
     lf = newLeaves(k);
     if any(strcmp(lf.path, origPaths)) || isEmptyValue(lf.value)
+        continue;
+    end
+    if isTwinOfAnOriginal(twins, lf.path, origPaths)
         continue;
     end
     if ~report.carried && startsWith(lf.path, 'document_class')
@@ -221,6 +236,19 @@ for k = 1:numel(v2Docs)
         d = d.toStruct();
     end
     bodies{k} = d;
+end
+end
+
+function tf = isTwinOfAnOriginal(twins, path, origPaths)
+%ISTWINOFANORIGINAL PATH is one spelling of a field (spec.twins) whose other
+%   spelling the v1 document holds.
+tf = false;
+for k = 1:numel(twins)
+    p = twins(k).paths;
+    if any(strcmp(p, path)) && any(ismember(setdiff(p, {path}), origPaths))
+        tf = true;
+        return;
+    end
 end
 end
 
