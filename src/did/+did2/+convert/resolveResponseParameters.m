@@ -160,6 +160,11 @@ function [result, report] = resolveResponseParameters(result, options)
 %     it carries none of the five fields      -> refused_no_fields
 %     the leaf already has inline parameters  -> refused_inline_present
 %     freq_response ~= value.harmonic         -> refused_harmonic_mismatch
+%     a setting the name table does not hold  -> refused_unknown_setting
+%       ([parameter names map by table], Jess Haley, 2026-10-27: v1
+%       settings names become V2 method parameter variables through
+%       did2.convert.tuningNames; "a v1 name missing from the table carries
+%       the document": the parameters document stays v1)
 %
 %   A refused leaf is LEFT EXACTLY AS PASS 1 EMITTED IT -- edge intact, document
 %   intact. Refusing costs nothing: the edge still resolves, and the state the
@@ -264,6 +269,7 @@ report = struct( ...
     'refused_no_fields',                       0, ...
     'refused_inline_present',                  0, ...
     'refused_harmonic_mismatch',               0, ...
+    'refused_unknown_setting',                 0, ...
     'refused_total',                           0, ...
     'fold_quarantined',                        0, ...
     'parameters_documents_referenced_after',   0, ...
@@ -428,6 +434,11 @@ for k = 1:n
         continue;
     end
 
+    if ~isempty(unknownSettings(pBlk, KNOBS))
+        % [parameter names map by table] (Jess Haley, 2026-10-27)
+        report.refused_unknown_setting = report.refused_unknown_setting + 1;
+        continue;
+    end
     [params, copied, emptied, defined] = knobsOf(pBlk, KNOBS);
     if copied == 0
         % A method with no settings records nothing the source said.
@@ -454,7 +465,8 @@ report.refused_total = report.refused_not_in_batch ...
     + report.refused_wrong_class ...
     + report.refused_no_fields ...
     + report.refused_inline_present ...
-    + report.refused_harmonic_mismatch;
+    + report.refused_harmonic_mismatch ...
+    + report.refused_unknown_setting;
 
 if ~isempty(changedIdx)
     % --- validate through the same door every other pass uses --------------
@@ -597,7 +609,9 @@ for k = 1:numel(knobs)
     else
         continue;
     end
-    var = did2.convert.registeredTerm('', strrep(name, '_', ' '));
+    % [parameter names map by table] (Jess Haley, 2026-10-27)
+    v2 = did2.convert.tuningNames('v2', name);
+    var = did2.convert.registeredTerm('', v2);
     if isempty(v)
         switch name
             case 'prestimulus_normalization'
@@ -627,6 +641,30 @@ end
 if ~isempty(entries)
     params = did2.build.list(entries{:});
 end
+end
+
+function names = unknownSettings(pBlk, knobs)
+%UNKNOWNSETTINGS The fields of the parameters block that hold a value and are
+%   neither a knob the name table holds (snake or camelCase) nor
+%   freq_response (checked against the harmonic, not a parameter).
+names = {};
+if ~isstruct(pBlk) || ~isscalar(pBlk)
+    return;
+end
+inTable = knobs(cellfun(@(k) nthOutput2(k), knobs));
+known = [inTable, cellfun(@toCamel, inTable, 'UniformOutput', false), ...
+    {'freq_response', 'freqResponse'}];
+fns = fieldnames(pBlk);
+for k = 1:numel(fns)
+    v = pBlk.(fns{k});
+    if ~any(strcmp(fns{k}, known)) && ~isempty(v)
+        names{end+1} = fns{k}; %#ok<AGROW>
+    end
+end
+end
+
+function found = nthOutput2(name)
+[~, found] = did2.convert.tuningNames('v2', name);
 end
 
 function t = shortestText(x)
