@@ -218,7 +218,9 @@ v1.base = struct('id', 'oc_2', 'session_id', 'sess_09', 'name', '', ...
 v1.app = struct('name', 'ndi.calc.vis.oridir', 'version', '1.2', ...
     'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
     'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
-v1.oridirtuning_calc = struct('input_parameters', struct('independent_variable', 'direction'));
+% a setting the name table holds ([parameter names map by table], Jess Haley,
+% 2026-10-27: a name outside it carries the document)
+v1.oridirtuning_calc = struct('input_parameters', struct('independent_label', 'direction'));
 % response_units EMPTY (the writers' real value): a recognised spelling such as
 % 'spikes/s' is replaced by a registered unit and kept nowhere, so since
 % [generic stage is lossless] (Jess Haley, 2026-10-25) such a document is

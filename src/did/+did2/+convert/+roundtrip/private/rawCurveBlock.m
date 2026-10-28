@@ -1,4 +1,4 @@
-function [blk, bad] = rawCurveBlock(leaf)
+function [blk, bad] = rawCurveBlock(leaf, own, responseId)
 %RAWCURVEBLOCK The v1 `stimulus_tuningcurve` block rebuilt from a converted
 %   tuningcurve_calc (the inverse of jTuningCurve's rawCurve, one stimulus
 %   variable).
@@ -18,9 +18,23 @@ function [blk, bad] = rawCurveBlock(leaf)
 %     control_response_*, control_individual_responses_*   value.control.*
 %     response_units              value.response_unit's label (a spelling
 %                                 jTuningCurve recognised carries the document)
-%   stimid, control_stimid and stimulus_presentation_number have no V2 home: a
-%   document stating them is carried, so a converted one stated none.
+%     stimid, stimulus_presentation_number   rebuilt from the presentation
+%                                 and the curve's conditions
+%                                 (did2.convert.tuningStimids; Decided by Jess
+%                                 Haley, 2026-10-27 [tuning stimids rebuild]):
+%                                 OWN is the calculator's rebuilt block (its
+%                                 input_parameters.independent_parameter names
+%                                 the varied parameters; else the label),
+%                                 RESPONSEID the curve's response input. When
+%                                 the presentation or the response is not in
+%                                 the batch, nothing is written (the migrator
+%                                 converted such a curve only when it stated
+%                                 neither).
+%   control_stimid has no V2 home: a document stating it is carried, so a
+%   converted one stated none.
 
+if nargin < 2; own = struct(); end
+if nargin < 3; responseId = ''; end
 bad = {};
 blk = struct();
 value = getIn(leaf, 'tuning_curve', 'value');
@@ -54,6 +68,50 @@ if isfield(value, 'control') && isstruct(value.control)
 end
 bad = [bad, others(value, {'mean', 'stddev', 'stderr', 'individual', 'control', ...
     'response_unit'}, 'tuning_curve.value')];
+
+% [tuning stimids rebuild]
+if isfield(blk, 'independent_variable_value')
+    [names, values] = conditionsOf(leaf);
+    [stimid, spn, why] = did2.convert.tuningStimids(blk.independent_variable_value, ...
+        varied(own, blk), names, values, responseId);
+    if isempty(why)
+        blk.stimid = stimid;
+        blk.stimulus_presentation_number = spn;
+    end
+end
+end
+
+function p = varied(own, blk)
+%VARIED The stimulus parameters the curve varies (as jCalculation reads them).
+src = getIn(own, 'input_parameters', 'independent_parameter');
+if isempty(src) && isfield(blk, 'independent_variable_label')
+    src = blk.independent_variable_label;
+end
+if iscell(src)
+    src = strjoin(cellfun(@char, reshape(src, 1, []), 'UniformOutput', false), ',');
+end
+p = {};
+if ~ischar(src) || isempty(src)
+    return;
+end
+p = strtrim(strsplit(src, ','));
+p = p(~cellfun(@isempty, p));
+end
+
+function [names, values] = conditionsOf(leaf)
+%CONDITIONSOF The curve's conditions as v1 stim_property_list names/values.
+names = {};
+values = [];
+conds = asCell(getIn(leaf, 'statement', 'conditions'));
+for k = 1:numel(conds)
+    [~, v2] = termParts(getIn(conds{k}, 'variable'));
+    [v1Name, found] = did2.convert.tuningNames('v1', v2);
+    q = numberOf(getIn(conds{k}, 'quantity', 'value'));
+    if found && ~isempty(q)
+        names{end+1} = v1Name; %#ok<AGROW>
+        values(end+1) = q; %#ok<AGROW>
+    end
+end
 end
 
 function blk = take(blk, name, src, field)

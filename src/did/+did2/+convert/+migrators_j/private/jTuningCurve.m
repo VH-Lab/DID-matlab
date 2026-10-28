@@ -1,4 +1,4 @@
-function [value, valueAxes, leafFields, dropped, response] = jTuningCurve(srcBlk, family)
+function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve(srcBlk, family, opts)
 %JTUNINGCURVE A v1 tuning-curve result block as did-schema #88's
 %   `tuning_curve` value, its dimensions and covariates, and the named
 %   calculation's own blocks.
@@ -74,16 +74,55 @@ function [value, valueAxes, leafFields, dropped, response] = jTuningCurve(srcBlk
 %   Fit coefficients are a vector in v1 with no names; each becomes a
 %   `{variable, value}` entry named '<model> parameter k' (a label) -- a
 %   CONSERVATIVE CHOICE, recorded.
+%
+%   ONE FUNCTION, TOLD APART BY ITS CONSTRAINTS (Jess Haley, 2026-10-27, did-schema
+%   V_eta_go_forward_class_audit.md):
+%     contrast  [Naka-Rushton is one function] (2026-10-26), built by [tuning
+%               fits use curve fitting now]: the writer's naka_rushton_RB_,
+%               _RBN_ and _RBNS_ fits are ONE model, 'Naka-Rushton'
+%               (R(c) = Rm c^n / (c^(n s) + c50^(n s)); NDIcalc-vis-matlab
+%               00e3e0f ndi.calc.vis.contrast_tuning writes the parameters as
+%               [Rm c50], [Rm c50 n], [Rm c50 n s]), RB written as the
+%               constraints n = 1 and s = 1, RBN as s = 1, in the fit entry's
+%               `constraints`: {variable 'Naka-Rushton parameter 3' (n), value
+%               1} and {'Naka-Rushton parameter 4' (s), 1}.
+%     speed     [Priebe fits are one function]: the writer's `fit`,
+%               `fit_no_speed` and `fit_fullspeed` are one equation
+%               (NDIcalc-vis-matlab 00e3e0f: vis.speed.fit, fit_nospeed and
+%               fit_fullspeed all fit vis.speed.tuningfunc, with the speed
+%               index xi, parameter 3, bounded to [min_xi, max_xi], held at 0,
+%               and held at 1): model 'Priebe fit' each, `fit_no_speed`
+%               constrained {'Priebe fit parameter 3', 0} and `fit_fullspeed`
+%               {'Priebe fit parameter 3', 1}.
+%
+%   CONTRAST METRICS ([contrast metrics added], 2026-10-27): a contrast fit's
+%   relative_max_gain, saturation_index and sensitivity (10 entries) go in the
+%   fit entry's `metrics`, named as on `contrast_sensitivity`. The fields are a
+%   did-schema change (Build pending there): each is written only when the
+%   schema in use declares it (jSchemaHasPath); until then it stays unplaced
+%   and carries the document (carry-056), as before.
+%
+%   THE `abs` BLOCK ([absolute-value fits are a second calculation],
+%   2026-10-27): an SF or TF result's `abs` block (its fitless values and fits
+%   of the absolute response) is folded the same way, ALONE, and returned in
+%   EXTRA.abs {present, value, leafFields}; jCalculation writes it as a second
+%   calculation. Its unplaced fields are listed in DROPPED under 'abs.'.
+%
+%   OPTS.Rebuilt (family 'stimulus'): raw-curve fields the caller rebuilds
+%   from other documents, so they are placed ([tuning stimids rebuild]:
+%   stimid, stimulus_presentation_number).
 
 arguments
     srcBlk
     family (1,:) char
+    opts.Rebuilt = {}
 end
 
 value = struct();
 valueAxes = [];
 leafFields = struct();
 dropped = {};
+extra = struct('abs', struct('present', false, 'value', struct(), 'leafFields', struct()));
 [v0, ~, o0] = jResponseVariable([]);   % no block: the source does not say
 response = struct('variable', v0, 'outcome', o0);
 if ~isstruct(srcBlk) || ~isscalar(srcBlk)
@@ -91,7 +130,7 @@ if ~isstruct(srcBlk) || ~isscalar(srcBlk)
 end
 
 if strcmp(family, 'stimulus')
-    [value, valueAxes, dropped, response] = rawCurve(srcBlk);
+    [value, valueAxes, dropped, response] = rawCurve(srcBlk, opts.Rebuilt);
     return;
 end
 
@@ -214,7 +253,7 @@ for k = 1:numel(names)
     if ~(strcmp(nm, 'fit') || startsWith(nm, 'fit_')) || ~isstruct(srcBlk.(nm))
         continue;
     end
-    [entries, d] = fitEntries(srcBlk.(nm), nm);
+    [entries, d] = fitEntries(srcBlk.(nm), nm, family);
     fits = [fits, entries]; %#ok<AGROW>
     dropped = [dropped, d]; %#ok<AGROW>
 end
@@ -224,8 +263,25 @@ if ~isempty(fits)
     value.model_fit = did2.build.list(fits{:});
 end
 
+% ---- the absolute-value fits (SF / TF: v1 `abs`) ---------------------------
+% [absolute-value fits are a second calculation] (Jess Haley, 2026-10-27):
+% folded alone, returned in EXTRA.abs for jCalculation's second calculation
+absHandled = false;
+if any(strcmp(family, {'sf', 'tf'}))
+    [ab, abName] = getfn(srcBlk, {'abs'});
+    if ~isempty(abName) && isstruct(ab) && isscalar(ab)
+        absHandled = true;
+        [av, ~, alf, ad] = jTuningCurve(ab, family);
+        dropped = [dropped, prefixed('abs.', ad)];
+        extra.abs = struct('present', true, 'value', av, 'leafFields', alf);
+    end
+end
+
 known = [{'properties', 'tuning_curve', 'significance', 'vector', 'fitless'}, ...
     names(strcmp(names, 'fit') | startsWith(names, 'fit_'))'];
+if absHandled
+    known{end+1} = 'abs';
+end
 fold = @(c) lower(strrep(c, '_', ''));
 rest = names(~ismember(fold(names), fold(known)));
 dropped = [dropped, reshape(stated(srcBlk, rest), 1, [])];
@@ -233,8 +289,9 @@ end
 
 % =============================================================================
 
-function [value, valueAxes, dropped, response] = rawCurve(st)
-% v1 `stimulus_tuningcurve` (tuningcurve_calc, and the raw pre-calculator curve)
+function [value, valueAxes, dropped, response] = rawCurve(st, rebuilt)
+% v1 `stimulus_tuningcurve` (tuningcurve_calc, and the raw pre-calculator curve).
+% REBUILT: fields the caller rebuilds from other documents (placed here).
 value = struct();
 labels = getf(st, {'independent_variable_label'});
 if ischar(labels); labels = {labels}; end
@@ -277,6 +334,10 @@ value = toGrid(value, valueAxes);
 [value, response] = putUnit(value, u);
 if spellingReplaced(response)
     used = setdiff(used, {nm}, 'stable');   % its spelling is not kept
+end
+for k = 1:numel(rebuilt)
+    [~, nm] = getfn(st, rebuilt(k));
+    used{end+1} = nm; %#ok<AGROW>
 end
 used = used(~cellfun(@isempty, used));
 rest = setdiff(fieldnames(st), used);
@@ -432,7 +493,7 @@ else
 end
 end
 
-function [entries, dropped] = fitEntries(blk, blockName)
+function [entries, dropped] = fitEntries(blk, blockName, family)
 % one v1 fit block -> one or more model_fit entries
 entries = {};
 dropped = {};
@@ -474,25 +535,63 @@ for g = 1:numel(prefixes)
         model = blockName;
         if startsWith(model, 'fit_'); model = model(5:end); end
     end
-    [e, d] = oneFit(grp, model);
+    [model, constraints] = oneFunction(model, blockName, family);
+    [e, d] = oneFit(grp, model, constraints, family);
     entries{end+1} = e; %#ok<AGROW>
     dropped = [dropped, prefixed([blockName '.' P], d)]; %#ok<AGROW>
 end
 dropped = [dropped, prefixed([blockName '.'], stated(blk, fn(~claimed)))];
 end
 
-function [e, dropped] = oneFit(s, model)
-e = struct('model', jLabel(strrep(model, '_', ' ')));
+function [model, constraints] = oneFunction(model, blockName, family)
+%ONEFUNCTION The one model a fit is, and the constraints that tell it apart
+%   ({coefficient number, value} rows): see ONE FUNCTION in the header.
+constraints = zeros(0, 2);
+switch family
+    case 'contrast'
+        t = regexp(model, '^naka_rushton_(RB|RBN|RBNS)$', 'tokens', 'once', 'ignorecase');
+        if ~isempty(t)
+            model = 'Naka-Rushton';
+            switch upper(t{1})
+                case 'RB'
+                    constraints = [3 1; 4 1];   % n = 1, s = 1
+                case 'RBN'
+                    constraints = [4 1];        % s = 1
+            end
+        end
+    case 'speed'
+        if strcmpi(model, 'Priebe_fit')
+            switch blockName
+                case 'fit_no_speed'
+                    constraints = [3 0];        % xi = 0
+                case 'fit_fullspeed'
+                    constraints = [3 1];        % xi = 1
+            end
+        end
+end
+end
+
+function [e, dropped] = oneFit(s, model, constraints, family)
+label = strrep(model, '_', ' ');
+e = struct('model', jLabel(label));
 used = {};
 p = getf(s, {'parameters'});
 if isnumeric(p) && ~isempty(p)
     c = cell(1, numel(p));
     for k = 1:numel(p)
         c{k} = struct('variable', jLabel(sprintf('%s parameter %d', ...
-            strrep(model, '_', ' '), k)), 'value', double(p(k)));
+            label, k)), 'value', double(p(k)));
     end
     e.coefficients = did2.build.list(c{:});
     used{end+1} = 'parameters';
+end
+if ~isempty(constraints)
+    c = cell(1, size(constraints, 1));
+    for k = 1:size(constraints, 1)
+        c{k} = struct('variable', jLabel(sprintf('%s parameter %d', label, ...
+            constraints(k, 1))), 'value', constraints(k, 2));
+    end
+    e.constraints = did2.build.list(c{:});
 end
 gd = struct();
 for f = {{'r2', {'r2', 'r_squared'}}, {'sse', {'sse'}}, {'sse_per_point', {'sse_per_point', 'sse_perpoint'}}}
@@ -515,6 +614,25 @@ mmap = {'preferred_value', {'pref'}; 'half_maximum_below', {'l50', 'empirical_c5
     'partial_r2', {'partial_r2'}; 'nested_f_test_p', {'nested_f_test_p_value'}};
 [m, um] = scalarMap(s, mmap);
 used = [used, um];
+if strcmp(family, 'contrast')
+    % [contrast metrics added] (Jess Haley, 2026-10-27): named as on
+    % contrast_sensitivity; written only once the schema declares them
+    for f = {'relative_max_gain', 'saturation_index', 'sensitivity'}
+        [x, nm] = getfn(s, f);
+        if isempty(nm) || ~isnumeric(x) || isempty(x) ...
+                || ~jSchemaHasPath('tuning_curve', {'value', 'model_fit', 'metrics', f{1}})
+            continue;
+        end
+        if strcmp(f{1}, 'sensitivity')
+            m.(f{1}) = double(x(:));
+        elseif isscalar(x)
+            m.(f{1}) = double(x);
+        else
+            continue;
+        end
+        used{end+1} = nm; %#ok<AGROW>
+    end
+end
 if ~isempty(fieldnames(m)); e.metrics = m; end
 % the sampled fit: x then y, as v1 stored them
 xNames = {{'values', 'fit_angles', 'contrast'}, {'spatial_frequencies'}, {'temporal_frequencies'}};

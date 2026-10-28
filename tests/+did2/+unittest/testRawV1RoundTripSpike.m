@@ -36,11 +36,13 @@ function tests = testRawV1RoundTripSpike
 %     hartley_calc   converts (with its presentation in the batch); alone it is
 %                    carried (carry-040: the stimulus properties could not be
 %                    compared). Nothing lost.
-%     speedtuning_calc  carried (carry-056): its three fit blocks `fit`,
-%                    `fit_no_speed`, `fit_fullspeed` would become three
-%                    model_fit entries all named 'Priebe fit'. The same document
-%                    with one fit block (the "converted shape") converts and
-%                    loses nothing. On the renamed path it passed through
+%     speedtuning_calc  converts: its three fit blocks `fit`, `fit_no_speed`,
+%                    `fit_fullspeed` are model_fit entries of the one model
+%                    'Priebe fit' told apart by their constraints (Decided by
+%                    Jess Haley, 2026-10-27 [Priebe fits are one function]; it
+%                    was carried, carry-056, until then). The same document
+%                    with one fit block (the "converted shape") converts too,
+%                    and both lose nothing. On the renamed path it passed through
 %                    unconverted: universalRenames never mapped the writer's
 %                    spelling to the migrator.
 %     jrclust_clusters  converts and loses nothing: the writer's base.name,
@@ -73,7 +75,7 @@ cases = { ...
     'hartley writer output', {hartley(), presentationOf(hartley())}, false, {}; ...
     'hartley corpus vintage', {hartleyVintage(), presentationOf(hartleyVintage())}, false, {}; ...
     'hartley without its presentation', {hartley()}, true, {}; ...
-    'speed writer output', {speed()}, true, {}; ...
+    'speed writer output', {speed()}, false, {}; ...
     'speed, converted shape', {speedOneFit()}, false, {}; ...
     'jrclust writer output', {jrclust()}, false, {}; ...
     'jrclust with no name', {jrclustNoName()}, false, {}; ...
@@ -121,7 +123,12 @@ end
 
 function testCarriesCiteTheirRows(testCase)
 verifyCarriedFor(testCase, {hartley()}, '[carry-040]');
-verifyCarriedFor(testCase, {speed()}, '[carry-056] speed_tuning.fit, speed_tuning.fit_no_speed');
+% [Priebe fits are one function] (Jess Haley, 2026-10-27): the writer's three
+% fit blocks are told apart by their constraints, so it converts; a fourth
+% block no constraint tells apart still carries it
+fourFits = speed();
+fourFits.speed_tuning.fit_other = fourFits.speed_tuning.fit;
+verifyCarriedFor(testCase, {fourFits}, '[carry-056] speed_tuning.fit');
 verifyCarriedFor(testCase, {jrclustNdiDocument()}, '[carry-049] universalRenames would discard: ndi_document');
 verifyCarriedFor(testCase, {neuronTimesOnly()}, ...
     'neuron_extracellular.waveform_sample_times (no mean_waveform');

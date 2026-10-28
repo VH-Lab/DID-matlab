@@ -16,10 +16,16 @@ function [v1, spec] = stimulus_response_scalar(bodies)
 %     depends_on, in the order NDI's template merge gives it (names sorted):
 %       element_id                       entity_id
 %       stimulator_id                    instrument_id
-%       stimulus_control_id              '' (a converted response has none:
-%                                        one that names a control is carried,
-%                                        carry-050)
-%       stimulus_presentation_id         the first input_id
+%       stimulus_control_id,             the input_id edges, each named from
+%       stimulus_presentation_id         the class of the document it points
+%                                        at (did2.convert.inputEdgeNames; the
+%                                        writer's order, presentation then
+%                                        control, when that is not in the
+%                                        batch): Decided by Jess Haley,
+%                                        2026-10-27 [response links: epoch
+%                                        rebuilt, control as input], [input
+%                                        names rebuild from the input class];
+%                                        '' when absent
 %       stimulus_response_scalar_parameters_id  method_id
 %     stimulus_response.element_epochid  the epoch entity's local_identifier
 %                                        when the anchor names it; '' when the
@@ -27,8 +33,10 @@ function [v1, spec] = stimulus_response_scalar(bodies)
 %                                        when the anchor names an epoch that is
 %                                        not in BODIES (the round trip reports
 %                                        it lost)
-%     stimulus_response.stimulator_epochid  '' (one that is set is carried,
-%                                        carry-050)
+%     stimulus_response.stimulator_epochid  the element_epochid
+%                                        ([response links: epoch rebuilt,
+%                                        control as input]: one that differs
+%                                        is carried, carry-050)
 %     stimulus_response_scalar.response_type   'mean' for harmonic 0, else
 %                                        'F<harmonic>' (the writer's rule)
 %     stimulus_response_scalar.responses       value.real / imaginary /
@@ -112,21 +120,31 @@ for k = find(~used)
 end
 
 inputs = edgeIds(calc, 'input_id');
+inputNames = did2.convert.inputEdgeNames(inputs, ...
+    {'stimulus_presentation_id', 'stimulus_control_id'});
+inputOf = @(nm) firstId(inputs(strcmp(inputNames, nm)));
 names = {'element_id', 'stimulator_id', 'stimulus_control_id', ...
     'stimulus_presentation_id', 'stimulus_response_scalar_parameters_id'};
 values = {firstId(edgeIds(calc, 'entity_id')), firstId(edgeIds(calc, 'instrument_id')), ...
-    '', firstId(inputs), firstId(edgeIds(calc, 'method_id'))};
-if numel(inputs) > 1
-    spec.unplaced{end+1} = sprintf('%d inputs; a v1 response has one presentation', numel(inputs));
+    inputOf('stimulus_control_id'), inputOf('stimulus_presentation_id'), ...
+    firstId(edgeIds(calc, 'method_id'))};
+known = {'stimulus_presentation_id', 'stimulus_control_id'};
+for k = 1:numel(inputs)
+    if ~any(strcmp(inputNames{k}, known)) ...
+            || sum(strcmp(inputNames, inputNames{k})) > 1
+        spec.unplaced{end+1} = sprintf('input %s (%s) has no place in a v1 response', ...
+            inputs{k}, inputNames{k});
+    end
 end
 
 v1.document_class = struct('class_name', 'stimulus_response_scalar');
 v1.depends_on = struct('name', names, 'value', values);
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
-sr = struct('stimulator_epochid', '');
+sr = struct();
 if ischar(epochString)
     sr.element_epochid = epochString;
+    sr.stimulator_epochid = epochString;   % the response's own epoch
 end
 v1.stimulus_response = sr;
 

@@ -104,14 +104,14 @@ end
 % ===================== fixture (from the WRITER) =======================
 
 function v1 = responseFixture(elementEpochid)
-%RESPONSEFIXTURE writerResponseFixture with its `stimulus_control_id` edge and
-%   its `stimulus_response.stimulator_epochid` PRESENT BUT EMPTY (the template
-%   blank): a response the fold places whole. Since [generic stage is lossless]
-%   / [partly placed is carried as v1] (Jess Haley, 2026-10-25) a response that
-%   states either -- the writer always sets both -- is carried whole as v1 (the
-%   calculation has no place for them); the tests of the fold drive this one.
+%RESPONSEFIXTURE writerResponseFixture with its `stimulus_control_id` edge
+%   PRESENT BUT EMPTY (the template blank), and its `stimulator_epochid` the
+%   same string as its element's (rebuilt from it, so not carried: Decided by
+%   Jess Haley, 2026-10-27 [response links: epoch rebuilt, control as input];
+%   until then a stated stimulator epoch carried the response and this fixture
+%   emptied it).
 v1 = writerResponseFixture(elementEpochid);
-v1.stimulus_response.stimulator_epochid = '';
+v1.stimulus_response.stimulator_epochid = v1.stimulus_response.element_epochid;
 v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_control_id')).value = '';
 end
 

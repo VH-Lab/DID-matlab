@@ -19,16 +19,23 @@ function [v1, spec] = stimulus_response_scalar_parameters_basic(bodies)
 %   (id preserved), optionally with the harmonic_component calculations whose
 %   `method_id` names it (the responses that use it):
 %     base.id, session_id, datestamp     the method (rebuildBase)
-%     the knobs                          each `method.parameters` entry whose
-%                                        variable is the knob's name with
-%                                        spaces ('spiketrain dt'): its quantity
+%     the knobs                          each `method.parameters` entry, its
+%                                        variable named back to the v1 knob
+%                                        through the name table
+%                                        (did2.convert.tuningNames; Decided by
+%                                        Jess Haley, 2026-10-27 [parameter
+%                                        names map by table]): its quantity
 %                                        value, or its text
 %     prestimulus_time                   not written when v1 held [] (no
 %                                        baseline period): rebuilt absent
 %     prestimulus_normalization          written 0 when v1 held []
 %                                        ([empty response settings] "c"):
-%                                        rebuilt 0, so a v1 [] is reported
-%                                        lost (the method cannot tell [] from 0)
+%                                        rebuilt 0, and a v1 [] counts as
+%                                        equal to it (SPEC.same; Decided by
+%                                        Jess Haley, 2026-10-27 [empty
+%                                        prestimulus normalization is zero]:
+%                                        "count `[]` and `0` as the same value
+%                                        for this one setting")
 %     freq_response                      NOT a parameter: the batch pass checks
 %                                        it against the harmonic of the
 %                                        responses that use the method. Rebuilt
@@ -95,7 +102,11 @@ for k = 1:numel(entries)
         spec.unplaced{end+1} = sprintf('method parameter %d names no variable', k);
         continue;
     end
-    field = strrep(name, ' ', '_');
+    [field, inTable] = did2.convert.tuningNames('v1', name);
+    if ~inTable
+        spec.unplaced{end+1} = sprintf('method parameter "%s" is not in the name table', name);
+        continue;
+    end
     [q, hasQ] = getIn(e, 'quantity', 'value');
     [t, hasT] = getIn(e, 'text');
     if hasT && ~isempty(t)
@@ -118,6 +129,13 @@ v1.document_class = struct('class_name', CLASS);
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
 v1.(CLASS) = blk;
+% [empty prestimulus normalization is zero] (Jess Haley, 2026-10-27): for this
+% one setting a v1 [] and the V2 0 are the same value (the writer gives them
+% one meaning: tuning_response.m, "[] or 0) No normalization")
+spec.same(end+1) = struct('path', [CLASS '.prestimulus_normalization'], ...
+    'fn', @(a, b) (isempty(a) && isnumeric(b) && isscalar(b) && b == 0) ...
+        || (isnumeric(a) && isscalar(a) && a == 0 && isempty(b)), ...
+    'why', '[empty prestimulus normalization is zero] (Jess Haley, 2026-10-27)');
 end
 
 % ===================== helpers =========================================

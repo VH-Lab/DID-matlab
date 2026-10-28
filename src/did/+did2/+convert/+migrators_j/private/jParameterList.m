@@ -1,4 +1,4 @@
-function params = jParameterList(s, prefix)
+function [params, unknown] = jParameterList(s, prefix, nameFn)
 %JPARAMETERLIST A v1 settings struct as did-schema #88 `method.parameters`
 %   entries (one `{variable, <one value form>}` per setting).
 %
@@ -15,9 +15,17 @@ function params = jParameterList(s, prefix)
 %   keeps every element rather than dropping the setting. Empty values are
 %   skipped (a setting that holds nothing says nothing). [] when S has no
 %   settings.
+%
+%   [PARAMS, UNKNOWN] = jParameterList(S, PREFIX, NAMEFN) names each entry
+%   through NAMEFN instead: [V2NAME, FOUND] = NAMEFN(V1PATH) (e.g.
+%   @(n) did2.convert.tuningNames('v2', n), [parameter names map by table],
+%   Jess Haley, 2026-10-27). A path NAMEFN does not hold is not written and is
+%   listed in UNKNOWN (the caller carries the document).
 
 if nargin < 2; prefix = ''; end
+if nargin < 3; nameFn = []; end
 params = [];
+unknown = {};
 if ~isstruct(s) || ~isscalar(s)
     return;
 end
@@ -27,7 +35,8 @@ for k = 1:numel(fn)
     name = [prefix fn{k}];
     v = s.(fn{k});
     if isstruct(v) && isscalar(v)
-        inner = jParameterList(v, [name '.']);
+        [inner, innerUnknown] = jParameterList(v, [name '.'], nameFn);
+        unknown = [unknown, innerUnknown]; %#ok<AGROW>
         if ~isempty(inner)
             entries{end+1} = inner; %#ok<AGROW>
         end
@@ -36,7 +45,16 @@ for k = 1:numel(fn)
     if isempty(v)
         continue;
     end
-    var = jLabel(strrep(name, '_', ' '));
+    if isempty(nameFn)
+        var = jLabel(strrep(name, '_', ' '));
+    else
+        [v2, known] = nameFn(name);
+        if ~known
+            unknown{end+1} = name; %#ok<AGROW>
+            continue;
+        end
+        var = jLabel(v2);
+    end
     if (isnumeric(v) || islogical(v)) && isscalar(v)
         e = did2.build.parameter(var, 'Value', double(v), 'SourceValue', shortestText(double(v)));
     elseif ischar(v) && (isrow(v) || isempty(v))
