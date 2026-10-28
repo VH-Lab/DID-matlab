@@ -129,8 +129,8 @@ end
 function testTheFilefindFoldRoundTrips(testCase)
 % pass 1 passes a filefind rule through; did2.convert.resolveClockAlignment
 % resolves its two system NAMES to the migrated acquisition systems and re-runs
-% the migrator: a configuration, two acquisition_channels and its software.
-% The rule is rebuilt from those and the two systems they name.
+% the migrator: a configuration linking the two systems (from, to) and its
+% software. The rule is rebuilt from those and the two systems.
 for path = {'raw', 'renamed'}
     [batch, rule] = filefindBatch();
     if strcmp(path{1}, 'raw'); out = runRaw(batch); else; out = runRenamed(batch); end
@@ -143,6 +143,30 @@ for path = {'raw', 'renamed'}
     verifyRoundTrip(testCase, r, ['the filefind fold, ' path{1}], {});
     for p = {'syncrule.parameters.daqsystem1', 'syncrule.parameters.daqsystem2', ...
             'syncrule.parameters.syncfilename', 'syncrule.parameters.number_fullpath_matches'}
+        verifyTrue(testCase, any(strcmp(p{1}, r.matched)), sprintf('%s: %s not matched', path{1}, p{1}));
+    end
+end
+end
+
+function testTheChannelRuleFoldRoundTrips(testCase)
+% a commonTriggersOverlappingEpochs rule: its systems are the from / to edges
+% (daqsystem1_name, daqsystem2_name), its trigger channels and errorOnFailure
+% method parameters; the v1 rule rebuilds exactly
+for path = {'raw', 'renamed'}
+    rule = channelRule();
+    batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
+    if strcmp(path{1}, 'raw'); out = runRaw(batch); else; out = runRenamed(batch); end
+    out = did2.convert.resolveClockAlignment(out, 'Validate', false, 'TargetVersion', 'V_eta');
+    verifyEqual(testCase, out.clock_alignment_fold.syncrule_configurations_folded, 1, path{1});
+    docs = foldDocs(out, rule.base.id);
+    verifyNotEmpty(testCase, docs, path{1});
+    r = did2.convert.roundtrip.check(rule, docs);
+    verifyFalse(testCase, r.carried, path{1});
+    verifyRoundTrip(testCase, r, ['the channel rule fold, ' path{1}], {});
+    for p = {'syncrule.parameters.daqsystem1_name', 'syncrule.parameters.daqsystem2_name', ...
+            'syncrule.parameters.daqsystem_ch1', 'syncrule.parameters.daqsystem_ch2', ...
+            'syncrule.parameters.epochclocktype', 'syncrule.parameters.minEmbeddedFileOverlap', ...
+            'syncrule.parameters.errorOnFailure'}
         verifyTrue(testCase, any(strcmp(p{1}, r.matched)), sprintf('%s: %s not matched', path{1}, p{1}));
     end
 end
@@ -477,8 +501,8 @@ end
 end
 
 function docs = foldDocs(out, ruleId)
-%FOLDDOCS The configuration the rule folded into, its software, its two
-%   acquisition_channels and the acquisition systems they name.
+%FOLDDOCS The configuration the rule folded into, its software and the
+%   acquisition systems its from / to edges name.
 docs = {};
 cfg = docWithId(out, ruleId);
 if isempty(cfg) || ~strcmp(char(did2.unittest.helpers.classKey(cfg)), ...
@@ -489,10 +513,8 @@ docs = {cfg};
 for sw = edgesOf(cfg, 'software_id')
     docs{end+1} = docWithId(out, sw{1}); %#ok<AGROW>
 end
-for ch = edgesOf(cfg, 'acquisition_channels_id')
-    c = docWithId(out, ch{1});
-    docs{end+1} = c; %#ok<AGROW>
-    for s = edgesOf(c, 'acquisition_system_id')
+for role = {'from_acquisition_system_id', 'to_acquisition_system_id'}
+    for s = edgesOf(cfg, role{1})
         docs{end+1} = docWithId(out, s{1}); %#ok<AGROW>
     end
 end
@@ -547,11 +569,7 @@ f = { ...
         struct('number_fullpath_matches', 2)), 'converted'; ...
     'syncrule, filefind', writerSyncrule('rule_ff', 'ndi.time.syncrule.filefind', ...
         filefindParameters()), 'passthrough'; ...
-    'syncrule, commonTriggersOverlappingEpochs', writerSyncrule('rule_ct', ...
-        'ndi.time.syncrule.commonTriggersOverlappingEpochs', struct( ...
-        'daqsystem1_name', 'vhtaste_sync', 'daqsystem2_name', 'vhtaste_bpod', ...
-        'daqsystem_ch1', 'dep1', 'daqsystem_ch2', 'mk1', 'epochclocktype', 'dev_local_time', ...
-        'minEmbeddedFileOverlap', 1, 'errorOnFailure', true)), 'passthrough'; ...
+    'syncrule, commonTriggersOverlappingEpochs', channelRule(), 'passthrough'; ...
     'syncgraph, two rules', writerSyncgraph({'rule_ff', 'rule_fm'}), 'converted'; ...
     'probe_location, Dabrowska', writerProbeLocation('pl_1', 'UBERON:0001880', ...
         'bed nucleus of stria terminalis (BNST)'), 'converted'; ...
@@ -610,6 +628,15 @@ v1 = withBase('daqmetadatareader', 'mdr_1', emptySessionId(), '');
 v1.daqmetadatareader = struct('ndi_daqmetadatareader_class', ...
     'ndi.daq.metadatareader.NewStimStims', 'tab_separated_file_parameter', 'stims.mat');
 v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = channelRule()
+% +time/syncrule.m newdocument for commonTriggersOverlappingEpochs.m:36
+v1 = writerSyncrule('rule_ct', ...
+    'ndi.time.syncrule.commonTriggersOverlappingEpochs', struct( ...
+    'daqsystem1_name', 'vhtaste_sync', 'daqsystem2_name', 'vhtaste_bpod', ...
+    'daqsystem_ch1', 'dep1', 'daqsystem_ch2', 'mk1', 'epochclocktype', 'dev_local_time', ...
+    'minEmbeddedFileOverlap', 1, 'errorOnFailure', true));
 end
 
 function p = filefindParameters()
