@@ -19,6 +19,14 @@ function [blocks, bad] = fitBlocks(modelFit, family)
 %   Coefficients are read back in order as a column (v1 stored an unnamed
 %   vector; jTuningCurve named entry k '<model> parameter k'). BAD lists what
 %   an entry holds that has no place in these layouts.
+%
+%   CONTRAST, ONE FUNCTION (Jess Haley, [Naka-Rushton is one function],
+%   built by [tuning fits use curve fitting now], 2026-10-27): an entry of
+%   model 'Naka-Rushton' is the RB, RBN or RBNS fit by its constraints
+%   (parameters 3 and 4 held at 1: RB; parameter 4 held at 1: RBN; none:
+%   RBNS), so its prefix is naka_rushton_RB_ / _RBN_ / _RBNS_. Its metrics
+%   relative_max_gain, saturation_index and sensitivity ([contrast metrics
+%   added]) are _relative_max_gain, _saturation_index, _sensitivity.
 
 blocks = struct();
 bad = {};
@@ -32,6 +40,13 @@ for k = 1:numel(modelFit)
     e = modelFit{k};
     [~, model] = termParts(getIn(e, 'model'));
     stem = strrep(strtrim(model), ' ', '_');
+    if strcmp(family, 'contrast') && strcmp(model, 'Naka-Rushton')
+        stem = nakaRushtonStem(e);
+        if isempty(stem)
+            bad{end+1} = sprintf('model_fit %d: Naka-Rushton constraints name none of RB, RBN, RBNS', k); %#ok<AGROW>
+            continue;
+        end
+    end
     if isempty(stem) || ~isvarname(['x' stem])
         bad{end+1} = sprintf('model_fit %d: model "%s" names no v1 fit', k, model); %#ok<AGROW>
         continue;
@@ -52,7 +67,9 @@ for k = 1:numel(modelFit)
             block = 'fit'; P = [stem '_']; M = P;
             names = {'parameters', [P 'parameters']; 'x', [P 'contrast']; 'y', [P 'values']; ...
                 'r2', [P 'r2']};
-            metrics = {'preferred_value', 'pref'; 'half_maximum_below', 'empirical_c50'};
+            metrics = {'preferred_value', 'pref'; 'half_maximum_below', 'empirical_c50'; ...
+                'relative_max_gain', 'relative_max_gain'; ...
+                'saturation_index', 'saturation_index'; 'sensitivity', 'sensitivity'};
         otherwise   % 'sf', 'tf'
             block = ['fit_' stem]; M = '';
             names = {'parameters', 'parameters'; 'x', 'values'; 'y', 'fit'; 'r2', 'R2'};
@@ -93,12 +110,47 @@ for k = 1:numel(modelFit)
     if isfield(e, 'metrics') && isstruct(e.metrics)
         for j = 1:size(metrics, 1)
             if isfield(e.metrics, metrics{j, 1})
-                b.([M metrics{j, 2}]) = e.metrics.(metrics{j, 1});
+                x = e.metrics.(metrics{j, 1});
+                if strcmp(metrics{j, 1}, 'sensitivity')
+                    x = column(x);
+                end
+                b.([M metrics{j, 2}]) = x;
             end
         end
         bad = [bad, others(e.metrics, metrics(:, 1)', [where '.metrics'])]; %#ok<AGROW>
     end
-    bad = [bad, others(e, {'model', 'coefficients', 'goodness', 'sampled_fit', 'metrics'}, where)]; %#ok<AGROW>
+    known = {'model', 'coefficients', 'goodness', 'sampled_fit', 'metrics'};
+    if strcmp(family, 'contrast') && strcmp(model, 'Naka-Rushton')
+        known{end+1} = 'constraints';   % read by nakaRushtonStem
+    end
+    bad = [bad, others(e, known, where)]; %#ok<AGROW>
     blocks.(block) = b;
+end
+end
+
+function stem = nakaRushtonStem(e)
+%NAKARUSHTONSTEM naka_rushton_RB / _RBN / _RBNS from a Naka-Rushton entry's
+%   constraints ('' when they name none of the three).
+held = zeros(0, 2);
+c = asCell(getIn(e, 'constraints'));
+for k = 1:numel(c)
+    [~, name] = termParts(getIn(c{k}, 'variable'));
+    t = regexp(name, '^Naka-Rushton parameter (\d+)$', 'tokens', 'once');
+    v = numberOf(getIn(c{k}, 'value'));
+    if isempty(t) || isempty(v)
+        stem = '';
+        return;
+    end
+    held(end+1, :) = [str2double(t{1}), v]; %#ok<AGROW>
+end
+held = sortrows(held);
+if isequal(held, [3 1; 4 1])
+    stem = 'naka_rushton_RB';
+elseif isequal(held, [4 1])
+    stem = 'naka_rushton_RBN';
+elseif isempty(held)
+    stem = 'naka_rushton_RBNS';
+else
+    stem = '';
 end
 end
