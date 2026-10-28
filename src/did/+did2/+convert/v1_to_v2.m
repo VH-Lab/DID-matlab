@@ -903,15 +903,17 @@ end
 end
 
 function tf = hasLegacyBlockBesideBase(body)
-%HASLEGACYBLOCKBESIDEBASE True when a v1 body holds an `ndi_document` block
-%   beside `base`: [old ndi_document blocks carry] (Decided by Jess Haley,
+%HASLEGACYBLOCKBESIDEBASE True when a v1 body holds a NON-EMPTY `ndi_document`
+%   block beside `base`: [old ndi_document blocks carry] (Decided by Jess Haley,
 %   2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-049 for
-%   every class. A block is any value but [] (the rule universalRenames uses
-%   when it reports the block discarded: a field-less struct, JSON `{}`, is a
-%   block). A body with only `ndi_document` (a pre-2023 vintage, whose block
-%   IS its identity) is not this case.
+%   every class. An EMPTY block -- [], JSON `{}`, or one whose every field is
+%   empty -- states nothing and does not carry: [empty ndi_document block is
+%   notation] (Decided by Jess Haley, 2026-10-27: "Its absence is not a
+%   loss"); the document converts, and the round trip counts a missing block
+%   and an empty one as the same. A body with only `ndi_document` (a pre-2023
+%   vintage, whose block IS its identity) is not this case.
 tf = isstruct(body) && isscalar(body) && isfield(body, 'ndi_document') ...
-    && isfield(body, 'base') && ~isempty(body.ndi_document);
+    && isfield(body, 'base') && ~did2.convert.isEmptyBlock(body.ndi_document);
 end
 
 function name = rawV1ClassNameOf(body)
