@@ -564,6 +564,10 @@ for k = 1:numel(bodies)
         % validated, and counted independently so a 1 -> N split lands
         % N documents in `migrated` (or quarantines the whole source
         % body on the first failure, as before).
+        % An UNCHANGED passthrough keeps its v1 base block as it came
+        % ([passthrough stays v1]); every other converted body loses an EMPTY
+        % base.name below (dropBaseName).
+        unchangedPassthrough = isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body);
         for bi = 1:numel(v2Bodies)
             if carried
                 % A CARRIED DOCUMENT IS v1 END TO END ([generic stage is
@@ -584,6 +588,23 @@ for k = 1:numel(bodies)
             else
                 outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
                 outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
+                if ~unchangedPassthrough
+                    % [carried v1 validates against NDI templates] (Jess
+                    % Haley, 2026-10-27) deletes V2 base.name. An EMPTY v1
+                    % base.name is dropped here: nothing is lost, and the
+                    % round trip reads an empty v1 value with nothing rebuilt
+                    % as `not_set` ([writer default is not set]). A NON-EMPTY
+                    % one is left where it is and COUNTED, by class
+                    % (summary.migration_notes.v1_name_on_converted_body), so
+                    % the next corpus run names the migrators that still have
+                    % to write it to the class's own name field ([v1 name goes
+                    % to the class's own name field]).
+                    [outBody, leftName] = dropBaseName(outBody);
+                    if ~isempty(leftName)
+                        did2.convert.reportNote('v1_name_on_converted_body', className, ...
+                            sourceIdOf(preBody), leftName);
+                    end
+                end
                 if isfield(outBody, 'document_class') ...
                         && isstruct(outBody.document_class)
                     % the STAMP, not the set name TargetVersion (Jess Haley,
@@ -1242,6 +1263,29 @@ if isfield(body.base, 'datestamp')
         body.base.creation_timestamp = body.base.datestamp;
     end
     body.base = rmfield(body.base, 'datestamp');
+end
+end
+
+function [body, leftName] = dropBaseName(body)
+%DROPBASENAME Remove an EMPTY `base.name` from a converted body.
+%   LEFTNAME is the text of a NON-EMPTY base.name, which is left in place
+%   ('' when there is none or it was empty). An empty value is '', "",
+%   [] or {}; anything else is non-empty, and a non-text value is reported
+%   by its class name so it is never silently dropped.
+leftName = '';
+if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base) ...
+        || ~isfield(body.base, 'name')
+    return;
+end
+v = body.base.name;
+if isempty(v) || (isstring(v) && isscalar(v) && strlength(v) == 0)
+    body.base = rmfield(body.base, 'name');
+elseif ischar(v)
+    leftName = v;
+elseif isstring(v) && isscalar(v)
+    leftName = char(v);
+else
+    leftName = ['<' class(v) '>'];
 end
 end
 
