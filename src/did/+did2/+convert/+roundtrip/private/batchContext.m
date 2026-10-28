@@ -50,7 +50,7 @@ if isempty(targets)
     return;
 end
 [u, ~, j] = unique(targets);
-groups = accumarray(j(:), from(:), [numel(u), 1], @(x) {sort(x(:)')});
+groups = accumarray(j(:), from(:), [numel(u), 1], @(x) {reshape(sort(x), 1, [])});
 for g = 1:numel(u)
     ctx.referrers(u{g}) = groups{g};
 end

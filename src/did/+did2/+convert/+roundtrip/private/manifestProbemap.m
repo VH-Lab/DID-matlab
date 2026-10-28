@@ -111,7 +111,7 @@ for i = 1:numel(found)
     paired(end+1) = false; %#ok<AGROW>
 end
 tab = sprintf('\t');
-nl = sprintf('\n');
+nl = newline;
 pm = [strjoin({'name', 'reference', 'type', 'devicestring', 'subjectstring'}, tab), nl];
 for i = 1:numel(rowLines)
     pm = [pm, rowLines{i}, nl]; %#ok<AGROW>
