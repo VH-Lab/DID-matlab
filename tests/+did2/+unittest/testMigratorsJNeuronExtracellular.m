@@ -238,7 +238,7 @@ did2.convert.reportNote('reset');
 verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'returned unchanged');
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
 d = notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-pending-neuron-sample-times-malformed] malformed: '), d);
+verifyTrue(testCase, startsWith(d, '[carry-113] malformed: '), d);
 end
 
 function testEightRoundingStepsIsTheLimit(testCase)

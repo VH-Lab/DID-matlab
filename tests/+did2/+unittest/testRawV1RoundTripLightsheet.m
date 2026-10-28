@@ -125,20 +125,19 @@ end
 function testALevelWhoseLabelDoesNotFollowTheWriterIsCarried(testCase)
 % [light-sheet level label is a note] (Decided by Jess Haley, 2026-10-27,
 % did-schema V_eta_go_forward_class_audit.md): "a level whose label does not
-% follow that pattern is carried whole as v1, kind `malformed`" (the register
-% row is pending in did-schema: the note cites the placeholder)
+% follow that pattern is carried whole as v1, kind `malformed`" (carry-115)
 L = levels();
 v1 = L{2};   % level 1, max
 bad = {'a level of my own', 'mean level 2 (max)', 'mean level 1 (mean)'};
 for k = 1:numel(bad)
     x = v1;
     x.lightsheetZarrLevel.label = bad{k};
-    verifyCarried(testCase, x, '[carry-pending-lightsheet-level-label-malformed] malformed');
+    verifyCarried(testCase, x, '[carry-115] malformed');
 end
 % an empty label states nothing only for level 0
 x = v1;
 x.lightsheetZarrLevel.label = '';
-verifyCarried(testCase, x, '[carry-pending-lightsheet-level-label-malformed] malformed');
+verifyCarried(testCase, x, '[carry-115] malformed');
 x = L{1};
 x.lightsheetZarrLevel.label = '';
 out = runRaw({x});

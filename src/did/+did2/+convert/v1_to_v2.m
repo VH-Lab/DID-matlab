@@ -1594,15 +1594,14 @@ function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSession
 %   number of entries, in order, each equal field by field. Anything else --
 %   a member missing, carried or quarantined, an extra member, another order,
 %   another value -- carries the document whole as v1 (the v1 source for a raw
-%   read, else the universalRenames output, as every other carry). THE REGISTER
-%   ROW IS PENDING in did-schema: the note cites the placeholder below.
+%   read, else the universalRenames output, as every other carry). The register
+%   row is carry-118 (awaiting_home).
 %
 %   ITS ID. [a rebuilt document may lose its id] (Decided by Jess Haley,
 %   2026-10-27, amending [every v1 id survives]): a list that rebuilds writes
 %   no V2 document and so keeps no id, which is allowed only when no other
 %   document references it; a list some source in the batch names by an edge
 %   is carried whole as v1 instead.
-LIST_ROW = 'carry-pending-session-list-does-not-rebuild';
 isList = cellfun(@(c) ischar(c) && strcmp(c, 'dataset_session_info'), cls);
 for k = reshape(find(done & ~carried & ~target & isList), 1, [])
     body = ensureStruct(bodies{k});
@@ -1665,10 +1664,10 @@ for k = reshape(find(done & ~carried & ~target & isList), 1, [])
     passthrough([passthrough.input_index] == k) = [];
     passthrough(end+1) = struct('input_index', k, 'id', ids{k}, ...
         'class_name', cls{k}, 'body', body); %#ok<AGROW>
-    % carry-register: none (row pending in did-schema; LIST_ROW)
+    % carry-register: carry-118
     did2.convert.reportNote('carried_as_v1', cls{k}, ids{k}, sprintf( ...
-        ['[%s] malformed: the session list does not rebuild from the dataset''s ' ...
-        'memberships: %s ([fit classes kept; session list rebuilt])'], LIST_ROW, why));
+        ['[carry-118] awaiting_home: the session list does not rebuild from the dataset''s ' ...
+        'memberships: %s ([fit classes kept; session list rebuilt])'], why));
     carried(k) = true;
 end
 end

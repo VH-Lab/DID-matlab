@@ -329,7 +329,7 @@ function testAnOpenmindsIdThatDoesNotRebuildIsCarried(testCase)
 % from the term through the registry's `equivalent` list, "and a document whose
 % id does not rebuild is carried"; a lab-made strain's id belongs on the strain
 % entity's global_identifier, which pass 1 does not mint, so it carries too.
-% The register rows are pending in did-schema: the notes cite placeholders.
+% The register rows are carry-116 and carry-117.
 v1 = struct();
 v1.document_class = struct('class_name', 'openminds_subject', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -344,7 +344,7 @@ v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Specie
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-pending-openminds-id-does-not-rebuild] '), d);
+verifyTrue(testCase, startsWith(d, '[carry-116] '), d);
 lab = v1;
 lab.base.id = 'om_4';
 lab.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Strain', ...
@@ -354,7 +354,7 @@ lab.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Strai
 out = runJ(lab);
 verifyCarriedWholeAsV1(testCase, lab, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-pending-openminds-lab-strain-id] '), d);
+verifyTrue(testCase, startsWith(d, '[carry-117] '), d);
 end
 
 function testAnOpenmindsIdRebuildsThroughTheEquivalentList(testCase)
@@ -3569,8 +3569,7 @@ function testDatasetSessionInfoAggregate(testCase)
 % did-schema V_eta_go_forward_class_audit.md): a dataset_session_info "writes
 % no V2 document: the round trip rebuilds it from the session entities'
 % `included_in` relations to the dataset, and one that does not rebuild
-% exactly is carried whole as v1" (the register row is pending in did-schema:
-% the note cites the placeholder)
+% exactly is carried whole as v1" (carry-118)
 info = struct();
 info.document_class = struct('class_name', 'dataset_session_info', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -3612,7 +3611,7 @@ for c = {{info}, {m2, m1, info}, {m1, m2, v}, {m1, m2, info, ref}}
     hit = strcmp({out.passthrough.id}, 'dsi_01');
     verifyEqual(testCase, nnz(hit), 1, 'carried');
     d = strjoin(cellstr(out.summary.migration_notes.carried_as_v1.distinct_details), ' || ');
-    verifyTrue(testCase, contains(d, '[carry-pending-session-list-does-not-rebuild] malformed: '), d);
+    verifyTrue(testCase, contains(d, '[carry-118] awaiting_home: '), d);
 end
 end
 
