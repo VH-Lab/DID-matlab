@@ -938,26 +938,28 @@ POST_PASSES = [
         ("policies_folded", "clock_alignment_policy FOLDED"),
         ("extra_bodies_emitted", "  software entities appended"),
         ("fold_quarantined", "QUARANTINED on re-validation"),
-        # The filefind syncrule arm: daqsystem1 / daqsystem2 resolved BY NAME
-        # within the rule's session. READ `syncrules_seen` and
-        # `syncrule_filefind_seen` BESIDE the folds. A name resolving to zero or
-        # to several systems is a refusal, per rule and per name, never a mint.
+        # The device-pair syncrule arm (filefind, commonTriggersOverlappingEpochs,
+        # randomPulses): the two system names resolved BY NAME within the
+        # rule's session, linked as from / to edges. READ `syncrules_seen`
+        # and the per-class `_seen` rows BESIDE the folds. A name resolving to
+        # zero or to several systems is a refusal, per rule and per name,
+        # never a mint.
         ("acquisition_systems_indexed", "acquisition_system documents indexed"),
         ("syncrules_seen", "syncrule documents left by pass 1"),
         ("syncrule_filefind_seen", "  of which filefind"),
-        ("syncrule_not_filefind", "  other rules (not this arm's)"),
-        ("syncrule_refused_no_session_id", "filefind refused: no session (or the empty sentinel)"),
-        ("syncrule_refused_no_system_name", "filefind refused: daqsystem1/2 not named"),
-        ("syncrule_refused_name_missing", "filefind refused: a name matches NO system"),
-        ("syncrule_refused_name_ambiguous", "filefind refused: a name matches SEVERAL systems"),
+        ("syncrule_channel_rule_seen", "  of which commonTriggers / randomPulses"),
+        ("syncrule_not_device_pair", "  other rules (not this arm's)"),
+        ("syncrule_refused_no_session_id", "device-pair refused: no session (or the empty sentinel)"),
+        ("syncrule_refused_no_system_name", "device-pair refused: a system not named"),
+        ("syncrule_refused_name_missing", "device-pair refused: a name matches NO system"),
+        ("syncrule_refused_name_ambiguous", "device-pair refused: a name matches SEVERAL systems"),
         ("syncrule_names_missing", "  names matching no system"),
         ("syncrule_names_ambiguous", "  names matching several systems"),
-        ("syncrule_refused_migrator_declined", "filefind refused: migrator declined after the stamp"),
-        ("syncrule_refused_total", "  filefind refused TOTAL"),
-        ("syncrule_configurations_folded", "clock_alignment_configuration FOLDED (filefind)"),
-        ("syncrule_channels_emitted", "  acquisition_channels appended"),
+        ("syncrule_refused_migrator_declined", "device-pair refused: migrator declined after the stamp"),
+        ("syncrule_refused_total", "  device-pair refused TOTAL"),
+        ("syncrule_configurations_folded", "clock_alignment_configuration FOLDED (device pair)"),
         ("syncrule_software_emitted", "  software entities appended"),
-        ("syncrule_fold_quarantined", "QUARANTINED filefind folds (rule kept)"),
+        ("syncrule_fold_quarantined", "QUARANTINED device-pair folds (rule kept)"),
     ]),
 ]
 

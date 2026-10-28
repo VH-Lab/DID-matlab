@@ -1,5 +1,5 @@
 function [result, report] = resolveClockAlignment(result, options)
-%RESOLVECLOCKALIGNMENT V_eta second pass: the `syncgraph` and `filefind` syncrule folds.
+%RESOLVECLOCKALIGNMENT V_eta second pass: the `syncgraph` and device-pair syncrule folds.
 %
 %   [RESULT, REPORT] = did2.convert.resolveClockAlignment(RESULT) takes the
 %   struct returned by did2.convert.v1_to_v2 (after the sibling post-passes) and
@@ -16,29 +16,32 @@ function [result, report] = resolveClockAlignment(result, options)
 %   BATCH-PASS-CONSUMES: syncgraph, syncrule
 %   BATCH-PASS-EMITS: syncgraph -> document: clock_alignment_policy
 %   BATCH-PASS-EMITS: syncrule -> nothing: this pass only stamps the
-%       resolved acquisition-system edges onto a filefind rule and re-runs the
-%       ARMED per-class migrator (+migrators_j/syncrule), which mints the
-%       clock_alignment_configuration and acquisition_channels and is credited
-%       there; crediting them here would count that emission twice.
+%       resolved acquisition-system edges onto a device-pair rule and re-runs
+%       the ARMED per-class migrator (+migrators_j/syncrule), which mints the
+%       clock_alignment_configuration (and its software entity) and is
+%       credited there; crediting it here would count that emission twice.
 %
-%   `syncrule`: ONLY the `ndi.time.syncrule.filefind` rule is consumed here. A
+%   `syncrule`: the DEVICE-PAIR rules are consumed here -- `filefind`, and the
+%   channel-based `commonTriggersOverlappingEpochs` and `randomPulses`. A
 %   file-based `filematch` rule reaches its `clock_alignment_configuration` in
-%   PASS 1 (it names no device). A filefind rule names its two acquisition
-%   systems BY NAME (parameters daqsystem1 / daqsystem2, filefind.m:32, matched
-%   by string against epochnode objectname at filefind.m:133-134), and
-%   `acquisition_channels` names its system only by an `acquisition_system_id`
-%   EDGE, so pass 1 passes it through (+migrators_j/syncrule.m). This pass
-%   resolves each name, WITHIN THE RULE'S OWN SESSION, against the migrated
-%   `acquisition_system.name` (v1 daqsystem base.name, preserved by
-%   +migrators_j/daqsystem.m), stamps the two ids as transient
-%   `resolved_acquisition_system_id` deps and re-runs +migrators_j/syncrule,
-%   which emits the [sync configuration] shape: the configuration (base.id
-%   preserved, number_fullpath_matches and syncfilename as declared
-%   method.parameters), two `acquisition_channels` (each with its resolved
-%   `acquisition_system_id`) as the UNORDERED `acquisition_channels_id` pair,
-%   and the `software` entity. The channel-based rules (commonTriggers /
-%   randomPulses, which also carry channel strings) are NOT consumed here and
-%   stay passthroughs, counted as `syncrule_not_filefind`.
+%   PASS 1 (it names no device). A device-pair rule names its two acquisition
+%   systems BY NAME (filefind: daqsystem1 / daqsystem2, filefind.m:32, matched
+%   by string against epochnode objectname at filefind.m:133-134; the channel
+%   rules: daqsystem1_name / daqsystem2_name), and the configuration names
+%   them by EDGE, so pass 1 passes it through (+migrators_j/syncrule.m). This
+%   pass resolves each name, WITHIN THE RULE'S OWN SESSION, against the
+%   migrated `acquisition_system.name` (v1 daqsystem base.name, preserved by
+%   +migrators_j/daqsystem.m), stamps the two ids, daqsystem1's first, as
+%   transient `resolved_acquisition_system_id` deps and re-runs
+%   +migrators_j/syncrule, which emits the configuration (base.id preserved,
+%   the rule's settings and trigger channels as method.parameters,
+%   `from_acquisition_system_id` = daqsystem1's system and
+%   `to_acquisition_system_id` = daqsystem2's: Jess Haley,
+%   2026-10-27, did-schema V_eta_go_forward_class_audit.md [sync configuration
+%   links its rigs], [sync rule direction is recorded]) and the `software`
+%   entity. No `acquisition_channels` document is written for a sync rule.
+%   Any other rule class is not consumed here and stays a passthrough,
+%   counted as `syncrule_not_device_pair`.
 %
 %   REFUSAL, NOT INVENTION, FOR THE RULE TOO. A name that resolves to ZERO
 %   systems in the session, or to MORE THAN ONE, leaves the rule a passthrough
@@ -122,12 +125,14 @@ report = struct( ...
     'policies_folded',              0, ...
     'extra_bodies_emitted',         0, ...
     'fold_quarantined',             0, ...
-    ... % the filefind syncrule arm. syncrules_seen is every `syncrule` still
-    ... % in the batch after pass 1 (a passthrough); read the folds beside it.
+    ... % the device-pair syncrule arm. syncrules_seen is every `syncrule`
+    ... % still in the batch after pass 1 (a passthrough); read the folds
+    ... % beside it.
     'acquisition_systems_indexed',          0, ...
     'syncrules_seen',                       0, ...
     'syncrule_filefind_seen',               0, ...
-    'syncrule_not_filefind',                0, ...
+    'syncrule_channel_rule_seen',           0, ...
+    'syncrule_not_device_pair',             0, ...
     'syncrule_refused_no_session_id',       0, ...
     'syncrule_refused_no_system_name',      0, ...
     'syncrule_refused_name_missing',        0, ...
@@ -137,7 +142,6 @@ report = struct( ...
     'syncrule_refused_migrator_declined',   0, ...
     'syncrule_refused_total',               0, ...
     'syncrule_configurations_folded',       0, ...
-    'syncrule_channels_emitted',            0, ...
     'syncrule_software_emitted',            0, ...
     'syncrule_fold_quarantined',            0, ...
     'ran',                          false);
@@ -189,10 +193,10 @@ for k = 1:n
     end
 end
 
-% --- the filefind syncrule arm ----------------------------------------------
+% --- the device-pair syncrule arm -------------------------------------------
 % Swaps a folded rule into its own slot and APPENDS its other bodies, so the
 % indices 1..n the syncgraph arm below reads are unchanged.
-[docs, report, ruleQuarantine] = foldFilefindRules(docs, bodies, classes, ...
+[docs, report, ruleQuarantine] = foldDevicePairRules(docs, bodies, classes, ...
     sessionId, docId, report, options);
 if ~isempty(ruleQuarantine)
     if isfield(result, 'quarantine') && ~isempty(result.quarantine)
@@ -313,11 +317,11 @@ result.summary = recountSummary(result);
 result.clock_alignment_fold = report;
 end
 
-% ===================== the filefind syncrule arm ===========================
+% ===================== the device-pair syncrule arm ========================
 
-function [docs, report, quarantine] = foldFilefindRules(docs, bodies, classes, ...
+function [docs, report, quarantine] = foldDevicePairRules(docs, bodies, classes, ...
         sessionId, docId, report, options)
-%FOLDFILEFINDRULES Resolve each filefind rule's two system NAMES and re-run the migrator.
+%FOLDDEVICEPAIRRULES Resolve each device-pair rule's two system NAMES and re-run the migrator.
 quarantine = {};
 n = numel(bodies);
 
@@ -355,11 +359,18 @@ for k = 1:n
     if isfield(b, 'syncrule') && isstruct(b.syncrule); block = b.syncrule; end
     impl = '';
     if isfield(block, 'ndi_syncrule_class'); impl = char(block.ndi_syncrule_class); end
-    if ~strcmp(impl, 'ndi.time.syncrule.filefind')
-        report.syncrule_not_filefind = report.syncrule_not_filefind + 1;
-        continue;
+    switch impl
+        case 'ndi.time.syncrule.filefind'
+            report.syncrule_filefind_seen = report.syncrule_filefind_seen + 1;
+            nameKeys = {'daqsystem1', 'daqsystem2'};
+        case {'ndi.time.syncrule.commonTriggersOverlappingEpochs', ...
+                'ndi.time.syncrule.randomPulses'}
+            report.syncrule_channel_rule_seen = report.syncrule_channel_rule_seen + 1;
+            nameKeys = {'daqsystem1_name', 'daqsystem2_name'};
+        otherwise
+            report.syncrule_not_device_pair = report.syncrule_not_device_pair + 1;
+            continue;
     end
-    report.syncrule_filefind_seen = report.syncrule_filefind_seen + 1;
 
     sid = sessionId{k};
     if isempty(sid) || isEmptySessionSentinel(sid)
@@ -370,7 +381,7 @@ for k = 1:n
     if isfield(block, 'parameters') && isstruct(block.parameters) && isscalar(block.parameters)
         params = block.parameters;
     end
-    names = {charParam(params, 'daqsystem1'), charParam(params, 'daqsystem2')};
+    names = {charParam(params, nameKeys{1}), charParam(params, nameKeys{2})};
     if isempty(names{1}) || isempty(names{2})
         report.syncrule_refused_no_system_name = report.syncrule_refused_no_system_name + 1;
         continue;
@@ -456,21 +467,15 @@ for g = 1:numel(slotOf)
     end
     if ~complete
         % ALL OR NOTHING: the rule stays the passthrough it was, and nothing
-        % of this fold is appended (a lone acquisition_channels or a
-        % configuration missing one of its pair would be a fragment).
+        % of this fold is appended (a configuration without its software
+        % entity would be a fragment).
         report.syncrule_fold_quarantined = report.syncrule_fold_quarantined + 1;
         continue;
     end
     docs{slotOf(g)} = out.migrated{producedById(ids{1})};   % the configuration, rule's id
     for j = 2:numel(ids)
-        d = out.migrated{producedById(ids{j})};
-        docs{end+1} = d; %#ok<AGROW>
-        switch char(d.get('document_class.class_name'))
-            case 'acquisition_channels'
-                report.syncrule_channels_emitted = report.syncrule_channels_emitted + 1;
-            otherwise
-                report.syncrule_software_emitted = report.syncrule_software_emitted + 1;
-        end
+        docs{end+1} = out.migrated{producedById(ids{j})}; %#ok<AGROW>
+        report.syncrule_software_emitted = report.syncrule_software_emitted + 1;
     end
     report.syncrule_configurations_folded = report.syncrule_configurations_folded + 1;
 end
@@ -510,7 +515,7 @@ end
 function b = stampEdge(body, edgeName, targetId)
 %STAMPEDGE Append one transient dep (EDGENAME -> TARGETID) for a migrator to read.
 %   Used for `session_document_id` (syncgraph) and, twice per rule, for
-%   `resolved_acquisition_system_id` (filefind syncrule). Neither migrator copies
+%   `resolved_acquisition_system_id` (device-pair syncrule). Neither migrator copies
 %   preBody.depends_on, so the stamp never reaches an emitted document.
 b = body;
 if ~isfield(b, 'depends_on') || isempty(b.depends_on) || ~isstruct(b.depends_on)

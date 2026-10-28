@@ -121,11 +121,18 @@ verifyError(testCase, @() did2.convert.resolveClockAlignment(result, ...
     'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
-% ===================== the filefind syncrule arm ===========================
+% ===================== the device-pair syncrule arm ========================
 % A v1 `ndi.time.syncrule.filefind` names its two acquisition systems by NAME
 % (filefind.m:32: number_fullpath_matches, syncfilename, daqsystem1,
-% daqsystem2). Pass 1 passes it through; this pass resolves both names within
-% the rule's session and re-runs the migrator. Fixtures are the writer's shape
+% daqsystem2); commonTriggersOverlappingEpochs and randomPulses as
+% daqsystem1_name / daqsystem2_name, with trigger channels. Pass 1 passes them
+% through; this pass resolves both names within the rule's session and re-runs
+% the migrator, which links the configuration to the two systems directly:
+% from_acquisition_system_id = daqsystem1's, to_acquisition_system_id =
+% daqsystem2's, the trigger channels as method parameters, and no
+% acquisition_channels (Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md [sync configuration links its rigs], [sync
+% rule direction is recorded]). Fixtures are the writer's shape
 % (syncrule.m:183-187 + filefind.m:32), stored after session.database_add has
 % replaced the empty session id with the real one (session.m:267-275).
 
@@ -142,34 +149,26 @@ verifyEqual(testCase, rep.syncrules_seen, 1);
 verifyEqual(testCase, rep.syncrule_filefind_seen, 1);
 verifyEqual(testCase, rep.syncrule_refused_total, 0);
 verifyEqual(testCase, rep.syncrule_configurations_folded, 1);
-verifyEqual(testCase, rep.syncrule_channels_emitted, 2);
 verifyEqual(testCase, rep.syncrule_software_emitted, 1);
 verifyEqual(testCase, countOf(out, 'syncrule'), 0);
 verifyEqual(testCase, countOf(out, 'clock_alignment_configuration'), 1);
-verifyEqual(testCase, countOf(out, 'acquisition_channels'), 2);
+verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
 
 cfg = firstOf(out, 'clock_alignment_configuration');
 verifyEqual(testCase, cfg.get('base.id'), 'rule_ff');      % base.id PRESERVED
-chIds = depValues(cfg, 'acquisition_channels_id');
-verifyEqual(testCase, numel(chIds), 2);
+verifyEmpty(testCase, depValues(cfg, 'acquisition_channels_id'));
 verifyNotEmpty(testCase, depValue(cfg, 'software_id'));
 verifyEmpty(testCase, depValue(cfg, 'resolved_acquisition_system_id'));
-% Each channel group names its system by the resolved EDGE; together they are
-% the two systems the rule named, as a set (the pair is UNORDERED).
-sysIds = {};
-for k = 1:numel(out.migrated)
-    d = out.migrated{k};
-    if ~strcmp(d.get('document_class.class_name'), 'acquisition_channels'); continue; end
-    verifyTrue(testCase, any(strcmp(chIds, d.get('base.id'))));
-    sysIds{end+1} = depValue(d, 'acquisition_system_id'); %#ok<AGROW>
-end
-verifyEqual(testCase, sort(sysIds), {'sys_1', 'sys_2'});
+% The rigs are ROLE-NAMED: daqsystem1 is from, daqsystem2 is to.
+verifyEqual(testCase, depValue(cfg, 'from_acquisition_system_id'), 'sys_1');
+verifyEqual(testCase, depValue(cfg, 'to_acquisition_system_id'), 'sys_2');
 % number_fullpath_matches and syncfilename are DECLARED method.parameters.
 m = cfg.get('clock_alignment_configuration.method');
-names = arrayfun(@(e) char(e.variable.name), m.parameters, 'UniformOutput', false);
+entries = asEntries(m.parameters);
+names = cellfun(@(e) char(e.variable.name), entries, 'UniformOutput', false);
 verifyEqual(testCase, sort(names), sort({'minimum matching file paths', 'sync file name'}));
-for k = 1:numel(m.parameters)
-    e = m.parameters(k);
+for k = 1:numel(entries)
+    e = entries{k};
     switch char(e.variable.name)
         case 'minimum matching file paths'
             verifyEqual(testCase, double(e.count), 1);
@@ -193,8 +192,22 @@ rep = out.clock_alignment_fold;
 verifyEqual(testCase, rep.syncrule_fold_quarantined, 0);
 verifyEqual(testCase, rep.syncrule_configurations_folded, 1);
 verifyEqual(testCase, countOf(out, 'clock_alignment_configuration'), 1);
-verifyEqual(testCase, countOf(out, 'acquisition_channels'), 2);
+verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
 verifyEqual(testCase, countOf(out, 'syncrule'), 0);
+end
+
+
+function testTheDirectionFollowsTheRuleNotTheBatchOrder(testCase)
+% daqsystem1 names the SECOND system in the batch: from is still daqsystem1's.
+result = migrate({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq2', 'mydaq1')});
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+cfg = firstOf(out, 'clock_alignment_configuration');
+verifyNotEmpty(testCase, cfg);
+verifyEqual(testCase, depValue(cfg, 'from_acquisition_system_id'), 'sys_2');
+verifyEqual(testCase, depValue(cfg, 'to_acquisition_system_id'), 'sys_1');
 end
 
 
@@ -263,24 +276,65 @@ verifyEqual(testCase, countOf(out, 'syncrule'), 1);
 end
 
 
-function testAChannelBasedRuleIsNotConsumed(testCase)
-% commonTriggersOverlappingEpochs also names systems, but with channel strings;
-% this arm is the filefind arm, and the channel rule is counted, not folded.
-v1 = filefindFixture('rule_ct', 'sess_A', 'mydaq1', 'mydaq2');
-v1.syncrule = struct('ndi_syncrule_class', ...
-    'ndi.time.syncrule.commonTriggersOverlappingEpochs', ...
-    'parameters', struct('daqsystem1_name', 'mydaq1', 'daqsystem2_name', 'mydaq2', ...
-        'daqsystem_ch1', 'dep1', 'daqsystem_ch2', 'mk1', ...
-        'epochclocktype', 'dev_local_time', ...
-        'minEmbeddedFileOverlap', 1, 'errorOnFailure', true));
+function testAChannelBasedRuleFoldsWithItsChannelsAsParameters(testCase)
+% commonTriggersOverlappingEpochs names its systems as daqsystem1_name /
+% daqsystem2_name and its trigger channels as daqsystem_ch1 / daqsystem_ch2:
+% the systems are the from / to edges, the channels method parameters.
+result = migrate({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    channelRuleFixture('rule_ct', 'sess_A', 'mydaq1', 'mydaq2')});
+verifyEqual(testCase, countOf(result, 'syncrule'), 1);   % pass 1: passthrough
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrules_seen, 1);
+verifyEqual(testCase, rep.syncrule_channel_rule_seen, 1);
+verifyEqual(testCase, rep.syncrule_filefind_seen, 0);
+verifyEqual(testCase, rep.syncrule_not_device_pair, 0);
+verifyEqual(testCase, rep.syncrule_configurations_folded, 1);
+verifyEqual(testCase, countOf(out, 'syncrule'), 0);
+verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
+cfg = firstOf(out, 'clock_alignment_configuration');
+verifyEqual(testCase, cfg.get('base.id'), 'rule_ct');
+verifyEqual(testCase, depValue(cfg, 'from_acquisition_system_id'), 'sys_1');
+verifyEqual(testCase, depValue(cfg, 'to_acquisition_system_id'), 'sys_2');
+verifyEmpty(testCase, depValues(cfg, 'acquisition_channels_id'));
+entries = asEntries(cfg.get('clock_alignment_configuration.method').parameters);
+ch1 = entryNamed(entries, 'daqsystem ch1');
+ch2 = entryNamed(entries, 'daqsystem ch2');
+verifyEqual(testCase, char(ch1.text), 'dep1');
+verifyEqual(testCase, char(ch2.text), 'mk1');
+verifyEmpty(testCase, entryNamed(entries, 'daqsystem1 name'));   % a name is an edge
+verifyEqual(testCase, char(cfg.get('clock_alignment_configuration.clock.name')), 'dev_local_time');
+end
+
+
+function testAChannelRuleFoldValidatesAgainstTheSchema(testCase)
+result = did2.convert.v1_to_v2({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    channelRuleFixture('rule_ct', 'sess_A', 'mydaq1', 'mydaq2')}, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveClockAlignment(result, 'Validate', true);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrule_fold_quarantined, 0);
+verifyEqual(testCase, rep.syncrule_configurations_folded, 1);
+verifyEqual(testCase, countOf(out, 'syncrule'), 0);
+end
+
+
+function testAnotherRuleClassIsNotConsumed(testCase)
+% a class that names no system pair is counted, not folded
+v1 = filefindFixture('rule_x', 'sess_A', 'mydaq1', 'mydaq2');
+v1.syncrule.ndi_syncrule_class = 'my.lab.syncrule';
 result = migrate({ ...
     daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
     daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), v1});
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
 rep = out.clock_alignment_fold;
 verifyEqual(testCase, rep.syncrules_seen, 1);
-verifyEqual(testCase, rep.syncrule_not_filefind, 1);
-verifyEqual(testCase, rep.syncrule_filefind_seen, 0);
+verifyEqual(testCase, rep.syncrule_not_device_pair, 1);
+verifyEqual(testCase, rep.syncrule_configurations_folded, 0);
 verifyEqual(testCase, countOf(out, 'syncrule'), 1);
 end
 
@@ -380,6 +434,39 @@ v1.base = struct('id', id, 'session_id', sessionId, ...
 v1.syncrule = struct('ndi_syncrule_class', 'ndi.time.syncrule.filefind', ...
     'parameters', struct('number_fullpath_matches', 1, ...
         'syncfilename', 'syncfile.txt', 'daqsystem1', name1, 'daqsystem2', name2));
+end
+
+function v1 = channelRuleFixture(id, sessionId, name1, name2)
+%CHANNELRULEFIXTURE A did_v1 syncrule as syncrule.m:183-187 writes a
+%   commonTriggersOverlappingEpochs rule (commonTriggersOverlappingEpochs.m:36).
+v1 = filefindFixture(id, sessionId, name1, name2);
+v1.syncrule = struct('ndi_syncrule_class', ...
+    'ndi.time.syncrule.commonTriggersOverlappingEpochs', ...
+    'parameters', struct('daqsystem1_name', name1, 'daqsystem2_name', name2, ...
+        'daqsystem_ch1', 'dep1', 'daqsystem_ch2', 'mk1', ...
+        'epochclocktype', 'dev_local_time', ...
+        'minEmbeddedFileOverlap', 1, 'errorOnFailure', true));
+end
+
+function c = asEntries(p)
+% method.parameters as a cell of entries, a struct array or a cell either way
+if iscell(p)
+    c = reshape(p, 1, []);
+elseif isempty(p)
+    c = {};
+else
+    c = num2cell(reshape(p, 1, []));
+end
+end
+
+function e = entryNamed(entries, name)
+e = [];
+for k = 1:numel(entries)
+    if strcmp(char(entries{k}.variable.name), name)
+        e = entries{k};
+        return;
+    end
+end
 end
 
 function v = depValues(doc, name)

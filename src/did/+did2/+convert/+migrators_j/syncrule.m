@@ -2,8 +2,22 @@ function bodies = syncrule(preBody)
 %SYNCRULE Brainstorm-J migrator: did_v1 `syncrule` -> `clock_alignment_configuration`.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   1 -> 3 or 4:  the configuration, its TWO `acquisition_channels` documents,
-%   and (when the source names an implementation) one `software` entity.
+%   1 -> 1 or 2:  the configuration and (when the source names an
+%   implementation) one `software` entity.
+%
+%   THE RIGS (Jess Haley, 2026-10-27, did-schema
+%   V_eta_go_forward_class_audit.md [sync configuration links its rigs] and
+%   [sync rule direction is recorded], amending [sync configuration] below):
+%   the configuration links the two `acquisition_system` documents directly,
+%   role-named -- `from_acquisition_system_id` is v1 daqsystem1,
+%   `to_acquisition_system_id` is v1 daqsystem2 (a filefind rule maps
+%   daqsystem1's clock to daqsystem2's, NDI +time/+syncrule/filefind.m
+%   `apply`, so the pair is ORDERED) -- and a rule's trigger channels
+%   (daqsystem_ch1 / daqsystem_ch2) are method parameters. A migrated sync
+%   rule writes NO `acquisition_channels` documents. The two edges are
+%   OPTIONAL on did-schema until NDI reads them (NDI-matlab
+%   ndi.vintage.syncruleParameters reads both shapes); then did-schema removes
+%   `acquisition_channels_id` from the class.
 %
 %   TEAM-SIGN-OFF [sync configuration], jess@walthamdatascience.com / 2026-08-08:
 %     "syncrule -> `clock_alignment_configuration` (parameters DECLARED not
@@ -106,10 +120,15 @@ function bodies = syncrule(preBody)
 %     syncrule.ndi_syncrule_class     -> the software entity's name
 %     syncrule.parameters.*           -> the method parameters (named), the
 %                                        clock (epochclocktype), and, on the
-%                                        resolved filefind fold, the two
-%                                        acquisition_channels (daqsystem1/2)
-%   A rule that does not fold (a channel-based rule; a filefind rule in pass 1)
-%   passes through unchanged, as before.
+%                                        resolved device-pair fold, the
+%                                        from / to acquisition_system edges
+%                                        (filefind daqsystem1/2; the channel
+%                                        rules' daqsystem1_name/2_name). The
+%                                        channel strings daqsystem_ch1/_ch2
+%                                        are method parameters by their own
+%                                        names, as every unread parameter is.
+%   A rule that does not fold (any device-pair rule in pass 1, before its
+%   systems are resolved) passes through unchanged, as before.
 %
 %   What the renamed path would have discarded is carried, carry-049, as
 %   before; a field or edge no part of this migrator reads now carries the
@@ -179,45 +198,40 @@ haveBoth    = ~isempty(channelsA) && ~isempty(channelsB);
 haveNeither = isempty(channelsA) && isempty(channelsB);
 minPaths    = readNumber(params, {'number_fullpath_matches', 'numberFullpathMatches'});
 isFileBased = ~isempty(minPaths);
-% did-schema #88 PASSES A CHANNEL-BASED RULE THROUGH (v1 form, as before
-% pass 1). `acquisition_channels` names the system its channels belong to only
-% by an `acquisition_system_id` EDGE, and the v1 rule names its two systems by
-% NAME (daqsystem1_name / daqsystem2_name); resolving a name to the system's id
-% needs the batch, which a single-document migrator does not have. The
-% pre-#73 shape kept the name in base.name, which V_eta no longer writes, so
-% folding here would drop which device each channel group is on. Reported.
+% PASS 1 PASSES A DEVICE-PAIR RULE THROUGH (v1 form). The configuration
+% names its two systems by `from_acquisition_system_id` /
+% `to_acquisition_system_id` EDGES, and the v1 rule names them by NAME;
+% resolving a name to the system's id needs the batch, which a single-document
+% migrator does not have. The batch pass below supplies it. (Here
+% jAcquisitionChannels only tells a named device from none; its bodies are
+% not emitted.)
 %
-% THE BATCH SEAM (did2.convert.resolveClockAlignment, the filefind arm). A
-% `filefind` rule names its two systems by NAME and no channels
-% (filefind.m:32). The batch pass resolves each name, within the rule's own
-% session, to exactly one migrated `acquisition_system` and STAMPS the two ids
-% here as transient `resolved_acquisition_system_id` deps, then re-runs this
-% migrator. With exactly two stamps, two names and no channel string, the rule
-% becomes the device-pair configuration the [sync configuration] sign-off
-% decided: two `acquisition_channels` documents, each carrying the resolved
-% `acquisition_system_id` edge (the device's name then lives in one place, on
-% the system), as the configuration's UNORDERED `acquisition_channels_id` pair.
-% The stamp is read and discarded: every edge below is set BY NAME. Without the
-% stamp (pass 1, or a name the pass could not resolve to exactly one system) the
-% rule passes through exactly as before. A channel-based rule (daqsystem_ch1 /
-% _ch2 present) is NOT folded here even when stamped: its channel strings would
-% need the channel parse this branch does not do.
+% THE BATCH SEAM (did2.convert.resolveClockAlignment, the device-pair arm). A
+% device-pair rule names its two systems by NAME: `filefind` as daqsystem1 /
+% daqsystem2 (filefind.m:32), commonTriggersOverlappingEpochs and randomPulses
+% as daqsystem1_name / daqsystem2_name with their trigger channels
+% daqsystem_ch1 / daqsystem_ch2. The batch pass resolves each name, within the
+% rule's own session, to exactly one migrated `acquisition_system` and STAMPS
+% the two ids here, in order (daqsystem1's first), as transient
+% `resolved_acquisition_system_id` deps, then re-runs this migrator. With
+% exactly two stamps and both names under the spelling that rule's writer
+% uses, the rule becomes the device-pair configuration: the first stamp is
+% its `from_acquisition_system_id`, the second its `to_acquisition_system_id`
+% ([sync configuration links its rigs], [sync rule direction is recorded]),
+% and the channel strings are method parameters by their own names. The stamp
+% is read and discarded: every edge below is set BY NAME. Without the stamp
+% (pass 1, or a name the pass could not resolve to exactly one system) the
+% rule passes through exactly as before.
 resolved = stampedSystemIds(preBody);
-if numel(resolved) == 2 && ~isempty(name1) && ~isempty(name2) ...
-        && isempty(ch1) && isempty(ch2)
-    if carryUnwritable(preBody, params, true)
+nameKeys = systemNameKeys(jGetCharAny(block, {'ndi_syncrule_class', 'ndiSyncruleClass'}));
+if numel(resolved) == 2 && ~isempty(nameKeys) ...
+        && ~isempty(jGetChar(params, nameKeys{1})) && ~isempty(jGetChar(params, nameKeys{2}))
+    if carryUnwritable(preBody, params, nameKeys)
         bodies = {src};
         return;
     end
-    channelDocs = cell(1, 2);
-    channelIds  = cell(1, 2);
-    for k = 1:2
-        co = jOpts(preBody, 'Edges', struct('acquisition_system_id', resolved{k}));
-        channelDocs{k} = did2.build.document('acquisition_channels', struct(), co{:});
-        channelIds{k}  = char(channelDocs{k}.base.id);
-    end
-    [cfg, software] = configuration(preBody, block, channelIds, true);
-    bodies = [{cfg}, channelDocs, software];
+    [cfg, software] = configuration(preBody, block, resolved, nameKeys);
+    bodies = [{cfg}, software];
     return;
 end
 
@@ -226,19 +240,37 @@ if ~(haveNeither && isFileBased)
     return;
 end
 
-if carryUnwritable(preBody, params, false)
+if carryUnwritable(preBody, params, {})
     bodies = {src};
     return;
 end
-[cfg, software] = configuration(preBody, block, {}, false);
+[cfg, software] = configuration(preBody, block, {}, {});
 bodies = [{cfg}, software];
 end
 
-function tf = carryUnwritable(preBody, params, namesRead)
+function keys = systemNameKeys(implClass)
+%SYSTEMNAMEKEYS The two parameters that name a rule's systems, as its writer
+%   spells them ({} for a rule that names none). filefind.m:32 writes
+%   daqsystem1 / daqsystem2; commonTriggersOverlappingEpochs.m:36 and
+%   randomPulses.m:34 write daqsystem1_name / daqsystem2_name. Reading only the
+%   writer's spelling keeps the round trip exact: the inverse names the two
+%   systems back under the key the rule's class implies.
+switch char(implClass)
+    case 'ndi.time.syncrule.filefind'
+        keys = {'daqsystem1', 'daqsystem2'};
+    case {'ndi.time.syncrule.commonTriggersOverlappingEpochs', ...
+            'ndi.time.syncrule.randomPulses'}
+        keys = {'daqsystem1_name', 'daqsystem2_name'};
+    otherwise
+        keys = {};
+end
+end
+
+function tf = carryUnwritable(preBody, params, nameKeys)
 %CARRYUNWRITABLE True (with a `carried_as_v1` note) when an unread parameter
 %   cannot be written as a method parameter ([small unread settings] (3), Jess
 %   Haley, 2026-10-26).
-[~, unwritable] = unreadParameters(params, namesRead);
+[~, unwritable] = unreadParameters(params, nameKeys);
 tf = ~isempty(unwritable);
 if tf
     % carry-register: carry-008
@@ -247,13 +279,15 @@ if tf
 end
 end
 
-function [entries, unwritable] = unreadParameters(params, namesRead)
+function [entries, unwritable] = unreadParameters(params, nameKeys)
 %UNREADPARAMETERS The parameters configuration() does not read, as method
 %   parameter entries (jParameterList: a number as `quantity`, text as `text`,
 %   anything else JSON-encoded as `text`), and the names of those that cannot
 %   be written: a number that is not finite (an entry's quantity is finite, and
-%   JSON-encoding loses NaN / Inf). NAMESREAD: the stamped-pair arm read the
-%   two DAQ system names (they resolved the pair).
+%   JSON-encoding loses NaN / Inf). NAMEKEYS: the two parameters the
+%   stamped-pair arm read as the system names (they are the from / to edges);
+%   {} on the file-based arm. A channel string (daqsystem_ch1 / _ch2) is not
+%   read here, so it is a method parameter by its own name.
 entries = [];
 unwritable = {};
 if ~isstruct(params) || ~isscalar(params)
@@ -264,10 +298,7 @@ read = [read, consumedChar(params, {'syncfilename', 'syncFilename', 'sync_filena
 read = [read, consumedChar(params, {'epochclocktype', 'epochClockType', 'epoch_clock_type'})];
 read = [read, consumedNumber(params, {'number_fullpath_matches', 'numberFullpathMatches'})];
 read = [read, consumedNumber(params, {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'})];
-if namesRead
-    read = [read, consumedChar(params, {'daqsystem1_name', 'daqsystem1', 'daqsystem1Name'}), ...
-        consumedChar(params, {'daqsystem2_name', 'daqsystem2', 'daqsystem2Name'})];
-end
+read = [read, reshape(nameKeys, 1, [])];
 rest = struct();
 fns = fieldnames(params);
 for k = 1:numel(fns)
@@ -304,20 +335,21 @@ for k = 1:numel(names)
 end
 end
 
-function [cfg, software] = configuration(preBody, block, channelIds, namesRead)
+function [cfg, software] = configuration(preBody, block, systemIds, nameKeys)
 %CONFIGURATION The `clock_alignment_configuration` both folding branches emit.
 %   One builder for the file-based (filematch) branch and the resolved
-%   device-pair (filefind) branch, so the two cannot drift: base.id preserved,
-%   the declared parameters as inline `method.parameters`, the implementation
-%   class as a `software` entity, and CHANNELIDS (0 or 2) as the unordered
-%   `acquisition_channels_id` edges.
+%   device-pair branch, so the two cannot drift: base.id preserved, the
+%   declared parameters as inline `method.parameters`, the implementation
+%   class as a `software` entity, and SYSTEMIDS (none, or daqsystem1's then
+%   daqsystem2's) as the `from_acquisition_system_id` /
+%   `to_acquisition_system_id` edges.
 implClass = jGetCharAny(block, {'ndi_syncrule_class', 'ndiSyncruleClass'});
 [software, swId] = jSyncSoftware(preBody, implClass);
 
 % The rule's settings are its inline `method.parameters` (did-schema #88,
 % V_eta_method_plan.md: one method shape; the three settings were their own
 % fields before). A filefind rule carries two of them (number_fullpath_matches,
-% syncfilename); its daqsystem1 / daqsystem2 NAMES are the channel edges, not
+% syncfilename); its daqsystem1 / daqsystem2 NAMES are the from / to edges, not
 % entries.
 entries = {};
 minPaths = readNumber(params0(block), {'number_fullpath_matches', 'numberFullpathMatches'});
@@ -336,7 +368,7 @@ if ~isempty(minOverlap)
 end
 % the parameters read nowhere above, written as method parameters too
 % ([small unread settings] (3), Jess Haley, 2026-10-26)
-unread = unreadParameters(params0(block), namesRead);
+unread = unreadParameters(params0(block), nameKeys);
 if ~isempty(unread)
     entries{end+1} = unread;
 end
@@ -354,7 +386,10 @@ if ~isempty(params)
 end
 edges = struct();
 if ~isempty(swId); edges.software_id = swId; end
-if ~isempty(channelIds); edges.acquisition_channels_id = channelIds; end
+if ~isempty(systemIds)
+    edges.from_acquisition_system_id = systemIds{1};
+    edges.to_acquisition_system_id   = systemIds{2};
+end
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
 cfg = did2.build.document('clock_alignment_configuration', f, o{:});
 end
