@@ -33,6 +33,14 @@ function report = check(v1Body, v2Docs)
 %                           2026-10-26), each with the decision that allows it
 %         spec.unplaced     cellstr: emitted content the inverse could not
 %                           place (an unexpected document, a wrong type)
+%         spec.spellings    struct array {paths, why} (optional): a v1 field
+%                           that v1 writes under more than one name (PATHS,
+%                           full paths that differ only in their last name),
+%                           one field in V2; the rebuilt field is moved to
+%                           the spelling V1BODY uses (Decided by Jess Haley,
+%                           2026-10-27 [hotelling spellings are one field]:
+%                           "the round trip writes back the spelling v1
+%                           used")
 %       A class with no inverse is an error (did2:convert:roundtrip:noInverse).
 %
 %   HOW IT COMPARES. V1BODY is flattened to its leaf fields (a struct array
@@ -107,6 +115,9 @@ same = struct('path', {}, 'fn', {}, 'why', {});
 if isfield(spec, 'same')
     same = spec.same;
 end
+if ~report.carried && isfield(spec, 'spellings')
+    rebuilt = respell(rebuilt, v1Body, spec.spellings);
+end
 report.unplaced = spec.unplaced;
 
 origLeaves = flattenLeaves(v1Body);
@@ -154,6 +165,40 @@ report.ok = isempty(report.lost) && isempty(report.invented) ...
 end
 
 % ===================== helpers =========================================
+
+function rebuilt = respell(rebuilt, v1Body, spellings)
+%RESPELL Move each field of SPELLINGS the rebuilt document holds under one
+%   spelling to the spelling V1BODY holds it under (when V1BODY holds exactly
+%   one of them and it is another).
+for k = 1:numel(spellings)
+    paths = spellings(k).paths;
+    inV1 = paths(cellfun(@(p) hasPath(v1Body, p), paths));
+    inRebuilt = paths(cellfun(@(p) hasPath(rebuilt, p), paths));
+    if ~isscalar(inV1) || ~isscalar(inRebuilt) || strcmp(inV1{1}, inRebuilt{1})
+        continue;
+    end
+    from = strsplit(inRebuilt{1}, '.');
+    to = strsplit(inV1{1}, '.');
+    parent = from(1:end-1);
+    blk = getfield(rebuilt, parent{:}); %#ok<GFLD>
+    value = blk.(from{end});
+    blk = rmfield(blk, from{end});
+    blk.(to{end}) = value;
+    rebuilt = setfield(rebuilt, parent{:}, blk); %#ok<SFLD>
+end
+end
+
+function tf = hasPath(s, p)
+tf = true;
+parts = strsplit(p, '.');
+for k = 1:numel(parts)
+    if ~isstruct(s) || ~isscalar(s) || ~isfield(s, parts{k})
+        tf = false;
+        return;
+    end
+    s = s.(parts{k});
+end
+end
 
 function bodies = asBodies(v2Docs)
 if isa(v2Docs, 'did2.document')
