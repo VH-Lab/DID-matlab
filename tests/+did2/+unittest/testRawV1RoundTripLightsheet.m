@@ -29,8 +29,10 @@ function tests = testRawV1RoundTripLightsheet
 %
 %   KNOWN FINDINGS, listed exactly (today's behaviour is kept; the migrators'
 %   headers record them): the pyramid's byte_order (its levels carry it); a
-%   level's label, dtype (the pyramid's observation states it), subject_id and
-%   source_file_id edges, and a reduced level's index.
+%   level's dtype (the pyramid's observation states it), subject_id and
+%   source_file_id edges. A level's label and its index are no longer lost:
+%   the label is the body's description and the index is read from it
+%   ([light-sheet level label is a note], Jess Haley, 2026-10-27).
 tests = functiontests(localfunctions);
 end
 
@@ -103,8 +105,7 @@ end
 
 function testLevelsRoundTrip(testCase)
 L = levels();
-lost = {'lightsheetZarrLevel.label', 'lightsheetZarrLevel.dtype', ...
-    'depends_on(2).value', 'depends_on(3).value'};
+lost = {'lightsheetZarrLevel.dtype', 'depends_on(2).value', 'depends_on(3).value'};
 for k = 1:numel(L)
     v1 = L{k};
     label = char(v1.base.id);
@@ -112,12 +113,39 @@ for k = 1:numel(L)
     verifyEmpty(testCase, out.quarantine, label);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     verifyFalse(testCase, r.carried, label);
-    expected = lost;
-    if v1.lightsheetZarrLevel.level > 0
-        expected{end+1} = 'lightsheetZarrLevel.level'; %#ok<AGROW>
-    end
-    did2.unittest.helpers.verifyRoundTrip(testCase, r, label, expected);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, label, lost);
+    verifyTrue(testCase, any(strcmp('lightsheetZarrLevel.label', r.matched)), label);
+    verifyTrue(testCase, any(strcmp('lightsheetZarrLevel.level', r.matched)), label);
+    % the label is the body's description, unchanged
+    b = out.migrated{1}.toStruct();
+    verifyEqual(testCase, char(b.data_body.description), v1.lightsheetZarrLevel.label, label);
 end
+end
+
+function testALevelWhoseLabelDoesNotFollowTheWriterIsCarried(testCase)
+% [light-sheet level label is a note] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): "a level whose label does not
+% follow that pattern is carried whole as v1, kind `malformed`" (the register
+% row is pending in did-schema: the note cites the placeholder)
+L = levels();
+v1 = L{2};   % level 1, max
+bad = {'a level of my own', 'mean level 2 (max)', 'mean level 1 (mean)'};
+for k = 1:numel(bad)
+    x = v1;
+    x.lightsheetZarrLevel.label = bad{k};
+    verifyCarried(testCase, x, '[carry-pending-lightsheet-level-label-malformed] malformed');
+end
+% an empty label states nothing only for level 0
+x = v1;
+x.lightsheetZarrLevel.label = '';
+verifyCarried(testCase, x, '[carry-pending-lightsheet-level-label-malformed] malformed');
+x = L{1};
+x.lightsheetZarrLevel.label = '';
+out = runRaw({x});
+verifyEmpty(testCase, out.passthrough, 'level 0 with no label converts');
+r = did2.convert.roundtrip.check(x, out.migrated);
+verifyFalse(testCase, any(strcmp({r.lost.path}, 'lightsheetZarrLevel.level')));
+verifyFalse(testCase, any(strcmp({r.lost.path}, 'lightsheetZarrLevel.label')));
 end
 
 function testADifferentSourceIsReportedLost(testCase)

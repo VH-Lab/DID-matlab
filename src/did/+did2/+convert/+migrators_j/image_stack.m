@@ -355,6 +355,22 @@ if isempty(dimOrder) || numel(dimSize) < numel(dimOrder)
     bodies = {preBody};   % no extent for a dimension: no honest key
     return;
 end
+% [axis letters derive from labels] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): `dimension_order` is not stored;
+% the round trip derives each letter from the dimension's label through a fixed
+% table (did2.convert.axisLetter). A stack whose labels (or, with none, its
+% letters) do not map one-to-one onto its v1 letters is carried whole as v1.
+% THE REGISTER ROW IS PENDING in did-schema: until it exists the note cites the
+% placeholder AXIS_ROW, which names no row.
+AXIS_ROW = 'carry-pending-axis-letters-do-not-derive';
+axisWhy = axisLettersMismatch(dimOrder, splitScaleUnits(getCharField(params, 'dimension_labels')));
+if ~isempty(axisWhy)
+    % carry-register: none (row pending in did-schema; AXIS_ROW)
+    did2.convert.reportNote('carried_as_v1', noteClass, baseField(preBody, 'id', ''), ...
+        sprintf('[%s] awaiting_home: %s ([axis letters derive from labels])', AXIS_ROW, axisWhy));
+    bodies = {preBody};
+    return;
+end
 
 anchor = jSessionAnchor(src, 'during');
 [datumType, sourceDatumType] = jDatumType(dataType);
@@ -395,10 +411,45 @@ end
 if ~isempty(bodyConditions)
     o = [o, {'Conditions', bodyConditions}];
 end
+% [image stack name goes to notes] (Decided by Jess Haley, 2026-10-27, as
+% amended by [v1 name goes to the class's own name field]): a non-empty v1
+% base.name is written to the data body's free text -- `description` until
+% [one free-text field: notes] renames it `notes` -- as v1 wrote it
+stackName = jBaseName(preBody);
+if ~isempty(stackName)
+    o = [o, {'Description', stackName}];
+end
 body = did2.build.sampledBody(stackId, dims, 'Covariates', covs, o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software];
+end
+
+function why = axisLettersMismatch(dimOrder, labels)
+%AXISLETTERSMISMATCH '' when each axis's label (its letter where the stack has
+%   no label for it) maps to that axis's v1 letter through did2.convert.axisLetter
+%   and no letter repeats, else why not.
+why = '';
+dimOrder = upper(char(dimOrder));
+if numel(unique(dimOrder)) ~= numel(dimOrder)
+    why = sprintf('dimension_order "%s" repeats a letter', dimOrder);
+    return;
+end
+for k = 1:numel(dimOrder)
+    nm = dimOrder(k);
+    if k <= numel(labels) && ~isempty(labels{k})
+        nm = labels{k};
+    end
+    if ~strcmp(did2.convert.axisLetter(nm), dimOrder(k))
+        why = sprintf('axis %d (%s) is labelled "%s", which does not derive the letter', ...
+            k, dimOrder(k), nm);
+        return;
+    end
+end
+if numel(labels) > numel(dimOrder) && any(~cellfun(@isempty, labels(numel(dimOrder) + 1:end)))
+    why = sprintf('%d dimension_labels for the %d letters of "%s"', numel(labels), ...
+        numel(dimOrder), dimOrder);
+end
 end
 
 function tf = isTypeRange(limits, dataType)

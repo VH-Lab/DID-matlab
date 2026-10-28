@@ -77,8 +77,8 @@ function bodies = lightsheet_zarr_level(preBody)
 %                       observation keeps the pyramid's. Any edge a dataset
 %                       carries to the level resolves to its body.
 %   A level holding NO bytes -> a FILE-LESS sampled_body, built as above (the
-%   level's id, dimensions, covariates and the rest), its description saying no
-%   bytes are stored and its `files` removed, as lightsheet_zarr_pyramid's
+%   level's id, dimensions, covariates and the rest), its description (when
+%   the level has no label) saying no bytes are stored and its `files` removed, as lightsheet_zarr_pyramid's
 %   sourcelessStoreBody does ([compression block and empty levels] (2), Jess
 %   Haley, 2026-10-26, as [no-source pyramid gets a file-less store body]).
 %   This replaces #73 L3(c) ("a level holding NO bytes -> nothing"), which left
@@ -188,6 +188,31 @@ if ~isempty(extraSettings)
     return;
 end
 
+% [light-sheet level label is a note] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): the v1 `label` (makePyramid.m
+% makeOneLevel builds it as "<entry name> level <N> (<reduction>)") is written
+% UNCHANGED to the level body's description -- `notes` once [one free-text
+% field: notes] is built -- as display text V2 code does not read; no
+% level-number field is added; the round trip takes the level number from the
+% label. A level whose label does not follow that pattern (or states another
+% level or reduction than the document) is carried whole as v1, malformed. An
+% empty label states nothing only for level 0, the measurement, whose number
+% `redundant` already gives. Supersedes [light-sheet level fields rebuild from
+% the pyramid]. THE REGISTER ROW IS PENDING in did-schema: until it exists the
+% note cites the placeholder LABEL_ROW, which names no row.
+LABEL_ROW = 'carry-pending-lightsheet-level-label-malformed';
+levelLabel = char(field(blk, 'label', ''));
+labelWhy = levelLabelMismatch(levelLabel, double(field(blk, 'level', 0)), ...
+    char(field(blk, 'reduction_function', '')));
+if ~isempty(labelWhy)
+    % carry-register: none (malformed row pending in did-schema; LABEL_ROW)
+    did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
+        sprintf('[%s] malformed: lightsheet_zarr_level.label %s ([light-sheet level label is a note])', ...
+        LABEL_ROW, labelWhy));
+    bodies = {src};   % the untouched source
+    return;
+end
+
 [~, sessionId, created] = baseOf(preBody);
 ownerId = depValue(preBody, 'lightsheetZarrPyramid_id');
 if isempty(ownerId) && nHeld == 0
@@ -256,8 +281,13 @@ if ~isMeasurement
     end
 end
 
-if nHeld == 0
+if ~isempty(levelLabel)
+    % [light-sheet level label is a note]: the label, unchanged
+    opts = [opts, {'Description', levelLabel}];
+elseif nHeld == 0
     % a level holding no bytes (materializeChunks off, the writer's default)
+    % and no label: did2.convert.roundtrip.lightsheetZarrLevel reads this
+    % sentence as no label
     opts = [opts, {'Description', ['a pyramid level holding no bytes: no ' ...
         'chunk data is stored for it']}];
 end
@@ -270,6 +300,28 @@ else
     body.files = files;      % the level's own files, renamed (see header)
 end
 bodies = {body};
+end
+
+function why = levelLabelMismatch(label, level, reduction)
+%LEVELLABELMISMATCH '' when LABEL is what makePyramid.m makeOneLevel writes for
+%   LEVEL and REDUCTION ("<entry name> level <N> (<reduction>)"), else why not.
+%   An empty label is '' only for level 0 (the measurement: the round trip
+%   reads its number from `redundant`).
+why = '';
+if isempty(strtrim(label))
+    if level ~= 0
+        why = sprintf('is empty, so the level number %g is stated nowhere else', level);
+    end
+    return;
+end
+tok = regexp(label, '^.* level (\d+) \(([^()]*)\)$', 'tokens', 'once');
+if isempty(tok)
+    why = sprintf('"%s" does not follow "<entry name> level <N> (<reduction>)"', label);
+elseif str2double(tok{1}) ~= level
+    why = sprintf('"%s" names level %s, the document level %g', label, tok{1}, level);
+elseif ~isempty(reduction) && ~strcmp(tok{2}, reduction)
+    why = sprintf('"%s" names reduction "%s", the document "%s"', label, tok{2}, reduction);
+end
 end
 
 function keys = codecSettingsBeyondName(codec, params)
