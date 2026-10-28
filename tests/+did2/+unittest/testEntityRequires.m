@@ -37,6 +37,32 @@ rep = did2.validate.entityRequires(docs, 'SchemaCache', stubCache());
 verifyEqual(testCase, rep.missing_total, 2);
 end
 
+function testAnOrganizationNeedsANameOrAnIdentifier(testCase)
+% [organization needs a name or an identifier] (Decided by Jess Haley,
+% 2026-10-27, did-schema V_eta_go_forward_class_audit.md): "an `organization`
+% entity requires at least one of `name` and `global_identifier`", so an NDI
+% Cloud organization known only by `ndicloud:<id>` is valid
+c = struct('bindingRegistry', struct('entity_type_bindings', ...
+    struct('type', {'organization'}, 'requires', {{'name'}})));
+named = ent('o1', 'organization', '', 'Analytical Society');
+cloud = ent('o2', 'organization', '', '');
+cloud.entity.global_identifier = {'ndicloud:649b1b1bea20f31db68d4f9f'};
+neither = ent('o3', 'organization', '', '');
+rep = did2.validate.entityRequires({named, cloud, neither}, 'SchemaCache', c);
+r = row(rep, 'organization', 'name|global_identifier');
+verifyEqual(testCase, [r.inspected r.missing], [3 1]);
+verifyEqual(testCase, r.missing_ids, {'o3'});
+% a registry row may state the alternatives itself
+c2 = struct('bindingRegistry', struct('entity_type_bindings', ...
+    struct('type', {'device'}, 'requires', {{}}, ...
+    'requires_one_of', {{{'name', 'local_identifier'}}})));
+d1 = ent('d1', 'device', 'probe 1', '');
+d2 = ent('d2', 'device', '', '');
+rep = did2.validate.entityRequires({d1, d2}, 'SchemaCache', c2);
+r = row(rep, 'device', 'name|local_identifier');
+verifyEqual(testCase, [r.inspected r.missing], [2 1]);
+end
+
 % ---- fixtures -------------------------------------------------------------
 
 function c = stubCache()

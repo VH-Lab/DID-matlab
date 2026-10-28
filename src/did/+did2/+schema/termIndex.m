@@ -9,8 +9,11 @@ function ix = termIndex(registry)
 %              main): nothing can be checked against it
 %     count    the number of registered terms
 %     byNode   curieKey(node) -> the registered term {node, name, status,
-%              number_unit} (number_unit: [] or the {node, name} of the unit
-%              the term's number takes)
+%              number_unit, equivalent} (number_unit: [] or the {node, name}
+%              of the unit the term's number takes; equivalent: a cellstr of
+%              the ids in other vocabularies that mean the same thing, {} when
+%              the row states none or the registry predates the column --
+%              [term equivalents recorded], Jess Haley, 2026-10-27)
 %     byName   lower(name) -> the registered term, for every term
 %
 %   REGISTRY ([] = the shared schema cache's) is the struct jsondecode makes of
@@ -56,13 +59,18 @@ if ~isstruct(registry) || ~isscalar(registry) || ~isfield(registry, 'terms')
     return;
 end
 terms = registry.terms;
-if iscell(terms)
-    terms = [terms{:}];
+if isstruct(terms)
+    terms = num2cell(terms);   % one row per cell: rows may differ in keys
 end
 ix.present = true;
 for k = 1:numel(terms)
-    e = struct('node', textOf(terms(k), 'node'), 'name', textOf(terms(k), 'name'), ...
-        'status', textOf(terms(k), 'status'), 'number_unit', unitOf(terms(k)));
+    t = terms{k};
+    if ~isstruct(t) || ~isscalar(t)
+        continue;
+    end
+    e = struct('node', textOf(t, 'node'), 'name', textOf(t, 'name'), ...
+        'status', textOf(t, 'status'), 'number_unit', unitOf(t), ...
+        'equivalent', {equivalentOf(t)});
     if ~isempty(e.node)
         ix.byNode(did2.schema.curieKey(e.node)) = e;
     end
@@ -71,6 +79,22 @@ for k = 1:numel(terms)
     end
 end
 ix.count = numel(terms);
+end
+
+function c = equivalentOf(s)
+% The row's `equivalent` list as a cellstr ({} when none).
+c = {};
+if ~isfield(s, 'equivalent') || isempty(s.equivalent)
+    return;
+end
+v = s.equivalent;
+if ischar(v) || isstring(v)
+    c = cellstr(v);
+elseif iscell(v)
+    c = v(cellfun(@(x) ischar(x) || (isstring(x) && isscalar(x)), v));
+    c = cellfun(@char, c, 'UniformOutput', false);
+end
+c = reshape(c, 1, []);
 end
 
 function u = unitOf(s)

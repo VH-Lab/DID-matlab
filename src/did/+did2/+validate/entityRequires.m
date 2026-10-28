@@ -13,6 +13,20 @@ function report = entityRequires(docs, opts)
 %   Options:
 %     'SchemaCache'  a did2.schema.cache ([] = did2.schema.cache.shared())
 %
+%   ONE OF SEVERAL FIELDS. A requirement may name alternatives, any one of
+%   which satisfies it, written 'a|b' in the report's `field`:
+%     - a registry row's `requires_one_of`, a list of field lists (each list
+%       one requirement), read when the row has it;
+%     - [organization needs a name or an identifier] (Decided by Jess Haley,
+%       2026-10-27, did-schema V_eta_go_forward_class_audit.md): "an
+%       `organization` entity requires at least one of `name` and
+%       `global_identifier`, not `name` alone, so an NDI Cloud organization
+%       known only by `ndicloud:<id>` ... is valid". Built here first (the
+%       decision's order: the DID-matlab rule, then did-schema's
+%       entity_type_bindings): an organization row's `name` requirement reads
+%       as `name|global_identifier` (ALTERNATIVES below) until the registry
+%       states it.
+%
 %   REPORT, denominator first:
 %     docs_inspected, docs_unreadable   every document handed in
 %     entities_inspected                of those, `entity` documents
@@ -58,7 +72,23 @@ for r = 1:numel(rows)
     if isfield(rows{r}, 'requires') && ~isempty(rows{r}.requires)
         req = cellstr(rows{r}.requires);
     end
-    requiresByType(lower(char(rows{r}.type))) = req(:)';
+    req = reshape(req, 1, []);
+    alt = ALTERNATIVES();
+    ty = lower(char(rows{r}.type));
+    for a = 1:size(alt, 1)
+        if strcmp(ty, alt{a, 1})
+            req(strcmp(req, alt{a, 2})) = {strjoin(alt{a, 3}, '|')};
+        end
+    end
+    if isfield(rows{r}, 'requires_one_of') && ~isempty(rows{r}.requires_one_of)
+        groups = rows{r}.requires_one_of;
+        if ~iscell(groups); groups = {groups}; end
+        for g = 1:numel(groups)
+            req{end+1} = strjoin(cellstr(groups{g}), '|'); %#ok<AGROW>
+        end
+        req = unique(req, 'stable');
+    end
+    requiresByType(ty) = req;
     % the row's node too: an entity is matched BY NODE (Jess Haley 2026-10-22
     % [vocabulary nodes] L2), its stored name being the ontology label
     if isfield(rows{r}, 'node') && ~isempty(strtrim(char(rows{r}.node)))
@@ -100,7 +130,7 @@ for k = 1:numel(bodies)
         end
         i = idx(key);
         report.by_type_field(i).inspected = report.by_type_field(i).inspected + 1;
-        if isBlank(b.entity, req{f})
+        if all(cellfun(@(x) isBlank(b.entity, x), strsplit(req{f}, '|')))
             report.by_type_field(i).missing = report.by_type_field(i).missing + 1;
             report.missing_total = report.missing_total + 1;
             if numel(report.by_type_field(i).missing_ids) < 20
@@ -111,6 +141,11 @@ for k = 1:numel(bodies)
         end
     end
 end
+end
+
+function a = ALTERNATIVES()
+% {entity type, required field, the fields any one of which satisfies it}
+a = {'organization', 'name', {'name', 'global_identifier'}};
 end
 
 function rows = registryRows(cache)
@@ -131,7 +166,9 @@ function tf = isBlank(s, name)
 tf = true;
 if ~isfield(s, name); return; end
 v = s.(name);
-if ischar(v) || isstring(v)
+if iscell(v)
+    tf = isempty(v) || all(cellfun(@(x) (ischar(x) || isstring(x)) && isempty(strtrim(char(x))), v));
+elseif ischar(v) || (isstring(v) && isscalar(v))
     tf = isempty(strtrim(char(v)));
 elseif isstruct(v)
     tf = isempty(v) || (isfield(v, 'name') && isempty(strtrim(char(v.name))) ...

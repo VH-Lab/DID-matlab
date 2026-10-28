@@ -38,10 +38,19 @@ function v2Body = dataset_remote(preBody)
 %     dataset_remote.dataset_id   -> the dataset's global_identifier
 %                                    `ndicloud:<id>`
 %     dataset_remote.organization_id
-%                                 -> the organization entity's name (the
-%                                    writer stores the cloud organization's
-%                                    id here, not a name: a finding), and the
-%                                    dataset -hosted_by-> organization relation
+%                                 -> the organization entity's
+%                                    global_identifier `ndicloud:<org id>`,
+%                                    and the dataset -hosted_by-> organization
+%                                    relation. The writer stores the NDI Cloud
+%                                    organization's ID here
+%                                    (createRemoteDatasetDoc.m:
+%                                    'organization_id',
+%                                    remoteDataset.organizationId), so it is
+%                                    no longer written to the entity's name:
+%                                    Decided by Jess Haley, 2026-10-27 [cloud
+%                                    organization id is a global identifier].
+%                                    The entity has no name (no v1 name
+%                                    states one) and no local_identifier.
 %
 %   A field, block or edge outside these, which the renamed path dropped
 %   without a word, now carries the document whole as v1 (private/jRawAccount,
@@ -69,7 +78,7 @@ if isfield(preBody, 'dataset_remote') && isstruct(preBody.dataset_remote)
 end
 datasetId = jDatasetId(preBody);
 cloudId = jGetChar(block, 'dataset_id');          % the id AT the remote service
-orgName = jGetChar(block, 'organization_id');     % the remote org namespace
+orgCloudId = jGetChar(block, 'organization_id');  % the NDI Cloud organization's id
 
 % did-schema #88: `web_resource` and `stored_at` retired (sec. 7: a URL is an
 % address for the thing it names), so the cloud copy is the dataset's own
@@ -81,10 +90,17 @@ if ~isempty(cloudId)
     bareFields.global_identifier = {['ndicloud:' cloudId]};
 end
 bodies = {jEntity(preBody, 'dataset', bareFields, 'Id', datasetId, 'SessionId', datasetId)};
-if ~isempty(orgName)
+% [cloud organization id is a global identifier] (Decided by Jess Haley,
+% 2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a remote dataset's
+% NDI Cloud organization id is written to the organization entity's
+% `global_identifier` as `ndicloud:<org id>`, not to its `name`; `name` is
+% written only from a v1 name; `local_identifier` stays empty". The v1 field
+% is `dataset_remote.organization_id` (NDI-matlab main
+% +ndi/+cloud/+internal/createRemoteDatasetDoc.m: remoteDataset.organizationId).
+if ~isempty(orgCloudId)
     orgId = did2.convert.mintId('organization');
-    bodies = [bodies, did2.convert.entities.entityDoc(preBody, 'organization', orgId, ...
-        struct('full_name', orgName), {}, true)];
+    bodies{end+1} = jEntity(preBody, 'organization', ...
+        struct('global_identifier', {{['ndicloud:' orgCloudId]}}), 'Id', orgId);
     bodies{end+1} = jEntityRelation(preBody, datasetId, orgId, 'hosted_by');
 end
 v2Body = bodies;
