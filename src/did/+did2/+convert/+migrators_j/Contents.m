@@ -992,7 +992,7 @@
 %         subject's handle was optional; one that states none is carried whole as v1
 %         (carry-033).
 %     subject_group
-%         Brainstorm-J migrator: did_v1 subject_group -> an `entity` of type `group`,
+%         Brainstorm-J migrator: did_v1 subject_group -> an `entity` of type `Group`,
 %         id preserved (+ one member_of directed_relation per member).
 %     subjectmeasurement
 %         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed `observation`

@@ -1,6 +1,6 @@
 function v2Body = subject_group(preBody)
 %SUBJECT_GROUP Brainstorm-J migrator: did_v1 subject_group -> an `entity` of
-%   type `group`, id preserved (+ one member_of directed_relation per member).
+%   type `Group`, id preserved (+ one member_of directed_relation per member).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Per did-schema V_eta_SPEC.md section 1, `subject` is a BARE identity card
@@ -67,8 +67,11 @@ if strcmp(base.source, 'base')
     groupId = base.id;
 end
 
-% did-schema #88: an `entity` of type group (members by `member_of`), id
-% preserved so the member edges' parent resolves.
+% did-schema #88: an `entity` of type Group (members by `member_of`), id
+% preserved so the member edges' parent resolves. The type is written as the
+% registry names it, `Group` (NCIT:C43359), not `group` (Decided by Jess
+% Haley, 2026-10-26 [migrator writes the registry spelling], did-schema
+% V_eta_go_forward_class_audit.md).
 if isempty(strtrim(groupName))
     % [no invented values] / [generic stage is lossless] (Jess Haley,
     % 2026-10-25): a required local_identifier the source does not state is not
@@ -80,7 +83,7 @@ if isempty(strtrim(groupName))
     v2Body = {preBody};
     return;
 end
-subjectDoc = jEntity(preBody, 'group', ...
+subjectDoc = jEntity(preBody, 'Group', ...
     struct('local_identifier', groupName, 'description', desc, ...
     'name', jBaseName(preBody)), 'Id', groupId);
 bodies = {subjectDoc};

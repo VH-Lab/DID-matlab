@@ -354,7 +354,11 @@ function testImagingProbeBecomesImageObservation(testCase)
 % types to ndi.probe.image. #88: a raster goes by what its pixels measure --
 % intensity. The frames are the epoch's files (a TIFF here), so the batch pass
 % no longer defers imaging rows: nothing inline is needed.
-out = runEpoch(elementDoc('camera', 'wide-field-imaging', 'ndi.probe.image', 1, 'specimen_1', ''), ...
+% two-photon, not wide-field: [imaging probes are microscopes or carried]
+% (Decided by Jess Haley, 2026-10-27) carries a wide-field or brightfield
+% probe whole as v1 (carry-121; testRawV1RoundTripElement); a two-photon probe
+% is a device (a microscope) and still records this way.
+out = runEpoch(elementDoc('camera', 'two-photon-imaging', 'ndi.probe.image', 1, 'specimen_1', ''), ...
     {'/data/t00001/frames.tif'});
 obs = firstOfClass(out, 'observation+intensity');
 verifyNotEmpty(testCase, obs);
