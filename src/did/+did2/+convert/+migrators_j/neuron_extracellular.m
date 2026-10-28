@@ -1,17 +1,38 @@
 function bodies = neuron_extracellular(preBody)
-%NEURON_EXTRACELLULAR Brainstorm-J migrator: did_v1 neuron_extracellular -> a
-%   DERIVED entity (the sorted unit) + a derived_from relation + CALCULATIONS
-%   about the unit (+ the shared session anchor, the software and its run).
+%NEURON_EXTRACELLULAR Brainstorm-J migrator: did_v1 neuron_extracellular ->
+%   CALCULATIONS about the sorted unit's own entity (+ the shared session
+%   anchor, the software and its run); no entity of its own.
+%
+%   Decided by Jess Haley, 2026-10-27 (did-schema
+%   V_eta_go_forward_class_audit.md):
+%     [neuron uses the sorted unit's cell]  a v1 `neuron_extracellular` mints
+%         no entity of its own; its statements point at the entity of the
+%         sorted-unit `element` it came from (its `element_id`, which
+%         migrators_j.element makes a cell, a group, or carries). The entity
+%         and derived_from relation listed below are no longer emitted. A
+%         neuron with no element_id has no unit entity to point at and is
+%         carried whole as v1 (register row pending).
+%     [every v1 id survives]  the v1 id becomes the id of the V2 document that
+%         most directly replaces it: the mean waveform calculation; with no
+%         waveform, the first calculation emitted (cluster index, quality
+%         label, quality number, in that order). A neuron that yields no
+%         calculation is carried whole as v1 (register row pending).
+%     [sample times equal within one rounding step], amended by [sample
+%         times within eight rounding steps] (Jess Haley, 2026-10-27): the
+%         waveform's sample times are stored as start + step when every v1
+%         time differs from start + step * k by at most EIGHT rounding steps
+%         (eight ulps of the
+%         largest-magnitude v1 time: regularTimebase); a list start + step
+%         misses by more is carried whole as v1, kind malformed (register row
+%         pending). A single sample keeps its one value.
 %
 %   2026-10-21, did-schema #73 review item 48 (V_eta_spatial_transcriptomics_plan.md,
 %   signed by [spatial_transcriptomics_family], 2026-09-29): "every statement
 %   about the unit is a CALCULATION (computed from the spike sort) with
 %   input_id -> the sorting output". Emitted:
 %
-%       entity (cell)      the sorted unit (local_identifier
-%                          'unit_<cluster_index>'; id fresh).
-%       directed_relation  derived_from: the unit (child) <- the recording
-%                          element (parent). derived_from (node from the schema row).
+%       (entity (cell)     NO LONGER EMITTED, 2026-10-27: see above)
+%       (directed_relation NO LONGER EMITTED, 2026-10-27: see above)
 %       calculation+label  `cluster_index` (a nominal label, not a count).
 %       calculation+label  `quality_label` ('multi' / 'single'), variable
 %                          'spike sort quality'.
@@ -379,26 +400,49 @@ if ~isempty(unplaced)
     return;
 end
 
-recordingSubjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
-    dependencyValue(preBody, 'subject_id'));
-
-clusterIndex = getField(blk, 'cluster_index');
-unitName = 'unit';
-if isnumeric(clusterIndex) && isscalar(clusterIndex)
-    unitName = sprintf('unit_%d', round(clusterIndex));
+% [neuron uses the sorted unit's cell] (Decided by Jess Haley, 2026-10-27): no
+% entity is minted here; every statement is about the sorted unit's entity,
+% the element this neuron names by `element_id` (its id preserved by
+% migrators_j.element). THE REGISTER ROWS ARE PENDING in did-schema: until they
+% exist the notes cite the placeholders below, which name no row.
+NO_UNIT_ROW = 'carry-pending-neuron-no-sorted-unit';
+TIMES_ROW = 'carry-pending-neuron-sample-times-malformed';
+ID_ROW = 'carry-pending-v1-id-has-no-v2-document';
+neuronId = dependencyValue(preBody, 'element_id');
+if isempty(neuronId)
+    % carry-register: none (row pending in did-schema; NO_UNIT_ROW)
+    did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
+        char(baseField(preBody, 'id', '')), ['[' NO_UNIT_ROW '] needs_mapping: ' ...
+        'no element_id, so no sorted-unit entity for its statements to be about ' ...
+        '([neuron uses the sorted unit''s cell])']);
+    bodies = {raw};
+    return;
+end
+% [sample times equal within one rounding step] (Decided by Jess Haley,
+% 2026-10-27): a waveform whose sample times start + step cannot reproduce to
+% within eight rounding steps ([sample times within eight rounding steps]) is
+% carried whole as v1, kind malformed
+wst = getField(blk, 'waveform_sample_times');
+if isnumeric(w) && ~isempty(w) && isnumeric(wst) && numel(wst) >= 2
+    [timesRegular, ~, ~, worst] = regularTimebase(double(wst(:)));
+    if ~timesRegular
+        % carry-register: none (malformed row pending in did-schema; TIMES_ROW)
+        did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
+            char(baseField(preBody, 'id', '')), sprintf(['[%s] malformed: ' ...
+            'neuron_extracellular.waveform_sample_times are not start + step to ' ...
+            'within eight rounding steps (worst miss %g rounding steps; [sample ' ...
+            'times within eight rounding steps])'], TIMES_ROW, worst));
+        bodies = {raw};
+        return;
+    end
 end
 
-% did-schema #88: built through did2.build. The neuron is an `entity` of type
-% cell (a sorted unit); its derivation from the recording element is a
-% `derived_from` relation; its statements hang off one session anchor.
-neuronId = did2.convert.mintId('neuron');   % derived from the source id (practice (b))
-neuron = jEntity(preBody, 'cell', struct('local_identifier', unitName, ...
-    'description', 'spike-sorted extracellular unit (derived)'), 'Id', neuronId);
-rel = jEntityRelation(preBody, neuronId, recordingSubjectId, 'derived_from');   % node from the schema's row (did2.build.vocabulary)
+clusterIndex = getField(blk, 'cluster_index');
+
 anchor = jSessionAnchor(preBody, 'during');
 anchorId = anchor.base.id;
 
-bodies = {neuron, rel, anchor};
+bodies = {anchor};
 
 % did-schema #73 review item 48 (V_eta_spatial_transcriptomics_plan.md,
 % signed by the [spatial_transcriptomics_family] sign-off, 2026-09-29): every
@@ -434,6 +478,18 @@ calcOpt = [{'TimeReferenceIds', {anchorId}, 'OperatingSystemId', osId, ...
     'InterpreterId', interpreterId}, inputOpt];
 if ~isempty(swId); calcOpt = [calcOpt, {'SoftwareId', swId}]; end
 nCalc = 0;
+% [every v1 id survives] (Decided by Jess Haley, 2026-10-27): the FIRST
+% calculation emitted takes the v1 id -- the mean waveform when there is one
+% (emitted first for that reason), else the cluster index, the quality label,
+% the quality number, in that order. idOpt holds it until it is used.
+idOpt = {'Id', char(baseField(preBody, 'id', ''))};
+
+wcalc = meanWaveformCalculation(preBody, blk, neuronId, [calcOpt, idOpt]);
+if ~isempty(wcalc)
+    bodies{end+1} = wcalc;
+    nCalc = nCalc + 1;
+    idOpt = {};
+end
 
 % cluster_index: the sorter's own label for the unit, a NOMINAL number (item
 % 48: "a cluster index is a nominal label, not a count"). A `label` value is a
@@ -442,8 +498,9 @@ if isnumeric(clusterIndex) && isscalar(clusterIndex) && isfinite(clusterIndex)
     bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
         jLabel('spike sorter cluster index'), ...
         struct('name', sprintf('%d', round(double(clusterIndex)))), ...
-        calcOpt{:}, 'ValueKind', 'label');
+        calcOpt{:}, idOpt{:}, 'ValueKind', 'label');
     nCalc = nCalc + 1;
+    idOpt = {};
 end
 
 % quality_label: the human-readable twin of quality_number ('multi' /
@@ -453,14 +510,9 @@ if (ischar(qualityLabel) || isstring(qualityLabel)) && ~isempty(strtrim(char(qua
     bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
         jLabel('spike sort quality'), ...
         struct('name', strtrim(char(qualityLabel))), ...
-        calcOpt{:}, 'ValueKind', 'label');
+        calcOpt{:}, idOpt{:}, 'ValueKind', 'label');
     nCalc = nCalc + 1;
-end
-
-wcalc = meanWaveformCalculation(preBody, blk, neuronId, calcOpt);
-if ~isempty(wcalc)
-    bodies{end+1} = wcalc;
-    nCalc = nCalc + 1;
+    idOpt = {};
 end
 
 quality = getField(blk, 'quality_number');
@@ -468,15 +520,23 @@ if isnumeric(quality) && isscalar(quality)
     qv = did2.build.composite('score', 'value', ...
         struct('score', double(quality), 'approximate', false));
     bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
-        jLabel('spike sort quality'), qv, calcOpt{:}, 'ValueKind', 'score');
+        jLabel('spike sort quality'), qv, calcOpt{:}, idOpt{:}, 'ValueKind', 'score');
     nCalc = nCalc + 1;
 end
 
-% The software and run entities are emitted only when a calculation names
-% them, so none is left unreferenced.
-if nCalc > 0
-    bodies = [bodies, software, runDocs];
+% [every v1 id survives]: no calculation, so no V2 document takes the v1 id;
+% the neuron is carried whole as v1
+if nCalc == 0
+    % carry-register: none (row pending in did-schema; ID_ROW)
+    did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
+        char(baseField(preBody, 'id', '')), ['[' ID_ROW '] awaiting_home: no ' ...
+        'calculation about the unit, so no V2 document takes its id ([every v1 ' ...
+        'id survives])']);
+    bodies = {raw};
+    return;
 end
+% The software and run entities are emitted when a calculation names them.
+bodies = [bodies, software, runDocs];
 end
 
 function obs = meanWaveformCalculation(preBody, blk, neuronId, calcOpt)
@@ -599,14 +659,24 @@ elseif double(v) ~= derived
 end
 end
 
-function [isRegular, origin, spacing] = regularTimebase(t)
-%REGULARTIMEBASE Is this stored vector reproducible from an origin and a step?
+function [isRegular, origin, spacing, worst] = regularTimebase(t)
+%REGULARTIMEBASE Is this stored vector reproducible from a start and a step?
 %   DERIVED PER DOCUMENT, never assumed. Corpus 20211116 has ONE distinct time
 %   vector across all 21 documents -- 21 entries, one distinct diff (5e-05),
 %   origin -0.00025 s, spacing 5e-05 s (20 kHz) -- and the reconstruction error
-%   is 1.08e-19, i.e. the vector is regular to within a rounding of the double.
-%   That is a measurement of these documents, not a property of the class, so it
-%   is re-derived here and the irregular arm is real.
+%   is 1.08e-19.
+%
+%   [sample times equal within one rounding step] (Decided by Jess Haley,
+%   2026-10-27, did-schema V_eta_go_forward_class_audit.md: "store nothing
+%   extra. The round trip counts two sample times as equal when they differ by
+%   no more than one rounding step"; the check behind it: "one rounding step of
+%   a double at 0.0005-0.0016 s is 1.1e-19 to 2.2e-19"). ONE ROUNDING STEP is
+%   one ulp of the vector's largest-magnitude time, eps(max(abs(t))): the scale
+%   of the values in that check. (One ulp of EACH value would refuse nearly
+%   every real vector: a time at or next to zero has a far smaller ulp than the
+%   rounding of start + step * k, which happens at the span's scale.) WORST is
+%   the largest miss in those steps. did2.convert.roundtrip.neuron_extracellular
+%   compares with the same rule.
 %
 %   `spacing` is taken as the total span over (n-1) rather than as diff(t)(1):
 %   the endpoint form is what a reader reconstructing the axis will use, so it
@@ -615,6 +685,7 @@ n = numel(t);
 origin  = t(1);
 spacing = 0;
 isRegular = false;
+worst = 0;
 if n < 2
     % A single sample has no step. `regular` would have to invent one, so the
     % coordinate is stored instead.
@@ -622,9 +693,13 @@ if n < 2
 end
 spacing = (t(end) - t(1)) / (n - 1);
 model = origin + spacing * (0:(n - 1))';
-span = abs(t(end) - t(1));
-tolerance = 1e-9 * max(span, eps);
-isRegular = max(abs(model - t)) <= tolerance;
+step = eps(max(abs(t)));
+worst = max(abs(model - t)) / step;
+% [sample times within eight rounding steps] (Decided by Jess Haley,
+% 2026-10-27): "every time differs by at most 8 ulps of the largest absolute
+% time"; it amends the one step of [sample times equal within one rounding
+% step], which left about a third of simulated Kilosort windows missing by 2-4
+isRegular = worst <= 8;
 end
 
 % ===================== every field accounted for ===========================

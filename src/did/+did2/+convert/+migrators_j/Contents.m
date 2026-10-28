@@ -804,9 +804,9 @@
 %         first-class, queryable entities, exactly as the subject side stopped storing
 %         openMINDS bundles.
 %     neuron_extracellular
-%         Brainstorm-J migrator: did_v1 neuron_extracellular -> a DERIVED entity (the
-%         sorted unit) + a derived_from relation + CALCULATIONS about the unit (+ the
-%         shared session anchor, the software and its run).
+%         Brainstorm-J migrator: did_v1 neuron_extracellular -> CALCULATIONS about the
+%         sorted unit's own entity (+ the shared session anchor, the software and its
+%         run); no entity of its own.
 %     oneepoch
 %         Brainstorm-J migrator: keep the class, fold its inherited block.
 %     ontology_image

@@ -5530,27 +5530,25 @@ body.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
 
 out = did2.convert.migrators_j.neuron_extracellular(body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 5, ...
-    sprintf('expected 5 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
-verifyTrue(testCase, any(strcmp(names, 'cell')));   % #88: the unit is an entity of type cell
-verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
+% INVERTED 2026-10-27 ([neuron uses the sorted unit's cell], Jess Haley): no
+% unit entity and no derived_from are minted; the calculations are about the
+% element's own entity (rec_sub_1). 1 -> 3: the anchor and two calculations.
+verifyEqual(testCase, numel(out), 3, ...
+    sprintf('expected 3 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyFalse(testCase, any(strcmp(names, 'cell')), 'no entity of its own');
+verifyFalse(testCase, any(strcmp(names, 'directed_relation')), 'no derived_from of its own');
 verifyTrue(testCase, any(strcmp(names, 'calculation+score')));
 verifyTrue(testCase, any(strcmp(names, 'calculation+label')));
 verifyFalse(testCase, any(strcmp(names, 'software')), 'no software is invented');
 verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')), ...
     'no mean_waveform in this fixture -- a calculation here would be a husk');
-
-neuron = out{find(strcmp(names, 'cell'), 1)};
-verifyEqual(testCase, neuron.entity.local_identifier, 'unit_7');
-rel = out{find(strcmp(names, 'directed_relation'), 1)};
-% derived_from: unit (child) <- recording subject (parent)
-verifyEqual(testCase, depValue(rel, 'child_id'), neuron.base.id);
-verifyEqual(testCase, depValue(rel, 'parent_id'), 'rec_sub_1');
-verifyTrue(testCase, did2.build.isVocabulary(rel.directed_relation.relation, 'relation', 'derived_from'));   % by node (L1)
-% the quality observation is about the minted unit
+% the quality calculation is about the sorted unit's entity, the element
 qobs = out{find(strcmp(names, 'calculation+score'), 1)};
-verifyEqual(testCase, depValue(qobs, 'entity_id'), neuron.base.id);
+verifyEqual(testCase, depValue(qobs, 'entity_id'), 'rec_sub_1');
 verifyEqual(testCase, qobs.score.value.score, 3, 'AbsTol', 1e-9);
+% [every v1 id survives]: the first calculation (the cluster index) keeps ne_1
+lab = out{find(strcmp(names, 'calculation+label'), 1)};
+verifyEqual(testCase, lab.base.id, 'ne_1');
 end
 
 function body = spikeClustersBody()

@@ -157,6 +157,36 @@ out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'group');
 end
 
+function testKilosortAndPhyLabelsMap(testCase)
+% [sorter labels map] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): a sorted unit whose only label is a
+% Kilosort/phy label maps -- `good` to a single unit (cell), `mua` to a
+% multi-unit (group); a `noise` unit is carried whole as v1, needs_mapping.
+% NDI-matlab main +kilosort/probe.m writes the label as the curator typed it
+% (matched case-insensitively), so 'Good' and 'MUA' map too.
+cases = {'good', 'cell'; 'Good', 'cell'; 'mua', 'group'; 'MUA', 'group'};
+for k = 1:size(cases, 1)
+    id = sprintf('el_ks_%d', k);
+    v1 = unitDoc(id, sprintf('leftcortex_%d', 30 + k), 1);
+    out = runRaw({v1, neuronDoc(sprintf('ne_ks_%d', k), id, cases{k, 1})});
+    docs = elementOutputs(out, id);
+    verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, id))), 0, ...
+        [cases{k, 1} ': carried']);
+    verifyEqual(testCase, did2.unittest.helpers.classKey(docs{1}), cases{k, 2}, cases{k, 1});
+end
+v1 = unitDoc('el_ks_noise', 'leftcortex_39', 1);
+out = runRaw({v1, neuronDoc('ne_ks_noise', 'el_ks_noise', 'noise')});
+docs = elementOutputs(out, 'el_ks_noise');
+verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, 'el_ks_noise'))), 1, ...
+    'a noise unit is carried');
+d = carryNoteFor(out, 'el_ks_noise');
+verifyTrue(testCase, startsWith(d, '[carry-062] needs_mapping: '), d);
+verifyTrue(testCase, contains(d, 'noise'), d);
+r = did2.convert.roundtrip.check(v1, docs);
+verifyTrue(testCase, r.carried);
+verifyTrue(testCase, r.ok, describeLost(r));
+end
+
 % ===================== the switch changes nothing else ==================
 
 function testBothPathsConvertAnElementAlike(testCase)
