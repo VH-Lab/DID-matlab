@@ -66,8 +66,7 @@ function testTheAxisLettersDeriveFromTheLabels(testCase)
 % did-schema V_eta_go_forward_class_audit.md): `dimension_order` is not
 % stored; the round trip derives each letter from the dimension's label
 % through a fixed table, and "a video or image whose labels do not map
-% one-to-one onto its v1 letters is carried whole as v1" (the register row is
-% pending in did-schema: the note cites the placeholder)
+% one-to-one onto its v1 letters is carried whole as v1" (carry-114)
 for kind = {'video', 'image'}
     v1 = babuStack(['is_ax_' kind{1}], kind{1});
     r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
@@ -85,7 +84,7 @@ for k = 1:numel(bad)
     out = runRaw(v1);
     verifyCarriedUntouched(testCase, v1, out, bad{k});
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-pending-axis-letters-do-not-derive] '), d);
+    verifyTrue(testCase, startsWith(d, '[carry-114] '), d);
 end
 end
 

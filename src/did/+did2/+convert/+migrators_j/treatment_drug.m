@@ -84,18 +84,16 @@ variable  = chemicals(1).substance;   % the primary drug is the spine identity
 % becomes the treatment's location term; a document holding both with
 % different values is carried whole as v1, kind `malformed`. Each is read in
 % its v1 spelling and in the universalRenames spelling ('RawV1Classes', {}).
-% THE REGISTER ROW IS PENDING in did-schema: until it exists the note cites the
-% placeholder LOCATION_ROW, which names no row.
-LOCATION_ROW = 'carry-pending-treatment-location-malformed';
+% The register row(s): carry-110.
 nodeOfTemplate = jGetCharAny(block, {'location_ontologyNode', 'location_ontology_node'});
 nodeOfWriter = jGetCharAny(block, {'location_ontologyName', 'location_ontology_name'});
 if ~isempty(strtrim(nodeOfTemplate)) && ~isempty(strtrim(nodeOfWriter)) ...
         && ~sameNode(nodeOfTemplate, nodeOfWriter)
-    % carry-register: none (malformed row pending in did-schema; LOCATION_ROW)
+    % carry-register: carry-110
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
-        char(preBody.base.id), sprintf(['[%s] malformed: location_ontologyNode "%s" ' ...
+        char(preBody.base.id), sprintf(['[carry-110] malformed: location_ontologyNode "%s" ' ...
         'and location_ontologyName "%s" differ ([treatment location name is the ' ...
-        'node])'], LOCATION_ROW, strtrim(nodeOfTemplate), strtrim(nodeOfWriter)));
+        'node])'], strtrim(nodeOfTemplate), strtrim(nodeOfWriter)));
     v2Body = {preBody};
     return;
 end

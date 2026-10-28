@@ -403,16 +403,12 @@ end
 % [neuron uses the sorted unit's cell] (Decided by Jess Haley, 2026-10-27): no
 % entity is minted here; every statement is about the sorted unit's entity,
 % the element this neuron names by `element_id` (its id preserved by
-% migrators_j.element). THE REGISTER ROWS ARE PENDING in did-schema: until they
-% exist the notes cite the placeholders below, which name no row.
-NO_UNIT_ROW = 'carry-pending-neuron-no-sorted-unit';
-TIMES_ROW = 'carry-pending-neuron-sample-times-malformed';
-ID_ROW = 'carry-pending-v1-id-has-no-v2-document';
+% migrators_j.element). The register row(s): carry-111, carry-113, carry-112.
 neuronId = dependencyValue(preBody, 'element_id');
 if isempty(neuronId)
-    % carry-register: none (row pending in did-schema; NO_UNIT_ROW)
+    % carry-register: carry-111
     did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
-        char(baseField(preBody, 'id', '')), ['[' NO_UNIT_ROW '] needs_mapping: ' ...
+        char(baseField(preBody, 'id', '')), ['[carry-111] needs_mapping: ' ...
         'no element_id, so no sorted-unit entity for its statements to be about ' ...
         '([neuron uses the sorted unit''s cell])']);
     bodies = {raw};
@@ -426,12 +422,12 @@ wst = getField(blk, 'waveform_sample_times');
 if isnumeric(w) && ~isempty(w) && isnumeric(wst) && numel(wst) >= 2
     [timesRegular, ~, ~, worst] = regularTimebase(double(wst(:)));
     if ~timesRegular
-        % carry-register: none (malformed row pending in did-schema; TIMES_ROW)
+        % carry-register: carry-113
         did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
-            char(baseField(preBody, 'id', '')), sprintf(['[%s] malformed: ' ...
+            char(baseField(preBody, 'id', '')), sprintf(['[carry-113] malformed: ' ...
             'neuron_extracellular.waveform_sample_times are not start + step to ' ...
             'within eight rounding steps (worst miss %g rounding steps; [sample ' ...
-            'times within eight rounding steps])'], TIMES_ROW, worst));
+            'times within eight rounding steps])'], worst));
         bodies = {raw};
         return;
     end
@@ -527,9 +523,9 @@ end
 % [every v1 id survives]: no calculation, so no V2 document takes the v1 id;
 % the neuron is carried whole as v1
 if nCalc == 0
-    % carry-register: none (row pending in did-schema; ID_ROW)
+    % carry-register: carry-112
     did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
-        char(baseField(preBody, 'id', '')), ['[' ID_ROW '] awaiting_home: no ' ...
+        char(baseField(preBody, 'id', '')), ['[carry-112] awaiting_home: no ' ...
         'calculation about the unit, so no V2 document takes its id ([every v1 ' ...
         'id survives])']);
     bodies = {raw};

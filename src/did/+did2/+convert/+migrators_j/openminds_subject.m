@@ -54,28 +54,26 @@ valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 % lab-made strain (a Strain with no ontology node) that states an id has no
 % home here yet and is carried; and until did-schema adds the registry's
 % `equivalent` column no id rebuilds (did2.convert.openmindsIdRebuilds), so a
-% controlled term that states one is carried too. THE REGISTER ROWS ARE
-% PENDING in did-schema: the notes cite the placeholders below.
-STRAIN_ROW = 'carry-pending-openminds-lab-strain-id';
-ID_ROW = 'carry-pending-openminds-id-does-not-rebuild';
+% controlled term that states one is carried too. The register rows are
+% carry-117 (a lab-made strain) and carry-116 (an id that does not rebuild).
 omId = jGetChar(block, 'openminds_id');
 if ~isempty(strtrim(omId))
     isLabStrain = strcmp(lower(typeSuffix(jGetChar(block, 'openminds_type'))), 'strain') ...
         && isempty(node);
     if isLabStrain
-        % carry-register: none (row pending in did-schema; STRAIN_ROW)
+        % carry-register: carry-117
         did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...
-            sprintf(['[%s] awaiting_home: openminds_id "%s" of a lab-made strain ' ...
+            sprintf(['[carry-117] awaiting_home: openminds_id "%s" of a lab-made strain ' ...
             '(its strain entity''s global_identifier openminds:<id>; pass 1 mints ' ...
-            'no strain entity) ([openMINDS subject leftovers])'], STRAIN_ROW, omId));
+            'no strain entity) ([openMINDS subject leftovers])'], omId));
         v2Body = {preBody};
         return;
     elseif ~did2.convert.openmindsIdRebuilds(node, omId)
-        % carry-register: none (row pending in did-schema; ID_ROW)
+        % carry-register: carry-116
         did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...
-            sprintf(['[%s] awaiting_home: openminds_id "%s" does not rebuild from ' ...
+            sprintf(['[carry-116] awaiting_home: openminds_id "%s" does not rebuild from ' ...
             'term "%s" through the registry''s equivalent list ([openMINDS subject ' ...
-            'leftovers])'], ID_ROW, omId, node));
+            'leftovers])'], omId, node));
         v2Body = {preBody};
         return;
     end
