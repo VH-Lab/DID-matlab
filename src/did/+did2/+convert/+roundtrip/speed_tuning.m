@@ -16,9 +16,9 @@ function [v1, spec] = speed_tuning(bodies)
 %     speed_tuning                 speedBlock
 %
 %   as for speedtuning_calc (did2.convert.roundtrip.speedtuning_calc), whose
-%   result block is this class. A document with more than one fit block is
-%   carried (its fits would all be named 'Priebe fit'), so a converted one has
-%   one: `fit`.
+%   result block is this class. Its three fit blocks are rebuilt from the
+%   model_fit entries' constraints (speedBlock; [Priebe fits are one
+%   function], Jess Haley, 2026-10-27).
 %
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.speed_tuning.
@@ -28,7 +28,7 @@ arguments
 end
 
 [v1, leaf, ins, spec] = calcParts(bodies, 'speed_tuning_calculation', 'speed_tuning', ...
-    'ndi.calc.vis.speed');
+    'ndi.calc.vis.speed', 'Tuning', true);
 if isempty(leaf)
     return;
 end
@@ -50,12 +50,15 @@ if isscalar(entity)
 else
     spec.unplaced{end+1} = sprintf('%d entity_id edges', numel(entity));
 end
-if ~isempty(ins)
-    names{end+1} = 'stimulus_tuningcurve_id';
-    values{end+1} = ins{1};
-end
-for k = 2:numel(ins)
-    spec.unplaced{end+1} = sprintf('input_id %s has no v1 edge name', ins{k});
+% [input names rebuild from the input class] (Jess Haley, 2026-10-27)
+rebuiltNames = did2.convert.inputEdgeNames(ins, {'stimulus_tuningcurve_id'});
+for k = 1:numel(ins)
+    if isempty(rebuiltNames{k})
+        spec.unplaced{end+1} = sprintf('input_id %s has no v1 edge name', ins{k});
+        continue;
+    end
+    names{end+1} = rebuiltNames{k}; %#ok<AGROW>
+    values{end+1} = ins{k}; %#ok<AGROW>
 end
 v1.depends_on = struct('name', names, 'value', values);
 end

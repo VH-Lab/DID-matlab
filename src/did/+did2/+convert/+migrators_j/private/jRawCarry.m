@@ -74,8 +74,10 @@ if ~isempty(unplaced)
         strjoin(unplaced, ', ') rest]);
     return;
 end
-% carry-register: carry-016 carry-056 via jCalculation.m (its VALUEREASONS
-%   carry their tags); none for an untagged item (a template field whose value
-%   the migrator cannot place or would rewrite; no row yet)
+% carry-register: carry-016 carry-056 carry-100 via jCalculation.m (its
+%   VALUEREASONS carry their tags: carry-100 for input edges whose names do
+%   not rebuild, [input names rebuild from the input class]); none for an
+%   untagged item (a template field whose value the migrator cannot place or
+%   would rewrite; no row yet)
 did2.convert.reportNote('carried_as_v1', className, id, rest);
 end
