@@ -469,6 +469,9 @@ for k = 1:numel(bodies)
             if ~carried && ~isempty(v2Bodies) ...
                     && ~(isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body))
                 v1Name = v1NameOf(preBody);
+                if isWriterDefaultName(className, v1Name)
+                    v1Name = '';   % notation, rebuilt by the round trip
+                end
                 if ~isempty(v1Name) && replacementIsStatement(v2Bodies, sourceIdOf(preBody)) ...
                         && ~v1NameIsKept(v2Bodies, v1Name)
                     what = 'a statement has no name field';
@@ -920,6 +923,18 @@ end
 if isempty(strtrim(name))
     name = '';
 end
+end
+
+function tf = isWriterDefaultName(className, name)
+%ISWRITERDEFAULTNAME True when NAME is a writer's fixed default for the class,
+%   which the round trip rebuilds, so it is notation and does not carry the
+%   document: [jrclust default name is notation] (Decided by Jess Haley,
+%   2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a
+%   `jrclust_clusters` named `jrclust.prm`, the JRCLUST writer's fixed default,
+%   is not carried under [v1 name goes to the class's own name field]: the name
+%   is notation, rebuilt by the round trip; any other name still carries"
+%   (did2.convert.roundtrip.jrclust_clusters restates it).
+tf = any(strcmp(className, {'jrclust_clusters'})) && strcmp(name, 'jrclust.prm');
 end
 
 function tf = v1NameIsKept(bodies, name)

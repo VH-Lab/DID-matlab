@@ -43,12 +43,12 @@ function tests = testRawV1RoundTripSpike
 %                    loses nothing. On the renamed path it passed through
 %                    unconverted: universalRenames never mapped the writer's
 %                    spelling to the migrator.
-%     jrclust_clusters  is CARRIED as the writer writes it: the writer sets
-%                    base.name to the parameter file's name, 'jrclust.prm', and
-%                    a statement with a non-empty v1 name is carried ([v1 name
-%                    goes to the class's own name field], Jess Haley,
-%                    2026-10-27; base.name was a known finding before); with
-%                    no name it converts and loses nothing; the Soph vintage whose name is in
+%     jrclust_clusters  converts and loses nothing: the writer's base.name,
+%                    'jrclust.prm', is its fixed default, notation the round
+%                    trip restates ([jrclust default name is notation], Jess
+%                    Haley, 2026-10-27; it was a known finding); any other
+%                    name carries ([v1 name goes to the class's own name
+%                    field], testAnotherJrclustNameCarries); the Soph vintage whose name is in
 %                    ndi_document.name is carried (carry-049, [one-reading
 %                    quick answers] Q5).
 %     neuron_extracellular  converts. KNOWN FINDINGS: base.id (the migrator
@@ -75,7 +75,7 @@ cases = { ...
     'hartley without its presentation', {hartley()}, true, {}; ...
     'speed writer output', {speed()}, true, {}; ...
     'speed, converted shape', {speedOneFit()}, false, {}; ...
-    'jrclust writer output', {jrclust()}, true, {}; ...
+    'jrclust writer output', {jrclust()}, false, {}; ...
     'jrclust with no name', {jrclustNoName()}, false, {}; ...
     'jrclust Soph vintage (ndi_document.name)', {jrclustNdiDocument()}, true, {}; ...
     'neuron writer output', {neuron()}, false, ...
@@ -125,6 +125,15 @@ verifyCarriedFor(testCase, {speed()}, '[carry-056] speed_tuning.fit, speed_tunin
 verifyCarriedFor(testCase, {jrclustNdiDocument()}, '[carry-049] universalRenames would discard: ndi_document');
 verifyCarriedFor(testCase, {neuronTimesOnly()}, ...
     'neuron_extracellular.waveform_sample_times (no mean_waveform');
+end
+
+function testAnotherJrclustNameCarries(testCase)
+% [jrclust default name is notation] (Decided by Jess Haley, 2026-10-27): only
+% the writer's default 'jrclust.prm' is notation; any other name on the
+% calculation carries the document (carry-106)
+v1 = jrclust();
+v1.base.name = 'my_sort.prm';
+verifyCarriedFor(testCase, {v1}, '[carry-106] awaiting_home: base.name "my_sort.prm"');
 end
 
 % ===================== the switch ======================================
@@ -475,11 +484,8 @@ d = jsondecode(jsonencode(d));
 end
 
 function d = jrclustNoName()
-% the writer's document with base.name empty. The writer itself names it after
-% the parameter file ('jrclust.prm'), and a STATEMENT with a non-empty v1 name
-% is carried whole as v1 ([v1 name goes to the class's own name field], Jess
-% Haley, 2026-10-27: testWriterOutputsRoundTrip), so the conversion is driven
-% with the name blanked
+% the writer's document with base.name empty (the writer names it
+% 'jrclust.prm', its fixed default: [jrclust default name is notation])
 d = jrclust();
 d.base.name = '';
 end
