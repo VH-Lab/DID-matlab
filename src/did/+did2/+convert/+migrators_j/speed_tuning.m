@@ -24,9 +24,11 @@ function bodies = speed_tuning(preBody)
 %   is the one speedtuning_calc holds.
 %   The fold is the one speed_tuning_calc runs (private/jSpeedTuning): the
 %   collision check of the renamed path (carry-049), jCalculation
-%   'AccountForEveryField', and a document whose fit blocks would become
-%   model_fit entries no reader can tell apart (`fit`, `fit_no_speed`,
-%   `fit_fullspeed`, all 'Priebe fit') carried whole as v1 (carry-056).
+%   'AccountForEveryField', and the writer's three fits (`fit`,
+%   `fit_no_speed`, `fit_fullspeed`) as model_fit entries of the one model
+%   'Priebe fit', told apart by their constraints ([Priebe fits are one
+%   function], Jess Haley, 2026-10-27); a fit block no constraint tells apart
+%   carries the document whole as v1 (carry-056).
 %   A carry is the untouched v1 source. did2.convert.roundtrip.speed_tuning
 %   rebuilds the v1 document; testRawV1RoundTripTuningBlocks compares the two.
 arguments

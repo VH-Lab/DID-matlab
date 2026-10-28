@@ -35,12 +35,16 @@ function tests = testRawV1RoundTripTuning
 %   hold the older shape with no `calculator` block and `class_version` 1
 %   (the "corpus vintage" fixtures below).
 %
-%   WHAT THE WRITERS' DOCUMENTS DO TODAY. oridirtuning_calc and
-%   contrastsensitivity_calc convert, and their round trips lose nothing. The
-%   other four carry whole as v1 (carry-056: the contrast fits' relative max
-%   gain, saturation index and sensitivity; the SF and TF `abs` block;
-%   tuningcurve_calc's stimid and stimulus_presentation_number have no V2
-%   home), and a carry round-trips as itself. To prove their inverses, the
+%   WHAT THE WRITERS' DOCUMENTS DO TODAY. oridirtuning_calc,
+%   contrastsensitivity_calc and (since [absolute-value fits are a second
+%   calculation], Jess Haley, 2026-10-27) spatial_frequency_tuning_calc and
+%   temporal_frequency_tuning_calc convert, and their round trips lose
+%   nothing. contrasttuning_calc carries (carry-056: its fits' relative max
+%   gain, saturation index and sensitivity) until did-schema declares them
+%   ([contrast metrics added]); tuningcurve_calc alone carries (its stimid and
+%   stimulus_presentation_number rebuild only with its response and
+%   presentation in the batch, [tuning stimids rebuild]: testTuningDecisions);
+%   a carry round-trips as itself. To prove their inverses, the
 %   same documents with exactly those fields removed (the "converted shape"
 %   fixtures, DID-side) convert and round trip with nothing lost.
 %
@@ -60,9 +64,11 @@ roundTripCases(testCase, { ...
     'contrast sensitivity writer output', writerOutput('contrastsensitivity_calc'), false; ...
     'contrast sensitivity corpus vintage', ...
         corpusVintage(writerOutput('contrastsensitivity_calc')), false; ...
-    'contrast tuning writer output', writerOutput('contrasttuning_calc'), true; ...
-    'SF tuning writer output', writerOutput('spatial_frequency_tuning_calc'), true; ...
-    'TF tuning writer output', writerOutput('temporal_frequency_tuning_calc'), true; ...
+    'contrast tuning writer output', writerOutput('contrasttuning_calc'), ...
+        ~did2.unittest.helpers.schemaDeclares('tuning_curve', ...
+        {'value', 'model_fit', 'metrics', 'relative_max_gain'}); ...
+    'SF tuning writer output', writerOutput('spatial_frequency_tuning_calc'), false; ...
+    'TF tuning writer output', writerOutput('temporal_frequency_tuning_calc'), false; ...
     'tuningcurve writer output', writerOutput('tuningcurve_calc'), true});
 end
 
@@ -184,9 +190,13 @@ function testAFieldTheFoldDoesNotReadCarriesTheDocument(testCase)
 % field, block or edge outside the class's NDI template ([fields outside the
 % template are malformed]); carry-056 for a field the template defines and the
 % writer writes that V2 has no home for yet.
+% (tuningcurve_calc.log is placed since 2026-10-27, [tuning log in notes]; a
+% held-fixed property the name table does not hold has no home:
+% [varied properties are conditions by V2 name])
 v1 = convertedShape('tuningcurve_calc');
-v1.tuningcurve_calc.log = 'contrast best value is 1.';   % tuningcurve_calc.json: log
-verifyCarriedFor(testCase, v1, 'tuningcurve_calc.log', 'carry-056');
+v1.tuningcurve_calc.stim_property_list = struct('names', {{'notAStimulusParameter'}}, 'values', 1);
+v1 = jsondecode(jsonencode(v1));
+verifyCarriedFor(testCase, v1, 'tuningcurve_calc.stim_property_list', 'carry-056');
 
 v1 = writerOutput('oridirtuning_calc');
 v1.calculator.note = 'a calculator field';   % calculator.json declares none
@@ -218,7 +228,11 @@ verifyCarriedFor(testCase, v1, 'extra_block', 'carry-100');
 v1 = writerOutput('contrasttuning_calc');
 v1.contrast_tuning.fit.naka_rushton_RB_note = 'x';
 verifyCarriedFor(testCase, v1, 'contrast_tuning.fit.naka_rushton_RB_note', 'carry-100');
-verifyCarriedFor(testCase, v1, 'contrast_tuning.fit.naka_rushton_RB_relative_max_gain', 'carry-056');
+if ~did2.unittest.helpers.schemaDeclares('tuning_curve', ...
+        {'value', 'model_fit', 'metrics', 'relative_max_gain'})
+    % ([contrast metrics added], 2026-10-27: placed once did-schema declares it)
+    verifyCarriedFor(testCase, v1, 'contrast_tuning.fit.naka_rushton_RB_relative_max_gain', 'carry-056');
+end
 end
 
 % ===================== a check that cannot fail proves nothing ===========

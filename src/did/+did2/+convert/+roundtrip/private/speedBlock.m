@@ -19,8 +19,14 @@ function [blk, bad] = speedBlock(leaf)
 %     tuning_curve.individual    trials x conditions, in that order
 %     tuning_curve.control_*     value.control.*
 %     significance.*             value.significance
-%     fit.Priebe_fit_*, sse, r_squared, partial_r2   the one model_fit entry
-%                                (model 'Priebe fit')
+%     fit, fit_no_speed, fit_fullspeed   the model_fit entries of model
+%                                'Priebe fit', each block named by its
+%                                constraints ([Priebe fits are one function],
+%                                Jess Haley, 2026-10-27): none -> fit;
+%                                parameter 3 (xi) held at 0 -> fit_no_speed;
+%                                at 1 -> fit_fullspeed. Priebe_fit_*, sse,
+%                                r_squared, partial_r2,
+%                                Priebe_fit_nested_F_test_p_value.
 %
 %   BAD lists what is emitted but has no place in the block.
 
@@ -103,12 +109,15 @@ end
 if isfield(value, 'model_fit')
     mf = asCell(value.model_fit);
     for k = 1:numel(mf)
-        [b, why] = oneFit(mf{k});
+        [b, why, block] = oneFit(mf{k});
         bad = [bad, why]; %#ok<AGROW>
-        if k == 1
-            blk.fit = b;
+        if isempty(block)
+            continue;
+        end
+        if isfield(blk, block)
+            bad{end+1} = sprintf('model_fit %d: a second %s', k, block); %#ok<AGROW>
         else
-            bad{end+1} = sprintf('model_fit %d: a speed tuning has one fit block per name', k); %#ok<AGROW>
+            blk.(block) = b;
         end
     end
 end
@@ -127,12 +136,35 @@ else
 end
 end
 
-function [b, bad] = oneFit(e)
+function [b, bad, block] = oneFit(e)
 bad = {};
 b = struct();
+block = '';
 [~, model] = termParts(getIn(e, 'model'));
 if ~strcmp(model, 'Priebe fit')
     bad{end+1} = sprintf('model_fit "%s" is not the Priebe fit', model);
+    return;
+end
+held = zeros(0, 2);
+c = asCell(getIn(e, 'constraints'));
+for k = 1:numel(c)
+    [~, name] = termParts(getIn(c{k}, 'variable'));
+    t = regexp(name, '^Priebe fit parameter (\d+)$', 'tokens', 'once');
+    v = getIn(c{k}, 'value');
+    if isempty(t) || ~isnumeric(v) || ~isscalar(v)
+        bad{end+1} = sprintf('Priebe fit constraint "%s" is not a parameter held at a value', name); %#ok<AGROW>
+        return;
+    end
+    held(end+1, :) = [str2double(t{1}), double(v)]; %#ok<AGROW>
+end
+if isempty(held)
+    block = 'fit';
+elseif isequal(held, [3 0])
+    block = 'fit_no_speed';
+elseif isequal(held, [3 1])
+    block = 'fit_fullspeed';
+else
+    bad{end+1} = 'Priebe fit constraints name none of fit, fit_no_speed, fit_fullspeed';
     return;
 end
 P = 'Priebe_fit_';
@@ -167,5 +199,6 @@ if isfield(e, 'goodness') && isstruct(e.goodness)
     if isfield(e.goodness, 'r2'); b.r_squared = e.goodness.r2; end
     bad = [bad, others(e.goodness, {'sse', 'r2'}, 'model_fit.goodness')];
 end
-bad = [bad, others(e, {'model', 'coefficients', 'sampled_fit', 'metrics', 'goodness'}, 'model_fit')];
+bad = [bad, others(e, {'model', 'coefficients', 'sampled_fit', 'metrics', 'goodness', ...
+    'constraints'}, 'model_fit')];
 end

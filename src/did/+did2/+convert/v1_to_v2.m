@@ -178,6 +178,11 @@ bodies = normaliseInput(v1Bodies);
 % 2026-10-26). Reset per batch, like the notes below.
 did2.convert.stimulusPresentationSpecs('reset');
 did2.convert.stimulusPresentationSpecs('load', bodies);
+% The classes, responses and presentations the tuning and response migrators
+% need from other documents (Jess Haley, 2026-10-27: [input names rebuild from
+% the input class], [tuning stimids rebuild]). Reset per batch.
+did2.convert.tuningBatchIndex('reset');
+did2.convert.tuningBatchIndex('load', bodies);
 % The reference of every v1 session in this batch, read by jMembershipBodies
 % to compare an ingested session's session_reference ([ingested session
 % membership], Jess Haley, 2026-10-26).
