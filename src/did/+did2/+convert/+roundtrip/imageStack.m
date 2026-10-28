@@ -29,12 +29,13 @@ function [v1, spec] = imageStack(bodies)
 %       dimension_labels                 each dimension's term name, joined
 %                                        by ','; '' when every axis is a
 %                                        coordinate axis named by its letter
-%       dimension_order                  each dimension's letter, from its
-%                                        term node (X, Y, Z, T: the nodes
-%                                        did2.convert.axisTerm writes); NOT
-%                                        rebuilt when an axis has no such node
-%                                        (a label such as 'height': the fold
-%                                        writes the label, not the letter)
+%       dimension_order                  each dimension's letter, derived from
+%                                        its term (node, then label) through
+%                                        did2.convert.axisLetter's fixed table
+%                                        ([axis letters derive from labels],
+%                                        Jess Haley, 2026-10-27; 'height' -> Y)
+%     base.name                          the sampled_body's description
+%                                        ([image stack name goes to notes])
 %       dimension_scale                  each covariate's spacing, by `along`
 %                                        (0 for an axis with none)
 %       dimension_scale_units            each covariate's source_unit name
@@ -105,6 +106,13 @@ v1.depends_on = struct('name', {'document_id', 'subject_id'}, ...
     'value', {'', firstId(edgeIds(obs, 'entity_id'))});
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
+% [image stack name goes to notes] (Jess Haley, 2026-10-27): a non-empty v1
+% base.name is the data body's free text (`description` until [one free-text
+% field: notes] is built)
+stackName = fieldText(getIn(body, 'data_body'), 'description');
+if ~isempty(stackName)
+    v1.base.name = stackName;
+end
 if isfield(body, 'files')
     v1.files = body.files;
 end
@@ -133,7 +141,13 @@ letters = blanks(n);
 for k = 1:n
     sizes(k) = numberOf(getIn(dims{k}, 'n'));
     [node, names{k}] = termParts(getIn(dims{k}, 'term'));
-    letters(k) = letterOf(node);
+    % [axis letters derive from labels] (Jess Haley, 2026-10-27): each letter
+    % from the dimension's term, by node then by label, through ONE fixed
+    % table (did2.convert.axisLetter); the migrator carries a stack whose
+    % labels do not derive its letters
+    L = did2.convert.axisLetter(struct('node', node, 'name', names{k}));
+    if isempty(L); L = ' '; end
+    letters(k) = L;
 end
 scales = zeros(n, 1);
 units = repmat({''}, 1, n);

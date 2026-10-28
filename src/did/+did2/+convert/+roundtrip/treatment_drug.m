@@ -12,17 +12,20 @@ function [v1, spec] = treatment_drug(bodies)
 %     depends_on(1) subject_id         the manipulation's `entity_id`
 %     treatment_drug.mixture_table     one row per chemical (treatmentRows),
 %                                      compared row by row (sameMixture)
-%     treatment_drug.location_ontologyNode, location_name
-%                                      a dose: the site observation's term;
-%                                      an immersion: the bath (SPEC)
+%     treatment_drug.location_ontologyNode, location_ontologyName,
+%     location_name                    a dose: the site observation's term;
+%                                      an immersion: the bath (SPEC). The
+%                                      template's and the writer's spellings
+%                                      of the node are one field ([treatment
+%                                      location name is the node], Jess Haley,
+%                                      2026-10-27): written under both,
+%                                      SPEC.twins
 %     treatment_drug.administration_onset_time
 %                                      the absolute anchor's source text
 %
 %   NOT REBUILT, because V2 does not keep them (the round trip reports them):
 %   `administration_offset_time` and `administration_duration` (no migrator
-%   reads them), and the WRITER's spelling of the location node,
-%   `location_ontologyName` (+NDIMaker/treatmentMaker writes that name; the
-%   template's is `location_ontologyNode`, the only one the migrator reads).
+%   reads them).
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.treatment_drug.
 
@@ -43,10 +46,18 @@ block = struct('mixture_table', mixtureText(treatmentRows(p)));
 if ~isempty(p.site)
     [block.location_ontologyNode, block.location_name] = ...
         termParts(getIn(p.site, 'term', 'value'));
+    block.location_ontologyName = block.location_ontologyNode;
 elseif strcmp(p.kind, 'formulation')
     spec = bathEquivalents(spec, 'treatment_drug.location_ontologyNode', ...
         'treatment_drug.location_name');
+    spec = bathEquivalents(spec, 'treatment_drug.location_ontologyName', '');
 end
+% [treatment location name is the node] (Decided by Jess Haley, 2026-10-27):
+% the template's location_ontologyNode and the writer's location_ontologyName
+% are one field, written under both spellings here (spec.twins)
+spec.twins = struct('paths', {{'treatment_drug.location_ontologyNode', ...
+    'treatment_drug.location_ontologyName'}}, 'why', ['one field, two v1 ' ...
+    'spellings ([treatment location name is the node])']);
 onset = anchorOnset(p.anchor);
 if ~isempty(onset)
     block.administration_onset_time = onset;
@@ -66,4 +77,8 @@ spec.same(end+1) = struct('path', 'treatment_drug.mixture_table', ...
 spec.same(end+1) = struct('path', 'treatment_drug.location_ontologyNode', ...
     'fn', @(a, b) sameCurie(a, b), 'why', ['the site node in the registry''s ' ...
     'spelling ([spelling is notation]; V_eta_prefix_spelling_plan.md)']);
+spec.same(end+1) = struct('path', 'treatment_drug.location_ontologyName', ...
+    'fn', @(a, b) sameCurie(a, b), 'why', ['the site node in the registry''s ' ...
+    'spelling ([spelling is notation]); the writer''s spelling of the field ' ...
+    '([treatment location name is the node])']);
 end

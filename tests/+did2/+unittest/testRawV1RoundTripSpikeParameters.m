@@ -54,9 +54,11 @@ for c = {'spike_extraction_parameters', 'spike_extraction_parameters_modificatio
 end
 verifyEqual(testCase, did2.convert.rawV1Classes('SpikeInterfaceSortingOutputs'), ...
     'spike_interface_sorting_outputs');
-for c = {'spikewaves', 'spike_clusters'}
-    verifyFalse(testCase, any(strcmp(names, c{1})), ...
-        [c{1} ' stays on the renamed path (rawV1Classes, NOT LISTED)']);
+% INVERTED 2026-10-27 ([unbuilt spike classes carry as needs home], Jess
+% Haley): they are read raw so that their carry is the untouched v1 source
+for c = {'spikewaves', 'spike_clusters', 'binnedspikeratevm'}
+    verifyTrue(testCase, any(strcmp(names, c{1})), ...
+        [c{1} ' is read raw and carried (rawV1Classes)']);
 end
 f = writerFixtures();
 r = runRaw(f(:, 2)');

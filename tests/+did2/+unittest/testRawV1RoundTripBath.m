@@ -33,15 +33,14 @@ function tests = testRawV1RoundTripBath
 %   stimulator is the manipulation's instrument_id (depends_on(1).value comes
 %   back), and the epoch is handed on to did2.convert.epochMint, which re-points
 %   the anchor at the epoch entity (testTheEpochAnchoredBathRoundTrips: nothing
-%   lost but the ACSF rows below). KNOWN FINDINGS of the bath pass's own output,
-%   listed exactly:
+%   lost). KNOWN FINDINGS of the bath pass's own output, listed exactly:
 %     epochid.epochid         the anchor is still on the session until epochMint
 %                             re-points it
-%     stimulus_bath.mixture_table, for a table with a pH or osm row (the ACSF):
-%                             those rows go on the formulation's `ph` /
-%                             `osmolarity`, which keep no ontology node
-%                             (NCIm:C4048290, NCIm:C0439186) and not where the
-%                             row stood
+%   A table with a pH or osm row (the ACSF) is no longer a finding: those rows
+%   go on the formulation's `ph` / `osmolarity`, which keep no ontology node
+%   (NCIm:C4048290, NCIm:C0439186) and not where the row stood, and the round
+%   trip counts them equal (Decided by Jess Haley, 2026-10-27 [bath ph and
+%   osmolarity are formulation fields]).
 %   Nothing is invented or unplaced.
 tests = functiontests(localfunctions);
 end
@@ -54,8 +53,8 @@ coarse = {'epochid.epochid'};   % until epochMint re-points the anchor
 cases = { ...
     'Dab one drug', dabBath(oneDrug()), false, coarse; ...
     'Dab two drugs (a name with commas)', dabBath(twoDrugs()), false, coarse; ...
-    'Dab ACSF (pH, carbogen, osm)', dabBath(acsf()), false, [coarse, {'stimulus_bath.mixture_table'}]; ...
-    'Dab ACSF with a drug', dabBath(acsfWithDrug()), false, [coarse, {'stimulus_bath.mixture_table'}]; ...
+    'Dab ACSF (pH, carbogen, osm)', dabBath(acsf()), false, coarse; ...
+    'Dab ACSF with a drug', dabBath(acsfWithDrug()), false, coarse; ...
     'Marder anatomical location', marderBath(), false, coarse; ...
     'a location field no resolver reads', withLocationExtra(), true, {}};
 for k = 1:size(cases, 1)
@@ -77,7 +76,7 @@ function testTheEpochAnchoredBathRoundTrips(testCase)
 % the bath's epoch, the anchor names it and the bath round trips with its
 % stimulator AND its epoch
 for c = {{'Dab one drug', dabBath(oneDrug()), {}}, ...
-        {'Dab ACSF', dabBath(acsf()), {'stimulus_bath.mixture_table'}}, ...
+        {'Dab ACSF', dabBath(acsf()), {}}, ...
         {'Marder anatomical location', marderBath(), {}}}
     [label, v1, known] = c{1}{:};
     [mine, out] = bathOutputs(v1);
@@ -101,6 +100,31 @@ for c = {{'Dab one drug', dabBath(oneDrug()), {}}, ...
     verifyEmpty(testCase, r.invented, label);
     verifyEmpty(testCase, r.unplaced, sprintf('%s: unplaced: %s', label, strjoin(r.unplaced, '; ')));
 end
+end
+
+function testAPhOrOsmolarityRowIsComparedByWhatItStates(testCase)
+% [bath ph and osmolarity are formulation fields] (Decided by Jess Haley,
+% 2026-10-27): the row's term id and its position are not kept and count
+% equal; its number is kept and is compared
+v1 = dabBath(acsf());
+mine = bathOutputs(v1);
+r = did2.convert.roundtrip.check(v1, mine);
+verifyTrue(testCase, any(strcmp('stimulus_bath.mixture_table', [r.matched, r.equivalent])));
+% another pH: lost
+v2 = v1;
+v2.stimulus_bath.mixture_table = strrep(v1.stimulus_bath.mixture_table, '"pH",7.4', '"pH",7.2');
+r = did2.convert.roundtrip.check(v2, mine);
+verifyTrue(testCase, any(strcmp(lostPaths(r), 'stimulus_bath.mixture_table')));
+% the same pH under another term id and at the end of the table: equal
+pHrow = sprintf('NCIm:C4048290,"pH",7.4,OM:Acidity,pH\n');
+moved = [strrep(v1.stimulus_bath.mixture_table, pHrow, '') ...
+    sprintf('NCIT:C45997,"pH",7.4,OM:Acidity,pH\n')];
+v3 = v1;
+v3.stimulus_bath.mixture_table = moved;
+verifyNotEqual(testCase, moved, v1.stimulus_bath.mixture_table, 'the fixture moved the row');
+r = did2.convert.roundtrip.check(v3, mine);
+verifyFalse(testCase, any(strcmp(lostPaths(r), 'stimulus_bath.mixture_table')), ...
+    'a moved pH row with another term id counts equal');
 end
 
 function e = epochEntity(v1)

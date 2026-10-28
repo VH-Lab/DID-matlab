@@ -1,6 +1,6 @@
 function bodies = spike_clusters(preBody)
-%SPIKE_CLUSTERS Brainstorm-J migrator: did_v1 spike_clusters -- DEFERRED to the
-%   NDI second pass; the document is passed through UNCHANGED.
+%SPIKE_CLUSTERS Brainstorm-J migrator: did_v1 spike_clusters -- CARRIED whole as
+%   v1 under a needs-home register row (the document is returned UNCHANGED).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -58,6 +58,21 @@ if isfield(blk, 'num_spikes') || isfield(blk, 'num_clusters')
          'only inside spike_cluster.bin. This shape can only come from the ' ...
          'V_alpha snapshot or a fixture built against it.']);
 end
+% [unbuilt spike classes carry as needs home] (Decided by Jess Haley,
+% 2026-10-27, did-schema V_eta_go_forward_class_audit.md): v1 `spikewaves`,
+% `spike_clusters` and `binnedspikeratevm` are carried whole as v1 through the
+% carry path, each citing a needs-home register row, rather than passed through
+% unchanged on the old path; their dependents carry under [dependents of a
+% carried document carry] (v1_to_v2 carryDependents, carry-064). The class reads
+% raw v1 (did2.convert.rawV1Classes), so the carry is the untouched v1 source.
+% The register row is carry-102 (did-schema V_eta_carry_register.json).
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
+% carry-register: carry-102
+did2.convert.reportNote('carried_as_v1', 'spike_clusters', id, ...
+    ['[carry-102] awaiting_home: spike_clusters has no V2 home yet ' ...
+    '([unbuilt spike classes carry as needs home])']);
 bodies = {preBody};
 end
 

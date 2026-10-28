@@ -50,20 +50,66 @@ end
 
 function f = knownFindings()
 % {fixture, path, why}. Open questions, reported to the team; nothing here is
-% decided.
-P = 'imageStack_parameters.';
-why = ['the fold names each dimension by its dimension_labels entry ' ...
-    '(''height'', ''width''), so the axis letter (Y, X) is kept nowhere; ' ...
-    'only a coordinate or time axis is recoverable from its term node'];
-f = { ...
-    'Babu video', [P 'dimension_order'], why; ...
-    'Babu image', [P 'dimension_order'], why; ...
-    'DID brightfield, labels', [P 'dimension_order'], why};
+% decided. EMPTY since 2026-10-27: the axis letters (`dimension_order`), the
+% three findings listed here before, are derived from the labels through a
+% fixed table ([axis letters derive from labels], Jess Haley; did2.convert.axisLetter).
+f = cell(0, 3);
 end
 
 function paths = findingsFor(fixture)
 f = knownFindings();
 paths = reshape(sort(f(strcmp(f(:, 1), fixture), 2)), 1, []);
+end
+
+function testTheAxisLettersDeriveFromTheLabels(testCase)
+% [axis letters derive from labels] (Decided by Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): `dimension_order` is not
+% stored; the round trip derives each letter from the dimension's label
+% through a fixed table, and "a video or image whose labels do not map
+% one-to-one onto its v1 letters is carried whole as v1" (the register row is
+% pending in did-schema: the note cites the placeholder)
+for kind = {'video', 'image'}
+    v1 = babuStack(['is_ax_' kind{1}], kind{1});
+    r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
+    verifyTrue(testCase, any(strcmp('imageStack_parameters.dimension_order', r.matched)), kind{1});
+end
+verifyEqual(testCase, did2.convert.axisLetter('height'), 'Y');
+verifyEqual(testCase, did2.convert.axisLetter('Width'), 'X');
+verifyEqual(testCase, did2.convert.axisLetter(struct('node', 'om:Time', 'name', 'time')), 'T');
+verifyEqual(testCase, did2.convert.axisLetter('gene'), '');
+bad = {'width,height', 'height,gene', 'height,width,time'};
+for k = 1:numel(bad)
+    v1 = babuStack(sprintf('is_axbad_%d', k), 'image');
+    v1.imageStack_parameters.dimension_labels = bad{k};
+    v1 = jsondecode(jsonencode(v1));
+    out = runRaw(v1);
+    verifyCarriedUntouched(testCase, v1, out, bad{k});
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-pending-axis-letters-do-not-derive] '), d);
+end
+end
+
+function testAStackNameIsTheBodysFreeText(testCase)
+% [image stack name goes to notes] (Decided by Jess Haley, 2026-10-27): a
+% non-empty v1 base.name is written to the data body's free text --
+% `description` until [one free-text field: notes] renames it -- and the round
+% trip reads it back
+v1 = babuStack('is_named', 'image');
+v1.base.name = 'plate 3, 10x';
+v1 = jsondecode(jsonencode(v1));
+out = runRaw(v1);
+verifyEmpty(testCase, out.passthrough);
+b = [];
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.className(), 'sampled_body')
+        b = out.migrated{k}.toStruct();
+    end
+end
+assertNotEmpty(testCase, b);
+verifyEqual(testCase, char(b.data_body.description), 'plate 3, 10x');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyTrue(testCase, any(strcmp('base.name', r.matched)));
+verifyRoundTrip(testCase, r, 'named stack', {});
 end
 
 function testEveryKnownFindingNamesAFixtureThatIsRun(testCase)
@@ -344,14 +390,15 @@ verifyFalse(testCase, r.ok);
 verifyTrue(testCase, any(strcmp('imageStack.magnification', {r.lost.path})));
 end
 
-function testANonEmptyBaseNameIsReportedLost(testCase)
-% OPEN (a team question): no writer at the locked main sets base.name on a
-% stack; V2 keeps no base.name (#73 item 54), so it is dropped, as before
+function testANonEmptyBaseNameIsKept(testCase)
+% INVERTS testANonEmptyBaseNameIsReportedLost: [image stack name goes to
+% notes] (Decided by Jess Haley, 2026-10-27) answers the open question -- the
+% name is the data body's free text, so the round trip keeps it
 v1 = babuStack('is_b_name', 'image');
 v1.base.name = 'worm plate 3';
 r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
-verifyFalse(testCase, r.ok);
-verifyTrue(testCase, any(strcmp('base.name', {r.lost.path})));
+verifyFalse(testCase, any(strcmp('base.name', {r.lost.path})));
+verifyTrue(testCase, any(strcmp('base.name', r.matched)));
 end
 
 function testADroppedBodyIsUnplaced(testCase)
