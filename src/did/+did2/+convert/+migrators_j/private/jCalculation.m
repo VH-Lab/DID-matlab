@@ -115,20 +115,41 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         'contrast', 'sf', 'tf', 'speed') `method.term` is OBI:0200072
 %         "curve fitting data transformation" (building [method terms are
 %         general]); the fitted function is the method parameter
-%         {variable 'function', text <model>}: the model of its fits (e.g.
-%         'Naka-Rushton', jTuningCurve), or, when its fits are of several
-%         functions (the SF / TF writers' five), the JSON list of them, in
-%         order. METHODNAME stays the calculator: the `software` entity.
+%         {variable 'function', text <model>} when all its fits are of one
+%         model (e.g. 'Naka-Rushton', jTuningCurve). METHODNAME stays the
+%         calculator: the `software` entity.
+%     [one calculation per named calculator output] (2026-10-28; amends the
+%         decision above): one v1 calculator output is ONE calculation, its
+%         fits entries of value.model_fit, each naming its own model; the
+%         method holds no `function` list, so fits of several models (the SF /
+%         TF writers' five) write no `function` parameter.
 %     [absolute-value fits are a second calculation]  an SF / TF `abs` block
 %         is a SECOND calculation of LEAFCLASS (its id minted, role
 %         'absolute value calculation'), the same subject, anchor, inputs and
 %         software, its value the abs fits, with the method parameter
 %         {variable 'response transform', text 'absolute value'}.
+%         SUPERSEDED 2026-10-28 by [absolute-value fits are fit entries]
+%         (`model_fit` entries with `response_transform`), which is NOT YET
+%         BUILT here: that decision asked for what the `abs` block holds
+%         beyond the fits to be brought back first, and it holds `fitless`
+%         too (the interpolated values of |response|; NDIcalc-vis-matlab
+%         00e3e0f spatial_frequency_tuning.m / temporal_frequency_tuning.m
+%         write abs.fitless beside the five abs fits), which a fit entry
+%         cannot hold. Until the team answers, the second calculation stays.
 %     [parameter names map by table]  the tuning families' v1 settings
 %         (input_parameters) are named through did2.convert.tuningNames; a
 %         setting the table does not hold carries the document (carry-056).
 %     [tuning log in notes]  tuningcurve_calc's `log`, verbatim, is the
 %         statement's `notes`.
+%     [tuning best value is a condition] (2026-10-28)  each `best` selection
+%         of tuningcurve_calc's input_parameters.selection: the value it chose,
+%         read once from the log (did2.convert.tuningBestValues), is a
+%         condition named by the V2 stimulus variable (e.g. orientation = 90),
+%         after the stim_property_list conditions, and the rule is the method
+%         parameter {'<V2 name> selection', text 'best'} after the v1
+%         settings; the stimid rebuild reads these conditions too. A curve
+%         whose log does not state the value (or names a property the table
+%         does not hold) is carried (carry-056).
 %     [varied properties are conditions by V2 name]  each property in
 %         tuningcurve_calc's `stim_property_list` is a condition, its variable
 %         the V2 stimulus method's (did2.convert.tuningNames), its value the
@@ -198,7 +219,7 @@ isFit = any(strcmp(family, {'oridir', 'contrast', 'sf', 'tf', 'speed'}));
 useTable = isFit || strcmp(family, 'stimulus');
 % the raw curve's notes, conditions and rebuilt stimids (family 'stimulus')
 curve = struct('rebuilt', {{}}, 'notes', '', 'conditions', [], 'reasons', {{}}, ...
-    'outcome', '');
+    'outcome', '', 'parameters', []);
 if strcmp(family, 'stimulus')
     curve = curveContext(preBody, sourceBlock, srcBlk);
 end
@@ -258,6 +279,15 @@ if useTable
     end
 else
     params = jParameterList(calcInputParameters(preBody));
+end
+% [tuning best value is a condition] (Jess Haley, 2026-10-28): the rule of each
+% `best` selection, after the v1 settings
+if ~isempty(curve.parameters)
+    if isempty(params)
+        params = curve.parameters;
+    else
+        params = did2.build.list(params, curve.parameters);
+    end
 end
 % [input names rebuild from the input class] (Jess Haley, 2026-10-27)
 reasons = [reasons, inputNameReasons(preBody, family)];
@@ -498,9 +528,14 @@ end
 function m = fitMethod(value, params, more)
 %FITMETHOD The method of a tuning fit calculation ([tuning fits use curve
 %   fitting now], Jess Haley, 2026-10-27): term OBI:0200072 "curve fitting
-%   data transformation"; parameters: the fitted function (the models of
-%   VALUE.model_fit, one text, or the JSON list of them when they differ),
-%   then MORE (a cell of entries), then the v1 settings PARAMS.
+%   data transformation"; parameters: the fitted function when every entry of
+%   VALUE.model_fit is of one model (one text), then MORE (a cell of entries),
+%   then the v1 settings PARAMS. Fits of several models write no `function`
+%   parameter: Decided by Jess Haley, 2026-10-28 [one calculation per named
+%   calculator output] ("the method holds no `function` list"; it amends
+%   [tuning fits use curve fitting now]): each fit names its own `model` in
+%   its model_fit entry. The JSON list the SF / TF fits wrote until then is
+%   gone.
 models = {};
 if isstruct(value) && isfield(value, 'model_fit') && ~isempty(value.model_fit)
     mf = value.model_fit;
@@ -517,9 +552,6 @@ end
 entries = {};
 if isscalar(models)
     entries{end+1} = did2.build.parameter(jLabel('function'), 'Text', models{1});
-elseif ~isempty(models)
-    entries{end+1} = did2.build.parameter(jLabel('function'), 'Text', ...
-        char(jsonencode(models)));
 end
 entries = [entries, reshape(more, 1, [])];
 if ~isempty(params)
@@ -604,8 +636,10 @@ function curve = curveContext(preBody, sourceBlock, srcBlk)
 %   [varied properties are conditions by V2 name], [tuning stimids rebuild]).
 %   CURVE.reasons are tagged carry reasons; CURVE.rebuilt the raw-curve fields
 %   placed by the rebuild; CURVE.outcome the tuning_stimid_rebuild note.
+%   CURVE.parameters are the method parameters of its `best` selections
+%   ([tuning best value is a condition], Jess Haley, 2026-10-28).
 curve = struct('rebuilt', {{}}, 'notes', '', 'conditions', [], 'reasons', {{}}, ...
-    'outcome', 'none stated');
+    'outcome', 'none stated', 'parameters', []);
 cls = classNameOf(preBody);
 own = struct();
 if ~strcmp(cls, sourceBlock) && isfield(preBody, cls) && isstruct(preBody.(cls)) ...
@@ -625,9 +659,9 @@ end
 % the held-fixed properties, as conditions by their V2 names
 condNames = {};
 condValues = [];
+conds = {};
 if isfield(own, 'stim_property_list') && ~isEmptyValue(own.stim_property_list)
     [condNames, condValues, why] = propertyList(own.stim_property_list);
-    conds = {};
     for k = 1:numel(condNames)
         [v2, found] = did2.convert.tuningNames('v2', condNames{k});
         if ~found
@@ -641,9 +675,46 @@ if isfield(own, 'stim_property_list') && ~isEmptyValue(own.stim_property_list)
         curve.reasons{end+1} = sprintf('[carry-056] %s.stim_property_list (%s)', cls, why);
         condNames = {};
         condValues = [];
-    elseif ~isempty(conds)
-        curve.conditions = did2.build.list(conds{:});
+        conds = {};
     end
+end
+% [tuning best value is a condition] (Jess Haley, 2026-10-28): the value each
+% `best` selection chose, read once from the log, is a condition too, and the
+% rule is the method parameter '<V2 name> selection' = 'best'; a curve whose
+% log does not state it is carried (carry-056)
+ip = struct();
+if isfield(own, 'input_parameters') && isstruct(own.input_parameters) ...
+        && isscalar(own.input_parameters)
+    ip = own.input_parameters;
+end
+[bestNames, bestValues, why] = did2.convert.tuningBestValues(ip, fieldOr(own, 'log'));
+if ~isempty(bestNames)
+    rules = {};
+    bestConds = {};
+    for k = 1:numel(bestNames)
+        if ~isempty(why); break; end
+        [v2, found] = did2.convert.tuningNames('v2', bestNames{k});
+        if ~found
+            why = sprintf('no V2 name in the table for "%s"', bestNames{k});
+        elseif any(strcmp(bestNames{k}, condNames))
+            why = sprintf('"%s" is both a best selection and in stim_property_list', bestNames{k});
+        else
+            bestConds{end+1} = did2.build.condition(jLabel(v2), 'Value', bestValues(k)); %#ok<AGROW>
+            rules{end+1} = did2.build.parameter(jLabel([v2 ' selection']), 'Text', 'best'); %#ok<AGROW>
+        end
+    end
+    if ~isempty(why)
+        curve.reasons{end+1} = sprintf(['[carry-056] %s.log (%s: [tuning best value is ' ...
+            'a condition])'], cls, why);
+    else
+        conds = [conds, bestConds];
+        condNames = [condNames, bestNames];
+        condValues = [condValues, bestValues];
+        curve.parameters = did2.build.list(rules{:});
+    end
+end
+if ~isempty(conds)
+    curve.conditions = did2.build.list(conds{:});
 end
 % the stimids, rebuilt from the presentation and the conditions
 v1Stimid = fieldOr(srcBlk, 'stimid');

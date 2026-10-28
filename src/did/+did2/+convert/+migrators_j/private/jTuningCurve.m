@@ -107,6 +107,9 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %   of the absolute response) is folded the same way, ALONE, and returned in
 %   EXTRA.abs {present, value, leafFields}; jCalculation writes it as a second
 %   calculation. Its unplaced fields are listed in DROPPED under 'abs.'.
+%   (Superseded 2026-10-28 by [absolute-value fits are fit entries], not yet
+%   built: the block's `fitless` has no place in a fit entry, and that
+%   decision asked for it to be brought back first; see jCalculation.)
 %
 %   OPTS.Rebuilt (family 'stimulus'): raw-curve fields the caller rebuilds
 %   from other documents, so they are placed ([tuning stimids rebuild]:

@@ -198,17 +198,15 @@ end
 % level or reduction than the document) is carried whole as v1, malformed. An
 % empty label states nothing only for level 0, the measurement, whose number
 % `redundant` already gives. Supersedes [light-sheet level fields rebuild from
-% the pyramid]. THE REGISTER ROW IS PENDING in did-schema: until it exists the
-% note cites the placeholder LABEL_ROW, which names no row.
-LABEL_ROW = 'carry-pending-lightsheet-level-label-malformed';
+% the pyramid]. The register row(s): carry-115.
 levelLabel = char(field(blk, 'label', ''));
 labelWhy = levelLabelMismatch(levelLabel, double(field(blk, 'level', 0)), ...
     char(field(blk, 'reduction_function', '')));
 if ~isempty(labelWhy)
-    % carry-register: none (malformed row pending in did-schema; LABEL_ROW)
+    % carry-register: carry-115
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
-        sprintf('[%s] malformed: lightsheet_zarr_level.label %s ([light-sheet level label is a note])', ...
-        LABEL_ROW, labelWhy));
+        sprintf('[carry-115] malformed: lightsheet_zarr_level.label %s ([light-sheet level label is a note])', ...
+        labelWhy));
     bodies = {src};   % the untouched source
     return;
 end

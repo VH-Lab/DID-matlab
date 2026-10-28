@@ -389,6 +389,7 @@ for k = 1:numel(bodies)
                 srcRaw(k) = true;
                 className = rawClass;
                 v2Body = preBody;
+                carryBody = preBody;
                 superUnchanged = true;
                 if hasLegacyBlockBesideBase(preBody)
                     % [old ndi_document blocks carry] (Decided by Jess Haley,
@@ -413,6 +414,7 @@ for k = 1:numel(bodies)
                 [postUniversalBody, legacyReport, renameDropped] = did2.convert.universalRenames( ...
                     preBody, 'RenameClassNames', options.RenameClassNames);
                 className = char(postUniversalBody.document_class.class_name);
+                carryBody = postUniversalBody;
                 legacy = accumulateLegacyReport(legacy, legacyReport);
                 if legacyReport.moved_wholesale_no_base
                     [legacyMovedNames, legacyMovedValues] = bumpClassCounter( ...
@@ -481,6 +483,43 @@ for k = 1:numel(bodies)
                         sourceIdOf(preBody), ['[carry-049] universalRenames would discard: ' ...
                         strjoin(renameDropped, ', ')]);
                     v2Body = postUniversalBody;
+                    superUnchanged = true;
+                    v2Bodies = {v2Body};
+                    carried = true;
+                end
+            end
+            % [v1 name goes to the class's own name field] (Decided by Jess
+            % Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
+            % a v1 base.name is written to the V2 class's own name field
+            % (entity, method, acquisition_system, element, measurement) or,
+            % for a data body, to its free text; "a statement with a non-empty
+            % v1 name is carried whole as v1 with a needs-home register row,
+            % and the number of such statements is counted in the next corpus
+            % run". THE CHECK, for every CONVERTED source whose replacement
+            % (the emitted document holding its id, else the first) is a
+            % STATEMENT: a non-empty v1 name no emitted document holds (a
+            % top-level `name`, `description` or `notes` of its own blocks,
+            % v1NameIsKept) carries the source whole as v1, and is noted
+            % `v1_name_statement_carried` (the count). Writing the name to
+            % the own name field of the other targets is each migrator's
+            % (jBaseName: entities; image_stack: its body); it is not checked
+            % here. The register row is carry-106.
+            if ~carried && ~isempty(v2Bodies) ...
+                    && ~(isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body))
+                v1Name = v1NameOf(preBody);
+                if isWriterDefaultName(className, v1Name)
+                    v1Name = '';   % notation, rebuilt by the round trip
+                end
+                if ~isempty(v1Name) && replacementIsStatement(v2Bodies, sourceIdOf(preBody)) ...
+                        && ~v1NameIsKept(v2Bodies, v1Name)
+                    what = 'a statement has no name field';
+                    did2.convert.reportNote('v1_name_statement_carried', className, ...
+                        sourceIdOf(preBody), v1Name);
+                    % carry-register: carry-106
+                    did2.convert.reportNote('carried_as_v1', className, sourceIdOf(preBody), ...
+                        sprintf(['[carry-106] awaiting_home: base.name "%s" (%s; [v1 name ' ...
+                        'goes to the class''s own name field])'], v1Name, what));
+                    v2Body = carryBody;
                     superUnchanged = true;
                     v2Bodies = {v2Body};
                     carried = true;
@@ -668,6 +707,18 @@ end
     srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, srcDepNames, ...
     srcDepIds, srcOut, options.RenameClassNames);
 
+% [carried v1 validates against NDI templates] (Decided by Jess Haley,
+% 2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a document carried
+% whole as v1 is validated against NDI-matlab's v1 templates at the locked NDI
+% `main`, not against did-schema tombstones". Every carried source -- its v1
+% SOURCE, which is what ndi.migrate.local stores -- is checked against its
+% class's NDI template (did2.validate.v1Document) when Validate is on. REPORT,
+% not quarantine: a carry for a field outside the template (carry-100) is
+% meant to fail it. With no template set (DID_NDI_TEMPLATE_PATH / NDI_MATLAB
+% unset or empty) it says NOT CHECKED.
+carriedTemplateCheck = carriedV1TemplateCheck(bodies, srcCarried, srcDone, ...
+    srcClass, srcId, options.Validate);
+
 % `bodies_unreached` closes the denominator: every body either reached
 % universalRenames, took the idempotency short-circuit, was read raw by a
 % switched class's migrator (did2.convert.rawV1Classes), or failed before
@@ -751,6 +802,7 @@ result.summary = struct( ...
     'carried_failing_veta_validation_count', sum(carriedUnvalValues), ...
     'carried_failing_veta_validation_by_class', buildByClassTable(carriedUnvalNames, carriedUnvalValues), ...
     'legacy_ndi_document', legacy, ...
+    'carried_v1_template_check', carriedTemplateCheck, ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...
     'migration_notes', did2.convert.reportNote('collect'));
@@ -941,6 +993,84 @@ if isstruct(body) && isscalar(body) && isfield(body, 'base') ...
     v = body.base.id;
     if ischar(v); id = v; elseif isstring(v) && isscalar(v); id = char(v); end
 end
+end
+
+function name = v1NameOf(body)
+%V1NAMEOF The v1 base.name (or the legacy identity block's name) as text, ''
+%   when there is none or it is empty.
+name = '';
+b = did2.convert.v1read.readBase(body);
+v = b.name;
+if ischar(v)
+    name = v;
+elseif isstring(v) && isscalar(v)
+    name = char(v);
+end
+if isempty(strtrim(name))
+    name = '';
+end
+end
+
+function tf = isWriterDefaultName(className, name)
+%ISWRITERDEFAULTNAME True when NAME is a writer's fixed default for the class,
+%   which the round trip rebuilds, so it is notation and does not carry the
+%   document: [jrclust default name is notation] (Decided by Jess Haley,
+%   2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a
+%   `jrclust_clusters` named `jrclust.prm`, the JRCLUST writer's fixed default,
+%   is not carried under [v1 name goes to the class's own name field]: the name
+%   is notation, rebuilt by the round trip; any other name still carries"
+%   (did2.convert.roundtrip.jrclust_clusters restates it).
+tf = any(strcmp(className, {'jrclust_clusters'})) && strcmp(name, 'jrclust.prm');
+end
+
+function tf = v1NameIsKept(bodies, name)
+%V1NAMEISKEPT True when an emitted document holds NAME, unchanged, in a
+%   top-level `name`, `description` or `notes` field of one of its own blocks
+%   (entity.name, acquisition_system.name, method.name, data_body.description,
+%   ...). `base`, `document_class`, `depends_on`, `files` and `statement` are
+%   not read: a statement's notes are not its name.
+tf = false;
+skip = {'base', 'document_class', 'depends_on', 'files', 'file', 'statement'};
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if ~isstruct(b) || ~isscalar(b)
+        continue;
+    end
+    fns = fieldnames(b);
+    for j = 1:numel(fns)
+        if any(strcmp(fns{j}, skip)) || ~isstruct(b.(fns{j})) || ~isscalar(b.(fns{j}))
+            continue;
+        end
+        blk = b.(fns{j});
+        for f = {'name', 'description', 'notes'}
+            if isfield(blk, f{1}) && (ischar(blk.(f{1})) || (isstring(blk.(f{1})) ...
+                    && isscalar(blk.(f{1})))) && strcmp(char(blk.(f{1})), name)
+                tf = true;
+                return;
+            end
+        end
+    end
+end
+end
+
+function tf = replacementIsStatement(bodies, sourceId)
+%REPLACEMENTISSTATEMENT True when the emitted document that most directly
+%   replaces the source -- the one holding its id, else the first -- is a
+%   statement (it has a `statement` block).
+tf = false;
+pick = [];
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isstruct(b) && isscalar(b) && isfield(b, 'base') && isstruct(b.base) ...
+            && isfield(b.base, 'id') && strcmp(char(b.base.id), sourceId)
+        pick = b;
+        break;
+    end
+end
+if isempty(pick) && isstruct(bodies{1})
+    pick = bodies{1};
+end
+tf = isstruct(pick) && isscalar(pick) && isfield(pick, 'statement');
 end
 
 function tf = hasLegacyBlockBesideBase(body)
@@ -1392,6 +1522,59 @@ end
 migrated = migrated(~drop);
 end
 
+function rep = carriedV1TemplateCheck(bodies, carried, done, cls, ids, validate)
+%CARRIEDV1TEMPLATECHECK [carried v1 validates against NDI templates]: each
+%   carried source checked against NDI-matlab's v1 template for its class.
+%   Denominators first: carried_inspected, then checked / valid / invalid.
+rep = struct('checked', false, 'reason', '', 'template_root', '', ...
+    'template_count', 0, 'carried_inspected', nnz(carried & done), ...
+    'valid', 0, 'invalid', 0, 'invalid_by_class', struct(), ...
+    'problems_sample', {{}}, 'problem_ids_sample', {{}});
+if ~validate
+    rep.reason = 'NOT CHECKED: Validate is off';
+    return;
+end
+try
+    T = did2.schema.v1Templates();
+catch err
+    rep.reason = ['NOT CHECKED: the templates could not be read: ' err.message];
+    return;
+end
+rep.template_root = T.root;
+rep.template_count = T.count;
+if ~T.present
+    rep.reason = ['NOT CHECKED: no NDI v1 templates (set DID_NDI_TEMPLATE_PATH to ' ...
+        'NDI-matlab src/ndi/ndi_common/database_documents at the locked main)'];
+    return;
+end
+rep.checked = true;
+for k = reshape(find(carried & done), 1, [])
+    try
+        r = did2.validate.v1Document(ensureStruct(bodies{k}), T);
+        ok = r.ok;
+        problems = r.problems;
+    catch err
+        ok = false;
+        problems = {['unreadable: ' err.message]};
+    end
+    if ok
+        rep.valid = rep.valid + 1;
+        continue;
+    end
+    rep.invalid = rep.invalid + 1;
+    f = matlab.lang.makeValidName(char(cls{k}));
+    if isfield(rep.invalid_by_class, f)
+        rep.invalid_by_class.(f) = rep.invalid_by_class.(f) + 1;
+    else
+        rep.invalid_by_class.(f) = 1;
+    end
+    if numel(rep.problems_sample) < 20
+        rep.problems_sample{end+1} = strjoin(problems, '; ');
+        rep.problem_ids_sample{end+1} = char(ids{k});
+    end
+end
+end
+
 function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSessionLists( ...
         bodies, migrated, passthrough, names, counts, done, carried, raw, target, ...
         cls, ids, depIds, renameClassNames)
@@ -1411,15 +1594,14 @@ function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSession
 %   number of entries, in order, each equal field by field. Anything else --
 %   a member missing, carried or quarantined, an extra member, another order,
 %   another value -- carries the document whole as v1 (the v1 source for a raw
-%   read, else the universalRenames output, as every other carry). THE REGISTER
-%   ROW IS PENDING in did-schema: the note cites the placeholder below.
+%   read, else the universalRenames output, as every other carry). The register
+%   row is carry-118 (awaiting_home).
 %
 %   ITS ID. [a rebuilt document may lose its id] (Decided by Jess Haley,
 %   2026-10-27, amending [every v1 id survives]): a list that rebuilds writes
 %   no V2 document and so keeps no id, which is allowed only when no other
 %   document references it; a list some source in the batch names by an edge
 %   is carried whole as v1 instead.
-LIST_ROW = 'carry-pending-session-list-does-not-rebuild';
 isList = cellfun(@(c) ischar(c) && strcmp(c, 'dataset_session_info'), cls);
 for k = reshape(find(done & ~carried & ~target & isList), 1, [])
     body = ensureStruct(bodies{k});
@@ -1482,10 +1664,10 @@ for k = reshape(find(done & ~carried & ~target & isList), 1, [])
     passthrough([passthrough.input_index] == k) = [];
     passthrough(end+1) = struct('input_index', k, 'id', ids{k}, ...
         'class_name', cls{k}, 'body', body); %#ok<AGROW>
-    % carry-register: none (row pending in did-schema; LIST_ROW)
+    % carry-register: carry-118
     did2.convert.reportNote('carried_as_v1', cls{k}, ids{k}, sprintf( ...
-        ['[%s] malformed: the session list does not rebuild from the dataset''s ' ...
-        'memberships: %s ([fit classes kept; session list rebuilt])'], LIST_ROW, why));
+        ['[carry-118] awaiting_home: the session list does not rebuild from the dataset''s ' ...
+        'memberships: %s ([fit classes kept; session list rebuilt])'], why));
     carried(k) = true;
 end
 end

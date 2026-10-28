@@ -3,6 +3,10 @@ function tests = testTuningDecisions
 %   (did-schema V_eta_go_forward_class_audit.md), one test (or more) per tag:
 %
 %     [tuning fits use curve fitting now]        testFitsUseCurveFitting
+%     [one calculation per named calculator output] (2026-10-28)
+%                                                testFitsUseCurveFitting,
+%                                                testOneCalculationPerOutput
+%     [tuning best value is a condition] (2026-10-28)  testTuningBestValue*
 %     [Priebe fits are one function]             testPriebeFitsAreOneFunction
 %     [hotelling spellings are one field]        testHotellingSpellingsAreOneField
 %     [input names rebuild from the input class] testInputNames*
@@ -38,8 +42,10 @@ cases = { ...
     'contrast', convertedContrast(), 'contrast_tuning_calculation', 'Naka-Rushton'; ...
     'speed', writerOutput('speedtuning_calc'), 'speed_tuning_calculation', 'Priebe fit'; ...
     'SF', writerOutput('spatial_frequency_tuning_calc'), ...
-        'spatial_frequency_tuning_calculation', ...
-        '["dog","movshon","movshon c","spline","gausslog"]'};
+        'spatial_frequency_tuning_calculation', ''};
+% [one calculation per named calculator output] (Jess Haley, 2026-10-28): the
+% method holds no `function` list; the SF fits' five models are named by their
+% model_fit entries only, so the SF method has no `function` parameter
 for k = 1:size(cases, 1)
     [label, v1, leafClass, fn] = cases{k, :};
     out = runRaw({v1});
@@ -49,6 +55,7 @@ for k = 1:size(cases, 1)
     term = leaf.interaction.method.term;
     verifyEqual(testCase, char(term.node), 'OBI:0200072', label);
     verifyEqual(testCase, parameterText(leaf, 'function'), fn, label);
+    verifyEqual(testCase, parameterCount(leaf, 'function'), double(~isempty(fn)), label);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
 end
@@ -58,6 +65,33 @@ out = runRaw({v1});
 leaf = firstOfClass(out, 'tuning_curve_calculation');
 t = leaf.interaction.method.term;
 verifyFalse(testCase, isfield(t, 'node') && strcmp(char(t.node), 'OBI:0200072'));
+end
+
+function testOneCalculationPerOutput(testCase)
+% [one calculation per named calculator output] (Jess Haley, 2026-10-28): one
+% v1 output, one calculation, its id the v1 id, its fits model_fit entries
+% each naming its own model. (The SF / TF `abs` block is still its own
+% calculation: [absolute-value fits are fit entries] is not built yet, see
+% testAbsoluteValueFitsAreASecondCalculation.)
+cases = { ...
+    'oridir', writerOutput('oridirtuning_calc'), 'orientation_direction_tuning_calculation', 1; ...
+    'contrast', convertedContrast(), 'contrast_tuning_calculation', 3; ...
+    'speed', writerOutput('speedtuning_calc'), 'speed_tuning_calculation', 3; ...
+    'SF', writerOutput('spatial_frequency_tuning_calc'), ...
+        'spatial_frequency_tuning_calculation', 5; ...
+    'TF', writerOutput('temporal_frequency_tuning_calc'), ...
+        'temporal_frequency_tuning_calculation', 5};
+for k = 1:size(cases, 1)
+    [label, v1, leafClass, nFits] = cases{k, :};
+    out = runRaw({v1});
+    calcs = allOfClass(out, leafClass);
+    mine = calcs(cellfun(@(c) strcmp(char(c.base.id), v1.base.id), calcs));
+    assertEqual(testCase, numel(mine), 1, [label ': one calculation holds the v1 id']);
+    mf = asCell(mine{1}.tuning_curve.value.model_fit);
+    verifyEqual(testCase, numel(mf), nFits, [label ': every fit is an entry']);
+    verifyTrue(testCase, all(cellfun(@(e) ~isempty(char(e.model.name)), mf)), ...
+        [label ': each entry names its model']);
+end
 end
 
 function testNakaRushtonFitsAreOneModelToldApartByConstraints(testCase)
@@ -217,6 +251,108 @@ verifyEqual(testCase, spn, reshape(1:30, 6, 5)');
 verifyNotEmpty(testCase, why);
 end
 
+% ===================== [tuning best value is a condition] =================
+
+function testTuningBestValueIsACondition(testCase)
+% Decided by Jess Haley, 2026-10-28 [tuning best value is a condition]: the
+% value an `angle ... best` selection chose (the log's "angle best value is
+% 90.") is a condition (orientation = 90), the rule the method parameter
+% "orientation selection" = best, and the stimid rebuild works from it.
+% The presentation shows each contrast at angle 90 (stimuli 1-6) and at angle
+% 0 (7-12); the writer kept angle 90, so v1 stimid is 1-6.
+[tc, resp, pres] = bestCurveBatch();
+% WITHOUT the condition, the rebuild takes the last stimulus at each contrast
+% (angle 0) and differs from v1: such a curve was carried before 2026-10-28
+did2.convert.tuningBatchIndex('reset');
+did2.convert.tuningBatchIndex('load', {resp, pres});
+noCond = did2.convert.tuningStimids(tc.stimulus_tuningcurve.independent_variable_value, ...
+    {'contrast'}, {}, [], resp.base.id);
+verifyEqual(testCase, noCond, (7:12)', 'without the best value the rebuild picks angle 0');
+withCond = did2.convert.tuningStimids(tc.stimulus_tuningcurve.independent_variable_value, ...
+    {'contrast'}, {'angle'}, 90, resp.base.id);
+verifyEqual(testCase, withCond, tc.stimulus_tuningcurve.stimid, 'with it, v1''s stimids');
+% the migration
+out = runRaw({tc, resp, pres});
+verifyEmpty(testCase, out.quarantine);
+mine = outputsOf(out, tc.base.id);
+notes = '';
+if isfield(out.summary.migration_notes, 'carried_as_v1')
+    notes = strjoin(out.summary.migration_notes.carried_as_v1.distinct_details, ' || ');
+end
+assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2', ...
+    ['the best-selected curve converts; carried: ' notes]);
+leaf = mine{1};
+c = asCell(leaf.statement.conditions);
+assertEqual(testCase, numel(c), 1);
+verifyEqual(testCase, lower(char(c{1}.variable.name)), 'orientation');
+verifyEqual(testCase, c{1}.quantity.value, 90);
+verifyEqual(testCase, parameterText(leaf, 'orientation selection'), 'best');
+verifyEqual(testCase, leaf.statement.notes, tc.tuningcurve_calc.log, '[tuning log in notes]');
+n = out.summary.migration_notes.tuning_stimid_rebuild;
+verifyEqual(testCase, n.count, 1, 'one note per curve: the denominator');
+verifyEqual(testCase, n.distinct_details, {'rebuilt exactly'});
+r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'best-selected tuning curve', {});
+verifyTrue(testCase, any(strcmp('stimulus_tuningcurve.stimid', r.matched)));
+end
+
+function testTuningBestValueBesideADealtProperty(testCase)
+% the older writer's log ("angle best value is 90.sz_{1}dealing sFrequency =
+% 0.5,"): the dealt property stays stim_property_list, the best value is a
+% second condition, and the round trip gives each back to its own field
+[tc, resp, pres] = bestCurveBatch();
+tc.tuningcurve_calc.log = 'angle best value is 90.sz_{1}dealing sFrequency = 0.5,';
+tc.tuningcurve_calc.stim_property_list = struct('names', {{'sFrequency'}}, 'values', 0.5);
+tc = jsondecode(jsonencode(tc));
+out = runRaw({tc, resp, pres});
+mine = outputsOf(out, tc.base.id);
+assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2');
+c = asCell(mine{1}.statement.conditions);
+got = sort(cellfun(@(x) lower(char(x.variable.name)), c, 'UniformOutput', false));
+verifyEqual(testCase, got, {'orientation', 'spatial frequency'});
+r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'best value beside a dealt property', {});
+verifyTrue(testCase, any(startsWith(r.matched, 'tuningcurve_calc.stim_property_list')), ...
+    'the dealt property is rebuilt into stim_property_list');
+end
+
+function testATuningBestValueTheLogDoesNotStateIsCarried(testCase)
+% "a curve whose log does not state the chosen value is carried as before
+% (carry-056)"
+[tc, resp, pres] = bestCurveBatch();
+tc.tuningcurve_calc.log = '';
+[carried, notes] = did2.unittest.helpers.carryNote({tc, resp, pres});
+verifyTrue(testCase, carried);
+verifyTrue(testCase, contains(notes, '[carry-056] tuningcurve_calc.log'), notes);
+verifyTrue(testCase, contains(notes, '[tuning best value is a condition]'), notes);
+end
+
+function testTuningBestValuesFunction(testCase)
+sel = struct('property', {'angle', 'contrast', 'angle'}, ...
+    'operation', {'hasfield', 'hasfield', 'exact_number'}, 'value', {'varies', 'varies', 'best'});
+ip = struct('selection', sel);
+[p, v, why] = did2.convert.tuningBestValues(ip, 'angle best value is 90.');
+verifyEqual(testCase, p, {'angle'});
+verifyEqual(testCase, v, 90);
+verifyEmpty(testCase, why);
+[~, v] = did2.convert.tuningBestValues(ip, 'angle best value is 135.sz_{1}dealing sFrequency = 0.04,');
+verifyEqual(testCase, v, 135, 'the older writer''s log');
+ip2 = struct('selection', struct('property', {'sFrequency', 'tFrequency'}, ...
+    'operation', {'exact_number', 'exact_number'}, 'value', {'best', 'Best'}));
+[p, v] = did2.convert.tuningBestValues(ip2, 'sFrequency best value is 0.08,tFrequency best value is 1.');
+verifyEqual(testCase, p, {'sFrequency', 'tFrequency'});
+verifyEqual(testCase, v, [0.08 1]);
+[p, v, why] = did2.convert.tuningBestValues(ip, '');
+verifyEqual(testCase, p, {'angle'});
+verifyEmpty(testCase, v);
+verifyNotEmpty(testCase, why, 'a log that does not state it');
+[~, ~, why] = did2.convert.tuningBestValues(ip, 'xangle best value is 90.');
+verifyNotEmpty(testCase, why, 'only a whole property name');
+[p, ~, why] = did2.convert.tuningBestValues(struct('selection', sel(1:2)), 'anything');
+verifyEmpty(testCase, p, 'no best selection');
+verifyEmpty(testCase, why);
+end
+
 % ===================== [tuning log in notes] ==============================
 
 function testTuningLogInNotes(testCase)
@@ -294,6 +430,10 @@ end
 % ===================== [absolute-value fits are a second calculation] =====
 
 function testAbsoluteValueFitsAreASecondCalculation(testCase)
+% Superseded 2026-10-28 by [absolute-value fits are fit entries], which is not
+% built yet: that decision asked for anything the `abs` block holds beyond the
+% fits on |response| to be brought back first, and it holds `fitless` too
+% (testTheAbsBlockHoldsMoreThanFits). Until then this is still the behaviour.
 for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     v1 = writerOutput(cls{1});
     out = runRaw({v1});
@@ -307,6 +447,21 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     verifyEqual(testCase, sort(transforms), {'', 'absolute value'}, cls{1});
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, cls{1}, {});
+end
+end
+
+function testTheAbsBlockHoldsMoreThanFits(testCase)
+% Why [absolute-value fits are fit entries] (2026-10-28) is held: the SF / TF
+% writers' `abs` block (NDIcalc-vis-matlab 00e3e0f spatial_frequency_tuning.m,
+% temporal_frequency_tuning.m: abs.fitless = abs_sf_props.fitless, then the
+% five fits) holds the interpolated values of |response| as well as the fits.
+for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
+    v1 = writerOutput(cls{1});
+    blk = v1.(strrep(cls{1}, '_calc', ''));
+    fns = fieldnames(blk.abs);
+    verifyTrue(testCase, any(strcmp(fns, 'fitless')), cls{1});
+    notFit = fns(~(strcmp(fns, 'fit') | startsWith(fns, 'fit_')));
+    verifyEqual(testCase, notFit, {'fitless'}, [cls{1} ': the one non-fit field']);
 end
 end
 
@@ -501,6 +656,30 @@ pres = jsondecode(jsonencode(pres));
 resp = jsondecode(jsonencode(resp));
 end
 
+function [tc, resp, pres] = bestCurveBatch()
+% tuningCurveBatch with an `angle ... best` selection: the presentation shows
+% each contrast at angle 90 (stimuli 1-6) and again at angle 0 (7-12); the
+% writer kept angle 90 (its log: "angle best value is 90."), so the curve's
+% stimids stay 1-6
+[tc, resp, pres] = tuningCurveBatch();
+tc.tuningcurve_calc.input_parameters.selection = struct( ...
+    'property', {'contrast', 'angle'}, 'operation', {'hasfield', 'exact_number'}, ...
+    'value', {'varies', 'best'});
+tc.tuningcurve_calc.log = 'angle best value is 90.';
+st = pres.stimulus_presentation.stimuli;
+if iscell(st); st = [st{:}]; end
+st = reshape(st, 1, []);
+at90 = st;
+at0 = st;
+for k = 1:numel(st)
+    at90(k).parameters.angle = 90;
+    at0(k).parameters.angle = 0;
+end
+pres.stimulus_presentation.stimuli = [at90, at0];
+tc = jsondecode(jsonencode(tc));
+pres = jsondecode(jsonencode(pres));
+end
+
 function v1 = response(id, elementEpoch, stimulatorEpoch, nReadings)
 % NDI's stimulus_response_scalar as tuning_response.m writes it (the five
 % edges sorted and set; both epoch strings)
@@ -621,6 +800,18 @@ for k = 1:numel(p)
         t = char(p{k}.text);
         return;
     end
+end
+end
+
+function n = parameterCount(leaf, name)
+n = 0;
+if ~isfield(leaf, 'interaction') || ~isfield(leaf.interaction, 'method') ...
+        || ~isfield(leaf.interaction.method, 'parameters')
+    return;
+end
+p = asCell(leaf.interaction.method.parameters);
+for k = 1:numel(p)
+    n = n + strcmp(char(p{k}.variable.name), name);
 end
 end
 

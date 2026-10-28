@@ -262,8 +262,7 @@ end
 
 function testBothLocationSpellingsDifferingCarryTheDrugAsMalformed(testCase)
 % [treatment location name is the node]: "a document holding both with
-% different values is carried whole as v1, kind `malformed`" (the register row
-% is pending in did-schema: the note cites the placeholder)
+% different values is carried whole as v1, kind `malformed`" (carry-110)
 v1 = drugAtSite();
 v1.treatment_drug.location_ontologyNode = 'UBERON:0002436';
 v1 = jsondecode(jsonencode(v1));
@@ -274,7 +273,7 @@ emitted = out.migrated{1}.toStruct();
 emitted.document_class = rmfield(emitted.document_class, 'schema_version');
 verifyTrue(testCase, isequaln(emitted, v1), 'the carry is not the v1 source');
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-pending-treatment-location-malformed] malformed: '), d);
+verifyTrue(testCase, startsWith(d, '[carry-110] malformed: '), d);
 % the same node under both spellings (prefix case aside) is one statement
 v1.treatment_drug.location_ontologyNode = 'uberon:0001179';
 out = runRaw(v1);
@@ -302,7 +301,7 @@ end
 function testEveryTreatmentTransferIsCarriedWholeAsV1(testCase)
 % [treatment transfer stays v1] (Decided by Jess Haley, 2026-10-27): the
 % generic stage converts no treatment_transfer; each is carried whole as v1
-% with a needs-mapping register row (pending in did-schema), for the Babu
+% with a needs-mapping register row (carry-107), for the Babu
 % reimport
 fixtures = [{babuTransfer(-72000), babuTransfer(NaN)}, didSideFixtures()];
 n = 0;

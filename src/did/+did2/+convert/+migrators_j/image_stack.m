@@ -360,14 +360,12 @@ end
 % the round trip derives each letter from the dimension's label through a fixed
 % table (did2.convert.axisLetter). A stack whose labels (or, with none, its
 % letters) do not map one-to-one onto its v1 letters is carried whole as v1.
-% THE REGISTER ROW IS PENDING in did-schema: until it exists the note cites the
-% placeholder AXIS_ROW, which names no row.
-AXIS_ROW = 'carry-pending-axis-letters-do-not-derive';
+% The register row(s): carry-114.
 axisWhy = axisLettersMismatch(dimOrder, splitScaleUnits(getCharField(params, 'dimension_labels')));
 if ~isempty(axisWhy)
-    % carry-register: none (row pending in did-schema; AXIS_ROW)
+    % carry-register: carry-114
     did2.convert.reportNote('carried_as_v1', noteClass, baseField(preBody, 'id', ''), ...
-        sprintf('[%s] awaiting_home: %s ([axis letters derive from labels])', AXIS_ROW, axisWhy));
+        sprintf('[carry-114] awaiting_home: %s ([axis letters derive from labels])', axisWhy));
     bodies = {preBody};
     return;
 end
