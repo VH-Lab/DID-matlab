@@ -1,5 +1,13 @@
-function report = check(v1Body, v2Docs)
+function report = check(v1Body, v2Docs, ctx)
 %CHECK Rebuild a v1 document from what the migration emitted; compare.
+%
+%   REPORT = did2.convert.roundtrip.check(V1BODY, V2DOCS, CTX) also hands CTX,
+%   an index of the whole final batch (made by did2.convert.roundtrip.
+%   wholeBatch), to an inverse that takes a second argument: the v1 values
+%   such an inverse rebuilds are kept on documents a batch pass made, which
+%   no source became (an ingested epoch's probe-map statements, the
+%   per-system references a clock mapping's ends are read from). Only V2DOCS'
+%   own documents must each have a role; the batch is read, never placed.
 %
 %   REPORT = did2.convert.roundtrip.check(V1BODY, V2DOCS) takes the RAW v1
 %   document V1BODY and every document the migration emitted for it, V2DOCS
@@ -83,6 +91,7 @@ function report = check(v1Body, v2Docs)
 arguments
     v1Body (1,1) struct
     v2Docs
+    ctx = []
 end
 
 bodies = asBodies(v2Docs);
@@ -117,7 +126,12 @@ else
         error('did2:convert:roundtrip:noInverse', ...
             'No round-trip inverse %s for v1 class "%s".', fqn, stamp.class_name);
     end
-    [rebuilt, spec] = feval(str2func(fqn), bodies);
+    fn = str2func(fqn);
+    if ~isempty(ctx) && nargin(fn) >= 2
+        [rebuilt, spec] = fn(bodies, ctx);
+    else
+        [rebuilt, spec] = fn(bodies);
+    end
 end
 same = struct('path', {}, 'fn', {}, 'why', {});
 if isfield(spec, 'same')

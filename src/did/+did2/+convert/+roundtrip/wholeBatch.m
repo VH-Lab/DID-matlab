@@ -21,10 +21,25 @@ function report = wholeBatch(v1Bodies, result)
 %   HOW. For each source: its documents are looked up in the final batch by
 %   the ids pass 1 gave them. When all are still there, they are handed --
 %   as the batch passes left them -- to did2.convert.roundtrip.check, the
-%   per-class inverse. When one is gone (a batch pass replaced or folded it),
-%   the source is counted CHANGED BY A BATCH PASS and not compared: that pass
-%   has no inverse yet (Build pending: an inverse for each batch pass). A class
-%   with no inverse is counted NO INVERSE. Nothing is guessed.
+%   per-class inverse, with an index of the whole final batch
+%   (private/batchContext) for an inverse that reads documents a batch pass
+%   made (an ingested epoch's probe-map statements, a clock mapping's
+%   per-system references). When one is gone (a batch pass replaced or folded
+%   it), the source is counted CHANGED BY A BATCH PASS and not compared: that
+%   pass has no inverse yet (Build pending: an inverse for each batch pass). A
+%   class with no inverse is counted NO INVERSE. Nothing is guessed.
+%
+%   STORED AS ITS v1 SOURCE. A source pass 1 passed through unchanged is in
+%   RESULT.passthrough with the body pass 1 emitted for it. When the final
+%   document of its id is still IDENTICAL to that body (isequaln of the two
+%   structs), the pipeline stores the v1 SOURCE in its place, stamped 'did_v1'
+%   (NDI-matlab ndi.migrate.internal.carryUnchangedAsV1, the last step of
+%   ndi.migrate.local; Decided by Jess Haley, 2026-10-24 [passthrough stays
+%   v1] and [passthrough stays v1: how]). So that is the document compared
+%   here, exactly as that step makes it, and the source is also counted
+%   STORED AS v1 (sources_stored_as_v1, by class): it round trips because it
+%   was not converted, which is a different statement from a conversion that
+%   round trips. A passthrough a later step changed is compared as it is.
 %
 %   REPORT, the denominators first (Operating Rule 5):
 %     sources_inspected        numel(V1BODIES)
@@ -36,6 +51,9 @@ function report = wholeBatch(v1Bodies, result)
 %     sources_without_id       sources stating no v1 id
 %     sources_compared         sources handed to the per-class check
 %     sources_ok               of those, the ones that round trip clean
+%     sources_stored_as_v1, stored_as_v1_by_class   of the compared, the
+%                              passthroughs still unchanged at the end, so
+%                              stored as their v1 source (see above)
 %     sources_changed_by_batch_pass, changed_by_class
 %     sources_no_inverse, no_inverse_by_class
 %     unattributed_documents   final documents no source became (minted by a
@@ -43,9 +61,14 @@ function report = wholeBatch(v1Bodies, result)
 %     failures_total, failures_by_class   compared sources that are not
 %                              clean, counted exactly
 %     failures                 struct array {source_id, class_name, lost,
-%                              invented, unplaced}: the first FAILURE_CAP (200)
-%                              of them, in batch order (a sample; the counts
-%                              above are exact)
+%                              lost_values, invented, unplaced}: in batch
+%                              order, at most CLASS_CAP (5) per class and
+%                              FAILURE_CAP (200) in all (a sample of every
+%                              failing class; the counts above are exact).
+%                              lost_values holds the first CLASS_CAP lost
+%                              fields as text, 'path: v1 <...> rebuilt <...>',
+%                              each value JSON-encoded and cut to 200
+%                              characters
 %     ok                       compared sources all clean, no id lost, nothing
 %                              changed and nothing without an inverse
 %
@@ -65,19 +88,25 @@ end
 rows = result.source_outputs;
 final = result.migrated;
 finalIds = cell(1, numel(final));
+finalBodies = cell(1, numel(final));
 for k = 1:numel(final)
-    finalIds{k} = idOf(final{k});
+    finalBodies{k} = bodyOf(final{k});
+    finalIds{k} = idOf(finalBodies{k});
 end
+ctx = batchContext(finalBodies);
+passBody = passthroughBodies(result);
 
 report = struct('sources_inspected', numel(bodies), 'final_documents', numel(final), ...
     'sources_quarantined', 0, 'ids_kept', 0, 'ids_lost', 0, ...
     'ids_lost_by_class', struct(), 'ids_lost_ids', {{}}, 'sources_without_id', 0, ...
     'sources_compared', 0, 'sources_ok', 0, ...
+    'sources_stored_as_v1', 0, 'stored_as_v1_by_class', struct(), ...
     'sources_changed_by_batch_pass', 0, 'changed_by_class', struct(), ...
     'sources_no_inverse', 0, 'no_inverse_by_class', struct(), ...
     'unattributed_documents', 0, 'failures_total', 0, 'failures_by_class', struct(), ...
     'failures', struct('source_id', {}, 'class_name', {}, 'lost', {}, ...
-        'invented', {}, 'unplaced', {}), 'ok', false);
+        'lost_values', {}, 'invented', {}, 'unplaced', {}), 'ok', false);
+sampled = struct();
 attributed = false(1, numel(final));
 for r = 1:numel(rows)
     row = rows(r);
@@ -113,8 +142,20 @@ for r = 1:numel(rows)
     if isempty(outs)
         continue;   % a source that became nothing (its migrator wrote none)
     end
+    docs = finalBodies(where);
+    storedAsV1 = false;
+    if isscalar(outs) && isKey(passBody, outs{1})
+        rec = passBody(outs{1});
+        if rec.input_index == row.input_index && isequaln(docs{1}, rec.body)
+            % the pipeline stores the v1 source in its place (see HOW)
+            src = v1;
+            src.document_class.schema_version = 'did_v1';
+            docs = {src};
+            storedAsV1 = true;
+        end
+    end
     try
-        c = did2.convert.roundtrip.check(v1, final(where));
+        c = did2.convert.roundtrip.check(v1, docs, ctx);
     catch err
         if strcmp(err.identifier, 'did2:convert:roundtrip:noInverse')
             report.sources_no_inverse = report.sources_no_inverse + 1;
@@ -124,16 +165,25 @@ for r = 1:numel(rows)
         rethrow(err);
     end
     report.sources_compared = report.sources_compared + 1;
+    if storedAsV1
+        report.sources_stored_as_v1 = report.sources_stored_as_v1 + 1;
+        report.stored_as_v1_by_class = bump(report.stored_as_v1_by_class, cls);
+    end
     if c.ok
         report.sources_ok = report.sources_ok + 1;
     else
         report.failures_total = report.failures_total + 1;
         report.failures_by_class = bump(report.failures_by_class, cls);
-        if numel(report.failures) < 200   % FAILURE_CAP
+        f = matlab.lang.makeValidName(cls);
+        nThis = 0;
+        if isfield(sampled, f); nThis = sampled.(f); end
+        if numel(report.failures) < 200 && nThis < 5   % FAILURE_CAP, CLASS_CAP
+            sampled.(f) = nThis + 1;
             lostPaths = {};
             if ~isempty(c.lost); lostPaths = {c.lost.path}; end
             report.failures(end+1) = struct('source_id', row.id, 'class_name', cls, ...
-                'lost', {lostPaths}, 'invented', {c.invented}, 'unplaced', {c.unplaced});
+                'lost', {lostPaths}, 'lost_values', {lostValues(c.lost, 5)}, ...
+                'invented', {c.invented}, 'unplaced', {c.unplaced});
         end
     end
 end
@@ -159,16 +209,59 @@ for k = 1:numel(c)
 end
 end
 
-function id = idOf(d)
-id = '';
+function b = bodyOf(d)
+% a final document as a struct (did2.document's toStruct)
+b = d;
 try
     if isa(d, 'did2.document')
-        id = char(d.get('base.id'));
-    elseif isstruct(d) && isfield(d, 'base') && isfield(d.base, 'id')
-        id = char(d.base.id);
+        b = d.toStruct();
     end
 catch
-    id = '';
+    b = struct();
+end
+end
+
+function id = idOf(b)
+id = '';
+if isstruct(b) && isscalar(b) && isfield(b, 'base') && isstruct(b.base) ...
+        && isfield(b.base, 'id')
+    id = char(b.base.id);
+end
+end
+
+function m = passthroughBodies(result)
+% base.id -> {input_index, body} of each document pass 1 passed through
+% (did2.convert.v1_to_v2's result.passthrough)
+m = containers.Map('KeyType', 'char', 'ValueType', 'any');
+if ~isfield(result, 'passthrough') || ~isstruct(result.passthrough)
+    return;
+end
+for k = 1:numel(result.passthrough)
+    rec = result.passthrough(k);
+    id = char(rec.id);
+    if ~isempty(id) && ~isKey(m, id)
+        m(id) = struct('input_index', rec.input_index, 'body', rec.body);
+    end
+end
+end
+
+function out = lostValues(lost, cap)
+% the first CAP lost fields as text: 'path: v1 <...> rebuilt <...>'
+out = {};
+for k = 1:min(cap, numel(lost))
+    out{end+1} = sprintf('%s: v1 %s rebuilt %s', lost(k).path, ...
+        shortText(lost(k).v1), shortText(lost(k).rebuilt)); %#ok<AGROW>
+end
+end
+
+function t = shortText(v)
+try
+    t = jsonencode(v);
+catch
+    t = '<not encodable>';
+end
+if numel(t) > 200
+    t = [t(1:200) '...'];
 end
 end
 

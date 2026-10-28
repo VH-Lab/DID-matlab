@@ -91,6 +91,121 @@ verifyError(testCase, @() did2.convert.roundtrip.wholeBatch(bodies, result), ...
     'did2:convert:roundtrip:noSourceOutputs');
 end
 
+function testAPassthroughStillUnchangedIsStoredAsItsV1Source(testCase)
+% an ontologyTableRow with no subject edge passes pass 1 through unchanged for
+% NDI's second pass; still unchanged at the end, the pipeline stores its v1
+% source (ndi.migrate.internal.carryUnchangedAsV1), which is what is compared
+[bodies, result] = cleanBatch();
+bodies{end+1} = tableRow('wb_row_1');
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyTrue(testCase, any(strcmp({result.passthrough.id}, 'wb_row_1')), ...
+    'pass 1 records the row as passed through');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_compared, 4);
+verifyEqual(testCase, r.sources_ok, 4, describe(r));
+verifyGreaterThanOrEqual(testCase, r.sources_stored_as_v1, 1);
+verifyTrue(testCase, isfield(r.stored_as_v1_by_class, 'ontology_table_row'), ...
+    'the row is counted as stored as its v1 source');
+verifyEqual(testCase, r.sources_no_inverse, 0);
+end
+
+function testAPassthroughALaterStepChangedIsNotStoredAsV1(testCase)
+% the same row, changed after pass 1: it is no longer stored as its v1 source,
+% so it is compared as it is (and its class has no inverse)
+[bodies, result] = cleanBatch();
+bodies{end+1} = tableRow('wb_row_1');
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+for k = 1:numel(result.migrated)
+    s = result.migrated{k}.toStruct();
+    if strcmp(char(s.base.id), 'wb_row_1')
+        s.base.name = 'changed by a later step';
+        result.migrated{k} = did2.document(s);
+    end
+end
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyFalse(testCase, isfield(r.stored_as_v1_by_class, 'ontology_table_row'));
+verifyEqual(testCase, r.sources_no_inverse, 1);
+verifyFalse(testCase, r.ok);
+end
+
+function testAFailureSampleNamesTheLostValues(testCase)
+[bodies, result] = cleanBatch();
+for k = 1:numel(result.migrated)
+    s = result.migrated{k}.toStruct();
+    if strcmp(char(s.base.id), 'wb_subj_1')
+        s.entity.local_identifier = 'someone else';
+        result.migrated{k} = did2.document(s);
+    end
+end
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyNotEmpty(testCase, r.failures(1).lost_values);
+verifyTrue(testCase, any(contains(r.failures(1).lost_values, 'someone else')), ...
+    strjoin(r.failures(1).lost_values, ' | '));
+end
+
+function testAnIngestedManifestRoundTripsThroughItsDecomposition(testCase)
+% resolveEpochProbemap renames the manifest to an ingestion_manifest and
+% decomposes its probe map into statements no source became; the inverse reads
+% them from the whole batch
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = '41268b6f5c6a3d4e_00000000000000b2';
+bodies = {sessionV1('wb_sess_doc', sid), subjectV1('wb_spec', sid, 'L'), ...
+    elementV1('wb_probe', sid, 'p', 1, 'n-trode', 'wb_spec'), ...
+    daqsystemV1('wb_daq', sid, 'intan1', 'wb_nav'), ...
+    manifestV1('wb_efi', sid, 't0001', 'wb_nav', ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'p\t1\tn-trode\tintan1:ai27-28,45;di0-2\tL\n']))};
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'V_eta');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+verifyEqual(testCase, rep.manifests_renamed, 1, 'the manifest is renamed');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyFalse(testCase, isfield(r.changed_by_class, 'epochfiles_ingested'), describe(r));
+verifyFalse(testCase, isfield(r.no_inverse_by_class, 'epochfiles_ingested'), describe(r));
+verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
+end
+
+function testAnOpenmindsSubjectRoundTrips(testCase)
+% JH's shapes (ndi.database.fun.openMINDSobj2ndi_document): a sex states no
+% definition and round trips clean; a species states openMINDS's definition and
+% synonym, which nothing in DID holds, and the round trip reports exactly those
+sex = openmindsV1('wb_om_sex', 'openminds_subject', 'subject_id', 'BiologicalSex', ...
+    'hermaphrodite', 'PATO:0001340', '', '');
+species = openmindsV1('wb_om_sp', 'openminds_subject', 'subject_id', 'Species', ...
+    'Caenorhabditis elegans', 'NCBITaxon:6239', ...
+    'Caenorhabditis elegans is a species of nematode.', 'C. elegans');
+out = did2.convert.v1_to_v2({sex}, 'Validate', false, 'TargetVersion', 'V_eta');
+r = did2.convert.roundtrip.check(sex, out.migrated);
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject (sex)', {});
+out = did2.convert.v1_to_v2({species}, 'Validate', false, 'TargetVersion', 'V_eta');
+r = did2.convert.roundtrip.check(species, out.migrated);
+verifyEqual(testCase, sort({r.lost.path}), ...
+    {'openminds.fields.definition', 'openminds.fields.synonym'});
+verifyEmpty(testCase, r.invented);
+verifyEmpty(testCase, r.unplaced);
+end
+
+function testAnOpenmindsElementReportsWhatItDoesNotKeep(testCase)
+% Dab's shape: a cell type with an openMINDS id and a description; the
+% migrator keeps neither, and the round trip says so
+ct = openmindsV1('wb_om_ct', 'openminds_element', 'element_id', 'CellType', ...
+    'type III BNST neuron', 'EMPTY:0000073', '', '');
+ct.openminds.openminds_id = 'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d';
+ct.openminds.fields.description = 'A type of neuron.';
+out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'V_eta');
+r = did2.convert.roundtrip.check(ct, out.migrated);
+verifyFalse(testCase, r.carried);
+verifyEqual(testCase, sort({r.lost.path}), ...
+    {'openminds.fields.description', 'openminds.openminds_id'});
+verifyEmpty(testCase, r.invented);
+verifyEmpty(testCase, r.unplaced);
+end
+
 % ===================== fixtures =========================================
 
 function [bodies, result] = cleanBatch()
@@ -107,6 +222,94 @@ v1 = did2.unittest.helpers.ndiDocument('subject', 'Id', id, ...
 v1.subject.local_identifier = localId;
 v1.subject.description = '';
 v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = tableRow(id)
+% an ontologyTableRow as NDI's writers make it: the template's one edge,
+% `document_id`, and no subject edge
+v1 = struct();
+v1.base = struct('id', id, 'session_id', '41268b6f5c6a3d4e_00000000000000a1', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.depends_on = struct('name', 'document_id', 'value', 'wb_subj_1');
+v1.document_class = struct('definition', '$NDIDOCUMENTPATH/ontologyTableRow.json', ...
+    'validation', '$NDISCHEMAPATH/ontologyTableRow_schema.json', ...
+    'class_name', 'ontologyTableRow', 'property_list_name', 'ontologyTableRow', ...
+    'class_version', 1, 'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+v1.ontologyTableRow = struct('names', 'Weight', 'variableNames', 'weight', ...
+    'ontologyNodes', 'PATO:0000128', 'data', struct('weight', 3));
+v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = openmindsV1(id, cls, edge, type, name, node, definition, synonym)
+v1 = struct();
+v1.base = struct('id', id, 'session_id', '41268b6f5c6a3d4e_00000000000000a1', ...
+    'name', '', 'datestamp', '2025-09-04T16:21:34.420Z');
+v1.depends_on = struct('name', {edge, 'openminds'}, 'value', {'wb_about', ''});
+v1.document_class = struct('definition', ['$NDIDOCUMENTPATH/metadata/' cls '.json'], ...
+    'validation', ['$NDISCHEMAPATH/metadata/' cls '.json'], 'class_name', cls, ...
+    'property_list_name', cls, 'class_version', 1, 'superclasses', ...
+    struct('definition', {'$NDIDOCUMENTPATH/base.json', '$NDIDOCUMENTPATH/metadata/openminds.json'}));
+v1.openminds = struct('openminds_type', ['https://openminds.om-i.org/types/' type], ...
+    'matlab_type', ['openminds.controlledterms.' type], 'openminds_id', '', ...
+    'fields', struct('definition', definition, 'description', '', ...
+    'interlexIdentifier', '', 'knowledgeSpaceLink', '', 'name', name, ...
+    'preferredOntologyIdentifier', node, 'synonym', synonym));
+v1.(cls) = struct();
+v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = sessionV1(id, sid)
+v1 = struct();
+v1.document_class = struct('definition', '$NDIDOCUMENTPATH/session.json', ...
+    'validation', '$NDISCHEMAPATH/session.json', 'class_name', 'session', ...
+    'property_list_name', 'session', 'class_version', 1, ...
+    'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+v1.base = struct('id', id, 'session_id', sid, 'name', '', ...
+    'datestamp', '2024-03-23T13:47:40.237Z');
+v1.session = struct('reference', 'wb_ref');
+end
+
+function v1 = subjectV1(id, sid, localId)
+v1 = did2.unittest.helpers.ndiDocument('subject', 'Id', id, 'SessionId', sid, ...
+    'Datestamp', '2024-06-01T12:00:00.000Z');
+v1.subject.local_identifier = localId;
+v1.subject.description = '';
+end
+
+function v1 = elementV1(id, sid, name, reference, type, subjectId)
+v1 = struct();
+v1.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {subjectId});
+v1.base = struct('id', id, 'session_id', sid, 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.element = struct('ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
+    'name', name, 'reference', reference, 'type', type, 'direct', 1);
+end
+
+function v1 = daqsystemV1(id, sid, name, navId)
+v1 = struct();
+v1.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.base = struct('id', id, 'session_id', sid, 'name', name, ...
+    'datestamp', '2024-05-01T00:00:00.000Z');
+v1.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'value', {navId, ['rdr_' id]});
+end
+
+function v1 = manifestV1(id, sid, epochId, navId, pm)
+v1 = struct();
+v1.document_class = struct( ...
+    'definition', '$NDIDOCUMENTPATH/ingestion/epochfiles_ingested.json', ...
+    'validation', '$NDISCHEMAPATH/ingestion/epochfiles_ingested_schema.json', ...
+    'class_name', 'epochfiles_ingested', 'property_list_name', 'epochfiles_ingested', ...
+    'class_version', 1, 'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+v1.depends_on = struct('name', 'filenavigator_id', 'value', navId);
+v1.base = struct('id', id, 'session_id', sid, 'name', '', ...
+    'datestamp', '2024-03-23T13:47:40.237Z');
+v1.epochfiles_ingested = struct('epoch_id', epochId, ...
+    'files', {{['epochid://' epochId]; ['/data/' epochId '/a.rhd']}}, 'epochprobemap', pm);
 end
 
 function s = describe(r)
