@@ -330,6 +330,18 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         makeSourceFile.m, +gene/makeSourceFile.m and
 %                         +lightsheet/makePyramid.m. Round trips:
 %                         testRawV1RoundTripLightsheet.
+%     simple_calc, spikewaves, spike_clusters, binnedspikeratevm  ALWAYS
+%                         CARRIED whole as v1 under a needs-home register row
+%                         (Decided by Jess Haley, 2026-10-27 [simple_calc
+%                         carries as needs home], [unbuilt spike classes carry
+%                         as needs home]): read raw so that the carry is the
+%                         untouched v1 source. A carried document is not
+%                         validated against V_eta, so the `app.name` spelling
+%                         that kept them on the renamed path no longer
+%                         quarantines. Their dependents carry (carry-064).
+%                         Inverse: the passthrough one (never reached for a
+%                         carry: did2.convert.roundtrip.check reads a carry as
+%                         the v1 document itself).
 %     NOT LISTED, and why:
 %       control_stimulus_ids  its migrator passes it through (no note, so its
 %                         responses do not carry), and NDI's second pass reads
@@ -344,31 +356,11 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         records. It stays on the renamed path until NDI reads
 %                         the record from its input, or pass 1 carries it as a
 %                         handed-on v1 document (a team question).
-%       simple_calc       a pass-1 passthrough for which no corpus holds a
-%                         document; its raw passthrough (`app.name`, a
-%                         `calculator` block) would meet the V_eta
-%                         `simple_calc` class (`app_name`) under its own name
-%                         and quarantine, where the renamed path's body
-%                         validates. It stays on the renamed path until the
-%                         open question on it (model it or retire it,
-%                         V_eta_ground_truth_plan.md) is answered; its old
-%                         +migrators wrapper is deleted (never reached).
 %       image             no NDI writer at the locked main constructs it and no
 %                         corpus holds one; its subject-less passthrough has no
 %                         register row, and as raw v1 it would meet the
 %                         renamed-shape `image` tombstone under its own name
 %                         and quarantine. It stays on the renamed path.
-%       spikewaves        pure pass-1 passthroughs (the NDI second pass is
-%       spike_clusters    meant to read them) of classes with an `app` block:
-%                         ndi.app/newdocument writes app.name / app.version,
-%                         and the V_eta `spikewaves` / `spike_clusters` classes
-%                         (`retire`) spell them app_name / app_version, so a
-%                         raw passthrough would quarantine as an undeclared
-%                         field where the renamed one validates. Carrying it in
-%                         pass 1 instead would carry every converted document
-%                         that names it ([dependents of a carried document
-%                         carry]): a question for the team. They stay on the
-%                         renamed path.
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
@@ -442,6 +434,10 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'fileReference', ...
     'lightsheetZarrPyramid', ...
     'lightsheetZarrLevel', ...
+    'simple_calc', ...
+    'spikewaves', ...
+    'spike_clusters', ...
+    'binnedspikeratevm', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
