@@ -3640,7 +3640,17 @@ verifyFalse(testCase, any(strcmp({out.passthrough.id}, 'dsi_01')), 'not carried'
 % alone, another order, or another value: carried whole as v1
 v = info;
 v.dataset_session_info.dataset_session_info(2).is_linked = 1;
-for c = {{info}, {m2, m1, info}, {m1, m2, v}}
+% [a rebuilt document may lose its id] (Decided by Jess Haley, 2026-10-27):
+% a list that rebuilds may lose its id only when nothing references it; one
+% another document names is carried
+ref = struct();
+ref.document_class = struct('class_name', 'unknown_class', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+ref.depends_on = struct('name', {'session_list_id'}, 'value', {'dsi_01'});
+ref.base = struct('id', 'ref_01', 'session_id', 'dsid_1', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+ref.unknown_class = struct('foo', 'bar');
+for c = {{info}, {m2, m1, info}, {m1, m2, v}, {m1, m2, info, ref}}
     batch = c{1};
     out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
     verifyEmpty(testCase, out.quarantine);

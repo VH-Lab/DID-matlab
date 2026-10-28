@@ -618,7 +618,7 @@ end
 [migrated, passthrough, classCountNames, classCountValues, srcCarried] = ...
     carryUnrebuiltSessionLists(bodies, migrated, passthrough, classCountNames, ...
     classCountValues, srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, ...
-    options.RenameClassNames);
+    srcDepIds, options.RenameClassNames);
 
 % [dependents of a carried document carry] (Jess Haley, 2026-10-26, did-schema
 % V_eta_go_forward_class_audit.md): a document whose edge names a document
@@ -1316,7 +1316,7 @@ end
 
 function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSessionLists( ...
         bodies, migrated, passthrough, names, counts, done, carried, raw, target, ...
-        cls, ids, renameClassNames)
+        cls, ids, depIds, renameClassNames)
 %CARRYUNREBUILTSESSIONLISTS [fit classes kept; session list rebuilt] (Decided
 %   by Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
 %   "`dataset_session_info` (still written by NDI-matlab main +dataset/dir.m,
@@ -1335,6 +1335,12 @@ function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSession
 %   another value -- carries the document whole as v1 (the v1 source for a raw
 %   read, else the universalRenames output, as every other carry). THE REGISTER
 %   ROW IS PENDING in did-schema: the note cites the placeholder below.
+%
+%   ITS ID. [a rebuilt document may lose its id] (Decided by Jess Haley,
+%   2026-10-27, amending [every v1 id survives]): a list that rebuilds writes
+%   no V2 document and so keeps no id, which is allowed only when no other
+%   document references it; a list some source in the batch names by an edge
+%   is carried whole as v1 instead.
 LIST_ROW = 'carry-pending-session-list-does-not-rebuild';
 isList = cellfun(@(c) ischar(c) && strcmp(c, 'dataset_session_info'), cls);
 for k = reshape(find(done & ~carried & ~target & isList), 1, [])
@@ -1371,6 +1377,15 @@ for k = reshape(find(done & ~carried & ~target & isList), 1, [])
         for e = 1:numel(entries)
             if ~isequaln(entries(e), rebuilt{e})
                 why = sprintf('entry %d differs from the membership the batch rebuilds', e);
+                break;
+            end
+        end
+    end
+    if isempty(why) && ~isempty(ids{k})
+        for j = reshape(find(done), 1, [])
+            if j ~= k && iscell(depIds{j}) && any(strcmp(depIds{j}, ids{k}))
+                why = sprintf(['document %s references it, so its id must survive ' ...
+                    '([a rebuilt document may lose its id])'], char(ids{j}));
                 break;
             end
         end
