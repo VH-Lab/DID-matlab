@@ -248,7 +248,7 @@ for j = 1:numel(g)
         a.digitalIdentifier.identifier = s(7:end);
     end
 end
-aff = '';
+affs = {};   % one affiliated_with relation per affiliation, in v1's order
 for k = 1:numel(bodies)
     if used(k); continue; end
     b = bodies{k};
@@ -271,12 +271,15 @@ for k = 1:numel(bodies)
             used(k) = true;
             used(o) = true;
             [~, oe] = rebuildBase(bodies{o});
-            aff = fieldText(oe, 'name');
+            affs{end+1} = fieldText(oe, 'name'); %#ok<AGROW>
         end
     end
 end
-if ~isempty(aff)
-    a.affiliation = struct('memberOf', struct('fullName', aff));
+% [one affiliation relation each] (Jess Haley, 2026-10-27): several relations
+% rebuild v1's struct array (AuthorData.addAffiliation), one a scalar struct.
+if ~isempty(affs)
+    a.affiliation = struct('memberOf', cellfun(@(n) struct('fullName', n), ...
+        affs, 'UniformOutput', false));
 end
 end
 

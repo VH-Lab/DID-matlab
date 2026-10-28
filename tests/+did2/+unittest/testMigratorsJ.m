@@ -2998,18 +2998,32 @@ verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
     'a schema defect is not a carry');
 end
 
-function testMetadataEditorAuthorWithTwoAffiliationsIsCarriedWholeAsV1(testCase)
-% [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
-% 2026-10-25): only a scalar affiliation was read, so an author with two lost
-% both (the header's "OPEN" note). The document is now carried whole as v1.
-v1 = metadataEditorDoc();
+function testMetadataEditorAuthorWithTwoAffiliationsGetsARelationEach(testCase)
+% INVERTED 2026-10-28 from ...IsCarriedWholeAsV1 (the carry-054 interim): Decided
+% by Jess Haley, 2026-10-27 [one affiliation relation each] (did-schema
+% V_eta_go_forward_class_audit.md, answers did-schema #148). An author with two
+% affiliations (AuthorData.addAffiliation's struct array) gets one
+% affiliated_with relation to each organization. Checked on the fixture shape
+% and on the jsondecode shape; the round trip of a writer-shaped form with two
+% affiliations is testRawV1RoundTripSession/testWriterFormsConvertAndRoundTrip.
 two = struct('memberOf', {struct('fullName', 'Analytical Society'), ...
     struct('fullName', 'Royal Society')});
-v1.metadata_editor.metadata_structure.Author(1).affiliation = two;
-out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-authors = out.migrated{1}.get('metadata_editor.metadata_structure.Author');
-verifyEqual(testCase, numel(authors(1).affiliation), 2);
+for viaJson = [false true]
+    v1 = metadataEditorDoc();
+    v1.metadata_editor.metadata_structure.Author(1).affiliation = two;
+    if viaJson
+        out = runJRoundTrip(v1);
+    else
+        out = runJ(v1);
+    end
+    verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+        'two affiliations are placed, not carried');
+    orgs = allOfClassJ(out.migrated, 'organization');
+    names = cellfun(@(o) o.get('entity.name'), orgs, 'UniformOutput', false);
+    verifyEqual(testCase, sum(strcmp(names, 'Royal Society')), 1);
+    % author 1: Analytical Society + Royal Society; author 2: Analytical Society
+    verifyEqual(testCase, countRelsByName(out.migrated, 'affiliated_with'), 3);
+end
 end
 
 function testMetadataEditorEthicsAssessmentIsTheJurisdiction(testCase)
