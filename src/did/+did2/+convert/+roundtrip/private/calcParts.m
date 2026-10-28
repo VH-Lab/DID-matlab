@@ -1,4 +1,4 @@
-function [v1, leaf, inputs, spec] = calcParts(bodies, leafClass, v1Class, methodName)
+function [v1, leaf, inputs, spec, absLeaf] = calcParts(bodies, leafClass, v1Class, methodName, opts)
 %CALCPARTS The parts every tuning calculation inverse shares: the converted
 %   calculation, its v1 identity, its `app` block and its method parameters.
 %
@@ -32,18 +32,49 @@ function [v1, leaf, inputs, spec] = calcParts(bodies, leafClass, v1Class, method
 %   2026-10-26), so each entry can only have been one of the top-level edges;
 %   the caller adds those once it has named them (innerDependsOn).
 %   SPEC.unplaced names every emitted document with no role here.
+%
+%   OPTS.Tuning (the tuning families; Jess Haley, 2026-10-27, did-schema
+%   V_eta_go_forward_class_audit.md):
+%     - [absolute-value fits are a second calculation]: a second LEAFCLASS
+%       document whose method parameters hold {'response transform',
+%       'absolute value'} is the `abs` block's calculation: returned as
+%       ABSLEAF ([] when none), and LEAF is the other one;
+%     - [tuning fits use curve fitting now]: the method parameters
+%       'function' and 'response transform' are the V2 method's own (the
+%       fits' models; the transform), not v1 settings, and are not rebuilt;
+%     - [parameter names map by table]: the other parameters are named back
+%       through did2.convert.tuningNames (methodParameters(..., true)).
 
+arguments
+    bodies
+    leafClass
+    v1Class
+    methodName
+    opts.Tuning (1,1) logical = false
+    opts.Table = []    % name the settings through the table (default: OPTS.Tuning)
+end
+if isempty(opts.Table)
+    opts.Table = opts.Tuning;
+end
 spec = emptySpec();
 v1 = struct();
 leaf = [];
+absLeaf = [];
 inputs = {};
 n = numel(bodies);
 used = false(1, n);
 for k = 1:n
-    if strcmp(classNameOf(bodies{k}), leafClass)
+    if ~strcmp(classNameOf(bodies{k}), leafClass)
+        continue;
+    end
+    if opts.Tuning && isAbsoluteValueCalculation(bodies{k})
+        if isempty(absLeaf)
+            absLeaf = bodies{k};
+            used(k) = true;
+        end
+    elseif isempty(leaf)
         leaf = bodies{k};
         used(k) = true;
-        break;
     end
 end
 if isempty(leaf)
@@ -123,11 +154,42 @@ if any([ents.found]) && ~(minted && ~ents(2).found && ~ents(3).found)
     app.interpreter_version = ents(3).version;
     v1.app = app;
 end
-[params, bad] = methodParameters(getIn(leaf, 'interaction', 'method', 'parameters'));
+entries = getIn(leaf, 'interaction', 'method', 'parameters');
+if opts.Tuning
+    entries = withoutFitParameters(entries);
+end
+[params, bad] = methodParameters(entries, logical(opts.Table));
 spec.unplaced = [spec.unplaced, bad];
 blk = struct();
 if ~isempty(fieldnames(params))
     blk.input_parameters = params;
 end
 v1.(v1Class) = blk;
+end
+
+function tf = isAbsoluteValueCalculation(b)
+%ISABSOLUTEVALUECALCULATION A calculation whose method says the response was
+%   transformed to its absolute value ([absolute-value fits are a second
+%   calculation]).
+tf = false;
+entries = asCell(getIn(b, 'interaction', 'method', 'parameters'));
+for k = 1:numel(entries)
+    [~, name] = termParts(getIn(entries{k}, 'variable'));
+    if strcmp(name, 'response transform') && strcmp(char(getIn(entries{k}, 'text')), 'absolute value')
+        tf = true;
+        return;
+    end
+end
+end
+
+function out = withoutFitParameters(entries)
+%WITHOUTFITPARAMETERS The method parameters less the V2 method's own
+%   ('function', 'response transform').
+c = asCell(entries);
+keep = true(1, numel(c));
+for k = 1:numel(c)
+    [~, name] = termParts(getIn(c{k}, 'variable'));
+    keep(k) = ~any(strcmp(name, {'function', 'response transform'}));
+end
+out = c(keep);
 end

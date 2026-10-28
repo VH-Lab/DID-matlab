@@ -32,16 +32,17 @@ if isscalar(bodies) && isequaln(bodies{1}, body)
     bodies = {preBody};   % a carry is the untouched v1 source
     return;
 end
-% THE FIT BLOCKS MUST STAY TELLABLE APART. jTuningCurve names each model_fit
-% entry by its field prefix, so the writer's three blocks `fit`,
-% `fit_no_speed` and `fit_fullspeed` (all `Priebe_fit_*`) become three entries
-% named 'Priebe fit', and which one is the free fit, which has the speed index
-% fixed at 0 and which at 1 is kept only by their order. A V2 reader cannot
-% tell them apart, and the v1 block names are not recoverable ([lossless means
-% round trip]): the document is carried whole as v1 instead (carry-056: the
-% block names have no home), until the team decides how the fits are told
-% apart (e.g. by the fit's constraints, as [Naka-Rushton is one function] does
-% for the contrast fits).
+% THE FIT BLOCKS MUST STAY TELLABLE APART. The writer's three blocks `fit`,
+% `fit_no_speed` and `fit_fullspeed` (all `Priebe_fit_*`) are ONE function
+% (Decided by Jess Haley, 2026-10-27 [Priebe fits are one function], did-schema
+% V_eta_go_forward_class_audit.md; NDIcalc-vis-matlab 00e3e0f: vis.speed.fit,
+% fit_nospeed and fit_fullspeed all fit vis.speed.tuningfunc), so each is a
+% model_fit entry of model 'Priebe fit', told apart by its constraints
+% (jTuningCurve: `fit_no_speed` holds parameter 3, the speed index xi, at 0;
+% `fit_fullspeed` at 1; `fit` holds none). Two entries of one model AND the
+% same constraints (a fit block of another name) still cannot be told apart,
+% and the document is carried whole as v1 (carry-056: the block names have no
+% home).
 dup = duplicateFitModels(bodies{1});
 if ~isempty(dup)
     % carry-register: carry-056 (the fit block names have no home)
@@ -66,7 +67,17 @@ names = {};
 for k = 1:numel(mf)
     m = mf{k}.model;
     if iscell(m); m = m{1}; end
-    names{end+1} = char(m.name); %#ok<AGROW>
+    key = char(m.name);
+    if isfield(mf{k}, 'constraints') && ~isempty(mf{k}.constraints)
+        c = mf{k}.constraints;
+        if isstruct(c); c = num2cell(c); end
+        for j = 1:numel(c)
+            v = c{j}.variable;
+            if iscell(v); v = v{1}; end
+            key = sprintf('%s | %s = %.17g', key, char(v.name), double(c{j}.value));
+        end
+    end
+    names{end+1} = key; %#ok<AGROW>
 end
 [u, ~, j] = unique(names);
 c = accumarray(j(:), 1);
