@@ -19,9 +19,10 @@ function [v1, spec] = jrclust_clusters(bodies)
 %                                       'JRCLUST results (res_mat_MD5_checksum: X)'
 %     files / file                      the opaque body's, as v1 wrote them
 %
-%   base.name is not rebuilt: V2 does not write it (#73 item 54), and the
-%   writer sets it to the parameter file's name ('jrclust.prm'), so the round
-%   trip reports it lost (a known finding, testRawV1RoundTripSpike; open).
+%   base.name: the writer's fixed default, 'jrclust.prm', is notation and is
+%   restated here (SPEC.equivalents; [jrclust default name is notation], Jess
+%   Haley, 2026-10-27); a document with any other name is carried, so it never
+%   reaches this inverse ([v1 name goes to the class's own name field]).
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.jrclust_clusters.
 
@@ -64,6 +65,9 @@ else
     end
 end
 v1.jrclust_clusters = blk;
+spec.equivalents(end+1) = struct('path', 'base.name', 'values', {{'jrclust.prm'}}, ...
+    'why', ['the JRCLUST writer''s fixed default name ([jrclust default name is ' ...
+    'notation], Jess Haley, 2026-10-27)']);
 entity = edgeIds(leaf, 'entity_id');
 if isscalar(entity)
     v1.depends_on = struct('name', 'element_id', 'value', entity{1});

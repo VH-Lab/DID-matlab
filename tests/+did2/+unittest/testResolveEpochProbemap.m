@@ -634,7 +634,7 @@ v1.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', .
                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
 v1.depends_on = struct('name', {'element_id'}, 'value', {elementId});
 v1.base = struct('id', docId, 'session_id', sessionId, ...
-    'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.pyraview = struct('label', 'high', 'nativeRate', 20000, ...
     'nativeStartTime', 0, 'channels', 4, 'dataType', 'double', ...
     'decimationSamplingRates', [20000 200]);
@@ -804,7 +804,7 @@ v1.document_class = struct('class_name', 'jrclust_clusters', 'class_version', '1
                      struct('class_name', 'app', 'class_version', '1.0.0')]);
 v1.depends_on = struct('name', {'element_id'}, 'value', {elementId});
 v1.base = struct('id', docId, 'session_id', sessionId, ...
-    'name', 'jc', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.jrclust_clusters = struct('res_mat_md5_checksum', 'd41d8cd98f00b204e9800998ecf8427e');
 end
 
