@@ -17,9 +17,11 @@ function bodies = neuron_extracellular(preBody)
 %         waveform, the first calculation emitted (cluster index, quality
 %         label, quality number, in that order). A neuron that yields no
 %         calculation is carried whole as v1 (register row pending).
-%     [sample times equal within one rounding step]  the waveform's sample
-%         times are stored as start + step when every v1 time differs from
-%         start + step * k by at most one rounding step (one ulp of the
+%     [sample times equal within one rounding step], amended by [sample
+%         times within eight rounding steps] (Jess Haley, 2026-10-27): the
+%         waveform's sample times are stored as start + step when every v1
+%         time differs from start + step * k by at most EIGHT rounding steps
+%         (eight ulps of the
 %         largest-magnitude v1 time: regularTimebase); a list start + step
 %         misses by more is carried whole as v1, kind malformed (register row
 %         pending). A single sample keeps its one value.
@@ -418,7 +420,8 @@ if isempty(neuronId)
 end
 % [sample times equal within one rounding step] (Decided by Jess Haley,
 % 2026-10-27): a waveform whose sample times start + step cannot reproduce to
-% within one rounding step is carried whole as v1, kind malformed
+% within eight rounding steps ([sample times within eight rounding steps]) is
+% carried whole as v1, kind malformed
 wst = getField(blk, 'waveform_sample_times');
 if isnumeric(w) && ~isempty(w) && isnumeric(wst) && numel(wst) >= 2
     [timesRegular, ~, ~, worst] = regularTimebase(double(wst(:)));
@@ -427,8 +430,8 @@ if isnumeric(w) && ~isempty(w) && isnumeric(wst) && numel(wst) >= 2
         did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
             char(baseField(preBody, 'id', '')), sprintf(['[%s] malformed: ' ...
             'neuron_extracellular.waveform_sample_times are not start + step to ' ...
-            'within one rounding step (worst miss %g rounding steps; [sample ' ...
-            'times equal within one rounding step])'], TIMES_ROW, worst));
+            'within eight rounding steps (worst miss %g rounding steps; [sample ' ...
+            'times within eight rounding steps])'], TIMES_ROW, worst));
         bodies = {raw};
         return;
     end
@@ -692,7 +695,11 @@ spacing = (t(end) - t(1)) / (n - 1);
 model = origin + spacing * (0:(n - 1))';
 step = eps(max(abs(t)));
 worst = max(abs(model - t)) / step;
-isRegular = worst <= 1;
+% [sample times within eight rounding steps] (Decided by Jess Haley,
+% 2026-10-27): "every time differs by at most 8 ulps of the largest absolute
+% time"; it amends the one step of [sample times equal within one rounding
+% step], which left about a third of simulated Kilosort windows missing by 2-4
+isRegular = worst <= 8;
 end
 
 % ===================== every field accounted for ===========================

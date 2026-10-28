@@ -241,20 +241,26 @@ d = notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-pending-neuron-sample-times-malformed] malformed: '), d);
 end
 
-function testOneRoundingStepIsTheLimit(testCase)
-% the real time base reconstructs to exactly one rounding step (one ulp of its
-% largest-magnitude time, 0.00075 s: 1.08e-19) and folds; the same vector with
-% one time moved by two more steps is carried
+function testEightRoundingStepsIsTheLimit(testCase)
+% [sample times within eight rounding steps] (Decided by Jess Haley,
+% 2026-10-27; amends one step): the real time base reconstructs to one rounding
+% step (one ulp of 0.00075 s: 1.08e-19) and folds; one time moved by four
+% more steps still folds; moved by twelve, the neuron is carried
 t = realTimebase();
 step = eps(max(abs(t)));
 v1 = neuronExtracellularV1();
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 verifyGreaterThan(testCase, numel(out), 1, 'the real time base folds');
 t2 = t;
-t2(8) = t2(8) + 3 * step;
+t2(8) = t2(8) + 4 * step;
 v1.neuron_extracellular.waveform_sample_times = t2;
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'three steps off: carried');
+verifyGreaterThan(testCase, numel(out), 1, 'four steps off: folds');
+t3 = t;
+t3(8) = t3(8) + 12 * step;
+v1.neuron_extracellular.waveform_sample_times = t3;
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'twelve steps off: carried');
 end
 
 function testANeuronWithNoElementIsCarried(testCase)

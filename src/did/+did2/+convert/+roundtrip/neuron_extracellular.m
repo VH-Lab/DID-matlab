@@ -135,8 +135,8 @@ end
 v1.neuron_extracellular = ne;
 spec.same(end+1) = struct('path', 'neuron_extracellular.waveform_sample_times', ...
     'fn', @(a, b) withinOneRoundingStep(a, b), 'why', ['start + step equals ' ...
-    'the v1 times within one rounding step ([sample times equal within one ' ...
-    'rounding step], Jess Haley, 2026-10-27)']);
+    'the v1 times within eight rounding steps ([sample times within eight ' ...
+    'rounding steps], Jess Haley, 2026-10-27)']);
 end
 
 function tf = withinOneRoundingStep(a, b)
@@ -148,7 +148,7 @@ if ~isnumeric(a) || ~isnumeric(b) || numel(a) ~= numel(b) || isempty(a)
 end
 a = double(a(:));
 b = double(b(:));
-tf = all(abs(a - b) <= eps(max(abs(a))));
+tf = all(abs(a - b) <= 8 * eps(max(abs(a))));   % [sample times within eight rounding steps]
 end
 
 function [w, t, bad] = waveform(b)
