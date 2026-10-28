@@ -264,7 +264,16 @@ bodies = {subjectDoc};
 
 % --- kind assertions (nothing dropped) --------------------------------------
 if ~isempty(type)
-    bodies{end+1} = kindAssertion(preBody, elementId, 'element type', type);
+    % the v1 word exactly as v1 wrote it: a registered term is taken only when
+    % its name IS the word. jLabel matches the registry ignoring case, and since
+    % [five probe kinds from NCIT] registered NCIT:C88166 "Accelerometer" it
+    % turned `accelerometer` into "Accelerometer", which does not rebuild
+    typeTerm = jLabel(type);
+    if ~strcmp(char(typeTerm.name), type)
+        typeTerm = did2.build.term('', type);
+    end
+    bodies{end+1} = jStatement(preBody, 'assertion', elementId, ...
+        jLabel('element type'), typeTerm, 'ValueKind', 'term');
 end
 if ~isempty(ndiClass)
     bodies{end+1} = kindAssertion(preBody, elementId, 'ndi element class', ndiClass);
