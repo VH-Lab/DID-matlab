@@ -155,10 +155,11 @@ end
 % calculation, built where the element is mapped (carry-063), so until then
 % the document is carried whole as v1 with its element. This replaces the term
 % observation (variable 'position', value the ontologyNode) written here before.
-% carry-register: none (a position_metadata stating only an ontologyNode,
-%   awaiting its element's position calculation)
+% The decision makes this the same carry as `units` / `dimensions` above (both
+% become the one position calculation), so it cites the same row.
+% carry-register: carry-053
 did2.convert.reportNote('carried_as_v1', 'position_metadata', ...
-    char(preBody.base.id), ['awaiting_home: position_metadata.ontologyNode ' ...
+    char(preBody.base.id), ['[carry-053] awaiting_home: position_metadata.ontologyNode ' ...
     '(one position calculation with its element''s values, [position and its ' ...
     'metadata are one statement])']);
 bodies = {src};

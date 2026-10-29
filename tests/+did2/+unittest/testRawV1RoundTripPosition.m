@@ -214,6 +214,7 @@ function testAPositionWithOnlyABodyPartIsCarried(testCase)
 % break; the round trip reads the carry, and a changed carried body is lost.
 v1 = positionConvertedShape();
 verifyCarriedFor(testCase, {v1}, 'its metadata are one statement');
+verifyCarriedFor(testCase, {v1}, '[carry-053] awaiting_home: position_metadata.ontologyNode');
 out = runRaw({v1});
 verifyEqual(testCase, numel(out.migrated), 1, 'the v1 source only');
 r = did2.convert.roundtrip.check(v1, out.migrated);
