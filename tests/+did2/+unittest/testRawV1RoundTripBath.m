@@ -220,7 +220,11 @@ v1.depends_on(end + 1) = struct('name', 'subject_id', 'value', 'subj_1');
 verifyCarriedFor(testCase, v1, 'unplaced: depends_on(subject_id)');
 v1 = dabBath(oneDrug());
 v1.stimulus_bath.mixture_table = struct('ontologyName', 'NCIm:C1098706', 'value', 2e-7);
-verifyCarriedFor(testCase, v1, 'unplaced: stimulus_bath.mixture_table (not text)');
+% INVERTED 2026-10-29 from 'unplaced: stimulus_bath.mixture_table (not text)'
+% (no register row): [values no writer produces are malformed] (Jess Haley,
+% 2026-10-27, did-schema V_eta_go_forward_class_audit.md) -- the item cites
+% carry-120
+verifyCarriedFor(testCase, v1, 'unplaced: [carry-120] stimulus_bath.mixture_table (not text)');
 v1 = dabBath(oneDrug());
 v1.ndi_document = struct('id', 'x', 'type', 'stimulus_bath');
 verifyCarriedFor(testCase, v1, '[carry-049] universalRenames would discard: ndi_document');

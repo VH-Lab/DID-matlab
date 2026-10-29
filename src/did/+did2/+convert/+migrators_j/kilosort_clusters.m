@@ -56,7 +56,10 @@ if isfield(src, 'kilosort_clusters') && isstruct(src.kilosort_clusters)
     md5 = jGetCharAny(src.kilosort_clusters, {'curated_output_MD5_checksum', 'curated_output_md5_checksum'});
 end
 if ~isempty(md5) && ~strcmp(md5, lower(strtrim(md5)))
-    valueReasons{end+1} = 'kilosort_clusters.curated_output_MD5_checksum (not lower-case hex: the body would rewrite it)';
+    % a checksum in the wrong case is a value no NDI writer produces:
+    % [values no writer produces are malformed] (Jess Haley, 2026-10-27,
+    % did-schema V_eta_go_forward_class_audit.md), register row carry-120
+    valueReasons{end+1} = '[carry-120] kilosort_clusters.curated_output_MD5_checksum (not lower-case hex: the body would rewrite it)';
 end
 if jRawCarry('kilosort_clusters', src, collision, unplaced, 'carry-100', valueReasons)
     bodies = {src};

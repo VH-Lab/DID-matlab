@@ -233,7 +233,7 @@ function bodies = neuron_extracellular(preBody)
 %
 %   THE OBJECTION, stated so nobody has to reconstruct it: a consumer that reads
 %   every `count` document as a cardinality will pick this up. It is mitigated by
-%   `variable` = 'spike sorter cluster index' and by the blank unit, and it is
+%   `variable` = AFO:AFR_0003339 "cluster identifier" and by the blank unit, and it is
 %   one block on one document -- removable in a line if the team says no.
 %   NOTHING HERE IS SIGNED. Operating Rule 4: this is a proposal.
 %
@@ -307,7 +307,9 @@ function bodies = neuron_extracellular(preBody)
 %                                     the term is built above the regular/
 %                                     irregular branch so it is not staged twice)
 %       'channel'                     the channel axis's `variable`
-%       'spike sorter cluster index'  the count_assertion's `variable`
+%       'spike sorter cluster index'  the count_assertion's `variable` (since
+%                                     2026-10-27 AFO:AFR_0003339 "cluster
+%                                     identifier", [afo prefix registered])
 %
 %   NONE OF THEM COULD HAVE BEEN MINTED HERE. An NDI-side identifier is
 %   `NDIC:<n>` and that table moved out of NDI to VH-Lab/ndi-ontology-matlab,
@@ -489,10 +491,15 @@ end
 
 % cluster_index: the sorter's own label for the unit, a NOMINAL number (item
 % 48: "a cluster index is a nominal label, not a count"). A `label` value is a
-% string even when it looks numeric (did-schema `label`.value.name).
+% string even when it looks numeric (did-schema `label`.value.name). Its
+% variable is AFO:AFR_0003339 "cluster identifier" (Decided by Jess Haley,
+% 2026-10-27 [afo prefix registered], did-schema
+% V_eta_go_forward_class_audit.md: the `afo` prefix is registered and its
+% "cluster identifier" takes the place of the label 'spike sorter cluster
+% index'; registry row in did-schema V_eta_term_registry.json).
 if isnumeric(clusterIndex) && isscalar(clusterIndex) && isfinite(clusterIndex)
     bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
-        jLabel('spike sorter cluster index'), ...
+        did2.convert.registeredTerm('AFO:AFR_0003339', 'cluster identifier'), ...
         struct('name', sprintf('%d', round(double(clusterIndex)))), ...
         calcOpt{:}, idOpt{:}, 'ValueKind', 'label');
     nCalc = nCalc + 1;

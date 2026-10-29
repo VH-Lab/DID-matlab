@@ -135,7 +135,12 @@ src = preBody;
     {'^probe_id$', '^element_id$', '^subject_id$'});
 valueReasons = {};
 if isfield(blk, 'ndim') && ~isempty(blk.ndim) && ~isequal(double(blk.ndim), 2)
-    valueReasons{end+1} = 'probe_geometry.ndim (not 2, the writer''s default)';
+    % a probe with another number of dimensions is a value no NDI writer
+    % produces: [values no writer produces are malformed] (Jess Haley,
+    % 2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-120. (A
+    % unit no length term is known for, below, is not cited: a writer's unit
+    % this table lacks is not malformed; no register row yet.)
+    valueReasons{end+1} = '[carry-120] probe_geometry.ndim (not 2, the writer''s default)';
 end
 unitText = jGetChar(blk, 'unit');
 if ~isempty(strtrim(unitText))

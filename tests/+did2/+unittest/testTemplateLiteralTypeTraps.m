@@ -72,9 +72,10 @@ function tests = testTemplateLiteralTypeTraps
 %   Both classes stay PASSTHROUGHS. `stimulus_parameter` is held for the
 %   stimulus model (#31) and `image_stack` / `image_stack_parameters` were taken
 %   BACK OUT of _DELETE_PHASE8 precisely so a passthrough has a schema to
-%   validate against. These tests gate the normalisation, not a fold, and
-%   testImageStackParametersTombstoneStillExists below pins the second half of
-%   that so a future re-deletion fails here rather than in a corpus run.
+%   validate against. These tests gate the normalisation, not a fold. Since
+%   2026-10-28 ([carried v1 validates against NDI templates]) a passthrough
+%   whose class has no V2 schema is counted, not quarantined, so the
+%   tombstones' existence is no longer pinned here.
 
 tests = functiontests(localfunctions);
 end
@@ -269,15 +270,25 @@ verifyEqual(testCase, p.data_limits, [0 65535]);
 verifyEqual(testCase, p.clocktype, 'exp_global_time');
 end
 
-function testImageStackPlaceholderDocumentValidatesOnThePassthrough(testCase)
-% The whole point. This document has NO subject (NDI's writer leaves the edge
-% empty at doImport.m:789/811/827), so migrators_j/image_stack.m's guard passes
-% it through -- and a passthrough is exactly where an unnormalised template
-% literal reaches the validator. With the placeholder dropped it validates.
-out = runJValidated(imageStackBody([]));
+function testASubjectlessImageStackPassesThroughUntouchedAndCounted(testCase)
+% INVERTED 2026-10-29 from testImageStackPlaceholderDocumentValidatesOnThePassthrough,
+% which ran the RENAMED path ('RawV1Classes', {}) and asserted that dropping
+% the empty `timestamp` placeholder let the passthrough validate against the
+% did-schema `image_stack` tombstone. That tombstone is deleted (Jess Haley,
+% 2026-10-27 [carried v1 validates against NDI templates]; 2026-10-29
+% [base.name kept until retire classes leave], did-schema
+% V_eta_go_forward_class_audit.md). On the path real data takes, `imageStack`
+% reads raw v1 (did2.convert.rawV1Classes): a subject-less stack (NDI's writer
+% leaves the edge empty at doImport.m:789/811/827) is returned UNTOUCHED, so it
+% is a v1 document, counted (passthrough_unvalidated_no_schema), not
+% quarantined, with its id and its placeholder as v1 wrote them.
+v1 = imageStackBody([]);
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'image_stack');
+assertEqual(testCase, numel(out.migrated), 1);
+d = out.migrated{1};
 verifyEqual(testCase, d.get('base.id'), 'is_1');   % passthrough: id preserved
+verifyEqual(testCase, out.summary.passthrough_unvalidated_no_schema_count, 1);
 end
 
 function testImageStackRealTimestampIsUntouched(testCase)
@@ -325,19 +336,15 @@ d = onlyClass(testCase, out, 'image_stack');
 verifyFalse(testCase, isfield(d.get('image_stack_parameters'), 'timestamp'));
 end
 
-function testImageStackParametersTombstoneStillExists(testCase)
-% A GUARD ON THE SCHEMA, NOT ON THE MIGRATOR. `image_stack` and
-% `image_stack_parameters` were taken BACK OUT of _DELETE_PHASE8 so that the
-% subject-less passthrough has something to validate against. Re-deleting them
-% would strand 4,563 JH documents in quarantine (the epochfiles_ingested
-% regression, exactly) -- and this normalisation would become dead code without
-% anything saying so. Fail here instead.
-cache = did2.schema.cache.shared();
-chain = cache.superclasses('image_stack');
-verifyTrue(testCase, any(strcmp(chain, 'image_stack_parameters')), ...
-    ['image_stack no longer inherits image_stack_parameters -- if the ' ...
-     'tombstone was re-deleted, the subject-less passthrough has no schema.']);
-end
+% RETIRED 2026-10-28 with did-schema's deprecated/ tombstones (Decided by Jess
+% Haley, 2026-10-27 [carried v1 validates against NDI templates], did-schema
+% V_eta_go_forward_class_audit.md): a carried or passed-through v1 document is
+% checked against NDI's v1 templates (did2.validate.v1Document), not a
+% did-schema tombstone, and one whose class has no V2 schema is counted
+% (summary.passthrough_unvalidated_no_schema_count), never quarantined
+% (v1_to_v2.m). This test asserted the `image_stack` / `image_stack_parameters` schema EXISTS, which
+% that decision removes; the passthrough tests beside it, which assert no
+% quarantine, are the guard now.
 
 function testTheBuiltPathStillReadsARealTimestamp(testCase)
 % A real v1 timestamp survives the built path. UPDATED for did-schema #88: the

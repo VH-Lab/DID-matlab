@@ -107,7 +107,12 @@ if isfield(blk, 'temperature') && ~isempty(blk.temperature) ...
     % NaN is the writer's "not recorded" (it skips the temperature query for
     % it) and stays unwritten, as before; anything else that is not one finite
     % number has no place
-    valueReasons{end+1} = 'electrode_offset_voltage.temperature (not one finite number)';
+    % (the writer, NDI-matlab +setup/+conv/+marder/makeVoltageOffsets.m, tests
+    % ~isnan(temp) on the table's T value, so it writes a number or NaN only):
+    % a value no NDI writer produces, [values no writer produces are
+    % malformed] (Jess Haley, 2026-10-27, did-schema
+    % V_eta_go_forward_class_audit.md), carry-120
+    valueReasons{end+1} = '[carry-120] electrode_offset_voltage.temperature (not one finite number)';
 end
 if jRawCarry('electrode_offset_voltage', src, collision, unplaced, 'carry-100', valueReasons)
     bodies = {src};

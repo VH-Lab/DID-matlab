@@ -20,7 +20,9 @@ function [v1, spec] = neuron_extracellular(bodies)
 %     app                              the calculations' software entities
 %     depends_on element_id            the calculations' entity_id
 %     depends_on spike_clusters_id     the calculations' input_id ('' when none)
-%     cluster_index                    the 'spike sorter cluster index' label
+%     cluster_index                    the AFO:AFR_0003339 "cluster identifier"
+%                                      label, read by its node ([afo prefix
+%                                      registered], Jess Haley, 2026-10-27)
 %     quality_label                    the 'spike sort quality' label
 %     quality_number                   the 'spike sort quality' score
 %     mean_waveform                    the 'mean spike waveform' voltage values,
@@ -54,7 +56,10 @@ for k = 1:n
     if ~strcmp(classNameOf(b), 'calculation')
         continue;
     end
-    [~, var] = termParts(getIn(b, 'statement', 'variable'));
+    [node, var] = termParts(getIn(b, 'statement', 'variable'));
+    if sameCurie(node, 'AFO:AFR_0003339')
+        var = 'cluster identifier';   % by node, whatever the registry's label
+    end
     kind = '';
     for kk = {'label', 'score', 'voltage'}
         if isfield(b, kk{1}); kind = kk{1}; end
@@ -104,7 +109,7 @@ ne = struct();
 for c = 1:numel(calcs)
     b = calcs(c).body;
     switch [calcs(c).kind '|' calcs(c).variable]
-        case 'label|spike sorter cluster index'
+        case 'label|cluster identifier'
             ne.cluster_index = str2double(char(getIn(b, 'label', 'value', 'name')));
         case 'label|spike sort quality'
             ne.quality_label = char(getIn(b, 'label', 'value', 'name'));

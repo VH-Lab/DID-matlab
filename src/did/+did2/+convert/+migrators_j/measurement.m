@@ -149,8 +149,11 @@ if isempty(bodies)
     % as v1 (see READS RAW v1 above), unless jMeasurementFold already carried
     % it (carry-058) and said so.
     if did2.convert.reportNote('pending', 'carried_as_v1') == 0
+        % "a measurement with no statement" is a carry of the kind
+        % [values no writer produces are malformed] covers (Jess Haley,
+        % 2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-120
         jRawCarry('measurement', src, {}, {}, 'carry-100', ...
-            {'measurement (no V2 statement: a date, an untyped number or text)'});
+            {'[carry-120] measurement (no V2 statement: a date, an untyped number or text)'});
     end
     bodies = {src};
 elseif isscalar(bodies) && isequaln(bodies{1}, preBody)
