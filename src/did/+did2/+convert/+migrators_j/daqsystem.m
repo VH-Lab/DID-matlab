@@ -313,7 +313,8 @@ if isempty(implClass) && isempty(navId) && isempty(readerId) && isempty(mdIds)
     % preserved. The passthrough rescues nothing.
     %
     % IT IS LEFT AS IT IS, DELIBERATELY, and pinned by
-    % testTheResidualPassthroughIsAQuarantinePathByConstruction. NDI sets
+    % testTheResidualPassthroughIsAQuarantinePathByConstruction (since 2026-10-29
+    % testTheResidualDaqsystemIsCarriedWholeAsV1). NDI sets
     % `ndi_daqsystem_class` on every document it writes and gives every real rig
     % a filenavigator and a daqreader, so this branch is unreachable for real
     % data; relaxing the tombstone to admit a hollow document would trade a live
@@ -325,6 +326,18 @@ if isempty(implClass) && isempty(navId) && isempty(readerId) && isempty(mdIds)
     % that can carry a document on its own, via the software_id edge, so it has
     % to be counted as something-to-declare or a class-name-only daqsystem would
     % fall into a passthrough that is no longer warranted.
+    %
+    % CARRIED, NOT PASSED THROUGH, since 2026-10-29: the quarantine described
+    % above came from validating the passthrough against the `daqsystem`
+    % tombstone; a carried document is v1 and is not read against V2.
+    % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % v1 document passes through under it, so this document, left as v1 on purpose,
+    % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
+    % 2026-10-24) instead of passing through silently. Register row carry-131 covers it.
+    % carry-register: carry-131
+    did2.convert.reportNote('carried_as_v1', 'daqsystem', jCarryId(src), ...
+        '[carry-131] malformed: no daqsystem class, navigator, reader or metadata reader, so nothing to declare ([passthrough stays v1])');
     bodies = {src};
     return;
 end

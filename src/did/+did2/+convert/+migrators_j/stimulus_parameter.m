@@ -1,6 +1,10 @@
 function bodies = stimulus_parameter(preBody)
-%STIMULUS_PARAMETER Brainstorm-J migrator: did_v1 stimulus_parameter -- a
-%   PASSTHROUGH that normalises the template's own untypeable placeholder.
+%STIMULUS_PARAMETER Brainstorm-J migrator: did_v1 stimulus_parameter -- carried
+%   whole as v1 (since 2026-10-29, [one folder, final classes only]; see the
+%   end of the function). Until then it was a PASSTHROUGH that normalised the
+%   template's own untypeable placeholder; the history below explains that
+%   repair, which a carried document no longer needs (it is not read against
+%   V2). A non-empty char or a non-numeric `value` still errors.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -137,9 +141,10 @@ if isfield(preBody, BLOCK) && isstruct(preBody.(BLOCK)) ...
         % empty DOUBLE and validates: `value` is not scalar-constrained).
     elseif ischar(v) || isstring(v)
         if isempty(strtrim(char(v)))
-            % The template's own "unset" placeholder. Absence is the only
-            % spelling of unset that validates.
-            preBody.(BLOCK) = rmfield(preBody.(BLOCK), 'value');
+            % The template's own "unset" placeholder. It used to be removed
+            % here so the passthrough validated against the V_eta tombstone;
+            % the document is now carried whole as v1 (below), which is not
+            % read against V2, so it is kept as v1 wrote it.
         else
             error('did2:convert:stimulusParameterCharValue', ...
                 ['stimulus_parameter.value carries the non-empty char ''%s'' ' ...
@@ -155,5 +160,14 @@ if isfield(preBody, BLOCK) && isstruct(preBody.(BLOCK)) ...
     end
 end
 
+% [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% v1 document passes through under it, so this document, held for the stimulus
+% model (#31) and left as v1 on purpose, is carried whole as v1 with a note
+% ([passthrough stays v1], Jess Haley, 2026-10-24) instead of passing through
+% silently. Register row carry-140 covers it.
+% carry-register: carry-140
+did2.convert.reportNote('carried_as_v1', 'stimulus_parameter', jCarryId(preBody), ...
+    '[carry-140] awaiting_home: stimulus_parameter has no V2 home until the stimulus model ([passthrough stays v1])');
 bodies = {preBody};
 end

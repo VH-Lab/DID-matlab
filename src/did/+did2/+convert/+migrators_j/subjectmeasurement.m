@@ -150,6 +150,14 @@ end
 % ---- guard 1: no subject => no observation ---------------------------------
 subjectId = dependencyValue(preBody, 'subject_id');
 if isempty(subjectId)
+    % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % v1 document passes through under it, so this document, left as v1 on purpose,
+    % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
+    % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
+    % carry-register: carry-144
+    did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
+        '[carry-144] malformed: no subject_id, so no observation ([passthrough stays v1])');
     return;
 end
 
@@ -157,6 +165,14 @@ end
 % `measurement` is free text and is the whole of what the statement is ABOUT.
 name = getCharField(blk, 'measurement');
 if isempty(strtrim(name))
+    % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % v1 document passes through under it, so this document, left as v1 on purpose,
+    % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
+    % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
+    % carry-register: carry-144
+    did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
+        '[carry-144] malformed: subjectmeasurement.measurement is empty, so no variable ([passthrough stays v1])');
     return;
 end
 
@@ -164,6 +180,14 @@ end
 value = [];
 if isfield(blk, 'value'); value = blk.value; end
 if ~(isnumeric(value) && isscalar(value) && isfinite(value))
+    % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % v1 document passes through under it, so this document, left as v1 on purpose,
+    % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
+    % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
+    % carry-register: carry-144
+    did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
+        '[carry-144] malformed: subjectmeasurement.value is not one finite number ([passthrough stays v1])');
     return;
 end
 
@@ -190,6 +214,18 @@ folded = jMeasurementFold(preBody, variable, lower(name), value, '', anchor, tru
 
 % ---- guard 4: no honest leaf => carry the document through ------------------
 if isempty(folded)
+    if did2.convert.reportNote('pending', 'carried_as_v1') == 0
+        % jMeasurementFold left no note of its own (it writes one, carry-059,
+        % for a second value): it found no quantity leaf for the name
+        % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+        % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+        % v1 document passes through under it, so this document, left as v1 on purpose,
+        % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
+        % 2026-10-24) instead of passing through silently. Register row carry-145 covers it.
+        % carry-register: carry-145
+        did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
+            '[carry-145] awaiting_home: no quantity kind is named by subjectmeasurement.measurement ([passthrough stays v1])');
+    end
     return;
 end
 bodies = folded;

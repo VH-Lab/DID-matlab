@@ -71,7 +71,9 @@ function tests = testTemplateLiteralTypeTraps
 %   ---------------------------------------------------------------------
 %   NOTHING HERE ASSERTS A DISPOSITION
 %   ---------------------------------------------------------------------
-%   Both classes stay PASSTHROUGHS. `stimulus_parameter` is held for the
+%   Both classes stay PASSTHROUGHS (a `stimulus_parameter` is carried whole as
+%   v1 since 2026-10-29, [one folder, final classes only], so its placeholder is
+%   kept as written). `stimulus_parameter` is held for the
 %   stimulus model (#31) and `image_stack` / `image_stack_parameters` were taken
 %   BACK OUT of _DELETE_PHASE8 precisely so a passthrough has a schema to
 %   validate against. These tests gate the normalisation, not a fold. Since
@@ -185,27 +187,32 @@ end
 
 % ===================== stimulus_parameter.value ============================
 
-function testStimulusParameterEmptyValuePlaceholderIsDropped(testCase)
-% THE REPAIR. The template's `value: ""` is a char in a field NDI's own schema
-% types `double`, so validateTypeShape (cache.m:1229 -> :1383) rejects it. There
-% is no numeric substitute that invents nothing -- 0 is a recorded measurement,
-% NaN is a value the field may reject -- and absence is what "unset" means and
-% the only spelling that passes (cache.m:1212-1225).
+function testStimulusParameterEmptyValuePlaceholderIsCarriedAsWritten(testCase)
+% INVERTED 2026-10-29 from testStimulusParameterEmptyValuePlaceholderIsDropped.
+% Decided by Jess Haley, 2026-10-29 [one folder, final classes only] (did-schema
+% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% v1 document passes through under it, so a stimulus_parameter is now carried
+% whole as v1 ([passthrough stays v1]). A carried document is not read against
+% V2, so the template's `value: ""` (a char in a field NDI's schema types
+% `double`, which validateTypeShape rejected) no longer has to be dropped to
+% get through: it is kept as v1 wrote it, never coerced.
 out = runJ(stimulusParameterBody(''));
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'stimulus_parameter');
+verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1');
 b = d.get('stimulus_parameter');
-verifyFalse(testCase, isfield(b, 'value'), ...
-    'the empty char placeholder must be DROPPED, not coerced');
+verifyTrue(testCase, isfield(b, 'value'), 'the placeholder is kept, not dropped');
+verifyEqual(testCase, b.value, '', 'and not coerced');
 % the two string fields are untouched: `string` accepts '' (cache.m:1349-1371)
 verifyEqual(testCase, b.ontology_name, 'NDIC:12');
 verifyEqual(testCase, b.name, 'Command temperature constant');
 end
 
 function testStimulusParameterPlaceholderDocumentValidates(testCase)
-% The assertion that matters: with the placeholder dropped the document -- which
-% is otherwise exactly what ndi.document('stimulus_parameter') produces -- gets
-% through the validator instead of quarantining on typeMismatch.
+% The assertion that matters: the document -- exactly what
+% ndi.document('stimulus_parameter') produces -- gets through the validator
+% instead of quarantining on typeMismatch. Since 2026-10-29 it is carried whole
+% as v1 ([one folder, final classes only]), which is not validated against V2.
 out = runJValidated(stimulusParameterBody(''));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);

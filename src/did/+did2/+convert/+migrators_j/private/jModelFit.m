@@ -16,8 +16,10 @@ function bodies = jModelFit(preBody, blk, inputEdges)
 %   independent_variables[] / dependent_variable (the names), goodness {sse,
 %   sse_per_point}, input_field / output_field (fit_data).
 %
-%   PASSES THROUGH (returns {PREBODY}, the v1 tombstone validates it) when
-%   the document has no subject (decided: "no subject -> refused"). A missing
+%   CARRIES the document whole as v1 (returns {PREBODY} with a
+%   `carried_as_v1` note; until 2026-10-29 a silent passthrough the v1
+%   tombstone validated) when the document has no subject (decided: "no
+%   subject -> refused"). A missing
 %   operating system no longer passes it through: `operating_system_id` is
 %   OPTIONAL (Jess Haley, 2026-10-21 [calculation-os-optional]), so the edge is
 %   omitted, never invented.
@@ -25,6 +27,18 @@ function bodies = jModelFit(preBody, blk, inputEdges)
 bodies = {preBody};
 subjectId = jSubjectOf(preBody, {'element_id', 'subject_id'});
 if isempty(subjectId)
+    % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once
+    % no v1 document passes through under it, so this document, refused on
+    % purpose, is carried whole as v1 with a note ([passthrough stays v1], Jess
+    % Haley, 2026-10-24) instead of passing through silently. Register rows
+    % carry-136 (fitcurve) and carry-137 (vmspikefit) cover it.
+    stamp = did2.convert.v1read.readStamp(preBody);
+    tag = '[carry-136]';
+    if strcmp(stamp.class_name, 'vmspikefit'); tag = '[carry-137]'; end
+    % carry-register: carry-136 carry-137
+    did2.convert.reportNote('carried_as_v1', stamp.class_name, jCarryId(preBody), ...
+        [tag ' awaiting_home: no element_id or subject_id, so no calculation subject ([passthrough stays v1])']);
     return;
 end
 [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);

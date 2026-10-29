@@ -25,8 +25,10 @@ function tests = testRawV1RoundTripIngestedEpochs
 %                                         with edges set
 %   No corpus of the four zips holds any of them.
 %
-%   All four pass through pass 1 unchanged, as before; each round trips as
-%   itself. No known findings.
+%   The two readers pass through pass 1 unchanged, as before (resolveEpochProbemap
+%   folds their files); vmneuralresponseresiduals and vmspikesummary, which no
+%   pass reads, are carried whole as v1 since 2026-10-29 ([one folder, final
+%   classes only], Jess Haley). Each round trips as itself. No known findings.
 tests = functiontests(localfunctions);
 end
 
@@ -40,17 +42,35 @@ r = runRaw(f(:, 2)');
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, size(f, 1));
 end
 
-function testFixturesRoundTripAsPassthroughs(testCase)
+function testFixturesRoundTripAsPassthroughsOrCarries(testCase)
+% INVERTED 2026-10-29 from testFixturesRoundTripAsPassthroughs, which asserted
+% all four were silent pass-1 passthroughs stamped did_v2. Decided by Jess
+% Haley, 2026-10-29 [one folder, final classes only] (did-schema
+% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% v1 document passes through under it. vmneuralresponseresiduals and
+% vmspikesummary (no V2 home, read by no later pass) are now carried whole as
+% v1 with a note ([passthrough stays v1]); the two readers still pass through
+% for resolveEpochProbemap, which folds their files.
 f = fixtures();
 for k = 1:size(f, 1)
     [label, v1] = f{k, :};
     out = runRaw(v1);
     verifyEmpty(testCase, out.quarantine, label);
     verifyEqual(testCase, numel(out.passthrough), 1, [label ': a pass-1 passthrough']);
-    verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
-        'did_v2', [label ': a passthrough is not a carry']);
+    isCarry = any(strcmp(v1.document_class.class_name, ...
+        {'vmneuralresponseresiduals', 'vmspikesummary'}));
+    if isCarry
+        verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
+            'did_v1', [label ': carried whole as v1']);
+        [carried, notes] = did2.unittest.helpers.carryNote({v1});
+        verifyTrue(testCase, carried, [label ': carried as the untouched v1 source']);
+        verifyTrue(testCase, contains(notes, 'has no V2 home'), notes);
+    else
+        verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
+            'did_v2', [label ': a passthrough is not a carry']);
+    end
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyFalse(testCase, r.carried, label);
+    verifyEqual(testCase, r.carried, isCarry, label);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
 end
 end

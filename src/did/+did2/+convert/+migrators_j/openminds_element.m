@@ -20,7 +20,9 @@ function v2Body = openminds_element(preBody)
 %   the asserted `variable`; the ontology id + label are the term `value`. It is
 %   a timeless subject_assertion (no interaction, no session anchor). 1 -> 1.
 %
-%   If no openMINDS block is present the document is carried unchanged.
+%   If no openMINDS block is present, or the block states an `openminds_id` or
+%   a `fields.description` (carry-128), the document is carried whole as v1
+%   with a `carried_as_v1` note.
 
 arguments
     preBody (1,1) struct
@@ -33,7 +35,17 @@ elseif isfield(preBody, 'openminds_element') && isstruct(preBody.openminds_eleme
     block = preBody.openminds_element;
 end
 if isempty(block)
-    v2Body = {preBody};                        % no openMINDS block: carry unchanged
+    % No openMINDS block: nothing to assert, so the document is carried whole
+    % as v1 ([passthrough stays v1], Jess Haley, 2026-10-24) rather than
+    % passed through silently under the retire class `openminds_element`
+    % ([one folder, final classes only], Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md: a retire class's V2 file is deleted
+    % once no v1 document passes through under it). No register row covers a
+    % missing block yet (a question for the team).
+    % carry-register: carry-146
+    did2.convert.reportNote('carried_as_v1', 'openminds_element', sourceIdOf(preBody), ...
+        '[carry-146] malformed: no openminds block, so no term to assert ([passthrough stays v1])');
+    v2Body = {preBody};
     return;
 end
 
@@ -41,6 +53,26 @@ variable = variableForType(jGetChar(block, 'openminds_type'));
 
 flds = struct();
 if isfield(block, 'fields') && isstruct(block.fields); flds = block.fields; end
+
+% [openMINDS element leftovers carried] (Decided by Jess Haley, 2026-10-29,
+% did-schema V_eta_go_forward_class_audit.md): "a v1 `openminds_element`
+% holding an `openminds_id` or a `fields.description` is carried whole as v1,
+% as for openMINDS subjects ([openMINDS subject leftovers])". The term
+% assertion keeps neither, so a document stating either is carried
+% (register row carry-128).
+omId = strtrim(jGetChar(block, 'openminds_id'));
+omDescription = strtrim(jGetChar(flds, 'description'));
+if ~isempty(omId) || ~isempty(omDescription)
+    held = {};
+    if ~isempty(omId); held{end+1} = sprintf('openminds_id "%s"', omId); end
+    if ~isempty(omDescription); held{end+1} = 'fields.description'; end
+    % carry-register: carry-128
+    did2.convert.reportNote('carried_as_v1', 'openminds_element', sourceIdOf(preBody), ...
+        sprintf(['[carry-128] awaiting_home: %s (the term assertion keeps neither) ' ...
+        '([openMINDS element leftovers carried])'], strjoin(held, ' and ')));
+    v2Body = {preBody};
+    return;
+end
 node = firstNonEmpty( ...
     jGetChar(flds, 'preferredOntologyIdentifier'), ...
     jGetChar(flds, 'ontologyIdentifier'), ...
@@ -88,6 +120,13 @@ function out = deCamel(s)
 s = char(s);
 out = lower(strtrim(regexprep(s, '([a-z0-9])([A-Z])', '$1 $2')));
 if isempty(out); out = 'openminds entity'; end
+end
+
+function id = sourceIdOf(preBody)
+%SOURCEIDOF The v1 document's base.id, or '' (did2.convert.v1read.readBase).
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
 end
 
 function s = firstNonEmpty(varargin)
