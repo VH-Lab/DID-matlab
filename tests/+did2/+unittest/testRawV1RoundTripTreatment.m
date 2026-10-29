@@ -52,15 +52,15 @@ end
 function f = knownFindings()
 % One row per v1 field a writer-shaped document loses today. Open questions,
 % reported to the team; nothing here is decided. {fixture, path, why}
+%
+% INVERTED 2026-10-29: the four rows "no migrator reads the offset time" / "no
+% migrator reads the duration" of 'Birren CNO in the bath' and 'treatmentMaker
+% drug at an UBERON site' are gone. [drug end and duration on the anchor]
+% (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md) writes them to the anchor's `value.end` and
+% `value.duration`, so both fixtures now round trip them
+% (testADrugsOffsetAndDurationAreItsAnchorsEndAndDuration).
 f = { ...
-    'Birren CNO in the bath', 'treatment_drug.administration_offset_time', ...
-        'no migrator reads the offset time'; ...
-    'Birren CNO in the bath', 'treatment_drug.administration_duration', ...
-        'no migrator reads the duration'; ...
-    'treatmentMaker drug at an UBERON site', 'treatment_drug.administration_offset_time', ...
-        'no migrator reads the offset time'; ...
-    'treatmentMaker drug at an UBERON site', 'treatment_drug.administration_duration', ...
-        'no migrator reads the duration'; ...
     'Birren DREADD virus in the bath', 'virus_injection.virus_AdministrationPND', ...
         'no migrator reads the postnatal day'; ...
     'virus at V1', 'virus_injection.virusLocation_name', ...
@@ -136,6 +136,74 @@ verifyTrue(testCase, any(strcmp('treatment_drug.mixture_table', [r.matched, r.eq
     'the mixture table is rebuilt: as written, or row by row');
 verifyTrue(testCase, any(strcmp('treatment_drug.location_name', r.restated)), ...
     'an immersion''s location is the bath');
+end
+
+function testADrugsOffsetAndDurationAreItsAnchorsEndAndDuration(testCase)
+% INVERTED 2026-10-29 from the knownFindings rows "no migrator reads the
+% offset time" / "no migrator reads the duration". [drug end and duration on
+% the anchor] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): "`administration_offset_time` ->
+% `absolute_time_reference.value.end`; `administration_duration` ->
+% `absolute_time_reference.value.duration`". The Birren row writes local times
+% (no Z) and the duration in days (NDI-matlab main +birren/TreatmentCreator.m
+% "newRow{12} = 2; % duration in days").
+out = runRaw(birrenCno());
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'converted, not carried');
+v = anchorValue(testCase, out);
+verifyEqual(testCase, char(v.start.source_value), '2024-05-30T00:00:00');
+verifyEqual(testCase, char(v.end.source_value), '2024-06-01T00:00:00');
+verifyFalse(testCase, isfield(v.end, 'utc'), 'a local time is not normalised');
+verifyEqual(testCase, double(v.duration.source_value), 2);
+verifyEqual(testCase, double(v.duration.seconds), 2 * 86400);
+verifyEqual(testCase, char(v.duration.source_unit.name), 'day');
+verifyEmpty(testCase, char(v.duration.source_unit.node), ...
+    'no registered term holds the day (V_eta_source_unit_plan.md item 4)');
+r = did2.convert.roundtrip.check(birrenCno(), out.migrated);
+verifyTrue(testCase, any(strcmp('treatment_drug.administration_offset_time', r.matched)));
+verifyTrue(testCase, any(strcmp('treatment_drug.administration_duration', r.matched)));
+end
+
+function testADrugsUtcEndIsNormalisedWithItsStart(testCase)
+% [drug end and duration on the anchor]: with UTC times (the template's
+% "YYYY-MM-DDThh:mm:ssZ"), the end is normalised like the start, and the three
+% agree (rule end_consistent: end = start + duration)
+v1 = drugAtSite();
+v1.treatment_drug.administration_onset_time = '2024-06-01T09:15:00Z';
+v1.treatment_drug.administration_offset_time = '2024-06-01T09:16:00Z';
+v1.treatment_drug.administration_duration = 1/1440;
+v1 = jsondecode(jsonencode(v1));
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+v = anchorValue(testCase, out);
+verifyEqual(testCase, char(v.start.utc), '2024-06-01T09:15:00Z');
+verifyEqual(testCase, char(v.end.utc), '2024-06-01T09:16:00Z');
+verifyEqual(testCase, char(v.end.source_value), '2024-06-01T09:16:00Z');
+verifyEqual(testCase, double(v.duration.seconds), 60, 'AbsTol', 1e-6);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyEmpty(testCase, r.lost, describeLost(r));
+verifyEmpty(testCase, r.invented, strjoin(r.invented, ', '));
+end
+
+function testADrugsDisagreeingUtcTimesWriteNoEndOrDuration(testCase)
+% NOT DECIDED (reported to the team): UTC onset, offset and duration that the
+% rule end_consistent rejects. The anchor never holds an end and a duration
+% that contradict its start (the document would not validate); neither is
+% written, as before [drug end and duration on the anchor], and the round trip
+% reports both lost
+v1 = drugAtSite();
+v1.treatment_drug.administration_onset_time = '2024-06-01T09:15:00Z';
+v1.treatment_drug.administration_offset_time = '2024-06-01T09:16:00Z';
+v1.treatment_drug.administration_duration = 1;
+v1 = jsondecode(jsonencode(v1));
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+v = anchorValue(testCase, out);
+verifyFalse(testCase, isfield(v, 'end'));
+verifyFalse(testCase, isfield(v, 'duration'));
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyEqual(testCase, reshape(sort({r.lost.path}), 1, []), ...
+    {'treatment_drug.administration_duration', 'treatment_drug.administration_offset_time'});
 end
 
 function testADilutionOfZeroIsRestatedAndAnyOtherIsNot(testCase)
@@ -360,6 +428,20 @@ try
 catch
     s = class(v);
 end
+end
+
+function v = anchorValue(testCase, out)
+% the `value` of the one absolute_time_reference the migration emitted
+v = [];
+n = 0;
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if strcmp(b.document_class.class_name, 'absolute_time_reference')
+        v = b.absolute_time_reference.value;
+        n = n + 1;
+    end
+end
+assertEqual(testCase, n, 1, 'one absolute anchor');
 end
 
 function out = runRaw(v1)
