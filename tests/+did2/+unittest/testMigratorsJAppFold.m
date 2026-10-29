@@ -361,7 +361,10 @@ verifyEmpty(testCase, out.quarantine);
 sw  = softwareNamed(testCase, out, 'ndi.app.spikesorter');
 obs = onlyClass(testCase, out, 'calculation+label');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
-verifyEqual(testCase, obs.get('interaction.method.term.name'), 'kiasort');
+% INVERTED 2026-10-29 from method term 'kiasort': [method terms are general]
+% (Jess Haley, 2026-10-26, did-schema V_eta_go_forward_class_audit.md) -- the
+% method term is wikidata:Q2003571 "Spike sorting"; the sorter is the software.
+verifyEqual(testCase, char(obs.get('interaction.method.term.node')), 'wikidata:Q2003571');
 end
 
 function testSorterObservationValueIsInItsOpaqueBody(testCase)

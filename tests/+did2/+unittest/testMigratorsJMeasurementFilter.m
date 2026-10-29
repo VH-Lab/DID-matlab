@@ -249,8 +249,11 @@ function testACarriedPyraviewIsValidatedNowhereAgainstVEta(testCase)
 % document is v1 end to end ([passthrough stays v1: how], [generic stage is
 % lossless], Jess Haley): stamped 'did_v1' by pass 1, not validated by it (with
 % Validate ON), and refused by no V_eta validation after it.
+% a fractional order carries the pyraview whole as v1 ([small unread settings]
+% (2)); a differing label no longer does ([filter label is the method name],
+% Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md)
 blk = predFilterBlock();
-blk.label = 'my high-pass';            % carries the pyraview whole as v1
+blk.parameters.order = 4.5;
 out = did2.convert.v1_to_v2(pyraviewBody(blk), 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine, 'a carried document is never quarantined by V_eta');
 assertEqual(testCase, numel(out.migrated), 1);
@@ -577,13 +580,22 @@ out = runJ(pyraviewBody(blk));
 verifyEmpty(testCase, out.quarantine);
 end
 
-function testALabelThatDiffersFromItsTypeCarriesTheDocument(testCase)
-% [small unread settings] (2): `label` is left unwritten only when it equals
-% `type`; otherwise the pyraview is carried whole as v1.
+function testALabelThatDiffersFromItsTypeIsTheMethodName(testCase)
+% INVERTED 2026-10-28 from ...CarriesTheDocument ([small unread settings] (2),
+% carry-007): Decided by Jess Haley, 2026-10-27 [filter label is the method
+% name] (did-schema V_eta_go_forward_class_audit.md, answers did-schema #136).
+% A `label` that differs from `type` is written verbatim to the filter method's
+% `name`; the term and parameters still come from the type and the v1
+% parameters. A label equal to the type names nothing.
 blk = predFilterBlock();
 blk.label = 'my high-pass';
-out = runJ(pyraviewBody(blk));
-verifyPyraviewCarried(testCase, out, 'filter.label');
+m = filterMethodOf(testCase, blk);
+verifyEqual(testCase, m.method.name, 'my high-pass');
+verifyEqual(testCase, m.method.term.node, 'EMPTY:0000387');   % chebyshev_1, from the algorithm
+blk.label = blk.type;
+m = filterMethodOf(testCase, blk);
+verifyTrue(testCase, ~isfield(m.method, 'name') || isempty(m.method.name), ...
+    'a label that restates the type is not written');
 end
 
 function testAFractionalOrderCarriesTheDocument(testCase)

@@ -99,7 +99,12 @@ sb = body.stimulus_bath;
 if isfield(sb, 'location') && ~isempty(sb.location)
     loc = sb.location;
     if ~isstruct(loc) || ~isscalar(loc)
-        valueReasons{end+1} = 'stimulus_bath.location (not one {ontologyNode, name})';
+        % NDI's writer (+setup/+NDIMaker/stimulusDocMaker.m createBathDoc)
+        % writes location as one {ontologyNode, name} and mixture_table as
+        % text (writetablechar): anything else is a value no NDI writer
+        % produces, [values no writer produces are malformed] (Jess Haley,
+        % 2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-120
+        valueReasons{end+1} = '[carry-120] stimulus_bath.location (not one {ontologyNode, name})';
     else
         fns = fieldnames(loc);
         for k = 1:numel(fns)
@@ -112,7 +117,7 @@ end
 if isfield(sb, 'mixture_table') && ~isempty(sb.mixture_table)
     mt = sb.mixture_table;
     if ~(ischar(mt) || (isstring(mt) && isscalar(mt)))
-        valueReasons{end+1} = 'stimulus_bath.mixture_table (not text)';
+        valueReasons{end+1} = '[carry-120] stimulus_bath.mixture_table (not text)';  % see location above
     end
 end
 end

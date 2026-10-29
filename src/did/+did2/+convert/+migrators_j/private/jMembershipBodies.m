@@ -23,10 +23,19 @@ function bodies = jMembershipBodies(preBody, entries)
 %   2026-10-26): its `session_reference` is dropped when it equals the session
 %   entity's local_identifier (did2.convert.sessionReferences), and its opener
 %   class is a "software class" parameter of the "database ingestion" method.
+%   A LINKED session's reference follows the same rule ([linked session
+%   reference follows the ingested rule], Jess Haley, 2026-10-27): dropped when
+%   it equals the session entity's local_identifier, else carried (carry-074).
+%   THE OPENER ([session opener inputs], Jess Haley, 2026-10-27): inputs 1 and 3
+%   are the copies (ndi.session.dir creator_args() is {reference, path, id});
+%   a stated `session_creator` other than `ndi.session.dir` carries the
+%   membership (carry-119), and so does any non-empty
+%   `session_creator_input4..6`, which NDI-matlab +ndi/dataset.m never reads
+%   (carry-075).
 %   Everything else is carried: with any part of an entry unplaced -- no
-%   `is_linked`, an ingested session's reference that differs (carry-060) or
-%   whose session is not in the batch, a linked session's reference, any other
-%   input -- the document is returned UNCHANGED, carried whole as v1
+%   `is_linked`, a reference that differs (carry-060 ingested, carry-074
+%   linked) or whose session is not in the batch, another opener, input 4..6,
+%   any other input -- the document is returned UNCHANGED, carried whole as v1
 %   ([generic stage is lossless]).
 %   Shared Brainstorm-J (+migrators_j) helper.
 
@@ -52,10 +61,9 @@ for k = 1:numel(entries)
         relation, method, params); %#ok<AGROW>
 end
 if ~isempty(unplaced)
-    % carry-register: carry-060 (an ingested session's reference that differs
-    % from its local_identifier), carry-066 (is_linked not stated), carry-068
-    % (is_linked not readable), carry-069 (a session not in the batch); none
-    % for: a linked session's reference, or a creator input that is not a copy
+    % carry-register: carry-060 carry-066 carry-068 carry-069 carry-074 carry-075
+    %   carry-119; none for: a linked session not in the batch, or an input
+    %   1..3 that is not a copy
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     bodies = {preBody};
@@ -92,32 +100,58 @@ if ~(islogical(linked) || isnumeric(linked)) || ~isscalar(linked) || isnan(doubl
     return;
 end
 linked = logical(linked);
-reference = jGetChar(e, 'session_reference');
-if ~isempty(strtrim(reference))
-    if linked
-        why = 'session_reference of a linked session (open: no home decided)';
-        return;
-    end
-    % [ingested session membership] (Jess Haley, 2026-10-26): an ingested
-    % session's reference is dropped when it equals the session entity's
-    % local_identifier (recoverable from it); when it differs the document is
-    % carried as v1 (carry-060). The session is read from the batch
-    % (did2.convert.sessionReferences); one not in the batch cannot be compared.
-    [li, found] = did2.convert.sessionReferences('get', memberSession);
-    if ~found
-        why = ['[carry-069] session_reference (the session is not in the batch, so it ' ...
-            'was not compared with its local_identifier)'];
-        return;
-    end
-    if ~strcmp(li, reference)
-        why = sprintf(['[carry-060] session_reference "%s" (differs from the ' ...
-            'session''s local_identifier "%s")'], reference, li);
+creator = strtrim(jGetChar(e, 'session_creator'));
+% [session opener inputs] (Jess Haley, 2026-10-27): "a membership whose
+% `session_creator` is not `ndi.session.dir` is carried whole as v1,
+% `needs_mapping`" (carry-119). Every writer states one (+ndi/dataset.m sets
+% class(ndi_session_obj)); an unstated creator writes no "software class"
+% parameter, as before.
+if ~isempty(creator) && ~strcmp(creator, 'ndi.session.dir')
+    why = sprintf('[carry-119] session_creator "%s" (not ndi.session.dir)', creator);
+    return;
+end
+% [session opener inputs]: "a non-empty `session_creator_input4..6` (never
+% read by NDI-matlab `+ndi/dataset.m`) carries the membership whole as v1"
+% (carry-075), a copy or not
+for n = 4:6
+    if ~isempty(strtrim(inputText(e, sprintf('session_creator_input%d', n))))
+        why = sprintf('[carry-075] session_creator_input%d (not empty)', n);
         return;
     end
 end
-creator = strtrim(jGetChar(e, 'session_creator'));
+reference = jGetChar(e, 'session_reference');
+if ~isempty(strtrim(reference))
+    % [ingested session membership] (Jess Haley, 2026-10-26), and for a linked
+    % session [linked session reference follows the ingested rule] (Jess
+    % Haley, 2026-10-27): the reference is dropped when it equals the session
+    % entity's local_identifier (recoverable from it); when it differs the
+    % document is carried as v1 (carry-060 ingested, carry-074 linked). The
+    % session is read from the batch (did2.convert.sessionReferences); one not
+    % in the batch cannot be compared.
+    [li, found] = did2.convert.sessionReferences('get', memberSession);
+    if ~found
+        if linked
+            why = ['session_reference of a linked session (the session is not in ' ...
+                'the batch, so it was not compared with its local_identifier)'];
+        else
+            why = ['[carry-069] session_reference (the session is not in the batch, so it ' ...
+                'was not compared with its local_identifier)'];
+        end
+        return;
+    end
+    if ~strcmp(li, reference)
+        if linked
+            why = sprintf(['[carry-074] session_reference "%s" of a linked session ' ...
+                '(differs from the session''s local_identifier "%s")'], reference, li);
+        else
+            why = sprintf(['[carry-060] session_reference "%s" (differs from the ' ...
+                'session''s local_identifier "%s")'], reference, li);
+        end
+        return;
+    end
+end
 path = '';
-for n = 1:6
+for n = 1:3
     v = strtrim(inputText(e, sprintf('session_creator_input%d', n)));
     if isempty(v) || strcmp(v, memberSession) || strcmp(v, strtrim(reference))
         continue;   % absent, or a copy of the session's id / reference

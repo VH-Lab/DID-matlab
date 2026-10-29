@@ -190,6 +190,29 @@ verifyEmpty(testCase, r.invented);
 verifyEmpty(testCase, r.unplaced);
 end
 
+function testAnOpenmindsSubjectIdIsReadBackThroughTheEquivalentList(testCase)
+% [term equivalents recorded] (Jess Haley, 2026-10-27), the round trip read:
+% the inverse compares a v1 `openminds_id` through did2.convert.
+% openmindsIdRebuilds, the migrator's own test, so it accepts exactly the ids
+% the migrator converts; the rebuilt field stays '' so a writer document that
+% states no id (JH's) is not reported as inventing one
+sex = openmindsV1('wb_om_sex2', 'openminds_subject', 'subject_id', 'BiologicalSex', ...
+    'hermaphrodite', 'PATO:0001340', '', '');
+out = did2.convert.v1_to_v2({sex}, 'Validate', false, 'TargetVersion', 'V_eta');
+bodies = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+[v1, spec] = did2.convert.roundtrip.openminds_subject(bodies);
+verifyEqual(testCase, v1.openminds.openminds_id, '');
+k = find(strcmp({spec.same.path}, 'openminds.openminds_id'));
+assertNumElements(testCase, k, 1, 'the inverse reads the id back');
+iri = 'https://openminds.om-i.org/instances/biologicalSex/hermaphrodite';
+fn = spec.same(k).fn;
+verifyEqual(testCase, fn(iri, ''), ...
+    did2.convert.openmindsIdRebuilds('PATO:0001340', iri), ...
+    'the round trip accepts an id exactly when the migrator would convert it');
+r = did2.convert.roundtrip.check(sex, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject (no id)', {});
+end
+
 function testAnOpenmindsElementReportsWhatItDoesNotKeep(testCase)
 % Dab's shape: a cell type with an openMINDS id and a description; the
 % migrator keeps neither, and the round trip says so

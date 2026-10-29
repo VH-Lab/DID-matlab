@@ -113,16 +113,13 @@ function v2Body = metadata_editor(preBody)
 %   RelatedPublication). The guard is here because the failure mode is silent
 %   and undetectable, not because a cell has been observed.
 %
-%   OPEN, FOUND WHILE DOING THIS, DELIBERATELY NOT FIXED HERE (out of scope --
-%   a different reader, and it changes what is emitted): an author with TWO OR
-%   MORE affiliations loses all of them. `AuthorData.addAffiliation` grows the
-%   field into a struct ARRAY (`affiliation(end+1) = affiliationStruct`, +class/
-%   AuthorData.m), and `nestedChar` below walks only SCALAR structs
-%   (`isstruct(cur) && isscalar(cur)`), so it returns '' and no organization
-%   and no `affiliated_with` edge is minted. This is not a round-trip artefact:
-%   it fails identically on a hand-built struct fixture. Same silent-loss
-%   family, same four blind detectors; needs a team call on whether a person
-%   gets one `affiliated_with` edge per affiliation.
+%   SEVERAL AFFILIATIONS: `AuthorData.addAffiliation` grows an author's
+%   `affiliation` into a struct ARRAY (`affiliation(end+1) = affiliationStruct`,
+%   +class/AuthorData.m). Each affiliation gets its own `affiliated_with`
+%   relation (schema:affiliation) to its organization, in the order v1 lists
+%   them. Decided by Jess Haley, 2026-10-27 [one affiliation relation each]
+%   (did-schema V_eta_go_forward_class_audit.md; answers did-schema #148),
+%   replacing the carry-054 interim that carried such a document whole as v1.
 %
 %   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
 %   2026-10-26 [migrators read raw v1], did-schema
@@ -205,19 +202,12 @@ ms = getScalarStruct(block, 'metadata_structure');
 % migrator cannot place carry the document WHOLE as v1 instead of being dropped:
 %   - an EthicsAssessment that did2.convert.ethicsJurisdiction does not
 %     recognise (it made no statement, only a report note);
-%   - an author with two or more affiliations (only a scalar affiliation was
-%     read, so every one of them was lost; see "OPEN" in the header).
+%   - (an author with several affiliations is no longer one of them: each
+%     affiliation gets its own relation, [one affiliation relation each].)
 unplaced = {};
 ethicsText = getChar(ms, 'EthicsAssessment');
 if ~isempty(strtrim(ethicsText)) && isempty(did2.convert.ethicsJurisdiction(ethicsText))
     unplaced{end+1} = sprintf('[carry-044] EthicsAssessment "%s"', strtrim(ethicsText));
-end
-authorList = getStructArray(ms, 'Author');
-for i = 1:numel(authorList)
-    if isfield(authorList(i), 'affiliation') && numel(authorList(i).affiliation) > 1
-        unplaced{end+1} = sprintf('[carry-054] Author(%d).affiliation (%d affiliations)', ...
-            i, numel(authorList(i).affiliation)); %#ok<AGROW>
-    end
 end
 % [dataset form terms] (Decided by Jess Haley, 2026-10-25, did-schema
 % V_eta_go_forward_class_audit.md; terms [census terms], 2026-10-26): the form's
@@ -242,7 +232,7 @@ for listField = {'Subjects', 'SpeciesList', 'StrainList', 'BiologicalSexList'}
     end
 end
 if ~isempty(unplaced)
-    % carry-register: carry-043 carry-044 carry-054 carry-105 (the items
+    % carry-register: carry-043 carry-044 carry-105 (the items
     %   above). A form field
     %   whose binding the loaded schema does not hold is not a carry: it
     %   errors in datasetFormTerms ([pipeline defects are not carries])
@@ -304,8 +294,12 @@ for i = 1:numel(authors)
         buildGids({'ORCID', orcid}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, personId, 'has_author', i - 1);   % order counts from 0 ([author order from 0], Jess Haley 2026-10-21)
 
-    affName = nestedChar(a, {'affiliation', 'memberOf', 'fullName'});
-    if ~isempty(affName)
+    % one affiliated_with relation per affiliation, in v1's order ([one
+    % affiliation relation each], Jess Haley 2026-10-27)
+    affs = getStructArray(a, 'affiliation');
+    for j = 1:numel(affs)
+        affName = nestedChar(affs(j), {'memberOf', 'fullName'});
+        if isempty(affName); continue; end
         [orgId, orgBody] = orgFor(preBody, affName, orgIds);
         if ~isempty(orgBody); bodies = [bodies, orgBody]; end
         bodies{end+1} = relationDoc(preBody, personId, orgId, 'affiliated_with', []);

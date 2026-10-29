@@ -11,6 +11,20 @@ function [v1, spec] = openminds_subject(bodies)
 %   same type. A document the migrator carries (an `openminds_id` that does
 %   not rebuild, a lab-made strain) is stamped did_v1 and never reaches this
 %   inverse (did2.convert.roundtrip.check compares the carry itself).
+
+%   THE ROUND TRIP READ OF `openminds_id` ([term equivalents recorded], Jess
+%   Haley, 2026-10-27: "Build pending: DID-matlab (the fill and the round trip
+%   read)"). The migrator converts a document that states an `openminds_id`
+%   only when the id rebuilds from the term through the registry's
+%   `equivalent` list (did2.convert.openmindsIdRebuilds; [openMINDS subject
+%   leftovers]); otherwise it carries it (carry-116). So the round trip reads
+%   the id back through that same list: a v1 id the term's `equivalent` list
+%   rebuilds is the same id (spec.same), compared by the function the
+%   migrator used, so the round trip accepts exactly the ids the migrator
+%   converted. The rebuilt field itself stays '' (private/openmindsInverse):
+%   the assertion does not record whether v1 stated an id, and a writer
+%   document that states none (JH's, testWholeBatchRoundTrip) would otherwise
+%   be reported as an INVENTED id.
 %
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.openminds_subject.
@@ -24,6 +38,38 @@ if isfield(v1, 'openminds')
     spec.same(end+1) = struct('path', 'openminds.matlab_type', ...
         'fn', @(a, b) sameTypeName(a, b), 'why', ['`matlab_type` is notation ' ...
         '([openMINDS subject leftovers], Jess Haley, 2026-10-27)']);
+    node = termNodeOf(v1);
+    spec.same(end+1) = struct('path', 'openminds.openminds_id', ...
+        'fn', @(a, b) idRebuilds(node, a), 'why', ['the id is rebuilt from the ' ...
+        'term through the registry''s `equivalent` list ([openMINDS subject ' ...
+        'leftovers], [term equivalents recorded], Jess Haley, 2026-10-27)']);
+end
+end
+
+function tf = idRebuilds(node, v1Id)
+% the v1 `openminds_id` V1ID is the one the term NODE's `equivalent` list
+% rebuilds (did2.convert.openmindsIdRebuilds, the migrator's own test)
+tf = false;
+if isempty(node) || ~(ischar(v1Id) || (isstring(v1Id) && isscalar(v1Id)))
+    return;
+end
+tf = did2.convert.openmindsIdRebuilds(node, v1Id);
+end
+
+function node = termNodeOf(v1)
+% the value term's node, which private/openmindsInverse writes to
+% preferredOntologyIdentifier (a controlled term) or ontologyIdentifier (a
+% Strain)
+node = '';
+if ~isfield(v1.openminds, 'fields') || ~isstruct(v1.openminds.fields)
+    return;
+end
+f = v1.openminds.fields;
+for nm = {'preferredOntologyIdentifier', 'ontologyIdentifier'}
+    if isfield(f, nm{1}) && ischar(f.(nm{1})) && ~isempty(strtrim(f.(nm{1})))
+        node = strtrim(f.(nm{1}));
+        return;
+    end
 end
 end
 

@@ -166,17 +166,59 @@ verifyTrue(testCase, any(strcmp('session_in_a_dataset.session_creator_input3', r
     'the id copy in input3 is restated');
 end
 
-function testMembershipsTheMigratorCannotPlaceAreCarried(testCase)
+function testALinkedMembershipConvertsAndRoundTrips(testCase)
+% INVERTED 2026-10-29 from the 'linked (its reference has no home)' case of
+% testMembershipsTheMigratorCannotPlaceAreCarried. [linked session reference
+% follows the ingested rule] (Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): a linked session's reference is dropped
+% when it equals the session entity's local_identifier, as an ingested one's;
+% its opener and path are the method's parameters ([session opener inputs])
 s = writerSession('sd_A', 'sess_A', '2021-04-01');
+m = writerMembership('sid_L', 'ds_1', 'sess_A', '2021-04-01', 1, '/data/2021-04-01');
+out = runRaw({s, m});
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'both converted');
+docs = membershipDocs(out, 'sess_A');
+verifyEqual(testCase, numel(docs), 3, 'dataset entity, relation, session entity');
+r = did2.convert.roundtrip.check(m, docs);
+verifyFalse(testCase, r.carried);
+verifyRoundTrip(testCase, r, 'linked membership', findingsFor('membership'));
+verifyTrue(testCase, any(strcmp('session_in_a_dataset.session_creator_input1', r.restated)), ...
+    'the reference copy in input1 is restated');
+verifyTrue(testCase, any(strcmp('session_in_a_dataset.session_creator_input3', r.restated)), ...
+    'the id copy in input3 is restated');
+end
+
+function testMembershipsTheMigratorCannotPlaceAreCarried(testCase)
+% The 'linked (its reference has no home)' case is INVERTED 2026-10-29 into
+% testALinkedMembershipConvertsAndRoundTrips. A linked reference that differs
+% is carry-074 ([linked session reference follows the ingested rule]); an
+% opener other than ndi.session.dir is carry-119 and a non-empty input 4..6 is
+% carry-075 ([session opener inputs]; Jess Haley, 2026-10-27)
+s = writerSession('sd_A', 'sess_A', '2021-04-01');
+other = writerMembership('sid_O', 'ds_1', 'sess_A', '2021-04-01', 0, '');
+other.session_in_a_dataset.session_creator = 'ndi.session.other';
+otherL = writerMembership('sid_OL', 'ds_1', 'sess_A', '2021-04-01', 1, '/data/x');
+otherL.session_in_a_dataset.session_creator = 'ndi.session.other';
+later = writerMembership('sid_I', 'ds_1', 'sess_A', '2021-04-01', 0, '');
+later.session_in_a_dataset.session_creator_input4 = 'an extra argument';
+laterL = writerMembership('sid_IL', 'ds_1', 'sess_A', '2021-04-01', 1, '/data/x');
+laterL.session_in_a_dataset.session_creator_input6 = '2021-04-01';
 cases = { ...
-    'linked (its reference has no home)', {s, writerMembership('sid_L', 'ds_1', 'sess_A', ...
+    'linked reference differs', {s, writerMembership('sid_L', 'ds_1', 'sess_A', ...
+        'other', 1, '/data/2021-04-01')}, '[carry-074]'; ...
+    'linked session not in the batch', {writerMembership('sid_LN', 'ds_1', 'sess_A', ...
         '2021-04-01', 1, '/data/2021-04-01')}, 'session_reference of a linked session'; ...
     'reference differs', {s, writerMembership('sid_D', 'ds_1', 'sess_A', 'other', 0, '')}, ...
         '[carry-060]'; ...
     'session not in the batch', {writerMembership('sid_N', 'ds_1', 'sess_A', '2021-04-01', 0, '')}, ...
         '[carry-069]'; ...
     'is_linked empty', {s, writerMembership('sid_E', 'ds_1', 'sess_A', '2021-04-01', [], '')}, ...
-        '[carry-066]'};
+        '[carry-066]'; ...
+    'another opener (ingested)', {s, other}, '[carry-119]'; ...
+    'another opener (linked)', {s, otherL}, '[carry-119]'; ...
+    'input 4 not empty (ingested)', {s, later}, '[carry-075]'; ...
+    'input 6 not empty (linked)', {s, laterL}, '[carry-075]'};
 for k = 1:size(cases, 1)
     [label, batch, cite] = cases{k, :};
     m = batch{end};
@@ -228,8 +270,16 @@ end
 % ===================== metadata_editor ==================================
 
 function testWriterFormsConvertAndRoundTrip(testCase)
+% 'two affiliations': AuthorData.addAffiliation grows `affiliation` into a
+% struct array; each gets its own affiliated_with relation and the round trip
+% rebuilds both, in order (Decided by Jess Haley, 2026-10-27 [one affiliation
+% relation each], did-schema V_eta_go_forward_class_audit.md).
+two = fullForm();
+two.Author.affiliation = struct('memberOf', {struct('fullName', 'Brandeis University'), ...
+    struct('fullName', 'Waltham Data Science')});
 cases = {'Soph form', writerEditor('me_S', 'ds_S', sophForm()); ...
-    'full form', writerEditor('me_F', 'ds_F', fullForm())};
+    'full form', writerEditor('me_F', 'ds_F', fullForm()); ...
+    'two affiliations', writerEditor('me_A', 'ds_A', two)};
 for k = 1:size(cases, 1)
     [label, v1] = cases{k, :};
     out = runRaw(v1);
@@ -328,6 +378,8 @@ function testWriterShapesValidate(testCase)
 % Validate false)
 s = writerSession('sd_A', 'sess_A', '2021-04-01');
 batch = {s, writerMembership('sid_A', 'ds_1', 'sess_A', '2021-04-01', 0, ''), ...
+    writerSession('sd_B', 'sess_B', '2021-04-02'), ...
+    writerMembership('sid_B', 'ds_1', 'sess_B', '2021-04-02', 1, '/data/2021-04-02'), ...
     writerRemote('dr_1', 'ds_1'), writerEditor('me_S', 'ds_S', sophForm()), ...
     writerEditor('me_F', 'ds_F', fullForm()), writerPresentation('sp_1')};
 out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');

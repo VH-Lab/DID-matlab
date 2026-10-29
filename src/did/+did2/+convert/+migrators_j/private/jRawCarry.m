@@ -27,9 +27,14 @@ function carried = jRawCarry(className, preBody, collision, unplaced, row, value
 %   (a cellstr): a field the template DOES define whose value the migrator
 %   cannot place or would rewrite (an ndim other than the writer's, a unit no
 %   term is known for, a fractional cluster index). Those are not malformed by
-%   that decision and have no register row yet (a question for the team); the
-%   note lists them after the row's, or alone. A caller whose reasons DO have
-%   a row writes the tag before each item itself: jCalculation passes
+%   that decision; the note lists them after the row's, or alone. A caller
+%   whose reasons DO have a row writes the tag before each item itself:
+%   '[carry-120] <path> (why)' for a value no NDI writer produces (Decided by
+%   Jess Haley, 2026-10-27 [values no writer produces are malformed], did-schema
+%   V_eta_go_forward_class_audit.md: kilosort_clusters / kiasort_clusters,
+%   probe_geometry.ndim, electrode_offset_voltage.temperature, measurement with
+%   no statement, stimulus_bath); an item with no tag still has no register
+%   row (a question for the team). jCalculation passes
 %   '[carry-056] <path>' (a field the template defines, which the writer
 %   writes, with no V2 home yet) and '[carry-016] <path>' (Decided by Jess
 %   Haley, 2026-10-27 [tuning stray fields are malformed]).
@@ -68,7 +73,9 @@ if ~isempty(unplaced)
         rest = ['; ' rest];
     end
     % carry-register: carry-100; carry-016 carry-056 via jCalculation.m (its
-    %   VALUEREASONS carry their tags); none for an untagged VALUEREASONS item
+    %   VALUEREASONS carry their tags); carry-120 via ../kilosort_clusters.m
+    %   (and the other VALUEREASONS callers that tag it); none for an untagged
+    %   VALUEREASONS item
     did2.convert.reportNote('carried_as_v1', className, id, ...
         ['[carry-100] malformed: outside the NDI template, unplaced: ' ...
         strjoin(unplaced, ', ') rest]);
@@ -76,8 +83,7 @@ if ~isempty(unplaced)
 end
 % carry-register: carry-016 carry-056 carry-100 via jCalculation.m (its
 %   VALUEREASONS carry their tags: carry-100 for input edges whose names do
-%   not rebuild, [input names rebuild from the input class]); none for an
-%   untagged item (a template field whose value the migrator cannot place or
-%   would rewrite; no row yet)
+%   not rebuild); carry-120 via ../kilosort_clusters.m (and other callers);
+%   none for an untagged item (no row yet)
 did2.convert.reportNote('carried_as_v1', className, id, rest);
 end

@@ -104,33 +104,6 @@ out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
 end
 
-function tf = schemaSaysAbstract(classSchema)
-%SCHEMASAYSABSTRACT True when a schema struct's header carries `abstract: true`.
-%
-%   A LOCAL COPY, ON PURPOSE. did2.schema.cache has this exact predicate --
-%   `classIsAbstract` -- and it is PRIVATE (+did2/+schema/cache.m:1434,
-%   `methods (Access = private)`), so a test calling it errors with
-%   MATLAB:class:MethodRestricted rather than failing a verification. The header
-%   is public data on the struct `getClass` hands back, so read that.
-%
-%   ABSENCE IS CONCRETE, and that is the whole subtlety: build_v_eta.py (deleted 2026-10-21) emits
-%   the key only on abstract classes, so a concrete one has no `abstract` field
-%   at all -- `image_stack` does not carry it. Both the logical and numeric
-%   spellings are accepted for the same reason the private method accepts both:
-%   jsondecode's output shape for a JSON `true` is not something a test should
-%   assume.
-tf = false;
-if ~isstruct(classSchema) || ~isfield(classSchema, 'document_class')
-    return;
-end
-dc = classSchema.document_class;
-if ~isstruct(dc) || ~isfield(dc, 'abstract')
-    return;
-end
-v = dc.abstract;
-tf = (islogical(v) && any(v)) || (isnumeric(v) && any(v == 1));
-end
-
 function v = depVal(doc, name)
 %DEPVAL Read an edge off a CONVERTED document.
 %
@@ -373,6 +346,28 @@ verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
     'https://openminds.om-i.org/instances/species/musMusculus', ix));
 verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:10090', ...
     'musMusculus', ix), 'a row with no equivalent list rebuilds nothing');
+end
+
+function testAnOpenmindsIriRebuildsThroughItsRegisteredCurie(testCase)
+% [term equivalents recorded] (Jess Haley, 2026-10-27): a filled `equivalent`
+% list holds CURIEs in a registered prefix and spelling (did-schema
+% check_term_registry R13). did-schema's CURIE registry writes the openMINDS
+% instance https://openminds.om-i.org/instances/<terminology>/<name> as
+% `openminds:<terminology>/<name>`, so v1's IRI id rebuilds through that form
+reg = struct('terms', {{struct('name', 'Caenorhabditis elegans', 'node', 'NCBITaxon:6239', ...
+    'equivalent', {{'openminds:species/caenorhabditisElegans'}})}});
+ix = did2.schema.termIndex(reg);
+base = 'https://openminds.om-i.org/instances/';
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/caenorhabditisElegans', ix, base));
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('ncbitaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/caenorhabditisElegans', ix, base), ...
+    'a CURIE''s prefix case is notation');
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/musMusculus', ix, base));
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.ebrains.eu/instances/species/caenorhabditisElegans', ix, base), ...
+    'an IRI outside the registered uri_base does not rebuild');
 end
 
 % ============ element -> subject (+ kind assertions + lineage) =========
@@ -1653,29 +1648,15 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image');
 end
 
 
-function testTheVEtaImageNameIsAbstractSoAPassthroughIsNotAnOption(testCase)
-% INVERTED for did-schema #88, and kept as THE INSTRUMENT for the two tests
-% above: their passthrough is legal only because `image` now resolves to a
-% CONCRETE did_v1 tombstone (deprecated/, #73 item 51). If `image` ever becomes
-% abstract again, or the tombstone leaves the validation set, this goes red and
-% the passthrough has to be re-examined. `image_stack` is checked beside it so
-% "concrete" is not read off a reader that answers false for everything.
-cache = did2.schema.cache.shared();
-try
-    imgSchema   = cache.getClass('image');
-    stackSchema = cache.getClass('image_stack');
-catch err
-    assumeFail(testCase, ...
-        ['DID_SCHEMA_PATH does not resolve the V_eta image classes (' ...
-         err.message ') -- this test measured nothing.']);
-    return;
-end
-verifyFalse(testCase, schemaSaysAbstract(imgSchema), ...
-    'V_eta `image` must be the CONCRETE did_v1 tombstone the passthrough validates against');
-verifyEqual(testCase, imgSchema.document_class.maturity_level, 'deprecated');
-verifyFalse(testCase, schemaSaysAbstract(stackSchema));
-end
-
+% RETIRED 2026-10-28 with did-schema's deprecated/ tombstones (Decided by Jess
+% Haley, 2026-10-27 [carried v1 validates against NDI templates], did-schema
+% V_eta_go_forward_class_audit.md): a carried or passed-through v1 document is
+% checked against NDI's v1 templates (did2.validate.v1Document), not a
+% did-schema tombstone, and one whose class has no V2 schema is counted
+% (summary.passthrough_unvalidated_no_schema_count), never quarantined
+% (v1_to_v2.m). This test asserted the `image` / `image_stack` schema EXISTS, which
+% that decision removes; the passthrough tests beside it, which assert no
+% quarantine, are the guard now.
 
 function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCase)
 % THE 4,563. NDI's own writer leaves subject_id empty on three of its seven
@@ -1686,8 +1667,9 @@ function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCa
 % required subject_id: an observation about nobody, invisible to every gate
 % because references.m skips empty edges.
 %
-% Note the fixture also pins WHY the passthrough is safe: image_stack came back
-% out of _DELETE_PHASE8 so the document has a schema to validate against.
+% The passthrough is safe without a V2 schema: since 2026-10-28 ([carried v1
+% validates against NDI templates]) a passed-through document whose class V2
+% does not hold is counted, not quarantined.
 v1 = struct();
 v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -2998,18 +2980,32 @@ verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
     'a schema defect is not a carry');
 end
 
-function testMetadataEditorAuthorWithTwoAffiliationsIsCarriedWholeAsV1(testCase)
-% [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
-% 2026-10-25): only a scalar affiliation was read, so an author with two lost
-% both (the header's "OPEN" note). The document is now carried whole as v1.
-v1 = metadataEditorDoc();
+function testMetadataEditorAuthorWithTwoAffiliationsGetsARelationEach(testCase)
+% INVERTED 2026-10-28 from ...IsCarriedWholeAsV1 (the carry-054 interim): Decided
+% by Jess Haley, 2026-10-27 [one affiliation relation each] (did-schema
+% V_eta_go_forward_class_audit.md, answers did-schema #148). An author with two
+% affiliations (AuthorData.addAffiliation's struct array) gets one
+% affiliated_with relation to each organization. Checked on the fixture shape
+% and on the jsondecode shape; the round trip of a writer-shaped form with two
+% affiliations is testRawV1RoundTripSession/testWriterFormsConvertAndRoundTrip.
 two = struct('memberOf', {struct('fullName', 'Analytical Society'), ...
     struct('fullName', 'Royal Society')});
-v1.metadata_editor.metadata_structure.Author(1).affiliation = two;
-out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-authors = out.migrated{1}.get('metadata_editor.metadata_structure.Author');
-verifyEqual(testCase, numel(authors(1).affiliation), 2);
+for viaJson = [false true]
+    v1 = metadataEditorDoc();
+    v1.metadata_editor.metadata_structure.Author(1).affiliation = two;
+    if viaJson
+        out = runJRoundTrip(v1);
+    else
+        out = runJ(v1);
+    end
+    verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+        'two affiliations are placed, not carried');
+    orgs = allOfClassJ(out.migrated, 'organization');
+    names = cellfun(@(o) o.get('entity.name'), orgs, 'UniformOutput', false);
+    verifyEqual(testCase, sum(strcmp(names, 'Royal Society')), 1);
+    % author 1: Analytical Society + Royal Society; author 2: Analytical Society
+    verifyEqual(testCase, countRelsByName(out.migrated, 'affiliated_with'), 3);
+end
 end
 
 function testMetadataEditorEthicsAssessmentIsTheJurisdiction(testCase)
@@ -3481,17 +3477,80 @@ end
 function testSessionMembershipOpenCasesAreCarried(testCase)
 % The open cases carry the document whole as v1 ([generic stage is lossless]):
 % an ingested session's `session_reference` whose session is not in the batch
-% (it cannot be compared with the session's local_identifier), and a LINKED
-% session's reference.
+% (it cannot be compared with the session's local_identifier). The linked half
+% of this test (a LINKED session's reference was always carried) is INVERTED
+% 2026-10-29 into testALinkedSessionsEqualReferenceIsDropped.
 v1 = writerSessionInADatasetDoc('member_sess_9');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
     '[carry-069] session_reference (the session is not in the batch'), ...
     'the note cites its carry register row');
+end
+
+function testALinkedSessionsEqualReferenceIsDropped(testCase)
+% INVERTED 2026-10-29 from the linked half of
+% testSessionMembershipOpenCasesAreCarried (which pinned: a LINKED session's
+% reference is carried). [linked session reference follows the ingested rule]
+% (Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a
+% linked session's `session_in_a_dataset.session_reference` is dropped when it
+% equals the session entity's `local_identifier`, else carried
+% `needs_mapping`" (carry-074).
+v1 = writerSessionInADatasetDoc('member_sess_9');
 v1.session_in_a_dataset.is_linked = 1;
+v1.session_in_a_dataset.session_creator_input2 = '/data/exp_demo';
 out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
-verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.count, 1);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+    'the membership was carried');
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+assertNotEmpty(testCase, rel);
+m = rel.get('relation.method');
+verifyEqual(testCase, char(m.term.node), 'EMPTY:0000400');
+p = m.parameters;
+if iscell(p); p = [p{:}]; end
+texts = arrayfun(@(x) char(x.text), p, 'UniformOutput', false);
+verifyEqual(testCase, sort(texts), sort({'ndi.session.dir', '/data/exp_demo'}), ...
+    'the reference is not a parameter: it is the session entity''s local_identifier');
+% differs: carried, carry-074
+out = runJ({v1sessionDoc('member_sess_9', 'another_name'), v1});
+n = out.summary.migration_notes.carried_as_v1;
+verifyEqual(testCase, n.count, 1);
+verifyTrue(testCase, contains(n.distinct_details{1}, '[carry-074]'), n.distinct_details{1});
+verifyEqual(testCase, n.register_rows, {'carry-074'});
+% not in the batch: carried (no register row yet)
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+end
+
+function testAMembershipsOtherOpenerOrLaterInputIsCarried(testCase)
+% [session opener inputs] (Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): "a membership whose `session_creator` is
+% not `ndi.session.dir` is carried whole as v1, `needs_mapping`" (carry-119);
+% "a non-empty `session_creator_input4..6` (never read by NDI-matlab
+% `+ndi/dataset.m`) carries the membership whole as v1" (carry-075). Both on
+% an ingested and on a linked membership whose session is in the batch.
+for linked = [0 1]
+    base = writerSessionInADatasetDoc('member_sess_9');
+    base.session_in_a_dataset.is_linked = linked;
+    v1 = base;
+    v1.session_in_a_dataset.session_creator = 'ndi.session.other';
+    out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+    n = out.summary.migration_notes.carried_as_v1;
+    verifyEqual(testCase, n.count, 1);
+    verifyTrue(testCase, contains(n.distinct_details{1}, '[carry-119]'), n.distinct_details{1});
+    verifyEqual(testCase, n.register_rows, {'carry-119'});
+    for k = 4:6
+        v1 = base;
+        % a copy of the reference is still carried: input 4..6 is never read
+        v1.session_in_a_dataset.(sprintf('session_creator_input%d', k)) = 'exp_demo';
+        out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+        n = out.summary.migration_notes.carried_as_v1;
+        verifyEqual(testCase, n.count, 1);
+        verifyTrue(testCase, contains(n.distinct_details{1}, ...
+            sprintf('[carry-075] session_creator_input%d', k)), n.distinct_details{1});
+        verifyEqual(testCase, n.register_rows, {'carry-075'});
+    end
+end
 end
 
 function testAnIngestedSessionsEqualReferenceIsDroppedAndItsCreatorKept(testCase)
@@ -4442,7 +4501,12 @@ out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'contrast_sensitivity_calculation', 'cs_1', 'neuron_cs');
 verifyEqual(testCase, depValuesJ(leaf, 'input_id'), {'resp_cs', 'pres_cs'});
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.contrast_sensitivity');
+% INVERTED 2026-10-29 from "the method term is the calculator class
+% 'ndi.calc.vis.contrast_sensitivity'": [method terms are general] (Jess Haley,
+% 2026-10-26, did-schema V_eta_go_forward_class_audit.md) -- the term names the
+% general procedure, a fit (OBI:0200072); the calculator is the software entity.
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');
+verifyNotEqual(testCase, lower(char(leaf.interaction.method.term.name)), 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, paramValueJ(leaf, 'threshold'), 1);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0.5 1 2 4]);
 csv = leaf.contrast_sensitivity.value;
@@ -5022,7 +5086,12 @@ verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
 obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, obs.base.id, 'ks_1');                            % id preserved
-verifyEqual(testCase, obs.interaction.method.term.name, 'kilosort');% method = algorithm
+% INVERTED 2026-10-29 from "method = algorithm" ('kilosort'): [method terms are
+% general] (Jess Haley, 2026-10-26, did-schema V_eta_go_forward_class_audit.md)
+% -- the method term is wikidata:Q2003571 "Spike sorting"; Kilosort is the
+% software entity.
+verifyEqual(testCase, char(obs.interaction.method.term.node), 'wikidata:Q2003571');
+verifyNotEqual(testCase, lower(char(obs.interaction.method.term.name)), 'kilosort');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_ks');
 % data_body AMENDMENT 5: no inline value, so the value is in data bodies; and
 % no data_type, because the body is opaque (Jess Haley, 2026-10-21)
@@ -5052,8 +5121,8 @@ verifyFalse(testCase, isfield(ob, 'data') && isfield(ob.data, 'dimensions') && ~
 end
 
 function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
-% Sibling of kilosort: kiasort_clusters decomposes identically (method 'kiasort',
-% kiasort_directory).
+% Sibling of kilosort: kiasort_clusters decomposes identically (method "Spike
+% sorting" since [method terms are general], kiasort_directory).
 body = struct();
 body.document_class = struct('class_name', 'kiasort_clusters', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'; 'app'}, 'class_version', {'1.0.0'; '1.0.0'}));
@@ -5073,7 +5142,9 @@ verifyTrue(testCase, any(strcmp(names, 'software')), ...
     'the app block must become a software entity, not vanish');
 obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, obs.base.id, 'ka_1');
-verifyEqual(testCase, obs.interaction.method.term.name, 'kiasort');
+% INVERTED 2026-10-29 from method 'kiasort': [method terms are general] (Jess
+% Haley, 2026-10-26) -- wikidata:Q2003571 "Spike sorting"; Kiasort is software.
+verifyEqual(testCase, char(obs.interaction.method.term.node), 'wikidata:Q2003571');
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, ob.data_body.filename, 'ka_out/session1');
 % [sorter keys] (Jess Haley, 2026-10-21): no keys on kiasort either
