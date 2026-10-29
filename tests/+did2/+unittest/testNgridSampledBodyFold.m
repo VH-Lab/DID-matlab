@@ -607,10 +607,19 @@ function testTheProductionShapeStillPassesThroughUnderValidation(testCase)
 % the schema half and the migrator half are LOCKSTEP, and this is the assertion
 % that notices if the `ngrid` superclass is removed from that tombstone before
 % the documents stop carrying the block.
+%
+% 2026-10-29: the production shape names only its table row, so it is now
+% CARRIED whole as v1, needs_mapping ([ngrid with no statement carried], Jess
+% Haley, did-schema V_eta_go_forward_class_audit.md). The body is the same
+% passthrough as before; the carry is noted, and still nothing quarantines.
 out = did2.convert.v1_to_v2(productionOntologyImage(), ...
     'Validate', true, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 verifyEqual(testCase, out.summary.migrated_count, 1);
+verifyEqual(testCase, numel(out.passthrough), 1);
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
+verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, '[carry-124] needs_mapping: ngrid'));
 end
 
 % ===================== fixtures ============================================

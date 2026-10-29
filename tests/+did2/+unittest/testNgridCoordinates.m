@@ -104,18 +104,32 @@ verifyError(testCase, @() did2.convert.migrators_j.super.ngrid(b), ...
     'did2:convert:ngridBaseMigratorShape');
 end
 
-% ===================== the base ngrid migrator is UNCHANGED ===============
+% ===================== the base ngrid migrator: a carry ===================
 
-function testBaseNgridMigratorStillReshapesAndDrops(testCase)
-% The base (+migrators) migrator is CORRECT for the class-preserving shape -- it declares ndims and
-% dim_sizes and has nowhere to put coordinates. This test exists so that a
-% future reader cannot mistake the V_eta override for a bug fix in the shared
-% migrator, and so that "carry it" cannot quietly leak into the base migrator.
-out = did2.convert.migrators.ngrid(v1NgridBody());
-verifyEqual(testCase, out.ngrid.ndims, 2);
-verifyEqual(testCase, out.ngrid.dim_sizes, [4 4]);
-verifyFalse(testCase, isfield(out.ngrid, 'coordinates'));
-verifyFalse(testCase, isfield(out.ngrid, 'data_size'));
+function testBaseNgridMigratorCarriesTheBlockUnchanged(testCase)
+% INVERTED 2026-10-29 from testBaseNgridMigratorStillReshapesAndDrops, which
+% pinned the base migrator's reshape (ndims, dim_sizes) and its deletion of
+% `coordinates` and `data_size`. [ngrid with no statement carried] (Decided by
+% Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a
+% standalone `ngrid` ... [is] carried whole as v1 `needs_mapping`" -- the only
+% document the base migrator still reaches (a superclass block gets the V2
+% override above). did-schema #227 recorded the loss this removes. The body is
+% returned unchanged and the carry is noted.
+b = v1NgridBody();
+b.document_class.class_name = 'ngrid';
+b.document_class.superclasses = struct('class_name', 'base', 'class_version', '1.0.0');
+b.depends_on = struct('name', {}, 'value', {});
+b = rmfield(b, 'ontology_image');
+did2.convert.reportNote('reset');
+out = did2.convert.migrators.ngrid(b);
+n = did2.convert.reportNote('pending', 'carried_as_v1');
+did2.convert.reportNote('reset');
+verifyEqual(testCase, out, b, 'the body is returned unchanged');
+verifyEqual(testCase, out.ngrid.coordinates, [1;2;3;4;1;2;3;4]);
+verifyEqual(testCase, out.ngrid.data_size, 8);
+verifyFalse(testCase, isfield(out.ngrid, 'ndims'));
+verifyFalse(testCase, isfield(out.ngrid, 'dim_sizes'));
+verifyEqual(testCase, n, 1, 'the carry is noted');
 end
 
 % ===================== end to end, through the dispatcher ==================

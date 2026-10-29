@@ -33,6 +33,12 @@ function tests = testMiscSingletons
 %                              class carries no edge, and `subject_statement`
 %                              is abstract. These tests gate the passthrough,
 %                              not the fold.
+%                              SINCE 2026-10-29: carried whole as v1,
+%                              needs_mapping ([binaryseries parameters
+%                              carried], Jess Haley, did-schema
+%                              V_eta_go_forward_class_audit.md: "each dataset
+%                              says which data body it describes"); the tests
+%                              below gate the carry.
 %     projectvar               stays a deprecated passthrough until real
 %                              documents exist to model its untyped `data`
 %                              field against.
@@ -252,38 +258,52 @@ end
 
 % ===================== binaryseries_parameters =============================
 
-function testBinaryseriesTemplatePlaceholdersAreDropped(testCase)
-% THE REPAIR. NDI's template supplies the CHAR '' for three fields its own
-% schema types `integer`, and V_eta takes its types from that schema. Against
-% +did2/+schema/cache.m there is NO empty representation that validates:
-% validateTypeShape runs unconditionally on a present field (cache.m:1169) and
-% `integer` demands isnumeric (cache.m:1318), so '' is a typeMismatch; [] is
-% numeric but fails mustBeScalar (cache.m:1200). Absence is the only spelling
-% of "unset" that passes -- an absent optional field returns early at
-% cache.m:1157-1163 -- so the placeholder is dropped, not coerced.
-out = runJ(binaryseriesTemplateBody('bsp_1', 'sess_1'));
+function testBinaryseriesTemplateDocumentIsCarriedWhole(testCase)
+% INVERTED 2026-10-29 from testBinaryseriesTemplatePlaceholdersAreDropped, which
+% pinned the passthrough that dropped the template's empty-char placeholders
+% for the three integer fields. [binaryseries parameters carried] (Jess Haley,
+% 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a v1
+% `binaryseries_parameters` ... is carried whole as v1 `needs_mapping`: each
+% dataset says which data body it describes". A carry is the untouched v1
+% source, checked against NDI's v1 templates (shape, not value types), so the
+% placeholders are KEPT as v1 wrote them.
+v1 = binaryseriesTemplateBody('bsp_1', 'sess_1');
+out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
+verifyCarriedNeedsMapping(testCase, out, 'bsp_1');
 d = onlyClass(testCase, out, 'binaryseries_parameters');
 b = blockOf(d, 'binaryseries_parameters');
-verifyFalse(testCase, isfield(b, 'time_size'), 'placeholder time_size must be dropped');
-verifyFalse(testCase, isfield(b, 'data_size'), 'placeholder data_size must be dropped');
-verifyFalse(testCase, isfield(b, 'data_dim'),  'placeholder data_dim must be dropped');
-% the three that are NOT integer-typed are untouched: `string` accepts '' and
-% `samples_regular_intervals` is a real 0 in the template
+verifyEqual(testCase, b.time_size, '', 'placeholder time_size is kept');
+verifyEqual(testCase, b.data_size, '', 'placeholder data_size is kept');
+verifyEqual(testCase, b.data_dim,  '', 'placeholder data_dim is kept');
 verifyEqual(testCase, b.time_type, '');
 verifyEqual(testCase, b.data_type, '');
 verifyEqual(testCase, b.samples_regular_intervals, 0);
-% and the id is preserved -- a passthrough must never renumber a document
 verifyEqual(testCase, d.get('base.id'), 'bsp_1');
 end
 
-function testBinaryseriesPopulatedBodyPassesThroughVerbatim(testCase)
-% A filled-in document is carried WHOLE. The migrator's only job is the
-% placeholder; it must not touch a real value, and it must not fold -- the fold
-% into the data_body model is #45, and `axes[]` / `datum_type` / `regular` do
-% not exist yet.
+function verifyCarriedNeedsMapping(testCase, out, id)
+%VERIFYCARRIEDNEEDSMAPPING The source ID is recorded as a pass-1 passthrough
+%   (carried whole as v1) and noted `carried_as_v1` with a needs_mapping note
+%   ([binaryseries parameters carried], Jess Haley, 2026-10-29), citing its
+%   register row carry-122 (did-schema 64ad58b8).
+ids = arrayfun(@(p) char(p.id), out.passthrough, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(ids, id)), sprintf('%s is not recorded as carried', id));
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
+details = cellstr(notes.carried_as_v1.distinct_details);
+verifyTrue(testCase, any(startsWith(details, '[carry-122] needs_mapping: ')), strjoin(details, ' || '));
+end
+
+function testBinaryseriesPopulatedBodyIsCarriedVerbatim(testCase)
+% RENAMED 2026-10-29 from testBinaryseriesPopulatedBodyPassesThroughVerbatim:
+% a filled-in document is carried WHOLE as v1, needs_mapping ([binaryseries
+% parameters carried], Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md). It must not touch a real value, and it must
+% not fold.
 out = runJ(binaryseriesPopulatedBody('bsp_2', 'sess_1'));
 verifyEmpty(testCase, out.quarantine);
+verifyCarriedNeedsMapping(testCase, out, 'bsp_2');
 d = onlyClass(testCase, out, 'binaryseries_parameters');
 b = blockOf(d, 'binaryseries_parameters');
 verifyEqual(testCase, b.time_size, 32);
@@ -323,21 +343,28 @@ for f = {'num_channels', 'sample_rate'}
 end
 end
 
-function testBinaryseriesRejectsNonEmptyCharInAnIntegerField(testCase)
-% A non-empty char in an integer field is NOT parsed. There is no writer for
-% this class anywhere in NDI, so nothing can say what encoding '32' was meant
-% to carry, and inventing the parse is the failure mode this whole repair track
-% exists to remove. Quarantine with a legible reason, not a bare typeMismatch.
+function testBinaryseriesNonEmptyCharInAnIntegerFieldIsCarried(testCase)
+% INVERTED 2026-10-29 from testBinaryseriesRejectsNonEmptyCharInAnIntegerField,
+% which pinned a refusal (did2:convert:binaryseriesParametersCharInteger).
+% [binaryseries parameters carried] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): every v1 binaryseries_parameters is carried
+% whole as v1, so the value is neither parsed nor refused: it is kept as v1
+% wrote it.
 v1 = binaryseriesTemplateBody('bsp_5', 'sess_1');
 v1.binaryseries_parameters.time_size = '32';
-verifyError(testCase, @() did2.convert.migrators_j.binaryseries_parameters(v1), ...
-    'did2:convert:binaryseriesParametersCharInteger');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyCarriedNeedsMapping(testCase, out, 'bsp_5');
+d = onlyClass(testCase, out, 'binaryseries_parameters');
+verifyEqual(testCase, blockOf(d, 'binaryseries_parameters').time_size, '32');
 end
 
 function testBinaryseriesValidatesAgainstItsSchema(testCase)
 % VALIDATION ON -- the point the tests above can only infer. Both shapes are
 % driven at once: the template-placeholder document (which quarantined before
-% this migrator existed) and the populated one.
+% this migrator existed) and the populated one. Since 2026-10-29 both are
+% carried whole as v1 ([binaryseries parameters carried]), which v1_to_v2
+% checks against NDI's v1 template and counts, never quarantines.
 %
 % runJ deliberately passes Validate=false, so this calls v1_to_v2 directly.
 % Requires the V_eta schema set on DID_SCHEMA_PATH (the quick gate assembles it
@@ -395,6 +422,12 @@ end
 end
 
 function testBinaryseriesFoldIsNotBuiltAndNeedsMoreThanAxes(testCase)
+% ANSWERED 2026-10-29, and the assertions stand: [binaryseries parameters
+% carried] (Jess Haley, did-schema V_eta_go_forward_class_audit.md) answers
+% WHICH statement these parameters attach to with "each dataset says": the
+% document is carried whole as v1, needs_mapping, so nothing is folded. The
+% history below is why.
+%
 % INVERT-WHEN, and NOT when #45 lands. See the header list above.
 %
 % did-schema's coverage ledger records `decided_targets: [subject_statement,

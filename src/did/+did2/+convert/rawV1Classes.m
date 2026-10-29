@@ -268,7 +268,9 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         table below joins the v1 names to demo_ndi /
 %                         demo_ndi_mock. binaryseries_parameters (no writer at
 %                         the locked main, no corpus document; the template
-%                         fixes its shape) is snake_case and read as before.
+%                         fixes its shape) is snake_case and read as before;
+%                         since 2026-10-29 it is carried whole as v1
+%                         ([binaryseries parameters carried], Jess Haley).
 %                         Written by +ndi/+calc/+example/simple.m (demoNDIMock).
 %                         Round trips: testRawV1RoundTripDemo.
 %     ontologyLabel       superclass `base` only, no `app` block, no superclass

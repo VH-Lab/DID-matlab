@@ -211,45 +211,88 @@ verifyError(testCase, ...
     'did2:convert:missingBlock');
 end
 
-% --- ngrid superclass migrator (20211116 corpus: 210 hartley_calc) ---
+% --- ngrid base migrator: a standalone ngrid is carried whole as v1 ---
+% INVERTED 2026-10-29. [ngrid with no statement carried] (Decided by Jess
+% Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "an
+% ontologyImage `ngrid` whose only edge is its table row, and a standalone
+% `ngrid`, are carried whole as v1 `needs_mapping`". The base migrator runs
+% only as the concrete migrator of a standalone `ngrid` (a superclass block
+% gets +migrators_j/+super/ngrid.m), and it no longer reshapes the block or
+% drops `data_size` / `coordinates` (did-schema #227): it returns the body
+% unchanged and notes the carry. The fixtures are ngrid documents now (they
+% were hartley_calc bodies, from when this ran as the superclass pass).
 
-function testNgridDerivesNdimsFromDataDim(testCase)
-v1 = wrap('hartley_calc', 'ngrid', struct( ...
+function testNgridKeepsAllFourV1FieldsAndIsCarried(testCase)
+% INVERTED 2026-10-29 from testNgridDerivesNdimsFromDataDim (which asserted
+% the reshape to ndims / dim_sizes and the drop of data_size and coordinates)
+v1 = wrap('ngrid', 'ngrid', struct( ...
     'data_size',   8, ...
     'data_type',   'double', ...
     'data_dim',    [200 200 36 2], ...
     'coordinates', [0 1 2 3]));
-out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.ngrid.ndims, 4);
-verifyEqual(testCase, out.ngrid.dim_sizes, [200 200 36 2]);
-verifyEqual(testCase, out.ngrid.data_type, 'double');
-verifyFalse(testCase, isfield(out.ngrid, 'data_dim'));
-verifyFalse(testCase, isfield(out.ngrid, 'data_size'));
-verifyFalse(testCase, isfield(out.ngrid, 'coordinates'));
+pre = did2.convert.universalRenames(v1);
+did2.convert.reportNote('reset');
+out = did2.convert.migrators.ngrid(pre);
+verifyEqual(testCase, out, pre, 'the body is returned unchanged');
+verifyEqual(testCase, out.ngrid.data_size, 8);
+verifyEqual(testCase, out.ngrid.data_dim, [200 200 36 2]);
+verifyEqual(testCase, out.ngrid.coordinates, [0 1 2 3]);
+verifyFalse(testCase, isfield(out.ngrid, 'ndims'));
+verifyFalse(testCase, isfield(out.ngrid, 'dim_sizes'));
+verifyEqual(testCase, did2.convert.reportNote('pending', 'carried_as_v1'), 1, ...
+    'the carry is noted');
+did2.convert.reportNote('reset');
 end
 
-function testNgridPreservesExplicitNdims(testCase)
-v1 = wrap('hartley_calc', 'ngrid', struct( ...
+function testNgridWithExplicitNdimsIsReturnedUnchanged(testCase)
+% INVERTED 2026-10-29 from testNgridPreservesExplicitNdims: nothing is derived
+% or overwritten; the body is carried as it came
+v1 = wrap('ngrid', 'ngrid', struct( ...
     'ndims',    7, ...
     'data_dim', [10 10]));
-out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
-% Even though numel(data_dim) is 2, the migrator preserves an
-% explicit v1 ndims rather than overwriting it. (If consumers ever
-% surface a conflict between the two, we can promote to an error.)
-verifyEqual(testCase, out.ngrid.ndims, 7);
-verifyEqual(testCase, out.ngrid.dim_sizes, [10 10]);
+pre = did2.convert.universalRenames(v1);
+out = did2.convert.migrators.ngrid(pre);
+did2.convert.reportNote('reset');
+verifyEqual(testCase, out, pre);
 end
 
 function testNgridNoOpWhenBlockAbsent(testCase)
 v1 = wrap('hartley_calc', 'hartley_calc', struct('input_parameters', []));
 out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
+did2.convert.reportNote('reset');
 verifyFalse(testCase, isfield(out, 'ngrid'));
 end
 
-function testNgridDerivesFromExistingDimSizes(testCase)
-v1 = wrap('hartley_calc', 'ngrid', struct('dim_sizes', [5 5 5]));
-out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.ngrid.ndims, 3);
+function testNgridWithDimSizesIsReturnedUnchanged(testCase)
+% INVERTED 2026-10-29 from testNgridDerivesFromExistingDimSizes: no ndims is
+% derived
+v1 = wrap('ngrid', 'ngrid', struct('dim_sizes', [5 5 5]));
+pre = did2.convert.universalRenames(v1);
+out = did2.convert.migrators.ngrid(pre);
+did2.convert.reportNote('reset');
+verifyEqual(testCase, out, pre);
+verifyFalse(testCase, isfield(out.ngrid, 'ndims'));
+end
+
+function testAStandaloneNgridIsCarriedThroughTheDispatcher(testCase)
+% [ngrid with no statement carried] end to end: one document, the v1 source,
+% recorded as a pass-1 passthrough, noted carried_as_v1 needs_mapping, and
+% every v1 field kept (did-schema #227: data_size and coordinates were lost)
+v1 = wrap('ngrid', 'ngrid', struct( ...
+    'data_size', 1, 'data_type', 'uint8', 'data_dim', [4 3], ...
+    'coordinates', [1; 2; 3; 4; 1; 2; 3]));
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('ngrid.data_size'), 1);
+verifyEqual(testCase, doc.get('ngrid.data_dim'), [4 3]);
+verifyEqual(testCase, doc.get('ngrid.coordinates'), [1; 2; 3; 4; 1; 2; 3]);
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'carried_as_v1'));
+verifyEqual(testCase, notes.carried_as_v1.count, 1);
+verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, '[carry-123] needs_mapping: '));
 end
 
 % --- element, ontology_image, ontology_label base migrators ---

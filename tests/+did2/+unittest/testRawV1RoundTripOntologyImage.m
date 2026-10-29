@@ -16,8 +16,10 @@ function tests = testRawV1RoundTripOntologyImage
 %   + the session's newdocument(), ontologyTableRow_id, the .ngrid file. No
 %   corpus of the four zips holds one.
 %
-%   It passes through unchanged, as before; the raw passthrough keeps v1's
-%   class name. The legacy vintage (ontologyName / ontologyRegion; no writer at
+%   It is carried whole as v1, needs_mapping, since 2026-10-29 ([ngrid with no
+%   statement carried], Jess Haley: its only edge is its table row); it passed
+%   through unchanged before, and the body is the same either way (v1's class
+%   name kept). One with no table row passes through as before. The legacy vintage (ontologyName / ontologyRegion; no writer at
 %   that `main`, a DID-side shape) still converts, the same on both paths.
 tests = functiontests(localfunctions);
 end
@@ -32,19 +34,44 @@ verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'ontologyImage')));
 verifyEqual(testCase, did2.convert.rawV1Classes('ontologyImage'), 'ontology_image');
 end
 
-function testTheWriterDocumentRoundTripsAsAPassthrough(testCase)
+function testTheWriterDocumentIsCarriedAndRoundTrips(testCase)
+% INVERTED 2026-10-29 from testTheWriterDocumentRoundTripsAsAPassthrough (which
+% asserted r.carried false). [ngrid with no statement carried] (Decided by Jess
+% Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "an
+% ontologyImage `ngrid` whose only edge is its table row ... [is] carried whole
+% as v1 `needs_mapping`". The writer's document names a table row and nothing
+% else, so it is carried: the untouched v1 source, noted, nothing lost.
 v1 = writerImage();
 out = runRaw(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.passthrough), 1);
 verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), 'ontologyImage');
+[carried, notes] = did2.unittest.helpers.carryNote({v1});
+verifyTrue(testCase, carried, 'carried as the untouched v1 source');
+verifyTrue(testCase, startsWith(notes, '[carry-124] needs_mapping: ngrid'), notes);
 r = did2.convert.roundtrip.check(v1, out.migrated);
-verifyFalse(testCase, r.carried);
+verifyTrue(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'ontologyImage, imageDocMaker', {});
 old = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
 raw = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, raw.quarantine);
 verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough));
+end
+
+function testAWriterDocumentWithNoTableRowStillPassesThrough(testCase)
+% [ngrid with no statement carried] names an ontologyImage whose only edge is
+% its table row. imageDocMaker leaves the edge empty when it is given no row;
+% such a document is not what the line names, so it passes through as before,
+% with no carry note.
+v1 = writerImage();
+v1 = did2.unittest.helpers.setDependency(v1, 'ontologyTableRow_id', '');
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+verifyEmpty(testCase, out.quarantine);
+verifyFalse(testCase, carried);
+verifyEqual(testCase, notes, '');
+verifyEqual(testCase, numel(out.passthrough), 1);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'ontologyImage, no table row', {});
 end
 
 function testTheLegacyVintageConvertsAsBefore(testCase)

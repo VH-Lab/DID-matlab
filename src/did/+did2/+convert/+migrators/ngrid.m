@@ -1,58 +1,47 @@
 function v2Body = ngrid(preBody)
-%NGRID Base migrator: did_v1 ngrid block -> the class-preserving V2 shape.
+%NGRID Base migrator: a standalone did_v1 `ngrid` document is CARRIED whole as
+%   v1, needs_mapping (the document is returned UNCHANGED).
 %
-%   This is a *superclass migrator*: ngrid is rarely a concrete
-%   class; it ships as a superclass-contributed property block on
-%   classes like hartley_calc (via reverse_correlation -> ngrid).
-%   The dispatcher walks document_class.superclasses (as
-%   normalised by universalRenames) and runs this migrator on any
-%   document that declares ngrid among its superclasses, before
-%   the concrete-class migrator runs.
+%   [ngrid with no statement carried] (Decided by Jess Haley, 2026-10-29,
+%   did-schema V_eta_go_forward_class_audit.md): "an ontologyImage `ngrid` whose
+%   only edge is its table row, and a standalone `ngrid`, are carried whole as
+%   v1 `needs_mapping`; every other `ngrid` migrates into `sampled_body` as
+%   [ngrid migrates to sampled bodies]". A `sampled_body` belongs to a
+%   statement, and a standalone `ngrid` names none (NDI's template gives it no
+%   `depends_on`; no NDI writer at the locked main makes one: mat2ngrid is
+%   called only by imageDocMaker, for an ontologyImage's raster block). The
+%   ontologyImage case is in did2.convert.migrators_j.ontology_image.
 %
-%   Field renames / structural derivations inside the ngrid
-%   property block:
-%       ngrid.data_dim  -> ngrid.dim_sizes
-%       (none)          -> ngrid.ndims = numel(data_dim)
+%   WHO REACHES THIS. Under every target v1_to_v2 accepts (did_v2 / V_eta,
+%   did2.convert.isV2Set), a document that lists `ngrid` among its
+%   SUPERCLASSES gets the override did2.convert.migrators_j.super.ngrid
+%   (a guard that carries the block verbatim), never this file, and every
+%   consumer's own migrator (hartley_calc, ontology_image) folds the block into
+%   a sampled_body. So this base migrator runs only as the CONCRETE migrator of
+%   a document whose class is `ngrid` itself.
 %
-%   v1 also stores `data_size` (per-element byte size) and
-%   `coordinates` (sample coordinates along each dimension); both
-%   are v1-only fields with no V2 counterpart on ngrid and
-%   are dropped per the conversion default (surface drop-counts in
-%   summary; promote to per-class migrators only if a consumer
-%   surfaces).
+%   WHAT CHANGED. Until 2026-10-29 this reshaped the block (data_dim ->
+%   dim_sizes, derived ndims) and DELETED `data_size` and `coordinates`
+%   "per the conversion default", which [generic stage is lossless] (Jess
+%   Haley, 2026-10-25) forbids; did-schema #227 recorded that loss for a
+%   standalone ngrid. A carry is the untouched v1 source (v1_to_v2 stores the
+%   universalRenames output it handed in, recorded as a pass-1 passthrough), so
+%   every field is kept.
 %
-%   v1 `data_type` matches V2 `data_type` verbatim and passes
-%   through. If v1 already supplied `ndims` (rare), the value is
-%   preserved instead of recomputed.
+%   THE REGISTER ROW. The decision asks for a did-schema register row: it is
+%   carry-123 (did-schema 64ad58b8), and the note starts with its [carry-123]
+%   tag.
 
 arguments
     preBody (1,1) struct
 end
 
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
+% carry-register: carry-123
+did2.convert.reportNote('carried_as_v1', 'ngrid', id, ...
+    ['[carry-123] needs_mapping: a standalone ngrid names no statement for its sampled_body ' ...
+    '([ngrid with no statement carried])']);
 v2Body = preBody;
-if ~isfield(v2Body, 'ngrid') || ~isstruct(v2Body.ngrid)
-    return;
-end
-
-block = v2Body.ngrid;
-
-if isfield(block, 'data_dim')
-    dimSizes = block.data_dim;
-    block.dim_sizes = dimSizes;
-    block = rmfield(block, 'data_dim');
-    if ~isfield(block, 'ndims')
-        block.ndims = double(numel(dimSizes));
-    end
-elseif isfield(block, 'dim_sizes') && ~isfield(block, 'ndims')
-    block.ndims = double(numel(block.dim_sizes));
-end
-
-if isfield(block, 'data_size')
-    block = rmfield(block, 'data_size');
-end
-if isfield(block, 'coordinates')
-    block = rmfield(block, 'coordinates');
-end
-
-v2Body.ngrid = block;
 end

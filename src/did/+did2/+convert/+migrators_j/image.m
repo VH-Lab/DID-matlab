@@ -169,11 +169,14 @@ function bodies = image(preBody)
 %   image_stack (it was deliberately not carried: `imageCollection` has no
 %   V_eta class, so the edge would dangle).
 %
-%   `label` (this class's `image.label`) has no home decided yet: an image
-%   that states one is CARRIED WHOLE AS V1 (2026-10-26). It used to be dropped
-%   for the reason image_stack documents: it is a templated
-%   prose definition of the image TYPE, reconstructable as a projection of the
-%   ontology term, not a per-document fact.
+%   `label` (this class's `image.label`) -> the image observation's statement
+%   `notes`, as v1 wrote it, by image_stack (which reads this class's `image`
+%   block for it). [image label goes to the observation's notes] (Jess Haley,
+%   2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a non-empty v1
+%   `image.label` is written to the image observation's `notes`; `data_body`
+%   gains no field". Supersedes [image label goes to notes] (the data body's
+%   notes, never built). Until 2026-10-29 an image that stated a label was
+%   CARRIED WHOLE AS V1 (carry-051, 2026-10-26); before that it was dropped.
 
 arguments
     preBody (1,1) struct
@@ -182,17 +185,10 @@ end
 % The fold is identical; see the header for why. image_stack reads only the
 % shared `image_stack_parameters` block, the dependencies, base and files, all of
 % which a did_v1 `image` body carries.
-% `image.label` has no V2 home decided yet (image_stack reads its own block's
-% label, not this one), so an image that states one is carried whole as v1
-% ([generic stage is lossless], Jess Haley, 2026-10-25) instead of losing it.
-if isfield(preBody, 'image') && isstruct(preBody.image) && isfield(preBody.image, 'label') ...
-        && ~isempty(strtrim(char(string(preBody.image.label))))
-    % carry-register: carry-051
-    did2.convert.reportNote('carried_as_v1', 'image', sourceId(preBody), ...
-        '[carry-051] unplaced: image.label');
-    bodies = {preBody};
-    return;
-end
+% `image.label` is the observation's notes ([image label goes to the
+% observation's notes] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md)); image_stack writes it. It was carried
+% whole as v1 (carry-051) until that decision.
 bodies = did2.convert.migrators_j.image_stack(preBody);
 % did-schema #88 restated `image` as the did_v1 tombstone (deprecated/image,
 % #73 review item 51), so a document image_stack hands back unchanged now
@@ -231,16 +227,5 @@ nm = '';
 if isstruct(b) && isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
     nm = char(b.document_class.class_name);
-end
-end
-
-function id = sourceId(preBody)
-%SOURCEID The document's own id, for a diagnosable message. '<no base.id>' is
-%   spelled out rather than left blank so an unidentifiable document reads as
-%   unidentifiable instead of as an empty string someone forgot to fill.
-id = '<no base.id>';
-if isfield(preBody, 'base') && isstruct(preBody.base) ...
-        && isfield(preBody.base, 'id') && ~isempty(preBody.base.id)
-    id = char(preBody.base.id);
 end
 end
