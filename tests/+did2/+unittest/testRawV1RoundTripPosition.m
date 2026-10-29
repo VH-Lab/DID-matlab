@@ -32,8 +32,13 @@ function tests = testRawV1RoundTripPosition
 %   WHAT THE WRITER'S DOCUMENTS DO TODAY.
 %     position_metadata  carried (carry-053): V2 has no place for its units and
 %                        dimensions. The same document without them (the
-%                        "converted shape") converts to a term observation and
-%                        loses nothing.
+%                        "converted shape") is carried too: it converted to a
+%                        term observation until [position and its metadata
+%                        are one statement] (Jess Haley, 2026-10-27, did-schema
+%                        V_eta_go_forward_class_audit.md): "no term observation
+%                        is written"; the metadata and its element's values
+%                        become one position calculation, and until position
+%                        elements are mapped (carry-063) both stay carried.
 %     distance_metadata  converts to the V2 distance_metadata (a class whose
 %                        disposition is `retire`; a question in the phase
 %                        report) and loses nothing.
@@ -51,7 +56,7 @@ function testWriterDocumentsRoundTrip(testCase)
 % {label, batch (first: the document), carried?}
 cases = { ...
     'position writer output', {position('pm_1', 'EMPTY:0000137')}, true; ...
-    'position, converted shape', {positionConvertedShape()}, false; ...
+    'position, converted shape', {positionConvertedShape()}, true; ...  % carried since [position and its metadata are one statement]
     'position beside its carried element', {position('pm_1', 'EMPTY:0000137'), track('el_pos', 'position')}, true; ...
     'distance writer output (19 patches)', {distance('dm_1', 1:19)}, false; ...
     'distance writer output (one patch)', {distance('dm_2', 4)}, false; ...
@@ -145,7 +150,10 @@ verifyTrue(testCase, isCarried(old, []), 'not carried on the renamed path');
 end
 
 function testTheConvertedDocumentsValidate(testCase)
-for b = {{positionConvertedShape()}, {distance('dm_1', 1:19)}, {distance('dm_2', 4)}}
+% positionConvertedShape() is no longer a converted document ([position and
+% its metadata are one statement], Jess Haley, 2026-10-27): it is carried, and
+% its carry is checked by testAPositionWithOnlyABodyPartIsCarried
+for b = {{distance('dm_1', 1:19)}, {distance('dm_2', 4)}}
     out = did2.convert.v1_to_v2(b{1}, 'Validate', true, 'TargetVersion', 'V_eta');
     label = b{1}{1}.document_class.class_name;
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', label, quarantineText(out)));
@@ -194,19 +202,26 @@ docs{1}.distance_metadata.endpoints = ep;
 r = did2.convert.roundtrip.check(v1, docs);
 verifyEqual(testCase, sort(lostPaths(r)), ...
     sort({'distance_metadata.integerIDs_B', 'distance_metadata.ontologyNode_A'}));
-
-% position: the anchor dropped, and the value term changed
-v1 = positionConvertedShape();
-docs = structs(runRaw({v1}).migrated);
-keep = ~cellfun(@(d) strcmp(d.document_class.class_name, 'relative_time_reference'), docs);
-r = did2.convert.roundtrip.check(v1, docs(keep));
-verifyFalse(testCase, r.ok);
-verifyNotEmpty(testCase, r.unplaced);
-for k = 1:numel(docs)
-    if strcmp(docs{k}.document_class.class_name, 'observation')
-        docs{k}.term.value.node = 'EMPTY:0000138';
-    end
 end
+
+function testAPositionWithOnlyABodyPartIsCarried(testCase)
+% INVERTED 2026-10-29 from the position half of testABrokenEmissionIsReportedLost,
+% which broke the term observation and the anchor made from
+% positionConvertedShape() and expected the round trip to report them. Since
+% [position and its metadata are one statement] (Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md) "no term observation is
+% written": the document is carried whole as v1, so there is no emission to
+% break; the round trip reads the carry, and a changed carried body is lost.
+v1 = positionConvertedShape();
+verifyCarriedFor(testCase, {v1}, 'its metadata are one statement');
+verifyCarriedFor(testCase, {v1}, '[carry-053] awaiting_home: position_metadata.ontologyNode');
+out = runRaw({v1});
+verifyEqual(testCase, numel(out.migrated), 1, 'the v1 source only');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyTrue(testCase, r.carried);
+verifyTrue(testCase, r.ok, describeLost(r));
+docs = structs(out.migrated);
+docs{1}.position_metadata.ontologyNode = 'EMPTY:0000138';
 r = did2.convert.roundtrip.check(v1, docs);
 verifyEqual(testCase, lostPaths(r), {'position_metadata.ontologyNode'});
 end

@@ -157,7 +157,9 @@ for kind = {'video', 'arena mask', 'bacteria mask', 'closest patch'}
     label = ['Haley behaviour ' kind{1}];
     verifyCarriedUntouched(testCase, v1, out, label);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-052] '), [label ': ' d]);
+    % [image stack link needs mapping] (Jess Haley, 2026-10-27, did-schema
+    % V_eta_go_forward_class_audit.md): the edge is carried needs_mapping
+    verifyTrue(testCase, startsWith(d, '[carry-052] needs_mapping: '), [label ': ' d]);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     verifyTrue(testCase, r.carried, label);
     verifyRoundTrip(testCase, r, label, {});

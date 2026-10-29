@@ -251,12 +251,22 @@ end
 % observation no edge for the v1 `document_id` (the ontologyTableRow this image
 % belongs to), so a stack that names one cannot be placed whole. It is carried
 % whole as v1, for the dataset's map, rather than folded without the edge.
+% [image stack link needs mapping] (Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): for a v1 imageStack the edge is carried
+% `needs_mapping`: what it means varies by writer, so each dataset says what it
+% means (carry-052). A v1 `image` naming one stays `unplaced` (carry-067): the
+% decision covers imageStack only.
 tableRowId = dependencyValue(preBody, 'document_id');
 if ~isempty(tableRowId)
+    why = 'unplaced: depends_on document_id';
+    if ~strcmp(classNameOf(preBody), 'image')
+        why = ['needs_mapping: depends_on document_id (what the edge means ' ...
+            'is decided by each dataset)'];
+    end
     % carry-register: carry-052 (imageStack), carry-067 (a v1 image)
     did2.convert.reportNote('carried_as_v1', 'image_stack', ...
         baseField(preBody, 'id', ''), [carryRowOf(preBody, '[carry-067] ', '[carry-052] ') ...
-        'unplaced: depends_on document_id']);
+        why]);
     bodies = {preBody};
     return;
 end

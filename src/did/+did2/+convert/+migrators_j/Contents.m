@@ -858,9 +858,8 @@
 %         (⊂ [tuning_curve_calculation, orientation_direction_tuning]) + a session
 %         anchor + minted `software` and `runtime_environment` entities.
 %     position_metadata
-%         Brainstorm-J migrator: did_v1 position_metadata -> an `observation` with
-%         value kind `term` (WHAT kind of position was recorded) about the element's
-%         entity + a session anchor. 1 -> 2.
+%         Brainstorm-J migrator: did_v1 position_metadata -> carried whole as v1,
+%         until its position element is mapped. 1 -> 1.
 %     probe_geometry
 %         Brainstorm-J migrator: did_v1 probe_geometry -> one `observation` with value
 %         kind `length` PER SPATIAL AXIS about the probe's entity, plus the session
