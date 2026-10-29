@@ -292,9 +292,12 @@
 %                          BEST-EFFORT (tagged base.name = migrated_session_membership):
 %                          a linked member session may not be in the batch, so
 %                          resolveDatasetEntities drops the edge if the child does
-%                          not resolve. The assembly/reconstruction fields
+%                          not resolve. SINCE 2026-10-26 the assembly fields
 %                          (is_linked, session_creator, inputs, session_reference)
-%                          are dropped as NDI-internal handles.
+%                          are the relation's method or dropped as copies, else
+%                          the document is carried (private/jMembershipBodies;
+%                          [session opener inputs], [linked session reference
+%                          follows the ingested rule], Jess Haley, 2026-10-27).
 %     subjectmeasurement - 1 -> 2 (fold) / 1 -> 1 (guarded passthrough).
 %                          TEAM-SIGN-OFF [subject measurement], jess 2026-08-06.
 %                          Routes through the EXISTING `measurement` fold (shared

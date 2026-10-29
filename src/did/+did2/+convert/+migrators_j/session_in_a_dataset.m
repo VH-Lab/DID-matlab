@@ -42,16 +42,25 @@ function v2Body = session_in_a_dataset(preBody)
 %     session_in_a_dataset.session_id   -> the relation's child
 %     .is_linked                    -> the method term (database linking /
 %                                      database ingestion)
-%     .session_creator              -> the "software class" parameter
+%     .session_creator              -> the "software class" parameter when
+%                                      `ndi.session.dir`; any other opener
+%                                      carries the document ([session opener
+%                                      inputs], Jess Haley, 2026-10-27;
+%                                      carry-119)
 %     .session_creator_input2       -> the "Pathname" parameter (a linked
 %                                      session)
 %     .session_reference            -> dropped when it equals the session
 %                                      entity's local_identifier ([ingested
-%                                      session membership]); else carried
-%     .session_creator_input1..6    -> dropped when a copy of the session's
+%                                      session membership]; for a linked
+%                                      session [linked session reference
+%                                      follows the ingested rule], Jess Haley,
+%                                      2026-10-27); else carried
+%     .session_creator_input1..3    -> dropped when a copy of the session's
 %                                      reference or id ([session membership
 %                                      records linked or ingested]); else
 %                                      carried (jMembershipBodies)
+%     .session_creator_input4..6    -> a non-empty one carries the document
+%                                      ([session opener inputs]; carry-075)
 %
 %   A field, block or edge outside these, which the renamed path dropped
 %   without a word, now carries the document whole as v1 (private/jRawAccount,
