@@ -224,8 +224,10 @@ v1.base = struct('id', 'sid_01', 'session_id', 'dsid_1', ...
 % No session_reference: a membership that states one is carried whole as v1
 % (open case; Decided by Jess Haley, 2026-10-25 [session membership records
 % linked or ingested]), and this fixture is about the edge shape.
+% UPDATED 2026-10-29: it states its opener, as every writer does; an unstated
+% one is carried ([unstated session creator carried], Jess Haley, 2026-10-29).
 v1.session_in_a_dataset = struct('session_id', 'member_sess_9', ...
-    'session_reference', '', 'is_linked', 0);
+    'session_reference', '', 'is_linked', 0, 'session_creator', 'ndi.session.dir');
 end
 
 function rel = membershipRelation(out)

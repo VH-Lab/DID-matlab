@@ -1,8 +1,12 @@
-function anchor = jTreatmentAnchor(preBody, block)
+function [anchor, why] = jTreatmentAnchor(preBody, block)
 %JTREATMENTANCHOR The time reference a migrated treatment manipulation is
 %   anchored at.
 %
-%   ANCHOR = jTreatmentAnchor(PREBODY, BLOCK). When the v1 property block
+%   [ANCHOR, WHY] = jTreatmentAnchor(PREBODY, BLOCK). WHY is '' or, for a v1
+%   treatment_drug whose times cannot be placed, the reason the caller
+%   carries the document whole as v1 (see CARRIED WHOLE AS v1 below).
+%
+%   When the v1 property block
 %   BLOCK records an `administration_onset_time` (treatment_drug's template
 %   field; Babu writes it as a time of day, 'hh:mm:ss', NDIMaker documents it
 %   as ISO 8601), the manipulation is anchored at THAT instant
@@ -38,19 +42,33 @@ function anchor = jTreatmentAnchor(preBody, block)
 %   V_eta_source_unit_plan.md item 4), and
 %   `duration.seconds` is days * 86400.
 %
-%   NOT WRITTEN (the round trip reports them lost; open questions, not decided):
-%     - an offset or duration with NO onset: the decision names the anchor
-%       whose start is the onset, and a session anchor has none (an `end`
-%       needs a `start`, rule end_consistent);
-%     - an offset and onset both in UTC that the rule end_consistent rejects
-%       (the end before the start, or end - start not the duration): neither
-%       the end nor the duration is written, as before this decision.
+%   CARRIED WHOLE AS v1, `needs_mapping` (WHY is set; the caller carries):
+%     - an offset or duration with NO onset: [drug end without start needs
+%       mapping] (Jess Haley, 2026-10-29, did-schema
+%       V_eta_go_forward_class_audit.md): "a v1 `treatment_drug` with an
+%       offset or a duration but no onset is carried whole as v1
+%       `needs_mapping`" (an `end` needs a `start`, rule end_consistent);
+%     - onset, offset and duration that disagree: [drug times that disagree
+%       need mapping] (Jess Haley, 2026-10-29): "a v1 `treatment_drug` whose
+%       onset, offset and duration disagree is carried whole as v1
+%       `needs_mapping`, nothing chosen silently". They disagree exactly when
+%       the rule end_consistent would reject them (DID-matlab
+%       src/did/+did2/+build/private/checkRules.m, function endConsistent):
+%       onset and offset both UTC and the offset before the onset, or, with a
+%       duration too, |(offset - onset) - duration| > 1e-3 s (1 ms). Times
+%       that cannot be read on the UTC timeline (a local time, no Z) are not
+%       compared, as the rule does not compare them.
+%   No carry register row holds these yet (the note says so).
 
 anchor = [];
+why = '';
 if isstruct(block) && isscalar(block)
     onset = jGetCharAny(block, {'administration_onset_time', 'administrationOnsetTime', ...
         'virus_administration_date', 'virus_AdministrationDate', 'virusAdministrationDate'});
-    [stopText, duration] = drugExtent(onset, block);
+    [stopText, duration, why] = drugExtent(onset, block);
+    if ~isempty(why)
+        return;     % the caller carries the document whole as v1
+    end
     anchor = jAbsoluteReference(preBody, onset, stopText, duration);
     if isempty(anchor)
         anchor = transferAnchor(preBody, block);
@@ -61,16 +79,14 @@ if isempty(anchor)
 end
 end
 
-function [stopText, duration] = drugExtent(onset, block)
+function [stopText, duration, why] = drugExtent(onset, block)
 % [drug end and duration on the anchor] (Jess Haley, 2026-10-27): the v1
 % treatment_drug's offset text and duration (days) for the anchor whose start
-% is ONSET; '' / [] when the block states none, when there is no onset, or when
-% the three disagree on the UTC timeline (see the header).
-stopText = '';
+% is ONSET; '' / [] when the block states none. WHY is set when there is an
+% offset or duration but no onset, or when the three disagree on the UTC
+% timeline (see the header: both are carried, Jess Haley, 2026-10-29).
 duration = [];
-if isempty(strtrim(onset))
-    return;
-end
+why = '';
 stopText = strtrim(jGetCharAny(block, {'administration_offset_time', 'administrationOffsetTime'}));
 d = [];
 for name = {'administration_duration', 'administrationDuration'}
@@ -78,6 +94,18 @@ for name = {'administration_duration', 'administrationDuration'}
         d = block.(name{1});
         break;
     end
+end
+if isempty(strtrim(onset))
+    % [drug end without start needs mapping] (Jess Haley, 2026-10-29): any
+    % stated offset or duration (a NaN or empty duration states none, as
+    % NDI's template default [] and a JSON null)
+    if ~isempty(stopText) || statesValue(d)
+        why = ['needs_mapping: administration_offset_time or administration_duration ' ...
+            'with no administration_onset_time (an end needs a start; [drug end ' ...
+            'without start needs mapping]; no carry register row yet)'];
+    end
+    stopText = '';
+    return;
 end
 if isnumeric(d) && isscalar(d) && isfinite(double(d))
     nDays = double(d);
@@ -87,14 +115,41 @@ end
 t0 = utcSeconds(strtrim(onset));
 t1 = utcSeconds(stopText);
 if ~isnan(t0) && ~isnan(t1)
+    % the tolerance of the rule end_consistent (checkRules.m endConsistent:
+    % "end = start + duration, to 1 ms")
     agree = t1 >= t0;
     if agree && ~isempty(duration)
         agree = abs((t1 - t0) - duration.seconds) <= 1e-3;
     end
     if ~agree
+        % [drug times that disagree need mapping] (Jess Haley, 2026-10-29)
+        why = sprintf(['needs_mapping: administration_onset_time "%s", ' ...
+            'administration_offset_time "%s" and administration_duration %s ' ...
+            'disagree (rule end_consistent; [drug times that disagree need ' ...
+            'mapping]; no carry register row yet)'], strtrim(onset), stopText, ...
+            durationText(duration));
         stopText = '';
         duration = [];
     end
+end
+end
+
+function tf = statesValue(d)
+% a duration is stated unless it is empty, blank text or all NaN
+if ischar(d) || isstring(d)
+    tf = ~isempty(strtrim(char(d)));
+elseif isnumeric(d) || islogical(d)
+    tf = ~isempty(d) && ~all(isnan(double(d(:))));
+else
+    tf = ~isempty(d);
+end
+end
+
+function s = durationText(duration)
+if isempty(duration)
+    s = '(none)';
+else
+    s = sprintf('%g days', duration.source_value);
 end
 end
 
