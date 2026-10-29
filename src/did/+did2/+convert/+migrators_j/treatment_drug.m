@@ -59,8 +59,12 @@ function v2Body = treatment_drug(preBody)
 %                                 jAbsoluteReference): [drug end and duration
 %                                 on the anchor] (Jess Haley, 2026-10-27,
 %                                 did-schema V_eta_go_forward_class_audit.md).
-%                                 Not written with no onset, or when the UTC
-%                                 times disagree (jTreatmentAnchor's header)
+%                                 With no onset, or when the UTC times
+%                                 disagree, the document is carried whole as
+%                                 v1 `needs_mapping` ([drug end without start
+%                                 needs mapping], [drug times that disagree
+%                                 need mapping], Jess Haley, 2026-10-29;
+%                                 jTreatmentAnchor's header)
 
 arguments
     preBody (1,1) struct
@@ -108,7 +112,17 @@ if isempty(strtrim(locationNode))
     locationNode = nodeOfWriter;
 end
 siteTerm = jOntologyTerm(locationNode, jGetCharAny(block, {'location_name'}));
-anchor = jTreatmentAnchor(preBody, block);  % the recorded onset, else the session
+[anchor, anchorWhy] = jTreatmentAnchor(preBody, block);  % the recorded onset, else the session
+if ~isempty(anchorWhy)
+    % [drug end without start needs mapping] and [drug times that disagree
+    % need mapping] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md): carried whole as v1, needs_mapping
+    % carry-register: carry-127 via private/jTreatmentAnchor.m
+    did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
+        char(preBody.base.id), anchorWhy);
+    v2Body = {preBody};
+    return;
+end
 [bodies, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, anchor.base.id);
 if ~isempty(unplaced)
     % [generic stage is lossless] / [partly placed is carried as v1] (Jess

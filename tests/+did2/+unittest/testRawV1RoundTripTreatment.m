@@ -60,13 +60,16 @@ function f = knownFindings()
 % V_eta_go_forward_class_audit.md) writes them to the anchor's `value.end` and
 % `value.duration`, so both fixtures now round trip them
 % (testADrugsOffsetAndDurationAreItsAnchorsEndAndDuration).
+%
+% INVERTED 2026-10-29: the row 'virus at V1' virus_injection.virusLocation_name
+% ("the writer's label "V1" is kept nowhere") is gone. [term names compare by
+% node] (Decided by Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): a v1 term name that differs from the
+% registry label of the same node is notation, and the round trip compares
+% terms by node (testAVirusSiteNameComparesByNode).
 f = { ...
     'Birren DREADD virus in the bath', 'virus_injection.virus_AdministrationPND', ...
         'no migrator reads the postnatal day'; ...
-    'virus at V1', 'virus_injection.virusLocation_name', ...
-        ['the site term is written with the registry label (T19, ' ...
-        'did2.convert.registeredTerm: "primary visual cortex"); the writer''s ' ...
-        'label "V1" is kept nowhere']; ...
     'virus at V1', 'virus_injection.virus_AdministrationPND', ...
         'no migrator reads the postnatal day'};
 end
@@ -113,6 +116,29 @@ names = {'Birren CNO in the bath', 'treatmentMaker drug at an UBERON site', ...
 for k = 1:size(f, 1)
     verifyTrue(testCase, any(strcmp(f{k, 1}, names)), f{k, 1});
 end
+end
+
+function testAVirusSiteNameComparesByNode(testCase)
+% INVERTED 2026-10-29 from the known finding 'virus at V1'
+% virus_injection.virusLocation_name. [term names compare by node] (Decided by
+% Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): the
+% writer's "V1" and the registry label of UBERON:0002436 name one term
+v1 = virusAtV1();
+r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
+verifyTrue(testCase, any(strcmp('virus_injection.virusLocation_name', r.equivalent)), ...
+    'the site name is compared by its node');
+verifyFalse(testCase, any(strcmp('virus_injection.virusLocation_name', {r.lost.path})));
+verifyTrue(testCase, any(strcmp('virus_injection.virusLocation_OntologyName', ...
+    [r.matched, r.equivalent])), 'the node itself is compared');
+% a different node is still a loss: the name follows its node, it does not
+% replace it
+w = v1;
+w.virus_injection.virusLocation_OntologyName = 'UBERON:0001880';
+out = runRaw(w);
+bad = out.migrated;
+r2 = did2.convert.roundtrip.check(v1, bad);
+verifyTrue(testCase, any(strcmp('virus_injection.virusLocation_OntologyName', {r2.lost.path})), ...
+    'a site of another node is lost on the node path');
 end
 
 % ===================== what the round trip accounts for ==================
@@ -188,25 +214,100 @@ verifyEmpty(testCase, r.lost, describeLost(r));
 verifyEmpty(testCase, r.invented, strjoin(r.invented, ', '));
 end
 
-function testADrugsDisagreeingUtcTimesWriteNoEndOrDuration(testCase)
-% NOT DECIDED (reported to the team): UTC onset, offset and duration that the
-% rule end_consistent rejects. The anchor never holds an end and a duration
-% that contradict its start (the document would not validate); neither is
-% written, as before [drug end and duration on the anchor], and the round trip
-% reports both lost
-v1 = drugAtSite();
-v1.treatment_drug.administration_onset_time = '2024-06-01T09:15:00Z';
-v1.treatment_drug.administration_offset_time = '2024-06-01T09:16:00Z';
-v1.treatment_drug.administration_duration = 1;
-v1 = jsondecode(jsonencode(v1));
-out = runRaw(v1);
-verifyEmpty(testCase, out.quarantine);
+function testADrugsDisagreeingUtcTimesAreCarried(testCase)
+% INVERTED 2026-10-29 from testADrugsDisagreeingUtcTimesWriteNoEndOrDuration
+% (which pinned: the anchor is written without its end and duration, and the
+% round trip reports both lost). [drug times that disagree need mapping]
+% (Decided by Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): "a v1 `treatment_drug` whose onset, offset
+% and duration disagree is carried whole as v1 `needs_mapping`, nothing chosen
+% silently". Disagree is what the rule end_consistent rejects (checkRules.m
+% endConsistent): the end before the start, or end - start not the duration
+% to 1 ms. The note cites register row carry-127 (did-schema 64ad58b8; until
+% then this test pinned "no register row yet").
+base = drugAtSite();
+base.treatment_drug.administration_onset_time = '2024-06-01T09:15:00Z';
+base.treatment_drug.administration_offset_time = '2024-06-01T09:16:00Z';
+durationWrong = base;
+durationWrong.treatment_drug.administration_duration = 1;   % a day, not a minute
+endFirst = base;
+endFirst.treatment_drug.administration_offset_time = '2024-06-01T09:14:00Z';
+endFirst.treatment_drug.administration_duration = [];
+offBy2ms = base;
+offBy2ms.treatment_drug.administration_duration = (60 + 2e-3) / 86400;
+cases = {'duration disagrees', durationWrong; 'end before start', endFirst; ...
+    'off by 2 ms', offBy2ms};
+for k = 1:size(cases, 1)
+    [label, v1] = cases{k, :};
+    v1 = jsondecode(jsonencode(v1));
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    verifyEqual(testCase, numel(out.passthrough), 1, [label ': carried whole as v1']);
+    assertEqual(testCase, numel(out.migrated), 1, label);
+    verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
+        'did_v1', label);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried, label);
+    n = out.summary.migration_notes.carried_as_v1;
+    verifyTrue(testCase, contains(n.distinct_details{1}, ...
+        '[drug times that disagree need mapping]'), [label ': ' n.distinct_details{1}]);
+    verifyTrue(testCase, startsWith(n.distinct_details{1}, '[carry-127] needs_mapping: '), label);
+    verifyEqual(testCase, n.register_rows, {'carry-127'}, label);
+end
+% within 1 ms agrees (the rule's tolerance): converted
+ok = base;
+ok.treatment_drug.administration_duration = (60 + 5e-4) / 86400;
+ok = jsondecode(jsonencode(ok));
+out = runRaw(ok);
+verifyEmpty(testCase, out.passthrough, 'within 1 ms: converted');
 v = anchorValue(testCase, out);
-verifyFalse(testCase, isfield(v, 'end'));
-verifyFalse(testCase, isfield(v, 'duration'));
-r = did2.convert.roundtrip.check(v1, out.migrated);
-verifyEqual(testCase, reshape(sort({r.lost.path}), 1, []), ...
-    {'treatment_drug.administration_duration', 'treatment_drug.administration_offset_time'});
+verifyTrue(testCase, isfield(v, 'end') && isfield(v, 'duration'));
+end
+
+function testADrugsEndWithoutStartIsCarried(testCase)
+% [drug end without start needs mapping] (Decided by Jess Haley, 2026-10-29,
+% did-schema V_eta_go_forward_class_audit.md): "a v1 `treatment_drug` with an
+% offset or a duration but no onset is carried whole as v1 `needs_mapping`"
+% (NDI-matlab main +setup/+NDIMaker/treatmentMaker.m copies the three
+% independently, so a writer produces it). The note cites register row
+% carry-127 (did-schema 64ad58b8; until then this test pinned "no register
+% row yet").
+offsetOnly = drugAtSite();
+offsetOnly.treatment_drug.administration_onset_time = '';
+offsetOnly.treatment_drug.administration_duration = [];
+durationOnly = drugAtSite();
+durationOnly.treatment_drug.administration_onset_time = '';
+durationOnly.treatment_drug.administration_offset_time = '';
+both = drugAtSite();
+both.treatment_drug.administration_onset_time = '';
+cases = {'offset only', offsetOnly; 'duration only', durationOnly; 'both', both};
+for k = 1:size(cases, 1)
+    [label, v1] = cases{k, :};
+    v1 = jsondecode(jsonencode(v1));
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    verifyEqual(testCase, numel(out.passthrough), 1, [label ': carried whole as v1']);
+    assertEqual(testCase, numel(out.migrated), 1, label);
+    verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
+        'did_v1', label);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried, label);
+    n = out.summary.migration_notes.carried_as_v1;
+    verifyTrue(testCase, contains(n.distinct_details{1}, ...
+        '[drug end without start needs mapping]'), [label ': ' n.distinct_details{1}]);
+    verifyTrue(testCase, startsWith(n.distinct_details{1}, '[carry-127] needs_mapping: '), label);
+    verifyEqual(testCase, n.register_rows, {'carry-127'}, label);
+end
+% none of the three (the template's [] and a JSON null duration): converted,
+% anchored at the session
+none = drugAtSite();
+none.treatment_drug.administration_onset_time = '';
+none.treatment_drug.administration_offset_time = '';
+none.treatment_drug.administration_duration = NaN;
+none = jsondecode(jsonencode(none));
+out = runRaw(none);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'no times at all: converted');
 end
 
 function testADilutionOfZeroIsRestatedAndAnyOtherIsNot(testCase)

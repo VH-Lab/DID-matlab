@@ -41,7 +41,12 @@ function [v1, leaf, inputs, spec, absLeaf] = calcParts(bodies, leafClass, v1Clas
 %       ABSLEAF ([] when none), and LEAF is the other one;
 %     - [tuning fits use curve fitting now]: the method parameters
 %       'function' and 'response transform' are the V2 method's own (the
-%       fits' models; the transform), not v1 settings, and are not rebuilt;
+%       fits' models; the transform), not v1 settings, and are not rebuilt.
+%       Since [fit model stated once] (Jess Haley, 2026-10-29, did-schema
+%       V_eta_go_forward_class_audit.md) the migrator writes no 'function'
+%       parameter (each fit's model_fit entry names its model, and
+%       fitBlocks rebuilds v1 from those); 'function' is still skipped here
+%       so a document migrated before then reads back the same;
 %     - [tuning best value is a condition] (2026-10-28): a parameter
 %       '<V2 stimulus variable> selection' = 'best' is the rule of a
 %       tuningcurve_calc `best` selection, whose v1 form stays in the

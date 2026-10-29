@@ -18,25 +18,14 @@ function pending = pendingEdges()
 %
 %   THE ENTRIES
 %
-%     coordinate_system_id on `statement`, optional, one id, to a
-%       `coordinate_system`. [site frame is a coordinate system] (Decided by
-%       Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
-%       "each probe gets one `coordinate_system` whose referent is the device
-%       entity ... and each site value links to it by a new optional
-%       `coordinate_system_id` edge on statements. Build pending: DID-matlab
-%       (`did2.build` accepts the edge first; `+migrators_j/probe_geometry.m`),
-%       did-schema (the edge on the statement classes; `coordinate_system` out
-%       of draft)." One id: a value is in one coordinate system (the draft
-%       `position.coordinate_system_id` is one id to the same class).
-%       Declared on `statement`, so every direction (assertion, observation,
-%       manipulation, calculation) inherits it.
+%     None is pending. The one entry this held, coordinate_system_id on
+%     `statement` ([site frame is a coordinate system], Decided by Jess Haley,
+%     2026-10-27, did-schema V_eta_go_forward_class_audit.md), was deleted
+%     once did-schema declared that edge: did-schema 64ad58b8 declares
+%     `coordinate_system_id` on `statement` (schemas/did_v2/stable/
+%     statement.json: optional, one id, to a `coordinate_system`), so the
+%     schema's declaration is the one did2.build reads. The mechanism stays
+%     for the next edge that must be accepted ahead of the schema.
 
 pending = struct('on', {}, 'def', {});
-pending(end+1) = struct('on', 'statement', 'def', struct( ...
-    'name', 'coordinate_system_id', ...
-    'mustBeNonEmpty', false, ...
-    'must_refer_to_document_class', 'coordinate_system', ...
-    'documentation', ['The coordinate system the value''s coordinates are in ' ...
-        '([site frame is a coordinate system], Jess Haley, 2026-10-27). ' ...
-        'Accepted by did2.build ahead of did-schema (+build/private/pendingEdges.m).']));
 end
