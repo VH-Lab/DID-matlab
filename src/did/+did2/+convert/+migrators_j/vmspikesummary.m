@@ -108,11 +108,10 @@ if ~jRawCarry('vmspikesummary', preBody, collision, unplaced, 'carry-100')
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-    % 2026-10-24) instead of passing through silently. No carry register row
-    % covers this reason yet (a question for the team).
-    % carry-register: none (vmspikesummary has no V2 home)
+    % 2026-10-24) instead of passing through silently. Register row carry-142 covers it.
+    % carry-register: carry-142
     did2.convert.reportNote('carried_as_v1', 'vmspikesummary', jCarryId(preBody), ...
-        'unplaced: vmspikesummary has no V2 home ([passthrough stays v1])');
+        '[carry-142] awaiting_home: vmspikesummary has no V2 home ([passthrough stays v1])');
 end
 bodies = {preBody};   % the carry of the untouched v1 source
 end

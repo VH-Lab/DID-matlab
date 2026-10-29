@@ -402,12 +402,11 @@ dropped = [dropped, unreadFields(preBody)];
 % 2026-10-29, did-schema V_eta_go_forward_class_audit.md): a retire class's V2
 % file is deleted once no v1 document passes through under it, so it is carried
 % whole as v1 with a note here ([passthrough stays v1], Jess Haley, 2026-10-24)
-% instead of passing through silently. No carry register row covers this
-% reason yet (a question for the team).
+% instead of passing through silently. Register row carry-138 covers it.
 if isempty(jSubjectOf(preBody, {'element_id', 'subject_id'}))
-    % carry-register: none (a hartley_calc with no element_id or subject_id)
+    % carry-register: carry-138
     did2.convert.reportNote('carried_as_v1', 'hartley_calc', sourceId(preBody), ...
-        'unplaced: no element_id or subject_id, so no calculation subject ([passthrough stays v1])');
+        '[carry-138] awaiting_home: no element_id or subject_id, so no calculation subject ([passthrough stays v1])');
     bodies = {preBody};
     return;
 end

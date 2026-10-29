@@ -334,11 +334,10 @@ if isempty(implClass) && isempty(navId) && isempty(readerId) && isempty(mdIds)
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-    % 2026-10-24) instead of passing through silently. No carry register row
-    % covers this reason yet (a question for the team).
-    % carry-register: none (no daqsystem class, navigator, reader or metadata reader, so nothing to declare)
+    % 2026-10-24) instead of passing through silently. Register row carry-131 covers it.
+    % carry-register: carry-131
     did2.convert.reportNote('carried_as_v1', 'daqsystem', jCarryId(src), ...
-        'unplaced: no daqsystem class, navigator, reader or metadata reader, so nothing to declare ([passthrough stays v1])');
+        '[carry-131] malformed: no daqsystem class, navigator, reader or metadata reader, so nothing to declare ([passthrough stays v1])');
     bodies = {src};
     return;
 end

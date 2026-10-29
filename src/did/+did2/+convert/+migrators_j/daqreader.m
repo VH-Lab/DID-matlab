@@ -155,11 +155,10 @@ if isempty(implClass) && isempty(readerString)
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-    % 2026-10-24) instead of passing through silently. No carry register row
-    % covers this reason yet (a question for the team).
-    % carry-register: none (no reader class and no reader string, so nothing to declare)
+    % 2026-10-24) instead of passing through silently. Register row carry-130 covers it.
+    % carry-register: carry-130
     did2.convert.reportNote('carried_as_v1', 'daqreader', jCarryId(src), ...
-        'unplaced: no reader class and no reader string, so nothing to declare ([passthrough stays v1])');
+        '[carry-130] malformed: no reader class and no reader string, so nothing to declare ([passthrough stays v1])');
     bodies = {src};
     return;
 end

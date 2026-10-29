@@ -166,11 +166,10 @@ if isempty(implClass) && isempty(mapFormat) && isempty(dataList) && isempty(mapL
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-    % 2026-10-24) instead of passing through silently. No carry register row
-    % covers this reason yet (a question for the team).
-    % carry-register: none (no navigator class, file patterns or epoch map, so nothing to declare)
+    % 2026-10-24) instead of passing through silently. Register row carry-132 covers it.
+    % carry-register: carry-132
     did2.convert.reportNote('carried_as_v1', 'filenavigator', jCarryId(src), ...
-        'unplaced: no navigator class, file patterns or epoch map, so nothing to declare ([passthrough stays v1])');
+        '[carry-132] malformed: no navigator class, file patterns or epoch map, so nothing to declare ([passthrough stays v1])');
     bodies = {src};         % nothing to declare -- see THE GUARD above
     return;
 end

@@ -165,9 +165,9 @@ end
 % v1 document passes through under it, so this document, held for the stimulus
 % model (#31) and left as v1 on purpose, is carried whole as v1 with a note
 % ([passthrough stays v1], Jess Haley, 2026-10-24) instead of passing through
-% silently. No carry register row covers it yet (a question for the team).
-% carry-register: none (stimulus_parameter has no V2 home until the stimulus model)
+% silently. Register row carry-140 covers it.
+% carry-register: carry-140
 did2.convert.reportNote('carried_as_v1', 'stimulus_parameter', jCarryId(preBody), ...
-    'unplaced: stimulus_parameter has no V2 home until the stimulus model ([passthrough stays v1])');
+    '[carry-140] awaiting_home: stimulus_parameter has no V2 home until the stimulus model ([passthrough stays v1])');
 bodies = {preBody};
 end

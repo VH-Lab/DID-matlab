@@ -42,9 +42,9 @@ if isempty(block)
     % V_eta_go_forward_class_audit.md: a retire class's V2 file is deleted
     % once no v1 document passes through under it). No register row covers a
     % missing block yet (a question for the team).
-    % carry-register: none (an openminds_element with no openminds block)
+    % carry-register: carry-146
     did2.convert.reportNote('carried_as_v1', 'openminds_element', sourceIdOf(preBody), ...
-        'unplaced: no openminds block, so no term to assert ([passthrough stays v1])');
+        '[carry-146] malformed: no openminds block, so no term to assert ([passthrough stays v1])');
     v2Body = {preBody};
     return;
 end

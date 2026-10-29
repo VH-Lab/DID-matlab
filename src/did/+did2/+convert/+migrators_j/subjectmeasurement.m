@@ -154,11 +154,10 @@ if isempty(subjectId)
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-    % 2026-10-24) instead of passing through silently. No carry register row
-    % covers this reason yet (a question for the team).
-    % carry-register: none (no subject_id, so no observation)
+    % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
+    % carry-register: carry-144
     did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
-        'unplaced: no subject_id, so no observation ([passthrough stays v1])');
+        '[carry-144] malformed: no subject_id, so no observation ([passthrough stays v1])');
     return;
 end
 
@@ -170,11 +169,10 @@ if isempty(strtrim(name))
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-    % 2026-10-24) instead of passing through silently. No carry register row
-    % covers this reason yet (a question for the team).
-    % carry-register: none (subjectmeasurement.measurement is empty, so no variable)
+    % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
+    % carry-register: carry-144
     did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
-        'unplaced: subjectmeasurement.measurement is empty, so no variable ([passthrough stays v1])');
+        '[carry-144] malformed: subjectmeasurement.measurement is empty, so no variable ([passthrough stays v1])');
     return;
 end
 
@@ -186,11 +184,10 @@ if ~(isnumeric(value) && isscalar(value) && isfinite(value))
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-    % 2026-10-24) instead of passing through silently. No carry register row
-    % covers this reason yet (a question for the team).
-    % carry-register: none (subjectmeasurement.value is not one finite number)
+    % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
+    % carry-register: carry-144
     did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
-        'unplaced: subjectmeasurement.value is not one finite number ([passthrough stays v1])');
+        '[carry-144] malformed: subjectmeasurement.value is not one finite number ([passthrough stays v1])');
     return;
 end
 
@@ -224,11 +221,10 @@ if isempty(folded)
         % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
         % v1 document passes through under it, so this document, left as v1 on purpose,
         % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-        % 2026-10-24) instead of passing through silently. No carry register row
-        % covers this reason yet (a question for the team).
-        % carry-register: none (no quantity kind is named by subjectmeasurement.measurement)
+        % 2026-10-24) instead of passing through silently. Register row carry-145 covers it.
+        % carry-register: carry-145
         did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
-            'unplaced: no quantity kind is named by subjectmeasurement.measurement ([passthrough stays v1])');
+            '[carry-145] awaiting_home: no quantity kind is named by subjectmeasurement.measurement ([passthrough stays v1])');
     end
     return;
 end

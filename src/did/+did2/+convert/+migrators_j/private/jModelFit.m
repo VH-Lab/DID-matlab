@@ -31,12 +31,14 @@ if isempty(subjectId)
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once
     % no v1 document passes through under it, so this document, refused on
     % purpose, is carried whole as v1 with a note ([passthrough stays v1], Jess
-    % Haley, 2026-10-24) instead of passing through silently. No carry register
-    % row covers this reason yet (a question for the team).
+    % Haley, 2026-10-24) instead of passing through silently. Register rows
+    % carry-136 (fitcurve) and carry-137 (vmspikefit) cover it.
     stamp = did2.convert.v1read.readStamp(preBody);
-    % carry-register: none (a fit with no subject: no element_id or subject_id)
+    tag = '[carry-136]';
+    if strcmp(stamp.class_name, 'vmspikefit'); tag = '[carry-137]'; end
+    % carry-register: carry-136 carry-137
     did2.convert.reportNote('carried_as_v1', stamp.class_name, jCarryId(preBody), ...
-        'unplaced: no element_id or subject_id, so no calculation subject ([passthrough stays v1])');
+        [tag ' awaiting_home: no element_id or subject_id, so no calculation subject ([passthrough stays v1])']);
     return;
 end
 [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);

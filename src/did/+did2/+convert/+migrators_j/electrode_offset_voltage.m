@@ -125,11 +125,10 @@ if isempty(offset)
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-    % 2026-10-24) instead of passing through silently. No carry register row
-    % covers this reason yet (a question for the team).
-    % carry-register: none (electrode_offset_voltage.offset is not one finite number, so nothing to fold)
+    % 2026-10-24) instead of passing through silently. Register row carry-133 covers it.
+    % carry-register: carry-133
     did2.convert.reportNote('carried_as_v1', 'electrode_offset_voltage', jCarryId(src), ...
-        'unplaced: electrode_offset_voltage.offset is not one finite number, so nothing to fold ([passthrough stays v1])');
+        '[carry-133] malformed: electrode_offset_voltage.offset is not one finite number, so nothing to fold ([passthrough stays v1])');
     bodies = {src};   % nothing to fold -> carry unchanged (discovery fallback)
     return;
 end
