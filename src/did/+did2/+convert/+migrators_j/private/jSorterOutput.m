@@ -6,8 +6,8 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %
 %     count_observation           the id-preserved discoverable handle on the
 %                                 recording subject (variable 'spike cluster
-%                                 assignment', subject_interaction.method = the
-%                                 sorter algorithm, storage_mode 'body'). Its id
+%                                 assignment', method = "Spike sorting",
+%                                 the sorter is the software; storage_mode 'body'). Its id
 %                                 IS the source doc id, so any inbound reference
 %                                 to the sorter-output doc resolves to it.
 %     opaque_body                 the unparsed sorter output directory -- an
@@ -22,7 +22,12 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %   an EXTERNAL directory -> an opaque_body. The MD5 is a regenerable file hash,
 %   kept as a body note rather than re-expressed as data.
 %
-%   sorterName   the algorithm name for subject_interaction.method (e.g. 'kilosort').
+%   sorterName   the sorter's name (e.g. 'kilosort'): the `software` entity when
+%                the v1 document has no `app` block, and the opaque_body's
+%                description. NOT the method term: Decided by Jess Haley,
+%                2026-10-26 [method terms are general] (did-schema
+%                V_eta_go_forward_class_audit.md), the method term is the
+%                general procedure, wikidata:Q2003571 "Spike sorting".
 %   dirField     the block field holding the output directory path (e.g.
 %                'kilosort_directory').
 %
@@ -118,7 +123,7 @@ if ~isempty(swId); swOpt = [swOpt, {'SoftwareId', swId}]; end
 obs = jStatement(preBody, 'calculation', ...
     jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
     jLabel('spike cluster assignment'), [], ...
-    'Fields', struct('method', jMethod(sorterName)), 'DataBody', true, ...
+    'Fields', struct('method', jMethod(SPIKE_SORTING())), 'DataBody', true, ...
     'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', char(preBody.base.id), 'ValueKind', 'label');
 % Jess Haley, 2026-10-21 ("a"): the output directory is recorded BY LOCATION,
 % as resolveEpochProbemap records an epoch's files -- body_data_0's location is
@@ -151,4 +156,13 @@ function t = SORTER_DIRECTORY_FORMAT()
 %   d500863, minted for exactly the sorter output folder). The one place it is
 %   named.
 t = struct('node', 'EMPTY:0000315', 'name', 'directory of files');
+end
+
+function t = SPIKE_SORTING()
+%SPIKE_SORTING The method term of a sorter's calculation: wikidata:Q2003571
+%   "Spike sorting", the general procedure (Decided by Jess Haley, 2026-10-26
+%   [method terms are general], did-schema V_eta_go_forward_class_audit.md;
+%   registry row built in did-schema bf6bb62). The sorter itself (Kilosort,
+%   Kiasort) is the `software` entity on software_id.
+t = did2.convert.registeredTerm('wikidata:Q2003571', 'Spike sorting');
 end

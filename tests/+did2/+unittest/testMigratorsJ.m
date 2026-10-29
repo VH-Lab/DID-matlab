@@ -4501,7 +4501,12 @@ out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'contrast_sensitivity_calculation', 'cs_1', 'neuron_cs');
 verifyEqual(testCase, depValuesJ(leaf, 'input_id'), {'resp_cs', 'pres_cs'});
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.contrast_sensitivity');
+% INVERTED 2026-10-29 from "the method term is the calculator class
+% 'ndi.calc.vis.contrast_sensitivity'": [method terms are general] (Jess Haley,
+% 2026-10-26, did-schema V_eta_go_forward_class_audit.md) -- the term names the
+% general procedure, a fit (OBI:0200072); the calculator is the software entity.
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');
+verifyNotEqual(testCase, lower(char(leaf.interaction.method.term.name)), 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, paramValueJ(leaf, 'threshold'), 1);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0.5 1 2 4]);
 csv = leaf.contrast_sensitivity.value;
@@ -5081,7 +5086,12 @@ verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
 obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, obs.base.id, 'ks_1');                            % id preserved
-verifyEqual(testCase, obs.interaction.method.term.name, 'kilosort');% method = algorithm
+% INVERTED 2026-10-29 from "method = algorithm" ('kilosort'): [method terms are
+% general] (Jess Haley, 2026-10-26, did-schema V_eta_go_forward_class_audit.md)
+% -- the method term is wikidata:Q2003571 "Spike sorting"; Kilosort is the
+% software entity.
+verifyEqual(testCase, char(obs.interaction.method.term.node), 'wikidata:Q2003571');
+verifyNotEqual(testCase, lower(char(obs.interaction.method.term.name)), 'kilosort');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_ks');
 % data_body AMENDMENT 5: no inline value, so the value is in data bodies; and
 % no data_type, because the body is opaque (Jess Haley, 2026-10-21)
@@ -5111,8 +5121,8 @@ verifyFalse(testCase, isfield(ob, 'data') && isfield(ob.data, 'dimensions') && ~
 end
 
 function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
-% Sibling of kilosort: kiasort_clusters decomposes identically (method 'kiasort',
-% kiasort_directory).
+% Sibling of kilosort: kiasort_clusters decomposes identically (method "Spike
+% sorting" since [method terms are general], kiasort_directory).
 body = struct();
 body.document_class = struct('class_name', 'kiasort_clusters', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'; 'app'}, 'class_version', {'1.0.0'; '1.0.0'}));
@@ -5132,7 +5142,9 @@ verifyTrue(testCase, any(strcmp(names, 'software')), ...
     'the app block must become a software entity, not vanish');
 obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, obs.base.id, 'ka_1');
-verifyEqual(testCase, obs.interaction.method.term.name, 'kiasort');
+% INVERTED 2026-10-29 from method 'kiasort': [method terms are general] (Jess
+% Haley, 2026-10-26) -- wikidata:Q2003571 "Spike sorting"; Kiasort is software.
+verifyEqual(testCase, char(obs.interaction.method.term.node), 'wikidata:Q2003571');
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, ob.data_body.filename, 'ka_out/session1');
 % [sorter keys] (Jess Haley, 2026-10-21): no keys on kiasort either
