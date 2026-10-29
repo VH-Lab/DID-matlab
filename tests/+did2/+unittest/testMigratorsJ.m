@@ -3429,10 +3429,13 @@ end
 
 function v1 = sessionInADatasetDoc(memberSession)
 % An INGESTED membership the generic stage places whole: no session_reference
-% and no opener class (both open cases carry the document as v1 for now,
-% testSessionMembershipOpenCasesAreCarried).
+% (one whose session is not in the batch is carried, carry-069). UPDATED
+% 2026-10-29: it states its opener `ndi.session.dir`, as every writer does
+% (+ndi/dataset.m), since an unstated one is carried ([unstated session
+% creator carried], Jess Haley, 2026-10-29; carry-119).
 v1 = writerSessionInADatasetDoc(memberSession);
-v1.session_in_a_dataset = struct('session_id', memberSession, 'is_linked', 0);
+v1.session_in_a_dataset = struct('session_id', memberSession, 'is_linked', 0, ...
+    'session_creator', 'ndi.session.dir');
 end
 
 function v1 = writerSessionInADatasetDoc(memberSession)
@@ -3526,9 +3529,38 @@ n = out.summary.migration_notes.carried_as_v1;
 verifyEqual(testCase, n.count, 1);
 verifyTrue(testCase, contains(n.distinct_details{1}, '[carry-074]'), n.distinct_details{1});
 verifyEqual(testCase, n.register_rows, {'carry-074'});
-% not in the batch: carried (no register row yet)
+% not in the batch: carried, carry-069 ([linked session not in the batch],
+% Jess Haley, 2026-10-29)
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
+n = out.summary.migration_notes.carried_as_v1;
+verifyTrue(testCase, contains(n.distinct_details{1}, '[carry-069]'), n.distinct_details{1});
+verifyEqual(testCase, n.register_rows, {'carry-069'});
+end
+
+function testAMembershipWithNoCreatorIsCarried(testCase)
+% [unstated session creator carried] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): "a session membership with no
+% `session_creator` is carried whole as v1 under carry-119, like one whose
+% `session_creator` is not `ndi.session.dir`". Ingested and linked, the
+% session in the batch; an absent field and an empty one.
+for linked = [0 1]
+    for absent = [false true]
+        v1 = writerSessionInADatasetDoc('member_sess_9');
+        v1.session_in_a_dataset.is_linked = linked;
+        if absent
+            v1.session_in_a_dataset = rmfield(v1.session_in_a_dataset, 'session_creator');
+        else
+            v1.session_in_a_dataset.session_creator = '';
+        end
+        out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+        n = out.summary.migration_notes.carried_as_v1;
+        verifyEqual(testCase, n.count, 1);
+        verifyTrue(testCase, contains(n.distinct_details{1}, ...
+            '[carry-119] session_creator not stated'), n.distinct_details{1});
+        verifyEqual(testCase, n.register_rows, {'carry-119'});
+    end
+end
 end
 
 function testAMembershipsOtherOpenerOrLaterInputIsCarried(testCase)
@@ -3644,8 +3676,8 @@ info.document_class = struct('class_name', 'dataset_session_info', 'class_versio
 info.depends_on = struct('name', {}, 'value', {});
 info.base = struct('id', 'dsi_01', 'session_id', 'dsid_1', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-e1 = struct('session_id', 'member_a', 'is_linked', 0);
-e2 = struct('session_id', 'member_b', 'is_linked', 0);
+e1 = struct('session_id', 'member_a', 'is_linked', 0, 'session_creator', 'ndi.session.dir');
+e2 = struct('session_id', 'member_b', 'is_linked', 0, 'session_creator', 'ndi.session.dir');
 info.dataset_session_info = struct('dataset_session_info', [e1 e2]);
 m1 = sessionInADatasetDoc('member_a');
 m1.base.id = 'sid_a';
