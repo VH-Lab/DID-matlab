@@ -134,7 +134,10 @@ for j = 1:numel(subDefs)
     subPath = [path '.' name];
     if isfield(given, name) && ~isAbsent(given.(name))
         s.(name) = fillField(subDefs{j}, given.(name), subPath);
-    elseif logical(getOr(subDefs{j}, 'mustBeNonEmpty', false))
+    elseif logical(getOr(subDefs{j}, 'mustBeNonEmpty', false)) ...
+            && ~needsInfoScope('-has', subPath)
+        % [missing facts are needs info]: excused only when the document's
+        % needs_info names this path (did2.build.document 'NeedsInfo')
         error('did2:build:missingField', '"%s" is required.', subPath);
     end
 end
