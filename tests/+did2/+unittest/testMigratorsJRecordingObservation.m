@@ -388,7 +388,11 @@ out = runJ(elementDoc('spout', 'lick-spout', 'ndi.probe.timeseries.mfdaq', 1, 's
 
 flag = assertionWithVariable(out, 'modality unresolved');
 verifyNotEmpty(testCase, flag, 'an unmapped element type produced no queryable flag');
-verifyEqual(testCase, flag.get('term.value').name, 'lick-spout');
+% the v1 type string finds its registered device kind: did-schema registers
+% EMPTY:0000414 "lick spout" ([device kinds minted]) and a name is found
+% ignoring hyphens ([term names match ignoring spacing], DID-matlab #294); the
+% channel's modality is still unresolved, so the flag and no observation stay
+verifyEqual(testCase, flag.get('term.value').name, 'lick spout');
 verifyEqual(testCase, depValue(flag, 'entity_id'), 'el_1');
 % nothing was invented, and nothing was lost
 verifyFalse(testCase, anyObservationEmitted(out));
