@@ -285,13 +285,14 @@ end
 function verifyCarriedNeedsMapping(testCase, out, id)
 %VERIFYCARRIEDNEEDSMAPPING The source ID is recorded as a pass-1 passthrough
 %   (carried whole as v1) and noted `carried_as_v1` with a needs_mapping note
-%   ([binaryseries parameters carried], Jess Haley, 2026-10-29).
+%   ([binaryseries parameters carried], Jess Haley, 2026-10-29), citing its
+%   register row carry-122 (did-schema 64ad58b8).
 ids = arrayfun(@(p) char(p.id), out.passthrough, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(ids, id)), sprintf('%s is not recorded as carried', id));
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
 details = cellstr(notes.carried_as_v1.distinct_details);
-verifyTrue(testCase, any(startsWith(details, 'needs_mapping: ')), strjoin(details, ' || '));
+verifyTrue(testCase, any(startsWith(details, '[carry-122] needs_mapping: ')), strjoin(details, ' || '));
 end
 
 function testBinaryseriesPopulatedBodyIsCarriedVerbatim(testCase)

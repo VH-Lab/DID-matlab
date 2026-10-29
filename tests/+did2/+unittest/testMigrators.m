@@ -292,7 +292,7 @@ verifyEqual(testCase, doc.get('ngrid.coordinates'), [1; 2; 3; 4; 1; 2; 3]);
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'carried_as_v1'));
 verifyEqual(testCase, notes.carried_as_v1.count, 1);
-verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, 'needs_mapping: '));
+verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, '[carry-123] needs_mapping: '));
 end
 
 % --- element, ontology_image, ontology_label base migrators ---

@@ -16,10 +16,9 @@ function bodies = binaryseries_parameters(preBody)
 %   `depends_on`, its schema declares "depends_on": [] and "file": [], and no NDI
 %   writer exists to say otherwise. So the generic stage converts none.
 %
-%   THE REGISTER ROW. The decision asks for a did-schema register row, which
-%   does not exist yet: the carry note cites none and its marker says `none`
-%   (tools/check_carry_citations.py lists it), until the row is added and the
-%   note names it.
+%   THE REGISTER ROW. The decision asks for a did-schema register row: it is
+%   carry-122 (did-schema 64ad58b8), and the carry note starts with its
+%   [carry-122] tag.
 %
 %   WHAT CHANGED, 2026-10-29. Until this decision the migrator was a guarded
 %   PASSTHROUGH that dropped the template's empty-char placeholders for the
@@ -76,10 +75,9 @@ end
 b = did2.convert.v1read.readBase(preBody);
 id = b.id;
 if ~ischar(id); id = ''; end
-% carry-register: none (a binaryseries_parameters: which data body it describes;
-%   [binaryseries parameters carried] asks for a row, not yet in the register)
+% carry-register: carry-122
 did2.convert.reportNote('carried_as_v1', 'binaryseries_parameters', id, ...
-    ['needs_mapping: which data body these parameters describe is decided by ' ...
+    ['[carry-122] needs_mapping: which data body these parameters describe is decided by ' ...
     'each dataset (no edge names it) ([binaryseries parameters carried])']);
 bodies = {preBody};
 end

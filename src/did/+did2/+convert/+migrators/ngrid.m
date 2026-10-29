@@ -28,9 +28,9 @@ function v2Body = ngrid(preBody)
 %   universalRenames output it handed in, recorded as a pass-1 passthrough), so
 %   every field is kept.
 %
-%   THE REGISTER ROW. The decision asks for a did-schema register row, which
-%   does not exist yet: the note cites none and its marker says `none`
-%   (tools/check_carry_citations.py lists it), until the row is added.
+%   THE REGISTER ROW. The decision asks for a did-schema register row: it is
+%   carry-123 (did-schema 64ad58b8), and the note starts with its [carry-123]
+%   tag.
 
 arguments
     preBody (1,1) struct
@@ -39,10 +39,9 @@ end
 b = did2.convert.v1read.readBase(preBody);
 id = b.id;
 if ~ischar(id); id = ''; end
-% carry-register: none (a standalone ngrid: no statement for its sampled_body;
-%   [ngrid with no statement carried] asks for a row, not yet in the register)
+% carry-register: carry-123
 did2.convert.reportNote('carried_as_v1', 'ngrid', id, ...
-    ['needs_mapping: a standalone ngrid names no statement for its sampled_body ' ...
+    ['[carry-123] needs_mapping: a standalone ngrid names no statement for its sampled_body ' ...
     '([ngrid with no statement carried])']);
 v2Body = preBody;
 end

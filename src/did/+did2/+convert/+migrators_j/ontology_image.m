@@ -38,8 +38,8 @@ function v2Body = ontology_image(preBody)
 %   2026-10-29, [ngrid with no statement carried] (Jess Haley, answering
 %   docs/V2_PLAN.md G26): a vintage-B document whose only edge is its
 %   ontologyTableRow_id (what imageDocMaker writes when given a row) is CARRIED
-%   whole as v1, needs_mapping, with a `carried_as_v1` note (no register row
-%   yet: the marker says `none`); it was a silent passthrough. The body is
+%   whole as v1, needs_mapping, with a `carried_as_v1` note citing register
+%   row carry-124 (did-schema 64ad58b8); it was a silent passthrough. The body is
 %   unchanged either way. A vintage-B document with no edge, or with a subject
 %   edge beside the row, still passes through as before: the line names
 %   neither.
@@ -322,11 +322,9 @@ if isVintageB
         b = did2.convert.v1read.readBase(src);
         id = b.id;
         if ~ischar(id); id = ''; end
-        % carry-register: none (an ontologyImage whose only edge is its table
-        %   row; [ngrid with no statement carried] asks for a row, not yet in
-        %   the register)
+        % carry-register: carry-124
         did2.convert.reportNote('carried_as_v1', 'ontology_image', id, ...
-            ['needs_mapping: ngrid (its only edge is ontologyTableRow_id, so ' ...
+            ['[carry-124] needs_mapping: ngrid (its only edge is ontologyTableRow_id, so ' ...
             'no statement for its sampled_body) ([ngrid with no statement carried])']);
     end
     v2Body = {src};

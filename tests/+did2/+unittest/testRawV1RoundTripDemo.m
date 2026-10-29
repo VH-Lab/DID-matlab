@@ -65,7 +65,7 @@ v1 = series();
 [carried, notes, out] = did2.unittest.helpers.carryNote({v1});
 verifyEmpty(testCase, out.quarantine);
 verifyTrue(testCase, carried, 'carried as the untouched v1 source');
-verifyTrue(testCase, startsWith(notes, 'needs_mapping: '), notes);
+verifyTrue(testCase, startsWith(notes, '[carry-122] needs_mapping: '), notes);
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyTrue(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'binaryseries_parameters, template', {});

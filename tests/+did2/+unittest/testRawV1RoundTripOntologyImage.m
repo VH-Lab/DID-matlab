@@ -48,7 +48,7 @@ verifyEqual(testCase, numel(out.passthrough), 1);
 verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), 'ontologyImage');
 [carried, notes] = did2.unittest.helpers.carryNote({v1});
 verifyTrue(testCase, carried, 'carried as the untouched v1 source');
-verifyTrue(testCase, startsWith(notes, 'needs_mapping: ngrid'), notes);
+verifyTrue(testCase, startsWith(notes, '[carry-124] needs_mapping: ngrid'), notes);
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyTrue(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'ontologyImage, imageDocMaker', {});

@@ -619,7 +619,7 @@ verifyEqual(testCase, out.summary.migrated_count, 1);
 verifyEqual(testCase, numel(out.passthrough), 1);
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
-verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, 'needs_mapping: ngrid'));
+verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, '[carry-124] needs_mapping: ngrid'));
 end
 
 % ===================== fixtures ============================================
