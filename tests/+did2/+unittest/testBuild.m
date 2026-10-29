@@ -212,9 +212,10 @@ function testCoordinateSystemEdgeIsAcceptedOnStatementsFirst(testCase)
 % [site frame is a coordinate system] (Jess Haley, 2026-10-27, did-schema
 % V_eta_go_forward_class_audit.md): "each site value links to it by a new
 % optional `coordinate_system_id` edge on statements ... `did2.build` accepts
-% the edge first". Before did-schema declares it, did2.build accepts it on a
-% statement (+build/private/pendingEdges.m): optional, one id, and on nothing
-% that is not a statement.
+% the edge first". did2.build first accepted it ahead of the schema
+% (+build/private/pendingEdges.m); did-schema 64ad58b8 declares it on
+% `statement` and the pending entry is deleted, so this now checks the
+% DECLARED edge: optional, one id, and on nothing that is not a statement.
 sid = testCase.TestData.sid;
 v = did2.build.valueCell('voltage', 0.01);
 fields = struct('variable', 'voltage', 'value', v);
