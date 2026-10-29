@@ -222,7 +222,9 @@ end
 % ---- did2.build reads the reference -----------------------------------------------
 
 function testBuildFillsAReference(testCase)
-v = did2.build.composite('mixture', 'value.strength', ...
+% qualified by the declaring class: a bare 'value.strength' reads its first
+% segment as the chain class `value` (fieldDef), which declares no strength
+v = did2.build.composite('mixture', 'mixture.value.strength', ...
     struct('molar', 0.001, 'source_value', 1));
 verifyEqual(testCase, v.molar, 0.001);
 verifyEqual(testCase, v.source_value, 1);
@@ -287,7 +289,12 @@ tolerance.blank_value = struct();
 tolerance.fields = {leaf('minus', 'double'), leaf('plus', 'double')};
 provenance = {term, leaf('source_value', 'double'), leaf('approximate', 'boolean')};
 
-writeClass(dirPath, 'value', {}, {leaf('data_body', 'boolean')});
+% a scalar boolean's blank is false: a blank [] is not scalar, and the
+% validator rejects it (did2:validation:notScalar) before any cell is read
+dataBody = leaf('data_body', 'boolean');
+dataBody.blank_value = false;
+dataBody.default_value = false;
+writeClass(dirPath, 'value', {}, {dataBody});
 writeClass(dirPath, 'notvalue', {}, {leaf('note', 'char')});
 writeClass(dirPath, 'length', {'value'}, {cellField('value', 'length', false, ...
     [{leaf('meters', 'double')}, provenance, {tolerance}])});
