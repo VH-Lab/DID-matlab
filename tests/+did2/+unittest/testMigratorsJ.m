@@ -1548,7 +1548,11 @@ verifyEqual(testCase, out.summary.quarantine_count, 0);
 names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
     'UniformOutput', false);
 obs = out.migrated{strcmp(names, 'observation+intensity')};
-verifyEmpty(testCase, obs.get('statement.notes'));
+% An empty field is left out of the document, so "no notes" is the field
+% being absent, or present and empty.
+stmt = obs.documentProperties.statement;
+verifyTrue(testCase, ~isfield(stmt, 'notes') || isempty(stmt.notes), ...
+    'an image with no label writes no notes');
 end
 
 function testDidV1ImageInACollectionIsCarriedAsV1(testCase)
