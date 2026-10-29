@@ -40,6 +40,22 @@ verifyTrue(testCase, contains(why, 'give the node'));
 verifyFalse(testCase, did2.schema.termRegistered(term('', 'midpoint'), ix));
 end
 
+function testANameIsFoundIgnoringCaseSpacesUnderscoresAndHyphens(testCase)
+% [term names match ignoring spacing] (Jess Haley, 2026-10-29): "path name"
+% finds Pathname. The stored name must still be the registered one exactly.
+ix = did2.schema.termIndex(registry());
+verifyEqual(testCase, did2.schema.termNameKey('Body_Mid-point'), 'bodymidpoint');
+verifyTrue(testCase, isKey(ix.byName, did2.schema.termNameKey('body-midpoint')));
+verifyEqual(testCase, ix.byName(did2.schema.termNameKey('Body Midpoint')).name, 'body midpoint');
+[tf, why] = did2.schema.termRegistered(term('', 'body_midpoint'), ix);
+verifyFalse(testCase, tf, 'found, but not stored under the registered name');
+verifyTrue(testCase, contains(why, 'registered as "body midpoint"'));
+[tf, why] = did2.schema.termRegistered(term('', 'Me-dian'), ix);
+verifyFalse(testCase, tf);
+verifyTrue(testCase, contains(why, 'give the node'), 'found by its spelling, so the reason names the node');
+verifyFalse(testCase, did2.schema.termRegistered(term('', 'mid point'), ix));
+end
+
 function testNoRegistryRegistersNothing(testCase)
 ix = did2.schema.termIndex(struct('title', 'not a term registry'));
 verifyFalse(testCase, ix.present);

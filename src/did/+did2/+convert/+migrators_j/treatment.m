@@ -257,8 +257,8 @@ if ~isempty(node)
     catch
     end
 end
-if isempty(e) && ~isempty(label) && isKey(ix.byName, lower(strtrim(label)))
-    e = ix.byName(lower(strtrim(label)));
+if isempty(e) && ~isempty(label) && isKey(ix.byName, did2.schema.termNameKey(label))
+    e = ix.byName(did2.schema.termNameKey(label));
 end
 if isempty(e) || ~isfield(e, 'number_unit') || isempty(e.number_unit); return; end
 [~, ~, unitKind] = jSourceUnit(e.number_unit.name);

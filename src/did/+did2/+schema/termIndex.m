@@ -14,7 +14,9 @@ function ix = termIndex(registry)
 %              the ids in other vocabularies that mean the same thing, {} when
 %              the row states none or the registry predates the column --
 %              [term equivalents recorded], Jess Haley, 2026-10-27)
-%     byName   lower(name) -> the registered term, for every term
+%     byName   did2.schema.termNameKey(name) -> the registered term, for every
+%              term (case, spaces, underscores and hyphens ignored: [term
+%              names match ignoring spacing], Jess Haley, 2026-10-29)
 %
 %   REGISTRY ([] = the shared schema cache's) is the struct jsondecode makes of
 %   the file. With REGISTRY empty the index is built once per shared cache.
@@ -75,7 +77,7 @@ for k = 1:numel(terms)
         ix.byNode(did2.schema.curieKey(e.node)) = e;
     end
     if ~isempty(e.name)
-        ix.byName(lower(e.name)) = e;
+        ix.byName(did2.schema.termNameKey(e.name)) = e;
     end
 end
 ix.count = numel(terms);
