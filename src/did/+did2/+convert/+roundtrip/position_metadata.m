@@ -23,6 +23,14 @@ function [v1, spec] = position_metadata(bodies)
 %   no time of its own); anything else, or any other document, is unplaced.
 %   A passthrough (no ontologyNode) is no conversion and has no inverse.
 %
+%   NO MIGRATOR OUTPUT REACHES THIS INVERSE since [position and its metadata
+%   are one statement] (Jess Haley, 2026-10-27, did-schema
+%   V_eta_go_forward_class_audit.md): "no term observation is written", so
+%   migrators_j.position_metadata carries every document whole as v1, and a
+%   carry's round trip is the carry itself (did2.convert.roundtrip.check). It
+%   is kept until the one position calculation is built, whose inverse
+%   replaces it.
+%
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.position_metadata.
 

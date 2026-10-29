@@ -1,9 +1,34 @@
 function bodies = position_metadata(preBody)
-%POSITION_METADATA Brainstorm-J migrator: did_v1 position_metadata ->
-%   an `observation` with value kind `term` (WHAT kind of position was
-%   recorded) about the element's entity + a session anchor. 1 -> 2.
+%POSITION_METADATA Brainstorm-J migrator: did_v1 position_metadata -> carried
+%   whole as v1, until its position element is mapped. 1 -> 1.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
+%
+%   ================ [position and its metadata are one statement] ==========
+%   Decided by Jess Haley, 2026-10-27 (did-schema
+%   V_eta_go_forward_class_audit.md, answering did-schema #147): "this shouldn't
+%   be a term observation ... Both v1 position and position metadata should map
+%   to the same v2 position observation"; a v1 position element's values and
+%   its `position_metadata` map to ONE V2 `calculation` with the `position`
+%   value-kind mixin (the Haley V2 import's shape): `units` the value's unit,
+%   `dimensions` the axis terms, `ontologyNode` the body part in the variable;
+%   "no term observation is written. Until position elements are mapped
+%   (carry-063) both stay carried together."
+%
+%   So this migrator NO LONGER WRITES THE TERM OBSERVATION it wrote before
+%   (the "FOLD B" below, kept as the record of what was replaced): every
+%   position_metadata is carried whole as v1. One that states `units` or
+%   `dimensions` (every writer document) cites carry-053, as before; one that
+%   states only an `ontologyNode` was the term observation's input and is now
+%   carried too, with no register row yet (its marker says `none`). The values
+%   live on the element, which this one-document migrator cannot see, so the
+%   one calculation is built where the element is mapped, not here. Beside its
+%   element (type `position`, carried, carry-063) v1_to_v2 also carries it for
+%   that (carry-064).
+%
+%   The term-observation inverse, did2.convert.roundtrip.position_metadata, is
+%   reached by no migrator output any more; a carried document's round trip is
+%   the carry itself (did2.convert.roundtrip.check).
 %
 %   ============================ AMBIGUITY FLAG ============================
 %   The V_eta position_metadata stub carries NO numeric value field, and the
@@ -44,9 +69,10 @@ function bodies = position_metadata(preBody)
 %   exactly as v1 wrote it (NDI position_metadata.json + base.json at the
 %   locked NDI-matlab `main`, 3cb19a8, as +setup/+conv/+haley/doImport.m
 %   writes it: ontologyNode the body part, units 'NCIT:C48367', dimensions
-%   'NCIT:C44477,NCIT:C44478'). Every v1 field and where it goes;
-%   did2.convert.roundtrip.position_metadata rebuilds the v1 document and
-%   testRawV1RoundTripPosition compares the two:
+%   'NCIT:C44477,NCIT:C44478'). Every v1 field and where it went until
+%   [position and its metadata are one statement] (2026-10-27; since then every
+%   document is carried whole as v1, see above, and
+%   testRawV1RoundTripPosition checks the carry):
 %
 %     base.id, session_id, datestamp   -> the observation's
 %     base.name                        -> not written (the writer leaves '')
@@ -123,12 +149,17 @@ if ~isempty(unplaced)
     return;
 end
 
-measurement = jOntologyTerm(node, '');       % name resolved in NDI 2nd pass
-variable = jOntologyTerm('', 'position');    % the kind of measurement (spine "what")
-
-anchor = jSessionAnchor(preBody, 'during');
-obs = jStatement(preBody, 'observation', ...
-    jSubjectOf(preBody, {'element_id', 'subject_id'}), variable, measurement, ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id), 'ValueKind', 'term');
-bodies = {obs, anchor};
+% [position and its metadata are one statement] (Jess Haley, 2026-10-27,
+% did-schema V_eta_go_forward_class_audit.md): "no term observation is
+% written"; the metadata and its element's values become one position
+% calculation, built where the element is mapped (carry-063), so until then
+% the document is carried whole as v1 with its element. This replaces the term
+% observation (variable 'position', value the ontologyNode) written here before.
+% carry-register: none (a position_metadata stating only an ontologyNode,
+%   awaiting its element's position calculation)
+did2.convert.reportNote('carried_as_v1', 'position_metadata', ...
+    char(preBody.base.id), ['awaiting_home: position_metadata.ontologyNode ' ...
+    '(one position calculation with its element''s values, [position and its ' ...
+    'metadata are one statement])']);
+bodies = {src};
 end

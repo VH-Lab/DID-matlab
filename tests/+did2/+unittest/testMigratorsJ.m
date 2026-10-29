@@ -2015,7 +2015,7 @@ function v1 = arenaMaskImageStack()
 %   label = the definition ndi.ontology.lookup('EMPTY:0000130') returns,
 %   document_id = the plate row, subject_id = the subject group, no app block.
 %   The plate row is left out here: a mask naming one is carried whole as v1
-%   (testImageStackNamingATableRowIsCarriedWholeAsV1); these tests are of the
+%   (testImageStackNamingADocumentIsCarriedAsNeedsMapping); these tests are of the
 %   mask fold, which runs on a mask it can place whole.
 v1 = foldableBehaviourImageStack();
 v1.base.id = 'is_mask_01';
@@ -2113,7 +2113,7 @@ function v1 = foldableBehaviourImageStack()
 %FOLDABLEBEHAVIOURIMAGESTACK behaviourImageStack without its `document_id`
 %   (the plate row). Since [generic stage is lossless] (Jess Haley, 2026-10-25)
 %   a stack that names a row is carried whole as v1 (#88 has no edge for it:
-%   testImageStackNamingATableRowIsCarriedWholeAsV1), so the tests of the fold
+%   testImageStackNamingADocumentIsCarriedAsNeedsMapping), so the tests of the fold
 %   itself (axes, units, masks) drive a stack the fold can place whole.
 v1 = behaviourImageStack();
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subjgrp_7'});
@@ -2209,12 +2209,15 @@ otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
     'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
 end
 
-function testImageStackNamingATableRowIsCarriedWholeAsV1(testCase)
-% INVERTS testImageStackFoldCarriesDocumentIdIntoTheOntologyTableRowSlot, which
-% asserted the fold arm's output WITHOUT the v1 `document_id` (#88 has no edge
-% for it). Since [generic stage is lossless] and [partly placed is carried as
-% v1] (Jess Haley, 2026-10-25) a stack that names its ontologyTableRow is
-% carried whole as v1: one document, the source, the edge kept.
+function testImageStackNamingADocumentIsCarriedAsNeedsMapping(testCase)
+% INVERTED 2026-10-29 from testImageStackNamingATableRowIsCarriedWholeAsV1,
+% which pinned the note '[carry-052] unplaced: depends_on document_id'. Since
+% [image stack link needs mapping] (Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md) the edge is carried `needs_mapping`: each
+% dataset says what it means. The carry itself is unchanged (it INVERTED
+% testImageStackFoldCarriesDocumentIdIntoTheOntologyTableRowSlot under
+% [generic stage is lossless] and [partly placed is carried as v1], Jess
+% Haley, 2026-10-25): one document, the source, the edge kept.
 v1 = behaviourImageStack();
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
@@ -2223,7 +2226,8 @@ verifyEqual(testCase, char(d.get('document_class.class_name')), 'image_stack');
 verifyEqual(testCase, depVal(d, 'document_id'), 'otr_plate_1', 'the edge is kept');
 verifyEqual(testCase, depVal(d, 'subject_id'), 'subjgrp_7');
 verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    '[carry-052] unplaced: depends_on document_id');
+    ['[carry-052] needs_mapping: depends_on document_id (what the edge ' ...
+    'means is decided by each dataset)']);
 end
 
 function testImageStackFoldWithNoTableRowStillPlacesTheStack(testCase)
@@ -5323,32 +5327,34 @@ for f = {'units', 'dimensions'}
 end
 end
 
-function testPositionMetadataBecomesTermObservation(testCase)
-% position_metadata carries only DESCRIPTIVE ontology fields -- the numeric
-% coordinates live in the separate element/timeseries doc that element_id points
-% at, NOT here. So it folds to a term_observation of the element-subject naming
-% the measurement term (value = the ontologyNode CURIE), plus a session anchor.
-% 1 -> 2. No values are invented. UPDATED for [generic stage is lossless]
-% (Jess Haley, 2026-10-25): the fold runs only when it places the document
-% whole, i.e. when `units` and `dimensions` are empty (it has no place for
-% them); the writer's shape, with both, is carried as v1
-% (testPositionMetadataWithUnitsOrDimensionsIsCarriedWholeAsV1).
+function testPositionMetadataIsCarriedNotATermObservation(testCase)
+% INVERTED 2026-10-29 from testPositionMetadataBecomesTermObservation, which
+% asserted that a position_metadata stating only an ontologyNode folded to a
+% term observation of the element's entity (variable 'position', value the
+% ontologyNode) plus a session anchor, 1 -> 2. Since [position and its metadata
+% are one statement] (Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): "no term observation is written"; the
+% metadata and its element's values map to ONE position calculation, and
+% "until position elements are mapped (carry-063) both stay carried together".
+% So the same document is carried whole as v1: one document, the source.
 body = positionMetadataBody();
 body.position_metadata.units = '';
 body.position_metadata.dimensions = '';
 
 bodies = did2.convert.migrators_j.position_metadata(body);
-verifyEqual(testCase, numel(bodies), 2);              % obs + anchor
-obs = bodies{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(obs), 'observation+term');
-verifyEqual(testCase, obs.term.value.node, 'EMPTY:0000200');
-verifyEqual(testCase, obs.statement.variable.name, 'position');
-verifyEqual(testCase, obs.statement.variable.node, 'PATO:0000140');
-verifyEqual(testCase, depValue(obs, 'entity_id'), 'pos_elem_7');
-anchor = bodies{2};
-verifyEqual(testCase, did2.unittest.helpers.classKey(anchor), 'relative_time_reference');
-verifyEqual(testCase, anchor.relative_time_reference.value.relation.name, 'intervalDuring');
-verifyEqual(testCase, depValue(obs, 'time_reference_id'), anchor.base.id);
+verifyEqual(testCase, numel(bodies), 1, 'the v1 source only');
+verifyTrue(testCase, isequaln(bodies{1}, body), 'returned untouched');
+
+out = runJ(body);
+verifyCarriedWholeAsV1(testCase, body, out);
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), ...
+    'position_metadata');
+for k = 1:numel(out.migrated)
+    verifyFalse(testCase, strcmp(did2.unittest.helpers.classKey(out.migrated{k}), ...
+        'observation+term'), 'no term observation is written');
+end
+verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'its metadata are one statement'), 'the note names the decision');
 end
 
 function testSpatialFrequencyTuningFoldsToCalculationLeaf(testCase)
