@@ -7,8 +7,10 @@ function [v1, spec] = session_in_a_dataset(bodies)
 %   at the locked NDI-matlab `main`, 3cb19a8, as +ndi/dataset.m writes it).
 %   BODIES holds the bare `dataset` entity, the session's `directed_relation`
 %   to it (`included_in`, or `part_of` on the field shape), and, when the
-%   batch held it, the member SESSION's entity, from which an ingested
-%   session's reference is read back ([ingested session membership]):
+%   batch held it, the member SESSION's entity, from which the session's
+%   reference is read back ([ingested session membership]; for a linked
+%   session [linked session reference follows the ingested rule], Jess Haley,
+%   2026-10-27):
 %
 %     base.id                       the relation's id (minted: the v1 id is
 %                                   not kept, so the round trip reports it lost)
@@ -21,14 +23,16 @@ function [v1, spec] = session_in_a_dataset(bodies)
 %     .session_creator              the "software class" parameter (EMPTY:0000401)
 %     .session_creator_input2       the "Pathname" parameter (NCIT:C47922) of a
 %                                   linked session, else ''
-%     .session_reference            an ingested session's entity
-%                                   local_identifier (when that entity is in
-%                                   BODIES), else ''
-%     .session_creator_input1..6    '' -- a non-empty v1 input the migrator
+%     .session_reference            the session entity's local_identifier
+%                                   (when that entity is in BODIES), else ''
+%     .session_creator_input1..3    '' -- a non-empty v1 input the migrator
 %                                   dropped can only have been a copy of the
 %                                   session's reference or id ([session
-%                                   membership records linked or ingested]):
-%                                   spec.equivalents
+%                                   membership records linked or ingested];
+%                                   [session opener inputs]): spec.equivalents
+%     .session_creator_input4..6    '' -- a non-empty one carries the
+%                                   membership whole ([session opener inputs],
+%                                   Jess Haley, 2026-10-27; carry-075)
 %
 %   Any other emitted document, or a relation or entity field this inverse
 %   does not read, is unplaced.
@@ -100,7 +104,7 @@ reference = '';
 for k = find(~used)
     if isEntityOfType(bodies{k}, 'session') && strcmp(char(getIn(bodies{k}, 'base', 'id')), child)
         used(k) = true;
-        if isequal(linked, 0)
+        if ~isempty(linked)
             [~, se] = rebuildBase(bodies{k});
             reference = fieldText(se, 'local_identifier');
         end
@@ -124,7 +128,7 @@ blk.session_creator_input2 = path;
 v1.session_in_a_dataset = blk;
 copies = {child};
 if ~isempty(reference); copies{end+1} = reference; end
-for n = 1:6
+for n = 1:3
     if n == 2 && isequal(linked, 1)
         continue;
     end

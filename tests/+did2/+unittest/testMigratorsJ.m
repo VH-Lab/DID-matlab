@@ -3503,17 +3503,80 @@ end
 function testSessionMembershipOpenCasesAreCarried(testCase)
 % The open cases carry the document whole as v1 ([generic stage is lossless]):
 % an ingested session's `session_reference` whose session is not in the batch
-% (it cannot be compared with the session's local_identifier), and a LINKED
-% session's reference.
+% (it cannot be compared with the session's local_identifier). The linked half
+% of this test (a LINKED session's reference was always carried) is INVERTED
+% 2026-10-29 into testALinkedSessionsEqualReferenceIsDropped.
 v1 = writerSessionInADatasetDoc('member_sess_9');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
     '[carry-069] session_reference (the session is not in the batch'), ...
     'the note cites its carry register row');
+end
+
+function testALinkedSessionsEqualReferenceIsDropped(testCase)
+% INVERTED 2026-10-29 from the linked half of
+% testSessionMembershipOpenCasesAreCarried (which pinned: a LINKED session's
+% reference is carried). [linked session reference follows the ingested rule]
+% (Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a
+% linked session's `session_in_a_dataset.session_reference` is dropped when it
+% equals the session entity's `local_identifier`, else carried
+% `needs_mapping`" (carry-074).
+v1 = writerSessionInADatasetDoc('member_sess_9');
 v1.session_in_a_dataset.is_linked = 1;
+v1.session_in_a_dataset.session_creator_input2 = '/data/exp_demo';
 out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
-verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.count, 1);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+    'the membership was carried');
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+assertNotEmpty(testCase, rel);
+m = rel.get('relation.method');
+verifyEqual(testCase, char(m.term.node), 'EMPTY:0000400');
+p = m.parameters;
+if iscell(p); p = [p{:}]; end
+texts = arrayfun(@(x) char(x.text), p, 'UniformOutput', false);
+verifyEqual(testCase, sort(texts), sort({'ndi.session.dir', '/data/exp_demo'}), ...
+    'the reference is not a parameter: it is the session entity''s local_identifier');
+% differs: carried, carry-074
+out = runJ({v1sessionDoc('member_sess_9', 'another_name'), v1});
+n = out.summary.migration_notes.carried_as_v1;
+verifyEqual(testCase, n.count, 1);
+verifyTrue(testCase, contains(n.distinct_details{1}, '[carry-074]'), n.distinct_details{1});
+verifyEqual(testCase, n.register_rows, {'carry-074'});
+% not in the batch: carried (no register row yet)
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+end
+
+function testAMembershipsOtherOpenerOrLaterInputIsCarried(testCase)
+% [session opener inputs] (Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): "a membership whose `session_creator` is
+% not `ndi.session.dir` is carried whole as v1, `needs_mapping`" (carry-119);
+% "a non-empty `session_creator_input4..6` (never read by NDI-matlab
+% `+ndi/dataset.m`) carries the membership whole as v1" (carry-075). Both on
+% an ingested and on a linked membership whose session is in the batch.
+for linked = [0 1]
+    base = writerSessionInADatasetDoc('member_sess_9');
+    base.session_in_a_dataset.is_linked = linked;
+    v1 = base;
+    v1.session_in_a_dataset.session_creator = 'ndi.session.other';
+    out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+    n = out.summary.migration_notes.carried_as_v1;
+    verifyEqual(testCase, n.count, 1);
+    verifyTrue(testCase, contains(n.distinct_details{1}, '[carry-119]'), n.distinct_details{1});
+    verifyEqual(testCase, n.register_rows, {'carry-119'});
+    for k = 4:6
+        v1 = base;
+        % a copy of the reference is still carried: input 4..6 is never read
+        v1.session_in_a_dataset.(sprintf('session_creator_input%d', k)) = 'exp_demo';
+        out = runJ({v1sessionDoc('member_sess_9', 'exp_demo'), v1});
+        n = out.summary.migration_notes.carried_as_v1;
+        verifyEqual(testCase, n.count, 1);
+        verifyTrue(testCase, contains(n.distinct_details{1}, ...
+            sprintf('[carry-075] session_creator_input%d', k)), n.distinct_details{1});
+        verifyEqual(testCase, n.register_rows, {'carry-075'});
+    end
+end
 end
 
 function testAnIngestedSessionsEqualReferenceIsDroppedAndItsCreatorKept(testCase)
