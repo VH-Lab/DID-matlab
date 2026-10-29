@@ -208,6 +208,78 @@ verifyEqual(testCase, ids, {t1, t2});
 verifyTrue(testCase, all(isfield(doc.depends_on, {'name', 'document_id'})));
 end
 
+function testCoordinateSystemEdgeIsAcceptedOnStatementsFirst(testCase)
+% [site frame is a coordinate system] (Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): "each site value links to it by a new
+% optional `coordinate_system_id` edge on statements ... `did2.build` accepts
+% the edge first". Before did-schema declares it, did2.build accepts it on a
+% statement (+build/private/pendingEdges.m): optional, one id, and on nothing
+% that is not a statement.
+sid = testCase.TestData.sid;
+v = did2.build.valueCell('voltage', 0.01);
+fields = struct('variable', 'voltage', 'value', v);
+[~, ent] = vetaNamesOf();
+cs = newId();
+doc = did2.build.document('observation', fields, 'SessionId', sid, ...
+    'Edges', {ent, newId(); 'time_reference_id', newId(); 'coordinate_system_id', cs}, ...
+    'ValueKind', 'voltage');
+names = {doc.depends_on.name};
+verifyEqual(testCase, sum(strcmp(names, 'coordinate_system_id')), 1);
+verifyEqual(testCase, {doc.depends_on(strcmp(names, 'coordinate_system_id')).document_id}, {cs});
+% optional: a statement without it still builds
+doc = did2.build.document('observation', fields, 'SessionId', sid, ...
+    'Edges', {ent, newId(); 'time_reference_id', newId()}, 'ValueKind', 'voltage');
+verifyFalse(testCase, any(strcmp({doc.depends_on.name}, 'coordinate_system_id')));
+% one id: a value is in one coordinate system
+verifyError(testCase, @() did2.build.document('observation', fields, ...
+    'SessionId', sid, 'Edges', {ent, newId(); 'time_reference_id', newId(); ...
+    'coordinate_system_id', {newId(), newId()}}, 'ValueKind', 'voltage'), ...
+    'did2:build:repeatedEdge');
+% on statements only: an entity does not take it
+[cls, efields] = subjectSpec('m1');
+verifyError(testCase, @() did2.build.document(cls, efields, 'SessionId', sid, ...
+    'Edges', struct('coordinate_system_id', newId())), 'did2:build:unknownEdge');
+end
+
+function testADeclaredCoordinateSystemEdgeIsReadFromTheSchema(testCase)
+% Once did-schema declares `coordinate_system_id`, its declaration is the one
+% used, whatever it says. Declared here (in a copy of the schema set) as
+% REQUIRED on `statement`, so a statement without it must now be refused --
+% which the accepted-ahead declaration (optional) would never do.
+src = testCase.TestData.schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+[stmt, ent] = vetaNamesOf();
+stmtFile = fullfile(tmp, [stmt '.json']);
+% Inserted as TEXT, as testUnknownSchemaRuleIsAnErrorNotASkip does.
+jsonText = fileread(stmtFile);
+at = strfind(jsonText, '"depends_on": [');
+verifyNotEmpty(testCase, at, 'the statement class declares no depends_on list');
+if isempty(at); return; end
+at = at(1) + numel('"depends_on": [') - 1;
+jsonText = [jsonText(1:at) ...
+    '{"name": "coordinate_system_id", "mustBeNonEmpty": true, ' ...
+    '"must_refer_to_document_class": "coordinate_system", ' ...
+    '"documentation": "declared for this test"}, ' jsonText(at+1:end)];
+fid = fopen(stmtFile, 'w');
+fwrite(fid, jsonText);
+fclose(fid);
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+sid = testCase.TestData.sid;
+v = did2.build.valueCell('voltage', 0.01);
+fields = struct('variable', 'voltage', 'value', v);
+verifyError(testCase, @() did2.build.document('observation', fields, ...
+    'SessionId', sid, 'Edges', {ent, newId(); 'time_reference_id', newId()}, ...
+    'ValueKind', 'voltage'), 'did2:build:missingEdge');
+doc = did2.build.document('observation', fields, 'SessionId', sid, ...
+    'Edges', {ent, newId(); 'time_reference_id', newId(); 'coordinate_system_id', newId()}, ...
+    'ValueKind', 'voltage');
+verifyEqual(testCase, sum(strcmp({doc.depends_on.name}, 'coordinate_system_id')), 1);
+end
+
 function testUnknownSchemaRuleIsAnErrorNotASkip(testCase)
 % Copy the schema set, add a rule nobody implemented, and build against it.
 src = testCase.TestData.schemaPath;

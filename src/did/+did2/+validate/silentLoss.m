@@ -472,6 +472,12 @@ function report = silentLoss(docs, opts)
 %   The schema now says so machine-readably, as `referent_unique_by` on the
 %   family (did-schema tools/build_v_eta.py (deleted 2026-10-21), `_EDGE_REFERENT_UNIQUE`). This
 %   function reads that key; it does not know the word "time_reference".
+%   The key may be a COMPOSITE, a list of paths: [device clocks on one epoch]
+%   (Decided by Jess Haley, 2026-10-26, did-schema
+%   V_eta_go_forward_class_audit.md) makes time references unique "by clock
+%   AND referent". It is read by uniqueByText and keyed by referentKey (the
+%   first path decides whether a member is keyed; later paths, an edge such as
+%   `referent_id` among them, refine the key).
 %
 %   WHY IT LIVES HERE AND NOWHERE ELSE. The path is evaluated on the REFERENCED
 %   document, so checking it needs the other documents.
@@ -1131,7 +1137,9 @@ for k = 1:numel(chain)
         if isfield(dep, 'min_count') && ~isempty(dep.min_count); lo = double(dep.min_count); end
         if isfield(dep, 'max_count') && ~isempty(dep.max_count); hi = double(dep.max_count); end
         if isfield(dep, 'referent_unique_by') && ~isempty(dep.referent_unique_by)
-            uq = char(dep.referent_unique_by);
+            % a single path, or a COMPOSITE key (a list of paths), as one char
+            % ([device clocks on one epoch]; see uniqueByText)
+            uq = uniqueByText(dep.referent_unique_by);
         end
         if isfield(dep, 'must_refer_to_document_class') && ...
                 ~isempty(dep.must_refer_to_document_class)
@@ -1238,9 +1246,52 @@ for key = {'value', 'document_id', 'id'}
 end
 end
 
-function [key, how] = referentKey(referent, dottedPath)
+function [key, how] = referentKey(referent, uniqueBy)
 %REFERENTKEY #52: the comparison key for one family member, read from the
-%   REFERENCED document at DOTTEDPATH ('value.clock').
+%   REFERENCED document at the family's `referent_unique_by` (UNIQUEBY, as
+%   uniqueByText returns it).
+%
+%   ONE PATH ('value.clock'): referentKeyOne, unchanged.
+%
+%   A COMPOSITE KEY ('value.clock+referent_id'). [device clocks on one epoch]
+%   (Decided by Jess Haley, 2026-10-26, did-schema
+%   V_eta_go_forward_class_audit.md) amends [time_reference uniqueness rule]
+%   "so that one document's time references are unique by clock AND
+%   referent": an epoch holding files from two acquisition systems carries two
+%   references on `dev_local_time`, one per system, and on the single path
+%   those two read as a violation. The FIRST path is the discriminator: it
+%   alone decides whether a member has a key at all and how it is keyed
+%   (node / name, the two denominators below), so a composite never makes a
+%   member comparable that the first path leaves unkeyed -- it only SPLITS
+%   keys the first path would have collided. Each later path refines the key;
+%   a later path with no dot that names no field is read as an EDGE of the
+%   referenced document (`referent_id`), keyed on the id it names. A later
+%   path that is blank or absent is keyed as '-' (two members with no
+%   referent and one clock still collide).
+paths = strsplit(char(uniqueBy), '+');
+[key, how] = referentKeyOne(referent, paths{1});
+if isempty(how) || isscalar(paths); return; end
+parts = cell(1, numel(paths));
+parts{1} = key;
+for p = 2:numel(paths)
+    parts{p} = '-';
+    k = referentKeyOne(referent, paths{p});
+    if ~isempty(k)
+        parts{p} = k;
+    elseif ~contains(paths{p}, '.') && isempty(pathValue(referent, paths{p}))
+        ids = edgeValues(referent, paths{p});
+        ids = ids(~cellfun(@isempty, ids));
+        if ~isempty(ids)
+            parts{p} = ['id:' strjoin(ids, ',')];
+        end
+    end
+end
+key = strjoin(parts, ' + ');
+end
+
+function [key, how] = referentKeyOne(referent, dottedPath)
+%REFERENTKEYONE #52: the comparison key for one family member, read from the
+%   REFERENCED document at one DOTTEDPATH ('value.clock').
 %
 %   WHAT WE COMPARE ON TODAY, AND WHY IT IS NOT THE CURIE. `value.clock` is an
 %   `ontology_term` {node, name} and its terms are STAGED WITH EMPTY NODES --
@@ -1318,6 +1369,38 @@ for b = 1:numel(blocks)
         v = cur;
         return;
     end
+end
+end
+
+function s = uniqueByText(v)
+%UNIQUEBYTEXT A family's `referent_unique_by` as one char.
+%   The schema key was one dotted path (`value.clock`). [device clocks on one
+%   epoch] (Decided by Jess Haley, 2026-10-26, did-schema
+%   V_eta_go_forward_class_audit.md) makes the time-reference families unique
+%   by clock AND referent, and did-schema's meta records that the key "still
+%   names `value.clock` until DID-matlab's readers take a composite (Build
+%   pending: DID-matlab)". This is that reader: a JSON array of paths
+%   (jsondecode: a cell of char, or a string array) is joined with '+' in its
+%   declared order, so `unique_by` stays one char in the report and in
+%   `family_uniqueness_violation`, and a single path reads exactly as before.
+%   `char` of a cell, the old read, makes a padded char MATRIX of a list --
+%   every later strsplit on it fails, and the audit swallows the failure.
+s = '';
+if ischar(v)
+    s = strtrim(v);
+elseif isstring(v)
+    v = cellstr(v(:)');
+end
+if iscell(v)
+    parts = {};
+    for k = 1:numel(v)
+        e = v{k};
+        if (ischar(e) && isrow(e)) || (isstring(e) && isscalar(e))
+            e = strtrim(char(e));
+            if ~isempty(e); parts{end+1} = e; end %#ok<AGROW>
+        end
+    end
+    s = strjoin(parts, '+');
 end
 end
 
