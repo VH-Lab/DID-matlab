@@ -42,11 +42,11 @@ if ~isempty(node)
     tf = true;
     return;
 end
-if ~isKey(ix.byName, lower(name))
+if ~isKey(ix.byName, did2.schema.termNameKey(name))
     reason = sprintf('"%s" is not in the term registry', name);
     return;
 end
-e = ix.byName(lower(name));
+e = ix.byName(did2.schema.termNameKey(name));
 if ~isempty(e.node)
     reason = sprintf('"%s" is registered with node %s; give the node', name, e.node);
     return;

@@ -32,8 +32,8 @@ if ~isempty(node)
         e = ix.byNode(key);
         t = struct('node', char(e.node), 'name', char(e.name));
     end
-elseif ~isempty(name) && isKey(ix.byName, lower(name))
-    e = ix.byName(lower(name));
+elseif ~isempty(name) && isKey(ix.byName, did2.schema.termNameKey(name))
+    e = ix.byName(did2.schema.termNameKey(name));
     t = struct('node', char(e.node), 'name', char(e.name));
 end
 end
