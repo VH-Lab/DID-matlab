@@ -232,7 +232,7 @@ for listField = {'Subjects', 'SpeciesList', 'StrainList', 'BiologicalSexList'}
     end
 end
 if ~isempty(unplaced)
-    % carry-register: carry-043 carry-044 carry-054 carry-105 (the items
+    % carry-register: carry-043 carry-044 carry-105 (the items
     %   above). A form field
     %   whose binding the loaded schema does not hold is not a carry: it
     %   errors in datasetFormTerms ([pipeline defects are not carries])
