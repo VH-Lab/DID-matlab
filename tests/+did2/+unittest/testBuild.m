@@ -253,16 +253,32 @@ copyfile(fullfile(src, '*.json'), tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 [stmt, ent] = vetaNamesOf();
 stmtFile = fullfile(tmp, [stmt '.json']);
-% Inserted as TEXT, as testUnknownSchemaRuleIsAnErrorNotASkip does.
+% Edited as TEXT, as testUnknownSchemaRuleIsAnErrorNotASkip does. While
+% did-schema does not declare the edge, the test inserts a required
+% declaration; once it does (did-schema #231, optional), the test makes THAT
+% declaration required instead, so the chain never holds two declarations of
+% one edge (did2.build would take the later one, the validator the union).
 jsonText = fileread(stmtFile);
-at = strfind(jsonText, '"depends_on": [');
-verifyNotEmpty(testCase, at, 'the statement class declares no depends_on list');
-if isempty(at); return; end
-at = at(1) + numel('"depends_on": [') - 1;
-jsonText = [jsonText(1:at) ...
-    '{"name": "coordinate_system_id", "mustBeNonEmpty": true, ' ...
-    '"must_refer_to_document_class": "coordinate_system", ' ...
-    '"documentation": "declared for this test"}, ' jsonText(at+1:end)];
+declared = strfind(jsonText, '"name": "coordinate_system_id"');
+if isempty(declared)
+    at = strfind(jsonText, '"depends_on": [');
+    verifyNotEmpty(testCase, at, 'the statement class declares no depends_on list');
+    if isempty(at); return; end
+    at = at(1) + numel('"depends_on": [') - 1;
+    jsonText = [jsonText(1:at) ...
+        '{"name": "coordinate_system_id", "mustBeNonEmpty": true, ' ...
+        '"must_refer_to_document_class": "coordinate_system", ' ...
+        '"documentation": "declared for this test"}, ' jsonText(at+1:end)];
+else
+    optional = '"mustBeNonEmpty": false';
+    k = strfind(jsonText(declared(1):end), optional);
+    verifyNotEmpty(testCase, k, ...
+        'the declared coordinate_system_id states no mustBeNonEmpty false to tighten');
+    if isempty(k); return; end
+    k = declared(1) + k(1) - 1;
+    jsonText = [jsonText(1:k-1) '"mustBeNonEmpty": true' ...
+        jsonText(k+numel(optional):end)];
+end
 fid = fopen(stmtFile, 'w');
 fwrite(fid, jsonText);
 fclose(fid);
