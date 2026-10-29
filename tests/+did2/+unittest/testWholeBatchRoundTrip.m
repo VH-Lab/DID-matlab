@@ -233,10 +233,18 @@ ct = openmindsV1('wb_om_ct', 'openminds_element', 'element_id', 'CellType', ...
     'type III BNST neuron', 'EMPTY:0000073', '', '');
 ct.openminds.openminds_id = 'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d';
 ct.openminds.fields.description = 'A type of neuron.';
+% openminds_element is read on the renamed path, so pass 1 hands back the
+% renamed body as a passthrough and the pipeline stores the untouched v1 source
+% (v1_to_v2.m, "A CARRY IS THE V1 SOURCE"; ndi.migrate.internal.
+% carryUnchangedAsV1). Compare what is stored, as the table-row test does.
 out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'V_eta');
-r = did2.convert.roundtrip.check(ct, out.migrated);
-verifyTrue(testCase, r.carried);
-did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element (carried)', {});
+verifyTrue(testCase, any(strcmp({out.passthrough.id}, 'wb_om_ct')), ...
+    'pass 1 records the element as carried through');
+r = did2.convert.roundtrip.wholeBatch({ct}, out);
+verifyEqual(testCase, r.sources_compared, 1);
+verifyEqual(testCase, r.sources_ok, 1, describe(r));
+verifyTrue(testCase, isfield(r.stored_as_v1_by_class, 'openminds_element'), ...
+    'the element is stored as its v1 source');
 % each half alone carries too
 for half = {'id', 'description'}
     one = ct;
@@ -246,8 +254,8 @@ for half = {'id', 'description'}
         one.openminds.openminds_id = '';
     end
     out = did2.convert.v1_to_v2({one}, 'Validate', false, 'TargetVersion', 'V_eta');
-    r = did2.convert.roundtrip.check(one, out.migrated);
-    verifyTrue(testCase, r.carried, ['carried for its ' half{1} ' alone']);
+    verifyTrue(testCase, any(strcmp({out.passthrough.id}, 'wb_om_ct')), ...
+        ['carried for its ' half{1} ' alone']);
 end
 end
 
