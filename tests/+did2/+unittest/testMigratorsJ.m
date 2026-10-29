@@ -104,33 +104,6 @@ out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
 end
 
-function tf = schemaSaysAbstract(classSchema)
-%SCHEMASAYSABSTRACT True when a schema struct's header carries `abstract: true`.
-%
-%   A LOCAL COPY, ON PURPOSE. did2.schema.cache has this exact predicate --
-%   `classIsAbstract` -- and it is PRIVATE (+did2/+schema/cache.m:1434,
-%   `methods (Access = private)`), so a test calling it errors with
-%   MATLAB:class:MethodRestricted rather than failing a verification. The header
-%   is public data on the struct `getClass` hands back, so read that.
-%
-%   ABSENCE IS CONCRETE, and that is the whole subtlety: build_v_eta.py (deleted 2026-10-21) emits
-%   the key only on abstract classes, so a concrete one has no `abstract` field
-%   at all -- `image_stack` does not carry it. Both the logical and numeric
-%   spellings are accepted for the same reason the private method accepts both:
-%   jsondecode's output shape for a JSON `true` is not something a test should
-%   assume.
-tf = false;
-if ~isstruct(classSchema) || ~isfield(classSchema, 'document_class')
-    return;
-end
-dc = classSchema.document_class;
-if ~isstruct(dc) || ~isfield(dc, 'abstract')
-    return;
-end
-v = dc.abstract;
-tf = (islogical(v) && any(v)) || (isnumeric(v) && any(v == 1));
-end
-
 function v = depVal(doc, name)
 %DEPVAL Read an edge off a CONVERTED document.
 %
@@ -1675,29 +1648,15 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image');
 end
 
 
-function testTheVEtaImageNameIsAbstractSoAPassthroughIsNotAnOption(testCase)
-% INVERTED for did-schema #88, and kept as THE INSTRUMENT for the two tests
-% above: their passthrough is legal only because `image` now resolves to a
-% CONCRETE did_v1 tombstone (deprecated/, #73 item 51). If `image` ever becomes
-% abstract again, or the tombstone leaves the validation set, this goes red and
-% the passthrough has to be re-examined. `image_stack` is checked beside it so
-% "concrete" is not read off a reader that answers false for everything.
-cache = did2.schema.cache.shared();
-try
-    imgSchema   = cache.getClass('image');
-    stackSchema = cache.getClass('image_stack');
-catch err
-    assumeFail(testCase, ...
-        ['DID_SCHEMA_PATH does not resolve the V_eta image classes (' ...
-         err.message ') -- this test measured nothing.']);
-    return;
-end
-verifyFalse(testCase, schemaSaysAbstract(imgSchema), ...
-    'V_eta `image` must be the CONCRETE did_v1 tombstone the passthrough validates against');
-verifyEqual(testCase, imgSchema.document_class.maturity_level, 'deprecated');
-verifyFalse(testCase, schemaSaysAbstract(stackSchema));
-end
-
+% RETIRED 2026-10-28 with did-schema's deprecated/ tombstones (Decided by Jess
+% Haley, 2026-10-27 [carried v1 validates against NDI templates], did-schema
+% V_eta_go_forward_class_audit.md): a carried or passed-through v1 document is
+% checked against NDI's v1 templates (did2.validate.v1Document), not a
+% did-schema tombstone, and one whose class has no V2 schema is counted
+% (summary.passthrough_unvalidated_no_schema_count), never quarantined
+% (v1_to_v2.m). This test asserted the `image` / `image_stack` schema EXISTS, which
+% that decision removes; the passthrough tests beside it, which assert no
+% quarantine, are the guard now.
 
 function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCase)
 % THE 4,563. NDI's own writer leaves subject_id empty on three of its seven
@@ -1708,8 +1667,9 @@ function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCa
 % required subject_id: an observation about nobody, invisible to every gate
 % because references.m skips empty edges.
 %
-% Note the fixture also pins WHY the passthrough is safe: image_stack came back
-% out of _DELETE_PHASE8 so the document has a schema to validate against.
+% The passthrough is safe without a V2 schema: since 2026-10-28 ([carried v1
+% validates against NDI templates]) a passed-through document whose class V2
+% does not hold is counted, not quarantined.
 v1 = struct();
 v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
