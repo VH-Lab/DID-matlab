@@ -188,6 +188,25 @@ function bodies = ontology_label(preBody)
 %   readers that find labels by class name accept both spellings:
 %   did2.convert.isOntologyLabelClass (did2.convert.foldGenericFiles) and
 %   NDI-matlab's ndi.migrate.internal.isOntologyLabelClass (#1076).
+%
+%   A LABEL OUTSIDE ITS TEMPLATE IS CARRIED, carry-100. Decided by Jess Haley,
+%   2026-10-27 [ontologyLabel row split] (did-schema
+%   V_eta_go_forward_class_audit.md; "carry-095 splits as the tuning rows did
+%   ([tuning stray fields are malformed]): a field outside NDI's
+%   `ontologyLabel` template, or an edge other than `document_id`, is carried
+%   under carry-100 (malformed); carry-095 keeps only template fields with no
+%   home"). A raw v1 label is read against its template at the locked
+%   NDI-matlab `main` (ontologyLabel.json + base.json: one field,
+%   `ontologyNode`, one edge, `document_id`; the ten writer sites,
+%   +setup/+conv/+haley/doImport.m and +babu/import.m, write exactly those)
+%   by private/jRawAccount, and one holding anything else is carried whole
+%   under carry-100 (private/jRawCarry), as every other raw v1 class is. What
+%   universalRenames would discard is carried under carry-049, as before. A
+%   label that passes is handed back untouched, as before. No template field
+%   of a label is left without a home in pass 1 (it writes none of them; NDI's
+%   second pass places `ontologyNode`), so carry-095 has no site here. The
+%   invented-shape guard below still runs first: those three names are a
+%   DID-side fixture shape, refused by name.
 
 arguments
     preBody (1,1) struct
@@ -203,6 +222,15 @@ if isfield(blk, 'ontology_name') || isfield(blk, 'label_id') || isfield(blk, 'la
          'field, `ontology_node` (`ontologyNode` before universalRenames), and ' ...
          'one dependency, `document_id`. This shape can only come from the ' ...
          'V_alpha snapshot or a fixture built against it.']);
+end
+if isfield(preBody, 'ontologyLabel')
+    % THE RAW READ: [ontologyLabel row split] (Jess Haley, 2026-10-27)
+    [~, collision, unplaced] = jRawAccount(preBody, ...
+        struct('ontologyLabel', {{'ontologyNode'}}), {'^document_id$'});
+    if jRawCarry('ontologyLabel', preBody, collision, unplaced, 'carry-100')
+        bodies = {preBody};
+        return;
+    end
 end
 bodies = {preBody};
 end

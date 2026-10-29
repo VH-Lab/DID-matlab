@@ -52,8 +52,9 @@ valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 % entity's `global_identifier` as `openminds:<id>`". Pass 1 mints no strain
 % entity for an openMINDS subject document (it writes one term assertion), so a
 % lab-made strain (a Strain with no ontology node) that states an id has no
-% home here yet and is carried; and until did-schema adds the registry's
-% `equivalent` column no id rebuilds (did2.convert.openmindsIdRebuilds), so a
+% home here yet and is carried; and until a row of the registry's `equivalent`
+% column is filled (did-schema 3a1b316 added it; 0 of 896 rows fill it at
+% did-schema 013d198) no id rebuilds (did2.convert.openmindsIdRebuilds), so a
 % controlled term that states one is carried too. The register rows are
 % carry-117 (a lab-made strain) and carry-116 (an id that does not rebuild).
 omId = jGetChar(block, 'openminds_id');
