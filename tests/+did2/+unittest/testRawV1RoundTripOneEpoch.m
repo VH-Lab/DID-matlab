@@ -53,11 +53,13 @@ function testADeviceLocalOneEpochIsCarried(testCase)
 % [oneepoch method is data combination] (Jess Haley, 2026-10-29): NDI-matlab
 % main +element/oneepoch.m stitches on dev_local_time only when the input has
 % no global clock (ndi.time.clocktype.isGlobal); such a oneepoch is carried
-% whole as v1, needs_mapping. No carry register row exists for it yet.
+% whole as v1, needs_mapping, citing register row carry-126 (did-schema
+% 64ad58b8; until then the note said it had no register row).
 v1 = oneEpoch('dev_local_time', [0; 100]);
 [carried, notes] = did2.unittest.helpers.carryNote({v1});
 verifyTrue(testCase, carried);
 verifyTrue(testCase, contains(notes, 'needs_mapping'), notes);
+verifyTrue(testCase, startsWith(notes, '[carry-126] needs_mapping: '), notes);
 verifyTrue(testCase, contains(notes, 'device-local time'), notes);
 % any global clock among its clocks: stitched on that clock, not carried
 cases = { ...

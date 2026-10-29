@@ -94,8 +94,8 @@ function v2Body = oneepoch(preBody)
 %   dev_local_time only when there is none; it writes EVERY clock of the
 %   element, comma-joined, as element_epoch.epoch_clock. So a oneepoch none
 %   of whose clocks is global was stitched on device-local time, and is
-%   carried whole as v1 (isStitchedOnLocalTime). There is no carry register
-%   row for it yet (its marker says none).
+%   carried whole as v1 (isStitchedOnLocalTime), citing register row
+%   carry-126 (did-schema 64ad58b8).
 %   NOT BUILT YET: the global-clock calculation. It still keeps the class
 %   `oneepoch` as below, until the questions in the PR that builds the
 %   device-local carry are answered (which statements are "the per-epoch
@@ -154,10 +154,9 @@ if isStitchedOnLocalTime(v2Body.element_epoch.clocks)
     if isfield(src, 'base') && isstruct(src.base) && isfield(src.base, 'id')
         id = char(src.base.id);
     end
-    % carry-register: none (a oneepoch stitched on device-local time; no
-    %   register row yet: [oneepoch method is data combination])
+    % carry-register: carry-126
     did2.convert.reportNote('carried_as_v1', 'oneepoch', id, ...
-        ['needs_mapping (no carry register row yet): a oneepoch stitched on ' ...
+        ['[carry-126] needs_mapping: a oneepoch stitched on ' ...
         'device-local time, its times in no input ([oneepoch method is data ' ...
         'combination])']);
     v2Body = {src};
