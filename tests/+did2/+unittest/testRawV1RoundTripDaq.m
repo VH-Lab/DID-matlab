@@ -42,10 +42,11 @@ function tests = testRawV1RoundTripDaq
 %   zips, 2026-10-27), with their values.
 %
 %   WHAT V2 DOES NOT KEEP is listed per fixture as KNOWN FINDINGS (knownFindings
-%   below): every writer-shaped fixture but one round trips with none (the
-%   Dabrowska probe location's label, below); the other findings are shapes no
-%   NDI writer at the locked `main` makes, kept here so that the round trip is
-%   seen to report them.
+%   below): every writer-shaped fixture round trips with none (the Dabrowska
+%   probe location's label was one until [term names compare by node], Jess
+%   Haley, 2026-10-29: testATermNameComparesByNode); the findings are shapes
+%   no NDI writer at the locked `main` makes, kept here so that the round trip
+%   is seen to report them.
 tests = functiontests(localfunctions);
 end
 
@@ -297,7 +298,13 @@ cases = {'daqsystem, one metadata reader', {'daqsystem', 'ndi_daqsystem_class'},
     'filenavigator, epochdir', {'filenavigator', 'fileparameters'}, ...
         '{ ''other.txt'' }', 'filenavigator.fileparameters'; ...
     'syncgraph, two rules', {'base', 'session_id'}, 'sess_other', 'base.session_id'; ...
-    'probe_location, Dabrowska', {'probe_location', 'name'}, 'amygdala', 'probe_location.name'};
+    'probe_location, Dabrowska', {'probe_location', 'ontology_name'}, 'UBERON:0001876', ...
+        'probe_location.ontology_name'};
+% INVERTED 2026-10-29: the probe_location row changed the NAME ('amygdala')
+% and expected probe_location.name lost. [term names compare by node] (Decided
+% by Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): the
+% round trip compares terms by node, so the changed value is now the NODE
+% (UBERON:0001876, amygdala), lost on the node path
 f = writerFixtures();
 for k = 1:size(cases, 1)
     v1 = f{strcmp(f(:, 1), cases{k, 1}), 2};
@@ -345,30 +352,32 @@ end
 % ===================== known findings ===================================
 
 function f = knownFindings()
-% {fixture, path, why}. One writer-shaped fixture has one (the Dabrowska probe
-% location, first row); the others are shapes no NDI writer at the locked
-% `main` makes, and today's behaviour is kept for them (a question for the team
-% each):
+% {fixture, path, why}. Shapes no NDI writer at the locked `main` makes, and
+% today's behaviour is kept for them (a question for the team each).
+%
+% INVERTED 2026-10-29: the two probe_location.name rows ('probe_location,
+% Dabrowska': the writer's "bed nucleus of stria terminalis (BNST)" written as
+% the registry's label of UBERON:0001880; 'probe_location, a label not the
+% registry''s': "V1" for UBERON:0002436) are gone. [term names compare by
+% node] (Decided by Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): "a v1 term name that differs from the
+% registry label of the same node ... is notation: no change, and the round
+% trip compares terms by node" (testATermNameComparesByNode).
 f = { ...
-    'probe_location, Dabrowska', 'probe_location.name', ...
-        ['the writer''s "bed nucleus of stria terminalis (BNST)" is written as the ' ...
-         'registry''s label of UBERON:0001880, "bed nucleus of stria terminalis" ' ...
-         '([probe location terms], Jess Haley, 2026-10-27); whether the writer''s ' ...
-         'own spelling is also kept is open question 11e (as treatment)']; ...
     'daqreader with a base.name', 'base.name', ...
         'V2 writes no base.name (#73 item 54); the writer leaves it '''' (as subject 4a)'; ...
     'filenavigator, unbraced pattern', 'filenavigator.fileparameters', ...
-        'a pattern not written by cell2str is read as one pattern and written back braced'; ...
-    'probe_location, a label not the registry''s', 'probe_location.name', ...
-        'a registered node takes the registry''s label (as treatment 11e)'};
+        'a pattern not written by cell2str is read as one pattern and written back braced'};
 end
 
 function testKnownFindingsAreReported(testCase)
 cases = {'daqreader with a base.name', setIn(writerDaqreader('ndi.daq.reader.mfdaq.intan', emptySessionId()), ...
         {'base', 'name'}, 'intan reader'); ...
     'filenavigator, unbraced pattern', setIn(writerFilenavigator('ndi.file.navigator', ...
-        '#\.mat\>', 'ndi.epoch.epochprobemap_daqsystem', ''), {'base', 'name'}, ''); ...
-    'probe_location, a label not the registry''s', writerProbeLocation('pl_9', 'UBERON:0002436', 'V1')};
+        '#\.mat\>', 'ndi.epoch.epochprobemap_daqsystem', ''), {'base', 'name'}, '')};
+% (the case 'probe_location, a label not the registry''s' moved to
+% testATermNameComparesByNode, INVERTED 2026-10-29: [term names compare by
+% node])
 for k = 1:size(cases, 1)
     [label, v1] = cases{k, :};
     v1 = jsondecode(jsonencode(v1));
@@ -378,6 +387,38 @@ for k = 1:size(cases, 1)
     r = did2.convert.roundtrip.check(v1, out.migrated);
     verifyRoundTrip(testCase, r, label, findingsFor(label));
 end
+end
+
+function testATermNameComparesByNode(testCase)
+% INVERTED 2026-10-29 from the known findings 'probe_location, Dabrowska' and
+% 'probe_location, a label not the registry''s' (probe_location.name lost).
+% Decided by Jess Haley, 2026-10-29 [term names compare by node] (did-schema
+% V_eta_go_forward_class_audit.md): a v1 term name that differs from the
+% registry label of the same node is notation; the round trip compares terms
+% by node (did2.convert.roundtrip private nameByNode)
+cases = { ...
+    'probe_location, Dabrowska', writerProbeLocation('pl_1', 'UBERON:0001880', ...
+        'bed nucleus of stria terminalis (BNST)'); ...
+    'probe_location, a label not the registry''s', writerProbeLocation('pl_9', ...
+        'UBERON:0002436', 'V1')};
+for k = 1:size(cases, 1)
+    [label, v1] = cases{k, :};
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    verifyEmpty(testCase, out.passthrough, [label ': converted']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyRoundTrip(testCase, r, label, {});
+    verifyTrue(testCase, r.ok, label);
+    verifyTrue(testCase, any(strcmp('probe_location.name', r.equivalent)), ...
+        [label ': the name is compared by its node']);
+end
+% the node is still compared: a location of another node is lost on the node
+% path, whatever the name
+v1 = writerProbeLocation('pl_1', 'UBERON:0001880', 'bed nucleus of stria terminalis (BNST)');
+other = runRaw(writerProbeLocation('pl_1', 'UBERON:0002436', 'primary visual cortex')).migrated;
+r = did2.convert.roundtrip.check(v1, other);
+verifyFalse(testCase, r.ok);
+verifyTrue(testCase, any(strcmp('probe_location.ontology_name', {r.lost.path})), describeLost(r));
 end
 
 function paths = findingsFor(fixture)

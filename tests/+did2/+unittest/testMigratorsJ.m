@@ -6209,10 +6209,15 @@ v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
 v1.base = struct('id', 'oe_3', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.epochid = struct('epochid', 'whole_session_ref1');
-v1.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0; 930.35]);
+% A GLOBAL clock beside the local one (2026-10-29): a oneepoch stitched on
+% device-local time alone is carried whole as v1 ([oneepoch method is data
+% combination], Jess Haley, did-schema V_eta_go_forward_class_audit.md;
+% testRawV1RoundTripOneEpoch), and this test is about the kept class.
+v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', 't0_t1', [0 1; 930.35 931.35]);
 v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
 
 d = runJ(v1).migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'oneepoch');
 verifyEqual(testCase, d.get('oneepoch.epoch_ids'), 't00001,t00002,t00003');
 % the SYNTHETIC epoch id survives too -- sourceCensus tracks exactly this string
 % as a grouping hazard, citing oneepoch.m:42, so it must not be quietly dropped

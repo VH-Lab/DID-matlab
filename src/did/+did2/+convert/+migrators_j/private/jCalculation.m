@@ -116,15 +116,21 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %     [tuning fits use curve fitting now]  a fitted family's ('oridir',
 %         'contrast', 'sf', 'tf', 'speed') `method.term` is OBI:0200072
 %         "curve fitting data transformation" (building [method terms are
-%         general]); the fitted function is the method parameter
-%         {variable 'function', text <model>} when all its fits are of one
-%         model (e.g. 'Naka-Rushton', jTuningCurve). METHODNAME stays the
-%         calculator: the `software` entity.
+%         general]). METHODNAME stays the calculator: the `software`
+%         entity. (Until 2026-10-29 the fitted function was also the method
+%         parameter {variable 'function', text <model>} when all fits were
+%         of one model; see [fit model stated once] below.)
 %     [one calculation per named calculator output] (2026-10-28; amends the
 %         decision above): one v1 calculator output is ONE calculation, its
 %         fits entries of value.model_fit, each naming its own model; the
 %         method holds no `function` list, so fits of several models (the SF /
 %         TF writers' five) write no `function` parameter.
+%     [fit model stated once] (Jess Haley, 2026-10-29, did-schema
+%         V_eta_go_forward_class_audit.md): a calculation whose fits share
+%         one model writes no {function: <model>} method parameter either;
+%         the model is stated in each fit entry (value.model_fit{k}.model),
+%         and the round trip rebuilds v1 from those entries (fitBlocks). The
+%         method keeps its term OBI:0200072 and its other parameters.
 %     [absolute-value fits are a second calculation]  an SF / TF `abs` block
 %         is a SECOND calculation of LEAFCLASS (its id minted, role
 %         'absolute value calculation'), the same subject, anchor, inputs and
@@ -537,35 +543,20 @@ else
 end
 end
 
-function m = fitMethod(value, params, more)
+function m = fitMethod(~, params, more)
 %FITMETHOD The method of a tuning fit calculation ([tuning fits use curve
 %   fitting now], Jess Haley, 2026-10-27): term OBI:0200072 "curve fitting
-%   data transformation"; parameters: the fitted function when every entry of
-%   VALUE.model_fit is of one model (one text), then MORE (a cell of entries),
-%   then the v1 settings PARAMS. Fits of several models write no `function`
-%   parameter: Decided by Jess Haley, 2026-10-28 [one calculation per named
-%   calculator output] ("the method holds no `function` list"; it amends
-%   [tuning fits use curve fitting now]): each fit names its own `model` in
-%   its model_fit entry. The JSON list the SF / TF fits wrote until then is
-%   gone.
-models = {};
-if isstruct(value) && isfield(value, 'model_fit') && ~isempty(value.model_fit)
-    mf = value.model_fit;
-    if isstruct(mf); mf = num2cell(reshape(mf, 1, [])); end
-    for k = 1:numel(mf)
-        mm = mf{k}.model;
-        if iscell(mm); mm = mm{1}; end
-        nm = char(mm.name);
-        if ~any(strcmp(models, nm))
-            models{end+1} = nm; %#ok<AGROW>
-        end
-    end
-end
-entries = {};
-if isscalar(models)
-    entries{end+1} = did2.build.parameter(jLabel('function'), 'Text', models{1});
-end
-entries = [entries, reshape(more, 1, [])];
+%   data transformation"; parameters: MORE (a cell of entries), then the v1
+%   settings PARAMS. No `function` parameter is written: fits of several
+%   models write none (Decided by Jess Haley, 2026-10-28 [one calculation
+%   per named calculator output]: "the method holds no `function` list"),
+%   and fits that share one model write none either ([fit model stated
+%   once] (Jess Haley, 2026-10-29, did-schema
+%   V_eta_go_forward_class_audit.md): the model is stated once, in each
+%   fit's model_fit entry, which is what a query reads). The first input
+%   (the fits' value) is unused since then; it is kept so the two call sites
+%   stay as they were.
+entries = reshape(more, 1, []);
 if ~isempty(params)
     entries{end+1} = params;
 end
