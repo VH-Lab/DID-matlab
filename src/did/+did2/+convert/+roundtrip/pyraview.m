@@ -426,8 +426,15 @@ for p = {'order', 'filterFrequency', 'passBandRipple', 'stopbandAttentuation'}
         nanPaths{end+1} = p{1}; %#ok<AGROW>
     end
 end
-% the label restates the type: a label that differs is carried (carry-007)
-f = struct('label', type, 'type', type, 'algorithm', algorithm, 'parameters', params);
+% the label restates the type, unless the method is named: a label that
+% differs is the method's name ([filter label is the method name], Jess Haley,
+% 2026-10-27)
+label = type;
+name = getIn(m, 'method', 'name');
+if (ischar(name) || isstring(name)) && strlength(name) > 0
+    label = char(name);
+end
+f = struct('label', label, 'type', type, 'algorithm', algorithm, 'parameters', params);
 end
 
 function v = quantityOf(e)

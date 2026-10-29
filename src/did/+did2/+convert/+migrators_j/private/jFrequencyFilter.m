@@ -9,8 +9,9 @@ function [ff, edgeName, unplaced] = jFrequencyFilter(preBody, nativeRate)
 %   cannot place; the caller then carries its document whole as v1 ([small
 %   unread settings] (2), Jess Haley, 2026-10-26; [partly placed is carried as
 %   v1], 2026-10-25): a fractional order, a `label` that differs from the
-%   `type`, a `sampleFrequency` with no method document to hold it, or a type /
-%   algorithm spelling with no mapping (other than the all-pass 'none').
+%   `type` on an all-pass (no method document to name), a `sampleFrequency`
+%   with no method document to hold it, or a type / algorithm spelling with no
+%   mapping (other than the all-pass 'none').
 %
 %   NATIVERATE (optional, [] when not given) is the caller's own sample rate
 %   (a pyraview's `native_rate`). An all-pass's `sampleFrequency` equal to it
@@ -116,14 +117,20 @@ function [ff, edgeName, unplaced] = jFrequencyFilter(preBody, nativeRate)
 %                                frequency_filter model has no sample_rate). For
 %                                an all-pass (no method is built) it has no
 %                                home and the document is carried as v1.
-%     label                        Not written: in the real PRED document `type`
-%                                  and `label` are BOTH "high" -- the same fact
-%                                  twice. The writer sets label to the
-%                                  user-facing band (filterData.m:32) and type
-%                                  to the schema's vocabulary; they diverge for
-%                                  the all-pass ('all' / 'none'). A `label` that
-%                                  differs from `type` carries the document as
-%                                  v1 ([small unread settings] (2)).
+%     label     -> method.name   Not written when it equals `type`: in the
+%                                  real PRED document `type` and `label` are
+%                                  BOTH "high" -- the same fact twice. The
+%                                  writer sets label to the user-facing band
+%                                  (filterData.m:32) and type to the schema's
+%                                  vocabulary. A `label` that differs is the
+%                                  method's `name`, verbatim (Decided by Jess
+%                                  Haley, 2026-10-27 [filter label is the
+%                                  method name], did-schema
+%                                  V_eta_go_forward_class_audit.md; answers
+%                                  did-schema #136). On the all-pass ('all' /
+%                                  'none') no method is built, so a differing
+%                                  label still carries the document as v1
+%                                  (carry-007).
 %
 %   NaN MEANS INAPPLICABLE, NOT ZERO. Chebyshev-I has no stopband spec, so NDI
 %   writes NaN. Per the rule already set for time references, an inapplicable
@@ -162,10 +169,12 @@ if isfield(blk, 'parameters') && isstruct(blk.parameters) && isscalar(blk.parame
     params = blk.parameters;
 end
 
-% [small unread settings] (2) (Jess Haley, 2026-10-26): what cannot be placed
+% a label that restates the type is not written; one that differs names the
+% method ([filter label is the method name]) or, on an all-pass, carries
 label = readChar(blk, {'label'});
+methodName = '';
 if ~isempty(label) && ~strcmp(strtrim(label), strtrim(rawType))
-    unplaced{end+1} = sprintf('[carry-007] filter.label "%s" (differs from type "%s")', label, rawType);
+    methodName = label;
 end
 K = jFilterParameterKeys();   % the one list of what is read (and so what is not)
 sampleFrequency = readNumScalar(params, K.sampleFrequency);
@@ -173,6 +182,10 @@ sampleFrequency = readNumScalar(params, K.sampleFrequency);
 if isempty(algorithm) || isempty(band)
     % 'none' or blank: an all-pass, no filter document and no edge. A spelling
     % with no mapping is not an all-pass: the caller carries the document.
+    if ~isempty(methodName)
+        % [small unread settings] (2) (Jess Haley, 2026-10-26): no method to name
+        unplaced{end+1} = sprintf('[carry-007] filter.label "%s" (differs from type "%s")', label, rawType);
+    end
     if ~(isNone(rawAlgorithm) && isNone(rawType))
         unplaced{end+1} = sprintf('[carry-042] filter.algorithm "%s" / type "%s" (no mapping)', ...
             rawAlgorithm, rawType);
@@ -254,7 +267,7 @@ if ~any(strcmp(edges, 'method_id'))
          'sampled_body declares method_id (DID_SCHEMA_PATH).'], ...
         classOf(preBody), idOf(preBody), strjoin(edges, ', '));
 end
-ff = filterMethod(block, preBody, sampleFrequency);
+ff = filterMethod(block, preBody, sampleFrequency, methodName);
 edgeName = 'method_id';
 end
 
@@ -293,7 +306,7 @@ for k = 1:numel(chain)
 end
 end
 
-function m = filterMethod(block, preBody, sampleFrequency)
+function m = filterMethod(block, preBody, sampleFrequency, name)
 %FILTERMETHOD The filter as a `method` document ([filters are methods]): term
 %   the design (its algorithm), parameters the band, the passband edges (Hz),
 %   the order (a count) and the ripple / attenuation (dB). Every term is the
@@ -353,7 +366,7 @@ if ~isempty(sampleFrequency)
 end
 designT = designs.(block.algorithm);
 m = did2.build.method(did2.build.term(designT{1}, designT{2}), did2.build.list(p{:}), ...
-    'SessionId', jSid(preBody), 'CreationTimestamp', jStamp(preBody), 'Validate', false);
+    'Name', name, 'SessionId', jSid(preBody), 'CreationTimestamp', jStamp(preBody), 'Validate', false);
 end
 
 % ===================== small helpers =======================================

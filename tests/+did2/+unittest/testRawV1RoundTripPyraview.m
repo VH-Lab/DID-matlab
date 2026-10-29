@@ -94,6 +94,16 @@ for b = {'high', 'low'}
             sprintf('%s: %s did not come back', b{1}, p{1}));
     end
 end
+% a filter label that differs from its type is the filter method's name and
+% comes back verbatim (Decided by Jess Haley, 2026-10-27 [filter label is the
+% method name], did-schema V_eta_go_forward_class_audit.md)
+v1 = writerShape('high');
+v1.filter.label = 'my high-pass';
+out = runRaw(stamped(v1));
+verifyEmpty(testCase, out.quarantine, 'named');
+r = did2.convert.roundtrip.check(v1, [out.migrated, {epochEntity(v1)}]);
+verifyFalse(testCase, r.carried, 'named');
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'named', {});
 % the writer's all-pass is carried where epochMint re-runs it, as the source
 % that re-run was handed (the v1 document with its epoch_id edge)
 s = stamped(writerShape('all'));

@@ -270,8 +270,16 @@ end
 % ===================== metadata_editor ==================================
 
 function testWriterFormsConvertAndRoundTrip(testCase)
+% 'two affiliations': AuthorData.addAffiliation grows `affiliation` into a
+% struct array; each gets its own affiliated_with relation and the round trip
+% rebuilds both, in order (Decided by Jess Haley, 2026-10-27 [one affiliation
+% relation each], did-schema V_eta_go_forward_class_audit.md).
+two = fullForm();
+two.Author.affiliation = struct('memberOf', {struct('fullName', 'Brandeis University'), ...
+    struct('fullName', 'Waltham Data Science')});
 cases = {'Soph form', writerEditor('me_S', 'ds_S', sophForm()); ...
-    'full form', writerEditor('me_F', 'ds_F', fullForm())};
+    'full form', writerEditor('me_F', 'ds_F', fullForm()); ...
+    'two affiliations', writerEditor('me_A', 'ds_A', two)};
 for k = 1:size(cases, 1)
     [label, v1] = cases{k, :};
     out = runRaw(v1);
