@@ -965,8 +965,12 @@
 %         Deferred: stimulus_bath migrates to a formulation-valued manipulation in the
 %         NDI layer / the coarse resolveDeferredBaths pass.
 %     stimulus_parameter
-%         Brainstorm-J migrator: did_v1 stimulus_parameter -- a PASSTHROUGH that
-%         normalises the template's own untypeable placeholder.
+%         Brainstorm-J migrator: did_v1 stimulus_parameter -- carried whole as v1
+%         (since 2026-10-29, [one folder, final classes only]; see the end of the
+%         function). Until then it was a PASSTHROUGH that normalised the template's
+%         own untypeable placeholder; the history below explains that repair, which a
+%         carried document no longer needs (it is not read against V2). A non-empty
+%         char or a non-numeric `value` still errors.
 %     stimulus_presentation
 %         Brainstorm-J migrator: did_v1 stimulus_presentation -- the decomposition is
 %         DONE BY THE NDI SECOND PASS; pass 1 is a GUARDED PASSTHROUGH that carries

@@ -92,8 +92,18 @@ end
     'vmneuralresponseresiduals', {{'element_epochid', 'parameters', 'column_labels', ...
         'goodness_of_fit', 'total_power', 'residual_power'}}), ...
     {'^element_id$'});
-jRawCarry('vmneuralresponseresiduals', preBody, collision, unplaced, 'carry-100');
-bodies = {preBody};   % a passthrough, or the carry of the untouched v1 source
+if ~jRawCarry('vmneuralresponseresiduals', preBody, collision, unplaced, 'carry-100')
+    % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % v1 document passes through under it, so this document, left as v1 on purpose,
+    % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
+    % 2026-10-24) instead of passing through silently. No carry register row
+    % covers this reason yet (a question for the team).
+    % carry-register: none (vmneuralresponseresiduals has no V2 home)
+    did2.convert.reportNote('carried_as_v1', 'vmneuralresponseresiduals', jCarryId(preBody), ...
+        'unplaced: vmneuralresponseresiduals has no V2 home ([passthrough stays v1])');
+end
+bodies = {preBody};   % the carry of the untouched v1 source
 end
 
 % ===================== small helpers =======================================

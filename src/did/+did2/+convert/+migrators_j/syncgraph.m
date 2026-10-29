@@ -167,6 +167,15 @@ if isfield(preBody, 'base') && isstruct(preBody.base) ...
     sessionId = char(preBody.base.session_id);
 end
 if isempty(sessionId) || isEmptySessionSentinel(sessionId)
+    % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % v1 document passes through under it, so this document, left as v1 on purpose,
+    % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
+    % 2026-10-24) instead of passing through silently. No carry register row
+    % covers this reason yet (a question for the team).
+    % carry-register: none (no session id, so no policy can be anchored)
+    did2.convert.reportNote('carried_as_v1', 'syncgraph', jCarryId(src), ...
+        'unplaced: no session id, so no policy can be anchored ([passthrough stays v1])');
     bodies = {src};          % THE GUARD -- see the header
     return;
 end

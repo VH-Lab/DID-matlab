@@ -135,6 +135,17 @@ verifyCarriedFor(testCase, {neuronTimesOnly()}, ...
     'neuron_extracellular.waveform_sample_times (no mean_waveform');
 end
 
+function testAHartleyWithNoSubjectIsCarriedWithANote(testCase)
+% [one folder, final classes only] (Decided by Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): a hartley_calc naming no subject used to
+% pass through silently (jCalculation hands it back unchanged); it is now
+% carried whole as v1 with a `carried_as_v1` note ([passthrough stays v1])
+v1 = hartley();
+v1.depends_on(1).value = '';
+verifyCarriedFor(testCase, {v1, presentationOf(hartley())}, ...
+    'no element_id or subject_id, so no calculation subject');
+end
+
 function testAnotherJrclustNameCarries(testCase)
 % [jrclust default name is notation] (Decided by Jess Haley, 2026-10-27): only
 % the writer's default 'jrclust.prm' is notation; any other name on the

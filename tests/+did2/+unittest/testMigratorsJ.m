@@ -4964,6 +4964,36 @@ verifyEqual(testCase, depValue(a, 'entity_id'), 'elem_9');
 verifyEqual(testCase, a.document_class.class_name, 'assertion');   % #88
 end
 
+function testAnOpenmindsElementWithAnIdOrADescriptionIsCarried(testCase)
+% [openMINDS element leftovers carried] (Decided by Jess Haley, 2026-10-29,
+% did-schema V_eta_go_forward_class_audit.md): "a v1 `openminds_element`
+% holding an `openminds_id` or a `fields.description` is carried whole as v1,
+% as for openMINDS subjects"; the register row is carry-128. Each alone carries.
+body = struct();
+body.document_class = struct('class_name', 'openminds_element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+body.depends_on = struct('name', {'element_id', 'openminds'}, 'value', {'elem_9', ''});
+body.base = struct('id', 'ome_2', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/CellType', ...
+    'matlab_type', 'openminds.controlledterms.CellType', ...
+    'openminds_id', 'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d', ...
+    'fields', struct('name', 'type III BNST neuron', ...
+        'preferredOntologyIdentifier', 'EMPTY:0000073', 'description', ''));
+out = runJ(body);
+verifyCarriedWholeAsV1(testCase, body, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-128] '), d);
+desc = body;
+desc.base.id = 'ome_3';
+desc.openminds.openminds_id = '';
+desc.openminds.fields.description = 'A type of neuron.';
+out = runJ(desc);
+verifyCarriedWholeAsV1(testCase, desc, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-128] '), d);
+end
+
 function testOpenmindsStimulusPassesThroughForSecondPass(testCase)
 % INVERTED, not updated. This test used to assert the document became a
 % `term_assertion` whose subject_id came from a `stimulus_id` dependency -- and
@@ -5891,6 +5921,25 @@ verifyEqual(testCase, names{1}, 'fitcurve');
 verifyEqual(testCase, out{1}.base.id, 'fc_2');
 verifyEqual(testCase, out{1}.fitcurve.fit_sse, 12.5, 'AbsTol', 1e-9);
 verifyEqual(testCase, out{1}.fitcurve.fit_equation, 'gaussian');
+end
+
+function testASubjectlessFitIsCarriedWholeAsV1WithANote(testCase)
+% [one folder, final classes only] (Decided by Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): the guard above no longer passes the fit
+% through silently under its retire class; through the pipeline it is carried
+% whole as v1 with a `carried_as_v1` note ([passthrough stays v1]). No register
+% row covers it yet, so the note cites none.
+v1 = struct();
+v1.document_class = struct('class_name', 'fitcurve', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+v1.depends_on = struct('name', {'fit_example_data_id'}, 'value', {''});
+v1.base = struct('id', 'fc_4', 'session_id', 'sess_09', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.fitcurve = struct('fit_equation', 'gaussian', 'fit_sse', 12.5);
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'no calculation subject'), d);
 end
 
 function testFitcurveWithAnEmptyElementIdIsAlsoGuarded(testCase)

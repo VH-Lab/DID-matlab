@@ -27,8 +27,11 @@ function tests = testRawV1RoundTripMeasurement
 %   the renamed path it passed through as a V2 `measurement`, a `retire` class,
 %   which NDI's last step stored as v1: the same end state). subjectmeasurement
 %   converts with its datestamp as an absolute time reference.
-%   stimulus_parameter is kept as it is (its decided target is built by no
-%   migrator yet). No known findings.
+%   stimulus_parameter is carried whole as v1 (its decided target is built by
+%   no migrator yet; INVERTED 2026-10-29 from "kept as it is", a silent
+%   pass-1 passthrough: [one folder, final classes only], Jess Haley,
+%   2026-10-29, deletes a retire class's V2 file once no v1 document passes
+%   through under it). No known findings.
 tests = functiontests(localfunctions);
 end
 
@@ -74,6 +77,30 @@ function testADateIsCarriedNotPassedThrough(testCase)
 [carried, notes] = did2.unittest.helpers.carryNote({measurementDate()});
 verifyTrue(testCase, carried);
 verifyTrue(testCase, contains(notes, 'no V2 statement'), notes);
+end
+
+function testAStimulusParameterIsCarriedNotPassedThrough(testCase)
+% [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): carried whole as v1 with a note
+% ([passthrough stays v1]); no register row covers it yet
+[carried, notes] = did2.unittest.helpers.carryNote({stimulusParameter()});
+verifyTrue(testCase, carried);
+verifyTrue(testCase, contains(notes, 'stimulus_parameter has no V2 home'), notes);
+end
+
+function testASubjectMeasurementItCannotStateIsCarried(testCase)
+% the guards that used to pass the document through silently now carry it
+% with a note ([one folder, final classes only], Jess Haley, 2026-10-29)
+v1 = subjectAge();
+v1.depends_on = struct('name', 'subject_id', 'value', '');
+[carried, notes] = did2.unittest.helpers.carryNote({v1});
+verifyTrue(testCase, carried, 'no subject');
+verifyTrue(testCase, contains(notes, 'no subject_id'), notes);
+v1 = subjectAge();
+v1.subjectmeasurement.measurement = '';
+[carried, notes] = did2.unittest.helpers.carryNote({v1});
+verifyTrue(testCase, carried, 'no name');
+verifyTrue(testCase, contains(notes, 'subjectmeasurement.measurement is empty'), notes);
 end
 
 function testTheConvertedDocumentsValidate(testCase)
@@ -129,7 +156,7 @@ f = { ...
     'measurement, a term', measurementTerm(), 'converted'; ...
     'measurement, a date', measurementDate(), 'carried'; ...
     'subjectmeasurement, age with a datestamp', subjectAge(), 'converted'; ...
-    'stimulus_parameter, temptable2stimulusparameters', stimulusParameter(), 'kept'};
+    'stimulus_parameter, temptable2stimulusparameters', stimulusParameter(), 'carried'};   % INVERTED 2026-10-29 from 'kept'
 end
 
 function d = writerMeasurement(id, node, name, stringValue, numericValue)

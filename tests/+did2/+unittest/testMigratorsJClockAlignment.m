@@ -371,14 +371,21 @@ verifyEqual(testCase, depVal(policy, 'session_id'), ...
     did2.unittest.helpers.sessionDocumentId('sessdoc_1', 'sess_0001'));
 end
 
-function testGraphWithTheEmptySessionSentinelPassesThrough(testCase)
+function testGraphWithTheEmptySessionSentinelIsCarried(testCase)
+% INVERTED 2026-10-29 from testGraphWithTheEmptySessionSentinelPassesThrough.
+% Decided by Jess Haley, 2026-10-29 [one folder, final classes only] (did-schema
+% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% v1 document passes through under it, so the guard now carries the document
+% whole as v1 with a `carried_as_v1` note ([passthrough stays v1]).
 % ndi.session.empty_id() is '0000000000000000_0000000000000000' -- "no specific
 % session". Pointing a REQUIRED edge at a document that by construction does not
-% exist is an orphan, not a fact, so the document passes through instead.
+% exist is an orphan, not a fact, so the document is kept as v1 instead.
 out = runJ(syncgraphFixture({'rule_a'}, '0000000000000000_0000000000000000'));
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'syncgraph');
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
+verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), 'the carry is noted');
 end
 
 function testPolicyNeverEmitsABlankRequiredSessionEdge(testCase)

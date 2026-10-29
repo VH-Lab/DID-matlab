@@ -32,8 +32,13 @@ function tests = testRawV1RoundTripProbe
 %                       ([probe contact geometry carried]). The same document
 %                       with no shank_id (the "converted shape", DID-side)
 %                       converts and loses nothing.
-%     site2channelmap   a pass-1 passthrough (the NDI second pass joins it to
-%                       its geometry); it round trips as itself.
+%     site2channelmap   carried whole as v1 (no V2 home; nothing joins it to
+%                       its geometry yet). INVERTED 2026-10-29 from "a pass-1
+%                       passthrough": [one folder, final classes only] (Jess
+%                       Haley, 2026-10-29) deletes a retire class's V2 file once
+%                       no v1 document passes through under it, so the
+%                       migrator now carries it with a note. It round trips as
+%                       itself.
 %     electrode_offset_voltage  converts; with a temperature and with the
 %                       writer's NaN. Nothing lost.
 %   No writer-shaped document loses a field: there are no known findings for
@@ -157,6 +162,15 @@ v1.site2channelmap.headstage = 'A';
 verifyCarried(testCase, v1, 'site2channelmap.headstage');
 end
 
+function testAnOffsetThatIsNotANumberIsCarriedWithANote(testCase)
+% [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): the "nothing to fold" branch used to pass
+% the document through silently under the retire class; it is now carried
+% whole as v1 with a `carried_as_v1` note ([passthrough stays v1])
+v1 = writerOffset(NaN, 21.5);
+verifyCarried(testCase, v1, 'electrode_offset_voltage.offset is not one finite number');
+end
+
 function testTheWriterGeometryCarriesItsShanks(testCase)
 [carried, notes] = did2.unittest.helpers.carryNote({writerGeometry()});
 verifyTrue(testCase, carried);
@@ -237,7 +251,7 @@ nanTemp.electrode_offset_voltage.temperature = NaN;   % jsonencodenan keeps NaN
 f = { ...
     'probe_geometry, fromStruct', writerGeometry(), 'carried'; ...
     'probe_geometry, converted shape', convertedGeometry(), 'converted'; ...
-    'site2channelmap', writerSiteMap(), 'passthrough'; ...
+    'site2channelmap', writerSiteMap(), 'carried'; ...   % INVERTED 2026-10-29 from 'passthrough' ([one folder, final classes only])
     'electrode_offset_voltage, with a temperature', writerOffset(0.012, 21.5), 'converted'; ...
     'electrode_offset_voltage, temperature not recorded (null)', writerOffset(-0.0031, NaN), 'converted'; ...
     'electrode_offset_voltage, temperature not recorded (NaN)', nanTemp, 'converted'};

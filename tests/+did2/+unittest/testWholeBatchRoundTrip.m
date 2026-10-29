@@ -169,10 +169,16 @@ verifyFalse(testCase, isfield(r.no_inverse_by_class, 'epochfiles_ingested'), des
 verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
 end
 
-function testAnOpenmindsSubjectRoundTrips(testCase)
+function testAnOpenmindsSubjectRoundTripsWithTheSpeciesTextAccepted(testCase)
+% INVERTED 2026-10-29 from testAnOpenmindsSubjectRoundTrips, which asserted the
+% species' definition and synonym were LOST. Decided by Jess Haley, 2026-10-29
+% [species text is the openMINDS equivalent] (did-schema
+% V_eta_go_forward_class_audit.md): they are not stored in V2 (the registry
+% records the openMINDS species instance as the term's equivalent), and "the
+% round trip reports the v1 text as an accepted difference".
 % JH's shapes (ndi.database.fun.openMINDSobj2ndi_document): a sex states no
 % definition and round trips clean; a species states openMINDS's definition and
-% synonym, which nothing in DID holds, and the round trip reports exactly those
+% synonym, and the round trip reports exactly those as accepted (equivalent)
 sex = openmindsV1('wb_om_sex', 'openminds_subject', 'subject_id', 'BiologicalSex', ...
     'hermaphrodite', 'PATO:0001340', '', '');
 species = openmindsV1('wb_om_sp', 'openminds_subject', 'subject_id', 'Species', ...
@@ -184,10 +190,12 @@ verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject (sex)', {});
 out = did2.convert.v1_to_v2({species}, 'Validate', false, 'TargetVersion', 'V_eta');
 r = did2.convert.roundtrip.check(species, out.migrated);
-verifyEqual(testCase, sort({r.lost.path}), ...
-    {'openminds.fields.definition', 'openminds.fields.synonym'});
-verifyEmpty(testCase, r.invented);
-verifyEmpty(testCase, r.unplaced);
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject (species)', {});
+verifyTrue(testCase, all(ismember({'openminds.fields.definition', ...
+    'openminds.fields.synonym'}, r.equivalent)), ...
+    'the species text is reported as an accepted difference');
+verifyTrue(testCase, r.ok);
 end
 
 function testAnOpenmindsSubjectIdIsReadBackThroughTheEquivalentList(testCase)
@@ -213,20 +221,46 @@ r = did2.convert.roundtrip.check(sex, out.migrated);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject (no id)', {});
 end
 
-function testAnOpenmindsElementReportsWhatItDoesNotKeep(testCase)
-% Dab's shape: a cell type with an openMINDS id and a description; the
-% migrator keeps neither, and the round trip says so
+function testAnOpenmindsElementWithAnIdAndADescriptionIsCarried(testCase)
+% INVERTED 2026-10-29 from testAnOpenmindsElementReportsWhatItDoesNotKeep,
+% which asserted the element was CONVERTED and its openminds_id and description
+% LOST. Decided by Jess Haley, 2026-10-29 [openMINDS element leftovers carried]
+% (did-schema V_eta_go_forward_class_audit.md): "a v1 `openminds_element`
+% holding an `openminds_id` or a `fields.description` is carried whole as v1"
+% (carry-128), so the round trip compares the carry and nothing is lost.
+% Dab's shape: a cell type with an openMINDS id and a description
 ct = openmindsV1('wb_om_ct', 'openminds_element', 'element_id', 'CellType', ...
     'type III BNST neuron', 'EMPTY:0000073', '', '');
 ct.openminds.openminds_id = 'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d';
 ct.openminds.fields.description = 'A type of neuron.';
 out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'V_eta');
 r = did2.convert.roundtrip.check(ct, out.migrated);
+verifyTrue(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element (carried)', {});
+% each half alone carries too
+for half = {'id', 'description'}
+    one = ct;
+    if strcmp(half{1}, 'id')
+        one.openminds.fields.description = '';
+    else
+        one.openminds.openminds_id = '';
+    end
+    out = did2.convert.v1_to_v2({one}, 'Validate', false, 'TargetVersion', 'V_eta');
+    r = did2.convert.roundtrip.check(one, out.migrated);
+    verifyTrue(testCase, r.carried, ['carried for its ' half{1} ' alone']);
+end
+end
+
+function testAnOpenmindsElementWithNeitherConverts(testCase)
+% the other side of [openMINDS element leftovers carried]: a cell type stating
+% neither an openminds_id nor a description still converts to the term
+% assertion, and round trips clean
+ct = openmindsV1('wb_om_ct2', 'openminds_element', 'element_id', 'CellType', ...
+    'type III BNST neuron', 'EMPTY:0000073', '', '');
+out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'V_eta');
+r = did2.convert.roundtrip.check(ct, out.migrated);
 verifyFalse(testCase, r.carried);
-verifyEqual(testCase, sort({r.lost.path}), ...
-    {'openminds.fields.description', 'openminds.openminds_id'});
-verifyEmpty(testCase, r.invented);
-verifyEmpty(testCase, r.unplaced);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element (converted)', {});
 end
 
 % ===================== fixtures =========================================

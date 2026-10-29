@@ -87,7 +87,9 @@ function tests = testMigratorsJDaqConfiguration
 %   passthrough in the first place. The branch is therefore a quarantine path by
 %   construction, unreachable for real data (NDI writes the class name on every
 %   document), and pinned as such by
-%   testTheResidualPassthroughIsAQuarantinePathByConstruction.
+%   testTheResidualPassthroughIsAQuarantinePathByConstruction -- INVERTED
+%   2026-10-29 to testTheResidualDaqsystemIsCarriedWholeAsV1: the branch now
+%   carries the body whole as v1 ([one folder, final classes only]).
 %
 %   THAT CORRECTION IS WHY THE LINE BELOW MATTERS, and it stayed true for
 %   exactly one commit: nothing here had been executed when it was written, and
@@ -437,6 +439,31 @@ verifyEqual(testCase, classNames(out), {'daqmetadatareader'});
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
+function testHollowReadersAndSystemsAreCarriedWithANote(testCase)
+% [one folder, final classes only] (Decided by Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% v1 document passes through under it. The nothing-to-declare branches above
+% (daqreader, daqmetadatareader, daqsystem) still hand the document back
+% unchanged, but now as a carry: stamped did_v1, with a `carried_as_v1` note
+% ([passthrough stays v1]), not a silent did_v2 passthrough.
+v0 = daqsystemV1('', {});
+v0.depends_on = struct('name', {}, 'id', {});
+bodies = {daqreaderV1(''), daqmetadatareaderV1('', ''), v0};
+for k = 1:numel(bodies)
+    out = runJ(bodies{k});
+    verifyEqual(testCase, numel(out.migrated), 1);
+    label = char(out.migrated{1}.get('document_class.class_name'));
+    verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
+        'did_v1', [label ': carried']);
+    verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+        [label ': the carry is noted']);
+    if isfield(out.summary.migration_notes, 'carried_as_v1')
+        verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+            'nothing to declare'), label);
+    end
+end
+end
+
 % ===================== daqsystem -> acquisition_system =====================
 
 function testDaqsystemClassNameNowFoldsToASoftwareEntity(testCase)
@@ -635,8 +662,20 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
 end
 
-function testTheResidualPassthroughIsAQuarantinePathByConstruction(testCase)
-% INVERTED 2026-08-12, ON ITS FIRST EXECUTION. It was
+function testTheResidualDaqsystemIsCarriedWholeAsV1(testCase)
+% INVERTED 2026-10-29 from testTheResidualPassthroughIsAQuarantinePathByConstruction,
+% which pinned the all-empty daqsystem as a quarantine (1 quarantined, nothing
+% surviving). Decided by Jess Haley, 2026-10-29 [one folder, final classes
+% only] (did-schema V_eta_go_forward_class_audit.md): a retire class's V2 file
+% is deleted once no v1 document passes through under it, so the residual
+% branch no longer passes the body through to be validated against the
+% `daqsystem` tombstone: it carries it whole as v1 with a `carried_as_v1`
+% note ([passthrough stays v1], [generic stage is lossless]). A carried
+% document is v1 and is not read against V2, so nothing is quarantined and the
+% body survives untouched. That answers the open question the history below
+% leaves to the team ("Either it should go, or it should refuse loudly").
+%
+% THE EARLIER HISTORY, kept: INVERTED 2026-08-12, ON ITS FIRST EXECUTION. It was
 % `testDaqsystemTombstoneStillExistsForTheEmptyBody` and asserted
 % quarantine_count 0 with the body surviving as `daqsystem`. CI says 1 and
 % nothing survives, and CI is right -- the assertion was written from intent
@@ -672,12 +711,18 @@ assumeVEtaSchemas(testCase);
 v1 = daqsystemV1('', {});
 v1.depends_on = struct('name', {}, 'id', {});
 out = runJValidated(v1);
-verifyEqual(testCase, out.summary.quarantine_count, 1, ...
-    ['an all-empty daqsystem is a HOLLOW document: the tombstone requires ' ...
-     'two edges and a field it does not have. Quarantine is #37/#38 working, ' ...
-     'not a defect -- see this test''s header before changing either side.']);
-verifyEmpty(testCase, classNames(out), ...
-    'nothing survives, so the passthrough preserves nothing');
+verifyEqual(testCase, out.summary.quarantine_count, 0, ...
+    'an all-empty daqsystem is carried whole as v1, never quarantined');
+verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
+    'did_v1', 'carried, not passed through as a V2 document');
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), 'daqsystem');
+notes = out.summary.migration_notes;
+verifyTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
+if isfield(notes, 'carried_as_v1')
+    verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
+        'nothing to declare'), notes.carried_as_v1.distinct_details{1});
+end
 end
 
 function testTheFoldsLeaveNoEmptyRequiredEdgeAndNoFragment(testCase)

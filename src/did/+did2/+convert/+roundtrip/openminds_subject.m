@@ -8,7 +8,10 @@ function [v1, spec] = openminds_subject(bodies)
 %   what is not. `matlab_type` is compared as notation ([openMINDS subject
 %   leftovers], Jess Haley, 2026-10-27: "`matlab_type` is notation"): any
 %   openMINDS MATLAB class name ending in the rebuilt type's name states the
-%   same type. A document the migrator carries (an `openminds_id` that does
+%   same type. A Species' `definition` and `synonym` are accepted
+%   differences ([species text is the openMINDS equivalent], Jess Haley,
+%   2026-10-29): compared by spec.same, they are reported as `equivalent`,
+%   not lost. A document the migrator carries (an `openminds_id` that does
 %   not rebuild, a lab-made strain) is stamped did_v1 and never reaches this
 %   inverse (did2.convert.roundtrip.check compares the carry itself).
 
@@ -43,7 +46,28 @@ if isfield(v1, 'openminds')
         'fn', @(a, b) idRebuilds(node, a), 'why', ['the id is rebuilt from the ' ...
         'term through the registry''s `equivalent` list ([openMINDS subject ' ...
         'leftovers], [term equivalents recorded], Jess Haley, 2026-10-27)']);
+    if endsWith(v1.openminds.openminds_type, '/Species')
+        % [species text is the openMINDS equivalent] (Decided by Jess Haley,
+        % 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a v1
+        % openMINDS subject's species `definition` and `synonym` are not stored
+        % in V2: the term registry records the openMINDS species instance as
+        % the term's equivalent ([term equivalents recorded]), and the round
+        % trip reports the v1 text as an accepted difference". So whatever text
+        % v1 states there is accepted (reported under `equivalent`, never lost).
+        why = ['a species'' definition and synonym are openMINDS''s text for the ' ...
+            'species instance the term registry records as the term''s equivalent ' ...
+            '([species text is the openMINDS equivalent], Jess Haley, 2026-10-29)'];
+        for f = {'definition', 'synonym'}
+            spec.same(end+1) = struct('path', ['openminds.fields.' f{1}], ...
+                'fn', @(a, ~) isText(a), 'why', why);
+        end
+    end
 end
+end
+
+function tf = isText(v)
+% the v1 value is text (char or one string): the openMINDS text accepted
+tf = ischar(v) || (isstring(v) && isscalar(v));
 end
 
 function tf = idRebuilds(node, v1Id)

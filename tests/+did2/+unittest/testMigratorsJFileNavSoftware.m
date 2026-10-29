@@ -151,19 +151,25 @@ verifyFalse(testCase, isfield(blk, 'epoch_map_pattern'));
 verifyEqual(testCase, blk.epoch_map_format, 'ndi.epoch.epochprobemap_daqsystem');
 end
 
-function testFilenavigatorWithNothingToDeclarePassesThrough(testCase)
-% THE GUARD (the fitcurve / openminds_stimulus / probe_geometry shape). All four
-% source fields empty means an epoch_file_pattern with no patterns, no format and
-% no software edge -- a hollow document that validates clean and says nothing.
-% The source class keeps its V_eta tombstone, so passing through loses nothing
-% and shows up in `unconverted_by_class` where it can be counted.
+function testFilenavigatorWithNothingToDeclareIsCarried(testCase)
+% INVERTED 2026-10-29 from testFilenavigatorWithNothingToDeclarePassesThrough,
+% which relied on the source class keeping its V_eta tombstone. Decided by Jess
+% Haley, 2026-10-29 [one folder, final classes only] (did-schema
+% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% v1 document passes through under it, so the guard now carries the document
+% whole as v1 with a `carried_as_v1` note ([passthrough stays v1]).
+% THE GUARD: all four source fields empty means an epoch_file_pattern with no
+% patterns, no format and no software edge -- a hollow document. It is still
+% counted in `unconverted_by_class` (handed back unchanged).
 v1 = navBody('', '', '');
 v1.filenavigator.ndi_filenavigator_class = '';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'filenavigator');
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
+verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), 'the carry is noted');
 end
 
 function testFilenavigatorWithoutImplementationClassOmitsTheEdge(testCase)
