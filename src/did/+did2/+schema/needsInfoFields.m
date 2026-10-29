@@ -60,18 +60,18 @@ tf = false;
 parts = strsplit(path, '.');
 v = s;
 for k = 1:numel(parts)
-    % 'names', not 'tokens': MATLAB drops an optional group that did not
-    % match from a 'tokens' result, so its index would not exist
-    tok = regexp(parts{k}, '^(?<name>[A-Za-z]\w*)(?:\((?<index>\d+)\))?$', 'names', 'once');
-    if isempty(tok) || ~isstruct(v) || isempty(v) || ~isfield(v, tok.name)
+    % 'name' or 'name(k)'. Read without an optional regexp group: MATLAB
+    % leaves an unmatched optional group (named or not) out of its result.
+    [name, index] = segmentOf(parts{k});
+    if isempty(name) || ~isstruct(v) || isempty(v) || ~isfield(v, name)
         return;
     end
     if numel(v) > 1
         return;   % a path names one element at each level
     end
-    v = v.(tok.name);
-    if ~isempty(tok.index)
-        i = str2double(tok.index);
+    v = v.(name);
+    if ~isnan(index)
+        i = index;
         if ~isstruct(v) || i > numel(v)
             return;
         end
@@ -82,6 +82,23 @@ if isstruct(v)
     tf = ~isempty(v) && ~isempty(fieldnames(v)) && ~allBlank(v);
 else
     tf = ~isempty(v) && ~(isstring(v) && all(strlength(v) == 0));
+end
+end
+
+function [name, index] = segmentOf(seg)
+% 'axes(2)' -> 'axes', 2; 'reference_point' -> 'reference_point', NaN;
+% anything else -> '', NaN.
+name = '';
+index = NaN;
+whole = regexp(seg, '^[A-Za-z]\w*$', 'match', 'once');
+if ~isempty(whole)
+    name = whole;
+    return;
+end
+tok = regexp(seg, '^([A-Za-z]\w*)\((\d+)\)$', 'tokens', 'once');
+if numel(tok) == 2
+    name = tok{1};
+    index = str2double(tok{2});
 end
 end
 
