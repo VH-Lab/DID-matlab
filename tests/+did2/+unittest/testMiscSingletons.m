@@ -74,7 +74,9 @@ function tests = testMiscSingletons
 %   Three tests below assert CURRENT, KNOWN-INCOMPLETE behaviour on purpose, so
 %   that nobody discovers the change by accident on a corpus run:
 %
-%     testProjectvarNumericPayloadQuarantinesToday
+%     testProjectvarNumericPayloadQuarantinesToday  (INVERTED 2026-10-29 to
+%         testProjectvarNumericPayloadPassesThroughCounted: the tombstone is
+%         deleted, so the payload passes through as v1, counted)
 %         `projectvar.data` is an ARBITRARY caller-supplied value typed `string`
 %         in V_eta, so a non-empty NUMERIC payload quarantines. The meta-schema
 %         has no union and no `any`, so this cannot be fixed in the tombstone --
@@ -666,25 +668,24 @@ verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0, ...
     'an OPTIONAL empty edge must not be counted as a required empty edge');
 end
 
-function testProjectvarNumericPayloadQuarantinesToday(testCase)
-% THIS TEST ASSERTS A DEFECT, DELIBERATELY. INVERT IT, DO NOT PATCH IT.
-%
-% `projectvardef(NAME, TYPE, DESCRIPTION, DATA)` takes an ARBITRARY payload; the
-% template's literal is '' so V_eta types the field `string`, and
-% +did2/+schema/cache.m:1290-1310 accepts char, string, cell-of-char and an
-% EMPTY numeric -- but not a non-empty numeric. So a projectvar holding a
-% number quarantines with did2:validation:typeMismatch.
-%
-% This cannot be repaired in the tombstone: the meta-schema has no union and no
-% `any` type, so widening to `matrix` would break the char payloads instead.
-% It is an OPEN MODELLING QUESTION, and it is the reason the class is filed as
-% "needs real documents" rather than modelled. Pinned here so that nobody meets
-% it for the first time on a corpus run.
+function testProjectvarNumericPayloadPassesThroughCounted(testCase)
+% INVERTED 2026-10-29 from testProjectvarNumericPayloadQuarantinesToday, which
+% asserted a defect on purpose ("INVERT IT, DO NOT PATCH IT"): a projectvar
+% holding a number quarantined with did2:validation:typeMismatch against the
+% did-schema `projectvar` tombstone, whose `data` field was typed `string`.
+% did-schema deleted its deprecated/ tombstones (Jess Haley, 2026-10-27
+% [carried v1 validates against NDI templates]; 2026-10-29 [base.name kept
+% until retire classes leave], V_eta_go_forward_class_audit.md): a v1
+% document passed through unchanged whose class V_eta keeps no schema for is a
+% v1 document, counted (passthrough_unvalidated_no_schema), never quarantined.
+% The open modelling question (an arbitrary payload) stays open; the document
+% is no longer lost to it.
 out = did2.convert.v1_to_v2(projectvarWriterBody('pv_3', 'sess_V', [1 2 3]), ...
     'Validate', true, 'TargetVersion', 'V_eta');
-verifyEqual(testCase, numel(out.quarantine), 1, ...
-    'a numeric projectvar payload is expected to quarantine TODAY');
-verifyEqual(testCase, out.quarantine(1).class_name, 'projectvar');
+verifyEmpty(testCase, out.quarantine, ...
+    'a numeric projectvar payload passes through as v1, not quarantined');
+assertEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, out.summary.passthrough_unvalidated_no_schema_count, 1);
 end
 
 % ===================== interaction_purpose =================================

@@ -270,15 +270,25 @@ verifyEqual(testCase, p.data_limits, [0 65535]);
 verifyEqual(testCase, p.clocktype, 'exp_global_time');
 end
 
-function testImageStackPlaceholderDocumentValidatesOnThePassthrough(testCase)
-% The whole point. This document has NO subject (NDI's writer leaves the edge
-% empty at doImport.m:789/811/827), so migrators_j/image_stack.m's guard passes
-% it through -- and a passthrough is exactly where an unnormalised template
-% literal reaches the validator. With the placeholder dropped it validates.
-out = runJValidated(imageStackBody([]));
+function testASubjectlessImageStackPassesThroughUntouchedAndCounted(testCase)
+% INVERTED 2026-10-29 from testImageStackPlaceholderDocumentValidatesOnThePassthrough,
+% which ran the RENAMED path ('RawV1Classes', {}) and asserted that dropping
+% the empty `timestamp` placeholder let the passthrough validate against the
+% did-schema `image_stack` tombstone. That tombstone is deleted (Jess Haley,
+% 2026-10-27 [carried v1 validates against NDI templates]; 2026-10-29
+% [base.name kept until retire classes leave], did-schema
+% V_eta_go_forward_class_audit.md). On the path real data takes, `imageStack`
+% reads raw v1 (did2.convert.rawV1Classes): a subject-less stack (NDI's writer
+% leaves the edge empty at doImport.m:789/811/827) is returned UNTOUCHED, so it
+% is a v1 document, counted (passthrough_unvalidated_no_schema), not
+% quarantined, with its id and its placeholder as v1 wrote them.
+v1 = imageStackBody([]);
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'image_stack');
+assertEqual(testCase, numel(out.migrated), 1);
+d = out.migrated{1};
 verifyEqual(testCase, d.get('base.id'), 'is_1');   % passthrough: id preserved
+verifyEqual(testCase, out.summary.passthrough_unvalidated_no_schema_count, 1);
 end
 
 function testImageStackRealTimestampIsUntouched(testCase)
