@@ -106,6 +106,9 @@ block = struct();
 if ~isempty(p.site)
     [node, name] = termParts(getIn(p.site, 'term', 'value'));
     block.location = struct('ontologyNode', node, 'name', name);
+    % [term names compare by node] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md)
+    spec = nameByNode(spec, 'stimulus_bath.location.name', node);
 else
     why = ['a bath with no site observation is at the generic bath, NCIm:C0179246 ' ...
         '(resolveDeferredBaths isGenericBath; Jess Haley, 2026-10-21: a whole-prep ' ...

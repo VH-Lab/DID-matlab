@@ -101,6 +101,9 @@ v1.(v1Class) = struct();
 spec.same(end+1) = struct('path', ['openminds.fields.' nodeField], 'fn', @sameCurie, ...
     'why', ['a CURIE''s prefix case is notation ([spelling is notation], Jess ' ...
     'Haley, 2026-10-26); did2.convert.registeredTerm writes the registered spelling']);
+% [term names compare by node] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md)
+spec = nameByNode(spec, 'openminds.fields.name', node);
 end
 
 function s = typeSuffixOf(variable)

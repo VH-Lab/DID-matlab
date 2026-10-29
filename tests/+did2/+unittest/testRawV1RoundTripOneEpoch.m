@@ -16,9 +16,13 @@ function tests = testRawV1RoundTripOneEpoch
 %   and comma-joined clock names, as oneepoch.m writes them). No corpus of the
 %   four zips holds one.
 %
-%   The migrator keeps the document (class oneepoch), its element_epoch block
-%   folded onto oneepoch as `clocks` by did2.convert.migrators.element_epoch,
-%   which the raw migrator now calls itself. No known findings.
+%   The migrator keeps a oneepoch on a global clock (class oneepoch), its
+%   element_epoch block folded onto oneepoch as `clocks` by
+%   did2.convert.migrators.element_epoch, which the raw migrator now calls
+%   itself. No known findings. A oneepoch stitched on device-local time (no
+%   clock of it global) is carried whole as v1, needs_mapping ([oneepoch is a
+%   redundant calculation], Jess Haley, 2026-10-27; [oneepoch method is data
+%   combination], Jess Haley, 2026-10-29): testADeviceLocalOneEpochIsCarried.
 tests = functiontests(localfunctions);
 end
 
@@ -27,53 +31,54 @@ verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'oneepoch')));
 end
 
 function testWriterShapesRoundTrip(testCase)
+% INVERTED 2026-10-29 in part: the one-clock fixture ('dev_local_time' alone)
+% was converted; it is a oneepoch stitched on device-local time, now carried
+% whole as v1 ([oneepoch is a redundant calculation], Jess Haley, 2026-10-27;
+% [oneepoch method is data combination], Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md). CARRIED below says which.
 f = fixtures();
 for k = 1:size(f, 1)
-    [label, v1] = f{k, :};
+    [label, v1, carried] = f{k, :};
     out = runRaw(v1);
     verifyEmpty(testCase, out.quarantine, label);
     verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1, label);
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyFalse(testCase, r.carried, label);
+    verifyEqual(testCase, r.carried, carried, label);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
 end
 end
 
-function testTheSwitchChangesNoOutcome(testCase)
-f = fixtures();
-for k = 1:size(f, 1)
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f(k, 2));
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
-
-function testValidationIsAsBefore(testCase)
-f = fixtures();
-for k = 1:size(f, 1)
-    raw = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta');
-    old = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta', ...
-        'RawV1Classes', {});
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), f{k, 1});
-end
-end
-
-function testCarries(testCase)
-% a field outside the templates (refused by the strict-fields check before)
+function testADeviceLocalOneEpochIsCarried(testCase)
+% [oneepoch is a redundant calculation] (Jess Haley, 2026-10-27) with
+% [oneepoch method is data combination] (Jess Haley, 2026-10-29): NDI-matlab
+% main +element/oneepoch.m stitches on dev_local_time only when the input has
+% no global clock (ndi.time.clocktype.isGlobal); such a oneepoch is carried
+% whole as v1, needs_mapping, citing register row carry-126 (did-schema
+% 64ad58b8; until then the note said it had no register row).
 v1 = oneEpoch('dev_local_time', [0; 100]);
-v1.oneepoch.n_epochs = 2;
 [carried, notes] = did2.unittest.helpers.carryNote({v1});
 verifyTrue(testCase, carried);
-verifyTrue(testCase, contains(notes, '[carry-100] malformed: outside the NDI template, unplaced: oneepoch.n_epochs'), notes);
-% t0_t1 that does not match its clocks: the superclass migrator's carry-009,
-% as on the renamed path
-v1 = oneEpoch('dev_local_time,utc', [0; 100]);
-[carried, notes] = did2.unittest.helpers.carryNote({v1});
-verifyTrue(testCase, carried);
-verifyTrue(testCase, contains(notes, '[carry-009]'), notes);
+verifyTrue(testCase, contains(notes, 'needs_mapping'), notes);
+verifyTrue(testCase, startsWith(notes, '[carry-126] needs_mapping: '), notes);
+verifyTrue(testCase, contains(notes, 'device-local time'), notes);
+% any global clock among its clocks: stitched on that clock, not carried
+cases = { ...
+    'dev_local_time,utc', [0 1.7e9; 100 1.7e9 + 100]; ...
+    'dev_local_time,approx_dev_global_time', [0 7.3855e5; 100 7.3855e5 + 0.01]; ...
+    'exp_global_time', [7.3855e5; 7.3855e5 + 0.01]};
+for k = 1:size(cases, 1)
+    [clock, t] = cases{k, :};
+    out = runRaw(oneEpoch(clock, t));
+    verifyEmpty(testCase, out.passthrough, [clock ': not carried']);
+    assertNotEmpty(testCase, out.migrated, clock);
+    verifyEqual(testCase, out.migrated{1}.className(), 'oneepoch', clock);
+end
 end
 
 function testADifferentSourceIsReportedLost(testCase)
-v1 = oneEpoch('dev_local_time', [0; 100]);
+% (a global-clock oneepoch since 2026-10-29: the device-local one is carried,
+% [oneepoch method is data combination])
+v1 = oneEpoch('dev_local_time,utc', [0 1.7e9; 100 1.7e9 + 100]);
 out = runRaw(v1);
 v1.oneepoch.epoch_ids = 't00001';
 r = did2.convert.roundtrip.check(v1, out.migrated);
@@ -83,9 +88,11 @@ end
 % ===================== fixtures =========================================
 
 function f = fixtures()
+% {label, v1, carried}: a oneepoch with no global clock is carried
+% ([oneepoch method is data combination], Jess Haley, 2026-10-29)
 f = { ...
-    'oneepoch, one clock', oneEpoch('dev_local_time', [0; 100]); ...
-    'oneepoch, two clocks', oneEpoch('dev_local_time,utc', [0 1.7e9; 100 1.7e9 + 100])};
+    'oneepoch, one clock', oneEpoch('dev_local_time', [0; 100]), true; ...
+    'oneepoch, two clocks', oneEpoch('dev_local_time,utc', [0 1.7e9; 100 1.7e9 + 100]), false};
 end
 
 function d = oneEpoch(clock, t0t1)

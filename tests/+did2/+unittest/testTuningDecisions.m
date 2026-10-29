@@ -2,10 +2,11 @@ function tests = testTuningDecisions
 %TESTTUNINGDECISIONS Jess Haley's 2026-10-27 tuning and response decisions
 %   (did-schema V_eta_go_forward_class_audit.md), one test (or more) per tag:
 %
-%     [tuning fits use curve fitting now]        testFitsUseCurveFitting
+%     [tuning fits use curve fitting now]        testFitsUseCurveFittingAndStateTheModelOnce
 %     [one calculation per named calculator output] (2026-10-28)
-%                                                testFitsUseCurveFitting,
+%                                                testFitsUseCurveFittingAndStateTheModelOnce,
 %                                                testOneCalculationPerOutput
+%     [fit model stated once] (2026-10-29)       testFitsUseCurveFittingAndStateTheModelOnce
 %     [tuning best value is a condition] (2026-10-28)  testTuningBestValue*
 %     [Priebe fits are one function]             testPriebeFitsAreOneFunction
 %     [hotelling spellings are one field]        testHotellingSpellingsAreOneField
@@ -35,7 +36,13 @@ end
 
 % ===================== [tuning fits use curve fitting now] ===============
 
-function testFitsUseCurveFitting(testCase)
+function testFitsUseCurveFittingAndStateTheModelOnce(testCase)
+% INVERTED 2026-10-29 from testFitsUseCurveFitting, which pinned a
+% {function: <model>} method parameter on a calculation whose fits share one
+% model. Decided by Jess Haley, 2026-10-29 [fit model stated once] (did-schema
+% V_eta_go_forward_class_audit.md): such a calculation writes no `function`
+% parameter; the model is stated in each fit entry, and the round trip
+% rebuilds v1 from those entries. The method keeps its term OBI:0200072.
 cases = { ...
     'oridir', writerOutput('oridirtuning_calc'), 'orientation_direction_tuning_calculation', ...
         'double gaussian'; ...
@@ -45,7 +52,7 @@ cases = { ...
         'spatial_frequency_tuning_calculation', ''};
 % [one calculation per named calculator output] (Jess Haley, 2026-10-28): the
 % method holds no `function` list; the SF fits' five models are named by their
-% model_fit entries only, so the SF method has no `function` parameter
+% model_fit entries only (FN '' below: several models)
 for k = 1:size(cases, 1)
     [label, v1, leafClass, fn] = cases{k, :};
     out = runRaw({v1});
@@ -54,8 +61,18 @@ for k = 1:size(cases, 1)
     assertNotEmpty(testCase, leaf, [label ': no ' leafClass]);
     term = leaf.interaction.method.term;
     verifyEqual(testCase, char(term.node), 'OBI:0200072', label);
-    verifyEqual(testCase, parameterText(leaf, 'function'), fn, label);
-    verifyEqual(testCase, parameterCount(leaf, 'function'), double(~isempty(fn)), label);
+    verifyEqual(testCase, parameterCount(leaf, 'function'), 0, ...
+        [label ': [fit model stated once] writes no function parameter']);
+    mf = asCell(leaf.tuning_curve.value.model_fit);
+    models = cellfun(@(e) char(e.model.name), mf, 'UniformOutput', false);
+    verifyTrue(testCase, all(cellfun(@(m) ~isempty(m), models)), ...
+        [label ': each fit entry states its model']);
+    if ~isempty(fn)
+        verifyEqual(testCase, unique(models), {fn}, ...
+            [label ': the one model is stated in every fit entry']);
+    else
+        verifyGreaterThan(testCase, numel(unique(models)), 1, label);
+    end
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
 end

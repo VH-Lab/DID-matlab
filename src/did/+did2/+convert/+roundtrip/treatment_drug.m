@@ -29,8 +29,10 @@ function [v1, spec] = treatment_drug(bodies)
 %                                      the absolute anchor's
 %                                      `value.duration.source_value` (days)
 %   [drug end and duration on the anchor] (Jess Haley, 2026-10-27, did-schema
-%   V_eta_go_forward_class_audit.md). Where the migrator wrote neither (no
-%   onset, or UTC times that disagree), the round trip reports them lost.
+%   V_eta_go_forward_class_audit.md). A document with an offset or duration
+%   but no onset, or whose UTC times disagree, is carried whole as v1 and never
+%   reaches this inverse ([drug end without start needs mapping], [drug times
+%   that disagree need mapping], Jess Haley, 2026-10-29).
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.treatment_drug.
 
@@ -52,6 +54,9 @@ if ~isempty(p.site)
     [block.location_ontologyNode, block.location_name] = ...
         termParts(getIn(p.site, 'term', 'value'));
     block.location_ontologyName = block.location_ontologyNode;
+    % [term names compare by node] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md)
+    spec = nameByNode(spec, 'treatment_drug.location_name', block.location_ontologyNode);
 elseif strcmp(p.kind, 'formulation')
     spec = bathEquivalents(spec, 'treatment_drug.location_ontologyNode', ...
         'treatment_drug.location_name');

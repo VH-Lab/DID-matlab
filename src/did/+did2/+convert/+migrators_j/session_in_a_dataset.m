@@ -46,7 +46,9 @@ function v2Body = session_in_a_dataset(preBody)
 %                                      `ndi.session.dir`; any other opener
 %                                      carries the document ([session opener
 %                                      inputs], Jess Haley, 2026-10-27;
-%                                      carry-119)
+%                                      carry-119), and so does an unstated one
+%                                      ([unstated session creator carried],
+%                                      Jess Haley, 2026-10-29; carry-119)
 %     .session_creator_input2       -> the "Pathname" parameter (a linked
 %                                      session)
 %     .session_reference            -> dropped when it equals the session
@@ -54,7 +56,10 @@ function v2Body = session_in_a_dataset(preBody)
 %                                      session membership]; for a linked
 %                                      session [linked session reference
 %                                      follows the ingested rule], Jess Haley,
-%                                      2026-10-27); else carried
+%                                      2026-10-27); else carried; carry-069 when
+%                                      the session is not in the batch
+%                                      ([linked session not in the batch],
+%                                      Jess Haley, 2026-10-29)
 %     .session_creator_input1..3    -> dropped when a copy of the session's
 %                                      reference or id ([session membership
 %                                      records linked or ingested]); else

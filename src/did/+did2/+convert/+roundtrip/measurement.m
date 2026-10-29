@@ -79,4 +79,7 @@ spec.same(end+1) = struct('path', 'measurement.ontologyName', 'fn', @sameCurie, 
     'Haley, 2026-10-26); did2.convert.registeredTerm writes the registered spelling']);
 spec.same(end+1) = struct('path', 'measurement.string_value', 'fn', @sameCurie, ...
     'why', 'a CURIE''s prefix case is notation ([spelling is notation])');
+% [term names compare by node] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md)
+spec = nameByNode(spec, 'measurement.name', node);
 end

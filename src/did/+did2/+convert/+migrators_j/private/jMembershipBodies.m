@@ -28,15 +28,19 @@ function bodies = jMembershipBodies(preBody, entries)
 %   it equals the session entity's local_identifier, else carried (carry-074).
 %   THE OPENER ([session opener inputs], Jess Haley, 2026-10-27): inputs 1 and 3
 %   are the copies (ndi.session.dir creator_args() is {reference, path, id});
-%   a stated `session_creator` other than `ndi.session.dir` carries the
-%   membership (carry-119), and so does any non-empty
-%   `session_creator_input4..6`, which NDI-matlab +ndi/dataset.m never reads
-%   (carry-075).
+%   a `session_creator` other than `ndi.session.dir` carries the membership
+%   (carry-119), and so does any non-empty `session_creator_input4..6`, which
+%   NDI-matlab +ndi/dataset.m never reads (carry-075). An UNSTATED
+%   `session_creator` carries it under carry-119 too ([unstated session
+%   creator carried], Jess Haley, 2026-10-29).
+%   A session NOT IN THE BATCH ([linked session not in the batch], Jess Haley,
+%   2026-10-29): its reference cannot be compared, so the membership is carried
+%   under carry-069, ingested or linked.
 %   Everything else is carried: with any part of an entry unplaced -- no
 %   `is_linked`, a reference that differs (carry-060 ingested, carry-074
-%   linked) or whose session is not in the batch, another opener, input 4..6,
-%   any other input -- the document is returned UNCHANGED, carried whole as v1
-%   ([generic stage is lossless]).
+%   linked) or whose session is not in the batch (carry-069), another or no
+%   opener, input 4..6, any other input -- the document is returned UNCHANGED,
+%   carried whole as v1 ([generic stage is lossless]).
 %   Shared Brainstorm-J (+migrators_j) helper.
 
 datasetId = jDatasetId(preBody);
@@ -62,8 +66,7 @@ for k = 1:numel(entries)
 end
 if ~isempty(unplaced)
     % carry-register: carry-060 carry-066 carry-068 carry-069 carry-074 carry-075
-    %   carry-119; none for: a linked session not in the batch, or an input
-    %   1..3 that is not a copy
+    %   carry-119; none for: an input 1..3 that is not a copy
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
         char(preBody.base.id), ['unplaced: ' strjoin(unplaced, '; ')]);
     bodies = {preBody};
@@ -103,10 +106,16 @@ linked = logical(linked);
 creator = strtrim(jGetChar(e, 'session_creator'));
 % [session opener inputs] (Jess Haley, 2026-10-27): "a membership whose
 % `session_creator` is not `ndi.session.dir` is carried whole as v1,
-% `needs_mapping`" (carry-119). Every writer states one (+ndi/dataset.m sets
-% class(ndi_session_obj)); an unstated creator writes no "software class"
-% parameter, as before.
-if ~isempty(creator) && ~strcmp(creator, 'ndi.session.dir')
+% `needs_mapping`" (carry-119). [unstated session creator carried] (Jess
+% Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a session
+% membership with no `session_creator` is carried whole as v1 under carry-119,
+% like one whose `session_creator` is not `ndi.session.dir`". Every writer
+% states one (+ndi/dataset.m sets class(ndi_session_obj)).
+if isempty(creator)
+    why = '[carry-119] session_creator not stated';
+    return;
+end
+if ~strcmp(creator, 'ndi.session.dir')
     why = sprintf('[carry-119] session_creator "%s" (not ndi.session.dir)', creator);
     return;
 end
@@ -127,12 +136,16 @@ if ~isempty(strtrim(reference))
     % entity's local_identifier (recoverable from it); when it differs the
     % document is carried as v1 (carry-060 ingested, carry-074 linked). The
     % session is read from the batch (did2.convert.sessionReferences); one not
-    % in the batch cannot be compared.
+    % in the batch cannot be compared: carry-069, ingested or linked ([linked
+    % session not in the batch], Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md: "a linked session's membership whose
+    % session is not among the documents migrated together ... is carried
+    % under carry-069").
     [li, found] = did2.convert.sessionReferences('get', memberSession);
     if ~found
         if linked
-            why = ['session_reference of a linked session (the session is not in ' ...
-                'the batch, so it was not compared with its local_identifier)'];
+            why = ['[carry-069] session_reference of a linked session (the session is ' ...
+                'not in the batch, so it was not compared with its local_identifier)'];
         else
             why = ['[carry-069] session_reference (the session is not in the batch, so it ' ...
                 'was not compared with its local_identifier)'];

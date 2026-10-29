@@ -13,7 +13,9 @@ function [v1, spec] = probe_location(bodies)
 %     depends_on probe_id              the observation's entity_id
 %     probe_location.ontology_name     the value term's node (a CURIE's prefix
 %                                      case is notation)
-%     probe_location.name              the value term's name
+%     probe_location.name              the value term's name, compared
+%                                      by the node ([term names compare by
+%                                      node], Jess Haley, 2026-10-29)
 %
 %   The anchor must be the session anchor the migrator makes (a
 %   relative_time_reference `intervalDuring` the observation's session, with
@@ -88,4 +90,9 @@ v1.probe_location = struct('ontology_name', node, 'name', name);
 spec.same(end+1) = struct('path', 'probe_location.ontology_name', 'fn', @sameCurie, ...
     'why', ['a CURIE''s prefix case is notation ([spelling is notation], Jess ' ...
     'Haley, 2026-10-26); did2.convert.registeredTerm writes the registered spelling']);
+% [term names compare by node] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): the name is the registry label of the node
+% (e.g. the Dabrowska writer's "bed nucleus of stria terminalis (BNST)" is
+% UBERON:0001880 "bed nucleus of stria terminalis"); compared by that node
+spec = nameByNode(spec, 'probe_location.name', node);
 end
