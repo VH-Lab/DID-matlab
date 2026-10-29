@@ -2985,7 +2985,7 @@ verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
 end
 
 function testMetadataEditorAuthorWithTwoAffiliationsGetsARelationEach(testCase)
-% INVERTED 2026-10-28 from ...IsCarriedWholeAsV1 (the carry-054 interim): Decided
+% INVERTED 2026-10-28 from ...IsCarriedWholeAsV1 (the retired carry interim): Decided
 % by Jess Haley, 2026-10-27 [one affiliation relation each] (did-schema
 % V_eta_go_forward_class_audit.md, answers did-schema #148). An author with two
 % affiliations (AuthorData.addAffiliation's struct array) gets one

@@ -119,7 +119,7 @@ function v2Body = metadata_editor(preBody)
 %   relation (schema:affiliation) to its organization, in the order v1 lists
 %   them. Decided by Jess Haley, 2026-10-27 [one affiliation relation each]
 %   (did-schema V_eta_go_forward_class_audit.md; answers did-schema #148),
-%   replacing the carry-054 interim that carried such a document whole as v1.
+%   replacing the interim (a carry register row, retired with this build) that carried such a document whole as v1.
 %
 %   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
 %   2026-10-26 [migrators read raw v1], did-schema
