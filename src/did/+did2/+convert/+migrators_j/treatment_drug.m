@@ -117,8 +117,7 @@ if ~isempty(anchorWhy)
     % [drug end without start needs mapping] and [drug times that disagree
     % need mapping] (Jess Haley, 2026-10-29, did-schema
     % V_eta_go_forward_class_audit.md): carried whole as v1, needs_mapping
-    % carry-register: none for: an offset or duration with no onset, or
-    %   onset, offset and duration that disagree (jTreatmentAnchor)
+    % carry-register: carry-127 via private/jTreatmentAnchor.m
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
         char(preBody.base.id), anchorWhy);
     v2Body = {preBody};

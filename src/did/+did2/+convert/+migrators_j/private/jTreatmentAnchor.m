@@ -58,7 +58,7 @@ function [anchor, why] = jTreatmentAnchor(preBody, block)
 %       duration too, |(offset - onset) - duration| > 1e-3 s (1 ms). Times
 %       that cannot be read on the UTC timeline (a local time, no Z) are not
 %       compared, as the rule does not compare them.
-%   No carry register row holds these yet (the note says so).
+%   Both are register row carry-127; the note starts with its [carry-127] tag.
 
 anchor = [];
 why = '';
@@ -100,9 +100,9 @@ if isempty(strtrim(onset))
     % stated offset or duration (a NaN or empty duration states none, as
     % NDI's template default [] and a JSON null)
     if ~isempty(stopText) || statesValue(d)
-        why = ['needs_mapping: administration_offset_time or administration_duration ' ...
+        why = ['[carry-127] needs_mapping: administration_offset_time or administration_duration ' ...
             'with no administration_onset_time (an end needs a start; [drug end ' ...
-            'without start needs mapping]; no carry register row yet)'];
+            'without start needs mapping])'];
     end
     stopText = '';
     return;
@@ -123,10 +123,10 @@ if ~isnan(t0) && ~isnan(t1)
     end
     if ~agree
         % [drug times that disagree need mapping] (Jess Haley, 2026-10-29)
-        why = sprintf(['needs_mapping: administration_onset_time "%s", ' ...
+        why = sprintf(['[carry-127] needs_mapping: administration_onset_time "%s", ' ...
             'administration_offset_time "%s" and administration_duration %s ' ...
             'disagree (rule end_consistent; [drug times that disagree need ' ...
-            'mapping]; no carry register row yet)'], strtrim(onset), stopText, ...
+            'mapping])'], strtrim(onset), stopText, ...
             durationText(duration));
         stopText = '';
         duration = [];

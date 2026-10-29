@@ -197,7 +197,8 @@ function testADrugsDisagreeingUtcTimesAreCarried(testCase)
 % and duration disagree is carried whole as v1 `needs_mapping`, nothing chosen
 % silently". Disagree is what the rule end_consistent rejects (checkRules.m
 % endConsistent): the end before the start, or end - start not the duration
-% to 1 ms. No register row yet.
+% to 1 ms. The note cites register row carry-127 (did-schema 64ad58b8; until
+% then this test pinned "no register row yet").
 base = drugAtSite();
 base.treatment_drug.administration_onset_time = '2024-06-01T09:15:00Z';
 base.treatment_drug.administration_offset_time = '2024-06-01T09:16:00Z';
@@ -224,8 +225,8 @@ for k = 1:size(cases, 1)
     n = out.summary.migration_notes.carried_as_v1;
     verifyTrue(testCase, contains(n.distinct_details{1}, ...
         '[drug times that disagree need mapping]'), [label ': ' n.distinct_details{1}]);
-    verifyTrue(testCase, startsWith(n.distinct_details{1}, 'needs_mapping: '), label);
-    verifyEmpty(testCase, n.register_rows, [label ': no register row yet']);
+    verifyTrue(testCase, startsWith(n.distinct_details{1}, '[carry-127] needs_mapping: '), label);
+    verifyEqual(testCase, n.register_rows, {'carry-127'}, label);
 end
 % within 1 ms agrees (the rule's tolerance): converted
 ok = base;
@@ -242,7 +243,9 @@ function testADrugsEndWithoutStartIsCarried(testCase)
 % did-schema V_eta_go_forward_class_audit.md): "a v1 `treatment_drug` with an
 % offset or a duration but no onset is carried whole as v1 `needs_mapping`"
 % (NDI-matlab main +setup/+NDIMaker/treatmentMaker.m copies the three
-% independently, so a writer produces it). No register row yet.
+% independently, so a writer produces it). The note cites register row
+% carry-127 (did-schema 64ad58b8; until then this test pinned "no register
+% row yet").
 offsetOnly = drugAtSite();
 offsetOnly.treatment_drug.administration_onset_time = '';
 offsetOnly.treatment_drug.administration_duration = [];
@@ -266,7 +269,8 @@ for k = 1:size(cases, 1)
     n = out.summary.migration_notes.carried_as_v1;
     verifyTrue(testCase, contains(n.distinct_details{1}, ...
         '[drug end without start needs mapping]'), [label ': ' n.distinct_details{1}]);
-    verifyEmpty(testCase, n.register_rows, [label ': no register row yet']);
+    verifyTrue(testCase, startsWith(n.distinct_details{1}, '[carry-127] needs_mapping: '), label);
+    verifyEqual(testCase, n.register_rows, {'carry-127'}, label);
 end
 % none of the three (the template's [] and a JSON null duration): converted,
 % anchored at the session
