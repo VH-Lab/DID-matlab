@@ -249,8 +249,11 @@ function testACarriedPyraviewIsValidatedNowhereAgainstVEta(testCase)
 % document is v1 end to end ([passthrough stays v1: how], [generic stage is
 % lossless], Jess Haley): stamped 'did_v1' by pass 1, not validated by it (with
 % Validate ON), and refused by no V_eta validation after it.
+% a fractional order carries the pyraview whole as v1 ([small unread settings]
+% (2)); a differing label no longer does ([filter label is the method name],
+% Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md)
 blk = predFilterBlock();
-blk.label = 'my high-pass';            % carries the pyraview whole as v1
+blk.parameters.order = 4.5;
 out = did2.convert.v1_to_v2(pyraviewBody(blk), 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine, 'a carried document is never quarantined by V_eta');
 assertEqual(testCase, numel(out.migrated), 1);
