@@ -23,7 +23,10 @@ function [v1, spec] = openmindsInverse(bodies, v1Class, edgeName)
 %     openminds.openminds_id           '' (the migrator converts a document
 %                                      that states one only when it rebuilds
 %                                      from the term, and none does yet:
-%                                      did2.convert.openmindsIdRebuilds)
+%                                      did2.convert.openmindsIdRebuilds;
+%                                      did2.convert.roundtrip.openminds_subject
+%                                      compares a v1 id through that same
+%                                      test, [term equivalents recorded])
 %     openminds.fields.name            the value term's name
 %     openminds.fields.preferredOntologyIdentifier (a controlled term) or
 %       .ontologyIdentifier (a Strain)  the value term's node (a CURIE's

@@ -375,6 +375,28 @@ verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:10090', ...
     'musMusculus', ix), 'a row with no equivalent list rebuilds nothing');
 end
 
+function testAnOpenmindsIriRebuildsThroughItsRegisteredCurie(testCase)
+% [term equivalents recorded] (Jess Haley, 2026-10-27): a filled `equivalent`
+% list holds CURIEs in a registered prefix and spelling (did-schema
+% check_term_registry R13). did-schema's CURIE registry writes the openMINDS
+% instance https://openminds.om-i.org/instances/<terminology>/<name> as
+% `openminds:<terminology>/<name>`, so v1's IRI id rebuilds through that form
+reg = struct('terms', {{struct('name', 'Caenorhabditis elegans', 'node', 'NCBITaxon:6239', ...
+    'equivalent', {{'openminds:species/caenorhabditisElegans'}})}});
+ix = did2.schema.termIndex(reg);
+base = 'https://openminds.om-i.org/instances/';
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/caenorhabditisElegans', ix, base));
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('ncbitaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/caenorhabditisElegans', ix, base), ...
+    'a CURIE''s prefix case is notation');
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.om-i.org/instances/species/musMusculus', ix, base));
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
+    'https://openminds.ebrains.eu/instances/species/caenorhabditisElegans', ix, base), ...
+    'an IRI outside the registered uri_base does not rebuild');
+end
+
 % ============ element -> subject (+ kind assertions + lineage) =========
 
 function el = elementDoc(name, typ, ndiClass, direct, subjectId, underlyingId)

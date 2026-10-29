@@ -274,7 +274,10 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     ontologyLabel       superclass `base` only, no `app` block, no superclass
 %                         migrator. Pass 1 hands it to NDI's second pass
 %                         unchanged (or carries it, carry-064, with a carried
-%                         stack); the raw passthrough keeps the v1 class name,
+%                         stack; a field or edge outside its template carries
+%                         it, carry-100, [ontologyLabel row split], Jess
+%                         Haley, 2026-10-27, private/jRawAccount); the raw
+%                         passthrough keeps the v1 class name,
 %                         block `ontologyLabel` and field `ontologyNode`. Every
 %                         reader of a label by its class name accepts both
 %                         spellings first (siblings first, did-schema

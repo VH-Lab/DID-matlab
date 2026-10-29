@@ -538,6 +538,38 @@ l.document_class = rmfield(l.document_class, 'schema_version');
 verifyTrue(testCase, isequaln(l, lab), 'the carried label is not the raw v1 source');
 end
 
+function testALabelOutsideItsTemplateIsCarriedAsMalformed(testCase)
+% Decided by Jess Haley, 2026-10-27 [ontologyLabel row split] (did-schema
+% V_eta_go_forward_class_audit.md): "a field outside NDI's `ontologyLabel`
+% template, or an edge other than `document_id`, is carried under carry-100
+% (malformed)". The template (ontologyLabel.json + base.json at the locked
+% NDI-matlab `main`) has one field, `ontologyNode`, and one edge, `document_id`.
+stray = haleyLabel('lab_sf', 'is_x', 'EMPTY:0000129');
+stray.ontologyLabel.ontologyName = 'arena mask';
+stray = jsondecode(jsonencode(stray));
+edge = haleyLabel('lab_se', 'is_x', 'EMPTY:0000129');
+edge.depends_on(end+1) = struct('name', 'subject_id', 'value', 'sg_1');
+edge = jsondecode(jsonencode(edge));
+cases = {stray, 'ontologyLabel.ontologyName'; edge, 'depends_on(subject_id)'};
+for c = 1:size(cases, 1)
+    v1 = cases{c, 1};
+    id = v1.base.id;
+    [carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+    verifyEmpty(testCase, out.quarantine, id);
+    verifyTrue(testCase, carried, [id ': not carried as its v1 source']);
+    verifyTrue(testCase, startsWith(notes, '[carry-100] '), notes);
+    verifyTrue(testCase, contains(notes, cases{c, 2}), notes);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried, id);
+    verifyTrue(testCase, r.ok, id);
+end
+% the writer's shape is not carried: handed back untouched for NDI's second pass
+[~, notes, out] = did2.unittest.helpers.carryNote({haleyLabel('lab_ok', 'is_x', 'EMPTY:0000129')});
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, notes, '', 'a writer-shaped label is carried');
+verifyEqual(testCase, docWithId(out, 'lab_ok').document_class.class_name, 'ontologyLabel');
+end
+
 function testAnInventedLabelShapeIsStillRefusedInEitherSpelling(testCase)
 v1 = haleyLabel('lab_bad', 'is_x', 'EMPTY:0000129');
 v1.ontologyLabel.label_id = 12;
