@@ -680,12 +680,34 @@ function testProjectvarNumericPayloadPassesThroughCounted(testCase)
 % v1 document, counted (passthrough_unvalidated_no_schema), never quarantined.
 % The open modelling question (an arbitrary payload) stays open; the document
 % is no longer lost to it.
+%
+% BOTH SCHEMA STATES ARE ASSERTED, not skipped: DID-matlab merges before
+% did-schema deletes the tombstone (did-schema CLAUDE.md section 3), so this
+% runs against a schema set that still has `projectvar` and against one that
+% does not. Each state gets its own exact expectation.
 out = did2.convert.v1_to_v2(projectvarWriterBody('pv_3', 'sess_V', [1 2 3]), ...
     'Validate', true, 'TargetVersion', 'V_eta');
-verifyEmpty(testCase, out.quarantine, ...
-    'a numeric projectvar payload passes through as v1, not quarantined');
-assertEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.summary.passthrough_unvalidated_no_schema_count, 1);
+if schemaHasClass('projectvar')
+    % the tombstone is still in the loaded set: the old typeMismatch
+    verifyEqual(testCase, numel(out.quarantine), 1, ...
+        'with the tombstone loaded, the numeric payload still quarantines');
+    verifyEqual(testCase, out.quarantine(1).class_name, 'projectvar');
+else
+    verifyEmpty(testCase, out.quarantine, ...
+        'a numeric projectvar payload passes through as v1, not quarantined');
+    assertEqual(testCase, numel(out.migrated), 1);
+    verifyEqual(testCase, out.summary.passthrough_unvalidated_no_schema_count, 1);
+end
+end
+
+function tf = schemaHasClass(name)
+% whether the loaded V_eta schema set holds a class of this name
+tf = true;
+try
+    did2.schema.cache.shared().getClass(name);
+catch
+    tf = false;
+end
 end
 
 % ===================== interaction_purpose =================================
