@@ -157,7 +157,10 @@ verifyFalse(testCase, isfield(v.end, 'utc'), 'a local time is not normalised');
 verifyEqual(testCase, double(v.duration.source_value), 2);
 verifyEqual(testCase, double(v.duration.seconds), 2 * 86400);
 verifyEqual(testCase, char(v.duration.source_unit.name), 'day');
-verifyEmpty(testCase, char(v.duration.source_unit.node), ...
+% no registered term holds the day (V_eta_source_unit_plan.md item 4): the
+% node is empty, and a stored term drops an empty node
+su = v.duration.source_unit;
+verifyTrue(testCase, ~isfield(su, 'node') || isempty(su.node), ...
     'no registered term holds the day (V_eta_source_unit_plan.md item 4)');
 r = did2.convert.roundtrip.check(birrenCno(), out.migrated);
 verifyTrue(testCase, any(strcmp('treatment_drug.administration_offset_time', r.matched)));
