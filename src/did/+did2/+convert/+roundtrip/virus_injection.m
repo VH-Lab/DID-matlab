@@ -50,6 +50,9 @@ block = struct();
 if ~isempty(rows)
     block.virus_OntologyName = rows(1).node;
     block.virus_name = rows(1).name;
+    % [term names compare by node] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md), here and for the diluent and the site
+    spec = nameByNode(spec, 'virus_injection.virus_name', rows(1).node);
     if ~isempty(rows(1).value)
         block.dilution = rows(1).value;
     else
@@ -61,6 +64,7 @@ end
 if numel(rows) >= 2
     block.diluent_OntologyName = rows(2).node;
     block.diluent_name = rows(2).name;
+    spec = nameByNode(spec, 'virus_injection.diluent_name', rows(2).node);
 end
 if numel(rows) > 2
     spec.unplaced{end+1} = sprintf(['the formulation names %d ingredients; a ' ...
@@ -69,6 +73,8 @@ end
 if ~isempty(p.site)
     [block.virusLocation_OntologyName, block.virusLocation_name] = ...
         termParts(getIn(p.site, 'term', 'value'));
+    spec = nameByNode(spec, 'virus_injection.virusLocation_name', ...
+        block.virusLocation_OntologyName);
 elseif strcmp(p.kind, 'formulation')
     spec = bathEquivalents(spec, 'virus_injection.virusLocation_OntologyName', ...
         'virus_injection.virusLocation_name');

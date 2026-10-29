@@ -52,6 +52,9 @@ if ~isempty(p.site)
     [block.location_ontologyNode, block.location_name] = ...
         termParts(getIn(p.site, 'term', 'value'));
     block.location_ontologyName = block.location_ontologyNode;
+    % [term names compare by node] (Jess Haley, 2026-10-29, did-schema
+    % V_eta_go_forward_class_audit.md)
+    spec = nameByNode(spec, 'treatment_drug.location_name', block.location_ontologyNode);
 elseif strcmp(p.kind, 'formulation')
     spec = bathEquivalents(spec, 'treatment_drug.location_ontologyNode', ...
         'treatment_drug.location_name');

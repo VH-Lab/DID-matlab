@@ -12,7 +12,8 @@ function [v1, spec] = treatment(bodies)
 %     base.id, session_id, datestamp   the manipulation (rebuildBase)
 %     depends_on(1) subject_id   the manipulation's `entity_id`
 %     treatment.ontologyName     statement.variable's node
-%     treatment.name             statement.variable's name
+%     treatment.name             statement.variable's name, compared by
+%                                its node ([term names compare by node])
 %     treatment.numeric_value    a manipulation of the kind its term states
 %                                (termNumberKind): the value's source_value;
 %                                a dose / immersion: the `numeric value`
@@ -78,6 +79,9 @@ end
 spec.same(end+1) = struct('path', 'treatment.string_value', ...
     'fn', @(a, b) sameCurie(a, b), 'why', ['a site or bath CURIE, compared ' ...
     'by node ([spelling is notation]; V_eta_prefix_spelling_plan.md)']);
+% [term names compare by node] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md)
+spec = nameByNode(spec, 'treatment.name', node);
 end
 
 function v = conditionNumber(conds)

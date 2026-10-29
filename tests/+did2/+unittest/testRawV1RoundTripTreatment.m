@@ -60,13 +60,16 @@ function f = knownFindings()
 % V_eta_go_forward_class_audit.md) writes them to the anchor's `value.end` and
 % `value.duration`, so both fixtures now round trip them
 % (testADrugsOffsetAndDurationAreItsAnchorsEndAndDuration).
+%
+% INVERTED 2026-10-29: the row 'virus at V1' virus_injection.virusLocation_name
+% ("the writer's label "V1" is kept nowhere") is gone. [term names compare by
+% node] (Decided by Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): a v1 term name that differs from the
+% registry label of the same node is notation, and the round trip compares
+% terms by node (testAVirusSiteNameComparesByNode).
 f = { ...
     'Birren DREADD virus in the bath', 'virus_injection.virus_AdministrationPND', ...
         'no migrator reads the postnatal day'; ...
-    'virus at V1', 'virus_injection.virusLocation_name', ...
-        ['the site term is written with the registry label (T19, ' ...
-        'did2.convert.registeredTerm: "primary visual cortex"); the writer''s ' ...
-        'label "V1" is kept nowhere']; ...
     'virus at V1', 'virus_injection.virus_AdministrationPND', ...
         'no migrator reads the postnatal day'};
 end
@@ -113,6 +116,29 @@ names = {'Birren CNO in the bath', 'treatmentMaker drug at an UBERON site', ...
 for k = 1:size(f, 1)
     verifyTrue(testCase, any(strcmp(f{k, 1}, names)), f{k, 1});
 end
+end
+
+function testAVirusSiteNameComparesByNode(testCase)
+% INVERTED 2026-10-29 from the known finding 'virus at V1'
+% virus_injection.virusLocation_name. [term names compare by node] (Decided by
+% Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): the
+% writer's "V1" and the registry label of UBERON:0002436 name one term
+v1 = virusAtV1();
+r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
+verifyTrue(testCase, any(strcmp('virus_injection.virusLocation_name', r.equivalent)), ...
+    'the site name is compared by its node');
+verifyFalse(testCase, any(strcmp('virus_injection.virusLocation_name', {r.lost.path})));
+verifyTrue(testCase, any(strcmp('virus_injection.virusLocation_OntologyName', ...
+    [r.matched, r.equivalent])), 'the node itself is compared');
+% a different node is still a loss: the name follows its node, it does not
+% replace it
+w = v1;
+w.virus_injection.virusLocation_OntologyName = 'UBERON:0001880';
+out = runRaw(w);
+bad = out.migrated;
+r2 = did2.convert.roundtrip.check(v1, bad);
+verifyTrue(testCase, any(strcmp('virus_injection.virusLocation_OntologyName', {r2.lost.path})), ...
+    'a site of another node is lost on the node path');
 end
 
 % ===================== what the round trip accounts for ==================
