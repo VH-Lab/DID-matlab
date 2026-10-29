@@ -376,19 +376,20 @@ if strcmp(options.TargetVersion, 'V_eta')
     % ORDER: last, and it commutes with all seven above. It reads only
     % `syncgraph`, `session`, `syncrule` and `acquisition_system` documents and
     % writes only a `clock_alignment_policy` (on the syncgraph's own id), a
-    % `clock_alignment_configuration` (on a filefind syncrule's own id), its two
-    % `acquisition_channels`, and `software` entities; none of the seven writes
-    % any of the classes it reads.
+    % `clock_alignment_configuration` (on a device-pair syncrule's own id,
+    % linked to its two systems as from / to), and `software` entities; none
+    % of the seven writes any of the classes it reads.
     %
-    % The filefind arm: a `ndi.time.syncrule.filefind` names its two systems
-    % by NAME (daqsystem1 / daqsystem2); this pass resolves each within the
-    % rule's session to exactly one migrated `acquisition_system` and re-runs
-    % +migrators_j/syncrule. Zero or several matches leave the rule a
-    % passthrough and are counted.
+    % The device-pair arm: a filefind, commonTriggersOverlappingEpochs or
+    % randomPulses rule names its two systems by NAME; this pass resolves
+    % each within the rule's session to exactly one migrated
+    % `acquisition_system` and re-runs +migrators_j/syncrule. Zero or several
+    % matches leave the rule a passthrough and are counted.
     %
-    % READ ITS ZEROS WITH `syncgraphs_seen` / `syncrule_filefind_seen` BESIDE
-    % THEM. A corpus with no syncgraph or no filefind rule folds nothing, which
-    % says nothing about whether the fold works.
+    % READ ITS ZEROS WITH `syncgraphs_seen` / `syncrule_filefind_seen` /
+    % `syncrule_channel_rule_seen` BESIDE THEM. A corpus with no syncgraph or
+    % no device-pair rule folds nothing, which says nothing about whether the
+    % fold works.
     %
     % GUARDED like its seven siblings: writeCorpusReport is below and an
     % uncaught throw here costs the run its whole census. A failure leaves every
