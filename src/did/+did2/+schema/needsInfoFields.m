@@ -60,16 +60,18 @@ tf = false;
 parts = strsplit(path, '.');
 v = s;
 for k = 1:numel(parts)
-    tok = regexp(parts{k}, '^([A-Za-z]\w*)(?:\((\d+)\))?$', 'tokens', 'once');
-    if isempty(tok) || ~isstruct(v) || isempty(v) || ~isfield(v, tok{1})
+    % 'names', not 'tokens': MATLAB drops an optional group that did not
+    % match from a 'tokens' result, so its index would not exist
+    tok = regexp(parts{k}, '^(?<name>[A-Za-z]\w*)(?:\((?<index>\d+)\))?$', 'names', 'once');
+    if isempty(tok) || ~isstruct(v) || isempty(v) || ~isfield(v, tok.name)
         return;
     end
     if numel(v) > 1
         return;   % a path names one element at each level
     end
-    v = v.(tok{1});
-    if ~isempty(tok{2})
-        i = str2double(tok{2});
+    v = v.(tok.name);
+    if ~isempty(tok.index)
+        i = str2double(tok.index);
         if ~isstruct(v) || i > numel(v)
             return;
         end
