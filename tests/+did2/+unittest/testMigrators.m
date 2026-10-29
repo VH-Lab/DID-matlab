@@ -317,6 +317,7 @@ end
 % --- position_metadata, distance_metadata, stimulus_bath ---
 % Their +migrators base migrators are deleted ([early migration pieces fixed]
 % (1)): never reached (each class has a +migrators_j migrator), or reached only
-% through distance_metadata's own, which now reshapes the raw v1 spelling. The
+% through distance_metadata's own, which reshaped the raw v1 spelling itself
+% (and since [reshaped retire classes carried], 2026-10-29, carries it). The
 % classes read raw v1 (did2.convert.rawV1Classes); their round trips are
 % testRawV1RoundTripBath and testRawV1RoundTripPosition.

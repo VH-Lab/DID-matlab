@@ -1251,10 +1251,11 @@ end
 % ---- distance_metadata (element_id) -- REAL FLAT v1 shape ------------------
 % The writer emits FLAT per-endpoint fields (ontologyNode_A/_B, integerIDs_A/_B,
 % ontologyStringValues_A/_B, ontologyNumericValues_A/_B empty by design, units),
-% NOT a nested `endpoints` block. The migrator reshapes flat -> the nested
-% `endpoints` array the schema requires; this fixture is the real shape so the
-% reshape is exercised under validation (element_id -> the minted subject; the
-% endpoint node ids are field values, not orphan-checked depends_on edges).
+% NOT a nested `endpoints` block. Until 2026-10-29 the migrator reshaped flat ->
+% the nested `endpoints` array of the retire class; since [reshaped retire
+% classes carried] (Jess Haley, 2026-10-29) it carries the document whole as v1
+% (carry-147), and this fixture checks the carry does not quarantine under
+% validation.
 function batch = fx_distance_metadata()
 sub = subjDoc('dm_sub', 'elemDM');
 d = struct();

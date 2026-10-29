@@ -552,7 +552,8 @@ function testJHPositionAndDistanceCarryWithTheirEpochs(testCase)
 % [element types have no default] (Jess Haley, 2026-10-26): `position` and
 % `distance` are on no element type list, so the elements are carried as v1
 % (carry-063), and [dependents of a carried document carry] carries their
-% element_epochs and the distance_metadata (carry-064). No acquisition_epoch,
+% element_epochs (carry-064); the distance_metadata is carried by its own
+% migrator (carry-147, [reshaped retire classes carried]). No acquisition_epoch,
 % track calculation, coordinate system or nearest-patch item is written.
 sid = 'sess_jh';
 worm = subjectBody('worm_1', sid, 'N2_worm0001');

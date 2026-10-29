@@ -39,9 +39,12 @@ function tests = testRawV1RoundTripPosition
 %                        is written"; the metadata and its element's values
 %                        become one position calculation, and until position
 %                        elements are mapped (carry-063) both stay carried.
-%     distance_metadata  converts to the V2 distance_metadata (a class whose
-%                        disposition is `retire`; a question in the phase
-%                        report) and loses nothing.
+%     distance_metadata  carried (carry-147): until 2026-10-29 it converted
+%                        to the V2 distance_metadata (a class whose
+%                        disposition is `retire`); since [reshaped retire
+%                        classes carried] (Jess Haley, 2026-10-29, did-schema
+%                        V_eta_go_forward_class_audit.md, "B") it is carried
+%                        whole as v1 until its V2 home is decided.
 %     both, beside their element   the element's type (`position`,
 %                        `distance`, on ndi.element.timeseries) is not on the
 %                        element type list, so it is carried (carry-063) and
@@ -58,8 +61,8 @@ cases = { ...
     'position writer output', {position('pm_1', 'EMPTY:0000137')}, true; ...
     'position, converted shape', {positionConvertedShape()}, true; ...  % carried since [position and its metadata are one statement]
     'position beside its carried element', {position('pm_1', 'EMPTY:0000137'), track('el_pos', 'position')}, true; ...
-    'distance writer output (19 patches)', {distance('dm_1', 1:19)}, false; ...
-    'distance writer output (one patch)', {distance('dm_2', 4)}, false; ...
+    'distance writer output (19 patches)', {distance('dm_1', 1:19)}, true; ...  % carried since [reshaped retire classes carried]
+    'distance writer output (one patch)', {distance('dm_2', 4)}, true; ...
     'distance beside its carried element', {distance('dm_1', 1:19), track('el_dist', 'distance')}, true};
 for k = 1:size(cases, 1)
     [label, batch, carried] = cases{k, :};
@@ -76,6 +79,8 @@ end
 end
 
 function testEveryWriterFieldOfADistanceIsAccountedFor(testCase)
+% (since [reshaped retire classes carried], Jess Haley, 2026-10-29, the
+% document is carried whole as v1, so every field is matched on the carry)
 v1 = distance('dm_1', 1:19);
 r = did2.convert.roundtrip.check(v1, runRaw({v1}).migrated);
 accounted = [r.matched, r.restated, r.equivalent, r.not_set, r.exempt];
@@ -93,8 +98,16 @@ verifyCarriedFor(testCase, {position('pm_1', 'EMPTY:0000137')}, ...
     '[carry-053] unplaced: position_metadata.units, position_metadata.dimensions');
 verifyCarriedFor(testCase, {position('pm_1', 'EMPTY:0000137'), track('el_pos', 'position')}, ...
     '[carry-053]');
+% INVERTED 2026-10-29: beside its carried element the distance_metadata cited
+% carry-064 ([dependents of a carried document carry]); since [reshaped
+% retire classes carried] (Jess Haley, 2026-10-29) its own migrator carries it
+% first, under carry-147, and v1_to_v2's carryDependents follows only a
+% document that was converted
+verifyCarriedFor(testCase, {distance('dm_1', 1:19)}, ...
+    '[carry-147] awaiting_home: distance_metadata');
+verifyCarriedFor(testCase, {distance('dm_2', 4)}, 'reshaped retire classes carried');
 verifyCarriedFor(testCase, {distance('dm_1', 1:19), track('el_dist', 'distance')}, ...
-    '[carry-064] needs_mapping: its element_id edge names el_dist');
+    '[carry-147] awaiting_home: distance_metadata');
 end
 
 % ===================== the switch ======================================
@@ -149,15 +162,19 @@ old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta', '
 verifyTrue(testCase, isCarried(old, []), 'not carried on the renamed path');
 end
 
-function testTheConvertedDocumentsValidate(testCase)
-% positionConvertedShape() is no longer a converted document ([position and
-% its metadata are one statement], Jess Haley, 2026-10-27): it is carried, and
-% its carry is checked by testAPositionWithOnlyABodyPartIsCarried
+function testTheCarriedDistancesPassValidation(testCase)
+% INVERTED 2026-10-29 from testTheConvertedDocumentsValidate, which validated
+% the V2 distance_metadata the migrator wrote. Since [reshaped retire classes
+% carried] (Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md)
+% no distance_metadata is converted: with validation ON the writer's documents
+% must still not quarantine, and come back as their untouched v1 sources.
+% (positionConvertedShape() is carried too, [position and its metadata are one
+% statement]; its carry is checked by testAPositionWithOnlyABodyPartIsCarried.)
 for b = {{distance('dm_1', 1:19)}, {distance('dm_2', 4)}}
     out = did2.convert.v1_to_v2(b{1}, 'Validate', true, 'TargetVersion', 'V_eta');
-    label = b{1}{1}.document_class.class_name;
+    label = b{1}{1}.base.id;
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', label, quarantineText(out)));
-    verifyNotEmpty(testCase, out.migrated, label);
+    verifyTrue(testCase, isCarried(out, b{1}{1}), [label ': not carried as the untouched v1 source']);
 end
 end
 
@@ -187,18 +204,17 @@ end
 % ===================== a check that cannot fail proves nothing ===========
 
 function testABrokenEmissionIsReportedLost(testCase)
-% distance: a patch number and an id changed
+% distance: a patch number and an id changed. INVERTED 2026-10-29: it broke
+% the V2 `endpoints` the migrator wrote; since [reshaped retire classes
+% carried] (Jess Haley, 2026-10-29) the document is carried whole as v1, so
+% the same two values are changed on the carried body
 v1 = distance('dm_1', 1:19);
-docs = structs(runRaw({v1}).migrated);
-ep = docs{1}.distance_metadata.endpoints;
-if iscell(ep)
-    ep{2}.integer_ids(3) = 99;
-    ep{1}.measurement.node = 'EMPTY:0000097';
-else
-    ep(2).integer_ids(3) = 99;
-    ep(1).measurement.node = 'EMPTY:0000097';
-end
-docs{1}.distance_metadata.endpoints = ep;
+out = runRaw({v1});
+docs = structs(out.migrated);
+assertEqual(testCase, numel(docs), 1, 'the v1 source only');
+verifyTrue(testCase, did2.convert.roundtrip.check(v1, docs).carried);
+docs{1}.distance_metadata.integerIDs_B(3) = 99;
+docs{1}.distance_metadata.ontologyNode_A = 'EMPTY:0000097';
 r = did2.convert.roundtrip.check(v1, docs);
 verifyEqual(testCase, sort(lostPaths(r)), ...
     sort({'distance_metadata.integerIDs_B', 'distance_metadata.ontologyNode_A'}));

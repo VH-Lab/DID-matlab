@@ -695,8 +695,7 @@
 %         deleted 2026-10-21; the class is now `schemas/V_eta/stable/demo.json`); the
 %         fold itself is in private/jDemoFold.
 %     distance_metadata
-%         Brainstorm-J migrator: reshape a did_v1 distance_metadata into the validated
-%         V_eta distance_metadata. 1 -> 1.
+%         Brainstorm-J migrator: carry a v1 distance_metadata whole as v1. 1 -> 1.
 %     electrode_offset_voltage
 %         Brainstorm-J migrator: did_v1 electrode_offset_voltage -> an `observation`
 %         with value kind `voltage` about the probe's entity, qualified by the
@@ -820,7 +819,7 @@
 %         sorted unit's own entity (+ the shared session anchor, the software and its
 %         run); no entity of its own.
 %     oneepoch
-%         Brainstorm-J migrator: keep the class, fold its inherited block.
+%         Brainstorm-J migrator: carry a v1 oneepoch whole as v1. 1 -> 1.
 %     ontology_image
 %         Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE. The
 %         current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the

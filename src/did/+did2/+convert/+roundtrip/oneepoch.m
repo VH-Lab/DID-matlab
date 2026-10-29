@@ -16,6 +16,13 @@ function [v1, spec] = oneepoch(bodies)
 %     element_epoch.epoch_clock        the clocks' names, comma-joined
 %     element_epoch.t0_t1              the clocks' [t0; t1], one column each
 %
+%   NO MIGRATOR OUTPUT REACHES THIS INVERSE since [reshaped retire classes
+%   carried] (Jess Haley, 2026-10-29, did-schema
+%   V_eta_go_forward_class_audit.md): migrators_j.oneepoch carries every document
+%   whole as v1 (carry-126 / carry-148), and a carry's round trip is the carry itself
+%   (did2.convert.roundtrip.check). It is kept until the class's V2 home is
+%   built, whose inverse replaces it.
+%
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.oneepoch,
 %            did2.convert.roundtrip.element_epoch.
