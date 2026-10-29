@@ -49,6 +49,16 @@ bound = sort(cellfun(@(v) char(v.node), vals, 'UniformOutput', false));
 if any(cellfun(@isempty, bound))
     assumeFail(testCase, 'the loaded schema binds channel types by label (before did-schema 34a15e2)');
 end
+% [text channel replaces NCIT Text] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): did-schema binds EMPTY:0000410 "text
+% channel" beside NCIT Text until the writers move (NDI's
+% +vintage/channelTypes.m first, then this map), so it may be bound ahead of
+% the map. Once the map writes it and NCIT Text leaves the list, this is the
+% exact comparison again.
+mine0 = did2.convert.channelType('tx');
+if ~strcmp(char(mine0.node), 'EMPTY:0000410')
+    bound = bound(~strcmp(bound, 'EMPTY:0000410'));
+end
 mine = cellfun(@(p) char(did2.convert.channelType(p).node), ...
     {'ai', 'ao', 'di', 'do', 't', 'ax', 'e', 'mk', 'md', 'tx'}, 'UniformOutput', false);
 verifyEqual(testCase, sort(mine(:)), sort(bound(:)));
