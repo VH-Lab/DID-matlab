@@ -21,12 +21,37 @@ function anchor = jTreatmentAnchor(preBody, block)
 %   Decided by Jess Haley, 2026-10-21 ("a"): every treatment route --
 %   immersion, exposure, dose, the Babu heat pulse -- is anchored at the
 %   recorded onset, and at the session only when there is none.
+%
+%   A v1 treatment_drug's END and EXTENT: [drug end and duration on the
+%   anchor] (Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
+%   "`administration_offset_time` -> `absolute_time_reference.value.end`;
+%   `administration_duration` -> `absolute_time_reference.value.duration`. No
+%   new class or field" -- written on the anchor whose `start` is
+%   `administration_onset_time` (jAbsoluteReference). The duration is in DAYS:
+%   NDI-matlab main treatment_drug_schema.json documents it as "Duration of
+%   drug administration duration in days", and the writers write days
+%   (+setup/+conv/+birren/TreatmentCreator.m "newRow{12} = 2; % duration in
+%   days"; +setup/+conv/+babu/TreatmentCreator.m days(...)). So
+%   `duration.source_value` is the number as written, `duration.source_unit` the unit "day" (no term
+%   in the registry holds it, so it is the name with an empty node, as
+%   jSourceUnit writes a spelling no registered term matches:
+%   V_eta_source_unit_plan.md item 4), and
+%   `duration.seconds` is days * 86400.
+%
+%   NOT WRITTEN (the round trip reports them lost; open questions, not decided):
+%     - an offset or duration with NO onset: the decision names the anchor
+%       whose start is the onset, and a session anchor has none (an `end`
+%       needs a `start`, rule end_consistent);
+%     - an offset and onset both in UTC that the rule end_consistent rejects
+%       (the end before the start, or end - start not the duration): neither
+%       the end nor the duration is written, as before this decision.
 
 anchor = [];
 if isstruct(block) && isscalar(block)
     onset = jGetCharAny(block, {'administration_onset_time', 'administrationOnsetTime', ...
         'virus_administration_date', 'virus_AdministrationDate', 'virusAdministrationDate'});
-    anchor = jAbsoluteReference(preBody, onset);
+    [stopText, duration] = drugExtent(onset, block);
+    anchor = jAbsoluteReference(preBody, onset, stopText, duration);
     if isempty(anchor)
         anchor = transferAnchor(preBody, block);
     end
@@ -34,6 +59,56 @@ end
 if isempty(anchor)
     anchor = jSessionAnchor(preBody, 'during');
 end
+end
+
+function [stopText, duration] = drugExtent(onset, block)
+% [drug end and duration on the anchor] (Jess Haley, 2026-10-27): the v1
+% treatment_drug's offset text and duration (days) for the anchor whose start
+% is ONSET; '' / [] when the block states none, when there is no onset, or when
+% the three disagree on the UTC timeline (see the header).
+stopText = '';
+duration = [];
+if isempty(strtrim(onset))
+    return;
+end
+stopText = strtrim(jGetCharAny(block, {'administration_offset_time', 'administrationOffsetTime'}));
+d = [];
+for name = {'administration_duration', 'administrationDuration'}
+    if isfield(block, name{1})
+        d = block.(name{1});
+        break;
+    end
+end
+if isnumeric(d) && isscalar(d) && isfinite(double(d))
+    nDays = double(d);
+    duration = struct('seconds', nDays * 86400, 'source_value', nDays, ...
+        'source_unit', jSourceUnit('day'));
+end
+t0 = utcSeconds(strtrim(onset));
+t1 = utcSeconds(stopText);
+if ~isnan(t0) && ~isnan(t1)
+    agree = t1 >= t0;
+    if agree && ~isempty(duration)
+        agree = abs((t1 - t0) - duration.seconds) <= 1e-3;
+    end
+    if ~agree
+        stopText = '';
+        duration = [];
+    end
+end
+end
+
+function t = utcSeconds(s)
+% seconds on the UTC timeline of an ISO-8601 UTC string (a trailing Z, as
+% jAbsoluteReference reads one); NaN for anything else
+t = NaN;
+tok = regexp(s, ['^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):' ...
+    '(\d{2}(?:\.\d+)?)Z$'], 'tokens', 'once');
+if isempty(tok)
+    return;
+end
+n = str2double(tok);
+t = posixtime(datetime(n(1), n(2), n(3), n(4), n(5), n(6), 'TimeZone', 'UTC'));
 end
 
 function anchor = transferAnchor(preBody, block)

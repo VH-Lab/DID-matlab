@@ -54,7 +54,13 @@ function v2Body = treatment_drug(preBody)
 %                                 per-ingredient amounts, jDoseValue)
 %     administration_onset_time -> the anchor (jTreatmentAnchor)
 %     administration_offset_time, administration_duration
-%                              -> NOT READ (open findings)
+%                              -> the anchor's `value.end` and `value.duration`
+%                                 (duration in days; jTreatmentAnchor,
+%                                 jAbsoluteReference): [drug end and duration
+%                                 on the anchor] (Jess Haley, 2026-10-27,
+%                                 did-schema V_eta_go_forward_class_audit.md).
+%                                 Not written with no onset, or when the UTC
+%                                 times disagree (jTreatmentAnchor's header)
 
 arguments
     preBody (1,1) struct

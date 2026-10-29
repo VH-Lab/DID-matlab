@@ -22,10 +22,15 @@ function [v1, spec] = treatment_drug(bodies)
 %                                      SPEC.twins
 %     treatment_drug.administration_onset_time
 %                                      the absolute anchor's source text
-%
-%   NOT REBUILT, because V2 does not keep them (the round trip reports them):
-%   `administration_offset_time` and `administration_duration` (no migrator
-%   reads them).
+%     treatment_drug.administration_offset_time
+%                                      the absolute anchor's `value.end`
+%                                      source text
+%     treatment_drug.administration_duration
+%                                      the absolute anchor's
+%                                      `value.duration.source_value` (days)
+%   [drug end and duration on the anchor] (Jess Haley, 2026-10-27, did-schema
+%   V_eta_go_forward_class_audit.md). Where the migrator wrote neither (no
+%   onset, or UTC times that disagree), the round trip reports them lost.
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.treatment_drug.
 
@@ -61,6 +66,16 @@ spec.twins = struct('paths', {{'treatment_drug.location_ontologyNode', ...
 onset = anchorOnset(p.anchor);
 if ~isempty(onset)
     block.administration_onset_time = onset;
+    % [drug end and duration on the anchor] (Jess Haley, 2026-10-27): the
+    % anchor's end and duration are the v1 offset time and duration
+    [stop, ok] = getIn(p.anchor, 'absolute_time_reference', 'value', 'end', 'source_value');
+    if ok && (ischar(stop) || (isstring(stop) && isscalar(stop))) && ~isempty(stop)
+        block.administration_offset_time = char(stop);
+    end
+    [d, ok] = getIn(p.anchor, 'absolute_time_reference', 'value', 'duration', 'source_value');
+    if ok && isnumeric(d) && isscalar(d)
+        block.administration_duration = d;
+    end
 end
 
 v1.document_class = struct('class_name', 'treatment_drug');
