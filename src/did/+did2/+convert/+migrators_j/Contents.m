@@ -331,7 +331,12 @@
 %                          migrator that renamed it to `filter_type` is deleted,
 %                          [unreached superclass migrators deleted], 2026-10-27).
 %     binaryseries_parameters
-%                        - 1 -> 1 GUARDED PASSTHROUGH, placeholder-normalising.
+%                        - CARRIED whole as v1, needs_mapping, since 2026-10-29
+%                          ([binaryseries parameters carried], Jess Haley: "each
+%                          dataset says which data body it describes"; no
+%                          register row yet). What follows is the passthrough
+%                          it replaced:
+%                          1 -> 1 GUARDED PASSTHROUGH, placeholder-normalising.
 %                          TEAM-SIGN-OFF [misc singletons], jess 2026-08-09
 %                          retires this class INTO THE data_body MODEL (time_type
 %                          -> the time axis's datum_type, data_type -> the
@@ -569,8 +574,8 @@
 %   95 migrator(s).
 %
 %     binaryseries_parameters
-%         Brainstorm-J migrator: did_v1 binaryseries_parameters -- a GUARDED
-%         PASSTHROUGH that normalises the template's own placeholders.
+%         Brainstorm-J migrator: did_v1 binaryseries_parameters -- CARRIED whole as
+%         v1, needs_mapping (the document is returned UNCHANGED).
 %     binnedspikeratevm
 %         Brainstorm-J migrator: did_v1 binnedspikeratevm -- CARRIED whole as v1 under
 %         a needs-home register row (the document is returned UNCHANGED).

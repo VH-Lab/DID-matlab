@@ -1451,8 +1451,8 @@ v1.depends_on = [ struct('name', 'subject_id', 'value', 'subj_007'), ...
                   struct('name', 'imageCollection_id', 'value', '')];
 v1.base = struct('id', 'img_01', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-% (no label: an image that states one is carried whole as v1, 2026-10-26;
-% testDidV1ImageWithALabelIsCarriedAsV1)
+% (no label: a label is the observation's notes since 2026-10-29,
+% testDidV1ImageLabelIsTheObservationsNotes)
 v1.image = struct('label', '', 'format', 'tiff', ...
     'compression', 'lzw');
 v1.image_stack_parameters = struct('data_type', 'uint8', ...
@@ -1487,10 +1487,14 @@ verifyEqual(testCase, body.get('data_body.compression'), 'lzw');
 end
 
 
-function testDidV1ImageWithALabelIsCarriedAsV1(testCase)
-% `image.label` has no V2 home decided yet (image_stack reads its own block's
-% label only), so an image that states one is carried whole as v1 rather than
-% losing it ([generic stage is lossless], Jess Haley, 2026-10-25).
+function testDidV1ImageLabelIsTheObservationsNotes(testCase)
+% INVERTED 2026-10-29 from testDidV1ImageWithALabelIsCarriedAsV1, which pinned
+% the carry of an image that states a label (carry-051). [image label goes to
+% the observation's notes] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md; supersedes [image label goes to notes]):
+% "a non-empty v1 `image.label` is written to the image observation's `notes`;
+% `data_body` gains no field". The image converts, its label on the
+% observation's statement notes as v1 wrote it, and nothing is carried.
 v1 = struct();
 v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
@@ -1503,9 +1507,43 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
     'dimension_order', 'YX', 'dimension_size', [8 8], ...
     'dimension_scale', [1 1], 'clocktype', 'no_time', 'timestamp', 0);
 out = runJ(v1);
-verifyCarriedWholeAsV1(testCase, v1, out);
-verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'image.label'));
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+verifyEmpty(testCase, out.passthrough, 'the image converts; it is not carried');
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+    'a label no longer carries the image');
+verifyEqual(testCase, numel(out.migrated), 3);   % observation + sampled_body + anchor
+names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
+    'UniformOutput', false);
+obs = out.migrated{strcmp(names, 'observation+intensity')};
+verifyEqual(testCase, obs.get('base.id'), 'img_05');
+verifyEqual(testCase, obs.get('statement.notes'), 'a histology section');
+% `data_body` gains no field: the body holds no copy of the label
+body = out.migrated{strcmp(names, 'sampled_body')};
+verifyFalse(testCase, contains(jsonencode(body.toStruct()), 'a histology section'), ...
+    'the label is written to the observation only');
+end
+
+function testDidV1ImageWithNoLabelHasEmptyNotes(testCase)
+% [image label goes to the observation's notes] (Jess Haley, 2026-10-29): only
+% a NON-EMPTY label is written; the template's empty placeholder leaves the
+% notes empty.
+v1 = struct();
+v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'img_06', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image = struct('label', '', 'format', 'tiff', 'compression', '');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YX', 'dimension_size', [8 8], ...
+    'dimension_scale', [1 1], 'clocktype', 'no_time', 'timestamp', 0);
+out = runJ(v1);
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
+    'UniformOutput', false);
+obs = out.migrated{strcmp(names, 'observation+intensity')};
+verifyEmpty(testCase, obs.get('statement.notes'));
 end
 
 function testDidV1ImageInACollectionIsCarriedAsV1(testCase)
@@ -4815,8 +4853,15 @@ function testOntologyImageVintageBPassesThroughForSecondPass(testCase)
 % subject needs the migrated-id graph. The document must pass through INTACT
 % (ngrid block and all) so the NDI second pass can decompose it -- and must
 % NOT become a term_observation with an empty subject_id.
+% 2026-10-29 [ngrid with no statement carried] (Jess Haley, did-schema
+% V_eta_go_forward_class_audit.md): its only edge is the table row, so the
+% intact document is now a CARRY, noted needs_mapping.
 v1 = ontologyImageVintageB();
+did2.convert.reportNote('reset');
 out = did2.convert.migrators_j.ontology_image(v1);
+nCarry = did2.convert.reportNote('pending', 'carried_as_v1');
+did2.convert.reportNote('reset');
+verifyEqual(testCase, nCarry, 1, 'the carry is noted');
 verifyEqual(testCase, numel(out), 1);
 o = out{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(o), 'ontology_image');

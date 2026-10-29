@@ -35,6 +35,15 @@ function v2Body = ontology_image(preBody)
 %   Text below that says "term_observation + image_observation", "1 -> 4" or
 %   "the term says what the picture depicts" is history.
 %
+%   2026-10-29, [ngrid with no statement carried] (Jess Haley, answering
+%   docs/V2_PLAN.md G26): a vintage-B document whose only edge is its
+%   ontologyTableRow_id (what imageDocMaker writes when given a row) is CARRIED
+%   whole as v1, needs_mapping, with a `carried_as_v1` note (no register row
+%   yet: the marker says `none`); it was a silent passthrough. The body is
+%   unchanged either way. A vintage-B document with no edge, or with a subject
+%   edge beside the row, still passes through as before: the line names
+%   neither.
+%
 %   ---------------------------------------------------------------------
 %   WHY THIS MIGRATOR IS VINTAGE-AWARE, AND WHY ONE VINTAGE IS DEFERRED
 %   ---------------------------------------------------------------------
@@ -300,6 +309,26 @@ if isVintageB
     % Deferred to the NDI second pass -- pass the document through intact.
     % Deliberately NOT emitting a term_observation: see the header. Vintage B
     % wins when both are somehow present, because its terms are authoritative.
+    %
+    % [ngrid with no statement carried] (Decided by Jess Haley, 2026-10-29,
+    % did-schema V_eta_go_forward_class_audit.md): "an ontologyImage `ngrid`
+    % whose only edge is its table row ... [is] carried whole as v1
+    % `needs_mapping`". Its raster has no statement for a sampled_body to
+    % belong to (a table row is not a subject; see the header), so the carry
+    % is noted. A vintage-B document with NO edge, or with a subject edge
+    % beside the table row, is not what that line names: it passes through
+    % as before.
+    if onlyEdgeIsTableRow(preBody)
+        b = did2.convert.v1read.readBase(src);
+        id = b.id;
+        if ~ischar(id); id = ''; end
+        % carry-register: none (an ontologyImage whose only edge is its table
+        %   row; [ngrid with no statement carried] asks for a row, not yet in
+        %   the register)
+        did2.convert.reportNote('carried_as_v1', 'ontology_image', id, ...
+            ['needs_mapping: ngrid (its only edge is ontologyTableRow_id, so ' ...
+            'no statement for its sampled_body) ([ngrid with no statement carried])']);
+    end
     v2Body = {src};
     return;
 end
@@ -460,6 +489,30 @@ end
 end
 
 % ===================== local helpers ===================================
+
+function tf = onlyEdgeIsTableRow(preBody)
+%ONLYEDGEISTABLEROW True when the document's only non-empty edge is its table
+%   row (`ontologyTableRow_id`, v1's spelling, or `ontology_table_row_id`, a
+%   fixture's renamed one), as imageDocMaker createOntologyImageDoc writes it
+%   when given a row. False with no non-empty edge at all, or with any other.
+%   Edges are read by did2.convert.v1read.readDependsOn (a struct array or a
+%   cell of entries; `value`, `id` or `document_id`).
+tf = false;
+deps = did2.convert.v1read.readDependsOn(preBody);
+for k = 1:numel(deps)
+    % a `session_id` entry is v1's base.session_id moved to an edge (V2's
+    % shape, on a body already renamed), not an edge the v1 document states
+    if isempty(deps(k).document_id) || strcmp(char(deps(k).name), 'session_id')
+        continue;
+    end
+    if any(strcmp(char(deps(k).name), {'ontologyTableRow_id', 'ontology_table_row_id'}))
+        tf = true;
+    else
+        tf = false;
+        return;
+    end
+end
+end
 
 function tf = isAnatomicalArea(node)
 %ISANATOMICALAREA True for a UBERON CURIE ([region anatomy is UBERON], Jess

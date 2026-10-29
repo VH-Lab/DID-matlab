@@ -22,12 +22,13 @@
 %                           already snake_case in v1, no rename
 %                           needed. Accepts the older `clocktype`
 %                           spelling defensively.
-%     ngrid               - SUPERCLASS migrator; rename data_dim ->
-%                           dim_sizes and derive ndims = numel(data_dim).
-%                           Drops v1-only data_size and coordinates.
-%                           Applied to any document that lists ngrid
-%                           in its superclass chain (e.g., hartley_calc
-%                           via reverse_correlation).
+%     ngrid               - a standalone `ngrid` document: CARRIED whole
+%                           as v1, needs_mapping ([ngrid with no statement
+%                           carried], Jess Haley, 2026-10-29). Until then
+%                           it renamed data_dim -> dim_sizes, derived ndims
+%                           and dropped data_size and coordinates. A
+%                           superclass `ngrid` block gets the V2 override
+%                           +migrators_j/+super/ngrid.m, never this file.
 %
 %   The calculator-base wrappers are all deleted, with their shared helper
 %   calcCommon: the tuning family's (tuningcurve_calc, oridirtuning_calc,

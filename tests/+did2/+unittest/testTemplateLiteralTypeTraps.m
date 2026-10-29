@@ -40,6 +40,8 @@ function tests = testTemplateLiteralTypeTraps
 %   THREE are exposed on a passthrough path, where nothing overwrites anything:
 %
 %     binaryseries_parameters  time_size / data_size / data_dim   ALREADY FIXED
+%                              (since 2026-10-29 carried whole as v1 instead,
+%                              [binaryseries parameters carried], Jess Haley)
 %     stimulus_parameter       value                              <- here
 %     imageStack_parameters    timestamp                          <- here
 %

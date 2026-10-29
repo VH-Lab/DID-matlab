@@ -394,10 +394,22 @@ if isnumeric(ts) && isscalar(ts) && isfinite(ts)
 end
 extra = {};
 software = {};
+% the statement's notes: an imageStack's `label`; for a v1 `image`, its own
+% block's `label`, as v1 wrote it, when it is not empty ([image label goes to
+% the observation's notes] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): "a non-empty v1 `image.label` is written
+% to the image observation's `notes`; `data_body` gains no field")
+notes = label;
+if strcmp(srcClass, 'image')
+    notes = getCharField(getBlock(preBody, 'image'), 'label');
+    if isempty(strtrim(notes))
+        notes = '';
+    end
+end
 obs = jStatement(src, 'observation', subjectId, ...
     jLabel('image intensity'), [], ...
     'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-    'Conditions', conds, 'Notes', label, ...
+    'Conditions', conds, 'Notes', notes, ...
     'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).
