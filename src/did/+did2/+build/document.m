@@ -78,6 +78,8 @@ function doc = document(className, fields, options)
 %     did2:build:ambiguousField   a name two blocks declare, not qualified
 %     did2:build:missingField     a required field (or nested field) not given
 %     did2:build:unknownEdge      an edge name the chain does not declare
+%                                 (nor accepts ahead of the schema:
+%                                 +build/private/pendingEdges.m)
 %     did2:build:missingEdge      a required edge not given, or fewer than a
 %                                 `multiple` edge's min_count
 %     did2:build:repeatedEdge     several ids for an edge not declared multiple
@@ -336,6 +338,17 @@ for c = 1:numel(chain)
     for d = 1:numel(deps)
         name = char(deps{d}.name);
         declared(name) = deps{d};
+        order{end+1} = name; %#ok<AGROW>
+    end
+end
+% Edges did2.build accepts before did-schema declares them (the siblings-first
+% order: the builder accepts a new edge, then a class declares it). Used only
+% while the chain declares no edge of that name; see +build/private/pendingEdges.m.
+pending = pendingEdges();
+for p = 1:numel(pending)
+    name = pending(p).def.name;
+    if any(strcmp(chain, pending(p).on)) && ~isKey(declared, name)
+        declared(name) = pending(p).def;
         order{end+1} = name; %#ok<AGROW>
     end
 end

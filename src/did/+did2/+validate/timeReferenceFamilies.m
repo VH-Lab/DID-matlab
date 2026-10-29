@@ -465,11 +465,23 @@ function key = trfShapeKey(cache, refs, uniqueBy, chainMemo)
 %
 %   THESE ARE DESCRIPTIONS, NOT ROLE NAMES. Nothing here says what a member
 %   MEANS; it says what the documents differ on. Naming is the team's.
+%
+%   A COMPOSITE `referent_unique_by` ([device clocks on one epoch], Decided by
+%   Jess Haley, 2026-10-26, did-schema V_eta_go_forward_class_audit.md: time
+%   references unique "by clock AND referent") gives one <discriminator> part
+%   per declared path, in declared order, each labelled by its last segment
+%   (`clock=... | referent_id=...`). The first stays first, so a reader that
+%   takes the first part after `kind` still reads the clock.
 if isempty(uniqueBy); uniqueBy = ''; end
 
 kindPart  = trfKindPart(cache, refs, chainMemo);
-discPart  = trfAgreementPart(trfLastSegment(uniqueBy), ...
-                             trfTermKeys(refs, uniqueBy));
+paths = strsplit(trfChar(uniqueBy), '+');
+discParts = cell(1, numel(paths));
+for p = 1:numel(paths)
+    discParts{p} = trfAgreementPart(trfLastSegment(paths{p}), ...
+                                    trfTermKeys(refs, paths{p}));
+end
+discPart = strjoin(discParts, ' | ');
 % The label stays `relative_to` on #88 (the edge is now `referent_id`): the
 % census digest parses shape keys by this label.
 anchorPart = trfAgreementPart('relative_to', trfAnchorKeys(refs));
@@ -574,6 +586,12 @@ for k = 1:numel(refs)
     keys{k} = '';
     if isempty(dottedPath); continue; end
     v = trfPathValue(refs{k}, dottedPath);
+    if isempty(v) && ~contains(trfChar(dottedPath), '.')
+        % a composite key's edge path (`referent_id`, [device clocks on one
+        % epoch]): no field of that name, so the referenced document's edge
+        keys{k} = trfEdgeValue(refs{k}, trfChar(dottedPath));
+        continue;
+    end
     if isempty(v); continue; end
     if isstruct(v) && isscalar(v)
         if isfield(v, 'node') && ~isempty(v.node)
@@ -741,7 +759,9 @@ for k = 1:numel(chain)
         if ~trfRefersToTimeReference(cache, refersTo, chainMemo); continue; end
         uq = '';
         if isfield(dep, 'referent_unique_by') && ~isempty(dep.referent_unique_by)
-            uq = trfChar(dep.referent_unique_by);
+            % one path, or a composite key's paths joined by '+'
+            % ([device clocks on one epoch]; see trfUniqueByText)
+            uq = trfUniqueByText(dep.referent_unique_by);
         end
         fams(end+1) = struct('name', nm, 'unique_by', uq, ...
             'refers_to', refersTo); %#ok<AGROW>
@@ -936,6 +956,32 @@ p = trfChar(dottedPath);
 if isempty(p); return; end
 parts = strsplit(p, '.');
 s = parts{end};
+end
+
+function s = trfUniqueByText(v)
+%TRFUNIQUEBYTEXT A family's `referent_unique_by` as one char: one dotted path
+%   as declared, or a composite key -- a JSON array of paths, decoded as a
+%   cell of char or a string array -- joined by '+' in declared order
+%   ([device clocks on one epoch], Decided by Jess Haley, 2026-10-26, did-schema
+%   V_eta_go_forward_class_audit.md). trfChar alone reads a two-path list as
+%   '' and the discriminator would silently become `key=absent`.
+s = '';
+if ischar(v)
+    s = strtrim(v);
+    return;
+end
+if isstring(v)
+    v = cellstr(v(:)');
+end
+if iscell(v)
+    parts = {};
+    for k = 1:numel(v)
+        e = trfChar(v{k});
+        e = strtrim(e);
+        if ~isempty(e); parts{end+1} = e; end %#ok<AGROW>
+    end
+    s = strjoin(parts, '+');
+end
 end
 
 function s = trfChar(v)

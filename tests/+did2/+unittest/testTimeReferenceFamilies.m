@@ -465,7 +465,10 @@ function testTheDiscriminatorLabelIsReadFromTheSchema(testCase)
 uniqueBy = declaredUniqueBy('interaction');
 assumeNotEmpty(testCase, uniqueBy, ...
     'interaction declares no referent_unique_by in this schema set');
-parts = strsplit(uniqueBy, '.');
+% A composite key ([device clocks on one epoch]) is read as its paths joined
+% by '+'; the FIRST path is the discriminator this test is about.
+paths = strsplit(uniqueBy, '+');
+parts = strsplit(paths{1}, '.');
 expected = [parts{end} '='];
 docs = statementWithReferences('vo_split', splitAnchorPair());
 rep = did2.validate.timeReferenceFamilies(docs);
@@ -473,6 +476,27 @@ verifyEqual(testCase, numel(rep.shape), 1);
 verifyTrue(testCase, contains(rep.shape(1).shape_key, expected), ...
     sprintf('shape key "%s" must label the discriminator "%s" as declared', ...
         rep.shape(1).shape_key, uniqueBy));
+end
+
+function testACompositeKeyLabelsEachDeclaredPath(testCase)
+% [device clocks on one epoch] (Decided by Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md): time references are unique "by clock AND
+% referent". With `referent_unique_by` declared as the list
+% ["value.clock", "referent_id"] (in a copy of the schema set until did-schema
+% declares it), the shape key carries one agreement part per path, clock first,
+% and the referent is read off the referenced document's `referent_id` EDGE.
+% The case is epochMint's: one clock, one reference per acquisition system.
+compositeSchema(testCase);
+refs = { relativeReference('ref_sys_a', 'dev_local_time', 'sys_a', 0, 30), ...
+         relativeReference('ref_sys_b', 'dev_local_time', 'sys_b', 0, 30) };
+rep = did2.validate.timeReferenceFamilies(statementWithReferences('vo_sys', refs));
+verifyEqual(testCase, numel(rep.shape), 1);
+if isempty(rep.shape); return; end
+key = rep.shape(1).shape_key;
+verifyTrue(testCase, contains(key, 'clock=same | referent_id=distinct'), ...
+    sprintf('shape key "%s" must label both declared paths, clock first', key));
+verifyFalse(testCase, contains(key, 'key=absent'), ...
+    'a composite declaration must not read as no discriminator');
 end
 
 function testTheAuditNeverRaises(testCase)
@@ -618,8 +642,41 @@ for k = 1:numel(items)
     isMultiple = isfield(d, 'multiple') && islogical(d.multiple) && d.multiple;
     if ~contains(char(d.name), '#') && ~isMultiple; continue; end
     if isfield(d, 'referent_unique_by') && ~isempty(d.referent_unique_by)
-        uq = char(d.referent_unique_by);
+        uq = d.referent_unique_by;
+        if iscell(uq) || (isstring(uq) && ~isscalar(uq))
+            % a composite key ([device clocks on one epoch]): the paths
+            % joined by '+', as the instrument reads them
+            uq = strjoin(cellstr(uq), '+');
+        end
+        uq = char(uq);
         return;
     end
 end
+end
+
+function compositeSchema(testCase)
+%COMPOSITESCHEMA Point the shared schema cache at a copy of the schema set in
+%   which every `referent_unique_by: "value.clock"` reads
+%   `["value.clock", "referent_id"]` ([device clocks on one epoch]); restored on
+%   teardown. Edited as TEXT, as testBuild does. A set that already declares the
+%   composite is copied unchanged.
+src = did2.schema.cache.shared().schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+files = dir(fullfile(tmp, '*.json'));
+for k = 1:numel(files)
+    f = fullfile(tmp, files(k).name);
+    txt = fileread(f);
+    edited = regexprep(txt, '"referent_unique_by"\s*:\s*"value\.clock"', ...
+        '"referent_unique_by": ["value.clock", "referent_id"]');
+    if ~strcmp(edited, txt)
+        fid = fopen(f, 'w');
+        fwrite(fid, edited);
+        fclose(fid);
+    end
+end
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
 end

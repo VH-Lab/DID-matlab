@@ -173,6 +173,67 @@ verifyEqual(testCase, rep.family_uniqueness_violation_count, 1, ...
     'the CURIE is the identity; two labels for one node are one clock');
 end
 
+% ===================== the composite key: clock AND referent ===========
+% [device clocks on one epoch] (Decided by Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md) amends [time_reference uniqueness rule] "so
+% that one document's time references are unique by clock AND referent". The
+% did-schema key waits for these readers (did_schema_meta.json,
+% `referent_unique_by`: "the key still names `value.clock` until DID-matlab's
+% readers take a composite"), so these tests declare the composite in a COPY of
+% the schema set. Once did-schema declares it, compositeSchema copies the set
+% unchanged and the same assertions hold against the real declaration.
+
+function testCompositeKeyKeepsOneClockOnTwoSystemsApart(testCase)
+% THE case the amendment exists for: one epoch, files from two acquisition
+% systems, so two references on `dev_local_time`, each with its own system as
+% `referent_id` (epochMint, [device clocks on one epoch] (2)). Not a violation.
+compositeSchema(testCase);
+docs = epochWithClocksOn({'dev_local_time', 'dev_local_time'}, {'sys_a', 'sys_b'});
+rep = did2.validate.silentLoss(docs);
+verifyEqual(testCase, rep.uniqueness_denominator.members_resolved, 2);
+verifyEqual(testCase, rep.uniqueness_denominator.members_keyed_by_name, 2, ...
+    'the clock is still what keys a member; the referent refines the key');
+verifyEqual(testCase, rep.family_uniqueness_violation_count, 0, ...
+    'one clock on two acquisition systems is two references, not a duplicate');
+end
+
+function testCompositeKeyStillCatchesOneClockOnOneSystemTwice(testCase)
+% The composite must not license a real duplicate: the same clock with the same
+% referent twice is still two members nothing distinguishes.
+compositeSchema(testCase);
+docs = epochWithClocksOn({'dev_local_time', 'dev_local_time'}, {'sys_a', 'sys_a'});
+rep = did2.validate.silentLoss(docs);
+verifyEqual(testCase, rep.family_uniqueness_violation_count, 1);
+verifyNotEmpty(testCase, rep.family_uniqueness_violation);
+if isempty(rep.family_uniqueness_violation); return; end
+v = rep.family_uniqueness_violation(1);
+verifyEqual(testCase, v.edge_name, 'time_reference_id');
+verifyEqual(testCase, v.unique_by, 'value.clock+referent_id', ...
+    'the report names both paths of the declared key, in declared order');
+verifyTrue(testCase, contains(v.key, 'dev_local_time') && contains(v.key, 'sys_a'), ...
+    sprintf('the key must name the clock and the referent; got "%s"', v.key));
+end
+
+function testCompositeKeyNeverKeysAMemberTheClockLeavesUnkeyed(testCase)
+% The first path decides whether a member is compared at all. Two blank clocks
+% are nothing to compare under the single path, and adding the referent must
+% not turn them into a comparison.
+compositeSchema(testCase);
+docs = epochWithClocksOn({'', ''}, {'sys_a', 'sys_a'});
+rep = did2.validate.silentLoss(docs);
+verifyEqual(testCase, rep.family_uniqueness_violation_count, 0);
+verifyEqual(testCase, rep.uniqueness_denominator.members_no_key, 2);
+end
+
+function testCompositeKeyWithNoReferentStillCollidesOnTheClock(testCase)
+% A member with no referent (an absolute reference is anchored to the calendar)
+% keys its referent as absent; two of them on one clock still collide.
+compositeSchema(testCase);
+docs = epochWithClocksOn({'utc', 'utc'}, {'', ''});
+rep = did2.validate.silentLoss(docs);
+verifyEqual(testCase, rep.family_uniqueness_violation_count, 1);
+end
+
 % ===================== scope guards ====================================
 
 function testAFamilyWithNoRuleIsNotChecked(testCase)
@@ -238,6 +299,62 @@ docs = {did2.document(epochBody)};
 for k = 1:numel(refs)
     docs{end+1} = did2.document(refs{k}); %#ok<AGROW>
 end
+end
+
+function docs = epochWithClocksOn(clockNames, referentIds)
+%EPOCHWITHCLOCKSON As epochWithClocks, but each reference's `referent_id` is
+%   the matching entry of REFERENTIDS (an acquisition system's entity id, as
+%   epochMint writes it under [device clocks on one epoch] (2)); an empty entry
+%   writes no `referent_id` edge. The referents need not be in the batch: the
+%   key reads the id the edge names.
+epochBody = epochEntity('ep_1');
+deps = struct('name', {}, 'value', {});
+docs = {};
+for k = 1:numel(clockNames)
+    refId = sprintf('ref_%d', k);
+    r = bodyOf('relative_time_reference', refId);
+    r.document_class.superclasses = struct('class_name', {'time_reference'}, ...
+        'class_version', {'4.0.0'});
+    if ~isempty(referentIds{k})
+        r.depends_on = struct('name', {'referent_id'}, 'value', {referentIds{k}});
+    end
+    r.relative_time_reference = struct('value', struct( ...
+        'clock',    struct('node', '', 'name', clockNames{k}), ...
+        'start',    struct('seconds', 0), ...
+        'duration', struct('seconds', 10)));
+    docs{end+1} = did2.document(r); %#ok<AGROW>
+    deps(end+1) = struct('name', 'time_reference_id', 'value', refId); %#ok<AGROW>
+end
+epochBody.depends_on = deps;
+docs = [{did2.document(epochBody)}, docs];
+end
+
+function compositeSchema(testCase)
+%COMPOSITESCHEMA Point the shared schema cache at a copy of the schema set in
+%   which every `referent_unique_by: "value.clock"` reads
+%   `["value.clock", "referent_id"]`, the composite [device clocks on one
+%   epoch] decides; restored on teardown. Edited as TEXT, as testBuild does: a
+%   jsondecode/jsonencode round trip would reshape one-element arrays. A set
+%   that already declares the composite is copied unchanged.
+src = did2.schema.cache.shared().schemaPath;
+tmp = tempname;
+mkdir(tmp);
+copyfile(fullfile(src, '*.json'), tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+files = dir(fullfile(tmp, '*.json'));
+for k = 1:numel(files)
+    f = fullfile(tmp, files(k).name);
+    txt = fileread(f);
+    edited = regexprep(txt, '"referent_unique_by"\s*:\s*"value\.clock"', ...
+        '"referent_unique_by": ["value.clock", "referent_id"]');
+    if ~strcmp(edited, txt)
+        fid = fopen(f, 'w');
+        fwrite(fid, edited);
+        fclose(fid);
+    end
+end
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
 end
 
 function b = epochEntity(id)
