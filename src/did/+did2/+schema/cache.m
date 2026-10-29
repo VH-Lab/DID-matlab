@@ -168,6 +168,9 @@ classdef cache < handle
         % Per class (and value kind): where the class declares a `matrix`
         % field (matrixFieldPaths). Pure in the loaded schemas, as above.
         matrixPathMemo
+        % Per field type name: does it name a value class (namesValueClass)?
+        % Pure in the loaded schemas, as above.
+        valueClassMemo
     end
 
     methods (Access = private)
@@ -181,6 +184,7 @@ classdef cache < handle
             obj.superclassMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.placementMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.matrixPathMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.valueClassMemo = containers.Map('KeyType', 'char', 'ValueType', 'logical');
             obj.loadRegistry();
         end
     end
@@ -203,6 +207,50 @@ classdef cache < handle
             end
             s = jsondecode(fileread(schemaFile));
             obj.loadedClasses(className) = s;
+            % [quantity reference type] (Jess Haley, 2026-10-27, did-schema
+            % V_eta_go_forward_class_audit.md; did-schema #66 as rescoped
+            % 2026-10-21): a nested field that names a value class in its
+            % `type` and declares no `fields` of its own takes that class's
+            % `value` cell, expanded here so that every reader of the schema
+            % (validateDocument, rehydrate, queryablePaths, did2.build) sees
+            % the same shape it sees for today's hand-copied cell. A field
+            % that still carries its own `fields` (the copied cells in
+            % chemical, formulation, dose, ...) is left exactly as written,
+            % so the schema can drop the copies after this lands. The raw
+            % parse is stored FIRST, so a reference cycle reads the raw class
+            % rather than recursing for ever.
+            if isfield(s, 'fields') && ~isempty(s.fields)
+                [expanded, changed] = obj.expandValueReferences(s.fields, className);
+                if changed
+                    s.fields = expanded;
+                    obj.loadedClasses(className) = s;
+                end
+            end
+        end
+
+        function tf = namesValueClass(obj, typeName)
+            % namesValueClass - true when TYPENAME, a field's `type`, names a
+            %   value class: a class in this schema whose ancestors include
+            %   `value` ([quantity reference type], Jess Haley, 2026-10-27:
+            %   "all value classes, including count, score, gain, ph"). A
+            %   primitive type (char, double, structure, ontology_term, ...)
+            %   never does, even where a class of that name exists.
+            arguments
+                obj
+                typeName (1,:) char
+            end
+            if isKey(obj.valueClassMemo, typeName)
+                tf = obj.valueClassMemo(typeName);
+                return;
+            end
+            tf = false;
+            primitive = {'did_uid', 'char', 'string', 'integer', 'double', ...
+                'matrix', 'timestamp', 'boolean', 'structure', 'ontology_term'};
+            if ~isempty(typeName) && ~any(strcmp(typeName, primitive)) ...
+                    && ~strcmp(typeName, 'value') && obj.hasClass(typeName)
+                tf = any(strcmp(obj.superclasses(typeName), 'value'));
+            end
+            obj.valueClassMemo(typeName) = tf;
         end
 
         function names = superclasses(obj, className)
@@ -1495,6 +1543,13 @@ classdef cache < handle
             %                           hold, raising
             %                           did2:build:unregisteredTerm. ARMED;
             %                           DID_ENFORCE_TERM_REGISTRY=0 disarms.
+            %     QuantityShape         [quantity reference type] (Jess
+            %                           Haley, 2026-10-27). A value cell at
+            %                           any depth with an undeclared field or
+            %                           a field of the wrong type rejects,
+            %                           raising did2:validation:quantityShape.
+            %                           ARMED; DID_ENFORCE_QUANTITY_SHAPE=0
+            %                           disarms.
             %     RetiredClasses        did2.build refuses a new document of
             %                           a class the schema's
             %                           class_disposition_meta.json lists
@@ -1715,7 +1770,21 @@ classdef cache < handle
                     ... A schema whose `value` does not declare the rule checks
                     ... nothing. DID_ENFORCE_VALUE_INLINE_OR_BODY=0 turns it off.
                     'ValueInlineOrBody', ...
-                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_VALUE_INLINE_OR_BODY'));
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_VALUE_INLINE_OR_BODY'), ...
+                    ... Decided by Jess Haley, 2026-10-27 [quantity reference
+                    ... type] (did-schema V_eta_go_forward_class_audit.md): #66
+                    ... "is done when ... a wrongly shaped quantity fails
+                    ... validation". ARMED BY DEFAULT, because the decision says
+                    ... it fails. A value cell (a field whose type names a value
+                    ... class, at any depth) carrying an undeclared field, or a
+                    ... declared field of the wrong type, raises
+                    ... did2:validation:quantityShape. The cost on a corpus is
+                    ... NOT MEASURED: nothing read below a block field's own
+                    ... type before. did2.build already refuses both shapes
+                    ... (private/fillField.m), so a document it built does not
+                    ... trip this. DID_ENFORCE_QUANTITY_SHAPE=0 turns it off.
+                    'QuantityShape', ...
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_QUANTITY_SHAPE'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;
@@ -2336,6 +2405,201 @@ classdef cache < handle
     end
 
     methods (Access = private)
+        function [out, changed] = expandValueReferences(obj, raw, ownerClass)
+            % expandValueReferences - a `fields` list with every field that
+            %   names a value class, and declares no `fields`, given that
+            %   class's `value` cell ([quantity reference type], Jess Haley,
+            %   2026-10-27). Descends into fields that declare sub-fields.
+            %   CHANGED is false, and OUT is RAW untouched, when nothing was
+            %   expanded, so a schema with no reference reads exactly as
+            %   before. A class's own reference to itself (voltage.value is
+            %   type `voltage`) is never expanded.
+            out = raw;
+            changed = false;
+            defs = obj.toCellArray(raw);
+            for k = 1:numel(defs)
+                d = defs{k};
+                if ~isstruct(d) || ~isscalar(d) || ~isfield(d, 'type')
+                    continue;
+                end
+                if isfield(d, 'fields') && ~isempty(d.fields)
+                    [subs, subChanged] = obj.expandValueReferences(d.fields, ownerClass);
+                    if subChanged
+                        d.fields = subs;
+                        defs{k} = d;
+                        changed = true;
+                    end
+                    continue;
+                end
+                typeName = char(d.type);
+                if strcmp(typeName, ownerClass) || ~obj.namesValueClass(typeName)
+                    continue;
+                end
+                cellDef = obj.valueCellDef(typeName);
+                if isempty(cellDef) || ~isfield(cellDef, 'fields') || isempty(cellDef.fields)
+                    continue;   % a leaf-valued class (logical) has no cell to expand
+                end
+                d.fields = cellDef.fields;
+                defs{k} = d;
+                changed = true;
+            end
+            if changed
+                out = defs;
+            end
+        end
+
+        function def = valueCellDef(obj, className)
+            % valueCellDef - the `value` field CLASSNAME declares itself (its
+            %   value cell), or [] when it declares none.
+            def = [];
+            own = obj.ownFields(className);
+            for k = 1:numel(own)
+                if isstruct(own{k}) && isfield(own{k}, 'name') ...
+                        && strcmp(char(own{k}.name), 'value')
+                    def = own{k};
+                    return;
+                end
+            end
+        end
+
+        function validateQuantityCells(obj, value, fieldDef, path, inCell)
+            % validateQuantityCells - raise did2:validation:quantityShape on a
+            %   value cell that is wrongly shaped ([quantity reference type],
+            %   Jess Haley, 2026-10-27).
+            %
+            %   A field whose `type` names a value class (namesValueClass) is a
+            %   cell, and so is every composite inside one (source_unit's
+            %   {node, name}, tolerance's {minus, plus}). In a cell:
+            %     - each element is a struct;
+            %     - it carries no field its class does not declare;
+            %     - a present leaf is of its declared type, and single where
+            %       the schema says mustBeScalar.
+            %   Outside a cell, a `structure` with declared sub-fields is only
+            %   walked through, to reach the cells inside it; its own keys are
+            %   not judged here (the strict-fields check covers block fields,
+            %   and the decision is about quantities).
+            %
+            %   An absent value ([] / '' / a struct with no fields) is not
+            %   judged: whether it may be absent is mustBeNonEmpty's question.
+            %
+            %   NOT CHECKED HERE: how many canonical slots a cell fills. The
+            %   decision's "a cell with several canonicals (concentration)
+            %   must populate exactly one" is not built: DID-matlab's own
+            %   writers (jDoseBodies, resolveDeferredBaths) write a
+            %   concentration with NO canonical when the source's unit is
+            %   not computable into one, or the amount is unrecorded (NaN,
+            %   Jess Haley, 2026-10-21), so the rule needs a team answer
+            %   first. Nor which units a cell admits ([allowed units are
+            %   closed source_unit lists]): that is the binding check's.
+            subs = {};
+            if isfield(fieldDef, 'fields') && ~isempty(fieldDef.fields)
+                subs = obj.toCellArray(fieldDef.fields);
+            end
+            if isempty(subs) || isempty(value) ...
+                    || (isstruct(value) && isempty(fieldnames(value)))
+                return;
+            end
+            typeName = '';
+            if isfield(fieldDef, 'type')
+                typeName = char(fieldDef.type);
+            end
+            strict = inCell || obj.namesValueClass(typeName);
+            if ~strict && ~obj.holdsValueCell(subs)
+                return;   % nothing below this structure is a value cell
+            end
+            if isstruct(value)
+                elems = num2cell(reshape(value, 1, []));
+            elseif iscell(value)
+                elems = reshape(value, 1, []);
+            elseif strict
+                error('did2:validation:quantityShape', ...
+                    ['"%s" is a %s value cell and must be a struct, got ' ...
+                     '%s.'], path, typeName, class(value));
+            else
+                return;
+            end
+            names = cellfun(@(d) char(d.name), subs, 'UniformOutput', false);
+            for e = 1:numel(elems)
+                el = elems{e};
+                if numel(elems) > 1
+                    elPath = sprintf('%s(%d)', path, e);
+                else
+                    elPath = path;
+                end
+                if ~isstruct(el) || ~isscalar(el)
+                    if strict
+                        error('did2:validation:quantityShape', ...
+                            ['"%s" is a %s value cell and must be a struct, ' ...
+                             'got %s.'], elPath, typeName, class(el));
+                    end
+                    continue;
+                end
+                if strict
+                    extra = setdiff(fieldnames(el), names, 'stable');
+                    if ~isempty(extra)
+                        error('did2:validation:quantityShape', ...
+                            ['"%s" is a %s value cell and carries field(s) ' ...
+                             '%s its class does not declare. Declared: %s.'], ...
+                            elPath, typeName, ...
+                            strjoin(strcat('"', reshape(extra, 1, []), '"'), ', '), ...
+                            strjoin(names, ', '));
+                    end
+                end
+                for j = 1:numel(subs)
+                    subDef = subs{j};
+                    name = names{j};
+                    if ~isfield(el, name)
+                        continue;
+                    end
+                    v = el.(name);
+                    subPath = [elPath '.' name];
+                    if isfield(subDef, 'fields') && ~isempty(subDef.fields)
+                        obj.validateQuantityCells(v, subDef, subPath, strict);
+                        continue;
+                    end
+                    if ~strict || isempty(v)
+                        continue;
+                    end
+                    subType = char(subDef.type);
+                    try
+                        obj.validateTypeShape(v, subType, subPath);
+                    catch err
+                        error('did2:validation:quantityShape', ...
+                            '%s (in a %s value cell)', err.message, typeName);
+                    end
+                    if isfield(subDef, 'mustBeScalar') && logical(subDef.mustBeScalar) ...
+                            && any(strcmp(subType, {'double', 'integer', 'boolean'})) ...
+                            && ~isscalar(v)
+                        error('did2:validation:quantityShape', ...
+                            ['"%s" must be a single value (in a %s value ' ...
+                             'cell), got %d.'], subPath, typeName, numel(v));
+                    end
+                end
+            end
+        end
+
+        function tf = holdsValueCell(obj, defs)
+            % holdsValueCell - does any field in DEFS, at any depth, name a
+            %   value class? Lets validateQuantityCells skip a structure
+            %   (and every element of a long array of them) with no cell in it.
+            tf = false;
+            for k = 1:numel(defs)
+                d = defs{k};
+                if ~isstruct(d) || ~isfield(d, 'type')
+                    continue;
+                end
+                if obj.namesValueClass(char(d.type))
+                    tf = true;
+                    return;
+                end
+                if isfield(d, 'fields') && ~isempty(d.fields) ...
+                        && obj.holdsValueCell(obj.toCellArray(d.fields))
+                    tf = true;
+                    return;
+                end
+            end
+        end
+
         function loadRegistry(obj)
             registryFile = fullfile(obj.schemaPath, 'CURIE_lookups_meta.json');
             if isfile(registryFile)
@@ -2609,6 +2873,17 @@ classdef cache < handle
             constraints = fieldDef.constraints;
             if isstruct(constraints) && ~isempty(fieldnames(constraints))
                 obj.validateConstraints(value, constraints, fieldType, qualifiedName);
+            end
+            % ---- [quantity reference type]: a wrongly shaped quantity ------
+            % Jess Haley, 2026-10-27 (did-schema V_eta_go_forward_class_audit.md;
+            % #66 "is done when ... a wrongly shaped quantity fails
+            % validation"). Every value cell this field holds, at any depth
+            % (chemical.value.concentration, formulation.value.ingredients(k).mass,
+            % a voltage's own value), must carry only the fields its value
+            % class declares, each of its declared type. Before this, nothing
+            % below a block field's own type was read.
+            if did2.schema.cache.strictMode('QuantityShape')
+                obj.validateQuantityCells(value, fieldDef, qualifiedName, false);
             end
         end
 
