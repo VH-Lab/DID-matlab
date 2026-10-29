@@ -108,8 +108,7 @@ if isempty(tok)
     return;
 end
 n = str2double(tok);
-t = (datenum(n(1), n(2), n(3)) - datenum(1970, 1, 1)) * 86400 ...
-    + n(4) * 3600 + n(5) * 60 + n(6);
+t = posixtime(datetime(n(1), n(2), n(3), n(4), n(5), n(6), 'TimeZone', 'UTC'));
 end
 
 function anchor = transferAnchor(preBody, block)
