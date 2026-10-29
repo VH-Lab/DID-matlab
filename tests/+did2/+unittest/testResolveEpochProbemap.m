@@ -194,7 +194,7 @@ function testASpikeSortedProbeGetsOnlyItsOwnEpochObservation(testCase)
 % nothing about the neuron is touched.
 subj = subjectBody('specimen_sp', 'sess_sp', 'L');
 elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp');
-elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
+elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe', 'specimen_sp');
 ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', { ...
     {'tet', '1', 'n-trode', 'L'}});
 [out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ing});
@@ -408,7 +408,7 @@ function testASortedNeuronGetsOneSpikeTrainObservationPerEpoch(testCase)
 % "action potential" -- with its element_epoch's .vhsb as the opaque_body.
 subj = subjectBody('specimen_sp', 'sess_sp', 'L');
 elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp');
-elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
+elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe', 'specimen_sp');
 ee   = elementEpochBody('ee_1', 'sess_sp', 'el_neuron', 't00sp', true);
 ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', {{'tet', '1', 'n-trode', 'L'}});
 % the rig the probemap's device string names ([device clocks on one epoch]:
@@ -456,7 +456,7 @@ function testTheTrainIsAnchoredToItsEpochWithItsOwnExtent(testCase)
 % testAnExtentTiedToNoSystemKeepsItsAcquisitionEpoch.)
 subj = subjectBody('specimen_sx', 'sess_sx', 'L');
 elP  = elementBody('el_probe_x', 'sess_sx', 'tet', '1', 'n-trode', 1, 'specimen_sx');
-elN  = derivedElementBody('el_neuron_x', 'sess_sx', 'n1', 'spikes', 'el_probe_x');
+elN  = derivedElementBody('el_neuron_x', 'sess_sx', 'n1', 'spikes', 'el_probe_x', 'specimen_sx');
 ee   = elementEpochBody('ee_x', 'sess_sx', 'el_neuron_x', 't00sx', true);
 ee.element_epoch.t0_t1 = [2 579.85];
 ing  = ingestedWithRows('ing_sx', 'sess_sx', 't00sx', {{'tet', '1', 'n-trode', 'L'}});
@@ -581,7 +581,7 @@ function testAnUntiedEpochFromOneSourceIsNotKeptAsCarried(testCase)
 % acquisition_epoch is not kept as a carried extent.
 subj = subjectBody('specimen_su', 'sess_su', 'L');
 elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
-elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u');
+elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u', 'specimen_su');
 ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
 [~, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, ee});
 verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
@@ -594,8 +594,8 @@ function testUntiedExtentsFromTwoSourcesKeepTheirAcquisitionEpochs(testCase)
 % both carried and kept whole: no spike train is built from either.
 subj = subjectBody('specimen_su', 'sess_su', 'L');
 elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
-elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u');
-elN2 = derivedElementBody('el_neuron_u2', 'sess_su', 'n2', 'spikes', 'el_probe_u');
+elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u', 'specimen_su');
+elN2 = derivedElementBody('el_neuron_u2', 'sess_su', 'n2', 'spikes', 'el_probe_u', 'specimen_su');
 ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
 ee2  = elementEpochBody('ee_u2', 'sess_su', 'el_neuron_u2', 't00su', true);
 [out, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, elN2, ee, ee2});
@@ -610,7 +610,7 @@ function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)
 % observation (never a bodiless one); counted.
 subj = subjectBody('specimen_sq', 'sess_sq', 'L');
 elP  = elementBody('el_probe_q', 'sess_sq', 'tet', '1', 'n-trode', 1, 'specimen_sq');
-elN  = derivedElementBody('el_neuron_q', 'sess_sq', 'n1', 'spikes', 'el_probe_q');
+elN  = derivedElementBody('el_neuron_q', 'sess_sq', 'n1', 'spikes', 'el_probe_q', 'specimen_sq');
 ee   = elementEpochBody('ee_q', 'sess_sq', 'el_neuron_q', 't00sq', false);
 ing  = ingestedWithRows('ing_sq', 'sess_sq', 't00sq', {{'tet', '1', 'n-trode', 'L'}});
 daq  = daqsystemBody('daq_sq', 'sess_sq', 'vhspike2');
@@ -1213,16 +1213,25 @@ el.element = struct('ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
     'name', name, 'reference', reference, 'type', typ, 'direct', direct);
 end
 
-function el = derivedElementBody(docId, sessionId, name, typ, underlyingId)
+function el = derivedElementBody(docId, sessionId, name, typ, underlyingId, subjectId)
 %DERIVEDELEMENTBODY A did_v1 DERIVED element (direct = 0) with an
 %   underlying_element_id -- a sorted neuron on a probe. For type 'spikes' this
 %   drives element.m's spike-train leaf: a #30 observation whose SUBJECT is this
 %   element (the neuron, id preserved) and whose INSTRUMENT is the underlying
 %   probe. That is what puts a SECOND #30 observation on the probe's instrument.
+%   SUBJECTID is its subject_id edge: NDI's writer copies the underlying
+%   element's subject, and [unit direct and subject rebuild from the probe]
+%   (Jess Haley, 2026-10-27) carries a unit whose subject is not its probe's,
+%   so a unit fixture passes its probe's subject.
 el = struct();
 el.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-el.depends_on = struct('name', {'underlying_element_id'}, 'value', {underlyingId});
+if nargin < 6
+    el.depends_on = struct('name', {'underlying_element_id'}, 'value', {underlyingId});
+else
+    el.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+        'value', {underlyingId, subjectId});
+end
 el.base = struct('id', docId, 'session_id', sessionId, ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 el.element = struct('ndi_element_class', 'ndi.neuron', ...

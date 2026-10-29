@@ -202,6 +202,12 @@ did2.convert.sessionReferences('load', bodies);
 did2.convert.unitQualityLabels('reset');
 did2.convert.unitQualityLabels('load', bodies);
 did2.convert.unitQualityLabels('add', options.UnitQualityLabels);
+% The subject_id of every v1 element in this batch, read by
+% migrators_j.element to check a sorted unit's subject against its probe's,
+% and by roundtrip.element to rebuild it ([unit direct and subject rebuild
+% from the probe], Jess Haley, 2026-10-27).
+did2.convert.elementSubjects('reset');
+did2.convert.elementSubjects('load', bodies);
 
 % Asked ONCE per call, of the schema the documents validate against: does
 % `base` declare `session_id` as an edge (did-schema

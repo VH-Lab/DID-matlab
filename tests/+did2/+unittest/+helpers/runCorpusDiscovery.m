@@ -376,19 +376,20 @@ if strcmp(options.TargetVersion, 'V_eta')
     % ORDER: last, and it commutes with all seven above. It reads only
     % `syncgraph`, `session`, `syncrule` and `acquisition_system` documents and
     % writes only a `clock_alignment_policy` (on the syncgraph's own id), a
-    % `clock_alignment_configuration` (on a filefind syncrule's own id), its two
-    % `acquisition_channels`, and `software` entities; none of the seven writes
-    % any of the classes it reads.
+    % `clock_alignment_configuration` (on a device-pair syncrule's own id,
+    % linked to its two systems as from / to), and `software` entities; none
+    % of the seven writes any of the classes it reads.
     %
-    % The filefind arm: a `ndi.time.syncrule.filefind` names its two systems
-    % by NAME (daqsystem1 / daqsystem2); this pass resolves each within the
-    % rule's session to exactly one migrated `acquisition_system` and re-runs
-    % +migrators_j/syncrule. Zero or several matches leave the rule a
-    % passthrough and are counted.
+    % The device-pair arm: a filefind, commonTriggersOverlappingEpochs or
+    % randomPulses rule names its two systems by NAME; this pass resolves
+    % each within the rule's session to exactly one migrated
+    % `acquisition_system` and re-runs +migrators_j/syncrule. Zero or several
+    % matches leave the rule a passthrough and are counted.
     %
-    % READ ITS ZEROS WITH `syncgraphs_seen` / `syncrule_filefind_seen` BESIDE
-    % THEM. A corpus with no syncgraph or no filefind rule folds nothing, which
-    % says nothing about whether the fold works.
+    % READ ITS ZEROS WITH `syncgraphs_seen` / `syncrule_filefind_seen` /
+    % `syncrule_channel_rule_seen` BESIDE THEM. A corpus with no syncgraph or
+    % no device-pair rule folds nothing, which says nothing about whether the
+    % fold works.
     %
     % GUARDED like its seven siblings: writeCorpusReport is below and an
     % uncaught throw here costs the run its whole census. A failure leaves every
@@ -428,11 +429,13 @@ try
     result.whole_batch_round_trip = did2.convert.roundtrip.wholeBatch(bodies, result);
     wb = result.whole_batch_round_trip;
     fprintf(['[%s] WHOLE-BATCH ROUND TRIP: %d source(s), %d final document(s); ' ...
-        'quarantined %d; ids kept %d, lost %d, no id %d; compared %d, clean %d, ' ...
+        'quarantined %d; ids kept %d, lost %d, no id %d; compared %d, clean %d ' ...
+        '(compared as stored v1 sources: %d), ' ...
         'not clean %d; changed by a batch pass %d; no inverse %d; final documents ' ...
         'no source became %d\n'], corpusName, wb.sources_inspected, ...
         wb.final_documents, wb.sources_quarantined, wb.ids_kept, wb.ids_lost, ...
         wb.sources_without_id, wb.sources_compared, wb.sources_ok, ...
+        wb.sources_stored_as_v1, ...
         wb.failures_total, wb.sources_changed_by_batch_pass, ...
         wb.sources_no_inverse, wb.unattributed_documents);
 catch wbErr

@@ -242,6 +242,16 @@ end
 if isfield(result, 'source_census')
     report.source_census = result.source_census;
 end
+% [whole-batch round trip] (Decided by Jess Haley, 2026-10-27, did-schema
+% V_eta_go_forward_class_audit.md): the final batch taken back to v1 source by
+% source (did2.convert.roundtrip.wholeBatch, run in runCorpusDiscovery). Its
+% by-class counts and failure sample were printed to the log only, so which
+% classes fail, have no inverse or lose their id could not be read after the
+% run. Persisted, denominators and all; a run that could not measure it
+% persists the `audit_failed` message instead.
+if isfield(result, 'whole_batch_round_trip')
+    report.whole_batch_round_trip = result.whole_batch_round_trip;
+end
 % EPOCH-STRING RETENTION: did a did_v1 epoch-id string survive the migration,
 % either still spelled out on a migrated document or as a minted `epoch` entity?
 % Persisted because until this run the instrument had never executed on real
