@@ -53,7 +53,9 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %                        software entity named METHODNAME when it has none)
 %     operating_system_id / interpreter_id   from the same `app` block
 %                        (jRunEntities; REQUIRED / optional)
-%     method             {term: METHODNAME, parameters: v1 input_parameters}
+%     method             {term: METHODNAME, parameters: v1 input_parameters};
+%                        the fitted families' and 'csf' term is OBI:0200072
+%                        ([method terms are general], Jess Haley, 2026-10-26)
 %     value, dimensions, covariates   the result (jTuningCurve /
 %                        jContrastSensitivityValue; `keys` until data_body
 %                        AMENDMENT 6)
@@ -350,6 +352,16 @@ end
 if isFit
     % [tuning fits use curve fitting now] (Jess Haley, 2026-10-27)
     f.method = fitMethod(value, params, {});
+elseif strcmp(family, 'csf')
+    % [method terms are general] (Jess Haley, 2026-10-26, did-schema
+    % V_eta_go_forward_class_audit.md): the method term names the general
+    % procedure, not the calculator class. A contrast sensitivity result is
+    % Naka-Rushton fits (jContrastSensitivityValue: one model_fit entry per
+    % RB / RBN / RBNS variant), so its term is OBI:0200072 "curve fitting
+    % data transformation"; the calculator (METHODNAME) is the `software`
+    % entity on software_id. The parameters are the v1 settings, as before.
+    f.method = jMethod(did2.convert.registeredTerm('OBI:0200072', ...
+        'curve fitting data transformation'), params);
 else
     f.method = jMethod(methodName, params);
 end

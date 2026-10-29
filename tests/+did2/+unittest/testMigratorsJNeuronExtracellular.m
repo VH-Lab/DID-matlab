@@ -185,7 +185,7 @@ v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'mean_waveform', 'waveform_sample_times', ...
      'number_of_samples_per_channel', 'number_of_channels'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-verifyEqual(testCase, labelCalc(out, 'spike sorter cluster index').base.id, 'ne_1');
+verifyEqual(testCase, labelCalc(out, 'cluster identifier').base.id, 'ne_1');
 end
 
 % ===================== the axes ============================================
@@ -426,9 +426,23 @@ function testTheClusterIndexGetsAQueryableHomeAndNotOnlyAName(testCase)
 % LABEL, computed by the sort -- a calculation with the `label` value kind
 % whose value is the index as a string, not a count.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-cidx = labelCalc(out, 'spike sorter cluster index');
+cidx = labelCalc(out, 'cluster identifier');
 verifyEqual(testCase, depValueOf(cidx, 'entity_id'), 'rec_sub_1');
 verifyEqual(testCase, cidx.label.value.name, '7');
+end
+
+function testTheClusterIndexVariableIsTheAfoClusterIdentifier(testCase)
+% INVERTED 2026-10-29 from the label 'spike sorter cluster index' (a term with
+% no node): Decided by Jess Haley, 2026-10-27 [afo prefix registered] (did-schema
+% V_eta_go_forward_class_audit.md) -- the variable is AFO:AFR_0003339 "cluster
+% identifier".
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+cidx = labelCalc(out, 'cluster identifier');
+verifyEqual(testCase, char(cidx.statement.variable.node), 'AFO:AFR_0003339');
+names = classNames(out);
+for k = find(strcmp(names, 'calculation+label'))
+    verifyNotEqual(testCase, out{k}.statement.variable.name, 'spike sorter cluster index');
+end
 end
 
 
@@ -623,7 +637,7 @@ function b = labelCalc(out, variableName)
 names = classNames(out);
 idx = find(strcmp(names, 'calculation+label'));
 for k = idx
-    if strcmp(out{k}.statement.variable.name, variableName); b = out{k}; return; end
+    if strcmpi(out{k}.statement.variable.name, variableName); b = out{k}; return; end
 end
 error('testMigratorsJNeuronExtracellular:noSuchBody', ...
     'no calculation+label with variable `%s`', variableName);
