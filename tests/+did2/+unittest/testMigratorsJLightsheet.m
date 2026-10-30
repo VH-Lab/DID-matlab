@@ -674,9 +674,12 @@ end
 function testALevelWithCodecSettingsIsCarriedAsV1(testCase)
 % [compression block and empty levels] (1), interim (Jess Haley, 2026-10-26):
 % the writer's Blosc settings (clevel, shuffle, blocksize) have no home until
-% `compression` is a {term, parameters} block, so the level is carried whole
-% as v1 (they were dropped under #73 L4).
+% `compression` is a {term, parameters} block, so on a schema that types it as
+% char the level is carried whole as v1 (they were dropped under #73 L4).
+% testALevelWithCodecSettingsWritesTheBlock is the other shape.
 assumeCompositionSchema(testCase);
+assumeFalse(testCase, did2.build.compressionBlockDeclared(), ...
+    'the loaded schema declares the compression block: the settings have a home');
 v1 = levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest');
 v1.lightsheetZarrLevel.codec_params = ...
     '{"cname":"zstd","clevel":5,"shuffle":1,"blocksize":0}';   % makePyramid.m codecParamsJSON
@@ -691,6 +694,51 @@ d = notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, contains(d, 'clevel') && contains(d, 'shuffle'), d);
 verifyFalse(testCase, contains(d, 'cname'), ['cname "zstd" restates the codec ' ...
     'name blosc-zstd: ' d]);
+end
+
+function testALevelWithCodecSettingsWritesTheBlock(testCase)
+% [compression block and empty levels] (1) (Jess Haley, 2026-10-26): once the
+% schema declares `compression` as the {term, parameters} block, the writer's
+% Blosc settings go in it -- the codec as the term (Blosc), every codec_params
+% key a parameter, in order -- and the level migrates instead of being carried
+% (carry-010 retires). Run on a schema copy that declares the block until
+% did-schema does (did2.unittest.helpers.compressionBlockSchema).
+assumeCompositionSchema(testCase);
+did2.unittest.helpers.compressionBlockSchema(testCase);
+v1 = levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest');
+params = '{"cname":"zstd","clevel":5,"shuffle":1,"blocksize":0}';   % makePyramid.m codecParamsJSON
+v1.lightsheetZarrLevel.codec_params = params;
+out = runJ(v1);
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, numel(out.passthrough), 0, 'not carried: the settings have a home');
+b = onlyBody(testCase, out);
+verifyEqual(testCase, b.base.id, v1.base.id);
+c = b.data_body.compression;
+assertTrue(testCase, isstruct(c) && isfield(c, 'term'), 'compression is the block');
+verifyEqual(testCase, c.term.name, 'Blosc');
+[codec, settings] = did2.build.compressionCodec(c);
+verifyEqual(testCase, codec, 'blosc-zstd');
+verifyEqual(testCase, jsonencode(settings), params);
+% and the round trip rebuilds the level's codec and codec_params exactly
+rebuilt = did2.convert.roundtrip.lightsheetZarrLevel({b});
+verifyEqual(testCase, rebuilt.lightsheetZarrLevel.codec, 'blosc-zstd');
+verifyEqual(testCase, rebuilt.lightsheetZarrLevel.codec_params, params);
+end
+
+function testALevelWhoseBlockWouldNotReadBackIsCarried(testCase)
+% [lossless means round trip]: a setting that contradicts the codec's own
+% name ('blosc-zstd' with cname lz4) cannot be written as the block and read
+% back as the level's codec, so the level is carried whole as v1 (carry-010).
+assumeCompositionSchema(testCase);
+did2.unittest.helpers.compressionBlockSchema(testCase);
+v1 = levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest');
+v1.lightsheetZarrLevel.codec_params = '{"cname":"lz4","clevel":5,"shuffle":1,"blocksize":0}';
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, numel(out.passthrough), 1, 'carried as v1');
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
+verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, 'carry-010'));
 end
 
 function testALevelCountingChunksItDoesNotCarryQuarantines(testCase)
@@ -819,7 +867,9 @@ verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 b = onlyBody(testCase, out);
 verifyTrue(testCase, isequal(b.data_body.redundant, true));
 % the codec name verbatim (it was 'blosc', which lost the inner compressor)
-verifyEqual(testCase, b.data_body.compression, 'blosc-zstd');
+% (read in either shape: the char, or the {term, parameters} block once the
+% schema declares it -- [compression block and empty levels])
+verifyEqual(testCase, did2.build.compressionCodec(b.data_body.compression), 'blosc-zstd');
 cond = b.data_body.conditions;
 if iscell(cond); cond = cond{1}; end
 verifyEqual(testCase, numel(cond), 1);

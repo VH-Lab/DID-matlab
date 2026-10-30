@@ -145,14 +145,35 @@ function bodies = image(preBody)
 %   WHY THIS DELEGATES TO image_stack
 %   ---------------------------------------------------------------------
 %   did_v1 `image` is the single-image SIBLING of `image_stack`: same
-%   `imageStack_parameters` superclass (so the same geometry block after
-%   universalRenames), same file-backed pixels, plus a direct `subject_id`.
+%   `imageStack_parameters` superclass (so the same geometry block, which
+%   image_stack reads in either spelling), same file-backed pixels, plus a
+%   direct `subject_id`.
 %   migrators_j.image_stack already folds exactly that shape into
 %   image_observation + sampled_body + anchor with the source id PRESERVED, and
 %   it reads only the parameters block, the dependencies, base and files -- never
 %   its own `image_stack` property block. So it applies to this class verbatim,
 %   and duplicating ~200 lines to say the same thing would be two places to keep
 %   right instead of one.
+%
+%   ---------------------------------------------------------------------
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30)
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema
+%   V_eta_go_forward_class_audit.md). A v1 `image` reaches this migrator
+%   exactly as NDI's template (data/image.json + imageStack_parameters.json +
+%   base.json at the locked NDI-matlab `main`) defines it: blocks `image` and
+%   `imageStack_parameters`, edges in v1's `value` key, the template merge's
+%   sorted edges (document_id, imageCollection_id, subject_id). No
+%   universalRenames and no superclass migrator run on it; image_stack does
+%   the raw read for both classes (what universalRenames would have discarded
+%   carries, carry-049; the superclass migrator's refusals run on the raw
+%   parameters block; a carry or passthrough is the untouched v1 source). The
+%   `image` tombstone that kept the class on the renamed path was deleted with
+%   did-schema's other did_v1 tombstones (2026-10-28, [carried v1 validates
+%   against NDI templates]), so a subject-less passthrough is counted as a
+%   class V_eta keeps no schema for, not quarantined. The round trip is
+%   did2.convert.roundtrip.image ([image raw round trip and single-read keys],
+%   Jess Haley, 2026-10-30).
 %
 %   ---------------------------------------------------------------------
 %   WHAT IS DEFERRED, STATED RATHER THAN DROPPED

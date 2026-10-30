@@ -134,26 +134,25 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         the model is stated in each fit entry (value.model_fit{k}.model),
 %         and the round trip rebuilds v1 from those entries (fitBlocks). The
 %         method keeps its term OBI:0200072 and its other parameters.
-%     [absolute-value fits are a second calculation]  an SF / TF `abs` block
-%         is a SECOND calculation of LEAFCLASS (its id minted, role
-%         'absolute value calculation'), the same subject, anchor, inputs and
-%         software, its value the abs fits, with the method parameter
-%         {variable 'response transform', text 'absolute value'}.
-%         SUPERSEDED 2026-10-28 by [absolute-value fits are fit entries]
-%         (`model_fit` entries with `response_transform`), which is NOT YET
-%         BUILT here: that decision asked for what the `abs` block holds
-%         beyond the fits to be brought back first, and it holds `fitless`
-%         too (the interpolated values of |response|; NDIcalc-vis-matlab
-%         00e3e0f spatial_frequency_tuning.m / temporal_frequency_tuning.m
-%         write abs.fitless beside the five abs fits), which a fit entry
-%         cannot hold. Until the team answers, the second calculation stays.
-%     [interpolated values are a list] (Jess Haley, 2026-10-30; answers G5)
-%         `interpolated_values` is a list of entries with an optional
+%     [absolute-value fits are fit entries] (Decided by Jess Haley,
+%         2026-10-28; supersedes [absolute-value fits are a second
+%         calculation], 2026-10-27, which conflicted with T10): an SF / TF
+%         `abs` block's fits are entries of the ONE calculation's
+%         value.model_fit, after the fits as stated, each with
+%         `response_transform` 'absolute value'. No second calculation is
+%         written. Written only once the loaded schema declares
+%         tuning_curve.value.model_fit.response_transform (did-schema f02a251);
+%         until then the abs fits have no home and the document carries
+%         (carry-056). Anything else the abs block states beside its fits and
+%         its `fitless` has no home either and carries the document.
+%     [interpolated values are a list] (Jess Haley, 2026-10-30; answers G5
+%         and so the condition [absolute-value fits are fit entries] was held
+%         on) `interpolated_values` is a list of entries with an optional
 %         `response_transform`; v1 `abs.fitless` is the 'absolute value'
-%         entry on the MAIN calculation. Written as a list only once the
-%         loaded schema declares `response_transform` on the field
-%         (siblings first); until then the one structure, as before, with
-%         `abs.fitless` on the absolute-value calculation.
+%         entry on the calculation. Written as a list only once the loaded
+%         schema declares `response_transform` on the field (siblings
+%         first); until then the one structure, and an `abs.fitless` has no
+%         home (carry-056).
 %     [parameter names map by table]  the tuning families' v1 settings
 %         (input_parameters) are named through did2.convert.tuningNames; a
 %         setting the table does not hold carries the document (carry-056).
@@ -186,8 +185,7 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         different names cannot be); a document whose names are not is
 %         carried, kind malformed (carry-100).
 %
-%   Returns {leaf, anchor, software..., run entities...} ({leaf, abs leaf,
-%   anchor, ...} when an `abs` block was folded).
+%   Returns {leaf, anchor, software..., run entities...}.
 
 arguments
     preBody (1,1) struct
@@ -319,14 +317,15 @@ if ~isempty(curve.conditions)
             'a varied variable)'], classNameOf(preBody), strjoin(clash, ', '));
     end
 end
-% [absolute-value fits are a second calculation]: abs fitless values with no
-% fit have no value to state
-% (once the loaded schema declares `interpolated_values` a list, they are its
-% 'absolute value' entry: [interpolated values are a list], below)
-if isFit && tuningExtra.abs.present && isempty(fieldnames(tuningExtra.abs.value)) ...
-        && ~isempty(fieldnames(tuningExtra.abs.leafFields)) ...
-        && ~jSchemaHasPath(leafClass, {'interpolated_values', 'response_transform'})
-    reasons{end+1} = sprintf('[carry-056] %s.abs (fitless values with no fit)', sourceBlock);
+% [absolute-value fits are fit entries] (Decided by Jess Haley, 2026-10-28)
+% and [interpolated values are a list] (Decided by Jess Haley, 2026-10-30):
+% the SF / TF `abs` block is placed on THIS calculation, its fits as
+% model_fit entries and its `fitless` as an interpolated_values entry, each
+% marked response_transform 'absolute value'; what has no home carries.
+absFits = [];
+if isFit && tuningExtra.abs.present
+    [absFits, absReasons] = absPlacement(tuningExtra.abs, leafClass, sourceBlock);
+    reasons = [reasons, absReasons];
 end
 % The calculator block's inner `depends_on` copy (e.g.
 % `oridirtuning_calc.depends_on`) is left unwritten only when it restates the
@@ -394,12 +393,10 @@ end
 % V_eta_go_forward_class_audit.md; docs/V2_PLAN.md G5): a tuning calculation's
 % `interpolated_values` becomes a list of entries, each with the optional
 % `response_transform`, and the v1 `abs.fitless` (the values read off
-% |response|) its second entry, 'absolute value'. Siblings first: did-schema
-% still declares ONE structure, so the list is written only once the loaded
-% schema declares `response_transform` on the field (jSchemaHasPath); until
-% then the structure is written as before and `abs.fitless` stays on the
-% absolute-value calculation ([absolute-value fits are a second calculation]).
-absIvOnList = false;
+% |response|) its second entry, 'absolute value'. Siblings first: the list
+% is written only once the loaded schema declares `response_transform` on the
+% field (jSchemaHasPath); until then the structure is written as before, and
+% an `abs.fitless` carried the document above (absPlacement).
 absLeafFields = struct();
 if tuningExtra.abs.present && isfield(tuningExtra.abs, 'leafFields')
     absLeafFields = tuningExtra.abs.leafFields;
@@ -417,7 +414,6 @@ if (hasMain || hasAbs) ...
         e = absLeafFields.interpolated_values;
         e.response_transform = 'absolute value';
         entries{end+1} = e;
-        absIvOnList = true;
     end
     f.interpolated_values = did2.build.list(entries{:});
 end
@@ -428,6 +424,18 @@ if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
     % unchanged rather than quarantining (Jess's rule; listed in the report).
     bodies = {preBody};
     return;
+end
+if ~isempty(absFits)
+    % [absolute-value fits are fit entries] (Decided by Jess Haley,
+    % 2026-10-28): after the fits as stated, each marked 'absolute value'
+    for k = 1:numel(absFits)
+        absFits(k).response_transform = 'absolute value';
+    end
+    if isfield(value, 'model_fit') && ~isempty(value.model_fit)
+        value.model_fit = did2.build.list(value.model_fit, absFits);
+    else
+        value.model_fit = did2.build.list(absFits);
+    end
 end
 leaf = jStatement(preBody, leafClass, subjectId, ...
     variable, value, ...
@@ -446,30 +454,7 @@ leaf = jStatement(preBody, leafClass, subjectId, ...
     'Notes', curve.notes, ...
     'Id', char(preBody.base.id));   % id preserved -> inbound references resolve
 
-leaves = {leaf};
-if isFit && tuningExtra.abs.present && ~isempty(fieldnames(tuningExtra.abs.value))
-    % [absolute-value fits are a second calculation] (Jess Haley, 2026-10-27):
-    % the `abs` block is a second calculation of the same class, its method
-    % saying the response was transformed to its absolute value
-    fa = tuningExtra.abs.leafFields;
-    if absIvOnList && isfield(fa, 'interpolated_values')
-        % on the main calculation's list ([interpolated values are a list])
-        fa = rmfield(fa, 'interpolated_values');
-    end
-    fa.method = fitMethod(tuningExtra.abs.value, params, ...
-        {did2.build.parameter(jLabel('response transform'), 'Text', 'absolute value')});
-    leaves{end+1} = jStatement(preBody, leafClass, subjectId, ...
-        variable, tuningExtra.abs.value, ...
-        'TimeReferenceIds', {anchor.base.id}, ...
-        'InputIds', inputs, ...
-        'SoftwareId', swId, ...
-        'OperatingSystemId', osId, ...
-        'InterpreterId', interpreterId, ...
-        'Fields', fa, ...
-        'Id', did2.convert.mintId('absolute value calculation'));
-end
-
-bodies = [leaves, {anchor}, software, runDocs];
+bodies = [{leaf}, {anchor}, software, runDocs];
 
 % (a field the value mapping had no home for carried the document as v1 above:
 % a folded document dropped nothing)
@@ -478,6 +463,55 @@ className = classNameOf(preBody);
 if isstruct(response)
     did2.convert.reportNote('tuning_response_variable', className, ...
         char(preBody.base.id), response.outcome);
+end
+end
+
+function [absFits, reasons] = absPlacement(absBlk, leafClass, sourceBlock)
+%ABSPLACEMENT Where an SF / TF `abs` block goes on the ONE calculation
+%   ([absolute-value fits are fit entries], Decided by Jess Haley, 2026-10-28;
+%   [interpolated values are a list], Decided by Jess Haley, 2026-10-30).
+%
+%   ABSBLK is jTuningCurve's EXTRA.abs {present, value, leafFields}: the block
+%   folded alone. ABSFITS is its model_fit entries (unmarked: the caller marks
+%   them 'absolute value' and appends them after the fits as stated), [] when
+%   it has none or they have no home. REASONS lists, as '[carry-056] <path>',
+%   what has no home on this calculation, which carries the document:
+%     - the fits, when the schema in use declares no
+%       tuning_curve.value.model_fit.response_transform (did-schema f02a251);
+%     - `fitless`, when it declares no interpolated_values.response_transform;
+%     - anything else the abs block states (the writers write only `fitless`
+%       and the five fits: NDIcalc-vis-matlab spatial_frequency_tuning.m /
+%       temporal_frequency_tuning.m, `spatial_frequency_tuning.abs.fitless =
+%       abs_sf_props.fitless` and the five `abs.fit_*` lines after it).
+%   The abs block's own unplaced v1 fields are already in jTuningCurve's
+%   DROPPED, under 'abs.'.
+absFits = [];
+reasons = {};
+av = absBlk.value;
+if isfield(av, 'model_fit') && ~isempty(av.model_fit)
+    if jSchemaHasPath('tuning_curve', {'value', 'model_fit', 'response_transform'})
+        absFits = av.model_fit;
+    else
+        reasons{end+1} = sprintf(['[carry-056] %s.abs (its fits: the schema in use ' ...
+            'declares no model_fit response_transform, [absolute-value fits are fit entries])'], ...
+            sourceBlock);
+    end
+end
+rest = setdiff(fieldnames(av), {'model_fit'});
+for k = 1:numel(rest)
+    reasons{end+1} = sprintf(['[carry-056] %s.abs (its %s: no home beside the ' ...
+        'absolute-value fits)'], sourceBlock, rest{k}); %#ok<AGROW>
+end
+lf = absBlk.leafFields;
+if isfield(lf, 'interpolated_values') && ~isempty(lf.interpolated_values) ...
+        && ~jSchemaHasPath(leafClass, {'interpolated_values', 'response_transform'})
+    reasons{end+1} = sprintf(['[carry-056] %s.abs.fitless (the schema in use ' ...
+        'declares interpolated_values one structure)'], sourceBlock);
+end
+rest = setdiff(fieldnames(lf), {'interpolated_values'});
+for k = 1:numel(rest)
+    reasons{end+1} = sprintf(['[carry-056] %s.abs (its %s: no home beside the ' ...
+        'absolute-value fits)'], sourceBlock, rest{k}); %#ok<AGROW>
 end
 end
 

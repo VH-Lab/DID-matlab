@@ -1,4 +1,4 @@
-function [blk, bad, absFitless] = tuningBlock(leaf, family)
+function [blk, bad, absFitless, absFits] = tuningBlock(leaf, family)
 %TUNINGBLOCK A v1 tuning result block rebuilt from the converted calculation
 %   (the inverse of +migrators_j/private/jTuningCurve for one stimulus
 %   variable).
@@ -36,11 +36,17 @@ function [blk, bad, absFitless] = tuningBlock(leaf, family)
 %                                 interpolatedEntry reads both shapes)
 %   ABSFITLESS is the list's 'absolute value' entry in v1's `fitless`
 %   spelling (v1 `abs.fitless`, SF / TF), struct() when there is none.
-%     fit / fit_<model>           value.model_fit (fitBlocks)
+%     fit / fit_<model>           value.model_fit (fitBlocks): the entries
+%                                 with no response_transform
+%   ABSFITS is v1 `abs.fit_<model>` (SF / TF), struct() when there is none:
+%   the model_fit entries whose response_transform is 'absolute value'
+%   ([absolute-value fits are fit entries], Decided by Jess Haley,
+%   2026-10-28), rebuilt by fitBlocks.
 
 bad = {};
 blk = struct();
 absFitless = struct();
+absFits = struct();
 value = getIn(leaf, 'tuning_curve', 'value');
 if ~isstruct(value)
     bad{end+1} = 'the calculation has no tuning_curve.value';
@@ -135,11 +141,19 @@ else
 end
 
 if isfield(value, 'model_fit')
-    [fits, b] = fitBlocks(value.model_fit, family);
+    [asStated, absEntries, b] = fitsByTransform(value.model_fit, family);
+    bad = [bad, b];
+    [fits, b] = fitBlocks(asStated, family);
     bad = [bad, b];
     names = fieldnames(fits);
     for k = 1:numel(names)
         blk.(names{k}) = fits.(names{k});
+    end
+    if ~isempty(absEntries)
+        % [absolute-value fits are fit entries] (Decided by Jess Haley,
+        % 2026-10-28): v1 `abs.fit_<model>`
+        [absFits, b] = fitBlocks(absEntries, family);
+        bad = [bad, cellfun(@(x) ['abs: ' x], b, 'UniformOutput', false)];
     end
     seen{end+1} = 'model_fit';
 end
@@ -147,6 +161,44 @@ bad = [bad, others(value, seen, 'tuning_curve.value')];
 end
 
 % =============================================================================
+
+function [asStated, absEntries, bad] = fitsByTransform(modelFit, family)
+%FITSBYTRANSFORM The model_fit entries fit to the responses as stated
+%   (ASSTATED: no, or an empty, response_transform) and to |response|
+%   (ABSENTRIES: response_transform 'absolute value'; SF / TF only, v1 `abs`),
+%   each as a cell of structs without the `response_transform` field, so
+%   fitBlocks sees the fields it knows. BAD names an entry with any other
+%   transform, or an absolute-value entry in a family whose v1 block has no
+%   `abs`.
+asStated = {};
+absEntries = {};
+bad = {};
+c = asCell(modelFit);
+for k = 1:numel(c)
+    e = c{k};
+    t = '';
+    if isstruct(e) && isscalar(e) && isfield(e, 'response_transform')
+        if ~isempty(e.response_transform)
+            t = strtrim(char(e.response_transform));
+        end
+        e = rmfield(e, 'response_transform');
+    end
+    switch t
+        case ''
+            asStated{end+1} = e; %#ok<AGROW>
+        case 'absolute value'
+            if any(strcmp(family, {'sf', 'tf'}))
+                absEntries{end+1} = e; %#ok<AGROW>
+            else
+                bad{end+1} = sprintf(['model_fit %d: an absolute-value fit has no ' ...
+                    'place in a %s block'], k, family); %#ok<AGROW>
+            end
+        otherwise
+            bad{end+1} = sprintf('model_fit %d: response_transform "%s" has no place in v1', ...
+                k, t); %#ok<AGROW>
+    end
+end
+end
 
 function own = calcBlock(leaf)
 % the named calculation's own block (circular_statistics / interpolated_values)

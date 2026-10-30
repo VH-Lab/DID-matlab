@@ -106,14 +106,14 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %   schema in use declares it (jSchemaHasPath); until then it stays unplaced
 %   and carries the document (carry-056), as before.
 %
-%   THE `abs` BLOCK ([absolute-value fits are a second calculation],
-%   2026-10-27): an SF or TF result's `abs` block (its fitless values and fits
-%   of the absolute response) is folded the same way, ALONE, and returned in
-%   EXTRA.abs {present, value, leafFields}; jCalculation writes it as a second
-%   calculation. Its unplaced fields are listed in DROPPED under 'abs.'.
-%   (Superseded 2026-10-28 by [absolute-value fits are fit entries], not yet
-%   built: the block's `fitless` has no place in a fit entry, and that
-%   decision asked for it to be brought back first; see jCalculation.)
+%   THE `abs` BLOCK ([absolute-value fits are fit entries], Decided by Jess
+%   Haley, 2026-10-28, with [interpolated values are a list], 2026-10-30): an
+%   SF or TF result's `abs` block (its fitless values and fits of the absolute
+%   response) is folded the same way, ALONE, and returned in EXTRA.abs
+%   {present, value, leafFields}; jCalculation places its fits as model_fit
+%   entries and its fitless as an interpolated_values entry of the SAME
+%   calculation, each with response_transform 'absolute value'. Its unplaced
+%   fields are listed in DROPPED under 'abs.'.
 %
 %   OPTS.Rebuilt (family 'stimulus'): raw-curve fields the caller rebuilds
 %   from other documents, so they are placed ([tuning stimids rebuild]:
@@ -271,8 +271,9 @@ if ~isempty(fits)
 end
 
 % ---- the absolute-value fits (SF / TF: v1 `abs`) ---------------------------
-% [absolute-value fits are a second calculation] (Jess Haley, 2026-10-27):
-% folded alone, returned in EXTRA.abs for jCalculation's second calculation
+% [absolute-value fits are fit entries] (Decided by Jess Haley, 2026-10-28):
+% folded alone, returned in EXTRA.abs; jCalculation marks its entries
+% 'absolute value' on the one calculation
 absHandled = false;
 if any(strcmp(family, {'sf', 'tf'}))
     [ab, abName] = getfn(srcBlk, {'abs'});
