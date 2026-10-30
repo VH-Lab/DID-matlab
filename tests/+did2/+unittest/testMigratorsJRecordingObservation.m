@@ -219,7 +219,10 @@ function testUnderscoredElectrodeSpellingAlsoResolves(testCase)
 % extracellular recording as type 'extracellular_electrode-4', while
 % probetype2object.json registers the stem as 'electrode-$' and
 % +ndi/+database/+metadata_app/+fun/loadProbes.m:46 matches real data with
-% regexp 'electrode-\d'. All three reach the same row.
+% regexp 'electrode-\d'. All three reach the same row. The ELEMENT is carried
+% whole as v1 ([element types batch 4] (3), Jess Haley, 2026-10-30: the
+% spelling is not a probetype2object.json key), so the row's observation is
+% minted from the probe map's type alone.
 out = runEpoch(elementDoc('ctx', 'extracellular_electrode-4', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.rhd'});
 verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
@@ -354,10 +357,8 @@ function testImagingProbeBecomesImageObservation(testCase)
 % types to ndi.probe.image. #88: a raster goes by what its pixels measure --
 % intensity. The frames are the epoch's files (a TIFF here), so the batch pass
 % no longer defers imaging rows: nothing inline is needed.
-% two-photon, not wide-field: [imaging probes are microscopes or carried]
-% (Decided by Jess Haley, 2026-10-27) carries a wide-field or brightfield
-% probe whole as v1 (carry-121; testRawV1RoundTripElement); a two-photon probe
-% is a device (a microscope) and still records this way.
+% Every imaging probe is a device of kind microscope ([element types batch
+% 2], Jess Haley, 2026-10-30; testRawV1RoundTripElement), and records this way.
 out = runEpoch(elementDoc('camera', 'two-photon-imaging', 'ndi.probe.image', 1, 'specimen_1', ''), ...
     {'/data/t00001/frames.tif'});
 obs = firstOfClass(out, 'observation+intensity');
@@ -369,6 +370,40 @@ verifyFalse(testCase, hasRelation(out, 'observes'));
 b = firstOfClass(out, 'opaque_body');
 verifyNotEmpty(testCase, b);
 verifyEqual(testCase, char(b.get('data_body.format').node), 'EDAM:format_3591');
+end
+
+% ===================== the recording mode =================================
+
+function testTheDecidedModeIsTheObservationsMethodTerm(testCase)
+% [element type is a device kind term] (Jess Haley, 2026-10-27): the mode
+% suffix goes on the recording observation; [imaging mode is a method term]
+% (2026-10-29): as a method term. [element types batch 1] / [cell-attached is
+% OBI]: -attached is OBI:0002179; [element types batch 2]: brightfield is
+% EMPTY:0000300. The other modes have no decided term ("in a later batch"),
+% so their observations have no method.
+cases = { ...
+    'patch-attached', 'ndi.probe.timeseries.mfdaq', '/data/t00001/t00001.abf', 'observation+voltage', 'OBI:0002179'; ...
+    'brightfield-imaging', 'ndi.probe.image', '/data/t00001/frames.tif', 'observation+intensity', 'EMPTY:0000300'; ...
+    'patch-Vm', 'ndi.probe.timeseries.mfdaq', '/data/t00001/t00001.abf', 'observation+voltage', ''; ...
+    'two-photon-imaging', 'ndi.probe.image', '/data/t00001/frames.tif', 'observation+intensity', ''};
+for k = 1:size(cases, 1)
+    [ty, cls, file, key, node] = cases{k, :};
+    out = runEpoch(elementDoc('p', ty, cls, 1, 'specimen_1', ''), {file});
+    obs = firstOfClass(out, key);
+    assertNotEmpty(testCase, obs, ty);
+    s = obs.toStruct();
+    m = [];
+    if isfield(s, 'interaction') && isstruct(s.interaction) && isfield(s.interaction, 'method')
+        m = s.interaction.method;
+    end
+    if isempty(node)
+        verifyTrue(testCase, isempty(m) || ~isfield(m, 'term') || isempty(m.term), ...
+            [ty ': a mode term with no decision was written']);
+    else
+        assertTrue(testCase, isstruct(m) && isfield(m, 'term'), [ty ': no method term']);
+        verifyEqual(testCase, char(m.term.node), node, ty);
+    end
+end
 end
 
 % ===================== Guard A ============================================
@@ -442,18 +477,30 @@ end
 
 % ===================== the stimulator carve-out ============================
 
-function testStimulatorElementEmitsNoObservationAndKeepsObserves(testCase)
-% A stimulator ACTS ON the specimen; an observation would be the wrong direction
-% (T3). probetype2object.json maps it to ndi.probe.timeseries.stimulator, and
-% +gui/+app/pyraview.m:90-92 excludes stimulator probes from the recording set.
-% Its `instrument_id` edge arrives with the stimulus model (#31/#43); until then
-% `observes` is KEPT, because dropping a link with nothing in its place is loss,
-% not retirement.
+function testStimulatorElementIsADeviceWithNoObservation(testCase)
+% INVERTS testStimulatorElementIsCarriedWithNoObservation, which carried a
+% stimulator element whole as v1 under [element types batch 4] (4).
+% [stimulator is SNOMED CT Stimulator] (Jess Haley, 2026-10-30) replaces that
+% item: a v1 `stimulator` element (vhlab's visual-stimulus computer, Marder's
+% electrical stimulator) is a device of kind SNOMEDCT:36645008 "Stimulator".
+% A stimulator ACTS ON the specimen, so pass 1 mints no observation (the
+% wrong direction, T3); its delivery is the probe map's manipulation, and
+% until an `instrument_id` edge replaces it `observes` is KEPT. Not flagged
+% unresolved: the modality is not unknown, the direction is different.
 out = runJ(elementDoc('stim', 'stimulator', 'ndi.probe.timeseries.stimulator', 1, 'specimen_1', ''));
+verifyEqual(testCase, numel(out.passthrough), 0, 'the stimulator element was carried');
+verifyNotEmpty(testCase, firstOfClass(out, 'device'), 'no device entity');
+kind = assertionWithVariable(out, 'Equipment Type');
+verifyNotEmpty(testCase, kind, 'no Equipment Type assertion');
+if ~isempty(kind)
+    verifyEqual(testCase, char(kind.get('statement.variable').node), 'NCIT:C178920');
+    value = kind.get('term.value');
+    verifyEqual(testCase, char(value.node), 'SNOMEDCT:36645008');
+    verifyEqual(testCase, char(value.name), 'Stimulator');
+end
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 verifyTrue(testCase, hasRelation(out, 'observes'));
-% NOT flagged unresolved: the modality is not unknown, the DIRECTION is different.
 verifyEmpty(testCase, assertionWithVariable(out, 'modality unresolved'));
 end
 
