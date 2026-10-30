@@ -18,9 +18,10 @@ function [names, migrators] = rawV1Classes(v1Name)
 %   differently from the migrator files that convert them: NDIcalc-vis-matlab
 %   writes `contrasttuning_calc` and `contrastsensitivity_calc`, and the
 %   migrators are +migrators_j/contrast_tuning_calc.m and
-%   contrast_sensitivity_calc.m; NDI writes `imageStack` and `ontologyLabel`,
-%   and the migrators are +migrators_j/image_stack.m and ontology_label.m: the
-%   names universalRenames gives those classes. THIS TABLE GOES when
+%   contrast_sensitivity_calc.m; NDI writes `imageStack`, `ontologyLabel` and
+%   `ontologyTableRow`, and the migrators are +migrators_j/image_stack.m,
+%   ontology_label.m and ontology_table_row.m: the names universalRenames gives
+%   those classes. THIS TABLE GOES when
 %   universalRenames is deleted and the migrator files are renamed to the v1
 %   names ([migrators read raw v1]); it is the only place the two spellings are
 %   joined for a switched class. A row may name a class not (yet) in the list
@@ -425,11 +426,23 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         jRawAccount, carry-100). The writer is in no
 %                         repository we hold; no corpus document. Round trips:
 %                         testRawV1RoundTripVmSpikeFiltering.
+%     ontologyTableRow    superclass `base` only, no `app` block, no
+%                         superclass migrator. ALWAYS CARRIED whole as v1
+%                         (carry-026, [table rows carried as v1], Jess Haley,
+%                         2026-10-30); read raw so that the carry is the
+%                         untouched v1 source, which NDI's second pass counts
+%                         under either class name (ndi.migrate.internal.
+%                         ontologyRowsCarried). The table below joins it to
+%                         ontology_table_row, which reads its block in either
+%                         spelling. A body that names the snake_case class
+%                         `ontology_table_row` (no NDI writer makes one) still
+%                         runs renamed. Written by +ndi/+setup/+NDIMaker/
+%                         tableDocMaker.m. Inverse: the passthrough one.
+%                         Round trips: testRawV1RoundTripOntologyTableRow.
 %     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
 %                         universalRenames. Of the +migrators_j migrators these
-%                         are ontology_table_row,
-%                         openminds, openminds_element, openminds_stimulus and
-%                         openminds_subject; a
+%                         are openminds, openminds_element, openminds_stimulus
+%                         and openminds_subject; a
 %                         class with no +migrators_j migrator
 %                         (the +migrators identity fallback) also runs
 %                         renamed. universalRenames cannot be deleted while
@@ -517,6 +530,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'fitcurve', ...
     'vmspikefit', ...
     'vmspikefilteringparameters', ...
+    'ontologyTableRow', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
@@ -539,7 +553,8 @@ TABLE = { ...
     'ontologyImage',            'ontology_image'; ...
     'fileReference',            'file_reference'; ...
     'lightsheetZarrPyramid',    'lightsheet_zarr_pyramid'; ...
-    'lightsheetZarrLevel',      'lightsheet_zarr_level'};
+    'lightsheetZarrLevel',      'lightsheet_zarr_level'; ...
+    'ontologyTableRow',         'ontology_table_row'};
 
 if nargin >= 1
     names = migratorOf(char(v1Name), TABLE);

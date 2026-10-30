@@ -105,7 +105,10 @@ r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyEqual(testCase, r.sources_compared, 4);
 verifyEqual(testCase, r.sources_ok, 4, describe(r));
 verifyGreaterThanOrEqual(testCase, r.sources_stored_as_v1, 1);
-verifyTrue(testCase, isfield(r.stored_as_v1_by_class, 'ontology_table_row'), ...
+% UPDATED 2026-10-30: the row reads raw v1 ([migrators read raw v1], Jess
+% Haley, 2026-10-26; did2.convert.rawV1Classes), so pass 1 names its class as
+% v1 writes it, `ontologyTableRow`, not universalRenames' `ontology_table_row`
+verifyTrue(testCase, isfield(r.stored_as_v1_by_class, 'ontologyTableRow'), ...
     'the row is counted as stored as its v1 source');
 verifyEqual(testCase, r.sources_no_inverse, 0);
 end
@@ -133,12 +136,13 @@ for k = 1:numel(result.migrated)
     end
 end
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
-verifyFalse(testCase, isfield(r.stored_as_v1_by_class, 'ontology_table_row'));
+% the class as v1 writes it: the row reads raw v1 since 2026-10-30
+verifyFalse(testCase, isfield(r.stored_as_v1_by_class, 'ontologyTableRow'));
 verifyEqual(testCase, r.sources_no_inverse, 0);
 verifyEqual(testCase, r.sources_compared, 4);
 verifyEqual(testCase, r.sources_ok, 3, 'the changed row does not round trip');
 verifyEqual(testCase, r.failures_total, 1);
-verifyTrue(testCase, isfield(r.failures_by_class, 'ontology_table_row'), ...
+verifyTrue(testCase, isfield(r.failures_by_class, 'ontologyTableRow'), ...
     'the failure is the changed row');
 verifyFalse(testCase, r.ok);
 end
