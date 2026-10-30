@@ -827,7 +827,8 @@ for k = 1:numel(bodies)
                     % second member sharing a clock is the one nothing
                     % distinguishes from the first.
                     key = sprintf('%s|%s|%s|%s', className, fam.name, ...
-                        sanitise(fam.unique_by), sanitise(dkey));
+                        sanitise(fam.unique_by), ...
+                        sanitise(clockKeyShown(dkey, fam.unique_by)));
                     [uniKeys, uniCounts] = bump(uniKeys, uniCounts, key);
                 else
                     seenKeys{end+1} = dkey; %#ok<AGROW>
@@ -1362,6 +1363,40 @@ try
     end
 catch
     key = '';
+end
+end
+
+function shown = clockKeyShown(dkey, uniqueBy)
+%CLOCKKEYSHOWN The reported form of a uniqueness key: DKEY, with the clock's
+%   v1 handle beside each node-keyed clock part, so a person reading the
+%   report sees which clock two members share ('node:empty:0000403
+%   (dev_local_time)'). The COMPARISON is still on DKEY alone (keyed by node,
+%   [clock terms get nodes]); this only labels it, and the label is read from
+%   the node (did2.build.vocabulary's handle table), so one node always reads the same
+%   whatever name a member stored. A part on a path not ending in `clock`, or
+%   a node outside the four clocks, is printed unchanged. Never an error.
+shown = dkey;
+try
+    parts = strsplit(char(dkey), ' + ');
+    paths = strsplit(char(uniqueBy), '+');
+    [~, handles] = did2.build.vocabulary('clock');
+    for p = 1:min(numel(parts), numel(paths))
+        pathParts = strsplit(paths{p}, '.');
+        if ~strcmp(pathParts{end}, 'clock'); continue; end
+        if ~startsWith(parts{p}, 'node:'); continue; end
+        node = parts{p}(numel('node:')+1:end);
+        for r = 1:size(handles, 1)
+            % the same normal form referentKeyOne keys on; the FIRST row
+            % with the node is its v1 handle (did2.build.vocabulary)
+            if strcmp(lower(did2.schema.curieKey(handles{r, 2})), node)
+                parts{p} = sprintf('%s (%s)', parts{p}, handles{r, 1});
+                break;
+            end
+        end
+    end
+    shown = strjoin(parts, ' + ');
+catch
+    shown = dkey;
 end
 end
 
