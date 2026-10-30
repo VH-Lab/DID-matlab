@@ -506,10 +506,20 @@ for k = 1:numel(bodies)
             % STATEMENT: a non-empty v1 name no emitted document holds (a
             % top-level `name`, `description` or `notes` of its own blocks,
             % v1NameIsKept) carries the source whole as v1, and is noted
-            % `v1_name_statement_carried` (the count). Writing the name to
-            % the own name field of the other targets is each migrator's
-            % (jBaseName: entities; image_stack: its body); it is not checked
-            % here. The register row is carry-106.
+            % `v1_name_statement_carried` (the count); the register row is
+            % carry-106. Writing the name to the own name field of the other
+            % targets is each migrator's
+            % (jBaseName: entities; jMethodParameters and
+            % resolveResponseParameters: method.name; daqsystem:
+            % acquisition_system.name; image_stack: its body). THE MEASURE,
+            % for every other CONVERTED source: a non-empty v1 name no
+            % emitted document holds in one of its own blocks (`base` is not
+            % read: V2 base.name is kept only until the retire classes leave,
+            % [base.name kept until retire classes leave]) is noted
+            % `v1_name_not_kept` (DETAIL the name), so a migrator that drops
+            % it, or a target class with no name field, is counted rather than
+            % silent. It does not carry: what such a document should do is not
+            % decided (Proposed, not decided), so it has no register row.
             if ~carried && ~isempty(v2Bodies) ...
                     && ~(isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body))
                 v1Name = v1NameOf(preBody);
@@ -529,6 +539,12 @@ for k = 1:numel(bodies)
                     superUnchanged = true;
                     v2Bodies = {v2Body};
                     carried = true;
+                elseif ~isempty(v1Name) && ~v1NameIsKept(v2Bodies, v1Name)
+                    % [v1 name goes to the class's own name field]: a
+                    % converted non-statement whose v1 name no emitted
+                    % document holds -- counted, not carried
+                    did2.convert.reportNote('v1_name_not_kept', className, ...
+                        sourceIdOf(preBody), v1Name);
                 end
             end
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator

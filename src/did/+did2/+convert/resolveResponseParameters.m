@@ -454,7 +454,13 @@ for k = 1:n
     if isempty(sid); sid = baseField(bodies{k}, 'session_id'); end
     ts = baseField(bodies{k}, 'creation_timestamp');
     if isempty(ts); ts = baseField(bodies{k}, 'datestamp'); end
+    % [v1 name goes to the class's own name field] (Decided by Jess Haley,
+    % 2026-10-27, did-schema V_eta_go_forward_class_audit.md): a non-empty v1
+    % base.name is written to `method.name`, as v1 wrote it; an empty one
+    % writes nothing. did2.convert.roundtrip.stimulus_response_scalar_parameters_basic
+    % rebuilds base.name from it.
     mdoc = did2.build.method(METHOD_TERM, params, ...
+        'Name', baseField(bodies{k}, 'name'), ...
         'SessionId', sid, 'Id', pid, 'CreationTimestamp', ts, 'Validate', false);
 
     rebuilt{end+1} = mdoc;       %#ok<AGROW>
