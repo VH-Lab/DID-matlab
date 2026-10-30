@@ -68,7 +68,18 @@ for k = find(~used)
     spec.unplaced{end+1} = sprintf('emitted document %d (%s) has no role in a subjectmeasurement', ...
         k, classNameOf(bodies{k}));
 end
-[~, name] = termParts(getIn(obs, 'statement', 'variable'));
+[node, name] = termParts(getIn(obs, 'statement', 'variable'));
+if ~isempty(node)
+    % the migrator found the v1 measurement name as a registered term
+    % (did2.convert.registeredTerm, by did2.schema.termNameKey) and wrote the
+    % registry's label: 'age' -> NCIT:C25150 'Age'. [spelling is notation]
+    % (Jess Haley, 2026-10-26): equivalent spellings of one term are the same
+    % thing in the round trip -- equal under the registry's own name key, not
+    % any text.
+    spec.same(end+1) = struct('path', [CLASS '.measurement'], 'fn', @sameNameKey, ...
+        'why', ['a measurement name found as registered term ' char(node) ...
+        ' ([spelling is notation], [term names match ignoring spacing])']);
+end
 value = [];
 [kind, vals] = statementValue(obs);
 cells = asCell(vals);
@@ -84,4 +95,9 @@ v1.depends_on = struct('name', 'subject_id', 'value', subject{1});
 v1.base = struct('id', base.id, 'session_id', base.session_id, 'name', '', ...
     'datestamp', base.datestamp);
 v1.(CLASS) = struct('measurement', name, 'value', value, 'datestamp', datestamp);
+end
+
+function tf = sameNameKey(a, b)
+tf = (ischar(a) || isstring(a)) && (ischar(b) || isstring(b)) ...
+    && strcmp(did2.schema.termNameKey(a), did2.schema.termNameKey(b));
 end
