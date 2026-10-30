@@ -827,7 +827,8 @@ for k = 1:numel(bodies)
                     % second member sharing a clock is the one nothing
                     % distinguishes from the first.
                     key = sprintf('%s|%s|%s|%s', className, fam.name, ...
-                        sanitise(fam.unique_by), sanitise(dkey));
+                        sanitise(fam.unique_by), ...
+                        sanitise(clockKeyShown(dkey, fam.unique_by)));
                     [uniKeys, uniCounts] = bump(uniKeys, uniCounts, key);
                 else
                     seenKeys{end+1} = dkey; %#ok<AGROW>
@@ -1309,6 +1310,16 @@ function [key, how] = referentKeyOne(referent, dottedPath)
 %   two ways and read as unique. That is a report to look for, not a silent
 %   improvement; it is why `members_keyed_by_name` is printed even at zero.
 %
+%   THE MIXED FAMILY, CLOSED FOR CLOCKS. Decided by Jess Haley, 2026-10-26
+%   [clock terms get nodes] (did-schema V_eta_go_forward_class_audit.md): the
+%   four clocks have nodes (did2.build.vocabulary 'clock'), and did2.build
+%   writes them while the schema's binding still lists empty nodes. So on a
+%   path ending in `clock`, a member with NO node whose name is one of the
+%   four (a v1 handle or its label) is keyed on that clock's CURIE: one
+%   member written before the nodes and one after compare as the same clock.
+%   It is still counted how = 'name' -- the denominator says what the
+%   document stored, not what the key was translated to.
+%
 %   Falls back to the whole value when the path does not land on a {node,name}
 %   cell, so the mechanism is not specific to ontology terms.
 key = ''; how = '';
@@ -1322,15 +1333,70 @@ if isstruct(v) && isscalar(v)
         key = ['node:' lower(did2.schema.curieKey(v.node))]; how = 'node'; return;
     end
     if isfield(v, 'name') && ischar(v.name) && ~isempty(strtrim(v.name))
-        key = ['name:' lower(strtrim(v.name))]; how = 'name'; return;
+        key = clockNodeKey(dottedPath, v.name);
+        if isempty(key); key = ['name:' lower(strtrim(v.name))]; end
+        how = 'name'; return;
     end
     return;   % an all-blank ontology_term -- nothing to compare
 end
 if ischar(v) && ~isempty(strtrim(v))
-    key = ['name:' lower(strtrim(v))]; how = 'name'; return;
+    key = clockNodeKey(dottedPath, v);
+    if isempty(key); key = ['name:' lower(strtrim(v))]; end
+    how = 'name'; return;
 end
 if isnumeric(v) && isscalar(v) && isfinite(v)
     key = ['name:' num2str(v)]; how = 'name'; return;
+end
+end
+
+function key = clockNodeKey(dottedPath, name)
+%CLOCKNODEKEY 'node:<curie>' for a node-less clock NAME on a path ending in
+%   `clock` whose name is one of the four decided clocks ([clock terms get
+%   nodes]); '' otherwise, and never an error (the census must not raise).
+key = '';
+try
+    parts = strsplit(char(dottedPath), '.');
+    if ~strcmp(parts{end}, 'clock'); return; end
+    node = did2.build.vocabulary('clock', strtrim(char(name)));
+    if ~isempty(node)
+        key = ['node:' lower(did2.schema.curieKey(node))];
+    end
+catch
+    key = '';
+end
+end
+
+function shown = clockKeyShown(dkey, uniqueBy)
+%CLOCKKEYSHOWN The reported form of a uniqueness key: DKEY, with the clock's
+%   v1 handle beside each node-keyed clock part, so a person reading the
+%   report sees which clock two members share ('node:empty:0000403
+%   (dev_local_time)'). The COMPARISON is still on DKEY alone (keyed by node,
+%   [clock terms get nodes]); this only labels it, and the label is read from
+%   the node (did2.build.vocabulary's handle table), so one node always reads the same
+%   whatever name a member stored. A part on a path not ending in `clock`, or
+%   a node outside the four clocks, is printed unchanged. Never an error.
+shown = dkey;
+try
+    parts = strsplit(char(dkey), ' + ');
+    paths = strsplit(char(uniqueBy), '+');
+    [~, handles] = did2.build.vocabulary('clock');
+    for p = 1:min(numel(parts), numel(paths))
+        pathParts = strsplit(paths{p}, '.');
+        if ~strcmp(pathParts{end}, 'clock'); continue; end
+        if ~startsWith(parts{p}, 'node:'); continue; end
+        node = parts{p}(numel('node:')+1:end);
+        for r = 1:size(handles, 1)
+            % the same normal form referentKeyOne keys on; the FIRST row
+            % with the node is its v1 handle (did2.build.vocabulary)
+            if strcmp(lower(did2.schema.curieKey(handles{r, 2})), node)
+                parts{p} = sprintf('%s (%s)', parts{p}, handles{r, 1});
+                break;
+            end
+        end
+    end
+    shown = strjoin(parts, ' + ');
+catch
+    shown = dkey;
 end
 end
 

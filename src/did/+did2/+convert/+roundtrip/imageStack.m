@@ -350,7 +350,7 @@ tol = 0;
 if isempty(anchor)
     return;
 end
-[~, clk] = termParts(getIn(anchor, 'relative_time_reference', 'value', 'clock'));
+clk = clockText(getIn(anchor, 'relative_time_reference', 'value', 'clock'));   % by node first [clock terms get nodes]
 t = numberOf(getIn(anchor, 'time_reference', 'clock_tolerance', 'seconds'));
 if ~isempty(t)
     tol = t;

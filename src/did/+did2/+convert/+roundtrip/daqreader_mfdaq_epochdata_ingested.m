@@ -70,7 +70,7 @@ end
 % the lifted references restate the epochtable; each must name one of its clocks
 clocks = asCell(getIn(v1, PARENT, 'epochtable', 'epochclock'));
 for k = 1:numel(refs)
-    [~, clk] = termParts(getIn(refs{k}, 'relative_time_reference', 'value', 'clock'));
+    clk = clockText(getIn(refs{k}, 'relative_time_reference', 'value', 'clock'));   % by node first [clock terms get nodes]
     if ~any(strcmp(clk, cellfun(@char, clocks, 'UniformOutput', false)))
         spec.unplaced{end+1} = sprintf('a relative_time_reference on clock "%s" restates no clock of the epochtable', clk);
     end

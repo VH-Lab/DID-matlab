@@ -264,6 +264,19 @@ function t = completeFromValueSet(def, t)
 %   Nothing is guessed beyond that: an unmatched term is left as given, and
 %   whether it is admissible is the binding check's question (strictMode
 %   'BindingConformance'), not the builder's.
+%
+%   CLOCKS (binding root did_clocktype). Decided by Jess Haley, 2026-10-26
+%   [clock terms get nodes] (did-schema V_eta_go_forward_class_audit.md): the
+%   four clock values have nodes (did2.build.vocabulary 'clock'), and the
+%   schema's binding still lists them with EMPTY nodes until DID-matlab and
+%   NDI-matlab compare by node. So a clock is written WITH its decided node
+%   now: a name matched to a member that has no node yet takes the node from
+%   did2.build.vocabulary('clock', name), keeping the schema's name. That
+%   cannot be refused while the schema's nodes are empty: the binding check
+%   (did2.schema.cache, 'bindingValueNotInSet') admits a value whose node is
+%   in no member when its NAME is, and checkTerm skips a field with its own
+%   value list. Once did-schema fills the nodes, step 1 matches by node and
+%   the document takes the schema's name (the label) with no change here.
 constraints = getOr(def, 'constraints', struct());
 if ~isstruct(constraints) || ~isfield(constraints, 'binding') ...
         || ~isstruct(constraints.binding) || ~isfield(constraints.binding, 'values')
@@ -302,6 +315,11 @@ if hit == 0
 end
 node = '';
 if isfield(members{hit}, 'node'); node = char(members{hit}.node); end
+if isempty(node) && strcmp(vocabularyKind(constraints.binding), 'clock') ...
+        && ~hasText(t, 'node')
+    % [clock terms get nodes]: the decided node, while the schema's is empty
+    node = did2.build.vocabulary('clock', char(members{hit}.name));
+end
 if ~isempty(node)
     t.node = node;
 end
@@ -319,6 +337,8 @@ if startsWith(root, 'did_relation')
     kind = 'relation';
 elseif strcmp(root, 'did_entity_type')
     kind = 'entity_type';
+elseif strcmp(root, 'did_clocktype')
+    kind = 'clock';   % [clock terms get nodes]
 end
 end
 

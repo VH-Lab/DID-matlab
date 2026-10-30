@@ -220,7 +220,7 @@ if ~isempty(anchor)
                 used(hit) = true;
                 epochString = fieldText(getIn(bodies{hit}, 'entity'), 'local_identifier');
             end
-            [~, clk] = termParts(getIn(anchor, 'relative_time_reference', 'value', 'clock'));
+            clk = clockText(getIn(anchor, 'relative_time_reference', 'value', 'clock'));   % by node first [clock terms get nodes]
             t0 = numberOf(getIn(anchor, 'relative_time_reference', 'value', 'start', 'seconds'));
             dur = numberOf(getIn(anchor, 'relative_time_reference', 'value', 'duration', 'seconds'));
             if isempty(t0) || isempty(dur)
