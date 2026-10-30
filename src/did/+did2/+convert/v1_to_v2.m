@@ -453,7 +453,7 @@ for k = 1:numel(bodies)
                     % runConcreteMigrator returns a CELL of one-or-more bodies.
                     % A class with a base migrator only returns a single body; a
                     % class with a +migrators_j split/fold migrator (treatment,
-                    % ontology_table_row, ...) may fan out to several (1 -> N).
+                    % ...) may fan out to several (1 -> N).
                     v2Bodies = runConcreteMigrator(v2Body, className, ...
                         options.TargetVersion);
                     % A CARRY IS THE V1 SOURCE, NOT THE SUPERCLASS-RESHAPED BODY.
@@ -1137,7 +1137,7 @@ function bodies = runConcreteMigrator(v2Body, className, targetVersion)
 %   a Brainstorm-J split/fold migrator under +did2.+convert.+migrators_j is
 %   routed there instead; that migrator may return either a single body
 %   (struct) or several (struct array / cell), enabling the treatment ->
-%   manipulation and ontology_table_row -> observations (1 -> N) splits.
+%   manipulation (1 -> N) split.
 splitPackage = '';
 if did2.convert.isV2Set(targetVersion)
     splitPackage = 'did2.convert.migrators_j.';
