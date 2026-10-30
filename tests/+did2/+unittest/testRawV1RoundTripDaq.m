@@ -173,6 +173,79 @@ for path = {'raw', 'renamed'}
 end
 end
 
+function testTheTriggerChannelsRoundTripUnderEitherLabel(testCase)
+% Decided by Jess Haley, 2026-10-30, did-schema V_eta_go_forward_class_audit.md
+% [trigger channels named by their link]: the migrator labels the channels
+% 'from trigger channel' (v1 daqsystem_ch1) and 'to trigger channel'
+% (daqsystem_ch2); a configuration migrated before holds them as 'daqsystem
+% ch1' / 'daqsystem ch2'. The round trip rebuilds the v1 rule from either; a
+% configuration holding one channel under both labels is reported.
+rule = channelRule();
+batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
+out = did2.convert.resolveClockAlignment(runRaw(batch), 'Validate', false, 'TargetVersion', 'V_eta');
+docs = foldDocs(out, rule.base.id);
+assertNotEmpty(testCase, docs);
+bodies = cellfun(@(d) d.toStruct(), docs, 'UniformOutput', false);
+names = parameterNames(bodies{1});
+verifyTrue(testCase, all(ismember({'from trigger channel', 'to trigger channel'}, names)), ...
+    strjoin(names, ', '));
+verifyFalse(testCase, any(ismember({'daqsystem ch1', 'daqsystem ch2'}, names)), ...
+    strjoin(names, ', '));
+% the shape written before the decision
+old = bodies;
+old{1} = relabelParameter(old{1}, 'from trigger channel', 'daqsystem ch1');
+old{1} = relabelParameter(old{1}, 'to trigger channel', 'daqsystem ch2');
+r = did2.convert.roundtrip.check(rule, old);
+verifyFalse(testCase, r.carried);
+verifyRoundTrip(testCase, r, 'the channel rule under the v1 labels', {});
+for p = {'syncrule.parameters.daqsystem_ch1', 'syncrule.parameters.daqsystem_ch2'}
+    verifyTrue(testCase, any(strcmp(p{1}, r.matched)), sprintf('%s not matched', p{1}));
+end
+% one channel under both labels
+both = bodies;
+both{1} = duplicateParameter(both{1}, 'from trigger channel', 'daqsystem ch1');
+r = did2.convert.roundtrip.check(rule, both);
+verifyTrue(testCase, any(contains(r.unplaced, 'daqsystem_ch1 is stated twice')), ...
+    strjoin(r.unplaced, '; '));
+end
+
+function c = methodParameters(body)
+c = body.clock_alignment_configuration.method.parameters;
+if isstruct(c); c = num2cell(reshape(c, 1, [])); end
+end
+
+function body = setMethodParameters(body, c)
+body.clock_alignment_configuration.method.parameters = c;
+end
+
+function names = parameterNames(body)
+c = methodParameters(body);
+names = cellfun(@(e) char(e.variable.name), c, 'UniformOutput', false);
+end
+
+function body = relabelParameter(body, from, to)
+c = methodParameters(body);
+for k = 1:numel(c)
+    if strcmp(char(c{k}.variable.name), from)
+        c{k}.variable.name = to;
+    end
+end
+body = setMethodParameters(body, c);
+end
+
+function body = duplicateParameter(body, name, asName)
+c = methodParameters(body);
+for k = 1:numel(c)
+    if strcmp(char(c{k}.variable.name), name)
+        e = c{k};
+        e.variable.name = asName;
+        c{end+1} = e; %#ok<AGROW>
+        break;
+    end
+end
+body = setMethodParameters(body, c);
+end
+
 % ===================== the switch changes no outcome ======================
 
 function testTheSwitchChangesNoOutcome(testCase)
