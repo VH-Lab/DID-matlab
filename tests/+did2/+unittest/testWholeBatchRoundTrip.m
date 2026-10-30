@@ -92,9 +92,10 @@ verifyError(testCase, @() did2.convert.roundtrip.wholeBatch(bodies, result), ...
 end
 
 function testAPassthroughStillUnchangedIsStoredAsItsV1Source(testCase)
-% an ontologyTableRow with no subject edge passes pass 1 through unchanged for
-% NDI's second pass; still unchanged at the end, the pipeline stores its v1
-% source (ndi.migrate.internal.carryUnchangedAsV1), which is what is compared
+% an ontologyTableRow is carried by pass 1 unchanged, as every row is
+% ([table rows carried as v1], Jess Haley, 2026-10-30); still unchanged at the
+% end, the pipeline stores its v1 source
+% (ndi.migrate.internal.carryUnchangedAsV1), which is what is compared
 [bodies, result] = cleanBatch();
 bodies{end+1} = tableRow('wb_row_1');
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');

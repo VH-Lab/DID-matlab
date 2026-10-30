@@ -6,9 +6,10 @@ function tests = testMigratorsJ
 %     - subject_group      -> bare `subject` (v3.0.0; no is_group/is_biological)
 %     - treatment_transfer -> carried whole as v1 ([treatment transfer stays v1])
 %                             + session anchor (1 -> 3, D4)
-%     - ontology_table_row -> per-column assertions/observations (1 -> N), and
-%                             the per-table map for the C. elegans encounter
-%                             (worm obs + shared time_reference + patch relation)
+%     - ontology_table_row -> every row carried whole as v1 with a carry-026
+%                             note ([table rows carried as v1], Jess Haley,
+%                             2026-10-30); no subject, no statements, no
+%                             per-table map
 %     - treatment          -> temperature_/dose_/term_manipulation by structure,
 %                             + a site term_observation for a located site (D3)
 %     - treatment_drug     -> dose_manipulation (mixture -> dose composite)
@@ -525,7 +526,7 @@ for k = 1:numel(cases)
 end
 end
 
-% ============ ontology_table_row -> assertions/observations (1 -> N) ====
+% ============ ontology_table_row -> carried whole as v1 (1 -> 1) =========
 
 function otr = tableRow()
 otr = struct();
@@ -557,6 +558,7 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'ontology
 verifyEqual(testCase, out.migrated{1}.get('ontology_table_row.data'), v1.ontology_table_row.data);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-026] needs_mapping: assertion | observation | manipulation'), d);
+verifyTableRowCarryNote(testCase, out);
 end
 
 % ===================== treatment -> manipulation leaves ================
@@ -2188,8 +2190,9 @@ function otr = behaviourPlateRow()
 %BEHAVIOURPLATEROW The `ontologyTableRow` the fixture above points at: the JH
 %   behaviour-plate table (doImport.m:230-237; columns doImport.m:101-106).
 %
-%   IT MUST REACH THE GUARDED PASSTHROUGH, and it does so for the reason the
-%   real corpus documents do, not by construction: `tableDocMaker` sets exactly
+%   IT IS CARRIED WHOLE AS V1, like every row since [table rows carried as
+%   v1] (Jess Haley, 2026-10-30). Before that it reached the guarded
+%   passthrough for the reason the real corpus documents did: `tableDocMaker` sets exactly
 %   one dependency in the whole file and it is `document_id`
 %   (tableDocMaker.m:231), so there is no `subject_id` for
 %   `resolvedSubject` to find. It is not an encounter table (no
@@ -2425,18 +2428,33 @@ if isfield(notes, 'carried_as_v1')
 end
 end
 
+function verifyTableRowCarryNote(testCase, out)
+%VERIFYTABLEROWCARRYNOTE [table rows carried as v1] (Jess Haley, 2026-10-30):
+%   every ontology_table_row is carried with the carry-026 `needs_mapping` note.
+notes = out.summary.migration_notes;
+verifyTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
+if isfield(notes, 'carried_as_v1')
+    d = notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-026] needs_mapping: '), d);
+    verifyTrue(testCase, contains(d, '[table rows carried as v1]'), d);
+end
+end
+
 function testAnEncounterRowIsNotMappedByTheGenericStage(testCase)
 % INVERTS testEncounterTableMap / testAnEncounterRowTheMapCannotPlaceIs...:
 % the JH C. elegans encounter map left the generic migration (Decided by Jess
 % Haley, 2026-10-26 [dataset-specific logic leaves the generic migration],
 % [dataset audit batch 1 and 2]). An encounter row -- even one the old map
-% placed whole -- is now an ordinary row: with no `subject_id` edge it comes
-% back as the v1 row, every cell kept, for the NDI second pass; no window, no
-% `encountered` relation and no worm observation is written.
+% placed whole -- is now an ordinary row: it comes back as the v1 row, every
+% cell kept, carried with a carry-026 note ([table rows carried as v1], Jess
+% Haley, 2026-10-30); no window, no `encountered` relation and no worm
+% observation is written.
 rows = {encounterRow(), placeableEncounterRow()};
 for r = 1:numel(rows)
     v1 = rows{r};
     out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    verifyTableRowCarryNote(testCase, out);
     verifyEqual(testCase, numel(out.migrated), 1, 'the v1 row, alone');
     verifyEqual(testCase, out.summary.quarantine_count, 0);
     d = out.migrated{1};
@@ -2480,10 +2498,13 @@ function testAPatchGeometryRowIsNotMappedByTheGenericStage(testCase)
 % `culture` entity named plate/<p>/patch/<q> and six fixed measures) left the
 % generic migration (Decided by Jess Haley, 2026-10-26 [dataset-specific logic
 % leaves the generic migration], [dataset audit batch 1 and 2]). The row comes
-% back as the v1 row, every cell kept; no patch entity is minted under any
-% handle.
+% back as the v1 row, every cell kept, carried with a carry-026 note ([table
+% rows carried as v1], Jess Haley, 2026-10-30); no patch entity is minted under
+% any handle.
 v1 = patchGeometryRow();
 out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTableRowCarryNote(testCase, out);
 verifyEqual(testCase, numel(out.migrated), 1, 'the v1 row, alone');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 d = out.migrated{1};
@@ -2560,10 +2581,13 @@ function testCultivationPlateIsNotMigratedAsABacterialPatch(testCase)
 %   four dispatch-relevant keys have to be exact.)
 %
 %   With no `subject_id` dependency on the source document (the NDI
-%   ontologyTableRow template declares only `document_id`), the correct
-%   behaviour is the guarded passthrough: carry the document intact for the NDI
-%   second pass, which can see the migrated-id graph.
-out = runJ(cultivationPlateRow());
+%   ontologyTableRow template declares only `document_id`), the row is carried
+%   whole as v1 -- as every row is since [table rows carried as v1] (Jess
+%   Haley, 2026-10-30) -- with a carry-026 note.
+v1 = cultivationPlateRow();
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTableRowCarryNote(testCase, out);
 verifyEqual(testCase, numel(out.migrated), 1, ...
     'the cultivation plate was fanned out instead of passed through');
 d = out.migrated{1};

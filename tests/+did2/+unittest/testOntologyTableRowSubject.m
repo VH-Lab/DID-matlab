@@ -22,6 +22,13 @@ function tests = testOntologyTableRowSubject
 %   schema. That distinction is the whole reason this defect existed: a fixture
 %   built from our own assumption would have carried a subject_id dependency and
 %   passed against the broken code.
+%
+%   SINCE 2026-10-30 every row is carried whole as v1 (Decided by Jess Haley,
+%   [table rows carried as v1], did-schema V_eta_go_forward_class_audit.md):
+%   the migrator resolves no subject and fans out no statements, with or
+%   without a `subject_id` edge, and notes each row `carried_as_v1` citing
+%   register row carry-026. The tests below pin that carry: one body, the
+%   source unchanged, the note.
 
 tests = functiontests(localfunctions);
 end
@@ -49,15 +56,33 @@ realShapedRow.ontology_table_row = struct( ...
     'ontology_nodes', 'NCIT:C1', 'data', '3.5');
 end
 
-function testSubjectlessRowPassesThroughInsteadOfFanningOut(testCase)
-% THE REGRESSION TEST. Before the guard this emitted a fan-out of statements,
-% each with subject_id = ''. It must now carry the document through untouched
-% for the NDI second pass.
-out = did2.convert.migrators_j.ontology_table_row(makeRealRow());
-verifyEqual(testCase, numel(out), 1, ...
-    'a row with no resolvable subject must not fan out into statements');
+function verifyCarriedWithNote(testCase, pre, out)
+%VERIFYCARRIEDWITHNOTE One body, the v1 source unchanged, and exactly one
+%   `carried_as_v1` note citing carry-026 and the decision tag.
+verifyEqual(testCase, numel(out), 1, 'the v1 row, alone: no fan-out');
+verifyEqual(testCase, out{1}, pre, 'returned unchanged');
+notes = did2.convert.reportNote('collect');
+verifyTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
+if isfield(notes, 'carried_as_v1')
+    verifyEqual(testCase, notes.carried_as_v1.count, 1);
+    d = notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-026] needs_mapping:'), d);
+    verifyTrue(testCase, contains(d, '[table rows carried as v1]'), d);
+end
+end
+
+function testSubjectlessRowIsCarriedWithANote(testCase)
+% INVERTS testSubjectlessRowPassesThroughInsteadOfFanningOut. THE REGRESSION
+% TEST still holds (no fan-out of statements with subject_id = ''), and the
+% row is now carried with a carry-026 note rather than passed through silently
+% for NDI's second pass ([table rows carried as v1], Jess Haley, 2026-10-30).
+pre = makeRealRow();
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.ontology_table_row(pre);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out{1}), 'ontology_table_row', ...
-    'the document must pass through as its source class');
+    'the document must come back as its source class');
+verifyCarriedWithNote(testCase, pre, out);
+did2.convert.reportNote('reset');
 end
 
 function testNoEmittedBodyEverCarriesAnEmptySubjectId(testCase)
@@ -87,6 +112,9 @@ function testRowWithARealSubjectIsCarriedNotGuessed(testCase)
 % from label words. Decided by Jess Haley, 2026-10-26 [one correct reading],
 % [dataset audit batch 1 and 2] (4): it is carried whole as v1 -- one body,
 % the source unchanged -- with a `needs_mapping` note.
+% [table rows carried as v1] (Jess Haley, 2026-10-30) keeps that carry for
+% every row; this is also the shape of a row NDI's second pass re-folds with an
+% added `subject_id` edge, which is carried too.
 pre = makeRealRow();
 pre.ontology_table_row = struct('rows', struct( ...
     'ontology_name', 'NCIT:C1', 'name', 'Speed', 'value', '3.5'));
@@ -94,41 +122,29 @@ pre.depends_on = [struct('name', 'document_id', 'value', 'doc-123'), ...
                   struct('name', 'subject_id',  'value', 'subj-9')];
 did2.convert.reportNote('reset');
 out = did2.convert.migrators_j.ontology_table_row(pre);
-verifyEqual(testCase, numel(out), 1, 'the v1 row, alone');
-verifyEqual(testCase, out{1}, pre, 'returned unchanged');
-notes = did2.convert.reportNote('collect');
-verifyTrue(testCase, isfield(notes, 'carried_as_v1'));
-if isfield(notes, 'carried_as_v1')
-    verifyTrue(testCase, startsWith(notes.carried_as_v1.distinct_details{1}, ...
-        '[carry-026] needs_mapping:'), notes.carried_as_v1.distinct_details{1});
-end
+verifyCarriedWithNote(testCase, pre, out);
 did2.convert.reportNote('reset');
 end
 
-function testRealWriterShapeHasNoRowsField(testCase)
-% GROUND TRUTH, pinned as a test so it cannot quietly stop being true.
-%
-% ndi.setup.NDIMaker.tableDocMaker writes ontologyTableRow as four
-% COMMA-JOINED STRINGS:
-%
-%     struct('names',names,'variableNames',variableNames, ...
-%            'ontologyNodes',ontologyNodes,'data',data)
-%
-% There is no `rows` field, and nothing in +did2/+convert builds one. But
-% extractRows() reads `block.rows` and NOTHING ELSE, so a document from the
-% current writer never reaches the per-column path at all -- it passes through.
-%
-% That leaves a real open question: the Dab corpus DID reach that path (the
-% census counted 24,685 intensity_observation documents from it), so Dab's
-% ontology_table_row documents carry a `rows` field the current writer does not
-% produce. A second vintage, exactly like the two ontologyImage vintages. Until
-% someone reads a real Dab document we do not know which.
-%
-% This test asserts only what is verified: a current-writer document passes
-% through untouched. If a future change makes it fan out, that is a claim about
-% document shape that needs the same evidence.
-out = did2.convert.migrators_j.ontology_table_row(makeRealRow());
-verifyEqual(testCase, numel(out), 1, ...
-    ['a document in the CURRENT NDI writer shape has no `rows` field, so ' ...
-     'extractRows returns nothing and it must pass through']);
+function testEveryRowLayoutIsCarriedTheSameWay(testCase)
+% INVERTS testRealWriterShapeHasNoRowsField, which pinned that a current-writer
+% row (four comma-joined strings, no `rows` field) passed through because
+% extractRows() found no columns. extractRows() is gone with the fan-out: the
+% migrator no longer reads the row's layout at all ([table rows carried as v1],
+% Jess Haley, 2026-10-30). So every layout -- the current writer's, the `rows`
+% vintage the Dab corpus held, and an unrecognised one -- is carried the same
+% way: one body, the source unchanged, a carry-026 note.
+writer = makeRealRow();
+rowsVintage = makeRealRow();
+rowsVintage.ontology_table_row = struct('rows', struct( ...
+    'ontology_name', 'NCIT:C1', 'name', 'Speed', 'value', '3.5'));
+unknown = makeRealRow();
+unknown.ontology_table_row = struct('something_else', 1);
+cases = {writer, rowsVintage, unknown};
+for k = 1:numel(cases)
+    did2.convert.reportNote('reset');
+    out = did2.convert.migrators_j.ontology_table_row(cases{k});
+    verifyCarriedWithNote(testCase, cases{k}, out);
+end
+did2.convert.reportNote('reset');
 end
