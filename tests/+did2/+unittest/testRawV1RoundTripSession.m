@@ -39,7 +39,8 @@ function tests = testRawV1RoundTripSession
 %
 %   Pass 1 converts the session, the membership (or carries it), the remote
 %   record and the form, and carries the presentation for NDI's second pass
-%   (carry-045). control_stimulus_ids is NOT switched (rawV1Classes says why).
+%   (carry-045). control_stimulus_ids reads raw v1 too since 2026-10-30 and is
+%   always carried (carry-152); its round trip is in testMigratorsJStimulusModel.
 %
 %   WHAT V2 DOES NOT KEEP is listed per fixture as KNOWN FINDINGS (questions
 %   for the team; today's behaviour is kept): each document's own v1 id where
@@ -61,8 +62,13 @@ for c = {'session', 'session_in_a_dataset', 'dataset_remote', 'metadata_editor',
         'stimulus_presentation'}
     verifyTrue(testCase, any(strcmp(names, c{1})), c{1});
 end
-verifyFalse(testCase, any(strcmp(names, 'control_stimulus_ids')), ...
-    'control_stimulus_ids stays on the renamed path (rawV1Classes says why)');
+% INVERTED 2026-10-30 (it asserted control_stimulus_ids stays on the renamed
+% path): [migrators read raw v1] (Decided by Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md) switches every class; the record is carried
+% (carry-152) and NDI's second pass reads it from v1 (NDI-matlab #1082), the
+% two reasons it stayed renamed
+verifyTrue(testCase, any(strcmp(names, 'control_stimulus_ids')), ...
+    'control_stimulus_ids reads raw v1');
 r = runRaw({writerSession('sd_1', 'sess_1', 'exp1'), ...
     writerMembership('sid_1', 'ds_1', 'sess_1', 'exp1', 0, ''), ...
     writerRemote('dr_1', 'ds_1'), writerEditor('me_1', 'ds_1', sophForm()), ...
