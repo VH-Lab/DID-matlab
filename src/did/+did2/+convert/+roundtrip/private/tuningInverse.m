@@ -108,6 +108,28 @@ for k = 1:numel(fns)
         blk.abs.(fns{k}) = absOut.(fns{k});
     end
 end
+% [spelling is notation] (Jess Haley, 2026-10-26): a recognised
+% response_units spelling comes back as its registered term's name; the v1
+% spelling is the same thing when it is that term's name or one of its
+% registry `synonyms` (sameTermSpelling)
+whyUnits = ['equivalent spellings of one registered term are the same thing ' ...
+    '([spelling is notation], Jess Haley, 2026-10-26); the migrator writes the ' ...
+    'term, its spellings are the term''s registry synonyms'];
+switch family
+    case 'csf'
+        unitPaths = {};
+    case 'stimulus'
+        unitPaths = {[resultBlock '.response_units']};
+    case {'sf', 'tf'}
+        unitPaths = {[resultBlock '.properties.response_units'], ...
+            [resultBlock '.abs.properties.response_units']};
+    otherwise
+        unitPaths = {[resultBlock '.properties.response_units']};
+end
+for k = 1:numel(unitPaths)
+    spec.same(end+1) = struct('path', unitPaths{k}, 'fn', @sameTermSpelling, ...
+        'why', whyUnits);
+end
 if strcmp(family, 'oridir')
     % [hotelling spellings are one field] (Jess Haley, 2026-10-27): the
     % template's `hotelling2test` and the writer's `Hotelling2Test` are one

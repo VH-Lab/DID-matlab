@@ -143,10 +143,10 @@ end
 
 % ---- properties -----------------------------------------------------------
 props = sub(srcBlk, 'properties');
+% a recognised spelling converts to its registered term: equivalent spellings
+% of one term are the same thing (Decided by Jess Haley, 2026-10-26 [spelling
+% is notation]); the spellings are that term's registry `synonyms`
 [value, response] = putUnit(value, getf(props, {'response_units', 'responseUnits'}));
-if spellingReplaced(response)
-    dropped{end+1} = 'properties.response_units';
-end
 rt = getf(props, {'response_type', 'responseType'});
 if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
 co = getf(props, {'coordinates'});
@@ -279,8 +279,15 @@ if any(strcmp(family, {'sf', 'tf'}))
     [ab, abName] = getfn(srcBlk, {'abs'});
     if ~isempty(abName) && isstruct(ab) && isscalar(ab)
         absHandled = true;
-        [av, ~, alf, ad] = jTuningCurve(ab, family);
+        [av, ~, alf, ad, aresp] = jTuningCurve(ab, family);
         dropped = [dropped, prefixed('abs.', ad)];
+        % the second calculation states the main block's variable: an abs
+        % block whose recognised spelling names ANOTHER response (dF/F beside
+        % spikes/s) would not come back, so it stays unplaced ([spelling is
+        % notation] covers spellings of one term, not two terms)
+        if isRecognised(aresp) && ~strcmp(aresp.outcome, response.outcome)
+            dropped{end+1} = 'abs.properties.response_units';
+        end
         extra.abs = struct('present', true, 'value', av, 'leafFields', alf);
     end
 end
@@ -339,10 +346,7 @@ ctl = struct();
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
 value = toGrid(value, valueAxes);
 [u, nm] = getfn(st, {'response_units'}); used{end+1} = nm;
-[value, response] = putUnit(value, u);
-if spellingReplaced(response)
-    used = setdiff(used, {nm}, 'stable');   % its spelling is not kept
-end
+[value, response] = putUnit(value, u);   % [spelling is notation]: placed
 for k = 1:numel(rebuilt)
     [~, nm] = getfn(st, rebuilt(k));
     used{end+1} = nm; %#ok<AGROW>
@@ -364,13 +368,15 @@ end
 names = names(keep);
 end
 
-function tf = spellingReplaced(response)
-%SPELLINGREPLACED A recognised `response_units` spelling is written as the
-%   registered unit (om:hertz, om:one) and variable, and the v1 spelling itself
-%   is kept nowhere (putUnit). [generic stage is lossless] (Jess Haley,
-%   2026-10-25) lists that rewrite: the field counts as unplaced, so
-%   jCalculation carries the document whole as v1. An unrecognised spelling is
-%   kept as the unit's label and is placed.
+function tf = isRecognised(response)
+%ISRECOGNISED A recognised `response_units` spelling: written as the
+%   registered unit (om:hertz, om:one) and variable (putUnit). Until
+%   2026-10-26 such a document was carried whole as v1 ([generic stage is
+%   lossless] counted the rewrite as unplaced); Decided by Jess Haley,
+%   2026-10-26 [spelling is notation]: equivalent spellings of one registered
+%   term are the same thing, so it converts, and the spellings are recorded as
+%   the term's `synonyms` in the did-schema term registry (the round trip,
+%   did2.convert.roundtrip, compares through them).
 tf = isstruct(response) && isfield(response, 'outcome') ...
     && any(strcmp(response.outcome, {'neural firing rate', 'dF/F'}));
 end

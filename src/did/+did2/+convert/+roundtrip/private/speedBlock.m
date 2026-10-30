@@ -7,6 +7,9 @@ function [blk, bad] = speedBlock(leaf)
 %   (NDIcalc-vis-matlab ndi.calc.vis.speed_tuning, mock/speed_tuning/mock.N.json):
 %
 %     properties.response_units, response_type   value.response_unit / response_type
+%                                (response_units by responseUnitsBack: a
+%                                recognised spelling comes back as its
+%                                registered term's name, [spelling is notation])
 %     tuning_curve.spatial_frequency,
 %       temporal_frequency       one condition per grid cell, in the WRITER's
 %                                order: spatial frequency outer, temporal
@@ -39,7 +42,7 @@ if ~isstruct(value)
 end
 props = struct();
 if isfield(value, 'response_unit')
-    [~, props.response_units] = termParts(value.response_unit);
+    props.response_units = responseUnitsBack(leaf, value);
 end
 if isfield(value, 'response_type')
     [~, props.response_type] = termParts(value.response_type);
