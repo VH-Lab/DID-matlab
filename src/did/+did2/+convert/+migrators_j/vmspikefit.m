@@ -75,14 +75,53 @@ function bodies = vmspikefit(preBody)
 %   RequireSession is TRUE: base.session_id is mustBeNonEmpty and v1_to_v2
 %   quarantines the SOURCE when a body it produced fails. It removes nothing --
 %   the observation and the anchor take the same session_id.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (apps/vhlab_voltage2firingrate/vmspikefit.json +
+%   base.json + epochid.json + app.json at the locked NDI-matlab `main`,
+%   441530d; NO WRITER we hold and no corpus document, so the template alone
+%   fixes its shape). Its block and edges are snake_case already and the `app`
+%   block is read in either spelling (jSoftwareFromApp), so the raw read
+%   changes nothing the fold writes. The fold reads the template's block
+%   fields (and the fit fields jModelFit reads for either fit class), its
+%   `epochid` and `app` blocks, its edges `fit_input_id` and `element_id`, and
+%   `subject_id` beside them (outside the template, read as before). What the
+%   renamed path would have discarded is carried, carry-049, as before; a
+%   block, base field or edge no part of this fold reads, or an `app` field
+%   outside NDI's app.json (dropped without a word on the renamed path),
+%   carries the document whole as v1 (private/jRawAccount, jRawCarry; [fields
+%   outside the template are malformed], carry-100). A carry is the untouched
+%   v1 source. `epochid.epochid` is accounted for but not kept: the
+%   calculation is anchored to the session, as before (a known finding of the
+%   round trip). did2.convert.roundtrip.vmspikefit rebuilds the v1 document;
+%   testRawV1RoundTripFit compares the two.
 
 arguments
     preBody (1,1) struct
 end
 
+% THE RAW READ (see READS RAW v1 above).
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'vmspikefit', {{'fit_name', 'fit_equation', 'fit_parameters', 'fit_parameter_names', ...
+        'fit_independent_variable_names', 'fit_dependent_variable_names', 'fit_sse', ...
+        'fit_sse_perpoint', 'fit_constraints', 'fit_data'}}, ...
+    'epochid', {{'epochid'}}, ...
+    'app', {{'name', 'version', 'url', 'os', 'os_version', 'interpreter', 'interpreter_version'}}), ...
+    {'^fit_input_id$', '^element_id$', '^subject_id$'});
+if jRawCarry('vmspikefit', src, collision, unplaced, 'carry-100')
+    bodies = {src};
+    return;
+end
+
 % did-schema #88: a model_fit_calculation (jModelFit; #73 review item 68).
 % The pre-#73 fold kept only the residual, as a score observation.
 bodies = jModelFit(preBody, getBlock(preBody, 'vmspikefit'), {'fit_input_id'});
+if isscalar(bodies) && isequaln(bodies{1}, preBody)
+    bodies = {src};   % a carry is the untouched v1 source
+end
 end
 
 function b = getBlock(bodyStruct, name)

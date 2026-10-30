@@ -1,0 +1,36 @@
+{
+	"document_class": {
+		"definition":						"$NDIDOCUMENTPATH\/apps\/vhlab_voltage2firingrate\/vmspikefit.json",
+		"validation":						"$NDISCHEMAPATH\/apps\/vhlab_voltage2firingrate\/vmspikefit_schema.json",
+		"class_name":						"vmspikefit",
+		"property_list_name":					"vmspikefit",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$NDIDOCUMENTPATH\/base.json" },
+			{ "definition":					"$NDIDOCUMENTPATH\/epochid.json" },
+			{ "definition":					"$NDIDOCUMENTPATH\/app.json" }
+		]
+	},
+	"depends_on":[
+		{	"name": "fit_input_id",
+			"value": ""
+		},
+        {   "name": "element_id",
+            "value": ""
+        }
+	],
+	"vmspikefit": {
+		"fit_name": 						0,
+		"fit_equation": 					0,
+		"fit_parameters":					0,
+		"fit_parameter_names":					0,
+		"fit_sse":						0,
+		"fit_sse_perpoint":					0,
+		"fit_constraints": [ {
+				"fit_constraint_name":			0,
+				"fit_constraint_value":			0
+			}
+		]
+	}
+}
+

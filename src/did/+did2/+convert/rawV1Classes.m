@@ -405,12 +405,21 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         carries the document (private/jRawAccount,
 %                         carry-100). No writer at the locked main, no corpus
 %                         document. Round trips: testRawV1RoundTripFit.
+%     vmspikefit          superclasses `base` + `epochid` + `app`, no
+%                         superclass migrator; the same fold as fitcurve
+%                         (private/jModelFit), carried with no subject
+%                         (carry-137). The `app` block is read in either
+%                         spelling (jSoftwareFromApp). What the fold does not
+%                         read carries the document (private/jRawAccount,
+%                         carry-100). The vhlab_voltage2firingrate writer is
+%                         in no repository we hold; no corpus document. Round
+%                         trips: testRawV1RoundTripFit.
 %     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
 %                         universalRenames. Of the +migrators_j migrators these
 %                         are ontology_table_row,
 %                         openminds, openminds_element, openminds_stimulus,
-%                         openminds_subject, vmspikefilteringparameters and
-%                         vmspikefit; a class with no +migrators_j migrator
+%                         openminds_subject and vmspikefilteringparameters; a
+%                         class with no +migrators_j migrator
 %                         (the +migrators identity fallback) also runs
 %                         renamed. universalRenames cannot be deleted while
 %                         any of them does ([migrators read raw v1]).
@@ -495,6 +504,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'image', ...
     'dataset_session_info', ...
     'fitcurve', ...
+    'vmspikefit', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above

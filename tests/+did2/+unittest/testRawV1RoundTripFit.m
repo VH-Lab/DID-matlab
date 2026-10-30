@@ -81,6 +81,53 @@ v1 = did2.unittest.helpers.setDependency(writerFitcurve('fc_x'), 'stimulus_prese
 verifyCarried(testCase, v1, 'depends_on(stimulus_presentation_id)');
 end
 
+% ===================== vmspikefit ======================================
+
+function testVmspikefitIsSwitched(testCase)
+verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'vmspikefit')));
+out = runRaw(writerVmspikefit('vf_1', false));
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
+end
+
+function testAVmspikefitConvertsAndRoundTrips(testCase)
+for withApp = [false true]
+    v1 = writerVmspikefit('vf_1', withApp);
+    label = sprintf('vmspikefit (app named: %d)', withApp);
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    verifyEmpty(testCase, out.passthrough, [label ': converted, not carried']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyFalse(testCase, r.carried, label);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {'epochid.epochid'});
+end
+end
+
+function testTheBareVmspikefitTemplateIsCarried(testCase)
+% the template's element_id is empty: no subject, carried whole as v1
+% (carry-137), as before
+v1 = did2.unittest.helpers.ndiDocument('vmspikefit', 'Id', 'vf_t');
+v1 = jsondecode(jsonencode(v1));
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+verifyEmpty(testCase, out.quarantine);
+verifyTrue(testCase, carried, 'carried as the untouched v1 source');
+verifyTrue(testCase, contains(notes, '[carry-137] '), notes);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyTrue(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'vmspikefit (template)', {});
+end
+
+function testAFieldOutsideTheVmspikefitTemplateCarriesIt(testCase)
+v1 = writerVmspikefit('vf_x', false);
+v1.vmspikefit.fit_rsquared = 0.9;
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: vmspikefit.fit_rsquared');
+v1 = writerVmspikefit('vf_x', true);
+v1.app.license = 'MIT';
+verifyCarried(testCase, v1, 'app.license');
+v1 = did2.unittest.helpers.setDependency(writerVmspikefit('vf_x', false), 'stimulus_presentation_id', 'sp_1');
+verifyCarried(testCase, v1, 'depends_on(stimulus_presentation_id)');
+end
+
 % ===================== both ============================================
 
 function testTheSwitchChangesNoOutcome(testCase)
@@ -115,7 +162,30 @@ end
 % ===================== fixtures, from the TEMPLATES ======================
 
 function f = fixtures()
-f = {'fitcurve, template + element_id', writerFitcurve('fc_1')};
+f = {'fitcurve, template + element_id', writerFitcurve('fc_1'); ...
+    'vmspikefit, template', writerVmspikefit('vf_1', false); ...
+    'vmspikefit, template + app', writerVmspikefit('vf_2', true)};
+end
+
+function v1 = writerVmspikefit(id, withApp)
+% apps/vhlab_voltage2firingrate/vmspikefit.json (+ epochid, app), every fit
+% field set; the template's two edges set in its order
+v1 = did2.unittest.helpers.ndiDocument('vmspikefit', 'Id', id);
+v1.vmspikefit.fit_name = 'double exponential';
+v1.vmspikefit.fit_equation = 'exp2';
+v1.vmspikefit.fit_parameters = [1 -0.5 2 -0.05];
+v1.vmspikefit.fit_parameter_names = 'a b c d';
+v1.vmspikefit.fit_sse = 3.25;
+v1.vmspikefit.fit_sse_perpoint = 0.0325;
+v1.vmspikefit.fit_constraints = struct('fit_constraint_name', 'b', 'fit_constraint_value', 0);
+v1.epochid.epochid = 't00023';
+if withApp
+    v1.app.name = 'vhlab_voltage2firingrate';
+    v1.app.version = '0.9';
+end
+v1 = did2.unittest.helpers.setDependency(v1, 'fit_input_id', '41268b6f5c6a3d4e_af00000000000001');
+v1 = did2.unittest.helpers.setDependency(v1, 'element_id', '41268b6f5c6a3d4e_af000000000000e1');
+v1 = jsondecode(jsonencode(v1));
 end
 
 function v1 = writerFitcurve(id)
