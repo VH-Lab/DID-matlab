@@ -577,6 +577,8 @@ if ~isempty(mapSites)
     m.site2channelmap = struct('map', (1:mapSites)');
     batch{end+1} = m;
 end
+% the shape a corpus delivers (so a carry compares equal to its source)
+batch = cellfun(@(b) jsondecode(jsonencode(b)), batch, 'UniformOutput', false);
 end
 
 function d = electrodeCountOf(out, entityId)
