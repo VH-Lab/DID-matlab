@@ -4811,7 +4811,14 @@ rb = csv.model_fit(rbAt);
 verifyEqual(testCase, rb.sensitivity, [10 20 15 5]);       % metric rides INSIDE its fit
 verifyEqual(testCase, rb.c50, [0.2 0.3 0.4 0.5]);
 verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
-verifyEqual(testCase, csv.interpolated_values.c50, [0.21 0.31 0.41 0.51]);
+% [interpolated values are a list] (Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md): one structure, or a list once the loaded
+% schema declares it; either way the one entry as stated, and no |response|
+% entry (contrast_sensitivity_calc states none)
+[iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries(csv.interpolated_values);
+verifyEqual(testCase, nIv, 1);
+verifyEqual(testCase, iv.c50, [0.21 0.31 0.41 0.51]);
+verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
 verifyEqual(testCase, csv.significance.modulated_response, true);
 verifyEqual(testCase, lower(csv.response_type.name), 'mean');
@@ -5889,7 +5896,13 @@ verifyEqual(testCase, mf(1).goodness.r2, 0.95, 'AbsTol', 1e-9);
 verifyEqual(testCase, mf(1).metrics.preferred_value, 0.13, 'AbsTol', 1e-9);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
     0.01, 'AbsTol', 1e-9);
-iv = leaf.spatial_frequency_tuning_calculation.interpolated_values;
+% [interpolated values are a list] (Decided by Jess Haley, 2026-10-30): one
+% structure, or a list once the loaded schema declares it; this fixture has no
+% `abs` block, so either way the one entry as stated
+[iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
+    leaf.spatial_frequency_tuning_calculation.interpolated_values);
+verifyEqual(testCase, nIv, 1);
+verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, iv.preferred_value, 0.12, 'AbsTol', 1e-9);
 verifyEqual(testCase, iv.half_maximum_below, 0.06, 'AbsTol', 1e-9);
 end
@@ -6047,6 +6060,22 @@ function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
 % Haley): the `abs` block no longer carries the document; it is a second
 % calculation of the same class, whose method says the response was made
 % absolute.
+% UPDATED 2026-10-30 ([interpolated values are a list], Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md): run on a copy of the
+% loaded schema without the list and with it (did2.unittest.helpers.
+% interpolatedListSchema), so both shapes are checked whatever did-schema
+% `main` declares. With the list, v1 `abs.fitless` is the main calculation's
+% second interpolated_values entry ('absolute value') and the absolute-value
+% calculation holds only its fits.
+for listDeclared = [false true]
+    did2.unittest.helpers.interpolatedListSchema(testCase, listDeclared);
+    checkTemporalFrequencyFold(testCase, listDeclared);
+end
+end
+
+function checkTemporalFrequencyFold(testCase, listDeclared)
+% testTemporalFrequencyTuningFoldsToCalculationLeaf on the schema in use, which
+% declares interpolated_values a list when LISTDECLARED
 out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 9);
@@ -6085,8 +6114,29 @@ verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova
     0.002, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.across_stimuli_anova_p, ...
     0.031, 'AbsTol', 1e-12);
-iv = leaf.temporal_frequency_tuning_calculation.interpolated_values;
+[iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
+    leaf.temporal_frequency_tuning_calculation.interpolated_values);
 verifyEqual(testCase, iv.preferred_value, 4.2, 'AbsTol', 1e-12);
+absBlock = absCalcs{1}.temporal_frequency_tuning_calculation;
+if listDeclared
+    % the values as stated first, then |response| (the fixture's abs.fitless is
+    % the same struct as its fitless)
+    verifyEqual(testCase, nIv, 2, 'as stated, then |response|');
+    ivList = leaf.temporal_frequency_tuning_calculation.interpolated_values;
+    if iscell(ivList); ivList = [ivList{:}]; end
+    verifyTrue(testCase, ~isfield(ivList, 'response_transform') ...
+        || isempty(ivList(1).response_transform), 'the first entry is as stated');
+    verifyEqual(testCase, char(ivList(2).response_transform), 'absolute value');
+    verifyEqual(testCase, ivAbs.preferred_value, 4.2, 'AbsTol', 1e-12);
+    verifyFalse(testCase, isfield(absBlock, 'interpolated_values'), ...
+        'abs.fitless is on the main calculation''s list, not the second calculation');
+else
+    verifyEqual(testCase, nIv, 1, 'one structure');
+    verifyEmpty(testCase, fieldnames(ivAbs));
+    absIv = absBlock.interpolated_values;
+    verifyTrue(testCase, isstruct(absIv) && isscalar(absIv));
+    verifyEqual(testCase, absIv.preferred_value, 4.2, 'AbsTol', 1e-12);
+end
 
 mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
 assertEqual(testCase, numel(mf), 5, ...
