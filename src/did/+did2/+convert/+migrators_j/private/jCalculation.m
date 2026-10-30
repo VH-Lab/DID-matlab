@@ -106,8 +106,11 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %                non-empty leaf outside the template is cited on its own);
 %     carry-056  inside the template: a field the writer writes that the fold
 %                has no home for (contrast fits' relative_max_gain, the SF /
-%                TF `abs` block, stimulus_tuningcurve.stimid, a recognised
-%                response_units spelling, tuningcurve_calc.log, ...).
+%                TF `abs` block's response_units when it names another
+%                response than the main block's, stimulus_tuningcurve.stimid,
+%                tuningcurve_calc.log, ...). A recognised response_units
+%                spelling is placed ([spelling is notation], Jess Haley,
+%                2026-10-26).
 %   Field names are compared case-insensitively (the fold lower-cases fit
 %   field names). The note is jRawCarry's, as for every other family.
 %

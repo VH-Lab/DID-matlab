@@ -227,10 +227,8 @@ v1.app = struct('name', 'ndi.calc.vis.oridir', 'version', '1.2', ...
 % a setting the name table holds ([parameter names map by table], Jess Haley,
 % 2026-10-27: a name outside it carries the document)
 v1.oridirtuning_calc = struct('input_parameters', struct('independent_label', 'direction'));
-% response_units EMPTY (the writers' real value): a recognised spelling such as
-% 'spikes/s' is replaced by a registered unit and kept nowhere, so since
-% [generic stage is lossless] (Jess Haley, 2026-10-25) such a document is
-% carried whole as v1 -- and this test is about the app fold.
+% response_units EMPTY (the writers' real value); this test is about the app
+% fold.
 props = struct();
 props.response_units = [];
 v1.orientation_direction_tuning = struct( ...

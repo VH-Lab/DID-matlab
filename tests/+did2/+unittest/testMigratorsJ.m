@@ -6980,12 +6980,21 @@ function out = foldPlaceable(testCase, migrator, body)
 %   one `carried_as_v1` note naming the fields). Asserted here. Then exactly
 %   those fields are removed and the rest is folded, so a fold test still
 %   asserts the fold of everything that IS placed.
+%   UPDATED 2026-10-30 ([spelling is notation], Jess Haley, 2026-10-26): a
+%   recognised response_units spelling ('spikes/s', 'Spikes/s') is placed now,
+%   so a fixture whose ONLY unplaced field was that spelling folds as it
+%   stands: its first fold is the fold, and it must keep its response unit.
 did2.convert.reportNote('reset');
 first = migrator(body);
 notes = did2.convert.reportNote('collect');
 did2.convert.reportNote('reset');
-assertTrue(testCase, isscalar(first) && isequaln(first{1}, body), ...
-    'the writer-shaped document was not carried whole as v1');
+if ~(isscalar(first) && isequaln(first{1}, body))
+    verifyFalse(testCase, isfield(notes, 'carried_as_v1'), ...
+        'the document folded and was also noted as carried');
+    verifyGreaterThan(testCase, numel(first), 1, 'the document did not fold');
+    out = first;
+    return;
+end
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
 d = notes.carried_as_v1.distinct_details{1};
 % each path follows its carry register row tag ('[carry-056] ', [carry register]),

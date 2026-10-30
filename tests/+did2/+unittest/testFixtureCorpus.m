@@ -692,15 +692,20 @@ end
 
 function testACarriedCalculatorWithNoTombstoneIsCountedNotQuarantined(testCase)
 % [generic stage is lossless] / [partly placed is carried as v1] (Jess Haley,
-% 2026-10-25): the writer-shaped contrast_tuning states a field the fold has no
-% home for, so it is carried whole as v1. V_eta keeps no tombstone for that
+% 2026-10-25): a contrast_tuning that states a field the fold has no home for
+% is carried whole as v1. UPDATED 2026-10-30: the fixture's recognised
+% response_units spelling is placed now ([spelling is notation], Jess Haley,
+% 2026-10-26), so a field outside the NDI template is added here to keep the
+% carry this test is about ([tuning stray fields are malformed], carry-100). V_eta keeps no tombstone for that
 % class, so it cannot validate as V_eta; it is a v1 document (stored as did_v1
 % unvalidated, [passthrough stays v1: how]) and is COUNTED, not quarantined.
 if isempty(getenv('DID_SCHEMA_PATH'))
     assumeFail(testCase, ...
         'DID_SCHEMA_PATH not set; run under test-fixtures.yml (assembled V_eta schema).');
 end
-result = did2.convert.v1_to_v2(fx_contrast_tuning(), 'Validate', true, ...
+batch = fx_contrast_tuning();
+batch{3}.contrast_tuning.properties.unplaced_note = 'outside the template';
+result = did2.convert.v1_to_v2(batch, 'Validate', true, ...
     'TargetVersion', 'V_eta');
 verifyEmpty(testCase, result.quarantine, 'a carried v1 document was quarantined');
 verifyGreaterThanOrEqual(testCase, result.summary.passthrough_unvalidated_no_schema_count, 1);

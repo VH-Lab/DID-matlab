@@ -16,8 +16,10 @@ function [blk, bad] = rawCurveBlock(leaf, own, responseId)
 %                                 keys x trials x [real, imag] (or keys x
 %                                 trials), back to trials x keys per half
 %     control_response_*, control_individual_responses_*   value.control.*
-%     response_units              value.response_unit's label (a spelling
-%                                 jTuningCurve recognised carries the document)
+%     response_units              responseUnitsBack: the registered term's
+%                                 name for a spelling jTuningCurve recognised
+%                                 (compared through its registry `synonyms`,
+%                                 [spelling is notation]), else the unit's label
 %     stimid, stimulus_presentation_number   rebuilt from the presentation
 %                                 and the curve's conditions
 %                                 (did2.convert.tuningStimids; Decided by Jess
@@ -56,7 +58,7 @@ blk = take(blk, 'response_stddev', value, 'stddev');
 blk = take(blk, 'response_stderr', value, 'stderr');
 blk = halves(blk, 'individual_responses', value, 'individual');
 if isfield(value, 'response_unit')
-    [~, blk.response_units] = termParts(value.response_unit);
+    blk.response_units = responseUnitsBack(leaf, value);
 end
 if isfield(value, 'control') && isstruct(value.control)
     ctl = value.control;

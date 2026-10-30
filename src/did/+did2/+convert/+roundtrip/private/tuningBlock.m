@@ -10,8 +10,10 @@ function [blk, bad, absFitless] = tuningBlock(leaf, family)
 %   writer wins over the template): `Hotelling2Test`, `L50` / `Pref` / `H50` /
 %   `R2`. BAD lists what is emitted but has no place in the block.
 %
-%     properties.response_units   value.response_unit (its label: a spelling
-%                                 jTuningCurve recognised carries the document)
+%     properties.response_units   responseUnitsBack: the registered term's
+%                                 name for a spelling jTuningCurve recognised
+%                                 (compared through its registry `synonyms`,
+%                                 [spelling is notation]), else the unit's label
 %     properties.response_type    value.response_type (its label)
 %     properties.coordinates      value.coordinates
 %     tuning_curve.<variable>     the covariate along the one dimension: its
@@ -48,7 +50,7 @@ seen = {};
 
 props = struct();
 if isfield(value, 'response_unit')
-    [~, props.response_units] = termParts(value.response_unit);
+    props.response_units = responseUnitsBack(leaf, value);
 end
 if isfield(value, 'response_type')
     [~, props.response_type] = termParts(value.response_type);
