@@ -395,9 +395,19 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         Inverse: the passthrough one, or nothing for a list
 %                         that rebuilt. Round trips:
 %                         testRawV1RoundTripSessionList.
+%     fitcurve            superclass `base` only, no `app` block, no
+%                         superclass migrator; a `calculation` with value kind
+%                         `model_fit` (private/jModelFit), as before. The
+%                         template states no subject, so a template-shaped fit
+%                         is carried (carry-136); one that names an
+%                         `element_id` or `subject_id` (read, though outside
+%                         the template) converts. What the fold does not read
+%                         carries the document (private/jRawAccount,
+%                         carry-100). No writer at the locked main, no corpus
+%                         document. Round trips: testRawV1RoundTripFit.
 %     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
 %                         universalRenames. Of the +migrators_j migrators these
-%                         are fitcurve, ontology_table_row,
+%                         are ontology_table_row,
 %                         openminds, openminds_element, openminds_stimulus,
 %                         openminds_subject, vmspikefilteringparameters and
 %                         vmspikefit; a class with no +migrators_j migrator
@@ -484,6 +494,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'control_stimulus_ids', ...
     'image', ...
     'dataset_session_info', ...
+    'fitcurve', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
