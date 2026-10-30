@@ -2,7 +2,7 @@ function tf = isVocabulary(term, kind, handle)
 %ISVOCABULARY True when TERM is the relation or entity type HANDLE, by node.
 %
 %   TF = did2.build.isVocabulary(TERM, KIND, HANDLE): TERM is a {node, name}
-%   struct (or a bare name), KIND 'relation' or 'entity_type', HANDLE a
+%   struct (or a bare name), KIND 'relation', 'entity_type' or 'clock', HANDLE a
 %   handle as did2.build.vocabulary takes it ('member_of', 'epoch').
 %   When HANDLE has a node, TERM matches exactly when its node is that node
 %   (prefix case ignored) -- or, for a TERM with no node (a document written
@@ -12,7 +12,13 @@ function tf = isVocabulary(term, kind, handle)
 %   this way, never by the stored name alone (Jess Haley 2026-10-22
 %   [vocabulary nodes] L1, L2).
 %
-%   See also did2.build.vocabulary.
+%   KIND 'clock' compares relative_time_reference value.clock and
+%   clock_alignment_configuration clock terms the same way (Decided by Jess
+%   Haley, 2026-10-26 [clock terms get nodes]): isVocabulary(clk, 'clock',
+%   'dev_local_time') holds for {EMPTY:0000403, any name} and for a node-less
+%   "dev_local_time" or "device local time".
+%
+%   See also did2.build.vocabulary, did2.build.vocabularyHandle.
 
 arguments
     term

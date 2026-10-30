@@ -1,5 +1,5 @@
 function v2Body = daqreader_ndr(preBody)
-%DAQREADER_NDR Chunk-c de-encode: daqreader_ndr dissolves into daqreader.
+%DAQREADER_NDR Chunk-c de-encode: daqreader_ndr folds into an acquisition_reader.
 %   The reader subtype ('ndr') was encoded in the CLASS NAME, but it is already
 %   discriminated by ndi_daqreader_class, so the distinguishing fields de-encode
 %   onto the generic daqreader: ndr_reader_string -> daqreader.reader_string,
@@ -83,9 +83,13 @@ if ~isempty(unplaced)
     return;
 end
 
+% NO RENAME TO `daqreader`: that class is `retire` and leaves V2 (Decided by
+% Jess Haley, 2026-10-25 [retired classes leave V2] (1), did-schema
+% V_eta_go_forward_class_audit.md: the generic migration stops writing retired
+% classes as V2 documents). The reading copy keeps its v1 class name;
+% daqreader.m reads only its `daqreader` block, never the class name, and
+% writes the decided target, an `acquisition_reader`.
 v2Body = preBody;
-v2Body.document_class.class_name = 'daqreader';
-v2Body.document_class.class_version = '2.0.0';
 
 sub = struct();
 if isfield(v2Body, 'daqreader_ndr') && isstruct(v2Body.daqreader_ndr)
@@ -135,8 +139,9 @@ if isfield(v2Body, 'daqreader_ndr')
     v2Body = rmfield(v2Body, 'daqreader_ndr');
 end
 
-% AND NOW HAND IT ON, which is the half that was missing. Renaming the class to
-% `daqreader` did NOT put this document on daqreader.m's path:
+% AND NOW HAND IT ON, which is the half that was missing. (Until 2026-10-30 the
+% class was renamed to `daqreader` here; see NO RENAME above.) Renaming the
+% class to `daqreader` did NOT put this document on daqreader.m's path:
 % did2.convert.v1_to_v2/runConcreteMigrator dispatches ONCE, on the SOURCE class
 % name, and never re-dispatches after a migrator rewrites it. So a
 % `daqreader_ndr` document came out of here as a `daqreader` -- a class the
@@ -150,6 +155,35 @@ end
 % Both PRED `daqreader_ndr` documents carry reader_string 'intan', which is
 % precisely the case the old guard passed through.
 v2Body = did2.convert.migrators_j.daqreader(v2Body);
+% daqreader.m carries a document it cannot declare (carry-130: no reader class
+% and no reader string) by returning the body it was handed, which is this
+% function's READING COPY (its daqreader_ndr block folded away), not the v1
+% source. A carry is the untouched v1 document ([passthrough stays v1];
+% [retired classes leave V2] (1)), so that copy is replaced by SRC; the note
+% daqreader.m left stands.
+if isCarried(v2Body)
+    v2Body = {src};
+end
+end
+
+function tf = isCarried(out)
+%ISCARRIED True unless OUT holds the acquisition_reader daqreader.m builds.
+if ~iscell(out); out = {out}; end
+tf = true;
+for k = 1:numel(out)
+    b = out{k};
+    cn = '';
+    if isa(b, 'did2.document')
+        cn = char(b.className());
+    elseif isstruct(b) && isfield(b, 'document_class') && isstruct(b.document_class) ...
+            && isfield(b.document_class, 'class_name')
+        cn = char(b.document_class.class_name);
+    end
+    if strcmp(cn, 'acquisition_reader')
+        tf = false;
+        return;
+    end
+end
 end
 
 function v = textField(body, blockName, fieldName)

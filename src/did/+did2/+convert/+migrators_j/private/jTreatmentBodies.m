@@ -20,7 +20,10 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %                  and 2] (2), Jess Haley, 2026-10-26).
 %     'dose'       a `dose_manipulation` whose `formulation_id` names the
 %                  formulation and whose value is the amount (jDoseValue: the
-%                  source's amount, else NaN in `volume.liters`).
+%                  source's amount; with only ingredient amounts, the whole
+%                  formulation's amount named in base.needs_info
+%                  ([canonical absent only as needs info], 2026-10-30);
+%                  with none, NaN in `volume.liters`).
 %     'unknown'    no location: nothing is built; UNPLACED is a
 %                  `needs_mapping:` note and the caller carries the document
 %                  whole as v1 ([one-reading quick answers] (Q1), Jess Haley,
@@ -122,7 +125,7 @@ switch route
             variable, [], 'TimeReferenceIds', {anchorId}, 'ValueId', formulationId, ...
             'Id', id, extra{:}, 'ValueKind', 'formulation');
     otherwise
-        [value, chemicals, conflicts, ingredientRows, placeholders] = jDoseValue(chemicals);
+        [value, chemicals, conflicts, ingredientRows, placeholders, needsInfo] = jDoseValue(chemicals);
         % a vehicle's per-body-mass number (Hunsberger saline `1 mg/kg`) is a
         % placeholder, not an amount (Jess Haley, 2026-10-21 [dose per
         % ingredient]); two rows of one amount kind that disagree (Jess Haley,
@@ -169,9 +172,20 @@ switch route
                 'UniformOutput', false);
             edges.ingredient_id = ingIds;
         end
+        % [canonical absent only as needs info] (Decided by Jess Haley,
+        % 2026-10-30): an amount the source never states is named in
+        % needs_info (jDoseValue), one `needs_info` note each
+        niOpt = {};
+        if ~isempty(needsInfo)
+            niOpt = {'NeedsInfo', needsInfo};
+        end
         manip = jStatement(preBody, 'manipulation', jSubjectOf(preBody), ...
             variable, value, 'TimeReferenceIds', {anchorId}, ...
-            'Edges', edges, 'Id', id, extra{:}, 'ValueKind', 'dose');
+            'Edges', edges, 'Id', id, extra{:}, niOpt{:}, 'ValueKind', 'dose');
+        for k = 1:numel(needsInfo)
+            did2.convert.reportNote('needs_info', ...
+                char(preBody.document_class.class_name), id, needsInfo(k).field);
+        end
         if strcmp(route, 'unknown')
             did2.convert.reportNote('route_unknown', ...
                 char(preBody.document_class.class_name), id);

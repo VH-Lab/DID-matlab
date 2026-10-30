@@ -237,6 +237,46 @@ if ~did2.unittest.helpers.schemaDeclares('tuning_curve', ...
 end
 end
 
+% ===================== a recognised spelling is notation ===================
+
+function testARecognisedResponseSpellingConvertsAndRoundTrips(testCase)
+% Decided by Jess Haley, 2026-10-26 [spelling is notation]: a recognised
+% `response_units` spelling converts to its registered term (om:hertz; dF/F's
+% variable EMPTY:0000397 with unit om:one), and the round trip counts the v1
+% spelling as `equivalent` through the term's registry `synonyms`
+% (sameTermSpelling). An unrecognised spelling still comes back exactly.
+% A spelling that IS the registered term's name ('dF/F', EMPTY:0000397's
+% name) comes back as itself, so the round trip reads it as `matched`
+% (did2.convert.roundtrip.check compares exactly before it asks spec.same);
+% every other spelling is `equivalent`.
+spellings = {'Hz', 'spikes/s', 'Spikes per second', 'dF/F', 'ΔF/F', 'dFF'};
+outcome   = {'equivalent', 'equivalent', 'equivalent', 'matched', ...
+    'equivalent', 'equivalent'};
+inspected = 0;
+for j = 1:numel(spellings)
+    v1 = writerOutput('oridirtuning_calc');
+    v1.orientation_direction_tuning.properties.response_units = spellings{j};
+    out = runRaw(v1);
+    label = sprintf('oridirtuning_calc, ''%s''', spellings{j});
+    verifyEmpty(testCase, out.passthrough, [label ': carried']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    inspected = inspected + 1;
+    verifyEmpty(testCase, r.lost, sprintf('%s: lost: %s', label, describeLost(r)));
+    verifyTrue(testCase, any(strcmp(r.(outcome{j}), ...
+        'orientation_direction_tuning.properties.response_units')), ...
+        sprintf('%s: the spelling was not %s', label, outcome{j}));
+end
+verifyEqual(testCase, inspected, numel(spellings));
+
+% a spelling of ANOTHER term is not the same thing
+v1 = writerOutput('oridirtuning_calc');
+v1.orientation_direction_tuning.properties.response_units = 'Hz';
+docs = structs(runRaw(v1).migrated);
+v1.orientation_direction_tuning.properties.response_units = 'dF/F';
+r = did2.convert.roundtrip.check(v1, docs);
+verifyEqual(testCase, {r.lost.path}, {'orientation_direction_tuning.properties.response_units'});
+end
+
 % ===================== a check that cannot fail proves nothing ===========
 
 function testAMissingVersionIsReportedLost(testCase)

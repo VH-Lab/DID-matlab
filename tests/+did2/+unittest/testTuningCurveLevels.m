@@ -579,10 +579,10 @@ function testResponseUnitsAreReadFromProperties(testCase)
 % A real unit is used here so the test distinguishes "found the right level" from
 % "guarded a bad type" -- the empty case is a separate test below.
 % UPDATED 2026-10-25: driven by a spelling the decisions do not name ('mV'),
-% which is placed as the unit's own label. A RECOGNISED spelling ('Hz') is
-% replaced by om:hertz and kept nowhere, so since [generic stage is lossless]
-% (Jess Haley) that document is carried whole as v1 -- which also proves the
-% read reached `properties`: the carry names properties.response_units.
+% which is placed as the unit's own label. UPDATED 2026-10-30: a RECOGNISED
+% spelling ('Hz') converts to om:hertz again ([spelling is notation], Jess
+% Haley, 2026-10-26: the spellings are the term's registry synonyms), which
+% also proves the read reached `properties`.
 fam = familyTable();
 props = struct('response_type', 'mean', 'response_units', 'mV');
 hz = struct('response_type', 'mean', 'response_units', 'Hz');
@@ -597,16 +597,10 @@ for k = 1:numel(fam)
         fam(k).className));
     verifyTrue(testCase, isUnitNamed(v.response_unit, 'mV'), sprintf( ...
         '%s: value.response_unit is not the source label "mV"', fam(k).className));
-    fn = str2func(['did2.convert.migrators_j.' fam(k).className]);
-    did2.convert.reportNote('reset');
-    body = tuningBody(fam(k).className, mk(), hz);
-    out = fn(body);
-    notes = did2.convert.reportNote('collect');
-    did2.convert.reportNote('reset');
-    verifyTrue(testCase, isscalar(out) && isequaln(out{1}, body), sprintf( ...
-        '%s: a recognised spelling must carry the document whole as v1', fam(k).className));
-    verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
-        'properties.response_units'), fam(k).className);
+    vh = foldedValue(fam(k).className, mk(), hz);
+    verifyTrue(testCase, isfield(vh, 'response_unit') ...
+        && isTerm(vh.response_unit, 'om:hertz', 'hertz'), sprintf( ...
+        '%s: a recognised spelling must convert to om:hertz "hertz"', fam(k).className));
 end
 verifyEqual(testCase, inspected, 5, 'the sweep must cover all five families');
 end
@@ -655,9 +649,9 @@ body.stimulus_tuningcurve = struct( ...
     'response_units',  'mV');
 
 % UPDATED 2026-10-25: a spelling the decisions do not name ('mV'), placed as the
-% unit's label. A recognised one ('Spikes/s') is replaced by om:hertz and kept
-% nowhere, so that document is carried whole as v1 ([generic stage is lossless],
-% Jess Haley) -- testSpikeRateSpellingsCarryTheDocumentAsV1.
+% unit's label. A recognised one ('Spikes/s') converts to om:hertz ([spelling
+% is notation], Jess Haley, 2026-10-26) --
+% testSpikeRateSpellingsMakeTheVariableNeuralFiringRate.
 leaf = tuningLeaf(did2.convert.migrators_j.stimulus_tuningcurve(body));
 v = leaf.tuning_curve.value;
 assertTrue(testCase, isfield(v, 'response_unit'), ...
@@ -828,9 +822,7 @@ tc.control_response_mean   = (r / 10).';
 tc.control_response_stddev = (r / 20).';
 tc.control_response_stderr = (r / 40).';
 tc.control_individual_responses_real = repmat(r / 10, 1, 3).';
-% EMPTY: a recognised spelling ('spikes/s') is replaced and kept nowhere, so a
-% curve stating one is carried as v1 since [generic stage is lossless]; these
-% tests are about the grid
+% EMPTY: these tests are about the grid
 tc.response_units = [];
 end
 
@@ -941,38 +933,50 @@ end
 % Every family (the five fitted composites and the raw curve) is driven through
 % its own migrator; the counts below are the denominators.
 
-function testSpikeRateSpellingsCarryTheDocumentAsV1(testCase)
-% INVERTS testSpikeRateSpellingsMakeTheVariableNeuralFiringRate (variable
-% wikidata:Q71762818, unit om:hertz, the spelling kept nowhere). [generic stage
-% is lossless] (Jess Haley, 2026-10-25, audit item 14): every recognised
-% spelling now carries the document whole as v1, through all six migrators.
+function testSpikeRateSpellingsMakeTheVariableNeuralFiringRate(testCase)
+% RE-INVERTED 2026-10-30 (was testSpikeRateSpellingsCarryTheDocumentAsV1).
+% Decided by Jess Haley, 2026-10-26 [spelling is notation]: equivalent
+% spellings of one registered term are the same thing, so a recognised spelling
+% converts: variable wikidata:Q71762818, unit om:hertz; the spellings are
+% om:hertz's `synonyms` in the did-schema term registry.
 spellings = {'Hz', 'hz', 'Spikes/s', 'spikes/s', 'sp/s', 'SP/S', '1/s', ...
     'spikes/sec', 'Spikes per second', ' spikes/s '};
-inspected = verifyCarriedForSpellings(testCase, spellings);
-verifyEqual(testCase, inspected, 6 * numel(spellings), ...
-    'every spelling through all six tuning migrators');
-end
-
-function testDffSpellingsCarryTheDocumentAsV1(testCase)
-% INVERTS testDffSpellingsMakeTheVariableDff (variable EMPTY:0000397, unit
-% om:one, the spelling kept nowhere); as above.
-spellings = {'dF/F', 'df/f', 'DF/F', 'ΔF/F', 'deltaF/F', 'dff', 'dFF'};
-inspected = verifyCarriedForSpellings(testCase, spellings);
-verifyEqual(testCase, inspected, 6 * numel(spellings), ...
-    'every spelling through all six tuning migrators');
-end
-
-function inspected = verifyCarriedForSpellings(testCase, spellings)
 inspected = 0;
 for j = 1:numel(spellings)
-    [outs, bodies] = responseOutputs(spellings{j});
-    for k = 1:numel(outs)
+    for leaf = responseLeaves(spellings{j})
+        L = leaf{1};
         inspected = inspected + 1;
-        verifyTrue(testCase, isscalar(outs{k}) && isequaln(outs{k}{1}, bodies{k}), ...
-            sprintf('%s, ''%s'': not carried whole as v1', ...
-            bodies{k}.document_class.class_name, spellings{j}));
+        verifyTrue(testCase, isTerm(L.statement.variable, 'wikidata:Q71762818', ...
+            'neural firing rate'), sprintf('%s, ''%s'': variable is not neural firing rate', ...
+            L.document_class.class_name, spellings{j}));
+        verifyTrue(testCase, isTerm(L.tuning_curve.value.response_unit, 'om:hertz', 'hertz'), ...
+            sprintf('%s, ''%s'': response_unit is not om:hertz', ...
+            L.document_class.class_name, spellings{j}));
     end
 end
+verifyEqual(testCase, inspected, 6 * numel(spellings), ...
+    'every spelling through all six tuning migrators');
+end
+
+function testDffSpellingsMakeTheVariableDff(testCase)
+% RE-INVERTED 2026-10-30 (was testDffSpellingsCarryTheDocumentAsV1), as above:
+% variable EMPTY:0000397 (its `synonyms` hold the spellings), unit om:one.
+spellings = {'dF/F', 'df/f', 'DF/F', 'ΔF/F', 'deltaF/F', 'dff', 'dFF'};
+inspected = 0;
+for j = 1:numel(spellings)
+    for leaf = responseLeaves(spellings{j})
+        L = leaf{1};
+        inspected = inspected + 1;
+        verifyTrue(testCase, isTerm(L.statement.variable, 'EMPTY:0000397', 'dF/F'), ...
+            sprintf('%s, ''%s'': variable is not EMPTY:0000397 dF/F', ...
+            L.document_class.class_name, spellings{j}));
+        verifyTrue(testCase, isTerm(L.tuning_curve.value.response_unit, 'om:one', 'one'), ...
+            sprintf('%s, ''%s'': response_unit is not om:one', ...
+            L.document_class.class_name, spellings{j}));
+    end
+end
+verifyEqual(testCase, inspected, 6 * numel(spellings), ...
+    'every spelling through all six tuning migrators');
 end
 
 function testEmptyUnitsMakeTheVariableNeuralResponse(testCase)
@@ -1023,12 +1027,12 @@ end
 function testTheResponseVariableIsCountedInTheReport(testCase)
 % One 'tuning_response_variable' note per folded document, its DETAIL the
 % outcome: the count is the denominator the migration report prints first.
-% UPDATED 2026-10-25: a recognised spelling ('Spikes/s', 'dF/F') now carries
-% the document whole as v1 ([generic stage is lossless], Jess Haley), so it
-% folds nothing and leaves a `carried_as_v1` note instead.
+% UPDATED 2026-10-30: a recognised spelling ('Spikes/s', 'dF/F') converts
+% again ([spelling is notation], Jess Haley, 2026-10-26), so every one of the
+% four sources folds and leaves its note; none is carried.
 did2.convert.reportNote('reset');
-responseOutputs('Spikes/s');
-responseOutputs('dF/F');
+responseLeaves('Spikes/s');
+responseLeaves('dF/F');
 responseLeaves([]);
 responseLeaves('mV');
 notes = did2.convert.reportNote('collect');
@@ -1036,9 +1040,9 @@ did2.convert.reportNote('reset');
 assertTrue(testCase, isfield(notes, 'tuning_response_variable'), ...
     'no tuning_response_variable note was left');
 n = notes.tuning_response_variable;
-verifyEqual(testCase, n.count, 2 * 6, 'one note per folded document');
-verifyEqual(testCase, notes.carried_as_v1.count, 2 * 6, 'one carry per recognised-spelling document');
-expect = {'not stated', 'unrecognised: mV'};
+verifyEqual(testCase, n.count, 4 * 6, 'one note per folded document');
+verifyFalse(testCase, isfield(notes, 'carried_as_v1'), 'a recognised spelling was carried');
+expect = {'neural firing rate', 'dF/F', 'not stated', 'unrecognised: mV'};
 for j = 1:numel(expect)
     hit = strcmp(n.distinct_details, expect{j});
     assertTrue(testCase, any(hit), sprintf('no ''%s'' note', expect{j}));
@@ -1046,26 +1050,6 @@ for j = 1:numel(expect)
         sprintf('''%s'': one note per migrator', expect{j}));
 end
 verifyEqual(testCase, sum(n.distinct_detail_counts), n.count, 'every note names its outcome');
-end
-
-function [outs, bodies] = responseOutputs(units)
-%RESPONSEOUTPUTS The raw outputs of all six tuning migrators, and the bodies
-%   they were given, for one source `response_units` value.
-outs = {};
-bodies = {};
-fam = familyTable();
-for k = 1:numel(fam)
-    props = struct('response_type', 'mean');
-    props.response_units = units;
-    mk = fam(k).curve;
-    fn = str2func(['did2.convert.migrators_j.' fam(k).className]);
-    bodies{end+1} = tuningBody(fam(k).className, mk(), props); %#ok<AGROW>
-    outs{end+1} = fn(bodies{end}); %#ok<AGROW>
-end
-tc = flatRawCurve();
-tc.response_units = units;
-bodies{end+1} = flatRawBody(tc);
-outs{end+1} = did2.convert.migrators_j.stimulus_tuningcurve(bodies{end});
 end
 
 function leaves = responseLeaves(units)

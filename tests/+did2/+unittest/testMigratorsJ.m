@@ -1140,7 +1140,9 @@ function testTreatmentDrugIntraperitonealTakesTheSourcesAmount(testCase)
 % ALPRAZOLAM, not of the solution (Jess Haley, 2026-10-21 [dose per
 % ingredient]): a `value.ingredients` entry with an `ingredient_id` edge to the
 % alprazolam chemical, taken off the formulation's ingredient entry (it is not a
-% concentration). The whole solution's injected volume is unrecorded: NaN.
+% concentration). The whole solution's injected volume is unrecorded: left
+% out and named in needs_info since [canonical absent only as needs info]
+% (Decided by Jess Haley, 2026-10-30; NaN until then).
 v1 = treatmentDrugDoc('td_ip', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
     'UBERON:0001179', 'peritoneal cavity');
@@ -1151,7 +1153,7 @@ verifyEqual(testCase, numel(out.migrated), 5);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 dv = d.get('dose.value');
-verifyTrue(testCase, isnan(dv.volume.liters), 'the solution''s volume is unrecorded');
+verifyDoseVolumeNeedsInfoJ(testCase, d, dv);   % the solution's volume is unrecorded
 assertEqual(testCase, numel(dv.ingredients), 1, 'one per-ingredient amount');
 a = dv.ingredients(1).amount_per_body_mass;
 verifyEqual(testCase, a.source_value, 0.25);
@@ -1243,7 +1245,7 @@ v = out.migrated{1}.get('dose.value');
 assertEqual(testCase, numel(v.ingredients), 1);
 verifyEqual(testCase, v.ingredients(1).substance_amount.moles, 3e-3, 'AbsTol', 1e-15);
 verifyEqual(testCase, v.ingredients(1).substance_amount.source_value, 3);
-verifyTrue(testCase, isnan(v.volume.liters), 'the whole formulation''s amount is unrecorded');
+verifyDoseVolumeNeedsInfoJ(testCase, out.migrated{1}, v);   % the whole formulation's amount is unrecorded
 end
 
 function testDoseIngredientsAreCheckedAgainstTheirFormulationInBatch(testCase)
@@ -1290,7 +1292,7 @@ verifyEqual(testCase, v.ingredients(1).mass.grams, 0.5e-3, 'AbsTol', 1e-15);
 [~, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'alprazolam');
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
-verifyTrue(testCase, isnan(v.volume.liters));
+verifyDoseVolumeNeedsInfoJ(testCase, d, v);
 end
 
 function testTwoDisagreeingRowsOfOneKindAreCarriedWholeAsV1(testCase)
@@ -1333,8 +1335,9 @@ function testAStatedAmountKindWithNoNumberPutsTheNaNInThatKind(testCase)
 % the ingredient] (Jess Haley, 2026-10-21): a mg/kg row that NAMES a chemical
 % but has no number is that CHEMICAL's unrecorded amount -- its
 % value.ingredients entry, amount_per_body_mass NaN with the unit, paired with
-% an ingredient_id edge -- and the whole formulation's amount stays NaN in
-% volume at the top level.
+% an ingredient_id edge -- and the whole formulation's amount is left out
+% and named in needs_info ([canonical absent only as needs info], Decided by
+% Jess Haley, 2026-10-30; NaN in volume until then).
 v1 = treatmentDrugDoc('td_kind', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,,SNOMED:396163008,mg/kg'), ...
     'UBERON:0001179', 'peritoneal cavity');
@@ -1350,7 +1353,7 @@ verifyFalse(testCase, isfield(v, 'amount_per_body_mass') && isstruct(v.amount_pe
     && ~isempty(v.amount_per_body_mass) && isfield(v.amount_per_body_mass, 'grams_per_gram') ...
     && ~isempty(v.amount_per_body_mass.grams_per_gram), ...
     'the blank per-body-mass is the ingredient''s, not the dose''s top level');
-verifyTrue(testCase, isnan(v.volume.liters));
+verifyDoseVolumeNeedsInfoJ(testCase, d, v);
 [~, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
 end
@@ -4222,6 +4225,30 @@ verifyTrue(testCase, isfield(notes, 'carried_as_v1') && ...
     contains(notes.carried_as_v1.distinct_details{1}, 'file_extension'));
 end
 
+function testDaqreaderNdrWithNoReaderIsCarriedAsItsV1Source(testCase)
+% [retired classes leave V2] (1) (Jess Haley, 2026-10-25): a daqreader_ndr with
+% no reader class and no reader string is carried by daqreader.m (carry-130).
+% The carry must be the UNTOUCHED v1 source, never the migrator's reading copy
+% (until 2026-10-30 a body renamed to the retired class `daqreader`).
+body = struct();
+body.document_class = struct('class_name', 'daqreader_ndr', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base',      'class_version', '1.0.0'), ...
+                      struct('class_name', 'daqreader', 'class_version', '1.0.0')]);
+body.depends_on = struct('name', {}, 'value', {});
+body.base = struct('id', 'ndr_4', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.daqreader = struct('ndi_daqreader_class', '');
+body.daqreader_ndr = struct('ndi_daqreader_ndr_class', '', 'ndr_reader_string', '');
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.daqreader_ndr(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, iscell(out) && isscalar(out) && isequaln(out{1}, body), ...
+    'the carry is not the v1 source');
+verifyTrue(testCase, isfield(notes, 'carried_as_v1') && ...
+    contains(notes.carried_as_v1.distinct_details{1}, 'carry-130'));
+end
+
 function testDaqreaderNdrDeEncodesToDaqreader(testCase)
 % Chunk c: daqreader_ndr de-encodes onto daqreader -- the ndr subtype fields move
 % (ndr_reader_string -> reader_string, ndi_daqreader_ndr_class dropped) and the
@@ -6882,6 +6909,21 @@ end
 end
 
 
+function verifyDoseVolumeNeedsInfoJ(testCase, d, v)
+% [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md): a dose that states only its
+% ingredients' amounts leaves the whole formulation's amount out (no
+% `volume.liters = NaN`) and names it in base.needs_info (jDoseValue).
+verifyFalse(testCase, isfield(v, 'volume') && isstruct(v.volume) && ~isempty(v.volume) ...
+    && isfield(v.volume, 'liters') && ~isempty(v.volume.liters) && any(isnan(v.volume.liters)), ...
+    'the unrecorded amount is left out, not NaN');
+ds = d.toStruct();
+assertTrue(testCase, isfield(ds.base, 'needs_info') && ~isempty(ds.base.needs_info), ...
+    'the unrecorded amount is not named in needs_info');
+verifyTrue(testCase, any(strcmp({ds.base.needs_info.field}, 'dose.value.volume')), ...
+    strjoin({ds.base.needs_info.field}, ', '));
+end
+
 function t = paramTextJ(leaf, varName)
 e = paramEntryJ(leaf, varName);
 t = '';
@@ -7000,12 +7042,21 @@ function out = foldPlaceable(testCase, migrator, body)
 %   one `carried_as_v1` note naming the fields). Asserted here. Then exactly
 %   those fields are removed and the rest is folded, so a fold test still
 %   asserts the fold of everything that IS placed.
+%   UPDATED 2026-10-30 ([spelling is notation], Jess Haley, 2026-10-26): a
+%   recognised response_units spelling ('spikes/s', 'Spikes/s') is placed now,
+%   so a fixture whose ONLY unplaced field was that spelling folds as it
+%   stands: its first fold is the fold, and it must keep its response unit.
 did2.convert.reportNote('reset');
 first = migrator(body);
 notes = did2.convert.reportNote('collect');
 did2.convert.reportNote('reset');
-assertTrue(testCase, isscalar(first) && isequaln(first{1}, body), ...
-    'the writer-shaped document was not carried whole as v1');
+if ~(isscalar(first) && isequaln(first{1}, body))
+    verifyFalse(testCase, isfield(notes, 'carried_as_v1'), ...
+        'the document folded and was also noted as carried');
+    verifyGreaterThan(testCase, numel(first), 1, 'the document did not fold');
+    out = first;
+    return;
+end
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
 d = notes.carried_as_v1.distinct_details{1};
 % each path follows its carry register row tag ('[carry-056] ', [carry register]),

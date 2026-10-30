@@ -693,6 +693,9 @@ result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEmpty(testCase, result.quarantine);
 verifyEqual(testCase, result.summary.passthrough_count, 0, 'converted');
 verifyEqual(testCase, char(result.migrated{1}.get('entity.name')), 'mouse_42@lab');
+verifyFalse(testCase, isfield(result.summary, 'migration_notes') ...
+    && isfield(result.summary.migration_notes, 'v1_name_not_kept'), ...
+    'a name the entity holds is not counted as not kept');
 end
 
 % ===================== the legacy identity block ===========================

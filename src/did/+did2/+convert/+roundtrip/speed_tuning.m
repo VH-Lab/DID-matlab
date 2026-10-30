@@ -34,6 +34,11 @@ if isempty(leaf)
 end
 [blk, bad] = speedBlock(leaf);
 spec.unplaced = [spec.unplaced, bad];
+% [spelling is notation] (Jess Haley, 2026-10-26): a recognised response_units
+% spelling comes back as its registered term's name (sameTermSpelling)
+spec.same(end+1) = struct('path', 'speed_tuning.properties.response_units', ...
+    'fn', @sameTermSpelling, 'why', ['equivalent spellings of one registered ' ...
+    'term are the same thing ([spelling is notation], Jess Haley, 2026-10-26)']);
 % calcParts put the method parameters (none for this class) in the block of the
 % class's own name, which is also the result block: keep both
 own = v1.speed_tuning;

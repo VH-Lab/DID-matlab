@@ -15,8 +15,9 @@ function v2Body = treatment_drug(preBody)
 %                           a site on it, and the leaf already says so.
 %     any other location    a DOSE: `dose_manipulation`, its amount the
 %                           mixture row's when that row is in an amount unit
-%                           (Hunsberger: mg/kg), else NaN in `volume.liters`
-%                           (jDoseValue); the site is Path S -- a merely-located
+%                           (Hunsberger: mg/kg; the whole formulation's
+%                           amount then named in needs_info), else NaN in
+%                           `volume.liters` (jDoseValue); the site is Path S -- a merely-located
 %                           site becomes a `term_observation` here (D3), an
 %                           attributed site is promoted by the NDI second pass.
 %     no location           a dose with a NaN amount, listed in the migration

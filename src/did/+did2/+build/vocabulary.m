@@ -4,7 +4,9 @@ function [node, handles] = vocabulary(kind, handle)
 %   NODE = did2.build.vocabulary(KIND, HANDLE) returns the ontology node the
 %   handle HANDLE names in vocabulary KIND, read FIRST from the loaded
 %   schema's bound row whose name is the handle, then from the table below -- 'relation' (directed and
-%   undirected relation names), 'entity_type' (entity.type) -- or '' when
+%   undirected relation names), 'entity_type' (entity.type), 'clock'
+%   (relative_time_reference value.clock and clock_alignment_configuration
+%   clock, the did_clocktype value set) -- or '' when
 %   the handle names no node (culture; a relation with no published term) or
 %   is not a handle of KIND. HANDLE is the snake_case handle code has always
 %   written ('member_of', 'dataset') or the label ('member of'); case,
@@ -24,10 +26,22 @@ function [node, handles] = vocabulary(kind, handle)
 %   node (fillField>completeFromValueSet), so the label can change in the
 %   schema without a change here.
 %
-%   See also did2.build.isVocabulary, did2.convert.channelType.
+%   CLOCKS. Decided by Jess Haley, 2026-10-26 [clock terms get nodes]
+%   (did-schema V_eta_go_forward_class_audit.md): the four clock values get
+%   nodes -- utc wikidata:Q1536 "UTC", dev_local_time EMPTY:0000403 "device
+%   local time", dev_global_time EMPTY:0000404 "device global time",
+%   exp_global_time EMPTY:0000405 "experiment global time" (did-schema
+%   V_eta_term_registry.json) -- and the stored name becomes the label, after
+%   DID-matlab and NDI-matlab compare clock nodes first. The handles are the
+%   did_v1 clocktype strings (NDI ndi.time.clocktype); the label spellings
+%   are listed too, so a name-only document written after the label flip
+%   still finds its node.
+%
+%   See also did2.build.isVocabulary, did2.build.vocabularyHandle,
+%   did2.convert.channelType.
 
 arguments
-    kind (1,:) char {mustBeMember(kind, {'relation', 'entity_type'})}
+    kind (1,:) char {mustBeMember(kind, {'relation', 'entity_type', 'clock'})}
     handle = ''
 end
 
@@ -87,6 +101,18 @@ switch kind
             'session',      'NCIT:C67447'
             'epoch',        'EMPTY:0000383'
             'recording_epoch', 'EMPTY:0000383'};
+    case 'clock'
+        % [clock terms get nodes] (Jess Haley, 2026-10-26). The v1 handle of
+        % each node comes FIRST (did2.build.vocabularyHandle answers the first
+        % row with a node); the label spellings after it are read-only aliases.
+        handles = {
+            'utc',                    'wikidata:Q1536'
+            'dev_local_time',         'EMPTY:0000403'
+            'dev_global_time',        'EMPTY:0000404'
+            'exp_global_time',        'EMPTY:0000405'
+            'device_local_time',      'EMPTY:0000403'
+            'device_global_time',     'EMPTY:0000404'
+            'experiment_global_time', 'EMPTY:0000405'};
 end
 node = '';
 key = normalize(handle);
@@ -130,6 +156,10 @@ try
         case 'relation'
             spec = {'directed_relation', 'relation'; 'undirected_relation', 'relation'; ...
                 'clock_alignment', 'relation'};
+        case 'clock'
+            % a dotted path walks sub-`fields` (value.clock)
+            spec = {'relative_time_reference', 'value.clock'; ...
+                'clock_alignment_configuration', 'clock'};
         otherwise
             spec = {'entity', 'type'};
     end
@@ -137,8 +167,19 @@ try
         if ~c.hasClass(spec{s, 1}); continue; end
         cls = c.getClass(spec{s, 1});
         f = cls.fields;
-        if isstruct(f); f = num2cell(f); end
-        hit = f(cellfun(@(d) strcmp(char(d.name), spec{s, 2}), f));
+        hit = {};
+        segs = strsplit(spec{s, 2}, '.');
+        for g = 1:numel(segs)
+            if isstruct(f); f = num2cell(f); end
+            if ~iscell(f); hit = {}; break; end
+            hit = f(cellfun(@(d) isstruct(d) && isfield(d, 'name') ...
+                && strcmp(char(d.name), segs{g}), f));
+            if isempty(hit); break; end
+            if g < numel(segs)
+                if ~isfield(hit{1}, 'fields'); hit = {}; break; end
+                f = hit{1}.fields;
+            end
+        end
         if isempty(hit) || ~isfield(hit{1}, 'constraints') || ~isstruct(hit{1}.constraints) ...
                 || ~isfield(hit{1}.constraints, 'binding') ...
                 || ~isfield(hit{1}.constraints.binding, 'values')
