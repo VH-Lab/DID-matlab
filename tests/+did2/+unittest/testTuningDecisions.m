@@ -16,6 +16,7 @@ function tests = testTuningDecisions
 %     [varied properties are conditions by V2 name]  testVariedProperties*
 %     [parameter names map by table]             testParameterNames*
 %     [absolute-value fits are a second calculation] testAbsoluteValueFits*
+%     [interpolated values are a list] (2026-10-30)  testInterpolatedValues*
 %     [contrast metrics added]                   testContrastMetrics
 %     [response links: epoch rebuilt, control as input]  testResponseLinks*
 %     [empty prestimulus normalization is zero]  testEmptyPrestimulusNormalization
@@ -76,12 +77,14 @@ for k = 1:size(cases, 1)
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
 end
-% a tuning curve is not a fit: its method stays the calculator
+% a tuning curve is not a fit: its method is EDAM:operation_2945 "Data
+% analysis" ([data analysis is the general method], Jess Haley, 2026-10-30;
+% INVERTED from "its method stays the calculator")
 v1 = convertedTuningCurve();
 out = runRaw({v1});
 leaf = firstOfClass(out, 'tuning_curve_calculation');
 t = leaf.interaction.method.term;
-verifyFalse(testCase, isfield(t, 'node') && strcmp(char(t.node), 'OBI:0200072'));
+verifyEqual(testCase, char(t.node), 'EDAM:operation_2945');
 end
 
 function testOneCalculationPerOutput(testCase)
@@ -480,6 +483,165 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     notFit = fns(~(strcmp(fns, 'fit') | startsWith(fns, 'fit_')));
     verifyEqual(testCase, notFit, {'fitless'}, [cls{1} ': the one non-fit field']);
 end
+end
+
+% ===================== [interpolated values are a list] ==================
+
+function testInterpolatedValuesStayOneStructureOnTodaysSchema(testCase)
+% [interpolated values are a list] (Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md; G5), siblings first: until did-schema
+% declares the list (a `response_transform` on `interpolated_values`) the
+% fold writes the one structure, and v1 `abs.fitless` stays on the
+% absolute-value calculation, as before.
+for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
+    leafClass = strrep(cls{1}, '_calc', '_calculation');
+    if listDeclared(leafClass)
+        continue;   % did-schema has made the change: the next test covers it
+    end
+    out = runRaw({writerOutput(cls{1})});
+    calcs = allOfClass(out, leafClass);
+    verifyEqual(testCase, numel(calcs), 2, cls{1});
+    for k = 1:numel(calcs)
+        iv = calcs{k}.(leafClass).interpolated_values;
+        verifyTrue(testCase, isstruct(iv) && isscalar(iv), cls{1});
+        verifyFalse(testCase, isfield(iv, 'response_transform'), cls{1});
+    end
+end
+end
+
+function testInterpolatedValuesAreReadBackAsAList(testCase)
+% The round trip reads the list shape before any writer emits it: the main
+% calculation's interpolated_values made a list [as stated; 'absolute value']
+% with the absolute-value calculation's values moved into it rebuilds the
+% same v1 document (abs.fitless from the 'absolute value' entry).
+for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
+    v1 = writerOutput(cls{1});
+    leafClass = strrep(cls{1}, '_calc', '_calculation');
+    out = runRaw({v1});
+    docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+    mainK = 0;
+    absK = 0;
+    for k = 1:numel(docs)
+        if ~strcmp(char(docs{k}.document_class.class_name), leafClass); continue; end
+        if strcmp(parameterText(docs{k}, 'response transform'), 'absolute value')
+            absK = k;
+        else
+            mainK = k;
+        end
+    end
+    assertGreaterThan(testCase, mainK, 0, cls{1});
+    assertGreaterThan(testCase, absK, 0, cls{1});
+    if listDeclared(leafClass)
+        continue;   % the writer emits the list itself (next test)
+    end
+    mainIv = docs{mainK}.(leafClass).interpolated_values;
+    absIv = docs{absK}.(leafClass).interpolated_values;
+    absIv.response_transform = 'absolute value';
+    docs{mainK}.(leafClass).interpolated_values = {mainIv, absIv};
+    docs{absK}.(leafClass) = rmfield(docs{absK}.(leafClass), 'interpolated_values');
+    r = did2.convert.roundtrip.check(v1, docs);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', list shape'], {});
+    % and an entry with a transform v1 has no place for is reported
+    odd = mainIv;
+    odd.response_transform = 'logarithm';
+    docs{mainK}.(leafClass).interpolated_values = {mainIv, absIv, odd};
+    r = did2.convert.roundtrip.check(v1, docs);
+    verifyNotEmpty(testCase, r.unplaced, [cls{1} ': an unknown transform is unplaced']);
+end
+end
+
+function testInterpolatedValuesAreAListOnceTheSchemaDeclaresIt(testCase)
+% With a schema that declares the list (did-schema's side of the decision,
+% declared here on a copy until it lands), the fold writes the list, v1
+% `abs.fitless` its 'absolute value' entry on the MAIN calculation, and the
+% round trip is unchanged.
+cache = did2.schema.cache.shared();
+src = cache.schemaPath;
+tmp = tempname;
+mkdir(tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+copyfile(fullfile(src, '*.json'), tmp);
+for cls = {'spatial_frequency_tuning_calculation', 'temporal_frequency_tuning_calculation'}
+    if ~listDeclared(cls{1})
+        declareInterpolatedList(testCase, fullfile(tmp, [cls{1} '.json']));
+    end
+end
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
+    v1 = writerOutput(cls{1});
+    leafClass = strrep(cls{1}, '_calc', '_calculation');
+    assertTrue(testCase, listDeclared(leafClass), [cls{1} ': the copy declares the list']);
+    out = runRaw({v1});
+    verifyEmpty(testCase, out.quarantine, cls{1});
+    verifyEmpty(testCase, out.passthrough, [cls{1} ': converts']);
+    calcs = allOfClass(out, leafClass);
+    mainIv = [];
+    for k = 1:numel(calcs)
+        isAbs = strcmp(parameterText(calcs{k}, 'response transform'), 'absolute value');
+        if isAbs
+            verifyFalse(testCase, isfield(calcs{k}.(leafClass), 'interpolated_values'), ...
+                [cls{1} ': abs.fitless is on the main calculation''s list']);
+        else
+            mainIv = calcs{k}.(leafClass).interpolated_values;
+        end
+    end
+    if iscell(mainIv); mainIv = [mainIv{:}]; end
+    assertEqual(testCase, numel(mainIv), 2, [cls{1} ': as stated, then |response|']);
+    verifyTrue(testCase, ~isfield(mainIv, 'response_transform') ...
+        || isempty(mainIv(1).response_transform), cls{1});
+    verifyEqual(testCase, char(mainIv(2).response_transform), 'absolute value', cls{1});
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', list written'], {});
+end
+end
+
+function tf = listDeclared(leafClass)
+% does the loaded schema declare interpolated_values a list with a
+% response_transform (did-schema's side of [interpolated values are a list])?
+tf = false;
+try
+    s = did2.schema.cache.shared().getClass(leafClass);
+catch
+    return;
+end
+fs = s.fields;
+if isstruct(fs); fs = num2cell(fs); end
+for k = 1:numel(fs)
+    if strcmp(char(fs{k}.name), 'interpolated_values') && isfield(fs{k}, 'fields')
+        sub = fs{k}.fields;
+        if isstruct(sub); sub = num2cell(sub); end
+        tf = any(cellfun(@(x) strcmp(char(x.name), 'response_transform'), sub));
+        return;
+    end
+end
+end
+
+function declareInterpolatedList(testCase, file)
+% interpolated_values a list (mustBeScalar false) whose entries may state a
+% `response_transform`, inserted as text (as testBuildNeedsInfo does)
+t = fileread(file);
+at = strfind(t, '"name": "interpolated_values"');
+assertNotEmpty(testCase, at, [file ' declares no interpolated_values']);
+at = at(1);
+fl = strfind(t(at:end), '"fields": [');
+assertNotEmpty(testCase, fl, [file ': interpolated_values has no fields list']);
+fl = at + fl(1) - 1;
+ms = strfind(t(at:fl), '"mustBeScalar": true');
+if ~isempty(ms)
+    pos = at + ms(1) - 1;
+    t = [t(1:pos - 1) '"mustBeScalar": false' t(pos + numel('"mustBeScalar": true'):end)];
+    fl = fl + 1;
+end
+fl = fl + numel('"fields": [') - 1;
+decl = ['{"name": "response_transform", "type": "char", "blank_value": "", ' ...
+    '"default_value": "", "mustBeNonEmpty": false, "mustBeScalar": true, ' ...
+    '"mustNotHaveNaN": false, "queryable": true, "ontology": null, ' ...
+    '"documentation": "declared for this test", "constraints": {}}, '];
+t = [t(1:fl) decl t(fl + 1:end)];
+fid = fopen(file, 'w');
+fwrite(fid, t);
+fclose(fid);
 end
 
 % ===================== [contrast metrics added] ===========================

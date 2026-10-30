@@ -380,18 +380,9 @@ if ~isempty(axisWhy)
     return;
 end
 
-anchor = jSessionAnchor(src, 'during');
+% the acquisition time ([acquisition time on its clock], below)
+[anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass);
 [datumType, sourceDatumType] = jDatumType(dataType);
-conds = [];
-ts = getField(params, 'timestamp');
-if isnumeric(ts) && isscalar(ts) && isfinite(ts)
-    % the v1 acquisition time is a MATLAB datenum on the named clock; it is
-    % kept as written, as a whole-statement condition (no reference document
-    % can be built from a datenum without assuming the clock is UTC)
-    clk = firstNonEmpty(getCharField(params, 'clocktype'), 'unspecified clock');
-    conds = did2.build.condition(jLabel(['acquisition timestamp (' clk ')']), ...
-        'Value', double(ts), 'SourceValue', sprintf('%.17g', double(ts)));
-end
 extra = {};
 software = {};
 % the statement's notes: an imageStack's `label`; for a v1 `image`, its own
@@ -409,7 +400,7 @@ end
 obs = jStatement(src, 'observation', subjectId, ...
     jLabel('image intensity'), [], ...
     'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-    'Conditions', conds, 'Notes', notes, ...
+    'Conditions', conds, 'Notes', notes, 'NeedsInfo', needsInfo, ...
     'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).
@@ -443,6 +434,92 @@ body = did2.build.sampledBody(stackId, dims, 'Covariates', covs, o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software];
+end
+
+function [anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass)
+%ACQUISITIONTIME The observation's time reference and, on a clock that is not
+%   UTC, its acquisition-time condition.
+%
+%   [acquisition time on its clock] (Decided by Jess Haley, 2026-10-30, did-schema
+%   V_eta_go_forward_class_audit.md; docs/V2_PLAN.md G28): a v1 image stack's
+%   acquisition time (`timestamp`, a MATLAB datenum on the clock `clocktype`)
+%   leaves the label it was written in ("acquisition timestamp (<clock>)"):
+%     * on a UTC clock (utc, approx_utc) it IS the observation's time
+%       reference on that clock: a relative_time_reference to the session on
+%       clock utc whose start is the datenum converted to seconds
+%       (start.seconds = days * 86400; start.source_value the datenum,
+%       start.source_unit day), as jTreatmentAnchor writes a global-clock
+%       datenum ([transfer onset]). approx_utc is clock utc with a 5 s
+%       clock_tolerance (NDI +ndi/+time/clocktype.m: "within 5 seconds"),
+%       as jEpochClockReferences and epochMint de-encode it.
+%     * on any other clock the datenum cannot be converted without assuming
+%       UTC: the observation keeps its "during the session" anchor, on the
+%       stack's clock where V2 has that clock (dev_local_time,
+%       dev_global_time, exp_global_time; approx_ as a 5 s clock_tolerance),
+%       and a condition with the variable AFO:AFR_0001158 "acquisition time"
+%       ([afo prefix registered]) keeps the datenum as its `source_value`
+%       (source unit day); the canonical `quantity.value` is left out and
+%       named in base.needs_info ([missing facts are needs info]), with a
+%       `needs_info` report note. A clock V2 does not have (none, no_time,
+%       inherited, any other name) is named, as v1 wrote it, in that entry's
+%       reason, so the round trip can read it back.
+%   With no finite scalar `timestamp` there is no acquisition time: the
+%   "during the session" anchor alone, as before.
+conds = [];
+needsInfo = struct('field', {}, 'reason', {});
+ts = getField(params, 'timestamp');
+if ~(isnumeric(ts) && isscalar(ts) && isfinite(ts))
+    anchor = jSessionAnchor(src, 'during');
+    return;
+end
+ts = double(ts);
+raw = strtrim(getCharField(params, 'clocktype'));
+[clk, tol] = v2Clock(raw);
+day = struct('node', 'om:day', 'name', 'day');
+clockOpts = {};
+if ~isempty(clk)
+    clockOpts = {'Clock', clk};
+    if tol > 0
+        clockOpts = [clockOpts, {'ClockTolerance', tol}];
+    end
+end
+if strcmp(clk, 'utc')
+    o = jOpts(src, clockOpts{:}, 'Start', ts * 86400, 'StartSourceValue', ts, ...
+        'StartSourceUnit', day, 'StartApproximate', false);
+    anchor = did2.build.relativeTimeReference(jSid(src), o{:});
+    return;
+end
+anchor = jSessionAnchor(src, 'during', clockOpts{:});
+conds = did2.build.composite('statement', 'conditions', struct( ...
+    'variable', did2.convert.registeredTerm('AFO:AFR_0001158', 'acquisition time'), ...
+    'source_unit', day, ...
+    'quantity', struct('source_value', sprintf('%.17g', ts))));
+if isempty(raw)
+    onClock = 'on no named clock';
+else
+    onClock = sprintf('on clock ''%s''', raw);
+end
+needsInfo = struct('field', 'statement.conditions(1).quantity.value', ...
+    'reason', sprintf(['v1 states the acquisition time as a MATLAB datenum %s, ' ...
+    'which is not a UTC clock: it cannot be converted without assuming UTC ' ...
+    '([acquisition time on its clock])'], onClock));
+did2.convert.reportNote('needs_info', noteClass, baseField(src, 'id', ''), ...
+    needsInfo.field);
+end
+
+function [clk, tol] = v2Clock(raw)
+%V2CLOCK The V2 clock (relative_time_reference.value.clock) a v1 clocktype
+%   names, and the clock_tolerance in seconds its approx_ prefix states; ''
+%   for a clocktype V2 has no clock for (none, no_time, inherited, other).
+clk = '';
+tol = 0;
+switch raw
+    case {'utc', 'dev_local_time', 'dev_global_time', 'exp_global_time'}
+        clk = raw;
+    case {'approx_utc', 'approx_dev_global_time', 'approx_exp_global_time'}
+        clk = raw(numel('approx_') + 1:end);
+        tol = 5;
+end
 end
 
 function why = axisLettersMismatch(dimOrder, labels)

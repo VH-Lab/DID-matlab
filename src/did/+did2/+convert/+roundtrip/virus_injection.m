@@ -21,14 +21,17 @@ function [v1, spec] = virus_injection(bodies)
 %                                      a dose: the site observation's term;
 %                                      an immersion: the bath (SPEC)
 %     virus_AdministrationDate         the absolute anchor's source text
+%     virus_AdministrationPND          the age observation's (NCIT:C25150,
+%                                      on the manipulation's time reference)
+%                                      source_value, in days ([age at
+%                                      injection is an observation])
 %
 %   SPEC.equivalents: `dilution` 0 when the ingredient's concentration is NaN
 %   -- "A dilution of 0 is treated as not recorded (NaN), not as a measured 0"
 %   (Jess Haley, 2026-10-21 [virus-location]); 0 is also the template's value.
 %
-%   NOT REBUILT, because V2 does not keep it (the round trip reports it):
-%   `virus_AdministrationPND` (no migrator reads it). The template's `files`
-%   block is empty as the writer leaves it, and so not set.
+%   The template's `files` block is empty as the writer leaves it, and so not
+%   set. (`virus_AdministrationPND` was not rebuilt before 2026-10-30.)
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.virus_injection.
 
@@ -82,6 +85,14 @@ end
 onset = anchorOnset(p.anchor);
 if ~isempty(onset)
     block.virus_AdministrationDate = onset;
+end
+if ~isempty(p.age)
+    days = numberOf(getIn(p.age, 'time', 'value', 'source_value'));
+    if isempty(days)
+        spec.unplaced{end+1} = 'the age observation states no number of days';
+    else
+        block.virus_AdministrationPND = days;
+    end
 end
 
 v1.document_class = struct('class_name', 'virus_injection');

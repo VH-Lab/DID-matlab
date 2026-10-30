@@ -46,8 +46,17 @@ function [v1, spec] = imageStack(bodies)
 %                                        type's range ([image file details
 %                                        placed]: left unwritten when it is
 %                                        that range), stated as an equivalent
-%       timestamp, clocktype             the observation's "acquisition
-%                                        timestamp (<clock>)" condition
+%       timestamp, clocktype             [acquisition time on its clock]
+%                                        (Jess Haley, 2026-10-30): on a UTC
+%                                        clock, the anchor's start.source_value
+%                                        and its clock (approx_ when its
+%                                        clock_tolerance is 5 s); on any other,
+%                                        the AFO:AFR_0001158 "acquisition
+%                                        time" condition's source_value and the
+%                                        anchor's clock, else the clock its
+%                                        needs_info entry names. The former
+%                                        "acquisition timestamp (<clock>)"
+%                                        condition is still read.
 %   The anchor is the stack's own (minted by the migration); anything else
 %   emitted is unplaced.
 %
@@ -81,6 +90,7 @@ end
 [base, ~] = rebuildBase(obs);
 anchorIds = edgeIds(obs, 'time_reference_id');
 body = [];
+anchor = [];
 for k = 1:numel(bodies)
     if used(k); continue; end
     b = bodies{k};
@@ -90,6 +100,9 @@ for k = 1:numel(bodies)
         used(k) = true;
     elseif strcmp(cn, 'relative_time_reference') && any(strcmp(idOf(b), anchorIds))
         used(k) = true;
+        if isempty(anchor)
+            anchor = b;
+        end
     end
 end
 for k = find(~used)
@@ -200,7 +213,7 @@ else
             'unwritten ([image file details placed], Jess Haley, 2026-10-26)']);
     end
 end
-[ts, clk, extra] = acquisitionTime(getIn(obs, 'statement', 'conditions'));
+[ts, clk, extra] = acquisitionTime(getIn(obs, 'statement', 'conditions'), anchor, obs);
 spec.unplaced = [spec.unplaced, extra];
 if ~isempty(ts)
     p.timestamp = ts;
@@ -281,15 +294,42 @@ for k = 1:numel(conds)
 end
 end
 
-function [ts, clk, extra] = acquisitionTime(conds)
-% the "acquisition timestamp (<clock>)" condition jLabel names; any other
-% condition on the observation is unplaced
+function [ts, clk, extra] = acquisitionTime(conds, anchor, obs)
+% [acquisition time on its clock] (Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md): the v1 `timestamp` and `clocktype`.
+%   A UTC clock: the anchor states the time (start.source_value, the datenum)
+%   on clock utc; approx_utc when its clock_tolerance is 5 s.
+%   Any other clock: the AFO:AFR_0001158 "acquisition time" condition holds
+%   the datenum as its source_value; the clock is the anchor's, else the one
+%   the observation's needs_info entry names ('' for "on no named clock").
+%   The former "acquisition timestamp (<clock>)" condition (the label the
+%   migrator wrote before) is read as before. Any other condition is unplaced.
 ts = [];
 clk = '';
 extra = {};
+[aclk, atol] = anchorClock(anchor);
+start = numberOf(getIn(anchor, 'relative_time_reference', 'value', 'start', 'source_value'));
+if ~isempty(start) && strcmp(aclk, 'utc')
+    ts = start;
+    clk = withApprox(aclk, atol);
+end
 conds = asCell(conds);
 for k = 1:numel(conds)
-    [~, name] = termParts(getIn(conds{k}, 'variable'));
+    [node, name] = termParts(getIn(conds{k}, 'variable'));
+    if sameCurie(node, 'AFO:AFR_0001158') && isempty(ts)
+        ts = str2double(fieldText(getIn(conds{k}, 'quantity'), 'source_value'));
+        if ~isfinite(ts)
+            ts = [];
+            extra{end+1} = 'the acquisition time condition holds no datenum'; %#ok<AGROW>
+            continue;
+        end
+        if ~isempty(aclk)
+            clk = withApprox(aclk, atol);
+        else
+            clk = needsInfoClock(obs);
+        end
+        continue;
+    end
     tok = regexp(name, '^acquisition timestamp \((.*)\)$', 'tokens', 'once');
     if isempty(tok) || ~isempty(ts)
         extra{end+1} = sprintf('observation condition "%s" has no role in an imageStack', name); %#ok<AGROW>
@@ -299,6 +339,41 @@ for k = 1:numel(conds)
     clk = tok{1};
     if strcmp(clk, 'unspecified clock')
         clk = '';   % the migrator's words for a stack that names no clock
+    end
+end
+end
+
+function [clk, tol] = anchorClock(anchor)
+% the anchor's clock name and clock_tolerance seconds ('' and 0 for none)
+clk = '';
+tol = 0;
+if isempty(anchor)
+    return;
+end
+[~, clk] = termParts(getIn(anchor, 'relative_time_reference', 'value', 'clock'));
+t = numberOf(getIn(anchor, 'time_reference', 'clock_tolerance', 'seconds'));
+if ~isempty(t)
+    tol = t;
+end
+end
+
+function c = withApprox(clk, tol)
+% NDI's approx_ clocks are the clock within 5 s (+ndi/+time/clocktype.m)
+c = clk;
+if tol == 5 && any(strcmp(clk, {'utc', 'dev_global_time', 'exp_global_time'}))
+    c = ['approx_' clk];
+end
+end
+
+function clk = needsInfoClock(obs)
+% the clock the acquisition-time needs_info entry names, as v1 wrote it
+clk = '';
+entries = asCell(getIn(obs, 'base', 'needs_info'));
+for k = 1:numel(entries)
+    tok = regexp(fieldText(entries{k}, 'reason'), 'on clock ''([^'']*)''', 'tokens', 'once');
+    if ~isempty(tok)
+        clk = tok{1};
+        return;
     end
 end
 end

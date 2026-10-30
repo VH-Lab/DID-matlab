@@ -23,7 +23,7 @@ function p = treatmentParts(bodies)
 %   Every field is [] / {} when absent.
 
 p = struct('manip', [], 'kind', '', 'anchor', [], 'formulation', [], ...
-    'chemicals', {{}}, 'site', [], 'relations', {{}}, 'unplaced', {{}});
+    'chemicals', {{}}, 'site', [], 'age', [], 'relations', {{}}, 'unplaced', {{}});
 n = numel(bodies);
 used = false(1, n);
 ids = cell(1, n);
@@ -74,6 +74,14 @@ for k = 1:n
             if isempty(p.site) && sameCurie(node, 'NCIT:C13717') ...
                     && isequal(edgeIds(b, 'entity_id'), entity)
                 p.site = b;
+                used(k) = true;
+            elseif isempty(p.age) && sameCurie(node, 'NCIT:C25150') ...
+                    && isequal(edgeIds(b, 'entity_id'), entity) ...
+                    && isequal(edgeIds(b, 'time_reference_id'), tr)
+                % [age at injection is an observation] (Jess Haley,
+                % 2026-10-27): the subject's age, on the manipulation's time
+                % reference ([age is NCIT Age], 2026-10-30)
+                p.age = b;
                 used(k) = true;
             end
         case 'directed_relation'
