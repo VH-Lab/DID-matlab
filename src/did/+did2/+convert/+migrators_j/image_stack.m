@@ -206,27 +206,42 @@ function bodies = image_stack(preBody)
 %       source, which V_eta keeps no schema for under the name `imageStack`);
 %     - identity is read through jRawBody (a legacy-only `ndi_document`);
 %     - every carry or passthrough returns PREBODY, the untouched v1 source.
-%   A v1 `image` (did2.convert.migrators_j.image, NOT switched) and a body
-%   already spelled the renamed way (class `image_stack`) still arrive renamed;
-%   every read below takes either spelling. Carry notes keep the class names
-%   they had ('image_stack', 'image'). The round trip is
-%   did2.convert.roundtrip.imageStack (testRawV1RoundTripImage).
+%   A v1 `image` (did2.convert.migrators_j.image hands it here) reads RAW v1
+%   too since 2026-10-30 (rawV1Classes): the same checks run on it, with its
+%   own blocks (`image`, `imageStack_parameters`). A body already spelled the
+%   renamed way (class `image_stack`, or an `image` with only an
+%   `image_stack_parameters` block: v1_to_v2's 'RawV1Classes', {}) still
+%   arrives renamed; every read below takes either spelling, and the raw checks
+%   find nothing to carry on a renamed body. Carry notes keep the class names
+%   they had ('image_stack', 'image'). The round trips are
+%   did2.convert.roundtrip.imageStack and did2.convert.roundtrip.image
+%   (testRawV1RoundTripImage).
 
 arguments
     preBody (1,1) struct
 end
 
 srcClass = classNameOf(preBody);
-isRaw = strcmp(srcClass, 'imageStack');
+% a v1 `imageStack` or `image` is read raw (did2.convert.rawV1Classes); the
+% checks below find nothing on an `image` that arrives renamed
+isRaw = any(strcmp(srcClass, {'imageStack', 'image'}));
 noteClass = 'image_stack';
 if strcmp(srcClass, 'image')
     noteClass = 'image';
 end
 if isRaw
-    collision = jResponseRenameCollisions(preBody, ...
-        {'imageStack', 'formatOntology', 'format_ontology'});
-    collision = [collision, blockTwins(preBody, ...
-        {'imageStack', 'image_stack'; 'imageStack_parameters', 'image_stack_parameters'})];
+    if strcmp(srcClass, 'image')
+        % the `image` block's fields (label, format, compression) are snake_case
+        % already: no twin for the pass to discard there
+        collision = jResponseRenameCollisions(preBody, cell(0, 3));
+        collision = [collision, blockTwins(preBody, ...
+            {'imageStack_parameters', 'image_stack_parameters'})];
+    else
+        collision = jResponseRenameCollisions(preBody, ...
+            {'imageStack', 'formatOntology', 'format_ontology'});
+        collision = [collision, blockTwins(preBody, ...
+            {'imageStack', 'image_stack'; 'imageStack_parameters', 'image_stack_parameters'})];
+    end
     if ~isempty(collision)
         % carry-register: carry-049 (the renamed path carried this collision)
         did2.convert.reportNote('carried_as_v1', noteClass, ...
@@ -237,7 +252,8 @@ if isRaw
     end
     % the superclass migrator's refusals, on the raw block (see the header)
     did2.convert.migrators_j.super.image_stack_parameters(struct( ...
-        'image_stack_parameters', getBlock(preBody, 'imageStack_parameters')));
+        'image_stack_parameters', getBlockAny(preBody, ...
+        {'imageStack_parameters', 'image_stack_parameters'})));
 end
 params = getBlockAny(preBody, {'imageStack_parameters', 'image_stack_parameters'});
 stackBlk = getBlockAny(preBody, {'imageStack', 'image_stack'});
@@ -383,7 +399,7 @@ end
 % (jRawBody; universalRenames' wholesale move did this on the renamed path)
 src = preBody;
 if isRaw
-    src = jRawBody(preBody, 'imageStack');
+    src = jRawBody(preBody, srcClass);
 end
 stackId   = baseField(src, 'id', did.ido.unique_id());
 dataType = getCharField(params, 'data_type');

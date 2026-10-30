@@ -319,6 +319,46 @@ for v1 = {controlFixture(nan(6, 1)), setfield(controlFixture(), 'depends_on', ..
 end
 end
 
+function testAControlRecordReadRawRoundTrips(testCase)
+% [migrators read raw v1] (Decided by Jess Haley, 2026-10-26, did-schema
+% V_eta_go_forward_class_audit.md): control_stimulus_ids reads raw v1 since
+% 2026-10-30 (did2.convert.rawV1Classes), so no universalRenames runs on it
+% and the carry is the untouched v1 source -- `app.name`, edge key `value` --
+% which is what NDI's second pass reads (from the v1 input, NDI-matlab #1082).
+% The round trip ([migration reliability practices] (a)) reads the carry as
+% the v1 document itself.
+verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'control_stimulus_ids')));
+v1 = jsondecode(jsonencode(controlFixture()));
+out = runJ(v1);
+L = out.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_read_raw_v1, 1);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 0);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1);
+emitted = out.migrated{1}.toStruct();
+verifyEqual(testCase, emitted.document_class.schema_version, 'did_v1');
+emitted.document_class = rmfield(emitted.document_class, 'schema_version');
+verifyTrue(testCase, isequaln(emitted, v1), 'the carry is not the untouched v1 source');
+verifyEqual(testCase, emitted.app.name, 'ndi_app_stimulus_tuning_response', ...
+    'the v1 spelling, not universalRenames'' app_name');
+verifyFalse(testCase, isfield(emitted.app, 'app_name'));
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyGreaterThan(testCase, r.fields_inspected, 0);
+verifyTrue(testCase, r.carried);
+verifyTrue(testCase, r.ok, 'a carried control record round-trips');
+% the round trip can fail: a changed entry is reported lost
+v1b = v1;
+v1b.control_stimulus_ids.control_stimulus_ids(1) = 99;
+r = did2.convert.roundtrip.check(v1b, out.migrated);
+verifyFalse(testCase, r.ok);
+verifyTrue(testCase, any(strcmp('control_stimulus_ids.control_stimulus_ids', {r.lost.path})), ...
+    'the changed entry is named');
+% the inverse reached for a body that was NOT carried: the passthrough one
+[back, spec] = did2.convert.roundtrip.control_stimulus_ids({v1});
+verifyEmpty(testCase, spec.unplaced);
+verifyEqual(testCase, back.control_stimulus_ids, v1.control_stimulus_ids);
+end
+
 
 function testControlDesignationPointsAtThePresentationBothWays(testCase)
 % UPDATED for #88 (passthrough, see above): the edge to the presentation stays
