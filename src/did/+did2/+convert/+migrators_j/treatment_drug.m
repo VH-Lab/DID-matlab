@@ -51,7 +51,14 @@ function v2Body = treatment_drug(preBody)
 %                                 document as malformed ([treatment location
 %                                 name is the node], Jess Haley, 2026-10-27)
 %     mixture_table            -> chemicals + formulation (+ the dose's
-%                                 per-ingredient amounts, jDoseValue)
+%                                 per-ingredient amounts, jDoseValue); a
+%                                 row's concentration in Molar gets its
+%                                 canonical `molar` (jSourceUnit, jDoseBodies);
+%                                 a concentration in a unit the unit table
+%                                 does not know carries the document as v1
+%                                 (carry-155, [canonical absent only as needs
+%                                 info], Jess Haley, 2026-10-30;
+%                                 jTreatmentBodies)
 %     administration_onset_time -> the anchor (jTreatmentAnchor)
 %     administration_offset_time, administration_duration
 %                              -> the anchor's `value.end` and `value.duration`
@@ -127,7 +134,7 @@ end
 if ~isempty(unplaced)
     % [generic stage is lossless] / [partly placed is carried as v1] (Jess
     % Haley, 2026-10-25): an amount the dose cannot place carries the document
-    % carry-register: carry-027 carry-028 carry-031 carry-057 via
+    % carry-register: carry-027 carry-028 carry-031 carry-057 carry-155 via
     % private/jTreatmentBodies.m
     did2.convert.reportNote('carried_as_v1', char(preBody.document_class.class_name), ...
         char(preBody.base.id), jCarryWhy(unplaced));

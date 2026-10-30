@@ -985,6 +985,11 @@ verifyEqual(testCase, c.get('chemical.value').substance.name, 'pAAV-hSyn-hChR2(H
 conc = f.get('formulation.value').ingredients(1).concentration;
 verifyEqual(testCase, conc.source_value, 1000);
 verifyEqual(testCase, conc.source_unit.name, 'dilution');
+% 'dilution' is the migrator's label for v1's unitless number, not a unit the
+% source spelled: it has no canonical and is NOT carried as carry-155 (a team
+% question whether it is carry-155 or needs_info, [canonical absent only as
+% needs info], Jess Haley, 2026-10-30; jTreatmentBodies' header)
+verifyFalse(testCase, isfield(conc, 'molar'), 'a dilution has no molar canonical');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
 % a body site makes a virus_injection a dose, its volume NaN when unrecorded,
 % its dilution staying on the formulation (Jess Haley, 2026-10-21
@@ -1029,10 +1034,82 @@ if ~isempty(form)
     conc = form.get('formulation.value').ingredients(1).concentration;
     verifyEqual(testCase, conc.source_value, 1e-5, 'AbsTol', 1e-12);
     verifyEqual(testCase, conc.source_unit.name, 'Molar');
+    % [canonical absent only as needs info] (Jess Haley, 2026-10-30): the
+    % unit table knows Molar (om:molar), so the canonical is filled; the
+    % source's term {OM:MolarVolumeUnit, Molar} is kept as written
+    verifyTrue(testCase, isfield(conc, 'molar'), 'a Molar row gets its canonical molar');
+    if isfield(conc, 'molar')
+        verifyEqual(testCase, conc.molar, 1e-5, 'AbsTol', 1e-12);
+    end
+    verifyEqual(testCase, conc.source_unit.node, 'OM:MolarVolumeUnit');
 end
 % the header row is not a chemical
 verifyEqual(testCase, m.get('statement.variable').name, 'clozapine N-oxide');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
+end
+
+function testMolarConcentrationRowsGetTheirCanonical(testCase)
+% The unit table's concentration rows (jSourceUnit: Molar, molar, M -> om:molar,
+% factor 1). [canonical absent only as needs info] (Decided by Jess Haley,
+% 2026-10-30): "every quantity holds exactly one canonical value"; carry-155 is
+% resolved_by "a new row in the unit table". Each spelling, in an immersion
+% (bath) and in a dose (a UBERON site), fills `molar`; the formulation names
+% no needs_info for it and the document is not carried.
+cases = {'OM:MolarVolumeUnit', 'Molar'; '', 'Molar'; '', 'molar'; '', 'M'; ...
+    'om:molar', 'molar'};
+locs = {'NCIm:C0179246', 'bath'; 'uberon:0002436', 'primary visual cortex'};
+for c = 1:size(cases, 1)
+    for L = 1:size(locs, 1)
+        label = sprintf('%s/%s at %s', cases{c, 1}, cases{c, 2}, locs{L, 2});
+        v1 = treatmentDrugDoc('td_molar', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+            'NCIm:C0212364,clozapine N-oxide,2.5e-06,%s,%s'], cases{c, 1}, cases{c, 2}), ...
+            locs{L, 1}, locs{L, 2});
+        out = runJ(v1);
+        verifyEmpty(testCase, out.quarantine, label);
+        verifyFalse(testCase, isfield(out.summary, 'migration_notes') ...
+            && isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+            [label ': a known concentration unit does not carry']);
+        form = firstOfClassJ(out.migrated, 'formulation');
+        assertNotEmpty(testCase, form, label);
+        conc = form.get('formulation.value').ingredients(1).concentration;
+        verifyEqual(testCase, conc.source_value, 2.5e-6, 'AbsTol', 1e-15, label);
+        verifyTrue(testCase, isfield(conc, 'molar'), [label ': molar filled']);
+        if isfield(conc, 'molar')
+            verifyEqual(testCase, conc.molar, 2.5e-6, 'AbsTol', 1e-15, label);
+        end
+        given = did2.convert.registeredTerm(cases{c, 1}, cases{c, 2});
+        verifyEqual(testCase, char(conc.source_unit.name), char(given.name), ...
+            [label ': the source unit is the term the row gives']);
+        fs = form.toStruct();
+        verifyTrue(testCase, ~isfield(fs.base, 'needs_info') || isempty(fs.base.needs_info) ...
+            || ~any(contains({fs.base.needs_info.field}, 'concentration')), ...
+            [label ': no needs_info for a computed canonical']);
+    end
+end
+end
+
+function testAnUnknownConcentrationUnitIsCarried(testCase)
+% carry-155 ([canonical absent only as needs info], Decided by Jess Haley,
+% 2026-10-30): "A unit spelling the migrator does not recognise is carried for
+% mapping, not written without a canonical." mM is exact, but om:millimolar
+% is not a registered term, so the unit table has no row for it yet; a row in
+% mM (here in a bath) carries the document whole as v1. So does a mass
+% concentration with no molar mass (mg/ml), in a dose.
+cases = {'', 'mM', 'NCIm:C0179246', 'bath'; ...
+    '', 'mg/ml', 'uberon:0002436', 'primary visual cortex'};
+for c = 1:size(cases, 1)
+    v1 = treatmentDrugDoc('td_unknown_conc', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+        'NCIm:C0212364,clozapine N-oxide,10,%s,%s'], cases{c, 1}, cases{c, 2}), ...
+        cases{c, 3}, cases{c, 4});
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    if isfield(out.summary, 'migration_notes') ...
+            && isfield(out.summary.migration_notes, 'carried_as_v1')
+        d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+        verifyTrue(testCase, startsWith(d, '[carry-155] needs_mapping:'), d);
+        verifyTrue(testCase, contains(d, ['"' cases{c, 2} '"']), d);
+    end
+end
 end
 
 function testANonUberonLocationIsNotABodySiteAndCarries(testCase)
