@@ -1316,6 +1316,15 @@ classdef cache < handle
             % concrete leaf's block are validated there against their
             % declaring class's field definition.
             info = obj.resolvePlacementFor(className, kind);
+            % [missing facts are needs info] (Jess Haley, 2026-10-29,
+            % did-schema V_eta_go_forward_class_audit.md): a required field
+            % may be absent only when base.needs_info names it, and an entry
+            % must name a fact the document does not give.
+            [excused, needsInfoProblems] = did2.schema.needsInfoFields(s);
+            if ~isempty(needsInfoProblems)
+                error('did2:validation:badNeedsInfo', '%s.', ...
+                    strjoin(needsInfoProblems, '; '));
+            end
             for k = 1:numel(info.blocksContributed)
                 blockClass = info.blocksContributed{k};
                 if ~isfield(s, blockClass)
@@ -1338,7 +1347,7 @@ classdef cache < handle
                     fieldDef = entries(f).fieldDef;
                     fieldName = char(fieldDef.name);
                     declaredNames{f} = fieldName;
-                    obj.validateField(block, fieldDef, blockClass, fieldName);
+                    obj.validateField(block, fieldDef, blockClass, fieldName, excused);
                 end
                 % Strict-fields check: every property-block field must be
                 % declared by the (placement-resolved) schema layout for
@@ -2812,12 +2821,21 @@ classdef cache < handle
             end
         end
 
-        function validateField(obj, block, fieldDef, blockClass, fieldName)
+        function validateField(obj, block, fieldDef, blockClass, fieldName, excused)
             % validateField - apply type, mustBe* flags, and
             %   constraints for one field against the property block.
             %   Skips absent fields unless the schema marks them
-            %   mustBeNonEmpty.
+            %   mustBeNonEmpty. EXCUSED (default {}) lists the
+            %   '<block>.<field>' paths the document's base.needs_info
+            %   names: such a field may be absent or empty
+            %   ([missing facts are needs info]).
+            if nargin < 6
+                excused = {};
+            end
             mustBeNonEmpty = logical(fieldDef.mustBeNonEmpty);
+            if mustBeNonEmpty && any(strcmp(sprintf('%s.%s', blockClass, fieldName), excused))
+                mustBeNonEmpty = false;
+            end
             if ~isfield(block, fieldName)
                 if mustBeNonEmpty
                     error('did2:validation:missingField', ...
