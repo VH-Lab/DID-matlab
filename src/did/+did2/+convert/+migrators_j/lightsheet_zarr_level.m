@@ -53,16 +53,27 @@ function bodies = lightsheet_zarr_level(preBody)
 %     fill_value     the level's fill_value, as the literal the owner's
 %                       data_type reads (a dense grid; `complete` was
 %                       removed by AMENDMENT 6)
-%     compression    the codec name VERBATIM ('blosc-zstd' stays
-%                       'blosc-zstd'; it was written 'blosc', which lost the
-%                       inner compressor -- [lossless means round trip], Jess
-%                       Haley, 2026-10-26); absent for 'raw'. codec_params: [compression block and empty
-%                       levels] (Jess Haley, 2026-10-26) gives the codec's
-%                       settings a home in a `{term, parameters}` compression
-%                       block, a schema change still to come; until then a
-%                       level whose codec_params hold settings beyond the codec
-%                       name is CARRIED WHOLE AS V1 (they were dropped under
-%                       #73 L4 as write-time settings).
+%     compression    absent for 'raw'. Otherwise, in the form the loaded
+%                       schema declares (did2.build.compression):
+%                       - the `{term, parameters}` block, once did-schema
+%                         declares it ([compression block and empty levels]
+%                         (1), Jess Haley, 2026-10-26; did-schema #137): the
+%                         codec as a term ('blosc-zstd' -> Blosc) and EVERY
+%                         codec_params key as a parameter, in order (cname ->
+%                         'inner compressor', clevel -> 'compression level',
+%                         shuffle, blocksize -> 'block size'). The block is
+%                         written only when did2.build.compressionCodec reads
+%                         it back as the level's codec and codec_params
+%                         exactly; otherwise the level is carried whole as v1
+%                         (carry-010).
+%                       - a char, while did-schema still types it so: the
+%                         codec name VERBATIM ('blosc-zstd' stays
+%                         'blosc-zstd'; it was written 'blosc', which lost the
+%                         inner compressor -- [lossless means round trip],
+%                         Jess Haley, 2026-10-26). A level whose codec_params
+%                         hold settings beyond the codec name is then CARRIED
+%                         WHOLE AS V1 (carry-010; they were dropped under #73
+%                         L4 as write-time settings).
 %     redundant      true for every level but level 0, the measurement (L1)
 %     conditions     reduced levels (level > 0) only: `summary statistic` =
 %                       'mean' | 'maximum' from reduction_function (L1 option
@@ -174,16 +185,29 @@ if nHeld == 0
     end
 end
 
-% [compression block and empty levels] (1), interim (Jess Haley, 2026-10-26):
-% codec settings beyond the codec name have no home until `compression` is a
-% {term, parameters} block, so such a level is carried whole as v1.
-extraSettings = codecSettingsBeyondName(char(field(blk, 'codec', 'raw')), ...
-    field(blk, 'codec_params', ''));
-if ~isempty(extraSettings)
+% [compression block and empty levels] (1) (Jess Haley, 2026-10-26): the
+% codec's settings go in the `{term, parameters}` compression block once the
+% loaded schema declares it (did2.build.compressionBlockDeclared). Until then,
+% or when the block would not read back as the level's codec and codec_params,
+% a level whose settings go beyond the codec name is carried whole as v1.
+codec = strtrim(char(field(blk, 'codec', 'raw')));
+codecParams = field(blk, 'codec_params', '');
+extraSettings = codecSettingsBeyondName(codec, codecParams);
+spelling = compressionOf(codec);   % '' for 'raw'
+compression = spelling;
+why = '';
+if ~isempty(spelling) && did2.build.compressionBlockDeclared()
+    [compression, why] = compressionBlock(codec, codecParams);
+elseif ~isempty(extraSettings)
+    compression = [];
+    why = 'the loaded schema types data_body.compression as char (the codec name only)';
+end
+if isempty(compression) && (~isempty(spelling) || ~isempty(extraSettings))
+    if isempty(extraSettings); extraSettings = {'codec'}; end
     % carry-register: carry-010
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
         ['[carry-010] unplaced: lightsheet_zarr_level.codec_params (' ...
-         strjoin(extraSettings, ', ') ')']);
+         strjoin(extraSettings, ', ') '): ' why]);
     bodies = {src};   % the untouched source
     return;
 end
@@ -267,8 +291,8 @@ opts = {'DatumOrder', char(field(blk, 'chunk_order', 'C')), ...
 if ~isempty(byteOrder)
     opts = [opts, {'ByteOrder', byteOrder}];
 end
-compression = compressionOf(char(field(blk, 'codec', 'raw')));
 if ~isempty(compression)
+    % a spelling (char schema) or the block (did2.build.compression either way)
     opts = [opts, {'Compression', compression}];
 end
 if ~isMeasurement
@@ -382,6 +406,50 @@ switch reduction
     case 'mean'; t = struct('node', 'NCIT:C53319', 'name', 'Arithmetic Mean');
     case 'min';  t = struct('node', '', 'name', 'minimum');
     otherwise;   t = struct('node', '', 'name', reduction);
+end
+end
+
+function [c, why] = compressionBlock(codec, params)
+%COMPRESSIONBLOCK The `{term, parameters}` compression block of a level whose
+%   codec is CODEC and codec_params PARAMS (JSON text), or [] with WHY when it
+%   cannot be written losslessly: did2.build.compressionCodec must read it back
+%   as CODEC and the same settings, in the same order ([lossless means round
+%   trip]; [compression block and empty levels] (1), Jess Haley, 2026-10-26).
+arguments
+    codec {mustBeText}
+    params % the v1 codec_params: JSON text, or empty
+end
+
+c = [];
+why = '';
+try
+    settings = struct();
+    if ~isempty(params)
+        p = params;
+        if ischar(p) || isstring(p)
+            p = strtrim(char(p));
+            if ~isempty(p); p = jsondecode(p); end
+        end
+        if ~isempty(p)
+            if ~isstruct(p) || ~isscalar(p)
+                why = 'codec_params is not one JSON object';
+                return;
+            end
+            settings = p;
+        end
+    end
+    block = did2.build.compression(codec, 'Settings', settings);
+    [back, backSettings] = did2.build.compressionCodec(block);
+    if ~strcmp(back, codec) || ~isequal(fieldnames(backSettings), fieldnames(settings)) ...
+            || ~isequaln(backSettings, settings)
+        why = sprintf(['the compression block reads back as codec "%s" with settings ' ...
+            '%s, not "%s" %s'], back, jsonencode(backSettings), codec, jsonencode(settings));
+        return;
+    end
+    c = block;
+catch ME
+    c = [];
+    why = sprintf('the compression block could not be built (%s: %s)', ME.identifier, ME.message);
 end
 end
 

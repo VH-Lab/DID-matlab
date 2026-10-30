@@ -32,13 +32,19 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %                 own parameters ('function', 'response transform') are not
 %                 v1 settings; the rest are named back by the table
 %                 ([parameter names map by table]);
-%     [absolute-value fits are a second calculation]  the second calculation
-%                 (calcParts' ABSLEAF) is the SF / TF `abs` block, rebuilt by
-%                 tuningBlock;
-%     [interpolated values are a list] (2026-10-30)  the main calculation's
+%     [absolute-value fits are fit entries] (Decided by Jess Haley,
+%                 2026-10-28)  the calculation's model_fit entries with
+%                 response_transform 'absolute value' are the SF / TF
+%                 `abs.fit_<model>` blocks (tuningBlock's ABSFITS);
+%     [interpolated values are a list] (2026-10-30)  the calculation's
 %                 'absolute value' interpolated_values entry is `abs.fitless`
-%                 (tuningBlock's ABSFITLESS); stated on both it and the
-%                 second calculation, it is unplaced;
+%                 (tuningBlock's ABSFITLESS);
+%     [absolute-value fits are a second calculation] (2026-10-27, superseded
+%                 by the two above; the migrator no longer writes it)  a
+%                 second calculation (calcParts' ABSLEAF) is still read as
+%                 the `abs` block, so a batch migrated before reads back; a
+%                 field of `abs` stated both there and on the calculation is
+%                 unplaced;
 %     [tuning log in notes]   tuningcurve_calc.log is the statement's notes;
 %     [varied properties are conditions by V2 name]   tuningcurve_calc's
 %                 stim_property_list is the conditions, named back by the
@@ -57,6 +63,7 @@ if isempty(leaf)
     return;
 end
 absFitless = struct();
+absFits = struct();
 switch family
     case 'stimulus'
         own = struct();
@@ -67,7 +74,7 @@ switch family
     case 'csf'
         [blk, bad] = csfBlock(leaf);
     otherwise
-        [blk, bad, absFitless] = tuningBlock(leaf, family);
+        [blk, bad, absFitless, absFits] = tuningBlock(leaf, family);
 end
 spec.unplaced = [spec.unplaced, bad];
 if ~isempty(absLeaf)
@@ -80,15 +87,25 @@ if ~isempty(absLeaf)
         spec.unplaced{end+1} = sprintf('an absolute-value calculation has no place in a %s', v1Class);
     end
 end
+% [interpolated values are a list] and [absolute-value fits are fit entries]:
+% the calculation's |response| entries are v1 `abs`, fitless first, then the
+% fits, in the writers' order (NDIcalc-vis-matlab spatial_frequency_tuning.m)
+absOut = struct();
 if ~isempty(fieldnames(absFitless))
-    % [interpolated values are a list]: the |response| entry on the main
-    % calculation is v1 `abs.fitless`
-    if isfield(blk, 'abs') && isfield(blk.abs, 'fitless')
-        spec.unplaced{end+1} = ['abs.fitless is stated twice: the absolute-value ' ...
-            'interpolated_values entry and the second calculation'];
+    absOut.fitless = absFitless;
+end
+fns = fieldnames(absFits);
+for k = 1:numel(fns)
+    absOut.(fns{k}) = absFits.(fns{k});
+end
+fns = fieldnames(absOut);
+for k = 1:numel(fns)
+    if isfield(blk, 'abs') && isfield(blk.abs, fns{k})
+        spec.unplaced{end+1} = sprintf(['abs.%s is stated twice: on the calculation ' ...
+            '(response_transform ''absolute value'') and on a second calculation'], fns{k}); %#ok<AGROW>
     else
         if ~isfield(blk, 'abs'); blk.abs = struct(); end
-        blk.abs.fitless = absFitless;
+        blk.abs.(fns{k}) = absOut.(fns{k});
     end
 end
 if strcmp(family, 'oridir')

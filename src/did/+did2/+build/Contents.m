@@ -43,6 +43,13 @@
 %     list                   join separately built entries into one array
 %     composite              the general form: any nested structure a class declares
 %     datumType              a MATLAB / source type name -> `datum_type`
+%     compression            a body's `compression`, in the form the schema
+%                            declares: a codec name (char), or the {term,
+%                            parameters} block ([compression block and empty
+%                            levels], Jess Haley, 2026-10-26)
+%     compressionCodec       read `compression` in either shape: the codec's
+%                            spelling and its settings
+%     compressionBlockDeclared  does the schema declare the block?
 
 %   Checks across documents
 %     checkDoseIngredients   a dose's ingredient_id edges are among its
