@@ -162,7 +162,8 @@ function names = sampledBodyEdges(schemaPath)
 % the edge names the sampled_body.json at SCHEMAPATH (default: the loaded
 % schema) declares, read from its depends_on
 if nargin < 1; schemaPath = did2.schema.cache.shared().schemaPath; end
-s = jsondecode(fileread(fullfile(schemaPath, 'sampled_body.json')));
+files = did2.schema.cache.classFilesIn(schemaPath);  % any layout
+s = jsondecode(fileread(files('sampled_body')));
 names = {};
 if ~isfield(s, 'depends_on') || isempty(s.depends_on); return; end
 d = s.depends_on;
@@ -193,7 +194,7 @@ assertTrue(testCase, loadedSchemaTakesFilterId(), ...
 src = did2.schema.cache.shared().schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 f = fullfile(tmp, 'sampled_body.json');
 txt = fileread(f);
@@ -529,7 +530,7 @@ end
 src = did2.schema.cache.shared().schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 f = fullfile(tmp, 'sampled_body.json');
 txt = fileread(f);

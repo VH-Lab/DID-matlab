@@ -114,7 +114,7 @@ function testAHandleStillFindsItsRowWhenTheSchemaStoresTheLabel(testCase)
 src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 f = fullfile(tmp, 'directed_relation.json');
 txt = fileread(f);
@@ -190,7 +190,7 @@ function flipDerivedFrom(testCase)
 src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 f = fullfile(tmp, 'directed_relation.json');
 txt = fileread(f);

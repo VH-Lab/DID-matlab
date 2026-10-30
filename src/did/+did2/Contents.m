@@ -9,8 +9,14 @@
 %
 %   The schema is found through the DID_SCHEMA_PATH environment variable;
 %   without it, did2.schema.cache.defaultSchemaPath reads a sibling
-%   did-schema checkout's schemas/V_eta/stable. The CI workflows copy the
-%   three tiers into one directory and set DID_SCHEMA_PATH to it.
+%   did-schema checkout's schemas/did_v2/stable (else schemas/V_eta/stable),
+%   or schemas/did_v2 itself once it has no tiers ([one folder, final classes
+%   only], Jess Haley, 2026-10-29). Class files are read at any depth under
+%   that folder, and each registry (*_meta.json) by its basename anywhere
+%   under did-schema's schemas/ ([schema folders by family], Jess Haley,
+%   2026-10-30; did2.schema.cache.classFilesIn, registryFileIn). The CI
+%   workflows assemble the set flat (tools/assemble_schema_set.py) and set
+%   DID_SCHEMA_PATH to it.
 %
 %   Files
 %     document      - document object (load / validate / serialise /

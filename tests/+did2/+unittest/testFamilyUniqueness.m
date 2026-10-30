@@ -339,7 +339,7 @@ function compositeSchema(testCase)
 src = did2.schema.cache.shared().schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 files = dir(fullfile(tmp, '*.json'));
 for k = 1:numel(files)

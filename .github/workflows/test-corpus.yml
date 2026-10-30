@@ -261,12 +261,16 @@ jobs:
           # [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1: the set's
           # new name when did-schema has it, else V_eta; and [retired classes leave
           # V2]: a set with no deprecated/ tier is not an error.
-          SET=did-schema/schemas/V_eta
-          if [ -d did-schema/schemas/did_v2 ]; then SET=did-schema/schemas/did_v2; fi
-          echo "schema set: $SET"
-          cp "$SET"/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
-          cp "$SET"/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
-          if [ -d "$SET/deprecated" ]; then cp "$SET"/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"; fi
+          # [schema folders by family] (Decided by Jess Haley, 2026-10-30, did-schema
+          # V_eta_go_forward_class_audit.md): schemas/did_v2/ holds class files only, in
+          # family subfolders, and the registries move to schemas/registry/ and
+          # schemas/generated/. Siblings first, so both layouts are read: every class
+          # file under did_v2/ (else V_eta/) at any depth -- the old stable/, draft/ and
+          # deprecated/ tiers included -- plus every *_meta.json and
+          # ndi_reserved_keys.json under schemas/ and every registry/*.json, copied
+          # FLAT. A basename held twice fails the step; so does finding no class.
+          # On today's tiered did-schema it copies what `cp stable/ draft/` copied.
+          python3 tools/assemble_schema_set.py did-schema/schemas "${GITHUB_WORKSPACE}/eta-schemas"
 
       - name: Check out NDI-matlab's v1 templates at the locked main
         # [carried v1 validates against NDI templates] (Decided by Jess Haley,
@@ -629,7 +633,7 @@ jobs:
         # strongest evidence we have says otherwise.
         #
         # did-schema's snapshot tool renders the verdicts, WITH the run id and
-        # sha that produced them, into `schemas/V_eta_corpus_proof.{json,md}`
+        # sha that produced them, into `did_v2_corpus_proof.{json,md}` (else V_eta_)
         # inside the did-schema checkout. Nothing is pushed from here: the file
         # rides out in the artifact below, and committing it stays a deliberate
         # human act. Its own anti-clobber rule refuses to overwrite a real
@@ -650,16 +654,21 @@ jobs:
             mkdir -p corpus-proven/snapshot
             # did-schema renames V_eta_corpus_proof.* to did_v2_corpus_proof.*
             # and moves the .md to docs/generated/ ([markdown cleanup and
-            # rename], Jess Haley, 2026-10-26): the first name present is
-            # copied, the new one first, so either did-schema reads.
-            for f in did-schema/schemas/did_v2_corpus_proof.json \
-                     did-schema/schemas/V_eta_corpus_proof.json; do
-              if [ -f "$f" ]; then cp "$f" corpus-proven/snapshot/; break; fi
-            done
-            for f in did-schema/docs/generated/did_v2_corpus_proof.md \
-                     did-schema/schemas/did_v2_corpus_proof.md \
-                     did-schema/schemas/V_eta_corpus_proof.md; do
-              if [ -f "$f" ]; then cp "$f" corpus-proven/snapshot/; break; fi
+            # rename], Jess Haley, 2026-10-26), and the .json to a folder under
+            # schemas/ ([schema folders by family], Jess Haley, 2026-10-30;
+            # folder not final). So each file is found by BASENAME anywhere
+            # under schemas/ and docs/, the new name first; two files with one
+            # basename are reported and neither is copied.
+            for ext in json md; do
+              for name in did_v2_corpus_proof.$ext V_eta_corpus_proof.$ext; do
+                hits=$(find did-schema/schemas did-schema/docs -type f -name "$name" 2>/dev/null | sort)
+                n=$(printf '%s' "$hits" | grep -c . || true)
+                if [ "$n" -gt 1 ]; then
+                  echo "::warning::$n files named $name in did-schema: $hits -- none copied"
+                  break
+                fi
+                if [ "$n" -eq 1 ]; then cp "$hits" corpus-proven/snapshot/; break; fi
+              done
             done
             ls corpus-proven/snapshot/ || true
           else

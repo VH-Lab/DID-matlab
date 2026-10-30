@@ -349,7 +349,7 @@ end
 
 function c = localCache(testCase)
 p = getenv('DID_SCHEMA_PATH');
-if isempty(p) || ~isfile(fullfile(p, 'entity.json'))
+if isempty(p) || ~did2.schema.cache.classFilesIn(p).isKey('entity')
     % ASSUMPTION FAILURE, NOT A TEST FAILURE. "no assembled V_eta schema
     % set here" and "the round trip is broken" are different findings and
     % must not print alike.

@@ -48,7 +48,7 @@ src = did2.schema.cache.shared().schemaPath;
 tmp = tempname;
 mkdir(tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 classes = {'spatial_frequency_tuning_calculation', ...
     'temporal_frequency_tuning_calculation', 'contrast_tuning_calculation', ...
     'contrast_sensitivity'};

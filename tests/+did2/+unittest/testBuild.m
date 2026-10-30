@@ -250,7 +250,7 @@ function testADeclaredCoordinateSystemEdgeIsReadFromTheSchema(testCase)
 src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 [stmt, ent] = vetaNamesOf();
 stmtFile = fullfile(tmp, [stmt '.json']);
@@ -302,7 +302,7 @@ function testUnknownSchemaRuleIsAnErrorNotASkip(testCase)
 src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 [cls, fields] = subjectSpec('m1');
 subjectFile = fullfile(tmp, [cls '.json']);
@@ -330,7 +330,7 @@ function testCovariateShapeAndVariableOnceAreKnownSchemaRules(testCase)
 src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 [cls, fields] = subjectSpec('m1');
 subjectFile = fullfile(tmp, [cls '.json']);
@@ -565,7 +565,8 @@ function testCovariateDocumentPositionsFromAnotherDocument(testCase)
 % chosen by its `document` (was a key's `positions_from`). Position k is
 % entry k of that document's value.
 cache = did2.schema.cache.shared();
-data = jsondecode(fileread(fullfile(cache.schemaPath, 'data.json')));
+files = did2.schema.cache.classFilesIn(cache.schemaPath);  % any layout
+data = jsondecode(fileread(files('data')));
 assumeTrue(testCase, any(strcmp({data.depends_on.name}, 'key_id')), ...
     'the loaded schema has no key_id edge');
 list = newId();

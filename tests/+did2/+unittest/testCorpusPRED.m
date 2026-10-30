@@ -467,7 +467,7 @@ candidates{end+1} = did2.schema.cache.schemaSetTierPath(fullfile(toolboxDir, '..
 p = '';
 for k = 1:numel(candidates)
     candidate = candidates{k};
-    if isfolder(candidate) && ~isempty(dir(fullfile(candidate, '*.json')))
+    if isfolder(candidate) && ~isempty(dir(fullfile(candidate, '**', '*.json')))
         p = candidate;
         return;
     end

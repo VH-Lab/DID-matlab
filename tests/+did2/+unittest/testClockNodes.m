@@ -193,7 +193,7 @@ function flipClocks(testCase)
 src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);   % any layout ([schema folders by family])
 testCase.addTeardown(@() rmdir(tmp, 's'));
 flip = {'utc', 'wikidata:Q1536', 'UTC'; ...
     'dev_local_time', 'EMPTY:0000403', 'device local time'; ...

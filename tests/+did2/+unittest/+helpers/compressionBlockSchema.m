@@ -28,8 +28,11 @@ path = src;
 if did2.build.compressionBlockDeclared(cache)
     return;   % did-schema has declared it: test the real thing
 end
-dataBody = fullfile(src, 'data_body.json');
-interaction = fullfile(src, 'interaction.json');
+% found at any depth: did-schema's family layout ([schema folders by family])
+files = did2.schema.cache.classFilesIn(src);
+dataBody = ''; interaction = '';
+if files.isKey('data_body'); dataBody = files('data_body'); end
+if files.isKey('interaction'); interaction = files('interaction'); end
 if ~isfile(dataBody) || ~isfile(interaction)
     assumeFail(testCase, sprintf(['the loaded schema (%s) has no data_body.json or ' ...
         'interaction.json to declare the compression block from'], src));
@@ -56,7 +59,7 @@ assertNotEmpty(testCase, old, ...
 path = tempname;
 mkdir(path);
 testCase.addTeardown(@() rmdir(path, 's'));
-copyfile(fullfile(src, '*.json'), path);
+did2.schema.cache.copySchemaSet(src, path);
 fid = fopen(fullfile(path, 'data_body.json'), 'w');
 fwrite(fid, strrep(txt, old, jsonencode(decl)));
 fclose(fid);

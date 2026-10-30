@@ -171,6 +171,9 @@ classdef cache < handle
         % Per field type name: does it name a value class (namesValueClass)?
         % Pure in the loaded schemas, as above.
         valueClassMemo
+        % Class name -> its schema file, found recursively under schemaPath
+        % (did2.schema.cache.classFilesIn; [schema folders by family]).
+        classFiles
     end
 
     methods (Access = private)
@@ -185,6 +188,7 @@ classdef cache < handle
             obj.placementMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.matrixPathMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.valueClassMemo = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+            obj.classFiles = did2.schema.cache.classFilesIn(schemaPath);
             obj.loadRegistry();
         end
     end
@@ -200,7 +204,7 @@ classdef cache < handle
                 s = obj.loadedClasses(className);
                 return;
             end
-            schemaFile = fullfile(obj.schemaPath, [className '.json']);
+            schemaFile = obj.classFile(className);
             if ~isfile(schemaFile)
                 error('did2:schema:missingClass', ...
                     'No schema file for class "%s" at %s.', className, schemaFile);
@@ -691,7 +695,7 @@ classdef cache < handle
                 tf = true;
                 return;
             end
-            tf = isfile(fullfile(obj.schemaPath, [className '.json']));
+            tf = isfile(obj.classFile(className));
         end
 
         function tf = sessionIdIsEdge(obj)
@@ -1084,22 +1088,16 @@ classdef cache < handle
         end
 
         function loadAllSchemas(obj)
-            % loadAllSchemas - parse every *.json schema in the schema
-            %   directory and populate the loaded-classes map. Skips
-            %   meta files (CURIE_lookups_meta.json, ndi_reserved_keys.json).
+            % loadAllSchemas - parse every class schema under the schema
+            %   directory (recursively; did2.schema.cache.classFilesIn) and
+            %   populate the loaded-classes map. Skips non-class files
+            %   (isClassFileName: *_meta.json, ndi_reserved_keys.json, ...).
             %   Used by the SQLite backend at open-time so queryablePaths
             %   returns a deterministic set independent of which classes
             %   have been touched so far in this session.
-            if ~isfolder(obj.schemaPath)
-                return;
-            end
-            entries = dir(fullfile(obj.schemaPath, '*.json'));
-            for k = 1:numel(entries)
-                [~, name, ~] = fileparts(entries(k).name);
-                if endsWith(name, '_meta') ...
-                        || strcmp(name, 'ndi_reserved_keys')
-                    continue;
-                end
+            names = obj.classFiles.keys();
+            for k = 1:numel(names)
+                name = names{k};
                 if ~obj.loadedClasses.isKey(name)
                     obj.getClass(name);  % side effect: caches the parse.
                 end
@@ -1865,9 +1863,197 @@ classdef cache < handle
             %   ([schema set renamed did_v2], Jess Haley, 2026-10-25, step 1:
             %   accept both, prefer did_v2). The V_eta path is returned when
             %   neither exists, so a caller reports the name it looked for.
-            p = fullfile(schemasDir, 'did_v2', tier);
-            if ~isfolder(p)
-                p = fullfile(schemasDir, 'V_eta', tier);
+            %
+            %   THE FLAT LAYOUT. [one folder, final classes only] (Decided by
+            %   Jess Haley, 2026-10-29, did-schema
+            %   V_eta_go_forward_class_audit.md): every V2 class moves into
+            %   one folder, schemas/did_v2/*.json, with no stable/ or draft/
+            %   tier, and the siblings read the flat layout first. A did_v2
+            %   folder holding neither a stable/ nor a draft/ tier is that
+            %   layout: every tier is the folder itself, so <schemasDir>/did_v2
+            %   is returned. While did_v2 still has a tier, nothing changes.
+            setDir = fullfile(schemasDir, 'did_v2');
+            p = fullfile(setDir, tier);
+            if isfolder(p)
+                return;
+            end
+            if isfolder(setDir) && ~isfolder(fullfile(setDir, 'stable')) ...
+                    && ~isfolder(fullfile(setDir, 'draft'))
+                p = setDir;
+                return;
+            end
+            p = fullfile(schemasDir, 'V_eta', tier);
+        end
+
+        function files = classFilesIn(setDir)
+            % classFilesIn - class name -> schema file, for every class file
+            %   under SETDIR at any depth.
+            %
+            %   [schema folders by family] (Decided by Jess Haley, 2026-10-30,
+            %   did-schema V_eta_go_forward_class_audit.md): schemas/did_v2/
+            %   holds class files only, in family subfolders (core classes at
+            %   the top; value/, calculation/, data_body/, time_reference/,
+            %   retiring/). Siblings first: both that layout and the tiers
+            %   (stable/, draft/) and a flat assembled folder read here.
+            %   Skipped: folders named `registry` or `generated`, hidden
+            %   folders, and files that are not classes (isClassFileName).
+            %   Class names are unique across the tree: a second file for one
+            %   name is the error did2:schema:duplicateClass.
+            files = containers.Map('KeyType', 'char', 'ValueType', 'char');
+            if isempty(setDir) || ~isfolder(setDir)
+                return;
+            end
+            here = dir(setDir);
+            root = here(1).folder;
+            entries = dir(fullfile(setDir, '**', '*.json'));
+            for k = 1:numel(entries)
+                if entries(k).isdir
+                    continue;
+                end
+                [~, name] = fileparts(entries(k).name);
+                if ~did2.schema.cache.isClassFileName(name)
+                    continue;
+                end
+                below = did2.schema.cache.foldersBelow(entries(k).folder, root);
+                if any(ismember(below, {'registry', 'generated'})) ...
+                        || any(startsWith(below, '.'))
+                    continue;
+                end
+                p = fullfile(entries(k).folder, entries(k).name);
+                if files.isKey(name)
+                    error('did2:schema:duplicateClass', ...
+                        ['Class "%s" has two schema files: %s and %s. Class ' ...
+                         'names are unique across the schema tree ([schema ' ...
+                         'folders by family]).'], name, files(name), p);
+                end
+                files(name) = p;
+            end
+        end
+
+        function tf = isClassFileName(name)
+            % isClassFileName - is <name>.json a class file? Not a meta file
+            %   (*_meta, ndi_reserved_keys), the set's index (index, topics),
+            %   or a did-schema data file (did_v2_*, V_eta_*: the registers a
+            %   flat CI folder may also hold). Mirrored by DID-matlab
+            %   tools/assemble_schema_set.py is_class_name.
+            name = char(name);
+            tf = ~(endsWith(name, '_meta') ...
+                || any(strcmp(name, {'index', 'topics', 'ndi_reserved_keys'})) ...
+                || startsWith(name, 'did_v2_') || startsWith(name, 'V_eta_'));
+        end
+
+        function root = registrySearchRoot(schemaPath)
+            % registrySearchRoot - the folder a registry is looked for under:
+            %   the did-schema `schemas` folder when SCHEMAPATH is inside one
+            %   (schemas/did_v2, or schemas/did_v2/<tier>), else SCHEMAPATH
+            %   itself (a flat assembled folder, a test's temp copy).
+            root = schemaPath;
+            probe = regexprep(char(schemaPath), '[\\/]+$', '');
+            for up = 0:2
+                [parent, leaf] = fileparts(probe);
+                if strcmp(leaf, 'schemas')
+                    root = probe;
+                    return;
+                end
+                if isempty(parent) || strcmp(parent, probe)
+                    return;
+                end
+                probe = parent;
+            end
+        end
+
+        function p = registryFileIn(schemaPath, fileName)
+            % registryFileIn - the registry/meta file FILENAME, found by its
+            %   basename at any depth under registrySearchRoot(SCHEMAPATH), or
+            %   '' when there is none.
+            %
+            %   [schema folders by family] (Jess Haley, 2026-10-30): the
+            %   non-class JSON leaves schemas/did_v2/ for schemas/registry/
+            %   (authored) and schemas/generated/ (tool-written); the exact
+            %   folders are not final, so the file is found by name, in either
+            %   layout. A did_v2_* name is also looked up under its V_eta_*
+            %   name ([markdown cleanup and rename] item 6), the new one first.
+            %   Two files with one basename: did2:schema:duplicateRegistryFile.
+            p = '';
+            root = did2.schema.cache.registrySearchRoot(schemaPath);
+            if isempty(root) || ~isfolder(root)
+                return;
+            end
+            here = dir(root);
+            rootAbs = here(1).folder;
+            fileName = char(fileName);
+            names = {fileName};
+            if startsWith(fileName, 'did_v2_')
+                names{end+1} = ['V_eta_' fileName(numel('did_v2_')+1:end)];
+            end
+            for n = 1:numel(names)
+                hits = dir(fullfile(root, '**', names{n}));
+                hits = hits(~[hits.isdir]);
+                keep = true(1, numel(hits));
+                for k = 1:numel(hits)
+                    keep(k) = ~any(startsWith( ...
+                        did2.schema.cache.foldersBelow(hits(k).folder, rootAbs), '.'));
+                end
+                hits = hits(keep);
+                if numel(hits) > 1
+                    error('did2:schema:duplicateRegistryFile', ...
+                        ['%d files named %s under %s (%s). A registry is read ' ...
+                         'by its basename, so the name must be unique ' ...
+                         '([schema folders by family]).'], numel(hits), ...
+                        names{n}, root, strjoin(arrayfun(@(h) fullfile(h.folder, h.name), ...
+                        hits(:)', 'UniformOutput', false), ', '));
+                end
+                if isscalar(hits)
+                    p = fullfile(hits.folder, hits.name);
+                    return;
+                end
+            end
+        end
+
+        function parts = foldersBelow(folder, root)
+            % foldersBelow - the folder names of FOLDER below ROOT (both as
+            %   dir() reports them), so a hidden or excluded folder ABOVE the
+            %   schema tree (a checkout under ~/.cache, say) excludes nothing.
+            folder = char(folder);
+            if startsWith(folder, root)
+                folder = folder(numel(root)+1:end);
+            end
+            parts = strsplit(folder, {'/', '\'});
+            parts = parts(~cellfun(@isempty, parts));
+        end
+
+        function names = registryFileNames()
+            % registryFileNames - the registry/meta files the cache and its
+            %   readers use, by basename (copySchemaSet copies these).
+            names = {'CURIE_lookups_meta.json', 'term_registry_meta.json', ...
+                'binding_registry_meta.json', 'class_disposition_meta.json', ...
+                'quantity_list_meta.json', 'did_schema_meta.json', ...
+                'ndi_reserved_keys.json'};
+        end
+
+        function n = copySchemaSet(src, dest)
+            % copySchemaSet - copy the schema set read from SRC (any layout)
+            %   FLAT into DEST: every class file (classFilesIn) and every
+            %   registry file found (registryFileNames, registryFileIn). For a
+            %   test that edits a copy of the loaded set; replaces
+            %   copyfile(fullfile(src, '*.json'), dest), which reads only a
+            %   flat folder. Returns the number of files copied.
+            if ~isfolder(dest)
+                mkdir(dest);
+            end
+            files = did2.schema.cache.classFilesIn(src);
+            names = files.keys();
+            for k = 1:numel(names)
+                copyfile(files(names{k}), fullfile(dest, [names{k} '.json']));
+            end
+            n = numel(names);
+            reg = did2.schema.cache.registryFileNames();
+            for k = 1:numel(reg)
+                p = did2.schema.cache.registryFileIn(src, reg{k});
+                if ~isempty(p)
+                    copyfile(p, fullfile(dest, reg{k}));
+                    n = n + 1;
+                end
             end
         end
     end
@@ -1892,7 +2078,11 @@ classdef cache < handle
             % tiers into one directory and set DID_SCHEMA_PATH to it, which
             % wins over this default (above).
             % [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1:
-            % accept both names, preferring did_v2 when present.
+            % accept both names, preferring did_v2 when present. On the flat
+            % layout ([one folder, final classes only]) and the family layout
+            % ([schema folders by family], 2026-10-30) schemaSetTierPath
+            % returns schemas/did_v2 itself; its classes are read at any depth
+            % (classFilesIn) and the registries from schemas/ (registryFileIn).
             p = did2.schema.cache.schemaSetTierPath( ...
                 fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas'), 'stable');
         end
@@ -2736,27 +2926,45 @@ classdef cache < handle
             end
         end
 
+        function p = classFile(obj, className)
+            % classFile - the schema file of className: the one found under
+            %   schemaPath (any depth) when the cache was made, else
+            %   <schemaPath>/<className>.json (so a missing class is reported
+            %   at the flat path, as before).
+            if obj.classFiles.isKey(className)
+                p = obj.classFiles(className);
+            else
+                p = fullfile(obj.schemaPath, [className '.json']);
+            end
+        end
+
         function loadRegistry(obj)
-            registryFile = fullfile(obj.schemaPath, 'CURIE_lookups_meta.json');
+            % Each registry is found by its BASENAME under the schema tree
+            % (did2.schema.cache.registryFileIn): schemas/registry/ and
+            % schemas/generated/ in did-schema's family layout, did_v2/stable/
+            % before it, or the flat assembled folder in CI ([schema folders
+            % by family], Jess Haley, 2026-10-30). Two files with one
+            % basename are an error.
+            registryFile = did2.schema.cache.registryFileIn(obj.schemaPath, 'CURIE_lookups_meta.json');
             if isfile(registryFile)
                 obj.curieRegistry = jsondecode(fileread(registryFile));
             end
             % the term registry (DID-schema V_eta_term_registry_plan.md,
             % tenet T19); absent before it was built (did-schema main)
-            termFile = fullfile(obj.schemaPath, 'term_registry_meta.json');
+            termFile = did2.schema.cache.registryFileIn(obj.schemaPath, 'term_registry_meta.json');
             if isfile(termFile)
                 obj.termRegistry = jsondecode(fileread(termFile));
             end
             % the binding registry: a variable's closed value list
             % (`values`, Jess Haley 2026-10-21; did2.schema.valueInSet)
-            bindingFile = fullfile(obj.schemaPath, 'binding_registry_meta.json');
+            bindingFile = did2.schema.cache.registryFileIn(obj.schemaPath, 'binding_registry_meta.json');
             if isfile(bindingFile)
                 obj.bindingRegistry = jsondecode(fileread(bindingFile));
             end
             % the classes the schema retires (Jess Haley, 2026-10-24,
             % V_eta_go_forward_class_audit.md [V2 builder refuses retired]);
             % absent before did-schema ships it, and then nothing is refused
-            dispositionFile = fullfile(obj.schemaPath, 'class_disposition_meta.json');
+            dispositionFile = did2.schema.cache.registryFileIn(obj.schemaPath, 'class_disposition_meta.json');
             if isfile(dispositionFile)
                 obj.classDisposition = jsondecode(fileread(dispositionFile));
             end
