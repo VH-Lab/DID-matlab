@@ -1435,6 +1435,21 @@ classdef cache < handle
                      '`value_id` edge names a shared value document, so the ' ...
                      'value is nowhere.'], className);
             end
+            % ---- [allowed units are source units] (Jess Haley, 2026-10-29) ---
+            % with [allowed units are closed source_unit lists] (2026-10-27):
+            % a quantity's source_unit is one its variable's unit_bindings
+            % row admits (did2.schema.unitBindingProblems). DISARMED by
+            % default (strictMode, UnitBindings). LAST, like the two above.
+            if did2.schema.cache.strictMode('UnitBindings')
+                unitProblems = did2.schema.unitBindingProblems(s, obj.bindingRegistry);
+                if ~isempty(unitProblems)
+                    error('did2:validation:unitOutsideSet', ...
+                        ['Class "%s": %s. The units a source may give a ' ...
+                         'variable are did-schema binding_registry_meta.json ' ...
+                         '`unit_bindings`, changed through review.'], ...
+                        className, strjoin(unitProblems, '; '));
+                end
+            end
         end
     end
 
@@ -1557,6 +1572,16 @@ classdef cache < handle
             %                           raising did2:validation:quantityShape.
             %                           ARMED; DID_ENFORCE_QUANTITY_SHAPE=0
             %                           disarms.
+            %     UnitBindings          [allowed units are closed
+            %                           source_unit lists] (2026-10-27) and
+            %                           [allowed units are source units]
+            %                           (2026-10-29), Jess Haley. A
+            %                           source_unit outside its variable's
+            %                           did-schema `unit_bindings` list
+            %                           rejects, raising
+            %                           did2:validation:unitOutsideSet.
+            %                           DISARMED; DID_ENFORCE_UNIT_BINDINGS=1
+            %                           arms (see the switch).
             %     RetiredClasses        did2.build refuses a new document of
             %                           a class the schema's
             %                           class_disposition_meta.json lists
@@ -1791,7 +1816,24 @@ classdef cache < handle
                     ... (private/fillField.m), so a document it built does not
                     ... trip this. DID_ENFORCE_QUANTITY_SHAPE=0 turns it off.
                     'QuantityShape', ...
-                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_QUANTITY_SHAPE'));
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_QUANTITY_SHAPE'), ...
+                    ... Decided by Jess Haley, 2026-10-27 [allowed units are
+                    ... closed source_unit lists] and 2026-10-29 [allowed units
+                    ... are source units] (did-schema
+                    ... V_eta_go_forward_class_audit.md): a variable's
+                    ... `unit_bindings` row is the closed list of units a source
+                    ... may give its value in. DISARMED BY DEFAULT because
+                    ... writers of today give units outside the seeded lists
+                    ... (siblings first, CLAUDE.md sec. 3): NDI-matlab's Haley
+                    ... import gives a video's `time` covariate in frames
+                    ... (+haley/sessionDocuments.m, SourceUnit 'frame'), and
+                    ... DID-matlab's probe_geometry (cm, nm), jLightsheetAxes
+                    ... (angstrom, nanometre, centimetre, nanosecond,
+                    ... microsecond) and image_stack (any dimension_scale_units
+                    ... spelling) can. The cost on a corpus is NOT MEASURED.
+                    ... DID_ENFORCE_UNIT_BINDINGS=1 turns it on.
+                    'UnitBindings', ...
+                        did2.schema.cache.envFlag('DID_ENFORCE_UNIT_BINDINGS'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;

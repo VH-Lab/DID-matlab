@@ -17,7 +17,9 @@ function tests = testTuningDecisions
 %     [tuning log in notes]                      testTuningLogInNotes
 %     [varied properties are conditions by V2 name]  testVariedProperties*
 %     [parameter names map by table]             testParameterNames*
-%     [absolute-value fits are a second calculation] testAbsoluteValueFits*
+%     [absolute-value fits are fit entries] (2026-10-28; supersedes
+%       [absolute-value fits are a second calculation])  testAbsoluteValueFits*,
+%                                                testOneCalculationPerOutput
 %     [interpolated values are a list] (2026-10-30)  testInterpolatedValues*,
 %                                                testAnAbsBlockOfOnlyInterpolatedValuesIsNoSecondCalculation
 %                                                (each on a schema copy with and
@@ -96,9 +98,14 @@ end
 function testOneCalculationPerOutput(testCase)
 % [one calculation per named calculator output] (Jess Haley, 2026-10-28): one
 % v1 output, one calculation, its id the v1 id, its fits model_fit entries
-% each naming its own model. (The SF / TF `abs` block is still its own
-% calculation: [absolute-value fits are fit entries] is not built yet, see
-% testAbsoluteValueFitsAreASecondCalculation.)
+% each naming its own model. Since [absolute-value fits are fit entries]
+% (Decided by Jess Haley, 2026-10-28) the SF / TF `abs` block is on the same
+% calculation too: its five fits are five more entries, marked
+% response_transform 'absolute value' (testAbsoluteValueFitsAreFitEntries);
+% NFITS counts the entries fit to the responses as stated. Run with
+% `interpolated_values` a list declared, without which the SF / TF `abs.fitless`
+% has no home and the document carries.
+did2.unittest.helpers.interpolatedListSchema(testCase, true);
 cases = { ...
     'oridir', writerOutput('oridirtuning_calc'), 'orientation_direction_tuning_calculation', 1; ...
     'contrast', convertedContrast(), 'contrast_tuning_calculation', 3; ...
@@ -114,6 +121,7 @@ for k = 1:size(cases, 1)
     mine = calcs(cellfun(@(c) strcmp(char(c.base.id), v1.base.id), calcs));
     assertEqual(testCase, numel(mine), 1, [label ': one calculation holds the v1 id']);
     mf = asCell(mine{1}.tuning_curve.value.model_fit);
+    mf = mf(cellfun(@(e) isempty(fitTransform(e)), mf));
     verifyEqual(testCase, numel(mf), nFits, [label ': every fit is an entry']);
     verifyTrue(testCase, all(cellfun(@(e) ~isempty(char(e.model.name)), mf)), ...
         [label ': each entry names its model']);
@@ -493,13 +501,25 @@ verifyEqual(testCase, out.response_parameters_fold.refused_unknown_setting, 1);
 verifyEqual(testCase, out.response_parameters_fold.methods_minted, 0);
 end
 
-% ===================== [absolute-value fits are a second calculation] =====
+% ===================== [absolute-value fits are fit entries] ==============
+% Decided by Jess Haley, 2026-10-28 [absolute-value fits are fit entries]
+% (did-schema V_eta_go_forward_class_audit.md), superseding [absolute-value
+% fits are a second calculation] (2026-10-27), which conflicted with T10: an
+% SF / TF output's `abs` fits are model_fit entries of the ONE calculation,
+% each with response_transform 'absolute value'. Its condition (bring back
+% anything else the `abs` block holds) was answered by [interpolated values
+% are a list] (2026-10-30): `abs.fitless` is the 'absolute value'
+% interpolated_values entry.
 
-function testAbsoluteValueFitsAreASecondCalculation(testCase)
-% Superseded 2026-10-28 by [absolute-value fits are fit entries], which is not
-% built yet: that decision asked for anything the `abs` block holds beyond the
-% fits on |response| to be brought back first, and it holds `fitless` too
-% (testTheAbsBlockHoldsMoreThanFits). Until then this is still the behaviour.
+function testAbsoluteValueFitsAreFitEntries(testCase)
+% With the list declared, each writer output is ONE calculation holding the
+% five fits as stated and then the five abs fits, of the same models, marked
+% 'absolute value'; no method parameter 'response transform' is written; the
+% round trip rebuilds the v1 `abs` block; the validator takes the entries.
+assertTrue(testCase, did2.unittest.helpers.schemaDeclares('tuning_curve', ...
+    {'value', 'model_fit', 'response_transform'}), ...
+    'the schema in use declares no model_fit response_transform (did-schema f02a251)');
+did2.unittest.helpers.interpolatedListSchema(testCase, true);
 for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     v1 = writerOutput(cls{1});
     out = runRaw({v1});
@@ -507,17 +527,48 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     verifyEmpty(testCase, out.passthrough, [cls{1} ': converts']);
     leafClass = strrep(cls{1}, '_calc', '_calculation');
     calcs = allOfClass(out, leafClass);
-    verifyEqual(testCase, numel(calcs), 2, cls{1});
-    transforms = cellfun(@(c) parameterText(c, 'response transform'), calcs, ...
-        'UniformOutput', false);
-    verifyEqual(testCase, sort(transforms), {'', 'absolute value'}, cls{1});
+    assertEqual(testCase, numel(calcs), 1, [cls{1} ': one calculation (T10)']);
+    verifyEqual(testCase, char(calcs{1}.base.id), char(v1.base.id), cls{1});
+    verifyEqual(testCase, parameterText(calcs{1}, 'response transform'), '', ...
+        [cls{1} ': the transform is on the fit entries, not the method']);
+    mf = asCell(calcs{1}.tuning_curve.value.model_fit);
+    transforms = cellfun(@fitTransform, mf, 'UniformOutput', false);
+    verifyEqual(testCase, transforms, [repmat({''}, 1, 5), repmat({'absolute value'}, 1, 5)], ...
+        [cls{1} ': the fits as stated, then the abs fits']);
+    models = cellfun(@(e) char(e.model.name), mf, 'UniformOutput', false);
+    verifyEqual(testCase, sort(models(6:10)), sort(models(1:5)), ...
+        [cls{1} ': the abs block fits the same five models']);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, cls{1}, {});
+    checked = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+    verifyFalse(testCase, any(contains(quarantineReasons(checked), ...
+        {'model_fit', 'response_transform'})), ...
+        [cls{1} ': the validator refuses the absolute-value fit entries']);
 end
 end
 
+function testAbsoluteValueFitsWithAnUnknownTransformAreUnplaced(testCase)
+% The round trip has a v1 place only for fits to the responses as stated and
+% to |response| (SF / TF `abs`): a model_fit entry with any other transform
+% is reported.
+did2.unittest.helpers.interpolatedListSchema(testCase, true);
+v1 = writerOutput('spatial_frequency_tuning_calc');
+out = runRaw({v1});
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+k = find(cellfun(@(d) strcmp(char(d.document_class.class_name), ...
+    'spatial_frequency_tuning_calculation'), docs), 1);
+assertNotEmpty(testCase, k);
+mf = docs{k}.tuning_curve.value.model_fit;
+if iscell(mf); mf = [mf{:}]; end
+mf(end).response_transform = 'logarithm';
+docs{k}.tuning_curve.value.model_fit = mf;
+r = did2.convert.roundtrip.check(v1, docs);
+verifyNotEmpty(testCase, r.unplaced, 'an unknown transform is unplaced');
+end
+
 function testTheAbsBlockHoldsMoreThanFits(testCase)
-% Why [absolute-value fits are fit entries] (2026-10-28) is held: the SF / TF
+% Why [absolute-value fits are fit entries] (2026-10-28) was held until
+% [interpolated values are a list] (2026-10-30) answered it: the SF / TF
 % writers' `abs` block (NDIcalc-vis-matlab 00e3e0f spatial_frequency_tuning.m,
 % temporal_frequency_tuning.m: abs.fitless = abs_sf_props.fitless, then the
 % five fits) holds the interpolated values of |response| as well as the fits.
@@ -543,62 +594,38 @@ end
 % exercised in every run, whatever did-schema `main` declares.
 
 function testInterpolatedValuesAreOneStructureWithoutTheList(testCase)
-% Without the declaration the fold writes the one structure, and v1
-% `abs.fitless` stays on the absolute-value calculation, as before.
+% Without the declaration the fold would write the one structure, and since
+% [absolute-value fits are fit entries] (2026-10-28) there is no second
+% calculation to hold v1 `abs.fitless`: it has no home, and the writer
+% outputs (which all state it) carry whole as v1 (carry-056).
 did2.unittest.helpers.interpolatedListSchema(testCase, false);
 for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
-    leafClass = strrep(cls{1}, '_calc', '_calculation');
     v1 = writerOutput(cls{1});
-    out = runRaw({v1});
-    verifyEmpty(testCase, out.quarantine, cls{1});
-    verifyEmpty(testCase, out.passthrough, [cls{1} ': converts']);
-    calcs = allOfClass(out, leafClass);
-    verifyEqual(testCase, numel(calcs), 2, cls{1});
-    for k = 1:numel(calcs)
-        iv = calcs{k}.(leafClass).interpolated_values;
-        verifyTrue(testCase, isstruct(iv) && isscalar(iv), cls{1});
-        verifyFalse(testCase, isfield(iv, 'response_transform'), cls{1});
-    end
-    r = did2.convert.roundtrip.check(v1, out.migrated);
-    did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', one structure'], {});
+    [carried, notes] = did2.unittest.helpers.carryNote({v1});
+    verifyTrue(testCase, carried, [cls{1} ': abs.fitless has no home without the list']);
+    verifyTrue(testCase, contains(notes, '[carry-056]') && contains(notes, '.abs.fitless'), notes);
 end
 end
 
 function testInterpolatedValuesAreReadBackAsAList(testCase)
-% The round trip reads the list shape whoever wrote it: the one-structure
-% output with the main calculation's interpolated_values made a list [as
-% stated; 'absolute value'] and the absolute-value calculation's values moved
-% into it rebuilds the same v1 document (abs.fitless from the 'absolute value'
-% entry).
-did2.unittest.helpers.interpolatedListSchema(testCase, false);
+% The round trip reads the list: the output written with the list declared
+% rebuilds the same v1 document (abs.fitless from the 'absolute value'
+% entry), and an entry with a transform v1 has no place for is reported.
+did2.unittest.helpers.interpolatedListSchema(testCase, true);
 for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     v1 = writerOutput(cls{1});
     leafClass = strrep(cls{1}, '_calc', '_calculation');
     out = runRaw({v1});
     docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
-    mainK = 0;
-    absK = 0;
-    for k = 1:numel(docs)
-        if ~strcmp(char(docs{k}.document_class.class_name), leafClass); continue; end
-        if strcmp(parameterText(docs{k}, 'response transform'), 'absolute value')
-            absK = k;
-        else
-            mainK = k;
-        end
-    end
-    assertGreaterThan(testCase, mainK, 0, cls{1});
-    assertGreaterThan(testCase, absK, 0, cls{1});
-    mainIv = docs{mainK}.(leafClass).interpolated_values;
-    absIv = docs{absK}.(leafClass).interpolated_values;
-    absIv.response_transform = 'absolute value';
-    docs{mainK}.(leafClass).interpolated_values = {mainIv, absIv};
-    docs{absK}.(leafClass) = rmfield(docs{absK}.(leafClass), 'interpolated_values');
+    mainK = find(cellfun(@(d) strcmp(char(d.document_class.class_name), leafClass), docs));
+    assertNumElements(testCase, mainK, 1, cls{1});
     r = did2.convert.roundtrip.check(v1, docs);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', list shape'], {});
-    % and an entry with a transform v1 has no place for is reported
-    odd = mainIv;
+    iv = docs{mainK}.(leafClass).interpolated_values;
+    if iscell(iv); iv = [iv{:}]; end
+    odd = iv(1);
     odd.response_transform = 'logarithm';
-    docs{mainK}.(leafClass).interpolated_values = {mainIv, absIv, odd};
+    docs{mainK}.(leafClass).interpolated_values = [num2cell(iv), {odd}];
     r = did2.convert.roundtrip.check(v1, docs);
     verifyNotEmpty(testCase, r.unplaced, [cls{1} ': an unknown transform is unplaced']);
 end
@@ -607,9 +634,9 @@ end
 function testInterpolatedValuesAreAListOnceTheSchemaDeclaresIt(testCase)
 % With the declaration the fold writes the list: the values as stated first,
 % v1 `abs.fitless` second with response_transform 'absolute value', on the
-% MAIN calculation; the absolute-value calculation (its fits) holds no
-% interpolated_values; the round trip is unchanged; and the validator takes
-% the list.
+% ONE calculation (its abs fits are model_fit entries there too, [absolute-
+% value fits are fit entries]); the round trip is unchanged; and the
+% validator takes the list.
 did2.unittest.helpers.interpolatedListSchema(testCase, true);
 for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     v1 = writerOutput(cls{1});
@@ -618,17 +645,8 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     verifyEmpty(testCase, out.quarantine, cls{1});
     verifyEmpty(testCase, out.passthrough, [cls{1} ': converts']);
     calcs = allOfClass(out, leafClass);
-    verifyEqual(testCase, numel(calcs), 2, [cls{1} ': the main calculation and the abs fits']);
-    mainIv = [];
-    for k = 1:numel(calcs)
-        isAbs = strcmp(parameterText(calcs{k}, 'response transform'), 'absolute value');
-        if isAbs
-            verifyFalse(testCase, isfield(calcs{k}.(leafClass), 'interpolated_values'), ...
-                [cls{1} ': abs.fitless is on the main calculation''s list']);
-        else
-            mainIv = calcs{k}.(leafClass).interpolated_values;
-        end
-    end
+    assertEqual(testCase, numel(calcs), 1, [cls{1} ': one calculation']);
+    mainIv = calcs{1}.(leafClass).interpolated_values;
     if iscell(mainIv); mainIv = [mainIv{:}]; end
     assertEqual(testCase, numel(mainIv), 2, [cls{1} ': as stated, then |response|']);
     verifyTrue(testCase, ~isfield(mainIv, 'response_transform') ...
@@ -713,6 +731,14 @@ for declared = [false true]
         r = did2.convert.roundtrip.check(v1, out.migrated);
         did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
     end
+end
+end
+
+function t = fitTransform(e)
+% a model_fit entry's response_transform ('' when absent or empty)
+t = '';
+if isstruct(e) && isfield(e, 'response_transform') && ~isempty(e.response_transform)
+    t = strtrim(char(e.response_transform));
 end
 end
 
