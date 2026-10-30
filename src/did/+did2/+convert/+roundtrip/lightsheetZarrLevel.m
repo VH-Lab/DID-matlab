@@ -32,10 +32,16 @@ function [v1, spec] = lightsheetZarrLevel(bodies)
 %     chunk_order                        datum_order
 %     fill_value                         fill_value, the literal read back
 %     byte_order                         byte_order
-%     codec                              compression, 'raw' without one
+%     codec                              compression (the char, or the
+%                                        block's codec: did2.build.
+%                                        compressionCodec), 'raw' without one
 %     codec_params                       '{}' with no compression (the writer's
-%                                        empty settings; a level with settings
-%                                        beyond the codec name is carried)
+%                                        empty settings); the block's
+%                                        parameters as JSON, in order, when it
+%                                        has any ([compression block and empty
+%                                        levels]); on a char schema a level
+%                                        with settings beyond the codec name
+%                                        is carried
 %     n_chunks_stored                    the members the body holds (the series
 %                                        manifest's count, else the named
 %                                        members), 0 for a file-less body
@@ -106,12 +112,19 @@ blk.chunk_index_origin = 1;
 blk.chunk_order = textOf(findField(b, 'datum_order'));
 blk.fill_value = fillOf(findField(b, 'fill_value'));
 blk.byte_order = textOf(findField(b, 'byte_order'));
-codec = textOf(findField(b, 'compression'));
+% `compression` in either shape: the codec name (char), or the {term,
+% parameters} block ([compression block and empty levels] (1), Jess Haley,
+% 2026-10-26), whose parameters are the level's codec_params
+% (did2.build.compressionCodec, the inverse of did2.build.compression)
+[codec, settings] = did2.build.compressionCodec(firstOf(findField(b, 'compression')));
 if isempty(codec)
     blk.codec = 'raw';
     blk.codec_params = '{}';
 else
     blk.codec = codec;
+    if ~isempty(fieldnames(settings))
+        blk.codec_params = jsonencode(settings);
+    end
 end
 blk.voxel_size = f.scale;
 space = find(ismember(f.axes_order, 'zyx'), 1);

@@ -32,9 +32,10 @@ function tests = testRawV1RoundTripTuningBlocks
 %
 %   WHAT THE WRITERS' DOCUMENTS DO TODAY: exactly what their *_calc documents
 %   do (testRawV1RoundTripTuning, testRawV1RoundTripSpike), since the block is
-%   the same. SF and TF convert, their `abs` block a second calculation, and
-%   speed converts, its three fits told apart by their constraints (Jess
-%   Haley, 2026-10-27: [absolute-value fits are a second calculation],
+%   the same. SF and TF convert, their `abs` block on the one calculation
+%   (Decided by Jess Haley, 2026-10-28 [absolute-value fits are fit entries],
+%   with [interpolated values are a list], 2026-10-30), and speed converts,
+%   its three fits told apart by their constraints (Jess Haley, 2026-10-27:
 %   [Priebe fits are one function]); contrast carries whole as v1 (carry-056:
 %   its fits' relative max gain, saturation index and sensitivity) until
 %   did-schema declares them ([contrast metrics added]), and a carry
@@ -127,9 +128,10 @@ end
 function testAStrayFieldCitesCarry100AndAWriterFieldCarry056(testCase)
 % [tuning stray fields are malformed] (Jess Haley, 2026-10-27): carry-056
 % keeps only fields the NDIcalc-vis writer does write that V2 has no home for
-% yet. The SF writer's `abs` block has a home since [absolute-value fits are a
-% second calculation] (2026-10-27); a field inside it the template does not
-% declare is cited on its own under carry-100.
+% yet. The SF writer's `abs` block has a home since 2026-10-27 (on the one
+% calculation since [absolute-value fits are fit entries], 2026-10-28); a
+% field inside it the template does not declare is cited on its own under
+% carry-100.
 v1 = writerShape('spatial_frequency_tuning');
 v1.spatial_frequency_tuning.abs.fit_dog.note = 'x';
 verifyCarriedUnder(testCase, v1, 'spatial_frequency_tuning.abs.fit_dog.note', 'carry-100');
