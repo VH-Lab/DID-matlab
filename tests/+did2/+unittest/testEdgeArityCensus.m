@@ -306,9 +306,33 @@ function testItSeesAPluralFamilyTheGatedCounterCannotSee(testCase)
 % family whose schema declares `referent_unique_by`. DID-schema declares it on
 % three families, all `time_reference_#`
 % (tools/build_v_eta.py:5583-5587 (deleted 2026-10-21)), so `document_id` is never examined by it.
+%
+% THE CLASS IS `demo`, NOT `ontology_table_row` (2026-10-30). The gated counter
+% reads the class's schema; a document whose class the loaded schema set cannot
+% resolve is SKIPPED by it (silentLoss's per-document catch counts it in
+% `skipped_docs`), and a skipped document reads as 0 here exactly like an
+% examined one. [one folder, final classes only] (Jess Haley, 2026-10-29,
+% did-schema V_eta_go_forward_class_audit.md) deletes the `ontology_table_row`
+% file, which would turn this into a vacuous 0. `demo` is a `persist` class
+% (superclass base, no edges declared), so the gated counter really examines
+% these documents; `skipped_docs` 0 below says it did. The ungated census never
+% reads a schema (testAClassNoSchemaDeclaresIsStillCounted), so its half is
+% unchanged.
 docs = {rowBody('r1', {'document_id_1', 'document_id_2'}, {'a', 'b'}), ...
         rowBody('r2', {'document_id_1', 'document_id_2'}, {'c', 'd'})};
+for k = 1:numel(docs)
+    docs{k}.document_class.class_name = 'demo';
+end
+haveDemo = false;
+try
+    haveDemo = did2.schema.cache.shared().hasClass('demo');
+catch
+end
+assumeTrue(testCase, haveDemo, ...
+    'the loaded schema set has no `demo` class; the gated counter cannot be exercised');
 rep = did2.validate.silentLoss(docs);
+verifyEqual(testCase, rep.skipped_docs, 0, ...
+    'the gated blocks must have READ both documents, or their 0 below is vacuous');
 verifyEqual(testCase, rep.uniqueness_denominator.docs_multi_member, 0, ...
     ['the GATED counter must report nothing here -- if it does not, ' ...
      '`document_id` gained a referent_unique_by and this test needs ' ...
