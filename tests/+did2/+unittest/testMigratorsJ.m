@@ -100,9 +100,55 @@ end
 function out = runJUnit(v1)
 % a sorted unit (element el_1) whose sorting run labels it a single unit:
 % [sorted units are cells or groups] (Jess Haley, 2026-10-26); without a label
-% it is carried ([unlabelled units need a map], testRawV1RoundTripElement)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+% it is carried ([unlabelled units need a map], testRawV1RoundTripElement).
+% Its probe (the underlying element) is in the batch, on the unit's subject:
+% a unit whose probe is not in the batch is carried, carry-151 ([unit with no
+% probe in the batch carried], Jess Haley, 2026-10-29). The probe's own
+% documents are then left out of OUT.migrated, so the assertions see only what
+% the unit emitted, as before.
+probe = unitProbeOf(v1);
+batch = {v1};
+if ~isempty(probe); batch{end+1} = probe; end
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
+if isempty(probe); return; end
+probeId = probe.base.id;
+unitId = v1.base.id;
+keep = true(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    d = out.migrated{k}.toStruct();
+    if isfield(d, 'base') && strcmp(char(d.base.id), probeId)
+        keep(k) = false;
+        continue;
+    end
+    refs = {};
+    if isfield(d, 'depends_on') && ~isempty(d.depends_on)
+        deps = d.depends_on;
+        if iscell(deps); deps = [deps{:}]; end
+        for j = 1:numel(deps)
+            for f = {'value', 'document_id', 'id'}
+                if isfield(deps(j), f{1}) && ischar(deps(j).(f{1}))
+                    refs{end+1} = deps(j).(f{1}); %#ok<AGROW>
+                end
+            end
+        end
+    end
+    keep(k) = ~(any(strcmp(refs, probeId)) && ~any(strcmp(refs, unitId)));
+end
+out.migrated = out.migrated(keep);
+end
+
+function probe = unitProbeOf(unit)
+%UNITPROBEOF The probe a sorted-unit element fixture is built on (an n-trode
+%   on the unit's subject, id = the unit's underlying_element_id), or [] when
+%   the fixture names no underlying element.
+probe = [];
+deps = unit.depends_on;
+under = deps(strcmp({deps.name}, 'underlying_element_id'));
+if isempty(under) || isempty(under(1).value); return; end
+subj = deps(strcmp({deps.name}, 'subject_id'));
+probe = elementDoc('probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, subj(1).value, '');
+probe.base.id = char(under(1).value);
 end
 
 function v = depVal(doc, name)
@@ -789,6 +835,13 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
 verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 5);
+% [canonical absent only as needs info] (Jess Haley, 2026-10-30): a number with
+% no unit keeps its source_value, has no canonical, and needs_info names the
+% canonical
+fs = f.toStruct();
+assertTrue(testCase, isfield(fs.base, 'needs_info'), 'the missing canonical is not named');
+verifyEqual(testCase, {fs.base.needs_info.field}, ...
+    {'formulation.value.ingredients(1).concentration.canonical'});
 verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
 % a body site (a brain area) -> a dose; the row gives no amount unit -> NaN
 verifyTrue(testCase, isnan(d.get('dose.value').volume.liters), ...
@@ -799,6 +852,64 @@ verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
+end
+
+function testAnIngredientWithNoAmountIsListedWithNoValue(testCase)
+% [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md): "an amount the source never
+% states ... is left out (the ingredient is still listed) rather than written
+% as `source_value` NaN (T14: missing is not a value)"; the document's
+% needs_info names it. INVERTS jDoseBodies' NaN for an ingredient beside one
+% that states an amount.
+v1 = treatmentDrugDoc('td_partial', sprintf('CHEBI:5613,haloperidol,5\nCHEBI:7035,muscimol,'), ...
+    'uberon:0002436', 'primary visual cortex');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+assertEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
+f = doseChainJ(out.migrated, d);
+fs = f.toStruct();
+ing = fs.formulation.value.ingredients;
+assertEqual(testCase, numel(ing), 2, 'both ingredients are listed');
+verifyEqual(testCase, numel(dependencyIds(fs, 'ingredient_id')), 2);
+verifyEqual(testCase, ing(1).concentration.source_value, 5);
+verifyTrue(testCase, ~isfield(ing, 'concentration') || isempty(ing(2).concentration) ...
+    || (isstruct(ing(2).concentration) && ~isfield(ing(2).concentration, 'source_value')), ...
+    'the unstated amount is left out, not NaN');
+fields = {fs.base.needs_info.field};
+verifyEqual(testCase, sort(fields), sort({ ...
+    'formulation.value.ingredients(1).concentration.canonical', ...
+    'formulation.value.ingredients(2).concentration'}));
+verifyTrue(testCase, all(~cellfun(@isempty, {fs.base.needs_info.reason})));
+n = out.summary.migration_notes;
+assertTrue(testCase, isfield(n, 'needs_info'), 'needs_info is counted');
+verifyEqual(testCase, n.needs_info.count, 2);
+% the formulation validates as written
+did2.schema.cache.shared().validateDocument(fs);
+end
+
+function testAFormulationWithNoAmountAtAllKeepsItsNaNUntilTheValueRuleAllowsIt(testCase)
+% NOT BUILT, pinned so it is seen: when NO ingredient states an amount the
+% formulation's `value` would be blank, which the value rule
+% (value_inline_or_body) refuses, so jDoseBodies writes the pre-decision NaN
+% and no needs_info (reported to the team with [canonical absent only as needs
+% info]). When the rule changes, this test is inverted.
+v1 = treatmentDrugDoc('td_none', 'CHEBI:7035,muscimol,', 'uberon:0002436', 'primary visual cortex');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+f = doseChainJ(out.migrated, out.migrated{1});
+fs = f.toStruct();
+verifyTrue(testCase, isnan(fs.formulation.value.ingredients(1).concentration.source_value));
+verifyFalse(testCase, isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info));
+end
+
+function ids = dependencyIds(s, name)
+ids = {};
+for k = 1:numel(s.depends_on)
+    if strcmp(char(s.depends_on(k).name), name)
+        ids{end+1} = char(s.depends_on(k).document_id); %#ok<AGROW>
+    end
+end
 end
 
 function v1 = virusInjectionV1(id, adminDate)
@@ -1580,8 +1691,35 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image');
-verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'imageCollection_id'));
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'imageCollection_id'), d);
+% [image collection carried until a writer] (Jess Haley, 2026-10-30): malformed,
+% register row carry-153 (it cited an awaiting_home row, a member_of home, before)
+verifyTrue(testCase, startsWith(d, '[carry-153] malformed: '), d);
+end
+
+function testASubjectlessImageStackInACollectionIsNotedCarry153(testCase)
+% [image collection carried until a writer] (Jess Haley, 2026-10-30): every v1
+% image or imageStack with a non-empty imageCollection_id is carried, malformed.
+% The check runs before the subject check, so a subject-less one is noted too
+% (it passed through with no note before).
+v1 = foldableBehaviourImageStack();
+v1.depends_on = struct('name', {'subject_id', 'imageCollection_id'}, ...
+    'value', {'', 'coll_9'});
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-153] malformed: depends_on imageCollection_id'), d);
+end
+
+function testAnEmptyCollectionEdgeIsNotACarry(testCase)
+% the edge NDI's template declares, left empty, is no collection: the stack
+% folds as before
+v1 = foldableBehaviourImageStack();
+v1.depends_on(end+1) = struct('name', 'imageCollection_id', 'value', '');
+out = runJ(v1);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
+verifyNotEmpty(testCase, firstOfClassJ(out.migrated, 'sampled_body'));
 end
 
 function testImageStackDataLimitsOtherThanItsTypeRangeAreAValueRange(testCase)
@@ -2069,6 +2207,9 @@ function testAMaskIsCarriedWholeAsV1NamingItsHome(testCase)
 % leaves the generic migration], [one correct reading]). Every mask -- the arena
 % mask, the bacterial-patch mask and one whose label names no region -- is
 % carried whole as v1 with a `needs_mapping` note naming its V2 home.
+% 2026-10-30 [Haley mask words leave the generic stage] (Jess Haley): "the
+% generic stage carries a mask whose region it cannot read" -- register row
+% carry-154 (it cited carry-025, mask or map, before).
 labels = {arenaMaskImageStack().image_stack.label, ...
     ['A binary image mask (logical matrix) representing the union of all ' ...
      'individually detected bacterial patch areas on an assay plate. This ' ...
@@ -2081,8 +2222,42 @@ for k = 1:numel(labels)
     verifyCarriedWholeAsV1(testCase, v1, out);
     verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-025] needs_mapping: calculation'), d);
+    verifyTrue(testCase, startsWith(d, '[carry-154] needs_mapping: a mask whose region'), d);
+    verifyTrue(testCase, contains(d, '[Haley mask words leave the generic stage]'), d);
 end
+end
+
+function testTheGenericStageReadsNoRegionWord(testCase)
+% [Haley mask words leave the generic stage] (Jess Haley, 2026-10-30): no Haley
+% region word changes what the generic stage writes. A mask naming the arena,
+% the lawn or a reference mark gets the same note as one naming none.
+base = arenaMaskImageStack();
+notes = {};
+for lbl = {'arena mask', 'bacteria lawn mask', 'reference mark mask', 'a mask'}
+    v1 = base;
+    v1.image_stack.label = lbl{1};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    notes{end+1} = out.summary.migration_notes.carried_as_v1.distinct_details{1}; %#ok<AGROW>
+end
+verifyEqual(testCase, numel(unique(notes)), 1, strjoin(notes, ' || '));
+src = fileread(which('did2.convert.migrators_j.image_stack'));
+code = regexprep(src, '%[^\n]*', '');
+for w = {'arena', 'bacteri', 'lawn', 'reference mark'}
+    verifyEmpty(testCase, strfind(lower(code), w{1}), ...
+        sprintf('image_stack.m code (not comments) reads the Haley word "%s"', w{1}));
+end
+end
+
+function testALabelReadingAsMaskAndMapCitesTheMaskOrMapRow(testCase)
+% mask-vs-map detection stays generic: a label that reads as BOTH cannot be
+% told apart, so it keeps carry-025 (mask or map), not carry-154
+v1 = arenaMaskImageStack();
+v1.image_stack.label = 'a label map mask';
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-025] needs_mapping: calculation'), d);
 end
 
 function testAClosestPatchMapIsCarriedNeedingAMapping(testCase)

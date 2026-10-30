@@ -283,7 +283,7 @@ function testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided(testCase)
 % emitted -- and nothing is quarantined either, which the old value-less
 % observation was.
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
 verifyEmpty(testCase, out.quarantine, 'the derived element quarantined');
 verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
@@ -496,7 +496,7 @@ function testTheSpikeTrainAlsoValidatesAgainstVEta(testCase)
 % value_inline_or_body) -- and emits NO observation until its per-epoch body is
 % decided (see testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided).
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
@@ -536,8 +536,24 @@ function out = runJ(v1)
 % every element here is el_1; a `spikes` one is a unit its sorting run labels
 % single ([sorted units are cells or groups], Jess Haley, 2026-10-26; without a
 % label it is carried, testRawV1RoundTripElement)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', false, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
+end
+
+function batch = withUnitProbe(v1)
+%WITHUNITPROBE {V1} plus, when V1 names an underlying element, that probe (an
+%   n-trode on V1's subject, id = the underlying_element_id): a sorted unit
+%   whose probe is not in the batch is carried whole as v1, carry-151 ([unit
+%   with no probe in the batch carried], Jess Haley, 2026-10-29). A probe
+%   names no epoch, so it emits no observation of its own.
+batch = {v1};
+deps = v1.depends_on;
+under = deps(strcmp({deps.name}, 'underlying_element_id'));
+if isempty(under) || isempty(under(1).value); return; end
+subj = deps(strcmp({deps.name}, 'subject_id'));
+probe = elementDoc('probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, subj(1).value, '');
+probe.base.id = char(under(1).value);
+batch{end+1} = probe;
 end
 
 function names = classNames(out)

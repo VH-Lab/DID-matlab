@@ -49,12 +49,11 @@ end
 function f = knownFindings()
 % [unit direct and subject rebuild from the probe] (Jess Haley, 2026-10-27):
 % a unit whose probe is in the batch rebuilds both, so it has no finding. A
-% unit whose probe is NOT in the batch is converted as before (no decision
-% says otherwise; reported in the PR): its `direct` is still checked (0) and
-% rebuilt, but its subject_id cannot be read from a probe the batch lacks.
-f = { ...
-    'unit, probe not in the batch', 'depends_on(2).value', ['its subject_id is ' ...
-        'its probe''s, and the probe is not in the batch to read it from']};
+% unit whose probe is NOT in the batch was converted with this one finding (its
+% subject_id unread) until [unit with no probe in the batch carried] (Jess
+% Haley, 2026-10-29): it is carried now (carry-151,
+% testCarriedElementsCiteTheirRows), so no converted fixture has a finding.
+f = cell(0, 3);
 end
 
 function paths = findingsFor(fixture)
@@ -66,7 +65,7 @@ end
 
 function testConvertedElementsRoundTrip(testCase)
 units = {neuronDoc('ne_1', 'el_unit_s', 'single'), neuronDoc('ne_2', 'el_unit_m', 'multi'), ...
-    neuronDoc('ne_5', 'el_unit_x', 'single'), unitProbe()};
+    unitProbe()};
 cases = { ...
     'n-trode probe', probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'stimulator probe', probeDoc('el_stim', 'vhvis_spike2', 1, 'stimulator', 'ndi.probe.timeseries.stimulator'), 'device'; ...
@@ -75,7 +74,6 @@ cases = { ...
     'event line probe', probeDoc('el_ev', 'vhtaste_sync', 1, 'event', 'ndi.probe.timeseries.stimulator'), 'device'; ...
     'single unit', unitDoc('el_unit_s', 'leftcortex_17', 1), 'cell'; ...
     'multi unit', unitDoc('el_unit_m', 'leftcortex_18', 1), 'group'; ...
-    'unit, probe not in the batch', unitDoc('el_unit_x', 'leftcortex_22', 1, 'el_absent'), 'cell'; ...
     'accelerometer probe', probeDoc('el_acc', 'acc', 1, 'accelerometer', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'ecg probe', probeDoc('el_ecg', 'ecg', 1, 'ecg', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'eeg probe', probeDoc('el_eeg', 'eeg', 1, 'eeg', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
@@ -228,7 +226,9 @@ cases = { ...
     'brightfield imaging probe', probeDoc('el_bf', 'cam', 1, 'brightfield-imaging', 'ndi.probe.image'), {}, '[carry-121] '; ...
     'name reads as a pair', probeDoc('el_pair', 'leftcortex | 2', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-055] '; ...
     'non-integer reference', probeDoc('el_frac', 'leftcortex', 1.5, 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-055] '; ...
-    'no name, no reference', probeDoc('el_none', '', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-048] '};
+    'no name, no reference', probeDoc('el_none', '', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-048] '; ...
+    'unit, probe not in the batch', unitDoc('el_unit_x', 'leftcortex_22', 1, 'el_absent'), ...
+        {neuronDoc('ne_5', 'el_unit_x', 'single')}, '[carry-151] needs_mapping: '};
 for k = 1:size(cases, 1)
     [label, v1, others, row] = cases{k, :};
     out = runRaw([{v1}, others]);
@@ -244,12 +244,42 @@ for k = 1:size(cases, 1)
 end
 end
 
+function testAUnitWithNoProbeInTheBatchIsCarried(testCase)
+% INVERTED 2026-10-30: the 'unit, probe not in the batch' fixture was converted
+% with its subject_id unchecked (one known finding, note
+% unit_probe_not_in_batch). [unit with no probe in the batch carried] (Decided
+% by Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a
+% sorted unit whose probe is not in the migration batch ... is carried whole
+% as v1 under a register row instead of converting with its subject
+% unchecked" -- carry-151, needs_mapping. The same unit WITH its probe in the
+% batch converts.
+v1 = unitDoc('el_unit_x', 'leftcortex_22', 1, 'el_absent');
+out = runRaw({v1, neuronDoc('ne_5', 'el_unit_x', 'single')});
+docs = elementOutputs(out, v1.base.id);
+verifyEqual(testCase, numel(docs), 1, 'one document, the v1 source');
+d = carryNoteFor(out, v1.base.id);
+verifyTrue(testCase, startsWith(d, '[carry-151] needs_mapping: '), d);
+verifyTrue(testCase, contains(d, 'el_absent'), d);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'unit_probe_not_in_batch'), ...
+    'the old converted-and-counted note is gone');
+r = did2.convert.roundtrip.check(v1, docs);
+verifyTrue(testCase, r.carried);
+verifyTrue(testCase, r.ok, describeLost(r));
+probe = probeDoc('el_absent', 'leftcortex', 1, 'n-trode', 'ndi.probe.timeseries.mfdaq');
+out2 = runRaw({v1, neuronDoc('ne_5', 'el_unit_x', 'single'), probe});
+verifyEqual(testCase, numel(out2.passthrough(strcmp({out2.passthrough.id}, v1.base.id))), 0, ...
+    'with its probe in the batch the unit converts');
+end
+
 function testABatchLabelCanBeGivenByTheCaller(testCase)
-% 'UnitQualityLabels': a unit whose neuron_extracellular is not in the batch
+% 'UnitQualityLabels': a unit whose neuron_extracellular is not in the batch.
+% Its probe is in the batch: without it the unit is carried (carry-151,
+% [unit with no probe in the batch carried], 2026-10-29).
 v1 = unitDoc('el_unit_g', 'leftcortex_21', 1);
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2({v1, unitProbe()}, 'Validate', false, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_unit_g', 'multi'});
-verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'group');
+docs = elementOutputs(out, 'el_unit_g');
+verifyEqual(testCase, did2.unittest.helpers.classKey(docs{1}), 'group');
 end
 
 function testKilosortAndPhyLabelsMap(testCase)
@@ -263,7 +293,8 @@ cases = {'good', 'cell'; 'Good', 'cell'; 'mua', 'group'; 'MUA', 'group'};
 for k = 1:size(cases, 1)
     id = sprintf('el_ks_%d', k);
     v1 = unitDoc(id, sprintf('leftcortex_%d', 30 + k), 1);
-    out = runRaw({v1, neuronDoc(sprintf('ne_ks_%d', k), id, cases{k, 1})});
+    % the probe is in the batch (carry-151 otherwise)
+    out = runRaw({v1, neuronDoc(sprintf('ne_ks_%d', k), id, cases{k, 1}), unitProbe()});
     docs = elementOutputs(out, id);
     verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, id))), 0, ...
         [cases{k, 1} ': carried']);
@@ -287,22 +318,25 @@ end
 function testBothPathsConvertAnElementAlike(testCase)
 % the migrator is the same on the raw and the universalRenames path; the
 % inputs differ only in spelling it reads both ways
-fixtures = {probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq'), ...
-    unitDoc('el_unit_s', 'leftcortex_17', 1), jhTrack('el_pos', 'worm1_head_position', 'position')};
+% the unit comes with its probe (carry-151 otherwise)
+fixtures = {{probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq')}, ...
+    {unitDoc('el_unit_s', 'leftcortex_17', 1), unitProbe()}, ...
+    {jhTrack('el_pos', 'worm1_head_position', 'position')}};
 for k = 1:numel(fixtures)
     v1 = fixtures{k};
     raw = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
         'UnitQualityLabels', {'el_unit_s', 'single'});
     old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
         'UnitQualityLabels', {'el_unit_s', 'single'}, 'RawV1Classes', {});
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), v1.base.id);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), v1.base.id);
+    id = v1{1}.base.id;
+    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), id);
+    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), id);
     if ~isempty(raw.passthrough); continue; end
     for j = 1:min(numel(raw.migrated), numel(old.migrated))
         a = raw.migrated{j}.toStruct();
         b = old.migrated{j}.toStruct();
         verifyTrue(testCase, isequaln(a, b), sprintf('%s document %d: raw %s; renamed %s', ...
-            v1.base.id, j, jsonencode(a), jsonencode(b)));
+            id, j, jsonencode(a), jsonencode(b)));
     end
 end
 end

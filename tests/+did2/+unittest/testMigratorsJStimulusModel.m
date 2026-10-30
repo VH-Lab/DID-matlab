@@ -294,6 +294,31 @@ verifyEqual(testCase, d.get('control_stimulus_ids.control_stimulus_ids'), [3; 3;
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
+function testAControlRecordIsCarriedWithANote(testCase)
+% INVERTS the silent passthrough above (the body is the same; the note is
+% new). [control records carried in pass 1] (Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md): "a v1
+% `control_stimulus_ids` record is carried whole as v1 in DID's pass 1 with a
+% note, under its own register row of kind `not_modelled`" -- carry-152,
+% recorded as a pass-1 passthrough (stamped did_v1 by the caller).
+out = runJ(controlFixture());
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+n = out.summary.migration_notes;
+assertTrue(testCase, isfield(n, 'carried_as_v1'), 'the carry is noted');
+verifyEqual(testCase, n.carried_as_v1.count, 1);
+d = n.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-152] not_modelled: '), d);
+verifyTrue(testCase, contains(d, '[control records carried in pass 1]'), d);
+% an all-NaN record and one with no presentation edge are carried the same way
+for v1 = {controlFixture(nan(6, 1)), setfield(controlFixture(), 'depends_on', ...
+        struct('name', {}, 'value', {}))} %#ok<SFLD>
+    o = runJ(v1{1});
+    verifyEqual(testCase, o.summary.migration_notes.carried_as_v1.count, 1);
+end
+end
+
 
 function testControlDesignationPointsAtThePresentationBothWays(testCase)
 % UPDATED for #88 (passthrough, see above): the edge to the presentation stays

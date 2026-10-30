@@ -241,6 +241,26 @@ if isRaw
 end
 params = getBlockAny(preBody, {'imageStack_parameters', 'image_stack_parameters'});
 stackBlk = getBlockAny(preBody, {'imageStack', 'image_stack'});
+% [image collection carried until a writer] (Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md): NDI has an
+% `imageCollection` template but no writer of `imageCollection_id` at the
+% locked NDI main, "so a v1 image with a non-empty `imageCollection_id` is
+% carried whole as v1, `malformed` (input no writer produces), and no group is
+% designed." It narrows [image file details placed]'s `member_of` part (which
+% an awaiting_home register row, cited here before). Checked before the subject, so
+% a subject-less image naming a collection is noted too, not passed through
+% silently. A v1 `image` (migrators_j.image routes it here) and a v1
+% imageStack both carry it.
+if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
+        dependencyValue(preBody, 'image_collection_id')))
+    % carry-register: carry-153
+    did2.convert.reportNote('carried_as_v1', noteClass, ...
+        baseField(preBody, 'id', ''), ['[carry-153] malformed: depends_on ' ...
+        'imageCollection_id, which no NDI writer writes ' ...
+        '([image collection carried until a writer])']);
+    bodies = {preBody};
+    return;
+end
 subjectId = dependencyValue(preBody, 'subject_id');
 if isempty(subjectId)
     bodies = {preBody};
@@ -272,18 +292,12 @@ if ~isempty(tableRowId)
 end
 % [image file details placed] (Jess Haley, 2026-10-26): the four details a v1
 % image / imageStack dropped. `format` and `compression` go on the body (below).
-% The `imageCollection_id` edge becomes a `member_of` relation to a group
-% entity, a later step: until then a document that names one is carried whole
-% as v1. `data_limits` is left unwritten when it is its data type's range
+% The `imageCollection_id` edge is carried above (carry-153). `data_limits` is left unwritten when it is its data type's range
 % ([intmin intmax], [0 1] for logical: recoverable from the datum type,
 % [lossless means round trip]); a range that differs becomes a body condition
 % with variable EMPTY:0000402 "value range" ([census terms] T3), its value the
 % [minimum maximum] pair.
 unplaced = {};
-if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
-        dependencyValue(preBody, 'image_collection_id')))
-    unplaced{end+1} = '[carry-013] depends_on imageCollection_id';
-end
 limits = getField(params, 'data_limits');
 bodyConditions = [];
 if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
@@ -297,7 +311,7 @@ if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
     end
 end
 if ~isempty(unplaced)
-    % carry-register: carry-011 carry-012 carry-013 (the items above)
+    % carry-register: carry-011 carry-012 (the items above)
     did2.convert.reportNote('carried_as_v1', noteClass, ...
         baseField(preBody, 'id', ''), ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
@@ -335,14 +349,32 @@ end
 % recognised by label words too, so it is carried the same way ([one-reading
 % quick answers] (Q3), Jess Haley, 2026-10-26: "mask or map detection" chosen
 % from label words carries as needs_mapping).
+%
+% [Haley mask words leave the generic stage] (Decided by Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md): the region words ("arena",
+% "bacteria" / "lawn", "reference mark") belong to the Haley V2 import's map;
+% "the generic stage carries a mask whose region it cannot read". The generic
+% stage keeps mask-vs-map detection (generic: the label says "mask", or says
+% each pixel is an identifier / a label map) and reads no region, so a label
+% that reads as a MASK (and not as a map) is carried citing carry-154; a map,
+% or a label reading as both, is carried citing carry-025 as before.
 label = getCharField(stackBlk, 'label');
 if isMaskOrMap(label)
-    % carry-register: carry-025 (imageStack; the register has no row for image)
+    if isMask(label) && ~isMap(label)
+        why = ['needs_mapping: a mask whose region the generic stage cannot ' ...
+            'read (calculation, logical, of the region it marks) ' ...
+            '([Haley mask words leave the generic stage])'];
+        tag = carryRowOf(preBody, '', '[carry-154] ');
+    else
+        why = ['needs_mapping: calculation (logical ' ...
+            'mask | label map) or observation (intensity); decided by what the ' ...
+            'image''s pixels are, in its dataset'];
+        tag = carryRowOf(preBody, '', '[carry-025] ');
+    end
+    % carry-register: carry-154 carry-025 (imageStack; the register has no
+    %   row for image)
     did2.convert.reportNote('carried_as_v1', noteClass, ...
-        baseField(preBody, 'id', ''), [carryRowOf(preBody, '', '[carry-025] ') ...
-        'needs_mapping: calculation (logical ' ...
-        'mask | label map) or observation (intensity); decided by what the ' ...
-        'image''s pixels are, in its dataset']);
+        baseField(preBody, 'id', ''), [tag why]);
     bodies = {preBody};
     return;
 end
@@ -515,9 +547,19 @@ end
 end
 
 function tf = isMaskOrMap(label)
+tf = isMask(label) || isMap(label);
+end
+
+function tf = isMask(label)
+%ISMASK The label calls the image a mask. Generic: no region is read from it
+%   ([Haley mask words leave the generic stage]).
+tf = contains(lower(label), 'mask');
+end
+
+function tf = isMap(label)
+%ISMAP The label says each pixel is an identifier (a label map).
 l = lower(label);
-tf = contains(l, 'mask') || contains(l, 'each pixel''s value is the identifier') ...
-    || contains(l, 'label map');
+tf = contains(l, 'each pixel''s value is the identifier') || contains(l, 'label map');
 end
 
 function [dims, covs] = imageAxes(dimOrder, dimSize, params)

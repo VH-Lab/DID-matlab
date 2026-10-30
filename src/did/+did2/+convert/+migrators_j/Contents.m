@@ -610,18 +610,20 @@
 %         [tuning_curve_calculation, contrast_tuning]) + a session anchor + minted
 %         `software` and `runtime_environment` entities.
 %     control_stimulus_ids
-%         Brainstorm-J migrator: did_v1 control_stimulus_ids -> NO V2 DOCUMENT (passed
-%         through for NDI's second pass, which folds it into the presentation's
-%         `control condition` covariate; [control as covariate], Jess Haley
-%         2026-10-22). HISTORY: `control_designation` (V_eta_stimulus_model_plan.md,
-%         TEAM-SIGN-OFF [stimulus] 2026-08-08). A DERIVED annotation of WHICH
-%         presented trials are the control reference, computed by the tuning_response
-%         app. It is NOT baked into the immutable stimulus body: it REFERENCES the
-%         presentation (the body-of-record, then `timed_sequence`, `item` since
-%         did-schema c12d778, 2026-10-04; id-preserved through the second-pass
-%         decompose, so the edge resolves either way) and carries the derivation
-%         method; marked derived_from the presentation (T10). Drops the v1 `app` mixin
-%         (software model, R1) and the `ids` container word (T13).
+%         Brainstorm-J migrator: did_v1 control_stimulus_ids -> NO V2 DOCUMENT.
+%         CARRIED whole as v1 with a note citing carry-152 since 2026-10-30 ([control
+%         records carried in pass 1], Jess Haley); before that (passed through for
+%         NDI's second pass, which folds it into the presentation's `control
+%         condition` covariate; [control as covariate], Jess Haley 2026-10-22).
+%         HISTORY: `control_designation` (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF
+%         [stimulus] 2026-08-08). A DERIVED annotation of WHICH presented trials are
+%         the control reference, computed by the tuning_response app. It is NOT baked
+%         into the immutable stimulus body: it REFERENCES the presentation (the
+%         body-of-record, then `timed_sequence`, `item` since did-schema c12d778,
+%         2026-10-04; id-preserved through the second-pass decompose, so the edge
+%         resolves either way) and carries the derivation method; marked derived_from
+%         the presentation (T10). Drops the v1 `app` mixin (software model, R1) and
+%         the `ids` container word (T13).
 %     daqmetadatareader
 %         Brainstorm-J migrator: did_v1 daqmetadatareader ->
 %         `acquisition_metadata_reader` (+ the `software` entity for the
