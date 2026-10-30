@@ -2938,8 +2938,11 @@ verifyEqual(testCase, depVal(m, 'entity_id'), subjId);
 verifyNotEmpty(testCase, depVal(m, 'time_reference_id'));
 verifyEmpty(testCase, depVal(m, 'formulation_id'), ...
     'the formulation is the value (value_id), not a dose''s formulation_id');
-% the primary chemical is the spine identity
-verifyEqual(testCase, m.get('statement.variable').name, 'muscimol');
+% INVERTED 2026-10-30: the variable is the general bath-solution term, not the
+% first mixture row (Decided by Jess Haley, 2026-10-26 [bath is two
+% statements]; 2026-10-27 [bath solution minted]); the formulation is the value
+verifyEqual(testCase, char(m.get('statement.variable').node), 'EMPTY:0000409');
+verifyEqual(testCase, char(m.get('statement.variable').name), 'bath solution');
 % its value is the formulation document, through value_id; its own value is empty
 formId = depVal(m, 'value_id');
 verifyNotEmpty(testCase, formId, 'the bath must take its value through value_id');
