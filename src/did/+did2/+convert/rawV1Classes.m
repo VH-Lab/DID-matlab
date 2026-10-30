@@ -108,9 +108,9 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     imageStack          the imaging family: superclasses `base` +
 %                         `imageStack_parameters`, no `app` block. The
 %                         superclass migrator (+super/image_stack_parameters)
-%                         is called by the leaf on the raw block, and stays for
-%                         the v1 `image` (not switched), which still runs
-%                         renamed. Written by +setup/+conv/+haley/doImport.m
+%                         is called by the leaf on the raw block (and on a
+%                         raw v1 `image`'s, which the leaf converts too).
+%                         Written by +setup/+conv/+haley/doImport.m
 %                         and +babu/import.m. Round trips:
 %                         testRawV1RoundTripImage.
 %     daqsystem           the acquisition-system family: superclass `base`
@@ -347,30 +347,51 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         Inverse: the passthrough one (never reached for a
 %                         carry: did2.convert.roundtrip.check reads a carry as
 %                         the v1 document itself).
-%     NOT LISTED, and why:
-%       control_stimulus_ids  its migrator carries it (carry-152, [control
-%                         records carried in pass 1], 2026-10-30; a handed-on
-%                         class in v1_to_v2 carryDependents, so its responses
-%                         do not carry). Before #1082 NDI's second pass read
-%                         the record from pass 1's OUTPUT (ndi.migrate.local
-%                         resolveStimulusPresentations: convertResult.migrated),
-%                         not from the v1 input. Raw, the passthrough would
-%                         reach NDI as v1 spells it (`app.name`, edge `value`)
-%                         instead of renamed, and its V_eta tombstone
-%                         (superclass `app`, which declares `app_name`) refuses
-%                         `app.name` (did2:validation:undeclaredField), so a
-%                         validating run would quarantine all 1,428 corpus
-%                         records. It stays on the renamed path until NDI reads
-%                         the record from its input, or pass 1 carries it as a
-%                         handed-on v1 document (a team question). Both hold
-%                         now (NDI-matlab #1082; carry-152); switching it to
-%                         the raw read (and a roundtrip inverse) is not done
-%                         here.
-%       image             no NDI writer at the locked main constructs it and no
-%                         corpus holds one; its subject-less passthrough has no
-%                         register row, and as raw v1 it would meet the
-%                         renamed-shape `image` tombstone under its own name
-%                         and quarantine. It stays on the renamed path.
+%     control_stimulus_ids  superclass `base` (+ the writer's `app` block), no
+%                         superclass migrator. ALWAYS CARRIED whole as v1
+%                         (carry-152, [control records carried in pass 1],
+%                         Jess Haley, 2026-10-30), a handed-on class in
+%                         v1_to_v2 carryDependents, so its responses do not
+%                         carry. Read raw so that the carry is the untouched v1
+%                         source (`app.name`, edge key `value`), which is what
+%                         NDI's second pass reads anyway: it takes the record
+%                         from the ORIGINAL v1 bodies ([second pass reads
+%                         control stimuli from v1], NDI-matlab #1082,
+%                         ndi.migrate.internal.controlRecordsByPresentation). A
+%                         carried document is not validated against V_eta, so
+%                         the tombstone's `app_name` no longer quarantines it.
+%                         Written by +ndi/+app/+stimulus/tuning_response.m.
+%                         Inverse: the passthrough one (a carry is read as the
+%                         v1 document itself). Round trips:
+%                         testMigratorsJStimulusModel
+%                         (testAControlRecordReadRawRoundTrips).
+%     image               superclasses `base` + `imageStack_parameters`, no
+%                         `app` block; +migrators_j/image.m hands it to
+%                         image_stack.m, which reads it raw as it reads
+%                         `imageStack` (the superclass migrator's refusals
+%                         called on the raw block; what universalRenames would
+%                         have discarded carries, carry-049). The `image`
+%                         tombstone that kept it on the renamed path was
+%                         deleted with did-schema's other did_v1 tombstones
+%                         (2026-10-28, [carried v1 validates against NDI
+%                         templates]): a subject-less raw passthrough is
+%                         counted as a class V_eta keeps no schema for, as a
+%                         raw `imageStack` passthrough is. No NDI writer at the
+%                         locked main constructs it and no corpus holds one;
+%                         the template (data/image.json) fixes its shape.
+%                         Round trips: testRawV1RoundTripImage ([image raw
+%                         round trip and single-read keys], Jess Haley,
+%                         2026-10-30: the label back from the observation's
+%                         notes, `format` 'tiff' from EDAM:format_3591).
+%     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
+%                         universalRenames. Of the +migrators_j migrators these
+%                         are dataset_session_info, fitcurve, ontology_table_row,
+%                         openminds, openminds_element, openminds_stimulus,
+%                         openminds_subject, vmspikefilteringparameters and
+%                         vmspikefit; a class with no +migrators_j migrator
+%                         (the +migrators identity fallback) also runs
+%                         renamed. universalRenames cannot be deleted while
+%                         any of them does ([migrators read raw v1]).
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
@@ -448,6 +469,8 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'spikewaves', ...
     'spike_clusters', ...
     'binnedspikeratevm', ...
+    'control_stimulus_ids', ...
+    'image', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above

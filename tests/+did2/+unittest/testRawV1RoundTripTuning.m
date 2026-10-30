@@ -36,10 +36,12 @@ function tests = testRawV1RoundTripTuning
 %   (the "corpus vintage" fixtures below).
 %
 %   WHAT THE WRITERS' DOCUMENTS DO TODAY. oridirtuning_calc,
-%   contrastsensitivity_calc and (since [absolute-value fits are a second
-%   calculation], Jess Haley, 2026-10-27) spatial_frequency_tuning_calc and
-%   temporal_frequency_tuning_calc convert, and their round trips lose
-%   nothing. contrasttuning_calc carries (carry-056: its fits' relative max
+%   contrastsensitivity_calc and spatial_frequency_tuning_calc and
+%   temporal_frequency_tuning_calc convert (the SF / TF `abs` block on the one
+%   calculation since [absolute-value fits are fit entries], Decided by Jess
+%   Haley, 2026-10-28, with [interpolated values are a list], 2026-10-30; a
+%   second calculation from 2026-10-27 until then), and their round trips
+%   lose nothing. contrasttuning_calc carries (carry-056: its fits' relative max
 %   gain, saturation index and sensitivity) until did-schema declares them
 %   ([contrast metrics added]); tuningcurve_calc alone carries (its stimid and
 %   stimulus_presentation_number rebuild only with its response and
