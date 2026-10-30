@@ -1678,7 +1678,8 @@ if isstruct(fmt)
 else
     verifyEqual(testCase, char(fmt), 'image/tiff');
 end
-verifyEqual(testCase, body.get('data_body.compression'), 'lzw');
+% either shape ([compression block and empty levels]): did2.build.compressionCodec
+verifyEqual(testCase, did2.build.compressionCodec(body.get('data_body.compression')), 'lzw');
 end
 
 
@@ -6142,8 +6143,16 @@ function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
 % loaded schema without the list and with it (did2.unittest.helpers.
 % interpolatedListSchema), so both shapes are checked whatever did-schema
 % `main` declares. With the list, v1 `abs.fitless` is the main calculation's
-% second interpolated_values entry ('absolute value') and the absolute-value
-% calculation holds only its fits.
+% second interpolated_values entry ('absolute value').
+% UPDATED 2026-10-30 ([absolute-value fits are fit entries], Decided by Jess
+% Haley, 2026-10-28; supersedes [absolute-value fits are a second
+% calculation]): there is no second calculation; the abs fit (the fixture's
+% abridged `abs` holds fit_dog) is a sixth model_fit entry of the ONE
+% calculation, response_transform 'absolute value'. Without the list declared
+% `abs.fitless` has no home, so the document carries (carry-056).
+assertTrue(testCase, did2.unittest.helpers.schemaDeclares('tuning_curve', ...
+    {'value', 'model_fit', 'response_transform'}), ...
+    'the schema in use declares no model_fit response_transform (did-schema f02a251)');
 for listDeclared = [false true]
     did2.unittest.helpers.interpolatedListSchema(testCase, listDeclared);
     checkTemporalFrequencyFold(testCase, listDeclared);
@@ -6153,19 +6162,23 @@ end
 function checkTemporalFrequencyFold(testCase, listDeclared)
 % testTemporalFrequencyTuningFoldsToCalculationLeaf on the schema in use, which
 % declares interpolated_values a list when LISTDECLARED
-out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
+body = temporalFrequencyTuningBody();
+out = did2.convert.migrators_j.temporal_frequency_tuning(body);
+if ~listDeclared
+    % abs.fitless has no home without the list: carried whole as v1
+    verifyTrue(testCase, isscalar(out) && isequaln(out{1}, body), ...
+        'no interpolated_values list: abs.fitless has no home, the document carries');
+    return;
+end
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 9);
-absCalcs = {};
+verifyEqual(testCase, numel(out), 8, 'no second (absolute-value) calculation');
+nCalcs = 0;
 for k = 1:numel(out)
-    b = out{k};
-    if isfield(b, 'temporal_frequency_tuning_calculation') && ~strcmp(char(b.base.id), 'tft_1')
-        absCalcs{end+1} = b; %#ok<AGROW>
+    if isfield(out{k}, 'temporal_frequency_tuning_calculation')
+        nCalcs = nCalcs + 1;
     end
 end
-assertEqual(testCase, numel(absCalcs), 1, 'one absolute-value calculation');
-verifyEqual(testCase, paramTextJ(absCalcs{1}, 'response transform'), 'absolute value');
-verifyEqual(testCase, numel(absCalcs{1}.tuning_curve.value.model_fit), 1, 'the abridged abs block: fit_dog');
+verifyEqual(testCase, nCalcs, 1, 'one calculation per calculator output (T10)');
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));
 leaf = calcLeafJ(testCase, out, 'temporal_frequency_tuning_calculation', 'tft_1', 'tf_elem_3');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_tf_9');
@@ -6194,28 +6207,27 @@ verifyEqual(testCase, leaf.tuning_curve.value.significance.across_stimuli_anova_
 [iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
     leaf.temporal_frequency_tuning_calculation.interpolated_values);
 verifyEqual(testCase, iv.preferred_value, 4.2, 'AbsTol', 1e-12);
-absBlock = absCalcs{1}.temporal_frequency_tuning_calculation;
-if listDeclared
-    % the values as stated first, then |response| (the fixture's abs.fitless is
-    % the same struct as its fitless)
-    verifyEqual(testCase, nIv, 2, 'as stated, then |response|');
-    ivList = leaf.temporal_frequency_tuning_calculation.interpolated_values;
-    if iscell(ivList); ivList = [ivList{:}]; end
-    verifyTrue(testCase, ~isfield(ivList, 'response_transform') ...
-        || isempty(ivList(1).response_transform), 'the first entry is as stated');
-    verifyEqual(testCase, char(ivList(2).response_transform), 'absolute value');
-    verifyEqual(testCase, ivAbs.preferred_value, 4.2, 'AbsTol', 1e-12);
-    verifyFalse(testCase, isfield(absBlock, 'interpolated_values'), ...
-        'abs.fitless is on the main calculation''s list, not the second calculation');
-else
-    verifyEqual(testCase, nIv, 1, 'one structure');
-    verifyEmpty(testCase, fieldnames(ivAbs));
-    absIv = absBlock.interpolated_values;
-    verifyTrue(testCase, isstruct(absIv) && isscalar(absIv));
-    verifyEqual(testCase, absIv.preferred_value, 4.2, 'AbsTol', 1e-12);
-end
+% the values as stated first, then |response| (the fixture's abs.fitless is
+% the same struct as its fitless)
+verifyEqual(testCase, nIv, 2, 'as stated, then |response|');
+ivList = leaf.temporal_frequency_tuning_calculation.interpolated_values;
+if iscell(ivList); ivList = [ivList{:}]; end
+verifyTrue(testCase, ~isfield(ivList, 'response_transform') ...
+    || isempty(ivList(1).response_transform), 'the first entry is as stated');
+verifyEqual(testCase, char(ivList(2).response_transform), 'absolute value');
+verifyEqual(testCase, ivAbs.preferred_value, 4.2, 'AbsTol', 1e-12);
 
-mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
+mfAll = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
+if iscell(mfAll); mfAll = [mfAll{:}]; end
+transforms = arrayfun(@(e) fitTransformJ(e), mfAll, 'UniformOutput', false);
+% [absolute-value fits are fit entries]: the abridged abs block's fit_dog,
+% after the five fits as stated
+verifyEqual(testCase, transforms, [repmat({''}, 1, 5), {'absolute value'}]);
+absFit = mfAll(strcmp(transforms, 'absolute value'));
+assertEqual(testCase, numel(absFit), 1, 'one absolute-value fit entry (fit_dog)');
+verifyEqual(testCase, lower(char(absFit.model.name)), 'dog');
+verifyEqual(testCase, absFit.metrics.bandwidth, 2.65, 'AbsTol', 1e-12);
+mf = mfAll(strcmp(transforms, ''));
 assertEqual(testCase, numel(mf), 5, ...
     ['the TF family carries five co-existing fits (dog, movshon, movshon_c, ' ...
      'spline, gausslog); a single model_fit means the array collapsed']);
@@ -6234,6 +6246,14 @@ assertEqual(testCase, numel(sp), 1, 'expected exactly one spline entry');
 verifyEqual(testCase, nCoeffJ(sp), 0, ...
     'the spline fit has no parameters block in the writer; coefficients here would be invented');
 verifyFalse(testCase, any(strcmp(gotModels, 'abs')));
+end
+
+function t = fitTransformJ(e)
+% a model_fit entry's response_transform ('' when absent or empty)
+t = '';
+if isfield(e, 'response_transform') && ~isempty(e.response_transform)
+    t = strtrim(char(e.response_transform));
+end
 end
 
 % ---- helpers for the #88 calculation tests ----

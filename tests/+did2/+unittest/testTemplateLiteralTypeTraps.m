@@ -94,9 +94,10 @@ function out = runJ(v1)
 %   migrator a block key it never sees on the real pipeline.
 %   ON THE RENAMED PATH ('RawV1Classes', {}): `imageStack` reads raw v1 since
 %   2026-10-27 (did2.convert.rawV1Classes), where no superclass migrator runs
-%   and a passthrough is the untouched v1 source. The superclass migrator
-%   these tests pin still runs for the v1 `image` (not switched), which shares
-%   the block; the raw path's refusals are pinned by testRawV1RoundTripImage.
+%   and a passthrough is the untouched v1 source; the v1 `image`, which shares
+%   the block, reads raw too since 2026-10-30. The superclass migrator these
+%   tests pin runs only on this renamed path; the raw path's refusals are
+%   pinned by testRawV1RoundTripImage.
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
     'RawV1Classes', {});
 end

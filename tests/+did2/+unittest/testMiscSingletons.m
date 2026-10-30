@@ -1,6 +1,11 @@
 function tests = testMiscSingletons
 %TESTMISCSINGLETONS The "misc singletons" family (TargetVersion 'V_eta'):
-%   `binaryseries_parameters`, `projectvar`, `interaction_purpose`.
+%   `binaryseries_parameters`, `projectvar`, `interaction_purpose` (being
+%   renamed `purpose`: [purpose class], Jess Haley 2026-10-27, did-schema
+%   V_eta_go_forward_class_audit.md; its `comment` becomes `notes` by
+%   [notes on three classes]). The purpose tests below read the class name and
+%   the free-text field name from the LOADED schema (purposeShape), so they pass
+%   against did-schema before and after the rename.
 %
 %   STATUS: NEVER EXECUTED. There is no MATLAB in the environment this file was
 %   written in, so every assertion below is UNVERIFIED. Read it as a
@@ -223,12 +228,36 @@ v1.projectvar = struct( ...
     'description', 'free-text note attached to the project', 'data', data);
 end
 
+function [cls, noteField] = purposeShape()
+%PURPOSESHAPE The purpose class name and its free-text field, as the loaded
+%   schema has them. [purpose class] (Jess Haley, 2026-10-27, did-schema
+%   V_eta_go_forward_class_audit.md): `interaction_purpose` is kept and renamed
+%   `purpose`; [notes on three classes] (Jess Haley, 2026-10-25): its `comment`
+%   is renamed `notes`. did-schema renames after the siblings follow (CLAUDE.md
+%   section 3, rule 2), so this reads whichever shape is loaded: `purpose` when
+%   the schema has it, else `interaction_purpose`; `notes` when the class
+%   declares it, else `comment`. Neither is assumed to move with the other.
+cache = did2.schema.cache.shared();
+if cache.hasClass('purpose')
+    cls = 'purpose';
+else
+    cls = 'interaction_purpose';
+end
+own = cellfun(@(d) char(d.name), cache.ownFields(cls), 'UniformOutput', false);
+if any(strcmp(own, 'notes'))
+    noteField = 'notes';
+else
+    noteField = 'comment';
+end
+end
+
 function body = interactionPurposeBody(id, sessionId, edgeNames)
 % A V_eta TARGET document -- what the NDI second pass will write for each of the
 % 635 StimulationApproach documents. NOT a did_v1 shape: this class has no v1
 % source (0 of 1467 files on NDI origin/main mention it in any casing).
+[cls, noteField] = purposeShape();   % [purpose class]
 body = struct();
-body.document_class = struct('class_name', 'interaction_purpose', ...
+body.document_class = struct('class_name', cls, ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}), ...
     'schema_version', 'did_v2');
@@ -250,10 +279,10 @@ if did2.schema.cache.shared().sessionIdIsEdge()
     body.base = rmfield(body.base, 'session_id');
     body.depends_on(end+1) = struct('name', 'session_id', 'document_id', sessionId);
 end
-body.interaction_purpose = struct( ...
+body.(cls) = struct( ...
     'purpose', struct('node', 'NDIC:00000012', ...
                       'name', 'Assessing spatial frequency tuning'), ...
-    'comment', '');
+    noteField, '');
 end
 
 % ===================== binaryseries_parameters =============================
@@ -794,7 +823,7 @@ verifyEqual(testCase, rep.total_docs, 1);
 verifyEqual(testCase, rep.skipped_docs, 0);
 verifyEqual(testCase, rep.family_violation_count, 1, ...
     'the census is the only thing that sees a missing required edge family');
-verifyEqual(testCase, rep.family_count_violation(1).class_name, 'interaction_purpose');
+verifyEqual(testCase, rep.family_count_violation(1).class_name, purposeShape());
 verifyEqual(testCase, rep.family_count_violation(1).edge_name, 'interaction_id');
 end
 
@@ -809,7 +838,51 @@ v1 = { binaryseriesTemplateBody('bsp_n', 'sess_V'), ...
        projectvarWriterBody('pv_n', 'sess_V', 'note') };
 out = runJ(v1);
 for k = 1:numel(out.migrated)
-    verifyNotEqual(testCase, ...
-        out.migrated{k}.get('document_class.class_name'), 'interaction_purpose');
+    % both names: [purpose class] renames the class, and a pass-1 emitter under
+    % either name is the same unannounced decision
+    verifyFalse(testCase, any(strcmp( ...
+        out.migrated{k}.get('document_class.class_name'), ...
+        {'interaction_purpose', 'purpose'})));
 end
+end
+
+function testPurposeClassIsLoadedUnderExactlyOneName(testCase)
+% [purpose class] (Jess Haley, 2026-10-27): `interaction_purpose` is renamed
+% `purpose`. The rename is a move, not a copy, so the loaded schema holds the
+% class under ONE of the two names. Both would mean the old file was left
+% behind; neither would mean the class was dropped, which the decision says it
+% is not ("kept as a class").
+cache = did2.schema.cache.shared();
+has = [cache.hasClass('interaction_purpose'), cache.hasClass('purpose')];
+verifyEqual(testCase, nnz(has), 1, sprintf( ...
+    'interaction_purpose loaded: %d; purpose loaded: %d', has(1), has(2)));
+end
+
+function testPurposeClassShapeFollowsTheDecision(testCase)
+% What the decision fixes about the class, whichever name is loaded:
+%   * the ontology-term field `purpose` is kept;
+%   * exactly one free-text field, `comment` (before [notes on three classes] is
+%     built) or `notes` (after), never both;
+%   * its edge is to interactions only ("with its edge to interactions only"):
+%     `interaction_id`, referring to `interaction`.
+[cls, noteField] = purposeShape();
+cache = did2.schema.cache.shared();
+own = cellfun(@(d) char(d.name), cache.ownFields(cls), 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(own, 'purpose')), ...
+    sprintf('%s lost its `purpose` field', cls));
+verifyEqual(testCase, nnz(ismember(own, {'comment', 'notes'})), 1, ...
+    sprintf('%s should declare exactly one of comment/notes (has %s)', ...
+    cls, strjoin(own, ', ')));
+verifyTrue(testCase, any(strcmp(own, noteField)));
+s = cache.getClass(cls);
+deps = s.depends_on;   % jsondecode: struct array, or cell when entries differ
+if ~iscell(deps); deps = num2cell(deps); end
+depNames = cellfun(@(d) char(d.name), deps, 'UniformOutput', false);
+% session_id is inherited from base, not declared here; drop it if a later
+% schema declares it on the class
+nonSession = setdiff(depNames, {'session_id'});
+verifyEqual(testCase, nonSession, {'interaction_id'}, ...
+    sprintf('%s edges: %s', cls, strjoin(depNames, ', ')));
+k = find(strcmp(depNames, 'interaction_id'), 1);
+verifyEqual(testCase, char(deps{k}.must_refer_to_document_class), 'interaction');
 end
