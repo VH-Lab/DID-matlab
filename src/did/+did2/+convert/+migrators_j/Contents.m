@@ -866,8 +866,9 @@
 %         until its position element is mapped. 1 -> 1.
 %     probe_geometry
 %         Brainstorm-J migrator: did_v1 probe_geometry -> one `observation` with value
-%         kind `length` PER SPATIAL AXIS about the probe's entity, plus the session
-%         anchor, plus an optional probe-model `assertion` with value kind `term`.
+%         kind `length` PER SPATIAL AXIS about the probe's entity, each linked to the
+%         probe's one `coordinate_system`, plus that coordinate system, the session
+%         anchor and an optional probe-model `assertion` with value kind `term`.
 %     probe_location
 %         Brainstorm-J migrator: did_v1 probe_location -> an `observation` with value
 %         kind `term`, + the session anchor.
