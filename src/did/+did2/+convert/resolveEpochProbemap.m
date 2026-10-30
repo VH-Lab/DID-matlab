@@ -367,8 +367,13 @@ readerIdByNavId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 archiveIdxByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
 observesIdxByPair = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % element entity id -> its v1 element `type` (the `element type` assertion of
-% +migrators_j/element.m). The element_epoch dissolution keys on it.
+% +migrators_j/element.m). The element_epoch dissolution keys on it. A device
+% whose kind alone rebuilds its type has no `element type` assertion ([element
+% type is a device kind term]): its type is the one its Equipment Type
+% assertion names (did2.convert.elementTypeOfKind), read when it has no
+% `element type` assertion.
 elementTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
+kindTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acqEpochIdx = [];
 sampledIdx = [];
@@ -401,6 +406,13 @@ for k = 1:n
         eid = depValueOf(b, 'entity_id');
         if ~isempty(eid) && ~isKey(elementTypeById, eid)
             elementTypeById(eid) = et;
+        end
+    end
+    kt = lower(did2.convert.elementTypeOfKind(equipmentKindOfAssertion(b)));
+    if ~isempty(kt)
+        eid = depValueOf(b, 'entity_id');
+        if ~isempty(eid) && ~isKey(kindTypeById, eid)
+            kindTypeById(eid) = kt;
         end
     end
     switch classOf{k}
@@ -794,7 +806,8 @@ for i = 1:numel(acqEpochIdx)
     end
     elId = depValueOf(b, 'element_id');
     elType = '';
-    if ~isempty(elId) && isKey(elementTypeById, elId); elType = elementTypeById(elId); end
+    if ~isempty(elId) && isKey(elementTypeById, elId); elType = elementTypeById(elId);
+    elseif ~isempty(elId) && isKey(kindTypeById, elId); elType = kindTypeById(elId); end
     kind = derivedSeriesKind(elType);
     if strcmp(elType, 'ensemble')
         % An ensemble element's epoch holds the COMBINED (times, neuron)
@@ -2069,6 +2082,20 @@ for i = 1:numel(fn)
         t = lower(strtrim(char(x.value.name)));
         return;
     end
+end
+end
+
+function node = equipmentKindOfAssertion(b)
+% The node of +migrators_j/element.m's Equipment Type (NCIT:C178920) term
+% assertion (a device's kind); '' for any other document.
+node = '';
+if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
+        || ~isfield(b.statement, 'variable'); return; end
+v = b.statement.variable;
+if ~(isstruct(v) && isscalar(v) && isfield(v, 'node') && strcmp(char(v.node), 'NCIT:C178920')); return; end
+if isfield(b, 'term') && isstruct(b.term) && isscalar(b.term) && isfield(b.term, 'value') ...
+        && isstruct(b.term.value) && isscalar(b.term.value) && isfield(b.term.value, 'node')
+    node = char(b.term.value.node);
 end
 end
 

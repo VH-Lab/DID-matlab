@@ -219,7 +219,10 @@ function testUnderscoredElectrodeSpellingAlsoResolves(testCase)
 % extracellular recording as type 'extracellular_electrode-4', while
 % probetype2object.json registers the stem as 'electrode-$' and
 % +ndi/+database/+metadata_app/+fun/loadProbes.m:46 matches real data with
-% regexp 'electrode-\d'. All three reach the same row.
+% regexp 'electrode-\d'. All three reach the same row. The ELEMENT is carried
+% whole as v1 ([element types batch 4] (3), Jess Haley, 2026-10-30: the
+% spelling is not a probetype2object.json key), so the row's observation is
+% minted from the probe map's type alone.
 out = runEpoch(elementDoc('ctx', 'extracellular_electrode-4', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.rhd'});
 verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
@@ -354,10 +357,8 @@ function testImagingProbeBecomesImageObservation(testCase)
 % types to ndi.probe.image. #88: a raster goes by what its pixels measure --
 % intensity. The frames are the epoch's files (a TIFF here), so the batch pass
 % no longer defers imaging rows: nothing inline is needed.
-% two-photon, not wide-field: [imaging probes are microscopes or carried]
-% (Decided by Jess Haley, 2026-10-27) carries a wide-field or brightfield
-% probe whole as v1 (carry-121; testRawV1RoundTripElement); a two-photon probe
-% is a device (a microscope) and still records this way.
+% Every imaging probe is a device of kind microscope ([element types batch
+% 2], Jess Haley, 2026-10-30; testRawV1RoundTripElement), and records this way.
 out = runEpoch(elementDoc('camera', 'two-photon-imaging', 'ndi.probe.image', 1, 'specimen_1', ''), ...
     {'/data/t00001/frames.tif'});
 obs = firstOfClass(out, 'observation+intensity');
@@ -442,18 +443,21 @@ end
 
 % ===================== the stimulator carve-out ============================
 
-function testStimulatorElementEmitsNoObservationAndKeepsObserves(testCase)
-% A stimulator ACTS ON the specimen; an observation would be the wrong direction
-% (T3). probetype2object.json maps it to ndi.probe.timeseries.stimulator, and
-% +gui/+app/pyraview.m:90-92 excludes stimulator probes from the recording set.
-% Its `instrument_id` edge arrives with the stimulus model (#31/#43); until then
-% `observes` is KEPT, because dropping a link with nothing in its place is loss,
-% not retirement.
+function testStimulatorElementIsCarriedWithNoObservation(testCase)
+% INVERTS testStimulatorElementEmitsNoObservationAndKeepsObserves, which
+% converted a stimulator element to a device that kept `observes`. [element
+% types batch 4] (4) (Jess Haley, 2026-10-30): `stimulator` is a visual-
+% stimulus computer in vhlab and an electrical stimulator in Marder, so the
+% element is carried whole as v1, needs_mapping (carry-063). Nothing is
+% converted from it: no observation, no `observes`, no flag.
 out = runJ(elementDoc('stim', 'stimulator', 'ndi.probe.timeseries.stimulator', 1, 'specimen_1', ''));
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.passthrough), 1);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-063] '), d);
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-verifyTrue(testCase, hasRelation(out, 'observes'));
-% NOT flagged unresolved: the modality is not unknown, the DIRECTION is different.
+verifyFalse(testCase, hasRelation(out, 'observes'));
 verifyEmpty(testCase, assertionWithVariable(out, 'modality unresolved'));
 end
 

@@ -13,50 +13,78 @@ function [kind, variable, types] = elementDeviceKind(elementType)
 %
 %   [~, ~, TYPES] = did2.convert.elementDeviceKind('') lists the v1 types
 %   that have a kind, with their terms: an N x 3 cell {type, node, name}.
+%   Several types share a kind (a patch electrode, a sharp electrode, a
+%   microscope); did2.convert.elementTypeOfKind reads a kind back to its type
+%   only where one type has it.
 %
 %   Each row is a decision (Decided by Jess Haley, did-schema
 %   V_eta_go_forward_class_audit.md), under [element type is a device kind
-%   term] (2026-10-27: one term per instrument; a type with no decided term
-%   keeps today's assertion only), and each term is a row of did-schema
+%   term] (2026-10-27: one term per instrument), for an element whose
+%   `ndi_element_class` starts `ndi.probe.`; each term is a row of did-schema
 %   schemas/V_eta_term_registry.json:
 %     n-trode             wikidata:Q1952355 multielectrode array
-%                         [n-trode is a multielectrode array]
+%                         [n-trode is a multielectrode array],
+%                         [element types batch 1]
+%     patch, patch-Vm, patch-I, patch-attached
+%                         EMPTY:0000411 patch electrode
+%     sharp, sharp-Vm, sharp-Im
+%                         EMPTY:0000412 sharp electrode
+%                         [element types batch 1]; the suffix is the
+%                         recording mode, on the recording observation
+%     wide-field-imaging, two-photon-imaging, one-photon-imaging,
+%     brightfield-imaging OBI:0400169 microscope
+%                         [element types batch 2] (narrows [imaging probes
+%                         are microscopes or carried]: wide-field and
+%                         brightfield are no longer carried); the imaging
+%                         mode is a method term on the recording observation
+%                         ([imaging mode is a method term])
+%     lick-spout          EMPTY:0000414 lick spout
+%     reward-well         EMPTY:0000415 reward port
+%     intraoral-cannula   NCIT:C50343 Cannula Device
+%     optogenetic-fiber   NCIT:C50358 Fiber Optic Device
+%                         [element types batch 2]
+%     ecg                 OBI:0003806 electrocardiograph
+%     eeg                 wikidata:Q4531135 electroencephalograph
 %     accelerometer       NCIT:C88166 Accelerometer
 %     thermometer         NCIT:C50059 Thermometer Device
 %     ppg                 NCIT:C224112 Photoplethysmography Sensor
-%     optogenetic-fiber   NCIT:C50358 Fiber Optic Device
-%     intraoral-cannula   NCIT:C50343 Cannula Device
-%                         [five probe kinds from NCIT]
-%     ecg                 OBI:0003806 electrocardiograph
-%     eeg                 wikidata:Q4531135 electroencephalograph
-%                         [ecg and eeg are recorders] (Wikidata searched
-%                         2026-10-28: the item exists, so `eeg` takes it)
-%     one-photon-imaging, two-photon-imaging
-%                         OBI:0400169 microscope
-%                         [imaging probes are microscopes or carried]
-%   NOT HERE, because no term is registered yet: patch*, sharp*, stimulator,
-%   lick-spout, reward-well ([device kinds minted], [device kind labels and
-%   synonyms]: empty-ontology and did-schema builds pending), and `event` and
-%   the electrode spellings (no kind proposed). wide-field-imaging and
-%   brightfield-imaging are carried (carry-121), not given a kind.
+%                         [element types batch 3]
+%     electrode-$         NCIT:C49936 Electrode Device (the literal key of
+%                         NDI probetype2object.json) [element types batch 4]
+%   NOT HERE: `stimulator`, `event` and the spellings `electrode-<spec>` /
+%   `<prefix>_electrode-<spec>`, which [element types batch 4] carries whole
+%   as v1, needs_mapping.
 %
-%   See also did2.convert.migrators_j.element, did2.convert.roundtrip.element.
+%   See also did2.convert.elementTypeOfKind, did2.convert.migrators_j.element,
+%   did2.convert.roundtrip.element.
 
 arguments
     elementType = ''
 end
 
 types = {
-    'n-trode',            'wikidata:Q1952355', 'multielectrode array'
-    'accelerometer',      'NCIT:C88166',       'Accelerometer'
-    'thermometer',        'NCIT:C50059',       'Thermometer Device'
-    'ppg',                'NCIT:C224112',      'Photoplethysmography Sensor'
-    'optogenetic-fiber',  'NCIT:C50358',       'Fiber Optic Device'
-    'intraoral-cannula',  'NCIT:C50343',       'Cannula Device'
-    'ecg',                'OBI:0003806',       'electrocardiograph'
-    'eeg',                'wikidata:Q4531135', 'electroencephalograph'
-    'one-photon-imaging', 'OBI:0400169',       'microscope'
-    'two-photon-imaging', 'OBI:0400169',       'microscope'};
+    'n-trode',             'wikidata:Q1952355', 'multielectrode array'
+    'patch',               'EMPTY:0000411',     'patch electrode'
+    'patch-Vm',            'EMPTY:0000411',     'patch electrode'
+    'patch-I',             'EMPTY:0000411',     'patch electrode'
+    'patch-attached',      'EMPTY:0000411',     'patch electrode'
+    'sharp',               'EMPTY:0000412',     'sharp electrode'
+    'sharp-Vm',            'EMPTY:0000412',     'sharp electrode'
+    'sharp-Im',            'EMPTY:0000412',     'sharp electrode'
+    'wide-field-imaging',  'OBI:0400169',       'microscope'
+    'two-photon-imaging',  'OBI:0400169',       'microscope'
+    'one-photon-imaging',  'OBI:0400169',       'microscope'
+    'brightfield-imaging', 'OBI:0400169',       'microscope'
+    'lick-spout',          'EMPTY:0000414',     'lick spout'
+    'reward-well',         'EMPTY:0000415',     'reward port'
+    'intraoral-cannula',   'NCIT:C50343',       'Cannula Device'
+    'optogenetic-fiber',   'NCIT:C50358',       'Fiber Optic Device'
+    'ecg',                 'OBI:0003806',       'electrocardiograph'
+    'eeg',                 'wikidata:Q4531135', 'electroencephalograph'
+    'accelerometer',       'NCIT:C88166',       'Accelerometer'
+    'thermometer',         'NCIT:C50059',       'Thermometer Device'
+    'ppg',                 'NCIT:C224112',      'Photoplethysmography Sensor'
+    'electrode-$',         'NCIT:C49936',       'Electrode Device'};
 variable = did2.build.term('NCIT:C178920', 'Equipment Type');
 kind = [];
 ix = find(strcmp(strtrim(char(elementType)), types(:, 1)), 1);

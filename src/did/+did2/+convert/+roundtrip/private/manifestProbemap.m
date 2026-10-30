@@ -23,7 +23,11 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %                      (did2.convert.elementNameReference; the probe map
 %                      writes the reference with int2str)
 %     type             the instrument's `element type` assertion (the v1
-%                      element.type, kept by +migrators_j/element.m)
+%                      element.type, kept by +migrators_j/element.m), or,
+%                      where the migrator wrote none, the type its device
+%                      kind names (its Equipment Type assertion,
+%                      did2.convert.elementTypeOfKind; [element type is a
+%                      device kind term])
 %     devicestring     the acquisition_channels' acquisition_system name, ':',
 %                      its channel groups ';'-joined, each the v1 prefix of its
 %                      channel type (did2.convert.channelType, by node) and its
@@ -175,9 +179,11 @@ rowText = strjoin({name, ref, elType, dev, subject}, tab);
 end
 
 function [why, elType] = rowTypeOf(st, ctx)
-% the instrument's `element type` assertion (+migrators_j/element.m)
+% the instrument's `element type` assertion (+migrators_j/element.m), else the
+% one type its device kind names (did2.convert.elementTypeOfKind)
 why = '';
 elType = '';
+kindNodes = {};
 instrumentId = firstEdge(st, 'instrument_id');
 for k = ctxReferrers(ctx, instrumentId)
     b = ctx.docs{k};
@@ -188,6 +194,15 @@ for k = ctxReferrers(ctx, instrumentId)
     [~, variable] = termParts(getIn(b, 'statement', 'variable'));
     if strcmpi(variable, 'element type')
         [~, elType] = termParts(getIn(b, 'term', 'value'));
+        return;
+    elseif strcmpi(variable, 'equipment type')
+        [kindNode, ~] = termParts(getIn(b, 'term', 'value'));
+        kindNodes{end+1} = kindNode; %#ok<AGROW>
+    end
+end
+if isscalar(kindNodes)
+    elType = did2.convert.elementTypeOfKind(kindNodes{1});
+    if ~isempty(elType)
         return;
     end
 end

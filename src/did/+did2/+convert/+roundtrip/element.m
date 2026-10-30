@@ -15,7 +15,17 @@ function [v1, spec] = element(bodies)
 %                                      did2.convert.elementNameReference
 %                                      ('<name> | <reference>'; the name alone
 %                                      for an element with no reference)
-%     element.type                     the 'element type' assertion's value
+%     element.type                     the 'element type' assertion's value;
+%                                      with none, the device kind (the
+%                                      Equipment Type assertion) read back by
+%                                      did2.convert.elementTypeOfKind, where
+%                                      one v1 type has that kind ([element
+%                                      type is a device kind term]: "the round
+%                                      trip rebuilds the v1 word from kind
+%                                      plus mode"; a kind several types share
+%                                      keeps the 'element type' assertion
+%                                      until its mode is written, so needs no
+%                                      mode here)
 %     element.ndi_element_class        the 'ndi element class' assertion's value
 %     (a device's Equipment Type assertion states its device kind,
 %     did2.convert.elementDeviceKind; it is placed when its node is the kind
@@ -69,6 +79,7 @@ end
 [name, reference] = did2.convert.elementNameReference(fieldText(entity, 'local_identifier'));
 
 type = '';
+hasType = false;
 ndiClass = '';
 underlying = '';
 subject = '';
@@ -88,6 +99,7 @@ for k = 1:numel(bodies)
             switch lower(variable)
                 case 'element type'
                     type = value;
+                    hasType = true;
                     used(k) = true;
                 case 'ndi element class'
                     ndiClass = value;
@@ -124,6 +136,10 @@ end
 for k = find(~used)
     spec.unplaced{end+1} = sprintf('emitted document %d (%s) has no role in an element', ...
         k, classNameOf(bodies{k}));
+end
+% no 'element type' assertion: the type is the one its device kind names
+if ~hasType && isscalar(kindNodes)
+    type = did2.convert.elementTypeOfKind(kindNodes{1});
 end
 % the device kind restates the type ([element type is a device kind term]):
 % exactly the decided kind of the rebuilt type, or it is not placed
