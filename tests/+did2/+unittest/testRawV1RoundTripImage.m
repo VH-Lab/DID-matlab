@@ -1,6 +1,6 @@
 function tests = testRawV1RoundTripImage
 %TESTRAWV1ROUNDTRIPIMAGE The imaging family read as raw v1, and its round trip:
-%   imageStack (switched); ontologyLabel (switched); image (not switched).
+%   imageStack, ontologyLabel and image (switched 2026-10-30).
 %
 %   Decided by Jess Haley, 2026-10-26 (did-schema
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1] (switched one
@@ -34,6 +34,13 @@ function tests = testRawV1RoundTripImage
 %   Haley shapes: 2,444 behaviour (carried, carry-052) and 4,563 E. coli
 %   (passed through); no corpus holds a Babu stack (census of the corpus zips,
 %   2026-10-27).
+%     image            no writer at the locked main constructs one, and no corpus
+%                      holds one: data/image.json (copied verbatim from NDI-matlab
+%                      441530d0) merged with imageStack_parameters.json and
+%                      base.json, the edges sorted and unique (document_id,
+%                      imageCollection_id, subject_id), with a Babu-image-like
+%                      parameters block. Its round trip is [image raw round
+%                      trip and single-read keys] (Jess Haley, 2026-10-30).
 %
 %   WHAT V2 DOES NOT KEEP is listed per fixture as KNOWN FINDINGS: open
 %   questions for the team, not rules made here. Each fixture's lost paths
@@ -121,19 +128,180 @@ end
 
 % ===================== the switch ======================================
 
-function testImageStackAndLabelAreSwitchedAndImageIsNot(testCase)
+function testImageStackLabelAndImageAreSwitched(testCase)
+% INVERTED 2026-10-30 (was testImageStackAndLabelAreSwitchedAndImageIsNot, which
+% asserted `image` stays on the renamed path): [migrators read raw v1] (Decided
+% by Jess Haley, 2026-10-26, did-schema V_eta_go_forward_class_audit.md)
+% switches every class, and the `image` tombstone that kept it renamed was
+% deleted on 2026-10-28 ([carried v1 validates against NDI templates])
 names = did2.convert.rawV1Classes();
 verifyTrue(testCase, any(strcmp(names, 'imageStack')));
 verifyEqual(testCase, did2.convert.rawV1Classes('imageStack'), 'image_stack');
 verifyTrue(testCase, any(strcmp(names, 'ontologyLabel')));
 verifyEqual(testCase, did2.convert.rawV1Classes('ontologyLabel'), 'ontology_label');
-% not switched: see did2.convert.rawV1Classes for why
-verifyFalse(testCase, any(strcmp(names, 'image')));
-r = runRaw({babuStack('is_b1', 'video'), haleyLabel('lab_1', 'is_b1', 'EMPTY:0000257')});
+verifyTrue(testCase, any(strcmp(names, 'image')));
+verifyEqual(testCase, did2.convert.rawV1Classes('image'), 'image');
+r = runRaw({babuStack('is_b1', 'video'), haleyLabel('lab_1', 'is_b1', 'EMPTY:0000257'), ...
+    imageDoc('im_b1', 'tiff')});
 L = r.summary.legacy_ndi_document;
-verifyEqual(testCase, L.bodies_read_raw_v1, 2, 'the stack and the label are read raw');
+verifyEqual(testCase, L.bodies_read_raw_v1, 3, 'the stack, the label and the image are read raw');
 verifyEqual(testCase, L.bodies_reaching_universal_renames, 0);
 verifyEqual(testCase, L.bodies_unreached, 0);
+end
+
+% ===================== image: converted, read raw ========================
+
+function testAnImageConvertsAndRoundTrips(testCase)
+% [image raw round trip and single-read keys] (Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md, G42): "a raw-v1
+% round trip is built for `image` when `image` moves to the raw-v1 path,
+% carrying the label back and rebuilding `format` 'tiff' from
+% EDAM:format_3591"
+v1 = imageDoc('im_conv', 'tiff');
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'converted, not carried');
+verifyEqual(testCase, numel(out.migrated), 3, 'observation, sampled_body, anchor');
+obs = [];
+body = [];
+for k = 1:numel(out.migrated)
+    switch out.migrated{k}.className()
+        case 'observation', obs = out.migrated{k}.toStruct();
+        case 'sampled_body', body = out.migrated{k}.toStruct();
+    end
+end
+assertNotEmpty(testCase, obs);
+assertNotEmpty(testCase, body);
+verifyEqual(testCase, char(obs.statement.notes), v1.image.label, 'the label is the notes');
+verifyEqual(testCase, char(body.data_body.format.node), 'EDAM:format_3591');
+verifyEqual(testCase, char(body.data_body.compression), 'lzw');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyFalse(testCase, r.carried);
+verifyRoundTrip(testCase, r, 'image', {});
+accounted = [r.matched, r.not_set, r.restated, r.equivalent];
+P = 'imageStack_parameters.';
+for p = {'base.id', 'base.session_id', 'base.datestamp', 'document_class.class_name', ...
+        'depends_on(1).value', 'depends_on(2).value', 'depends_on(3).value', ...
+        'image.label', 'image.format', 'image.compression', ...
+        [P 'dimension_labels'], [P 'dimension_size'], [P 'dimension_scale'], ...
+        [P 'dimension_scale_units'], [P 'data_type'], [P 'data_limits'], ...
+        [P 'timestamp'], [P 'clocktype'], 'files.file_list'}
+    verifyTrue(testCase, any(strcmp(p{1}, accounted)), sprintf('image: %s is not accounted for', p{1}));
+end
+verifyTrue(testCase, any(strcmp('image.format', r.matched)), ...
+    'the format tiff is rebuilt from EDAM:format_3591');
+verifyTrue(testCase, any(strcmp('image.label', r.matched)), 'the label comes back');
+end
+
+function testAnImageFormatGivenAsItsNodeRoundTrips(testCase)
+% the format stated as the CURIE, or as the registry label in another case: the
+% body holds the node, and the round trip compares the v1 text with the node
+% or the registry label, ignoring case
+fmts = {'EDAM:format_3591', 'TIFF'};
+for k = 1:numel(fmts)
+    v1 = imageDoc(sprintf('im_fmt_%d', k), fmts{k});
+    r = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
+    verifyRoundTrip(testCase, r, ['format ' fmts{k}], {});
+    verifyTrue(testCase, any(strcmp('image.format', [r.matched, r.equivalent])), fmts{k});
+end
+end
+
+function testAChangedImageFieldIsReportedLost(testCase)
+% the round trip can fail: a changed label or compression is named
+v1 = imageDoc('im_lost', 'tiff');
+out = runRaw(v1);
+for f = {'label', 'compression'}
+    v1b = v1;
+    v1b.image.(f{1}) = 'something else';
+    r = did2.convert.roundtrip.check(v1b, out.migrated);
+    verifyFalse(testCase, r.ok, f{1});
+    verifyTrue(testCase, any(strcmp(['image.' f{1}], {r.lost.path})), f{1});
+end
+end
+
+function testASubjectlessImagePassesThroughAndRoundTrips(testCase)
+% the template's empty subject_id: no subject, so the untouched raw source
+% passes through (no `image` tombstone since 2026-10-28: counted, not
+% validated), and the passthrough inverse reads it back
+v1 = jsondecode(jsonencode(setEdge(imageDoc('im_nosub', 'tiff'), 'subject_id', '')));
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.passthrough), 1, 'a pass-1 passthrough');
+emitted = out.migrated{1}.toStruct();
+verifyEqual(testCase, emitted.document_class.class_name, 'image');
+verifyEqual(testCase, emitted.imageStack_parameters, v1.imageStack_parameters, ...
+    'the passthrough is the raw v1 source');
+verifyEqual(testCase, emitted.image, v1.image);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyFalse(testCase, r.carried);
+verifyRoundTrip(testCase, r, 'subject-less image', {});
+end
+
+function testAnImageCarriesOnTheRawShapeAsTheRenamedOneDid(testCase)
+% a collection edge (carry-153), a parameters block beside a different
+% snake_case twin (what universalRenames would discard: carry-049)
+coll = setEdge(imageDoc('im_coll', 'tiff'), 'imageCollection_id', 'coll_1');
+twin = imageDoc('im_twin', 'tiff');
+twin.image_stack_parameters = twin.imageStack_parameters;
+twin.image_stack_parameters.clocktype = 'dev_local_time';
+cases = {'collection', coll, '[carry-153] malformed: '; 'parameters twin', twin, '[carry-049] '};
+for k = 1:size(cases, 1)
+    [label, v1, row] = cases{k, :};
+    v1 = jsondecode(jsonencode(v1));
+    out = runRaw(v1);
+    verifyCarriedUntouched(testCase, v1, out, label);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, row), [label ': ' d]);
+    old = runRenamed(v1);
+    verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1', ...
+        [label ': the renamed path carried it too']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried, label);
+    verifyRoundTrip(testCase, r, label, {});
+end
+end
+
+function testATimestampTheSuperclassMigratorRefusesStillQuarantinesAnImage(testCase)
+% the superclass migrator's refusals run on a raw image's parameters block too
+v1 = imageDoc('im_ts', 'tiff');
+v1.imageStack_parameters.timestamp = [739038.5; 739039.5];
+raw = runRaw(v1);
+verifyEqual(testCase, numel(raw.quarantine), 1);
+verifyEqual(testCase, raw.quarantine(1).identifier, ...
+    'did2:convert:imageStackParametersNonScalarTimestamp');
+verifyEqual(testCase, numel(runRenamed(v1).quarantine), 1, 'renamed: refused too');
+end
+
+function testTheImageSwitchChangesNoOutcome(testCase)
+% converted: the same documents on both paths (ids are deterministic); a
+% passthrough on both, the raw one the untouched v1 source with the same edges
+% and identity
+nosub = jsondecode(jsonencode(setEdge(imageDoc('im_s_ns', 'tiff'), 'subject_id', '')));
+fixtures = {imageDoc('im_s_conv', 'tiff'), nosub};
+for k = 1:numel(fixtures)
+    v1 = fixtures{k};
+    raw = runRaw(v1);
+    old = runRenamed(v1);
+    label = sprintf('image fixture %d (%s)', k, v1.base.id);
+    verifyEmpty(testCase, raw.quarantine, label);
+    verifyEmpty(testCase, old.quarantine, label);
+    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), label);
+    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
+    if ~isempty(raw.passthrough)
+        a = raw.migrated{1}.toStruct();
+        b = old.migrated{1}.toStruct();
+        verifyEqual(testCase, edgeMap(a), edgeMap(b), [label ': the edges differ']);
+        verifyEqual(testCase, a.base, b.base, [label ': the identity differs']);
+        continue;
+    end
+    for j = 1:min(numel(raw.migrated), numel(old.migrated))
+        a = raw.migrated{j}.toStruct();
+        b = old.migrated{j}.toStruct();
+        verifyTrue(testCase, isequaln(a, b), sprintf('%s, document %d: raw %s; renamed %s', ...
+            label, j, jsonencode(a), jsonencode(b)));
+    end
+end
 end
 
 function testTheLabelClassHelperAcceptsBothSpellings(testCase)
@@ -852,6 +1020,38 @@ v1 = babuStack(id, 'image');
 v1.imageStack.label = 'A brightfield image of a plate.';
 v1.imageStack_parameters.dimension_labels = labels;
 v1.imageStack_parameters.dimension_scale = [2; 2];
+v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = imageDoc(id, format)
+% ndi.document('image', ...) + session.newdocument: the template merge
+% (image.json, its superclasses base.json and imageStack_parameters.json), the
+% edges sorted and unique (document_id, imageCollection_id, subject_id). No
+% writer at the locked main constructs one; the parameters are a Babu image's.
+tpl = loadTemplate('image');
+ptpl = loadTemplate('imageStack_parameters');
+btpl = loadTemplate('base');
+v1 = struct();
+v1.base = btpl.base;
+v1.base.id = id;
+v1.base.session_id = '4126aa00c0000000_0000000000000b01';
+v1.base.datestamp = '2025-03-11T09:30:00.000Z';
+deps = [reshape(tpl.depends_on, [], 1); reshape(ptpl.depends_on, [], 1)];
+[~, ix] = unique({deps.name});
+v1.depends_on = reshape(deps(ix), 1, []);
+v1.document_class = tpl.document_class;
+v1.files = struct('file_list', {{'imageFile'}}, 'file_info', struct( ...
+    'name', 'imageFile', 'locations', struct('delete_original', 0, ...
+    'uid', [id '_f'], 'location', ['ndic://682e7772cdf3f24938176fac/' id '_f'], ...
+    'parameters', '', 'location_type', 'ndicloud', 'ingest', 0)));
+v1.image = struct('label', 'A brightfield image of a plate.', 'format', format, ...
+    'compression', 'lzw');
+v1.imageStack_parameters = struct('dimension_order', 'YX', ...
+    'dimension_labels', 'height,width', 'dimension_size', [1024 1344], ...
+    'dimension_scale', [1 1], 'dimension_scale_units', 'pixel,pixel', ...
+    'data_type', 'uint8', 'data_limits', [0 255], 'timestamp', 739321.4166666666, ...
+    'clocktype', 'exp_global_time');
+v1 = setEdge(v1, 'subject_id', '4126aa00c0000000_00000000000005a1');
 v1 = jsondecode(jsonencode(v1));
 end
 
