@@ -1,4 +1,4 @@
-function [value, chemicals, conflicts, ingredientRows, placeholders] = jDoseValue(chemicals)
+function [value, chemicals, conflicts, ingredientRows, placeholders, needsInfo] = jDoseValue(chemicals)
 %JDOSEVALUE A migrated dose's `value`: the amount the source gave, else NaN.
 %
 %   [VALUE, CHEMICALS] = jDoseValue(CHEMICALS). CHEMICALS is the struct array
@@ -35,7 +35,13 @@ function [value, chemicals, conflicts, ingredientRows, placeholders] = jDoseValu
 %   lists the CHEMICALS rows those entries describe, in order -- the caller
 %   adds one `ingredient_id` edge per row to that row's chemical
 %   (rule ingredients_match_edges). The top level then states the whole
-%   formulation's amount; unrecorded, it is NaN in volume.liters.
+%   formulation's amount; unrecorded, it is LEFT OUT and named in NEEDSINFO
+%   (a {field, reason} struct array for the dose's base.needs_info):
+%   'dose.value.volume' ([canonical absent only as needs info], Decided by
+%   Jess Haley, 2026-10-30, did-schema V_eta_go_forward_class_audit.md: "an
+%   amount the source never states ... is left out ... rather than written
+%   as ... NaN (T14: missing is not a value)"; it was `volume.liters = NaN`
+%   until then).
 %   A PLACEHOLDER IS NOT AN AMOUNT (Jess Haley, 2026-10-21 [dose per
 %   ingredient]): an amount per body mass on a VEHICLE row (saline,
 %   EFO:0002677 -- Hunsberger's control group is written `saline, 1 mg/kg`,
@@ -49,13 +55,19 @@ function [value, chemicals, conflicts, ingredientRows, placeholders] = jDoseValu
 %   dose's volume:
 %   `value.volume.liters = NaN` ("An unrecorded amount is written as NaN in
 %   its quantity (e.g. a dose's volume.liters: NaN)", Jess Haley,
-%   2026-10-21). When no row gives a number but exactly one kind of amount
+%   2026-10-21). NOT YET CHANGED by [canonical absent only as needs info]
+%   (2026-10-30) where the NaN is ALL the dose states: left out, `value`
+%   would be blank and rule value_inline_or_body (did-schema value.json,
+%   checked by did2.build) refuses the dose -- the same question as the
+%   all-blank formulation, docs/V2_PLAN.md G67, left to the team. The same
+%   holds for the NaN canonical of a kind stated with no number, below. When no row gives a number but exactly one kind of amount
 %   unit is stated, the NaN goes in THAT quantity, with the unit as
 %   `source_unit` ("where the kind is known ... the NaN goes in that quantity
 %   instead", Jess Haley, 2026-10-21 [unknown-amount-slot]). Whether NaN
 %   survives a did2 write and read is DID-matlab
 %   #218's work (testSqliteDbNonFinite); this function only writes it.
 
+needsInfo = struct('field', {}, 'reason', {});
 hits = [];
 slots = {};
 kindOnly = [];          % rows stating an amount UNIT but no number
@@ -167,9 +179,18 @@ if ~isempty(hits) || ~isempty(ingredientRows)
             chemicals(k).source_value = [];
             chemicals(k).source_unit = [];
         end
-    elseif isempty(fieldnames(v))
+    elseif isempty(fieldnames(v)) && ~isempty(ingredientRows)
         % only per-ingredient amounts: the whole formulation's amount is
-        % unrecorded, NaN at the top level (did-schema dose.json example)
+        % unrecorded. [canonical absent only as needs info] (Decided by Jess
+        % Haley, 2026-10-30): left out and named in needs_info, not
+        % `volume.liters = NaN`; `value` still states the ingredients
+        needsInfo(end+1) = struct('field', 'dose.value.volume', 'reason', ...
+            ['the source states each ingredient''s amount but not the amount ' ...
+             'of the whole formulation given']);
+    elseif isempty(fieldnames(v))
+        % nothing else to state (every amount was a vehicle placeholder, which
+        % the caller carries): NaN at the top level, as before -- left out,
+        % `value` would be blank (header: G67)
         v.volume = struct('liters', NaN);
     end
     if ~isempty(ingredientRows)

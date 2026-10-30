@@ -122,7 +122,7 @@ if isempty(ref)
     return;
 end
 used(i) = true;
-[~, node.epoch_clock] = termParts(getIn(ref, 'relative_time_reference', 'value', 'clock'));
+node.epoch_clock = clockText(getIn(ref, 'relative_time_reference', 'value', 'clock'));   % by node first [clock terms get nodes]
 t0 = numberOf(getIn(ref, 'relative_time_reference', 'value', 'start', 'seconds'));
 dt = numberOf(getIn(ref, 'relative_time_reference', 'value', 'duration', 'seconds'));
 if isempty(t0) || isempty(dt)

@@ -18,9 +18,10 @@ function [names, migrators] = rawV1Classes(v1Name)
 %   differently from the migrator files that convert them: NDIcalc-vis-matlab
 %   writes `contrasttuning_calc` and `contrastsensitivity_calc`, and the
 %   migrators are +migrators_j/contrast_tuning_calc.m and
-%   contrast_sensitivity_calc.m; NDI writes `imageStack` and `ontologyLabel`,
-%   and the migrators are +migrators_j/image_stack.m and ontology_label.m: the
-%   names universalRenames gives those classes. THIS TABLE GOES when
+%   contrast_sensitivity_calc.m; NDI writes `imageStack`, `ontologyLabel` and
+%   `ontologyTableRow`, and the migrators are +migrators_j/image_stack.m,
+%   ontology_label.m and ontology_table_row.m: the names universalRenames gives
+%   those classes. THIS TABLE GOES when
 %   universalRenames is deleted and the migrator files are renamed to the v1
 %   names ([migrators read raw v1]); it is the only place the two spellings are
 %   joined for a switched class. A row may name a class not (yet) in the list
@@ -108,9 +109,9 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     imageStack          the imaging family: superclasses `base` +
 %                         `imageStack_parameters`, no `app` block. The
 %                         superclass migrator (+super/image_stack_parameters)
-%                         is called by the leaf on the raw block, and stays for
-%                         the v1 `image` (not switched), which still runs
-%                         renamed. Written by +setup/+conv/+haley/doImport.m
+%                         is called by the leaf on the raw block (and on a
+%                         raw v1 `image`'s, which the leaf converts too).
+%                         Written by +setup/+conv/+haley/doImport.m
 %                         and +babu/import.m. Round trips:
 %                         testRawV1RoundTripImage.
 %     daqsystem           the acquisition-system family: superclass `base`
@@ -347,30 +348,149 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         Inverse: the passthrough one (never reached for a
 %                         carry: did2.convert.roundtrip.check reads a carry as
 %                         the v1 document itself).
-%     NOT LISTED, and why:
-%       control_stimulus_ids  its migrator carries it (carry-152, [control
-%                         records carried in pass 1], 2026-10-30; a handed-on
-%                         class in v1_to_v2 carryDependents, so its responses
-%                         do not carry). Before #1082 NDI's second pass read
-%                         the record from pass 1's OUTPUT (ndi.migrate.local
-%                         resolveStimulusPresentations: convertResult.migrated),
-%                         not from the v1 input. Raw, the passthrough would
-%                         reach NDI as v1 spells it (`app.name`, edge `value`)
-%                         instead of renamed, and its V_eta tombstone
-%                         (superclass `app`, which declares `app_name`) refuses
-%                         `app.name` (did2:validation:undeclaredField), so a
-%                         validating run would quarantine all 1,428 corpus
-%                         records. It stays on the renamed path until NDI reads
-%                         the record from its input, or pass 1 carries it as a
-%                         handed-on v1 document (a team question). Both hold
-%                         now (NDI-matlab #1082; carry-152); switching it to
-%                         the raw read (and a roundtrip inverse) is not done
-%                         here.
-%       image             no NDI writer at the locked main constructs it and no
-%                         corpus holds one; its subject-less passthrough has no
-%                         register row, and as raw v1 it would meet the
-%                         renamed-shape `image` tombstone under its own name
-%                         and quarantine. It stays on the renamed path.
+%     control_stimulus_ids  superclass `base` (+ the writer's `app` block), no
+%                         superclass migrator. ALWAYS CARRIED whole as v1
+%                         (carry-152, [control records carried in pass 1],
+%                         Jess Haley, 2026-10-30), a handed-on class in
+%                         v1_to_v2 carryDependents, so its responses do not
+%                         carry. Read raw so that the carry is the untouched v1
+%                         source (`app.name`, edge key `value`), which is what
+%                         NDI's second pass reads anyway: it takes the record
+%                         from the ORIGINAL v1 bodies ([second pass reads
+%                         control stimuli from v1], NDI-matlab #1082,
+%                         ndi.migrate.internal.controlRecordsByPresentation). A
+%                         carried document is not validated against V_eta, so
+%                         the tombstone's `app_name` no longer quarantines it.
+%                         Written by +ndi/+app/+stimulus/tuning_response.m.
+%                         Inverse: the passthrough one (a carry is read as the
+%                         v1 document itself). Round trips:
+%                         testMigratorsJStimulusModel
+%                         (testAControlRecordReadRawRoundTrips).
+%     image               superclasses `base` + `imageStack_parameters`, no
+%                         `app` block; +migrators_j/image.m hands it to
+%                         image_stack.m, which reads it raw as it reads
+%                         `imageStack` (the superclass migrator's refusals
+%                         called on the raw block; what universalRenames would
+%                         have discarded carries, carry-049). The `image`
+%                         tombstone that kept it on the renamed path was
+%                         deleted with did-schema's other did_v1 tombstones
+%                         (2026-10-28, [carried v1 validates against NDI
+%                         templates]): a subject-less raw passthrough is
+%                         counted as a class V_eta keeps no schema for, as a
+%                         raw `imageStack` passthrough is. No NDI writer at the
+%                         locked main constructs it and no corpus holds one;
+%                         the template (data/image.json) fixes its shape.
+%                         Round trips: testRawV1RoundTripImage ([image raw
+%                         round trip and single-read keys], Jess Haley,
+%                         2026-10-30: the label back from the observation's
+%                         notes, `format` 'tiff' from EDAM:format_3591).
+%     dataset_session_info  superclass `base` only, no `app` block, no
+%                         superclass migrator. Writes no V2 document ([fit
+%                         classes kept; session list rebuilt], Jess Haley,
+%                         2026-10-27): v1_to_v2 carryUnrebuiltSessionLists,
+%                         which reads the v1 input, carries a list the batch's
+%                         memberships do not rebuild (carry-118); a field
+%                         outside the template carries it (private/
+%                         jRawAccount, carry-100). Written by NDI's older
+%                         +dataset/dir.m (template dataset_session_info.json).
+%                         Inverse: the passthrough one, or nothing for a list
+%                         that rebuilt. Round trips:
+%                         testRawV1RoundTripSessionList.
+%     fitcurve            superclass `base` only, no `app` block, no
+%                         superclass migrator; a `calculation` with value kind
+%                         `model_fit` (private/jModelFit), as before. The
+%                         template states no subject, so a template-shaped fit
+%                         is carried (carry-136); one that names an
+%                         `element_id` or `subject_id` (read, though outside
+%                         the template) converts. What the fold does not read
+%                         carries the document (private/jRawAccount,
+%                         carry-100). No writer at the locked main, no corpus
+%                         document. Round trips: testRawV1RoundTripFit.
+%     vmspikefit          superclasses `base` + `epochid` + `app`, no
+%                         superclass migrator; the same fold as fitcurve
+%                         (private/jModelFit), carried with no subject
+%                         (carry-137). The `app` block is read in either
+%                         spelling (jSoftwareFromApp). What the fold does not
+%                         read carries the document (private/jRawAccount,
+%                         carry-100). The vhlab_voltage2firingrate writer is
+%                         in no repository we hold; no corpus document. Round
+%                         trips: testRawV1RoundTripFit.
+%     vmspikefilteringparameters  superclasses `base` + `epochid` + `app`, no
+%                         superclass migrator; folds to a `method`
+%                         (jMethodParameters) as before. The raw block's
+%                         `rm60Hz` goes to the bag as `filter.rm60_hz`, the
+%                         spelling the renamed path gave it; a non-empty
+%                         `spiketimes` is carried (carry-143), the run's os or
+%                         interpreter carries it (carry-005). What the fold
+%                         does not read carries the document (private/
+%                         jRawAccount, carry-100). The writer is in no
+%                         repository we hold; no corpus document. Round trips:
+%                         testRawV1RoundTripVmSpikeFiltering.
+%     ontologyTableRow    superclass `base` only, no `app` block, no
+%                         superclass migrator. ALWAYS CARRIED whole as v1
+%                         (carry-026, [table rows carried as v1], Jess Haley,
+%                         2026-10-30); read raw so that the carry is the
+%                         untouched v1 source, which NDI's second pass counts
+%                         under either class name (ndi.migrate.internal.
+%                         ontologyRowsCarried). The table below joins it to
+%                         ontology_table_row, which reads its block in either
+%                         spelling. A body that names the snake_case class
+%                         `ontology_table_row` (no NDI writer makes one) still
+%                         runs renamed. Written by +ndi/+setup/+NDIMaker/
+%                         tableDocMaker.m. Inverse: the passthrough one.
+%                         Round trips: testRawV1RoundTripOntologyTableRow.
+%     openminds           superclass `base` only, no `app` block, no
+%                         superclass migrator. A guarded passthrough for
+%                         did2.convert.resolveOpenmindsCitations and NDI's
+%                         strainAssembly, which read the class name, the
+%                         `openminds` block and either edge key (`value` raw,
+%                         `document_id` renamed), so what they receive is
+%                         unchanged but for v1's edge key; it validates
+%                         against the same V_eta class. A field, block or edge
+%                         outside the template (edges: `openminds_<n>`)
+%                         carries it (private/jRawAccount, carry-100). Written
+%                         by ndi.database.fun.openMINDSobj2ndi_document. Round
+%                         trips: testRawV1RoundTripOpenminds.
+%     openminds_subject   superclasses `base` + `openminds`, no `app` block, no
+%                         superclass migrator; one term assertion about the
+%                         subject, as before, or carried (carry-116, carry-117).
+%                         Its `openminds_<n>` edges are not written to the
+%                         assertion; they are accounted for because NDI's
+%                         subjectStrainAssembly reads them from the v1 input.
+%                         What the migrator does not read carries the document
+%                         (private/jRawAccount, carry-100). Written by
+%                         ndi.database.fun.openMINDSobj2ndi_document. Round
+%                         trips: testRawV1RoundTripOpenminds.
+%     openminds_element   superclasses `base` + `openminds`, no `app` block, no
+%                         superclass migrator; one term assertion about the
+%                         element, as before, or carried (carry-128, carry-146).
+%                         What the migrator does not read carries the document
+%                         (private/jRawAccount, carry-100), an `openminds_<n>`
+%                         edge naming a child among it (the assertion keeps
+%                         none and no later pass reads one for this class).
+%                         Written by ndi.database.fun.openMINDSobj2ndi_document.
+%                         Round trips: testRawV1RoundTripOpenminds.
+%     openminds_stimulus  superclasses `base` + `epochid` + `openminds`, no
+%                         `app` block, no superclass migrator. A passthrough
+%                         for NDI's second pass, which reads it from the v1
+%                         input (ndi.migrate.internal.sliceTetanus) and by
+%                         class name from the migrated set; it validates
+%                         against the same V_eta class. The invented
+%                         `stimulus_id` edge still quarantines first. What the
+%                         passthrough does not keep in its template carries it
+%                         (private/jRawAccount, carry-100). Written by
+%                         +setup/+NDIMaker/stimulusDocMaker.m and
+%                         +setup/+stimulus/+vhlab/add_stimulus_approach.m.
+%                         Round trips: testRawV1RoundTripOpenminds.
+%     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
+%                         universalRenames: every +migrators_j migrator is
+%                         listed above, so these are the classes with no
+%                         +migrators_j migrator (the +migrators identity
+%                         fallback), and a body that names a class by a
+%                         spelling no writer uses (a snake_case
+%                         `ontology_table_row`, `image_stack`, ...).
+%                         universalRenames cannot be deleted while any of them
+%                         does ([migrators read raw v1]).
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
@@ -448,6 +568,17 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'spikewaves', ...
     'spike_clusters', ...
     'binnedspikeratevm', ...
+    'control_stimulus_ids', ...
+    'image', ...
+    'dataset_session_info', ...
+    'fitcurve', ...
+    'vmspikefit', ...
+    'vmspikefilteringparameters', ...
+    'ontologyTableRow', ...
+    'openminds', ...
+    'openminds_subject', ...
+    'openminds_element', ...
+    'openminds_stimulus', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
@@ -470,7 +601,8 @@ TABLE = { ...
     'ontologyImage',            'ontology_image'; ...
     'fileReference',            'file_reference'; ...
     'lightsheetZarrPyramid',    'lightsheet_zarr_pyramid'; ...
-    'lightsheetZarrLevel',      'lightsheet_zarr_level'};
+    'lightsheetZarrLevel',      'lightsheet_zarr_level'; ...
+    'ontologyTableRow',         'ontology_table_row'};
 
 if nargin >= 1
     names = migratorOf(char(v1Name), TABLE);

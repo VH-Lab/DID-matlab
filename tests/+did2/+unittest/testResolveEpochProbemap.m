@@ -975,8 +975,12 @@ function testStimManipulationCarriesTheStimulatorType(testCase)
 [~, ~, manips] = stimDecompose();
 assertNotEmpty(testCase, manips);
 m = manips{1};
-verifyEqual(testCase, char(m.statement.variable.name), 'stimulator');
-verifyEqual(testCase, char(m.term.value.name), 'stimulator');
+% [migrator writes the registry spelling]: once the term registry holds the
+% stimulator (did-schema [stimulator is SNOMED CT Stimulator], "Stimulator"),
+% the name written is the registry's; before that, the v1 spelling. Compare
+% without case so the test reads either schema.
+verifyEqual(testCase, lower(char(m.statement.variable.name)), 'stimulator');
+verifyEqual(testCase, lower(char(m.term.value.name)), 'stimulator');
 end
 
 

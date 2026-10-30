@@ -236,6 +236,23 @@ verifyTrue(testCase, any(strcmp([ ...
     'stimulus_response_scalar_parameters_basic.freq_response'], r.matched)));
 end
 
+function testANamedParametersDocumentKeepsItsNameOnTheMethod(testCase)
+% [v1 name goes to the class's own name field] (Decided by Jess Haley,
+% 2026-10-27, did-schema V_eta_go_forward_class_audit.md): a non-empty v1
+% base.name is written to `method.name`, and the round trip rebuilds base.name
+% from it (the writer sets none; this is a hand-named document)
+v1 = writerParameters('par_n', 1);
+v1.base.name = 'my response settings';
+out = runFold(testCase, {convertibleResponse('resp_cn', 'F1', '', 'par_n'), v1});
+m = bodyWithId(out, 'par_n');
+assertEqual(testCase, classNameOfBody(m), 'method');
+verifyEqual(testCase, char(m.method.name), 'my response settings');
+calc = bodyWithId(out, 'resp_cn');
+r = did2.convert.roundtrip.check(v1, {m, calc});
+verifyRoundTrip(testCase, r, 'named parameters as a method', {});
+verifyTrue(testCase, any(strcmp('base.name', r.matched)), 'base.name is rebuilt');
+end
+
 % ===================== the round trip can fail ===========================
 
 function testAChangedResponseValueIsReportedLost(testCase)

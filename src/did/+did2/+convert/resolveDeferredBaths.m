@@ -545,7 +545,13 @@ mintDepth = did2.convert.mintId('-depth');
 did2.convert.mintId('-push', char(bathId));
 restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 mixture   = parseMixture(v1Body);
-variable  = primaryChemical(mixture);
+% the variable is the general bath-solution term, never the first mixture row
+% (e.g. "sodium chloride"); the value is the whole formulation (value_id).
+% Decided by Jess Haley, 2026-10-26 [bath is two statements] (1) and
+% 2026-10-27 [bath solution minted] (EMPTY:0000409 "bath solution"), did-schema
+% V_eta_go_forward_class_audit.md. The ingredient that was really changed is
+% the dataset map's statement (2), not this pass's.
+variable  = bathSolutionVariable();
 o = {'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), 'Validate', false};
 
 anchorBody = did2.build.relativeTimeReference(char(sessionId), ...
@@ -777,11 +783,10 @@ obs = did2.build.statement('observation', char(subjectId), ...
     'CreationTimestamp', char(datestamp), 'Validate', false, 'ValueKind', 'term');
 end
 
-function variable = primaryChemical(mixture)
-variable = struct('node', '', 'name', '');
-if ~isempty(mixture) && isfield(mixture, 'chemical')
-    variable = mixture(1).chemical;
-end
+function variable = bathSolutionVariable()
+% [bath is two statements] / [bath solution minted]: every bath's variable, as
+% the term registry holds it (did2.convert.registeredTerm)
+variable = did2.convert.registeredTerm('EMPTY:0000409', 'bath solution');
 end
 
 function term = locationTerm(body)

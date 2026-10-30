@@ -27,12 +27,28 @@ function bodies = ontology_table_row(preBody)
 %   the generic migration ([dataset-specific logic leaves the generic
 %   migration], [dataset audit batch 1 and 2]); the Haley dataset's V2 shape
 %   comes from its V2 re-import (ndi.setup.conv.haley.import_V2).
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1 writes the class `ontologyTableRow`
+%   (data/ontologyTableRow.json + base.json at the locked NDI-matlab `main`,
+%   441530d: block `ontologyTableRow` {names, variableNames, ontologyNodes,
+%   data}, edge `document_id`; written by +NDIMaker/tableDocMaker.m), which
+%   did2.convert.rawV1Classes' table joins to this migrator, and v1_to_v2 hands
+%   it over unchanged. The block is required in either spelling (v1's
+%   `ontologyTableRow`, or `ontology_table_row`, the renamed spelling a fixture
+%   or a body that reaches this migrator by its snake_case class name still
+%   has). Every row is carried, so the carry is now the untouched v1 source,
+%   which NDI's second pass counts under either class name
+%   (ndi.migrate.internal.ontologyRowsCarried). Its round trip is the
+%   passthrough inverse (did2.convert.roundtrip.ontologyTableRow; a carry
+%   reads back as itself).
 
 arguments
     preBody (1,1) struct
 end
 
-if ~isfield(preBody, 'ontology_table_row') || ~isstruct(preBody.ontology_table_row)
+if ~hasBlock(preBody, 'ontologyTableRow') && ~hasBlock(preBody, 'ontology_table_row')
     error('did2:convert:missingBlock', ...
         'ontology_table_row body is missing the ontology_table_row property block.');
 end
@@ -45,9 +61,14 @@ did2.convert.reportNote('carried_as_v1', 'ontology_table_row', sourceIdOf(preBod
 bodies = {preBody};
 end
 
-function id = sourceIdOf(preBody)
-id = '';
-if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
-    id = char(preBody.base.id);
+function tf = hasBlock(preBody, name)
+tf = isfield(preBody, name) && isstruct(preBody.(name));
 end
+
+function id = sourceIdOf(preBody)
+%SOURCEIDOF The v1 document's base.id (or legacy identity), '' when none
+%   (did2.convert.v1read.readBase).
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
 end

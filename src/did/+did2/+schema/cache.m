@@ -1437,6 +1437,21 @@ classdef cache < handle
                      '`value_id` edge names a shared value document, so the ' ...
                      'value is nowhere.'], className);
             end
+            % ---- [allowed units are source units] (Jess Haley, 2026-10-29) ---
+            % with [allowed units are closed source_unit lists] (2026-10-27):
+            % a quantity's source_unit is one its variable's unit_bindings
+            % row admits (did2.schema.unitBindingProblems). DISARMED by
+            % default (strictMode, UnitBindings). LAST, like the two above.
+            if did2.schema.cache.strictMode('UnitBindings')
+                unitProblems = did2.schema.unitBindingProblems(s, obj.bindingRegistry);
+                if ~isempty(unitProblems)
+                    error('did2:validation:unitOutsideSet', ...
+                        ['Class "%s": %s. The units a source may give a ' ...
+                         'variable are did-schema binding_registry_meta.json ' ...
+                         '`unit_bindings`, changed through review.'], ...
+                        className, strjoin(unitProblems, '; '));
+                end
+            end
         end
     end
 
@@ -1559,6 +1574,16 @@ classdef cache < handle
             %                           raising did2:validation:quantityShape.
             %                           ARMED; DID_ENFORCE_QUANTITY_SHAPE=0
             %                           disarms.
+            %     UnitBindings          [allowed units are closed
+            %                           source_unit lists] (2026-10-27) and
+            %                           [allowed units are source units]
+            %                           (2026-10-29), Jess Haley. A
+            %                           source_unit outside its variable's
+            %                           did-schema `unit_bindings` list
+            %                           rejects, raising
+            %                           did2:validation:unitOutsideSet.
+            %                           DISARMED; DID_ENFORCE_UNIT_BINDINGS=1
+            %                           arms (see the switch).
             %     RetiredClasses        did2.build refuses a new document of
             %                           a class the schema's
             %                           class_disposition_meta.json lists
@@ -1793,7 +1818,24 @@ classdef cache < handle
                     ... (private/fillField.m), so a document it built does not
                     ... trip this. DID_ENFORCE_QUANTITY_SHAPE=0 turns it off.
                     'QuantityShape', ...
-                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_QUANTITY_SHAPE'));
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_QUANTITY_SHAPE'), ...
+                    ... Decided by Jess Haley, 2026-10-27 [allowed units are
+                    ... closed source_unit lists] and 2026-10-29 [allowed units
+                    ... are source units] (did-schema
+                    ... V_eta_go_forward_class_audit.md): a variable's
+                    ... `unit_bindings` row is the closed list of units a source
+                    ... may give its value in. DISARMED BY DEFAULT because
+                    ... writers of today give units outside the seeded lists
+                    ... (siblings first, CLAUDE.md sec. 3): NDI-matlab's Haley
+                    ... import gives a video's `time` covariate in frames
+                    ... (+haley/sessionDocuments.m, SourceUnit 'frame'), and
+                    ... DID-matlab's probe_geometry (cm, nm), jLightsheetAxes
+                    ... (angstrom, nanometre, centimetre, nanosecond,
+                    ... microsecond) and image_stack (any dimension_scale_units
+                    ... spelling) can. The cost on a corpus is NOT MEASURED.
+                    ... DID_ENFORCE_UNIT_BINDINGS=1 turns it on.
+                    'UnitBindings', ...
+                        did2.schema.cache.envFlag('DID_ENFORCE_UNIT_BINDINGS'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;
@@ -2471,7 +2513,7 @@ classdef cache < handle
             end
         end
 
-        function validateQuantityCells(obj, value, fieldDef, path, inCell)
+        function validateQuantityCells(obj, value, fieldDef, path, inCell, excused)
             % validateQuantityCells - raise did2:validation:quantityShape on a
             %   value cell that is wrongly shaped ([quantity reference type],
             %   Jess Haley, 2026-10-27).
@@ -2491,15 +2533,41 @@ classdef cache < handle
             %   An absent value ([] / '' / a struct with no fields) is not
             %   judged: whether it may be absent is mustBeNonEmpty's question.
             %
-            %   NOT CHECKED HERE: how many canonical slots a cell fills. The
-            %   decision's "a cell with several canonicals (concentration)
-            %   must populate exactly one" is not built: DID-matlab's own
-            %   writers (jDoseBodies, resolveDeferredBaths) write a
-            %   concentration with NO canonical when the source's unit is
-            %   not computable into one, or the amount is unrecorded (NaN,
-            %   Jess Haley, 2026-10-21), so the rule needs a team answer
-            %   first. Nor which units a cell admits ([allowed units are
-            %   closed source_unit lists]): that is the binding check's.
+            %   THE CANONICAL ([canonical absent only as needs info], Decided
+            %   by Jess Haley, 2026-10-30, did-schema
+            %   V_eta_go_forward_class_audit.md: "every quantity holds
+            %   exactly one canonical value; it may be absent only when the
+            %   document's `needs_info` names it"). Built here for the part
+            %   no document DID-matlab's migrators write today would fail
+            %   (missingCanonical): a cell of a value class with a
+            %   `source_unit` and ONE canonical slot (quantity_list_meta.json
+            %   `canonicals`: the slots other than source_unit, source_value,
+            %   approximate and tolerance) that states a unit and a finite
+            %   source_value but no canonical is refused, unless EXCUSED (the
+            %   paths the document's base.needs_info names) names a field
+            %   under the cell (its canonical). An entry naming the cell
+            %   itself never gets here: the cell is given, and
+            %   did2.schema.needsInfoFields refuses an entry for a field the
+            %   document gives (badNeedsInfo, [missing facts are needs
+            %   info]). A canonical holding NaN is present here.
+            %   NOT CHECKED HERE, each because a writer of today would fail:
+            %     - a cell with NO unit (a source number with no unit; the
+            %       decision wants needs_info, but neuron_extracellular's
+            %       mean waveform, jMeasurementFold and a probe_geometry
+            %       with no unit write source_value alone);
+            %     - a cell of several canonicals (concentration, score):
+            %       resolveDeferredBaths writes a bath's osmolarity, and a
+            %       concentration in a unit other than Molar, with no
+            %       canonical; virus_injection's 'dilution' too (a team
+            %       question, jTreatmentBodies); and "exactly one" of
+            %       several is G38's;
+            %     - a non-finite source_value (jQuantity writes no
+            %       canonical for NaN; T14 says missing is not a value).
+            %   Nor which units a cell admits ([allowed units are closed
+            %   source_unit lists]): that is the binding check's.
+            if nargin < 6
+                excused = {};
+            end
             subs = {};
             if isfield(fieldDef, 'fields') && ~isempty(fieldDef.fields)
                 subs = obj.toCellArray(fieldDef.fields);
@@ -2544,6 +2612,7 @@ classdef cache < handle
                     continue;
                 end
                 if strict
+                    obj.missingCanonical(el, names, elPath, typeName, excused);
                     extra = setdiff(fieldnames(el), names, 'stable');
                     if ~isempty(extra)
                         error('did2:validation:quantityShape', ...
@@ -2563,7 +2632,7 @@ classdef cache < handle
                     v = el.(name);
                     subPath = [elPath '.' name];
                     if isfield(subDef, 'fields') && ~isempty(subDef.fields)
-                        obj.validateQuantityCells(v, subDef, subPath, strict);
+                        obj.validateQuantityCells(v, subDef, subPath, strict, excused);
                         continue;
                     end
                     if ~strict || isempty(v)
@@ -2585,6 +2654,64 @@ classdef cache < handle
                     end
                 end
             end
+        end
+
+        function missingCanonical(~, el, names, elPath, typeName, excused)
+            % missingCanonical - raise did2:validation:quantityShape when the
+            %   value cell EL (of a class whose fields are NAMES) states a
+            %   unit and a finite source_value but leaves its one canonical
+            %   slot empty, and the document's needs_info (EXCUSED) names
+            %   neither the cell nor a field under it ([canonical absent only
+            %   as needs info], Decided by Jess Haley, 2026-10-30; the scope
+            %   is in validateQuantityCells' header).
+            if ~any(strcmp(names, 'source_unit'))
+                return;
+            end
+            canon = setdiff(names, {'source_unit', 'source_value', ...
+                'approximate', 'tolerance'}, 'stable');
+            if numel(canon) ~= 1
+                return;   % several canonicals: not checked here (header)
+            end
+            u = [];
+            if isfield(el, 'source_unit'); u = el.source_unit; end
+            stated = false;
+            if isstruct(u) && isscalar(u)
+                for f = {'node', 'name'}
+                    if isfield(u, f{1}) && ~isempty(strtrim(char(string(u.(f{1})))))
+                        stated = true;
+                    end
+                end
+            elseif ischar(u) || (isstring(u) && isscalar(u))
+                stated = ~isempty(strtrim(char(u)));
+            end
+            if ~stated
+                return;   % no unit: not checked here (header)
+            end
+            sv = [];
+            if isfield(el, 'source_value'); sv = el.source_value; end
+            if ~(isnumeric(sv) && isscalar(sv) && isfinite(sv))
+                return;   % no finite number: not checked here (header)
+            end
+            if isfield(el, canon{1}) && ~isempty(el.(canon{1}))
+                return;   % the canonical is there (NaN included)
+            end
+            % needs_info paths write (k) after a struct-array field even for
+            % one element; this path does not, so (1) is read as no index
+            norm = @(p) regexprep(char(p), '\(1\)', '');
+            here = norm(elPath);
+            for k = 1:numel(excused)
+                e = norm(excused{k});
+                if strcmp(e, here) || startsWith(e, [here '.'])
+                    return;
+                end
+            end
+            error('did2:validation:quantityShape', ...
+                ['"%s" is a %s value cell stating a source_value and a ' ...
+                 'source_unit but no canonical "%s". A quantity''s ' ...
+                 'canonical may be absent only when the document''s ' ...
+                 'needs_info names it ([canonical absent only as needs ' ...
+                 'info], Jess Haley, 2026-10-30).'], ...
+                elPath, typeName, canon{1});
         end
 
         function tf = holdsValueCell(obj, defs)
@@ -2901,7 +3028,7 @@ classdef cache < handle
             % class declares, each of its declared type. Before this, nothing
             % below a block field's own type was read.
             if did2.schema.cache.strictMode('QuantityShape')
-                obj.validateQuantityCells(value, fieldDef, qualifiedName, false);
+                obj.validateQuantityCells(value, fieldDef, qualifiedName, false, excused);
             end
         end
 

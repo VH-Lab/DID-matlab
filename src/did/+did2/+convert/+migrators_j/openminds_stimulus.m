@@ -68,6 +68,30 @@ function bodies = openminds_stimulus(preBody)
 %
 %   See V_eta_go_forward_class_audit.md ("RESOLVED -- the 635 approach documents
 %   go to interaction_purpose") and V_eta_openminds_family_record.md Part 7.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (metadata/openminds_stimulus.json + epochid.json +
+%   openminds.json + base.json at the locked NDI-matlab `main`, 441530d;
+%   written by ndi.database.fun.openMINDSobj2ndi_document with dependency type
+%   'stimulus': the `openminds` block, an empty `openminds_stimulus` block, the
+%   epoch, the `stimulus_element_id` edge and the `openminds` edge(s)). Its
+%   blocks are snake_case already and it has no `app` block, so the raw
+%   passthrough is the renamed one but for v1's `value` edge key and its
+%   superclass list, and it validates against the same V_eta class. NDI's
+%   second pass reads it from the v1 input (ndi.migrate.internal.sliceTetanus,
+%   by class name and block), and by class name from the migrated set (to drop
+%   the labels it rebuilds), which the switch does not change. The guard above
+%   runs first, as before. What the renamed path would have discarded is
+%   carried, carry-049, as before; a block, base field or edge outside the
+%   template (which the renamed passthrough kept, to fail validation as an
+%   undeclared field), or anything in the empty `openminds_stimulus` block,
+%   carries the document whole as v1 (private/jRawAccount, jRawCarry; [fields
+%   outside the template are malformed], carry-100). The `fields` struct is
+%   open by construction and is not looked into.
+%   did2.convert.roundtrip.openminds_stimulus is the passthrough inverse;
+%   testRawV1RoundTripOpenminds compares the two.
 
 arguments
     preBody (1,1) struct
@@ -79,6 +103,18 @@ if hasDependencyNamed(preBody, 'stimulus_id')
          'did_v1 document has -- NDI''s template, schema and writer all name the ' ...
          'edge `stimulus_element_id`. This shape can only come from the V_alpha/' ...
          'V_zeta snapshot or a fixture built against it.']);
+end
+
+% THE RAW READ (see READS RAW v1 above): every field the passthrough keeps is
+% one of the template's; the `fields` struct is open
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'openminds', {{'openminds_type', 'matlab_type', 'openminds_id', 'fields'}}, ...
+    'openminds_stimulus', {{}}, ...
+    'epochid', {{'epochid'}}), ...
+    {'^stimulus_element_id$', '^openminds(_\d+)?$'});
+if jRawCarry('openminds_stimulus', preBody, collision, unplaced, 'carry-100')
+    bodies = {preBody};   % the carry of the untouched v1 source
+    return;
 end
 
 bodies = {preBody};

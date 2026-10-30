@@ -175,6 +175,13 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   `instrument_id` is OPTIONAL, so an unresolved instrument OMITS the edge
 %   (`instrument_omitted`) rather than emitting it empty or dropping the row.
 %
+%   THE RECORDING OR IMAGING MODE is the recording observation's method term
+%   ([element type is a device kind term], [imaging mode is a method term],
+%   [element types batch 1], [element types batch 2]; recordingModeMethod):
+%   `patch-attached` OBI:0002179, `brightfield-imaging` EMPTY:0000300. The
+%   other modes have no decided term and write none. `mode_methods_written`
+%   counts the observations built with one.
+%
 %   Options mirror the sibling passes (Validate / SchemaCache / TargetVersion).
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
@@ -220,6 +227,7 @@ report = struct( ...
     'rows_image_deferred',            0, ...
     'rows_stimulator',                0, ...
     'observations_emitted',           0, ...
+    'mode_methods_written',           0, ...
     'manipulations_emitted',          0, ...
     'instrument_resolved',            0, ...
     'instrument_omitted',             0, ...
@@ -367,8 +375,13 @@ readerIdByNavId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 archiveIdxByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
 observesIdxByPair = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % element entity id -> its v1 element `type` (the `element type` assertion of
-% +migrators_j/element.m). The element_epoch dissolution keys on it.
+% +migrators_j/element.m). The element_epoch dissolution keys on it. A device
+% whose kind alone rebuilds its type has no `element type` assertion ([element
+% type is a device kind term]): its type is the one its Equipment Type
+% assertion names (did2.convert.elementTypeOfKind), read when it has no
+% `element type` assertion.
 elementTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
+kindTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acqEpochIdx = [];
 sampledIdx = [];
@@ -401,6 +414,13 @@ for k = 1:n
         eid = depValueOf(b, 'entity_id');
         if ~isempty(eid) && ~isKey(elementTypeById, eid)
             elementTypeById(eid) = et;
+        end
+    end
+    kt = lower(did2.convert.elementTypeOfKind(equipmentKindOfAssertion(b)));
+    if ~isempty(kt)
+        eid = depValueOf(b, 'entity_id');
+        if ~isempty(eid) && ~isKey(kindTypeById, eid)
+            kindTypeById(eid) = kt;
         end
     end
     switch classOf{k}
@@ -668,9 +688,13 @@ for k = 1:n
             continue;
         end
 
+        modeMethod = recordingModeMethod(row.type);
+        if ~isempty(modeMethod)
+            report.mode_methods_written = report.mode_methods_written + numel(entries);
+        end
         for e = 1:numel(entries)
             obs = mkObservation(entries(e), subjectId, instrumentId, anchorId, ...
-                sid, datestamp, acId);
+                sid, datestamp, acId, modeMethod);
             newBodies{end+1} = obs;                 %#ok<AGROW>
             specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
             if ~isempty(instrumentId)
@@ -794,7 +818,8 @@ for i = 1:numel(acqEpochIdx)
     end
     elId = depValueOf(b, 'element_id');
     elType = '';
-    if ~isempty(elId) && isKey(elementTypeById, elId); elType = elementTypeById(elId); end
+    if ~isempty(elId) && isKey(elementTypeById, elId); elType = elementTypeById(elId);
+    elseif ~isempty(elId) && isKey(kindTypeById, elId); elType = kindTypeById(elId); end
     kind = derivedSeriesKind(elType);
     if strcmp(elType, 'ensemble')
         % An ensemble element's epoch holds the COMBINED (times, neuron)
@@ -1472,20 +1497,53 @@ end
 % ===================== builders ========================================
 
 function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
-        sessionId, datestamp, acId)
+        sessionId, datestamp, acId, modeMethod)
 % A recording row -> an observation of the specimen (did-schema #88: a
 % direction + a value kind), the probe as instrument (T7), the rig + channels
 % through acquisition_channels_id (#73 item 56). Its value is the epoch's files:
 % `data_body` true (2026-10-21, native V2 shape; mkEpochFileBodies builds them).
+% MODEMETHOD, when not empty, is the recording or imaging mode, written as the
+% observation's method term (recordingModeMethod).
 if nargin < 7; acId = ''; end
+if nargin < 8; modeMethod = []; end
+methodOpt = {};
+if ~isempty(modeMethod); methodOpt = {'Method', modeMethod}; end
 % did-schema #88: the direction class plus ONE value-kind mixin
 obs = did2.build.statement(entry.class, char(subjectId), ...
     did2.convert.registeredTerm('', entry.variable), [], 'ValueKind', entry.mixin, ...
     'DataBody', true, ...
     'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
-    'AcquisitionChannelsId', char(acId), ...
+    'AcquisitionChannelsId', char(acId), methodOpt{:}, ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
+end
+
+function t = recordingModeMethod(elementType)
+%RECORDINGMODEMETHOD The decided recording or imaging mode of a probe-map row's
+%   v1 type, as the method term of its recording observation; [] when no mode
+%   term is decided for the type.
+%   [element type is a device kind term] (Decided by Jess Haley, 2026-10-27,
+%   did-schema V_eta_go_forward_class_audit.md): "recording mode suffixes
+%   (-Vm, -I, -Im, -attached) go on the recording observation";
+%   [imaging mode is a method term] (2026-10-29): the imaging mode is "a
+%   method term on the recording observation". The decided terms:
+%     patch-attached       OBI:0002179 "cell-attached patch clamp assay"
+%                          ([element types batch 1], [cell-attached is OBI])
+%     brightfield-imaging  EMPTY:0000300 "brightfield imaging"
+%                          ([element types batch 2])
+%   The voltage and current modes (-Vm, -I, -Im, bare patch / sharp) and the
+%   one-photon, two-photon and wide-field imaging modes have no decided term
+%   yet ("in a later batch"): nothing is written for them, and the element
+%   keeps its `element type` assertion (+migrators_j/element.m).
+%   Types are compared exactly, edge blanks aside, as NDI's probestruct2probe
+%   matches its keys.
+t = [];
+switch strtrim(char(elementType))
+    case 'patch-attached'
+        t = did2.convert.registeredTerm('OBI:0002179', 'cell-attached patch clamp assay');
+    case 'brightfield-imaging'
+        t = did2.convert.registeredTerm('EMPTY:0000300', 'brightfield imaging');
+end
 end
 
 function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
@@ -2004,10 +2062,9 @@ for L = 1:numel(list)
     flds = struct('filename', slot);
     comp = compressionOf(names{idx(1)});
     if isempty(comp); comp = compressionOf(slot); end
-    if ~isempty(comp); flds.compression = comp; end
     body = did2.build.opaqueBody(owners, binaryFormat(), ...
         'Chunks', numel(idx), ...
-        'Fields', flds, ...
+        'Fields', flds, 'Compression', comp, ...
         'Description', sprintf(['The ingested recording of epoch %s: v1 attached ' ...
             'file series %s, carried as attached (%d member(s)).'], ...
             sp.epochString, slot, numel(idx)), ...
@@ -2039,9 +2096,8 @@ for f = 1:numel(files)
     [~, stem, ext] = fileparts(path);
     flds = struct('filename', [stem ext]);
     comp = compressionOf([stem ext]);
-    if ~isempty(comp); flds.compression = comp; end
     body = did2.build.opaqueBody(owners, formatForExtension(ext), ...
-        'Fields', flds, ...
+        'Fields', flds, 'Compression', comp, ...
         'Description', sprintf(['A raw recording file of epoch %s, recorded by ' ...
             'location where the source keeps it (named by the v1 ' ...
             'epochfiles_ingested cache; not ingested, never copied).'], sp.epochString), ...
@@ -2075,6 +2131,20 @@ for i = 1:numel(fn)
         t = lower(strtrim(char(x.value.name)));
         return;
     end
+end
+end
+
+function node = equipmentKindOfAssertion(b)
+% The node of +migrators_j/element.m's Equipment Type (NCIT:C178920) term
+% assertion (a device's kind); '' for any other document.
+node = '';
+if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
+        || ~isfield(b.statement, 'variable'); return; end
+v = b.statement.variable;
+if ~(isstruct(v) && isscalar(v) && isfield(v, 'node') && strcmp(char(v.node), 'NCIT:C178920')); return; end
+if isfield(b, 'term') && isstruct(b.term) && isscalar(b.term) && isfield(b.term, 'value') ...
+        && isstruct(b.term.value) && isscalar(b.term.value) && isfield(b.term.value, 'node')
+    node = char(b.term.value.node);
 end
 end
 
@@ -2336,7 +2406,11 @@ end
 end
 
 function [clk, startSec, dur] = refValue(b)
-% a relative_time_reference's clock name, start and duration (seconds)
+% a relative_time_reference's clock handle, start and duration (seconds).
+% The clock is read BY NODE first, then by name (did2.build.vocabularyHandle
+% 'clock'), so an anchor written with the node and an extent written without
+% it still compare equal (Decided by Jess Haley, 2026-10-26 [clock terms get
+% nodes]: code compares clock nodes first, then the stored name changes).
 clk = ''; startSec = []; dur = [];
 if ~isstruct(b) || ~isfield(b, 'relative_time_reference'); return; end
 v = b.relative_time_reference;
@@ -2344,8 +2418,9 @@ if ~isstruct(v) || ~isfield(v, 'value') || ~isstruct(v.value); return; end
 v = v.value;
 if isfield(v, 'clock')
     c = v.clock;
-    if isstruct(c) && isfield(c, 'name'); c = c.name; end
-    if ischar(c) || isstring(c); clk = char(c); end
+    if isstruct(c) || ischar(c) || isstring(c)
+        clk = char(did2.build.vocabularyHandle('clock', c));
+    end
 end
 if isfield(v, 'start') && isstruct(v.start) && isfield(v.start, 'seconds') ...
         && ~isempty(v.start.seconds)
@@ -2434,8 +2509,11 @@ end
 function c = compressionOf(name)
 %COMPRESSIONOF A data body's `compression`: 'gzip' when the file name ends in
 %   .tgz or .gz (the ingested `.nbf.tgz` segments), else '' -- left empty.
-%   Jess Haley, 2026-10-21 ("a"); `compression` is a plain char field
-%   (did-schema data_body: "e.g. 'lzw', 'gzip'").
+%   Jess Haley, 2026-10-21 ("a"). The spelling is handed to the builder's
+%   'Compression' option, which writes it as the schema declares the field: a
+%   char, or the {term, parameters} block once did-schema declares it
+%   ([compression block and empty levels], Jess Haley, 2026-10-26;
+%   did2.build.compression).
 c = '';
 n = lower(strtrim(char(name)));
 if endsWith(n, '.tgz') || endsWith(n, '.gz')

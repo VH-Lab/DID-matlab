@@ -118,6 +118,14 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     statements is counted in the next corpus run"); DETAIL
 %                     is the name. v1_to_v2 writes it beside the carry's own
 %                     `carried_as_v1` note.
+%     v1_name_not_kept  ONE note per CONVERTED source that does not become a
+%                     statement and whose non-empty v1 base.name no emitted
+%                     document holds in a top-level `name`, `description` or
+%                     `notes` of its own blocks ([v1 name goes to the class's
+%                     own name field]: the name is written to the class's own
+%                     name field "where it has one"). DETAIL is the name. A
+%                     measure only: the document is not carried (what it
+%                     should do is not decided).
 %     needs_info      ONE note per `base.needs_info` entry a migrator writes
 %                     on a document it emits: a fact the source never stated
 %                     ([missing facts are needs info], Jess Haley, 2026-10-29,

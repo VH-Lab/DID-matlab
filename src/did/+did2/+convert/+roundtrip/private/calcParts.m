@@ -35,10 +35,13 @@ function [v1, leaf, inputs, spec, absLeaf] = calcParts(bodies, leafClass, v1Clas
 %
 %   OPTS.Tuning (the tuning families; Jess Haley, 2026-10-27, did-schema
 %   V_eta_go_forward_class_audit.md):
-%     - [absolute-value fits are a second calculation]: a second LEAFCLASS
-%       document whose method parameters hold {'response transform',
-%       'absolute value'} is the `abs` block's calculation: returned as
-%       ABSLEAF ([] when none), and LEAF is the other one;
+%     - [absolute-value fits are a second calculation] (2026-10-27;
+%       superseded 2026-10-28 by [absolute-value fits are fit entries], and
+%       no longer written by the migrator): a second LEAFCLASS document
+%       whose method parameters hold {'response transform', 'absolute
+%       value'} is the `abs` block's calculation: returned as ABSLEAF ([]
+%       when none), and LEAF is the other one. Kept so a batch migrated
+%       before reads back;
 %     - [tuning fits use curve fitting now]: the method parameters
 %       'function' and 'response transform' are the V2 method's own (the
 %       fits' models; the transform), not v1 settings, and are not rebuilt.

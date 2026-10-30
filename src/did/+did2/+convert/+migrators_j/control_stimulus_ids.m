@@ -128,9 +128,12 @@ end
 % carryDependents does not follow an edge to it (a handed-on class, as
 % stimulus_presentation), so a response naming it does not carry.
 %
-% Still read on the renamed path (rawV1Classes says why it is not switched):
-% v1_to_v2 records the universalRenames output as the carry and the caller
-% stores the untouched v1 source, as for every renamed-path carry.
+% READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
+% 2026-10-26 [migrators read raw v1]): no universalRenames runs on it, so the
+% carry returned here is the untouched v1 source (`app.name`, edge key
+% `value`), the document NDI's second pass reads (from the v1 input, NDI-matlab
+% #1082). Its round trip is the passthrough inverse
+% (did2.convert.roundtrip.control_stimulus_ids; a carry reads back as itself).
 b = did2.convert.v1read.readBase(preBody);
 id = b.id;
 if ~ischar(id); id = ''; end
@@ -145,8 +148,9 @@ end
 
 function v = depValue(preBody, name)
 %DEPVALUE Read an edge, tolerant of all three key spellings the pipeline uses.
-%   A depends_on entry is `value` on a body a migrator built, `document_id` once
-%   universalRenames has normalised it, and raw `id` on an untouched v1 body.
+%   A depends_on entry is `value` as NDI's writer sets it (the raw read),
+%   `document_id` on a body universalRenames normalised ('RawV1Classes', {}),
+%   and `id` on an older v1 body.
 %   Precedence copied from +did2/+validate/references.m.
 v = '';
 if ~isfield(preBody, 'depends_on') || ~isstruct(preBody.depends_on)
