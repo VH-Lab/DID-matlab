@@ -184,10 +184,25 @@ function v2Body = element(preBody)
 %     - for a sorted unit and an ensemble (no device kind), which
 %       did2.convert.resolveEpochProbemap keys their epochs on.
 %   The "ndi element class" assertion is still written ([ndi element class
-%   not kept] waits on NDI-matlab's readers, its Build pending line). The
-%   n-trode electrode count ([number of electrodes minted], [n-trode count
-%   from the channel list]) is the channel count of the epochprobemap
-%   devicestring, which is not on the v1 element: not written here.
+%   not kept] waits on NDI-matlab's readers, its Build pending line).
+%
+%   AN N-TRODE'S NUMBER OF ELECTRODES (nTrodeElectrodeCount): Decided by Jess
+%   Haley, 2026-10-29 [n-trode count from the channel list], did-schema
+%   V_eta_go_forward_class_audit.md -- "the 'number of electrodes' of an
+%   n-trode ([n-trode is a multielectrode array], [number of electrodes
+%   minted]) is the count of channels its epochprobemap `devicestring` names
+%   ..., cross-checked against the sites of its `probe_geometry` /
+%   `site2channelmap` where one exists; when they disagree the device is
+%   carried as v1 under a `needs_mapping` register row". The v1 element holds
+%   no count; did2.convert.nTrodeElectrodeCounts indexes the batch's
+%   epochprobemap rows (epochfiles_ingested) and geometry documents before
+%   the first migrator runs. An n-trode device whose rows name one channel
+%   count gets one assertion, variable EMPTY:0000408 "number of electrodes",
+%   value kind count. When its geometry's site count differs it is carried
+%   whole as v1, needs_mapping, carry-156. With no channel list in the batch,
+%   or rows naming different counts, no count is written (nothing is
+%   invented); each converted n-trode is noted `ntrode_electrode_count` with
+%   which of these it was.
 %
 %   A SORTED UNIT ON ITS PROBE (unitFollowsItsProbe): Decided by Jess Haley,
 %   2026-10-27, [unit direct and subject rebuild from the probe]: a unit with
@@ -304,6 +319,19 @@ if isSortedUnit(type) && ~isempty(underlyingId)
     end
 end
 
+% --- an n-trode's number of electrodes ([n-trode count from the channel list])
+electrodeCount = [];
+if strcmp(entityType, 'device') && strcmp(strtrim(type), 'n-trode')
+    [electrodeCount, why] = nTrodeElectrodeCount(elementId);
+    if ~isempty(why)
+        % carry-register: carry-156 (its channel count and its geometry's
+        % site count disagree)
+        did2.convert.reportNote('carried_as_v1', 'element', elementId, why);
+        v2Body = {preBody};
+        return;
+    end
+end
+
 % --- the element as an entity (id preserved) -------------------------------
 % did-schema #88: one `entity` class with a bound `type`
 % (V_eta_entity_composition_plan.md sec. 4), read off the v1 `type` and
@@ -334,6 +362,13 @@ end
 if isDevice
     bodies{end+1} = jStatement(preBody, 'assertion', elementId, ...
         kindVariable, kindTerm, 'ValueKind', 'term');
+end
+if ~isempty(electrodeCount)
+    % [n-trode is a multielectrode array]: "its number of electrodes as a
+    % statement on the device"; [number of electrodes minted]: EMPTY:0000408
+    bodies{end+1} = jStatement(preBody, 'assertion', elementId, ...
+        jLabel('number of electrodes'), did2.build.valueCell('count', electrodeCount), ...
+        'ValueKind', 'count');
 end
 
 % --- the recording as a typed observation (#30, and #117 for spike trains) ---
@@ -496,6 +531,43 @@ switch ty
         why = sprintf(['[carry-063] needs_mapping: element type "%s" (class "%s") ' ...
             'is not on the element type list ([element types batch 4])'], ty, char(ndiClass));
 end
+end
+
+function [count, why] = nTrodeElectrodeCount(elementId)
+%NTRODEELECTRODECOUNT The number of electrodes of the n-trode ELEMENTID, from
+%   the channel list of its epochprobemap rows ([n-trode count from the
+%   channel list], Jess Haley, 2026-10-29), or [] when it cannot be read.
+%   WHY is the carry note (carry-156) when that count and its geometry's
+%   site count disagree, else ''. Notes `ntrode_electrode_count` otherwise.
+count = [];
+why = '';
+info = did2.convert.nTrodeElectrodeCounts('get', elementId);
+c = info.channel_counts;
+sites = info.site_counts;
+if isempty(c)
+    if info.rows > 0
+        what = sprintf('not written: its %d epochprobemap row(s) name no channels that parse', ...
+            info.rows);
+    else
+        what = 'not written: no epochprobemap row of it in the batch';
+    end
+elseif ~isscalar(c)
+    what = sprintf(['not written: its epochprobemap rows name different channel ' ...
+        'counts (%s)'], strjoin(arrayfun(@int2str, c, 'UniformOutput', false), ', '));
+elseif ~isempty(sites) && any(sites ~= c)
+    why = sprintf(['[carry-156] needs_mapping: n-trode: its epochprobemap channel ' ...
+        'list names %d channel(s), its probe_geometry / site2channelmap %s site(s) ' ...
+        '([n-trode count from the channel list])'], c, ...
+        strjoin(arrayfun(@int2str, sites, 'UniformOutput', false), ' / '));
+    return;
+else
+    count = c;
+    what = 'written from the epochprobemap channel list';
+    if ~isempty(sites)
+        what = [what ', equal to its geometry''s sites'];
+    end
+end
+did2.convert.reportNote('ntrode_electrode_count', 'element', elementId, what);
 end
 
 function tf = isSortedUnit(elementType)

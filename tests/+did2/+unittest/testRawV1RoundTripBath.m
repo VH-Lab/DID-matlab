@@ -241,6 +241,32 @@ end
 
 % ===================== a check that cannot fail proves nothing ===========
 
+function testABathWithNoClockRecordIsCarried(testCase)
+% Decided by Jess Haley, 2026-10-26 [one-reading quick answers] Q2 (did-schema
+% V_eta_go_forward_class_audit.md): a bath epoch with no clock record is
+% carried as v1 instead of defaulting to dev_local_time (carry-157). The
+% stimulator has no element_epoch for the bath's epoch here, so the coarse
+% pass carries the bath: its round trip is the carry, nothing lost.
+v1 = dabBath(oneDrug());
+first = did2.convert.v1_to_v2({subjectDoc(), stimulatorDoc(), v1}, ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+out = resolved(first);
+verifyEmpty(testCase, quarantinedBaths(out), 'left quarantined');
+verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_no_clock, 1);
+mine = {};
+for k = 1:numel(out.migrated)
+    if strcmp(char(out.migrated{k}.get('base.id')), v1.base.id)
+        mine{end+1} = out.migrated{k}; %#ok<AGROW>
+    end
+end
+assertEqual(testCase, numel(mine), 1, 'not one document: the carry');
+r = did2.convert.roundtrip.check(v1, mine);
+verifyTrue(testCase, r.carried, 'not carried');
+verifyEmpty(testCase, lostPaths(r), describeLost(r));
+n = out.summary.migration_notes.carried_as_v1;
+verifyTrue(testCase, any(strcmp(n.register_rows, 'carry-157')), 'no carry-157 note');
+end
+
 function testABrokenAssemblyIsReportedLost(testCase)
 % a concentration changed
 v1 = dabBath(oneDrug());
@@ -373,8 +399,31 @@ end
 
 function b = fixtureBatch()
 % the stimulator element (as corpus Dab holds it: an ndi.probe on its
-% subject, no underlying element) and its subject
-b = {subjectDoc(), stimulatorDoc()};
+% subject, no underlying element), its subject, and its element_epoch for
+% the baths' epoch: the clock record the bath is anchored on. Without it the
+% bath is carried, carry-157 ([one-reading quick answers] Q2, Jess Haley,
+% 2026-10-26: testABathWithNoClockRecordIsCarried)
+b = {subjectDoc(), stimulatorDoc(), stimulatorEpochDoc()};
+end
+
+function v1 = stimulatorEpochDoc()
+% ndi.element's element_epoch of the stimulator for the baths' epoch
+% (element_epoch.json + epochid.json + base.json, the writer's clock and
+% t0_t1 for one clock)
+tpl = loadTemplate('element_epoch');
+v1 = withBase(tpl, 'stim_1_epoch', '');
+v1.depends_on = tpl.depends_on;
+v1.depends_on(1).value = 'stim_1';
+v1.files = tpl.files;
+v1.epochid = struct('epochid', BATH_EPOCH());
+v1.element_epoch = tpl.element_epoch;
+v1.element_epoch.epoch_clock = 'dev_local_time';
+v1.element_epoch.t0_t1 = [0; 100];
+v1 = jsondecode(jsonencode(v1));
+end
+
+function e = BATH_EPOCH()
+e = 'epoch_4126945aee4e93b1_40d01af895f1e3f6';
 end
 
 function v1 = subjectDoc()
@@ -407,7 +456,7 @@ tpl = loadTemplate('stimulus_bath');
 v1 = withBase(tpl, id, '');
 v1.depends_on = tpl.depends_on;
 v1.depends_on(1).value = 'stim_1';
-v1.epochid = struct('epochid', 'epoch_4126945aee4e93b1_40d01af895f1e3f6');
+v1.epochid = struct('epochid', BATH_EPOCH());
 v1.stimulus_bath = struct('location', location, 'mixture_table', mixtureTable);
 v1 = jsondecode(jsonencode(v1));
 end

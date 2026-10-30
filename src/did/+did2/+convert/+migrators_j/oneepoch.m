@@ -3,10 +3,10 @@ function v2Body = oneepoch(preBody)
 %
 %   EVERY oneepoch IS CARRIED WHOLE AS v1 (the untouched v1 source, with a
 %   `carried_as_v1` note): one stitched on device-local time under carry-126,
-%   one on a global clock under carry-148, see THE 2026-10-27 / 2026-10-29
-%   DECISIONS below. The class is no longer kept and its inherited block is no
-%   longer folded; the sections up to READS RAW v1 are the record of what that
-%   fold did, kept until the global-clock calculation replaces it.
+%   one on a global clock with its output element (the element's own carry
+%   row), see THE 2026-10-27 / 2026-10-29 / 2026-10-30 DECISIONS below. The
+%   class is no longer kept and its inherited block is no longer folded;
+%   the sections up to READS RAW v1 are the record of what that fold did.
 %
 %   `oneepoch` is NOT an epoch class. It is the record of a CONCATENATION:
 %   `ndi.element.oneepoch` glues an element's N epochs into a single epoch, and
@@ -81,7 +81,7 @@ function v2Body = oneepoch(preBody)
 %   carry is the untouched v1 source. did2.convert.roundtrip.oneepoch rebuilds
 %   the v1 document; testRawV1RoundTripOneEpoch compares the two.
 %
-%   THE 2026-10-27 / 2026-10-29 DECISIONS (Jess Haley, did-schema
+%   THE 2026-10-27 / 2026-10-29 / 2026-10-30 DECISIONS (Jess Haley, did-schema
 %   V_eta_go_forward_class_audit.md):
 %     [oneepoch is a redundant calculation]  a v1 `oneepoch` placed on a
 %         global clock becomes a `calculation` with `input_id` links to the
@@ -108,14 +108,23 @@ function v2Body = oneepoch(preBody)
 %   needs_mapping (isStitchedOnLocalTime), citing register row carry-126
 %   (did-schema 64ad58b8). One with a global clock, which until 2026-10-29
 %   kept the class `oneepoch` with its element_epoch block folded onto it, is
-%   carried whole as v1, awaiting_home, citing register row carry-148
-%   ([reshaped retire classes carried]).
-%   NOT BUILT YET: the global-clock calculation and the batch pass for its
-%   per-epoch `input_id` links (docs/V2_PLAN.md G44); when it is built it
-%   replaces the carry-148 branch. Open questions: which statements are "the
-%   per-epoch recordings" when the input's per-epoch observations are not in
-%   the batch; the calculation's variable and anchor; a sampled_body from a
-%   .vhsb the DID pass cannot read.
+%   carried whole as v1 with its output element (below).
+%     [global-clock oneepoch carried with its element]  (Jess Haley,
+%         2026-10-30, "Q5 a") in the generic stage a global-clock
+%         `oneepoch` is carried with its output element, whose own carry
+%         (the element register rows, which already carry every such
+%         element) it cites; the awaiting_home row it cited until then is
+%         dropped as redundant. The data-combination calculation is built in
+%         each dataset's import, not here.
+%   BUILT HERE: this migrator hands a global-clock oneepoch back unchanged
+%   with a `carried_with_element` note naming its element_id; v1_to_v2
+%   carries it (stamped did_v1, never converted) and, once every source of
+%   the batch is migrated, writes its `carried_as_v1` note citing the rows
+%   its element's carry cites (v1_to_v2 carryOneEpochsWithElement). A
+%   per-document migrator cannot see how its element was carried, which is
+%   why the note is written there. One whose element is not carried in the
+%   batch (absent, or converted) is still carried, and its note says so and
+%   cites no row.
 %
 %   did2.convert.roundtrip.oneepoch, the inverse of the kept class, is reached
 %   by no migrator output while every oneepoch is carried; a carry's round
@@ -181,15 +190,26 @@ if isStitchedOnLocalTime(v2Body.element_epoch.clocks)
     return;
 end
 
-% [reshaped retire classes carried] (Jess Haley, 2026-10-29, did-schema
-% V_eta_go_forward_class_audit.md): a oneepoch on a global clock, which kept
-% the class `oneepoch` until then, is carried whole as v1 until the
-% global-clock calculation ([oneepoch is a redundant calculation]) is built.
-% carry-register: carry-148
-did2.convert.reportNote('carried_as_v1', 'oneepoch', id, ...
-    ['[carry-148] awaiting_home: a oneepoch on a global clock, until its ' ...
-    'data-combination calculation is built ([reshaped retire classes carried])']);
+% [global-clock oneepoch carried with its element] (Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md): a oneepoch on a global clock is
+% carried whole as v1 with its output element. Handed back unchanged; v1_to_v2
+% carries it and writes its carry note citing the element's carry rows once
+% the element is migrated (carryOneEpochsWithElement).
+did2.convert.reportNote('carried_with_element', 'oneepoch', id, elementIdOf(src));
 v2Body = {src};
+end
+
+function e = elementIdOf(src)
+%ELEMENTIDOF The oneepoch's element_id edge ('' when it has none).
+e = '';
+try
+    deps = did2.convert.v1read.readDependsOn(src, 'Name', '^element_id$');
+catch
+    return;
+end
+if ~isempty(deps) && ~isempty(deps(1).document_id)
+    e = char(deps(1).document_id);
+end
 end
 
 function tf = isStitchedOnLocalTime(clocks)

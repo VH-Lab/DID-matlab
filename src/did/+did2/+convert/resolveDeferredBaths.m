@@ -71,9 +71,21 @@ function [result, report] = resolveDeferredBaths(result, options)
 %     - the clock is the stimulator's, read as NDI's bodyResolver
 %       epochClockOfElement reads it: the stimulator's element_epoch for that
 %       epoch (in this batch an `acquisition_epoch`, its clock names joined by
-%       ',', or a carried v1 `element_epoch`'s epoch_clock), else
-%       'dev_local_time'. NDI's second fallback (an `epochclocktimes` document
-%       of that epoch id) is not read here: pass 1 has converted those.
+%       ',', or a carried v1 `element_epoch`'s epoch_clock). NDI's second
+%       fallback (an `epochclocktimes` document of that epoch id) is not read
+%       here: pass 1 has converted those.
+%   A BATH WHOSE EPOCH HAS NO CLOCK RECORD IS CARRIED (Decided by Jess Haley,
+%   2026-10-26 [one-reading quick answers] Q2, did-schema
+%   V_eta_go_forward_class_audit.md: "a bath epoch with no clock record, is
+%   carried as v1 instead of defaulting to `dev_local_time` ([no invented
+%   values])"). A bath with an epoch string and no element_epoch of its
+%   stimulator for that epoch in the batch is no longer assembled on
+%   'dev_local_time': its v1 source leaves the quarantine carried whole as
+%   v1 (stamped 'did_v1', a passthrough record with input_index 0, since
+%   the quarantine does not keep the input index), with a `carried_as_v1`
+%   note citing register row carry-157 merged into
+%   RESULT.summary.migration_notes. Counted in `baths_carried_no_clock`;
+%   `bath_clocks_defaulted` stays in the report and reads 0.
 %   ONE DIFFERENCE, KEPT ON PURPOSE AND COUNTED: NDI mints NO anchor for a bath
 %   with no epoch string or a 'no_time' clock, so its manipulation fails
 %   time_reference_id's min_count. Here such a bath keeps its session anchor
@@ -194,6 +206,7 @@ report = struct( ...
     'bath_anchors_no_time',           0, ...
     'bath_clocks_from_element_epoch', 0, ...
     'bath_clocks_defaulted',          0, ...
+    'baths_carried_no_clock',         0, ...
     'unexpected_error_reasons',       {{}}, ...
     'ran',                            false);
 result.deferred_bath_resolution = report;
@@ -233,6 +246,8 @@ assembled = {};
 pendingAnchors = struct('bath_id', {}, 'anchor_id', {}, 'session_id', {}, ...
     'epoch_string', {}, 'epoch_clock', {}, 'clock_source', {});
 seenErrorIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+carriedBodies = {};   % [one-reading quick answers] Q2: v1 sources carried
+carriedNotes = {};    % their carry notes
 for k = 1:numel(q)
     if ~isDeferredBath(q(k))
         continue;
@@ -276,6 +291,27 @@ for k = 1:numel(q)
         continue;
     end
 
+    % STAGE 3b: the clock. [one-reading quick answers] Q2 (Decided by Jess
+    % Haley, 2026-10-26): a bath whose epoch has no clock record for its
+    % stimulator is carried as v1, not anchored on an invented
+    % 'dev_local_time' ([no invented values]).
+    epochString = bathEpochString(v1Body);
+    if ~isempty(epochString)
+        [~, clockSource] = stimulatorClock(clockByElementEpoch, stimulatorId, epochString);
+        if ~strcmp(clockSource, 'element_epoch')
+            if isfield(v1Body, 'document_class') && isstruct(v1Body.document_class)
+                v1Body.document_class.schema_version = 'did_v1';
+            end
+            carriedBodies{end+1} = v1Body; %#ok<AGROW>
+            carriedNotes{end+1} = sprintf(['[carry-157] needs_mapping: epoch "%s" has ' ...
+                'no clock record for its stimulator %s ([one-reading quick answers] Q2)'], ...
+                epochString, char(stimulatorId)); %#ok<AGROW>
+            report.baths_carried_no_clock = report.baths_carried_no_clock + 1;
+            keep(k) = false;   % carried -> drop the original deferral
+            continue;
+        end
+    end
+
     % STAGE 4: assembly. A throw here is always a defect in this file.
     try
         [bathBodies, anchorInfo] = makeBath(v1Body, subjectId, stimulatorId, ...
@@ -304,19 +340,24 @@ report.refused_total = report.refused_body_unreadable ...
     + report.refused_bath_assembly_failed ...
     + report.refused_unexpected_error;
 
-if isempty(assembled)
+if isempty(assembled) && isempty(carriedBodies)
     result.deferred_bath_resolution = report;
     return;
 end
 
-sub = did2.convert.v1_to_v2(assembled, ...
-    'Validate', options.Validate, ...
-    'SchemaCache', options.SchemaCache, ...
-    'TargetVersion', options.TargetVersion, ...
-    'Verbose', false);
+if isempty(assembled)
+    sub = struct('migrated', {{}}, 'quarantine', q([]));
+else
+    sub = did2.convert.v1_to_v2(assembled, ...
+        'Validate', options.Validate, ...
+        'SchemaCache', options.SchemaCache, ...
+        'TargetVersion', options.TargetVersion, ...
+        'Verbose', false);
+end
 
 result.migrated = [result.migrated, sub.migrated];
 result.quarantine = [q(keep), sub.quarantine];
+result = carryBaths(result, carriedBodies, carriedNotes);
 % [one bath shape]: count what landed, and hand on the anchors of the baths
 % that landed (an anchor whose bath was quarantined is not re-pointed)
 landed = containers.Map('KeyType', 'char', 'ValueType', 'logical');
@@ -349,7 +390,7 @@ for k = 1:numel(pendingAnchors)
         'epoch_clock', a.epoch_clock);
 end
 report.bath_anchors_handed_over = numel(result.deferred_bath_anchors);
-report.documents_appended = numel(sub.migrated);
+report.documents_appended = numel(sub.migrated) + numel(carriedBodies);
 report.assembled_bodies_quarantined = numel(sub.quarantine);
 report.quarantine_after = numel(result.quarantine);
 result.summary = recountSummary(result);
@@ -588,6 +629,53 @@ if (~isempty(loc.node) || ~isempty(loc.name)) && ~isGenericBath(loc)
 end
 end
 
+function result = carryBaths(result, bodies, notes)
+%CARRYBATHS [one-reading quick answers] Q2 (Jess Haley, 2026-10-26): each
+%   v1 source in BODIES (stamped 'did_v1') joins RESULT.migrated, carried
+%   whole as v1, with a passthrough record (input_index 0: the quarantine
+%   keeps no input index) and its `carried_as_v1` note merged into
+%   RESULT.summary.migration_notes. The note buffer is reset first: the
+%   v1_to_v2 call above has already reset it, and its own notes are not
+%   this batch's.
+if isempty(bodies)
+    return;
+end
+did2.convert.reportNote('reset');
+for k = 1:numel(bodies)
+    b = bodies{k};
+    id = char(baseField(b, 'id', ''));
+    result.migrated{end+1} = did2.document(b);
+    rec = struct('input_index', 0, 'id', id, 'class_name', 'stimulus_bath', 'body', b);
+    if isfield(result, 'passthrough') && isstruct(result.passthrough)
+        result.passthrough(end+1) = rec;
+    else
+        result.passthrough = rec;
+    end
+    % carry-register: carry-157
+    did2.convert.reportNote('carried_as_v1', 'stimulus_bath', id, notes{k});
+end
+fresh = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+if ~isfield(result, 'summary') || ~isstruct(result.summary)
+    result.summary = struct();
+end
+old = struct();
+if isfield(result.summary, 'migration_notes')
+    old = result.summary.migration_notes;
+end
+result.summary.migration_notes = did2.convert.reportNote('merge', old, fresh);
+result.summary.passthrough_count = numel(result.passthrough);
+end
+
+function s = bathEpochString(v1Body)
+%BATHEPOCHSTRING The bath's v1 epochid.epochid ('' when it names none).
+s = '';
+if isfield(v1Body, 'epochid') && isstruct(v1Body.epochid) ...
+        && isfield(v1Body.epochid, 'epochid')
+    s = charOrEmpty(v1Body.epochid.epochid);
+end
+end
+
 function a = emptyBathAnchors()
 a = struct('anchor_id', {}, 'session_id', {}, 'epoch_string', {}, 'epoch_clock', {});
 end
@@ -645,9 +733,13 @@ end
 end
 
 function [clock, source] = stimulatorClock(idx, stimulatorId, epochString)
-% the stimulator's clock for that epoch, else 'dev_local_time' (NDI's default)
-clock = 'dev_local_time';
-source = 'default';
+% the stimulator's clock for that epoch; SOURCE 'element_epoch' when found.
+% With no record the clock is '' and SOURCE 'none': [one-reading quick
+% answers] Q2 (Jess Haley, 2026-10-26) carries such a bath (carry-157) rather
+% than defaulting to 'dev_local_time' ([no invented values]), so the main
+% loop never assembles a bath with an epoch string on SOURCE 'none'.
+clock = '';
+source = 'none';
 key = [char(stimulatorId) '|' char(epochString)];
 if ~isempty(epochString) && isKey(idx, key)
     clock = idx(key);

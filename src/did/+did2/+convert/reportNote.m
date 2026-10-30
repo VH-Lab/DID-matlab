@@ -20,6 +20,25 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                                                     last 'mark' (v1_to_v2
 %                                                     reads 'carried_as_v1' to
 %                                                     know a body was carried)
+%   D = did2.convert.reportNote('pendingDetails', KIND)  the DETAIL of each note
+%                                                     of KIND recorded since the
+%                                                     last 'mark', a cellstr
+%                                                     (v1_to_v2 reads the
+%                                                     `[carry-NNN]` rows a
+%                                                     source's carry cites)
+%   S = did2.convert.reportNote('merge', A, B)        two 'collect' summaries
+%                                                     as one: counts, per-class
+%                                                     counts, distinct details
+%                                                     and register rows added
+%                                                     (EXACT); B's sampled ids
+%                                                     and details appended while
+%                                                     the sample is under the
+%                                                     per-class cap summed over
+%                                                     the merged classes. For a
+%                                                     batch pass that records
+%                                                     notes after v1_to_v2
+%                                                     collected its own
+%                                                     (resolveDeferredBaths).
 %   S = did2.convert.reportNote('collect')            the notes, summarised:
 %       S.<kind>.count       how many notes of this kind were recorded (EXACT)
 %       S.<kind>.by_class    a struct, class name -> note count (EXACT)
@@ -78,6 +97,20 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     a `% carry-register:` comment above it, `none` for a
 %                     reason with no row yet; tools/check_carry_citations.py
 %                     checks both against the register and lists the `none`s.
+%     carried_with_element  ONE note per global-clock `oneepoch` the
+%                     migrator hands back unchanged to be carried with its
+%                     output element ([global-clock oneepoch carried with its
+%                     element], Jess Haley, 2026-10-30); DETAIL is the
+%                     element's id. v1_to_v2 carries the source and writes its
+%                     `carried_as_v1` note, citing that element's carry rows,
+%                     once every source is migrated (carryOneEpochsWithElement).
+%     ntrode_electrode_count  ONE note per n-trode device the element
+%                     migrator converts: whether its "number of electrodes"
+%                     (EMPTY:0000408) was written from the channel list of its
+%                     epochprobemap `devicestring`, and if not, why
+%                     ([n-trode count from the channel list], Jess Haley,
+%                     2026-10-29; did2.convert.nTrodeElectrodeCounts). The
+%                     count is the denominator.
 %     v1_name_statement_carried  ONE note per source carried because it
 %                     would become a STATEMENT and its non-empty v1 base.name
 %                     has no home ([v1 name goes to the class's own name
@@ -170,6 +203,12 @@ switch action
         st.nPending = n - st.total;
     case 'pending'
         out = sum(strcmp(st.pKind(1:st.nPending), char(arg2)));
+    case 'pendingDetails'
+        hit = strcmp(st.pKind(1:st.nPending), char(arg2));
+        out = st.pDetail(find(hit)); %#ok<FNDSB> 1xN even when st.pDetail is empty
+        out = reshape(out, 1, []);
+    case 'merge'
+        out = mergeSummaries(arg2, arg3);
     case 'collect'
         st = commitPending(st);
         out = struct();
@@ -301,6 +340,59 @@ for p = 1:st.nPending
 end
 st.total = st.total + st.nPending;
 st.nPending = 0;
+end
+
+function a = mergeSummaries(a, b)
+%MERGESUMMARIES Two 'collect' summaries as one (see 'merge' in the header).
+if isempty(a); a = struct(); end
+if isempty(b); return; end
+kinds = fieldnames(b);
+for i = 1:numel(kinds)
+    f = kinds{i};
+    B = b.(f);
+    if ~isfield(a, f)
+        a.(f) = B;
+        continue;
+    end
+    A = a.(f);
+    A.count = A.count + B.count;
+    cls = fieldnames(B.by_class);
+    for j = 1:numel(cls)
+        if isfield(A.by_class, cls{j})
+            A.by_class.(cls{j}) = A.by_class.(cls{j}) + B.by_class.(cls{j});
+        else
+            A.by_class.(cls{j}) = B.by_class.(cls{j});
+        end
+    end
+    cap = sampleCap();
+    room = sum(min(cellfun(@(c) A.by_class.(c), fieldnames(A.by_class)), cap));
+    for j = 1:numel(B.ids)
+        if numel(A.ids) >= room; break; end
+        A.ids{end+1} = B.ids{j};
+        A.details{end+1} = B.details{j};
+    end
+    A.sample_kept = numel(A.ids);
+    A.sampled = A.sample_kept < A.count;
+    for j = 1:numel(B.distinct_details)
+        hit = find(strcmp(A.distinct_details, B.distinct_details{j}), 1);
+        if isempty(hit)
+            A.distinct_details{end+1} = B.distinct_details{j};
+            A.distinct_detail_counts(end+1) = B.distinct_detail_counts(j);
+        else
+            A.distinct_detail_counts(hit) = A.distinct_detail_counts(hit) ...
+                + B.distinct_detail_counts(j);
+        end
+    end
+    if isfield(A, 'register_rows')
+        [rows, rowCounts, nCiting] = registerRowCounts(A.distinct_details, ...
+            A.distinct_detail_counts);
+        A.register_rows = rows;
+        A.register_row_counts = rowCounts;
+        A.notes_citing_a_row = nCiting;
+        A.notes_citing_no_row = A.count - nCiting;
+    end
+    a.(f) = A;
+end
 end
 
 function [rows, rowCounts, nCiting] = registerRowCounts(details, counts)

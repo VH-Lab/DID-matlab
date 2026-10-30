@@ -1114,6 +1114,11 @@ for k = 1:size(expected, 1)
                 numGet(rep, 'assembled_bodies_quarantined'), ...
                 numGet(rep, 'quarantine_before'), ...
                 numGet(rep, 'quarantine_after'));
+            % [one-reading quick answers] Q2 (Jess Haley, 2026-10-26): a bath
+            % whose epoch has no clock record for its stimulator is carried
+            % as v1 (carry-157), not anchored on an invented dev_local_time
+            fprintf(['      carried %d bath(s) as v1: epoch has no clock ' ...
+                     'record (carry-157)\n'], numGet(rep, 'baths_carried_no_clock'));
             % REFUSALS BY CAUSE, NEVER SUMMED INTO ONE. Only
             % `element-not-in-batch` is the designed best-effort outcome; the
             % other four are defects, and the last one is a defect this pass
