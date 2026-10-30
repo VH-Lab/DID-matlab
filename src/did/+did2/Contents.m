@@ -9,8 +9,10 @@
 %
 %   The schema is found through the DID_SCHEMA_PATH environment variable;
 %   without it, did2.schema.cache.defaultSchemaPath reads a sibling
-%   did-schema checkout's schemas/V_eta/stable. The CI workflows copy the
-%   three tiers into one directory and set DID_SCHEMA_PATH to it.
+%   did-schema checkout's schemas/did_v2/stable (else schemas/V_eta/stable),
+%   or schemas/did_v2 itself once it has no tiers ([one folder, final classes
+%   only], Jess Haley, 2026-10-29). The CI workflows copy the tiers, or the
+%   flat folder's class files, into one directory and set DID_SCHEMA_PATH to it.
 %
 %   Files
 %     document      - document object (load / validate / serialise /

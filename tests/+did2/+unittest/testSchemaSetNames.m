@@ -63,3 +63,28 @@ mkdir(fullfile(root, 'V_eta', 'deprecated'));
 verifyEqual(testCase, did2.schema.cache.schemaSetTierPath(root, 'deprecated'), ...
     fullfile(root, 'V_eta', 'deprecated'));
 end
+
+function testTheFlatLayoutIsTheSetFolder(testCase)
+% [one folder, final classes only] (Decided by Jess Haley, 2026-10-29,
+% did-schema V_eta_go_forward_class_audit.md): every V2 class in one folder,
+% schemas/did_v2/*.json, no stable/ or draft/ tier. A did_v2 folder with no
+% tier is that layout: each tier asked for is the folder itself.
+root = tempname;
+mkdir(fullfile(root, 'did_v2'));
+testCase.addTeardown(@() rmdir(root, 's'));
+verifyEqual(testCase, did2.schema.cache.schemaSetTierPath(root, 'stable'), ...
+    fullfile(root, 'did_v2'));
+verifyEqual(testCase, did2.schema.cache.schemaSetTierPath(root, 'draft'), ...
+    fullfile(root, 'did_v2'));
+% an old V_eta set beside it does not win over the flat did_v2
+mkdir(fullfile(root, 'V_eta', 'stable'));
+verifyEqual(testCase, did2.schema.cache.schemaSetTierPath(root, 'stable'), ...
+    fullfile(root, 'did_v2'));
+% a did_v2 that still has one tier is the tiered layout: a missing tier
+% falls back as before
+mkdir(fullfile(root, 'did_v2', 'draft'));
+verifyEqual(testCase, did2.schema.cache.schemaSetTierPath(root, 'draft'), ...
+    fullfile(root, 'did_v2', 'draft'));
+verifyEqual(testCase, did2.schema.cache.schemaSetTierPath(root, 'stable'), ...
+    fullfile(root, 'V_eta', 'stable'));
+end

@@ -1823,10 +1823,26 @@ classdef cache < handle
             %   ([schema set renamed did_v2], Jess Haley, 2026-10-25, step 1:
             %   accept both, prefer did_v2). The V_eta path is returned when
             %   neither exists, so a caller reports the name it looked for.
-            p = fullfile(schemasDir, 'did_v2', tier);
-            if ~isfolder(p)
-                p = fullfile(schemasDir, 'V_eta', tier);
+            %
+            %   THE FLAT LAYOUT. [one folder, final classes only] (Decided by
+            %   Jess Haley, 2026-10-29, did-schema
+            %   V_eta_go_forward_class_audit.md): every V2 class moves into
+            %   one folder, schemas/did_v2/*.json, with no stable/ or draft/
+            %   tier, and the siblings read the flat layout first. A did_v2
+            %   folder holding neither a stable/ nor a draft/ tier is that
+            %   layout: every tier is the folder itself, so <schemasDir>/did_v2
+            %   is returned. While did_v2 still has a tier, nothing changes.
+            setDir = fullfile(schemasDir, 'did_v2');
+            p = fullfile(setDir, tier);
+            if isfolder(p)
+                return;
             end
+            if isfolder(setDir) && ~isfolder(fullfile(setDir, 'stable')) ...
+                    && ~isfolder(fullfile(setDir, 'draft'))
+                p = setDir;
+                return;
+            end
+            p = fullfile(schemasDir, 'V_eta', tier);
         end
     end
 
@@ -1850,7 +1866,9 @@ classdef cache < handle
             % tiers into one directory and set DID_SCHEMA_PATH to it, which
             % wins over this default (above).
             % [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1:
-            % accept both names, preferring did_v2 when present.
+            % accept both names, preferring did_v2 when present. On the flat
+            % layout ([one folder, final classes only]) schemaSetTierPath
+            % returns schemas/did_v2 itself.
             p = did2.schema.cache.schemaSetTierPath( ...
                 fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas'), 'stable');
         end

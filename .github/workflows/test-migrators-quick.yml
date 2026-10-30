@@ -176,8 +176,22 @@ jobs:
           SET=did-schema/schemas/V_eta
           if [ -d did-schema/schemas/did_v2 ]; then SET=did-schema/schemas/did_v2; fi
           echo "schema set: $SET"
-          cp "$SET"/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
-          cp "$SET"/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          # [one folder, final classes only] (Decided by Jess Haley, 2026-10-29,
+          # did-schema V_eta_go_forward_class_audit.md): every V2 class moves into
+          # one folder, $SET/*.json, with no stable/ or draft/ tier, and the
+          # siblings read the flat layout first. Both layouts are read: each tier
+          # when it exists, and every class file at the set's top level (index.json
+          # and topics.json there are the set's index, not classes).
+          DEST="${GITHUB_WORKSPACE}/eta-schemas/"
+          for tier in stable draft; do
+            if [ -d "$SET/$tier" ]; then cp "$SET/$tier"/*.json "$DEST"; fi
+          done
+          for f in "$SET"/*.json; do
+            [ -f "$f" ] || continue
+            case "$(basename "$f")" in index.json|topics.json) continue ;; esac
+            cp "$f" "$DEST"
+          done
+          if ! ls "$DEST"/*.json >/dev/null 2>&1; then echo "::error::no schema files found in $SET (flat or tiered)"; exit 1; fi
           if [ -d "$SET/deprecated" ]; then cp "$SET"/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"; fi
 
       - name: Check out NDI-matlab's v1 templates at the locked main
