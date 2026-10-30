@@ -2604,7 +2604,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 % a stimulator element is an ndi.probe.timeseries.stimulator (NDI
 % probetype2object.json): [element types have no default] makes a probe type a
 % device only on an ndi.probe.* class (Jess Haley, 2026-10-26)
@@ -2705,7 +2708,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 % a stimulator element is an ndi.probe.timeseries.stimulator (NDI
 % probetype2object.json): [element types have no default] makes a probe type a
 % device only on an ndi.probe.* class (Jess Haley, 2026-10-26)
@@ -2754,7 +2760,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', sessId, ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 elem.element = struct('ndi_element_class', 'ndi.probe.timeseries.stimulator', 'name', 'bath_y', ...
     'reference', 1, 'type', 'stimulator', 'direct', 0);
 % the stimulator's element_epoch for that epoch: its clock (+ndi/element.m)

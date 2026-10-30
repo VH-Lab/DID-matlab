@@ -22,10 +22,17 @@ function [name, reference, form] = elementNameReference(localId)
 %   The display form is tried first and cannot be mistaken for the old one:
 %   an old identifier ends in ')', never in ' | <integer>'.
 %
+%   SINCE [element name and reference stored apart] (Jess Haley, 2026-10-29)
+%   a migrated element's name is the entity's `name`; DID-matlab's readers
+%   call did2.convert.elementNameReferenceApart, which reads the reference
+%   after that name and falls back to this parse for an entity migrated
+%   before it.
+%
 %   A MIRROR of NDI-matlab's ndi.vintage.elementNameReference (branch
 %   claude/phase3, 471cd5c66): the same rules. Change both together.
 %
-%   See also did2.convert.elementLocalIdentifier, did2.convert.roundtrip.element,
+%   See also did2.convert.elementLocalIdentifier, did2.convert.elementNameReferenceApart,
+%            did2.convert.roundtrip.element,
 %            NDI ndi.vintage.elementNameReference.
 
 arguments
