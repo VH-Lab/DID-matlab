@@ -439,10 +439,22 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         runs renamed. Written by +ndi/+setup/+NDIMaker/
 %                         tableDocMaker.m. Inverse: the passthrough one.
 %                         Round trips: testRawV1RoundTripOntologyTableRow.
+%     openminds           superclass `base` only, no `app` block, no
+%                         superclass migrator. A guarded passthrough for
+%                         did2.convert.resolveOpenmindsCitations and NDI's
+%                         strainAssembly, which read the class name, the
+%                         `openminds` block and either edge key (`value` raw,
+%                         `document_id` renamed), so what they receive is
+%                         unchanged but for v1's edge key; it validates
+%                         against the same V_eta class. A field, block or edge
+%                         outside the template (edges: `openminds_<n>`)
+%                         carries it (private/jRawAccount, carry-100). Written
+%                         by ndi.database.fun.openMINDSobj2ndi_document. Round
+%                         trips: testRawV1RoundTripOpenminds.
 %     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
 %                         universalRenames. Of the +migrators_j migrators these
-%                         are openminds, openminds_element, openminds_stimulus
-%                         and openminds_subject; a
+%                         are openminds_element, openminds_stimulus and
+%                         openminds_subject; a
 %                         class with no +migrators_j migrator
 %                         (the +migrators identity fallback) also runs
 %                         renamed. universalRenames cannot be deleted while
@@ -531,6 +543,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'vmspikefit', ...
     'vmspikefilteringparameters', ...
     'ontologyTableRow', ...
+    'openminds', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above

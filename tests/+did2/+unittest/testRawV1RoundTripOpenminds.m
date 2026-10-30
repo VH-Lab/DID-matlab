@@ -1,0 +1,149 @@
+function tests = testRawV1RoundTripOpenminds
+%TESTRAWV1ROUNDTRIPOPENMINDS The openMINDS family read as raw v1, and its round
+%   trip: openminds.
+%
+%   Decided by Jess Haley, 2026-10-26 (did-schema
+%   V_eta_go_forward_class_audit.md): [migrators read raw v1], [migration
+%   reliability practices] (a), [renames carry is temporary]; 2026-10-27
+%   [fields outside the template are malformed] (carry-100).
+%
+%   THE v1 DOCUMENTS are built from NDI's templates at the locked NDI-matlab
+%   `main` (441530d; tests/+did2/fixtures/ndi_templates, copied verbatim) in
+%   the shape ndi.database.fun.openMINDSobj2ndi_document writes:
+%     openminds   metadata/openminds.json + base.json: the `openminds` block,
+%                 an `openminds_<n>` edge per `ndi://` child in `fields`, or
+%                 one empty `openminds` edge for a childless object (JH's
+%                 OP50 strain and its species, +haley/doImport.m)
+%
+%   A bare `openminds` document passes through pass 1 unchanged for the batch
+%   passes that read it (did2.convert.resolveOpenmindsCitations, NDI's
+%   strainAssembly); both read either edge key. It round trips as itself. No
+%   known findings.
+tests = functiontests(localfunctions);
+end
+
+function setupOnce(testCase)
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
+% ===================== openminds =======================================
+
+function testOpenmindsIsSwitched(testCase)
+verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'openminds')));
+out = runRaw(strainPair());
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 2);
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
+end
+
+function testBareOpenmindsPassesThroughAndRoundTrips(testCase)
+batch = strainPair();
+out = runRaw(batch);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.passthrough), 2, 'both pass through');
+for k = 1:numel(batch)
+    v1 = batch{k};
+    doc = docWithId(out, v1.base.id);
+    verifyEqual(testCase, char(doc.document_class.schema_version), 'did_v2', ...
+        'a passthrough, not a carry');
+    verifyEqual(testCase, doc.openminds, v1.openminds, 'the block, untouched');
+    r = did2.convert.roundtrip.check(v1, {doc});
+    verifyFalse(testCase, r.carried);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, v1.base.id, {});
+end
+end
+
+function testTheCitationPassReadsTheRawEdges(testCase)
+% referencedIds reads `value` (raw) as it read `document_id` (renamed): the
+% strain's child is found through its openminds_1 edge on both paths
+batch = strainPair();
+raw = runRaw(batch);
+old = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
+    'RawV1Classes', {});
+[~, repRaw] = did2.convert.resolveOpenmindsCitations(raw, 'Validate', false, 'TargetVersion', 'V_eta');
+[~, repOld] = did2.convert.resolveOpenmindsCitations(old, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, repRaw.openminds_documents_seen, repOld.openminds_documents_seen);
+verifyEqual(testCase, repRaw.openminds_components_seen, repOld.openminds_components_seen);
+end
+
+function testAFieldOutsideTheOpenmindsTemplateCarriesIt(testCase)
+b = strainPair();
+v1 = b{1};
+v1.openminds.schema_iri = 'https://openminds.om-i.org/types/Species';
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: openminds.schema_iri');
+v1 = did2.unittest.helpers.setDependency(b{1}, 'subject_id', 'subj_1');
+verifyCarried(testCase, v1, 'depends_on(subject_id)');
+end
+
+% ===================== the family ======================================
+
+function testTheSwitchChangesNoOutcome(testCase)
+f = fixtures();
+for k = 1:size(f, 1)
+    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f{k, 2});
+    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
+end
+end
+
+function testValidationIsAsBefore(testCase)
+% a raw passthrough validates exactly where the renamed one did
+f = fixtures();
+for k = 1:size(f, 1)
+    raw = did2.convert.v1_to_v2(f{k, 2}, 'Validate', true, 'TargetVersion', 'V_eta');
+    old = did2.convert.v1_to_v2(f{k, 2}, 'Validate', true, 'TargetVersion', 'V_eta', ...
+        'RawV1Classes', {});
+    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), f{k, 1});
+end
+end
+
+% ===================== fixtures, from the TEMPLATES and WRITER ============
+
+function f = fixtures()
+f = {'openminds, strain and species', strainPair()};
+end
+
+function batch = strainPair()
+% +haley/doImport.m: an OP50 Strain whose `species` is a Species child, written
+% by openMINDSobj2ndi_document with no dependency type
+sp = did2.unittest.helpers.ndiDocument('openminds', 'Id', '41268b6f5c6a3d4e_0e00000000000001');
+sp.depends_on = struct('name', 'openminds', 'value', '');
+sp.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Species', ...
+    'matlab_type', 'openminds.controlledterms.Species', 'openminds_id', '', ...
+    'fields', struct('name', 'Escherichia coli', 'preferredOntologyIdentifier', 'NCBITaxon:562', ...
+    'definition', '', 'description', '', 'interlexIdentifier', '', ...
+    'knowledgeSpaceLink', '', 'synonym', ''));
+st = did2.unittest.helpers.ndiDocument('openminds', 'Id', '41268b6f5c6a3d4e_0e00000000000002');
+st.depends_on = struct('name', 'openminds_1', 'value', sp.base.id);
+f = struct('name', 'Escherichia coli OP50', 'ontologyIdentifier', 'NCBITaxon:637912', ...
+    'description', 'OP50 is a strain of E. coli.', 'laboratoryCode', '', 'synonym', '');
+f.species = {['ndi://' sp.base.id]};
+st.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Strain', ...
+    'matlab_type', 'openminds.core.research.Strain', 'openminds_id', '', 'fields', f);
+batch = {jsondecode(jsonencode(sp)), jsondecode(jsonencode(st))};
+end
+
+% ===================== helpers =========================================
+
+function out = runRaw(batch)
+if ~iscell(batch); batch = {batch}; end
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+end
+
+function s = docWithId(out, id)
+s = [];
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if strcmp(char(b.base.id), id)
+        s = b;
+        return;
+    end
+end
+end
+
+function verifyCarried(testCase, v1, part)
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+label = sprintf('%s (%s)', v1.document_class.class_name, part);
+verifyEmpty(testCase, out.quarantine, label);
+verifyTrue(testCase, carried, [label ': not carried as the untouched v1 source']);
+verifyTrue(testCase, contains(notes, part), sprintf('%s: the note does not name it: %s', label, notes));
+end
