@@ -470,13 +470,27 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         none and no later pass reads one for this class).
 %                         Written by ndi.database.fun.openMINDSobj2ndi_document.
 %                         Round trips: testRawV1RoundTripOpenminds.
+%     openminds_stimulus  superclasses `base` + `epochid` + `openminds`, no
+%                         `app` block, no superclass migrator. A passthrough
+%                         for NDI's second pass, which reads it from the v1
+%                         input (ndi.migrate.internal.sliceTetanus) and by
+%                         class name from the migrated set; it validates
+%                         against the same V_eta class. The invented
+%                         `stimulus_id` edge still quarantines first. What the
+%                         passthrough does not keep in its template carries it
+%                         (private/jRawAccount, carry-100). Written by
+%                         +setup/+NDIMaker/stimulusDocMaker.m and
+%                         +setup/+stimulus/+vhlab/add_stimulus_approach.m.
+%                         Round trips: testRawV1RoundTripOpenminds.
 %     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
-%                         universalRenames. Of the +migrators_j migrators this
-%                         is openminds_stimulus; a
-%                         class with no +migrators_j migrator
-%                         (the +migrators identity fallback) also runs
-%                         renamed. universalRenames cannot be deleted while
-%                         any of them does ([migrators read raw v1]).
+%                         universalRenames: every +migrators_j migrator is
+%                         listed above, so these are the classes with no
+%                         +migrators_j migrator (the +migrators identity
+%                         fallback), and a body that names a class by a
+%                         spelling no writer uses (a snake_case
+%                         `ontology_table_row`, `image_stack`, ...).
+%                         universalRenames cannot be deleted while any of them
+%                         does ([migrators read raw v1]).
 %
 %   See also did2.convert.v1_to_v2, did2.convert.roundtrip.check.
 
@@ -564,6 +578,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'openminds', ...
     'openminds_subject', ...
     'openminds_element', ...
+    'openminds_stimulus', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above

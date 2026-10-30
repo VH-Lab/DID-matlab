@@ -1,6 +1,6 @@
 function tests = testRawV1RoundTripOpenminds
 %TESTRAWV1ROUNDTRIPOPENMINDS The openMINDS family read as raw v1, and its round
-%   trip: openminds, openminds_subject, openminds_element.
+%   trip: openminds, openminds_subject, openminds_element, openminds_stimulus.
 %
 %   Decided by Jess Haley, 2026-10-26 (did-schema
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1], [migration
@@ -22,6 +22,11 @@ function tests = testRawV1RoundTripOpenminds
 %                 base.json, dependency type 'element': the template's
 %                 `element_id` edge, then the `openminds` edge (Dab's cell
 %                 type, without and with its openMINDS id)
+%     openminds_stimulus  metadata/openminds_stimulus.json + epochid.json +
+%                 openminds.json + base.json, dependency type 'stimulus'
+%                 (+setup/+NDIMaker/stimulusDocMaker.m: a StimulationApproach
+%                 term, the epoch, the `stimulus_element_id` edge, then the
+%                 `openminds` edge)
 %
 %   A bare `openminds` document passes through pass 1 unchanged for the batch
 %   passes that read it (did2.convert.resolveOpenmindsCitations, NDI's
@@ -30,7 +35,8 @@ function tests = testRawV1RoundTripOpenminds
 %   `openminds_<n>` edges are read by NDI's subjectStrainAssembly from the v1
 %   input, so they do not carry it. openminds_element converts to one term
 %   assertion, or is carried with an id or a description (carry-128), as
-%   before. No known findings for the fixtures (a
+%   before. openminds_stimulus passes through unchanged for NDI's second pass
+%   and round trips as itself. No known findings for the fixtures (a
 %   species' definition and synonym are accepted differences, [species text is
 %   the openMINDS equivalent]).
 tests = functiontests(localfunctions);
@@ -178,6 +184,46 @@ v1.depends_on(2).value = '41268b6f5c6a3d4e_0e00000000000024';
 verifyCarried(testCase, v1, 'depends_on(openminds_1)');
 end
 
+% ===================== openminds_stimulus ==============================
+
+function testOpenmindsStimulusIsSwitched(testCase)
+verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'openminds_stimulus')));
+out = runRaw(approachLabel('41268b6f5c6a3d4e_0e00000000000031'));
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
+end
+
+function testAnApproachLabelPassesThroughAndRoundTrips(testCase)
+v1 = approachLabel('41268b6f5c6a3d4e_0e00000000000031');
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.passthrough), 1);
+doc = docWithId(out, v1.base.id);
+verifyEqual(testCase, char(doc.document_class.schema_version), 'did_v2', ...
+    'a passthrough, not a carry');
+verifyEqual(testCase, doc.epochid.epochid, 't00001', 'the epoch survives for the second pass');
+r = did2.convert.roundtrip.check(v1, {doc});
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_stimulus', {});
+end
+
+function testTheInventedStimulusEdgeStillQuarantines(testCase)
+v1 = approachLabel('41268b6f5c6a3d4e_0e00000000000032');
+v1.depends_on(1).name = 'stimulus_id';
+out = runRaw(v1);
+verifyEqual(testCase, numel(out.quarantine), 1);
+verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:openmindsStimulusInventedEdge');
+end
+
+function testAFieldOutsideTheStimulusTemplateCarriesIt(testCase)
+v1 = approachLabel('41268b6f5c6a3d4e_0e00000000000033');
+v1.openminds_stimulus = struct('note', 'kept');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: openminds_stimulus.note');
+v1 = did2.unittest.helpers.setDependency(approachLabel('41268b6f5c6a3d4e_0e00000000000033'), ...
+    'element_id', 'el_1');
+verifyCarried(testCase, v1, 'depends_on(element_id)');
+end
+
 % ===================== the family ======================================
 
 function testTheSwitchChangesNoOutcome(testCase)
@@ -203,7 +249,8 @@ end
 
 function f = fixtures()
 % {label, batch}
-s = [subjectFixtures(); elementFixtures()];
+s = [subjectFixtures(); elementFixtures(); ...
+    {'openminds_stimulus, approach label', approachLabel('41268b6f5c6a3d4e_0e00000000000031')}];
 f = cell(1 + size(s, 1), 2);
 f(1, :) = {'openminds, strain and species', strainPair()};
 for k = 1:size(s, 1)
@@ -241,6 +288,22 @@ v1 = termDocument('openminds_element', id, 'CellType', 'type III BNST neuron', .
     'EMPTY:0000073', '', '');
 v1.openminds.openminds_id = openmindsId;
 v1 = did2.unittest.helpers.setDependency(v1, 'element_id', '41268b6f5c6a3d4e_0e000000000000b1');
+v1.depends_on(2) = struct('name', 'openminds', 'value', '');
+v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = approachLabel(id)
+% stimulusDocMaker.m: openMINDSobj2ndi_document(approach, sessionId,
+% 'stimulus', stimulatorId, 'epochid.epochid', epochId)
+v1 = did2.unittest.helpers.ndiDocument('openminds_stimulus', 'Id', id);
+v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/StimulationApproach', ...
+    'matlab_type', 'openminds.controlledterms.StimulationApproach', 'openminds_id', '', ...
+    'fields', struct('definition', '', 'description', 'Assessing spatial frequency tuning', ...
+    'interlexIdentifier', '', 'knowledgeSpaceLink', '', ...
+    'name', 'Purpose: Assessing spatial frequency tuning', ...
+    'preferredOntologyIdentifier', 'NDIC:00000012', 'synonym', ''));
+v1.epochid.epochid = 't00001';
+v1 = did2.unittest.helpers.setDependency(v1, 'stimulus_element_id', '41268b6f5c6a3d4e_0e000000000000c1');
 v1.depends_on(2) = struct('name', 'openminds', 'value', '');
 v1 = jsondecode(jsonencode(v1));
 end
