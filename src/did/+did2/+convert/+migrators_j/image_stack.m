@@ -464,6 +464,10 @@ if ~isempty(strtrim(fileFormat))
 end
 compression = getCharField(imageBlk, 'compression');
 if ~isempty(strtrim(compression))
+    % the v1 codec name; the builder writes it as the schema declares
+    % `compression` (a char, or the {term, parameters} block once did-schema
+    % declares it: [compression block and empty levels], Jess Haley,
+    % 2026-10-26; did2.build.compression)
     o = [o, {'Compression', compression}];
 end
 [dims, covs] = imageAxes(dimOrder, dimSize, params);

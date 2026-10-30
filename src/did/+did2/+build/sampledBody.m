@@ -36,6 +36,12 @@ function doc = sampledBody(ownerId, varargin)
 %     'Conditions'    one-value facts true of THIS body only
 %     'Format'        an ontology term: {node, name} or a CURIE (formatTerm)
 %     'Compression', 'ContentHash', 'HashAlgorithm', 'Description'
+%     'Compression'   the codec: a spelling ('gzip', 'blosc-zstd'), a term or a
+%                     {term, parameters} block, written in the form the
+%                     schema declares (did2.build.compression; [compression
+%                     block and empty levels], Jess Haley, 2026-10-26).
+%                     Settings beyond the codec name: build the block with
+%                     did2.build.compression(codec, 'Settings', s) and pass it
 %     'Fields'        any other declared field, as a struct
 %   Options (edges):
 %     'MethodId'      the `method` document of the filter these samples
@@ -111,7 +117,7 @@ fields = struct('dimensions', {dimensions}, 'covariates', {options.Covariates}, 
     'datum_order', options.DatumOrder, 'byte_order', options.ByteOrder, ...
     'fill_value', options.FillValue, ...
     'conditions', {options.Conditions}, 'format', did2.build.formatTerm(options.Format, options.SchemaCache), ...
-    'compression', options.Compression, 'content_hash', options.ContentHash, ...
+    'compression', {did2.build.compression(options.Compression, 'SchemaCache', options.SchemaCache)}, 'content_hash', options.ContentHash, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);
 edges = struct('owner_id', {ownerIds(ownerId)}, 'key_id', {options.KeyIds});

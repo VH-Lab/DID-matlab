@@ -1678,7 +1678,8 @@ if isstruct(fmt)
 else
     verifyEqual(testCase, char(fmt), 'image/tiff');
 end
-verifyEqual(testCase, body.get('data_body.compression'), 'lzw');
+% either shape ([compression block and empty levels]): did2.build.compressionCodec
+verifyEqual(testCase, did2.build.compressionCodec(body.get('data_body.compression')), 'lzw');
 end
 
 
