@@ -16,7 +16,8 @@ function [term, factor, kind] = jSourceUnit(spelling)
 %     - '' -> [] (no source unit, no term).
 %
 %   FACTOR multiplies a source value into the canonical unit of KIND
-%   (volts, seconds, meters, grams, hertz, degrees, celsius, liters, amperes),
+%   (volts, seconds, meters, grams, hertz, degrees, celsius, liters, amperes,
+%   molar),
 %   or is [] when the spelling is not one this table knows -- the caller then
 %   writes no canonical value rather than a guessed one. KIND is '' then.
 %
@@ -26,6 +27,26 @@ function [term, factor, kind] = jSourceUnit(spelling)
 %   registry's node and name. A spelling in the second table (dB -> om:decibel)
 %   is registered but has no canonical factor here: it gets its term, FACTOR []
 %   and KIND '' (so no canonical value is computed from it, as before).
+%
+%   CONCENTRATION. A `concentration` cell has several canonical slots (molar,
+%   grams_per_liter, liters_per_liter, ...); every concentration row here is
+%   in MOLAR (om:molar, [molar kept], Jess Haley, 2026-10-22), so KIND
+%   'concentration' means the `molar` slot (jQuantity, jDoseBodies). A row for
+%   another slot needs the table to say its slot first. The rows are the
+%   spellings NDI's v1 writers use: every mixture_table writer on NDI-matlab
+%   (+birren/TreatmentCreator.m, +birren/createSayaTreatments.m,
+%   +babu/treatments.json, +marder/marder_mixtures.json,
+%   +birren/birren_mixtures.txt) writes unitName 'Molar', with the value
+%   already in molar (CNO 10e-6, hexamethonium 100e-6); 'molar' is the
+%   registry's label and 'M' the SI symbol. They are added so a molar
+%   concentration gets its canonical, which [canonical absent only as needs
+%   info] (Jess Haley, 2026-10-30) requires, instead of being carried as
+%   carry-155 ("resolved_by: ... a new row in the unit table").
+%   mM, uM, nM and pM are exact too but NOT here: om:millimolar,
+%   om:micromolar, om:nanomolar and om:picomolar are not in the term registry,
+%   and a row names a registered term (registry row first); no v1 writer
+%   writes them. Until then they are unrecognised (carry-155 where a caller
+%   carries).
 
 term = [];
 factor = [];
@@ -100,7 +121,10 @@ T = { ...
     'mA',             'current',    1e-3,         'om:milliampere', 'milliampere'; ...
     'uA',             'current',    1e-6,         'om:microampere', 'microampere'; ...
     'nA',             'current',    1e-9,         'om:nanoampere', 'nanoampere'; ...
-    'pA',             'current',    1e-12,        'om:picoampere', 'picoampere'};
+    'pA',             'current',    1e-12,        'om:picoampere', 'picoampere'; ...
+    'M',              'concentration', 1,         'om:molar', 'molar'; ...
+    'Molar',          'concentration', 1,         'om:molar', 'molar'; ...
+    'molar',          'concentration', 1,         'om:molar', 'molar'};
 % registered spellings with no canonical factor in this table
 % spelling            registered node, label
 TERMONLY = { ...
