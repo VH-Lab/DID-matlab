@@ -248,7 +248,12 @@ end
 
 function testNeedsInfoExcusesAMissingCanonical(testCase)
 doc = did2.schema.cache.shared().buildBlankDocument('measured');
-doc.base.needs_info = [];   % the blank structure would be an empty entry
+% a document missing nothing has no needs_info at all (did2.build.document
+% writes it only when there is an entry); the blank structure would be one
+% empty entry, and [] is not the struct the field's type asks for
+if isfield(doc.base, 'needs_info')
+    doc.base = rmfield(doc.base, 'needs_info');
+end
 doc.measured.reading = struct('source_value', 100, ...
     'source_unit', struct('node', 'om:millimetre', 'name', 'millimetre'));
 verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
@@ -256,8 +261,12 @@ verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
 doc.base.needs_info = struct('field', 'measured.reading.meters', ...
     'reason', 'the source states millimetres with no conversion');
 did2.schema.cache.shared().validateDocument(doc);
+% an entry naming the cell itself names a field the document gives (its
+% source_value and source_unit), which [missing facts are needs info] refuses
+% (did2.schema.needsInfoFields): the entry names the canonical
 doc.base.needs_info = struct('field', 'measured.reading', 'reason', 'not stated');
-did2.schema.cache.shared().validateDocument(doc);
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:badNeedsInfo', 'the cell is given: naming it is refused');
 end
 
 function testWhatTheCanonicalCheckLeavesAlone(testCase) %#ok<INUSD>

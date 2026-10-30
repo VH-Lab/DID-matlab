@@ -2544,8 +2544,12 @@ classdef cache < handle
             %   `canonicals`: the slots other than source_unit, source_value,
             %   approximate and tolerance) that states a unit and a finite
             %   source_value but no canonical is refused, unless EXCUSED (the
-            %   paths the document's base.needs_info names) names the cell or
-            %   a field under it. A canonical holding NaN is present here.
+            %   paths the document's base.needs_info names) names a field
+            %   under the cell (its canonical). An entry naming the cell
+            %   itself never gets here: the cell is given, and
+            %   did2.schema.needsInfoFields refuses an entry for a field the
+            %   document gives (badNeedsInfo, [missing facts are needs
+            %   info]). A canonical holding NaN is present here.
             %   NOT CHECKED HERE, each because a writer of today would fail:
             %     - a cell with NO unit (a source number with no unit; the
             %       decision wants needs_info, but neuron_extracellular's
