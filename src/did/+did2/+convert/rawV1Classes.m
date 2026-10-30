@@ -383,9 +383,21 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         round trip and single-read keys], Jess Haley,
 %                         2026-10-30: the label back from the observation's
 %                         notes, `format` 'tiff' from EDAM:format_3591).
+%     dataset_session_info  superclass `base` only, no `app` block, no
+%                         superclass migrator. Writes no V2 document ([fit
+%                         classes kept; session list rebuilt], Jess Haley,
+%                         2026-10-27): v1_to_v2 carryUnrebuiltSessionLists,
+%                         which reads the v1 input, carries a list the batch's
+%                         memberships do not rebuild (carry-118); a field
+%                         outside the template carries it (private/
+%                         jRawAccount, carry-100). Written by NDI's older
+%                         +dataset/dir.m (template dataset_session_info.json).
+%                         Inverse: the passthrough one, or nothing for a list
+%                         that rebuilt. Round trips:
+%                         testRawV1RoundTripSessionList.
 %     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
 %                         universalRenames. Of the +migrators_j migrators these
-%                         are dataset_session_info, fitcurve, ontology_table_row,
+%                         are fitcurve, ontology_table_row,
 %                         openminds, openminds_element, openminds_stimulus,
 %                         openminds_subject, vmspikefilteringparameters and
 %                         vmspikefit; a class with no +migrators_j migrator
@@ -471,6 +483,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'binnedspikeratevm', ...
     'control_stimulus_ids', ...
     'image', ...
+    'dataset_session_info', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above

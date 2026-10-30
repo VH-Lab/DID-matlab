@@ -20,10 +20,32 @@ function v2Body = dataset_session_info(preBody)
 %   (carryUnrebuiltSessionLists) checks, after the batch, that those rebuild
 %   this list exactly, and carries it otherwise. The dataset entity and the
 %   relations it used to write here duplicated theirs.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (dataset_session_info.json + base.json at the locked
+%   NDI-matlab `main`, 441530d: one block, `dataset_session_info`, holding the
+%   list, and no edge). The list is compared with the batch's memberships by
+%   v1_to_v2 (carryUnrebuiltSessionLists), which reads the v1 input itself, so
+%   the raw read changes nothing it compares; a carry is now the untouched v1
+%   source. What the renamed path would have discarded is carried, carry-049,
+%   as before; a block, base field or edge outside the template (which the
+%   renamed path dropped without a word when the list rebuilt) carries the
+%   document whole as v1 (private/jRawAccount, jRawCarry; [fields outside the
+%   template are malformed], carry-100). did2.convert.roundtrip.
+%   dataset_session_info is the inverse of a carry or a stray passthrough;
+%   testRawV1RoundTripSessionList compares the two.
 
 arguments
-    preBody (1,1) struct %#ok<INUSA>
+    preBody (1,1) struct
 end
 
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'dataset_session_info', {{'dataset_session_info'}}), {});
+if jRawCarry('dataset_session_info', preBody, collision, unplaced, 'carry-100')
+    v2Body = {preBody};   % the carry of the untouched v1 source
+    return;
+end
 v2Body = {};
 end
