@@ -19,6 +19,9 @@ function [v1, spec] = stimulus_response_scalar_parameters_basic(bodies)
 %   (id preserved), optionally with the harmonic_component calculations whose
 %   `method_id` names it (the responses that use it):
 %     base.id, session_id, datestamp     the method (rebuildBase)
+%     base.name                          the method's `name`, when it has one
+%                                        ([v1 name goes to the class's own
+%                                        name field])
 %     the knobs                          each `method.parameters` entry, its
 %                                        variable named back to the v1 knob
 %                                        through the name table
@@ -128,6 +131,12 @@ end
 v1.document_class = struct('class_name', CLASS);
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
+% [v1 name goes to the class's own name field] (Jess Haley, 2026-10-27):
+% resolveResponseParameters writes a non-empty v1 base.name to method.name
+methodName = fieldText(getIn(m, 'method'), 'name');
+if ~isempty(methodName)
+    v1.base.name = methodName;
+end
 v1.(CLASS) = blk;
 % [empty prestimulus normalization is zero] (Jess Haley, 2026-10-27): for this
 % one setting a v1 [] and the V2 0 are the same value (the writer gives them

@@ -112,6 +112,28 @@ verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.file.navigator');
 verifyFalse(testCase, isfield(efp.toStruct(), 'filenavigator'));
 end
 
+function testFilenavigatorNameWithNoHomeIsCounted(testCase)
+% [v1 name goes to the class's own name field] (Decided by Jess Haley,
+% 2026-10-27, did-schema V_eta_go_forward_class_audit.md): the name goes to
+% "the V2 class's own name field where it has one". epoch_file_pattern has
+% none, so v1_to_v2 counts the name no emitted document holds
+% (`v1_name_not_kept`, DETAIL the name) and does not carry the document.
+out = runJ(navBody('{ ''#\.rhd\>'' }', '', ''));
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, out.summary.passthrough_count, 0, 'converted, not carried');
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'v1_name_not_kept'), 'the name is counted');
+verifyEqual(testCase, notes.v1_name_not_kept.count, 1);
+verifyEqual(testCase, notes.v1_name_not_kept.by_class.filenavigator, 1);
+verifyTrue(testCase, any(strcmp(notes.v1_name_not_kept.distinct_details, 'intan1_nav')), 'DETAIL is the name');
+% a nameless navigator counts nothing
+v1 = navBody('{ ''#\.rhd\>'' }', '', '');
+v1.base.name = '';
+out = runJ(v1);
+verifyFalse(testCase, isfield(out.summary, 'migration_notes') ...
+    && isfield(out.summary.migration_notes, 'v1_name_not_kept'));
+end
+
 function testFilenavigatorSinglePatternStaysAList(testCase)
 % A one-element list is still a list. `ndi.file.navigator(E, '.*\.rhd\>')`
 % (+ndi/+session/mock.m:54) is normalised to a cell by setfileparameters
