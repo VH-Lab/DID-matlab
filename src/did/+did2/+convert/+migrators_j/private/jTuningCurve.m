@@ -85,7 +85,11 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %               [Rm c50], [Rm c50 n], [Rm c50 n s]), RB written as the
 %               constraints n = 1 and s = 1, RBN as s = 1, in the fit entry's
 %               `constraints`: {variable 'Naka-Rushton parameter 3' (n), value
-%               1} and {'Naka-Rushton parameter 4' (s), 1}.
+%               1} and {'Naka-Rushton parameter 4' (s), 1}. The model is the
+%               term EMPTY:0000416 "Naka-Rushton function" (Decided by Jess
+%               Haley, 2026-10-30 [Naka-Rushton function minted]), not the
+%               bare label 'Naka-Rushton' written before; the coefficients
+%               keep their names, 'Naka-Rushton parameter k'.
 %     speed     [Priebe fits are one function]: the writer's `fit`,
 %               `fit_no_speed` and `fit_fullspeed` are one equation
 %               (NDIcalc-vis-matlab 00e3e0f: vis.speed.fit, fit_nospeed and
@@ -538,23 +542,33 @@ for g = 1:numel(prefixes)
         model = blockName;
         if startsWith(model, 'fit_'); model = model(5:end); end
     end
-    [model, constraints] = oneFunction(model, blockName, family);
-    [e, d] = oneFit(grp, model, constraints, family);
+    [model, constraints, modelTerm] = oneFunction(model, blockName, family);
+    [e, d] = oneFit(grp, model, constraints, family, modelTerm);
     entries{end+1} = e; %#ok<AGROW>
     dropped = [dropped, prefixed([blockName '.' P], d)]; %#ok<AGROW>
 end
 dropped = [dropped, prefixed([blockName '.'], stated(blk, fn(~claimed)))];
 end
 
-function [model, constraints] = oneFunction(model, blockName, family)
+function [model, constraints, modelTerm] = oneFunction(model, blockName, family)
 %ONEFUNCTION The one model a fit is, and the constraints that tell it apart
 %   ({coefficient number, value} rows): see ONE FUNCTION in the header.
+%   MODELTERM is the model's term when it has one ([] otherwise: oneFit
+%   writes the label of MODEL); MODEL stays the stem of the coefficient names.
 constraints = zeros(0, 2);
+modelTerm = [];
 switch family
     case 'contrast'
         t = regexp(model, '^naka_rushton_(RB|RBN|RBNS)$', 'tokens', 'once', 'ignorecase');
         if ~isempty(t)
             model = 'Naka-Rushton';
+            % Decided by Jess Haley, 2026-10-30, did-schema
+            % V_eta_go_forward_class_audit.md [Naka-Rushton function minted]:
+            % the model is EMPTY:0000416 "Naka-Rushton function" (empty-ontology
+            % #32), not a bare label. Written by its node even where the term
+            % registry in use does not hold the row yet (did-schema #242); a
+            % migration runs with the TermRegistry check off.
+            modelTerm = did2.convert.registeredTerm('EMPTY:0000416', 'Naka-Rushton function');
             switch upper(t{1})
                 case 'RB'
                     constraints = [3 1; 4 1];   % n = 1, s = 1
@@ -574,9 +588,13 @@ switch family
 end
 end
 
-function [e, dropped] = oneFit(s, model, constraints, family)
+function [e, dropped] = oneFit(s, model, constraints, family, modelTerm)
 label = strrep(model, '_', ' ');
-e = struct('model', jLabel(label));
+if nargin >= 5 && ~isempty(modelTerm)
+    e = struct('model', modelTerm);   % [Naka-Rushton function minted]
+else
+    e = struct('model', jLabel(label));
+end
 used = {};
 p = getf(s, {'parameters'});
 if isnumeric(p) && ~isempty(p)

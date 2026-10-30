@@ -144,6 +144,13 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         00e3e0f spatial_frequency_tuning.m / temporal_frequency_tuning.m
 %         write abs.fitless beside the five abs fits), which a fit entry
 %         cannot hold. Until the team answers, the second calculation stays.
+%     [interpolated values are a list] (Jess Haley, 2026-10-30; answers G5)
+%         `interpolated_values` is a list of entries with an optional
+%         `response_transform`; v1 `abs.fitless` is the 'absolute value'
+%         entry on the MAIN calculation. Written as a list only once the
+%         loaded schema declares `response_transform` on the field
+%         (siblings first); until then the one structure, as before, with
+%         `abs.fitless` on the absolute-value calculation.
 %     [parameter names map by table]  the tuning families' v1 settings
 %         (input_parameters) are named through did2.convert.tuningNames; a
 %         setting the table does not hold carries the document (carry-056).
@@ -311,8 +318,11 @@ if ~isempty(curve.conditions)
 end
 % [absolute-value fits are a second calculation]: abs fitless values with no
 % fit have no value to state
+% (once the loaded schema declares `interpolated_values` a list, they are its
+% 'absolute value' entry: [interpolated values are a list], below)
 if isFit && tuningExtra.abs.present && isempty(fieldnames(tuningExtra.abs.value)) ...
-        && ~isempty(fieldnames(tuningExtra.abs.leafFields))
+        && ~isempty(fieldnames(tuningExtra.abs.leafFields)) ...
+        && ~jSchemaHasPath(leafClass, {'interpolated_values', 'response_transform'})
     reasons{end+1} = sprintf('[carry-056] %s.abs (fitless values with no fit)', sourceBlock);
 end
 % The calculator block's inner `depends_on` copy (e.g.
@@ -369,7 +379,44 @@ elseif strcmp(family, 'csf')
     f.method = jMethod(did2.convert.registeredTerm('OBI:0200072', ...
         'curve fitting data transformation'), params);
 else
-    f.method = jMethod(methodName, params);
+    % [data analysis is the general method] (Decided by Jess Haley, 2026-10-30,
+    % did-schema V_eta_go_forward_class_audit.md; docs/V2_PLAN.md G29): a
+    % calculation that is not a fit (a tuning curve with no fit, hartley_calc)
+    % takes EDAM:operation_2945 "Data analysis", per [method terms are
+    % general]; the calculator (METHODNAME) stays the `software` entity on
+    % software_id. The parameters are the v1 settings, as before.
+    f.method = jMethod(DATA_ANALYSIS(), params);
+end
+% [interpolated values are a list] (Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md; docs/V2_PLAN.md G5): a tuning calculation's
+% `interpolated_values` becomes a list of entries, each with the optional
+% `response_transform`, and the v1 `abs.fitless` (the values read off
+% |response|) its second entry, 'absolute value'. Siblings first: did-schema
+% still declares ONE structure, so the list is written only once the loaded
+% schema declares `response_transform` on the field (jSchemaHasPath); until
+% then the structure is written as before and `abs.fitless` stays on the
+% absolute-value calculation ([absolute-value fits are a second calculation]).
+absIvOnList = false;
+absLeafFields = struct();
+if tuningExtra.abs.present && isfield(tuningExtra.abs, 'leafFields')
+    absLeafFields = tuningExtra.abs.leafFields;
+end
+hasMain = isfield(f, 'interpolated_values') && ~isempty(f.interpolated_values);
+hasAbs = isfield(absLeafFields, 'interpolated_values') ...
+    && ~isempty(absLeafFields.interpolated_values);
+if (hasMain || hasAbs) ...
+        && jSchemaHasPath(leafClass, {'interpolated_values', 'response_transform'})
+    entries = {};
+    if hasMain
+        entries{end+1} = f.interpolated_values;
+    end
+    if hasAbs
+        e = absLeafFields.interpolated_values;
+        e.response_transform = 'absolute value';
+        entries{end+1} = e;
+        absIvOnList = true;
+    end
+    f.interpolated_values = did2.build.list(entries{:});
 end
 if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
     % did-schema #88: the result composite's `value` is REQUIRED (tuning_curve,
@@ -402,6 +449,10 @@ if isFit && tuningExtra.abs.present && ~isempty(fieldnames(tuningExtra.abs.value
     % the `abs` block is a second calculation of the same class, its method
     % saying the response was transformed to its absolute value
     fa = tuningExtra.abs.leafFields;
+    if absIvOnList && isfield(fa, 'interpolated_values')
+        % on the main calculation's list ([interpolated values are a list])
+        fa = rmfield(fa, 'interpolated_values');
+    end
     fa.method = fitMethod(tuningExtra.abs.value, params, ...
         {did2.build.parameter(jLabel('response transform'), 'Text', 'absolute value')});
     leaves{end+1} = jStatement(preBody, leafClass, subjectId, ...
@@ -1030,4 +1081,11 @@ if isstruct(v)
 elseif ~isEmptyValue(v)
     c = {p};
 end
+end
+
+function t = DATA_ANALYSIS()
+%DATA_ANALYSIS The method term of a calculation that is not a fit:
+%   EDAM:operation_2945 "Data analysis" ([data analysis is the general method],
+%   Jess Haley, 2026-10-30; registry row built in did-schema).
+t = did2.convert.registeredTerm('EDAM:operation_2945', 'Data analysis');
 end

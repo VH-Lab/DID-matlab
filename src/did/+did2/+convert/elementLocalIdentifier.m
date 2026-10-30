@@ -27,11 +27,20 @@ function [localId, reversible] = elementLocalIdentifier(name, reference)
 %   migration's "carried as v1") rather than writing a form that reads back
 %   as something else.
 %
+%   SINCE [element name and reference stored apart] (Jess Haley, 2026-10-29)
+%   DID-matlab's migrator no longer calls this: it writes the name to the
+%   entity's `name` and the identifier with did2.convert.elementHandle, which
+%   writes the same text for every pair this function accepts and also
+%   writes the pairs it refuses (read back by
+%   did2.convert.elementNameReferenceApart, from the known name). This
+%   function is kept as the mirror of NDI's.
+%
 %   A MIRROR of NDI-matlab's ndi.vintage.elementLocalIdentifier (branch
 %   claude/phase3, 471cd5c66): the same rules, so NDI's writer and reader and
 %   DID's migrator agree on every identifier. Change both together.
 %
-%   See also did2.convert.elementNameReference, did2.convert.migrators_j.element,
+%   See also did2.convert.elementNameReference, did2.convert.elementHandle,
+%            did2.convert.migrators_j.element,
 %            NDI ndi.vintage.elementLocalIdentifier, ndi.element/elementstring.
 
 arguments

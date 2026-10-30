@@ -503,20 +503,28 @@ cache = did2.schema.cache.shared();
 % DENOMINATOR FIRST. All four classes must RESOLVE or every assertion below is
 % vacuous -- "the slot is absent" and "the schema set is not on the path" would
 % otherwise read identically, which is the silentLoss defect in miniature.
+%
+% REMOVED 2026-10-30: the probe of the `binaryseries_parameters` V_eta tombstone
+% and the assertion "the binaryseries_parameters source tombstone must exist to
+% pass through to". Its premise is what [one folder, final classes only] (Jess
+% Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md) removes: a
+% retire class's JSON file is deleted once no v1 document passes through the
+% generic migration under it, and a document carried as v1 is checked against
+% NDI's own v1 template. Every v1 binaryseries_parameters is carried whole as v1
+% ([binaryseries parameters carried], 2026-10-29; the tests above), so nothing
+% passes through to the tombstone. The four persist classes below are what this
+% test measures, and they stay probed.
 try
     statement = cache.getClass('statement');
     value     = cache.getClass('value');
     data      = cache.getClass('data');
     body      = cache.getClass('sampled_body');
-    tombstone = cache.getClass('binaryseries_parameters');
 catch err
     assumeFail(testCase, ...
         ['DID_SCHEMA_PATH does not resolve the V_eta data_body classes (' ...
          err.message ') -- this test measured NOTHING.']);
     return;
 end
-verifyTrue(testCase, isstruct(tombstone), ...
-    'the binaryseries_parameters source tombstone must exist to pass through to');
 
 % ---- (1) THE SLOTS #45 BUILT. Absence here means the tier REGRESSED.
 verifyTrue(testCase, ~isempty(fieldDecl(value, 'data_type')), ...

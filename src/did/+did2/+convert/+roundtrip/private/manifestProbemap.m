@@ -19,9 +19,12 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %   each naming its rig and channels through an `acquisition_channels`
 %   document. A row is read back from its statement:
 %
-%     name, reference  the instrument_id entity's local_identifier
-%                      (did2.convert.elementNameReference; the probe map
-%                      writes the reference with int2str)
+%     name, reference  the instrument_id entity's `name` and what follows it
+%                      in its local_identifier
+%                      (did2.convert.elementNameReferenceApart, [element name
+%                      and reference stored apart]; the local_identifier alone
+%                      for an entity migrated before it; the probe map writes
+%                      the reference with int2str)
 %     type             the instrument's `element type` assertion (the v1
 %                      element.type, kept by +migrators_j/element.m)
 %     devicestring     the acquisition_channels' acquisition_system name, ':',
@@ -134,9 +137,13 @@ inst = ctxDoc(ctx, instrumentId);
 if isempty(inst)
     why{end+1} = sprintf('statement %s: its instrument is not in the batch', char(st.base.id));
 else
-    [name, r] = did2.convert.elementNameReference(fieldText(getIn(inst, 'entity'), 'local_identifier'));
-    if isnumeric(r) && ~isempty(r)
+    instEntity = getIn(inst, 'entity');
+    [name, r] = did2.convert.elementNameReferenceApart(fieldText(instEntity, 'name'), ...
+        fieldText(instEntity, 'local_identifier'));
+    if isnumeric(r) && isscalar(r) && isfinite(r) && r == round(r)
         ref = int2str(r);
+    elseif isnumeric(r) && isscalar(r)
+        ref = num2str(r, 17);
     elseif ischar(r) || isstring(r)
         ref = char(r);
     end

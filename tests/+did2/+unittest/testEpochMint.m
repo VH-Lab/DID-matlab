@@ -1227,14 +1227,25 @@ function testTheFoldedFileValidatesAgainstItsSchema(testCase)
 %
 % Requires the assembled V_eta schema set on DID_SCHEMA_PATH, which is why the
 % rest of this file runs with Validate false.
+%
+% UPDATED 2026-10-30. The body that leaves the mint is no longer checked
+% against a V_eta tombstone: the migrator carries every v1 metadata document
+% whole as v1 (carry-046, stamped did_v1), and a carried document is checked
+% against NDI's own v1 template, never V_eta. [one folder, final classes only]
+% (Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md) deletes
+% the `daqmetadatareader_epochdata_ingested` file on that ground, so this test
+% no longer probes it (a probe of a deleted file would SKIP the test, not fail
+% it). It probes `entity` instead -- disposition `persist`, the class of the
+% epochs this mint emits -- and asserts what holds with or without the file:
+% nothing quarantines under validation and the source leaves the mint as the
+% untouched did_v1 carry.
 did2.unittest.helpers.installSchemaPath(testCase, ...
-    'skipping the ingested-metadata tombstone validation test');
+    'skipping the ingested-metadata validation test');
 try
-    did2.schema.cache.shared().getClass('daqmetadatareader_epochdata_ingested');
+    did2.schema.cache.shared().getClass('entity');
 catch err
     assumeFail(testCase, ...
-        ['DID_SCHEMA_PATH does not resolve daqmetadatareader_epochdata_ingested (' ...
-         err.message ').']);
+        ['DID_SCHEMA_PATH does not resolve entity (' err.message ').']);
 end
 out = did2.convert.v1_to_v2({ ...
         sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
@@ -1248,8 +1259,13 @@ verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0, ...
     '#88 has no fold target; nothing may be emitted');
 verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 1);
 verifyEmpty(testCase, ofClass(out, 'acquisition_metadata_file'));
-verifyNumElements(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), 1, ...
-    'the source passes through under its tombstone, and validates there');
+kept = ofClass(out, 'daqmetadatareader_epochdata_ingested');
+verifyNumElements(testCase, kept, 1, ...
+    'the source leaves the mint as the carried v1 document');
+if isscalar(kept)
+    verifyEqual(testCase, char(kept{1}.get('document_class.schema_version')), 'did_v1', ...
+        'the carry is stamped did_v1, so no V_eta schema is its contract');
+end
 end
 
 % ===================== the 1 -> N arming path ==========================
@@ -1561,7 +1577,7 @@ verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 1, ...
 verifyGreaterThan(testCase, rep.mint_quarantined, 0, ...
     'the bad extra is quarantined loudly, on a 0-quarantine gate');
 verifyNumElements(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), 1, ...
-    'the ORIGINAL passthrough stays -- valid under its own restored tombstone');
+    'the ORIGINAL passthrough stays -- the untouched did_v1 carry');
 verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
 end
 

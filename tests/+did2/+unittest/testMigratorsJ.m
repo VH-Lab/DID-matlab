@@ -2803,7 +2803,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 % a stimulator element is an ndi.probe.timeseries.stimulator (NDI
 % probetype2object.json): [element types have no default] makes a probe type a
 % device only on an ndi.probe.* class (Jess Haley, 2026-10-26)
@@ -2904,7 +2907,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 % a stimulator element is an ndi.probe.timeseries.stimulator (NDI
 % probetype2object.json): [element types have no default] makes a probe type a
 % device only on an ndi.probe.* class (Jess Haley, 2026-10-26)
@@ -2953,7 +2959,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', sessId, ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 elem.element = struct('ndi_element_class', 'ndi.probe.timeseries.stimulator', 'name', 'bath_y', ...
     'reference', 1, 'type', 'stimulator', 'direct', 0);
 % the stimulator's element_epoch for that epoch: its clock (+ndi/element.m)
@@ -4910,7 +4919,10 @@ out = foldPlaceable(testCase, @did2.convert.migrators_j.tuningcurve_calc, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'tcc_1', 'neuron_tc');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_tc');
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.stimulus.tuningcurve');
+% INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
+% V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
+% is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2945');
 verifyEqual(testCase, paramTextJ(leaf, 'best algorithm'), 'empirical_maximum');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
@@ -4948,7 +4960,12 @@ out = foldPlaceable(testCase, @did2.convert.migrators_j.stimulus_tuningcurve, bo
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'stc_1', 'neuron_rt');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_rt');
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.app.stimulus.tuning_response');
+% INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
+% V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
+% is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2945');
+verifyEqual(testCase, depValue(leaf, 'software_id'), ...
+    entityByNameJ(out, 'ndi.app.stimulus.tuning_response').base.id);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 verifyEqual(testCase, nParamsJ(leaf), 0);
 end
@@ -5355,6 +5372,9 @@ verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
 obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_8');
+% [data analysis is the general method] (Jess Haley, 2026-10-30, G29): JRCLUST's
+% method term is wikidata:Q2003571 "Spike sorting", as kilosort's is
+verifyEqual(testCase, char(obs.interaction.method.term.node), 'wikidata:Q2003571');
 
 % #88: the .mat payload is an OPAQUE body owned by the observation; it states no
 % extent at all (the real spike count lives in the payload), so there is no key
@@ -6219,6 +6239,9 @@ verifyEqual(testCase, depValue(calc, 'entity_id'), 'sub_9');
 verifyNotEmpty(testCase, depValue(calc, 'operating_system_id'));
 verifyEqual(testCase, calc.model_fit.value.equation, 'gaussian');
 verifyEqual(testCase, calc.model_fit.value.goodness.sse, 12.5, 'AbsTol', 1e-9);
+% [data analysis is the general method] (Jess Haley, 2026-10-30, G29): a generic
+% fit's method term is OBI:0200072 "curve fitting data transformation"
+verifyEqual(testCase, char(calc.interaction.method.term.node), 'OBI:0200072');
 end
 
 function testFitcurveWithNoOperatingSystemFoldsWithoutTheEdge(testCase)
@@ -6349,6 +6372,8 @@ names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', fa
 calc = out{find(strcmp(names, 'calculation+model_fit'), 1)};
 verifyEqual(testCase, calc.model_fit.value.equation, 'exp2');
 verifyEqual(testCase, calc.model_fit.value.goodness.sse, 3.25, 'AbsTol', 1e-9);
+verifyEqual(testCase, char(calc.interaction.method.term.node), 'OBI:0200072', ...
+    '[data analysis is the general method]: a generic fit is curve fitting');
 end
 
 function body = simpleCalcDoc()

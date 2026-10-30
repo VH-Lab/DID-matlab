@@ -5,7 +5,10 @@ function [blk, bad] = csfBlock(leaf)
 %
 %     spatial_frequencies            the covariate along the one dimension
 %     response_type                  value.response_type's label
-%     fitless_interpolated_c50       value.interpolated_values.c50
+%     fitless_interpolated_c50       value.interpolated_values.c50 (the
+%                                    structure, or in a list the entry with
+%                                    no response_transform: [interpolated
+%                                    values are a list], interpolatedEntry)
 %     visual_response_p_bonferroni, response_varies_p_bonferroni
 %                                    value.significance.*
 %     is_modulated_response          value.significance.modulated_response
@@ -33,10 +36,17 @@ end
 if isfield(value, 'response_type')
     [~, blk.response_type] = termParts(value.response_type);
 end
-if isfield(value, 'interpolated_values') && isstruct(value.interpolated_values)
-    iv = value.interpolated_values;
+if isfield(value, 'interpolated_values') && ~isempty(value.interpolated_values)
+    [iv, b] = interpolatedEntry(value.interpolated_values, '', 'value.interpolated_values');
+    bad = [bad, b];
     if isfield(iv, 'c50'); blk.fitless_interpolated_c50 = iv.c50; end
     bad = [bad, others(iv, {'c50'}, 'value.interpolated_values')];
+    [ab, ~] = interpolatedEntry(value.interpolated_values, 'absolute value', ...
+        'value.interpolated_values');
+    if ~isempty(fieldnames(ab))
+        bad{end+1} = ['an absolute-value interpolated_values entry has no place ' ...
+            'in a contrastsensitivity_calc'];
+    end
 end
 if isfield(value, 'significance') && isstruct(value.significance)
     sig = value.significance;

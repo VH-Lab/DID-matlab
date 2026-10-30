@@ -54,7 +54,9 @@ function [result, report] = resolveResponseParameters(result, options)
 %     the parameters  each `stimulus_response_scalar_parameters_basic` is
 %                     REPLACED IN PLACE by `method {term, parameters}` with the
 %                     same id, so every `method_id` keeps resolving; the term
-%                     is the app (`ndi.app.stimulus.tuning_response`)
+%                     is EDAM:operation_2945 "Data analysis" ([data analysis
+%                     is the general method], Jess Haley, 2026-10-30; the app
+%                     `ndi.app.stimulus.tuning_response` before)
 %     the knobs       one `{variable, <one value form>}` entry each, the
 %                     variable a label of the v1 field name (jParameterList's
 %                     convention). A writer-empty `[]` knob takes the meaning
@@ -287,7 +289,9 @@ report.ran = true;
 
 DIRECTION  = 'calculation';            % did-schema #88: direction class ...
 VALUE_KIND = 'harmonic_component';     % ... plus this value-kind mixin
-METHOD_TERM = 'ndi.app.stimulus.tuning_response';   % as the migrator names it
+% [data analysis is the general method] (Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md): the general term, as the migrator writes it
+METHOD_TERM = did2.convert.registeredTerm('EDAM:operation_2945', 'Data analysis');
 METHOD = 'method';
 PARAMS = 'stimulus_response_scalar_parameters_basic';
 SOURCE = 'stimulus_response_scalar';
@@ -450,7 +454,7 @@ for k = 1:n
     if isempty(sid); sid = baseField(bodies{k}, 'session_id'); end
     ts = baseField(bodies{k}, 'creation_timestamp');
     if isempty(ts); ts = baseField(bodies{k}, 'datestamp'); end
-    mdoc = did2.build.method(did2.convert.registeredTerm('', METHOD_TERM), params, ...
+    mdoc = did2.build.method(METHOD_TERM, params, ...
         'SessionId', sid, 'Id', pid, 'CreationTimestamp', ts, 'Validate', false);
 
     rebuilt{end+1} = mdoc;       %#ok<AGROW>

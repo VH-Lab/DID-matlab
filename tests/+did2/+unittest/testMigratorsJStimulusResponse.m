@@ -299,8 +299,10 @@ v1 = responseFixture('F1');
 v1.depends_on(strcmp({v1.depends_on.name}, ...
     'stimulus_response_scalar_parameters_id')) = [];
 leaf = findHarmonicCalc(testCase, runJ(withEpochEdge(v1)));
-verifyEqual(testCase, leaf.get('interaction.method.term.name'), ...
-    'ndi.app.stimulus.tuning_response');
+% INVERTED 2026-10-30 from the app name: [data analysis is the general method]
+% (Jess Haley, did-schema V_eta_go_forward_class_audit.md, G29)
+verifyEqual(testCase, char(leaf.get('interaction.method.term.node')), ...
+    'EDAM:operation_2945');
 verifyEmpty(testCase, depValue(leaf.toStruct(), 'method_id'));
 end
 

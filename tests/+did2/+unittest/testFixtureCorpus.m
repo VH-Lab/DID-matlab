@@ -124,14 +124,8 @@ gf1.files = struct('file_list', {{'generic_file.ext'}});
 
 % The sibling label. This is the whole point of the batch pass: `variable`
 % lives HERE, not on the file, so no single-document migrator could reach it.
-ol2 = struct();
-ol2.document_class = struct('class_name', 'ontology_label', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-ol2.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_01'});
-ol2.base = struct('id', 'om_gf_lbl', 'session_id', 'sess_09', ...
-    'name', 'ol', 'datestamp', '2024-06-01T12:00:00.000Z');
-ol2.ontology_label = struct('ontology_node', 'EDAM:data_1286');
+% In NDI's own spelling, `ontologyLabel` (see ontologyLabelV1).
+ol2 = ontologyLabelV1('om_gf_lbl', 'om_gf_01', 'EDAM:data_1286');
 
 gf2 = struct();
 gf2.document_class = struct('class_name', 'generic_file', ...
@@ -149,9 +143,7 @@ gf2.generic_file = struct('filename', 'misc/notes.txt', ...
 gf3 = gf1;
 gf3.base.id = 'om_gf_03';
 gf3.generic_file = rmfield(gf3.generic_file, {'date_created', 'date_updated'});
-ol3 = ol2;
-ol3.base.id = 'om_gf_lbl3';
-ol3.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_03'});
+ol3 = ontologyLabelV1('om_gf_lbl3', 'om_gf_03', 'EDAM:data_1286');
 
 batch = { sub, gf1, ol2, gf2, gf3, ol3 };
 end
@@ -315,19 +307,13 @@ vi.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
     'virus_name', 'pAAV-hSyn-hChR2(H134R)-EYFP', 'dilution', 1000, ...
     'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1');
 
-% ontology_label, built from the NDI template: ONE property field
-% (ontologyNode -> ontology_node) and ONE dependency, document_id, pointing at
-% the document being labelled -- here the image_stack below. The previous
-% fixture used ontology_name/label_id/label and an element_id edge, none of
-% which exist. Deferred passthrough: reaching the subject means following
-% document_id through the migrated-id graph, which is the second pass's job.
-ol = struct();
-ol.document_class = struct('class_name', 'ontology_label', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-ol.depends_on = struct('name', {'document_id'}, 'value', {'om_is_01'});
-ol.base = struct('id', 'om_ol_01', 'session_id', 'sess_09', ...
-    'name', 'ol', 'datestamp', '2024-06-01T12:00:00.000Z');
-ol.ontology_label = struct('ontology_node', 'uberon:3373');
+% ontologyLabel, built from the NDI template: ONE property field
+% (ontologyNode) and ONE dependency, document_id, pointing at the document being
+% labelled -- here the image_stack below. The previous fixture used
+% ontology_name/label_id/label and an element_id edge, none of which exist.
+% Deferred passthrough: reaching the subject means following document_id
+% through the migrated-id graph, which is the second pass's job.
+ol = ontologyLabelV1('om_ol_01', 'om_is_01', 'uberon:3373');
 
 is = struct();
 is.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
@@ -353,6 +339,26 @@ om.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Specie
         'preferredOntologyIdentifier', 'NCBITaxon:6239', 'synonym', 'C. elegans'));
 
 batch = { recipient, donor, animalV, elemO, animalI, animalOm, tt, vi, ol, is, om };
+end
+
+% ----- an NDI ontologyLabel, in NDI's spelling ------------------------------
+% MOVED 2026-10-30 from snake-spelled `ontology_label` fixtures, which no NDI
+% writer emits (NDI writes `ontologyLabel`: +setup/+conv/+haley/doImport.m,
+% +setup/+conv/+babu/import.m) and which validated against did-schema's
+% `ontology_label` V_eta tombstone. [one folder, final classes only] (Jess
+% Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md) deletes that
+% file. NDI's spelling is read raw (did2.convert.rawV1Classes) and passes
+% through under its v1 class name, for which V_eta has no schema with or
+% without the file: v1_to_v2 counts it (passthrough_unvalidated_no_schema)
+% instead of quarantining it, and foldGenericFiles finds it under either name
+% (did2.convert.isOntologyLabelClass). Built from the NDI template
+% (tests/+did2/fixtures/ndi_templates/ontologyLabel.json) as
+% testRawV1RoundTripImage's haleyLabel is.
+function v1 = ontologyLabelV1(id, targetId, node)
+v1 = did2.unittest.helpers.ndiDocument('ontologyLabel', 'Id', id, ...
+    'SessionId', 'sess_09', 'Name', 'ol', 'Datestamp', '2024-06-01T12:00:00.000Z');
+v1 = did2.unittest.helpers.setDependency(v1, 'document_id', targetId);
+v1.ontologyLabel = struct('ontologyNode', node);
 end
 
 % ----- shared minimal v1 subject (the in-batch anchor for observations) -----
@@ -529,7 +535,7 @@ verifyEqual(testCase, refRep.orphan_count, 0, ...
 % validation.
 verifyEqual(testCase, edgeOf(result.migrated, 'om_ol_01', 'document_id'), ...
     'om_is_01', ...
-    'ontology_label lost its document_id edge -- the label now says nothing');
+    'ontologyLabel lost its document_id edge -- the label now says nothing');
 
 % GATE 4: the generic_file fold (TEAM DECISION 2026-08-11). DENOMINATOR FIRST
 % and unconditionally, so a pass that read nothing cannot read as a clean one.
@@ -575,11 +581,11 @@ verifyEqual(testCase, classOf(result.migrated, 'om_gf_02'), 'generic_file', ...
 
 % THE LABEL IS NOT CONSUMED. Same class, same edge, same target -- and the
 % target still resolves precisely because the statement kept the source id.
-verifyEqual(testCase, classOf(result.migrated, 'om_gf_lbl'), 'ontology_label', ...
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_lbl'), 'ontologyLabel', ...
     'the sibling label was consumed; it must pass through untouched');
 verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_lbl', 'document_id'), ...
     'om_gf_01', 'the label''s only join stopped resolving');
-verifyEqual(testCase, classOf(result.migrated, 'om_gf_lbl3'), 'ontology_label');
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_lbl3'), 'ontologyLabel');
 verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_lbl3', 'document_id'), ...
     'om_gf_03', 'the label''s only join stopped resolving after the fold');
 verifyEqual(testCase, rep.labels_deleted, 0);
