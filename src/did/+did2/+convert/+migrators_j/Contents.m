@@ -648,8 +648,8 @@
 %         Chunk-b/c de-encode: the mfdaq ingested cache dissolves into the generic
 %         daqreader_epochdata_ingested.
 %     daqreader_ndr
-%         Chunk-c de-encode: daqreader_ndr dissolves into daqreader. The reader
-%         subtype ('ndr') was encoded in the CLASS NAME, but it is already
+%         Chunk-c de-encode: daqreader_ndr folds into an acquisition_reader. The
+%         reader subtype ('ndr') was encoded in the CLASS NAME, but it is already
 %         discriminated by ndi_daqreader_class, so the distinguishing fields de-encode
 %         onto the generic daqreader: ndr_reader_string -> daqreader.reader_string,
 %         and ndi_daqreader_ndr_class dropped (redundant). `file_extension` is NOT
