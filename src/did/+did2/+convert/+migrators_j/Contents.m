@@ -62,12 +62,12 @@
 %     treatment_transfer - 1 -> 1. Always carried whole as v1 (needs mapping,
 %                          for the Babu reimport): [treatment transfer stays
 %                          v1], Jess Haley, 2026-10-27.
-%     ontology_table_row - 1 -> 1. No subject edge: passed through for the NDI
-%                          second pass. With a subject: carried whole as v1
-%                          with a `needs_mapping` note (each column's entity,
-%                          direction and kind were chosen from label words:
-%                          [one correct reading], [dataset audit batch 1 and
-%                          2], Jess Haley, 2026-10-26).
+%     ontology_table_row - 1 -> 1. Every row carried whole as v1 with a
+%                          `needs_mapping` note (carry-026): a row does not
+%                          state which entity each column is about, so the
+%                          generic stage resolves no subject and fans out no
+%                          statements ([table rows carried as v1], Jess Haley,
+%                          2026-10-30).
 %     treatment          - 1 -> N. A term that states its number's kind ->
 %                          a `manipulation` of that value kind; a ChEBI
 %                          substance -> a `dose` or `formulation` (immersion)
@@ -482,9 +482,6 @@
 %   PENDING (need discovery-mode iteration against the corpora and/or the still
 %   -open flat-table decisions):
 %
-%     ontology_table_row - rewrite to the D10 column-role rule + chosen qualifier
-%                          shape and D11 per-column subject resolution once those
-%                          decisions land (the current split is the interim seed).
 %     ontology_image     - -> an `observation` about the imaged entity + a
 %                          sampled_body for the image raster (D5). Built for the
 %                          legacy shape (see the roster entry); the current NDI
@@ -866,8 +863,9 @@
 %         until its position element is mapped. 1 -> 1.
 %     probe_geometry
 %         Brainstorm-J migrator: did_v1 probe_geometry -> one `observation` with value
-%         kind `length` PER SPATIAL AXIS about the probe's entity, plus the session
-%         anchor, plus an optional probe-model `assertion` with value kind `term`.
+%         kind `length` PER SPATIAL AXIS about the probe's entity, each linked to the
+%         probe's one `coordinate_system`, plus that coordinate system, the session
+%         anchor and an optional probe-model `assertion` with value kind `term`.
 %     probe_location
 %         Brainstorm-J migrator: did_v1 probe_location -> an `observation` with value
 %         kind `term`, + the session anchor.

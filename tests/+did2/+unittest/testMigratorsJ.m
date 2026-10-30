@@ -6,9 +6,10 @@ function tests = testMigratorsJ
 %     - subject_group      -> bare `subject` (v3.0.0; no is_group/is_biological)
 %     - treatment_transfer -> carried whole as v1 ([treatment transfer stays v1])
 %                             + session anchor (1 -> 3, D4)
-%     - ontology_table_row -> per-column assertions/observations (1 -> N), and
-%                             the per-table map for the C. elegans encounter
-%                             (worm obs + shared time_reference + patch relation)
+%     - ontology_table_row -> every row carried whole as v1 with a carry-026
+%                             note ([table rows carried as v1], Jess Haley,
+%                             2026-10-30); no subject, no statements, no
+%                             per-table map
 %     - treatment          -> temperature_/dose_/term_manipulation by structure,
 %                             + a site term_observation for a located site (D3)
 %     - treatment_drug     -> dose_manipulation (mixture -> dose composite)
@@ -525,7 +526,7 @@ for k = 1:numel(cases)
 end
 end
 
-% ============ ontology_table_row -> assertions/observations (1 -> N) ====
+% ============ ontology_table_row -> carried whole as v1 (1 -> 1) =========
 
 function otr = tableRow()
 otr = struct();
@@ -557,6 +558,7 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'ontology
 verifyEqual(testCase, out.migrated{1}.get('ontology_table_row.data'), v1.ontology_table_row.data);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-026] needs_mapping: assertion | observation | manipulation'), d);
+verifyTableRowCarryNote(testCase, out);
 end
 
 % ===================== treatment -> manipulation leaves ================
@@ -2188,8 +2190,9 @@ function otr = behaviourPlateRow()
 %BEHAVIOURPLATEROW The `ontologyTableRow` the fixture above points at: the JH
 %   behaviour-plate table (doImport.m:230-237; columns doImport.m:101-106).
 %
-%   IT MUST REACH THE GUARDED PASSTHROUGH, and it does so for the reason the
-%   real corpus documents do, not by construction: `tableDocMaker` sets exactly
+%   IT IS CARRIED WHOLE AS V1, like every row since [table rows carried as
+%   v1] (Jess Haley, 2026-10-30). Before that it reached the guarded
+%   passthrough for the reason the real corpus documents did: `tableDocMaker` sets exactly
 %   one dependency in the whole file and it is `document_id`
 %   (tableDocMaker.m:231), so there is no `subject_id` for
 %   `resolvedSubject` to find. It is not an encounter table (no
@@ -2425,18 +2428,33 @@ if isfield(notes, 'carried_as_v1')
 end
 end
 
+function verifyTableRowCarryNote(testCase, out)
+%VERIFYTABLEROWCARRYNOTE [table rows carried as v1] (Jess Haley, 2026-10-30):
+%   every ontology_table_row is carried with the carry-026 `needs_mapping` note.
+notes = out.summary.migration_notes;
+verifyTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
+if isfield(notes, 'carried_as_v1')
+    d = notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-026] needs_mapping: '), d);
+    verifyTrue(testCase, contains(d, '[table rows carried as v1]'), d);
+end
+end
+
 function testAnEncounterRowIsNotMappedByTheGenericStage(testCase)
 % INVERTS testEncounterTableMap / testAnEncounterRowTheMapCannotPlaceIs...:
 % the JH C. elegans encounter map left the generic migration (Decided by Jess
 % Haley, 2026-10-26 [dataset-specific logic leaves the generic migration],
 % [dataset audit batch 1 and 2]). An encounter row -- even one the old map
-% placed whole -- is now an ordinary row: with no `subject_id` edge it comes
-% back as the v1 row, every cell kept, for the NDI second pass; no window, no
-% `encountered` relation and no worm observation is written.
+% placed whole -- is now an ordinary row: it comes back as the v1 row, every
+% cell kept, carried with a carry-026 note ([table rows carried as v1], Jess
+% Haley, 2026-10-30); no window, no `encountered` relation and no worm
+% observation is written.
 rows = {encounterRow(), placeableEncounterRow()};
 for r = 1:numel(rows)
     v1 = rows{r};
     out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    verifyTableRowCarryNote(testCase, out);
     verifyEqual(testCase, numel(out.migrated), 1, 'the v1 row, alone');
     verifyEqual(testCase, out.summary.quarantine_count, 0);
     d = out.migrated{1};
@@ -2480,10 +2498,13 @@ function testAPatchGeometryRowIsNotMappedByTheGenericStage(testCase)
 % `culture` entity named plate/<p>/patch/<q> and six fixed measures) left the
 % generic migration (Decided by Jess Haley, 2026-10-26 [dataset-specific logic
 % leaves the generic migration], [dataset audit batch 1 and 2]). The row comes
-% back as the v1 row, every cell kept; no patch entity is minted under any
-% handle.
+% back as the v1 row, every cell kept, carried with a carry-026 note ([table
+% rows carried as v1], Jess Haley, 2026-10-30); no patch entity is minted under
+% any handle.
 v1 = patchGeometryRow();
 out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTableRowCarryNote(testCase, out);
 verifyEqual(testCase, numel(out.migrated), 1, 'the v1 row, alone');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 d = out.migrated{1};
@@ -2560,10 +2581,13 @@ function testCultivationPlateIsNotMigratedAsABacterialPatch(testCase)
 %   four dispatch-relevant keys have to be exact.)
 %
 %   With no `subject_id` dependency on the source document (the NDI
-%   ontologyTableRow template declares only `document_id`), the correct
-%   behaviour is the guarded passthrough: carry the document intact for the NDI
-%   second pass, which can see the migrated-id graph.
-out = runJ(cultivationPlateRow());
+%   ontologyTableRow template declares only `document_id`), the row is carried
+%   whole as v1 -- as every row is since [table rows carried as v1] (Jess
+%   Haley, 2026-10-30) -- with a carry-026 note.
+v1 = cultivationPlateRow();
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+verifyTableRowCarryNote(testCase, out);
 verifyEqual(testCase, numel(out.migrated), 1, ...
     'the cultivation plate was fanned out instead of passed through');
 d = out.migrated{1};
@@ -5335,6 +5359,13 @@ function testProbeGeometryBecomesPerAxisLengthObservations(testCase)
 %
 % The real source is three already-named parallel per-site arrays, so each is
 % kept as its own observation rather than concatenated into one anonymous array.
+%
+% UPDATED 2026-10-30 ([site positions are coordinates], [site frame is a
+% coordinate system], Jess Haley, 2026-10-27): the variables are NCIT
+% X-Coordinate / Y-Coordinate (they were the labels 'site location
+% (left-right)' / '(front-back)'), and each names the probe's coordinate
+% system (testProbeGeometryWritesOneCoordinateSystem).
+did2.unittest.helpers.assumeNeedsInfo(testCase);
 v1 = struct();
 v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -5358,12 +5389,12 @@ verifyEqual(testCase, sum(strcmp(names, 'observation+length')), 2);
 vars = {};
 for k = 1:numel(out)
     if strcmp(names{k}, 'observation+length')
-        vars{end+1} = out{k}.statement.variable.name; %#ok<AGROW>
+        vars{end+1} = out{k}.statement.variable.node; %#ok<AGROW>
     end
 end
-verifyTrue(testCase, any(strcmp(vars, 'site location (left-right)')));
-verifyTrue(testCase, any(strcmp(vars, 'site location (front-back)')));
-verifyFalse(testCase, any(strcmp(vars, 'site location (depth)')));
+verifyTrue(testCase, any(strcmp(vars, 'NCIT:C44477')), 'X-Coordinate (left-right)');
+verifyTrue(testCase, any(strcmp(vars, 'NCIT:C44478')), 'Y-Coordinate (front-back)');
+verifyFalse(testCase, any(strcmp(vars, 'NCIT:C44479')), 'Z-Coordinate (depth): not populated');
 
 lr = out{find(strcmp(names, 'observation+length'), 1)};
 verifyEqual(testCase, depValue(lr, 'entity_id'), 'probe_5');
@@ -5376,6 +5407,82 @@ verifyEqual(testCase, lr.length.value(2).meters, 2e-5, 'AbsTol', 1e-12);
 assertion = out{find(strcmp(names, 'assertion+term'), 1)};
 verifyEqual(testCase, assertion.statement.variable.name, 'probe model');
 verifyEqual(testCase, assertion.term.value.name, 'linear');
+end
+
+function testProbeGeometryWritesOneCoordinateSystem(testCase)
+% [site frame is a coordinate system] (Jess Haley, 2026-10-27): each probe gets
+% ONE coordinate_system whose referent_id is the probe's device entity, axes x,
+% y and z in that order with NDI's positive directions (probe_geometry_schema.json:
+% left negative / right positive, front negative / back positive, "from facing
+% the electrode"), and every site X/Y/Z value names it by coordinate_system_id.
+% [missing facts are needs info] (Jess Haley, 2026-10-29): v1 states neither the
+% zero point nor depth's sign, so reference_point and axes(3).positive_direction
+% are absent, each named by a base.needs_info entry and one report note.
+did2.unittest.helpers.assumeNeedsInfo(testCase);
+v1 = struct();
+v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_7'});
+v1.base = struct('id', 'pg_7', 'session_id', 'sess_09', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.probe_geometry = struct( ...
+    'site_locations_leftright', [0 20 0], ...
+    'site_locations_frontback', [0 0 0], ...
+    'site_locations_depth', [0 25 50], ...
+    'ndim', 2, 'unit', 'um', 'probe_model', '');
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.probe_geometry(v1);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
+
+% one coordinate system, about the probe
+isCS = strcmp(names, 'coordinate_system');
+verifyEqual(testCase, sum(isCS), 1, 'one coordinate system per probe');
+if sum(isCS) ~= 1; return; end
+cs = out{isCS};
+verifyEqual(testCase, depValue(cs, 'referent_id'), 'probe_7');
+
+% axes x, y, z in that order; x positive right, y positive back, z unstated
+ax = cs.coordinate_system.axes;
+verifyEqual(testCase, numel(ax), 3);
+verifyEqual(testCase, {ax(1).axis.node, ax(2).axis.node, ax(3).axis.node}, ...
+    {'STATO:0000006', 'STATO:0000008', 'STATO:0000012'});
+verifyEqual(testCase, ax(1).positive_direction.node, 'PATO:0000367');   % right
+verifyEqual(testCase, ax(2).positive_direction.node, 'PATO:0001901');   % back
+verifyTrue(testCase, ~isfield(ax, 'positive_direction') || isempty(ax(3).positive_direction), ...
+    'depth''s positive direction is not stated in v1');
+verifyFalse(testCase, isfield(cs.coordinate_system, 'reference_point'), ...
+    'the zero point is not stated in v1');
+
+% the two needs_info entries, and nothing else
+ni = cs.base.needs_info;
+verifyEqual(testCase, sort({ni.field}), sort({'coordinate_system.reference_point', ...
+    'coordinate_system.axes(3).positive_direction'}));
+verifyTrue(testCase, all(~cellfun(@isempty, {ni.reason})), 'each entry gives a reason');
+[~, problems] = did2.schema.needsInfoFields(cs);
+verifyEmpty(testCase, problems);
+% ... and the report counts them
+verifyTrue(testCase, isfield(notes, 'needs_info'), 'no needs_info report note');
+if isfield(notes, 'needs_info')
+    verifyEqual(testCase, notes.needs_info.count, 2);
+end
+
+% every site observation names it
+isObs = strcmp(names, 'observation+length');
+verifyEqual(testCase, sum(isObs), 3, 'three populated axes');
+vars = {};
+for k = find(isObs)
+    verifyEqual(testCase, depValue(out{k}, 'coordinate_system_id'), char(cs.base.id), ...
+        sprintf('observation %d does not name the coordinate system', k));
+    verifyEqual(testCase, depValue(out{k}, 'entity_id'), 'probe_7');
+    vars{end+1} = out{k}.statement.variable.node; %#ok<AGROW>
+end
+verifyEqual(testCase, vars, {'NCIT:C44477', 'NCIT:C44478', 'NCIT:C44479'}, ...
+    'X-, Y- and Z-Coordinate, in NDI''s field order');
+% the anchor names none (only site values are coordinates)
+anchor = out{end};
+verifyEmpty(testCase, depValue(anchor, 'coordinate_system_id'));
 end
 
 function testProbeGeometryWithContactGeometryIsCarriedAsV1(testCase)
@@ -5420,6 +5527,7 @@ function testProbeGeometryWritersContourFlagDoesNotCarry(testCase)
 % equal to an NDI writer's fixed default -- 1 (template probe_geometry.json:33)
 % or 0 (fromStruct.m:73) -- counts as not set, so it alone does not carry the
 % document; the fold runs. A non-default value still carries it.
+did2.unittest.helpers.assumeNeedsInfo(testCase);   % the fold writes a coordinate system
 for v = {1, 0, true}
     v1 = struct();
     v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
