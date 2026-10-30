@@ -85,6 +85,13 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     statements is counted in the next corpus run"); DETAIL
 %                     is the name. v1_to_v2 writes it beside the carry's own
 %                     `carried_as_v1` note.
+%     needs_info      ONE note per `base.needs_info` entry a migrator writes
+%                     on a document it emits: a fact the source never stated
+%                     ([missing facts are needs info], Jess Haley, 2026-10-29,
+%                     did-schema V_eta_go_forward_class_audit.md: "the
+%                     migration report counts the entries"). DETAIL is the
+%                     entry's field path ('coordinate_system.reference_point').
+%                     Written by probe_geometry (two per converted document).
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
 %                     location, so whether it was an immersion or a dose cannot
 %                     be read from it; it migrates as a dose with a NaN amount

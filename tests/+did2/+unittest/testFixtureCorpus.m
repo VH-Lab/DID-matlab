@@ -1233,6 +1233,15 @@ d.probe_geometry = struct( ...
 % no `manufacturer` (2026-10-26): one that is set carries the document whole as
 % v1 ([probe contact geometry carried]), and this fixture exercises the fold
 batch = { sub, d };
+% 2026-10-30: the fold writes the probe's coordinate system with two
+% base.needs_info entries ([site frame is a coordinate system], [missing facts
+% are needs info]); a schema whose base declares no needs_info cannot hold it,
+% so there the fixture is left out and the run says so
+if ~did2.unittest.helpers.schemaDeclares('base', {'needs_info'})
+    fprintf(['FIXTURE NOT RUN: fx_probe_geometry -- the loaded schema declares ' ...
+        'no base.needs_info\n']);
+    batch = {};
+end
 end
 
 % ---- position_metadata (element_id) ----------------------------------------

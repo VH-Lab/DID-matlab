@@ -1,8 +1,9 @@
 function bodies = probe_geometry(preBody)
 %PROBE_GEOMETRY Brainstorm-J migrator: did_v1 probe_geometry -> one
 %   `observation` with value kind `length` PER SPATIAL AXIS about the probe's
-%   entity, plus the session anchor, plus an optional probe-model `assertion`
-%   with value kind `term`.
+%   entity, each linked to the probe's one `coordinate_system`, plus that
+%   coordinate system, the session anchor and an optional probe-model
+%   `assertion` with value kind `term`.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'. The
 %   probe IS a `subject` (device-as-subject, D2), carried from the source
@@ -39,6 +40,32 @@ function bodies = probe_geometry(preBody)
 %   own length_observation with its own spine variable, and per-site identity
 %   stays positional within each array -- the same series-as-cardinality rule
 %   jMeasureArray already uses.
+%
+%   THE VARIABLES AND THE FRAME. [site positions are coordinates] (Jess Haley,
+%   2026-10-27, did-schema V_eta_go_forward_class_audit.md): each axis's
+%   variable is the registered NCIT X-Coordinate (C44477), Y-Coordinate
+%   (C44478) or Z-Coordinate (C44479) -- left-right, front-back and depth --
+%   not a label of its own ('site location (left-right)' and so on until this
+%   change). [site frame is a coordinate system] (Jess Haley, 2026-10-27): the
+%   probe gets ONE `coordinate_system` whose `referent_id` is the probe's
+%   device entity (the same id as the statements' entity_id), with axes x, y
+%   and z in that order, and each site observation names it by its optional
+%   `coordinate_system_id` edge. The positive directions are NDI's
+%   (probe/probe_geometry_schema.json at the locked NDI-matlab `main`,
+%   441530d: site_locations_leftright "Left (negative)/ right (positive) site
+%   positions from facing the electrode", site_locations_frontback "Front
+%   (negative)/ back (positive) ..."): x positive is right (PATO:0000367), y
+%   positive is back (PATO:0001901). The axes are STATO x-axis (0000006),
+%   y-axis (0000008) and z-axis (0000012). v1 states neither where zero is
+%   (the template has no field for it; site_locations_depth is documented only
+%   as "Depth of site positions") nor which way depth runs, so
+%   `reference_point` and the z axis's `positive_direction` are left out and
+%   named in the coordinate system's `base.needs_info` ([missing facts are
+%   needs info], Jess Haley, 2026-10-29), one `needs_info` report note each.
+%   The coordinate system is written for every converted document, with all
+%   three axes, whichever axes the document populates. z-axis, right and back
+%   are not yet in did-schema's term registry; did2.convert runs with the
+%   TermRegistry strict mode off, so the migration writes them meanwhile.
 %
 %   `unit` (e.g. 'um') applies to all three axes. `ndim` says how many axes are
 %   meaningful, but it is not trusted over the data: an axis is emitted iff it is
@@ -82,9 +109,11 @@ function bodies = probe_geometry(preBody)
 %                                            others and the assertion are
 %                                            minted)
 %     base.name                           -> not written (the writer leaves '')
-%     depends_on probe_id                 -> each statement's entity_id
+%     depends_on probe_id                 -> each statement's entity_id, and
+%                                            the coordinate system's referent_id
 %     site_locations_leftright/frontback/ -> one length observation each, the
-%       depth                                source values in order
+%       depth                                source values in order, variable
+%                                            X-/Y-/Z-Coordinate
 %     unit                                -> the source unit of every value; a
 %                                            unit no length term is known for
 %                                            has no place: carried
@@ -176,31 +205,21 @@ end
 unit = jGetChar(blk, 'unit');
 probeModel = jGetChar(blk, 'probe_model');
 
-% the three per-site coordinate arrays, in the order NDI declares them
+% the three per-site coordinate arrays, in the order NDI declares them, and
+% the NCIT coordinate each is ([site positions are coordinates])
 axisMap = { ...
-    'site_locations_leftright', 'site location (left-right)'; ...
-    'site_locations_frontback', 'site location (front-back)'; ...
-    'site_locations_depth',     'site location (depth)'};
+    'site_locations_leftright', 'NCIT:C44477', 'X-Coordinate'; ...
+    'site_locations_frontback', 'NCIT:C44478', 'Y-Coordinate'; ...
+    'site_locations_depth',     'NCIT:C44479', 'Z-Coordinate'};
 
 subjectSrc = {'probe_id', 'element_id', 'subject_id'};
-anchor = jSessionAnchor(preBody, 'during');
-obsBodies = {};
+probeId = jSubjectOf(preBody, subjectSrc);
+populated = false(1, size(axisMap, 1));
 for k = 1:size(axisMap, 1)
-    vals = numericArray(blk, axisMap{k, 1});
-    if isempty(vals); continue; end
-    % the first emitted body keeps the source id; later ones are siblings
-    % the first observation keeps the source id (its references resolve); the
-    % others are fresh
-    idOpt = {};
-    if isempty(obsBodies); idOpt = {'Id', char(preBody.base.id)}; end
-    obs = jStatement(preBody, 'observation', jSubjectOf(preBody, subjectSrc), ...
-        jLabel(axisMap{k, 2}), ...
-        jQuantity('length', vals, unit, 'approximate', false), ...
-        'TimeReferenceIds', {anchor.base.id}, idOpt{:}, 'ValueKind', 'length');
-    obsBodies{end+1} = obs; %#ok<AGROW>
+    populated(k) = ~isempty(numericArray(blk, axisMap{k, 1}));
 end
 
-if isempty(obsBodies)
+if ~any(populated)
     % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
     % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
@@ -213,7 +232,28 @@ if isempty(obsBodies)
     return;
 end
 
+anchor = jSessionAnchor(preBody, 'during');
+% [site frame is a coordinate system]: the probe's one coordinate system,
+% built before the observations so they can name it
+frame = probeCoordinateSystem(preBody, probeId);
+obsBodies = {};
+for k = find(populated)
+    vals = numericArray(blk, axisMap{k, 1});
+    % the first observation keeps the source id (its references resolve); the
+    % others are fresh
+    idOpt = {};
+    if isempty(obsBodies); idOpt = {'Id', char(preBody.base.id)}; end
+    obs = jStatement(preBody, 'observation', probeId, ...
+        did2.convert.registeredTerm(axisMap{k, 2}, axisMap{k, 3}), ...
+        jQuantity('length', vals, unit, 'approximate', false), ...
+        'TimeReferenceIds', {anchor.base.id}, ...
+        'Edges', struct('coordinate_system_id', char(frame.base.id)), ...
+        idOpt{:}, 'ValueKind', 'length');
+    obsBodies{end+1} = obs; %#ok<AGROW>
+end
+
 bodies = obsBodies;
+bodies{end+1} = frame;
 if ~isempty(probeModel)
     % Optional probe-model assertion: a timeless subject_assertion leaf (no
     % interaction), a secondary sibling body so it mints a fresh base id.
@@ -225,6 +265,38 @@ bodies{end+1} = anchor;
 end
 
 % ===================== local helpers ===================================
+
+function frame = probeCoordinateSystem(preBody, probeId)
+%PROBECOORDINATESYSTEM The probe's own coordinate system ([site frame is a
+%   coordinate system], Jess Haley, 2026-10-27): referent the probe's device
+%   entity; axes x (positive right), y (positive back) and z, in that order.
+%   What v1 never states -- where zero is, and which way depth runs -- is left
+%   out and named in base.needs_info ([missing facts are needs info], Jess
+%   Haley, 2026-10-29), with a `needs_info` report note per entry.
+term = @(node, name) did2.convert.registeredTerm(node, name);
+ax = { ...
+    struct('axis', term('STATO:0000006', 'x-axis'), ...
+        'positive_direction', term('PATO:0000367', 'right')), ...
+    struct('axis', term('STATO:0000008', 'y-axis'), ...
+        'positive_direction', term('PATO:0001901', 'back')), ...
+    struct('axis', term('STATO:0000012', 'z-axis'))};
+missing = struct( ...
+    'field', {'coordinate_system.reference_point', ...
+        'coordinate_system.axes(3).positive_direction'}, ...
+    'reason', { ...
+        ['v1 probe_geometry does not state where a probe''s coordinates are ' ...
+         'zero: its template has no field for the reference point'], ...
+        ['v1 probe_geometry does not state which way site_locations_depth ' ...
+         'is positive: the template documents it only as "Depth of site ' ...
+         'positions"']});
+o = jOpts(preBody, 'Edges', struct('referent_id', char(probeId)), ...
+    'NeedsInfo', missing);
+frame = did2.build.document('coordinate_system', struct('axes', {ax}), o{:});
+for k = 1:numel(missing)
+    did2.convert.reportNote('needs_info', 'probe_geometry', char(preBody.base.id), ...
+        missing(k).field);
+end
+end
 
 function vals = numericArray(blk, name)
 %NUMERICARRAY A row vector of the named per-site coordinate array, or [].

@@ -6,17 +6,18 @@ function [v1, spec] = probe_geometry(bodies)
 %   document in NDI's v1 shape (probe/probe_geometry.json + base.json at the
 %   locked NDI-matlab `main`, 3cb19a8, as +ndi/+fun/+probe/+geometry/fromStruct.m
 %   writes it). BODIES holds one length `observation` per populated axis, the
-%   optional probe-model `assertion` and the session anchor the observations
-%   name:
+%   probe's `coordinate_system` they name, the optional probe-model
+%   `assertion` and the session anchor the observations name:
 %
 %     base.id, session_id, datestamp    the first observation's
 %     base.name                         '' (the writer sets none)
 %     depends_on probe_id               the statements' entity_id (one probe)
 %     site_locations_leftright,         the observation whose variable is
-%       _frontback, _depth              "site location (left-right)" / "(front-
-%                                       back)" / "(depth)": its source values,
-%                                       in order, as a column (fromStruct
-%                                       writes columns)
+%       _frontback, _depth              NCIT X-Coordinate / Y-Coordinate /
+%                                       Z-Coordinate (by node, else by name;
+%                                       [site positions are coordinates]): its
+%                                       source values, in order, as a column
+%                                       (fromStruct writes columns)
 %     unit                              the values' source unit, spelled as
 %                                       NDI writes it ('um' for om:micrometre);
 %                                       another spelling of the same unit is
@@ -29,6 +30,12 @@ function [v1, spec] = probe_geometry(bodies)
 %     shank_id, contact_shape*,         not rebuilt: the migrator converts only
 %       manufacturer, contour_x/_y      a document that sets none (carry-001)
 %
+%   The coordinate system ([site frame is a coordinate system], Jess Haley,
+%   2026-10-27) restates no v1 field: v1's frame is fixed by its template. It
+%   is placed when it is about the same probe and every site observation
+%   names it by `coordinate_system_id`; a second one, one about another
+%   referent, or an observation naming none or another is unplaced.
+%
 %   A passthrough (no site locations) is no conversion and has no inverse.
 %
 %   See also did2.convert.roundtrip.check,
@@ -39,9 +46,9 @@ arguments
 end
 
 AXES = { ...
-    'site_locations_leftright', 'site location (left-right)'; ...
-    'site_locations_frontback', 'site location (front-back)'; ...
-    'site_locations_depth',     'site location (depth)'};
+    'site_locations_leftright', 'NCIT:C44477', 'X-Coordinate'; ...
+    'site_locations_frontback', 'NCIT:C44478', 'Y-Coordinate'; ...
+    'site_locations_depth',     'NCIT:C44479', 'Z-Coordinate'};
 spec = emptySpec();
 v1 = struct();
 used = false(1, numel(bodies));
@@ -49,19 +56,23 @@ blk = struct();
 first = [];
 probes = {};
 units = {};
+frames = {};   % the coordinate_system_id each site observation names
 for k = 1:numel(bodies)
     b = bodies{k};
     if ~strcmp(classNameOf(b), 'observation')
         continue;
     end
-    [~, vname] = termParts(getIn(b, 'statement', 'variable'));
-    row = find(strcmpi(AXES(:, 2), vname), 1);
+    [vnode, vname] = termParts(getIn(b, 'statement', 'variable'));
+    row = axisRow(AXES, vnode, vname);
     if isempty(row) || isfield(blk, AXES{row, 1})
         continue;
     end
     used(k) = true;
     if isempty(first); first = b; end
     probes = [probes, edgeIds(b, 'entity_id')]; %#ok<AGROW>
+    f = edgeIds(b, 'coordinate_system_id');
+    if isempty(f); f = {''}; end
+    frames = [frames, f(1)]; %#ok<AGROW>
     values = asCell(getIn(b, 'length', 'value'));
     col = zeros(numel(values), 1);
     for j = 1:numel(values)
@@ -85,6 +96,29 @@ sid = base.session_id;
 [used, bad] = sessionAnchorOf(bodies, used, first, sid);
 spec.unplaced = [spec.unplaced, bad];
 
+% the probe's coordinate system: one, about the probe, named by every site
+frameIds = {};
+frameReferents = {};
+for k = find(~used)
+    b = bodies{k};
+    if strcmp(classNameOf(b), 'coordinate_system')
+        used(k) = true;
+        frameIds{end+1} = char(getIn(b, 'base', 'id')); %#ok<AGROW>
+        frameReferents = [frameReferents, edgeIds(b, 'referent_id')]; %#ok<AGROW>
+    end
+end
+if numel(frameIds) > 1
+    spec.unplaced{end+1} = sprintf('%d coordinate systems were emitted (a probe has one)', ...
+        numel(frameIds));
+elseif isscalar(frameIds)
+    if ~all(strcmp(frames, frameIds{1}))
+        spec.unplaced{end+1} = 'a site observation does not name the probe''s coordinate system';
+    end
+    probes = [probes, frameReferents];
+else
+    spec.unplaced{end+1} = 'no coordinate system was emitted for the site positions';
+end
+
 model = '';
 for k = find(~used)
     b = bodies{k};
@@ -100,7 +134,7 @@ for k = find(~used)
         k, classNameOf(bodies{k}));
 end
 if numel(unique(probes)) > 1
-    spec.unplaced{end+1} = 'the statements name more than one probe';
+    spec.unplaced{end+1} = 'the statements and the coordinate system name more than one probe';
 end
 if isempty(probes); probes = {''}; end
 
@@ -137,6 +171,17 @@ spec.same(end+1) = struct('path', 'probe_geometry.unit', 'fn', @sameLengthUnit, 
 end
 
 % ===================== helpers =========================================
+
+function row = axisRow(AXES, node, name)
+%AXISROW The AXES row of a site observation's variable: by node, else by name.
+row = [];
+if ~isempty(node)
+    row = find(strcmpi(AXES(:, 2), node), 1);
+end
+if isempty(row) && ~isempty(name)
+    row = find(strcmpi(AXES(:, 3), name), 1);
+end
+end
 
 function u = ndiUnit(node)
 %NDIUNIT The spelling NDI's writers use for a length unit term ('' if none).
