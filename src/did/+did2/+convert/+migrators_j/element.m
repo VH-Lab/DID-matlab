@@ -159,50 +159,6 @@ function v2Body = element(preBody)
 %     [migrator writes the registry spelling] (2026-10-26) the type is written
 %       as the registry names it: `Group` (NCIT:C43359), not `group`
 %
-<<<<<<< HEAD
-%   THE DEVICE KIND (deviceKind): Decided by Jess Haley, 2026-10-27,
-%   did-schema V_eta_go_forward_class_audit.md --
-%     [element type is a device kind term]  each device gets a device-kind
-%                                       term, one per instrument; a type with
-%                                       no decided term keeps today's
-%                                       assertion only ((iii): patch*, sharp*,
-%                                       stimulator, lick-spout, reward-well,
-%                                       event, the electrode spellings)
-%     [n-trode is a multielectrode array]   n-trode -> wikidata:Q1952355
-%     [five probe kinds from NCIT]      accelerometer NCIT:C88166, thermometer
-%                                       NCIT:C50059, ppg NCIT:C224112,
-%                                       optogenetic-fiber NCIT:C50358,
-%                                       intraoral-cannula NCIT:C50343
-%     [ecg and eeg are recorders]       ecg OBI:0003806, eeg wikidata:Q4531135
-%     [imaging probes are microscopes or carried]  one-photon-imaging and
-%                                       two-photon-imaging OBI:0400169
-%   NOT YET BUILT HERE (DID-matlab PR body lists why): the decisions also
-%   REPLACE the "element type" assertion with the device kind, and drop the
-%   "ndi element class" assertion ([ndi element class not kept]). Both are
-%   still written: NDI-matlab's V2 object layer reads them
-%   (ndi.vintage.elementLabel / elementFields / objectClass / isEtaElement,
-%   ndi.session, +migrate/+internal/pathSPromotion), so its readers change
-%   first (did-schema CLAUDE.md, "Changes the siblings must follow land in
-%   the siblings first").
-%
-%   AN N-TRODE'S NUMBER OF ELECTRODES (nTrodeElectrodeCount): Decided by Jess
-%   Haley, 2026-10-29 [n-trode count from the channel list], did-schema
-%   V_eta_go_forward_class_audit.md -- "the 'number of electrodes' of an
-%   n-trode ([n-trode is a multielectrode array], [number of electrodes
-%   minted]) is the count of channels its epochprobemap `devicestring` names
-%   ..., cross-checked against the sites of its `probe_geometry` /
-%   `site2channelmap` where one exists; when they disagree the device is
-%   carried as v1 under a `needs_mapping` register row". The v1 element holds
-%   no count; did2.convert.nTrodeElectrodeCounts indexes the batch's
-%   epochprobemap rows (epochfiles_ingested) and geometry documents before
-%   the first migrator runs. An n-trode device whose rows name one channel
-%   count gets one assertion, variable EMPTY:0000408 "number of electrodes",
-%   value kind count. When its geometry's site count differs it is carried
-%   whole as v1, needs_mapping, carry-156. With no channel list in the batch,
-%   or rows naming different counts, no count is written (nothing is
-%   invented); each converted n-trode is noted `ntrode_electrode_count` with
-%   which of these it was.
-=======
 %   THE DEVICE KIND: Decided by Jess Haley, did-schema
 %   V_eta_go_forward_class_audit.md, [element type is a device kind term]
 %   (2026-10-27) and [element types batch 1] .. [element types batch 3]
@@ -228,11 +184,25 @@ function v2Body = element(preBody)
 %     - for a sorted unit and an ensemble (no device kind), which
 %       did2.convert.resolveEpochProbemap keys their epochs on.
 %   The "ndi element class" assertion is still written ([ndi element class
-%   not kept] waits on NDI-matlab's readers, its Build pending line). The
-%   n-trode electrode count ([number of electrodes minted], [n-trode count
-%   from the channel list]) is the channel count of the epochprobemap
-%   devicestring, which is not on the v1 element: not written here.
->>>>>>> origin/V2
+%   not kept] waits on NDI-matlab's readers, its Build pending line).
+%
+%   AN N-TRODE'S NUMBER OF ELECTRODES (nTrodeElectrodeCount): Decided by Jess
+%   Haley, 2026-10-29 [n-trode count from the channel list], did-schema
+%   V_eta_go_forward_class_audit.md -- "the 'number of electrodes' of an
+%   n-trode ([n-trode is a multielectrode array], [number of electrodes
+%   minted]) is the count of channels its epochprobemap `devicestring` names
+%   ..., cross-checked against the sites of its `probe_geometry` /
+%   `site2channelmap` where one exists; when they disagree the device is
+%   carried as v1 under a `needs_mapping` register row". The v1 element holds
+%   no count; did2.convert.nTrodeElectrodeCounts indexes the batch's
+%   epochprobemap rows (epochfiles_ingested) and geometry documents before
+%   the first migrator runs. An n-trode device whose rows name one channel
+%   count gets one assertion, variable EMPTY:0000408 "number of electrodes",
+%   value kind count. When its geometry's site count differs it is carried
+%   whole as v1, needs_mapping, carry-156. With no channel list in the batch,
+%   or rows naming different counts, no count is written (nothing is
+%   invented); each converted n-trode is noted `ntrode_electrode_count` with
+%   which of these it was.
 %
 %   A SORTED UNIT ON ITS PROBE (unitFollowsItsProbe): Decided by Jess Haley,
 %   2026-10-27, [unit direct and subject rebuild from the probe]: a unit with
