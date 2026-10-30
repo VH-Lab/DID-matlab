@@ -4221,6 +4221,30 @@ verifyTrue(testCase, isfield(notes, 'carried_as_v1') && ...
     contains(notes.carried_as_v1.distinct_details{1}, 'file_extension'));
 end
 
+function testDaqreaderNdrWithNoReaderIsCarriedAsItsV1Source(testCase)
+% [retired classes leave V2] (1) (Jess Haley, 2026-10-25): a daqreader_ndr with
+% no reader class and no reader string is carried by daqreader.m (carry-130).
+% The carry must be the UNTOUCHED v1 source, never the migrator's reading copy
+% (until 2026-10-30 a body renamed to the retired class `daqreader`).
+body = struct();
+body.document_class = struct('class_name', 'daqreader_ndr', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base',      'class_version', '1.0.0'), ...
+                      struct('class_name', 'daqreader', 'class_version', '1.0.0')]);
+body.depends_on = struct('name', {}, 'value', {});
+body.base = struct('id', 'ndr_4', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.daqreader = struct('ndi_daqreader_class', '');
+body.daqreader_ndr = struct('ndi_daqreader_ndr_class', '', 'ndr_reader_string', '');
+did2.convert.reportNote('reset');
+out = did2.convert.migrators_j.daqreader_ndr(body);
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+verifyTrue(testCase, iscell(out) && isscalar(out) && isequaln(out{1}, body), ...
+    'the carry is not the v1 source');
+verifyTrue(testCase, isfield(notes, 'carried_as_v1') && ...
+    contains(notes.carried_as_v1.distinct_details{1}, 'carry-130'));
+end
+
 function testDaqreaderNdrDeEncodesToDaqreader(testCase)
 % Chunk c: daqreader_ndr de-encodes onto daqreader -- the ndr subtype fields move
 % (ndr_reader_string -> reader_string, ndi_daqreader_ndr_class dropped) and the
