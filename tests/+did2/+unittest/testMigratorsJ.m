@@ -3292,7 +3292,7 @@ function testAFormFieldWithNoBindingInTheLoadedSchemaFailsLoudly(testCase)
 src = did2.schema.cache.shared().schemaPath;
 tmp = tempname;
 mkdir(tmp);
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 if isfile(fullfile(tmp, 'binding_registry_meta.json'))
     delete(fullfile(tmp, 'binding_registry_meta.json'));

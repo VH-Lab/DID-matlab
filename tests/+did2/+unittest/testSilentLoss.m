@@ -853,7 +853,7 @@ end
 tmp = tempname;
 mkdir(tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 writeFixtureClass(tmp, 'relaxed_fixture_one', {'document_id', false});
 writeFixtureClass(tmp, 'relaxed_fixture_two', ...
     {'element_id', false; 'extraction_parameters_id', false});

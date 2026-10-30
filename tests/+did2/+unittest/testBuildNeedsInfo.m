@@ -37,7 +37,7 @@ testCase.TestData.declaredUpstream = any(strcmp(baseNames, 'needs_info'));
 tmp = tempname;
 mkdir(tmp);
 testCase.TestData.tmp = tmp;
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 if ~testCase.TestData.declaredUpstream
     declareNeedsInfo(testCase, fullfile(tmp, 'base.json'));

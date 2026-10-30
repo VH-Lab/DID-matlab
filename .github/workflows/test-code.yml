@@ -250,26 +250,16 @@ jobs:
           # [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1: the set's
           # new name when did-schema has it, else V_eta; and [retired classes leave
           # V2]: a set with no deprecated/ tier is not an error.
-          SET=did-schema/schemas/V_eta
-          if [ -d did-schema/schemas/did_v2 ]; then SET=did-schema/schemas/did_v2; fi
-          echo "schema set: $SET"
-          # [one folder, final classes only] (Decided by Jess Haley, 2026-10-29,
-          # did-schema V_eta_go_forward_class_audit.md): every V2 class moves into
-          # one folder, $SET/*.json, with no stable/ or draft/ tier, and the
-          # siblings read the flat layout first. Both layouts are read: each tier
-          # when it exists, and every class file at the set's top level (index.json
-          # and topics.json there are the set's index, not classes).
-          DEST="${GITHUB_WORKSPACE}/eta-schemas/"
-          for tier in stable draft; do
-            if [ -d "$SET/$tier" ]; then cp "$SET/$tier"/*.json "$DEST"; fi
-          done
-          for f in "$SET"/*.json; do
-            [ -f "$f" ] || continue
-            case "$(basename "$f")" in index.json|topics.json) continue ;; esac
-            cp "$f" "$DEST"
-          done
-          if ! ls "$DEST"/*.json >/dev/null 2>&1; then echo "::error::no schema files found in $SET (flat or tiered)"; exit 1; fi
-          if [ -d "$SET/deprecated" ]; then cp "$SET"/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"; fi
+          # [schema folders by family] (Decided by Jess Haley, 2026-10-30, did-schema
+          # V_eta_go_forward_class_audit.md): schemas/did_v2/ holds class files only, in
+          # family subfolders, and the registries move to schemas/registry/ and
+          # schemas/generated/. Siblings first, so both layouts are read: every class
+          # file under did_v2/ (else V_eta/) at any depth -- the old stable/, draft/ and
+          # deprecated/ tiers included -- plus every *_meta.json and
+          # ndi_reserved_keys.json under schemas/ and every registry/*.json, copied
+          # FLAT. A basename held twice fails the step; so does finding no class.
+          # On today's tiered did-schema it copies what `cp stable/ draft/` copied.
+          python3 tools/assemble_schema_set.py did-schema/schemas "${GITHUB_WORKSPACE}/eta-schemas"
 
       - name: Check out NDI-matlab's v1 templates at the locked main
         # [carried v1 validates against NDI templates] (Decided by Jess Haley,
@@ -514,26 +504,16 @@ jobs:
           # [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1: the set's
           # new name when did-schema has it, else V_eta; and [retired classes leave
           # V2]: a set with no deprecated/ tier is not an error.
-          SET=did-schema/schemas/V_eta
-          if [ -d did-schema/schemas/did_v2 ]; then SET=did-schema/schemas/did_v2; fi
-          echo "schema set: $SET"
-          # [one folder, final classes only] (Decided by Jess Haley, 2026-10-29,
-          # did-schema V_eta_go_forward_class_audit.md): every V2 class moves into
-          # one folder, $SET/*.json, with no stable/ or draft/ tier, and the
-          # siblings read the flat layout first. Both layouts are read: each tier
-          # when it exists, and every class file at the set's top level (index.json
-          # and topics.json there are the set's index, not classes).
-          DEST="${GITHUB_WORKSPACE}/eta-schemas/"
-          for tier in stable draft; do
-            if [ -d "$SET/$tier" ]; then cp "$SET/$tier"/*.json "$DEST"; fi
-          done
-          for f in "$SET"/*.json; do
-            [ -f "$f" ] || continue
-            case "$(basename "$f")" in index.json|topics.json) continue ;; esac
-            cp "$f" "$DEST"
-          done
-          if ! ls "$DEST"/*.json >/dev/null 2>&1; then echo "::error::no schema files found in $SET (flat or tiered)"; exit 1; fi
-          if [ -d "$SET/deprecated" ]; then cp "$SET"/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"; fi
+          # [schema folders by family] (Decided by Jess Haley, 2026-10-30, did-schema
+          # V_eta_go_forward_class_audit.md): schemas/did_v2/ holds class files only, in
+          # family subfolders, and the registries move to schemas/registry/ and
+          # schemas/generated/. Siblings first, so both layouts are read: every class
+          # file under did_v2/ (else V_eta/) at any depth -- the old stable/, draft/ and
+          # deprecated/ tiers included -- plus every *_meta.json and
+          # ndi_reserved_keys.json under schemas/ and every registry/*.json, copied
+          # FLAT. A basename held twice fails the step; so does finding no class.
+          # On today's tiered did-schema it copies what `cp stable/ draft/` copied.
+          python3 tools/assemble_schema_set.py did-schema/schemas "${GITHUB_WORKSPACE}/eta-schemas"
 
       - name: Check out NDI-matlab's v1 templates at the locked main
         # [carried v1 validates against NDI templates] (Decided by Jess Haley,

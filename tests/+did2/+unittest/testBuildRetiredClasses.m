@@ -151,7 +151,7 @@ src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
-copyfile(fullfile(src, '*.json'), tmp);
+did2.schema.cache.copySchemaSet(src, tmp);
 metaFile = fullfile(tmp, 'class_disposition_meta.json');
 if isfile(metaFile)
     delete(metaFile);
