@@ -409,16 +409,25 @@ end
 % new block counts those edges from the separate `ndi_mustBeNonEmpty` key that
 % DID-schema stamps at build time from NDI's own schema documents.
 %
-% `ontology_label.document_id` is the live case and is used as the fixture on
-% purpose: NDI's schema document says `mustbenotempty: 1`, V_eta says
-% `mustBeNonEmpty: false`, and the class is a guarded passthrough (~7,007
-% documents) whose `document_id` is the join key the deferred NDI second pass
-% needs.
+% `simple_calc.document_id` is the fixture: NDI's schema document says
+% `mustbenotempty: 1`, V_eta says `mustBeNonEmpty: false` (did-schema
+% schemas/did_v2/stable/simple_calc.json, `ndi_mustBeNonEmpty: true`), and
+% `document_id` is the class's one edge.
+%
+% MOVED 2026-10-30 from `ontology_label.document_id`, the same divergence on a
+% class whose did-schema file [one folder, final classes only] (Jess Haley,
+% 2026-10-29, did-schema V_eta_go_forward_class_audit.md) deletes: the marker
+% lives only in V_eta files, so a fixture whose file is gone would leave the
+% census nothing to read and every test here red. `simple_calc` relaxes exactly
+% one edge, as `ontology_label` did, and sorts before `spikewaves`, as
+% `ontology_label` did, so every count and every order below is unchanged.
+% Every class that carries the marker today is a `retire` class (did-schema
+% index.json), so this fixture moves again when simple_calc's file goes.
 
 function testARelaxedEdgeLeftBlankIsCounted(testCase)
 % The motivating case. NDI requires it, V_eta does not, the document leaves it
 % empty -- and until this block existed nothing anywhere counted it.
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyEqual(testCase, rep.ndi_required_dependency_count, 1, ...
@@ -426,7 +435,7 @@ verifyEqual(testCase, rep.ndi_required_dependency_count, 1, ...
 verifyNotEmpty(testCase, rep.ndi_required_dependency, ...
     'the row table must be ASSIGNED, not accumulated and dropped');
 verifyEqual(testCase, rep.ndi_required_dependency(1).class_name, ...
-    'ontology_label');
+    'simple_calc');
 verifyEqual(testCase, rep.ndi_required_dependency(1).edge_name, ...
     'document_id');
 end
@@ -434,7 +443,7 @@ end
 function testARelaxedEdgeThatIsPopulatedIsNotCounted(testCase)
 % The counter measures BLANKS, not declarations. A populated edge is a healthy
 % edge and belongs in the denominator, not in the count.
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {'some_doc_id'});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyEqual(testCase, rep.ndi_required_dependency_count, 0);
@@ -448,14 +457,14 @@ function testTheTwoBucketsAreNeverTheSameEdge(testCase)
 % `ndi_required_dependency` is "an edge NDI requires is blank while we permit
 % it". An edge must fall in exactly one, or the armed gate's figure stops
 % describing anything. Here the SAME class carries one of each spelling.
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 for k = 1:numel(rep.empty_required_dependency)
     verifyNotEqual(testCase, ...
         [rep.empty_required_dependency(k).class_name '.' ...
          rep.empty_required_dependency(k).edge_name], ...
-        'ontology_label.document_id', ...
+        'simple_calc.document_id', ...
         'a relaxed edge must not also appear in the armed gate''s bucket');
 end
 verifyEqual(testCase, rep.ndi_required_dependency_count, 1);
@@ -538,7 +547,7 @@ function testThePartitionHoldsOnAMixedBatch(testCase)
 % The invariant must hold when all three states occur at once, which is the
 % case a single-state fixture cannot exercise: one unparseable, one class-less,
 % one real document.
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({[], struct('nope', 1), did2.document(b)});
 d = rep.ndi_required_denominator;
@@ -558,7 +567,7 @@ function testTheDenominatorSeparatesUnstampedFromAgreeing(testCase)
 % Two very different zeros. `classes_carrying_the_marker == 0` means the schema
 % was never stamped -- every count is then a property of the build, not of the
 % data. A class that DOES carry the marker proves the stamp reached the cache.
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 d = rep.ndi_required_denominator;
@@ -574,9 +583,9 @@ function testTheCountAndTheDenominatorCannotDrift(testCase)
 % same branch, so they must agree. This file has already shipped a counter that
 % measured correctly and threw the answer away (famKeys), and the symptom was
 % exactly a headline that disagreed with its own rows.
-b1 = bodyStruct('ontology_label', 'lab_1');
+b1 = bodyStruct('simple_calc', 'sc_1');
 b1.depends_on = struct('name', {'document_id'}, 'value', {''});
-b2 = bodyStruct('ontology_label', 'lab_2');
+b2 = bodyStruct('simple_calc', 'sc_2');
 b2.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
 rows = 0;
@@ -595,7 +604,7 @@ function testTheNdiRequiredBlockRaisesNothing(testCase)
 % REPORT ONLY. It must change no outcome and must survive malformed input
 % rather than break a migration -- same contract as every other block here.
 verifyWarningFree(testCase, @() did2.validate.silentLoss({[]}));
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = {struct('name', 'document_id', 'document_id', ''), ...
                 struct('name', 'other_id', 'value', '', 'extra', 1)};
 verifyWarningFree(testCase, @() did2.validate.silentLoss({b}), ...
@@ -630,21 +639,20 @@ end
 % shipped: a partition check replaced by a constant left 76 tests green.
 
 function testTheRelaxedIdentitiesReachTheReportAndAreNamed(testCase)
-% The motivating case, asserted by NAME. `ontology_label.document_id` is the
-% live divergence: NDI requires the edge, V_eta relaxes it, and the class is a
-% guarded passthrough whose `document_id` is the join key the deferred NDI
-% second pass needs.
-b = bodyStruct('ontology_label', 'lab_1');
+% The motivating case, asserted by NAME. `simple_calc.document_id` is a live
+% divergence: NDI requires the edge, V_eta relaxes it (see the block header for
+% why the fixture is no longer `ontology_label`).
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 d = rep.ndi_required_denominator;
 verifyTrue(testCase, iscell(d.relaxed_class_names), ...
     'identities travel as a cell, so jsonencode writes a JSON array');
 verifyTrue(testCase, iscell(d.relaxed_edge_names));
-verifyTrue(testCase, any(strcmp(d.relaxed_class_names, 'ontology_label')), ...
+verifyTrue(testCase, any(strcmp(d.relaxed_class_names, 'simple_calc')), ...
     'the NAME must reach the report, not only the count');
 verifyTrue(testCase, ...
-    any(strcmp(d.relaxed_edge_names, 'ontology_label.document_id')), ...
+    any(strcmp(d.relaxed_edge_names, 'simple_calc.document_id')), ...
     'the (class, edge) pair must reach the report, spelled class.edge');
 end
 
@@ -675,14 +683,14 @@ function testAPopulatedRelaxedEdgeIsStillANameThatWasSeen(testCase)
 % pass every other test here and would silently understate the union -- the
 % complement would then look larger than it is, in the direction that reads as
 % more work outstanding, which is still a wrong answer.
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {'some_doc_id'});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyEqual(testCase, rep.ndi_required_dependency_count, 0, ...
     'nothing is blank here');
 verifyTrue(testCase, any(strcmp( ...
     rep.ndi_required_denominator.relaxed_edge_names, ...
-    'ontology_label.document_id')), ...
+    'simple_calc.document_id')), ...
     'SEEN is not the same as EMPTY -- a populated edge was still exercised');
 end
 
@@ -692,7 +700,7 @@ function testTheIdentitiesAgreeWithTheCountsTheyAccompany(testCase)
 % repurposing -- and `numel(names) == count` is the invariant that says so.
 % The digest checks the same equality on the rendering side; a list that went
 % short would otherwise shrink the union and read as progress.
-b1 = bodyStruct('ontology_label', 'lab_1');
+b1 = bodyStruct('simple_calc', 'sc_1');
 b1.depends_on = struct('name', {'document_id'}, 'value', {''});
 b2 = bodyStruct('spikewaves', 'sw_1');
 b2.depends_on = struct('name', {'element_id'}, 'value', {''});
@@ -720,14 +728,14 @@ function testTheIdentitiesAreSortedSoTwoReportsDiffCleanly(testCase)
 % where the input can be handed over unsorted.
 b1 = bodyStruct('spikewaves', 'sw_1');
 b1.depends_on = struct('name', {'element_id'}, 'value', {''});
-b2 = bodyStruct('ontology_label', 'lab_1');
+b2 = bodyStruct('simple_calc', 'sc_1');
 b2.depends_on = struct('name', {'document_id'}, 'value', {''});
 % spikewaves FIRST in the batch, so batch order and sorted order differ.
 rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
 d = rep.ndi_required_denominator;
 verifyEqual(testCase, d.relaxed_class_names, sort(d.relaxed_class_names));
 verifyEqual(testCase, d.relaxed_edge_names, sort(d.relaxed_edge_names));
-verifyEqual(testCase, d.relaxed_class_names{1}, 'ontology_label', ...
+verifyEqual(testCase, d.relaxed_class_names{1}, 'simple_calc', ...
     'sorted, not batch order -- spikewaves was handed in first');
 end
 
@@ -750,15 +758,15 @@ function testTheIdentitiesAreExportedAsSortedRowCells(testCase)
 % something that would have missed the orientation too.
 b1 = bodyStruct('spikewaves', 'sw_1');
 b1.depends_on = struct('name', {'element_id'}, 'value', {''});
-b2 = bodyStruct('ontology_label', 'lab_1');
+b2 = bodyStruct('simple_calc', 'sc_1');
 b2.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
 d = rep.ndi_required_denominator;
 verifyEqual(testCase, d.relaxed_class_names, ...
-    {'ontology_label', 'spikewaves'}, ...
+    {'simple_calc', 'spikewaves'}, ...
     'a 1xN ROW of the exact names, sorted -- not a column, not batch order');
 verifyEqual(testCase, d.relaxed_edge_names, ...
-    {'ontology_label.document_id', 'spikewaves.element_id', ...
+    {'simple_calc.document_id', 'spikewaves.element_id', ...
      'spikewaves.extraction_parameters_id'}, ...
     'the pair list is a 1xN ROW too -- the two lists must not differ in shape');
 verifyEqual(testCase, size(d.relaxed_class_names), [1 2], ...
@@ -770,7 +778,7 @@ function testThePairSpellingMatchesTheEmptyEdgeRowSpelling(testCase)
 % The union and the empty-edge rows are compared by eye and by the digest's
 % rollup, so they must be the SAME string. The map stores `class|edge`; the
 % report exports `class.edge`, which is how a row renders.
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('simple_calc', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyNotEmpty(testCase, rep.ndi_required_dependency);
