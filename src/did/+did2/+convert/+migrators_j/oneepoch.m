@@ -1,5 +1,12 @@
 function v2Body = oneepoch(preBody)
-%ONEEPOCH Brainstorm-J migrator: keep the class, fold its inherited block.
+%ONEEPOCH Brainstorm-J migrator: carry a v1 oneepoch whole as v1. 1 -> 1.
+%
+%   EVERY oneepoch IS CARRIED WHOLE AS v1 (the untouched v1 source, with a
+%   `carried_as_v1` note): one stitched on device-local time under carry-126,
+%   one on a global clock under carry-148, see THE 2026-10-27 / 2026-10-29
+%   DECISIONS below. The class is no longer kept and its inherited block is no
+%   longer folded; the sections up to READS RAW v1 are the record of what that
+%   fold did, kept until the global-clock calculation replaces it.
 %
 %   `oneepoch` is NOT an epoch class. It is the record of a CONCATENATION:
 %   `ndi.element.oneepoch` glues an element's N epochs into a single epoch, and
@@ -87,21 +94,32 @@ function v2Body = oneepoch(preBody)
 %         +element/oneepoch.m: "as though the recordings occurred one
 %         immediately after the other") is carried whole as v1
 %         `needs_mapping`.
-%   BUILT HERE: the device-local carry. ndi.element.oneepoch picks the first
-%   GLOBAL clock of the input's epoch table (ndi.time.clocktype.isGlobal:
-%   utc, approx_utc, exp_global_time, approx_exp_global_time,
-%   dev_global_time, approx_dev_global_time) and stitches on
-%   dev_local_time only when there is none; it writes EVERY clock of the
-%   element, comma-joined, as element_epoch.epoch_clock. So a oneepoch none
-%   of whose clocks is global was stitched on device-local time, and is
-%   carried whole as v1 (isStitchedOnLocalTime), citing register row
-%   carry-126 (did-schema 64ad58b8).
-%   NOT BUILT YET: the global-clock calculation. It still keeps the class
-%   `oneepoch` as below, until the questions in the PR that builds the
-%   device-local carry are answered (which statements are "the per-epoch
-%   recordings" when the input's per-epoch observations are not in the
-%   batch; the calculation's variable and anchor; a sampled_body from a
-%   .vhsb the DID pass cannot read).
+%     [reshaped retire classes carried]  (Jess Haley, 2026-10-29, "B")
+%         v1 `distance_metadata` and `oneepoch` are carried whole as v1 for
+%         now, not reshaped into their retire classes; the reshape waits for
+%         their V2 homes (`oneepoch`: docs/V2_PLAN.md G44).
+%   BUILT HERE: both carries. ndi.element.oneepoch picks the first GLOBAL
+%   clock of the input's epoch table (ndi.time.clocktype.isGlobal: utc,
+%   approx_utc, exp_global_time, approx_exp_global_time, dev_global_time,
+%   approx_dev_global_time) and stitches on dev_local_time only when there is
+%   none; it writes EVERY clock of the element, comma-joined, as
+%   element_epoch.epoch_clock. So a oneepoch none of whose clocks is global
+%   was stitched on device-local time, and is carried whole as v1,
+%   needs_mapping (isStitchedOnLocalTime), citing register row carry-126
+%   (did-schema 64ad58b8). One with a global clock, which until 2026-10-29
+%   kept the class `oneepoch` with its element_epoch block folded onto it, is
+%   carried whole as v1, awaiting_home, citing register row carry-148
+%   ([reshaped retire classes carried]).
+%   NOT BUILT YET: the global-clock calculation and the batch pass for its
+%   per-epoch `input_id` links (docs/V2_PLAN.md G44); when it is built it
+%   replaces the carry-148 branch. Open questions: which statements are "the
+%   per-epoch recordings" when the input's per-epoch observations are not in
+%   the batch; the calculation's variable and anchor; a sampled_body from a
+%   .vhsb the DID pass cannot read.
+%
+%   did2.convert.roundtrip.oneepoch, the inverse of the kept class, is reached
+%   by no migrator output while every oneepoch is carried; a carry's round
+%   trip is the carry itself (did2.convert.roundtrip.check).
 
 arguments
     preBody (1,1) struct
@@ -149,11 +167,11 @@ end
 % V_eta_go_forward_class_audit.md: a oneepoch NDI stitched on device-local time
 % (none of its clocks global) is carried whole as v1, needs_mapping. Its
 % times exist in no input.
+id = '';
+if isfield(src, 'base') && isstruct(src.base) && isfield(src.base, 'id')
+    id = char(src.base.id);
+end
 if isStitchedOnLocalTime(v2Body.element_epoch.clocks)
-    id = '';
-    if isfield(src, 'base') && isstruct(src.base) && isfield(src.base, 'id')
-        id = char(src.base.id);
-    end
     % carry-register: carry-126
     did2.convert.reportNote('carried_as_v1', 'oneepoch', id, ...
         ['[carry-126] needs_mapping: a oneepoch stitched on ' ...
@@ -163,29 +181,15 @@ if isStitchedOnLocalTime(v2Body.element_epoch.clocks)
     return;
 end
 
-% The concrete class is unchanged -- `oneepoch` persists as a source tombstone
-% until the global-clock calculation ([oneepoch is a redundant calculation]) is
-% built; see THE 2026-10-27 / 2026-10-29 DECISIONS above.
-v2Body.document_class.class_name = 'oneepoch';
-
-if ~isfield(v2Body, 'oneepoch') || ~isstruct(v2Body.oneepoch)
-    v2Body.oneepoch = struct();
-end
-
-% Fold the inherited block onto the concrete one. Field-by-field rather than
-% wholesale, so a v1 field this migrator has never seen lands somewhere the
-% strict-fields check will REPORT it (`undeclaredField` on `oneepoch`) instead of
-% being carried in a block nothing validates.
-if isfield(v2Body, 'element_epoch')
-    inherited = v2Body.element_epoch;
-    if isstruct(inherited)
-        fns = fieldnames(inherited);
-        for k = 1:numel(fns)
-            v2Body.oneepoch.(fns{k}) = inherited.(fns{k});
-        end
-    end
-    v2Body = rmfield(v2Body, 'element_epoch');
-end
+% [reshaped retire classes carried] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): a oneepoch on a global clock, which kept
+% the class `oneepoch` until then, is carried whole as v1 until the
+% global-clock calculation ([oneepoch is a redundant calculation]) is built.
+% carry-register: carry-148
+did2.convert.reportNote('carried_as_v1', 'oneepoch', id, ...
+    ['[carry-148] awaiting_home: a oneepoch on a global clock, until its ' ...
+    'data-combination calculation is built ([reshaped retire classes carried])']);
+v2Body = {src};
 end
 
 function tf = isStitchedOnLocalTime(clocks)

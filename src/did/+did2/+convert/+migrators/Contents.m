@@ -42,8 +42,9 @@
 %
 %   The position_metadata, distance_metadata and stimulus_bath base migrators
 %   are deleted too: each class has a +migrators_j migrator, which reads raw v1
-%   (distance_metadata's reshapes the v1 spelling itself, where it used to hand
-%   the renamed body to the base migrator).
+%   (distance_metadata's reshaped the v1 spelling itself, where it used to hand
+%   the renamed body to the base migrator; since [reshaped retire classes
+%   carried], Jess Haley, 2026-10-29, it carries every document whole as v1).
 %
 %   The element, ontology_image and ontology_label base migrators are deleted
 %   (2026-10-27): each class has a +migrators_j migrator that reads raw v1, and

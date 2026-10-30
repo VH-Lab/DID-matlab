@@ -1,6 +1,22 @@
 function bodies = distance_metadata(preBody)
-%DISTANCE_METADATA Brainstorm-J migrator: reshape a did_v1 distance_metadata into
-%   the validated V_eta distance_metadata. 1 -> 1.
+%DISTANCE_METADATA Brainstorm-J migrator: carry a v1 distance_metadata whole as
+%   v1. 1 -> 1.
+%
+%   ================ [reshaped retire classes carried] =====================
+%   Decided by Jess Haley, 2026-10-29 (did-schema
+%   V_eta_go_forward_class_audit.md, "B"): v1 `distance_metadata` and
+%   `oneepoch` are carried whole as v1 for now, not reshaped into their retire
+%   classes; the reshape waits for their V2 homes (`distance_metadata`: a
+%   decision still to make, docs/V2_PLAN.md G50). So EVERY distance_metadata
+%   is carried whole as v1 (the untouched v1 source, with a `carried_as_v1`
+%   note): one holding a field outside its NDI template under carry-100, as
+%   before, and every other one under register row carry-147, awaiting_home.
+%   The reshape into the V_eta `distance_metadata` (a class whose disposition
+%   is `retire`) described below is no longer done; the description is the
+%   record of what was replaced. did2.convert.roundtrip.distance_metadata, its
+%   inverse, is reached by no migrator output any more; a carried document's
+%   round trip is the carry itself (did2.convert.roundtrip.check).
+%   =======================================================================
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'. The v1
 %   doc is FLAT and records the two ENDPOINTS of a distance measurement, not the
@@ -96,34 +112,17 @@ if ~isfield(preBody, 'distance_metadata') || ~isstruct(preBody.distance_metadata
         'distance_metadata body is missing the distance_metadata property block.');
 end
 
-% the endpoint labels: the v1 suffixes, and on the renamed path (v1_to_v2
-% 'RawV1Classes', {}, until universalRenames is deleted) the suffixes of the
-% spelling that pass gives them (ontology_node_a, integer_i_ds_a, ...)
-labels = upper(suffixes);
-renamed = renamedSuffixes(blk);
-labels = [labels, upper(renamed(~ismember(upper(renamed), labels)))];
-[labels, order] = sort(labels);
-raw = [suffixes, repmat({''}, 1, numel(labels) - numel(suffixes))];
-raw = raw(order);
-endpoints = struct('label', {}, 'measurement', {}, ...
-    'integer_ids', {}, 'string_ids', {}, 'numeric_values', {});
-for k = 1:numel(labels)
-    endpoints(end+1) = buildEndpoint(blk, labels{k}, raw{k}); %#ok<AGROW>
-end
-
-unitsNode = '';
-if isfield(blk, 'units')
-    unitsNode = char(blk.units);
-end
-
-v2Body = preBody;
-if isfield(v2Body, 'depends_on') && ~isempty(v2Body.depends_on)
-    % the {name, document_id} entries the renamed path gave the document
-    deps = did2.convert.v1read.readDependsOn(src);
-    v2Body.depends_on = struct('name', {deps.name}, 'document_id', {deps.document_id});
-end
-v2Body.distance_metadata = struct('endpoints', endpoints, 'units', ontologyTerm(unitsNode));
-bodies = {v2Body};
+% [reshaped retire classes carried] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): no longer reshaped into the retire class
+% `distance_metadata`; carried whole as v1 until its V2 home is decided.
+b = did2.convert.v1read.readBase(src);
+id = b.id;
+if ~ischar(id); id = ''; end
+% carry-register: carry-147
+did2.convert.reportNote('carried_as_v1', 'distance_metadata', id, ...
+    ['[carry-147] awaiting_home: distance_metadata, until its V2 home is ' ...
+    'decided ([reshaped retire classes carried])']);
+bodies = {src};
 end
 
 function suffixes = endpointSuffixes(block)
@@ -136,96 +135,5 @@ for k = 1:numel(fns)
     if ~isempty(tokens) && ~any(strcmp(suffixes, tokens{1}))
         suffixes{end+1} = tokens{1}; %#ok<AGROW>
     end
-end
-end
-
-function suffixes = renamedSuffixes(block)
-% Every x with an `ontology_node_x` field (universalRenames' spelling).
-suffixes = {};
-fns = fieldnames(block);
-for k = 1:numel(fns)
-    tokens = regexp(fns{k}, '^ontology_node_(.+)$', 'tokens', 'once');
-    if ~isempty(tokens) && ~any(strcmpi(suffixes, tokens{1}))
-        suffixes{end+1} = tokens{1}; %#ok<AGROW>
-    end
-end
-end
-
-function [v, found] = endpointField(block, rawName, x, renamedName, label)
-% The v1 field <rawName>_<x>, else universalRenames' <renamedName>_<label>.
-v = [];
-found = false;
-names = {};
-if ~isempty(x)
-    names{end+1} = [rawName '_' x];
-end
-names{end+1} = [renamedName '_' lower(label)];
-for k = 1:numel(names)
-    if isfield(block, names{k})
-        v = block.(names{k});
-        found = true;
-        return;
-    end
-end
-end
-
-function ep = buildEndpoint(block, label, x)
-% One V2 endpoint record from v1's per-suffix fields (X, as the document
-% spells it, or '' when only the renamed spelling holds the endpoint). A field
-% the document does not have is an empty value of the right type.
-nodeVal = '';
-[v, found] = endpointField(block, 'ontologyNode', x, 'ontology_node', label);
-if found
-    nodeVal = char(v);
-end
-intIds = [];
-[v, found] = endpointField(block, 'integerIDs', x, 'integer_i_ds', label);
-if found
-    intIds = double(v);
-    intIds = intIds(:)';
-end
-stringIds = string.empty(1, 0);
-[raw, found] = endpointField(block, 'ontologyStringValues', x, 'ontology_string_values', label);
-if found
-    if ischar(raw)
-        parts = strsplit(raw, ',');
-        parts = cellfun(@strtrim, parts, 'UniformOutput', false);
-        parts = parts(~cellfun('isempty', parts));
-        stringIds = string(parts);
-    elseif isstring(raw)
-        stringIds = raw(:)';
-    end
-end
-nums = [];
-[v, found] = endpointField(block, 'ontologyNumericValues', x, 'ontology_numeric_values', label);
-if found
-    if isnumeric(v)
-        nums = double(v(:)');
-    end
-end
-ep = struct( ...
-    'label',          label, ...
-    'measurement',    ontologyTerm(nodeVal), ...
-    'integer_ids',    intIds, ...
-    'string_ids',     stringIds, ...
-    'numeric_values', nums);
-end
-
-function term = ontologyTerm(curie)
-% An ontology_term composite. Empty input yields a node-only, name-empty
-% struct. ndi.ontology.lookup failures leave name ''.
-term = struct('node', char(curie), 'name', '');
-if isempty(curie)
-    return;
-end
-try
-    [~, resolved] = ndi.ontology.lookup(char(curie));
-    if isstring(resolved) && isscalar(resolved)
-        term.name = char(resolved);
-    elseif ischar(resolved)
-        term.name = resolved;
-    end
-catch
-    % ndi.ontology not on path or curie unknown; leave name ''.
 end
 end

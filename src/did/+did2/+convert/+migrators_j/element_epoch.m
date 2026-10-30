@@ -102,8 +102,8 @@ function v2Body = element_epoch(preBody)
 %       referent "the element_epoch doc and its binary"). When this dissolves the
 %       edge retargets to whatever absorbs the payload.
 %     * `oneepoch` inherits its whole shape from `element_epoch` and is handled by
-%       its own migrator as a fold-into-tombstone; fork A1 for it is chosen but
-%       NOT SIGNED, and is gated on #30 besides.
+%       its own migrator, which carries it whole as v1 (carry-126 / carry-148,
+%       [reshaped retire classes carried], Jess Haley, 2026-10-29).
 %
 %   ALSO STILL TRUE, and repairs rather than decisions:
 %   `acquisition_epoch.axes` / `.channels` / `.storage` appear in NO NDI template

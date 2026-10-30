@@ -4084,15 +4084,18 @@ verifyEqual(testCase, out.acquisition_epoch.clocks(1).t0, 0);
 verifyEqual(testCase, out.acquisition_epoch.clocks(1).t1, 930.35);
 end
 
-function testDistanceMetadataReshapesFlatEndpoints(testCase)
-% The v1 distance_metadata is FLAT (ontologyNode_A/_B, integerIDs_A/_B,
-% ontologyStringValues_A/_B, ontologyNumericValues_A/_B empty by design, units).
-% The J migrator reshapes it into the nested `endpoints` array the V_eta schema
-% requires -- 1 -> 1. It does NOT emit a length_observation (no scalar distance in
-% the metadata doc; the value is the linked element's timeseries -- deferred Part
-% B) and does NOT mint an endpoint relation (the endpoint ids are pre-migration
-% ids that dangle single-doc -- Part A reverted). See
-% schemas/V_eta_distance_metadata_plan.md.
+function testDistanceMetadataIsCarriedWholeAsV1(testCase)
+% INVERTED 2026-10-29 from testDistanceMetadataReshapesFlatEndpoints, which
+% asserted that the FLAT v1 distance_metadata (ontologyNode_A/_B,
+% integerIDs_A/_B, ontologyStringValues_A/_B, ontologyNumericValues_A/_B,
+% units) was reshaped 1 -> 1 into the V_eta retire class `distance_metadata`
+% (a nested `endpoints` array + a `units` term). Since [reshaped retire
+% classes carried] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md, "B"): v1 `distance_metadata` is "carried
+% whole as v1 for now, not reshaped into [its] retire class"; the reshape
+% waits for its V2 home. So the same document comes back as its untouched v1
+% source, noted under register row carry-147. What stays true: no
+% length_observation and no endpoint relation is written.
 v1 = struct();
 v1.document_class = struct('class_name', 'distance_metadata', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -4106,28 +4109,25 @@ v1.distance_metadata = struct( ...
     'ontologyNumericValues_B', [],  'ontologyStringValues_B', 'uid_b1', ...
     'units', 'NCIT:C48367');
 
-out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 1);
-doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'distance_metadata');
+bodies = did2.convert.migrators_j.distance_metadata(v1);
+verifyEqual(testCase, numel(bodies), 1, 'the v1 source only');
+verifyTrue(testCase, isequaln(bodies{1}, v1), 'returned untouched');
 
-blk = doc.get('distance_metadata');
-% two endpoint records, labelled A and B, in order
-verifyEqual(testCase, numel(blk.endpoints), 2);
-verifyEqual(testCase, blk.endpoints(1).label, 'A');
-verifyEqual(testCase, blk.endpoints(2).label, 'B');
-% the ontologyNode CURIE -> measurement.node; comma-split string ids -> array
-verifyEqual(testCase, blk.endpoints(1).measurement.node, 'animal_9');
-verifyEqual(testCase, blk.endpoints(2).measurement.node, 'patch_9');
-verifyEqual(testCase, numel(blk.endpoints(1).string_ids), 2);
-verifyEqual(testCase, blk.endpoints(2).integer_ids, [2 3]);
-% units CURIE -> ontology_term node
-verifyEqual(testCase, blk.units.node, 'NCIT:C48367');
-% the flat per-endpoint fields are gone (strict schema: only endpoints + units)
-verifyFalse(testCase, isfield(blk, 'ontologyNode_A'));
-verifyFalse(testCase, isfield(blk, 'ontology_node_a'));
-% NOT a length_observation and no endpoint relation minted (single-doc)
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+doc = out.migrated{1};
+verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, char(doc.get('document_class.class_name')), 'distance_metadata');
+% the flat per-endpoint fields are kept as v1 wrote them; no endpoints array
+s = doc.toStruct();
+verifyEqual(testCase, s.distance_metadata.ontologyNode_A, 'animal_9');
+verifyEqual(testCase, s.distance_metadata.ontologyStringValues_B, 'uid_b1');
+verifyFalse(testCase, isfield(s.distance_metadata, 'endpoints'));
+verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    '[carry-147] awaiting_home: '), 'the note cites carry-147');
+verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
+    'reshaped retire classes carried'), 'the note names the decision');
+% NOT a length_observation and no endpoint relation minted
 names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, 'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'observation+length')));
 verifyFalse(testCase, any(strcmp(names, 'directed_relation')));
@@ -6217,152 +6217,104 @@ verifyEqual(testCase, d.get('syncrule_mapping.epochnode_b.objectname'), 'vhintan
 verifyTrue(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
 end
 
-% ===================== oneepoch: a class that had NO schema ===============
+% ===================== oneepoch: carried whole as v1 =========================
 %
 % `oneepoch` reached 2026-08-10 with no V_eta schema, no migrator and no row on
-% any worklist, because coverage.py tagged it non-production -- which suppresses
-% the coverage gap. It is production: ndi.element.oneepoch concatenates an
-% element's N epochs into one, written at src/ndi/element.m:387 and read back at
-% +ndi/+element/oneepoch.m:78-80. A real document quarantined on "No schema file
-% for class oneepoch" (measured, scratch probe 8, run 31423494433).
+% any worklist, because coverage.py tagged it non-production. It is production:
+% ndi.element.oneepoch concatenates an element's N epochs into one, written at
+% src/ndi/element.m:387 and read back at +ndi/+element/oneepoch.m:78-80. Until
+% 2026-10-29 the migrator kept the class and folded its inherited
+% element_epoch block onto it (as `clocks`). Since [reshaped retire classes
+% carried] (Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md,
+% "B") every oneepoch is carried whole as v1: one on a global clock under
+% register row carry-148 (these tests), one stitched on device-local time
+% under carry-126 (testRawV1RoundTripOneEpoch).
 %
-% These drive the FULL pipeline via runJ, not the migrator directly. That matters:
-% the whole reason this migrator exists is that a BASE superclass migrator has
-% already rewritten the inherited block before the concrete migrator runs, and
-% calling migrators_j.oneepoch on a raw v1 body would test a shape that never
-% actually occurs.
+% These drive the FULL pipeline via runJ, not the migrator directly.
 
-function testOneEpochFoldsItsInheritedBlockAndKeepsItsClass(testCase)
-% element_epoch is renamed to acquisition_epoch in V_eta, so no class of that
-% name exists for oneepoch to inherit from -- and the validator's top-level check
-% is strict. The inherited block must end up on the concrete one.
+function v1 = oneEpochOnAGlobalClock(id)
+% a oneepoch whose clocks include a global one (utc)
 v1 = struct();
 v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
                       struct('class_name', 'base',          'class_version', '1.0.0'), ...
                       struct('class_name', 'epochid',       'class_version', '1.0.0')]);
 v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
-v1.base = struct('id', 'oe_1', 'session_id', 'sess_09', ...
+v1.base = struct('id', id, 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.epochid = struct('epochid', 'whole_session_ref1');
 v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', 't0_t1', [0 1; 2 3]);
 v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
+end
 
+function testOneEpochOnAGlobalClockIsCarriedWholeAsV1(testCase)
+% INVERTED 2026-10-29 from testOneEpochFoldsItsInheritedBlockAndKeepsItsClass,
+% which asserted the class was KEPT (`oneepoch`, stamped V2) with its
+% element_epoch block folded away. [reshaped retire classes carried] (Jess
+% Haley, 2026-10-29): it is carried whole as v1 until the global-clock
+% data-combination calculation is built, citing carry-148.
+v1 = oneEpochOnAGlobalClock('oe_1');
 out = runJ(v1);
-verifyEmpty(testCase, out.quarantine, 'oneepoch must not quarantine');
-verifyEqual(testCase, numel(out.migrated), 1);
+verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.migrated{1};
-
-% the class is KEPT -- this is a fold, not a dissolution
-verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'oneepoch');
-% the inherited block is GONE from the top level. Checked with isfield on the
-% struct rather than by expecting d.get() to throw -- probe 7's lesson: an
-% assertion about behaviour I have not observed is an assertion that can pass for
-% the wrong reason.
+verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, char(d.get('document_class.class_name')), 'oneepoch');
+% the inherited block is KEPT as v1 wrote it: nothing folded
 sOut = d.toStruct();
-verifyFalse(testCase, isfield(sOut, 'element_epoch'), ...
-    'the element_epoch block must not survive -- no V_eta class hosts it');
-verifyTrue(testCase, isfield(sOut, 'oneepoch'));
+verifyTrue(testCase, isfield(sOut, 'element_epoch'), 'the v1 element_epoch block is kept');
+verifyFalse(testCase, isfield(sOut.oneepoch, 'clocks'), 'nothing folded onto oneepoch');
+note = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(note, '[carry-148] awaiting_home: '), note);
+verifyTrue(testCase, contains(note, 'reshaped retire classes carried'), note);
 end
 
-function testOneEpochCarriesTheClocksTheBaseMigratorBuilt(testCase)
-% The multi-clock case is REAL here: oneepoch.m:124 writes strjoin(ecs,','), every
-% clock the element had, where a plain element_epoch carries one. The base
-% element_epoch migrator parses the 2-by-N t0_t1 convention; this migrator must
-% MOVE that result without reshaping it.
-v1 = struct();
-v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
-    'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
-                      struct('class_name', 'base',          'class_version', '1.0.0'), ...
-                      struct('class_name', 'epochid',       'class_version', '1.0.0')]);
-v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
-v1.base = struct('id', 'oe_2', 'session_id', 'sess_09', ...
-    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.epochid = struct('epochid', 'whole_session_ref1');
-v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', 't0_t1', [0 1; 2 3]);
-v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
-
-d = runJ(v1).migrated{1};
-clocks = d.get('oneepoch.clocks');
-verifyEqual(testCase, numel(clocks), 2, ...
+function testOneEpochCarryKeepsBothClocksAsV1WroteThem(testCase)
+% INVERTED 2026-10-29 from testOneEpochCarriesTheClocksTheBaseMigratorBuilt,
+% which asserted the base element_epoch migrator's `clocks` records landed on
+% `oneepoch.clocks`. The document is now carried whole as v1 ([reshaped retire
+% classes carried]): the multi-clock case (oneepoch.m:124 writes
+% strjoin(ecs,',')) comes back exactly as v1 wrote it, the comma-joined names
+% and the 2-by-N t0_t1.
+v1 = oneEpochOnAGlobalClock('oe_2');
+s = runJ(v1).migrated{1}.toStruct();
+verifyEqual(testCase, s.element_epoch.epoch_clock, 'utc,dev_local_time', ...
     'both clocks in the comma-joined list must survive');
-verifyEqual(testCase, clocks(1).name, 'utc');
-verifyEqual(testCase, clocks(1).t0, 0);
-verifyEqual(testCase, clocks(1).t1, 2);
-verifyEqual(testCase, clocks(2).name, 'dev_local_time');
-verifyEqual(testCase, clocks(2).t0, 1);
-verifyEqual(testCase, clocks(2).t1, 3);
+verifyEqual(testCase, s.element_epoch.t0_t1, [0 1; 2 3]);
 end
 
-function testOneEpochKeepsTheSourceEpochIdsAndTheElementEdge(testCase)
-% epoch_ids is the ONLY field the class declares itself and the whole reason it is
-% distinct from element_epoch -- under fork A1 it becomes the derived_from_# edges.
-% Losing it would leave a concatenation that cannot say what it concatenated.
-v1 = struct();
-v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
-    'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
-                      struct('class_name', 'base',          'class_version', '1.0.0'), ...
-                      struct('class_name', 'epochid',       'class_version', '1.0.0')]);
-v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
-v1.base = struct('id', 'oe_3', 'session_id', 'sess_09', ...
-    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.epochid = struct('epochid', 'whole_session_ref1');
-% A GLOBAL clock beside the local one (2026-10-29): a oneepoch stitched on
-% device-local time alone is carried whole as v1 ([oneepoch method is data
-% combination], Jess Haley, did-schema V_eta_go_forward_class_audit.md;
-% testRawV1RoundTripOneEpoch), and this test is about the kept class.
+function testOneEpochCarryKeepsTheSourceEpochIdsAndTheElementEdge(testCase)
+% INVERTED 2026-10-29 from testOneEpochKeepsTheSourceEpochIdsAndTheElementEdge,
+% which asserted them on the kept class. epoch_ids is the ONLY field the class
+% declares itself; the calculation that replaces the carry turns it into its
+% per-epoch input_id links. On the carry it, the SYNTHETIC epoch id
+% (sourceCensus tracks that string as a grouping hazard, citing oneepoch.m:42)
+% and the element_id edge are all the v1 source's.
+v1 = oneEpochOnAGlobalClock('oe_3');
 v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', 't0_t1', [0 1; 930.35 931.35]);
-v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
-
-d = runJ(v1).migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'oneepoch');
-verifyEqual(testCase, d.get('oneepoch.epoch_ids'), 't00001,t00002,t00003');
-% the SYNTHETIC epoch id survives too -- sourceCensus tracks exactly this string
-% as a grouping hazard, citing oneepoch.m:42, so it must not be quietly dropped
-verifyEqual(testCase, d.get('epochid.epochid'), 'whole_session_ref1');
-% READ THE EDGE TOLERANTLY. A depends_on entry is spelled `value` on a body a
-% migrator built and `document_id` once universalRenames has normalised it
-% (universalRenames.m:372-380), and BOTH shapes are live -- this document is a
-% passthrough, so its edge came through the rename and carries `document_id`
-% (observed: scratch probe 9, run 31424544834, printed `fieldnames: name,
-% document_id`).
-%
-% Reading one spelling is what broke this test twice: first via `depValue`, which
-% read only `value`, and then via `depVal`, which reads only `value` too -- I
-% swapped helpers on the INFERENCE that get() and toStruct() disagreed, without
-% ever observing get(). That inference was the error, not the first helper.
-%
-% The tolerant read is the codebase's own convention, not an invention here:
-% +did2/+validate/references.m:176-179 takes `document_id` when present and falls
-% back to `value`, with exactly this precedence. depValue now does the same.
-verifyEqual(testCase, depValue(d.toStruct(), 'element_id'), 'elem_1');
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+s = out.migrated{1}.toStruct();
+verifyEqual(testCase, s.oneepoch.epoch_ids, 't00001,t00002,t00003');
+verifyEqual(testCase, s.epochid.epochid, 'whole_session_ref1');
+% read tolerantly: depValue takes `document_id` when present, else `value`
+verifyEqual(testCase, depValue(s, 'element_id'), 'elem_1');
 end
 
-function testOneEpochValidatesAgainstItsNewTombstone(testCase)
-% THE POINT OF THE WHOLE CHANGE, asserted with validation ON rather than inferred
-% from the three tests above. Before the tombstone existed this quarantined with
-% "No schema file for class oneepoch"; the fold and the schema have to agree, and
-% only a validating run proves they do. runJ deliberately passes Validate=false,
-% so this calls v1_to_v2 directly.
-v1 = struct();
-v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
-    'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
-                      struct('class_name', 'base',          'class_version', '1.0.0'), ...
-                      struct('class_name', 'epochid',       'class_version', '1.0.0')]);
-v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
-v1.base = struct('id', 'oe_4', 'session_id', 'sess_09', ...
-    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.epochid = struct('epochid', 'whole_session_ref1');
-v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', 't0_t1', [0 1; 2 3]);
-v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
-
+function testOneEpochOnAGlobalClockIsCarriedUnderValidation(testCase)
+% INVERTED 2026-10-29 from testOneEpochValidatesAgainstItsNewTombstone, which
+% asserted the kept class validated against its V_eta tombstone. A carried
+% document is v1 and is never validated against V_eta (v1_to_v2: "A 'did_v1'
+% body is never validated against V_eta"), so with validation ON it must still
+% not quarantine, and comes back carried.
+v1 = oneEpochOnAGlobalClock('oe_4');
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('oneepoch quarantined under validation: %s', ...
         out.quarantine(1).reason));
 end
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'oneepoch');
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), 'oneepoch');
 end
 
 function v = depValue(b, name)
