@@ -117,15 +117,25 @@ end
 function assumeVEtaSchemas(testCase)
 %ASSUMEVETASCHEMAS Skip unless the schema cache can resolve the V_eta classes.
 %   UPDATED for did-schema #88: it probes what the folds emit on #88 -- the
-%   relative_time_reference lift and the restored did_v1 tombstone the
-%   metadata document passes through to. (`acquisition_metadata_file` was
-%   retired by #73 item 61; probing it skipped every test here.)
+%   relative_time_reference lift. (`acquisition_metadata_file` was retired by
+%   #73 item 61; probing it skipped every test here.)
+%
+%   UPDATED 2026-10-30: it no longer probes the
+%   `daqmetadatareader_epochdata_ingested` tombstone. [one folder, final
+%   classes only] (Jess Haley, 2026-10-29, did-schema
+%   V_eta_go_forward_class_audit.md) deletes a retire class's JSON file once no
+%   v1 document passes through under it; every v1 metadata document is carried
+%   whole as v1 (+migrators_j/daqmetadatareader_epochdata_ingested.m, carry-046),
+%   so that file goes, and probing it would skip every test here -- the same
+%   trap as the acquisition_metadata_file probe above. The gate probes only
+%   relative_time_reference (what the reader lift emits), whose did-schema
+%   disposition is `persist` and which sits in the stable tier, the one
+%   installSchemaPath falls back to.
 did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the V_eta validation tests');
 try
     cache = did2.schema.cache.shared();
     cache.getClass('relative_time_reference');
-    cache.getClass('daqmetadatareader_epochdata_ingested');
 catch err
     assumeFail(testCase, ...
         ['DID_SCHEMA_PATH does not resolve the V_eta ingested-payload ' ...
@@ -849,13 +859,22 @@ end
 
 
 function testMetadataPassthroughValidatesUnderVEta(testCase)
-% The passthrough is only SAFE because the source tombstone was repaired from
-% the real template during the schema half. If it is ever deleted ahead of the
-% fold, this test is what says so -- that mistake put 2,484 corpus-B documents
-% in quarantine once.
+% Under validation the metadata document must not quarantine -- deleting its
+% tombstone ahead of the carry once put 2,484 corpus-B documents in quarantine.
+%
+% UPDATED 2026-10-30. The protection no longer comes from a V_eta tombstone:
+% the migrator carries every v1 metadata document whole as v1 (carry-046,
+% stamped did_v1), and v1_to_v2 never validates a carried document against
+% V_eta (`if options.Validate && ~carried`); it only counts one whose class has
+% no V_eta schema (passthrough_unvalidated_no_schema). [one folder, final
+% classes only] (Jess Haley, 2026-10-29) deletes the tombstone, so this test
+% asserts the property that survives that deletion: no quarantine, the document
+% kept, stamped did_v1, under validation, whether or not the file exists.
 assumeVEtaSchemas(testCase);
 out = runJValidated(metadataIngestedV1());
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
+assertEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
 end
 
 function testReferenceLiftValidatesUnderVEta(testCase)

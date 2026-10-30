@@ -409,16 +409,34 @@ end
 % new block counts those edges from the separate `ndi_mustBeNonEmpty` key that
 % DID-schema stamps at build time from NDI's own schema documents.
 %
-% `ontology_label.document_id` is the live case and is used as the fixture on
-% purpose: NDI's schema document says `mustbenotempty: 1`, V_eta says
-% `mustBeNonEmpty: false`, and the class is a guarded passthrough (~7,007
-% documents) whose `document_id` is the join key the deferred NDI second pass
-% needs.
+% THE FIXTURE CLASSES ARE DECLARED BY THIS FILE, NOT TAKEN FROM did-schema
+% (2026-10-30). The marker lives only in V_eta class files, and on did-schema
+% `main` every class that carries it is a `retire` class whose file [one
+% folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md) deletes -- `ontology_label`, then
+% `simple_calc`, `spikewaves` and `acquisition_epoch`, the fixtures this
+% block used, all go. A fixture whose file is gone leaves the census nothing
+% to read. So each test here runs on a COPY of the loaded schema set to which
+% useRelaxedFixtureSchema adds three classes of its own, the way
+% testBuildNeedsInfo's setupOnce adds a field to base.json:
+%
+%   relaxed_fixture_one   document_id                 NDI required, V_eta relaxed
+%   relaxed_fixture_two   element_id,                 NDI required, V_eta relaxed
+%                         extraction_parameters_id    NDI required, V_eta relaxed
+%   agreed_fixture        element_id                  NDI required, V_eta required
+%
+% These are the shapes the real fixtures had (`ontology_label` / `simple_calc`
+% one relaxed edge; `spikewaves` two; `acquisition_epoch.element_id` agreed),
+% and `relaxed_fixture_one` sorts before `relaxed_fixture_two` as
+% `ontology_label` sorted before `spikewaves`, so every count and every order
+% asserted below is the one asserted before. The census reads the marker from
+% whatever schema is loaded; it never names a class.
 
 function testARelaxedEdgeLeftBlankIsCounted(testCase)
 % The motivating case. NDI requires it, V_eta does not, the document leaves it
 % empty -- and until this block existed nothing anywhere counted it.
-b = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyEqual(testCase, rep.ndi_required_dependency_count, 1, ...
@@ -426,7 +444,7 @@ verifyEqual(testCase, rep.ndi_required_dependency_count, 1, ...
 verifyNotEmpty(testCase, rep.ndi_required_dependency, ...
     'the row table must be ASSIGNED, not accumulated and dropped');
 verifyEqual(testCase, rep.ndi_required_dependency(1).class_name, ...
-    'ontology_label');
+    'relaxed_fixture_one');
 verifyEqual(testCase, rep.ndi_required_dependency(1).edge_name, ...
     'document_id');
 end
@@ -434,7 +452,8 @@ end
 function testARelaxedEdgeThatIsPopulatedIsNotCounted(testCase)
 % The counter measures BLANKS, not declarations. A populated edge is a healthy
 % edge and belongs in the denominator, not in the count.
-b = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {'some_doc_id'});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyEqual(testCase, rep.ndi_required_dependency_count, 0);
@@ -448,24 +467,26 @@ function testTheTwoBucketsAreNeverTheSameEdge(testCase)
 % `ndi_required_dependency` is "an edge NDI requires is blank while we permit
 % it". An edge must fall in exactly one, or the armed gate's figure stops
 % describing anything. Here the SAME class carries one of each spelling.
-b = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 for k = 1:numel(rep.empty_required_dependency)
     verifyNotEqual(testCase, ...
         [rep.empty_required_dependency(k).class_name '.' ...
          rep.empty_required_dependency(k).edge_name], ...
-        'ontology_label.document_id', ...
+        'relaxed_fixture_one.document_id', ...
         'a relaxed edge must not also appear in the armed gate''s bucket');
 end
 verifyEqual(testCase, rep.ndi_required_dependency_count, 1);
 end
 
 function testAnEdgeBothSchemasRequireStaysInTheOtherBucket(testCase)
-% The conjunction's second half. `acquisition_epoch.element_id` carries the
+% The conjunction's second half. `agreed_fixture.element_id` carries the
 % marker TRUE and `mustBeNonEmpty` TRUE -- NDI and V_eta agree -- so a blank
 % one is the ARMED gate's business and must not be double-counted here.
-b = bodyStruct('acquisition_epoch', 'ep_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('agreed_fixture', 'ep_1');
 b.depends_on = struct('name', {'element_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyEqual(testCase, rep.ndi_required_dependency_count, 0, ...
@@ -538,7 +559,8 @@ function testThePartitionHoldsOnAMixedBatch(testCase)
 % The invariant must hold when all three states occur at once, which is the
 % case a single-state fixture cannot exercise: one unparseable, one class-less,
 % one real document.
-b = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({[], struct('nope', 1), did2.document(b)});
 d = rep.ndi_required_denominator;
@@ -558,7 +580,8 @@ function testTheDenominatorSeparatesUnstampedFromAgreeing(testCase)
 % Two very different zeros. `classes_carrying_the_marker == 0` means the schema
 % was never stamped -- every count is then a property of the build, not of the
 % data. A class that DOES carry the marker proves the stamp reached the cache.
-b = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 d = rep.ndi_required_denominator;
@@ -574,9 +597,10 @@ function testTheCountAndTheDenominatorCannotDrift(testCase)
 % same branch, so they must agree. This file has already shipped a counter that
 % measured correctly and threw the answer away (famKeys), and the symptom was
 % exactly a headline that disagreed with its own rows.
-b1 = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b1 = bodyStruct('relaxed_fixture_one', 'sc_1');
 b1.depends_on = struct('name', {'document_id'}, 'value', {''});
-b2 = bodyStruct('ontology_label', 'lab_2');
+b2 = bodyStruct('relaxed_fixture_one', 'sc_2');
 b2.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
 rows = 0;
@@ -594,8 +618,9 @@ end
 function testTheNdiRequiredBlockRaisesNothing(testCase)
 % REPORT ONLY. It must change no outcome and must survive malformed input
 % rather than break a migration -- same contract as every other block here.
+useRelaxedFixtureSchema(testCase);
 verifyWarningFree(testCase, @() did2.validate.silentLoss({[]}));
-b = bodyStruct('ontology_label', 'lab_1');
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = {struct('name', 'document_id', 'document_id', ''), ...
                 struct('name', 'other_id', 'value', '', 'extra', 1)};
 verifyWarningFree(testCase, @() did2.validate.silentLoss({b}), ...
@@ -620,9 +645,10 @@ end
 % against an integer.
 %
 % THE FIXTURES ARE CHOSEN SO THAT A COUNT CANNOT STAND IN FOR A NAME.
-% `spikewaves` relaxes TWO edges NDI requires -- `element_id` and
+% `relaxed_fixture_two` relaxes TWO edges NDI requires -- `element_id` and
 % `extraction_parameters_id`, both `mustBeNonEmpty: false` beside
-% `ndi_mustBeNonEmpty: true` in V_eta stable -- so one class yields two pairs
+% `ndi_mustBeNonEmpty: true` (useRelaxedFixtureSchema; `spikewaves` until
+% 2026-10-30) -- so one class yields two pairs
 % and the class list and the pair list have DIFFERENT lengths. Every assertion
 % below names a name. A test that merely checked the field was present, or
 % that the section rendered, would pass against an export that returns an
@@ -630,21 +656,21 @@ end
 % shipped: a partition check replaced by a constant left 76 tests green.
 
 function testTheRelaxedIdentitiesReachTheReportAndAreNamed(testCase)
-% The motivating case, asserted by NAME. `ontology_label.document_id` is the
-% live divergence: NDI requires the edge, V_eta relaxes it, and the class is a
-% guarded passthrough whose `document_id` is the join key the deferred NDI
-% second pass needs.
-b = bodyStruct('ontology_label', 'lab_1');
+% The motivating case, asserted by NAME. `relaxed_fixture_one.document_id` is
+% a divergence: NDI requires the edge, V_eta relaxes it (see the block header
+% for why the fixture is declared by this file).
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 d = rep.ndi_required_denominator;
 verifyTrue(testCase, iscell(d.relaxed_class_names), ...
     'identities travel as a cell, so jsonencode writes a JSON array');
 verifyTrue(testCase, iscell(d.relaxed_edge_names));
-verifyTrue(testCase, any(strcmp(d.relaxed_class_names, 'ontology_label')), ...
+verifyTrue(testCase, any(strcmp(d.relaxed_class_names, 'relaxed_fixture_one')), ...
     'the NAME must reach the report, not only the count');
 verifyTrue(testCase, ...
-    any(strcmp(d.relaxed_edge_names, 'ontology_label.document_id')), ...
+    any(strcmp(d.relaxed_edge_names, 'relaxed_fixture_one.document_id')), ...
     'the (class, edge) pair must reach the report, spelled class.edge');
 end
 
@@ -652,16 +678,17 @@ function testOneClassWithTwoRelaxedEdgesExportsBothPairs(testCase)
 % WHY THE COUNTS ALONE CANNOT ANSWER THE QUESTION, in one document. One class
 % and two pairs: the two lists are independently sized, so neither integer
 % predicts the other and neither predicts the identities.
-b = bodyStruct('spikewaves', 'sw_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_two', 'sw_1');
 b.depends_on = struct('name', {'element_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 d = rep.ndi_required_denominator;
 verifyEqual(testCase, numel(d.relaxed_class_names), 1);
-verifyEqual(testCase, d.relaxed_class_names{1}, 'spikewaves');
+verifyEqual(testCase, d.relaxed_class_names{1}, 'relaxed_fixture_two');
 verifyTrue(testCase, ...
-    any(strcmp(d.relaxed_edge_names, 'spikewaves.element_id')));
+    any(strcmp(d.relaxed_edge_names, 'relaxed_fixture_two.element_id')));
 verifyTrue(testCase, ...
-    any(strcmp(d.relaxed_edge_names, 'spikewaves.extraction_parameters_id')), ...
+    any(strcmp(d.relaxed_edge_names, 'relaxed_fixture_two.extraction_parameters_id')), ...
     'the edge the document does not even mention is still DECLARED relaxed');
 verifyGreaterThan(testCase, numel(d.relaxed_edge_names), ...
     numel(d.relaxed_class_names), ...
@@ -675,14 +702,15 @@ function testAPopulatedRelaxedEdgeIsStillANameThatWasSeen(testCase)
 % pass every other test here and would silently understate the union -- the
 % complement would then look larger than it is, in the direction that reads as
 % more work outstanding, which is still a wrong answer.
-b = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {'some_doc_id'});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyEqual(testCase, rep.ndi_required_dependency_count, 0, ...
     'nothing is blank here');
 verifyTrue(testCase, any(strcmp( ...
     rep.ndi_required_denominator.relaxed_edge_names, ...
-    'ontology_label.document_id')), ...
+    'relaxed_fixture_one.document_id')), ...
     'SEEN is not the same as EMPTY -- a populated edge was still exercised');
 end
 
@@ -692,9 +720,10 @@ function testTheIdentitiesAgreeWithTheCountsTheyAccompany(testCase)
 % repurposing -- and `numel(names) == count` is the invariant that says so.
 % The digest checks the same equality on the rendering side; a list that went
 % short would otherwise shrink the union and read as progress.
-b1 = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b1 = bodyStruct('relaxed_fixture_one', 'sc_1');
 b1.depends_on = struct('name', {'document_id'}, 'value', {''});
-b2 = bodyStruct('spikewaves', 'sw_1');
+b2 = bodyStruct('relaxed_fixture_two', 'sw_1');
 b2.depends_on = struct('name', {'element_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
 d = rep.ndi_required_denominator;
@@ -718,17 +747,18 @@ function testTheIdentitiesAreSortedSoTwoReportsDiffCleanly(testCase)
 % a strict prefix of another, which no pair in the current divergence set is.
 % It is untestable against today's schema and is asserted on the digest side,
 % where the input can be handed over unsorted.
-b1 = bodyStruct('spikewaves', 'sw_1');
+useRelaxedFixtureSchema(testCase);
+b1 = bodyStruct('relaxed_fixture_two', 'sw_1');
 b1.depends_on = struct('name', {'element_id'}, 'value', {''});
-b2 = bodyStruct('ontology_label', 'lab_1');
+b2 = bodyStruct('relaxed_fixture_one', 'sc_1');
 b2.depends_on = struct('name', {'document_id'}, 'value', {''});
-% spikewaves FIRST in the batch, so batch order and sorted order differ.
+% relaxed_fixture_two FIRST in the batch, so batch order and sorted order differ.
 rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
 d = rep.ndi_required_denominator;
 verifyEqual(testCase, d.relaxed_class_names, sort(d.relaxed_class_names));
 verifyEqual(testCase, d.relaxed_edge_names, sort(d.relaxed_edge_names));
-verifyEqual(testCase, d.relaxed_class_names{1}, 'ontology_label', ...
-    'sorted, not batch order -- spikewaves was handed in first');
+verifyEqual(testCase, d.relaxed_class_names{1}, 'relaxed_fixture_one', ...
+    'sorted, not batch order -- relaxed_fixture_two was handed in first');
 end
 
 function testTheIdentitiesAreExportedAsSortedRowCells(testCase)
@@ -744,22 +774,23 @@ function testTheIdentitiesAreExportedAsSortedRowCells(testCase)
 % alike -- which is exactly why this case exists on its own rather than being
 % folded into one of them.
 %
-% DELIBERATELY EXACT, so it doubles as a schema tripwire. If DID-schema relaxes
-% a third edge on either class, this goes red; the right response is to read
-% the new divergence and update the literal, NOT to loosen the assertion into
-% something that would have missed the orientation too.
-b1 = bodyStruct('spikewaves', 'sw_1');
+% DELIBERATELY EXACT. The two classes are declared by useRelaxedFixtureSchema,
+% so the literal below is fixed by this file; if it goes red the census
+% changed what it exports. Do NOT loosen the assertion into something that
+% would have missed the orientation too.
+useRelaxedFixtureSchema(testCase);
+b1 = bodyStruct('relaxed_fixture_two', 'sw_1');
 b1.depends_on = struct('name', {'element_id'}, 'value', {''});
-b2 = bodyStruct('ontology_label', 'lab_1');
+b2 = bodyStruct('relaxed_fixture_one', 'sc_1');
 b2.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
 d = rep.ndi_required_denominator;
 verifyEqual(testCase, d.relaxed_class_names, ...
-    {'ontology_label', 'spikewaves'}, ...
+    {'relaxed_fixture_one', 'relaxed_fixture_two'}, ...
     'a 1xN ROW of the exact names, sorted -- not a column, not batch order');
 verifyEqual(testCase, d.relaxed_edge_names, ...
-    {'ontology_label.document_id', 'spikewaves.element_id', ...
-     'spikewaves.extraction_parameters_id'}, ...
+    {'relaxed_fixture_one.document_id', 'relaxed_fixture_two.element_id', ...
+     'relaxed_fixture_two.extraction_parameters_id'}, ...
     'the pair list is a 1xN ROW too -- the two lists must not differ in shape');
 verifyEqual(testCase, size(d.relaxed_class_names), [1 2], ...
     'stated separately so a failure says SHAPE rather than only CONTENT');
@@ -770,7 +801,8 @@ function testThePairSpellingMatchesTheEmptyEdgeRowSpelling(testCase)
 % The union and the empty-edge rows are compared by eye and by the digest's
 % rollup, so they must be the SAME string. The map stores `class|edge`; the
 % report exports `class.edge`, which is how a row renders.
-b = bodyStruct('ontology_label', 'lab_1');
+useRelaxedFixtureSchema(testCase);
+b = bodyStruct('relaxed_fixture_one', 'sc_1');
 b.depends_on = struct('name', {'document_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyNotEmpty(testCase, rep.ndi_required_dependency);
@@ -802,6 +834,54 @@ verifyEmpty(testCase, nul.ndi_required_denominator.relaxed_edge_names);
 end
 
 % ===================== helpers =============================================
+
+function useRelaxedFixtureSchema(testCase)
+%USERELAXEDFIXTURESCHEMA Load a copy of the schema set with three fixture
+%   classes declared on it (the block header lists them), for this test only.
+%   [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+%   V_eta_go_forward_class_audit.md) deletes every real class carrying the
+%   `ndi_mustBeNonEmpty` marker, so the census is tested on classes this file
+%   owns. Same mechanism as testBuildNeedsInfo's setupOnce: copy the loaded
+%   set to a temp folder, edit the copy, did2.schema.cache.setSchemaPath, and
+%   restore the original path on teardown.
+try
+    src = did2.schema.cache.shared().schemaPath;
+catch err
+    assumeFail(testCase, ['no V_eta schema set is loadable (' err.message ...
+        '); the NDI-required census needs one to copy.']);
+end
+tmp = tempname;
+mkdir(tmp);
+testCase.addTeardown(@() rmdir(tmp, 's'));
+copyfile(fullfile(src, '*.json'), tmp);
+writeFixtureClass(tmp, 'relaxed_fixture_one', {'document_id', false});
+writeFixtureClass(tmp, 'relaxed_fixture_two', ...
+    {'element_id', false; 'extraction_parameters_id', false});
+writeFixtureClass(tmp, 'agreed_fixture', {'element_id', true});
+did2.schema.cache.setSchemaPath(tmp);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+end
+
+function writeFixtureClass(folder, className, edges)
+%WRITEFIXTURECLASS A minimal V_eta class (superclass base, no fields) whose
+%   edges all carry `ndi_mustBeNonEmpty: true`; EDGES is {name, mustBeNonEmpty}
+%   per row.
+deps = cell(1, size(edges, 1));
+for k = 1:size(edges, 1)
+    deps{k} = struct('name', edges{k, 1}, 'mustBeNonEmpty', edges{k, 2}, ...
+        'documentation', 'declared by testSilentLoss', ...
+        'must_refer_to_document_class', 'base', 'ndi_mustBeNonEmpty', true);
+end
+c = struct();
+c.document_class = struct('class_name', className, 'class_version', '1.0.0', ...
+    'superclasses', {{struct('class_name', 'base')}});
+c.depends_on = deps;
+c.file = {};
+c.fields = {};
+fid = fopen(fullfile(folder, [className '.json']), 'w');
+fwrite(fid, jsonencode(c, 'PrettyPrint', true));
+fclose(fid);
+end
 
 function d = docObj(className, id)
 d = did2.document(bodyStruct(className, id));

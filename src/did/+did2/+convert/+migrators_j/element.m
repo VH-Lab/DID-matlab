@@ -11,8 +11,9 @@ function v2Body = element(preBody)
 %   -- now to an entity.
 %
 %   1 -> N:
-%     - entity            the element itself (id preserved; name/reference ->
-%                         local_identifier '<name> | <reference>').
+%     - entity            the element itself (id preserved; name -> `name`,
+%                         exactly; name/reference -> local_identifier
+%                         '<name> | <reference>').
 %     - term_assertion(s) its kind, nothing dropped: `type` -> variable
 %                         "element type", unless the device kind alone
 %                         rebuilds it (THE DEVICE KIND, below);
@@ -92,17 +93,28 @@ function v2Body = element(preBody)
 %
 %     base.id / session_id / datestamp -> the entity's id / session edge /
 %                                 creation_timestamp
-%     base.name                -> entity.name when not empty ('', what
-%                                 ndi.element/newdocument writes, writes
-%                                 nothing; jBaseName; Decided by Jess Haley,
-%                                 2026-10-27 [v1 name is the entity name])
+%     base.name                -> nothing: '' is what ndi.element/newdocument
+%                                 writes, and the round trip rebuilds ''. A
+%                                 non-empty one is carried, malformed
+%                                 (carry-149; Decided by Jess Haley,
+%                                 2026-10-30 [element name kept apart,
+%                                 base.name carried]): the entity's one
+%                                 `name` holds element.name
+%     element.name             -> entity.name, exactly (Decided by Jess Haley,
+%                                 2026-10-29 [element name and reference
+%                                 stored apart]); not written when empty
 %     element.name, element.reference -> entity.local_identifier,
-%                                 '<name> | <reference>' (NDI's display form;
-%                                 did2.convert.elementLocalIdentifier, the
-%                                 mirror of NDI ndi.vintage's). Not reversible
-%                                 (an empty name, a non-integer reference, a
-%                                 reference-less name that reads as a pair):
-%                                 carried (carry-048 / carry-055)
+%                                 '<name> | <reference>' (did2.convert.
+%                                 elementHandle; int2str for an integer, as
+%                                 NDI's display form and
+%                                 did2.convert.elementLocalIdentifier write
+%                                 it). The round trip reads the reference as
+%                                 what follows the known name, so a name
+%                                 holding ' | ' or ' (ref ', and a
+%                                 non-integer reference, rebuild exactly.
+%                                 Carried only when both are empty
+%                                 (carry-048) or the reference is neither one
+%                                 number nor one text (carry-120)
 %     element.type             -> the entity type (elementEntityType); a
 %                                 device's kind, one Equipment Type assertion;
 %                                 and the "element type" assertion where the
@@ -157,12 +169,15 @@ function v2Body = element(preBody)
 %   accelerometer, thermometer, ppg). It is STILL WRITTEN:
 %     - for a kind several types share (patch electrode, sharp electrode,
 %       microscope): the recording or imaging mode goes on the recording
-%       observation, which the batch pass mints, not this migrator; the
-%       voltage, current, one-photon, two-photon and wide-field mode terms are
-%       not decided yet ([element types batch 1], [element types batch 2]),
-%       and until a mode is written there the word is kept here ((iii) of
-%       [element type is a device kind term]: "until a type has its term, the
-%       migrator keeps writing the current statement");
+%       observation, which the batch pass mints, not this migrator
+%       (did2.convert.resolveEpochProbemap writes the two decided ones as the
+%       observation's method term: patch-attached OBI:0002179,
+%       brightfield-imaging EMPTY:0000300); the voltage, current, one-photon,
+%       two-photon and wide-field mode terms are not decided yet ([element
+%       types batch 1], [element types batch 2]), and an element's round trip
+%       reads no observation, so the word is kept here for every type of a
+%       shared kind ((iii) of [element type is a device kind term]: "until a
+%       type has its term, the migrator keeps writing the current statement");
 %     - for a sorted unit and an ensemble (no device kind), which
 %       did2.convert.resolveEpochProbemap keys their epochs on.
 %   The "ndi element class" assertion is still written ([ndi element class
@@ -179,6 +194,9 @@ function v2Body = element(preBody)
 %   elements). A unit whose `direct` is not 0, or whose subject_id is not its
 %   probe's, is carried whole as v1, malformed (carry-120: a value no NDI
 %   writer produces; ndi.element copies the underlying element's subject).
+%   A unit whose probe is not a v1 element of the batch cannot be checked or
+%   rebuilt: it is carried whole as v1, needs_mapping (carry-151, [unit with
+%   no probe in the batch carried], Jess Haley, 2026-10-29).
 
 arguments
     preBody (1,1) struct
@@ -205,24 +223,48 @@ specimenId   = depValue(preBody, 'subject_id');
 underlyingId = depValue(preBody, 'underlying_element_id');
 sortingRunId = depValue(preBody, 'jrclust_clusters_id');
 
-% [element local identifier is name and reference] (Jess Haley, 2026-10-26):
-% '<name> | <reference>', NDI's display form, read back by splitting at the last
-% ' | '. [no invented values] / [generic stage is lossless]: an identifier
-% that would not read back exactly is not written; the element is carried.
-localId = '';
-if isempty(name) || ischar(name) || (isstring(name) && isscalar(name))
-    localId = did2.convert.elementLocalIdentifier(char(name), reference);
-end
-if isempty(localId)
-    nameText = '';
-    if ischar(name) || (isstring(name) && isscalar(name)); nameText = char(name); end
-    row = '[carry-055] ';
-    if isempty(nameText) && isEmptyRef(reference); row = '[carry-048] '; end
-    % carry-register: carry-048 (no name and no reference); carry-055 (not
-    % written reversibly as '<name> | <reference>')
+% [element name and reference stored apart] (Jess Haley, 2026-10-29): the v1
+% name, exactly, is the entity's `name`; `local_identifier` keeps the
+% name-and-reference handle ('<name> | <reference>', [element local identifier
+% is name and reference], 2026-10-26), and the round trip reads the reference
+% as what follows the known name (did2.convert.elementHandle /
+% elementNameReferenceApart). A name that itself reads as a pair, or a
+% non-integer reference, now converts (no longer carried as unpackable).
+nameText = '';
+if ischar(name) || (isstring(name) && isscalar(name)); nameText = char(name); end
+[localId, problem] = did2.convert.elementHandle(name, reference);
+if ~isempty(problem)
+    switch problem
+        case 'empty'
+            row = '[carry-048] needs_mapping: ';
+        otherwise
+            row = '[carry-120] malformed: ';
+    end
+    % carry-register: carry-048 (no name and no reference: the identifier
+    % would be invented); carry-120 (a name that is not text, or a reference
+    % that is neither one number nor one text: NDI-matlab main 441530d0
+    % +ndi/element.m shows `reference` with int2str and searches it with
+    % 'exact_number', so its writer stores one number)
     did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
-        sprintf('%sunplaced: element.name "%s" / element.reference "%s" (no reversible local_identifier)', ...
+        sprintf('%selement.name "%s" / element.reference "%s" (no local_identifier)', ...
         row, nameText, refText(reference)));
+    v2Body = {preBody};
+    return;
+end
+% The entity has ONE `name`, and [element name and reference stored apart]
+% gives it the element's v1 name. A non-empty v1 base.name then has no field
+% of its own. ndi.element/newdocument writes base.name '' (NDI-matlab main
+% 441530d0, +ndi/element.m newdocument sets element.* only), so a non-empty
+% one is a value no NDI writer produces: Decided by Jess Haley, 2026-10-30
+% [element name kept apart, base.name carried] (did-schema
+% V_eta_go_forward_class_audit.md), the element is carried whole as v1,
+% malformed.
+baseName = jBaseName(preBody);
+if ~isempty(baseName)
+    % carry-register: carry-149 (an element whose base.name is not empty)
+    did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
+        sprintf(['[carry-149] malformed: base.name "%s" (the entity''s `name` holds ' ...
+        'element.name "%s"; [element name kept apart, base.name carried])'], baseName, nameText));
     v2Body = {preBody};
     return;
 end
@@ -244,11 +286,18 @@ if isSortedUnit(type) && ~isempty(underlyingId)
         return;
     end
     if ~isempty(unchecked)
-        % the probe is not in the batch: converted as before this decision
-        % (its subject_id and direct not written), and counted. Whether such
-        % a unit should be carried instead has no decision or register row;
-        % it is reported to the team, not guessed (PR body).
-        did2.convert.reportNote('unit_probe_not_in_batch', 'element', elementId, unchecked);
+        % the probe is not in the batch, so the subject cannot be rebuilt from
+        % it. [unit with no probe in the batch carried] (Decided by Jess
+        % Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): such
+        % a unit "is carried whole as v1 under a register row instead of
+        % converting with its subject unchecked". It converted (subject
+        % unchecked, note `unit_probe_not_in_batch`) before.
+        % carry-register: carry-151
+        did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
+            ['[carry-151] needs_mapping: sorted unit (unit_probe_not_in_batch): ' ...
+            unchecked ' ([unit with no probe in the batch carried])']);
+        v2Body = {preBody};
+        return;
     end
 end
 
@@ -257,7 +306,7 @@ end
 % (V_eta_entity_composition_plan.md sec. 4), read off the v1 `type` and
 % `ndi_element_class` by elementEntityType (decided, above).
 subjectDoc = jEntity(preBody, entityType, ...
-    struct('local_identifier', localId, 'name', jBaseName(preBody)), 'Id', elementId);
+    struct('local_identifier', localId, 'name', nameText), 'Id', elementId);
 
 bodies = {subjectDoc};
 
@@ -482,10 +531,6 @@ try
 catch
     s = sprintf('<%s>', class(v));
 end
-end
-
-function tf = isEmptyRef(r)
-tf = isempty(r) || ((ischar(r) || isstring(r)) && isempty(strtrim(char(r))));
 end
 
 function s = refText(r)

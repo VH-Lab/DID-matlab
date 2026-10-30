@@ -197,8 +197,16 @@ for v1 = {dabBath(oneDrug()), dabBath(acsfWithDrug()), marderBath()}
     verifyEqual(testCase, old.deferred_bath_resolution.baths_resolved, 1, label);
     verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
     verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
+    % the stimulator element is carried whole as v1 ([element types batch 4]
+    % (4), Jess Haley, 2026-10-30: carry-063), and a carried document is its
+    % v1 source as each path spells it (v1_to_v2: postUniversalBody), so it is
+    % compared by id only, as testRawV1RoundTripElement's
+    % testBothPathsConvertAnElementAlike does
+    verifyEqual(testCase, sort({raw.passthrough.id}), sort({old.passthrough.id}), label);
     for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        verifyTrue(testCase, isequaln(raw.migrated{j}.toStruct(), old.migrated{j}.toStruct()), ...
+        a = raw.migrated{j}.toStruct();
+        if any(strcmp(char(a.base.id), {raw.passthrough.id})); continue; end
+        verifyTrue(testCase, isequaln(a, old.migrated{j}.toStruct()), ...
             sprintf('%s, document %d differs between the raw and the renamed path', label, j));
     end
 end

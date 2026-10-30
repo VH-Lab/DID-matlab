@@ -286,7 +286,7 @@ function testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided(testCase)
 % emitted -- and nothing is quarantined either, which the old value-less
 % observation was.
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
 verifyEmpty(testCase, out.quarantine, 'the derived element quarantined');
 verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
@@ -370,6 +370,40 @@ verifyFalse(testCase, hasRelation(out, 'observes'));
 b = firstOfClass(out, 'opaque_body');
 verifyNotEmpty(testCase, b);
 verifyEqual(testCase, char(b.get('data_body.format').node), 'EDAM:format_3591');
+end
+
+% ===================== the recording mode =================================
+
+function testTheDecidedModeIsTheObservationsMethodTerm(testCase)
+% [element type is a device kind term] (Jess Haley, 2026-10-27): the mode
+% suffix goes on the recording observation; [imaging mode is a method term]
+% (2026-10-29): as a method term. [element types batch 1] / [cell-attached is
+% OBI]: -attached is OBI:0002179; [element types batch 2]: brightfield is
+% EMPTY:0000300. The other modes have no decided term ("in a later batch"),
+% so their observations have no method.
+cases = { ...
+    'patch-attached', 'ndi.probe.timeseries.mfdaq', '/data/t00001/t00001.abf', 'observation+voltage', 'OBI:0002179'; ...
+    'brightfield-imaging', 'ndi.probe.image', '/data/t00001/frames.tif', 'observation+intensity', 'EMPTY:0000300'; ...
+    'patch-Vm', 'ndi.probe.timeseries.mfdaq', '/data/t00001/t00001.abf', 'observation+voltage', ''; ...
+    'two-photon-imaging', 'ndi.probe.image', '/data/t00001/frames.tif', 'observation+intensity', ''};
+for k = 1:size(cases, 1)
+    [ty, cls, file, key, node] = cases{k, :};
+    out = runEpoch(elementDoc('p', ty, cls, 1, 'specimen_1', ''), {file});
+    obs = firstOfClass(out, key);
+    assertNotEmpty(testCase, obs, ty);
+    s = obs.toStruct();
+    m = [];
+    if isfield(s, 'interaction') && isstruct(s.interaction) && isfield(s.interaction, 'method')
+        m = s.interaction.method;
+    end
+    if isempty(node)
+        verifyTrue(testCase, isempty(m) || ~isfield(m, 'term') || isempty(m.term), ...
+            [ty ': a mode term with no decision was written']);
+    else
+        assertTrue(testCase, isstruct(m) && isfield(m, 'term'), [ty ': no method term']);
+        verifyEqual(testCase, char(m.term.node), node, ty);
+    end
+end
 end
 
 % ===================== Guard A ============================================
@@ -500,7 +534,7 @@ function testTheSpikeTrainAlsoValidatesAgainstVEta(testCase)
 % value_inline_or_body) -- and emits NO observation until its per-epoch body is
 % decided (see testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided).
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
@@ -540,8 +574,24 @@ function out = runJ(v1)
 % every element here is el_1; a `spikes` one is a unit its sorting run labels
 % single ([sorted units are cells or groups], Jess Haley, 2026-10-26; without a
 % label it is carried, testRawV1RoundTripElement)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', false, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
+end
+
+function batch = withUnitProbe(v1)
+%WITHUNITPROBE {V1} plus, when V1 names an underlying element, that probe (an
+%   n-trode on V1's subject, id = the underlying_element_id): a sorted unit
+%   whose probe is not in the batch is carried whole as v1, carry-151 ([unit
+%   with no probe in the batch carried], Jess Haley, 2026-10-29). A probe
+%   names no epoch, so it emits no observation of its own.
+batch = {v1};
+deps = v1.depends_on;
+under = deps(strcmp({deps.name}, 'underlying_element_id'));
+if isempty(under) || isempty(under(1).value); return; end
+subj = deps(strcmp({deps.name}, 'subject_id'));
+probe = elementDoc('probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, subj(1).value, '');
+probe.base.id = char(under(1).value);
+batch{end+1} = probe;
 end
 
 function names = classNames(out)

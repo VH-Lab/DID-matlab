@@ -256,18 +256,44 @@ verifyRoundTrip(testCase, r, 'value range', {});
 verifyTrue(testCase, any(strcmp('imageStack_parameters.data_limits', [r.matched, r.equivalent])));
 end
 
+function testTheAcquisitionTimeRoundTripsOnEveryClock(testCase)
+% [acquisition time on its clock] (Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md): a UTC clock's datenum is the observation's
+% time reference on clock utc, in seconds; any other clock keeps the datenum as
+% the AFO:AFR_0001158 "acquisition time" condition's source_value, its
+% canonical named in needs_info. Every clock reads back as v1 wrote it.
+clocks = {'utc', 'approx_utc', 'exp_global_time', 'approx_exp_global_time', ...
+    'dev_local_time', 'no_time', ''};
+for k = 1:numel(clocks)
+    v1 = babuStack(sprintf('is_b_clk%d', k), 'image');
+    v1.imageStack_parameters.clocktype = clocks{k};
+    out = runRaw(v1);
+    label = sprintf('clock "%s"', clocks{k});
+    verifyEmpty(testCase, out.quarantine, label);
+    verifyEmpty(testCase, out.passthrough, [label ': converted, not carried']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyRoundTrip(testCase, r, label, {});
+    P = 'imageStack_parameters.';
+    accounted = [r.matched, r.not_set, r.restated, r.equivalent];
+    verifyTrue(testCase, any(strcmp([P 'timestamp'], accounted)), [label ': timestamp']);
+    verifyTrue(testCase, any(strcmp([P 'clocktype'], accounted)), [label ': clocktype']);
+end
+end
+
 % ===================== the other carries, on the raw shape ===============
 
 function testTheRawShapeCarriesAsTheRenamedOneDid(testCase)
-% a mask with a subject and no plate row (carry-025), a collection edge
-% (carry-013), a data_limits that is not a pair (carry-012)
+% a mask with a subject and no plate row (carry-154 since [Haley mask words
+% leave the generic stage], 2026-10-30; carry-025 before), a collection edge
+% (carry-153 since [image collection carried until a writer], 2026-10-30;
+% an awaiting_home row before), a data_limits that is not a pair (carry-012)
 mask = haleyBehaviourStack('is_m', 'arena mask');
 mask.depends_on(1).value = '';
 coll = babuStack('is_c', 'image');
 coll.depends_on(end+1) = struct('name', 'imageCollection_id', 'value', 'coll_1');
 lim = babuStack('is_l', 'image');
 lim.imageStack_parameters.data_limits = 'not a pair';
-cases = {'mask', mask, '[carry-025] '; 'collection', coll, '[carry-013] '; ...
+cases = {'mask', mask, '[carry-154] '; 'collection', coll, '[carry-153] malformed: '; ...
     'limits', lim, '[carry-012] '};
 for k = 1:size(cases, 1)
     [label, v1, row] = cases{k, :};

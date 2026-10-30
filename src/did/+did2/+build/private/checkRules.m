@@ -42,7 +42,13 @@ function checkRules(cache, className, doc, chain)
 %      (not as a machine-readable rule). Each cites where it is stated:
 %        conditions_one_value     statement.conditions: "{variable, unit,
 %                                 source_unit, approximate} plus exactly ONE
-%                                 value form", holding one value
+%                                 value form", holding one value; a
+%                                 quantity whose canonical `value` is
+%                                 absent holds one when it keeps its
+%                                 source_value and needs_info names the
+%                                 canonical ([missing facts are needs
+%                                 info], [canonical absent only as needs
+%                                 info])
 %        variable_once            (a schema rule since 2026-10-22, part 1
 %                                 above; checked here) did-schema data_body
 %                                 AMENDMENT 6: "A variable appears at most
@@ -328,6 +334,17 @@ if isstruct(conditions)
                 k, numel(given), strjoin(given, ', ')));
         end
         n = valueCount(conditions(k), given{1});
+        if n == 0 && strcmp(given{1}, 'quantity') ...
+                && canonicalNamedInNeedsInfo(doc, conditions(k).quantity, k)
+            % [missing facts are needs info] (Jess Haley, 2026-10-29) and
+            % [canonical absent only as needs info] (2026-10-30), did-schema
+            % V_eta_go_forward_class_audit.md: a quantity's canonical may be
+            % absent only when the document's needs_info names it. Its one
+            % value is then the source_value it keeps (first use: an image
+            % stack's acquisition time on a clock that is not UTC,
+            % [acquisition time on its clock])
+            n = 1;
+        end
         if n ~= 1
             violated('conditions_one_value', className, sprintf( ...
                 'condition %d carries %d values; a condition is ONE value true of the whole statement (use a covariate along a dimension for more).', k, n));
@@ -691,6 +708,20 @@ for f = {'term', 'quantity', 'count', 'text', 'matrix', 'logical'}
         given{end+1} = f{1}; %#ok<AGROW>
     end
 end
+end
+
+function tf = canonicalNamedInNeedsInfo(doc, quantity, k)
+%CANONICALNAMEDINNEEDSINFO True when condition K's quantity keeps a
+%   source_value and the document's needs_info names its canonical
+%   (<block>.conditions(K).quantity.value).
+tf = false;
+if ~isstruct(quantity) || ~isscalar(quantity) || ~isfield(quantity, 'source_value') ...
+        || isAbsent(quantity.source_value)
+    return;
+end
+named = did2.schema.needsInfoFields(doc);
+suffix = sprintf('.conditions(%d).quantity.value', k);
+tf = any(cellfun(@(f) endsWith(f, suffix), named));
 end
 
 function n = valueCount(entry, form)

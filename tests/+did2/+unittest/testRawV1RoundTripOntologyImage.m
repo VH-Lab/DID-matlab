@@ -58,20 +58,53 @@ verifyEmpty(testCase, raw.quarantine);
 verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough));
 end
 
-function testAWriterDocumentWithNoTableRowStillPassesThrough(testCase)
-% [ngrid with no statement carried] names an ontologyImage whose only edge is
-% its table row. imageDocMaker leaves the edge empty when it is given no row;
-% such a document is not what the line names, so it passes through as before,
-% with no carry note.
+function testAWriterDocumentWithNoEdgeIsCarried(testCase)
+% INVERTED 2026-10-30 from testAWriterDocumentWithNoTableRowStillPassesThrough
+% (which asserted no carry note). [vintage-B ontologyImage cases] (a) (Decided
+% by Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a v1
+% `ontologyImage` with no non-empty edge at all (NDI `imageDocMaker.m` makes one
+% when given no row) is carried whole as v1 like the row-only case
+% (carry-124)". imageDocMaker leaves the edge empty when given no row.
 v1 = writerImage();
 v1 = did2.unittest.helpers.setDependency(v1, 'ontologyTableRow_id', '');
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+verifyEmpty(testCase, out.quarantine);
+verifyTrue(testCase, carried, 'carried as the untouched v1 source');
+verifyTrue(testCase, startsWith(notes, '[carry-124] needs_mapping: ngrid (no non-empty edge'), notes);
+verifyEqual(testCase, numel(out.passthrough), 1);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyTrue(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'ontologyImage, no table row', {});
+end
+
+function testASubjectEdgeBesideTheTableRowIsCarriedMalformed(testCase)
+% [vintage-B ontologyImage cases] (b) (Decided by Jess Haley, 2026-10-29): "one
+% with a subject or element edge beside its row (no NDI writer makes one) is
+% carried as `malformed`" -- register row carry-150. Both edge names.
+for nm = {'subject_id', 'element_id'}
+    v1 = did2.unittest.helpers.setDependency(writerImage(), nm{1}, ...
+        '41268b6f5c6a3d4e_af00000000000002');
+    [carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+    verifyEmpty(testCase, out.quarantine);
+    verifyTrue(testCase, carried, nm{1});
+    verifyTrue(testCase, startsWith(notes, '[carry-150] malformed: '), notes);
+    verifyFalse(testCase, contains(notes, 'carry-124'), notes);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried);
+end
+end
+
+function testASubjectEdgeWithNoTableRowStillPassesThrough(testCase)
+% Neither line of [vintage-B ontologyImage cases] names a vintage-B document
+% with a subject edge and an EMPTY table row: it passes through as before,
+% with no carry note.
+v1 = did2.unittest.helpers.setDependency(writerImage(), 'ontologyTableRow_id', '');
+v1 = did2.unittest.helpers.setDependency(v1, 'subject_id', '41268b6f5c6a3d4e_af00000000000002');
 [carried, notes, out] = did2.unittest.helpers.carryNote({v1});
 verifyEmpty(testCase, out.quarantine);
 verifyFalse(testCase, carried);
 verifyEqual(testCase, notes, '');
 verifyEqual(testCase, numel(out.passthrough), 1);
-r = did2.convert.roundtrip.check(v1, out.migrated);
-did2.unittest.helpers.verifyRoundTrip(testCase, r, 'ontologyImage, no table row', {});
 end
 
 function testTheLegacyVintageConvertsAsBefore(testCase)

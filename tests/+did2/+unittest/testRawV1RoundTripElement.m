@@ -9,6 +9,16 @@ function tests = testRawV1RoundTripElement
 %                                       the mirror of NDI-matlab's
 %                                       ndi.vintage.elementLocalIdentifier on
 %                                       claude/phase3 471cd5c66)
+%     [element name and reference stored apart] (2026-10-29)  the v1 name,
+%                                       exactly, is entity.name; the
+%                                       reference is what follows it in the
+%                                       local_identifier
+%                                       (did2.convert.elementHandle /
+%                                       elementNameReferenceApart), so a name
+%                                       that reads as a pair converts
+%                                       (no longer carried as unpackable); an entity
+%                                       with no `name` (migrated before it)
+%                                       still reads by the old parse
 %     [element types have no default], [element types batch 1] ..
 %     [element types batch 4] (2026-10-30)
 %                                       a device only on an ndi.probe.* class,
@@ -52,12 +62,11 @@ end
 function f = knownFindings()
 % [unit direct and subject rebuild from the probe] (Jess Haley, 2026-10-27):
 % a unit whose probe is in the batch rebuilds both, so it has no finding. A
-% unit whose probe is NOT in the batch is converted as before (no decision
-% says otherwise; reported in the PR): its `direct` is still checked (0) and
-% rebuilt, but its subject_id cannot be read from a probe the batch lacks.
-f = { ...
-    'unit, probe not in the batch', 'depends_on(2).value', ['its subject_id is ' ...
-        'its probe''s, and the probe is not in the batch to read it from']};
+% unit whose probe is NOT in the batch was converted with this one finding (its
+% subject_id unread) until [unit with no probe in the batch carried] (Jess
+% Haley, 2026-10-29): it is carried now (carry-151,
+% testCarriedElementsCiteTheirRows), so no converted fixture has a finding.
+f = cell(0, 3);
 end
 
 function paths = findingsFor(fixture)
@@ -69,7 +78,7 @@ end
 
 function testConvertedElementsRoundTrip(testCase)
 units = {neuronDoc('ne_1', 'el_unit_s', 'single'), neuronDoc('ne_2', 'el_unit_m', 'multi'), ...
-    neuronDoc('ne_5', 'el_unit_x', 'single'), unitProbe()};
+    unitProbe()};
 cases = { ...
     'n-trode probe', probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'patch-I probe', probeDoc('el_patch', 'patch1', 1, 'patch-I', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
@@ -85,7 +94,6 @@ cases = { ...
     'ppg probe', probeDoc('el_ppg', 'ppg', 1, 'ppg', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'single unit', unitDoc('el_unit_s', 'leftcortex_17', 1), 'cell'; ...
     'multi unit', unitDoc('el_unit_m', 'leftcortex_18', 1), 'group'; ...
-    'unit, probe not in the batch', unitDoc('el_unit_x', 'leftcortex_22', 1, 'el_absent'), 'cell'; ...
     'accelerometer probe', probeDoc('el_acc', 'acc', 1, 'accelerometer', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'ecg probe', probeDoc('el_ecg', 'ecg', 1, 'ecg', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
     'eeg probe', probeDoc('el_eeg', 'eeg', 1, 'eeg', 'ndi.probe.timeseries.mfdaq'), 'device'; ...
@@ -116,6 +124,7 @@ v1 = probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfda
 out = runRaw(v1);
 ent = out.migrated{1};
 verifyEqual(testCase, ent.get('entity.local_identifier'), 'leftcortex | 2');
+verifyEqual(testCase, char(ent.get('entity.name')), 'leftcortex');
 [n, r] = did2.convert.elementNameReference('leftcortex | 2');
 verifyEqual(testCase, n, 'leftcortex');
 verifyEqual(testCase, r, 2);
@@ -125,24 +134,106 @@ r2 = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
 verifyEmpty(testCase, r2.lost, describeLost(r2));
 end
 
-function testABaseNameIsTheEntityName(testCase)
-% [v1 name is the entity name] (Jess Haley, 2026-10-27): a non-empty v1
-% base.name is entity.name, and is rebuilt from it; '' (what
-% ndi.element/newdocument writes) writes nothing
+function testNameAndReferenceStoredApartRoundTrip(testCase)
+% [element name and reference stored apart] (Jess Haley, 2026-10-29): the v1
+% name, exactly, is entity.name, and local_identifier keeps
+% '<name> | <reference>'; the reference is read back as what follows the
+% known name. INVERTED from the unpackable-pair carry rows of
+% testCarriedElementsCiteTheirRows ('name reads as a pair', 'non-integer
+% reference'), which carried these elements whole: each now converts and
+% rebuilds exactly.
+cases = { ...
+    'name holding (ref 3)', 'el_ref3', 'leftcortex (ref 3)', 2, 'leftcortex (ref 3) | 2'; ...
+    'name that is an old (ref X) pair, no reference', 'el_ref3n', 'leftcortex (ref 3)', [], 'leftcortex (ref 3)'; ...
+    'name reads as a pair, no reference', 'el_pair', 'leftcortex | 2', [], 'leftcortex | 2'; ...
+    'name reads as a pair, with a reference', 'el_pair2', 'leftcortex | 2', 5, 'leftcortex | 2 | 5'; ...
+    'non-integer reference', 'el_frac', 'leftcortex', 1.5, 'leftcortex | 1.5'; ...
+    'text reference', 'el_text', 'leftcortex', 'tip', 'leftcortex | tip'; ...
+    'empty name with a reference', 'el_noname', '', 2, ' | 2'};
+for k = 1:size(cases, 1)
+    [label, id, name, reference, localId] = cases{k, :};
+    v1 = probeDoc(id, name, reference, 'n-trode', 'ndi.probe.timeseries.mfdaq');
+    out = runRaw(v1);
+    verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, id))), 0, ...
+        sprintf('%s: carried (%s)', label, carryNoteFor(out, id)));
+    docs = elementOutputs(out, id);
+    if isempty(docs); continue; end
+    ent = docs{1};
+    verifyEqual(testCase, char(ent.entity.local_identifier), localId, label);
+    if isempty(name)
+        verifyFalse(testCase, isfield(ent.entity, 'name'), [label ': an empty name wrote entity.name']);
+    else
+        verifyEqual(testCase, char(ent.entity.name), name, [label ': entity.name']);
+    end
+    r = did2.convert.roundtrip.check(v1, docs);
+    verifyFalse(testCase, r.carried, label);
+    verifyEmpty(testCase, r.lost, sprintf('%s: %s', label, describeLost(r)));
+    verifyEmpty(testCase, r.invented, sprintf('%s: invented: %s', label, strjoin(r.invented, ', ')));
+    verifyTrue(testCase, any(strcmp('element.name', [r.matched, r.not_set])), ...
+        [label ': element.name not rebuilt']);
+    verifyTrue(testCase, any(strcmp('element.reference', [r.matched, r.not_set])), ...
+        [label ': element.reference not rebuilt']);
+end
+end
+
+function testAnEntityWithoutNameReadsByTheOldParse(testCase)
+% an element entity migrated before [element name and reference stored apart]
+% has no `name` (its v1 base.name was '') and holds the pair in
+% local_identifier alone: '<name> | <reference>' (2026-10-26), or the older
+% '<name> (ref <X>)'. Its round trip falls back to that parse
+% (did2.convert.elementNameReference) and still rebuilds the v1 element.
+v1 = probeDoc('el_old', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
+docs = elementOutputs(runRaw(v1), 'el_old');
+for form = {'leftcortex | 2', 'leftcortex (ref 2)'}
+    old = docs;
+    old{1}.entity = rmfield(old{1}.entity, 'name');
+    old{1}.entity.local_identifier = form{1};
+    r = did2.convert.roundtrip.check(v1, old);
+    verifyEmpty(testCase, r.lost, sprintf('%s: %s', form{1}, describeLost(r)));
+    verifyEmpty(testCase, r.invented, sprintf('%s: invented: %s', form{1}, strjoin(r.invented, ', ')));
+end
+% and one whose `name` is its v1 base.name ([v1 name is the entity name],
+% 2026-10-27), not leading its local_identifier: base.name is rebuilt from
+% `name`, element.name and element.reference from local_identifier
+v1n = v1;
+v1n.base.name = 'left cortex probe';
+old = docs;
+old{1}.entity.name = 'left cortex probe';
+r = did2.convert.roundtrip.check(v1n, old);
+verifyEmpty(testCase, r.lost, describeLost(r));
+verifyEmpty(testCase, r.invented, strjoin(r.invented, ', '));
+end
+
+function testANonEmptyBaseNameIsCarried(testCase)
+% [element name and reference stored apart] (2026-10-29) gives the entity's
+% one `name` to element.name. A non-empty v1 base.name, which [v1 name is the
+% entity name] (2026-10-27) wrote there, then has no field: writing either
+% name loses the other. ndi.element/newdocument writes base.name '' (NDI-matlab
+% main 441530d0, +ndi/element.m newdocument), so Decided by Jess Haley,
+% 2026-10-30 [element name kept apart, base.name carried]: the element is
+% carried whole as v1, malformed, under carry-149. REPLACES
+% testABaseNameIsTheEntityName's element case, which wrote base.name to
+% entity.name.
 v1 = probeDoc('el_named', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
 v1.base.name = 'left cortex probe';
 out = runRaw(v1);
-docs = elementOutputs(out, v1.base.id);
-verifyEqual(testCase, char(out.migrated{1}.get('entity.name')), 'left cortex probe');
+verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, 'el_named'))), 1, ...
+    'a non-empty base.name was not carried');
+d = carryNoteFor(out, 'el_named');
+verifyTrue(testCase, startsWith(d, '[carry-149] malformed: base.name "left cortex probe"'), d);
+docs = elementOutputs(out, 'el_named');
 r = did2.convert.roundtrip.check(v1, docs);
-verifyEmpty(testCase, r.lost, describeLost(r));
-verifyEmpty(testCase, r.invented, strjoin(r.invented, ', '));
-verifyTrue(testCase, any(strcmp('base.name', r.matched)));
+verifyTrue(testCase, r.carried);
+verifyTrue(testCase, r.ok, describeLost(r));
+% base.name '' (the writer's) converts, and the entity's name is element.name
 v0 = probeDoc('el_unnamed', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
 e0 = runRaw(v0).migrated{1}.toStruct();
-verifyFalse(testCase, isfield(e0.entity, 'name'), 'an empty base.name wrote entity.name');
+verifyEqual(testCase, char(e0.entity.name), 'leftcortex');
+r0 = did2.convert.roundtrip.check(v0, elementOutputs(runRaw(v0), 'el_unnamed'));
+verifyEmpty(testCase, r0.lost, describeLost(r0));
+verifyTrue(testCase, any(strcmp('base.name', [r0.matched, r0.not_set])), 'base.name '''' not rebuilt');
 % and the named device validates
-outV = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+outV = did2.convert.v1_to_v2(v0, 'Validate', true, 'TargetVersion', 'V_eta');
 reasons = '';
 for k = 1:numel(outV.quarantine)
     reasons = [reasons sprintf('%s: %s; ', outV.quarantine(k).class_name, ...
@@ -290,9 +381,10 @@ cases = { ...
     'neuron, labelled', namedUnit('el_neu', 'neuron'), {neuronDoc('ne_neu', 'el_neu', 'single'), unitProbe()}, '[carry-063] '; ...
     'cell, labelled', namedUnit('el_cel', 'cell'), {neuronDoc('ne_cel', 'el_cel', 'multi'), unitProbe()}, '[carry-063] '; ...
     'lfp', probeDoc('el_lfp', 'lfp', 1, 'lfp', 'ndi.element.timeseries'), {}, '[carry-063] '; ...
-    'name reads as a pair', probeDoc('el_pair', 'leftcortex | 2', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-055] '; ...
-    'non-integer reference', probeDoc('el_frac', 'leftcortex', 1.5, 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-055] '; ...
-    'no name, no reference', probeDoc('el_none', '', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-048] '};
+    'reference not one number', probeDoc('el_arr', 'leftcortex', [1 2], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-120] '; ...
+    'no name, no reference', probeDoc('el_none', '', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-048] '; ...
+    'unit, probe not in the batch', unitDoc('el_unit_x', 'leftcortex_22', 1, 'el_absent'), ...
+        {neuronDoc('ne_5', 'el_unit_x', 'single')}, '[carry-151] needs_mapping: '};
 for k = 1:size(cases, 1)
     [label, v1, others, row] = cases{k, :};
     out = runRaw([{v1}, others]);
@@ -308,12 +400,42 @@ for k = 1:size(cases, 1)
 end
 end
 
+function testAUnitWithNoProbeInTheBatchIsCarried(testCase)
+% INVERTED 2026-10-30: the 'unit, probe not in the batch' fixture was converted
+% with its subject_id unchecked (one known finding, note
+% unit_probe_not_in_batch). [unit with no probe in the batch carried] (Decided
+% by Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a
+% sorted unit whose probe is not in the migration batch ... is carried whole
+% as v1 under a register row instead of converting with its subject
+% unchecked" -- carry-151, needs_mapping. The same unit WITH its probe in the
+% batch converts.
+v1 = unitDoc('el_unit_x', 'leftcortex_22', 1, 'el_absent');
+out = runRaw({v1, neuronDoc('ne_5', 'el_unit_x', 'single')});
+docs = elementOutputs(out, v1.base.id);
+verifyEqual(testCase, numel(docs), 1, 'one document, the v1 source');
+d = carryNoteFor(out, v1.base.id);
+verifyTrue(testCase, startsWith(d, '[carry-151] needs_mapping: '), d);
+verifyTrue(testCase, contains(d, 'el_absent'), d);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'unit_probe_not_in_batch'), ...
+    'the old converted-and-counted note is gone');
+r = did2.convert.roundtrip.check(v1, docs);
+verifyTrue(testCase, r.carried);
+verifyTrue(testCase, r.ok, describeLost(r));
+probe = probeDoc('el_absent', 'leftcortex', 1, 'n-trode', 'ndi.probe.timeseries.mfdaq');
+out2 = runRaw({v1, neuronDoc('ne_5', 'el_unit_x', 'single'), probe});
+verifyEqual(testCase, numel(out2.passthrough(strcmp({out2.passthrough.id}, v1.base.id))), 0, ...
+    'with its probe in the batch the unit converts');
+end
+
 function testABatchLabelCanBeGivenByTheCaller(testCase)
-% 'UnitQualityLabels': a unit whose neuron_extracellular is not in the batch
+% 'UnitQualityLabels': a unit whose neuron_extracellular is not in the batch.
+% Its probe is in the batch: without it the unit is carried (carry-151,
+% [unit with no probe in the batch carried], 2026-10-29).
 v1 = unitDoc('el_unit_g', 'leftcortex_21', 1);
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2({v1, unitProbe()}, 'Validate', false, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_unit_g', 'multi'});
-verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'group');
+docs = elementOutputs(out, 'el_unit_g');
+verifyEqual(testCase, did2.unittest.helpers.classKey(docs{1}), 'group');
 end
 
 function testKilosortAndPhyLabelsMap(testCase)
@@ -327,7 +449,8 @@ cases = {'good', 'cell'; 'Good', 'cell'; 'mua', 'group'; 'MUA', 'group'};
 for k = 1:size(cases, 1)
     id = sprintf('el_ks_%d', k);
     v1 = unitDoc(id, sprintf('leftcortex_%d', 30 + k), 1);
-    out = runRaw({v1, neuronDoc(sprintf('ne_ks_%d', k), id, cases{k, 1})});
+    % the probe is in the batch (carry-151 otherwise)
+    out = runRaw({v1, neuronDoc(sprintf('ne_ks_%d', k), id, cases{k, 1}), unitProbe()});
     docs = elementOutputs(out, id);
     verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, id))), 0, ...
         [cases{k, 1} ': carried']);
@@ -351,22 +474,25 @@ end
 function testBothPathsConvertAnElementAlike(testCase)
 % the migrator is the same on the raw and the universalRenames path; the
 % inputs differ only in spelling it reads both ways
-fixtures = {probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq'), ...
-    unitDoc('el_unit_s', 'leftcortex_17', 1), jhTrack('el_pos', 'worm1_head_position', 'position')};
+% the unit comes with its probe (carry-151 otherwise)
+fixtures = {{probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq')}, ...
+    {unitDoc('el_unit_s', 'leftcortex_17', 1), unitProbe()}, ...
+    {jhTrack('el_pos', 'worm1_head_position', 'position')}};
 for k = 1:numel(fixtures)
     v1 = fixtures{k};
     raw = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
         'UnitQualityLabels', {'el_unit_s', 'single'});
     old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
         'UnitQualityLabels', {'el_unit_s', 'single'}, 'RawV1Classes', {});
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), v1.base.id);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), v1.base.id);
+    id = v1{1}.base.id;
+    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), id);
+    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), id);
     if ~isempty(raw.passthrough); continue; end
     for j = 1:min(numel(raw.migrated), numel(old.migrated))
         a = raw.migrated{j}.toStruct();
         b = old.migrated{j}.toStruct();
         verifyTrue(testCase, isequaln(a, b), sprintf('%s document %d: raw %s; renamed %s', ...
-            v1.base.id, j, jsonencode(a), jsonencode(b)));
+            id, j, jsonencode(a), jsonencode(b)));
     end
 end
 end
@@ -418,6 +544,10 @@ end
 
 function d = carryNoteFor(out, id)
 d = '';
+% no carried_as_v1 field at all when nothing in the run was carried
+if ~isfield(out.summary.migration_notes, 'carried_as_v1')
+    return;
+end
 n = out.summary.migration_notes.carried_as_v1;
 ix = find(strcmp(n.ids, id), 1);
 if ~isempty(ix)

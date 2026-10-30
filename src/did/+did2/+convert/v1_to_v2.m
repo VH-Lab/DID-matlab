@@ -1474,7 +1474,11 @@ function [migrated, passthrough, names, counts, carried] = carryDependents(bodie
 %   the epoch's presentation by NDI's second pass"). An edge to one of them
 %   does not end as "an edge to a v1 document", which is what the decision
 %   prevents; following it would carry every stimulus response.
-handedOn = {'stimulus_presentation', 'daqmetadatareader_epochdata_ingested'};
+%   `control_stimulus_ids` is handed on the same way (carry-152, [control
+%   records carried in pass 1], Jess Haley, 2026-10-30: "with
+%   `stimulus_presentation`'s reason").
+handedOn = {'stimulus_presentation', 'daqmetadatareader_epochdata_ingested', ...
+    'control_stimulus_ids'};
 isHandedOn = cellfun(@(c) ischar(c) && any(strcmp(c, handedOn)), cls);
 carriedIds = ids(done & carried & ~isHandedOn);
 carriedIds = carriedIds(~cellfun(@isempty, carriedIds));

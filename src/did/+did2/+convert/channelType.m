@@ -15,7 +15,8 @@ function [term, kind] = channelType(prefix)
 %       e   EMPTY:0000376 event channel
 %       mk  EMPTY:0000377 marker channel
 %       md  NCIT:C52095   Metadata
-%       tx  NCIT:C25704   Text
+%       tx  EMPTY:0000410 text channel  ([text channel replaces NCIT Text],
+%                         Jess Haley 2026-10-29; NCIT:C25704 Text until then)
 %
 %   The NAME is the term registry's label for the node (did2.convert.
 %   registeredTerm), so a relabel in the registry needs no change here; code
@@ -56,5 +57,5 @@ function [prefixes, nodes] = prefixTable()
 prefixes = {'ai', 'ao', 'di', 'do', 't', 'ax', 'e', 'mk', 'md', 'tx'};
 nodes = {'EMPTY:0000370', 'EMPTY:0000371', 'EMPTY:0000372', 'EMPTY:0000373', ...
     'EMPTY:0000374', 'EMPTY:0000375', 'EMPTY:0000376', 'EMPTY:0000377', ...
-    'NCIT:C52095', 'NCIT:C25704'};
+    'NCIT:C52095', 'EMPTY:0000410'};
 end

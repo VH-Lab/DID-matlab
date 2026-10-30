@@ -88,6 +88,37 @@ verifyError(testCase, @() buildCS(testCase, rmfield(csFields(), 'reference_point
     'did2:build:badNeedsInfo');
 end
 
+function testAConditionWhoseCanonicalIsNamedHoldsItsSourceValue(testCase)
+% conditions_one_value ([missing facts are needs info]; [canonical absent only
+% as needs info], Jess Haley, 2026-10-30): a quantity condition that keeps its
+% source_value, its canonical absent and named in needs_info, holds ONE value
+% (first use: an image stack's acquisition time on a clock that is not UTC,
+% [acquisition time on its clock]). Unnamed, it still holds none and is refused.
+cond = did2.build.composite('statement', 'conditions', struct( ...
+    'variable', did2.build.term('AFO:AFR_0001158', 'acquisition time'), ...
+    'quantity', struct('source_value', '739038.5')));
+ni = struct('field', 'statement.conditions(1).quantity.value', ...
+    'reason', 'a datenum on a clock that is not UTC');
+doc = buildObs(testCase, cond, ni);
+verifyFalse(testCase, isfield(doc.statement.conditions(1).quantity, 'value'));
+verifyEqual(testCase, doc.base.needs_info(1).field, ni.field);
+verifyError(testCase, @() buildObs(testCase, cond, []), 'did2:build:ruleViolated', ...
+    'a condition with no value and nothing named in needs_info holds none');
+other = struct('field', 'statement.conditions(2).quantity.value', 'reason', 'r');
+verifyError(testCase, @() buildObs(testCase, cond, other), 'did2:build:ruleViolated', ...
+    'an entry for another condition excuses nothing here');
+end
+
+function doc = buildObs(testCase, conditions, needsInfo)
+args = {'SessionId', testCase.TestData.sid, 'TimeReferenceIds', {did.ido.unique_id()}, ...
+    'Conditions', conditions, 'ValueKind', 'voltage'};
+if ~isempty(needsInfo)
+    args = [args, {'NeedsInfo', needsInfo}];
+end
+doc = did2.build.statement('observation', did.ido.unique_id(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), args{:});
+end
+
 % ===================== the validator =======================================
 
 function testTheValidatorReadsNeedsInfo(testCase)

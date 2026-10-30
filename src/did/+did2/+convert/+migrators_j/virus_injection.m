@@ -39,7 +39,13 @@ function v2Body = virus_injection(preBody)
 %     virusLocation_OntologyName, virusLocation_name -> the route and the
 %                                 site observation of a dose
 %     virus_AdministrationDate -> the anchor (jTreatmentAnchor)
-%     virus_AdministrationPND  -> NOT READ (an open finding)
+%     virus_AdministrationPND  -> an `observation` of the subject, value kind
+%                                 time (the age, in days), variable NCIT:C25150
+%                                 "Age", on the injection's time reference
+%                                 ([age at injection is an observation], Jess
+%                                 Haley, 2026-10-27; [age is NCIT Age],
+%                                 2026-10-30). A non-numeric value is not
+%                                 read (the round trip reports it lost).
 %     files.file_list          -> empty in the template and the writer
 
 arguments
@@ -104,6 +110,42 @@ if strcmp(route, 'dose')
         'TimeReferenceIds', {anchor.base.id}, 'ValueKind', 'term');
     bodies{end+1} = obs;
 end
+age = ageObservation(preBody, block, anchor.base.id);
+if ~isempty(age)
+    bodies{end+1} = age;
+end
 bodies{end+1} = anchor;
 v2Body = bodies;
+end
+
+function obs = ageObservation(preBody, block, anchorId)
+%AGEOBSERVATION The subject's age at the injection, or [] when v1 states none.
+%   [age at injection is an observation] (Decided by Jess Haley, 2026-10-27,
+%   did-schema V_eta_go_forward_class_audit.md): v1 `virus_AdministrationPND`
+%   becomes an `observation` with value kind `time` (the age, in days) of the
+%   injected subject (`entity_id`), its `time_reference_id` the same time
+%   reference as the injection's manipulation. [age is NCIT Age] (Jess Haley,
+%   2026-10-30): its variable is NCIT:C25150 "Age"; "at injection" is said by
+%   the time reference. The value: `seconds` the days times 86400,
+%   `source_value` the number of days as v1 wrote it, `source_unit` day.
+%   A finite number is read as written, 0 included (the template's default
+%   is 0, and no decision makes 0 "not recorded" for this field, unlike
+%   `dilution`); an empty, NaN or non-numeric value states no age.
+obs = [];
+pnd = [];
+for f = {'virus_administration_pnd', 'virus_AdministrationPND'}
+    if isfield(block, f{1})
+        pnd = block.(f{1});
+        break;
+    end
+end
+if ~(isnumeric(pnd) && isscalar(pnd) && isfinite(double(pnd)))
+    return;
+end
+days = double(pnd);
+value = did2.build.composite('time', 'value', {struct('seconds', days * 86400, ...
+    'source_value', days, 'source_unit', struct('node', 'om:day', 'name', 'day'))});
+obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
+    did2.convert.registeredTerm('NCIT:C25150', 'Age'), value, ...
+    'TimeReferenceIds', {anchorId}, 'ValueKind', 'time');
 end

@@ -1,4 +1,4 @@
-function [blk, bad] = tuningBlock(leaf, family)
+function [blk, bad, absFitless] = tuningBlock(leaf, family)
 %TUNINGBLOCK A v1 tuning result block rebuilt from the converted calculation
 %   (the inverse of +migrators_j/private/jTuningCurve for one stimulus
 %   variable).
@@ -27,11 +27,18 @@ function [blk, bad] = tuningBlock(leaf, family)
 %                                 value.control.pooled.*
 %     significance.*              value.significance
 %     vector.* (oridir)           the calculation's circular_statistics
-%     fitless.* (contrast, sf, tf) the calculation's interpolated_values
+%     fitless.* (contrast, sf, tf) the calculation's interpolated_values: the
+%                                 structure, or in a list the entry with no
+%                                 response_transform ([interpolated values
+%                                 are a list], Jess Haley, 2026-10-30;
+%                                 interpolatedEntry reads both shapes)
+%   ABSFITLESS is the list's 'absolute value' entry in v1's `fitless`
+%   spelling (v1 `abs.fitless`, SF / TF), struct() when there is none.
 %     fit / fit_<model>           value.model_fit (fitBlocks)
 
 bad = {};
 blk = struct();
+absFitless = struct();
 value = getIn(leaf, 'tuning_curve', 'value');
 if ~isstruct(value)
     bad{end+1} = 'the calculation has no tuning_curve.value';
@@ -106,9 +113,23 @@ else
             'half_maximum_above', 'H50'; 'bandwidth', 'bandwidth'; ...
             'low_pass_index', 'low_pass_index'; 'high_pass_index', 'high_pass_index'};
     end
-    [fl, b] = renamed(getIn(own, 'interpolated_values'), map, 'interpolated_values');
+    iv = getIn(own, 'interpolated_values');
+    [main, b] = interpolatedEntry(iv, '', 'interpolated_values');
+    bad = [bad, b];
+    [fl, b] = renamed(main, map, 'interpolated_values');
     bad = [bad, b];
     if ~isempty(fieldnames(fl)); blk.fitless = fl; end
+    [absEntry, b] = interpolatedEntry(iv, 'absolute value', 'interpolated_values');
+    bad = [bad, b];
+    if ~isempty(fieldnames(absEntry))
+        if any(strcmp(family, {'sf', 'tf'}))
+            [absFitless, b] = renamed(absEntry, map, 'interpolated_values(absolute value)');
+            bad = [bad, b];
+        else
+            bad{end+1} = sprintf(['an absolute-value interpolated_values entry ' ...
+                'has no place in a %s block'], family);
+        end
+    end
 end
 
 if isfield(value, 'model_fit')

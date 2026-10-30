@@ -8,13 +8,24 @@ function [v1, spec] = element(bodies)
 %   3cb19a8, as ndi.element/newdocument writes it):
 %
 %     base.id, session_id, datestamp   the entity (rebuildBase)
-%     base.name                        entity.name ('' when the entity has
-%                                      none; [v1 name is the entity name],
-%                                      Jess Haley, 2026-10-27)
-%     element.name, element.reference  entity.local_identifier, read back by
-%                                      did2.convert.elementNameReference
-%                                      ('<name> | <reference>'; the name alone
-%                                      for an element with no reference)
+%     element.name                     entity.name, exactly (Decided by Jess
+%                                      Haley, 2026-10-29 [element name and
+%                                      reference stored apart])
+%     element.reference                what follows that name in
+%                                      entity.local_identifier
+%                                      ('<name> | <reference>', or the name
+%                                      alone for no reference; a number when
+%                                      it reads as one), by
+%                                      did2.convert.elementNameReferenceApart
+%     base.name                        '' (ndi.element/newdocument writes '';
+%                                      the migrator carries an element whose
+%                                      base.name is not empty)
+%     A DOCUMENT MIGRATED BEFORE 2026-10-29 (its entity.name, if any, is the
+%     v1 base.name, [v1 name is the entity name], 2026-10-27, and does not
+%     lead its local_identifier): element.name and element.reference are
+%     read from local_identifier alone, did2.convert.elementNameReference
+%     (the split at the last ' | ', or the old ' (ref X)' form), and
+%     base.name is entity.name ('' when the entity has none).
 %     element.type                     the 'element type' assertion's value;
 %                                      with none, the device kind (the
 %                                      Equipment Type assertion) read back by
@@ -76,7 +87,12 @@ if isempty(ent)
     return;
 end
 [base, entity] = rebuildBase(ent);
-[name, reference] = did2.convert.elementNameReference(fieldText(entity, 'local_identifier'));
+[name, reference, apart] = did2.convert.elementNameReferenceApart( ...
+    fieldText(entity, 'name'), fieldText(entity, 'local_identifier'));
+baseName = '';
+if ~apart
+    baseName = fieldText(entity, 'name');   % migrated before 2026-10-29
+end
 
 type = '';
 hasType = false;
@@ -166,7 +182,7 @@ if ~isempty(sortingRun)
 end
 v1.depends_on = struct('name', names, 'value', values);
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
-    'name', fieldText(entity, 'name'), 'datestamp', base.datestamp);
+    'name', baseName, 'datestamp', base.datestamp);
 blk = struct('ndi_element_class', ndiClass, 'name', name, 'type', type);
 blk.reference = reference;
 if ~isempty(direct)

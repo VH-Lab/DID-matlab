@@ -39,6 +39,20 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %   caller carries the source document whole as v1. Empty when everything is
 %   placed.
 %
+%   A CONCENTRATION UNIT THE UNIT TABLE DOES NOT KNOW is carried too
+%   (carry-155; Decided by Jess Haley, 2026-10-30 [canonical absent only as
+%   needs info], did-schema V_eta_go_forward_class_audit.md: "A unit spelling
+%   the migrator does not recognise is carried for mapping, not written
+%   without a canonical."). A row with a finite number and a unit, still on
+%   its row when the formulation is built (not taken by jDoseValue as an
+%   amount), is an ingredient's concentration; when jSourceUnit does not know
+%   its unit (by name) as a concentration (Molar, molar, M), nothing is built
+%   and UNPLACED names the row. EXCEPT virus_injection's 'dilution': that is
+%   the migrator's own label for v1's unitless `dilution` number, not a unit
+%   the source spelled, and whether it is carry-155 or needs_info (the
+%   decision's "a source number with no unit") is a team question; it is
+%   written as before.
+%
 %   Options:
 %     'AlwaysDose'  route as a dose whatever the location, never noted as
 %                   route_unknown. No caller sets it since virus_injection
@@ -96,6 +110,11 @@ switch route
         docs = {};
         return;
     case 'immersion'
+        unplaced = unknownConcentrationUnits(preBody, chemicals);
+        if ~isempty(unplaced)
+            docs = {};
+            return;
+        end
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
         % `formulation_manipulation` is no class: did2.build reads it as the
         % direction `manipulation` with the value kind `formulation`.
@@ -131,6 +150,13 @@ switch route
                 reshape(placeholders, 1, []), 'UniformOutput', false), ...
                 cellfun(@(t) [conflictRow 'conflicting amount: ' char(t)], ...
                 reshape(conflicts, 1, []), 'UniformOutput', false)];
+            docs = {};
+            return;
+        end
+        % the rows jDoseValue took as amounts are off; what still has a
+        % number and a unit is an ingredient's concentration
+        unplaced = unknownConcentrationUnits(preBody, chemicals);
+        if ~isempty(unplaced)
             docs = {};
             return;
         end
@@ -174,5 +200,57 @@ switch cn
         tag = drugTag;
     case 'virus_injection'
         tag = virusTag;
+end
+end
+
+function unplaced = unknownConcentrationUnits(preBody, chemicals)
+%UNKNOWNCONCENTRATIONUNITS One carry-155 line per row whose concentration
+%   unit jSourceUnit does not know (header). {} when there is none.
+unplaced = {};
+for k = 1:numel(chemicals)
+    c = chemicals(k);
+    if ~isfield(c, 'source_value') || isempty(c.source_value) ...
+            || ~isnumeric(c.source_value) || ~isfinite(c.source_value(1))
+        continue;
+    end
+    spelling = '';
+    if isfield(c, 'source_unit')
+        u = c.source_unit;
+        if isstruct(u) && ~isempty(u) && isfield(u, 'name')
+            spelling = strtrim(char(u.name));
+        elseif ischar(u) || isstring(u)
+            spelling = strtrim(char(u));
+            if strcmp(spelling, 'dilution')
+                continue;   % virus_injection's own label (header): as before
+            end
+        end
+    end
+    if isempty(spelling)
+        continue;           % no unit: jDoseBodies names it in needs_info
+    end
+    [~, factor, kind] = jSourceUnit(spelling);
+    if strcmp(kind, 'concentration') && ~isempty(factor)
+        continue;
+    end
+    unplaced{end+1} = sprintf(['[carry-155] needs_mapping: %s row %d (%s) ' ...
+        'concentration unit "%s" (no concentration unit is known for it; ' ...
+        '[canonical absent only as needs info])'], className(preBody), k, ...
+        substanceName(c), spelling); %#ok<AGROW>
+end
+end
+
+function n = className(preBody)
+n = '';
+if isfield(preBody, 'document_class') && isstruct(preBody.document_class) ...
+        && isfield(preBody.document_class, 'class_name')
+    n = char(preBody.document_class.class_name);
+end
+end
+
+function n = substanceName(c)
+n = '';
+if isfield(c, 'substance') && isstruct(c.substance) && ~isempty(c.substance) ...
+        && isfield(c.substance, 'name')
+    n = strtrim(char(c.substance.name));
 end
 end

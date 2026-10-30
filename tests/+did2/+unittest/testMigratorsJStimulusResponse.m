@@ -299,8 +299,10 @@ v1 = responseFixture('F1');
 v1.depends_on(strcmp({v1.depends_on.name}, ...
     'stimulus_response_scalar_parameters_id')) = [];
 leaf = findHarmonicCalc(testCase, runJ(withEpochEdge(v1)));
-verifyEqual(testCase, leaf.get('interaction.method.term.name'), ...
-    'ndi.app.stimulus.tuning_response');
+% INVERTED 2026-10-30 from the app name: [data analysis is the general method]
+% (Jess Haley, did-schema V_eta_go_forward_class_audit.md, G29)
+verifyEqual(testCase, char(leaf.get('interaction.method.term.node')), ...
+    'EDAM:operation_2945');
 verifyEmpty(testCase, depValue(leaf.toStruct(), 'method_id'));
 end
 
@@ -450,6 +452,33 @@ verifyEqual(testCase, inputSet(b), {'ctrl_20e84c', 'pres_b671ff'});
 txt = evalc('did2.convert.v1_to_v2({withCtl, noCtl, unstamped}, ''Validate'', false, ''TargetVersion'', ''V_eta'', ''Verbose'', true);');
 verifySubstring(testCase, txt, ...
     'stimulus_control_id edges dropped: 0 of 2 converted stimulus response document(s)');
+end
+
+function testAResponseNamingACarriedControlRecordStillConverts(testCase)
+% [control records carried in pass 1] (Jess Haley, 2026-10-30): the control
+% record is carried whole as v1 (carry-152) "with `stimulus_presentation`'s
+% reason": NDI's second pass decomposes it, reading it from v1. So, as for a
+% presentation (carry-045), [dependents of a carried document carry]
+% (carry-064) does not follow an edge to it: a response naming it converts.
+withCtl = withEpochEdge(writerResponseFixture('F1'));
+ctl = struct();
+ctl.document_class = struct('class_name', 'control_stimulus_ids', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+ctl.depends_on = struct('name', {'stimulus_presentation_id'}, 'value', {'pres_b671ff'});
+ctl.base = struct('id', 'ctrl_20e84c', 'session_id', 'sess_0001', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+ctl.control_stimulus_ids = struct('control_stimulus_ids', [3; 3; 3; 6; 6; 6], ...
+    'control_stimulus_id_method', struct('method', 'pseudorandom', ...
+    'controlid', 'isblank', 'controlid_value', 1));
+out = runJ({withCtl, ctl});
+verifyEmpty(testCase, out.quarantine);
+verifyNotEmpty(testCase, findHarmonicCalc(testCase, out), 'the response converts');
+n = out.summary.migration_notes.carried_as_v1;
+verifyEqual(testCase, n.count, 1, 'only the control record is carried');
+verifyEqual(testCase, char(n.ids{1}), 'ctrl_20e84c');
+verifyTrue(testCase, startsWith(n.details{1}, '[carry-152] not_modelled: '), n.details{1});
+verifyFalse(testCase, any(contains(n.details, '[carry-064]')));
 end
 
 function testDimensionTermsWithNoNodeAreCountedPerClass(testCase)

@@ -100,9 +100,55 @@ end
 function out = runJUnit(v1)
 % a sorted unit (element el_1) whose sorting run labels it a single unit:
 % [sorted units are cells or groups] (Jess Haley, 2026-10-26); without a label
-% it is carried ([unlabelled units need a map], testRawV1RoundTripElement)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+% it is carried ([unlabelled units need a map], testRawV1RoundTripElement).
+% Its probe (the underlying element) is in the batch, on the unit's subject:
+% a unit whose probe is not in the batch is carried, carry-151 ([unit with no
+% probe in the batch carried], Jess Haley, 2026-10-29). The probe's own
+% documents are then left out of OUT.migrated, so the assertions see only what
+% the unit emitted, as before.
+probe = unitProbeOf(v1);
+batch = {v1};
+if ~isempty(probe); batch{end+1} = probe; end
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
     'UnitQualityLabels', {'el_1', 'single'});
+if isempty(probe); return; end
+probeId = probe.base.id;
+unitId = v1.base.id;
+keep = true(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    d = out.migrated{k}.toStruct();
+    if isfield(d, 'base') && strcmp(char(d.base.id), probeId)
+        keep(k) = false;
+        continue;
+    end
+    refs = {};
+    if isfield(d, 'depends_on') && ~isempty(d.depends_on)
+        deps = d.depends_on;
+        if iscell(deps); deps = [deps{:}]; end
+        for j = 1:numel(deps)
+            for f = {'value', 'document_id', 'id'}
+                if isfield(deps(j), f{1}) && ischar(deps(j).(f{1}))
+                    refs{end+1} = deps(j).(f{1}); %#ok<AGROW>
+                end
+            end
+        end
+    end
+    keep(k) = ~(any(strcmp(refs, probeId)) && ~any(strcmp(refs, unitId)));
+end
+out.migrated = out.migrated(keep);
+end
+
+function probe = unitProbeOf(unit)
+%UNITPROBEOF The probe a sorted-unit element fixture is built on (an n-trode
+%   on the unit's subject, id = the unit's underlying_element_id), or [] when
+%   the fixture names no underlying element.
+probe = [];
+deps = unit.depends_on;
+under = deps(strcmp({deps.name}, 'underlying_element_id'));
+if isempty(under) || isempty(under(1).value); return; end
+subj = deps(strcmp({deps.name}, 'subject_id'));
+probe = elementDoc('probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, subj(1).value, '');
+probe.base.id = char(under(1).value);
 end
 
 function v = depVal(doc, name)
@@ -789,6 +835,13 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
 verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 5);
+% [canonical absent only as needs info] (Jess Haley, 2026-10-30): a number with
+% no unit keeps its source_value, has no canonical, and needs_info names the
+% canonical
+fs = f.toStruct();
+assertTrue(testCase, isfield(fs.base, 'needs_info'), 'the missing canonical is not named');
+verifyEqual(testCase, {fs.base.needs_info.field}, ...
+    {'formulation.value.ingredients(1).concentration.canonical'});
 verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
 % a body site (a brain area) -> a dose; the row gives no amount unit -> NaN
 verifyTrue(testCase, isnan(d.get('dose.value').volume.liters), ...
@@ -799,6 +852,64 @@ verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
+end
+
+function testAnIngredientWithNoAmountIsListedWithNoValue(testCase)
+% [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md): "an amount the source never
+% states ... is left out (the ingredient is still listed) rather than written
+% as `source_value` NaN (T14: missing is not a value)"; the document's
+% needs_info names it. INVERTS jDoseBodies' NaN for an ingredient beside one
+% that states an amount.
+v1 = treatmentDrugDoc('td_partial', sprintf('CHEBI:5613,haloperidol,5\nCHEBI:7035,muscimol,'), ...
+    'uberon:0002436', 'primary visual cortex');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+assertEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
+f = doseChainJ(out.migrated, d);
+fs = f.toStruct();
+ing = fs.formulation.value.ingredients;
+assertEqual(testCase, numel(ing), 2, 'both ingredients are listed');
+verifyEqual(testCase, numel(dependencyIds(fs, 'ingredient_id')), 2);
+verifyEqual(testCase, ing(1).concentration.source_value, 5);
+verifyTrue(testCase, ~isfield(ing, 'concentration') || isempty(ing(2).concentration) ...
+    || (isstruct(ing(2).concentration) && ~isfield(ing(2).concentration, 'source_value')), ...
+    'the unstated amount is left out, not NaN');
+fields = {fs.base.needs_info.field};
+verifyEqual(testCase, sort(fields), sort({ ...
+    'formulation.value.ingredients(1).concentration.canonical', ...
+    'formulation.value.ingredients(2).concentration'}));
+verifyTrue(testCase, all(~cellfun(@isempty, {fs.base.needs_info.reason})));
+n = out.summary.migration_notes;
+assertTrue(testCase, isfield(n, 'needs_info'), 'needs_info is counted');
+verifyEqual(testCase, n.needs_info.count, 2);
+% the formulation validates as written
+did2.schema.cache.shared().validateDocument(fs);
+end
+
+function testAFormulationWithNoAmountAtAllKeepsItsNaNUntilTheValueRuleAllowsIt(testCase)
+% NOT BUILT, pinned so it is seen: when NO ingredient states an amount the
+% formulation's `value` would be blank, which the value rule
+% (value_inline_or_body) refuses, so jDoseBodies writes the pre-decision NaN
+% and no needs_info (reported to the team with [canonical absent only as needs
+% info]). When the rule changes, this test is inverted.
+v1 = treatmentDrugDoc('td_none', 'CHEBI:7035,muscimol,', 'uberon:0002436', 'primary visual cortex');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+f = doseChainJ(out.migrated, out.migrated{1});
+fs = f.toStruct();
+verifyTrue(testCase, isnan(fs.formulation.value.ingredients(1).concentration.source_value));
+verifyFalse(testCase, isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info));
+end
+
+function ids = dependencyIds(s, name)
+ids = {};
+for k = 1:numel(s.depends_on)
+    if strcmp(char(s.depends_on(k).name), name)
+        ids{end+1} = char(s.depends_on(k).document_id); %#ok<AGROW>
+    end
+end
 end
 
 function v1 = virusInjectionV1(id, adminDate)
@@ -874,6 +985,11 @@ verifyEqual(testCase, c.get('chemical.value').substance.name, 'pAAV-hSyn-hChR2(H
 conc = f.get('formulation.value').ingredients(1).concentration;
 verifyEqual(testCase, conc.source_value, 1000);
 verifyEqual(testCase, conc.source_unit.name, 'dilution');
+% 'dilution' is the migrator's label for v1's unitless number, not a unit the
+% source spelled: it has no canonical and is NOT carried as carry-155 (a team
+% question whether it is carry-155 or needs_info, [canonical absent only as
+% needs info], Jess Haley, 2026-10-30; jTreatmentBodies' header)
+verifyFalse(testCase, isfield(conc, 'molar'), 'a dilution has no molar canonical');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
 % a body site makes a virus_injection a dose, its volume NaN when unrecorded,
 % its dilution staying on the formulation (Jess Haley, 2026-10-21
@@ -918,10 +1034,82 @@ if ~isempty(form)
     conc = form.get('formulation.value').ingredients(1).concentration;
     verifyEqual(testCase, conc.source_value, 1e-5, 'AbsTol', 1e-12);
     verifyEqual(testCase, conc.source_unit.name, 'Molar');
+    % [canonical absent only as needs info] (Jess Haley, 2026-10-30): the
+    % unit table knows Molar (om:molar), so the canonical is filled; the
+    % source's term {OM:MolarVolumeUnit, Molar} is kept as written
+    verifyTrue(testCase, isfield(conc, 'molar'), 'a Molar row gets its canonical molar');
+    if isfield(conc, 'molar')
+        verifyEqual(testCase, conc.molar, 1e-5, 'AbsTol', 1e-12);
+    end
+    verifyEqual(testCase, conc.source_unit.node, 'OM:MolarVolumeUnit');
 end
 % the header row is not a chemical
 verifyEqual(testCase, m.get('statement.variable').name, 'clozapine N-oxide');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
+end
+
+function testMolarConcentrationRowsGetTheirCanonical(testCase)
+% The unit table's concentration rows (jSourceUnit: Molar, molar, M -> om:molar,
+% factor 1). [canonical absent only as needs info] (Decided by Jess Haley,
+% 2026-10-30): "every quantity holds exactly one canonical value"; carry-155 is
+% resolved_by "a new row in the unit table". Each spelling, in an immersion
+% (bath) and in a dose (a UBERON site), fills `molar`; the formulation names
+% no needs_info for it and the document is not carried.
+cases = {'OM:MolarVolumeUnit', 'Molar'; '', 'Molar'; '', 'molar'; '', 'M'; ...
+    'om:molar', 'molar'};
+locs = {'NCIm:C0179246', 'bath'; 'uberon:0002436', 'primary visual cortex'};
+for c = 1:size(cases, 1)
+    for L = 1:size(locs, 1)
+        label = sprintf('%s/%s at %s', cases{c, 1}, cases{c, 2}, locs{L, 2});
+        v1 = treatmentDrugDoc('td_molar', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+            'NCIm:C0212364,clozapine N-oxide,2.5e-06,%s,%s'], cases{c, 1}, cases{c, 2}), ...
+            locs{L, 1}, locs{L, 2});
+        out = runJ(v1);
+        verifyEmpty(testCase, out.quarantine, label);
+        verifyFalse(testCase, isfield(out.summary, 'migration_notes') ...
+            && isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+            [label ': a known concentration unit does not carry']);
+        form = firstOfClassJ(out.migrated, 'formulation');
+        assertNotEmpty(testCase, form, label);
+        conc = form.get('formulation.value').ingredients(1).concentration;
+        verifyEqual(testCase, conc.source_value, 2.5e-6, 'AbsTol', 1e-15, label);
+        verifyTrue(testCase, isfield(conc, 'molar'), [label ': molar filled']);
+        if isfield(conc, 'molar')
+            verifyEqual(testCase, conc.molar, 2.5e-6, 'AbsTol', 1e-15, label);
+        end
+        given = did2.convert.registeredTerm(cases{c, 1}, cases{c, 2});
+        verifyEqual(testCase, char(conc.source_unit.name), char(given.name), ...
+            [label ': the source unit is the term the row gives']);
+        fs = form.toStruct();
+        verifyTrue(testCase, ~isfield(fs.base, 'needs_info') || isempty(fs.base.needs_info) ...
+            || ~any(contains({fs.base.needs_info.field}, 'concentration')), ...
+            [label ': no needs_info for a computed canonical']);
+    end
+end
+end
+
+function testAnUnknownConcentrationUnitIsCarried(testCase)
+% carry-155 ([canonical absent only as needs info], Decided by Jess Haley,
+% 2026-10-30): "A unit spelling the migrator does not recognise is carried for
+% mapping, not written without a canonical." mM is exact, but om:millimolar
+% is not a registered term, so the unit table has no row for it yet; a row in
+% mM (here in a bath) carries the document whole as v1. So does a mass
+% concentration with no molar mass (mg/ml), in a dose.
+cases = {'', 'mM', 'NCIm:C0179246', 'bath'; ...
+    '', 'mg/ml', 'uberon:0002436', 'primary visual cortex'};
+for c = 1:size(cases, 1)
+    v1 = treatmentDrugDoc('td_unknown_conc', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+        'NCIm:C0212364,clozapine N-oxide,10,%s,%s'], cases{c, 1}, cases{c, 2}), ...
+        cases{c, 3}, cases{c, 4});
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    if isfield(out.summary, 'migration_notes') ...
+            && isfield(out.summary.migration_notes, 'carried_as_v1')
+        d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+        verifyTrue(testCase, startsWith(d, '[carry-155] needs_mapping:'), d);
+        verifyTrue(testCase, contains(d, ['"' cases{c, 2} '"']), d);
+    end
+end
 end
 
 function testANonUberonLocationIsNotABodySiteAndCarries(testCase)
@@ -1580,8 +1768,35 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image');
-verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'imageCollection_id'));
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'imageCollection_id'), d);
+% [image collection carried until a writer] (Jess Haley, 2026-10-30): malformed,
+% register row carry-153 (it cited an awaiting_home row, a member_of home, before)
+verifyTrue(testCase, startsWith(d, '[carry-153] malformed: '), d);
+end
+
+function testASubjectlessImageStackInACollectionIsNotedCarry153(testCase)
+% [image collection carried until a writer] (Jess Haley, 2026-10-30): every v1
+% image or imageStack with a non-empty imageCollection_id is carried, malformed.
+% The check runs before the subject check, so a subject-less one is noted too
+% (it passed through with no note before).
+v1 = foldableBehaviourImageStack();
+v1.depends_on = struct('name', {'subject_id', 'imageCollection_id'}, ...
+    'value', {'', 'coll_9'});
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-153] malformed: depends_on imageCollection_id'), d);
+end
+
+function testAnEmptyCollectionEdgeIsNotACarry(testCase)
+% the edge NDI's template declares, left empty, is no collection: the stack
+% folds as before
+v1 = foldableBehaviourImageStack();
+v1.depends_on(end+1) = struct('name', 'imageCollection_id', 'value', '');
+out = runJ(v1);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
+verifyNotEmpty(testCase, firstOfClassJ(out.migrated, 'sampled_body'));
 end
 
 function testImageStackDataLimitsOtherThanItsTypeRangeAreAValueRange(testCase)
@@ -2069,6 +2284,9 @@ function testAMaskIsCarriedWholeAsV1NamingItsHome(testCase)
 % leaves the generic migration], [one correct reading]). Every mask -- the arena
 % mask, the bacterial-patch mask and one whose label names no region -- is
 % carried whole as v1 with a `needs_mapping` note naming its V2 home.
+% 2026-10-30 [Haley mask words leave the generic stage] (Jess Haley): "the
+% generic stage carries a mask whose region it cannot read" -- register row
+% carry-154 (it cited carry-025, mask or map, before).
 labels = {arenaMaskImageStack().image_stack.label, ...
     ['A binary image mask (logical matrix) representing the union of all ' ...
      'individually detected bacterial patch areas on an assay plate. This ' ...
@@ -2081,8 +2299,42 @@ for k = 1:numel(labels)
     verifyCarriedWholeAsV1(testCase, v1, out);
     verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-025] needs_mapping: calculation'), d);
+    verifyTrue(testCase, startsWith(d, '[carry-154] needs_mapping: a mask whose region'), d);
+    verifyTrue(testCase, contains(d, '[Haley mask words leave the generic stage]'), d);
 end
+end
+
+function testTheGenericStageReadsNoRegionWord(testCase)
+% [Haley mask words leave the generic stage] (Jess Haley, 2026-10-30): no Haley
+% region word changes what the generic stage writes. A mask naming the arena,
+% the lawn or a reference mark gets the same note as one naming none.
+base = arenaMaskImageStack();
+notes = {};
+for lbl = {'arena mask', 'bacteria lawn mask', 'reference mark mask', 'a mask'}
+    v1 = base;
+    v1.image_stack.label = lbl{1};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    notes{end+1} = out.summary.migration_notes.carried_as_v1.distinct_details{1}; %#ok<AGROW>
+end
+verifyEqual(testCase, numel(unique(notes)), 1, strjoin(notes, ' || '));
+src = fileread(which('did2.convert.migrators_j.image_stack'));
+code = regexprep(src, '%[^\n]*', '');
+for w = {'arena', 'bacteri', 'lawn', 'reference mark'}
+    verifyEmpty(testCase, strfind(lower(code), w{1}), ...
+        sprintf('image_stack.m code (not comments) reads the Haley word "%s"', w{1}));
+end
+end
+
+function testALabelReadingAsMaskAndMapCitesTheMaskOrMapRow(testCase)
+% mask-vs-map detection stays generic: a label that reads as BOTH cannot be
+% told apart, so it keeps carry-025 (mask or map), not carry-154
+v1 = arenaMaskImageStack();
+v1.image_stack.label = 'a label map mask';
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-025] needs_mapping: calculation'), d);
 end
 
 function testAClosestPatchMapIsCarriedNeedingAMapping(testCase)
@@ -2628,7 +2880,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 % a stimulator element is an ndi.probe.timeseries.stimulator (NDI
 % probetype2object.json): [element types have no default] makes a probe type a
 % device only on an ndi.probe.* class (Jess Haley, 2026-10-26)
@@ -2729,7 +2984,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 % a stimulator element is an ndi.probe.timeseries.stimulator (NDI
 % probetype2object.json): [element types have no default] makes a probe type a
 % device only on an ndi.probe.* class (Jess Haley, 2026-10-26)
@@ -2778,7 +3036,10 @@ elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
 elem.base = struct('id', stimId, 'session_id', sessId, ...
-    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+% base.name '': what ndi.element/newdocument writes (NDI-matlab main 441530d0,
+% +ndi/element.m newdocument sets element.* only); a non-empty one is carried
+% since [element name and reference stored apart] (+migrators_j/element.m)
 elem.element = struct('ndi_element_class', 'ndi.probe.timeseries.stimulator', 'name', 'bath_y', ...
     'reference', 1, 'type', 'stimulator', 'direct', 0);
 % the stimulator's element_epoch for that epoch: its clock (+ndi/element.m)
@@ -4627,7 +4888,14 @@ rb = csv.model_fit(rbAt);
 verifyEqual(testCase, rb.sensitivity, [10 20 15 5]);       % metric rides INSIDE its fit
 verifyEqual(testCase, rb.c50, [0.2 0.3 0.4 0.5]);
 verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
-verifyEqual(testCase, csv.interpolated_values.c50, [0.21 0.31 0.41 0.51]);
+% [interpolated values are a list] (Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md): one structure, or a list once the loaded
+% schema declares it; either way the one entry as stated, and no |response|
+% entry (contrast_sensitivity_calc states none)
+[iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries(csv.interpolated_values);
+verifyEqual(testCase, nIv, 1);
+verifyEqual(testCase, iv.c50, [0.21 0.31 0.41 0.51]);
+verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
 verifyEqual(testCase, csv.significance.modulated_response, true);
 verifyEqual(testCase, lower(csv.response_type.name), 'mean');
@@ -4735,7 +5003,10 @@ out = foldPlaceable(testCase, @did2.convert.migrators_j.tuningcurve_calc, body);
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'tcc_1', 'neuron_tc');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_tc');
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.stimulus.tuningcurve');
+% INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
+% V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
+% is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2945');
 verifyEqual(testCase, paramTextJ(leaf, 'best algorithm'), 'empirical_maximum');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
@@ -4773,7 +5044,12 @@ out = foldPlaceable(testCase, @did2.convert.migrators_j.stimulus_tuningcurve, bo
 verifyEqual(testCase, numel(out), 8);
 leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'stc_1', 'neuron_rt');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_rt');
-verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.app.stimulus.tuning_response');
+% INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
+% V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
+% is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2945');
+verifyEqual(testCase, depValue(leaf, 'software_id'), ...
+    entityByNameJ(out, 'ndi.app.stimulus.tuning_response').base.id);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 verifyEqual(testCase, nParamsJ(leaf), 0);
 end
@@ -5180,6 +5456,9 @@ verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
 obs = out{find(strcmp(names, 'calculation+label'), 1)};
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_8');
+% [data analysis is the general method] (Jess Haley, 2026-10-30, G29): JRCLUST's
+% method term is wikidata:Q2003571 "Spike sorting", as kilosort's is
+verifyEqual(testCase, char(obs.interaction.method.term.node), 'wikidata:Q2003571');
 
 % #88: the .mat payload is an OPAQUE body owned by the observation; it states no
 % extent at all (the real spike count lives in the payload), so there is no key
@@ -5694,7 +5973,13 @@ verifyEqual(testCase, mf(1).goodness.r2, 0.95, 'AbsTol', 1e-9);
 verifyEqual(testCase, mf(1).metrics.preferred_value, 0.13, 'AbsTol', 1e-9);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
     0.01, 'AbsTol', 1e-9);
-iv = leaf.spatial_frequency_tuning_calculation.interpolated_values;
+% [interpolated values are a list] (Decided by Jess Haley, 2026-10-30): one
+% structure, or a list once the loaded schema declares it; this fixture has no
+% `abs` block, so either way the one entry as stated
+[iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
+    leaf.spatial_frequency_tuning_calculation.interpolated_values);
+verifyEqual(testCase, nIv, 1);
+verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, iv.preferred_value, 0.12, 'AbsTol', 1e-9);
 verifyEqual(testCase, iv.half_maximum_below, 0.06, 'AbsTol', 1e-9);
 end
@@ -5852,6 +6137,22 @@ function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
 % Haley): the `abs` block no longer carries the document; it is a second
 % calculation of the same class, whose method says the response was made
 % absolute.
+% UPDATED 2026-10-30 ([interpolated values are a list], Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md): run on a copy of the
+% loaded schema without the list and with it (did2.unittest.helpers.
+% interpolatedListSchema), so both shapes are checked whatever did-schema
+% `main` declares. With the list, v1 `abs.fitless` is the main calculation's
+% second interpolated_values entry ('absolute value') and the absolute-value
+% calculation holds only its fits.
+for listDeclared = [false true]
+    did2.unittest.helpers.interpolatedListSchema(testCase, listDeclared);
+    checkTemporalFrequencyFold(testCase, listDeclared);
+end
+end
+
+function checkTemporalFrequencyFold(testCase, listDeclared)
+% testTemporalFrequencyTuningFoldsToCalculationLeaf on the schema in use, which
+% declares interpolated_values a list when LISTDECLARED
 out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 9);
@@ -5890,8 +6191,29 @@ verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova
     0.002, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.across_stimuli_anova_p, ...
     0.031, 'AbsTol', 1e-12);
-iv = leaf.temporal_frequency_tuning_calculation.interpolated_values;
+[iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
+    leaf.temporal_frequency_tuning_calculation.interpolated_values);
 verifyEqual(testCase, iv.preferred_value, 4.2, 'AbsTol', 1e-12);
+absBlock = absCalcs{1}.temporal_frequency_tuning_calculation;
+if listDeclared
+    % the values as stated first, then |response| (the fixture's abs.fitless is
+    % the same struct as its fitless)
+    verifyEqual(testCase, nIv, 2, 'as stated, then |response|');
+    ivList = leaf.temporal_frequency_tuning_calculation.interpolated_values;
+    if iscell(ivList); ivList = [ivList{:}]; end
+    verifyTrue(testCase, ~isfield(ivList, 'response_transform') ...
+        || isempty(ivList(1).response_transform), 'the first entry is as stated');
+    verifyEqual(testCase, char(ivList(2).response_transform), 'absolute value');
+    verifyEqual(testCase, ivAbs.preferred_value, 4.2, 'AbsTol', 1e-12);
+    verifyFalse(testCase, isfield(absBlock, 'interpolated_values'), ...
+        'abs.fitless is on the main calculation''s list, not the second calculation');
+else
+    verifyEqual(testCase, nIv, 1, 'one structure');
+    verifyEmpty(testCase, fieldnames(ivAbs));
+    absIv = absBlock.interpolated_values;
+    verifyTrue(testCase, isstruct(absIv) && isscalar(absIv));
+    verifyEqual(testCase, absIv.preferred_value, 4.2, 'AbsTol', 1e-12);
+end
 
 mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
 assertEqual(testCase, numel(mf), 5, ...
@@ -6044,6 +6366,9 @@ verifyEqual(testCase, depValue(calc, 'entity_id'), 'sub_9');
 verifyNotEmpty(testCase, depValue(calc, 'operating_system_id'));
 verifyEqual(testCase, calc.model_fit.value.equation, 'gaussian');
 verifyEqual(testCase, calc.model_fit.value.goodness.sse, 12.5, 'AbsTol', 1e-9);
+% [data analysis is the general method] (Jess Haley, 2026-10-30, G29): a generic
+% fit's method term is OBI:0200072 "curve fitting data transformation"
+verifyEqual(testCase, char(calc.interaction.method.term.node), 'OBI:0200072');
 end
 
 function testFitcurveWithNoOperatingSystemFoldsWithoutTheEdge(testCase)
@@ -6174,6 +6499,8 @@ names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', fa
 calc = out{find(strcmp(names, 'calculation+model_fit'), 1)};
 verifyEqual(testCase, calc.model_fit.value.equation, 'exp2');
 verifyEqual(testCase, calc.model_fit.value.goodness.sse, 3.25, 'AbsTol', 1e-9);
+verifyEqual(testCase, char(calc.interaction.method.term.node), 'OBI:0200072', ...
+    '[data analysis is the general method]: a generic fit is curve fitting');
 end
 
 function body = simpleCalcDoc()

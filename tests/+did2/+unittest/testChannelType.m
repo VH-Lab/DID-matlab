@@ -18,7 +18,7 @@ function testTheTenPrefixesAreTheTenTypes(testCase)
 prefixes = {'ai', 'ao', 'di', 'do', 't', 'ax', 'e', 'mk', 'md', 'tx'};
 nodes = {'EMPTY:0000370', 'EMPTY:0000371', 'EMPTY:0000372', 'EMPTY:0000373', ...
     'EMPTY:0000374', 'EMPTY:0000375', 'EMPTY:0000376', 'EMPTY:0000377', ...
-    'NCIT:C52095', 'NCIT:C25704'};
+    'NCIT:C52095', 'EMPTY:0000410'};
 for k = 1:numel(prefixes)
     [t, kind] = did2.convert.channelType(prefixes{k});
     verifyEqual(testCase, kind, 'type', prefixes{k});
@@ -55,8 +55,12 @@ end
 % +vintage/channelTypes.m first, then this map), so it may be bound ahead of
 % the map. Once the map writes it and NCIT Text leaves the list, this is the
 % exact comparison again.
+% The map now writes EMPTY:0000410; NCIT Text may still be bound beside it
+% until did-schema drops it (the last step of the decision).
 mine0 = did2.convert.channelType('tx');
-if ~strcmp(char(mine0.node), 'EMPTY:0000410')
+if strcmp(char(mine0.node), 'EMPTY:0000410')
+    bound = bound(~strcmp(bound, 'NCIT:C25704'));
+else
     bound = bound(~strcmp(bound, 'EMPTY:0000410'));
 end
 mine = cellfun(@(p) char(did2.convert.channelType(p).node), ...

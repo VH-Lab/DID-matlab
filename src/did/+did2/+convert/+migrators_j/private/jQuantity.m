@@ -52,6 +52,7 @@ switch kind
     case 'temperature', f = 'celsius';
     case 'volume',      f = 'liters';
     case 'current',     f = 'amperes';
+    case 'concentration', f = 'molar';   % every concentration row of jSourceUnit is molar
     otherwise,          f = '';
 end
 end

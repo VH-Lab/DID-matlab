@@ -1,4 +1,4 @@
-function anchor = jSessionAnchor(preBody, relation)
+function anchor = jSessionAnchor(preBody, relation, varargin)
 %JSESSIONANCHOR A "during the session" time reference for a statement built
 %   from the v1 body PREBODY.
 %
@@ -16,6 +16,12 @@ function anchor = jSessionAnchor(preBody, relation)
 %   to be found in the batch (resolveSessionAnchors' job on the old shape): the
 %   session entity's id is known from the document itself.
 %
+%   ANCHOR = jSessionAnchor(PREBODY, RELATION, NAME, VALUE, ...) passes the
+%   further options to did2.build.relativeTimeReference: 'Clock' and
+%   'ClockTolerance' name the timeline a v1 document states without a time on
+%   it ([acquisition time on its clock], Jess Haley, 2026-10-30, did-schema
+%   V_eta_go_forward_class_audit.md; image_stack.m).
+%
 %   A document with no session id cannot say which session it is in;
 %   did2.build raises did2:build:missingField and v1_to_v2 quarantines it.
 
@@ -32,6 +38,6 @@ if isempty(sid)
         ['jSessionAnchor: the v1 body carries no session id, so no session ' ...
          'time reference can name the session it belongs to.']);
 end
-opts = jOpts(preBody);
+opts = jOpts(preBody, varargin{:});
 anchor = did2.build.relativeTimeReference(sid, 'Relation', relation, opts{:});
 end

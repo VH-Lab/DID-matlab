@@ -139,28 +139,65 @@ function testCoordinatesSurviveTheFullVEtaPipeline(testCase)
 % showed the coordinates surviving; the loss only appeared through the
 % dispatcher, because the superclass pass runs before the concrete migrator.
 % So this must go through v1_to_v2, or it tests nothing.
-out = runJ(ontologyImageVintageB());
-verifyEqual(testCase, out.summary.quarantine_count, 0);
-verifyEqual(testCase, numel(out.migrated), 1);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), 'ontology_image');
-verifyEqual(testCase, doc.get('ngrid.coordinates'), [1;2;3;4;1;2;3;4]);
-verifyEqual(testCase, doc.get('ngrid.data_dim'), [4 4]);
-verifyEqual(testCase, doc.get('ngrid.data_size'), 8);
-verifyEqual(testCase, doc.get('ngrid.data_type'), 'double');
+%
+% BOTH SPELLINGS (2026-10-30). The snake-spelled `ontology_image` fixture is
+% the one that goes through the superclass pass (the renamed path), which is
+% the regression this test was written for. Validate is false, so nothing is
+% validated; did2.convert.ensureClassBlocks pads blocks from the
+% `ontology_image` file when it exists and returns the body unchanged when it
+% does not (its `catch; return;` around resolvePlacement), and neither touches
+% the ngrid block, so this case holds with or without the file. NDI's own
+% spelling, `ontologyImage`, is read raw
+% (did2.convert.rawV1Classes) and is what a real dataset holds; it is driven
+% too, so the coordinates are pinned on the path production takes.
+cases = {ontologyImageVintageB(), 'ontology_image'; ...
+         ontologyImageWriterNoRow(), 'ontologyImage'};
+for c = 1:size(cases, 1)
+    out = runJ(cases{c, 1});
+    label = cases{c, 2};
+    verifyEqual(testCase, out.summary.quarantine_count, 0, label);
+    assertEqual(testCase, numel(out.migrated), 1, label);
+    doc = out.migrated{1};
+    verifyEqual(testCase, doc.get('document_class.class_name'), label);
+    verifyEqual(testCase, doc.get('ngrid.coordinates'), [1;2;3;4;1;2;3;4], label);
+    verifyEqual(testCase, doc.get('ngrid.data_dim'), [4 4], label);
+    verifyEqual(testCase, doc.get('ngrid.data_size'), 8, label);
+    verifyEqual(testCase, doc.get('ngrid.data_type'), 'double', label);
+end
 end
 
-function testTheCarriedBlockVALIDATESAgainstTheVEtaTombstone(testCase)
-% The schema half and the migrator half are LOCKSTEP: the tombstone declares
-% the four v1 names, so a body carrying them must pass the strict-fields check
-% in +did2/+schema/cache.m. With Validate=false this test would pass even if
-% the tombstone still declared ndims/dim_sizes -- which is precisely how a
-% half-landed change would slip through.
-out = did2.convert.v1_to_v2(ontologyImageVintageB(), ...
+function testTheV1NgridBlockPassesThroughAsV1UnderValidation(testCase)
+% INVERTED 2026-10-30 from testTheCarriedBlockVALIDATESAgainstTheVEtaTombstone,
+% which validated a snake-spelled `ontology_image` fixture against the
+% `ontology_image` + `ngrid` V_eta tombstones ("the schema half and the
+% migrator half are LOCKSTEP"). [one folder, final classes only] (Jess Haley,
+% 2026-10-29, did-schema V_eta_go_forward_class_audit.md) removes that premise:
+% a retire class's JSON file is deleted once no v1 document passes through
+% under it, and a document carried as v1 is checked against NDI's own v1
+% template, not a V_eta tombstone. NDI never writes `ontology_image`; it writes
+% `ontologyImage` (+ndi/+setup/+NDIMaker/imageDocMaker.m), which v1_to_v2 reads
+% raw and passes through under that v1 class name. No V_eta schema of that name
+% exists, with or without the `ontology_image` file, so the document is counted
+% in passthrough_unvalidated_no_schema (v1_to_v2: `if passedThrough &&
+% strcmp(vErr.identifier, 'did2:schema:missingClass')`) and never quarantined.
+%
+% What this still protects, with Validate ON: the writer's v1 ngrid block
+% passes through without a quarantine, nothing reshaped, all four fields kept.
+out = did2.convert.v1_to_v2(ontologyImageWriterNoRow(), ...
     'Validate', true, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, out.summary.quarantine_count, 0, ...
-    'the v1 ngrid block must validate against the restated V_eta tombstone');
+    'the v1 ngrid block must pass through as v1, not quarantine');
 verifyEqual(testCase, out.summary.migrated_count, 1);
+assertEqual(testCase, numel(out.migrated), 1);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('document_class.class_name'), 'ontologyImage');
+verifyEqual(testCase, doc.get('ngrid.coordinates'), [1;2;3;4;1;2;3;4]);
+verifyEqual(testCase, doc.get('ngrid.data_dim'), [4 4]);
+verifyFalse(testCase, isfield(doc.get('ngrid'), 'ndims'));
+verifyFalse(testCase, isfield(doc.get('ngrid'), 'dim_sizes'));
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+verifyTrue(testCase, isfield(out.summary.passthrough_unvalidated_no_schema_by_class, ...
+    'ontologyImage'), 'counted as a v1 passthrough with no V_eta schema');
 end
 
 function testHartleyCalcConsumesNgridAndRefusesAnUnaccountableGrid(testCase)
@@ -283,6 +320,26 @@ function b = ontologyImageVintageB()
 b = v1NgridBody();
 b.base.id = 'oi_02';
 b.ontology_image = struct('ontology_nodes', 'uberon:0000955,uberon:0002436');
+end
+
+function b = ontologyImageWriterNoRow()
+%ONTOLOGYIMAGEWRITERNOROW The same document in NDI's OWN spelling.
+%
+%   Built from NDI's template (tests/+did2/fixtures/ndi_templates/
+%   ontologyImage.json, via did2.unittest.helpers.ndiDocument) in the shape
+%   imageDocMaker.m createOntologyImageDoc writes when it is given no table
+%   row: `ontologyImage.ontologyNodes`, the four-field ngrid, the
+%   `ontologyTableRow_id` edge left empty. With no non-empty edge it is not the
+%   document [ngrid with no statement carried] names, so +migrators_j/
+%   ontology_image.m hands it back unchanged (a passthrough, no carry note;
+%   testRawV1RoundTripOntologyImage/testAWriterDocumentWithNoTableRowStillPassesThrough).
+%   Not jsondecode-round-tripped, so data_dim stays the 1x2 row the
+%   assertions use.
+b = did2.unittest.helpers.ndiDocument('ontologyImage', 'Id', '41268b6f5c6a3d4e_af0000000000000c');
+b.ontologyImage = struct('ontologyNodes', 'UBERON:0000955,UBERON:0002436');
+b.ngrid = struct('data_size', 8, 'data_type', 'double', ...
+    'data_dim', [4 4], 'coordinates', [1;2;3;4;1;2;3;4]);
+b = did2.unittest.helpers.setDependency(b, 'ontologyTableRow_id', '');
 end
 
 function b = hartleyCalcV1()

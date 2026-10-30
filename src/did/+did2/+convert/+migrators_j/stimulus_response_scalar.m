@@ -65,10 +65,14 @@ function bodies = stimulus_response_scalar(preBody)
 %   response carries NO inline method beside it (#88: the inline `method` OR
 %   `method_id`, never both). The batch pass did2.convert.resolveResponseParameters
 %   replaces each parameters document with ONE standalone `method` document
-%   (id PRESERVED, term RESPONSE_METHOD, the knobs as parameters) shared by
+%   (id PRESERVED, term EDAM:operation_2945 "Data analysis", the knobs as
+%   parameters) shared by
 %   every response that names it, so the edge keeps resolving (Decided by Jess
 %   Haley, 2026-10-21, "b"). A response with no parameters edge carries the
-%   inline method term at once.
+%   inline method term at once. The term is EDAM:operation_2945 "Data
+%   analysis" ([data analysis is the general method], Jess Haley, 2026-10-30,
+%   did-schema V_eta_go_forward_class_audit.md): a response is not a fit; the
+%   app (RESPONSE_METHOD) is the software, not the method term.
 %
 %   SOFTWARE. The class has no `app` block, so, as jCalculation does, the
 %   calculator is a software entity named RESPONSE_METHOD
@@ -270,7 +274,9 @@ end
 methodId = jDependency(body, 'stimulus_response_scalar_parameters_id');
 methodOpt = {};
 if isempty(methodId)
-    methodOpt = {'Method', jLabel(RESPONSE_METHOD)};   % method.term
+    % [data analysis is the general method]: the general term; the app is the
+    % software (RESPONSE_METHOD, above)
+    methodOpt = {'Method', did2.convert.registeredTerm('EDAM:operation_2945', 'Data analysis')};
 else
     methodOpt = {'MethodId', methodId};
 end

@@ -175,6 +175,13 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   `instrument_id` is OPTIONAL, so an unresolved instrument OMITS the edge
 %   (`instrument_omitted`) rather than emitting it empty or dropping the row.
 %
+%   THE RECORDING OR IMAGING MODE is the recording observation's method term
+%   ([element type is a device kind term], [imaging mode is a method term],
+%   [element types batch 1], [element types batch 2]; recordingModeMethod):
+%   `patch-attached` OBI:0002179, `brightfield-imaging` EMPTY:0000300. The
+%   other modes have no decided term and write none. `mode_methods_written`
+%   counts the observations built with one.
+%
 %   Options mirror the sibling passes (Validate / SchemaCache / TargetVersion).
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
@@ -220,6 +227,7 @@ report = struct( ...
     'rows_image_deferred',            0, ...
     'rows_stimulator',                0, ...
     'observations_emitted',           0, ...
+    'mode_methods_written',           0, ...
     'manipulations_emitted',          0, ...
     'instrument_resolved',            0, ...
     'instrument_omitted',             0, ...
@@ -680,9 +688,13 @@ for k = 1:n
             continue;
         end
 
+        modeMethod = recordingModeMethod(row.type);
+        if ~isempty(modeMethod)
+            report.mode_methods_written = report.mode_methods_written + numel(entries);
+        end
         for e = 1:numel(entries)
             obs = mkObservation(entries(e), subjectId, instrumentId, anchorId, ...
-                sid, datestamp, acId);
+                sid, datestamp, acId, modeMethod);
             newBodies{end+1} = obs;                 %#ok<AGROW>
             specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
             if ~isempty(instrumentId)
@@ -1485,20 +1497,53 @@ end
 % ===================== builders ========================================
 
 function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
-        sessionId, datestamp, acId)
+        sessionId, datestamp, acId, modeMethod)
 % A recording row -> an observation of the specimen (did-schema #88: a
 % direction + a value kind), the probe as instrument (T7), the rig + channels
 % through acquisition_channels_id (#73 item 56). Its value is the epoch's files:
 % `data_body` true (2026-10-21, native V2 shape; mkEpochFileBodies builds them).
+% MODEMETHOD, when not empty, is the recording or imaging mode, written as the
+% observation's method term (recordingModeMethod).
 if nargin < 7; acId = ''; end
+if nargin < 8; modeMethod = []; end
+methodOpt = {};
+if ~isempty(modeMethod); methodOpt = {'Method', modeMethod}; end
 % did-schema #88: the direction class plus ONE value-kind mixin
 obs = did2.build.statement(entry.class, char(subjectId), ...
     did2.convert.registeredTerm('', entry.variable), [], 'ValueKind', entry.mixin, ...
     'DataBody', true, ...
     'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
-    'AcquisitionChannelsId', char(acId), ...
+    'AcquisitionChannelsId', char(acId), methodOpt{:}, ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
+end
+
+function t = recordingModeMethod(elementType)
+%RECORDINGMODEMETHOD The decided recording or imaging mode of a probe-map row's
+%   v1 type, as the method term of its recording observation; [] when no mode
+%   term is decided for the type.
+%   [element type is a device kind term] (Decided by Jess Haley, 2026-10-27,
+%   did-schema V_eta_go_forward_class_audit.md): "recording mode suffixes
+%   (-Vm, -I, -Im, -attached) go on the recording observation";
+%   [imaging mode is a method term] (2026-10-29): the imaging mode is "a
+%   method term on the recording observation". The decided terms:
+%     patch-attached       OBI:0002179 "cell-attached patch clamp assay"
+%                          ([element types batch 1], [cell-attached is OBI])
+%     brightfield-imaging  EMPTY:0000300 "brightfield imaging"
+%                          ([element types batch 2])
+%   The voltage and current modes (-Vm, -I, -Im, bare patch / sharp) and the
+%   one-photon, two-photon and wide-field imaging modes have no decided term
+%   yet ("in a later batch"): nothing is written for them, and the element
+%   keeps its `element type` assertion (+migrators_j/element.m).
+%   Types are compared exactly, edge blanks aside, as NDI's probestruct2probe
+%   matches its keys.
+t = [];
+switch strtrim(char(elementType))
+    case 'patch-attached'
+        t = did2.convert.registeredTerm('OBI:0002179', 'cell-attached patch clamp assay');
+    case 'brightfield-imaging'
+        t = did2.convert.registeredTerm('EMPTY:0000300', 'brightfield imaging');
+end
 end
 
 function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
@@ -1867,13 +1912,19 @@ end
 
 function lid = probeLocalIdentifier(name, reference)
 %PROBELOCALIDENTIFIER The element-subject local_identifier a probe row maps to.
-%   +migrators_j/element.m's, did2.convert.elementLocalIdentifier: 'name |
-%   reference', or the name alone ([element local identifier is name and
-%   reference], Jess Haley, 2026-10-26). The probemap serialises `reference`
-%   with int2str; the identifier reads the integer from that text, so the join
-%   no longer depends on two number formats agreeing. '' when the pair cannot
-%   be written reversibly (element.m carries such an element; nothing matches).
-lid = did2.convert.elementLocalIdentifier(char(name), char(reference));
+%   +migrators_j/element.m's, did2.convert.elementHandle: 'name | reference',
+%   or the name alone ([element local identifier is name and reference], Jess
+%   Haley, 2026-10-26; written beside the entity's `name` since [element name
+%   and reference stored apart], 2026-10-29). The probemap serialises
+%   `reference` with int2str and elementHandle writes an integer reference
+%   with int2str, so the two meet. '' when the pair cannot be written (both
+%   empty, or a reference that is not one number or text: element.m carries
+%   such an element; nothing matches).
+if (ischar(reference) || isstring(reference)) ...
+        && ~isempty(regexp(strtrim(char(reference)), '^-?\d+$', 'once'))
+    reference = str2double(strtrim(char(reference)));   % the int2str text
+end
+lid = did2.convert.elementHandle(char(name), reference);
 end
 
 % ===================== the epoch files as bodies (2026-10-21) ==========

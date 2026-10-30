@@ -21,9 +21,15 @@ function [v1, spec] = syncrule(bodies)
 %       number_fullpath_matches        'minimum matching file paths'
 %       syncfilename                   'sync file name'
 %       minEmbeddedFileOverlap         'minimum embedded file overlap'
+%       daqsystem_ch1, daqsystem_ch2   'from trigger channel', 'to trigger
+%                                      channel' ([trigger channels named by
+%                                      their link], Jess Haley, 2026-10-30);
+%                                      a configuration migrated before
+%                                      holds them as 'daqsystem ch1' /
+%                                      'daqsystem ch2', read below as any
+%                                      other name
 %       any other                      its own name ('_' written as a space;
-%                                      the channel rules' daqsystem_ch1 /
-%                                      daqsystem_ch2 and errorOnFailure)
+%                                      errorOnFailure)
 %       epochclocktype                 the configuration's clock
 %       daqsystem1, daqsystem2         (filefind) the names of the
 %                                      acquisition systems the from / to
@@ -115,9 +121,17 @@ end
 
 function [s, bad] = ruleParameters(params)
 %RULEPARAMETERS The rule's v1 parameters from the configuration's method
-%   parameters: the three the migrator names back to their writer spelling,
+%   parameters: the five the migrator names back to their writer spelling,
 %   every other one by its own name (a space read back as '_', a '.' as a
 %   nested field: private/jParameterList's naming).
+%
+%   The trigger channels (Decided by Jess Haley, 2026-10-30, did-schema
+%   V_eta_go_forward_class_audit.md [trigger channels named by their link]):
+%   'from trigger channel' is v1 daqsystem_ch1 and 'to trigger channel'
+%   daqsystem_ch2. A configuration migrated before that decision holds them
+%   under the v1 names, 'daqsystem ch1' / 'daqsystem ch2', which the own-name
+%   path below reads back to the same two fields. A configuration holding a
+%   channel under both spellings is reported, not merged.
 s = struct();
 bad = {};
 if isempty(params)
@@ -128,7 +142,9 @@ if isstruct(params)
 end
 named = {'minimum matching file paths', 'number_fullpath_matches'; ...
     'sync file name', 'syncfilename'; ...
-    'minimum embedded file overlap', 'minEmbeddedFileOverlap'};
+    'minimum embedded file overlap', 'minEmbeddedFileOverlap'; ...
+    'from trigger channel', 'daqsystem_ch1'; ...   % [trigger channels named by their link]
+    'to trigger channel', 'daqsystem_ch2'};
 for k = 1:numel(params)
     e = params{k};
     [~, name] = termParts(getIn(e, 'variable'));
@@ -143,10 +159,18 @@ for k = 1:numel(params)
     end
     hit = strcmp(named(:, 1), name);
     if any(hit)
-        s.(named{hit, 2}) = v;
+        steps = named(hit, 2);
+    else
+        steps = strsplit(strrep(name, ' ', '_'), '.');
+    end
+    if isscalar(steps) && any(strcmp(steps{1}, {'daqsystem_ch1', 'daqsystem_ch2'})) ...
+            && isfield(s, steps{1})
+        % the same trigger channel under its link label and its v1 name
+        % ([trigger channels named by their link]): the first is kept, the
+        % second reported, so a disagreement cannot pass as a round trip
+        bad{end+1} = sprintf('method parameter "%s": %s is stated twice', name, steps{1}); %#ok<AGROW>
         continue;
     end
-    steps = strsplit(strrep(name, ' ', '_'), '.');
     s = setPath(s, steps, v);
 end
 end

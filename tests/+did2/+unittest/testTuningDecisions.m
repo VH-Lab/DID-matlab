@@ -9,6 +9,8 @@ function tests = testTuningDecisions
 %     [fit model stated once] (2026-10-29)       testFitsUseCurveFittingAndStateTheModelOnce
 %     [tuning best value is a condition] (2026-10-28)  testTuningBestValue*
 %     [Priebe fits are one function]             testPriebeFitsAreOneFunction
+%     [Naka-Rushton function minted] (2026-10-30)  testNakaRushtonFitsAreOneModelToldApartByConstraints,
+%                                                testTheBareNakaRushtonLabelStillRoundTrips
 %     [hotelling spellings are one field]        testHotellingSpellingsAreOneField
 %     [input names rebuild from the input class] testInputNames*
 %     [tuning stimids rebuild]                   testTuningStimids*
@@ -16,6 +18,11 @@ function tests = testTuningDecisions
 %     [varied properties are conditions by V2 name]  testVariedProperties*
 %     [parameter names map by table]             testParameterNames*
 %     [absolute-value fits are a second calculation] testAbsoluteValueFits*
+%     [interpolated values are a list] (2026-10-30)  testInterpolatedValues*,
+%                                                testAnAbsBlockOfOnlyInterpolatedValuesIsNoSecondCalculation
+%                                                (each on a schema copy with and
+%                                                without the list:
+%                                                helpers.interpolatedListSchema)
 %     [contrast metrics added]                   testContrastMetrics
 %     [response links: epoch rebuilt, control as input]  testResponseLinks*
 %     [empty prestimulus normalization is zero]  testEmptyPrestimulusNormalization
@@ -46,7 +53,7 @@ function testFitsUseCurveFittingAndStateTheModelOnce(testCase)
 cases = { ...
     'oridir', writerOutput('oridirtuning_calc'), 'orientation_direction_tuning_calculation', ...
         'double gaussian'; ...
-    'contrast', convertedContrast(), 'contrast_tuning_calculation', 'Naka-Rushton'; ...
+    'contrast', convertedContrast(), 'contrast_tuning_calculation', 'Naka-Rushton function'; ...   % [Naka-Rushton function minted]
     'speed', writerOutput('speedtuning_calc'), 'speed_tuning_calculation', 'Priebe fit'; ...
     'SF', writerOutput('spatial_frequency_tuning_calc'), ...
         'spatial_frequency_tuning_calculation', ''};
@@ -76,12 +83,14 @@ for k = 1:size(cases, 1)
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
 end
-% a tuning curve is not a fit: its method stays the calculator
+% a tuning curve is not a fit: its method is EDAM:operation_2945 "Data
+% analysis" ([data analysis is the general method], Jess Haley, 2026-10-30;
+% INVERTED from "its method stays the calculator")
 v1 = convertedTuningCurve();
 out = runRaw({v1});
 leaf = firstOfClass(out, 'tuning_curve_calculation');
 t = leaf.interaction.method.term;
-verifyFalse(testCase, isfield(t, 'node') && strcmp(char(t.node), 'OBI:0200072'));
+verifyEqual(testCase, char(t.node), 'EDAM:operation_2945');
 end
 
 function testOneCalculationPerOutput(testCase)
@@ -112,17 +121,57 @@ end
 end
 
 function testNakaRushtonFitsAreOneModelToldApartByConstraints(testCase)
+% UPDATED 2026-10-30. Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md [Naka-Rushton function minted]: the one
+% model is the term EMPTY:0000416 "Naka-Rushton function", not the bare label
+% 'Naka-Rushton'; the coefficients keep their names. The term registry this
+% test reads (did-schema main) need not hold the row yet (did-schema #242):
+% setupOnce disarms the TermRegistry check, and the term is written by node.
 out = runRaw({convertedContrast()});
 leaf = firstOfClass(out, 'contrast_tuning_calculation');
 mf = asCell(leaf.tuning_curve.value.model_fit);
 verifyEqual(testCase, numel(mf), 3);
 held = cell(1, 3);
 for k = 1:3
-    verifyEqual(testCase, char(mf{k}.model.name), 'Naka-Rushton');
+    verifyEqual(testCase, char(mf{k}.model.node), 'EMPTY:0000416');
+    verifyEqual(testCase, char(mf{k}.model.name), 'Naka-Rushton function');
     held{k} = constraintText(mf{k});
 end
 verifyEqual(testCase, sort(held), sort({'Naka-Rushton parameter 3=1;Naka-Rushton parameter 4=1', ...
     'Naka-Rushton parameter 4=1', ''}));
+end
+
+function testTheBareNakaRushtonLabelStillRoundTrips(testCase)
+% [Naka-Rushton function minted] (Jess Haley, 2026-10-30): the round trip reads
+% the model by node, and a contrast fit migrated before the decision, whose
+% model is the bare label 'Naka-Rushton', still rebuilds the v1 document.
+v1 = convertedContrast();
+out = runRaw({v1});
+verifyEmpty(testCase, out.quarantine);
+bodies = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+changed = 0;
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if ~isfield(b, 'tuning_curve') || ~isfield(b.tuning_curve, 'value') ...
+            || ~isfield(b.tuning_curve.value, 'model_fit')
+        continue;
+    end
+    mf = b.tuning_curve.value.model_fit;
+    wasStruct = isstruct(mf);
+    mf = asCell(mf);
+    for j = 1:numel(mf)
+        if strcmp(char(mf{j}.model.node), 'EMPTY:0000416')
+            mf{j}.model = struct('node', '', 'name', 'Naka-Rushton');
+            changed = changed + 1;
+        end
+    end
+    if wasStruct; mf = [mf{:}]; end
+    b.tuning_curve.value.model_fit = mf;
+    bodies{k} = b;
+end
+verifyEqual(testCase, changed, 3, 'the three Naka-Rushton fits were relabelled');
+r = did2.convert.roundtrip.check(v1, bodies);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'contrast, bare Naka-Rushton label', {});
 end
 
 % ===================== [Priebe fits are one function] =====================
@@ -482,6 +531,203 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
 end
 end
 
+% ===================== [interpolated values are a list] ==================
+% Decided by Jess Haley, 2026-10-30 [interpolated values are a list] (did-schema
+% V_eta_go_forward_class_audit.md; docs/V2_PLAN.md G5): a tuning calculation's
+% `interpolated_values` is a list of entries, each with the optional
+% `response_transform`; v1 `abs.fitless` is the 'absolute value' entry on the
+% MAIN calculation. The fold writes the list only once the loaded schema
+% declares it (siblings first). Each test below runs on a copy of the loaded
+% schema that declares the list, or does not
+% (did2.unittest.helpers.interpolatedListSchema), so both shapes are
+% exercised in every run, whatever did-schema `main` declares.
+
+function testInterpolatedValuesAreOneStructureWithoutTheList(testCase)
+% Without the declaration the fold writes the one structure, and v1
+% `abs.fitless` stays on the absolute-value calculation, as before.
+did2.unittest.helpers.interpolatedListSchema(testCase, false);
+for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
+    leafClass = strrep(cls{1}, '_calc', '_calculation');
+    v1 = writerOutput(cls{1});
+    out = runRaw({v1});
+    verifyEmpty(testCase, out.quarantine, cls{1});
+    verifyEmpty(testCase, out.passthrough, [cls{1} ': converts']);
+    calcs = allOfClass(out, leafClass);
+    verifyEqual(testCase, numel(calcs), 2, cls{1});
+    for k = 1:numel(calcs)
+        iv = calcs{k}.(leafClass).interpolated_values;
+        verifyTrue(testCase, isstruct(iv) && isscalar(iv), cls{1});
+        verifyFalse(testCase, isfield(iv, 'response_transform'), cls{1});
+    end
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', one structure'], {});
+end
+end
+
+function testInterpolatedValuesAreReadBackAsAList(testCase)
+% The round trip reads the list shape whoever wrote it: the one-structure
+% output with the main calculation's interpolated_values made a list [as
+% stated; 'absolute value'] and the absolute-value calculation's values moved
+% into it rebuilds the same v1 document (abs.fitless from the 'absolute value'
+% entry).
+did2.unittest.helpers.interpolatedListSchema(testCase, false);
+for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
+    v1 = writerOutput(cls{1});
+    leafClass = strrep(cls{1}, '_calc', '_calculation');
+    out = runRaw({v1});
+    docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+    mainK = 0;
+    absK = 0;
+    for k = 1:numel(docs)
+        if ~strcmp(char(docs{k}.document_class.class_name), leafClass); continue; end
+        if strcmp(parameterText(docs{k}, 'response transform'), 'absolute value')
+            absK = k;
+        else
+            mainK = k;
+        end
+    end
+    assertGreaterThan(testCase, mainK, 0, cls{1});
+    assertGreaterThan(testCase, absK, 0, cls{1});
+    mainIv = docs{mainK}.(leafClass).interpolated_values;
+    absIv = docs{absK}.(leafClass).interpolated_values;
+    absIv.response_transform = 'absolute value';
+    docs{mainK}.(leafClass).interpolated_values = {mainIv, absIv};
+    docs{absK}.(leafClass) = rmfield(docs{absK}.(leafClass), 'interpolated_values');
+    r = did2.convert.roundtrip.check(v1, docs);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', list shape'], {});
+    % and an entry with a transform v1 has no place for is reported
+    odd = mainIv;
+    odd.response_transform = 'logarithm';
+    docs{mainK}.(leafClass).interpolated_values = {mainIv, absIv, odd};
+    r = did2.convert.roundtrip.check(v1, docs);
+    verifyNotEmpty(testCase, r.unplaced, [cls{1} ': an unknown transform is unplaced']);
+end
+end
+
+function testInterpolatedValuesAreAListOnceTheSchemaDeclaresIt(testCase)
+% With the declaration the fold writes the list: the values as stated first,
+% v1 `abs.fitless` second with response_transform 'absolute value', on the
+% MAIN calculation; the absolute-value calculation (its fits) holds no
+% interpolated_values; the round trip is unchanged; and the validator takes
+% the list.
+did2.unittest.helpers.interpolatedListSchema(testCase, true);
+for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
+    v1 = writerOutput(cls{1});
+    leafClass = strrep(cls{1}, '_calc', '_calculation');
+    out = runRaw({v1});
+    verifyEmpty(testCase, out.quarantine, cls{1});
+    verifyEmpty(testCase, out.passthrough, [cls{1} ': converts']);
+    calcs = allOfClass(out, leafClass);
+    verifyEqual(testCase, numel(calcs), 2, [cls{1} ': the main calculation and the abs fits']);
+    mainIv = [];
+    for k = 1:numel(calcs)
+        isAbs = strcmp(parameterText(calcs{k}, 'response transform'), 'absolute value');
+        if isAbs
+            verifyFalse(testCase, isfield(calcs{k}.(leafClass), 'interpolated_values'), ...
+                [cls{1} ': abs.fitless is on the main calculation''s list']);
+        else
+            mainIv = calcs{k}.(leafClass).interpolated_values;
+        end
+    end
+    if iscell(mainIv); mainIv = [mainIv{:}]; end
+    assertEqual(testCase, numel(mainIv), 2, [cls{1} ': as stated, then |response|']);
+    verifyTrue(testCase, ~isfield(mainIv, 'response_transform') ...
+        || isempty(mainIv(1).response_transform), cls{1});
+    verifyEqual(testCase, char(mainIv(2).response_transform), 'absolute value', cls{1});
+    [asStated, absEntry, n] = did2.unittest.helpers.interpolatedEntries(mainIv);
+    verifyEqual(testCase, n, 2, cls{1});
+    verifyNotEmpty(testCase, fieldnames(asStated), cls{1});
+    verifyNotEmpty(testCase, fieldnames(absEntry), cls{1});
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', list written'], {});
+    % (the cache validator, fillField and validateField, takes a struct array
+    % for a mustBeScalar-false structure; nothing it reports is about the list)
+    checked = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+    verifyFalse(testCase, any(contains(quarantineReasons(checked), ...
+        {'interpolated_values', 'response_transform'})), ...
+        [cls{1} ': the validator refuses the list']);
+end
+end
+
+function testAnAbsBlockOfOnlyInterpolatedValuesIsNoSecondCalculation(testCase)
+% An `abs` block holding `fitless` and no fit: with the list declared it is
+% the main calculation's 'absolute value' entry and there is no second
+% calculation holding only it; without the list it has no place, and the
+% document carries (carry-056), as before.
+for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
+    v1 = writerOutput(cls{1});
+    blockName = strrep(cls{1}, '_calc', '');
+    v1.(blockName).abs = struct('fitless', v1.(blockName).abs.fitless);
+    leafClass = strrep(cls{1}, '_calc', '_calculation');
+
+    did2.unittest.helpers.interpolatedListSchema(testCase, false);
+    [carried, notes] = did2.unittest.helpers.carryNote({v1});
+    verifyTrue(testCase, carried, [cls{1} ': no list, no place']);
+    verifyTrue(testCase, contains(notes, '[carry-056]') && contains(notes, '.abs'), notes);
+
+    did2.unittest.helpers.interpolatedListSchema(testCase, true);
+    out = runRaw({v1});
+    verifyEmpty(testCase, out.quarantine, cls{1});
+    verifyEmpty(testCase, out.passthrough, [cls{1} ': converts with the list']);
+    calcs = allOfClass(out, leafClass);
+    assertEqual(testCase, numel(calcs), 1, [cls{1} ': no second calculation']);
+    verifyEqual(testCase, parameterText(calcs{1}, 'response transform'), '', cls{1});
+    [asStated, absEntry, n] = did2.unittest.helpers.interpolatedEntries( ...
+        calcs{1}.(leafClass).interpolated_values);
+    verifyEqual(testCase, n, 2, cls{1});
+    verifyNotEmpty(testCase, fieldnames(asStated), cls{1});
+    verifyNotEmpty(testCase, fieldnames(absEntry), cls{1});
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', abs fitless only'], {});
+end
+end
+
+function testInterpolatedValuesWithNoAbsoluteValueEntry(testCase)
+% contrast_tuning_calculation and contrast_sensitivity's value: their writers
+% state no |response| values, so in both shapes the field holds the one entry
+% as stated (a scalar structure is a one-entry list), and the round trip is
+% unchanged.
+cases = { ...
+    'contrasttuning_calc', convertedContrast(), 'contrast_tuning_calculation'; ...
+    'contrastsensitivity_calc', writerOutput('contrastsensitivity_calc'), ...
+        'contrast_sensitivity_calculation'};
+for declared = [false true]
+    did2.unittest.helpers.interpolatedListSchema(testCase, declared);
+    for k = 1:size(cases, 1)
+        [label, v1, leafClass] = cases{k, :};
+        label = sprintf('%s, list declared = %d', label, declared);
+        out = runRaw({v1});
+        verifyEmpty(testCase, out.quarantine, label);
+        verifyEmpty(testCase, out.passthrough, [label ': converts']);
+        leaf = firstOfClass(out, leafClass);
+        assertNotEmpty(testCase, leaf, label);
+        if strcmp(leafClass, 'contrast_sensitivity_calculation')
+            iv = leaf.contrast_sensitivity.value.interpolated_values;
+        else
+            iv = leaf.(leafClass).interpolated_values;
+        end
+        [asStated, absEntry, n] = did2.unittest.helpers.interpolatedEntries(iv);
+        verifyEqual(testCase, n, 1, label);
+        verifyNotEmpty(testCase, fieldnames(asStated), label);
+        verifyEmpty(testCase, fieldnames(absEntry), label);
+        r = did2.convert.roundtrip.check(v1, out.migrated);
+        did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
+    end
+end
+end
+
+function c = quarantineReasons(out)
+c = {};
+q = out.quarantine;
+if isempty(q); return; end
+if isstruct(q); q = num2cell(reshape(q, 1, [])); end
+for k = 1:numel(q)
+    if isstruct(q{k}) && isfield(q{k}, 'reason')
+        c{end+1} = char(q{k}.reason); %#ok<AGROW>
+    end
+end
+end
+
 % ===================== [contrast metrics added] ===========================
 
 function testContrastMetrics(testCase)
@@ -624,7 +870,8 @@ files = struct('tuningcurve_calc', 'tuningcurve_calc.mock.1.json', ...
     'oridirtuning_calc', 'oridirtuning_calc.mock.1.json', ...
     'spatial_frequency_tuning_calc', 'spatial_frequency_tuning_calc.mock.6.json', ...
     'temporal_frequency_tuning_calc', 'temporal_frequency_tuning_calc.mock.4.json', ...
-    'speedtuning_calc', 'speedtuning_calc.mock.1.json');
+    'speedtuning_calc', 'speedtuning_calc.mock.1.json', ...
+    'contrastsensitivity_calc', 'contrastsensitivity_calc.mock.1.json');
 v1 = jsondecode(fileread(fullfile(fileparts(thisDir), 'fixtures', ...
     'ndi_writer_outputs', files.(cls))));
 end

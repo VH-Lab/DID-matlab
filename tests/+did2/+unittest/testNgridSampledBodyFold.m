@@ -612,6 +612,12 @@ function testTheProductionShapeStillPassesThroughUnderValidation(testCase)
 % CARRIED whole as v1, needs_mapping ([ngrid with no statement carried], Jess
 % Haley, did-schema V_eta_go_forward_class_audit.md). The body is the same
 % passthrough as before; the carry is noted, and still nothing quarantines.
+%
+% 2026-10-30: a carried document is never validated against V_eta (v1_to_v2:
+% `if options.Validate && ~carried`), so the `ontology_image` tombstone is no
+% longer what this test exercises, and [one folder, final classes only] (Jess
+% Haley, 2026-10-29) deletes it. Every assertion below holds with or without
+% that file: no quarantine, one document, the carry noted.
 out = did2.convert.v1_to_v2(productionOntologyImage(), ...
     'Validate', true, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, out.summary.quarantine_count, 0);

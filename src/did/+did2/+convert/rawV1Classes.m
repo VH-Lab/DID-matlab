@@ -348,8 +348,10 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         carry: did2.convert.roundtrip.check reads a carry as
 %                         the v1 document itself).
 %     NOT LISTED, and why:
-%       control_stimulus_ids  its migrator passes it through (no note, so its
-%                         responses do not carry), and NDI's second pass reads
+%       control_stimulus_ids  its migrator carries it (carry-152, [control
+%                         records carried in pass 1], 2026-10-30; a handed-on
+%                         class in v1_to_v2 carryDependents, so its responses
+%                         do not carry). Before #1082 NDI's second pass read
 %                         the record from pass 1's OUTPUT (ndi.migrate.local
 %                         resolveStimulusPresentations: convertResult.migrated),
 %                         not from the v1 input. Raw, the passthrough would
@@ -360,7 +362,10 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         validating run would quarantine all 1,428 corpus
 %                         records. It stays on the renamed path until NDI reads
 %                         the record from its input, or pass 1 carries it as a
-%                         handed-on v1 document (a team question).
+%                         handed-on v1 document (a team question). Both hold
+%                         now (NDI-matlab #1082; carry-152); switching it to
+%                         the raw read (and a roundtrip inverse) is not done
+%                         here.
 %       image             no NDI writer at the locked main constructs it and no
 %                         corpus holds one; its subject-less passthrough has no
 %                         register row, and as raw v1 it would meet the

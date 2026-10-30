@@ -241,6 +241,26 @@ if isRaw
 end
 params = getBlockAny(preBody, {'imageStack_parameters', 'image_stack_parameters'});
 stackBlk = getBlockAny(preBody, {'imageStack', 'image_stack'});
+% [image collection carried until a writer] (Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md): NDI has an
+% `imageCollection` template but no writer of `imageCollection_id` at the
+% locked NDI main, "so a v1 image with a non-empty `imageCollection_id` is
+% carried whole as v1, `malformed` (input no writer produces), and no group is
+% designed." It narrows [image file details placed]'s `member_of` part (which
+% an awaiting_home register row, cited here before). Checked before the subject, so
+% a subject-less image naming a collection is noted too, not passed through
+% silently. A v1 `image` (migrators_j.image routes it here) and a v1
+% imageStack both carry it.
+if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
+        dependencyValue(preBody, 'image_collection_id')))
+    % carry-register: carry-153
+    did2.convert.reportNote('carried_as_v1', noteClass, ...
+        baseField(preBody, 'id', ''), ['[carry-153] malformed: depends_on ' ...
+        'imageCollection_id, which no NDI writer writes ' ...
+        '([image collection carried until a writer])']);
+    bodies = {preBody};
+    return;
+end
 subjectId = dependencyValue(preBody, 'subject_id');
 if isempty(subjectId)
     bodies = {preBody};
@@ -272,18 +292,12 @@ if ~isempty(tableRowId)
 end
 % [image file details placed] (Jess Haley, 2026-10-26): the four details a v1
 % image / imageStack dropped. `format` and `compression` go on the body (below).
-% The `imageCollection_id` edge becomes a `member_of` relation to a group
-% entity, a later step: until then a document that names one is carried whole
-% as v1. `data_limits` is left unwritten when it is its data type's range
+% The `imageCollection_id` edge is carried above (carry-153). `data_limits` is left unwritten when it is its data type's range
 % ([intmin intmax], [0 1] for logical: recoverable from the datum type,
 % [lossless means round trip]); a range that differs becomes a body condition
 % with variable EMPTY:0000402 "value range" ([census terms] T3), its value the
 % [minimum maximum] pair.
 unplaced = {};
-if ~isempty(firstNonEmpty(dependencyValue(preBody, 'imageCollection_id'), ...
-        dependencyValue(preBody, 'image_collection_id')))
-    unplaced{end+1} = '[carry-013] depends_on imageCollection_id';
-end
 limits = getField(params, 'data_limits');
 bodyConditions = [];
 if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
@@ -297,7 +311,7 @@ if ~isempty(limits) && ~isTypeRange(limits, getCharField(params, 'data_type'))
     end
 end
 if ~isempty(unplaced)
-    % carry-register: carry-011 carry-012 carry-013 (the items above)
+    % carry-register: carry-011 carry-012 (the items above)
     did2.convert.reportNote('carried_as_v1', noteClass, ...
         baseField(preBody, 'id', ''), ['unplaced: ' strjoin(unplaced, ', ')]);
     bodies = {preBody};
@@ -335,14 +349,32 @@ end
 % recognised by label words too, so it is carried the same way ([one-reading
 % quick answers] (Q3), Jess Haley, 2026-10-26: "mask or map detection" chosen
 % from label words carries as needs_mapping).
+%
+% [Haley mask words leave the generic stage] (Decided by Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md): the region words ("arena",
+% "bacteria" / "lawn", "reference mark") belong to the Haley V2 import's map;
+% "the generic stage carries a mask whose region it cannot read". The generic
+% stage keeps mask-vs-map detection (generic: the label says "mask", or says
+% each pixel is an identifier / a label map) and reads no region, so a label
+% that reads as a MASK (and not as a map) is carried citing carry-154; a map,
+% or a label reading as both, is carried citing carry-025 as before.
 label = getCharField(stackBlk, 'label');
 if isMaskOrMap(label)
-    % carry-register: carry-025 (imageStack; the register has no row for image)
+    if isMask(label) && ~isMap(label)
+        why = ['needs_mapping: a mask whose region the generic stage cannot ' ...
+            'read (calculation, logical, of the region it marks) ' ...
+            '([Haley mask words leave the generic stage])'];
+        tag = carryRowOf(preBody, '', '[carry-154] ');
+    else
+        why = ['needs_mapping: calculation (logical ' ...
+            'mask | label map) or observation (intensity); decided by what the ' ...
+            'image''s pixels are, in its dataset'];
+        tag = carryRowOf(preBody, '', '[carry-025] ');
+    end
+    % carry-register: carry-154 carry-025 (imageStack; the register has no
+    %   row for image)
     did2.convert.reportNote('carried_as_v1', noteClass, ...
-        baseField(preBody, 'id', ''), [carryRowOf(preBody, '', '[carry-025] ') ...
-        'needs_mapping: calculation (logical ' ...
-        'mask | label map) or observation (intensity); decided by what the ' ...
-        'image''s pixels are, in its dataset']);
+        baseField(preBody, 'id', ''), [tag why]);
     bodies = {preBody};
     return;
 end
@@ -380,18 +412,9 @@ if ~isempty(axisWhy)
     return;
 end
 
-anchor = jSessionAnchor(src, 'during');
+% the acquisition time ([acquisition time on its clock], below)
+[anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass);
 [datumType, sourceDatumType] = jDatumType(dataType);
-conds = [];
-ts = getField(params, 'timestamp');
-if isnumeric(ts) && isscalar(ts) && isfinite(ts)
-    % the v1 acquisition time is a MATLAB datenum on the named clock; it is
-    % kept as written, as a whole-statement condition (no reference document
-    % can be built from a datenum without assuming the clock is UTC)
-    clk = firstNonEmpty(getCharField(params, 'clocktype'), 'unspecified clock');
-    conds = did2.build.condition(jLabel(['acquisition timestamp (' clk ')']), ...
-        'Value', double(ts), 'SourceValue', sprintf('%.17g', double(ts)));
-end
 extra = {};
 software = {};
 % the statement's notes: an imageStack's `label`; for a v1 `image`, its own
@@ -409,7 +432,7 @@ end
 obs = jStatement(src, 'observation', subjectId, ...
     jLabel('image intensity'), [], ...
     'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-    'Conditions', conds, 'Notes', notes, ...
+    'Conditions', conds, 'Notes', notes, 'NeedsInfo', needsInfo, ...
     'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).
@@ -443,6 +466,92 @@ body = did2.build.sampledBody(stackId, dims, 'Covariates', covs, o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software];
+end
+
+function [anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass)
+%ACQUISITIONTIME The observation's time reference and, on a clock that is not
+%   UTC, its acquisition-time condition.
+%
+%   [acquisition time on its clock] (Decided by Jess Haley, 2026-10-30, did-schema
+%   V_eta_go_forward_class_audit.md; docs/V2_PLAN.md G28): a v1 image stack's
+%   acquisition time (`timestamp`, a MATLAB datenum on the clock `clocktype`)
+%   leaves the label it was written in ("acquisition timestamp (<clock>)"):
+%     * on a UTC clock (utc, approx_utc) it IS the observation's time
+%       reference on that clock: a relative_time_reference to the session on
+%       clock utc whose start is the datenum converted to seconds
+%       (start.seconds = days * 86400; start.source_value the datenum,
+%       start.source_unit day), as jTreatmentAnchor writes a global-clock
+%       datenum ([transfer onset]). approx_utc is clock utc with a 5 s
+%       clock_tolerance (NDI +ndi/+time/clocktype.m: "within 5 seconds"),
+%       as jEpochClockReferences and epochMint de-encode it.
+%     * on any other clock the datenum cannot be converted without assuming
+%       UTC: the observation keeps its "during the session" anchor, on the
+%       stack's clock where V2 has that clock (dev_local_time,
+%       dev_global_time, exp_global_time; approx_ as a 5 s clock_tolerance),
+%       and a condition with the variable AFO:AFR_0001158 "acquisition time"
+%       ([afo prefix registered]) keeps the datenum as its `source_value`
+%       (source unit day); the canonical `quantity.value` is left out and
+%       named in base.needs_info ([missing facts are needs info]), with a
+%       `needs_info` report note. A clock V2 does not have (none, no_time,
+%       inherited, any other name) is named, as v1 wrote it, in that entry's
+%       reason, so the round trip can read it back.
+%   With no finite scalar `timestamp` there is no acquisition time: the
+%   "during the session" anchor alone, as before.
+conds = [];
+needsInfo = struct('field', {}, 'reason', {});
+ts = getField(params, 'timestamp');
+if ~(isnumeric(ts) && isscalar(ts) && isfinite(ts))
+    anchor = jSessionAnchor(src, 'during');
+    return;
+end
+ts = double(ts);
+raw = strtrim(getCharField(params, 'clocktype'));
+[clk, tol] = v2Clock(raw);
+day = struct('node', 'om:day', 'name', 'day');
+clockOpts = {};
+if ~isempty(clk)
+    clockOpts = {'Clock', clk};
+    if tol > 0
+        clockOpts = [clockOpts, {'ClockTolerance', tol}];
+    end
+end
+if strcmp(clk, 'utc')
+    o = jOpts(src, clockOpts{:}, 'Start', ts * 86400, 'StartSourceValue', ts, ...
+        'StartSourceUnit', day, 'StartApproximate', false);
+    anchor = did2.build.relativeTimeReference(jSid(src), o{:});
+    return;
+end
+anchor = jSessionAnchor(src, 'during', clockOpts{:});
+conds = did2.build.composite('statement', 'conditions', struct( ...
+    'variable', did2.convert.registeredTerm('AFO:AFR_0001158', 'acquisition time'), ...
+    'source_unit', day, ...
+    'quantity', struct('source_value', sprintf('%.17g', ts))));
+if isempty(raw)
+    onClock = 'on no named clock';
+else
+    onClock = sprintf('on clock ''%s''', raw);
+end
+needsInfo = struct('field', 'statement.conditions(1).quantity.value', ...
+    'reason', sprintf(['v1 states the acquisition time as a MATLAB datenum %s, ' ...
+    'which is not a UTC clock: it cannot be converted without assuming UTC ' ...
+    '([acquisition time on its clock])'], onClock));
+did2.convert.reportNote('needs_info', noteClass, baseField(src, 'id', ''), ...
+    needsInfo.field);
+end
+
+function [clk, tol] = v2Clock(raw)
+%V2CLOCK The V2 clock (relative_time_reference.value.clock) a v1 clocktype
+%   names, and the clock_tolerance in seconds its approx_ prefix states; ''
+%   for a clocktype V2 has no clock for (none, no_time, inherited, other).
+clk = '';
+tol = 0;
+switch raw
+    case {'utc', 'dev_local_time', 'dev_global_time', 'exp_global_time'}
+        clk = raw;
+    case {'approx_utc', 'approx_dev_global_time', 'approx_exp_global_time'}
+        clk = raw(numel('approx_') + 1:end);
+        tol = 5;
+end
 end
 
 function why = axisLettersMismatch(dimOrder, labels)
@@ -515,9 +624,19 @@ end
 end
 
 function tf = isMaskOrMap(label)
+tf = isMask(label) || isMap(label);
+end
+
+function tf = isMask(label)
+%ISMASK The label calls the image a mask. Generic: no region is read from it
+%   ([Haley mask words leave the generic stage]).
+tf = contains(lower(label), 'mask');
+end
+
+function tf = isMap(label)
+%ISMAP The label says each pixel is an identifier (a label map).
 l = lower(label);
-tf = contains(l, 'mask') || contains(l, 'each pixel''s value is the identifier') ...
-    || contains(l, 'label map');
+tf = contains(l, 'each pixel''s value is the identifier') || contains(l, 'label map');
 end
 
 function [dims, covs] = imageAxes(dimOrder, dimSize, params)
