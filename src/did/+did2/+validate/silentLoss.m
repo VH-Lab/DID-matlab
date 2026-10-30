@@ -1309,6 +1309,16 @@ function [key, how] = referentKeyOne(referent, dottedPath)
 %   two ways and read as unique. That is a report to look for, not a silent
 %   improvement; it is why `members_keyed_by_name` is printed even at zero.
 %
+%   THE MIXED FAMILY, CLOSED FOR CLOCKS. Decided by Jess Haley, 2026-10-26
+%   [clock terms get nodes] (did-schema V_eta_go_forward_class_audit.md): the
+%   four clocks have nodes (did2.build.vocabulary 'clock'), and did2.build
+%   writes them while the schema's binding still lists empty nodes. So on a
+%   path ending in `clock`, a member with NO node whose name is one of the
+%   four (a v1 handle or its label) is keyed on that clock's CURIE: one
+%   member written before the nodes and one after compare as the same clock.
+%   It is still counted how = 'name' -- the denominator says what the
+%   document stored, not what the key was translated to.
+%
 %   Falls back to the whole value when the path does not land on a {node,name}
 %   cell, so the mechanism is not specific to ontology terms.
 key = ''; how = '';
@@ -1322,15 +1332,36 @@ if isstruct(v) && isscalar(v)
         key = ['node:' lower(did2.schema.curieKey(v.node))]; how = 'node'; return;
     end
     if isfield(v, 'name') && ischar(v.name) && ~isempty(strtrim(v.name))
-        key = ['name:' lower(strtrim(v.name))]; how = 'name'; return;
+        key = clockNodeKey(dottedPath, v.name);
+        if isempty(key); key = ['name:' lower(strtrim(v.name))]; end
+        how = 'name'; return;
     end
     return;   % an all-blank ontology_term -- nothing to compare
 end
 if ischar(v) && ~isempty(strtrim(v))
-    key = ['name:' lower(strtrim(v))]; how = 'name'; return;
+    key = clockNodeKey(dottedPath, v);
+    if isempty(key); key = ['name:' lower(strtrim(v))]; end
+    how = 'name'; return;
 end
 if isnumeric(v) && isscalar(v) && isfinite(v)
     key = ['name:' num2str(v)]; how = 'name'; return;
+end
+end
+
+function key = clockNodeKey(dottedPath, name)
+%CLOCKNODEKEY 'node:<curie>' for a node-less clock NAME on a path ending in
+%   `clock` whose name is one of the four decided clocks ([clock terms get
+%   nodes]); '' otherwise, and never an error (the census must not raise).
+key = '';
+try
+    parts = strsplit(char(dottedPath), '.');
+    if ~strcmp(parts{end}, 'clock'); return; end
+    node = did2.build.vocabulary('clock', strtrim(char(name)));
+    if ~isempty(node)
+        key = ['node:' lower(did2.schema.curieKey(node))];
+    end
+catch
+    key = '';
 end
 end
 

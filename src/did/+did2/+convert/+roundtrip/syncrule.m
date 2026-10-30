@@ -95,7 +95,7 @@ spec.unplaced = [spec.unplaced, bad];
 if ~allEmpty(getIn(blk, 'method', 'term'))
     spec.unplaced{end+1} = 'the configuration''s method states a term (pass 1 writes none)';
 end
-[~, clockName] = termParts(getIn(blk, 'clock'));
+clockName = clockText(getIn(blk, 'clock'));   % by node first [clock terms get nodes]
 if ~isempty(clockName)
     params.epochclocktype = clockName;
 end

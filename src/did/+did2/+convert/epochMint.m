@@ -2613,15 +2613,18 @@ k = [char(epochId) char(0) char(systemId) char(0) char(clock)];
 end
 
 function [clk, startSec, durSec] = extentValue(ref)
-%EXTENTVALUE The clock name, start and duration (seconds) of a built reference.
+%EXTENTVALUE The clock handle, start and duration (seconds) of a built reference.
+%   The clock is its did_v1 handle ('dev_local_time'), read BY NODE first and
+%   then by name (did2.build.vocabularyHandle 'clock'): extentKey compares it
+%   with the v1 clocktype string of an epochtable row, and the stored name
+%   becomes the label once did-schema fills the nodes (Decided by Jess Haley,
+%   2026-10-26 [clock terms get nodes]: code compares clock nodes first).
 clk = ''; startSec = NaN; durSec = NaN;
 if isa(ref, 'did2.document'); ref = ref.toStruct(); end
 if ~isfield(ref, 'relative_time_reference'); return; end
 v = ref.relative_time_reference.value;
 if isfield(v, 'clock')
-    c = v.clock;
-    if isstruct(c) && isfield(c, 'name'); c = c.name; end
-    clk = char(c);
+    clk = char(did2.build.vocabularyHandle('clock', v.clock));
 end
 if isfield(v, 'start') && isstruct(v.start) && isfield(v.start, 'seconds')
     startSec = double(v.start.seconds);

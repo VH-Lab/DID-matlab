@@ -2336,7 +2336,11 @@ end
 end
 
 function [clk, startSec, dur] = refValue(b)
-% a relative_time_reference's clock name, start and duration (seconds)
+% a relative_time_reference's clock handle, start and duration (seconds).
+% The clock is read BY NODE first, then by name (did2.build.vocabularyHandle
+% 'clock'), so an anchor written with the node and an extent written without
+% it still compare equal (Decided by Jess Haley, 2026-10-26 [clock terms get
+% nodes]: code compares clock nodes first, then the stored name changes).
 clk = ''; startSec = []; dur = [];
 if ~isstruct(b) || ~isfield(b, 'relative_time_reference'); return; end
 v = b.relative_time_reference;
@@ -2344,8 +2348,9 @@ if ~isstruct(v) || ~isfield(v, 'value') || ~isstruct(v.value); return; end
 v = v.value;
 if isfield(v, 'clock')
     c = v.clock;
-    if isstruct(c) && isfield(c, 'name'); c = c.name; end
-    if ischar(c) || isstring(c); clk = char(c); end
+    if isstruct(c) || ischar(c) || isstring(c)
+        clk = char(did2.build.vocabularyHandle('clock', c));
+    end
 end
 if isfield(v, 'start') && isstruct(v.start) && isfield(v.start, 'seconds') ...
         && ~isempty(v.start.seconds)
