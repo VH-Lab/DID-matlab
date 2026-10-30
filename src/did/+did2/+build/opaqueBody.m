@@ -28,6 +28,10 @@ function doc = opaqueBody(ownerId, format, options)
 %     'DatumOrder'    'C' or 'F', when there is more than one dimension
 %     'Conditions', 'Compression', 'ContentHash',
 %     'HashAlgorithm' ('MD5','SHA-1','SHA-256','SHA-512'), 'Description'
+%                     'Compression' is the codec: a spelling ('gzip'), a term
+%                     or a {term, parameters} block, written in the form the
+%                     schema declares (did2.build.compression; [compression
+%                     block and empty levels], Jess Haley, 2026-10-26)
 %     'Fields'        any other declared field, as a struct
 %   Options (edges):
 %     'KeyIds', 'Edges'
@@ -71,7 +75,7 @@ end
 fields = struct('format', format, 'dimensions', {options.Dimensions}, ...
     'covariates', {options.Covariates}, 'datum_order', options.DatumOrder, ...
     'conditions', {options.Conditions}, ...
-    'compression', options.Compression, 'content_hash', options.ContentHash, ...
+    'compression', {did2.build.compression(options.Compression, 'SchemaCache', options.SchemaCache)}, 'content_hash', options.ContentHash, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);
 edges = struct('owner_id', {ownerIds(ownerId)}, 'key_id', {options.KeyIds});
