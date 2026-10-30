@@ -283,10 +283,13 @@ ref = docOfClass(testCase, out, 'absolute_time_reference');
 verifyEqual(testCase, depValue(obs.toStruct(), 'entity_id'), 'sub_42');
 verifyEqual(testCase, obs.get('base.id'), 'sm_1');
 
-% `measurement` becomes the statement's variable. Free text, so no CURIE.
-verifyEqual(testCase, obs.get('statement.variable.name'), 'age');
-v = obs.get('statement.variable');   % #88: no CURIE is invented for 'age'
-verifyTrue(testCase, ~isfield(v, 'node') || isempty(v.node));
+% `measurement` becomes the statement's variable. 'age' is found as the
+% registered NCIT:C25150 'Age' (did-schema [age is NCIT Age], 2026-10-30;
+% found by did2.schema.termNameKey), so it carries that node and label; a
+% name the registry does not hold would stay a bare label (no CURIE invented).
+v = obs.get('statement.variable');
+verifyEqual(testCase, v.name, 'Age');
+verifyEqual(testCase, v.node, 'NCIT:C25150');
 
 % `value` becomes the value. NO UNIT is asserted -- the class carries none.
 % THE BLOCK NAME IS THE LEAF STEM, so [time dtype] moved it too: the class is
