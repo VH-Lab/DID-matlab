@@ -400,7 +400,21 @@ verifyEmpty(testCase, out.quarantine);
 report = did2.validate.references(out.migrated, 'KnownIds', ...
     [{'stimelem_5f10a2'}, did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
-verifyGreaterThanOrEqual(testCase, report.edges_examined, 3);
+% RE-POINTED 2026-10-30 (was >= 3). [control records carried in pass 1]
+% (Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md): the control record is now carried whole as
+% v1 (carry-152), as the presentation already was (carry-045). A carried
+% document is v1 end to end: no base field is moved to a `session_id` edge, so
+% the control record no longer gains one. The edges are exactly the two the v1
+% documents state -- the presentation's stimulus_element_id (a KnownId) and the
+% control's stimulus_presentation_id (the presentation, in the batch) -- and
+% both must still resolve.
+for k = 1:numel(out.migrated)
+    verifyEqual(testCase, char(out.migrated{k}.get('document_class.schema_version')), ...
+        'did_v1', 'both documents are carried as v1');
+end
+verifyEqual(testCase, report.edges_examined, 2, ...
+    'the two v1 edges: stimulus_element_id and stimulus_presentation_id');
 if report.orphan_count > 0
     verifyFail(testCase, sprintf('%d orphan edge(s), first: %s.%s -> %s', ...
         report.orphan_count, report.orphans(1).doc_class, ...
