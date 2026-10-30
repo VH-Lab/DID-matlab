@@ -370,6 +370,10 @@ end
 
 function d = carryNoteFor(out, id)
 d = '';
+% no carried_as_v1 field at all when nothing in the run was carried
+if ~isfield(out.summary.migration_notes, 'carried_as_v1')
+    return;
+end
 n = out.summary.migration_notes.carried_as_v1;
 ix = find(strcmp(n.ids, id), 1);
 if ~isempty(ix)
