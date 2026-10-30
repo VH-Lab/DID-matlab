@@ -27,6 +27,11 @@ function [blocks, bad] = fitBlocks(modelFit, family)
 %   RBNS), so its prefix is naka_rushton_RB_ / _RBN_ / _RBNS_. Its metrics
 %   relative_max_gain, saturation_index and sensitivity ([contrast metrics
 %   added]) are _relative_max_gain, _saturation_index, _sensitivity.
+%
+%   The model is read BY NODE: EMPTY:0000416 "Naka-Rushton function" (Decided
+%   by Jess Haley, 2026-10-30, did-schema V_eta_go_forward_class_audit.md
+%   [Naka-Rushton function minted]). An entry migrated before holds the bare
+%   label 'Naka-Rushton' and is read as the same model.
 
 blocks = struct();
 bad = {};
@@ -38,9 +43,10 @@ if isstruct(modelFit)
 end
 for k = 1:numel(modelFit)
     e = modelFit{k};
-    [~, model] = termParts(getIn(e, 'model'));
+    [node, model] = termParts(getIn(e, 'model'));
     stem = strrep(strtrim(model), ' ', '_');
-    if strcmp(family, 'contrast') && strcmp(model, 'Naka-Rushton')
+    isNakaRushton = strcmp(family, 'contrast') && nakaRushtonModel(node, model);
+    if isNakaRushton
         stem = nakaRushtonStem(e);
         if isempty(stem)
             bad{end+1} = sprintf('model_fit %d: Naka-Rushton constraints name none of RB, RBN, RBNS', k); %#ok<AGROW>
@@ -120,11 +126,22 @@ for k = 1:numel(modelFit)
         bad = [bad, others(e.metrics, metrics(:, 1)', [where '.metrics'])]; %#ok<AGROW>
     end
     known = {'model', 'coefficients', 'goodness', 'sampled_fit', 'metrics'};
-    if strcmp(family, 'contrast') && strcmp(model, 'Naka-Rushton')
+    if isNakaRushton
         known{end+1} = 'constraints';   % read by nakaRushtonStem
     end
     bad = [bad, others(e, known, where)]; %#ok<AGROW>
     blocks.(block) = b;
+end
+end
+
+function tf = nakaRushtonModel(node, name)
+%NAKARUSHTONMODEL True for the Naka-Rushton model: by node, EMPTY:0000416
+%   ([Naka-Rushton function minted], Jess Haley, 2026-10-30); with no node, the
+%   bare label 'Naka-Rushton' an entry migrated before that decision holds.
+if ~isempty(node)
+    tf = strcmpi(strtrim(node), 'EMPTY:0000416');
+else
+    tf = strcmp(strtrim(name), 'Naka-Rushton');
 end
 end
 

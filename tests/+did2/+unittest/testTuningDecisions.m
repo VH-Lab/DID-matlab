@@ -9,6 +9,8 @@ function tests = testTuningDecisions
 %     [fit model stated once] (2026-10-29)       testFitsUseCurveFittingAndStateTheModelOnce
 %     [tuning best value is a condition] (2026-10-28)  testTuningBestValue*
 %     [Priebe fits are one function]             testPriebeFitsAreOneFunction
+%     [Naka-Rushton function minted] (2026-10-30)  testNakaRushtonFitsAreOneModelToldApartByConstraints,
+%                                                testTheBareNakaRushtonLabelStillRoundTrips
 %     [hotelling spellings are one field]        testHotellingSpellingsAreOneField
 %     [input names rebuild from the input class] testInputNames*
 %     [tuning stimids rebuild]                   testTuningStimids*
@@ -46,7 +48,7 @@ function testFitsUseCurveFittingAndStateTheModelOnce(testCase)
 cases = { ...
     'oridir', writerOutput('oridirtuning_calc'), 'orientation_direction_tuning_calculation', ...
         'double gaussian'; ...
-    'contrast', convertedContrast(), 'contrast_tuning_calculation', 'Naka-Rushton'; ...
+    'contrast', convertedContrast(), 'contrast_tuning_calculation', 'Naka-Rushton function'; ...   % [Naka-Rushton function minted]
     'speed', writerOutput('speedtuning_calc'), 'speed_tuning_calculation', 'Priebe fit'; ...
     'SF', writerOutput('spatial_frequency_tuning_calc'), ...
         'spatial_frequency_tuning_calculation', ''};
@@ -112,17 +114,57 @@ end
 end
 
 function testNakaRushtonFitsAreOneModelToldApartByConstraints(testCase)
+% UPDATED 2026-10-30. Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md [Naka-Rushton function minted]: the one
+% model is the term EMPTY:0000416 "Naka-Rushton function", not the bare label
+% 'Naka-Rushton'; the coefficients keep their names. The term registry this
+% test reads (did-schema main) need not hold the row yet (did-schema #242):
+% setupOnce disarms the TermRegistry check, and the term is written by node.
 out = runRaw({convertedContrast()});
 leaf = firstOfClass(out, 'contrast_tuning_calculation');
 mf = asCell(leaf.tuning_curve.value.model_fit);
 verifyEqual(testCase, numel(mf), 3);
 held = cell(1, 3);
 for k = 1:3
-    verifyEqual(testCase, char(mf{k}.model.name), 'Naka-Rushton');
+    verifyEqual(testCase, char(mf{k}.model.node), 'EMPTY:0000416');
+    verifyEqual(testCase, char(mf{k}.model.name), 'Naka-Rushton function');
     held{k} = constraintText(mf{k});
 end
 verifyEqual(testCase, sort(held), sort({'Naka-Rushton parameter 3=1;Naka-Rushton parameter 4=1', ...
     'Naka-Rushton parameter 4=1', ''}));
+end
+
+function testTheBareNakaRushtonLabelStillRoundTrips(testCase)
+% [Naka-Rushton function minted] (Jess Haley, 2026-10-30): the round trip reads
+% the model by node, and a contrast fit migrated before the decision, whose
+% model is the bare label 'Naka-Rushton', still rebuilds the v1 document.
+v1 = convertedContrast();
+out = runRaw({v1});
+verifyEmpty(testCase, out.quarantine);
+bodies = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+changed = 0;
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if ~isfield(b, 'tuning_curve') || ~isfield(b.tuning_curve, 'value') ...
+            || ~isfield(b.tuning_curve.value, 'model_fit')
+        continue;
+    end
+    mf = b.tuning_curve.value.model_fit;
+    wasStruct = isstruct(mf);
+    mf = asCell(mf);
+    for j = 1:numel(mf)
+        if strcmp(char(mf{j}.model.node), 'EMPTY:0000416')
+            mf{j}.model = struct('node', '', 'name', 'Naka-Rushton');
+            changed = changed + 1;
+        end
+    end
+    if wasStruct; mf = [mf{:}]; end
+    b.tuning_curve.value.model_fit = mf;
+    bodies{k} = b;
+end
+verifyEqual(testCase, changed, 3, 'the three Naka-Rushton fits were relabelled');
+r = did2.convert.roundtrip.check(v1, bodies);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'contrast, bare Naka-Rushton label', {});
 end
 
 % ===================== [Priebe fits are one function] =====================

@@ -280,6 +280,12 @@ function testAChannelBasedRuleFoldsWithItsChannelsAsParameters(testCase)
 % commonTriggersOverlappingEpochs names its systems as daqsystem1_name /
 % daqsystem2_name and its trigger channels as daqsystem_ch1 / daqsystem_ch2:
 % the systems are the from / to edges, the channels method parameters.
+% INVERTED 2026-10-30 from pinning the v1 names 'daqsystem ch1' / 'daqsystem
+% ch2'. Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md [trigger channels named by their link]: the
+% channels are labelled by the link each belongs to, daqsystem_ch1 (the
+% channel on daqsystem1, the from system) 'from trigger channel' and
+% daqsystem_ch2 'to trigger channel'; the v1 names are not written.
 result = migrate({ ...
     daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
     daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
@@ -300,10 +306,14 @@ verifyEqual(testCase, depValue(cfg, 'from_acquisition_system_id'), 'sys_1');
 verifyEqual(testCase, depValue(cfg, 'to_acquisition_system_id'), 'sys_2');
 verifyEmpty(testCase, depValues(cfg, 'acquisition_channels_id'));
 entries = asEntries(cfg.get('clock_alignment_configuration.method').parameters);
-ch1 = entryNamed(entries, 'daqsystem ch1');
-ch2 = entryNamed(entries, 'daqsystem ch2');
-verifyEqual(testCase, char(ch1.text), 'dep1');
-verifyEqual(testCase, char(ch2.text), 'mk1');
+chFrom = entryNamed(entries, 'from trigger channel');
+chTo = entryNamed(entries, 'to trigger channel');
+assertNotEmpty(testCase, chFrom);
+assertNotEmpty(testCase, chTo);
+verifyEqual(testCase, char(chFrom.text), 'dep1');   % v1 daqsystem_ch1, on sys_1 (from)
+verifyEqual(testCase, char(chTo.text), 'mk1');      % v1 daqsystem_ch2, on sys_2 (to)
+verifyEmpty(testCase, entryNamed(entries, 'daqsystem ch1'));
+verifyEmpty(testCase, entryNamed(entries, 'daqsystem ch2'));
 verifyEmpty(testCase, entryNamed(entries, 'daqsystem1 name'));   % a name is an edge
 verifyEqual(testCase, char(cfg.get('clock_alignment_configuration.clock.name')), 'dev_local_time');
 end

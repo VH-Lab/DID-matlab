@@ -19,6 +19,17 @@ function bodies = syncrule(preBody)
 %   ndi.vintage.syncruleParameters reads both shapes); then did-schema removes
 %   `acquisition_channels_id` from the class.
 %
+%   THE TRIGGER CHANNELS (Decided by Jess Haley, 2026-10-30, did-schema
+%   V_eta_go_forward_class_audit.md [trigger channels named by their link]):
+%   the two trigger channels are the method parameters labelled
+%   'from trigger channel' (v1 daqsystem_ch1, the channel read on daqsystem1,
+%   commonTriggersOverlappingEpochs.m:29, so it goes with
+%   `from_acquisition_system_id`) and 'to trigger channel' (v1 daqsystem_ch2,
+%   daqsystem2's, with `to_acquisition_system_id`), not the v1 names
+%   'daqsystem ch1' / 'daqsystem ch2' written before. NDI-matlab
+%   ndi.vintage.syncruleParameters reads both (NDI-matlab #1101), and
+%   did2.convert.roundtrip.syncrule reads both back to daqsystem_ch1 / _ch2.
+%
 %   TEAM-SIGN-OFF [sync configuration], jess@walthamdatascience.com / 2026-08-08:
 %     "syncrule -> `clock_alignment_configuration` (parameters DECLARED not
 %      bagged, devices become `acquisition_channels_#` edges, EXACTLY 2 and
@@ -125,8 +136,10 @@ function bodies = syncrule(preBody)
 %                                        (filefind daqsystem1/2; the channel
 %                                        rules' daqsystem1_name/2_name). The
 %                                        channel strings daqsystem_ch1/_ch2
-%                                        are method parameters by their own
-%                                        names, as every unread parameter is.
+%                                        are the method parameters 'from
+%                                        trigger channel' / 'to trigger
+%                                        channel' ([trigger channels named
+%                                        by their link], 2026-10-30).
 %   A rule that does not fold (any device-pair rule in pass 1, before its
 %   systems are resolved) passes through unchanged, as before.
 %
@@ -218,7 +231,8 @@ isFileBased = ~isempty(minPaths);
 % uses, the rule becomes the device-pair configuration: the first stamp is
 % its `from_acquisition_system_id`, the second its `to_acquisition_system_id`
 % ([sync configuration links its rigs], [sync rule direction is recorded]),
-% and the channel strings are method parameters by their own names. The stamp
+% and the channel strings are the method parameters 'from trigger channel' /
+% 'to trigger channel' ([trigger channels named by their link]). The stamp
 % is read and discarded: every edge below is set BY NAME. Without the stamp
 % (pass 1, or a name the pass could not resolve to exactly one system) the
 % rule passes through exactly as before.
@@ -286,8 +300,11 @@ function [entries, unwritable] = unreadParameters(params, nameKeys)
 %   be written: a number that is not finite (an entry's quantity is finite, and
 %   JSON-encoding loses NaN / Inf). NAMEKEYS: the two parameters the
 %   stamped-pair arm read as the system names (they are the from / to edges);
-%   {} on the file-based arm. A channel string (daqsystem_ch1 / _ch2) is not
-%   read here, so it is a method parameter by its own name.
+%   {} on the file-based arm. A channel string under the writer's spelling
+%   (daqsystem_ch1 / _ch2) is read by configuration() as 'from trigger
+%   channel' / 'to trigger channel' ([trigger channels named by their link],
+%   Jess Haley, 2026-10-30); any other spelling stays a method parameter by
+%   its own name, so the round trip rebuilds it as it was.
 entries = [];
 unwritable = {};
 if ~isstruct(params) || ~isscalar(params)
@@ -298,6 +315,13 @@ read = [read, consumedChar(params, {'syncfilename', 'syncFilename', 'sync_filena
 read = [read, consumedChar(params, {'epochclocktype', 'epochClockType', 'epoch_clock_type'})];
 read = [read, consumedNumber(params, {'number_fullpath_matches', 'numberFullpathMatches'})];
 read = [read, consumedNumber(params, {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'})];
+% the trigger channels, written by configuration() under the link they belong
+% to ([trigger channels named by their link], Jess Haley, 2026-10-30)
+for chKey = {'daqsystem_ch1', 'daqsystem_ch2'}
+    if ~isempty(channelText(params, chKey{1}))
+        read{end+1} = chKey{1}; %#ok<AGROW>
+    end
+end
 read = [read, reshape(nameKeys, 1, [])];
 rest = struct();
 fns = fieldnames(params);
@@ -321,6 +345,22 @@ for k = 1:numel(names)
         name = names(k);
         return;
     end
+end
+end
+
+function t = channelText(params, name)
+%CHANNELTEXT A trigger channel string ('' when NAME is absent, empty or not
+%   text). Text only: a channel that is not text stays a method parameter by
+%   its own name (jParameterList), so the round trip rebuilds its type.
+t = '';
+if ~isstruct(params) || ~isscalar(params) || ~isfield(params, name)
+    return;
+end
+v = params.(name);
+if ischar(v) && (isrow(v) || isempty(v))
+    t = v;
+elseif isstring(v) && isscalar(v)
+    t = char(v);
 end
 end
 
@@ -365,6 +405,18 @@ minOverlap = readNumber(params0(block), {'minEmbeddedFileOverlap', 'min_embedded
 if ~isempty(minOverlap)
     entries{end+1} = did2.build.parameter( ...
         jLabel('minimum embedded file overlap'), 'Value', minOverlap);
+end
+% The trigger channels, named by the link each belongs to: v1 daqsystem_ch1 is
+% the channel read on daqsystem1 (commonTriggersOverlappingEpochs.m:29), the
+% `from_acquisition_system_id` system; daqsystem_ch2 goes with
+% `to_acquisition_system_id`. Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md [trigger channels named by their link]:
+% labels 'from trigger channel' / 'to trigger channel', not the v1 names.
+for ch = {{'daqsystem_ch1', 'from trigger channel'}, {'daqsystem_ch2', 'to trigger channel'}}
+    chText = channelText(params0(block), ch{1}{1});
+    if ~isempty(chText)
+        entries{end+1} = did2.build.parameter(jLabel(ch{1}{2}), 'Text', chText); %#ok<AGROW>
+    end
 end
 % the parameters read nowhere above, written as method parameters too
 % ([small unread settings] (3), Jess Haley, 2026-10-26)
