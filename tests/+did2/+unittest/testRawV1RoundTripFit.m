@@ -47,14 +47,17 @@ verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_
 end
 
 function testAFitcurveWithASubjectConvertsAndRoundTrips(testCase)
-v1 = writerFitcurve('fc_1');
-out = runRaw(v1);
-verifyEmpty(testCase, out.quarantine);
-verifyEmpty(testCase, out.passthrough, 'converted, not carried');
-r = did2.convert.roundtrip.check(v1, out.migrated);
-verifyFalse(testCase, r.carried);
-did2.unittest.helpers.verifyRoundTrip(testCase, r, 'fitcurve', ...
-    {'fitcurve.fit_data.output_number_examples'});
+for withApp = [false true]
+    v1 = writerFitcurve('fc_1', withApp);
+    label = sprintf('fitcurve (app named: %d)', withApp);
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    verifyEmpty(testCase, out.passthrough, [label ': converted, not carried']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyFalse(testCase, r.carried, label);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, label, ...
+        {'fitcurve.fit_data.output_number_examples'});
+end
 end
 
 function testTheBareFitcurveTemplateIsCarried(testCase)
@@ -74,9 +77,12 @@ function testAFieldOutsideTheFitcurveTemplateCarriesIt(testCase)
 v1 = writerFitcurve('fc_x');
 v1.fitcurve.fit_rsquared = 0.9;
 verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: fitcurve.fit_rsquared');
-v1 = writerFitcurve('fc_x');
-v1.app = struct('name', 'fitter', 'version', '1');
-verifyCarried(testCase, v1, 'unplaced: app');
+% an `app` block is read (jModelFit names the run's software from it,
+% testMigratorsJ testFitcurveFoldsToResidualScore); a field outside app.json
+% carries the document
+v1 = writerFitcurve('fc_x', true);
+v1.app.license = 'MIT';
+verifyCarried(testCase, v1, 'app.license');
 v1 = did2.unittest.helpers.setDependency(writerFitcurve('fc_x'), 'stimulus_presentation_id', 'sp_1');
 verifyCarried(testCase, v1, 'depends_on(stimulus_presentation_id)');
 end
@@ -163,6 +169,7 @@ end
 
 function f = fixtures()
 f = {'fitcurve, template + element_id', writerFitcurve('fc_1'); ...
+    'fitcurve, template + element_id + app', writerFitcurve('fc_3', true); ...
     'vmspikefit, template', writerVmspikefit('vf_1', false); ...
     'vmspikefit, template + app', writerVmspikefit('vf_2', true)};
 end
@@ -188,9 +195,13 @@ v1 = did2.unittest.helpers.setDependency(v1, 'element_id', '41268b6f5c6a3d4e_af0
 v1 = jsondecode(jsonencode(v1));
 end
 
-function v1 = writerFitcurve(id)
+function v1 = writerFitcurve(id, withApp)
 % data/fitcurve.json, every field set; the subject edge a fit needs to convert
-% appended after the template's own (as set_dependency_value appends)
+% appended after the template's own (as set_dependency_value appends); with
+% WITHAPP, an app.json block (outside the template, read by jModelFit)
+if nargin < 2
+    withApp = false;
+end
 v1 = did2.unittest.helpers.ndiDocument('fitcurve', 'Id', id);
 v1.fitcurve.fit_name = 'power law';
 v1.fitcurve.fit_equation = 'y=a+b*x.^c';
@@ -202,6 +213,9 @@ v1.fitcurve.fit_sse = 12.5;
 v1.fitcurve.fit_constraints = struct('fit_constraint_name', 'c', 'fit_constraint_value', 1.5);
 v1.fitcurve.fit_data = struct('input_data_field', 'mydocumenttype.x', ...
     'output_data_field', 'mydocumenttype.y', 'output_number_examples', 20);
+if withApp
+    v1.app = struct('name', 'curve fitter', 'version', '1');
+end
 v1 = did2.unittest.helpers.setDependency(v1, 'fit_example_data_id', '41268b6f5c6a3d4e_fc00000000000001');
 v1 = did2.unittest.helpers.setDependency(v1, 'element_id', '41268b6f5c6a3d4e_fc000000000000e1');
 v1 = jsondecode(jsonencode(v1));

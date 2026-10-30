@@ -58,7 +58,10 @@ function bodies = fitcurve(preBody)
 %   jModelFit reads for either fit class), the template's edge
 %   `fit_example_data_id`, and the edges jModelFit reads beside it
 %   (`fit_input_id`, and the subject `element_id` / `subject_id`, outside the
-%   template but read: a document that states one converts, as before). What
+%   template but read: a document that states one converts, as before), and an
+%   `app` block's app.json fields (outside the template too, but jModelFit
+%   names the run's software, operating system and interpreter from it, as for
+%   vmspikefit; testMigratorsJ testFitcurveFoldsToResidualScore). What
 %   the renamed path would have discarded is carried, carry-049, as before; a
 %   block, base field or edge no part of this fold reads (dropped without a
 %   word on the renamed path) carries the document whole as v1
@@ -76,7 +79,8 @@ src = preBody;
 [preBody, collision, unplaced] = jRawAccount(src, struct( ...
     'fitcurve', {{'fit_name', 'fit_equation', 'fit_parameters', 'fit_parameter_names', ...
         'fit_independent_variable_names', 'fit_dependent_variable_names', 'fit_sse', ...
-        'fit_sse_perpoint', 'fit_constraints', 'fit_data'}}), ...
+        'fit_sse_perpoint', 'fit_constraints', 'fit_data'}}, ...
+    'app', {{'name', 'version', 'url', 'os', 'os_version', 'interpreter', 'interpreter_version'}}), ...
     {'^fit_example_data_id$', '^fit_input_id$', '^element_id$', '^subject_id$'});
 if jRawCarry('fitcurve', src, collision, unplaced, 'carry-100')
     bodies = {src};
