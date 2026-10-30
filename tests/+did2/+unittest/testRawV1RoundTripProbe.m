@@ -165,7 +165,10 @@ v1.probe_geometry.ndim = 3;
 verifyCarried(testCase, v1, 'probe_geometry.ndim');
 v1 = convertedGeometry();
 v1.probe_geometry.unit = 'furlong';
-verifyCarried(testCase, v1, 'probe_geometry.unit');
+% [canonical absent only as needs info] (Jess Haley, 2026-10-30): a unit
+% spelling the migrator does not recognise is carried for mapping, carry-155
+% (it was carried with no register row)
+verifyCarried(testCase, v1, '[carry-155] needs_mapping: probe_geometry.unit');
 v1 = convertedGeometry();
 v1.probe_geometry.channel_order = [2; 1; 3; 4];
 verifyCarried(testCase, v1, 'probe_geometry.channel_order');

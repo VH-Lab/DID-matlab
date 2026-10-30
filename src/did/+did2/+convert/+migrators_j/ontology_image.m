@@ -40,9 +40,16 @@ function v2Body = ontology_image(preBody)
 %   ontologyTableRow_id (what imageDocMaker writes when given a row) is CARRIED
 %   whole as v1, needs_mapping, with a `carried_as_v1` note citing register
 %   row carry-124 (did-schema 64ad58b8); it was a silent passthrough. The body is
-%   unchanged either way. A vintage-B document with no edge, or with a subject
-%   edge beside the row, still passes through as before: the line names
-%   neither.
+%   unchanged either way.
+%
+%   2026-10-30, [vintage-B ontologyImage cases] (Jess Haley, did-schema
+%   V_eta_go_forward_class_audit.md, decided 2026-10-29): (a) a vintage-B
+%   document with NO non-empty edge at all (imageDocMaker makes one when given
+%   no row) is carried like the row-only one, carry-124 (widened); (b) one with
+%   a subject or element edge beside its ontologyTableRow_id (no NDI writer
+%   makes one) is carried as malformed, carry-150. A vintage-B document with a
+%   subject or element edge and NO table row is named by neither line and
+%   passes through as before.
 %
 %   ---------------------------------------------------------------------
 %   WHY THIS MIGRATOR IS VINTAGE-AWARE, AND WHY ONE VINTAGE IS DEFERRED
@@ -315,13 +322,33 @@ if isVintageB
     % whose only edge is its table row ... [is] carried whole as v1
     % `needs_mapping`". Its raster has no statement for a sampled_body to
     % belong to (a table row is not a subject; see the header), so the carry
-    % is noted. A vintage-B document with NO edge, or with a subject edge
-    % beside the table row, is not what that line names: it passes through
-    % as before.
-    if onlyEdgeIsTableRow(preBody)
-        b = did2.convert.v1read.readBase(src);
-        id = b.id;
-        if ~ischar(id); id = ''; end
+    % is noted.
+    %
+    % [vintage-B ontologyImage cases] (Decided by Jess Haley, 2026-10-29):
+    % "(a) a v1 `ontologyImage` with no non-empty edge at all (NDI
+    % `imageDocMaker.m` makes one when given no row) is carried whole as v1
+    % like the row-only case (carry-124); (b) one with a subject or element
+    % edge beside its row (no NDI writer makes one) is carried as
+    % `malformed`." A subject or element edge with no row is named by
+    % neither line: it passes through as before.
+    edges = nonEmptyEdges(preBody);
+    hasRow = any(ismember(edges, {'ontologyTableRow_id', 'ontology_table_row_id'}));
+    hasSubject = any(ismember(edges, {'element_id', 'subject_id'}));
+    b = did2.convert.v1read.readBase(src);
+    id = b.id;
+    if ~ischar(id); id = ''; end
+    if isempty(edges)
+        % carry-register: carry-124
+        did2.convert.reportNote('carried_as_v1', 'ontology_image', id, ...
+            ['[carry-124] needs_mapping: ngrid (no non-empty edge, so no ' ...
+            'statement for its sampled_body) ([vintage-B ontologyImage cases])']);
+    elseif hasRow && hasSubject
+        % carry-register: carry-150
+        did2.convert.reportNote('carried_as_v1', 'ontology_image', id, ...
+            ['[carry-150] malformed: a subject or element edge beside ' ...
+            'ontologyTableRow_id, which no NDI writer makes ' ...
+            '([vintage-B ontologyImage cases])']);
+    elseif hasRow && numel(edges) == 1
         % carry-register: carry-124
         did2.convert.reportNote('carried_as_v1', 'ontology_image', id, ...
             ['[carry-124] needs_mapping: ngrid (its only edge is ontologyTableRow_id, so ' ...
@@ -488,28 +515,23 @@ end
 
 % ===================== local helpers ===================================
 
-function tf = onlyEdgeIsTableRow(preBody)
-%ONLYEDGEISTABLEROW True when the document's only non-empty edge is its table
-%   row (`ontologyTableRow_id`, v1's spelling, or `ontology_table_row_id`, a
-%   fixture's renamed one), as imageDocMaker createOntologyImageDoc writes it
-%   when given a row. False with no non-empty edge at all, or with any other.
-%   Edges are read by did2.convert.v1read.readDependsOn (a struct array or a
-%   cell of entries; `value`, `id` or `document_id`).
-tf = false;
+function names = nonEmptyEdges(preBody)
+%NONEMPTYEDGES The names of the document's non-empty edges (cellstr, unique).
+%   A table row is `ontologyTableRow_id` (v1's spelling) or
+%   `ontology_table_row_id` (a fixture's renamed one). Edges are read by
+%   did2.convert.v1read.readDependsOn (a struct array or a cell of entries;
+%   `value`, `id` or `document_id`). A `session_id` entry is v1's
+%   base.session_id moved to an edge (V2's shape, on a body already renamed),
+%   not an edge the v1 document states, so it is not counted.
+names = {};
 deps = did2.convert.v1read.readDependsOn(preBody);
 for k = 1:numel(deps)
-    % a `session_id` entry is v1's base.session_id moved to an edge (V2's
-    % shape, on a body already renamed), not an edge the v1 document states
     if isempty(deps(k).document_id) || strcmp(char(deps(k).name), 'session_id')
         continue;
     end
-    if any(strcmp(char(deps(k).name), {'ontologyTableRow_id', 'ontology_table_row_id'}))
-        tf = true;
-    else
-        tf = false;
-        return;
-    end
+    names{end+1} = char(deps(k).name); %#ok<AGROW>
 end
+names = unique(names);
 end
 
 function tf = isAnatomicalArea(node)

@@ -283,15 +283,17 @@ end
 % ===================== the other carries, on the raw shape ===============
 
 function testTheRawShapeCarriesAsTheRenamedOneDid(testCase)
-% a mask with a subject and no plate row (carry-025), a collection edge
-% (carry-013), a data_limits that is not a pair (carry-012)
+% a mask with a subject and no plate row (carry-154 since [Haley mask words
+% leave the generic stage], 2026-10-30; carry-025 before), a collection edge
+% (carry-153 since [image collection carried until a writer], 2026-10-30;
+% an awaiting_home row before), a data_limits that is not a pair (carry-012)
 mask = haleyBehaviourStack('is_m', 'arena mask');
 mask.depends_on(1).value = '';
 coll = babuStack('is_c', 'image');
 coll.depends_on(end+1) = struct('name', 'imageCollection_id', 'value', 'coll_1');
 lim = babuStack('is_l', 'image');
 lim.imageStack_parameters.data_limits = 'not a pair';
-cases = {'mask', mask, '[carry-025] '; 'collection', coll, '[carry-013] '; ...
+cases = {'mask', mask, '[carry-154] '; 'collection', coll, '[carry-153] malformed: '; ...
     'limits', lim, '[carry-012] '};
 for k = 1:size(cases, 1)
     [label, v1, row] = cases{k, :};

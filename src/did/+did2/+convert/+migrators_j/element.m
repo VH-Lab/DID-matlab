@@ -191,6 +191,9 @@ function v2Body = element(preBody)
 %   elements). A unit whose `direct` is not 0, or whose subject_id is not its
 %   probe's, is carried whole as v1, malformed (carry-120: a value no NDI
 %   writer produces; ndi.element copies the underlying element's subject).
+%   A unit whose probe is not a v1 element of the batch cannot be checked or
+%   rebuilt: it is carried whole as v1, needs_mapping (carry-151, [unit with
+%   no probe in the batch carried], Jess Haley, 2026-10-29).
 
 arguments
     preBody (1,1) struct
@@ -281,11 +284,18 @@ if isSortedUnit(type) && ~isempty(underlyingId)
         return;
     end
     if ~isempty(unchecked)
-        % the probe is not in the batch: converted as before this decision
-        % (its subject_id and direct not written), and counted. Whether such
-        % a unit should be carried instead has no decision or register row;
-        % it is reported to the team, not guessed (PR body).
-        did2.convert.reportNote('unit_probe_not_in_batch', 'element', elementId, unchecked);
+        % the probe is not in the batch, so the subject cannot be rebuilt from
+        % it. [unit with no probe in the batch carried] (Decided by Jess
+        % Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): such
+        % a unit "is carried whole as v1 under a register row instead of
+        % converting with its subject unchecked". It converted (subject
+        % unchecked, note `unit_probe_not_in_batch`) before.
+        % carry-register: carry-151
+        did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
+            ['[carry-151] needs_mapping: sorted unit (unit_probe_not_in_batch): ' ...
+            unchecked ' ([unit with no probe in the batch carried])']);
+        v2Body = {preBody};
+        return;
     end
 end
 

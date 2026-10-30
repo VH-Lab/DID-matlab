@@ -163,11 +163,12 @@ function bodies = image(preBody)
 %   image_stack, which reads this class's `image` block for them. (This read
 %   "sampled_body has no encoding field"; data_body declares both.)
 %
-%   `imageCollection_id` -- becomes a `member_of` relation to a group entity
-%   (T20) under [image file details placed]; that is a later step, so until it
-%   lands an image that names a collection is CARRIED WHOLE AS V1 by
-%   image_stack (it was deliberately not carried: `imageCollection` has no
-%   V_eta class, so the edge would dangle).
+%   `imageCollection_id` -- an image that names a collection is CARRIED WHOLE
+%   AS V1, `malformed`, register row carry-153, by image_stack ([image
+%   collection carried until a writer], Jess Haley, 2026-10-30, did-schema
+%   V_eta_go_forward_class_audit.md: NDI has no writer of the edge at the
+%   locked main, so no group is designed). It cited an awaiting_home register row (a
+%   `member_of` home, [image file details placed]) before.
 %
 %   `label` (this class's `image.label`) -> the image observation's statement
 %   `notes`, as v1 wrote it, by image_stack (which reads this class's `image`

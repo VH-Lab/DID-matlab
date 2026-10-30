@@ -1,6 +1,8 @@
 function bodies = control_stimulus_ids(preBody)
 %CONTROL_STIMULUS_IDS Brainstorm-J migrator: did_v1 control_stimulus_ids ->
-%   NO V2 DOCUMENT (passed through for NDI's second pass, which folds it into
+%   NO V2 DOCUMENT. CARRIED whole as v1 with a note citing carry-152 since
+%   2026-10-30 ([control records carried in pass 1], Jess Haley); before that
+%   (passed through for NDI's second pass, which folds it into
 %   the presentation's `control condition` covariate; [control as covariate],
 %   Jess Haley 2026-10-22). HISTORY: `control_designation`
 %   (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08). A
@@ -114,6 +116,28 @@ end
 % (stable/control_stimulus_ids) for that pass to consume and remove -- as
 % `stimulus_presentation` does. The responses that named it no longer do:
 % stimulus_response_scalar puts only the presentation in `input_id`.
+%
+% [control records carried in pass 1] (Decided by Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md): "a v1 `control_stimulus_ids`
+% record is carried whole as v1 in DID's pass 1 with a note, under its own
+% register row of kind `not_modelled` with `stimulus_presentation`'s reason
+% (carry-045: decomposed by NDI's second pass, [second pass reads control
+% stimuli from v1])". It was a silent passthrough; the body returned is the
+% same, now noted, as stimulus_presentation.m notes carry-045. NDI's second
+% pass reads the record from v1 (NDI-matlab #1082), and v1_to_v2's
+% carryDependents does not follow an edge to it (a handed-on class, as
+% stimulus_presentation), so a response naming it does not carry.
+%
+% Still read on the renamed path (rawV1Classes says why it is not switched):
+% v1_to_v2 records the universalRenames output as the carry and the caller
+% stores the untouched v1 source, as for every renamed-path carry.
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
+% carry-register: carry-152
+did2.convert.reportNote('carried_as_v1', 'control_stimulus_ids', ...
+    id, ['[carry-152] not_modelled: decomposed by the NDI second pass, ' ...
+    'which reads the control record from v1 ([control records carried in pass 1])']);
 bodies = {preBody};
 end
 

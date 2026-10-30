@@ -294,6 +294,31 @@ verifyEqual(testCase, d.get('control_stimulus_ids.control_stimulus_ids'), [3; 3;
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
+function testAControlRecordIsCarriedWithANote(testCase)
+% INVERTS the silent passthrough above (the body is the same; the note is
+% new). [control records carried in pass 1] (Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md): "a v1
+% `control_stimulus_ids` record is carried whole as v1 in DID's pass 1 with a
+% note, under its own register row of kind `not_modelled`" -- carry-152,
+% recorded as a pass-1 passthrough (stamped did_v1 by the caller).
+out = runJ(controlFixture());
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+n = out.summary.migration_notes;
+assertTrue(testCase, isfield(n, 'carried_as_v1'), 'the carry is noted');
+verifyEqual(testCase, n.carried_as_v1.count, 1);
+d = n.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-152] not_modelled: '), d);
+verifyTrue(testCase, contains(d, '[control records carried in pass 1]'), d);
+% an all-NaN record and one with no presentation edge are carried the same way
+for v1 = {controlFixture(nan(6, 1)), setfield(controlFixture(), 'depends_on', ...
+        struct('name', {}, 'value', {}))} %#ok<SFLD>
+    o = runJ(v1{1});
+    verifyEqual(testCase, o.summary.migration_notes.carried_as_v1.count, 1);
+end
+end
+
 
 function testControlDesignationPointsAtThePresentationBothWays(testCase)
 % UPDATED for #88 (passthrough, see above): the edge to the presentation stays
@@ -375,7 +400,21 @@ verifyEmpty(testCase, out.quarantine);
 report = did2.validate.references(out.migrated, 'KnownIds', ...
     [{'stimelem_5f10a2'}, did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
-verifyGreaterThanOrEqual(testCase, report.edges_examined, 3);
+% RE-POINTED 2026-10-30 (was >= 3). [control records carried in pass 1]
+% (Decided by Jess Haley, 2026-10-30, did-schema
+% V_eta_go_forward_class_audit.md): the control record is now carried whole as
+% v1 (carry-152), as the presentation already was (carry-045). A carried
+% document is v1 end to end: no base field is moved to a `session_id` edge, so
+% the control record no longer gains one. The edges are exactly the two the v1
+% documents state -- the presentation's stimulus_element_id (a KnownId) and the
+% control's stimulus_presentation_id (the presentation, in the batch) -- and
+% both must still resolve.
+for k = 1:numel(out.migrated)
+    verifyEqual(testCase, char(out.migrated{k}.get('document_class.schema_version')), ...
+        'did_v1', 'both documents are carried as v1');
+end
+verifyEqual(testCase, report.edges_examined, 2, ...
+    'the two v1 edges: stimulus_element_id and stimulus_presentation_id');
 if report.orphan_count > 0
     verifyFail(testCase, sprintf('%d orphan edge(s), first: %s.%s -> %s', ...
         report.orphan_count, report.orphans(1).doc_class, ...
