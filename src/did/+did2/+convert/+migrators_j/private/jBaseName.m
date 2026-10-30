@@ -12,9 +12,12 @@ function name = jBaseName(preBody)
 %   trimming), so the round trip reads it back exactly. A name that is not
 %   text writes nothing, and the round trip reports it lost.
 %
-%   Callers: did2.convert.migrators_j.subject, .subject_group, .element,
-%   .session, .dataset_remote; each inverse (did2.convert.roundtrip.<class>)
-%   rebuilds base.name from entity.name, '' when the entity has none.
+%   Callers: did2.convert.migrators_j.subject, .subject_group, .session,
+%   .dataset_remote; each inverse (did2.convert.roundtrip.<class>) rebuilds
+%   base.name from entity.name, '' when the entity has none. .element reads it
+%   only to carry an element whose base.name is not empty: since [element name
+%   and reference stored apart] (2026-10-29) an element's entity.name is its
+%   element.name.
 
 name = '';
 b = did2.convert.v1read.readBase(preBody);

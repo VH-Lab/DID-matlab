@@ -3534,11 +3534,12 @@ function rowsOut = probemapDevices(pm)
 %PROBEMAPDEVICES {probe local_identifier, device name} per row of a v1
 %   epochprobemap (tab-separated, header `name reference type devicestring
 %   subjectstring`). The local_identifier is +migrators_j/element.m's,
-%   did2.convert.elementLocalIdentifier: 'name | reference', or the name alone
+%   did2.convert.elementHandle: 'name | reference', or the name alone
 %   ([element local identifier is name and reference], Jess Haley,
-%   2026-10-26); a row that cannot be written reversibly matches no element
-%   (element.m carries such an element). The device is the devicestring before
-%   ':'.
+%   2026-10-26; written beside the entity's `name` since [element name and
+%   reference stored apart], 2026-10-29); a row that cannot be written
+%   matches no element (element.m carries such an element). The device is the
+%   devicestring before ':'.
 rowsOut = {};
 lines = regexp(char(pm), '\r?\n', 'split');
 if isempty(lines); return; end
@@ -3556,7 +3557,10 @@ for i = 2:numel(lines)
     if ~isempty(iRef)
         ref = strtrim(c{iRef});
     end
-    lid = did2.convert.elementLocalIdentifier(nm, ref);
+    if ~isempty(regexp(ref, '^-?\d+$', 'once'))
+        ref = str2double(ref);   % the int2str text, written back as element.m does
+    end
+    lid = did2.convert.elementHandle(nm, ref);
     if isempty(lid); continue; end
     dev = strtrim(c{iDev});
     colon = find(dev == ':', 1);

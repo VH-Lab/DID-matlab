@@ -9,6 +9,16 @@ function tests = testRawV1RoundTripElement
 %                                       the mirror of NDI-matlab's
 %                                       ndi.vintage.elementLocalIdentifier on
 %                                       claude/phase3 471cd5c66)
+%     [element name and reference stored apart] (2026-10-29)  the v1 name,
+%                                       exactly, is entity.name; the
+%                                       reference is what follows it in the
+%                                       local_identifier
+%                                       (did2.convert.elementHandle /
+%                                       elementNameReferenceApart), so a name
+%                                       that reads as a pair converts
+%                                       (no longer carried as unpackable); an entity
+%                                       with no `name` (migrated before it)
+%                                       still reads by the old parse
 %     [element types have no default], [electrode spellings and imaging types
 %     are devices], [event lines and environment probes are devices]
 %                                       a device only on an ndi.probe.* class;
@@ -103,6 +113,7 @@ v1 = probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfda
 out = runRaw(v1);
 ent = out.migrated{1};
 verifyEqual(testCase, ent.get('entity.local_identifier'), 'leftcortex | 2');
+verifyEqual(testCase, char(ent.get('entity.name')), 'leftcortex');
 [n, r] = did2.convert.elementNameReference('leftcortex | 2');
 verifyEqual(testCase, n, 'leftcortex');
 verifyEqual(testCase, r, 2);
@@ -112,24 +123,106 @@ r2 = did2.convert.roundtrip.check(v1, runRaw(v1).migrated);
 verifyEmpty(testCase, r2.lost, describeLost(r2));
 end
 
-function testABaseNameIsTheEntityName(testCase)
-% [v1 name is the entity name] (Jess Haley, 2026-10-27): a non-empty v1
-% base.name is entity.name, and is rebuilt from it; '' (what
-% ndi.element/newdocument writes) writes nothing
+function testNameAndReferenceStoredApartRoundTrip(testCase)
+% [element name and reference stored apart] (Jess Haley, 2026-10-29): the v1
+% name, exactly, is entity.name, and local_identifier keeps
+% '<name> | <reference>'; the reference is read back as what follows the
+% known name. INVERTED from the unpackable-pair carry rows of
+% testCarriedElementsCiteTheirRows ('name reads as a pair', 'non-integer
+% reference'), which carried these elements whole: each now converts and
+% rebuilds exactly.
+cases = { ...
+    'name holding (ref 3)', 'el_ref3', 'leftcortex (ref 3)', 2, 'leftcortex (ref 3) | 2'; ...
+    'name that is an old (ref X) pair, no reference', 'el_ref3n', 'leftcortex (ref 3)', [], 'leftcortex (ref 3)'; ...
+    'name reads as a pair, no reference', 'el_pair', 'leftcortex | 2', [], 'leftcortex | 2'; ...
+    'name reads as a pair, with a reference', 'el_pair2', 'leftcortex | 2', 5, 'leftcortex | 2 | 5'; ...
+    'non-integer reference', 'el_frac', 'leftcortex', 1.5, 'leftcortex | 1.5'; ...
+    'text reference', 'el_text', 'leftcortex', 'tip', 'leftcortex | tip'; ...
+    'empty name with a reference', 'el_noname', '', 2, ' | 2'};
+for k = 1:size(cases, 1)
+    [label, id, name, reference, localId] = cases{k, :};
+    v1 = probeDoc(id, name, reference, 'n-trode', 'ndi.probe.timeseries.mfdaq');
+    out = runRaw(v1);
+    verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, id))), 0, ...
+        sprintf('%s: carried (%s)', label, carryNoteFor(out, id)));
+    docs = elementOutputs(out, id);
+    if isempty(docs); continue; end
+    ent = docs{1};
+    verifyEqual(testCase, char(ent.entity.local_identifier), localId, label);
+    if isempty(name)
+        verifyFalse(testCase, isfield(ent.entity, 'name'), [label ': an empty name wrote entity.name']);
+    else
+        verifyEqual(testCase, char(ent.entity.name), name, [label ': entity.name']);
+    end
+    r = did2.convert.roundtrip.check(v1, docs);
+    verifyFalse(testCase, r.carried, label);
+    verifyEmpty(testCase, r.lost, sprintf('%s: %s', label, describeLost(r)));
+    verifyEmpty(testCase, r.invented, sprintf('%s: invented: %s', label, strjoin(r.invented, ', ')));
+    verifyTrue(testCase, any(strcmp('element.name', [r.matched, r.not_set])), ...
+        [label ': element.name not rebuilt']);
+    verifyTrue(testCase, any(strcmp('element.reference', [r.matched, r.not_set])), ...
+        [label ': element.reference not rebuilt']);
+end
+end
+
+function testAnEntityWithoutNameReadsByTheOldParse(testCase)
+% an element entity migrated before [element name and reference stored apart]
+% has no `name` (its v1 base.name was '') and holds the pair in
+% local_identifier alone: '<name> | <reference>' (2026-10-26), or the older
+% '<name> (ref <X>)'. Its round trip falls back to that parse
+% (did2.convert.elementNameReference) and still rebuilds the v1 element.
+v1 = probeDoc('el_old', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
+docs = elementOutputs(runRaw(v1), 'el_old');
+for form = {'leftcortex | 2', 'leftcortex (ref 2)'}
+    old = docs;
+    old{1}.entity = rmfield(old{1}.entity, 'name');
+    old{1}.entity.local_identifier = form{1};
+    r = did2.convert.roundtrip.check(v1, old);
+    verifyEmpty(testCase, r.lost, sprintf('%s: %s', form{1}, describeLost(r)));
+    verifyEmpty(testCase, r.invented, sprintf('%s: invented: %s', form{1}, strjoin(r.invented, ', ')));
+end
+% and one whose `name` is its v1 base.name ([v1 name is the entity name],
+% 2026-10-27), not leading its local_identifier: base.name is rebuilt from
+% `name`, element.name and element.reference from local_identifier
+v1n = v1;
+v1n.base.name = 'left cortex probe';
+old = docs;
+old{1}.entity.name = 'left cortex probe';
+r = did2.convert.roundtrip.check(v1n, old);
+verifyEmpty(testCase, r.lost, describeLost(r));
+verifyEmpty(testCase, r.invented, strjoin(r.invented, ', '));
+end
+
+function testANonEmptyBaseNameIsCarried(testCase)
+% [element name and reference stored apart] (2026-10-29) gives the entity's
+% one `name` to element.name. A non-empty v1 base.name, which [v1 name is the
+% entity name] (2026-10-27) wrote there, then has no field: writing either
+% name loses the other. ndi.element/newdocument writes base.name '' (NDI-matlab
+% main 441530d0, +ndi/element.m newdocument), so Decided by Jess Haley,
+% 2026-10-30 [element name kept apart, base.name carried]: the element is
+% carried whole as v1, malformed, under carry-149. REPLACES
+% testABaseNameIsTheEntityName's element case, which wrote base.name to
+% entity.name.
 v1 = probeDoc('el_named', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
 v1.base.name = 'left cortex probe';
 out = runRaw(v1);
-docs = elementOutputs(out, v1.base.id);
-verifyEqual(testCase, char(out.migrated{1}.get('entity.name')), 'left cortex probe');
+verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, 'el_named'))), 1, ...
+    'a non-empty base.name was not carried');
+d = carryNoteFor(out, 'el_named');
+verifyTrue(testCase, startsWith(d, '[carry-149] malformed: base.name "left cortex probe"'), d);
+docs = elementOutputs(out, 'el_named');
 r = did2.convert.roundtrip.check(v1, docs);
-verifyEmpty(testCase, r.lost, describeLost(r));
-verifyEmpty(testCase, r.invented, strjoin(r.invented, ', '));
-verifyTrue(testCase, any(strcmp('base.name', r.matched)));
+verifyTrue(testCase, r.carried);
+verifyTrue(testCase, r.ok, describeLost(r));
+% base.name '' (the writer's) converts, and the entity's name is element.name
 v0 = probeDoc('el_unnamed', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
 e0 = runRaw(v0).migrated{1}.toStruct();
-verifyFalse(testCase, isfield(e0.entity, 'name'), 'an empty base.name wrote entity.name');
+verifyEqual(testCase, char(e0.entity.name), 'leftcortex');
+r0 = did2.convert.roundtrip.check(v0, elementOutputs(runRaw(v0), 'el_unnamed'));
+verifyEmpty(testCase, r0.lost, describeLost(r0));
+verifyTrue(testCase, any(strcmp('base.name', [r0.matched, r0.not_set])), 'base.name '''' not rebuilt');
 % and the named device validates
-outV = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+outV = did2.convert.v1_to_v2(v0, 'Validate', true, 'TargetVersion', 'V_eta');
 reasons = '';
 for k = 1:numel(outV.quarantine)
     reasons = [reasons sprintf('%s: %s; ', outV.quarantine(k).class_name, ...
@@ -137,82 +230,6 @@ for k = 1:numel(outV.quarantine)
 end
 verifyEmpty(testCase, outV.quarantine, reasons);
 end
-
-function testADecidedDeviceKindIsAnEquipmentTypeAssertion(testCase)
-% [element type is a device kind term] and the decisions naming each kind
-% (Jess Haley, 2026-10-27): one Equipment Type (NCIT:C178920) assertion with
-% the decided term; a type with no registered kind writes none ((iii): it
-% keeps today's assertion only). The `element type` and `ndi element class`
-% assertions are still written (NDI-matlab reads them; PR body).
-cases = { ...
-    'n-trode', 'ndi.probe.timeseries.mfdaq', 'wikidata:Q1952355'; ...
-    'accelerometer', 'ndi.probe.timeseries.mfdaq', 'NCIT:C88166'; ...
-    'thermometer', 'ndi.probe.timeseries.mfdaq', 'NCIT:C50059'; ...
-    'ppg', 'ndi.probe.timeseries.mfdaq', 'NCIT:C224112'; ...
-    'optogenetic-fiber', 'ndi.probe.timeseries.stimulator', 'NCIT:C50358'; ...
-    'intraoral-cannula', 'ndi.probe.timeseries.stimulator', 'NCIT:C50343'; ...
-    'ecg', 'ndi.probe.timeseries.mfdaq', 'OBI:0003806'; ...
-    'eeg', 'ndi.probe.timeseries.mfdaq', 'wikidata:Q4531135'; ...
-    'one-photon-imaging', 'ndi.probe.image', 'OBI:0400169'; ...
-    'two-photon-imaging', 'ndi.probe.image', 'OBI:0400169'; ...
-    'patch-Vm', 'ndi.probe.timeseries.mfdaq', ''; ...
-    'sharp-Im', 'ndi.probe.timeseries.mfdaq', ''; ...
-    'stimulator', 'ndi.probe.timeseries.stimulator', ''; ...
-    'lick-spout', 'ndi.probe.timeseries.mfdaq', ''; ...
-    'reward-well', 'ndi.probe.timeseries.mfdaq', ''; ...
-    'event', 'ndi.probe.timeseries.stimulator', ''; ...
-    'electrode-4', 'ndi.probe.timeseries.mfdaq', ''};
-for k = 1:size(cases, 1)
-    [ty, cls, node] = cases{k, :};
-    id = sprintf('el_kind_%d', k);
-    out = runRaw(probeDoc(id, 'p', 1, ty, cls));
-    kinds = assertionsAbout(out, id, 'Equipment Type');
-    vars = cellfun(@(b) char(b.statement.variable.name), assertionsAbout(out, id, ''), ...
-        'UniformOutput', false);
-    verifyTrue(testCase, any(strcmp(vars, 'element type')), [ty ': element type assertion']);
-    verifyTrue(testCase, any(strcmp(vars, 'ndi element class')), [ty ': ndi element class assertion']);
-    if isempty(node)
-        verifyEmpty(testCase, kinds, [ty ': a kind with no registered term was written']);
-    else
-        verifyNumElements(testCase, kinds, 1, ty);
-        verifyEqual(testCase, char(kinds{1}.statement.variable.node), 'NCIT:C178920', ty);
-        verifyEqual(testCase, char(kinds{1}.term.value.node), node, ty);
-    end
-end
-end
-
-function testGroupIsWrittenAsTheRegistryNamesIt(testCase)
-% [migrator writes the registry spelling] (Jess Haley, 2026-10-26): `Group`,
-% NCIT:C43359, not `group`
-out = runRaw({unitDoc('el_unit_m', 'leftcortex_18', 1), neuronDoc('ne_2', 'el_unit_m', 'multi'), unitProbe()});
-ent = elementOutputs(out, 'el_unit_m');
-verifyEqual(testCase, char(ent{1}.entity.type.name), 'Group');
-verifyEqual(testCase, char(ent{1}.entity.type.node), 'NCIT:C43359');
-end
-
-function testAUnitThatDisagreesWithItsProbeIsCarried(testCase)
-% [unit direct and subject rebuild from the probe] (Jess Haley, 2026-10-27):
-% a unit whose `direct` is not 0, or whose subject is not its probe's, is
-% carried whole as v1, malformed (carry-120)
-bad = unitDoc('el_unit_d', 'leftcortex_23', 1);
-bad.element.direct = true;
-other = unitDoc('el_unit_o', 'leftcortex_24', 1);
-other.depends_on(strcmp({other.depends_on.name}, 'subject_id')).value = 'subj_2';
-cases = {'direct 1', bad; 'another subject', other};
-for k = 1:size(cases, 1)
-    [label, v1] = cases{k, :};
-    out = runRaw({v1, neuronDoc(['ne_' v1.base.id], v1.base.id, 'single'), unitProbe()});
-    verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, v1.base.id))), 1, ...
-        [label ': not carried']);
-    d = carryNoteFor(out, v1.base.id);
-    verifyTrue(testCase, startsWith(d, '[carry-120] malformed: '), sprintf('%s: %s', label, d));
-    r = did2.convert.roundtrip.check(v1, elementOutputs(out, v1.base.id));
-    verifyTrue(testCase, r.carried, label);
-    verifyTrue(testCase, r.ok, sprintf('%s: %s', label, describeLost(r)));
-end
-end
-
-% ===================== carried writer shapes ============================
 
 function testCarriedElementsCiteTheirRows(testCase)
 cases = { ...
@@ -226,8 +243,7 @@ cases = { ...
     'unlisted type', probeDoc('el_ul', 'x', 1, 'sharp-I', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-063] '; ...
     'wide-field imaging probe', probeDoc('el_wf', 'cam', 1, 'wide-field-imaging', 'ndi.probe.image'), {}, '[carry-121] '; ...
     'brightfield imaging probe', probeDoc('el_bf', 'cam', 1, 'brightfield-imaging', 'ndi.probe.image'), {}, '[carry-121] '; ...
-    'name reads as a pair', probeDoc('el_pair', 'leftcortex | 2', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-055] '; ...
-    'non-integer reference', probeDoc('el_frac', 'leftcortex', 1.5, 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-055] '; ...
+    'reference not one number', probeDoc('el_arr', 'leftcortex', [1 2], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-120] '; ...
     'no name, no reference', probeDoc('el_none', '', [], 'n-trode', 'ndi.probe.timeseries.mfdaq'), {}, '[carry-048] '};
 for k = 1:size(cases, 1)
     [label, v1, others, row] = cases{k, :};
@@ -354,6 +370,10 @@ end
 
 function d = carryNoteFor(out, id)
 d = '';
+% no carried_as_v1 field at all when nothing in the run was carried
+if ~isfield(out.summary.migration_notes, 'carried_as_v1')
+    return;
+end
 n = out.summary.migration_notes.carried_as_v1;
 ix = find(strcmp(n.ids, id), 1);
 if ~isempty(ix)

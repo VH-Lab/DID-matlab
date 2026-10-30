@@ -1854,13 +1854,19 @@ end
 
 function lid = probeLocalIdentifier(name, reference)
 %PROBELOCALIDENTIFIER The element-subject local_identifier a probe row maps to.
-%   +migrators_j/element.m's, did2.convert.elementLocalIdentifier: 'name |
-%   reference', or the name alone ([element local identifier is name and
-%   reference], Jess Haley, 2026-10-26). The probemap serialises `reference`
-%   with int2str; the identifier reads the integer from that text, so the join
-%   no longer depends on two number formats agreeing. '' when the pair cannot
-%   be written reversibly (element.m carries such an element; nothing matches).
-lid = did2.convert.elementLocalIdentifier(char(name), char(reference));
+%   +migrators_j/element.m's, did2.convert.elementHandle: 'name | reference',
+%   or the name alone ([element local identifier is name and reference], Jess
+%   Haley, 2026-10-26; written beside the entity's `name` since [element name
+%   and reference stored apart], 2026-10-29). The probemap serialises
+%   `reference` with int2str and elementHandle writes an integer reference
+%   with int2str, so the two meet. '' when the pair cannot be written (both
+%   empty, or a reference that is not one number or text: element.m carries
+%   such an element; nothing matches).
+if (ischar(reference) || isstring(reference)) ...
+        && ~isempty(regexp(strtrim(char(reference)), '^-?\d+$', 'once'))
+    reference = str2double(strtrim(char(reference)));   % the int2str text
+end
+lid = did2.convert.elementHandle(char(name), reference);
 end
 
 % ===================== the epoch files as bodies (2026-10-21) ==========
