@@ -1,6 +1,6 @@
 function tests = testRawV1RoundTripOpenminds
 %TESTRAWV1ROUNDTRIPOPENMINDS The openMINDS family read as raw v1, and its round
-%   trip: openminds.
+%   trip: openminds, openminds_subject.
 %
 %   Decided by Jess Haley, 2026-10-26 (did-schema
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1], [migration
@@ -14,11 +14,19 @@ function tests = testRawV1RoundTripOpenminds
 %                 an `openminds_<n>` edge per `ndi://` child in `fields`, or
 %                 one empty `openminds` edge for a childless object (JH's
 %                 OP50 strain and its species, +haley/doImport.m)
+%     openminds_subject   metadata/openminds_subject.json + openminds.json +
+%                 base.json, dependency type 'subject': the template's
+%                 `subject_id` edge, then the `openminds` edge (JH's sex and
+%                 species controlled terms, testWholeBatchRoundTrip's shapes)
 %
 %   A bare `openminds` document passes through pass 1 unchanged for the batch
 %   passes that read it (did2.convert.resolveOpenmindsCitations, NDI's
-%   strainAssembly); both read either edge key. It round trips as itself. No
-%   known findings.
+%   strainAssembly); both read either edge key. It round trips as itself.
+%   openminds_subject converts to one term assertion, as before; its
+%   `openminds_<n>` edges are read by NDI's subjectStrainAssembly from the v1
+%   input, so they do not carry it. No known findings for the fixtures (a
+%   species' definition and synonym are accepted differences, [species text is
+%   the openMINDS equivalent]).
 tests = functiontests(localfunctions);
 end
 
@@ -75,6 +83,54 @@ v1 = did2.unittest.helpers.setDependency(b{1}, 'subject_id', 'subj_1');
 verifyCarried(testCase, v1, 'depends_on(subject_id)');
 end
 
+% ===================== openminds_subject ===============================
+
+function testOpenmindsSubjectIsSwitched(testCase)
+verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'openminds_subject')));
+out = runRaw(subjectTerm('41268b6f5c6a3d4e_0e00000000000011', 'BiologicalSex', ...
+    'hermaphrodite', 'PATO:0001340', '', ''));
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
+end
+
+function testWriterSubjectTermsConvertAndRoundTrip(testCase)
+f = subjectFixtures();
+for k = 1:size(f, 1)
+    [label, v1] = f{k, :};
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    verifyEmpty(testCase, out.passthrough, [label ': converted, not carried']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyFalse(testCase, r.carried, label);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
+end
+end
+
+function testAChildEdgeDoesNotCarryASubjectTerm(testCase)
+% a Strain's children are `openminds_<n>` edges, which NDI's
+% subjectStrainAssembly reads from the v1 input: accounted for, not carry-100
+v1 = subjectTerm('41268b6f5c6a3d4e_0e00000000000013', 'Strain', 'Escherichia coli OP50', ...
+    'NCBITaxon:637912', '', '');
+v1.depends_on(2).name = 'openminds_1';
+v1.depends_on(2).value = '41268b6f5c6a3d4e_0e00000000000014';
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+verifyEmpty(testCase, out.quarantine);
+verifyFalse(testCase, carried, notes);
+verifyFalse(testCase, contains(notes, '[carry-100]'), notes);
+end
+
+function testAFieldOutsideTheSubjectTemplateCarriesIt(testCase)
+f = subjectFixtures();
+v1 = f{1, 2};
+v1.openminds_subject = struct('note', 'kept');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: openminds_subject.note');
+v1 = did2.unittest.helpers.setDependency(f{1, 2}, 'element_id', 'el_1');
+verifyCarried(testCase, v1, 'depends_on(element_id)');
+v1 = f{1, 2};
+v1.openminds.version = '3.0';
+verifyCarried(testCase, v1, 'openminds.version');
+end
+
 % ===================== the family ======================================
 
 function testTheSwitchChangesNoOutcome(testCase)
@@ -99,7 +155,39 @@ end
 % ===================== fixtures, from the TEMPLATES and WRITER ============
 
 function f = fixtures()
-f = {'openminds, strain and species', strainPair()};
+% {label, batch}
+s = subjectFixtures();
+f = cell(1 + size(s, 1), 2);
+f(1, :) = {'openminds, strain and species', strainPair()};
+for k = 1:size(s, 1)
+    f(1 + k, :) = {s{k, 1}, s(k, 2)};
+end
+end
+
+function f = subjectFixtures()
+f = {'openminds_subject, sex', subjectTerm('41268b6f5c6a3d4e_0e00000000000011', ...
+        'BiologicalSex', 'hermaphrodite', 'PATO:0001340', '', ''); ...
+    'openminds_subject, species', subjectTerm('41268b6f5c6a3d4e_0e00000000000012', ...
+        'Species', 'Caenorhabditis elegans', 'NCBITaxon:6239', ...
+        'Caenorhabditis elegans is a species of nematode.', 'C. elegans')};
+end
+
+function v1 = subjectTerm(id, type, name, node, definition, synonym)
+% openMINDSobj2ndi_document(term, sessionId, 'subject', subjectId): the
+% template's subject_id edge, then the empty `openminds` edge of a childless term
+v1 = termDocument('openminds_subject', id, type, name, node, definition, synonym);
+v1 = did2.unittest.helpers.setDependency(v1, 'subject_id', '41268b6f5c6a3d4e_0e000000000000a1');
+v1.depends_on(2) = struct('name', 'openminds', 'value', '');
+v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = termDocument(cls, id, type, name, node, definition, synonym)
+v1 = did2.unittest.helpers.ndiDocument(cls, 'Id', id);
+v1.openminds = struct('openminds_type', ['https://openminds.om-i.org/types/' type], ...
+    'matlab_type', ['openminds.controlledterms.' type], 'openminds_id', '', ...
+    'fields', struct('definition', definition, 'description', '', ...
+    'interlexIdentifier', '', 'knowledgeSpaceLink', '', 'name', name, ...
+    'preferredOntologyIdentifier', node, 'synonym', synonym));
 end
 
 function batch = strainPair()

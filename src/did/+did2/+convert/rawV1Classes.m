@@ -451,10 +451,19 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         carries it (private/jRawAccount, carry-100). Written
 %                         by ndi.database.fun.openMINDSobj2ndi_document. Round
 %                         trips: testRawV1RoundTripOpenminds.
+%     openminds_subject   superclasses `base` + `openminds`, no `app` block, no
+%                         superclass migrator; one term assertion about the
+%                         subject, as before, or carried (carry-116, carry-117).
+%                         Its `openminds_<n>` edges are not written to the
+%                         assertion; they are accounted for because NDI's
+%                         subjectStrainAssembly reads them from the v1 input.
+%                         What the migrator does not read carries the document
+%                         (private/jRawAccount, carry-100). Written by
+%                         ndi.database.fun.openMINDSobj2ndi_document. Round
+%                         trips: testRawV1RoundTripOpenminds.
 %     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
 %                         universalRenames. Of the +migrators_j migrators these
-%                         are openminds_element, openminds_stimulus and
-%                         openminds_subject; a
+%                         are openminds_element and openminds_stimulus; a
 %                         class with no +migrators_j migrator
 %                         (the +migrators identity fallback) also runs
 %                         renamed. universalRenames cannot be deleted while
@@ -544,6 +553,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'vmspikefilteringparameters', ...
     'ontologyTableRow', ...
     'openminds', ...
+    'openminds_subject', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
