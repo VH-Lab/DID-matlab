@@ -67,11 +67,15 @@ function f = knownFindings()
 % V_eta_go_forward_class_audit.md): a v1 term name that differs from the
 % registry label of the same node is notation, and the round trip compares
 % terms by node (testAVirusSiteNameComparesByNode).
-f = { ...
-    'Birren DREADD virus in the bath', 'virus_injection.virus_AdministrationPND', ...
-        'no migrator reads the postnatal day'; ...
-    'virus at V1', 'virus_injection.virus_AdministrationPND', ...
-        'no migrator reads the postnatal day'};
+%
+% INVERTED 2026-10-30: the two rows "no migrator reads the postnatal day"
+% ('Birren DREADD virus in the bath', 'virus at V1',
+% virus_injection.virus_AdministrationPND) are gone. [age at injection is an
+% observation] (Decided by Jess Haley, 2026-10-27) with [age is NCIT Age]
+% (2026-10-30, did-schema V_eta_go_forward_class_audit.md) write it as an Age
+% observation of the subject on the injection's time reference, so both
+% fixtures round trip it (testTheVirusPostnatalDayIsAnAgeObservation).
+f = cell(0, 3);
 end
 
 function paths = findingsFor(fixture)
@@ -139,6 +143,55 @@ bad = out.migrated;
 r2 = did2.convert.roundtrip.check(v1, bad);
 verifyTrue(testCase, any(strcmp('virus_injection.virusLocation_OntologyName', {r2.lost.path})), ...
     'a site of another node is lost on the node path');
+end
+
+function testTheVirusPostnatalDayIsAnAgeObservation(testCase)
+% [age at injection is an observation] / [age is NCIT Age] (Jess Haley,
+% 2026-10-27 / 2026-10-30): the PND is an observation of the injected subject,
+% value kind time (the age in days), variable NCIT:C25150, on the same time
+% reference as the injection; the round trip reads it back
+cases = {'Birren DREADD virus in the bath', birrenVirus(), 3; ...
+    'virus at V1', virusAtV1(), 21};
+for k = 1:size(cases, 1)
+    [label, v1, days] = cases{k, :};
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    manip = [];
+    age = [];
+    for j = 1:numel(out.migrated)
+        s = out.migrated{j}.toStruct();
+        cn = char(s.document_class.class_name);
+        if strcmp(cn, 'manipulation')
+            manip = s;
+        elseif strcmp(cn, 'observation') && isfield(s, 'time')
+            age = s;
+        end
+    end
+    assertNotEmpty(testCase, manip, [label ': no manipulation']);
+    assertNotEmpty(testCase, age, [label ': no age observation']);
+    verifyEqual(testCase, char(age.statement.variable.node), 'NCIT:C25150', label);
+    verifyEqual(testCase, age.time.value(1).source_value, days, label);
+    verifyEqual(testCase, age.time.value(1).seconds, days * 86400, label);
+    verifyEqual(testCase, char(age.time.value(1).source_unit.name), 'day', label);
+    verifyEqual(testCase, edgeOf(age, 'entity_id'), edgeOf(manip, 'entity_id'), label);
+    verifyEqual(testCase, edgeOf(age, 'time_reference_id'), ...
+        edgeOf(manip, 'time_reference_id'), [label ': the injection''s time reference']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, any(strcmp('virus_injection.virus_AdministrationPND', r.matched)), ...
+        [label ': the postnatal day reads back']);
+end
+end
+
+function ids = edgeOf(s, name)
+ids = {};
+for k = 1:numel(s.depends_on)
+    if ~strcmp(char(s.depends_on(k).name), name); continue; end
+    if isfield(s.depends_on(k), 'document_id') && ~isempty(s.depends_on(k).document_id)
+        ids{end+1} = char(s.depends_on(k).document_id); %#ok<AGROW>
+    elseif isfield(s.depends_on(k), 'value')
+        ids{end+1} = char(s.depends_on(k).value); %#ok<AGROW>
+    end
+end
 end
 
 % ===================== what the round trip accounts for ==================

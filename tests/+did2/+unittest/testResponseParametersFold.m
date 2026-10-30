@@ -145,7 +145,10 @@ function testTheFiveRunKnobsLandInlineOnTheLeaf(testCase)
 verifyFalse(testCase, isfield(leaf.interaction, 'method'));
 m = bodyOfClass(testCase, out, 'method');
 verifyEqual(testCase, m.base.id, 'param_77c19b');
-verifyEqual(testCase, m.method.term.name, 'ndi.app.stimulus.tuning_response');
+% INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
+% V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
+% is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
+verifyEqual(testCase, char(m.method.term.node), 'EDAM:operation_2945');
 p = m.method.parameters;
 verifyEqual(testCase, knob(p, 'temporalfreqfunc').text, 'ndi.fun.stimulustemporalfrequency');
 verifyEqual(testCase, knob(p, 'isspike').quantity.value, 1);

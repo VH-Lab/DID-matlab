@@ -356,11 +356,60 @@ end
 % quarantine, are the guard now.
 
 function testTheBuiltPathStillReadsARealTimestamp(testCase)
-% A real v1 timestamp survives the built path. UPDATED for did-schema #88: the
-% acquisition timestamp is a whole-statement CONDITION on the intensity
-% observation (a datenum on a named clock, kept as written), not the origin of a
-% time axis on the body.
-v1 = imageStackBody(739038.5);
+% A real v1 timestamp survives the built path. INVERTED 2026-10-30 for
+% [acquisition time on its clock] (Decided by Jess Haley, did-schema
+% V_eta_go_forward_class_audit.md): the fixture's clock (exp_global_time) is
+% not UTC, so the datenum is the AFO:AFR_0001158 "acquisition time"
+% condition's source_value, its canonical left out and named in needs_info,
+% and the clock is on the observation's session anchor -- no longer the
+% "acquisition timestamp (<clock>)" label with the datenum as its value.
+[obs, anchor] = builtStack(testCase, 739038.5, 'exp_global_time');
+c = obs.get('statement.conditions');
+verifyEqual(testCase, char(c.variable.node), 'AFO:AFR_0001158');
+verifyEqual(testCase, str2double(c.quantity.source_value), 739038.5);
+verifyFalse(testCase, isfield(c.quantity, 'value'), ...
+    'a datenum on a clock that is not UTC has no canonical');
+verifyEqual(testCase, char(c.source_unit.name), 'day');
+s = obs.toStruct();
+verifyEqual(testCase, numel(s.base.needs_info), 1);
+verifyEqual(testCase, s.base.needs_info(1).field, 'statement.conditions(1).quantity.value');
+verifyTrue(testCase, contains(s.base.needs_info(1).reason, '''exp_global_time'''));
+verifyEqual(testCase, char(anchor.get('relative_time_reference.value.clock').name), ...
+    'exp_global_time');
+verifyEqual(testCase, char(anchor.get('relative_time_reference.value.relation').node), ...
+    'time:intervalDuring');
+end
+
+function testAUtcTimestampIsTheObservationsTimeReference(testCase)
+% [acquisition time on its clock]: on clock utc the datenum IS the
+% observation's time reference on that clock, converted to seconds; no
+% condition and no needs_info.
+[obs, anchor] = builtStack(testCase, 739038.5, 'utc');
+s = obs.toStruct();
+verifyFalse(testCase, isfield(s.statement, 'conditions') && ~isempty(s.statement.conditions));
+verifyFalse(testCase, isfield(s.base, 'needs_info') && ~isempty(s.base.needs_info));
+verifyEqual(testCase, char(anchor.get('relative_time_reference.value.clock').name), 'utc');
+st = anchor.get('relative_time_reference.value.start');
+verifyEqual(testCase, st.seconds, 739038.5 * 86400, 'AbsTol', 1e-3);
+verifyEqual(testCase, st.source_value, 739038.5);
+verifyEqual(testCase, char(st.source_unit.name), 'day');
+a = anchor.toStruct();
+verifyFalse(testCase, isfield(a, 'time_reference') && isfield(a.time_reference, 'clock_tolerance'));
+end
+
+function testAnApproxUtcTimestampKeepsItsFiveSeconds(testCase)
+% approx_utc is clock utc within 5 s (NDI +ndi/+time/clocktype.m)
+[~, anchor] = builtStack(testCase, 739038.5, 'approx_utc');
+verifyEqual(testCase, char(anchor.get('relative_time_reference.value.clock').name), 'utc');
+verifyEqual(testCase, anchor.get('time_reference.clock_tolerance.seconds'), 5);
+verifyEqual(testCase, anchor.get('relative_time_reference.value.start').seconds, ...
+    739038.5 * 86400, 'AbsTol', 1e-3);
+end
+
+function [obs, anchor] = builtStack(testCase, ts, clk)
+% the built path (a subject, no plate row) for a stack with TS on clock CLK
+v1 = imageStackBody(ts);
+v1.imageStack_parameters.clocktype = clk;
 v1.depends_on(1).value = 'sub_1';          % give it a subject -> the built path
 % and no plate row: since [generic stage is lossless] (Jess Haley, 2026-10-25) a
 % stack that names one is carried whole as v1 (no edge for it on the observation)
@@ -371,9 +420,7 @@ names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...
     'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'observation+intensity')));
 obs = out.migrated{find(strcmp(names, 'observation+intensity'), 1)};
-c = obs.get('statement.conditions');
-verifyEqual(testCase, c.quantity.value, 739038.5, 'AbsTol', 1e-9);
-verifyTrue(testCase, startsWith(c.variable.name, 'acquisition timestamp'));
+anchor = out.migrated{find(strcmp(names, 'relative_time_reference'), 1)};
 end
 
 

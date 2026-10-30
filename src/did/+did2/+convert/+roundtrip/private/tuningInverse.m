@@ -35,6 +35,10 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %     [absolute-value fits are a second calculation]  the second calculation
 %                 (calcParts' ABSLEAF) is the SF / TF `abs` block, rebuilt by
 %                 tuningBlock;
+%     [interpolated values are a list] (2026-10-30)  the main calculation's
+%                 'absolute value' interpolated_values entry is `abs.fitless`
+%                 (tuningBlock's ABSFITLESS); stated on both it and the
+%                 second calculation, it is unplaced;
 %     [tuning log in notes]   tuningcurve_calc.log is the statement's notes;
 %     [varied properties are conditions by V2 name]   tuningcurve_calc's
 %                 stim_property_list is the conditions, named back by the
@@ -52,6 +56,7 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 if isempty(leaf)
     return;
 end
+absFitless = struct();
 switch family
     case 'stimulus'
         own = struct();
@@ -62,7 +67,7 @@ switch family
     case 'csf'
         [blk, bad] = csfBlock(leaf);
     otherwise
-        [blk, bad] = tuningBlock(leaf, family);
+        [blk, bad, absFitless] = tuningBlock(leaf, family);
 end
 spec.unplaced = [spec.unplaced, bad];
 if ~isempty(absLeaf)
@@ -73,6 +78,17 @@ if ~isempty(absLeaf)
         blk.abs = ab;
     else
         spec.unplaced{end+1} = sprintf('an absolute-value calculation has no place in a %s', v1Class);
+    end
+end
+if ~isempty(fieldnames(absFitless))
+    % [interpolated values are a list]: the |response| entry on the main
+    % calculation is v1 `abs.fitless`
+    if isfield(blk, 'abs') && isfield(blk.abs, 'fitless')
+        spec.unplaced{end+1} = ['abs.fitless is stated twice: the absolute-value ' ...
+            'interpolated_values entry and the second calculation'];
+    else
+        if ~isfield(blk, 'abs'); blk.abs = struct(); end
+        blk.abs.fitless = absFitless;
     end
 end
 if strcmp(family, 'oridir')

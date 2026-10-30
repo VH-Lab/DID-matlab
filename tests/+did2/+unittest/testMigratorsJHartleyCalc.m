@@ -226,7 +226,10 @@ function testTheMethodIsTheCalculatorAndEachPlaneSaysWhatItHolds(testCase)
 % represented quantity, term: response estimate | significance}.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = pick(out, 'receptive_field_calculation');
-verifyEqual(testCase, lower(char(leaf.interaction.method.term.name)), 'ndi.calc.vis.hartley');
+% INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
+% V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
+% is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
+verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2945');
 planes = planeBodies(out);
 verifyEqual(testCase, numel(planes), 2);
 verifyEqual(testCase, cellfun(@planeName, planes, 'UniformOutput', false), ...
@@ -395,7 +398,9 @@ end
 
 function testTheImpliedMethodIsPlacedAndTheDocumentFolds(testCase)
 % [hartley method implied] (Jess Haley, 2026-10-25): reverse_correlation.method
-% 'Hartley' is implied by the method term ndi.calc.vis.hartley, so the writer's
+% 'Hartley' is implied (by the method term ndi.calc.vis.hartley until
+% [data analysis is the general method], 2026-10-30; by the
+% receptive_field_calculation hartley_calc writes since), so the writer's
 % own shape (all 210 of 20211116) folds, with neither a carry nor a drop.
 v1 = writerHartleyCalcV1();
 did2.convert.reportNote('reset');

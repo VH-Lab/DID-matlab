@@ -382,11 +382,15 @@ inputs = {};
 if ~isempty(presentationId)
     inputs = {presentationId};
 end
-% reverse_correlation.method 'Hartley' is implied by the method term
-% ndi.calc.vis.hartley: placed, not dropped ([hartley method implied], Jess
-% Haley, 2026-10-25, did-schema V_eta_go_forward_class_audit.md; earlier
-% 2026-10-21, "a"). Any OTHER method is not implied by that term, so it is
-% unplaced and jCalculation carries the document whole as v1.
+% reverse_correlation.method 'Hartley' is implied: placed, not dropped
+% ([hartley method implied], Jess Haley, 2026-10-25, did-schema
+% V_eta_go_forward_class_audit.md; earlier 2026-10-21, "a"). It was implied
+% by the method term ndi.calc.vis.hartley; since [data analysis is the general
+% method] (Jess Haley, 2026-10-30) the method term is EDAM:operation_2945 "Data
+% analysis" (jCalculation) and the calculator ndi.calc.vis.hartley is the
+% software, so Hartley is implied by this receptive_field_calculation, which
+% only hartley_calc writes. Any OTHER method is not implied, so it is unplaced
+% and jCalculation carries the document whole as v1.
 dropped = {};
 if isfield(rc, 'method') && ~isempty(rc.method) ...
         && ~strcmpi(strtrim(char(string(rc.method))), 'Hartley')

@@ -11,7 +11,10 @@ function [v1, spec] = hartley_calc(bodies)
 %   vintage: hartley_calc + hartley_reverse_correlation + reverse_correlation
 %   + ngrid + app + base):
 %
-%     identity, `app`               calcParts (method term ndi.calc.vis.hartley)
+%     identity, `app`               calcParts (the calculator is the software;
+%                                   method term EDAM:operation_2945 "Data
+%                                   analysis" since [data analysis is the
+%                                   general method], ndi.calc.vis.hartley before)
 %     depends_on                    element_id (entity_id),
 %                                   stimulus_presentation_id (input_id)
 %     hartley_calc.input_parameters the method parameters other than the
@@ -38,8 +41,15 @@ function [v1, spec] = hartley_calc(bodies)
 %     ngrid.data_type               the calculation's source_data_type
 %     ngrid.data_size               restates the data type's byte size
 %                                   (SPEC.equivalents)
-%     reverse_correlation.method    'Hartley', implied by the method term
-%                                   ([hartley method implied]); '' restated
+%     reverse_correlation.method    'Hartley', implied ([hartley method
+%                                   implied]); '' restated. Implied by the
+%                                   method term ndi.calc.vis.hartley before
+%                                   2026-10-30; since [data analysis is the
+%                                   general method] the term is the general
+%                                   EDAM:operation_2945, and Hartley is implied
+%                                   by the calculation being a
+%                                   receptive_field_calculation, which only
+%                                   hartley_calc writes
 %     files                         the first plane body's, as v1 wrote them
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.hartley_calc.
@@ -196,14 +206,17 @@ v1.hartley_reverse_correlation = hrc;
 v1.ngrid = ng;
 
 % ---- reverse_correlation ---------------------------------------------------------
-[~, method] = termParts(getIn(leaf, 'interaction', 'method', 'term'));
-if strcmpi(method, 'ndi.calc.vis.hartley')
+[methodNode, method] = termParts(getIn(leaf, 'interaction', 'method', 'term'));
+if strcmpi(method, 'ndi.calc.vis.hartley') || sameCurie(methodNode, 'EDAM:operation_2945')
     v1.reverse_correlation = struct('method', 'Hartley');
     spec.equivalents(end+1) = struct('path', 'reverse_correlation.method', ...
-        'values', {{'Hartley', ''}}, 'why', ['implied by the method term ' ...
-        'ndi.calc.vis.hartley ([hartley method implied]); an empty one too']);
+        'values', {{'Hartley', ''}}, 'why', ['implied ([hartley method implied]): ' ...
+        'by the receptive_field_calculation hartley_calc writes, its method the ' ...
+        'general EDAM:operation_2945 ([data analysis is the general method]; ' ...
+        'the term ndi.calc.vis.hartley before); an empty one too']);
 else
-    spec.unplaced{end+1} = sprintf('the method term is "%s", not ndi.calc.vis.hartley', method);
+    spec.unplaced{end+1} = sprintf(['the method term is "%s", not ' ...
+        'EDAM:operation_2945 (or ndi.calc.vis.hartley)'], method);
 end
 if n == 0
     spec.unplaced{end+1} = 'nothing was emitted';

@@ -48,6 +48,11 @@ kindOpt = {};
 if isfield(options, 'ValueKind') && ~isempty(options.ValueKind)
     kindOpt = {'ValueKind', options.ValueKind};
 end
+% 'NeedsInfo' ([missing facts are needs info]) is passed on only by a
+% wrapper that declares it (did2.build.statement) and only when given
+if isfield(options, 'NeedsInfo') && ~isempty(options.NeedsInfo)
+    kindOpt = [kindOpt, {'NeedsInfo', options.NeedsInfo}];
+end
 doc = did2.build.document(className, fields, ...
     'SessionId', options.SessionId, 'Edges', edges, 'Files', options.Files, ...
     'Id', options.Id, 'CreationTimestamp', options.CreationTimestamp, ...

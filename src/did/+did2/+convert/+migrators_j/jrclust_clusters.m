@@ -136,8 +136,15 @@ if ~isempty(swId); swOpt = [swOpt, {'SoftwareId', swId}]; end
 % attaches NO file to this document -- only res_mat_MD5_checksum of an
 % external jrclust_res.mat -- so there is no array here to key, and no spike
 % count to size a key with. The body stays an opaque_body; raised, not decided.
+% [data analysis is the general method] (Decided by Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md; docs/V2_PLAN.md G29): JRCLUST's
+% method term is wikidata:Q2003571 "Spike sorting", as kilosort and kiasort
+% already write it (jSorterOutput, [method terms are general]); JRCLUST itself
+% is the `software` entity on software_id.
+spikeSorting = jMethod(did2.convert.registeredTerm('wikidata:Q2003571', 'Spike sorting'));
 obs = jStatement(preBody, 'calculation', subjectId, ...
     jLabel('spike cluster assignment'), [], 'DataBody', true, ...
+    'Fields', struct('method', spikeSorting), ...
     'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', obsId, 'ValueKind', 'label');
 md5 = jGetCharAny(blk, {'res_mat_md5_checksum', 'res_mat_MD5_checksum'});
 o = jOpts(preBody);
