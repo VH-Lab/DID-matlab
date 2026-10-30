@@ -93,12 +93,11 @@ function v2Body = element(preBody)
 %                                 creation_timestamp
 %     base.name                -> nothing: '' is what ndi.element/newdocument
 %                                 writes, and the round trip rebuilds ''. A
-%                                 non-empty one is carried (no register row
-%                                 yet): the entity's one `name` holds
-%                                 element.name ([element name and reference
-%                                 stored apart] supersedes, for an element,
-%                                 where [v1 name is the entity name] put it;
-%                                 open question in the PR)
+%                                 non-empty one is carried, malformed
+%                                 (carry-149; Decided by Jess Haley,
+%                                 2026-10-30 [element name kept apart,
+%                                 base.name carried]): the entity's one
+%                                 `name` holds element.name
 %     element.name             -> entity.name, exactly (Decided by Jess Haley,
 %                                 2026-10-29 [element name and reference
 %                                 stored apart]); not written when empty
@@ -247,21 +246,19 @@ if ~isempty(problem)
     return;
 end
 % The entity has ONE `name`, and [element name and reference stored apart]
-% gives it the element's v1 name. A non-empty v1 base.name ([v1 name is the
-% entity name], 2026-10-27, which wrote it there) then has no field of its own:
-% writing either name there loses the other, and writing the element name
-% while dropping base.name would rebuild '' for it. ndi.element/newdocument
-% writes base.name '' (NDI-matlab main 441530d0, +ndi/element.m newdocument
-% sets element.* only). Until the team says where a non-empty one goes, the
-% element is carried whole (no register row: listed by
-% tools/check_carry_citations.py for the team).
+% gives it the element's v1 name. A non-empty v1 base.name then has no field
+% of its own. ndi.element/newdocument writes base.name '' (NDI-matlab main
+% 441530d0, +ndi/element.m newdocument sets element.* only), so a non-empty
+% one is a value no NDI writer produces: Decided by Jess Haley, 2026-10-30
+% [element name kept apart, base.name carried] (did-schema
+% V_eta_go_forward_class_audit.md), the element is carried whole as v1,
+% malformed.
 baseName = jBaseName(preBody);
 if ~isempty(baseName)
-    % carry-register: none (an element whose base.name is not empty: the
-    % entity's one `name` holds element.name)
+    % carry-register: carry-149 (an element whose base.name is not empty)
     did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
-        sprintf(['unplaced: base.name "%s" (the entity''s `name` holds ' ...
-        'element.name "%s"; no field for base.name)'], baseName, nameText));
+        sprintf(['[carry-149] malformed: base.name "%s" (the entity''s `name` holds ' ...
+        'element.name "%s"; [element name kept apart, base.name carried])'], baseName, nameText));
     v2Body = {preBody};
     return;
 end

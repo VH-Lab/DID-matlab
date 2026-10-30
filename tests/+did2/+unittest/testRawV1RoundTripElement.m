@@ -198,18 +198,18 @@ function testANonEmptyBaseNameIsCarried(testCase)
 % one `name` to element.name. A non-empty v1 base.name, which [v1 name is the
 % entity name] (2026-10-27) wrote there, then has no field: writing either
 % name loses the other. ndi.element/newdocument writes base.name '' (NDI-matlab
-% main 441530d0, +ndi/element.m newdocument). Until the team says where a
-% non-empty one goes, the element is carried whole, with no register row
-% (listed by tools/check_carry_citations.py). REPLACES
+% main 441530d0, +ndi/element.m newdocument), so Decided by Jess Haley,
+% 2026-10-30 [element name kept apart, base.name carried]: the element is
+% carried whole as v1, malformed, under carry-149. REPLACES
 % testABaseNameIsTheEntityName's element case, which wrote base.name to
-% entity.name: OPEN QUESTION for the team (PR body).
+% entity.name.
 v1 = probeDoc('el_named', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq');
 v1.base.name = 'left cortex probe';
 out = runRaw(v1);
 verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, 'el_named'))), 1, ...
     'a non-empty base.name was not carried');
 d = carryNoteFor(out, 'el_named');
-verifyTrue(testCase, startsWith(d, 'unplaced: base.name "left cortex probe"'), d);
+verifyTrue(testCase, startsWith(d, '[carry-149] malformed: base.name "left cortex probe"'), d);
 docs = elementOutputs(out, 'el_named');
 r = did2.convert.roundtrip.check(v1, docs);
 verifyTrue(testCase, r.carried);
