@@ -112,7 +112,16 @@ end
 
 function testAPassthroughALaterStepChangedIsNotStoredAsV1(testCase)
 % the same row, changed after pass 1: it is no longer stored as its v1 source,
-% so it is compared as it is (and its class has no inverse)
+% so it is compared as it is, and the run is not ok.
+% UPDATED for [table rows carried as v1] (Jess Haley, 2026-10-30): this
+% expected `sources_no_inverse == 1`. Pass 1 used to pass the row through
+% silently, stamped did_v2, so did2.convert.roundtrip.check looked for an
+% ontology_table_row inverse, found none, and counted NO INVERSE. Every row
+% is now CARRIED (noted carry-026), and v1_to_v2 stamps a carried body
+% 'did_v1' at once, so check compares that body directly with its v1 source
+% (its CARRIED branch). The later change is therefore seen as a FAILED round
+% trip of this one source, not hidden: the three subjects still round trip,
+% and nothing is counted without an inverse.
 [bodies, result] = cleanBatch();
 bodies{end+1} = tableRow('wb_row_1');
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
@@ -125,7 +134,12 @@ for k = 1:numel(result.migrated)
 end
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyFalse(testCase, isfield(r.stored_as_v1_by_class, 'ontology_table_row'));
-verifyEqual(testCase, r.sources_no_inverse, 1);
+verifyEqual(testCase, r.sources_no_inverse, 0);
+verifyEqual(testCase, r.sources_compared, 4);
+verifyEqual(testCase, r.sources_ok, 3, 'the changed row does not round trip');
+verifyEqual(testCase, r.failures_total, 1);
+verifyTrue(testCase, isfield(r.failures_by_class, 'ontology_table_row'), ...
+    'the failure is the changed row');
 verifyFalse(testCase, r.ok);
 end
 
