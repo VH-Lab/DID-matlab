@@ -24,7 +24,8 @@ function bodies = vmspikefilteringparameters(preBody)
 %        rm60Hz 1          refract 0.0025
 %
 %   NOTE `rm60Hz`: did2.convert.universalRenames snake_cases block field names,
-%   so this migrator sees `rm60_hz`. Both spellings are read.
+%   so on the renamed path this migrator sees `rm60_hz`; on the raw read (below)
+%   it sees `rm60Hz`. Both spellings are read; the bag writes `rm60_hz`.
 %
 %   THERE IS NO WRITER. Checked by bare class name across the whole repository,
 %   not by one call idiom (the mistake that nearly lost `valid_interval`):
@@ -148,6 +149,27 @@ function bodies = vmspikefilteringparameters(preBody)
 %   with no writer there is no arithmetic to read one off -- unlike
 %   spike_extraction_parameters, whose seconds are provable from
 %   spikeextractor.m:140-143. The numbers are carried as written.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (apps/vhlab_voltage2firingrate/
+%   vmspikefilteringparameters.json + base.json + epochid.json + app.json at
+%   the locked NDI-matlab `main`, 441530d; no writer, see above). The raw block
+%   spells `rm60Hz` as v1 does; the bag keeps the spelling the renamed path gave
+%   it, `filter.rm60_hz`, so the switch changes no emitted parameter (a block
+%   stating both spellings with different values is a collision
+%   universalRenames would discard: carry-049). The `app` block is read in
+%   either spelling (jSoftwareFromApp, jMethodParameters). The bag reads every
+%   field of the block, so the block's own fields are all read; the other
+%   blocks, base and edges are checked: what the renamed path would have
+%   discarded is carried, carry-049, as before; a block, base field or edge no
+%   part of this fold reads, or an `app` field outside NDI's app.json (all
+%   dropped without a word on the renamed path), carries the document whole as
+%   v1 (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], carry-100). A carry is the untouched v1 source.
+%   did2.convert.roundtrip.vmspikefilteringparameters rebuilds the v1
+%   document; testRawV1RoundTripVmSpikeFiltering compares the two.
 
 arguments
     preBody (1,1) struct
@@ -157,6 +179,27 @@ blk = struct();
 if isfield(preBody, 'vmspikefilteringparameters') ...
         && isstruct(preBody.vmspikefilteringparameters)
     blk = preBody.vmspikefilteringparameters;
+end
+
+% THE RAW READ (see READS RAW v1 above). The bag reads every field of the
+% block; the other blocks, base and edges are checked.
+src = preBody;
+blockFields = {};
+if isstruct(blk) && isscalar(blk)
+    blockFields = fieldnames(blk);
+end
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'vmspikefilteringparameters', {blockFields(:)'}, ...
+    'epochid', {{'epochid'}}, ...
+    'app', {{'name', 'version', 'url', 'os', 'os_version', 'interpreter', 'interpreter_version'}}), ...
+    {'^element_id$', '^subject_id$', '^epoch_id$'});
+if isfield(blk, 'rm60Hz') && isfield(blk, 'rm60_hz') && ~isequaln(blk.rm60Hz, blk.rm60_hz)
+    % both spellings listed above, so jRawAccount does not compare them
+    collision{end+1} = 'vmspikefilteringparameters.rm60Hz';
+end
+if jRawCarry('vmspikefilteringparameters', src, collision, unplaced, 'carry-100')
+    bodies = {src};
+    return;
 end
 
 % ---------------------------------------------------------------- THE GUARD
@@ -169,7 +212,7 @@ if hasPayload(blk, 'spiketimes')
     % carry-register: carry-143
     did2.convert.reportNote('carried_as_v1', 'vmspikefilteringparameters', jCarryId(preBody), ...
         '[carry-143] awaiting_home: vmspikefilteringparameters.spiketimes holds a result, which the method parameters do not keep ([passthrough stays v1])');
-    bodies = {preBody};
+    bodies = {src};
     return;
 end
 
@@ -198,10 +241,21 @@ if ~isempty(t)
 end
 
 % --- group the filter settings so the frequency_filter build can find them ---
+% the raw block spells v1's `rm60Hz`; the bag keeps the renamed path's
+% `rm60_hz` (an equal twin restates it)
+if isfield(other, 'rm60Hz')
+    if ~isfield(other, 'rm60_hz')
+        other.rm60_hz = other.rm60Hz;
+    end
+    other = rmfield(other, 'rm60Hz');
+end
 other = groupFields(other, 'filter', {'filter_algorithm', ...
-    'filter_algorithm_parameters', 'rm60_hz', 'rm60Hz'});
+    'filter_algorithm_parameters', 'rm60_hz'});
 
 bodies = jMethodParameters(preBody, entries, other);
+if isscalar(bodies) && isequaln(bodies{1}, preBody)
+    bodies = {src};   % a carry is the untouched v1 source
+end
 end
 
 % ===================== helpers =============================================

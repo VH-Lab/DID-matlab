@@ -414,11 +414,22 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         carry-100). The vhlab_voltage2firingrate writer is
 %                         in no repository we hold; no corpus document. Round
 %                         trips: testRawV1RoundTripFit.
+%     vmspikefilteringparameters  superclasses `base` + `epochid` + `app`, no
+%                         superclass migrator; folds to a `method`
+%                         (jMethodParameters) as before. The raw block's
+%                         `rm60Hz` goes to the bag as `filter.rm60_hz`, the
+%                         spelling the renamed path gave it; a non-empty
+%                         `spiketimes` is carried (carry-143), the run's os or
+%                         interpreter carries it (carry-005). What the fold
+%                         does not read carries the document (private/
+%                         jRawAccount, carry-100). The writer is in no
+%                         repository we hold; no corpus document. Round trips:
+%                         testRawV1RoundTripVmSpikeFiltering.
 %     NOT LISTED: every other v1 class, which v1_to_v2 still hands to
 %                         universalRenames. Of the +migrators_j migrators these
 %                         are ontology_table_row,
-%                         openminds, openminds_element, openminds_stimulus,
-%                         openminds_subject and vmspikefilteringparameters; a
+%                         openminds, openminds_element, openminds_stimulus and
+%                         openminds_subject; a
 %                         class with no +migrators_j migrator
 %                         (the +migrators identity fallback) also runs
 %                         renamed. universalRenames cannot be deleted while
@@ -505,6 +516,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'dataset_session_info', ...
     'fitcurve', ...
     'vmspikefit', ...
+    'vmspikefilteringparameters', ...
     };
 
 % v1 name                     migrator (+migrators_j); TEMPORARY, see above
