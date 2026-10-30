@@ -51,7 +51,12 @@ function [kind, variable, types] = elementDeviceKind(elementType)
 %                         [element types batch 3]
 %     electrode-$         NCIT:C49936 Electrode Device (the literal key of
 %                         NDI probetype2object.json) [element types batch 4]
-%   NOT HERE: `stimulator`, `event` and the spellings `electrode-<spec>` /
+%     stimulator          SNOMEDCT:36645008 Stimulator (vhlab's visual-
+%                         stimulus computer, Marder's electrical stimulator)
+%                         [stimulator is SNOMED CT Stimulator] (2026-10-30;
+%                         replaces item (4) of [element types batch 4], which
+%                         carried it)
+%   NOT HERE: `event` and the spellings `electrode-<spec>` /
 %   `<prefix>_electrode-<spec>`, which [element types batch 4] carries whole
 %   as v1, needs_mapping.
 %
@@ -84,7 +89,8 @@ types = {
     'accelerometer',       'NCIT:C88166',       'Accelerometer'
     'thermometer',         'NCIT:C50059',       'Thermometer Device'
     'ppg',                 'NCIT:C224112',      'Photoplethysmography Sensor'
-    'electrode-$',         'NCIT:C49936',       'Electrode Device'};
+    'electrode-$',         'NCIT:C49936',       'Electrode Device'
+    'stimulator',          'SNOMEDCT:36645008', 'Stimulator'};
 variable = did2.build.term('NCIT:C178920', 'Equipment Type');
 kind = [];
 ix = find(strcmp(strtrim(char(elementType)), types(:, 1)), 1);

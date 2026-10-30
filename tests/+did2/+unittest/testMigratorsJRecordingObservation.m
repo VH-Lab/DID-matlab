@@ -477,21 +477,30 @@ end
 
 % ===================== the stimulator carve-out ============================
 
-function testStimulatorElementIsCarriedWithNoObservation(testCase)
-% INVERTS testStimulatorElementEmitsNoObservationAndKeepsObserves, which
-% converted a stimulator element to a device that kept `observes`. [element
-% types batch 4] (4) (Jess Haley, 2026-10-30): `stimulator` is a visual-
-% stimulus computer in vhlab and an electrical stimulator in Marder, so the
-% element is carried whole as v1, needs_mapping (carry-063). Nothing is
-% converted from it: no observation, no `observes`, no flag.
+function testStimulatorElementIsADeviceWithNoObservation(testCase)
+% INVERTS testStimulatorElementIsCarriedWithNoObservation, which carried a
+% stimulator element whole as v1 under [element types batch 4] (4).
+% [stimulator is SNOMED CT Stimulator] (Jess Haley, 2026-10-30) replaces that
+% item: a v1 `stimulator` element (vhlab's visual-stimulus computer, Marder's
+% electrical stimulator) is a device of kind SNOMEDCT:36645008 "Stimulator".
+% A stimulator ACTS ON the specimen, so pass 1 mints no observation (the
+% wrong direction, T3); its delivery is the probe map's manipulation, and
+% until an `instrument_id` edge replaces it `observes` is KEPT. Not flagged
+% unresolved: the modality is not unknown, the direction is different.
 out = runJ(elementDoc('stim', 'stimulator', 'ndi.probe.timeseries.stimulator', 1, 'specimen_1', ''));
-verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, numel(out.passthrough), 1);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-063] '), d);
+verifyEqual(testCase, numel(out.passthrough), 0, 'the stimulator element was carried');
+verifyNotEmpty(testCase, firstOfClass(out, 'device'), 'no device entity');
+kind = assertionWithVariable(out, 'Equipment Type');
+verifyNotEmpty(testCase, kind, 'no Equipment Type assertion');
+if ~isempty(kind)
+    verifyEqual(testCase, char(kind.get('statement.variable').node), 'NCIT:C178920');
+    value = kind.get('term.value');
+    verifyEqual(testCase, char(value.node), 'SNOMEDCT:36645008');
+    verifyEqual(testCase, char(value.name), 'Stimulator');
+end
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-verifyFalse(testCase, hasRelation(out, 'observes'));
+verifyTrue(testCase, hasRelation(out, 'observes'));
 verifyEmpty(testCase, assertionWithVariable(out, 'modality unresolved'));
 end
 

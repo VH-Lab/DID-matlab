@@ -197,11 +197,12 @@ for v1 = {dabBath(oneDrug()), dabBath(acsfWithDrug()), marderBath()}
     verifyEqual(testCase, old.deferred_bath_resolution.baths_resolved, 1, label);
     verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
     verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    % the stimulator element is carried whole as v1 ([element types batch 4]
-    % (4), Jess Haley, 2026-10-30: carry-063), and a carried document is its
-    % v1 source as each path spells it (v1_to_v2: postUniversalBody), so it is
-    % compared by id only, as testRawV1RoundTripElement's
-    % testBothPathsConvertAnElementAlike does
+    % a carried document is its v1 source as each path spells it (v1_to_v2:
+    % postUniversalBody), so it is compared by id only, as
+    % testRawV1RoundTripElement's testBothPathsConvertAnElementAlike does.
+    % The stimulator element is no longer one: it is a device of kind
+    % SNOMEDCT:36645008 ([stimulator is SNOMED CT Stimulator], Jess Haley,
+    % 2026-10-30, replacing [element types batch 4] (4), which carried it)
     verifyEqual(testCase, sort({raw.passthrough.id}), sort({old.passthrough.id}), label);
     for j = 1:min(numel(raw.migrated), numel(old.migrated))
         a = raw.migrated{j}.toStruct();

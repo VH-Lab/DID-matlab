@@ -135,12 +135,15 @@ function v2Body = element(preBody)
 %   [element types batch 4] (2026-10-30), which replace the earlier lists
 %   ([electrode spellings and imaging types are devices], [event lines and
 %   environment probes are devices], [imaging probes are microscopes or
-%   carried] for wide-field and brightfield):
+%   carried] for wide-field and brightfield), and [stimulator is SNOMED CT
+%   Stimulator] (2026-10-30), which replaces item (4) of batch 4:
 %     on an ndi.probe.* class, a device: n-trode, patch, patch-Vm, patch-I,
 %       patch-attached, sharp, sharp-Vm, sharp-Im, wide-field-imaging,
 %       two-photon-imaging, one-photon-imaging, brightfield-imaging,
 %       lick-spout, reward-well, intraoral-cannula, optogenetic-fiber, ecg,
-%       eeg, accelerometer, thermometer, ppg, and the literal `electrode-$`
+%       eeg, accelerometer, thermometer, ppg, the literal `electrode-$`, and
+%       `stimulator` (a visual-stimulus computer in vhlab, an electrical
+%       stimulator in Marder)
 %     `spikes`: the sorting run's label (the batch's neuron_extracellular
 %       `quality_label`, did2.convert.unitQualityLabels): single -> cell,
 %       multi -> Group; no label carried (carry-062, [unlabelled units need
@@ -149,8 +152,7 @@ function v2Body = element(preBody)
 %     carried whole as v1, needs_mapping (carry-063), [element types batch
 %       4]: `electrode-<spec>` and `<prefix>_electrode-<spec>` (not keys of
 %       probetype2object.json; NDI's probestruct2probe throws on them),
-%       `stimulator` (a visual-stimulus computer in vhlab, an electrical
-%       stimulator in Marder), `event` (vhlab's sync line), Haley `position` /
+%       `event` (vhlab's sync line), Haley `position` /
 %       `distance`, a derived copy (a probe type on a class that is not
 %       ndi.probe.*), `neuron`, `cell`, `field`, `lfp`, `madeup`, '',
 %       `sharp-I`, `display`, `stim-n-trode`, `n-LED` and any other string
@@ -160,13 +162,14 @@ function v2Body = element(preBody)
 %   THE DEVICE KIND: Decided by Jess Haley, did-schema
 %   V_eta_go_forward_class_audit.md, [element type is a device kind term]
 %   (2026-10-27) and [element types batch 1] .. [element types batch 3]
-%   (2026-10-30), [element types batch 4] (2): every device gets one
+%   (2026-10-30), [element types batch 4] (2), [stimulator is SNOMED CT
+%   Stimulator] (2026-10-30): every device gets one
 %   Equipment Type assertion, its kind from did2.convert.elementDeviceKind
 %   (the table, with each row's decision). The "element type" assertion is
 %   REPLACED by it where the kind alone rebuilds the v1 word
 %   (did2.convert.elementTypeOfKind: n-trode, electrode-$, lick-spout,
 %   reward-well, intraoral-cannula, optogenetic-fiber, ecg, eeg,
-%   accelerometer, thermometer, ppg). It is STILL WRITTEN:
+%   accelerometer, thermometer, ppg, stimulator). It is STILL WRITTEN:
 %     - for a kind several types share (patch electrode, sharp electrode,
 %       microscope): the recording or imaging mode goes on the recording
 %       observation, which the batch pass mints, not this migrator
@@ -488,7 +491,7 @@ switch ty
     case 'ensemble'
         t = 'Group';
     otherwise
-        % [element types batch 4]: the electrode spellings, stimulator, event,
+        % [element types batch 4]: the electrode spellings, event,
         % position, distance, neuron, cell and every other string
         why = sprintf(['[carry-063] needs_mapping: element type "%s" (class "%s") ' ...
             'is not on the element type list ([element types batch 4])'], ty, char(ndiClass));
