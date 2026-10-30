@@ -208,6 +208,12 @@ did2.convert.unitQualityLabels('add', options.UnitQualityLabels);
 % from the probe], Jess Haley, 2026-10-27).
 did2.convert.elementSubjects('reset');
 did2.convert.elementSubjects('load', bodies);
+% The channel counts every n-trode's epochprobemap rows name, and its
+% geometry's site counts, read by migrators_j.element for the n-trode's
+% "number of electrodes" ([n-trode count from the channel list], Jess Haley,
+% 2026-10-29).
+did2.convert.nTrodeElectrodeCounts('reset');
+did2.convert.nTrodeElectrodeCounts('load', bodies);
 
 % Asked ONCE per call, of the schema the documents validate against: does
 % `base` declare `session_id` as an edge (did-schema
@@ -347,6 +353,11 @@ srcDepNames = cell(nBodies, 1);
 srcDepIds = cell(nBodies, 1);
 srcOut = cell(nBodies, 1);
 srcOutIds = cell(nBodies, 1);   % the base.id of each document a source became
+% [global-clock oneepoch carried with its element] (carryOneEpochsWithElement):
+% the register rows each source's carry note cites, and which sources a
+% migrator handed back to be carried with their output element
+srcCarryRows = repmat({{}}, nBodies, 1);
+srcWithElement = false(nBodies, 1);
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -408,7 +419,8 @@ for k = 1:numel(bodies)
                     v2Bodies = runRawV1Migrator(preBody, className);
                 end
                 if isscalar(v2Bodies) && isequaln(v2Bodies{1}, preBody) ...
-                        && did2.convert.reportNote('pending', 'carried_as_v1') > 0
+                        && (did2.convert.reportNote('pending', 'carried_as_v1') > 0 ...
+                        || did2.convert.reportNote('pending', 'carried_with_element') > 0)
                     carried = true;
                 end
             else
@@ -471,7 +483,8 @@ for k = 1:numel(bodies)
                     % passthrough is -- recorded as a passthrough, so the caller
                     % stores its untouched v1 source, stamped did_v1.
                     if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body) ...
-                            && did2.convert.reportNote('pending', 'carried_as_v1') > 0
+                            && (did2.convert.reportNote('pending', 'carried_as_v1') > 0 ...
+                            || did2.convert.reportNote('pending', 'carried_with_element') > 0)
                         v2Body = postUniversalBody;
                         v2Bodies = {postUniversalBody};
                         superUnchanged = true;
@@ -666,6 +679,10 @@ for k = 1:numel(bodies)
         end
         srcDone(k) = true;
         srcCarried(k) = carried;
+        srcWithElement(k) = carried ...
+            && did2.convert.reportNote('pending', 'carried_with_element') > 0;
+        srcCarryRows{k} = carryRowsCited( ...
+            did2.convert.reportNote('pendingDetails', 'carried_as_v1'));
         srcClass{k} = className;
         [srcId{k}, srcDepNames{k}, srcDepIds{k}] = sourceEdges(preBody);
         srcOut{k} = nBefore + 1:numel(migrated);
@@ -708,10 +725,20 @@ end
 % [dependents of a carried document carry] (Jess Haley, 2026-10-26, did-schema
 % V_eta_go_forward_class_audit.md): a document whose edge names a document
 % carried as v1 is carried too, down the chain (carry-064).
+carriedBeforeDependents = srcCarried;
 [migrated, passthrough, classCountNames, classCountValues, srcCarried] = carryDependents( ...
     bodies, migrated, passthrough, classCountNames, classCountValues, ...
     srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, srcDepNames, ...
     srcDepIds, srcOut, options.RenameClassNames);
+% what carryDependents carried cites its row (its note: carry-064)
+srcCarryRows(srcCarried & ~carriedBeforeDependents) = {{'carry-064'}};
+
+% [global-clock oneepoch carried with its element] (Jess Haley, 2026-10-30,
+% did-schema V_eta_go_forward_class_audit.md): a global-clock oneepoch is
+% carried with its output element, its note citing the element's carry. Once
+% every source, and every dependent of a carried one, is placed.
+carryOneEpochsWithElement(srcDone, srcCarried, srcWithElement, srcClass, ...
+    srcId, srcDepNames, srcDepIds, srcCarryRows);
 
 % [carried v1 validates against NDI templates] (Decided by Jess Haley,
 % 2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a document carried
@@ -1444,6 +1471,74 @@ try
         end
     end
 catch
+end
+end
+
+function rows = carryRowsCited(details)
+%CARRYROWSCITED The carry register rows ('carry-NNN') DETAILS cite, sorted.
+rows = {};
+for j = 1:numel(details)
+    toks = regexp(char(details{j}), '\[(carry-\d{3})\]', 'tokens');
+    for t = 1:numel(toks)
+        rows{end+1} = toks{t}{1}; %#ok<AGROW>
+    end
+end
+rows = unique(rows);
+end
+
+function carryOneEpochsWithElement(done, carried, withElement, cls, ids, ...
+        depNames, depIds, carryRows)
+%CARRYONEEPOCHSWITHELEMENT [global-clock oneepoch carried with its element]
+%   (Decided by Jess Haley, 2026-10-30, did-schema
+%   V_eta_go_forward_class_audit.md, "Q5 a"): "in the generic stage a
+%   global-clock `oneepoch` is carried with its output element (carry-062 /
+%   carry-063 / carry-064, which already carry every such element)".
+%
+%   migrators_j.oneepoch hands such a oneepoch back unchanged with a
+%   `carried_with_element` note; the loop carried it (stamped did_v1, a
+%   passthrough) without a `carried_as_v1` note, because a per-document
+%   migrator cannot see how its element was carried. Here, once every source
+%   and every dependent of a carried source is placed, each one gets its
+%   `carried_as_v1` note: the `[carry-NNN]` rows its element's own carry
+%   note cites (carryDependents' carry-064 for an element carried there).
+%   An element that is not carried in this batch (not in it, or converted:
+%   the decision says every such element is carried, so this is a finding,
+%   not a reading) gives a note that says so and cites no row; the oneepoch
+%   is carried all the same, since nothing converts it.
+for k = reshape(find(done & carried & withElement), 1, [])
+    elementId = '';
+    j = find(strcmp(depNames{k}, 'element_id'), 1);
+    if ~isempty(j)
+        elementId = char(depIds{k}{j});
+    end
+    e = [];
+    if ~isempty(elementId)
+        e = find(done & strcmp(ids, elementId) & strcmp(cls, 'element'), 1);
+    end
+    if ~isempty(e) && carried(e) && ~isempty(carryRows{e})
+        tags = strjoin(cellfun(@(r) ['[' r ']'], carryRows{e}, ...
+            'UniformOutput', false), ' ');
+        % carry-register: forwarded (the rows its output element's own carry
+        % note cites, read from that note: the element rows of the register)
+        did2.convert.reportNote('carried_as_v1', cls{k}, ids{k}, sprintf( ...
+            ['%s a oneepoch on a global clock, carried with its output element ' ...
+            '%s ([global-clock oneepoch carried with its element])'], tags, elementId));
+    else
+        if isempty(elementId)
+            why = 'names no element_id';
+        elseif isempty(e)
+            why = sprintf('names element %s, which is not in this batch', elementId);
+        elseif carried(e)
+            why = sprintf('names element %s, whose carry note cites no register row', elementId);
+        else
+            why = sprintf('names element %s, which this batch does not carry', elementId);
+        end
+        % carry-register: none (the decision expects every such element to be
+        % carried; one that is not is reported here, no row invented)
+        did2.convert.reportNote('carried_as_v1', cls{k}, ids{k}, sprintf( ...
+            ['a oneepoch on a global clock, not carried with its output element: ' ...
+            'it %s ([global-clock oneepoch carried with its element])'], why));
+    end
 end
 end
 

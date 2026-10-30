@@ -528,6 +528,143 @@ verifyNotEmpty(testCase, subj, 'the element must still become a subject');
 verifyEqual(testCase, subj.get('base.id'), 'el_1');
 end
 
+% ============ an n-trode's number of electrodes ==========================
+%
+% Decided by Jess Haley, 2026-10-29 [n-trode count from the channel list]
+% (did-schema V_eta_go_forward_class_audit.md): the "number of electrodes"
+% (EMPTY:0000408, [number of electrodes minted]) of an n-trode ([n-trode is a
+% multielectrode array]) is the count of channels its epochprobemap
+% `devicestring` names, cross-checked against the sites of its
+% probe_geometry / site2channelmap where one exists; when they disagree the
+% device is carried as v1, needs_mapping (carry-156).
+
+function batch = nTrodeBatch(deviceString, geometrySites, mapSites)
+% the n-trode el_1 ('probeA', reference 1, session sess_09), an
+% epochfiles_ingested whose epochprobemap names it with DEVICESTRING ('' for
+% none), and a probe_geometry / site2channelmap of el_1 with that many sites
+% ([] for none)
+batch = {elementDoc('probeA', 'n-trode', 'ndi.probe.timeseries', 1, 'subj_007', '')};
+if ~isempty(deviceString)
+    efi = struct();
+    efi.document_class = struct('class_name', 'epochfiles_ingested', 'class_version', '1.0.0', ...
+        'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    efi.depends_on = struct('name', {'filenavigator_id'}, 'value', {'fn_1'});
+    efi.base = struct('id', 'efi_1', 'session_id', 'sess_09', ...
+        'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+    efi.epochfiles_ingested = struct('epoch_id', 't00001', 'files', {{'t00001.rhd'}}, ...
+        'epochprobemap', sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'probeA\t1\tn-trode\t%s\tsubj_007\n'], deviceString));
+    batch{end+1} = efi;
+end
+if ~isempty(geometrySites)
+    g = struct();
+    g.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
+        'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    g.depends_on = struct('name', {'probe_id'}, 'value', {'el_1'});
+    g.base = struct('id', 'geom_1', 'session_id', 'sess_09', ...
+        'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+    g.probe_geometry = struct('site_locations_leftright', zeros(1, geometrySites), ...
+        'site_locations_frontback', 25 * (0:geometrySites - 1), 'unit', 'um');
+    batch{end+1} = g;
+end
+if ~isempty(mapSites)
+    m = struct();
+    m.document_class = struct('class_name', 'site2channelmap', 'class_version', '1.0.0', ...
+        'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    m.depends_on = struct('name', {'probe_id', 'probe_geometry_id'}, 'value', {'el_1', 'geom_1'});
+    m.base = struct('id', 'map_1', 'session_id', 'sess_09', ...
+        'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+    m.site2channelmap = struct('map', (1:mapSites)');
+    batch{end+1} = m;
+end
+end
+
+function d = electrodeCountOf(out, entityId)
+% the "number of electrodes" assertion about ENTITYID, [] when none
+d = [];
+for k = 1:numel(out.migrated)
+    doc = out.migrated{k};
+    if ~strcmp(did2.unittest.helpers.classKey(doc), 'assertion+count'); continue; end
+    v = doc.get('statement.variable');
+    if strcmp(v.name, 'number of electrodes') && strcmp(depVal(doc, 'entity_id'), entityId)
+        d = doc;
+        return;
+    end
+end
+end
+
+function c = countValue(doc)
+v = doc.get('count.value');
+if iscell(v); v = v{1}; end
+c = v(1).count;
+end
+
+function n = electrodeCountNote(out)
+n = '';
+notes = out.summary.migration_notes;
+if isfield(notes, 'ntrode_electrode_count')
+    n = strjoin(cellstr(notes.ntrode_electrode_count.distinct_details), ' || ');
+end
+end
+
+function testNTrodeNumberOfElectrodesIsItsChannelCount(testCase)
+out = runJ(nTrodeBatch('intan1:ai1-4', [], []));
+d = electrodeCountOf(out, 'el_1');
+assertNotEmpty(testCase, d, 'no "number of electrodes" assertion');
+verifyEqual(testCase, countValue(d), 4);
+verifyEqual(testCase, d.get('statement.variable').node, 'EMPTY:0000408');
+verifyEqual(testCase, electrodeCountNote(out), 'written from the epochprobemap channel list');
+% the device itself still converts
+verifyNotEmpty(testCase, firstOfClassJ(out.migrated, 'device'));
+end
+
+function testNTrodeChannelCountAgreesWithItsGeometry(testCase)
+out = runJ(nTrodeBatch('intan1:ai1-2,7,9', 4, 4));
+d = electrodeCountOf(out, 'el_1');
+assertNotEmpty(testCase, d, 'no "number of electrodes" assertion');
+verifyEqual(testCase, countValue(d), 4);
+verifyTrue(testCase, contains(electrodeCountNote(out), 'equal to its geometry''s sites'), ...
+    electrodeCountNote(out));
+end
+
+function testNTrodeWhoseChannelsAndSitesDisagreeIsCarried(testCase)
+% carry-156: the channel list names 4 channels, the geometry 8 sites
+for c = {{8, []}, {[], 8}, {4, 8}}
+    [g, m] = c{1}{:};
+    batch = nTrodeBatch('intan1:ai1-4', g, m);
+    [carried, notes, out] = did2.unittest.helpers.carryNote(batch);
+    verifyTrue(testCase, carried, 'the n-trode is carried as its untouched v1 source');
+    verifyTrue(testCase, contains(notes, ['[carry-156] needs_mapping: n-trode: its ' ...
+        'epochprobemap channel list names 4 channel(s)']), notes);
+    verifyEmpty(testCase, electrodeCountOf(out, 'el_1'), 'a count was written for a carry');
+end
+end
+
+function testNTrodeWithNoChannelListWritesNoCount(testCase)
+% the v1 element holds no count; with no epochprobemap row of it in the batch
+% none is written (nothing invented), and the note says why
+out = runJ(nTrodeBatch('', 4, []));
+verifyEmpty(testCase, electrodeCountOf(out, 'el_1'));
+verifyEqual(testCase, electrodeCountNote(out), ...
+    'not written: no epochprobemap row of it in the batch');
+verifyNotEmpty(testCase, firstOfClassJ(out.migrated, 'device'), 'the device must still convert');
+end
+
+function testNTrodeChannelCountReadsEveryGroup(testCase)
+% ndi.daq.daqsystemstring: groups ';'-separated, numbers or inclusive ranges
+did2.convert.nTrodeElectrodeCounts('reset');
+cleanup = onCleanup(@() did2.convert.nTrodeElectrodeCounts('reset')); %#ok<NASGU>
+did2.convert.nTrodeElectrodeCounts('load', nTrodeBatch('intan1:ai27-28,45;di1-4', [], []));
+info = did2.convert.nTrodeElectrodeCounts('get', 'el_1');
+verifyEqual(testCase, info.rows, 1);
+verifyEqual(testCase, info.channel_counts, 7);
+did2.convert.nTrodeElectrodeCounts('reset');
+did2.convert.nTrodeElectrodeCounts('load', nTrodeBatch('intan1:ai4-1', [], []));
+info = did2.convert.nTrodeElectrodeCounts('get', 'el_1');
+verifyEqual(testCase, info.unparsed, 1, 'a reversed range is not a count');
+verifyEmpty(testCase, info.channel_counts);
+end
+
 % ============ treatment_transfer -> term_manipulation + relation =======
 
 function v1 = babuTransferV1(id, timestamp)
@@ -2903,7 +3040,12 @@ bath.stimulus_bath = struct( ...
     'location', struct('ontologyNode', 'uberon:0001017', 'name', 'CNS'), ...
     'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
 
-out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(bath)}, ...
+% the stimulator's clock record for the bath's epoch: without one the bath
+% is carried, carry-157 ([one-reading quick answers] Q2;
+% testDeferredBathWithNoClockRecordIsCarried)
+ee = stimulatorEpochDoc(stimId, 'aabb1122ccdd3344_9900aabbccddeeff', 'epoch_t00001', ...
+    'aabb1122ccdd3344_5500000000000005');
+out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
 verifyTrue(testCase, any(arrayfun(@(q) strcmp(q.class_name, 'stimulus_bath'), ...
     out.quarantine)), 'stimulus_bath was not deferred');
@@ -3006,7 +3148,11 @@ for loc = {struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Labora
     bath.epochid = struct('epochid', 'epoch_t00001');
     bath.stimulus_bath = struct('location', loc{1}, ...
         'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
-    out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(bath)}, ...
+    % its stimulator's clock record for the epoch ([one-reading quick
+    % answers] Q2: without one the bath is carried)
+    ee = stimulatorEpochDoc(stimId, 'aabb1122ccdd3344_9900aabbccddeeff', ...
+        'epoch_t00001', 'aabb1122ccdd3344_5500000000000013');
+    out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
         'Validate', false, 'TargetVersion', 'V_eta');
     out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
         'TargetVersion', 'V_eta');
@@ -3017,6 +3163,86 @@ for loc = {struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Labora
     verifyEqual(testCase, depVal(m, 'entity_id'), subjId, ...
         'the generic bath is about the whole subject');
 end
+end
+
+function ee = stimulatorEpochDoc(stimId, sessId, epochString, id)
+%STIMULATOREPOCHDOC The stimulator's v1 element_epoch for EPOCHSTRING: its
+%   clock record (+ndi/element.m), the shape
+%   testDeferredBathKeepsItsStimulatorAndItsEpoch uses.
+ee = struct();
+ee.document_class = struct('class_name', 'element_epoch', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+ee.depends_on = struct('name', {'element_id'}, 'value', {stimId});
+ee.base = struct('id', id, 'session_id', sessId, ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+ee.epochid = struct('epochid', epochString);
+ee.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0 10]);
+end
+
+function testDeferredBathWithNoClockRecordIsCarried(testCase)
+% Decided by Jess Haley, 2026-10-26 [one-reading quick answers] Q2 (did-schema
+% V_eta_go_forward_class_audit.md): "a bath epoch with no clock record, is
+% carried as v1 instead of defaulting to `dev_local_time` ([no invented
+% values])". Register row carry-157. The bath names epoch epoch_t00009; its
+% stimulator has no element_epoch for it in the batch (it has one for another
+% epoch), so the bath leaves the quarantine as its untouched v1 source,
+% stamped did_v1, a passthrough, and noted. Nothing is assembled for it and
+% nothing is anchored on 'dev_local_time'.
+subjId = 'aabb1122ccdd3344_5500000000000031';
+stimId = 'aabb1122ccdd3344_5500000000000032';
+sessId = 'aabb1122ccdd3344_9900aabbccddeeff';
+elem = struct();
+elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
+elem.base = struct('id', stimId, 'session_id', sessId, ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+elem.element = struct('ndi_element_class', 'ndi.probe.timeseries.stimulator', 'name', 'bath_z', ...
+    'reference', 1, 'type', 'stimulator', 'direct', 0);
+ee = stimulatorEpochDoc(stimId, sessId, 'epoch_t00001', 'aabb1122ccdd3344_5500000000000033');
+bath = struct();
+bath.document_class = struct('class_name', 'stimulus_bath', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+bath.depends_on = struct('name', {'stimulus_element_id'}, 'value', {stimId});
+bath.base = struct('id', 'aabb1122ccdd3344_5500000000000034', 'session_id', sessId, ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+bath.epochid = struct('epochid', 'epoch_t00009');
+bath.stimulus_bath = struct( ...
+    'location', struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Laboratory'), ...
+    'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+
+out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+nPassBefore = numel(out.passthrough);
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'V_eta');
+rep = out.deferred_bath_resolution;
+verifyEqual(testCase, rep.deferred_baths_seen, 1);
+verifyEqual(testCase, rep.baths_carried_no_clock, 1);
+verifyEqual(testCase, rep.baths_resolved, 0, 'assembled on an invented clock');
+verifyEqual(testCase, rep.bath_clocks_defaulted, 0);
+verifyEmpty(testCase, out.deferred_bath_anchors, 'an anchor was handed on');
+verifyFalse(testCase, any(arrayfun(@(q) strcmp(q.class_name, 'stimulus_bath'), ...
+    out.quarantine)), 'the bath stayed quarantined');
+verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+formulation'), 0);
+hit = [];
+for k = 1:numel(out.migrated)
+    if strcmp(char(out.migrated{k}.get('base.id')), bath.base.id)
+        hit = out.migrated{k}.toStruct();
+    end
+end
+assertNotEmpty(testCase, hit, 'the bath was not carried');
+verifyEqual(testCase, hit.document_class.schema_version, 'did_v1');
+verifyEqual(testCase, hit.epochid.epochid, 'epoch_t00009');
+verifyEqual(testCase, numel(out.passthrough), nPassBefore + 1, 'no passthrough record');
+verifyEqual(testCase, out.summary.passthrough_count, numel(out.passthrough));
+n = out.summary.migration_notes.carried_as_v1;
+ix = find(strcmp(n.ids, bath.base.id), 1);
+assertNotEmpty(testCase, ix, 'no carried_as_v1 note for the bath');
+verifyTrue(testCase, startsWith(n.details{ix}, ['[carry-157] needs_mapping: epoch ' ...
+    '"epoch_t00009" has no clock record for its stimulator']), n.details{ix});
+verifyTrue(testCase, any(strcmp(n.register_rows, 'carry-157')));
 end
 
 function testDeferredBathKeepsItsStimulatorAndItsEpoch(testCase)
@@ -6661,9 +6887,10 @@ end
 % 2026-10-29 the migrator kept the class and folded its inherited
 % element_epoch block onto it (as `clocks`). Since [reshaped retire classes
 % carried] (Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md,
-% "B") every oneepoch is carried whole as v1: one on a global clock under
-% register row carry-148 (these tests), one stitched on device-local time
-% under carry-126 (testRawV1RoundTripOneEpoch).
+% "B") every oneepoch is carried whole as v1: one on a global clock with its
+% output element, citing the element's carry ([global-clock oneepoch carried
+% with its element], Jess Haley, 2026-10-30; these tests), one stitched on
+% device-local time under carry-126 (testRawV1RoundTripOneEpoch).
 %
 % These drive the FULL pipeline via runJ, not the migrator directly.
 
@@ -6686,8 +6913,11 @@ function testOneEpochOnAGlobalClockIsCarriedWholeAsV1(testCase)
 % INVERTED 2026-10-29 from testOneEpochFoldsItsInheritedBlockAndKeepsItsClass,
 % which asserted the class was KEPT (`oneepoch`, stamped V2) with its
 % element_epoch block folded away. [reshaped retire classes carried] (Jess
-% Haley, 2026-10-29): it is carried whole as v1 until the global-clock
-% data-combination calculation is built, citing carry-148.
+% Haley, 2026-10-29): it is carried whole as v1. [global-clock oneepoch
+% carried with its element] (Jess Haley, 2026-10-30): its note cites its
+% output element's carry; its element (elem_1) is not in this batch, so the
+% note says so and cites no row (the awaiting_home row it cited until then is
+% dropped). testOneEpochCitesItsElementsCarry has the element.
 v1 = oneEpochOnAGlobalClock('oe_1');
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
@@ -6699,8 +6929,55 @@ sOut = d.toStruct();
 verifyTrue(testCase, isfield(sOut, 'element_epoch'), 'the v1 element_epoch block is kept');
 verifyFalse(testCase, isfield(sOut.oneepoch, 'clocks'), 'nothing folded onto oneepoch');
 note = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(note, '[carry-148] awaiting_home: '), note);
-verifyTrue(testCase, contains(note, 'reshaped retire classes carried'), note);
+verifyEmpty(testCase, regexp(note, 'carry-\d{3}', 'once'), ['cites a row: ' note]);
+verifyTrue(testCase, contains(note, 'elem_1, which is not in this batch'), note);
+verifyTrue(testCase, contains(note, '[global-clock oneepoch carried with its element]'), note);
+verifyEqual(testCase, out.summary.migration_notes.carried_with_element.count, 1);
+end
+
+function testOneEpochCitesItsElementsCarry(testCase)
+% [global-clock oneepoch carried with its element] (Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md, "Q5 a"): a
+% global-clock oneepoch is carried with its output element, citing that
+% element's carry. ndi.element.oneepoch's output element keeps its input's
+% probe type on class ndi.element.oneepoch, which [element types have no
+% default] carries (carry-063), so the oneepoch's note cites carry-063. The
+% element is listed AFTER the oneepoch: the note is written once the whole
+% batch is placed, not when the oneepoch is read.
+v1 = oneEpochOnAGlobalClock('oe_5');
+el = elementDoc('probeA', 'n-trode', 'ndi.element.oneepoch', 0, 'subj_007', '');
+el.base.id = 'elem_1';
+out = runJ({v1, el});
+verifyEmpty(testCase, out.quarantine);
+ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+for id = {'oe_5', 'elem_1'}
+    d = out.migrated{strcmp(ids, id{1})};
+    verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1', ...
+        [id{1} ': carried whole as v1']);
+end
+n = out.summary.migration_notes.carried_as_v1;
+verifyEqual(testCase, n.count, 2, 'one note each: the element and its oneepoch');
+mine = n.details{strcmp(n.ids, 'oe_5')};
+verifyTrue(testCase, startsWith(mine, '[carry-063] a oneepoch on a global clock, carried with its output element elem_1'), mine);
+verifyTrue(testCase, contains(mine, '[global-clock oneepoch carried with its element]'), mine);
+verifyEqual(testCase, n.register_rows, {'carry-063'}, 'cites only its element''s row');
+end
+
+function testOneEpochOfAConvertedElementSaysSo(testCase)
+% [global-clock oneepoch carried with its element]: the decision says every
+% such element is carried. One whose element CONVERTS (here a device: a probe
+% type on an ndi.probe.* class) is still carried, since nothing converts a
+% oneepoch, and its note says the element is not carried and cites no row
+% (no row is invented; the finding is the team's).
+v1 = oneEpochOnAGlobalClock('oe_6');
+el = elementDoc('probeA', 'n-trode', 'ndi.probe.timeseries', 1, 'subj_007', '');
+el.base.id = 'elem_1';
+out = runJ({v1, el});
+n = out.summary.migration_notes.carried_as_v1;
+ix = find(strcmp(n.ids, 'oe_6'), 1);
+assertNotEmpty(testCase, ix, 'the oneepoch has no carry note');
+verifyTrue(testCase, contains(n.details{ix}, 'elem_1, which this batch does not carry'), n.details{ix});
+verifyEmpty(testCase, regexp(n.details{ix}, 'carry-\d{3}', 'once'), n.details{ix});
 end
 
 function testOneEpochCarryKeepsBothClocksAsV1WroteThem(testCase)

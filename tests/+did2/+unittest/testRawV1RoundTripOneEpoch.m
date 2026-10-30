@@ -22,8 +22,10 @@ function tests = testRawV1RoundTripOneEpoch
 %   combination], Jess Haley, 2026-10-29): testADeviceLocalOneEpochIsCarried.
 %   One on a global clock, which until 2026-10-29 kept the class `oneepoch`
 %   with its element_epoch block folded onto it as `clocks`, is carried
-%   awaiting_home, carry-148 ([reshaped retire classes carried], Jess Haley,
-%   2026-10-29, "B"): testAGlobalClockOneEpochIsCarried.
+%   ([reshaped retire classes carried], Jess Haley, 2026-10-29, "B") with its
+%   output element, its note citing the element's carry ([global-clock
+%   oneepoch carried with its element], Jess Haley, 2026-10-30, "Q5 a"):
+%   testAGlobalClockOneEpochIsCarried, testAGlobalClockOneEpochCitesItsElement.
 tests = functiontests(localfunctions);
 end
 
@@ -72,10 +74,11 @@ function testAGlobalClockOneEpochIsCarried(testCase)
 % which asserted that a oneepoch with any global clock among its clocks was
 % NOT carried (it kept the class `oneepoch`). [reshaped retire classes
 % carried] (Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md,
-% "B"): it is carried whole as v1, awaiting_home, citing register row
-% carry-148, until the global-clock data-combination calculation is built.
-% It is still told apart from the device-local carry: its note is not
-% carry-126's.
+% "B"): it is carried whole as v1. [global-clock oneepoch carried with its
+% element] (Jess Haley, 2026-10-30): with its output element, citing the
+% element's carry; the awaiting_home row it cited until then is dropped. Its
+% element is not in this batch, so its note says so and cites no row. It is
+% still told apart from the device-local carry: its note is not carry-126's.
 cases = { ...
     'dev_local_time,utc', [0 1.7e9; 100 1.7e9 + 100]; ...
     'dev_local_time,approx_dev_global_time', [0 7.3855e5; 100 7.3855e5 + 0.01]; ...
@@ -85,10 +88,32 @@ for k = 1:size(cases, 1)
     [carried, notes, out] = did2.unittest.helpers.carryNote({oneEpoch(clock, t)});
     verifyTrue(testCase, carried, [clock ': carried as the untouched v1 source']);
     verifyEqual(testCase, numel(out.passthrough), 1, [clock ': recorded as a passthrough']);
-    verifyTrue(testCase, startsWith(notes, '[carry-148] awaiting_home: '), [clock ': ' notes]);
-    verifyTrue(testCase, contains(notes, 'reshaped retire classes carried'), [clock ': ' notes]);
-    verifyFalse(testCase, contains(notes, 'carry-126'), [clock ': ' notes]);
+    verifyTrue(testCase, startsWith(notes, ...
+        'a oneepoch on a global clock, not carried with its output element: '), [clock ': ' notes]);
+    verifyTrue(testCase, contains(notes, 'which is not in this batch'), [clock ': ' notes]);
+    verifyEmpty(testCase, regexp(notes, 'carry-\d{3}', 'once'), [clock ': ' notes]);
 end
+end
+
+function testAGlobalClockOneEpochCitesItsElement(testCase)
+% [global-clock oneepoch carried with its element] (Decided by Jess Haley,
+% 2026-10-30, did-schema V_eta_go_forward_class_audit.md): its output element
+% (ndi.element.oneepoch keeps the input's probe type on class
+% ndi.element.oneepoch) is carried, carry-063 ([element types have no
+% default]), and the oneepoch's note cites that row. Its round trip is the
+% carry.
+v1 = oneEpoch('dev_local_time,utc', [0 1.7e9; 100 1.7e9 + 100]);
+el = did2.unittest.helpers.ndiDocument('element', 'Id', '41268b6f5c6a3d4e_9f00000000000001');
+el.element = struct('ndi_element_class', 'ndi.element.oneepoch', 'name', 'probeA', ...
+    'reference', 1, 'type', 'n-trode', 'direct', 0);
+el = jsondecode(jsonencode(el));
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1, el});
+verifyTrue(testCase, carried, 'carried as the untouched v1 source');
+verifyTrue(testCase, contains(notes, ['[carry-063] a oneepoch on a global clock, ' ...
+    'carried with its output element 41268b6f5c6a3d4e_9f00000000000001']), notes);
+verifyFalse(testCase, contains(notes, 'awaiting_home'), notes);
+r = did2.convert.roundtrip.check(v1, out.migrated(1));
+verifyTrue(testCase, r.carried);
 end
 
 function testADifferentSourceIsReportedLost(testCase)

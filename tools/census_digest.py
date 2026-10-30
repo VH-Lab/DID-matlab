@@ -149,7 +149,10 @@ POST_PASSES = [
         ("baths_with_instrument", "baths landed WITH the stimulator as instrument_id"),
         ("baths_without_epoch_string", "  no epoch string: session anchor kept"),
         ("bath_clocks_from_element_epoch", "  clock read from the stimulator's element_epoch"),
-        ("bath_clocks_defaulted", "  clock defaulted to dev_local_time"),
+        ("bath_clocks_defaulted", "  clock defaulted to dev_local_time (reads 0 since carry-157)"),
+        # [one-reading quick answers] Q2 (Jess Haley, 2026-10-26): a bath whose
+        # epoch has no clock record for its stimulator is carried as v1
+        ("baths_carried_no_clock", "baths CARRIED as v1: epoch has no clock record (carry-157)"),
         ("bath_anchors_no_time", "  'no_time' clock: session anchor kept"),
         ("bath_anchors_handed_over", "anchors handed to epochMint for their epoch"),
     ]),
