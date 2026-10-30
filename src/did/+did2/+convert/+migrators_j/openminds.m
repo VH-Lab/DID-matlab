@@ -102,6 +102,31 @@ function v2Body = openminds(preBody)
 %   rest arrive unchanged. Every consumer reads them with a snake_case
 %   fallback anyway, per the standing migrator lesson.
 %
+%   ---------------------------------------------------------------------
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30)
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (metadata/openminds.json + base.json at the locked
+%   NDI-matlab `main`, 441530d; written by
+%   ndi.database.fun.openMINDSobj2ndi_document: the `openminds` block, and one
+%   `openminds_<n>` edge per `ndi://` child, or an empty `openminds` edge for
+%   a childless object). The block's fields are snake_case already and the
+%   class has no `app` block, so the raw passthrough is the renamed one but
+%   for v1's `value` edge key and its superclass list (v1's `definition`
+%   entries), and it validates against the same V_eta `openminds` class. Both
+%   of its readers read either edge key: did2.convert.resolveOpenmindsCitations
+%   (referencedIds) and NDI-matlab's ndi.migrate.internal.strainAssembly
+%   (referencedIds), and both read the class name and the `openminds` block,
+%   which the switch does not change. What the renamed path would have
+%   discarded is carried, carry-049, as before; a block, base field or edge
+%   outside the template (which the renamed passthrough kept, to fail
+%   validation as an undeclared field) carries the document whole as v1
+%   (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], carry-100). The `fields` struct is open by construction and is
+%   not looked into. did2.convert.roundtrip.openminds is the passthrough
+%   inverse; testRawV1RoundTripOpenminds compares the two.
+%
 %   See also: did2.convert.resolveOpenmindsCitations,
 %   did2.convert.migrators_j.openminds_subject,
 %   did2.convert.migrators_j.ontology_image.
@@ -128,6 +153,16 @@ if isempty(strtrim(matlabType)) && isempty(strtrim(openmindsType))
          '`openminds` schema declares openminds_type mustBeNonEmpty, so this ' ...
          'document could not have validated either way -- refusing to pass ' ...
          'an unclassifiable body through silently.']);
+end
+
+% THE RAW READ (see READS RAW v1 above): every field the passthrough keeps is
+% one of the template's; the `fields` struct is open
+[~, collision, unplaced] = jRawAccount(preBody, struct( ...
+    'openminds', {{'openminds_type', 'matlab_type', 'openminds_id', 'fields'}}), ...
+    {'^openminds(_\d+)?$'});
+if jRawCarry('openminds', preBody, collision, unplaced, 'carry-100')
+    v2Body = {preBody};   % the carry of the untouched v1 source
+    return;
 end
 
 % Branch on the type. Every arm passes the document through UNCHANGED; the

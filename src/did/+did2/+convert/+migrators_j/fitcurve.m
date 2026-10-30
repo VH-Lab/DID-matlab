@@ -46,14 +46,53 @@ function bodies = fitcurve(preBody)
 %   re-expressed -- per the plan a fit's parameters fold to a `method` / D10
 %   parameters, a per-class decision. This captures the residual + which
 %   equation; the parameter vector is a follow-up.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (data/fitcurve.json + base.json at the locked
+%   NDI-matlab `main`, 441530d; NO WRITER at that `main` and no corpus
+%   document, so the template alone fixes its shape). Its block and edges are
+%   snake_case already, so the raw read changes nothing the fold writes. The
+%   fold reads the template's block fields (and `fit_sse_perpoint`, which
+%   jModelFit reads for either fit class), the template's edge
+%   `fit_example_data_id`, and the edges jModelFit reads beside it
+%   (`fit_input_id`, and the subject `element_id` / `subject_id`, outside the
+%   template but read: a document that states one converts, as before), and an
+%   `app` block's app.json fields (outside the template too, but jModelFit
+%   names the run's software, operating system and interpreter from it, as for
+%   vmspikefit; testMigratorsJ testFitcurveFoldsToResidualScore). What
+%   the renamed path would have discarded is carried, carry-049, as before; a
+%   block, base field or edge no part of this fold reads (dropped without a
+%   word on the renamed path) carries the document whole as v1
+%   (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], carry-100). A carry is the untouched v1 source.
+%   did2.convert.roundtrip.fitcurve rebuilds the v1 document;
+%   testRawV1RoundTripFit compares the two.
 
 arguments
     preBody (1,1) struct
 end
 
+% THE RAW READ (see READS RAW v1 above).
+src = preBody;
+[preBody, collision, unplaced] = jRawAccount(src, struct( ...
+    'fitcurve', {{'fit_name', 'fit_equation', 'fit_parameters', 'fit_parameter_names', ...
+        'fit_independent_variable_names', 'fit_dependent_variable_names', 'fit_sse', ...
+        'fit_sse_perpoint', 'fit_constraints', 'fit_data'}}, ...
+    'app', {{'name', 'version', 'url', 'os', 'os_version', 'interpreter', 'interpreter_version'}}), ...
+    {'^fit_example_data_id$', '^fit_input_id$', '^element_id$', '^subject_id$'});
+if jRawCarry('fitcurve', src, collision, unplaced, 'carry-100')
+    bodies = {src};
+    return;
+end
+
 % did-schema #88: a model_fit_calculation (jModelFit; #73 review item 68).
 % The pre-#73 fold kept only the residual, as a score observation.
 bodies = jModelFit(preBody, getBlock(preBody, 'fitcurve'), {'fit_example_data_id', 'fit_input_id'});
+if isscalar(bodies) && isequaln(bodies{1}, preBody)
+    bodies = {src};   % a carry is the untouched v1 source
+end
 end
 
 function b = getBlock(bodyStruct, name)
