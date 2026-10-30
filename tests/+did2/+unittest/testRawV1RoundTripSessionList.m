@@ -91,9 +91,15 @@ end
 end
 
 function testADifferentSourceIsReportedLost(testCase)
-v1 = writerList('dsi_1', 'ds_1', {});
+% A CARRIED list (its two entries alone, no membership in the batch: carry-118)
+% compared with a source whose base.name differs. An EMPTY list alone is not
+% carried: zero memberships rebuild it exactly, so it writes no document
+% (testTheClassIsSwitched) and there is nothing to compare it with.
+s = rebuildingBatch();
+v1 = s{end};
 out = runRaw({v1});
 doc = docWithId(out, 'dsi_1');
+assertNotEmpty(testCase, doc, 'the list alone is carried');
 v1.base.name = 'changed';
 r = did2.convert.roundtrip.check(v1, {doc});
 verifyEqual(testCase, {r.lost.path}, {'base.name'});
