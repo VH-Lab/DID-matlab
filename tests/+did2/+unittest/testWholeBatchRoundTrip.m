@@ -252,10 +252,11 @@ ct = openmindsV1('wb_om_ct', 'openminds_element', 'element_id', 'CellType', ...
     'type III BNST neuron', 'EMPTY:0000073', '', '');
 ct.openminds.openminds_id = 'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d';
 ct.openminds.fields.description = 'A type of neuron.';
-% openminds_element is read on the renamed path, so pass 1 hands back the
-% renamed body as a passthrough and the pipeline stores the untouched v1 source
-% (v1_to_v2.m, "A CARRY IS THE V1 SOURCE"; ndi.migrate.internal.
-% carryUnchangedAsV1). Compare what is stored, as the table-row test does.
+% UPDATED 2026-10-30: openminds_element reads raw v1 ([migrators read raw v1],
+% Jess Haley, 2026-10-26; did2.convert.rawV1Classes), so pass 1 hands back the
+% untouched v1 source as the carry (it handed back the renamed body before), and
+% the pipeline stores that v1 source (ndi.migrate.internal.carryUnchangedAsV1).
+% Compare what is stored, as the table-row test does.
 out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'V_eta');
 verifyTrue(testCase, any(strcmp({out.passthrough.id}, 'wb_om_ct')), ...
     'pass 1 records the element as carried through');

@@ -23,9 +23,46 @@ function v2Body = openminds_element(preBody)
 %   If no openMINDS block is present, or the block states an `openminds_id` or
 %   a `fields.description` (carry-128), the document is carried whole as v1
 %   with a `carried_as_v1` note.
+%
+%   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
+%   2026-10-26 [migrators read raw v1], did-schema
+%   V_eta_go_forward_class_audit.md): v1_to_v2 hands this migrator the document
+%   exactly as v1 wrote it (metadata/openminds_element.json + openminds.json +
+%   base.json at the locked NDI-matlab `main`, 441530d; written by
+%   ndi.database.fun.openMINDSobj2ndi_document with dependency type 'element':
+%   the `openminds` block, an empty `openminds_element` block, the
+%   `element_id` edge and the writer's empty `openminds` edge of a childless
+%   term). Its blocks are snake_case already (`fields` is nested and never
+%   renamed), so the raw read changes nothing the assertion holds. The
+%   migrator reads `element_id`, falling back to `subject_id`. What the
+%   renamed path would have discarded is carried, carry-049, as before; a
+%   block, base field or edge outside the template (an `openminds_<n>` edge
+%   naming a child, which the assertion does not keep and no later pass reads
+%   for this class, is one), or anything in the empty `openminds_element` block
+%   (a DID-side fixture shape that holds the openMINDS fields there is still
+%   read, when there is no `openminds` block), carries the document whole as v1
+%   (private/jRawAccount, jRawCarry; [fields outside the template are
+%   malformed], carry-100). A carry is the untouched v1 source.
+%   did2.convert.roundtrip.openminds_element rebuilds the v1 document;
+%   testRawV1RoundTripOpenminds compares the two.
 
 arguments
     preBody (1,1) struct
+end
+
+% THE RAW READ (see READS RAW v1 above); an empty edge is never unplaced, so
+% the writer's empty `openminds` entry needs no pattern
+src = preBody;
+OPENMINDS = {'openminds_type', 'matlab_type', 'openminds_id', 'fields'};
+if isfield(preBody, 'openminds') && isstruct(preBody.openminds)
+    read = struct('openminds', {OPENMINDS}, 'openminds_element', {{}});
+else
+    read = struct('openminds_element', {OPENMINDS});
+end
+[preBody, collision, unplaced] = jRawAccount(src, read, {'^element_id$', '^subject_id$'});
+if jRawCarry('openminds_element', src, collision, unplaced, 'carry-100')
+    v2Body = {src};
+    return;
 end
 
 block = [];
@@ -45,7 +82,7 @@ if isempty(block)
     % carry-register: carry-146
     did2.convert.reportNote('carried_as_v1', 'openminds_element', sourceIdOf(preBody), ...
         '[carry-146] malformed: no openminds block, so no term to assert ([passthrough stays v1])');
-    v2Body = {preBody};
+    v2Body = {src};   % a carry is the untouched v1 source
     return;
 end
 
@@ -70,7 +107,7 @@ if ~isempty(omId) || ~isempty(omDescription)
     did2.convert.reportNote('carried_as_v1', 'openminds_element', sourceIdOf(preBody), ...
         sprintf(['[carry-128] awaiting_home: %s (the term assertion keeps neither) ' ...
         '([openMINDS element leftovers carried])'], strjoin(held, ' and ')));
-    v2Body = {preBody};
+    v2Body = {src};   % a carry is the untouched v1 source
     return;
 end
 node = firstNonEmpty( ...

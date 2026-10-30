@@ -1,6 +1,6 @@
 function tests = testRawV1RoundTripOpenminds
 %TESTRAWV1ROUNDTRIPOPENMINDS The openMINDS family read as raw v1, and its round
-%   trip: openminds, openminds_subject.
+%   trip: openminds, openminds_subject, openminds_element.
 %
 %   Decided by Jess Haley, 2026-10-26 (did-schema
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1], [migration
@@ -18,13 +18,19 @@ function tests = testRawV1RoundTripOpenminds
 %                 base.json, dependency type 'subject': the template's
 %                 `subject_id` edge, then the `openminds` edge (JH's sex and
 %                 species controlled terms, testWholeBatchRoundTrip's shapes)
+%     openminds_element   metadata/openminds_element.json + openminds.json +
+%                 base.json, dependency type 'element': the template's
+%                 `element_id` edge, then the `openminds` edge (Dab's cell
+%                 type, without and with its openMINDS id)
 %
 %   A bare `openminds` document passes through pass 1 unchanged for the batch
 %   passes that read it (did2.convert.resolveOpenmindsCitations, NDI's
 %   strainAssembly); both read either edge key. It round trips as itself.
 %   openminds_subject converts to one term assertion, as before; its
 %   `openminds_<n>` edges are read by NDI's subjectStrainAssembly from the v1
-%   input, so they do not carry it. No known findings for the fixtures (a
+%   input, so they do not carry it. openminds_element converts to one term
+%   assertion, or is carried with an id or a description (carry-128), as
+%   before. No known findings for the fixtures (a
 %   species' definition and synonym are accepted differences, [species text is
 %   the openMINDS equivalent]).
 tests = functiontests(localfunctions);
@@ -131,6 +137,47 @@ v1.openminds.version = '3.0';
 verifyCarried(testCase, v1, 'openminds.version');
 end
 
+% ===================== openminds_element ===============================
+
+function testOpenmindsElementIsSwitched(testCase)
+verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'openminds_element')));
+out = runRaw(elementTerm('41268b6f5c6a3d4e_0e00000000000021', ''));
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
+end
+
+function testAWriterElementTermConvertsAndRoundTrips(testCase)
+v1 = elementTerm('41268b6f5c6a3d4e_0e00000000000021', '');
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'converted, not carried');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element', {});
+end
+
+function testAnElementTermWithAnIdIsCarriedUntouched(testCase)
+v1 = elementTerm('41268b6f5c6a3d4e_0e00000000000022', ...
+    'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d');
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+verifyEmpty(testCase, out.quarantine);
+verifyTrue(testCase, carried, 'carried as the untouched v1 source');
+verifyTrue(testCase, contains(notes, '[carry-128] '), notes);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyTrue(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element (id)', {});
+end
+
+function testAFieldOutsideTheElementTemplateCarriesIt(testCase)
+v1 = elementTerm('41268b6f5c6a3d4e_0e00000000000023', '');
+v1.openminds_element = struct('note', 'kept');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: openminds_element.note');
+v1 = elementTerm('41268b6f5c6a3d4e_0e00000000000023', '');
+v1.depends_on(2).name = 'openminds_1';
+v1.depends_on(2).value = '41268b6f5c6a3d4e_0e00000000000024';
+verifyCarried(testCase, v1, 'depends_on(openminds_1)');
+end
+
 % ===================== the family ======================================
 
 function testTheSwitchChangesNoOutcome(testCase)
@@ -156,12 +203,18 @@ end
 
 function f = fixtures()
 % {label, batch}
-s = subjectFixtures();
+s = [subjectFixtures(); elementFixtures()];
 f = cell(1 + size(s, 1), 2);
 f(1, :) = {'openminds, strain and species', strainPair()};
 for k = 1:size(s, 1)
     f(1 + k, :) = {s{k, 1}, s(k, 2)};
 end
+end
+
+function f = elementFixtures()
+f = {'openminds_element, cell type', elementTerm('41268b6f5c6a3d4e_0e00000000000021', ''); ...
+    'openminds_element, cell type with an id', elementTerm('41268b6f5c6a3d4e_0e00000000000022', ...
+        'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d')};
 end
 
 function f = subjectFixtures()
@@ -177,6 +230,17 @@ function v1 = subjectTerm(id, type, name, node, definition, synonym)
 % template's subject_id edge, then the empty `openminds` edge of a childless term
 v1 = termDocument('openminds_subject', id, type, name, node, definition, synonym);
 v1 = did2.unittest.helpers.setDependency(v1, 'subject_id', '41268b6f5c6a3d4e_0e000000000000a1');
+v1.depends_on(2) = struct('name', 'openminds', 'value', '');
+v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = elementTerm(id, openmindsId)
+% Dab's cell type (openMINDSobj2ndi_document(term, sessionId, 'element',
+% elementId)): the template's element_id edge, then the empty `openminds` edge
+v1 = termDocument('openminds_element', id, 'CellType', 'type III BNST neuron', ...
+    'EMPTY:0000073', '', '');
+v1.openminds.openminds_id = openmindsId;
+v1 = did2.unittest.helpers.setDependency(v1, 'element_id', '41268b6f5c6a3d4e_0e000000000000b1');
 v1.depends_on(2) = struct('name', 'openminds', 'value', '');
 v1 = jsondecode(jsonencode(v1));
 end
