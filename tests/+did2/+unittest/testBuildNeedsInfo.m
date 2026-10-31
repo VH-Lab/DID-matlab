@@ -109,6 +109,21 @@ verifyError(testCase, @() buildObs(testCase, cond, other), 'did2:build:ruleViola
     'an entry for another condition excuses nothing here');
 end
 
+function testNeedsInfoNamesValueReadsThePath(testCase)
+% did2.schema.needsInfoNamesValue: the value, or a field within it, by path
+s = struct('base', struct('id', 'x'));
+cases = {'formulation.value.ingredients(1).concentration', true; ...
+    'formulation.value', true; 'value', true; 'statement.value(2).x', true; ...
+    'formulation.values', false; 'statement.value_id', false; ...
+    'formulation.data_type', false};
+for k = 1:size(cases, 1)
+    s.base.needs_info = struct('field', cases{k, 1}, 'reason', 'not stated');
+    verifyEqual(testCase, did2.schema.needsInfoNamesValue(s), cases{k, 2}, cases{k, 1});
+end
+s.base.needs_info = struct('field', 'formulation.value', 'reason', '');
+verifyFalse(testCase, did2.schema.needsInfoNamesValue(s), 'an entry with no reason');
+end
+
 function testABlankValueNamedInNeedsInfoIsAccepted(testCase)
 % value_inline_or_body, [formulation amount needs info] (Decided by Jess Haley,
 % 2026-10-31, did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G67

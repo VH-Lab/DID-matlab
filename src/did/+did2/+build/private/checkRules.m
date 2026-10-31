@@ -180,7 +180,7 @@ for c = 1:numel(chain)
                 if ~isTrue(findField(doc, blocks, 'data_body')) ...
                         && isBlankValue(findField(doc, blocks, 'value')) ...
                         && ~hasEdge(doc, 'value_id') ...
-                        && ~valueNamedInNeedsInfo(doc)
+                        && ~did2.schema.needsInfoNamesValue(doc)
                     violated(ruleName, className, ...
                         ['`value` is empty, `data_body` is not true and ' ...
                          'needs_info does not name it: the value is neither ' ...
@@ -730,16 +730,6 @@ end
 named = did2.schema.needsInfoFields(doc);
 suffix = sprintf('.conditions(%d).quantity.value', k);
 tf = any(cellfun(@(f) endsWith(f, suffix), named));
-end
-
-function tf = valueNamedInNeedsInfo(doc)
-%VALUENAMEDINNEEDSINFO True when the document's needs_info names its `value`
-%   or a field within it: 'value', '<block>.value', '<block>.value.<field>...',
-%   '<block>.value(k)...' ([formulation amount needs info], Jess Haley,
-%   2026-10-31). did2.schema.needsInfoFields keeps only entries with both a
-%   field and a reason.
-named = did2.schema.needsInfoFields(doc);
-tf = any(~cellfun(@isempty, regexp(named, '^([A-Za-z]\w*\.)?value($|[.(])', 'once')));
 end
 
 function n = valueCount(entry, form)

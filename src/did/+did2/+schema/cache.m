@@ -3322,9 +3322,7 @@ classdef cache < handle
                 % G67 (a)): a blank value that needs_info names -- the value
                 % or a field within it, <block>.value... -- is not nowhere:
                 % the source never stated it.
-                named = did2.schema.needsInfoFields(s);
-                tf = ~any(~cellfun(@isempty, ...
-                    regexp(named, '^([A-Za-z]\w*\.)?value($|[.(])', 'once')));
+                tf = ~did2.schema.needsInfoNamesValue(s);
             end
         end
 
