@@ -473,7 +473,7 @@ ep = docById(out, depVal(ref, 'referent_id'));
 assertNotEmpty(testCase, ep, 'the referent is in the batch');
 verifyEqual(testCase, did2.build.vocabularyHandle('entity_type', ep.entity.type), 'epoch');
 verifyEqual(testCase, char(ep.entity.local_identifier), 't00sx');
-verifyEqual(testCase, char(ref.relative_time_reference.value.clock.name), 'dev_local_time');
+did2.unittest.helpers.verifyClock(testCase, ref.relative_time_reference.value.clock, 'dev_local_time');   % by node [clock terms get nodes]
 verifyEqual(testCase, ref.relative_time_reference.value.start.seconds, 2, 'AbsTol', 1e-12);
 verifyEqual(testCase, ref.relative_time_reference.value.end.seconds, 579.85, 'AbsTol', 1e-9);
 verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));

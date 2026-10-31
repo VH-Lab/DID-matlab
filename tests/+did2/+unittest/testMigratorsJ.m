@@ -3340,7 +3340,7 @@ verifyEqual(testCase, anchor.get('document_class.class_name'), 'relative_time_re
 verifyEqual(testCase, depVal(anchor, 'referent_id'), epochId, 'the anchor does not name the epoch');
 v = anchor.get('relative_time_reference.value');
 verifyEqual(testCase, v.relation.name, 'intervalDuring');
-verifyEqual(testCase, v.clock.name, 'dev_local_time');
+did2.unittest.helpers.verifyClock(testCase, v.clock, 'dev_local_time');   % by node [clock terms get nodes]
 % the bath still names the same anchor (id preserved)
 m = firstOfClassJ(out.migrated, 'manipulation+formulation');
 verifyEqual(testCase, depVal(m, 'time_reference_id'), anchorId);
