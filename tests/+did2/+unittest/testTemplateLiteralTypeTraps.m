@@ -382,29 +382,36 @@ verifyEqual(testCase, char(anchor.get('relative_time_reference.value.relation').
 end
 
 function testAUtcTimestampIsTheObservationsTimeReference(testCase)
-% [acquisition time on its clock]: on clock utc the datenum IS the
-% observation's time reference on that clock, converted to seconds; no
-% condition and no needs_info.
+% [acquisition time on its clock] as amended by [UTC acquisition time is
+% absolute] (Decided by Jess Haley, 2026-10-31, did-schema
+% did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G65: "That should be an
+% absolute time reference"): on clock utc the datenum IS the observation's time
+% reference, an absolute_time_reference holding the UTC instant (the datenum as
+% its source_value), not a relative_time_reference to the session; no
+% condition and no needs_info. INVERTED: it pinned the relative shape
+% (start = datenum x 86400 s on clock utc) until then.
 [obs, anchor] = builtStack(testCase, 739038.5, 'utc');
 s = obs.toStruct();
 verifyFalse(testCase, isfield(s.statement, 'conditions') && ~isempty(s.statement.conditions));
 verifyFalse(testCase, isfield(s.base, 'needs_info') && ~isempty(s.base.needs_info));
-did2.unittest.helpers.verifyClock(testCase, anchor.get('relative_time_reference.value.clock'), 'utc');   % by node [clock terms get nodes]
-st = anchor.get('relative_time_reference.value.start');
-verifyEqual(testCase, st.seconds, 739038.5 * 86400, 'AbsTol', 1e-3);
-verifyEqual(testCase, st.source_value, 739038.5);
-verifyEqual(testCase, char(st.source_unit.name), 'day');
+verifyEqual(testCase, anchor.get('document_class.class_name'), 'absolute_time_reference');
+st = anchor.get('absolute_time_reference.value.start');
+verifyEqual(testCase, char(st.utc), '2023-06-01T12:00:00.000Z');
+verifyEqual(testCase, str2double(st.source_value), 739038.5);
 a = anchor.toStruct();
-verifyFalse(testCase, isfield(a, 'time_reference') && isfield(a.time_reference, 'clock_tolerance'));
+verifyFalse(testCase, isfield(a, 'time_reference') && isfield(a.time_reference, 'clock_tolerance') ...
+    && ~isempty(a.time_reference.clock_tolerance));
 end
 
 function testAnApproxUtcTimestampKeepsItsFiveSeconds(testCase)
-% approx_utc is clock utc within 5 s (NDI +ndi/+time/clocktype.m)
+% approx_utc is clock utc within 5 s (NDI +ndi/+time/clocktype.m): the same
+% absolute instant with a 5 s clock_tolerance ([UTC acquisition time is
+% absolute], Jess Haley, 2026-10-31)
 [~, anchor] = builtStack(testCase, 739038.5, 'approx_utc');
-did2.unittest.helpers.verifyClock(testCase, anchor.get('relative_time_reference.value.clock'), 'utc');   % by node [clock terms get nodes]
+verifyEqual(testCase, anchor.get('document_class.class_name'), 'absolute_time_reference');
 verifyEqual(testCase, anchor.get('time_reference.clock_tolerance.seconds'), 5);
-verifyEqual(testCase, anchor.get('relative_time_reference.value.start').seconds, ...
-    739038.5 * 86400, 'AbsTol', 1e-3);
+verifyEqual(testCase, char(anchor.get('absolute_time_reference.value.start').utc), ...
+    '2023-06-01T12:00:00.000Z');
 end
 
 function [obs, anchor] = builtStack(testCase, ts, clk)
@@ -421,7 +428,12 @@ names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...
     'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'observation+intensity')));
 obs = out.migrated{find(strcmp(names, 'observation+intensity'), 1)};
-anchor = out.migrated{find(strcmp(names, 'relative_time_reference'), 1)};
+% the observation's time reference: absolute on a UTC clock, else relative
+k = find(strcmp(names, 'absolute_time_reference'), 1);
+if isempty(k)
+    k = find(strcmp(names, 'relative_time_reference'), 1);
+end
+anchor = out.migrated{k};
 end
 
 
