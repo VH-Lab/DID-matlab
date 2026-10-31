@@ -5168,6 +5168,12 @@ def render_legacy_ndi_document(r, out):
         p("  %s bod(ies) read raw v1 by a switched class's migrator "
           "(did2.convert.rawV1Classes; not inspected by the pass)"
           % L.get("bodies_read_raw_v1"))
+    if L.get("bodies_carried_no_migrator"):
+        # [classes without a migrator carry as v1] (Jess Haley, 2026-10-31): a
+        # class with no migrator is carried whole as v1 and never reaches the pass
+        p("  %s bod(ies) carried whole as v1, their class having no migrator "
+          "(did2.convert.noMigratorCarryRows; not inspected by the pass)"
+          % L.get("bodies_carried_no_migrator"))
     if L.get("bodies_reaching_universal_renames") == 0:
         p("  *** 0 bodies reached the rename pass -- every count below is")
         p("  *** vacuous. This is what a re-run over already-migrated bodies")

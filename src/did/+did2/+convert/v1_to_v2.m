@@ -7,7 +7,12 @@ function result = v1_to_v2(v1Bodies, options)
 %
 %     0. a class listed by did2.convert.rawV1Classes skips steps 1-2: its
 %        +migrators_j migrator reads the RAW v1 document (Decided by Jess
-%        Haley, 2026-10-26 [migrators read raw v1]); see 'RawV1Classes'
+%        Haley, 2026-10-26 [migrators read raw v1]); see 'RawV1Classes'.
+%        A class listed by did2.convert.noMigratorCarryRows has no migrator:
+%        it skips steps 1-4 and is carried whole as v1, the untouched v1
+%        source, citing its carry register row (Decided by Jess Haley,
+%        2026-10-31 [classes without a migrator carry as v1]); see
+%        'NoMigratorCarryClasses'
 %     1. did2.convert.universalRenames    (cross-cutting renames)
 %     2. matching superclass migrators: the V_eta override under
 %        +did2.+convert.+migrators_j.+super.<superclass_name> when one
@@ -97,6 +102,17 @@ function result = v1_to_v2(v1Bodies, options)
 %                      summary.legacy_ndi_document. Pass {} to run every
 %                      class through universalRenames as before the switch
 %                      (testRawV1RoundTrip compares the two).
+%     NoMigratorCarryClasses (cellstr, default
+%                      did2.convert.noMigratorCarryRows()) - the v1 classes
+%                      with no migrator, each carried whole as v1 (the
+%                      untouched v1 source, stamped did_v1) with a
+%                      `carried_as_v1` note citing its carry register row; no
+%                      universalRenames, no superclass migrators, no identity
+%                      fallback ([classes without a migrator carry as v1],
+%                      Jess Haley, 2026-10-31). Counted as
+%                      `bodies_carried_no_migrator` in
+%                      summary.legacy_ndi_document. Pass {} to run those
+%                      classes through universalRenames as before.
 %     Audits           (1,1 logical, default true) - run the report-only
 %                      census instruments over the batch (silentLoss,
 %                      fileList, timeReferenceFamilies) into
@@ -150,6 +166,7 @@ arguments
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
     options.Audits (1,1) logical = true
     options.RawV1Classes cell = did2.convert.rawV1Classes()
+    options.NoMigratorCarryClasses cell = did2.convert.noMigratorCarryRows()
     options.UnitQualityLabels cell = {}
 end
 
@@ -305,6 +322,7 @@ legacy = struct( ...
     'bodies_reaching_universal_renames',   0, ...
     'bodies_skipped_already_target',       0, ...
     'bodies_read_raw_v1',                  0, ...
+    'bodies_carried_no_migrator',          0, ...
     'bodies_unreached',                    0, ...
     'ndi_document_block_seen',             0, ...
     'moved_wholesale_no_base',             0, ...
@@ -423,6 +441,36 @@ for k = 1:numel(bodies)
                         || did2.convert.reportNote('pending', 'carried_with_element') > 0)
                     carried = true;
                 end
+            elseif any(strcmp(rawClass, options.NoMigratorCarryClasses))
+                % A CLASS WITH NO MIGRATOR (did2.convert.noMigratorCarryRows;
+                % Decided by Jess Haley, 2026-10-31 [classes without a
+                % migrator carry as v1]: "the 9 v1 classes with no migrator
+                % are kept unchanged as v1 [...] Each would get a carry row,
+                % and a migrator can replace that row later"). Carried whole
+                % as v1: the untouched v1 source, no universalRenames, no
+                % superclass migrators, no identity fallback. Counted in the
+                % denominator below (`bodies_carried_no_migrator`). A legacy
+                % `ndi_document` block beside `base` still cites carry-049,
+                % as on the other paths ([old ndi_document blocks carry]).
+                legacy.bodies_carried_no_migrator = legacy.bodies_carried_no_migrator + 1;
+                srcRaw(k) = true;
+                className = rawClass;
+                if hasLegacyBlockBesideBase(preBody)
+                    carryNote = LEGACY_BLOCK_NOTE;
+                else
+                    carryNote = sprintf(['%s awaiting_home: %s has no migrator ' ...
+                        '([classes without a migrator carry as v1])'], ...
+                        did2.convert.noMigratorCarryRows(rawClass), rawClass);
+                end
+                % carry-register: carry-049 carry-158 carry-159 carry-160 carry-161
+                %   carry-162 carry-163 carry-164 via noMigratorCarryRows.m
+                did2.convert.reportNote('carried_as_v1', className, ...
+                    sourceIdOf(preBody), carryNote);
+                v2Body = preBody;
+                carryBody = preBody;
+                superUnchanged = true;
+                v2Bodies = {preBody};
+                carried = true;
             else
                 % Incremented BEFORE the call: a body that throws inside the pass
                 % still reached it, and a denominator that quietly excluded the
@@ -770,13 +818,15 @@ carriedTemplateCheck = carriedV1TemplateCheck(bodies, srcCarried, srcDone, ...
 
 % `bodies_unreached` closes the denominator: every body either reached
 % universalRenames, took the idempotency short-circuit, was read raw by a
-% switched class's migrator (did2.convert.rawV1Classes), or failed before
-% any of them (a non-struct input, undecodable JSON). Written as a subtraction
-% so the four sum to `total` by construction rather than by hope.
+% switched class's migrator (did2.convert.rawV1Classes), was carried whole as
+% a class with no migrator (did2.convert.noMigratorCarryRows), or failed
+% before any of them (a non-struct input, undecodable JSON). Written as a
+% subtraction so the five sum to `total` by construction rather than by hope.
 legacy.bodies_unreached = legacy.bodies_total ...
     - legacy.bodies_reaching_universal_renames ...
     - legacy.bodies_skipped_already_target ...
-    - legacy.bodies_read_raw_v1;
+    - legacy.bodies_read_raw_v1 ...
+    - legacy.bodies_carried_no_migrator;
 % THE VINTAGE PARTITION, CHECKED RATHER THAN ASSUMED. Six buckets classify
 % every body that took the wholesale-move arm, and a body falling through all
 % six is exactly what the `unknown` bucket exists to catch -- so if the sum ever
@@ -2030,9 +2080,11 @@ function printLegacyNdiDocument(result)
 if ~isfield(result.summary, 'legacy_ndi_document'); return; end
 L = result.summary.legacy_ndi_document;
 fprintf(['  legacy ndi_document: %d body(ies) reached universalRenames ' ...
-    '(of %d; %d already at target, %d read raw v1, %d never reached it)\n'], ...
+    '(of %d; %d already at target, %d read raw v1, %d carried with no ' ...
+    'migrator, %d never reached it)\n'], ...
     L.bodies_reaching_universal_renames, L.bodies_total, ...
-    L.bodies_skipped_already_target, L.bodies_read_raw_v1, L.bodies_unreached);
+    L.bodies_skipped_already_target, L.bodies_read_raw_v1, ...
+    L.bodies_carried_no_migrator, L.bodies_unreached);
 fprintf('      %8d  carried an `ndi_document` block\n', ...
     L.ndi_document_block_seen);
 fprintf('      %8d  MOVED WHOLESALE into `base` (no `base` present)\n', ...

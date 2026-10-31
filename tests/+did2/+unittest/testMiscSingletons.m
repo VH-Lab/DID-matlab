@@ -770,6 +770,62 @@ else
 end
 end
 
+function testProjectvarIsCarriedWholeCitingItsRow(testCase)
+% [classes without a migrator carry as v1] (Decided by Jess Haley, 2026-10-31,
+% did-schema did_v2_go_forward_class_audit.md): a v1 class with no migrator is
+% kept unchanged as v1 and cites its carry register row (carry-162 for
+% projectvar, did2.convert.noMigratorCarryRows). It does not reach
+% universalRenames: the carried body is the untouched v1 source, stamped did_v1.
+v1 = projectvarWriterBody('pv_4', 'sess_V', 'note');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyEmpty(testCase, out.quarantine);
+L = out.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_total, 1);
+verifyEqual(testCase, L.bodies_carried_no_migrator, 1);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 0);
+verifyEqual(testCase, L.bodies_unreached, 0);
+ids = arrayfun(@(p) char(p.id), out.passthrough, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(ids, 'pv_4')), 'pv_4 is not recorded as carried');
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');
+details = cellstr(notes.carried_as_v1.distinct_details);
+verifyTrue(testCase, any(startsWith(details, '[carry-162] awaiting_home: ')), ...
+    strjoin(details, ' || '));
+d = onlyClass(testCase, out, 'projectvar');
+s = d.toStruct();
+verifyEqual(testCase, char(s.document_class.schema_version), 'did_v1');
+verifyEqual(testCase, s.projectvar, v1.projectvar, 'the v1 block is untouched');
+verifyEqual(testCase, s.base, v1.base, 'the v1 base block is untouched');
+end
+
+function testProjectvarRunsTheRenamedPathWhenTheCarryIsOff(testCase)
+% 'NoMigratorCarryClasses', {} restores the old path: universalRenames, then
+% the identity fallback; no carry note.
+v1 = projectvarWriterBody('pv_5', 'sess_V', 'note');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+    'NoMigratorCarryClasses', {});
+L = out.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_carried_no_migrator, 0);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 1);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'));
+end
+
+function testNoMigratorCarryTableHoldsTheSevenClasses(testCase)
+% The 7 classes of the 9 Jess answered for that have no conversion anywhere.
+% `ensemble` (NDI's second pass) and `generic_file` (foldGenericFiles) have
+% conversions and are not listed (did-schema docs/V2_PLAN.md #143 Q4).
+[names, rows] = did2.convert.noMigratorCarryRows();
+verifyEqual(testCase, sort(names), sort({'animalsubject', 'demoNDISeries', ...
+    'demoNDISeriesMixed', 'imageCollection', 'projectvar', ...
+    'stimulus_parameter_table', 'valid_interval'}));
+verifyEqual(testCase, numel(unique(rows)), numel(names), 'one row per class');
+verifyEqual(testCase, did2.convert.noMigratorCarryRows('projectvar'), '[carry-162]');
+verifyEqual(testCase, did2.convert.noMigratorCarryRows('ensemble'), '');
+verifyEqual(testCase, did2.convert.noMigratorCarryRows('generic_file'), '');
+verifyEmpty(testCase, intersect(names, did2.convert.rawV1Classes()), ...
+    'a class with a raw v1 migrator is not carried for want of one');
+end
+
 function tf = schemaHasClass(name)
 % whether the loaded V_eta schema set holds a class of this name
 tf = true;
