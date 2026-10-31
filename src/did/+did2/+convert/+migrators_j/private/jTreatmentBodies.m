@@ -50,11 +50,11 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %   its row when the formulation is built (not taken by jDoseValue as an
 %   amount), is an ingredient's concentration; when jSourceUnit does not know
 %   its unit (by name) as a concentration (Molar, molar, M), nothing is built
-%   and UNPLACED names the row. EXCEPT virus_injection's 'dilution': that is
-%   the migrator's own label for v1's unitless `dilution` number, not a unit
-%   the source spelled, and whether it is carry-155 or needs_info (the
-%   decision's "a source number with no unit") is a team question; it is
-%   written as before.
+%   and UNPLACED names the row. A virus injection's `dilution` is a number
+%   with NO unit, not a unit the table fails to know: jDoseBodies names its
+%   canonical in needs_info ([virus dilution needs info], Decided by Jess
+%   Haley, 2026-10-31, did-schema did_v2_go_forward_class_audit.md;
+%   docs/V2_PLAN.md G71), and it is not carried.
 %
 %   Options:
 %     'AlwaysDose'  route as a dose whatever the location, never noted as
@@ -234,9 +234,6 @@ for k = 1:numel(chemicals)
             spelling = strtrim(char(u.name));
         elseif ischar(u) || isstring(u)
             spelling = strtrim(char(u));
-            if strcmp(spelling, 'dilution')
-                continue;   % virus_injection's own label (header): as before
-            end
         end
     end
     if isempty(spelling)

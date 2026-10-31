@@ -14,7 +14,8 @@ function [v1, spec] = virus_injection(bodies)
 %     depends_on(1) subject_id         the manipulation's `entity_id`
 %     virus_OntologyName, virus_name   the first chemical's substance
 %     dilution                         the first ingredient's concentration
-%                                      source_value; 0 when it is NaN (SPEC)
+%                                      source_value; 0 when it states none
+%                                      (SPEC)
 %     diluent_OntologyName, diluent_name
 %                                      the second chemical's substance
 %     virusLocation_OntologyName, virusLocation_name
@@ -26,9 +27,11 @@ function [v1, spec] = virus_injection(bodies)
 %                                      source_value, in days ([age at
 %                                      injection is an observation])
 %
-%   SPEC.equivalents: `dilution` 0 when the ingredient's concentration is NaN
-%   -- "A dilution of 0 is treated as not recorded (NaN), not as a measured 0"
-%   (Jess Haley, 2026-10-21 [virus-location]); 0 is also the template's value.
+%   SPEC.equivalents: `dilution` 0 when the ingredient states no amount (named
+%   in needs_info, [canonical absent only as needs info], [formulation amount
+%   needs info]) -- "A dilution of 0 is treated as not recorded (NaN), not as
+%   a measured 0" (Jess Haley, 2026-10-21 [virus-location]); 0 is also the
+%   template's value.
 %
 %   The template's `files` block is empty as the writer leaves it, and so not
 %   set. (`virus_AdministrationPND` was not rebuilt before 2026-10-30.)
@@ -60,7 +63,7 @@ if ~isempty(rows)
         block.dilution = rows(1).value;
     else
         spec.equivalents(end+1) = struct('path', 'virus_injection.dilution', ...
-            'values', {{0}}, 'why', ['a dilution of 0 is not recorded: NaN ' ...
+            'values', {{0}}, 'why', ['a dilution of 0 is not recorded: no amount ' ...
             '([virus-location]); 0 is the template value']);
     end
 end

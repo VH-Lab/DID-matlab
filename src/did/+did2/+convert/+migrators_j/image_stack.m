@@ -497,13 +497,21 @@ function [anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass)
 %   acquisition time (`timestamp`, a MATLAB datenum on the clock `clocktype`)
 %   leaves the label it was written in ("acquisition timestamp (<clock>)"):
 %     * on a UTC clock (utc, approx_utc) it IS the observation's time
-%       reference on that clock: a relative_time_reference to the session on
-%       clock utc whose start is the datenum converted to seconds
-%       (start.seconds = days * 86400; start.source_value the datenum,
-%       start.source_unit day), as jTreatmentAnchor writes a global-clock
-%       datenum ([transfer onset]). approx_utc is clock utc with a 5 s
-%       clock_tolerance (NDI +ndi/+time/clocktype.m: "within 5 seconds"),
-%       as jEpochClockReferences and epochMint de-encode it.
+%       reference: an absolute_time_reference holding the UTC instant
+%       ([UTC acquisition time is absolute], Decided by Jess Haley,
+%       2026-10-31, did-schema did_v2_go_forward_class_audit.md;
+%       docs/V2_PLAN.md G65: "That should be an absolute time reference"):
+%       start.utc is the datenum read as a UTC date and time (ISO 8601, to
+%       the millisecond), start.source_value the datenum as v1 wrote it
+%       (%.17g, so the round trip reads back the same number). It was a
+%       relative_time_reference to the session, start = datenum x 86400 s,
+%       copied from jTreatmentAnchor's global-clock transfer time, until
+%       then. approx_utc is the same instant with a 5 s clock_tolerance
+%       (NDI +ndi/+time/clocktype.m: "within 5 seconds"), as
+%       jEpochClockReferences and epochMint de-encode it. A datenum no
+%       ISO-8601 instant can hold (before year 0000 or after 9999) cannot
+%       be converted either, and is written as on a clock that is not UTC
+%       (below), its needs_info reason saying so.
 %     * on any other clock the datenum cannot be converted without assuming
 %       UTC: the observation keeps its "during the session" anchor, on the
 %       stack's clock where V2 has that clock (dev_local_time,
@@ -535,11 +543,19 @@ if ~isempty(clk)
         clockOpts = [clockOpts, {'ClockTolerance', tol}];
     end
 end
+why = 'which is not a UTC clock: it cannot be converted without assuming UTC';
 if strcmp(clk, 'utc')
-    o = jOpts(src, clockOpts{:}, 'Start', ts * 86400, 'StartSourceValue', ts, ...
-        'StartSourceUnit', day, 'StartApproximate', false);
-    anchor = did2.build.relativeTimeReference(jSid(src), o{:});
-    return;
+    utc = utcInstant(ts);
+    if ~isempty(utc)
+        extra = {};
+        if tol > 0
+            extra = {'ClockTolerance', tol};
+        end
+        o = jOpts(src, 'SourceValue', sprintf('%.17g', ts), 'Approximate', false, extra{:});
+        anchor = did2.build.absoluteTimeReference(utc, o{:});
+        return;
+    end
+    why = 'which no ISO-8601 UTC instant can hold (a year outside 0000-9999)';
 end
 anchor = jSessionAnchor(src, 'during', clockOpts{:});
 conds = did2.build.composite('statement', 'conditions', struct( ...
@@ -553,10 +569,28 @@ else
 end
 needsInfo = struct('field', 'statement.conditions(1).quantity.value', ...
     'reason', sprintf(['v1 states the acquisition time as a MATLAB datenum %s, ' ...
-    'which is not a UTC clock: it cannot be converted without assuming UTC ' ...
-    '([acquisition time on its clock])'], onClock));
+    '%s ([acquisition time on its clock])'], onClock, why));
 did2.convert.reportNote('needs_info', noteClass, baseField(src, 'id', ''), ...
     needsInfo.field);
+end
+
+function utc = utcInstant(days)
+%UTCINSTANT The ISO-8601 UTC instant ('yyyy-MM-ddTHH:mm:ss.SSSZ') of a MATLAB
+%   datenum read on a UTC clock, rounded to the millisecond (the datenum
+%   itself is kept as start.source_value); '' when no such instant has a
+%   four-digit year (datenum 1 is 0000-01-01, 3652060 is 10000-01-01).
+utc = '';
+if ~(days >= 1 && days < 3652060)
+    return;
+end
+whole = floor(days);
+d = datetime(whole, 'ConvertFrom', 'datenum', 'TimeZone', 'UTC') ...
+    + milliseconds(round((days - whole) * 86400000));
+d.Format = 'yyyy-MM-dd''T''HH:mm:ss.SSS''Z''';
+utc = char(d);
+if isempty(regexp(utc, '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$', 'once'))
+    utc = '';
+end
 end
 
 function [clk, tol] = v2Clock(raw)

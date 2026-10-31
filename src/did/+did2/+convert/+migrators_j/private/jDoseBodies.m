@@ -41,18 +41,18 @@ function [docs, formulationId] = jDoseBodies(preBody, chemicals)
 %       source wrote it (the round trip restates it);
 %     - a number with any OTHER unit: jTreatmentBodies has already carried
 %       the document (carry-155: "A unit spelling the migrator does not
-%       recognise is carried for mapping, not written without a canonical"),
-%       except virus_injection's 'dilution', the migrator's own label for a
-%       unitless v1 number, which is written as before, {source_value,
-%       source_unit} with no canonical (a team question: carry-155 or
-%       needs_info; see jTreatmentBodies).
+%       recognise is carried for mapping, not written without a canonical").
+%       A virus injection's dilution is a number with NO unit (above):
+%       [virus dilution needs info] (Decided by Jess Haley, 2026-10-31,
+%       docs/V2_PLAN.md G71).
 %
-%   NOT BUILT: AN ALL-EMPTY FORMULATION. When NO ingredient states an amount,
-%   every entry would be empty, `value` blank, and the value rule
-%   (value_inline_or_body, data_body AMENDMENT 5, checked by did2.build)
-%   refuses the formulation. That is reported to the team, not worked around
-%   (PR body): such a formulation is written as before,
-%   `concentration.source_value` NaN on each entry, with no needs_info.
+%   AN ALL-EMPTY FORMULATION. When NO ingredient states an amount, every
+%   entry is empty and `value` is blank; each entry's missing amount is named
+%   in needs_info as above, and the value rule (value_inline_or_body) accepts
+%   a blank value that needs_info names: [formulation amount needs info]
+%   (Decided by Jess Haley, 2026-10-31, did-schema
+%   did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G67 (a)). The NaN this
+%   case wrote before is gone.
 %
 %   The formulation is what a DOSE names (`formulation_id`) and what an
 %   IMMERSION is valued by (`value_id`), so jTreatmentBodies uses it for both.
@@ -96,15 +96,6 @@ for k = 1:numel(chemicals)
             'the source lists this ingredient but states no amount'); %#ok<AGROW>
     end
     entries{k} = e;
-end
-if all(cellfun(@(e) isempty(fieldnames(e)), entries))
-    % NOT BUILT (header): an all-empty formulation value is refused by the
-    % value rule (value_inline_or_body), so the entries keep the
-    % pre-decision NaN and no needs_info is written.
-    for k = 1:numel(entries)
-        entries{k}.concentration = struct('source_value', NaN);
-    end
-    needsInfo = struct('field', {}, 'reason', {});
 end
 extra = {};
 if ~isempty(needsInfo)

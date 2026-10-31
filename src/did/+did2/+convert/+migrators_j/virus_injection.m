@@ -14,8 +14,13 @@ function v2Body = virus_injection(preBody)
 %
 %   The virus identity is the spine `subject_statement.variable` AND the
 %   formulation's first ingredient (a `chemical`); a non-zero dilution is that
-%   ingredient's concentration (`source_unit` "dilution"), and 0 is NaN; a
-%   named diluent is a second ingredient. Routing is jTreatmentRoute /
+%   ingredient's concentration `source_value`, a number with no unit, its
+%   canonical named in needs_info ([virus dilution needs info], Decided by
+%   Jess Haley, 2026-10-31, did-schema did_v2_go_forward_class_audit.md;
+%   docs/V2_PLAN.md G71); 0 is not recorded, so the ingredient has no amount
+%   and needs_info names it ([canonical absent only as needs info]; when no
+%   ingredient states an amount, [formulation amount needs info], 2026-10-31,
+%   G67); a named diluent is a second ingredient. Routing is jTreatmentRoute /
 %   jTreatmentBodies: bath -> immersion; a body site -> a dose whose amount is
 %   NaN in `volume.liters` (the template has no volume field) plus the site
 %   `term_observation` (Path S, D3); no location -> that dose, listed in the
@@ -34,7 +39,9 @@ function v2Body = virus_injection(preBody)
 %
 %     base.*, depends_on subject_id  -> as treatment.m
 %     virus_OntologyName, virus_name -> the variable and the first chemical
-%     dilution                 -> its concentration (0: NaN, [virus-location])
+%     dilution                 -> its concentration source_value, no unit,
+%                                 the canonical named in needs_info (0: no
+%                                 amount, named in needs_info, [virus-location])
 %     diluent_OntologyName, diluent_name -> the second chemical
 %     virusLocation_OntologyName, virusLocation_name -> the route and the
 %                                 site observation of a dose
@@ -76,9 +83,12 @@ dilutionUnit = '';
 if isfield(block, 'dilution') && isnumeric(block.dilution) && ~isempty(block.dilution) ...
         && double(block.dilution(1)) ~= 0
     % 0 is the template blank, not a measured dilution: left unrecorded, so
-    % jDoseBodies writes the ingredient's concentration as NaN.
+    % jDoseBodies writes the ingredient with no amount and names it in
+    % needs_info. Any other number is a ratio with NO unit: jDoseBodies keeps
+    % it as the concentration's source_value and names its canonical in
+    % needs_info ([virus dilution needs info], Jess Haley, 2026-10-31). No
+    % unit label is made up for it (it was 'dilution' before).
     dilution = double(block.dilution(1));
-    dilutionUnit = 'dilution';
 end
 chemicals = struct('substance', virusTerm, 'source_value', dilution, ...
     'source_unit', dilutionUnit);
