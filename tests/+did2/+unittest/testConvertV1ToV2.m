@@ -861,7 +861,11 @@ clean = makeV1Skeleton('treatment');
 clean.treatment = struct();
 % 'RawV1Classes', {}: `treatment` reads raw v1 since phase 2
 % (did2.convert.rawV1Classes); this test is about the universalRenames path.
-result = did2.convert.v1_to_v2({v1, clean}, 'Validate', false, 'RawV1Classes', {});
+% 'NoMigratorCarryClasses', {}: `projectvar` has no migrator and is carried
+% whole as v1 since [classes without a migrator carry as v1]
+% (did2.convert.noMigratorCarryRows), so it would not reach the pass either.
+result = did2.convert.v1_to_v2({v1, clean}, 'Validate', false, 'RawV1Classes', {}, ...
+    'NoMigratorCarryClasses', {});
 L = result.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_total, 2);
 verifyEqual(testCase, L.bodies_reaching_universal_renames, 2);
@@ -1231,7 +1235,10 @@ bodies{end+1} = clean;
 
 % 'RawV1Classes', {}: `treatment` reads raw v1 since phase 2
 % (did2.convert.rawV1Classes); this test is about the universalRenames path.
-result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'RawV1Classes', {});
+% 'NoMigratorCarryClasses', {}: the vintage bodies are `projectvar`, carried
+% whole as v1 since [classes without a migrator carry as v1].
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'RawV1Classes', {}, ...
+    'NoMigratorCarryClasses', {});
 L = result.summary.legacy_ndi_document;
 
 verifyEqual(testCase, L.bodies_total, 9);

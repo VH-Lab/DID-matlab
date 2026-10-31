@@ -248,7 +248,8 @@ end
 function result = batchOf(bodies)
 %BATCHOF Convert a mixed v1/V_eta body list into a `result` struct.
 %   V_eta-tagged bodies short-circuit to ensureClassBlocks + validate; the v1
-%   `valid_interval` goes through the identity migrator onto its tombstone,
+%   `valid_interval` is carried whole as v1 (it has no migrator: carry-164,
+%   [classes without a migrator carry as v1], did2.convert.noMigratorCarryRows),
 %   which is exactly the state the pass finds it in on the real path.
 result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
     'TargetVersion', 'V_eta');
