@@ -315,7 +315,7 @@ verifyEqual(testCase, char(chTo.text), 'mk1');      % v1 daqsystem_ch2, on sys_2
 verifyEmpty(testCase, entryNamed(entries, 'daqsystem ch1'));
 verifyEmpty(testCase, entryNamed(entries, 'daqsystem ch2'));
 verifyEmpty(testCase, entryNamed(entries, 'daqsystem1 name'));   % a name is an edge
-verifyEqual(testCase, char(cfg.get('clock_alignment_configuration.clock.name')), 'dev_local_time');
+did2.unittest.helpers.verifyClock(testCase, cfg.get('clock_alignment_configuration.clock'), 'dev_local_time');   % by node [clock terms get nodes]
 end
 
 

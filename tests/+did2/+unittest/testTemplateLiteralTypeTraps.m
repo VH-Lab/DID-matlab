@@ -375,8 +375,8 @@ s = obs.toStruct();
 verifyEqual(testCase, numel(s.base.needs_info), 1);
 verifyEqual(testCase, s.base.needs_info(1).field, 'statement.conditions(1).quantity.value');
 verifyTrue(testCase, contains(s.base.needs_info(1).reason, '''exp_global_time'''));
-verifyEqual(testCase, char(anchor.get('relative_time_reference.value.clock').name), ...
-    'exp_global_time');
+did2.unittest.helpers.verifyClock(testCase, anchor.get('relative_time_reference.value.clock'), ...
+    'exp_global_time');   % by node [clock terms get nodes]
 verifyEqual(testCase, char(anchor.get('relative_time_reference.value.relation').node), ...
     'time:intervalDuring');
 end
@@ -389,7 +389,7 @@ function testAUtcTimestampIsTheObservationsTimeReference(testCase)
 s = obs.toStruct();
 verifyFalse(testCase, isfield(s.statement, 'conditions') && ~isempty(s.statement.conditions));
 verifyFalse(testCase, isfield(s.base, 'needs_info') && ~isempty(s.base.needs_info));
-verifyEqual(testCase, char(anchor.get('relative_time_reference.value.clock').name), 'utc');
+did2.unittest.helpers.verifyClock(testCase, anchor.get('relative_time_reference.value.clock'), 'utc');   % by node [clock terms get nodes]
 st = anchor.get('relative_time_reference.value.start');
 verifyEqual(testCase, st.seconds, 739038.5 * 86400, 'AbsTol', 1e-3);
 verifyEqual(testCase, st.source_value, 739038.5);
@@ -401,7 +401,7 @@ end
 function testAnApproxUtcTimestampKeepsItsFiveSeconds(testCase)
 % approx_utc is clock utc within 5 s (NDI +ndi/+time/clocktype.m)
 [~, anchor] = builtStack(testCase, 739038.5, 'approx_utc');
-verifyEqual(testCase, char(anchor.get('relative_time_reference.value.clock').name), 'utc');
+did2.unittest.helpers.verifyClock(testCase, anchor.get('relative_time_reference.value.clock'), 'utc');   % by node [clock terms get nodes]
 verifyEqual(testCase, anchor.get('time_reference.clock_tolerance.seconds'), 5);
 verifyEqual(testCase, anchor.get('relative_time_reference.value.start').seconds, ...
     739038.5 * 86400, 'AbsTol', 1e-3);

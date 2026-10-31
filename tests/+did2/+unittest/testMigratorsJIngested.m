@@ -406,7 +406,7 @@ verifyEqual(testCase, depVal(ref, 'referent_id'), 'epoch_doc_1');
 %     each other. 0..10 becomes start 0 + duration 10.
 %   * `time_reference.is_approximate` is DEPRECATED (CHANGE 2) and this emitter
 %     no longer writes it at all.
-verifyEqual(testCase, ref.get('relative_time_reference.value.clock.name'), 'dev_local_time');
+did2.unittest.helpers.verifyClock(testCase, ref.get('relative_time_reference.value.clock'), 'dev_local_time');   % by node [clock terms get nodes]
 verifyEqual(testCase, ref.get('relative_time_reference.value.start.seconds'), 0);
 val = ref.get('relative_time_reference.value');
 verifyFalse(testCase, isfield(val, 'end'));
@@ -451,7 +451,10 @@ for k = 1:numel(refs)
     % pair is (anchor, EXTENT) rather than (start, end). The pairing this test
     % exists to protect -- t0_t1's column k belongs to epochclock{k} -- is
     % unchanged and is still what a wrong answer here would reveal.
-    byClock(v.clock.name) = [v.start.seconds, v.duration.seconds];
+    % keyed by the clock's v1 handle, read by node first ([clock terms get
+    % nodes]): the stored name becomes the term label
+    byClock(did2.build.vocabularyHandle('clock', v.clock)) = [v.start.seconds, v.duration.seconds];
+    did2.unittest.helpers.verifyClock(testCase, v.clock, did2.build.vocabularyHandle('clock', v.clock));
 end
 verifyEqual(testCase, byClock('dev_local_time'), [0 10]);
 verifyEqual(testCase, byClock('exp_global_time'), [100 10]);
@@ -499,7 +502,7 @@ out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time', 'no_time'}, t0t1), 'epoch_doc_1'));
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, refs{1}.get('relative_time_reference.value.clock.name'), 'dev_local_time');
+did2.unittest.helpers.verifyClock(testCase, refs{1}.get('relative_time_reference.value.clock'), 'dev_local_time');   % by node [clock terms get nodes]
 end
 
 function testApproxClockDeEncodesToAClockToleranceNotABoolean(testCase)
@@ -513,7 +516,7 @@ function testApproxClockDeEncodesToAClockToleranceNotABoolean(testCase)
 out = runJ(withEpochEdge(readerIngestedV1({'approx_utc'}, [0; 10]), 'epoch_doc_1'));
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, refs{1}.get('relative_time_reference.value.clock.name'), 'utc');
+did2.unittest.helpers.verifyClock(testCase, refs{1}.get('relative_time_reference.value.clock'), 'utc');   % by node [clock terms get nodes]
 verifyEqual(testCase, refs{1}.get('time_reference.clock_tolerance.seconds'), 5);
 % and the magnitude did NOT collapse back into a flag on either value cell
 val = refs{1}.get('relative_time_reference.value');
@@ -556,7 +559,7 @@ verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, refs{1}.get('relative_time_reference.value.clock.name'), 'dev_local_time');
+did2.unittest.helpers.verifyClock(testCase, refs{1}.get('relative_time_reference.value.clock'), 'dev_local_time');   % by node [clock terms get nodes]
 % the de-encode still happened
 src = docsOfClass(out, 'daqreader_epochdata_ingested');
 verifyEqual(testCase, ...

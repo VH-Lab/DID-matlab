@@ -159,7 +159,7 @@ verifyNotEqual(testCase, depValueOf(refs{1}, 'referent_id'), ...
 
 % the clock and the extent, carried from the v1 block
 v = refs{1}.get('relative_time_reference.value');
-verifyEqual(testCase, char(v.clock.name), 'dev_local_time');
+did2.unittest.helpers.verifyClock(testCase, v.clock, 'dev_local_time');   % by node [clock terms get nodes]
 verifyEqual(testCase, v.start.seconds, 0);
 % CHANGE 1 of the time model: the EXTENT is t1 - t0, not the raw t1.
 verifyEqual(testCase, v.duration.seconds, 452.709856, 'AbsTol', 1e-9);
