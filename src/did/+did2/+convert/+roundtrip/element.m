@@ -1,4 +1,4 @@
-function [v1, spec] = element(bodies)
+function [v1, spec] = element(bodies, ctx)
 %ELEMENT Rebuild a v1 `element` from what did2.convert.migrators_j.element
 %   emitted when it CONVERTED it: one `entity` (device, cell or group), its
 %   term assertions, and its relations.
@@ -79,10 +79,24 @@ function [v1, spec] = element(bodies)
 %   `subject_id`. A 'modality unresolved' assertion is a worklist label made
 %   from `type` and states nothing more; it is placed.
 %
+%   THE `observes` RELATION A BATCH PASS RETIRED. [V1, SPEC] =
+%   did2.convert.roundtrip.element(BODIES, CTX), in the whole-batch round trip
+%   (did2.convert.roundtrip.wholeBatch; [whole-batch round trip], Jess Haley,
+%   2026-10-27): did2.convert.resolveEpochProbemap retires a probe's loose
+%   `observes` relation once a recording observation carries the same
+%   (instrument, specimen) pair as its `instrument_id` / `entity_id` edges
+%   (`observes_retired`; [epoch files as data bodies], Jess Haley,
+%   2026-10-21). When BODIES holds no lineage relation, the observations in
+%   CTX (the index of the final batch) whose `instrument_id` is this entity
+%   are read: one specimen among them is `subject_id`, with `direct` true, as
+%   the retired relation stated. Several specimens are reported, not chosen.
+%   They are read, never placed.
+%
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.element.
 
 arguments
     bodies cell
+    ctx = []
 end
 
 spec = emptySpec();
@@ -170,6 +184,25 @@ end
 for k = find(~used)
     spec.unplaced{end+1} = sprintf('emitted document %d (%s) has no role in an element', ...
         k, classNameOf(bodies{k}));
+end
+% the `observes` relation resolveEpochProbemap retired: read from the
+% observations that carry its pair (see THE `observes` RELATION above)
+if isempty(subject) && isempty(underlying) && isempty(direct) && ~isempty(ctx)
+    specimens = {};
+    for k = ctxReferrers(ctx, base.id)
+        b = ctx.docs{k};
+        if strcmp(classNameOf(b), 'observation') && isequal(edgeIds(b, 'instrument_id'), {base.id})
+            specimens = [specimens, edgeIds(b, 'entity_id')]; %#ok<AGROW>
+        end
+    end
+    specimens = unique(specimens);
+    if isscalar(specimens)
+        subject = specimens{1};
+        direct = true;
+    elseif numel(specimens) > 1
+        spec.unplaced{end+1} = sprintf(['the observations this element is the ' ...
+            'instrument of name %d specimens (a v1 element has one subject)'], numel(specimens));
+    end
 end
 % no 'element type' assertion: the type is the one its device kind names
 if ~hasType && isscalar(kindNodes)
