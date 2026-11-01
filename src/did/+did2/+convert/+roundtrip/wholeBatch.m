@@ -29,6 +29,17 @@ function report = wholeBatch(v1Bodies, result)
 %   pass has no inverse yet (Build pending: an inverse for each batch pass). A
 %   class with no inverse is counted NO INVERSE. Nothing is guessed.
 %
+%   AN INVERSE FOR A BATCH PASS. A class listed in BATCH_PASS_INVERSES (below)
+%   has an inverse that reads, from CTX, what a batch pass did to its
+%   documents; such a source is compared on the documents of its that remain,
+%   counted in sources_compared and also in sources_compared_after_batch_pass
+%   (by class: compared_after_batch_pass_by_class). Its failures are counted
+%   like any other. Today: `element`, whose `observes` relation
+%   did2.convert.resolveEpochProbemap retires once a recording observation
+%   carries the same pair (did2.convert.roundtrip.element reads it there).
+%   Test code run 41322059537 counted element CHANGED BY A BATCH PASS in B
+%   (143) and Dab (547).
+%
 %   STORED AS ITS v1 SOURCE. A source pass 1 passed through unchanged is in
 %   RESULT.passthrough with the body pass 1 emitted for it. When the final
 %   document of its id is still IDENTICAL to that body (isequaln of the two
@@ -75,6 +86,10 @@ function report = wholeBatch(v1Bodies, result)
 %     sources_stored_as_v1, stored_as_v1_by_class   of the compared, the
 %                              passthroughs still unchanged at the end, so
 %                              stored as their v1 source (see above)
+%     sources_compared_after_batch_pass, compared_after_batch_pass_by_class
+%                              of the compared, those some of whose documents
+%                              a batch pass removed, read by an inverse for
+%                              that pass (BATCH_PASS_INVERSES)
 %     sources_changed_by_batch_pass, changed_by_class
 %     sources_no_inverse, no_inverse_by_class
 %     unattributed_documents   final documents no source became (minted by a
@@ -126,6 +141,7 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
     'ids_released', 0, 'ids_released_by_class', struct(), 'sources_without_id', 0, ...
     'sources_compared', 0, 'sources_ok', 0, ...
     'sources_stored_as_v1', 0, 'stored_as_v1_by_class', struct(), ...
+    'sources_compared_after_batch_pass', 0, 'compared_after_batch_pass_by_class', struct(), ...
     'sources_changed_by_batch_pass', 0, 'changed_by_class', struct(), ...
     'sources_no_inverse', 0, 'no_inverse_by_class', struct(), ...
     'unattributed_documents', 0, 'failures_total', 0, 'failures_by_class', struct(), ...
@@ -141,6 +157,12 @@ for r = 1:numel(rows)
     v1 = bodies{row.input_index};
     cls = row.class_name;
     if isempty(cls); cls = v1ClassName(v1); end
+    if isempty(row.id)
+        % v1_to_v2 records a source's id and class only when it migrates; a
+        % source it deferred (quarantine) has neither, so read them from the
+        % v1 body (a later pass may have put a document under that id)
+        row.id = v1Id(v1);
+    end
     if ~row.done
         report.sources_quarantined = report.sources_quarantined + 1;
         if isempty(row.id) || ~any(strcmp(finalIds, row.id))
@@ -169,15 +191,19 @@ for r = 1:numel(rows)
     if ischar(outs); outs = {outs}; end
     [present, where] = ismember(outs, finalIds);
     attributed(where(present)) = true;
+    afterPass = false;
     if ~all(present)
-        report.sources_changed_by_batch_pass = report.sources_changed_by_batch_pass + 1;
-        report.changed_by_class = bump(report.changed_by_class, cls);
-        continue;
+        if ~any(strcmp(cls, BATCH_PASS_INVERSES())) || ~any(present)
+            report.sources_changed_by_batch_pass = report.sources_changed_by_batch_pass + 1;
+            report.changed_by_class = bump(report.changed_by_class, cls);
+            continue;
+        end
+        afterPass = true;   % compared on what remains (AN INVERSE FOR A BATCH PASS)
     end
     if isempty(outs)
         continue;   % a source that became nothing (its migrator wrote none)
     end
-    docs = finalBodies(where);
+    docs = finalBodies(where(present));
     storedAsV1 = false;
     if isscalar(outs) && isKey(passBody, outs{1})
         rec = passBody(outs{1});
@@ -200,6 +226,10 @@ for r = 1:numel(rows)
         rethrow(err);
     end
     report.sources_compared = report.sources_compared + 1;
+    if afterPass
+        report.sources_compared_after_batch_pass = report.sources_compared_after_batch_pass + 1;
+        report.compared_after_batch_pass_by_class = bump(report.compared_after_batch_pass_by_class, cls);
+    end
     if storedAsV1
         report.sources_stored_as_v1 = report.sources_stored_as_v1 + 1;
         report.stored_as_v1_by_class = bump(report.stored_as_v1_by_class, cls);
@@ -229,6 +259,15 @@ end
 
 % ===================== helpers =========================================
 
+function id = v1Id(v1)
+% the base.id a v1 body states ('' when none)
+id = '';
+if isstruct(v1) && isfield(v1, 'base') && isstruct(v1.base) && isfield(v1.base, 'id') ...
+        && (ischar(v1.base.id) || (isstring(v1.base.id) && isscalar(v1.base.id)))
+    id = char(v1.base.id);
+end
+end
+
 function c = v1ClassName(v1)
 % the class a v1 body names ('<unknown>' when it names none)
 c = '<unknown>';
@@ -236,6 +275,12 @@ if isstruct(v1) && isfield(v1, 'document_class') && isstruct(v1.document_class) 
         && isfield(v1.document_class, 'class_name') && ~isempty(v1.document_class.class_name)
     c = char(v1.document_class.class_name);
 end
+end
+
+function c = BATCH_PASS_INVERSES()
+% the classes whose inverse reads, from the whole batch, what a batch pass did
+% to their documents (AN INVERSE FOR A BATCH PASS, above)
+c = {'element'};   % resolveEpochProbemap retires `observes`; roundtrip.element
 end
 
 function c = RELEASED_ID_CLASSES()

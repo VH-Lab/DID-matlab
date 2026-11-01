@@ -82,12 +82,18 @@ function testASourceALaterPassResolvedIsIdCheckedAndCompared(testCase)
 % final document holds stays quarantined.
 [bodies, result] = cleanBatch();
 k = find(strcmp({result.source_outputs.id}, 'wb_subj_1'));
-result.source_outputs(k).done = false;          % as pass 1 leaves a deferred source
+% as pass 1 leaves a deferred source: not done, and neither its id nor its
+% class recorded (v1_to_v2 records them only when the body migrates)
+result.source_outputs(k).done = false;
+result.source_outputs(k).id = '';
+result.source_outputs(k).class_name = '';
 result.source_outputs(k).output_ids = {};
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyEqual(testCase, r.sources_quarantined, 1);
 verifyEqual(testCase, r.sources_resolved_by_batch_pass, 1);
 verifyEqual(testCase, r.sources_still_quarantined, 0);
+verifyTrue(testCase, isfield(r.resolved_by_batch_pass_by_class, 'subject'), ...
+    'its class is read from the v1 body');
 verifyEqual(testCase, r.ids_kept, 3);
 verifyEqual(testCase, r.sources_compared, 3);
 verifyEqual(testCase, r.sources_ok, 3, describe(r));
@@ -243,6 +249,43 @@ r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyFalse(testCase, isfield(r.changed_by_class, 'epochfiles_ingested'), describe(r));
 verifyFalse(testCase, isfield(r.no_inverse_by_class, 'epochfiles_ingested'), describe(r));
 verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
+end
+
+function testAProbeWhoseObservesRelationWasRetiredIsComparedAfterThePass(testCase)
+% resolveEpochProbemap retires the probe's `observes` relation once a recording
+% observation carries the same (instrument, specimen) pair; the element's
+% inverse reads the specimen there, so the probe is compared (not counted
+% CHANGED BY A BATCH PASS) and its subject_id is not lost
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = '41268b6f5c6a3d4e_00000000000000b3';
+bodies = {sessionV1('wb_sess_doc_o', sid), subjectV1('wb_spec_o', sid, 'L'), ...
+    elementV1('wb_probe_o', sid, 'p', 1, 'n-trode', 'wb_spec_o'), ...
+    daqsystemV1('wb_daq_o', sid, 'intan1', 'wb_nav_o'), ...
+    manifestV1('wb_efi_o', sid, 't0001', 'wb_nav_o', ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'p\t1\tn-trode\tintan1:ai27-28,45;di0-2\tL\n']))};
+% the probe's edges as ndi.element/newdocument writes them: underlying_element_id
+% (empty for a probe) then subject_id
+bodies{3}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+    'value', {'', 'wb_spec_o'});
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'V_eta');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
+    'premise: the pass retired the probe''s observes relation');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyFalse(testCase, isfield(r.changed_by_class, 'element'), describe(r));
+verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, 'element'), describe(r));
+for k = 1:numel(r.failures)
+    if strcmp(r.failures(k).source_id, 'wb_probe_o')
+        verifyFalse(testCase, any(startsWith(r.failures(k).lost, 'depends_on')), describe(r));
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.direct')), describe(r));
+    end
+end
 end
 
 function testAnOpenmindsSubjectRoundTripsWithTheSpeciesTextAccepted(testCase)
