@@ -275,11 +275,11 @@ verifyMappingCarried(testCase, v1, strrep(tsv, '0.9', 'high'), '[carry-120] mapp
 % [gene list mapping other types carried]
 bad = v1;
 bad.geneListMapping.mapping_type = 'paralog';
-verifyMappingCarried(testCase, bad, tsv, 'geneListMapping.mapping_type');
+verifyMappingCarried(testCase, bad, tsv, '[carry-166] geneListMapping.mapping_type');
 % a mapping.tsv this run cannot read (no reader; its location is not here)
 [carried, notes] = mappingCarry(v1, []);
 verifyTrue(testCase, carried);
-verifyTrue(testCase, contains(notes, 'files mapping.tsv'), notes);
+verifyTrue(testCase, contains(notes, '[carry-167] files mapping.tsv'), notes);
 end
 
 function tf = schemaDeclaresIndex()
