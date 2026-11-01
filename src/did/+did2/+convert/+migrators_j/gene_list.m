@@ -122,11 +122,25 @@ if ~isfield(body, 'files') || ~isstruct(body.files) || ~isscalar(body.files)
 end
 names = {};
 if isfield(body.files, 'file_list')
-    names = cellstr(body.files.file_list);
+    names = textList(body.files.file_list);
 end
 if isfield(body.files, 'file_info') && isstruct(body.files.file_info) ...
         && isfield(body.files.file_info, 'name')
-    names = [names, cellstr({body.files.file_info.name})];
+    names = [names, textList({body.files.file_info.name})];
 end
 tf = any(strcmp(names, name));
+end
+
+function c = textList(v)
+% V as a row cellstr of its text entries; an empty list (jsondecode gives [])
+% or a non-text entry names no file
+c = {};
+if ischar(v) || isstring(v)
+    v = cellstr(v);
+end
+if iscell(v)
+    keep = cellfun(@(x) ischar(x) || (isstring(x) && isscalar(x)), v);
+    c = cellfun(@char, v(keep), 'UniformOutput', false);
+    c = c(:)';
+end
 end
