@@ -188,6 +188,39 @@ verifyFalse(testCase, isfield(r.no_inverse_by_class, 'epochfiles_ingested'), des
 verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
 end
 
+function testAProbeWhoseObservesRelationWasRetiredIsComparedAfterThePass(testCase)
+% resolveEpochProbemap retires the probe's `observes` relation once a recording
+% observation carries the same (instrument, specimen) pair; the element's
+% inverse reads the specimen there, so the probe is compared (not counted
+% CHANGED BY A BATCH PASS) and its subject_id is not lost
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = '41268b6f5c6a3d4e_00000000000000b3';
+bodies = {sessionV1('wb_sess_doc_o', sid), subjectV1('wb_spec_o', sid, 'L'), ...
+    elementV1('wb_probe_o', sid, 'p', 1, 'n-trode', 'wb_spec_o'), ...
+    daqsystemV1('wb_daq_o', sid, 'intan1', 'wb_nav_o'), ...
+    manifestV1('wb_efi_o', sid, 't0001', 'wb_nav_o', ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'p\t1\tn-trode\tintan1:ai27-28,45;di0-2\tL\n']))};
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'V_eta');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
+    'premise: the pass retired the probe''s observes relation');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyFalse(testCase, isfield(r.changed_by_class, 'element'), describe(r));
+verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, 'element'), describe(r));
+for k = 1:numel(r.failures)
+    if strcmp(r.failures(k).source_id, 'wb_probe_o')
+        verifyFalse(testCase, any(startsWith(r.failures(k).lost, 'depends_on')), describe(r));
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.direct')), describe(r));
+    end
+end
+end
+
 function testAnOpenmindsSubjectRoundTripsWithTheSpeciesTextAccepted(testCase)
 % INVERTED 2026-10-29 from testAnOpenmindsSubjectRoundTrips, which asserted the
 % species' definition and synonym were LOST. Decided by Jess Haley, 2026-10-29
