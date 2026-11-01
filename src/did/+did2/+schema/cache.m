@@ -1314,14 +1314,16 @@ classdef cache < handle
             % concrete leaf's block are validated there against their
             % declaring class's field definition.
             info = obj.resolvePlacementFor(className, kind);
-            % [missing facts are needs info] (Jess Haley, 2026-10-29,
-            % did-schema V_eta_go_forward_class_audit.md): a required field
-            % may be absent only when base.needs_info names it, and an entry
-            % must name a fact the document does not give.
-            [excused, needsInfoProblems] = did2.schema.needsInfoFields(s);
-            if ~isempty(needsInfoProblems)
-                error('did2:validation:badNeedsInfo', '%s.', ...
-                    strjoin(needsInfoProblems, '; '));
+            % [gap accepted when the report lists it] (Jess Haley,
+            % 2026-11-01, did-schema did_v2_go_forward_class_audit.md): a
+            % required field may be absent only when the migration run's
+            % report lists it for this document (did2.convert.migrationReport;
+            % [migration record] dropped base.needs_info), and a gap must name
+            % a fact the document does not give.
+            [excused, gapProblems] = did2.schema.reportedGaps(s);
+            if ~isempty(gapProblems)
+                error('did2:validation:badGap', '%s.', ...
+                    strjoin(gapProblems, '; '));
             end
             for k = 1:numel(info.blocksContributed)
                 blockClass = info.blocksContributed{k};
@@ -2730,22 +2732,24 @@ classdef cache < handle
             %   by Jess Haley, 2026-10-30, did-schema
             %   V_eta_go_forward_class_audit.md: "every quantity holds
             %   exactly one canonical value; it may be absent only when the
-            %   document's `needs_info` names it"). Built here for the part
+            %   document's `needs_info` names it"; since [gap accepted when the
+            %   report lists it], 2026-11-01, the run's migration report lists
+            %   it instead). Built here for the part
             %   no document DID-matlab's migrators write today would fail
             %   (missingCanonical): a cell of a value class with a
             %   `source_unit` and ONE canonical slot (quantity_list_meta.json
             %   `canonicals`: the slots other than source_unit, source_value,
             %   approximate and tolerance) that states a unit and a finite
             %   source_value but no canonical is refused, unless EXCUSED (the
-            %   paths the document's base.needs_info names) names a field
+            %   paths the migration report lists as gaps) names a field
             %   under the cell (its canonical). An entry naming the cell
             %   itself never gets here: the cell is given, and
-            %   did2.schema.needsInfoFields refuses an entry for a field the
-            %   document gives (badNeedsInfo, [missing facts are needs
+            %   did2.schema.reportedGaps refuses a gap for a field the
+            %   document gives (badGap, [missing facts are needs
             %   info]). A canonical holding NaN is present here.
             %   NOT CHECKED HERE, each because a writer of today would fail:
             %     - a cell with NO unit (a source number with no unit; the
-            %       decision wants needs_info, but neuron_extracellular's
+            %       decision wants a gap, but neuron_extracellular's
             %       mean waveform, jMeasurementFold and a probe_geometry
             %       with no unit write source_value alone);
             %     - a cell of several canonicals (concentration, score):
@@ -2853,7 +2857,7 @@ classdef cache < handle
             % missingCanonical - raise did2:validation:quantityShape when the
             %   value cell EL (of a class whose fields are NAMES) states a
             %   unit and a finite source_value but leaves its one canonical
-            %   slot empty, and the document's needs_info (EXCUSED) names
+            %   slot empty, and the migration report's gaps (EXCUSED) name
             %   neither the cell nor a field under it ([canonical absent only
             %   as needs info], Decided by Jess Haley, 2026-10-30; the scope
             %   is in validateQuantityCells' header).
@@ -2888,7 +2892,7 @@ classdef cache < handle
             if isfield(el, canon{1}) && ~isempty(el.(canon{1}))
                 return;   % the canonical is there (NaN included)
             end
-            % needs_info paths write (k) after a struct-array field even for
+            % gap paths write (k) after a struct-array field even for
             % one element; this path does not, so (1) is read as no index
             norm = @(p) regexprep(char(p), '\(1\)', '');
             here = norm(elPath);
@@ -2901,8 +2905,8 @@ classdef cache < handle
             error('did2:validation:quantityShape', ...
                 ['"%s" is a %s value cell stating a source_value and a ' ...
                  'source_unit but no canonical "%s". A quantity''s ' ...
-                 'canonical may be absent only when the document''s ' ...
-                 'needs_info names it ([canonical absent only as needs ' ...
+                 'canonical may be absent only when the run''s ' ...
+                 'migration report lists it ([canonical absent only as needs ' ...
                  'info], Jess Haley, 2026-10-30).'], ...
                 elPath, typeName, canon{1});
         end
@@ -3164,9 +3168,9 @@ classdef cache < handle
             %   constraints for one field against the property block.
             %   Skips absent fields unless the schema marks them
             %   mustBeNonEmpty. EXCUSED (default {}) lists the
-            %   '<block>.<field>' paths the document's base.needs_info
-            %   names: such a field may be absent or empty
-            %   ([missing facts are needs info]).
+            %   '<block>.<field>' paths the migration report lists as gaps
+            %   of the document: such a field may be absent or empty
+            %   ([gap accepted when the report lists it]).
             if nargin < 6
                 excused = {};
             end
@@ -3322,10 +3326,10 @@ classdef cache < handle
                     || obj.isVacuousValue(value)
                 % [formulation amount needs info] (Jess Haley, 2026-10-31,
                 % did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md
-                % G67 (a)): a blank value that needs_info names -- the value
+                % G67 (a)): a blank value the migration report lists as a gap -- the value
                 % or a field within it, <block>.value... -- is not nowhere:
                 % the source never stated it.
-                tf = ~did2.schema.needsInfoNamesValue(s);
+                tf = ~did2.schema.reportedGapNamesValue(s);
             end
         end
 

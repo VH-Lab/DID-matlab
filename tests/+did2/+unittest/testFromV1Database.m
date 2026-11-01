@@ -61,7 +61,10 @@ verifyFalse(testCase, isfile([testCase.TestData.dstPath '.quarantine.json']));
 
 db = did2.database.sqlitedb(testCase.TestData.dstPath);
 cleanup = onCleanup(@() db.close()); %#ok<NASGU>
-verifyEqual(testCase, db.count(), 3);
+% the 3 migrated documents, the run's `migration` document and its report
+% ([migration record writer], Jess Haley, 2026-11-01: a DID-only run writes
+% its own record)
+verifyEqual(testCase, db.count(), 3 + 2);
 end
 
 % ---- dumbjsondb -> v2 ----
@@ -83,7 +86,50 @@ verifyEqual(testCase, result.summary.quarantine_count, 0);
 
 db = did2.database.sqlitedb(testCase.TestData.dstPath);
 cleanup = onCleanup(@() db.close()); %#ok<NASGU>
-verifyEqual(testCase, db.count(), 2);
+verifyEqual(testCase, db.count(), 2 + 2);   % + the migration record
+end
+
+% ---- the migration record ----
+
+function testTheRunWritesOneMigrationRecordWithItsReport(testCase)
+% [migration record], [migration report is an attached file], [migration
+% method is conversion], [migration record points at the dataset] and
+% [migration record writer] (Decided by Jess Haley, 2026-11-01, did-schema
+% did_v2_go_forward_class_audit.md): one `migration` document per run, its
+% method the conversion with the tool and its commit, its report a JSON file
+% attached as an opaque_body; with no dataset in the run, it points at the
+% session.
+b1 = jsonencode(makeV1Body('demo_alpha', 'alpha'));
+b2 = jsonencode(makeV1Body('demo_beta', 'beta'));
+buildV1Sqlite(testCase.TestData.srcSqlite, {b1, b2});
+result = did2.convert.fromV1Database(testCase.TestData.srcSqlite, ...
+    testCase.TestData.dstPath, 'Validate', false);
+rec = result.migration_record;
+verifyNotEmpty(testCase, rec.migration_id);
+verifyEqual(testCase, rec.report.counts.documents, 2);
+verifyEqual(testCase, rec.report.counts.source_documents, 2);
+verifyEqual(testCase, rec.report.counts.quarantined, 0);
+db = did2.database.sqlitedb(testCase.TestData.dstPath);
+cleanup = onCleanup(@() db.close()); %#ok<NASGU>
+m = db.get(rec.migration_id);
+verifyEqual(testCase, m.className(), 'migration');
+method = m.get('migration.method');
+verifyEqual(testCase, char(method.term.node), 'EDAM:operation_3434');
+names = arrayfun(@(p) char(p.variable.name), method.parameters, 'UniformOutput', false);
+verifyEqual(testCase, names, {'software', 'version number', 'source format', 'target format'});
+verifyEqual(testCase, char(method.parameters(1).text), 'DID-matlab');
+verifyEqual(testCase, char(method.parameters(3).text), 'did_v1');
+verifyEqual(testCase, char(method.parameters(4).text), 'did_v2');
+ms = m.toStruct();
+sid = ms.depends_on(strcmp({ms.depends_on.name}, 'session_id')).document_id;
+verifyEqual(testCase, char(sid), 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'no dataset in the run: the record points at the session');
+body = db.get(rec.report_id);
+verifyEqual(testCase, body.className(), 'opaque_body');
+verifyEqual(testCase, char(body.get('data_body.format').node), 'EDAM:format_3464');
+report = jsondecode(fileread(db.filePath(rec.report_id, 'body_data_0')));
+verifyTrue(testCase, all(isfield(report, {'gaps', 'carried_as_v1', 'counts'})));
+verifyEqual(testCase, report.counts.documents, 2);
 end
 
 % ---- quarantine ----
@@ -146,7 +192,7 @@ verifyEqual(testCase, result.summary.migrated_count, 1);
 
 db = did2.database.sqlitedb(testCase.TestData.dstPath);
 cleanup = onCleanup(@() db.close()); %#ok<NASGU>
-verifyEqual(testCase, db.count(), 1);
+verifyEqual(testCase, db.count(), 1 + 2);   % + the migration record
 end
 
 % ---- bad source ----

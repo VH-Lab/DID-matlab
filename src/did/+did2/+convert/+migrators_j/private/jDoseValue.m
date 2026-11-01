@@ -1,4 +1,4 @@
-function [value, chemicals, conflicts, ingredientRows, placeholders, needsInfo] = jDoseValue(chemicals)
+function [value, chemicals, conflicts, ingredientRows, placeholders, gaps] = jDoseValue(chemicals)
 %JDOSEVALUE A migrated dose's `value`: the amount the source gave, else NaN.
 %
 %   [VALUE, CHEMICALS] = jDoseValue(CHEMICALS). CHEMICALS is the struct array
@@ -35,8 +35,8 @@ function [value, chemicals, conflicts, ingredientRows, placeholders, needsInfo] 
 %   lists the CHEMICALS rows those entries describe, in order -- the caller
 %   adds one `ingredient_id` edge per row to that row's chemical
 %   (rule ingredients_match_edges). The top level then states the whole
-%   formulation's amount; unrecorded, it is LEFT OUT and named in NEEDSINFO
-%   (a {field, reason} struct array for the dose's base.needs_info):
+%   formulation's amount; unrecorded, it is LEFT OUT and named in GAPS
+%   (a {field, reason} struct array for the migration report's gaps of the dose):
 %   'dose.value.volume' ([canonical absent only as needs info], Decided by
 %   Jess Haley, 2026-10-30, did-schema V_eta_go_forward_class_audit.md: "an
 %   amount the source never states ... is left out ... rather than written
@@ -67,7 +67,7 @@ function [value, chemicals, conflicts, ingredientRows, placeholders, needsInfo] 
 %   survives a did2 write and read is DID-matlab
 %   #218's work (testSqliteDbNonFinite); this function only writes it.
 
-needsInfo = struct('field', {}, 'reason', {});
+gaps = struct('field', {}, 'reason', {});
 hits = [];
 slots = {};
 kindOnly = [];          % rows stating an amount UNIT but no number
@@ -182,9 +182,9 @@ if ~isempty(hits) || ~isempty(ingredientRows)
     elseif isempty(fieldnames(v)) && ~isempty(ingredientRows)
         % only per-ingredient amounts: the whole formulation's amount is
         % unrecorded. [canonical absent only as needs info] (Decided by Jess
-        % Haley, 2026-10-30): left out and named in needs_info, not
+        % Haley, 2026-10-30): left out and listed as a gap, not
         % `volume.liters = NaN`; `value` still states the ingredients
-        needsInfo(end+1) = struct('field', 'dose.value.volume', 'reason', ...
+        gaps(end+1) = struct('field', 'dose.value.volume', 'reason', ...
             ['the source states each ingredient''s amount but not the amount ' ...
              'of the whole formulation given']);
     elseif isempty(fieldnames(v))

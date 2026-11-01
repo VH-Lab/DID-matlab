@@ -64,8 +64,9 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %     'Edges'             any other declared edge (see did2.build.document)
 %   Document:
 %     'SessionId' (required), 'Id', 'CreationTimestamp', 'Files', 'Validate',
-%     'SchemaCache', 'NeedsInfo' -- as did2.build.document ('NeedsInfo': the
-%     facts the source never stated, [missing facts are needs info]).
+%     'SchemaCache', 'Gaps' -- as did2.build.document ('Gaps': the facts the
+%     source never stated, listed in the run's migration report, [gap
+%     accepted when the report lists it]).
 %
 %   Example:
 %     doc = did2.build.statement('observation', subjectId, 'voltage', ...
@@ -111,7 +112,7 @@ arguments
     options.Validate (1,1) logical = true
     options.SchemaCache = []
     options.ValueKind (1,:) char = ''
-    options.NeedsInfo = struct('field', {}, 'reason', {})
+    options.Gaps = struct('field', {}, 'reason', {})
 end
 
 fields = struct();
