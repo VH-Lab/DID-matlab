@@ -79,10 +79,10 @@ for k = 1:numel(chemicals)
         conc = struct('source_value', double(c.source_value(1)));
         if isfield(c, 'source_unit') && isstruct(c.source_unit) && ~isempty(c.source_unit)
             conc.source_unit = c.source_unit;          % already a term (jMixtureTable)
-            conc = withMolar(conc, c.source_unit);
+            conc = withCanonical(conc, c.source_unit);
         elseif isfield(c, 'source_unit') && ~isempty(c.source_unit)
             conc.source_unit = jSourceUnit(c.source_unit);
-            conc = withMolar(conc, c.source_unit);
+            conc = withCanonical(conc, c.source_unit);
         else
             % a number with no unit: no canonical can be computed
             needsInfo(end+1) = struct('field', [path '.canonical'], 'reason', ...
@@ -113,9 +113,11 @@ for k = 1:numel(needsInfo)
 end
 end
 
-function conc = withMolar(conc, unit)
-%WITHMOLAR The canonical `molar` of a concentration whose unit jSourceUnit
-%   knows as a concentration ([canonical absent only as needs info], Jess
+function conc = withCanonical(conc, unit)
+%WITHCANONICAL The canonical value of a concentration whose unit jSourceUnit
+%   knows as a concentration, in the slot its row names (`molar`, or
+%   `liters_per_liter` for percent volume per volume)
+%   ([canonical absent only as needs info], Jess
 %   Haley, 2026-10-30; carry-155 resolved by a unit-table row). UNIT is the
 %   source's spelling or a term {node, name}; a term is read by its name.
 %   Any other unit leaves CONC as it is.
@@ -125,8 +127,10 @@ if isstruct(unit) && isfield(unit, 'name')
 elseif ischar(unit) || isstring(unit)
     spelling = strtrim(char(unit));
 end
-[~, factor, kind] = jSourceUnit(spelling);
-if strcmp(kind, 'concentration') && ~isempty(factor)
-    conc.molar = conc.source_value * factor;
+[~, factor, kind, slot] = jSourceUnit(spelling);
+if strcmp(kind, 'concentration') && ~isempty(factor) && ~isempty(slot)
+    % the slot the unit table names: molar, or liters_per_liter for percent
+    % volume per volume ([percent volume per volume converted], 2026-11-01)
+    conc.(slot) = conc.source_value * factor;
 end
 end

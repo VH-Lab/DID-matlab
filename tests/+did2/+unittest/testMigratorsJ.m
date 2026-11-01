@@ -1241,6 +1241,38 @@ for c = 1:size(cases, 1)
 end
 end
 
+function testPercentVolumePerVolumeFillsLitersPerLiter(testCase)
+% [percent volume per volume converted] (Decided by Jess Haley, 2026-11-01,
+% did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G72): Babu's
+% 'Percent Volume per Volume' (NCIT:C48571) is converted "x0.01 to
+% concentration.liters_per_liter". The unit table names the row's slot, so
+% `molar` is not written; the document is not carried and the formulation
+% names no needs_info for it.
+locs = {'NCIm:C0179246', 'bath'; 'uberon:0002436', 'primary visual cortex'};
+for L = 1:size(locs, 1)
+    label = sprintf('10 %%v/v at %s', locs{L, 2});
+    v1 = treatmentDrugDoc('td_pct_vv', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+        'CHEBI:15837,isoamylol,10,NCIT:C48571,Percent Volume per Volume']), ...
+        locs{L, 1}, locs{L, 2});
+    out = runJ(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    verifyFalse(testCase, isfield(out.summary, 'migration_notes') ...
+        && isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+        [label ': a known concentration unit does not carry']);
+    form = firstOfClassJ(out.migrated, 'formulation');
+    assertNotEmpty(testCase, form, label);
+    conc = form.get('formulation.value').ingredients(1).concentration;
+    verifyEqual(testCase, conc.source_value, 10, label);
+    verifyTrue(testCase, isfield(conc, 'liters_per_liter'), [label ': liters_per_liter filled']);
+    if isfield(conc, 'liters_per_liter')
+        verifyEqual(testCase, conc.liters_per_liter, 0.1, 'AbsTol', 1e-15, label);
+    end
+    verifyFalse(testCase, isfield(conc, 'molar') && ~isempty(conc.molar) && conc.molar ~= 0, ...
+        [label ': no molar canonical']);
+    verifyEqual(testCase, char(conc.source_unit.node), 'NCIT:C48571', label);
+end
+end
+
 function testAnUnknownConcentrationUnitIsCarried(testCase)
 % carry-155 ([canonical absent only as needs info], Decided by Jess Haley,
 % 2026-10-30): "A unit spelling the migrator does not recognise is carried for

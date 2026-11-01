@@ -107,7 +107,11 @@ if isstruct(p); p = num2cell(p); end
 verifyEqual(testCase, numel(p), 4);
 verifyEqual(testCase, cellfun(@(e) char(e.variable.name), p, 'UniformOutput', false), ...
     {'inner compressor', 'compression level', 'shuffle', 'block size'});
-verifyEqual(testCase, p{1}.text, 'zstd');
+% [compression terms registered] (Jess Haley, 2026-11-01): the inner
+% compressor is a term, Zstandard (wikidata:Q26737171) once registered
+verifyTrue(testCase, isfield(p{1}, 'term'), 'the inner compressor is a term');
+verifyTrue(testCase, any(strcmp(char(p{1}.term.name), {'Zstandard'})) ...
+    || strcmp(char(p{1}.term.node), 'wikidata:Q26737171'), char(p{1}.term.name));
 verifyEqual(testCase, double(p{2}.count), 5);
 % and it reads back as written
 [codec, s] = did2.build.compressionCodec(c);
@@ -116,12 +120,18 @@ verifyEqual(testCase, jsonencode(s), '{"cname":"zstd","clevel":5,"shuffle":1,"bl
 % a codec name alone: the term, no parameters (but a Blosc spelling's own
 % inner compressor)
 g = did2.build.compression('gzip');
-verifyEqual(testCase, g.term.name, 'gzip');
+% the table's name, or the registered EDAM:format_3989 "GZIP format" (whose
+% synonym is gzip) once did-schema registers it ([compression terms registered])
+verifyTrue(testCase, strcmp(char(g.term.name), 'gzip') ...
+    || strcmp(char(g.term.node), 'EDAM:format_3989'), char(g.term.name));
 verifyFalse(testCase, isfield(g, 'parameters') && ~isempty(g.parameters));
 b = did2.build.compression('blosc-zstd');
 verifyEqual(testCase, did2.build.compressionCodec(b), 'blosc-zstd');
 % an old char value read from a document is re-written as the block
-verifyEqual(testCase, did2.build.compression(did2.build.compression('lzw')).term.name, 'LZW');
+lzw = did2.build.compression(did2.build.compression('lzw'));
+verifyTrue(testCase, strcmp(char(lzw.term.name), 'LZW') ...
+    || strcmp(char(lzw.term.node), 'wikidata:Q2681'), char(lzw.term.name));
+verifyEqual(testCase, did2.build.compressionCodec(lzw), 'lzw');
 end
 
 function testBodyBuildersWriteTheBlock(testCase)

@@ -182,6 +182,35 @@ for k = 1:size(cases, 1)
 end
 end
 
+function testAPostnatalDayOfZeroIsNotStated(testCase)
+% [postnatal day 0 not stated] (Decided by Jess Haley, 2026-11-01, did-schema
+% did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G68): "treat a 0 as 'not
+% stated', so it's recorded as a missing fact rather than an age". The Age
+% observation has no value and names `time.value` in needs_info; the round
+% trip reads the template's 0 back.
+v1 = virusAtV1();
+v1.virus_injection.virus_AdministrationPND = 0;
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+age = [];
+for j = 1:numel(out.migrated)
+    s = out.migrated{j}.toStruct();
+    if strcmp(char(s.document_class.class_name), 'observation') && isfield(s, 'time')
+        age = s;
+    end
+end
+assertNotEmpty(testCase, age, 'the missing age is still an Age observation');
+verifyEqual(testCase, char(age.statement.variable.node), 'NCIT:C25150');
+verifyTrue(testCase, ~isfield(age.time, 'value') || isempty(age.time.value) || ...
+    (isstruct(age.time.value) && ~any(isfield(age.time.value, {'seconds', 'source_value'}))), ...
+    'no age is stated');
+verifyTrue(testCase, any(strcmp('time.value', did2.schema.needsInfoFields(age))), ...
+    'needs_info names the missing age');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyTrue(testCase, any(strcmp('virus_injection.virus_AdministrationPND', r.matched)), ...
+    'the template''s 0 reads back');
+end
+
 function ids = edgeOf(s, name)
 ids = {};
 for k = 1:numel(s.depends_on)
