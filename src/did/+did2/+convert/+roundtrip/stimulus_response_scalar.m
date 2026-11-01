@@ -1,4 +1,4 @@
-function [v1, spec] = stimulus_response_scalar(bodies)
+function [v1, spec] = stimulus_response_scalar(bodies, ctx)
 %STIMULUS_RESPONSE_SCALAR Rebuild a v1 `stimulus_response_scalar` from what
 %   did2.convert.migrators_j.stimulus_response_scalar emitted for it.
 %
@@ -51,11 +51,23 @@ function [v1, spec] = stimulus_response_scalar(bodies)
 %   itself, its session edge read back into base.session_id and its
 %   creation_timestamp into base.datestamp (v1_to_v2's outbound renames).
 %
+%   [V1, SPEC] = did2.convert.roundtrip.stimulus_response_scalar(BODIES, CTX),
+%   in the whole-batch round trip (did2.convert.roundtrip.wholeBatch;
+%   [whole-batch round trip], Jess Haley, 2026-10-27): the epoch the anchor
+%   names is minted by a batch pass (did2.convert.epochMint), which also
+%   re-arms this migrator with the epoch and appends the epoch anchor it
+%   returns, so neither is among this source's own documents. An anchor or
+%   its referent that is not among BODIES is read from CTX, the index of the
+%   final batch, by the id the edge names; it is read, never placed (Test code
+%   run 41322059537: 20211116's 273 responses failed, the sample losing
+%   element_epochid and stimulator_epochid "t00001", rebuilt '').
+%
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.stimulus_response_scalar.
 
 arguments
     bodies cell
+    ctx = []
 end
 
 spec = emptySpec();
@@ -99,6 +111,14 @@ for k = 1:numel(bodies)
         used(k) = true;   % a software version (jSoftware), from an `app` block
     end
 end
+if isempty(referent) && ~isempty(anchorIds)
+    % the anchor is not among this source's documents: the whole batch's
+    a = ctxDoc(ctx, anchorIds{1});
+    if ~isempty(a) && any(strcmp(classNameOf(a), {'relative_time_reference', 'relative_reference'}))
+        r = edgeIds(a, 'referent_id');
+        if ~isempty(r); referent = r{1}; end
+    end
+end
 epochString = [];
 if isempty(referent) || strcmp(referent, base.session_id)
     epochString = '';
@@ -111,6 +131,14 @@ else
         if strcmp(classNameOf(bodies{k}), 'entity') && ok
             epochString = char(lid);
             used(k) = true;
+        end
+    end
+    if isempty(epochString)
+        % an epoch a batch pass minted: read from the whole batch
+        e = ctxDoc(ctx, referent);
+        [lid, ok] = getIn(e, 'entity', 'local_identifier');
+        if ~isempty(e) && strcmp(classNameOf(e), 'entity') && ok
+            epochString = char(lid);
         end
     end
 end

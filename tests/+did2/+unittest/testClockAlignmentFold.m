@@ -179,6 +179,30 @@ end
 end
 
 
+function testAFoldedFilefindRuleRoundTripsInTheWholeBatch(testCase)
+% [whole-batch round trip] (Jess Haley, 2026-10-27): after the fold the rule's
+% two systems are the daqsystems' own documents and its software entity is one
+% the fold appended, none of them the rule's own; the inverse reads them from
+% the whole batch (Test code run 41322059537: every sampled filefind rule lost
+% ndi_syncrule_class, daqsystem1 and daqsystem2 when it did not)
+bodies = { ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')};
+out = did2.convert.resolveClockAlignment(migrate(bodies), 'Validate', false);
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyEqual(testCase, r.sources_inspected, 3);
+isRule = arrayfun(@(f) strcmp(f.source_id, 'rule_ff'), r.failures);
+detail = '';
+if any(isRule)
+    f = r.failures(find(isRule, 1));
+    detail = strjoin([f.lost_values, f.unplaced], ' | ');
+end
+verifyFalse(testCase, isfield(r.failures_by_class, 'syncrule'), detail);
+verifyFalse(testCase, isfield(r.changed_by_class, 'syncrule'));
+verifyFalse(testCase, isfield(r.no_inverse_by_class, 'syncrule'));
+end
+
 function testFilefindFoldValidatesAgainstTheSchema(testCase)
 % The transform test above cannot tell whether the fold and the schema agree;
 % this one validates every body, in pass 1 and in the fold.
