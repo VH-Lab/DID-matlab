@@ -44,7 +44,19 @@ function report = wholeBatch(v1Bodies, result)
 %   REPORT, the denominators first (Operating Rule 5):
 %     sources_inspected        numel(V1BODIES)
 %     final_documents          numel(RESULT.migrated)
-%     sources_quarantined      sources pass 1 quarantined
+%     sources_quarantined      sources pass 1 quarantined (its denominator:
+%                              of these,)
+%       sources_resolved_by_batch_pass, resolved_by_batch_pass_by_class
+%                              a later pass put a document under the source's
+%                              v1 id (did2.convert.resolveDeferredBaths
+%                              re-migrates the baths pass 1 defers, carrying or
+%                              converting each under its id): the source is
+%                              then id-checked and compared on that document
+%                              like any other. Until 2026-11-01 these were
+%                              skipped, so on Test code run 41322059537 Dab's
+%                              1,605 deferred baths were neither id-checked
+%                              nor compared.
+%       sources_still_quarantined  no final document holds its id
 %     ids_kept / ids_lost      sources whose v1 id some final document holds,
 %                              or does not ([every v1 id survives]);
 %                              ids_lost_by_class, ids_lost_ids (all of them)
@@ -97,7 +109,9 @@ ctx = batchContext(finalBodies);
 passBody = passthroughBodies(result);
 
 report = struct('sources_inspected', numel(bodies), 'final_documents', numel(final), ...
-    'sources_quarantined', 0, 'ids_kept', 0, 'ids_lost', 0, ...
+    'sources_quarantined', 0, 'sources_resolved_by_batch_pass', 0, ...
+    'resolved_by_batch_pass_by_class', struct(), 'sources_still_quarantined', 0, ...
+    'ids_kept', 0, 'ids_lost', 0, ...
     'ids_lost_by_class', struct(), 'ids_lost_ids', {{}}, 'sources_without_id', 0, ...
     'sources_compared', 0, 'sources_ok', 0, ...
     'sources_stored_as_v1', 0, 'stored_as_v1_by_class', struct(), ...
@@ -115,10 +129,17 @@ for r = 1:numel(rows)
     end
     v1 = bodies{row.input_index};
     cls = row.class_name;
-    if isempty(cls); cls = '<unknown>'; end
+    if isempty(cls); cls = v1ClassName(v1); end
     if ~row.done
         report.sources_quarantined = report.sources_quarantined + 1;
-        continue;
+        if isempty(row.id) || ~any(strcmp(finalIds, row.id))
+            report.sources_still_quarantined = report.sources_still_quarantined + 1;
+            continue;
+        end
+        % a later pass put a document under its v1 id (sources_resolved_by_batch_pass)
+        report.sources_resolved_by_batch_pass = report.sources_resolved_by_batch_pass + 1;
+        report.resolved_by_batch_pass_by_class = bump(report.resolved_by_batch_pass_by_class, cls);
+        row.output_ids = {row.id};
     end
     % [every v1 id survives]
     if isempty(row.id)
@@ -193,6 +214,15 @@ report.ok = report.sources_ok == report.sources_compared && report.ids_lost == 0
 end
 
 % ===================== helpers =========================================
+
+function c = v1ClassName(v1)
+% the class a v1 body names ('<unknown>' when it names none)
+c = '<unknown>';
+if isstruct(v1) && isfield(v1, 'document_class') && isstruct(v1.document_class) ...
+        && isfield(v1.document_class, 'class_name') && ~isempty(v1.document_class.class_name)
+    c = char(v1.document_class.class_name);
+end
+end
 
 function c = asCellOfStructs(v1Bodies)
 if isstruct(v1Bodies)

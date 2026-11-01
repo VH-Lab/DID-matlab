@@ -75,6 +75,35 @@ verifyEqual(testCase, r.sources_compared, 2);
 verifyFalse(testCase, r.ok);
 end
 
+function testASourceALaterPassResolvedIsIdCheckedAndCompared(testCase)
+% pass 1 defers some sources (a stimulus_bath whose element it cannot read)
+% and a later pass puts a document under the v1 id (resolveDeferredBaths);
+% the report id-checks and compares it, and counts it apart. A source no
+% final document holds stays quarantined.
+[bodies, result] = cleanBatch();
+k = find(strcmp({result.source_outputs.id}, 'wb_subj_1'));
+result.source_outputs(k).done = false;          % as pass 1 leaves a deferred source
+result.source_outputs(k).output_ids = {};
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_quarantined, 1);
+verifyEqual(testCase, r.sources_resolved_by_batch_pass, 1);
+verifyEqual(testCase, r.sources_still_quarantined, 0);
+verifyEqual(testCase, r.ids_kept, 3);
+verifyEqual(testCase, r.sources_compared, 3);
+verifyEqual(testCase, r.sources_ok, 3, describe(r));
+% its document gone: still quarantined, neither id-checked nor compared
+keep = true(1, numel(result.migrated));
+for j = 1:numel(result.migrated)
+    keep(j) = ~strcmp(char(result.migrated{j}.get('base.id')), 'wb_subj_1');
+end
+result.migrated = result.migrated(keep);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_still_quarantined, 1);
+verifyEqual(testCase, r.sources_resolved_by_batch_pass, 0);
+verifyEqual(testCase, r.ids_kept, 2);
+verifyEqual(testCase, r.sources_compared, 2);
+end
+
 function testADocumentNoSourceBecameIsCountedUnattributed(testCase)
 [bodies, result] = cleanBatch();
 extra = result.migrated{1}.toStruct();
