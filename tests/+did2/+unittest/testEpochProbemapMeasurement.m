@@ -37,9 +37,9 @@ end
 
 function [out, rep] = mintFrom(v1)
 %MINTFROM Pass 1 then the batch mint, validation OFF (as testEpochMint does).
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 [out, rep] = did2.convert.epochMint(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 % ===================== MEASUREMENT 1: probes per epoch =================
@@ -216,7 +216,7 @@ subj = subjectBody('specimen_1', 'sess_1', 'L');
 el   = elementBody('el_1', 'sess_1', 'tet', 'n-trode', 1, 'specimen_1');
 ing  = ingestedWithProbes('ing_1', 'sess_1', 't00001', {'L','M','N'});
 v1 = {sessionBody('sd_1', 'sess_1', 'ref'), subj, el, ing};
-pass1 = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+pass1 = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 [minted, ~] = mintFrom(v1);
 % The epochfiles_ingested passthrough is unchanged: same probemap char, no new
 % edge, no extra document of its class.

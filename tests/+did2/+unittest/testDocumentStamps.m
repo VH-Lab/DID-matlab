@@ -145,7 +145,7 @@ verifyEqual(testCase, did2.schema.v2Stamp(), 'did_v2');
 % set it targets, not the stamp)
 b = bodyUnstamped();
 b.unknown_class = struct('foo', 'bar');
-r = did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'V_eta');
+r = did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v2');
 % universalRenames defaults an absent stamp to the V2 stamp
 out = did2.convert.universalRenames(bodyUnstamped());

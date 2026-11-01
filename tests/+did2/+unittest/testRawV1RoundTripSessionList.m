@@ -168,7 +168,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(batch)
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function s = docWithId(out, id)

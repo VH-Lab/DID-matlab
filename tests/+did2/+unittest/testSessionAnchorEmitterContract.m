@@ -346,13 +346,13 @@ function out = passOne(v1cells)
 %   Validation is OFF: it needs the assembled V_eta schema set on
 %   DID_SCHEMA_PATH, and nothing here is asserting schema conformance -- that is
 %   testTimeReferenceCollapse's testTheFoldedDocumentValidatesAgainstItsSchema.
-out = did2.convert.v1_to_v2(v1cells, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1cells, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function [out, rep] = foldBatch(v1cells)
 out = passOne(v1cells);
 [out, rep] = did2.convert.resolveSessionAnchors(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function names = classNames(out)
@@ -858,7 +858,7 @@ end
 verifyEqual(testCase, numel(anchorIds), numel(roster));
 
 [after, ~] = did2.convert.resolveSessionAnchors(before, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 afterIds = cellfun(@(d) char(d.get('base.id')), after.migrated, ...
     'UniformOutput', false);
 for k = 1:numel(anchorIds)
@@ -1029,7 +1029,7 @@ for k = 1:numel(before.migrated)
     end
 end
 [out, rep] = did2.convert.resolveSessionAnchors(before, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function testTheBoundedEmitterActuallyMintsAWindow(testCase)

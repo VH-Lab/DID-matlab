@@ -39,7 +39,7 @@ end
 % ===================== harness =========================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v = depValue(b, name)
@@ -341,7 +341,7 @@ function testIngestedDocumentValidatesAgainstItsSourceTombstone(testCase)
 % runJ deliberately passes Validate=false, so this calls v1_to_v2 directly.
 % Requires the V_eta schema set on DID_SCHEMA_PATH (the quick gate assembles it).
 out = did2.convert.v1_to_v2(ingestedBody('efi_10', 'sess_A', 't00070', 'nav_1'), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('epochfiles_ingested quarantined under validation: %s', ...
         out.quarantine(1).reason));

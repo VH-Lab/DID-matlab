@@ -13,10 +13,17 @@ function tests = testMigratorsJSpatialTranscriptomics
 %     spatial_gene_expression_cells         -- 1 -> 1 passthrough
 %     spatial_gene_expression_tiles         -- 1 -> 1 passthrough
 %     cell_type_labels                      -- 1 -> 1 passthrough
-%     gene_list_mapping                     -- 1 -> 1 passthrough
+%     gene_list_mapping                     -- 1 -> 3 (a relation, its value
+%                                              and the value's opaque_body;
+%                                              tested on the raw v1 shape in
+%                                              testRawV1RoundTripGene). The
+%                                              snake_case fixture below is
+%                                              outside the template: carried.
 %     file_reference                        -- 1 -> 1 passthrough (NOT folded
 %                                              to generic_file)
-%     gene_list                             -- 1 -> 1 passthrough
+%     gene_list                             -- 1 -> 2 (a `term` and its
+%                                              opaque_body; tested on the raw
+%                                              v1 shape in testRawV1RoundTripGene)
 %     gene_expression                       -- 1 -> 1 passthrough (⊂ base
 %                                              shape mixin)
 %
@@ -242,16 +249,15 @@ out = did2.convert.migrators_j.file_reference(fileReferenceV1());
 verifyEqual(testCase, did2.unittest.helpers.classKey(out{1}), 'file_reference');
 end
 
-function testGeneListPreservesReferenceTableFields(testCase)
-% gene_list is a reference table; the pyramid's gene_list_id points here,
-% so id preservation is what makes that edge resolve.
+function testGeneListSnakeCaseBodyIsCarriedWhole(testCase)
+% gene_list reads the RAW v1 document (`geneList`, [migrators read raw v1]) and
+% converts it to a `term` ([gene list as a term, file kept]; testRawV1RoundTripGene).
+% This renamed-era fixture (a `gene_list` block, a base.name) is outside NDI's
+% template, so it is carried whole, untouched (carry-100), its id kept.
 v1 = geneListV1();
 out = did2.convert.migrators_j.gene_list(v1);
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.base.id, v1.base.id);
-verifyEqual(testCase, out{1}.gene_list.n_genes, 24793);
-verifyEqual(testCase, out{1}.gene_list.genome_assembly, 'GRCh38');
-verifyEqual(testCase, out{1}.gene_list.gene_id_namespace, 'Ensembl');
+verifyEqual(testCase, out{1}, v1);
 end
 
 function testGeneExpressionMixinCarriesAssayAndCounts(testCase)

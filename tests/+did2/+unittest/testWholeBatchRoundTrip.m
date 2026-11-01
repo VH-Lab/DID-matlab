@@ -75,6 +75,34 @@ verifyEqual(testCase, r.sources_compared, 2);
 verifyFalse(testCase, r.ok);
 end
 
+function testAnIdADecisionReleasesIsCountedApartFromLost(testCase)
+% [a rebuilt document may lose its id] (Jess Haley, 2026-10-27): a source of a
+% listed class (here daqreader_mfdaq_epochdata_ingested, [segment length is
+% the time chunk], 2026-10-29) whose documents are gone and whose id nothing
+% references is RELEASED, not lost; the same source with a referrer is lost
+[bodies, result] = cleanBatch();
+k = find(strcmp({result.source_outputs.id}, 'wb_subj_2'));
+result.source_outputs(k).class_name = 'daqreader_mfdaq_epochdata_ingested';
+keep = true(1, numel(result.migrated));
+for j = 1:numel(result.migrated)
+    keep(j) = ~strcmp(char(result.migrated{j}.get('base.id')), 'wb_subj_2');
+end
+result.migrated = result.migrated(keep);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.ids_released, 1);
+verifyTrue(testCase, isfield(r.ids_released_by_class, 'daqreader_mfdaq_epochdata_ingested'));
+verifyEqual(testCase, r.ids_lost, 0);
+verifyEqual(testCase, r.sources_changed_by_batch_pass, 1, 'its round trip is still not measured');
+verifyFalse(testCase, r.ok);
+% a final document that references it: the id is lost, not released
+s1 = result.migrated{1}.toStruct();
+s1.depends_on = struct('name', 'archive_id', 'value', 'wb_subj_2');
+result.migrated{1} = did2.document(s1);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.ids_released, 0);
+verifyEqual(testCase, r.ids_lost, 1);
+end
+
 function testADocumentNoSourceBecameIsCountedUnattributed(testCase)
 [bodies, result] = cleanBatch();
 extra = result.migrated{1}.toStruct();
@@ -98,7 +126,7 @@ function testAPassthroughStillUnchangedIsStoredAsItsV1Source(testCase)
 % (ndi.migrate.internal.carryUnchangedAsV1), which is what is compared
 [bodies, result] = cleanBatch();
 bodies{end+1} = tableRow('wb_row_1');
-result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, any(strcmp({result.passthrough.id}, 'wb_row_1')), ...
     'pass 1 records the row as passed through');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
@@ -127,7 +155,7 @@ function testAPassthroughALaterStepChangedIsNotStoredAsV1(testCase)
 % and nothing is counted without an inverse.
 [bodies, result] = cleanBatch();
 bodies{end+1} = tableRow('wb_row_1');
-result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 for k = 1:numel(result.migrated)
     s = result.migrated{k}.toStruct();
     if strcmp(char(s.base.id), 'wb_row_1')
@@ -176,16 +204,53 @@ bodies = {sessionV1('wb_sess_doc', sid), subjectV1('wb_spec', sid, 'L'), ...
         sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
         'p\t1\tn-trode\tintan1:ai27-28,45;di0-2\tL\n']))};
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
-result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
-result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.manifests_renamed, 1, 'the manifest is renamed');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyFalse(testCase, isfield(r.changed_by_class, 'epochfiles_ingested'), describe(r));
 verifyFalse(testCase, isfield(r.no_inverse_by_class, 'epochfiles_ingested'), describe(r));
 verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
+end
+
+function testAProbeWhoseObservesRelationWasRetiredIsComparedAfterThePass(testCase)
+% resolveEpochProbemap retires the probe's `observes` relation once a recording
+% observation carries the same (instrument, specimen) pair; the element's
+% inverse reads the specimen there, so the probe is compared (not counted
+% CHANGED BY A BATCH PASS) and its subject_id is not lost
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = '41268b6f5c6a3d4e_00000000000000b3';
+bodies = {sessionV1('wb_sess_doc_o', sid), subjectV1('wb_spec_o', sid, 'L'), ...
+    elementV1('wb_probe_o', sid, 'p', 1, 'n-trode', 'wb_spec_o'), ...
+    daqsystemV1('wb_daq_o', sid, 'intan1', 'wb_nav_o'), ...
+    manifestV1('wb_efi_o', sid, 't0001', 'wb_nav_o', ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'p\t1\tn-trode\tintan1:ai27-28,45;di0-2\tL\n']))};
+% the probe's edges as ndi.element/newdocument writes them: underlying_element_id
+% (empty for a probe) then subject_id
+bodies{3}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+    'value', {'', 'wb_spec_o'});
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'V_eta');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
+    'premise: the pass retired the probe''s observes relation');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyFalse(testCase, isfield(r.changed_by_class, 'element'), describe(r));
+verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, 'element'), describe(r));
+for k = 1:numel(r.failures)
+    if strcmp(r.failures(k).source_id, 'wb_probe_o')
+        verifyFalse(testCase, any(startsWith(r.failures(k).lost, 'depends_on')), describe(r));
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.direct')), describe(r));
+    end
+end
 end
 
 function testAnOpenmindsSubjectRoundTripsWithTheSpeciesTextAccepted(testCase)
@@ -203,11 +268,11 @@ sex = openmindsV1('wb_om_sex', 'openminds_subject', 'subject_id', 'BiologicalSex
 species = openmindsV1('wb_om_sp', 'openminds_subject', 'subject_id', 'Species', ...
     'Caenorhabditis elegans', 'NCBITaxon:6239', ...
     'Caenorhabditis elegans is a species of nematode.', 'C. elegans');
-out = did2.convert.v1_to_v2({sex}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({sex}, 'Validate', false, 'TargetVersion', 'did_v2');
 r = did2.convert.roundtrip.check(sex, out.migrated);
 verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject (sex)', {});
-out = did2.convert.v1_to_v2({species}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({species}, 'Validate', false, 'TargetVersion', 'did_v2');
 r = did2.convert.roundtrip.check(species, out.migrated);
 verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject (species)', {});
@@ -225,7 +290,7 @@ function testAnOpenmindsSubjectIdIsReadBackThroughTheEquivalentList(testCase)
 % states no id (JH's) is not reported as inventing one
 sex = openmindsV1('wb_om_sex2', 'openminds_subject', 'subject_id', 'BiologicalSex', ...
     'hermaphrodite', 'PATO:0001340', '', '');
-out = did2.convert.v1_to_v2({sex}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({sex}, 'Validate', false, 'TargetVersion', 'did_v2');
 bodies = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
 [v1, spec] = did2.convert.roundtrip.openminds_subject(bodies);
 verifyEqual(testCase, v1.openminds.openminds_id, '');
@@ -257,7 +322,7 @@ ct.openminds.fields.description = 'A type of neuron.';
 % untouched v1 source as the carry (it handed back the renamed body before), and
 % the pipeline stores that v1 source (ndi.migrate.internal.carryUnchangedAsV1).
 % Compare what is stored, as the table-row test does.
-out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, any(strcmp({out.passthrough.id}, 'wb_om_ct')), ...
     'pass 1 records the element as carried through');
 r = did2.convert.roundtrip.wholeBatch({ct}, out);
@@ -273,7 +338,7 @@ for half = {'id', 'description'}
     else
         one.openminds.openminds_id = '';
     end
-    out = did2.convert.v1_to_v2({one}, 'Validate', false, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2({one}, 'Validate', false, 'TargetVersion', 'did_v2');
     verifyTrue(testCase, any(strcmp({out.passthrough.id}, 'wb_om_ct')), ...
         ['carried for its ' half{1} ' alone']);
 end
@@ -285,7 +350,7 @@ function testAnOpenmindsElementWithNeitherConverts(testCase)
 % assertion, and round trips clean
 ct = openmindsV1('wb_om_ct2', 'openminds_element', 'element_id', 'CellType', ...
     'type III BNST neuron', 'EMPTY:0000073', '', '');
-out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'did_v2');
 r = did2.convert.roundtrip.check(ct, out.migrated);
 verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element (converted)', {});
@@ -319,7 +384,7 @@ function [bodies, result] = cleanBatch()
 % no local identifier is carried whole as v1 (carry-033)
 bodies = {subject('wb_subj_1', 'mouse_1'), subject('wb_subj_2', 'mouse_2'), ...
     subject('wb_subj_3', '')};
-result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v1 = subject(id, localId)

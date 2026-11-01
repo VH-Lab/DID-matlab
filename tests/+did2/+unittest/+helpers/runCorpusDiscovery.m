@@ -43,7 +43,7 @@ arguments
     corpusName (1,:) char
     corpusURL  (1,:) char
     innerDir   (1,:) char
-    options.TargetVersion (1,:) char = 'V_eta'
+    options.TargetVersion (1,:) char = 'did_v2'
     % V_eta (Brainstorm J) is the migration/validation target. Orphan-freeness
     % is a HARD GATE once a target migrates the whole corpus orphan-free. The
     % full V_eta run now does: every corpus (20211116, B, Dab, JH, Soph)
@@ -130,7 +130,13 @@ result = did2.unittest.helpers.runBatchPass(result, ...
 % ndi.migrate.local now calls this same function as V_eta second-pass step
 % (4b) -- WIRED 2026-08-10, NOT EXECUTED (no MATLAB available). Not a
 % counterpart: the SAME code, which is what keeps the two pipelines one.
-if strcmp(options.TargetVersion, 'V_eta')
+% The batch passes run on the V2 set by EITHER name ([schema set renamed
+% did_v2], Jess Haley, 2026-10-25; did2.convert.isV2Set). This was
+% strcmp(..., 'V_eta'), so when #352 made 'did_v2' the default, every pass
+% but resolveDeferredBaths stopped running and the report said NOT WIRED
+% (Test code run 41339468679: no epoch_probemap_fold, and the whole-batch
+% report counted nothing changed by a batch pass).
+if did2.convert.isV2Set(options.TargetVersion)
     % TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset
     % CITATION graph into the entity tier -- the same six classes
     % metadata_editor emits, read from the independent openMINDS store. It is
@@ -429,12 +435,13 @@ try
     result.whole_batch_round_trip = did2.convert.roundtrip.wholeBatch(bodies, result);
     wb = result.whole_batch_round_trip;
     fprintf(['[%s] WHOLE-BATCH ROUND TRIP: %d source(s), %d final document(s); ' ...
-        'quarantined %d; ids kept %d, lost %d, no id %d; compared %d, clean %d ' ...
+        'quarantined %d; ids kept %d, lost %d, released by decision %d, no id %d; ' ...
+        'compared %d, clean %d ' ...
         '(compared as stored v1 sources: %d), ' ...
         'not clean %d; changed by a batch pass %d; no inverse %d; final documents ' ...
         'no source became %d\n'], corpusName, wb.sources_inspected, ...
         wb.final_documents, wb.sources_quarantined, wb.ids_kept, wb.ids_lost, ...
-        wb.sources_without_id, wb.sources_compared, wb.sources_ok, ...
+        wb.ids_released, wb.sources_without_id, wb.sources_compared, wb.sources_ok, ...
         wb.sources_stored_as_v1, ...
         wb.failures_total, wb.sources_changed_by_batch_pass, ...
         wb.sources_no_inverse, wb.unattributed_documents);
@@ -768,7 +775,15 @@ catch retentionPrintErr
 end
 printFileListAudit(result);
 printSourceCensus(result);
-printBatchPasses(result);
+notWired = printBatchPasses(result);
+% A V2 run that wires a batch pass NOT is a failed run, not a smaller one:
+% after #352 the passes stopped behind a gate on the old set name, and runs
+% printing "NOT WIRED" for 9 of 10 stayed green (Test code run 41339468679,
+% B 13.7k documents instead of 32k). Report-only above, FAILED here.
+if did2.convert.isV2Set(options.TargetVersion)
+    verifyEmpty(testCase, notWired, sprintf(['%s: batch post-pass(es) NOT WIRED ' ...
+        'into a %s run: %s'], corpusName, options.TargetVersion, strjoin(notWired, ', ')));
+end
 fprintf('top quarantine reasons:\n');
 for k = 1:min(numel(reasons), 15)
     fprintf('  %5d  [%s] %s\n', reasons(k).count, ...
@@ -1026,7 +1041,7 @@ end
 end
 
 
-function printBatchPasses(result)
+function notWired = printBatchPasses(result)
 %PRINTBATCHPASSES Did the batch post-passes run, and what did each measure?
 %
 %   DENOMINATOR FIRST, and the denominator here is the LIST OF PASSES ITSELF.
@@ -1068,12 +1083,14 @@ expected = { ...
     'valid_interval_decompose', 'did2.convert.resolveValidIntervals'; ...
     'clock_alignment_fold',     'did2.convert.resolveClockAlignment'};
 fprintf('\n--- batch post-passes (%d expected) ---\n', size(expected, 1));
+notWired = {};   % the passes with no report on the result (the caller fails a V2 run on any)
 for k = 1:size(expected, 1)
     field = expected{k, 1};
     name  = expected{k, 2};
     if ~isfield(result, field)
         fprintf('  %-34s NOT WIRED INTO THIS RUN (no `%s` on the result)\n', ...
             name, field);
+        notWired{end+1} = name; %#ok<AGROW>
         continue;
     end
     rep = result.(field);

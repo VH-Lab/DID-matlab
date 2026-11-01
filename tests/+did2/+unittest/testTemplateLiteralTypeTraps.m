@@ -98,7 +98,7 @@ function out = runJ(v1)
 %   the block, reads raw too since 2026-10-30. The superclass migrator these
 %   tests pin runs only on this renamed path; the raw path's refusals are
 %   pinned by testRawV1RoundTripImage.
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 end
 
@@ -106,7 +106,7 @@ function out = runJValidated(v1)
 %RUNJVALIDATED The same, with the validator ARMED. This is the assertion that
 %   actually matters: the placeholder is only worth dropping if dropping it is
 %   what lets the document through. On the renamed path, as RUNJ.
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 end
 
@@ -293,7 +293,7 @@ function testASubjectlessImageStackPassesThroughUntouchedAndCounted(testCase)
 % is a v1 document, counted (passthrough_unvalidated_no_schema), not
 % quarantined, with its id and its placeholder as v1 wrote them.
 v1 = imageStackBody([]);
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 assertEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};

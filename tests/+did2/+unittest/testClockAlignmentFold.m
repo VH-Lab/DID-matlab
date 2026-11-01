@@ -210,7 +210,7 @@ result = did2.convert.v1_to_v2({ ...
     daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
     daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
     filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 out = did2.convert.resolveClockAlignment(result, 'Validate', true);
 rep = out.clock_alignment_fold;
 verifyEqual(testCase, rep.syncrule_fold_quarantined, 0);
@@ -348,7 +348,7 @@ result = did2.convert.v1_to_v2({ ...
     daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
     daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
     channelRuleFixture('rule_ct', 'sess_A', 'mydaq1', 'mydaq2')}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 out = did2.convert.resolveClockAlignment(result, 'Validate', true);
 rep = out.clock_alignment_fold;
 verifyEqual(testCase, rep.syncrule_fold_quarantined, 0);
@@ -375,7 +375,7 @@ end
 % ===================== fixtures & helpers ==================================
 
 function result = migrate(fixtures)
-result = did2.convert.v1_to_v2(fixtures, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(fixtures, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v1 = syncgraphFixture(id, ruleIds, sessionId)
