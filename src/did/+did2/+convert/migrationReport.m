@@ -30,6 +30,16 @@ function out = migrationReport(action, varargin)
 %       it held after it returns, so a caller can still validate what it
 %       migrated ([migration record writer]: NDI writes one record from the
 %       reports of all its DID-matlab calls).
+%   did2.convert.migrationReport('call')
+%       what did2.convert.v1_to_v2 does as it starts: begin a run of its own
+%       when none is held, or when the one held is a run an earlier call
+%       began for itself (a 'begin' by a run writer is never replaced), and
+%       count the call as open. CLEANUP closes it when deleted (v1_to_v2
+%       holds it until it returns), so a call made inside another (a batch
+%       pass) never replaces the run of the call around it. Two calls made one
+%       after the other with no run writer are two runs: a gap of the first
+%       is not read against the documents of the second, which may share its
+%       (deterministic) ids.
 %   did2.convert.migrationReport('end')
 %       forget the run.
 %   TF = did2.convert.migrationReport('active')
@@ -88,6 +98,15 @@ out = [];
 switch char(action)
     case 'begin'
         st = emptyState(true);
+    case 'call'
+        if ~st.active || (st.own && st.depth == 0)
+            st = emptyState(true);
+            st.own = true;
+        end
+        st.depth = st.depth + 1;
+        out = onCleanup(@() did2.convert.migrationReport('-leave'));
+    case '-leave'
+        st.depth = max(0, st.depth - 1);
     case 'end'
         st = emptyState(false);
     case 'active'
@@ -178,7 +197,7 @@ end
 % =============================================================================
 
 function st = emptyState(active)
-st = struct('active', active, ...
+st = struct('active', active, 'own', false, 'depth', 0, ...
     'gaps', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
     'carried', containers.Map('KeyType', 'char', 'ValueType', 'any'));
 end

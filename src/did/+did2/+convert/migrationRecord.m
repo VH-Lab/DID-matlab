@@ -134,8 +134,13 @@ body = did2.build.opaqueBody(migrationId, ...
 % the file's bytes: ingested (copied into the database's file store, then the
 % temporary file deleted) when the documents are added to a
 % did2.database.sqlitedb
+% the file's uid is minted from its content: the same report is the same file,
+% and a different report (another run on the same anchor, whose record ids
+% are the same) is never refused as a uid stored with different bytes when
+% two databases share a file store
+fileUid = did2.convert.mintId('migration report file', contentKey(file));
 body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
-    'delete_original', 1, 'uid', bodyId, 'location', file, ...
+    'delete_original', 1, 'uid', fileUid, 'location', file, ...
     'parameters', '', 'location_type', 'file', 'ingest', 1));
 records = {did2.document(rec), did2.document(body)};
 end
@@ -240,6 +245,16 @@ try
 catch ME
     why = ME.message;
 end
+end
+
+function key = contentKey(file)
+% the SHA-256 of FILE's bytes, as hex
+fid = fopen(file, 'r');
+bytes = fread(fid, Inf, 'uint8=>int8');
+fclose(fid);
+md = java.security.MessageDigest.getInstance('SHA-256');
+h = typecast(md.digest(bytes), 'uint8');
+key = lower(reshape(dec2hex(h, 2)', 1, []));
 end
 
 function writeJson(file, report)

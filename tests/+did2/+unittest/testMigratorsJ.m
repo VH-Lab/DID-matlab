@@ -1039,12 +1039,17 @@ verifyEqual(testCase, sort(fields), sort({ ...
     'formulation.value.ingredients(1).concentration.canonical', ...
     'formulation.value.ingredients(2).concentration'}));
 verifyTrue(testCase, all(~cellfun(@isempty, reasons)));
+% the dose states no amount of its own either (the row's number is the
+% ingredient's): no value, listed as a gap ('dose.value', jDoseValue; it was
+% volume.liters = NaN with no note until then), so the report notes count 3
+verifyDoseNoAmountJ(testCase, d);
 n = out.summary.migration_notes;
 assertTrue(testCase, isfield(n, 'gap'), 'the gaps are counted');
-verifyEqual(testCase, n.gap.count, 2);
+verifyEqual(testCase, n.gap.count, 3);
 % and the call's migration report lists them, by document
 r = out.migration_report;
 verifyEqual(testCase, sum(strcmp({r.gaps.document_id}, fs.base.id)), 2);
+verifyEqual(testCase, sum(strcmp({r.gaps.document_id}, d.get('base.id'))), 1);
 % the formulation validates as written
 did2.schema.cache.shared().validateDocument(fs);
 end

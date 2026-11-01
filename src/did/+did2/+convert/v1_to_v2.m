@@ -196,10 +196,9 @@ if isempty(did2.convert.migrationTime('get'))
 end
 % The run's migration report ([migration record], [gap accepted when the report
 % lists it], Jess Haley, 2026-11-01): a run writer begins one around the whole
-% run; a call with none held begins one and leaves it held (migrationReport).
-if ~did2.convert.migrationReport('active')
-    did2.convert.migrationReport('begin');
-end
+% run; a call with none held begins its own and leaves it held after it
+% returns, until the next such call (migrationReport 'call').
+closeReportCall = did2.convert.migrationReport('call'); %#ok<NASGU>
 
 bodies = normaliseInput(v1Bodies);
 
