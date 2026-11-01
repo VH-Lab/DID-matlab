@@ -34,6 +34,21 @@ function c = covariate(variable, along, options)
 %                         did-schema did_v2_data_body_model_plan.md
 %                         [covariate key]).
 %
+%   With 'Key', optionally:
+%     'Index'          one 0-based entry number per position of the key's
+%                      dimension: position k is entry Index(k) of the keyed
+%                      document's value, so a position may name any entry,
+%                      and an entry may be named twice or not at all (Jess
+%                      Haley, 2026-11-01, "2. Ok", did-schema
+%                      did_v2_go_forward_class_audit.md [key covariate
+%                      index]; the two gene columns of a gene-list mapping).
+%                      Without it, position k is entry k, as before -> index.
+%                      Its length is checked against the dimension's `n` when
+%                      the document is built (rule covariate_shape); that each
+%                      entry exists in the keyed document is a batch check.
+%                      The loaded schema must declare the covariate's `index`
+%                      (did2:build:unknownField otherwise).
+%
 %   Options:
 %     'Unit'           canonical unit (a term or a name) of a number, a count
 %                      or a matrix. Angles are DEGREES.
@@ -57,6 +72,7 @@ function c = covariate(variable, along, options)
 %     t  = did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 1/30000, 'Unit', 'second');
 %     ch = did2.build.covariate('channel', 1, 'Term', {'A1','A2','A3','A4'});
 %     ctl = did2.build.covariate(controlTerm, 0, 'Logical', [false true false]);
+%     ga = did2.build.covariate(geneTerm, 0, 'Key', 0, 'Index', [5 5 9]);
 %
 %   See also did2.build.dimension, did2.build.condition, did2.build.list.
 
@@ -75,6 +91,7 @@ arguments
     options.Logical = []
     options.Matrix = []
     options.Key = []
+    options.Index = []
     options.Unit = []
     options.SourceUnit = ''
     options.Approximate = []
@@ -128,6 +145,11 @@ end
 form = given{1};
 if isAbsent(options.Value) && ~isAbsent(options.SourceValue)
     error('did2:build:ruleViolated', '''SourceValue'' needs ''Value''.');
+end
+if ~isAbsent(options.Index) && ~strcmp(form, 'Key')
+    % [key covariate index]: an index picks entries of a keyed document
+    error('did2:build:ruleViolated', ...
+        'covariate_one_value_form: ''Index'' goes only with ''Key''; got ''%s''.', form);
 end
 if any(strcmp(form, {'Origin+Spacing', 'Key'})) && numel(along) ~= 1
     error('did2:build:ruleViolated', ...
@@ -210,6 +232,15 @@ switch form
                 '''Key'' is ONE 0-based index among the document''s `key_id` entries.');
         end
         s.key = double(v);
+        if ~isAbsent(options.Index)
+            ix = options.Index;
+            if ~(isnumeric(ix) && isreal(ix) && isvector(ix) ...
+                    && all(isfinite(ix)) && all(ix >= 0) && all(ix == round(ix)))
+                error('did2:build:typeMismatch', ...
+                    '''Index'' is a vector of 0-based entry numbers (integers >= 0), one per position.');
+            end
+            s.index = double(reshape(ix, 1, []));
+        end
 end
 if ~isAbsent(options.Cyclic);  s.cyclic = options.Cyclic;  end
 

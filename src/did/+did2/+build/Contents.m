@@ -24,7 +24,8 @@
 %     directedRelation       child <relation> parent
 %     method                 a named, shared method: {term, parameters} with an
 %                            id of its own (`method_parameters` before #88)
-%     undirectedRelation     a symmetric relation among entities
+%     undirectedRelation     a symmetric relation between two ends (relata):
+%                            entities, statements or standalone values
 %
 %   Parts of documents
 %     valueCell              a data_type's `value` cells (volts, seconds, count, ...)
@@ -50,6 +51,9 @@
 %     compressionCodec       read `compression` in either shape: the codec's
 %                            spelling and its settings
 %     compressionBlockDeclared  does the schema declare the block?
+%     relatumIds             read an undirected_relation's ends under either
+%                            name: `relatum_id`, or `entity_id` before
+%                            [undirected ends are relata] (2026-11-01)
 
 %   Checks across documents
 %     checkDoseIngredients   a dose's ingredient_id edges are among its
