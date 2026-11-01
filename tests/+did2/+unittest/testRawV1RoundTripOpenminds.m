@@ -35,8 +35,8 @@ function tests = testRawV1RoundTripOpenminds
 %   `openminds_<n>` edges are read by NDI's subjectStrainAssembly from the v1
 %   input, so they do not carry it. openminds_element converts to one term
 %   assertion, or is carried with an id or a description (carry-128), as
-%   before. openminds_stimulus passes through unchanged for NDI's second pass
-%   and round trips as itself. No known findings for the fixtures (a
+%   before. openminds_stimulus is carried whole as v1 for NDI's second pass
+%   (carry-165, since 2026-11-01). No known findings for the fixtures (a
 %   species' definition and synonym are accepted differences, [species text is
 %   the openMINDS equivalent]).
 tests = functiontests(localfunctions);
@@ -209,18 +209,21 @@ verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
-function testAnApproachLabelPassesThroughAndRoundTrips(testCase)
+function testAnApproachLabelIsCarriedForTheSecondPass(testCase)
+% INVERTED 2026-11-01. This asserted the document passed through stamped
+% did_v2 ("a passthrough, not a carry"), validated against the V_eta
+% `openminds_stimulus` tombstone. It is now CARRIED whole as v1 with a note
+% (carry-165, [v1 passthroughs accepted]): stamped did_v1, never read against
+% V_eta, so the tombstone can be deleted. The epoch must still survive for
+% NDI's second pass.
 v1 = approachLabel('41268b6f5c6a3d4e_0e00000000000031');
 out = runRaw(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.passthrough), 1);
 doc = docWithId(out, v1.base.id);
-verifyEqual(testCase, char(doc.document_class.schema_version), 'did_v2', ...
-    'a passthrough, not a carry');
+verifyEqual(testCase, char(doc.document_class.schema_version), 'did_v1', ...
+    'carried whole as v1, not a did_v2 passthrough');
 verifyEqual(testCase, doc.epochid.epochid, 't00001', 'the epoch survives for the second pass');
-r = did2.convert.roundtrip.check(v1, {doc});
-verifyFalse(testCase, r.carried);
-did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_stimulus', {});
+verifyCarried(testCase, v1, '[carry-165]');
 end
 
 function testTheInventedStimulusEdgeStillQuarantines(testCase)

@@ -1719,8 +1719,10 @@ function [migrated, passthrough, names, counts, carried] = carryDependents(bodie
 %   `control_stimulus_ids` is handed on the same way (carry-152, [control
 %   records carried in pass 1], Jess Haley, 2026-10-30: "with
 %   `stimulus_presentation`'s reason").
+%   `openminds_stimulus` likewise (carry-165, [v1 passthroughs accepted]):
+%   NDI's second pass reads it toward interaction_purpose.
 handedOn = {'stimulus_presentation', 'daqmetadatareader_epochdata_ingested', ...
-    'control_stimulus_ids'};
+    'control_stimulus_ids', 'openminds_stimulus'};
 isHandedOn = cellfun(@(c) ischar(c) && any(strcmp(c, handedOn)), cls);
 carriedIds = ids(done & carried & ~isHandedOn);
 carriedIds = carriedIds(~cellfun(@isempty, carriedIds));

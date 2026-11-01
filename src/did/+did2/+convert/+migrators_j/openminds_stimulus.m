@@ -1,6 +1,6 @@
 function bodies = openminds_stimulus(preBody)
 %OPENMINDS_STIMULUS Brainstorm-J migrator: did_v1 openminds_stimulus -- DEFERRED to
-%   the NDI second pass; the document is passed through UNCHANGED.
+%   the NDI second pass; the document is CARRIED whole as v1 (carry-165).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -117,6 +117,22 @@ if jRawCarry('openminds_stimulus', preBody, collision, unplaced, 'carry-100')
     return;
 end
 
+% CARRIED WHOLE AS v1, with a note ([v1 passthroughs accepted], Jess Haley,
+% 2026-10-23, did-schema did_v2_go_forward_class_audit.md: openminds_stimulus
+% stays a v1 document; [passthrough stays v1]). Until 2026-11-01 this returned
+% the input with no note, so pass 1 emitted it stamped did_v2 and validated it
+% against the V_eta `openminds_stimulus` tombstone. Carried, it is stamped
+% did_v1 by v1_to_v2 and never read against V_eta, so the tombstone can go.
+% NDI's second pass still reads it (sliceTetanus, from the v1 input and by
+% class name from the migrated set); v1_to_v2 hands it on like
+% stimulus_presentation, so a document whose edge names it is not carried.
+b = did2.convert.v1read.readBase(preBody);
+id = b.id;
+if ~ischar(id); id = ''; end
+% carry-register: carry-165
+did2.convert.reportNote('carried_as_v1', 'openminds_stimulus', id, ...
+    ['[carry-165] awaiting_home: read by the NDI second pass toward ' ...
+    'interaction_purpose ([v1 passthroughs accepted])']);
 bodies = {preBody};
 end
 
