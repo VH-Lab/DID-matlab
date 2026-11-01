@@ -20,9 +20,11 @@ function c = compression(codec, options)
 %   settings: a scalar struct of key -> value as the source wrote them (a v1
 %   lightsheetZarrLevel's decoded `codec_params`,
 %   struct('cname','zstd','clevel',5,'shuffle',1,'blocksize',0)). Each
-%   becomes one parameter, in order: a char value as `text`, a logical as
-%   `logical`, an integer as `count`, any other real number as
-%   `quantity.value`. The parameter's variable is named by the key's row in
+%   becomes one parameter, in order: the inner compressor (`cname`) as a
+%   `term` (the table's term for its spelling, 'zstd' -> Zstandard, looked up
+%   in the term registry; else its spelling as the name), any other char
+%   value as `text`, a logical as `logical`, an integer as `count`, any other
+%   real number as `quantity.value`. The parameter's variable is named by the key's row in
 %   the shared table (cname -> 'inner compressor', clevel -> 'compression
 %   level', shuffle -> 'shuffle', blocksize -> 'block size'), else by the key
 %   itself.
@@ -210,7 +212,11 @@ for k = 1:numel(names)
     e = struct('variable', registered(label, '', schemaCache));
     v = settings.(key);
     if isstring(v) && isscalar(v); v = char(v); end
-    if ischar(v)
+    if ischar(v) && strcmp(key, 'cname')
+        % [compression terms registered] (Jess Haley, 2026-11-01): the inner
+        % compressor is a codec, so a term (wikidata:Q26737171 Zstandard)
+        e.term = registered(compressorName(t, v), strtrim(v), schemaCache);
+    elseif ischar(v)
         e.text = v;
     elseif islogical(v) && isscalar(v)
         e.logical = v;
@@ -227,6 +233,16 @@ for k = 1:numel(names)
 end
 if isempty(entries)
     entries = [];
+end
+end
+
+function name = compressorName(t, spelling)
+% the term name the table gives an inner compressor's spelling, else the
+% spelling itself
+name = strtrim(spelling);
+row = find(strcmpi(t.compressors(:, 1), name), 1);
+if ~isempty(row)
+    name = t.compressors{row, 2};
 end
 end
 

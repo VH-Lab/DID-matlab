@@ -23,7 +23,9 @@ function [spelling, settings] = compressionCodec(value, options)
 %   says which ('blosc-zstd'), else as the term's name. A parameter's variable
 %   is read back to the setting key the table names for it ('compression
 %   level' -> clevel), else to the variable's own name. A parameter's value is
-%   its text, logical, count, quantity.value or term name.
+%   its text, logical, count, quantity.value or term name; an inner
+%   compressor written as a term reads back to the table's spelling
+%   (Zstandard -> 'zstd').
 %
 %   Readers call this, never `strcmp` on the field, so they read both shapes
 %   while the siblings move first (CLAUDE.md section 3, rule 2).
@@ -80,7 +82,7 @@ name = textOf(term, 'name');
 node = textOf(term, 'node');
 
 t = compressionTable();
-settings = settingsOf(params, t);
+settings = settingsOf(params, t, options.SchemaCache);
 if isempty(name) && isempty(node)
     if ~isempty(fieldnames(settings))
         error('did2:build:typeMismatch', ...
@@ -125,7 +127,7 @@ end
 
 % ===================== helpers =============================================
 
-function s = settingsOf(params, t)
+function s = settingsOf(params, t, schemaCache)
 s = struct();
 if isempty(params)
     return;
@@ -150,7 +152,29 @@ for k = 1:numel(params)
         key = t.settings{row, 1};
     end
     key = matlab.lang.makeValidName(key);
-    s.(key) = valueOf(e);
+    v = valueOf(e);
+    if strcmp(key, 'cname') && isfield(e, 'term') && isstruct(e.term)
+        v = compressorSpelling(e.term, t, schemaCache);
+    end
+    s.(key) = v;
+end
+end
+
+function spelling = compressorSpelling(term, t, schemaCache)
+%COMPRESSORSPELLING An inner compressor written as a term, read back to the
+%   spelling the table gives it ('Zstandard' or wikidata:Q26737171 -> 'zstd'),
+%   by its name, its registered name and synonyms; else the term's name.
+name = textOf(term, 'name');
+node = textOf(term, 'node');
+keys = cellfun(@did2.schema.termNameKey, namesFor(name, node, schemaCache), ...
+    'UniformOutput', false);
+spelling = name;
+for r = 1:size(t.compressors, 1)
+    if any(strcmp(did2.schema.termNameKey(t.compressors{r, 2}), keys)) ...
+            || any(strcmp(did2.schema.termNameKey(t.compressors{r, 1}), keys))
+        spelling = t.compressors{r, 1};
+        return;
+    end
 end
 end
 

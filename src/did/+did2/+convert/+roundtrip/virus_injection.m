@@ -25,7 +25,10 @@ function [v1, spec] = virus_injection(bodies)
 %     virus_AdministrationPND          the age observation's (NCIT:C25150,
 %                                      on the manipulation's time reference)
 %                                      source_value, in days ([age at
-%                                      injection is an observation])
+%                                      injection is an observation]); 0 when
+%                                      the observation has no value and its
+%                                      needs_info names `time.value`
+%                                      ([postnatal day 0 not stated])
 %
 %   SPEC.equivalents: `dilution` 0 when the ingredient states no amount (named
 %   in needs_info, [canonical absent only as needs info], [formulation amount
@@ -91,7 +94,11 @@ if ~isempty(onset)
 end
 if ~isempty(p.age)
     days = numberOf(getIn(p.age, 'time', 'value', 'source_value'));
-    if isempty(days)
+    if isempty(days) && any(strcmp('time.value', did2.schema.needsInfoFields(p.age)))
+        % [postnatal day 0 not stated] (Jess Haley, 2026-11-01): the migrator
+        % names the age in needs_info only for v1's 0, the template default
+        block.virus_AdministrationPND = 0;
+    elseif isempty(days)
         spec.unplaced{end+1} = 'the age observation states no number of days';
     else
         block.virus_AdministrationPND = days;

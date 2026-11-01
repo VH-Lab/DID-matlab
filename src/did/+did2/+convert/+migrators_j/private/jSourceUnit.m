@@ -1,8 +1,8 @@
-function [term, factor, kind] = jSourceUnit(spelling)
+function [term, factor, kind, slot] = jSourceUnit(spelling)
 %JSOURCEUNIT A v1 unit spelling as a `source_unit` term, and its factor to the
 %   canonical unit of its value kind.
 %
-%   [TERM, FACTOR, KIND] = jSourceUnit(SPELLING). did-schema #88 makes
+%   [TERM, FACTOR, KIND, SLOT] = jSourceUnit(SPELLING). did-schema #88 makes
 %   `source_unit` a bound ontology_term (V_eta_source_unit_plan.md, signed
 %   2026-10-21). Item 4, for migrated data: "a v1 unit spelling is mapped to a
 %   registered term; a spelling no term matches is kept as the term's `name`
@@ -29,10 +29,11 @@ function [term, factor, kind] = jSourceUnit(spelling)
 %   and KIND '' (so no canonical value is computed from it, as before).
 %
 %   CONCENTRATION. A `concentration` cell has several canonical slots (molar,
-%   grams_per_liter, liters_per_liter, ...); every concentration row here is
-%   in MOLAR (om:molar, [molar kept], Jess Haley, 2026-10-22), so KIND
-%   'concentration' means the `molar` slot (jQuantity, jDoseBodies). A row for
-%   another slot needs the table to say its slot first. The rows are the
+%   grams_per_liter, liters_per_liter, ...), so its rows are a table of their
+%   own, CONC below, that says each row's SLOT: the canonical field FACTOR
+%   converts into (jQuantity, jDoseBodies write the value there). SLOT is ''
+%   for every other kind (one canonical field each). The MOLAR rows (om:molar,
+%   [molar kept], Jess Haley, 2026-10-22) are the
 %   spellings NDI's v1 writers use: every mixture_table writer on NDI-matlab
 %   (+birren/TreatmentCreator.m, +birren/createSayaTreatments.m,
 %   +babu/treatments.json, +marder/marder_mixtures.json,
@@ -47,10 +48,20 @@ function [term, factor, kind] = jSourceUnit(spelling)
 %   and a row names a registered term (registry row first); no v1 writer
 %   writes them. Until then they are unrecognised (carry-155 where a caller
 %   carries).
+%
+%   PERCENT VOLUME PER VOLUME (slot liters_per_liter, factor 0.01): Babu's
+%   treatments (NDI-matlab +babu/treatments.json, unitName 'Percent Volume per
+%   Volume', ontologyUnit NCIT:C48571) state a volume fraction in percent;
+%   x0.01 is liters per liter exactly. Decided by Jess Haley, 2026-11-01
+%   [percent volume per volume converted] (did-schema
+%   did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G72: "add [NCIT:C48571
+%   Percent Volume per Volume] to the registry and convert it ... x0.01 to
+%   concentration.liters_per_liter"; "Ok, keep liters_per_liter").
 
 term = [];
 factor = [];
 kind = '';
+slot = '';
 if isstring(spelling); spelling = char(spelling); end
 if ~ischar(spelling) || isempty(strtrim(spelling))
     return;
@@ -121,14 +132,25 @@ T = { ...
     'mA',             'current',    1e-3,         'om:milliampere', 'milliampere'; ...
     'uA',             'current',    1e-6,         'om:microampere', 'microampere'; ...
     'nA',             'current',    1e-9,         'om:nanoampere', 'nanoampere'; ...
-    'pA',             'current',    1e-12,        'om:picoampere', 'picoampere'; ...
-    'M',              'concentration', 1,         'om:molar', 'molar'; ...
-    'Molar',          'concentration', 1,         'om:molar', 'molar'; ...
-    'molar',          'concentration', 1,         'om:molar', 'molar'};
+    'pA',             'current',    1e-12,        'om:picoampere', 'picoampere'};
+% concentration rows: the table says each row's canonical slot
+% spelling                     slot                factor  registered node, label
+CONC = { ...
+    'M',                         'molar',            1,      'om:molar', 'molar'; ...
+    'Molar',                     'molar',            1,      'om:molar', 'molar'; ...
+    'molar',                     'molar',            1,      'om:molar', 'molar'; ...
+    'Percent Volume per Volume', 'liters_per_liter', 0.01,   'NCIT:C48571', 'Percent Volume per Volume'};
 % registered spellings with no canonical factor in this table
 % spelling            registered node, label
 TERMONLY = { ...
     'dB',             'om:decibel', 'decibel'};
+hitC = find(strcmp(CONC(:, 1), s), 1);
+if ~isempty(hitC)
+    kind = 'concentration';
+    [slot, factor] = CONC{hitC, 2:3};
+    term = did2.build.term(CONC{hitC, 4}, CONC{hitC, 5});
+    return;
+end
 hit = find(strcmp(T(:, 1), s), 1);
 if isempty(hit)
     hitT = find(strcmp(TERMONLY(:, 1), s), 1);
