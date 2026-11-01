@@ -166,7 +166,7 @@ function bodies = image(preBody)
 %   sorted edges (document_id, imageCollection_id, subject_id). No
 %   universalRenames and no superclass migrator run on it; image_stack does
 %   the raw read for both classes (what universalRenames would have discarded
-%   carries, carry-049; the superclass migrator's refusals run on the raw
+%   carries, carry-100; the superclass migrator's refusals run on the raw
 %   parameters block; a carry or passthrough is the untouched v1 source). The
 %   `image` tombstone that kept the class on the renamed path was deleted with
 %   did-schema's other did_v1 tombstones (2026-10-28, [carried v1 validates

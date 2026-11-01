@@ -23,7 +23,7 @@ function bodies = speed_tuning(preBody)
 %   to its speedtuning_calc output rather than storing it alone, so the block
 %   is the one speedtuning_calc holds.
 %   The fold is the one speed_tuning_calc runs (private/jSpeedTuning): the
-%   collision check of the renamed path (carry-049), jCalculation
+%   collision check of the renamed path (carry-100), jCalculation
 %   'AccountForEveryField', and the writer's three fits (`fit`,
 %   `fit_no_speed`, `fit_fullspeed`) as model_fit entries of the one model
 %   'Priebe fit', told apart by their constraints ([Priebe fits are one

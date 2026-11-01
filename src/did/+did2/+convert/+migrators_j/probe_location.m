@@ -37,7 +37,7 @@ function v2Body = probe_location(preBody)
 %     probe_location.name              -> the value term's name (the registry's
 %                                         label when the node is registered)
 %
-%   What the renamed path would have discarded is carried, carry-049, as
+%   What the renamed path would have discarded is carried, carry-100, as
 %   before; a field or edge no part of this migrator reads now carries the
 %   document whole as v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
 %   are malformed]).

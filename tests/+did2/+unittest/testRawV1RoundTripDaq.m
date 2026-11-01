@@ -345,7 +345,7 @@ for k = 1:size(breaks, 1)
     verifyEqual(testCase, char(raw.migrated{1}.get('document_class.schema_version')), 'did_v1', label);
     verifyEqual(testCase, char(old.migrated{1}.get('document_class.schema_version')), 'did_v1', label);
     d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-049] '), d);
+    verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
 end
 end
 

@@ -236,7 +236,7 @@ v1.stimulus_bath.mixture_table = struct('ontologyName', 'NCIm:C1098706', 'value'
 verifyCarriedFor(testCase, v1, 'unplaced: [carry-120] stimulus_bath.mixture_table (not text)');
 v1 = dabBath(oneDrug());
 v1.ndi_document = struct('id', 'x', 'type', 'stimulus_bath');
-verifyCarriedFor(testCase, v1, '[carry-049] universalRenames would discard: ndi_document');
+verifyCarriedFor(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: ndi_document.');   % [ndi_document read as base]: its id and type are not base's
 end
 
 % ===================== a check that cannot fail proves nothing ===========

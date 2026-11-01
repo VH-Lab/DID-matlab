@@ -72,7 +72,7 @@ end
 % spelling (jSoftwareFromApp, checked by did2.convert.v1read.readApp). What
 % universalRenames would have discarded (an `ndi_document` beside `base`, e.g.
 % the Soph vintage's ndi_document.name 'jrclust.prm'; a depends_on version)
-% carries the document as the renamed path did (carry-049; [one-reading quick
+% carries the document as the renamed path did (carry-100; [one-reading quick
 % answers] Q5, Jess Haley, 2026-10-26). Every other v1 field is accounted for
 % (unreadFields): one this fold reads nowhere carries the document whole as
 % v1. base.name, which the writer sets to the parameter file's name, is not
@@ -83,9 +83,9 @@ raw = preBody;
 preBody = jRawBody(raw, 'jrclust_clusters');
 collision = jResponseRenameCollisions(raw, cell(0, 3));
 if ~isempty(collision)
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'jrclust_clusters', char(preBody.base.id), ...
-        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+        ['[carry-100] malformed: outside the NDI template, unplaced: ' strjoin(collision, ', ')]);
     bodies = {raw};
     return;
 end

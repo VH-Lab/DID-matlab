@@ -84,7 +84,7 @@ function bodies = openminds_stimulus(preBody)
 %   by class name and block), and by class name from the migrated set (to drop
 %   the labels it rebuilds), which the switch does not change. The guard above
 %   runs first, as before. What the renamed path would have discarded is
-%   carried, carry-049, as before; a block, base field or edge outside the
+%   carried, carry-100, [rename clashes are malformed]; a block, base field or edge outside the
 %   template (which the renamed passthrough kept, to fail validation as an
 %   undeclared field), or anything in the empty `openminds_stimulus` block,
 %   carries the document whole as v1 (private/jRawAccount, jRawCarry; [fields

@@ -371,7 +371,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         image_stack.m, which reads it raw as it reads
 %                         `imageStack` (the superclass migrator's refusals
 %                         called on the raw block; what universalRenames would
-%                         have discarded carries, carry-049). The `image`
+%                         have discarded carries, carry-100). The `image`
 %                         tombstone that kept it on the renamed path was
 %                         deleted with did-schema's other did_v1 tombstones
 %                         (2026-10-28, [carried v1 validates against NDI

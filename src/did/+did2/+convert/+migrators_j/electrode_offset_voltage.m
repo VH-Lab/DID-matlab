@@ -73,7 +73,7 @@ function bodies = electrode_offset_voltage(preBody)
 %     electrode_offset_voltage.offset    -> the voltage value (source unit 'V')
 %     electrode_offset_voltage.temperature -> the `temperature` condition
 %
-%   What the renamed path would have discarded is carried, carry-049, as
+%   What the renamed path would have discarded is carried, carry-100, as
 %   before. A field, block or edge no part of this migrator reads ([fields
 %   outside the template are malformed], carry-100), and a temperature that is
 %   stated but is neither one finite number nor the writer's NaN (no register

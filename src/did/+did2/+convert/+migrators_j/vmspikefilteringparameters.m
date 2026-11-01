@@ -159,11 +159,11 @@ function bodies = vmspikefilteringparameters(preBody)
 %   spells `rm60Hz` as v1 does; the bag keeps the spelling the renamed path gave
 %   it, `filter.rm60_hz`, so the switch changes no emitted parameter (a block
 %   stating both spellings with different values is a collision
-%   universalRenames would discard: carry-049). The `app` block is read in
+%   universalRenames would discard: carry-100). The `app` block is read in
 %   either spelling (jSoftwareFromApp, jMethodParameters). The bag reads every
 %   field of the block, so the block's own fields are all read; the other
 %   blocks, base and edges are checked: what the renamed path would have
-%   discarded is carried, carry-049, as before; a block, base field or edge no
+%   discarded is carried, carry-100, [rename clashes are malformed]; a block, base field or edge no
 %   part of this fold reads, or an `app` field outside NDI's app.json (all
 %   dropped without a word on the renamed path), carries the document whole as
 %   v1 (private/jRawAccount, jRawCarry; [fields outside the template are

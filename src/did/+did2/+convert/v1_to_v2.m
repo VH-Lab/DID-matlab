@@ -172,8 +172,9 @@ end
 
 % [old ndi_document blocks carry] (Decided by Jess Haley, 2026-10-27): the note
 % for a document carried because it holds a legacy `ndi_document` block beside
-% `base` (hasLegacyBlockBesideBase), on either path. It keeps the words the
-% renamed path's carry-049 note used for the same block.
+% `base` (hasLegacyBlockBesideBase), on the renamed path only (universalRenames
+% discards the block). On the raw path the block is read as `base` ([ndi_document
+% read as base], Jess Haley, 2026-10-31; readLegacyBlockAsBase).
 LEGACY_BLOCK_NOTE = ['[carry-049] universalRenames would discard: ndi_document ' ...
     '(a legacy identity block beside base; [old ndi_document blocks carry])'];
 
@@ -426,15 +427,32 @@ for k = 1:numel(bodies)
                 v2Body = preBody;
                 carryBody = preBody;
                 superUnchanged = true;
-                if hasLegacyBlockBesideBase(preBody)
-                    % [old ndi_document blocks carry] (Decided by Jess Haley,
-                    % 2026-10-27): carried whole, the block kept; no migrator runs
-                    % carry-register: carry-049
+                % Decided by Jess Haley, 2026-10-31 [ndi_document read as
+                % base] (amends [old ndi_document blocks carry]): a legacy
+                % `ndi_document` block beside `base` is read as v1 `base`
+                % and the rules already decided apply; the migrator reads
+                % the block folded into `base` (readLegacyBlockAsBase). What
+                % the block states that `base` cannot hold -- a field the two
+                % state with different non-empty values, or a non-empty field
+                % outside base.json's four (`type`, `database_version`, ...) --
+                % is outside the template: carried whole, carry-100 ([fields
+                % outside the template are malformed]).
+                [readBody, legacyUnplaced] = readLegacyBlockAsBase(preBody);
+                if ~isempty(legacyUnplaced)
+                    % carry-register: carry-100
                     did2.convert.reportNote('carried_as_v1', className, ...
-                        sourceIdOf(preBody), LEGACY_BLOCK_NOTE);
+                        sourceIdOf(preBody), ['[carry-100] malformed: outside ' ...
+                        'the NDI template, unplaced: ' strjoin(legacyUnplaced, ', ')]);
                     v2Bodies = {preBody};
                 else
-                    v2Bodies = runRawV1Migrator(preBody, className);
+                    v2Bodies = runRawV1Migrator(readBody, className);
+                    % a migrator's carry or passthrough of the reading copy is
+                    % the untouched v1 source
+                    for bi = 1:numel(v2Bodies)
+                        if isequaln(v2Bodies{bi}, readBody)
+                            v2Bodies{bi} = preBody;
+                        end
+                    end
                 end
                 if isscalar(v2Bodies) && isequaln(v2Bodies{1}, preBody) ...
                         && (did2.convert.reportNote('pending', 'carried_as_v1') > 0 ...
@@ -450,19 +468,16 @@ for k = 1:numel(bodies)
                 % as v1: the untouched v1 source, no universalRenames, no
                 % superclass migrators, no identity fallback. Counted in the
                 % denominator below (`bodies_carried_no_migrator`). A legacy
-                % `ndi_document` block beside `base` still cites carry-049,
-                % as on the other paths ([old ndi_document blocks carry]).
+                % `ndi_document` block beside `base` is read as `base`
+                % ([ndi_document read as base], Jess Haley, 2026-10-31), so
+                % it needs no carry of its own: the class's row is cited.
                 legacy.bodies_carried_no_migrator = legacy.bodies_carried_no_migrator + 1;
                 srcRaw(k) = true;
                 className = rawClass;
-                if hasLegacyBlockBesideBase(preBody)
-                    carryNote = LEGACY_BLOCK_NOTE;
-                else
-                    carryNote = sprintf(['%s awaiting_home: %s has no migrator ' ...
-                        '([classes without a migrator carry as v1])'], ...
-                        did2.convert.noMigratorCarryRows(rawClass), rawClass);
-                end
-                % carry-register: carry-049 carry-158 carry-159 carry-160 carry-161
+                carryNote = sprintf(['%s awaiting_home: %s has no migrator ' ...
+                    '([classes without a migrator carry as v1])'], ...
+                    did2.convert.noMigratorCarryRows(rawClass), rawClass);
+                % carry-register: carry-158 carry-159 carry-160 carry-161
                 %   carry-162 carry-163 carry-164 via noMigratorCarryRows.m
                 did2.convert.reportNote('carried_as_v1', className, ...
                     sourceIdOf(preBody), carryNote);
@@ -1184,6 +1199,51 @@ function tf = hasLegacyBlockBesideBase(body)
 %   vintage, whose block IS its identity) is not this case.
 tf = isstruct(body) && isscalar(body) && isfield(body, 'ndi_document') ...
     && isfield(body, 'base') && ~did2.convert.isEmptyBlock(body.ndi_document);
+end
+
+function [readBody, unplaced] = readLegacyBlockAsBase(body)
+%READLEGACYBLOCKASBASE The reading copy of a raw v1 body whose legacy
+%   `ndi_document` block beside `base` is read as `base` (Decided by Jess Haley,
+%   2026-10-31 [ndi_document read as base], did-schema
+%   did_v2_go_forward_class_audit.md: "But yes. a makes sense", to "treat
+%   `ndi_document` as v1 `base`?"). READBODY is BODY with each of base.json's
+%   four fields (id, session_id, name, datestamp) that `base` leaves empty read
+%   from the block (did2.convert.v1read.readBase), and the block removed.
+%   UNPLACED lists what the block states that `base` cannot hold, as
+%   'ndi_document.<field>' paths: a field of the four the two state with
+%   different non-empty values (readBase `conflict`), and a non-empty field
+%   outside the four (`type`, `database_version`, the 2019 identity names).
+%   The caller carries a body with UNPLACED under carry-100 ([fields outside
+%   the template are malformed]); READBODY is then BODY. A body with no block
+%   beside `base`, or an empty one ([empty ndi_document block is notation]),
+%   is returned as it is.
+readBody = body;
+unplaced = {};
+if ~hasLegacyBlockBesideBase(body)
+    return;
+end
+if ~isstruct(body.ndi_document) || ~isscalar(body.ndi_document) ...
+        || ~isstruct(body.base) || ~isscalar(body.base)
+    unplaced = {'ndi_document'};   % not a block that can be read as `base`
+    return;
+end
+b = did2.convert.v1read.readBase(body);
+unplaced = b.conflict;
+lextra = fieldnames(b.legacy_extra);
+for k = 1:numel(lextra)
+    if ~did2.convert.isEmptyBlock(b.legacy_extra.(lextra{k}))
+        unplaced{end+1} = ['ndi_document.' lextra{k}]; %#ok<AGROW>
+    end
+end
+if ~isempty(unplaced)
+    return;
+end
+for f = {'id', 'session_id', 'name', 'datestamp'}
+    if any(strcmp(b.present, f{1}))
+        readBody.base.(f{1}) = b.(f{1});
+    end
+end
+readBody = rmfield(readBody, 'ndi_document');
 end
 
 function name = rawV1ClassNameOf(body)

@@ -35,7 +35,7 @@ function v2Body = openminds_subject(preBody)
 %   are accounted for because NDI's second pass reads them from the v1 input
 %   (ndi.migrate.internal.subjectStrainAssembly, which assembles a Strain's
 %   children). What the renamed path would have discarded is carried,
-%   carry-049, as before; a block, base field or edge outside the template, or
+%   carry-100, [rename clashes are malformed]; a block, base field or edge outside the template, or
 %   anything in the empty `openminds_subject` block (a DID-side fixture shape
 %   that holds the openMINDS fields there is still read, when there is no
 %   `openminds` block), carries the document whole as v1 (private/jRawAccount,

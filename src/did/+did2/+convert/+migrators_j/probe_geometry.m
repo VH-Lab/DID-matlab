@@ -128,7 +128,7 @@ function bodies = probe_geometry(preBody)
 %   fromStruct always writes shank_id (ones when the caller gives none), so
 %   every writer document is carried, carry-001, as before the switch.
 %
-%   What the renamed path would have discarded is carried, carry-049, as
+%   What the renamed path would have discarded is carried, carry-100, as
 %   before. A field, block or edge no part of this migrator reads, an `ndim`
 %   other than 2 and a unit with no length term (all dropped without a word on
 %   the renamed path) now carry the document whole as v1 (private/jRawAccount,

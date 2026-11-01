@@ -91,7 +91,7 @@ verifyCarried(testCase, v1, 'unplaced: notes');
 % two spellings of rm60Hz that disagree: what universalRenames would discard
 v1 = writerFilter('vfp_x', '');
 v1.vmspikefilteringparameters.rm60_hz = 0;
-verifyCarried(testCase, v1, '[carry-049] universalRenames would discard: vmspikefilteringparameters.rm60Hz');
+verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: vmspikefilteringparameters.rm60Hz');
 end
 
 function testTheSwitchChangesNoOutcome(testCase)

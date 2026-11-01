@@ -48,7 +48,7 @@ function bodies = file_reference(preBody)
 %   recordBlock / charField / numField, which already took both). A record no
 %   pyramid names is a passthrough on both paths; NDI's last step stores its
 %   v1 source, stamped did_v1, on both ([passthrough stays v1: how]). What the
-%   renamed path would have discarded is carried, carry-049, as before; a
+%   renamed path would have discarded is carried, carry-100, [rename clashes are malformed]; a
 %   field, block or edge outside the template carries the document whole as
 %   v1 (private/jRawAccount, jRawCarry; [fields outside the template are
 %   malformed], carry-100). did2.convert.roundtrip.fileReference rebuilds the

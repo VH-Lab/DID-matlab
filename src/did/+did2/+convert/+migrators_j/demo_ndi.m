@@ -68,7 +68,7 @@ function v2Body = demo_ndi(preBody)
 %   no NDI writer at that `main` makes one alone (ndi.calc.example.simple makes
 %   demoNDIMock); no corpus holds one, and the template fixes its shape). jDemoFold reads the blocks in v1's spelling (demoNDI, demoNDIMock)
 %   or the renamed one. What the renamed path would have discarded is carried,
-%   carry-049; a field, block or edge outside the template carries the
+%   carry-100; a field, block or edge outside the template carries the
 %   document, carry-100 (private/jRawAccount, jRawCarry), where the fold
 %   refused it before (an error, so a quarantine). did2.convert.roundtrip.demoNDI
 %   rebuilds the v1 document; testRawV1RoundTripDemo compares the two.

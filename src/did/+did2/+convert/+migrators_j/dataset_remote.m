@@ -56,7 +56,7 @@ function v2Body = dataset_remote(preBody)
 %   without a word, now carries the document whole as v1 (private/jRawAccount,
 %   jRawCarry; carry-100, [fields outside the template are malformed]); what the renamed path would have
 %   discarded (an `ndi_document` beside `base`, a depends_on `version`) is
-%   carried, carry-049, as before.
+%   carried, carry-100, [rename clashes are malformed].
 
 arguments
     preBody (1,1) struct

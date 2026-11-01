@@ -18,7 +18,7 @@ function a = readApp(body)
 %     conflicts   cellstr: 'name' and/or 'version' when both spellings are
 %                 present, non-empty and DIFFERENT. Both values are kept above;
 %                 the caller decides (or carries the document). universalRenames
-%                 kept `app_name` and dropped `name` here (carry-049).
+%                 kept `app_name` and dropped `name` here (carry-100).
 %     extra       a struct of every field outside the nine above
 %
 %   Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema

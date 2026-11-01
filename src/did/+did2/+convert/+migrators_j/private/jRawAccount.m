@@ -10,19 +10,21 @@ function [body, collision, unplaced] = jRawAccount(preBody, blocks, edges)
 %   writer sets them). EDGES is a cellstr of regular expressions: the
 %   depends_on names the migrator reads.
 %
-%   BODY is PREBODY, except that a pre-2023 document whose only identity block
-%   is the legacy `ndi_document` gets a `base` holding the four fields
-%   did2.convert.v1read.readBase reads from it, and the legacy block is removed
-%   (what universalRenames' wholesale move gave the migrator; the legacy
-%   block's other fields come back in UNPLACED), and a depends_on that
-%   jsondecode gave as a cell (entries with different keys) is read into a
-%   struct array of {name, value}. BODY is the migrator's reading copy; a
-%   carry or passthrough returns PREBODY.
+%   BODY is PREBODY, except that an `ndi_document` block is read as `base`
+%   (Decided by Jess Haley, 2026-10-31 [ndi_document read as base], did-schema
+%   did_v2_go_forward_class_audit.md): a pre-2023 document whose only identity
+%   block is the legacy `ndi_document` gets a `base` holding the four fields
+%   did2.convert.v1read.readBase reads from it, a block BESIDE `base` fills
+%   the four `base` leaves empty, and the legacy block is removed (its other
+%   fields, and a field it and `base` state differently, come back in
+%   UNPLACED); and a depends_on that jsondecode gave as a cell (entries with
+%   different keys) is read into a struct array of {name, value}. BODY is the
+%   migrator's reading copy; a carry or passthrough returns PREBODY.
 %
-%   COLLISION lists what the renamed path (universalRenames) would have
-%   discarded, so the document is carried on both paths with the same row,
-%   carry-049 ([renames carry is temporary]):
-%     - an `ndi_document` block beside `base`;
+%   COLLISION lists the rename-era clashes (what universalRenames would have
+%   discarded). They are fields outside the template, carried under carry-100
+%   like UNPLACED (Decided by Jess Haley, 2026-11-01 [rename clashes are
+%   malformed], did-schema did_v2_go_forward_class_audit.md):
 %     - a depends_on entry's `version`, or a second, different id;
 %     - a camelCase field of a read block beside its snake_case twin, holding a
 %       different value (an equal twin restates it and is neither).
@@ -34,8 +36,10 @@ function [body, collision, unplaced] = jRawAccount(preBody, blocks, edges)
 %       BLOCKS, when it holds anything;
 %     - a field of a read block outside its list, when it holds anything;
 %     - a `base` field outside base.json's four (or a legacy identity field
-%       outside them), when it holds anything; a stale `base.schema_version`
-%       is the stamp, not a field;
+%       outside them, `ndi_document.<field>`), when it holds anything; a stale
+%       `base.schema_version` is the stamp, not a field;
+%     - `ndi_document.<field>` for one of the four that the block beside
+%       `base` and `base` state with different non-empty values;
 %     - a depends_on entry whose name EDGES does not match and which names a
 %       document.
 %   An EMPTY value is never unplaced: nothing is lost by not writing it
@@ -67,6 +71,15 @@ if strcmp(b.source, 'ndi_document') && any(strcmp(b.present, 'id'))
     end
     body.base = base;
     body = rmfield(body, 'ndi_document');
+elseif strcmp(b.source, 'base') && isfield(body, 'ndi_document')
+    % [ndi_document read as base]: the block beside `base` fills what `base`
+    % leaves empty (readBase); a conflict comes back in UNPLACED below
+    for f = {'id', 'session_id', 'name', 'datestamp'}
+        if any(strcmp(b.present, f{1})) && ~any(strcmp(b.conflict, ['ndi_document.' f{1}]))
+            body.base.(f{1}) = b.(f{1});
+        end
+    end
+    body = rmfield(body, 'ndi_document');
 end
 
 stamp = did2.convert.v1read.readStamp(preBody);
@@ -75,8 +88,14 @@ if stamp.is_v2
 end
 
 % --- identity --------------------------------------------------------------
-if ~isempty(fieldnames(b.legacy))
-    collision{end+1} = 'ndi_document';
+% [ndi_document read as base]: the block beside `base` is `base`; what it
+% states that `base` cannot hold is outside the template (carry-100)
+unplaced = [unplaced, b.conflict];
+lextra = fieldnames(b.legacy_extra);
+for k = 1:numel(lextra)
+    if ~isEmptyValue(b.legacy_extra.(lextra{k}))
+        unplaced{end+1} = ['ndi_document.' lextra{k}]; %#ok<AGROW>
+    end
 end
 extra = fieldnames(b.extra);
 for k = 1:numel(extra)

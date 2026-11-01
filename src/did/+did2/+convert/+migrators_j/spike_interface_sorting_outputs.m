@@ -59,7 +59,7 @@ function bodies = spike_interface_sorting_outputs(preBody)
 %   `retire` class), as a raw `imageStack` passthrough is; NDI's last step
 %   stores its v1 source, stamped did_v1, on both paths ([passthrough stays v1:
 %   how]). The guard reads the block in either spelling. What the renamed path
-%   would have discarded is carried, carry-049, as before; a field, block or
+%   would have discarded is carried, carry-100, [rename clashes are malformed]; a field, block or
 %   edge outside the template carries the document whole as v1
 %   (private/jRawAccount, jRawCarry; [fields outside the template are malformed],
 %   carry-100).

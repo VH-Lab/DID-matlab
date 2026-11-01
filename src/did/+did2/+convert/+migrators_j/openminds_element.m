@@ -35,7 +35,7 @@ function v2Body = openminds_element(preBody)
 %   term). Its blocks are snake_case already (`fields` is nested and never
 %   renamed), so the raw read changes nothing the assertion holds. The
 %   migrator reads `element_id`, falling back to `subject_id`. What the
-%   renamed path would have discarded is carried, carry-049, as before; a
+%   renamed path would have discarded is carried, carry-100, [rename clashes are malformed]; a
 %   block, base field or edge outside the template (an `openminds_<n>` edge
 %   naming a child, which the assertion does not keep and no later pass reads
 %   for this class, is one), or anything in the empty `openminds_element` block

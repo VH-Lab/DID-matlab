@@ -37,7 +37,7 @@ function bodies = binaryseries_parameters(preBody)
 %       from the V_alpha/V_zeta snapshot, not a v1 document.
 %     - READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley,
 %       2026-10-26 [migrators read raw v1]). What universalRenames would have
-%       discarded carries, carry-049; a field, block or edge outside the
+%       discarded carries, carry-100; a field, block or edge outside the
 %       template carries, carry-100 (private/jRawAccount, jRawCarry). Those
 %       notes come before the needs_mapping one, so a malformed document is
 %       read as malformed.

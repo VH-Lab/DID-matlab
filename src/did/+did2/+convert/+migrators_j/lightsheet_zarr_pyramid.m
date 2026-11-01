@@ -193,7 +193,7 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %     pipeline_version                 the version assertion
 %     byte_order                       not on the pyramid's documents: the
 %                                      levels' sampled_bodies carry it
-%   What the renamed path would have discarded is carried, carry-049; a field,
+%   What the renamed path would have discarded is carried, carry-100; a field,
 %   block or edge outside the template carries the document whole as v1
 %   (private/jRawAccount, jRawCarry; [fields outside the template are
 %   malformed], carry-100). Every carry returns the untouched v1 source.

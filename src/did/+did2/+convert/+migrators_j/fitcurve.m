@@ -62,7 +62,7 @@ function bodies = fitcurve(preBody)
 %   `app` block's app.json fields (outside the template too, but jModelFit
 %   names the run's software, operating system and interpreter from it, as for
 %   vmspikefit; testMigratorsJ testFitcurveFoldsToResidualScore). What
-%   the renamed path would have discarded is carried, carry-049, as before; a
+%   the renamed path would have discarded is carried, carry-100, [rename clashes are malformed]; a
 %   block, base field or edge no part of this fold reads (dropped without a
 %   word on the renamed path) carries the document whole as v1
 %   (private/jRawAccount, jRawCarry; [fields outside the template are

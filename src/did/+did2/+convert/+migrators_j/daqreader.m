@@ -114,7 +114,7 @@ function bodies = daqreader(preBody)
 %     base.name                       -> not written (the writer leaves '')
 %     daqreader.ndi_daqreader_class   -> the software entity's name
 %
-%   What the renamed path would have discarded is carried, carry-049, as
+%   What the renamed path would have discarded is carried, carry-100, as
 %   before; a field or edge no part of this migrator reads now carries the
 %   document whole as v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
 %   are malformed]).

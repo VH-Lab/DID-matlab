@@ -55,7 +55,7 @@ function bodies = sorting_parameters(preBody)
 %   fold writes; a nameless app block's leftover keeps the bag spelling the
 %   renamed path gave it (jMethodParameters). Every block field goes to a
 %   bound parameter or the bag, as before. What the renamed path would have
-%   discarded is carried, carry-049, as before; a block, base field or edge
+%   discarded is carried, carry-100, [rename clashes are malformed]; a block, base field or edge
 %   no part of this fold reads, or an `app` field outside NDI's app.json (all
 %   dropped without a word on the renamed path), now carries the document
 %   whole as v1 (private/jRawAccount, jRawCarry; [fields outside the template

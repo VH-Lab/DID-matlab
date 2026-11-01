@@ -115,7 +115,7 @@ function bodies = stimulus_parameter(preBody)
 %   edge key; the value rule above applies unchanged.
 %   did2.convert.roundtrip.stimulus_parameter rebuilds the v1 document and
 %   testRawV1RoundTripMeasurement compares the two. What the renamed path would
-%   have discarded is carried, carry-049; a field, block or edge outside the
+%   have discarded is carried, carry-100; a field, block or edge outside the
 %   template carries the document, carry-100 (private/jRawAccount, jRawCarry).
 
 arguments

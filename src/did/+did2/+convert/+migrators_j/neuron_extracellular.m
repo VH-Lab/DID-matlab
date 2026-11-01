@@ -339,7 +339,7 @@ end
 % superclass migrator (none exists for `base` or `app`). Identity through
 % jRawBody; the `app` block in either spelling (jSoftwareFromApp, checked by
 % did2.convert.v1read.readApp). What universalRenames would have discarded
-% carries the document as the renamed path did (carry-049). Every other v1
+% carries the document as the renamed path did (carry-100). Every other v1
 % field is accounted for (unreadFields): one this fold reads nowhere carries
 % the document whole as v1. A carry is the untouched v1 source. Inverse:
 % did2.convert.roundtrip.neuron_extracellular; testRawV1RoundTripSpike.
@@ -347,9 +347,9 @@ raw = preBody;
 preBody = jRawBody(raw, 'neuron_extracellular');
 collision = jResponseRenameCollisions(raw, cell(0, 3));
 if ~isempty(collision)
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', char(preBody.base.id), ...
-        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+        ['[carry-100] malformed: outside the NDI template, unplaced: ' strjoin(collision, ', ')]);
     bodies = {raw};
     return;
 end

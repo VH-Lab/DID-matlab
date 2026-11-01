@@ -131,7 +131,7 @@ function bodies = pyraview(preBody)
 %   accounted for. A field, block or edge outside the templates carries the
 %   document whole as v1 (carry-100, [fields outside the template are
 %   malformed]), and what universalRenames would have discarded carries it
-%   (carry-049), BEFORE the epoch deferral, so a carry is always the untouched
+%   (carry-100), BEFORE the epoch deferral, so a carry is always the untouched
 %   v1 source and never a deferred, epoch-stamped copy. A carry or deferral is
 %   the untouched v1 source. did2.convert.roundtrip.pyraview rebuilds the v1
 %   document; testRawV1RoundTripPyraview compares the two.

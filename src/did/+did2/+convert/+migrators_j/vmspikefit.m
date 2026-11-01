@@ -88,7 +88,7 @@ function bodies = vmspikefit(preBody)
 %   fields (and the fit fields jModelFit reads for either fit class), its
 %   `epochid` and `app` blocks, its edges `fit_input_id` and `element_id`, and
 %   `subject_id` beside them (outside the template, read as before). What the
-%   renamed path would have discarded is carried, carry-049, as before; a
+%   renamed path would have discarded is carried, carry-100, [rename clashes are malformed]; a
 %   block, base field or edge no part of this fold reads, or an `app` field
 %   outside NDI's app.json (dropped without a word on the renamed path),
 %   carries the document whole as v1 (private/jRawAccount, jRawCarry; [fields

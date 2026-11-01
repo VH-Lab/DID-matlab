@@ -29,7 +29,7 @@ function v2Body = dataset_session_info(preBody)
 %   list, and no edge). The list is compared with the batch's memberships by
 %   v1_to_v2 (carryUnrebuiltSessionLists), which reads the v1 input itself, so
 %   the raw read changes nothing it compares; a carry is now the untouched v1
-%   source. What the renamed path would have discarded is carried, carry-049,
+%   source. What the renamed path would have discarded is carried, carry-100,
 %   as before; a block, base field or edge outside the template (which the
 %   renamed path dropped without a word when the list rebuilt) carries the
 %   document whole as v1 (private/jRawAccount, jRawCarry; [fields outside the

@@ -301,7 +301,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %   which every reader here takes (jEpochDocId, did2.convert.epochMint, NDI's
 %   sliceTetanus). In pass 1 there is no epoch_id edge, so the document passes
 %   through as before. What the renamed path would have discarded is carried,
-%   carry-049, as before; a field, block or edge outside the template (which
+%   carry-100, [rename clashes are malformed]; a field, block or edge outside the template (which
 %   the passthrough met as an undeclared field) carries the document whole as
 %   v1 (private/jRawAccount, jRawCarry; [fields outside the template are
 %   malformed], carry-100). did2.convert.roundtrip.daqreader_image_epochdata_ingested rebuilds the v1

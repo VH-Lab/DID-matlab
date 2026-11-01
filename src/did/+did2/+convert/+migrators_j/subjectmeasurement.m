@@ -115,7 +115,7 @@ function bodies = subjectmeasurement(preBody)
 %     subjectmeasurement.datestamp       -> the absolute time reference (else
 %                                           the session anchor, when empty)
 %
-%   What the renamed path would have discarded is carried, carry-049; a field,
+%   What the renamed path would have discarded is carried, carry-100; a field,
 %   block or edge outside the template carries the document, carry-100
 %   (private/jRawAccount, jRawCarry). A passthrough and a carry return the
 %   untouched v1 source.

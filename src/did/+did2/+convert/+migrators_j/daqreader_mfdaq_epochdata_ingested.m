@@ -42,8 +42,8 @@ function bodies = daqreader_mfdaq_epochdata_ingested(preBody)
 %     depends_on daqreader_id   -> kept, as {name, document_id}: the shape
 %                                  universalRenames gave it, which the batch
 %                                  passes read. An entry with a `version` or a
-%                                  second, different id is carried, as the
-%                                  renamed path carried it (carry-049)
+%                                  second, different id is carried
+%                                  (carry-100, [rename clashes are malformed])
 %     files.file_list, file_info -> kept (the recording archives)
 %     epochid.epochid           -> kept
 %     daqreader_epochdata_ingested.epochtable -> kept (lifted when an epoch
@@ -51,8 +51,9 @@ function bodies = daqreader_mfdaq_epochdata_ingested(preBody)
 %     daqreader_mfdaq_epochdata_ingested.parameters
 %                               -> daqreader_epochdata_ingested.parameters
 %
-%   An `ndi_document` block beside `base` is carried too (carry-049: the
-%   renamed path discarded it and carried the document). A field of the mfdaq
+%   An `ndi_document` block beside `base` is read as `base` ([ndi_document
+%   read as base], Jess Haley, 2026-10-31); a field it states that `base`
+%   cannot hold carries the document (carry-100). A field of the mfdaq
 %   block other than `parameters`, which the renamed path dropped without a
 %   word, or a legacy identity field outside base.json's four, now carries the
 %   document whole as v1 ([fields outside the template are malformed],
@@ -66,9 +67,9 @@ body = jRawBody(preBody, 'daqreader_mfdaq_epochdata_ingested');
 [deps, collision] = renamedDependsOn(body);
 unplaced = unreadFields(preBody);
 if ~isempty(collision)
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'daqreader_mfdaq_epochdata_ingested', ...
-        char(body.base.id), ['[carry-049] universalRenames would discard: ' ...
+        char(body.base.id), ['[carry-100] malformed: outside the NDI template, unplaced: ' ...
         strjoin(collision, ', ')]);
     bodies = preBody;
     return;
@@ -126,14 +127,10 @@ function [deps, collision] = renamedDependsOn(body)
 %RENAMEDDEPENDSON depends_on as {name, document_id}, the shape the
 %   universalRenames pass wrote and the batch passes read, from the raw v1
 %   entries (did2.convert.v1read.readDependsOn). COLLISION lists what that pass
-%   would have discarded: an entry's `version`, or a second id that differs,
-%   and an `ndi_document` block beside `base`. (The depends_on read is
+%   would have discarded: an entry's `version`, or a second id that differs. (The depends_on read is
 %   +migrators_j/element_epoch.m's.)
 deps = struct('name', {}, 'document_id', {});
 collision = {};
-if isfield(body, 'ndi_document') && isfield(body, 'base') && ~isempty(body.ndi_document)
-    collision{end+1} = 'ndi_document';
-end
 if ~isfield(body, 'depends_on') || isempty(body.depends_on)
     if isfield(body, 'depends_on')
         deps = body.depends_on;   % an empty list stays as written, as the pass left it
@@ -178,6 +175,16 @@ if strcmp(b.source, 'ndi_document')
     extra = fieldnames(b.extra);
     for k = 1:numel(extra)
         unplaced{end+1} = ['ndi_document.' extra{k}]; %#ok<AGROW>
+    end
+end
+% an `ndi_document` block beside `base` is read as `base` (Decided by Jess
+% Haley, 2026-10-31 [ndi_document read as base]): what it states that `base`
+% cannot hold is outside the template (carry-100)
+unplaced = [unplaced, b.conflict];
+lextra = fieldnames(b.legacy_extra);
+for k = 1:numel(lextra)
+    if ~did2.convert.isEmptyBlock(b.legacy_extra.(lextra{k}))
+        unplaced{end+1} = ['ndi_document.' lextra{k}]; %#ok<AGROW>
     end
 end
 end

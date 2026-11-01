@@ -83,7 +83,7 @@ function bodies = daqmetadatareader_epochdata_ingested(preBody)
 %   on an ingested stimulus file is malformed]). Its id is read through
 %   did2.convert.v1read.readBase, so a legacy `ndi_document` identity is read
 %   too. The renamed path carried a document universalRenames would have
-%   changed with carry-049 instead; both carry it.
+%   changed with carry-100 instead; both carry it.
 %   did2.convert.roundtrip.daqmetadatareader_epochdata_ingested holds no
 %   inverse of a conversion, because pass 1 converts nothing:
 %   testRawV1RoundTripIngested checks the carry.

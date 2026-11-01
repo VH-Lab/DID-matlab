@@ -130,7 +130,7 @@ function bodies = filenavigator(preBody)
 %     epochprobemap_fileparameters       -> epoch_map_pattern (the same)
 %     epochprobemap_class                -> epoch_map_format
 %
-%   What the renamed path would have discarded is carried, carry-049, as
+%   What the renamed path would have discarded is carried, carry-100, as
 %   before; a field or edge no part of this migrator reads, which the renamed
 %   path dropped without a word, now carries the document whole as v1
 %   (private/jRawAccount, jRawCarry; carry-100, [fields outside the template

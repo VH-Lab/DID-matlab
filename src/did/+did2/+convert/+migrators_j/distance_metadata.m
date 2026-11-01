@@ -72,7 +72,7 @@ function bodies = distance_metadata(preBody)
 %     distance_metadata.<field>_<X>         -> endpoints(i), as above
 %     distance_metadata.units               -> units.node
 %
-%   What the renamed path would have discarded is carried, carry-049, as
+%   What the renamed path would have discarded is carried, carry-100, as
 %   before; a field or edge no part of this migrator reads (e.g. an
 %   integerIDs_C with no ontologyNode_C) now carries the document whole as v1
 %   (private/jRawAccount, jRawCarry; carry-100, [fields outside the template

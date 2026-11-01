@@ -35,7 +35,7 @@ function bodies = gene_expression(preBody)
 %   passthrough is; NDI's last step stores its v1 source, stamped did_v1, on
 %   both paths ([passthrough stays v1: how]). No DID batch pass and no NDI
 %   second-pass step reads the class. What the renamed path would have discarded
-%   is carried, carry-049, as before; a field, block or edge outside the
+%   is carried, carry-100, [rename clashes are malformed]; a field, block or edge outside the
 %   template carries the document whole as v1 (private/jRawAccount, jRawCarry;
 %   [fields outside the template are malformed], carry-100). The table in
 %   did2.convert.rawgeneExpressionClasses joins `geneExpression` to this migrator;
