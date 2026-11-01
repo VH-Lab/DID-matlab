@@ -130,7 +130,13 @@ result = did2.unittest.helpers.runBatchPass(result, ...
 % ndi.migrate.local now calls this same function as V_eta second-pass step
 % (4b) -- WIRED 2026-08-10, NOT EXECUTED (no MATLAB available). Not a
 % counterpart: the SAME code, which is what keeps the two pipelines one.
-if strcmp(options.TargetVersion, 'V_eta')
+% The batch passes run on the V2 set by EITHER name ([schema set renamed
+% did_v2], Jess Haley, 2026-10-25; did2.convert.isV2Set). This was
+% strcmp(..., 'V_eta'), so when #352 made 'did_v2' the default, every pass
+% but resolveDeferredBaths stopped running and the report said NOT WIRED
+% (Test code run 41339468679: no epoch_probemap_fold, and the whole-batch
+% report counted nothing changed by a batch pass).
+if did2.convert.isV2Set(options.TargetVersion)
     % TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset
     % CITATION graph into the entity tier -- the same six classes
     % metadata_editor emits, read from the independent openMINDS store. It is
