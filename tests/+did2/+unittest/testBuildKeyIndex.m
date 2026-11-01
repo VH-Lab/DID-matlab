@@ -169,11 +169,14 @@ if ~isKey(files, 'data')
     return;
 end
 data = jsondecode(fileread(files('data')));
-fields = data.data;
+if ~isfield(data, 'fields')
+    return;
+end
+fields = data.fields;
 if ~iscell(fields); fields = num2cell(fields); end
 for k = 1:numel(fields)
-    if strcmp(char(fields{k}.name), 'covariates')
-        sub = fields{k}.subfields;
+    if strcmp(char(fields{k}.name), 'covariates') && isfield(fields{k}, 'fields')
+        sub = fields{k}.fields;
         if ~iscell(sub); sub = num2cell(sub); end
         tf = any(cellfun(@(s) strcmp(char(s.name), 'index'), sub));
         return;
