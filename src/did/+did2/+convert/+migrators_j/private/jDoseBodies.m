@@ -17,17 +17,17 @@ function [docs, formulationId] = jDoseBodies(preBody, chemicals)
 %   [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30,
 %   did-schema V_eta_go_forward_class_audit.md): "every quantity holds exactly
 %   one canonical value; it may be absent only when the document's
-%   `needs_info` names it ...: a source number with no unit (v1 treatment
+%   the migration report lists it ...: a source number with no unit (v1 treatment
 %   amounts, DID-matlab `jDoseBodies.m`), or an amount the source never
 %   states, which is left out (the ingredient is still listed) rather than
 %   written as `source_value` NaN (T14: missing is not a value)." So, per
 %   ingredient k:
 %     - a number with NO unit: `concentration` {source_value}, no canonical,
-%       and a base.needs_info entry for the canonical,
+%       and a gap in the migration report for the canonical,
 %       'formulation.value.ingredients(k).concentration.canonical' (a
 %       concentration has no single canonical field, and nothing says which
 %       one this number is);
-%     - NO number: the entry has no amount, and a base.needs_info entry names
+%     - NO number: the entry has no amount, and a gap in the migration report names
 %       'formulation.value.ingredients(k).concentration'. A unit stated with
 %       no number is still not written, as before (it was dropped beside the
 %       NaN too);
@@ -48,8 +48,8 @@ function [docs, formulationId] = jDoseBodies(preBody, chemicals)
 %
 %   AN ALL-EMPTY FORMULATION. When NO ingredient states an amount, every
 %   entry is empty and `value` is blank; each entry's missing amount is named
-%   in needs_info as above, and the value rule (value_inline_or_body) accepts
-%   a blank value that needs_info names: [formulation amount needs info]
+%   as a gap as above, and the value rule (value_inline_or_body) accepts
+%   a blank value listed as a gap: [formulation amount needs info]
 %   (Decided by Jess Haley, 2026-10-31, did-schema
 %   did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G67 (a)). The NaN this
 %   case wrote before is gone.
@@ -64,7 +64,7 @@ function [docs, formulationId] = jDoseBodies(preBody, chemicals)
 docs = {};
 ids = cell(1, numel(chemicals));
 entries = cell(1, numel(chemicals));
-needsInfo = struct('field', {}, 'reason', {});
+gaps = struct('field', {}, 'reason', {});
 for k = 1:numel(chemicals)
     c = chemicals(k);
     o = jOpts(preBody);
@@ -85,21 +85,21 @@ for k = 1:numel(chemicals)
             conc = withCanonical(conc, c.source_unit);
         else
             % a number with no unit: no canonical can be computed
-            needsInfo(end+1) = struct('field', [path '.canonical'], 'reason', ...
+            gaps(end+1) = struct('field', [path '.canonical'], 'reason', ...
                 sprintf(['the source states the number %s with no unit, so no ' ...
                 'canonical value is computed'], num2str(double(c.source_value(1)), 17))); %#ok<AGROW>
         end
         e.concentration = conc;
     else
         % the source lists the ingredient but gives no amount: left out
-        needsInfo(end+1) = struct('field', path, 'reason', ...
+        gaps(end+1) = struct('field', path, 'reason', ...
             'the source lists this ingredient but states no amount'); %#ok<AGROW>
     end
     entries{k} = e;
 end
 extra = {};
-if ~isempty(needsInfo)
-    extra = {'NeedsInfo', needsInfo};
+if ~isempty(gaps)
+    extra = {'Gaps', gaps};
 end
 o = jOpts(preBody, 'Edges', struct('ingredient_id', {ids}), extra{:});
 f = did2.build.document('formulation', ...
@@ -107,9 +107,9 @@ f = did2.build.document('formulation', ...
 docs{end+1} = f;
 formulationId = f.base.id;
 % counted, as probe_geometry counts its coordinate system's
-for k = 1:numel(needsInfo)
-    did2.convert.reportNote('needs_info', char(preBody.document_class.class_name), ...
-        char(preBody.base.id), needsInfo(k).field);
+for k = 1:numel(gaps)
+    did2.convert.reportNote('gap', char(preBody.document_class.class_name), ...
+        char(preBody.base.id), gaps(k).field);
 end
 end
 

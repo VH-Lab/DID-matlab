@@ -173,7 +173,9 @@ assertNotEmpty(testCase, obs);
 assertNotEmpty(testCase, body);
 verifyEqual(testCase, char(obs.statement.notes), v1.image.label, 'the label is the notes');
 verifyEqual(testCase, char(body.data_body.format.node), 'EDAM:format_3591');
-verifyEqual(testCase, char(body.data_body.compression), 'lzw');
+% either shape: the char, or the {term, parameters} block ([compression block
+% and empty levels] (1))
+verifyEqual(testCase, did2.build.compressionCodec(body.data_body.compression), 'lzw');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyFalse(testCase, r.carried);
 verifyRoundTrip(testCase, r, 'image', {});
@@ -428,7 +430,7 @@ function testTheAcquisitionTimeRoundTripsOnEveryClock(testCase)
 % V_eta_go_forward_class_audit.md): a UTC clock's datenum is the observation's
 % time reference on clock utc, in seconds; any other clock keeps the datenum as
 % the AFO:AFR_0001158 "acquisition time" condition's source_value, its
-% canonical named in needs_info. Every clock reads back as v1 wrote it.
+% canonical listed as a gap in the migration report. Every clock reads back as v1 wrote it.
 clocks = {'utc', 'approx_utc', 'exp_global_time', 'approx_exp_global_time', ...
     'dev_local_time', 'no_time', ''};
 for k = 1:numel(clocks)
@@ -705,7 +707,7 @@ paths = {{}, {'RawV1Classes', {}}};
 pathName = {'raw', 'renamed'};
 for p = 1:numel(paths)
     out = did2.convert.v1_to_v2({beh, lab}, 'Validate', false, ...
-        'TargetVersion', 'V_eta', paths{p}{:});
+        'TargetVersion', 'did_v2', paths{p}{:});
     verifyEmpty(testCase, out.quarantine, pathName{p});
     verifyEqual(testCase, numel(out.migrated), 2, pathName{p});
     ids = {out.passthrough.id};
@@ -745,7 +747,7 @@ for c = {{'raw', raw}, {'renamed', renamed}}
         'quarantine', struct('original_body', {}, 'class_name', {}, ...
         'identifier', {}, 'reason', {}, 'failed_at', {}));
     [result, rep] = did2.convert.foldGenericFiles(result, 'Validate', false, ...
-        'TargetVersion', 'V_eta');
+        'TargetVersion', 'did_v2');
     verifyEqual(testCase, rep.ontology_labels_seen, 1, label);
     verifyEqual(testCase, rep.labels_pointing_at_a_file, 1, label);
     verifyEqual(testCase, rep.files_folded, 1, label);
@@ -829,11 +831,11 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 end
 

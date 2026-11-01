@@ -496,7 +496,7 @@ function testAResponseSettingNotInTheTableKeepsTheParametersV1(testCase)
 p = parameters('par_t1');
 p.stimulus_response_scalar_parameters_basic.baseline_window = 0.2;
 out = runRaw({p});
-out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.response_parameters_fold.refused_unknown_setting, 1);
 verifyEqual(testCase, out.response_parameters_fold.methods_minted, 0);
 end
@@ -540,7 +540,7 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
         [cls{1} ': the abs block fits the same five models']);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, cls{1}, {});
-    checked = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+    checked = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
     verifyFalse(testCase, any(contains(quarantineReasons(checked), ...
         {'model_fit', 'response_transform'})), ...
         [cls{1} ': the validator refuses the absolute-value fit entries']);
@@ -660,7 +660,7 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', list written'], {});
     % (the cache validator, fillField and validateField, takes a struct array
     % for a mustBeScalar-false structure; nothing it reports is about the list)
-    checked = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+    checked = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
     verifyFalse(testCase, any(contains(quarantineReasons(checked), ...
         {'interpolated_values', 'response_transform'})), ...
         [cls{1} ': the validator refuses the list']);
@@ -851,7 +851,7 @@ end
 function testEmptyPrestimulusNormalizationIsZero(testCase)
 p = parameters('par_e1');   % the writer's prestimulus_normalization []
 out = runRaw({p});
-out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'did_v2');
 m = outputsOf(out, 'par_e1');
 r = did2.convert.roundtrip.check(p, m);
 P = 'stimulus_response_scalar_parameters_basic.';
@@ -1036,7 +1036,7 @@ end
 % ===================== helpers ============================================
 
 function out = runRaw(batch)
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function c = outputsOf(out, id)

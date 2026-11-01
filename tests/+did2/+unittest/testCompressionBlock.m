@@ -72,7 +72,22 @@ verifyEqual(testCase, c, 'gzip');
 verifyEmpty(testCase, fieldnames(s));
 % a term the table does not know reads as its own name
 [c, ~] = did2.build.compressionCodec(struct('term', struct('node', '', 'name', 'bzip2')));
-verifyEqual(testCase, c, 'bzip2');
+verifyEqual(testCase, c, 'bzip2');end
+
+function testTheReaderReadsTheApprovedSettingNames(testCase)
+% the variables named by the approved labels ([compression term definitions
+% approved], Jess Haley, 2026-11-01), as registered terms with their nodes;
+% the block above uses the names written before (shuffle, block size), which
+% still read back
+blk = struct('term', struct('node', 'EMPTY:0000426', 'name', 'Blosc'), 'parameters', {{ ...
+    struct('variable', struct('node', 'EMPTY:0000430', 'name', 'inner compressor'), ...
+        'term', struct('node', 'wikidata:Q26737171', 'name', 'Zstandard')), ...
+    struct('variable', struct('node', 'EMPTY:0000427', 'name', 'compression level'), 'count', 5), ...
+    struct('variable', struct('node', 'EMPTY:0000429', 'name', 'shuffle filter'), 'count', 1), ...
+    struct('variable', struct('node', 'EMPTY:0000428', 'name', 'compression block size'), 'count', 0)}});
+[c, s] = did2.build.compressionCodec(blk);
+verifyEqual(testCase, c, 'blosc-zstd');
+verifyEqual(testCase, jsonencode(s), '{"cname":"zstd","clevel":5,"shuffle":1,"blocksize":0}');
 end
 
 % ===================== writing: the char schema ============================
@@ -106,7 +121,9 @@ p = c.parameters;
 if isstruct(p); p = num2cell(p); end
 verifyEqual(testCase, numel(p), 4);
 verifyEqual(testCase, cellfun(@(e) char(e.variable.name), p, 'UniformOutput', false), ...
-    {'inner compressor', 'compression level', 'shuffle', 'block size'});
+    {'inner compressor', 'compression level', 'shuffle filter', 'compression block size'});
+% the labels of the approved EMPTY terms ([compression term definitions
+% approved], Jess Haley, 2026-11-01): EMPTY:0000430, 0000427, 0000429, 0000428
 % [compression terms registered] (Jess Haley, 2026-11-01): the inner
 % compressor is a term, Zstandard (wikidata:Q26737171) once registered
 verifyTrue(testCase, isfield(p{1}, 'term'), 'the inner compressor is a term');

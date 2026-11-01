@@ -36,8 +36,11 @@ function v2Body = session_in_a_dataset(preBody)
 %     base.session_id               -> the dataset entity's id (D.id()) and the
 %                                      relation's parent
 %     base.datestamp                -> the relation's creation_timestamp
-%     base.id                       -> NOT KEPT (the relation's id is minted):
-%                                      a known finding, a question for the team
+%     base.id                       -> the relation's base.id ([every v1 id
+%                                      survives], Jess Haley, 2026-10-27; it
+%                                      was minted before, and the whole-batch
+%                                      round trip reported it lost: Test code
+%                                      run 41322059537, B 13, Dab 14, JH 2)
 %     base.name                     -> not kept ('' on every writer document)
 %     session_in_a_dataset.session_id   -> the relation's child
 %     .is_linked                    -> the method term (database linking /

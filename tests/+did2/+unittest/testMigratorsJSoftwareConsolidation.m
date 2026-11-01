@@ -183,7 +183,7 @@ function out = runJ(v1)
 %   Validation is off deliberately: these are assertions about what the fold
 %   PRODUCES. testMigratorsJFileNavSoftware.m owns the validating runs for the
 %   `software` shape and they are not duplicated here.
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v1 = syncruleBody(implClass)

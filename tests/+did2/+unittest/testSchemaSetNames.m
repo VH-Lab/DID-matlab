@@ -88,3 +88,20 @@ verifyEqual(testCase, did2.schema.cache.schemaSetTierPath(root, 'draft'), ...
 verifyEqual(testCase, did2.schema.cache.schemaSetTierPath(root, 'stable'), ...
     fullfile(root, 'V_eta', 'stable'));
 end
+
+function testTheDefaultTargetIsDidV2(testCase)
+% Step 2 of [schema set renamed did_v2] with [V2 database file renamed]
+% (Decided by Jess Haley, 2026-11-01, did-schema
+% did_v2_go_forward_class_audit.md): every TargetVersion default is
+% 'did_v2'; 'V_eta' is still accepted on input (testBothNamesAreTheV2Set).
+% A default that reverts to 'V_eta' is found here, file by file.
+srcDir = fileparts(fileparts(fileparts(which('did2.convert.v1_to_v2'))));   % src/did
+files = dir(fullfile(srcDir, '**', '*.m'));
+verifyGreaterThan(testCase, numel(files), 0, 'no source files read');
+for k = 1:numel(files)
+    txt = fileread(fullfile(files(k).folder, files(k).name));
+    bad = regexp(txt, ['options\.TargetVersion \(1,:\) char[^\n]*= ''V_eta''' ...
+        '|''TargetVersion'', ''V_eta''|targetVersion = ''V_eta'''], 'match', 'once');
+    verifyEmpty(testCase, bad, fullfile(files(k).folder, files(k).name));
+end
+end

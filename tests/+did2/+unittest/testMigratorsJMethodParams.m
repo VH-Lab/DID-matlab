@@ -44,7 +44,7 @@ end
 % ===================== harness =============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function d = onlyClass(testCase, out, className)
@@ -691,7 +691,7 @@ v1 = { ...
     modificationBody('sepm_v', 'default', 'sess_V', 'sep_v', 'elem_v', 't00042'), ...
     sortingBody('sp_v', 'default', 'sess_V'), ...
     vmspikeBody('vm_v', 'sess_V', 'elem_v', 't00001', '')};
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));

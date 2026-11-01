@@ -67,8 +67,8 @@ function testTheRenamedPathPassedThroughTheSnakeCaseClass(testCase)
 f = passthroughFixtures();
 for k = 1:size(f, 1)
     [label, v1, v1Name, migName] = f{k, :};
-    raw = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
-    old = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+    raw = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
+    old = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
     verifyEmpty(testCase, raw.quarantine, [label ': raw']);
     verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
     verifyEqual(testCase, numel(raw.passthrough), 1, label);
@@ -487,7 +487,7 @@ end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function verifyCarried(testCase, v1, part)

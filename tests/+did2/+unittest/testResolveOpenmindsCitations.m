@@ -71,7 +71,7 @@ end
 function testAnEmptyBatchRanWithEveryCounterAtZero(testCase)
 r = emptyResult();
 [out, rep] = did2.convert.resolveOpenmindsCitations(r, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, rep.openminds_documents_seen, 0);
@@ -183,13 +183,13 @@ end
 
 function testTheRichEntityBeatsABareStubInTheDedupThatRunsNext(testCase)
 out = did2.convert.v1_to_v2([citationGraph(), {datasetRemoteDoc()}], ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 [out, rep] = did2.convert.resolveOpenmindsCitations(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.components_consumed, 1, 'denominator');
 out = did2.convert.resolveDatasetEntities(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, numel(classesOf(out, 'dataset')), 1);
 b = bodyOfClass(out, 'dataset');
 verifyEqual(testCase, b.base.id, 'ds_01');
@@ -475,10 +475,10 @@ if isempty(getenv('DID_SCHEMA_PATH'))
         'DID_SCHEMA_PATH not set; run under the quick gate (assembled V_eta schema).');
 end
 out = did2.convert.v1_to_v2(citationGraph(), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 [out, rep] = did2.convert.resolveOpenmindsCitations(out, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.components_reverted_on_validation, 0, ...
     'a component reverted: an emitted body does not validate');
 verifyEqual(testCase, rep.bodies_quarantined, 0);
@@ -502,10 +502,10 @@ function [out, rep] = runPass(testCase, v1Bodies)
 %   batch pass. Pass-1 quarantine is asserted empty here rather than left to
 %   each test: a batch-pass test that silently ran on an empty batch would pass
 %   every assertion about a count being 0.
-out = did2.convert.v1_to_v2(v1Bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1Bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 [out, rep] = did2.convert.resolveOpenmindsCitations(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function r = emptyResult()
