@@ -142,7 +142,7 @@ end
 function testTheConvertedDocumentsValidate(testCase)
 f = writerFixtures(testCase);
 for k = 1:size(f, 1)
-    out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', f{k, 1}, quarantineText(out)));
 end
 end
@@ -248,7 +248,7 @@ function testTheConvertedGeometryHasOneCoordinateSystem(testCase)
 % the report, and every site observation naming it.
 did2.unittest.helpers.assumeNeedsInfo(testCase);
 v1 = convertedGeometry();
-out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, quarantineText(out));
 docs = structs(out.migrated);
 cls = cellfun(@(d) char(d.document_class.class_name), docs, 'UniformOutput', false);
@@ -405,7 +405,7 @@ end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function verifyCarried(testCase, v1, part)

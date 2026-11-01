@@ -364,7 +364,7 @@ function testNavigatorWithoutPatternListsValidates(testCase)
 % this is the minimal shape ndi.file.navigator(E) actually produces. The list
 % case has its own validating test, testEpochFilePatternListValidatesCleanly.
 v1 = navBody('', 'ndi.epoch.epochprobemap_daqsystem', '');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -400,7 +400,7 @@ function testEpochFilePatternListValidatesCleanly(testCase)
 % path, so without an assertion here a future re-tightening to `char` would
 % quarantine every multi-pattern navigator in the corpus silently.
 v1 = navBody('{ ''#\.rhd\>'', ''#\.tsv\>'' }', 'ndi.epoch.epochprobemap_daqsystem', '');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf( ...
         ['a multi-pattern navigator must validate now that data_file_pattern ' ...
@@ -420,7 +420,7 @@ end
 
 function out = runJ(v1)
 %RUNJ The full pipeline at V_eta with validation OFF (transform assertions).
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v1 = navBody(fileParams, mapClass, mapParams)

@@ -63,7 +63,7 @@ end
 % ===================== harness =========================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function d = findClass(testCase, out, className)
@@ -211,7 +211,7 @@ function testTheMintCanSeeThisFamilysEpochStrings(testCase)
 % never have been minted no matter how the migrator was written.
 v1  = writerResponseFixture('t00003');
 out = runJ(v1);
-[~, rep] = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+[~, rep] = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
 sources = {rep.strings_by_source.source};
 verifyTrue(testCase, any(strcmp(sources, 'stimulus_response.element_epochid')));
 verifyTrue(testCase, any(strcmp(sources, 'stimulus_response.stimulator_epochid')));

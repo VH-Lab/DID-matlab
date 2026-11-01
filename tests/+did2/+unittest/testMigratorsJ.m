@@ -94,7 +94,7 @@ testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
 end
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runJUnit(v1)
@@ -109,7 +109,7 @@ function out = runJUnit(v1)
 probe = unitProbeOf(v1);
 batch = {v1};
 if ~isempty(probe); batch{end+1} = probe; end
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_1', 'single'});
 if isempty(probe); return; end
 probeId = probe.base.id;
@@ -3121,12 +3121,12 @@ bath.stimulus_bath = struct( ...
 ee = stimulatorEpochDoc(stimId, 'aabb1122ccdd3344_9900aabbccddeeff', 'epoch_t00001', ...
     'aabb1122ccdd3344_5500000000000005');
 out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, any(arrayfun(@(q) strcmp(q.class_name, 'stimulus_bath'), ...
     out.quarantine)), 'stimulus_bath was not deferred');
 
 out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 
 % a manipulation valued by its formulation; never a dose, never the retired `bath`
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+formulation'), 1, ...
@@ -3231,9 +3231,9 @@ for loc = {struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Labora
     ee = stimulatorEpochDoc(stimId, 'aabb1122ccdd3344_9900aabbccddeeff', ...
         'epoch_t00001', 'aabb1122ccdd3344_5500000000000013');
     out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
-        'Validate', false, 'TargetVersion', 'V_eta');
+        'Validate', false, 'TargetVersion', 'did_v2');
     out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
-        'TargetVersion', 'V_eta');
+        'TargetVersion', 'did_v2');
     verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+formulation'), 1);
     verifyEmpty(testCase, firstOfClassJ(out.migrated, 'observation+term'), ...
         sprintf('the generic bath (%s) is no site on the subject', loc{1}.name));
@@ -3292,9 +3292,9 @@ bath.stimulus_bath = struct( ...
     'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
 
 out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 nPassBefore = numel(out.passthrough);
-out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'did_v2');
 rep = out.deferred_bath_resolution;
 verifyEqual(testCase, rep.deferred_baths_seen, 1);
 verifyEqual(testCase, rep.baths_carried_no_clock, 1);
@@ -3369,8 +3369,8 @@ bath.stimulus_bath = struct( ...
     'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
 
 out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
-out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'did_v2');
 rep = out.deferred_bath_resolution;
 verifyEqual(testCase, rep.baths_resolved, 1);
 verifyEqual(testCase, rep.baths_with_instrument, 1);
@@ -3397,7 +3397,7 @@ e = did2.build.document('entity', ...
     'Id', epochId, 'SessionId', sessId, ...
     'CreationTimestamp', '2024-06-01T12:00:00.000Z', 'Validate', false);
 out.migrated{end+1} = did2.document(e);
-out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.epoch_mint.bath_anchors_handed_over, 1);
 verifyEqual(testCase, out.epoch_mint.bath_anchors_repointed, 1);
 anchor = [];
@@ -3847,7 +3847,7 @@ function out = runJRoundTrip(v1)
 %   shape a MATLAB fixture is written in: serialise the fixture and decode it
 %   back exactly as `v1_to_v2/ensureStruct` does for a corpus file.
 out = did2.convert.v1_to_v2(jsondecode(jsonencode(v1)), ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function n = countRelsByName(migrated, relName)
@@ -4318,7 +4318,7 @@ m2 = sessionInADatasetDoc('member_b');
 m2.base.id = 'sid_b';
 m2.base.name = '';
 % rebuilt exactly by the two memberships: nothing written, nothing carried
-out = did2.convert.v1_to_v2({m1, m2, info}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({m1, m2, info}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(ids, 'dsi_01')), 'the list writes no V2 document');
@@ -4338,7 +4338,7 @@ ref.base = struct('id', 'ref_01', 'session_id', 'dsid_1', 'name', '', ...
 ref.unknown_class = struct('foo', 'bar');
 for c = {{info}, {m2, m1, info}, {m1, m2, v}, {m1, m2, info, ref}}
     batch = c{1};
-    out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine);
     hit = strcmp({out.passthrough.id}, 'dsi_01');
     verifyEqual(testCase, nnz(hit), 1, 'carried');
@@ -4357,9 +4357,9 @@ editor.base.session_id = 'dsid_1';            % put it on the same dataset id
 remote = datasetRemoteDoc();                  % base.session_id = dsid_1 (bare stub)
 member = sessionInADatasetDoc('absent_sess'); % member session NOT in the batch
 batch = {jsonencode(editor), jsonencode(remote), jsonencode(member)};
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyGreaterThan(testCase, nLeafJ(out.migrated, 'dataset'), 1);
-out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
 datasets = allOfClassJ(out.migrated, 'dataset');
 verifyEqual(testCase, numel(datasets), 1);
 verifyEqual(testCase, datasets{1}.get('base.id'), 'dsid_1');
@@ -4394,8 +4394,8 @@ ses.session = struct('reference', 'the_dataset_session');
 remote = datasetRemoteDoc();                    % dataset entity dsid_1
 member = sessionInADatasetDoc('dsid_1');        % lists its own session (jMembershipBodies skips it)
 batch = {jsonencode(ses), jsonencode(remote), jsonencode(member)};
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
-[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
+[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
 ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
 [u, ~, j] = unique(ids);
 dup = u(accumarray(j(:), 1) > 1);
@@ -4433,8 +4433,8 @@ mk = @(id, ref) struct('document_class', struct('class_name', 'session', ...
     'session', struct('reference', ref));
 batch = {jsonencode(datasetRemoteDoc()), jsonencode(mk('s_a', 'first_ref')), ...
     jsonencode(mk('s_b', 'second_ref'))};
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
-[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
+[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.session_entities_dropped_dataset_id, 2, 'DENOMINATOR');
 verifyEqual(testCase, rep.dataset_local_identifier_from_session, 1);
 verifyEqual(testCase, rep.dataset_local_identifier_conflicts, 1);
@@ -7141,7 +7141,7 @@ function testOneEpochOnAGlobalClockIsCarriedUnderValidation(testCase)
 % body is never validated against V_eta"), so with validation ON it must still
 % not quarantine, and comes back carried.
 v1 = oneEpochOnAGlobalClock('oe_4');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('oneepoch quarantined under validation: %s', ...
         out.quarantine(1).reason));

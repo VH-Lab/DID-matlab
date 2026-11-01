@@ -43,7 +43,7 @@ arguments
     corpusName (1,:) char
     corpusURL  (1,:) char
     innerDir   (1,:) char
-    options.TargetVersion (1,:) char = 'V_eta'
+    options.TargetVersion (1,:) char = 'did_v2'
     % V_eta (Brainstorm J) is the migration/validation target. Orphan-freeness
     % is a HARD GATE once a target migrates the whole corpus orphan-free. The
     % full V_eta run now does: every corpus (20211116, B, Dab, JH, Soph)

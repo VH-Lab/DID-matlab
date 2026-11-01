@@ -705,7 +705,7 @@ paths = {{}, {'RawV1Classes', {}}};
 pathName = {'raw', 'renamed'};
 for p = 1:numel(paths)
     out = did2.convert.v1_to_v2({beh, lab}, 'Validate', false, ...
-        'TargetVersion', 'V_eta', paths{p}{:});
+        'TargetVersion', 'did_v2', paths{p}{:});
     verifyEmpty(testCase, out.quarantine, pathName{p});
     verifyEqual(testCase, numel(out.migrated), 2, pathName{p});
     ids = {out.passthrough.id};
@@ -745,7 +745,7 @@ for c = {{'raw', raw}, {'renamed', renamed}}
         'quarantine', struct('original_body', {}, 'class_name', {}, ...
         'identifier', {}, 'reason', {}, 'failed_at', {}));
     [result, rep] = did2.convert.foldGenericFiles(result, 'Validate', false, ...
-        'TargetVersion', 'V_eta');
+        'TargetVersion', 'did_v2');
     verifyEqual(testCase, rep.ontology_labels_seen, 1, label);
     verifyEqual(testCase, rep.labels_pointing_at_a_file, 1, label);
     verifyEqual(testCase, rep.files_folded, 1, label);
@@ -829,11 +829,11 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 end
 

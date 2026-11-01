@@ -399,7 +399,7 @@ batch = {s, writerMembership('sid_A', 'ds_1', 'sess_A', '2021-04-01', 0, ''), ..
     writerMembership('sid_B', 'ds_1', 'sess_B', '2021-04-02', 1, '/data/2021-04-02'), ...
     writerRemote('dr_1', 'ds_1'), writerEditor('me_S', 'ds_S', sophForm()), ...
     writerEditor('me_F', 'ds_F', fullForm()), writerPresentation('sp_1')};
-out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'did_v2');
 reasons = '';
 for k = 1:numel(out.quarantine)
     reasons = [reasons sprintf('%s: %s; ', out.quarantine(k).class_name, ...
@@ -490,11 +490,11 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 end
 

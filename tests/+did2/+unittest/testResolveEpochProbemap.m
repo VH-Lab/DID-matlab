@@ -45,13 +45,13 @@ function [out, rep] = decompose(v1)
 % one is carried ([unlabelled units need a map])
 labels = {'el_neuron', 'single', 'el_neuron_x', 'single', 'el_neuron_u', 'single', ...
     'el_neuron_u2', 'single', 'el_neuron_q', 'single'};
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', labels);
-out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
 out = did2.convert.resolveSessionAnchors(out, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 [out, rep] = did2.convert.resolveEpochProbemap(out, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 end
 
 % ===================== the headline decomposition =====================

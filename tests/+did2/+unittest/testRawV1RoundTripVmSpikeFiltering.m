@@ -49,7 +49,7 @@ function testTheBagKeepsTheRenamedSpelling(testCase)
 % renamed path (testMigratorsJMethodParams pins the bag itself)
 v1 = writerFilter('vfp_1', '');
 raw = runRaw(v1);
-old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta', ...
+old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
 for j = 1:min(numel(raw.migrated), numel(old.migrated))
@@ -141,7 +141,7 @@ end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function verifyCarried(testCase, v1, part)

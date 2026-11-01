@@ -78,10 +78,10 @@ function testTheCitationPassReadsTheRawEdges(testCase)
 % strain's child is found through its openminds_1 edge on both paths
 batch = strainPair();
 raw = runRaw(batch);
-old = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
+old = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
-[~, repRaw] = did2.convert.resolveOpenmindsCitations(raw, 'Validate', false, 'TargetVersion', 'V_eta');
-[~, repOld] = did2.convert.resolveOpenmindsCitations(old, 'Validate', false, 'TargetVersion', 'V_eta');
+[~, repRaw] = did2.convert.resolveOpenmindsCitations(raw, 'Validate', false, 'TargetVersion', 'did_v2');
+[~, repOld] = did2.convert.resolveOpenmindsCitations(old, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, repRaw.openminds_documents_seen, repOld.openminds_documents_seen);
 verifyEqual(testCase, repRaw.openminds_components_seen, repOld.openminds_components_seen);
 end
@@ -254,8 +254,8 @@ function testValidationIsAsBefore(testCase)
 % a raw passthrough validates exactly where the renamed one did
 f = fixtures();
 for k = 1:size(f, 1)
-    raw = did2.convert.v1_to_v2(f{k, 2}, 'Validate', true, 'TargetVersion', 'V_eta');
-    old = did2.convert.v1_to_v2(f{k, 2}, 'Validate', true, 'TargetVersion', 'V_eta', ...
+    raw = did2.convert.v1_to_v2(f{k, 2}, 'Validate', true, 'TargetVersion', 'did_v2');
+    old = did2.convert.v1_to_v2(f{k, 2}, 'Validate', true, 'TargetVersion', 'did_v2', ...
         'RawV1Classes', {});
     verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), f{k, 1});
 end
@@ -374,7 +374,7 @@ end
 
 function out = runRaw(batch)
 if ~iscell(batch); batch = {batch}; end
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function s = docWithId(out, id)

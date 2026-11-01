@@ -106,8 +106,8 @@ end
 function testTheConvertedDocumentsValidate(testCase)
 f = fixtures();
 for k = 1:size(f, 1)
-    out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta');
-    old = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta', ...
+    out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'did_v2');
+    old = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'did_v2', ...
         'RawV1Classes', {});
     verifyLessThanOrEqual(testCase, numel(out.quarantine), numel(old.quarantine), f{k, 1});
 end
@@ -209,7 +209,7 @@ end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function verifyCarried(testCase, v1, part)

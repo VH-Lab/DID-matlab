@@ -683,7 +683,7 @@ assumeFalse(testCase, did2.build.compressionBlockDeclared(), ...
 v1 = levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest');
 v1.lightsheetZarrLevel.codec_params = ...
     '{"cname":"zstd","clevel":5,"shuffle":1,"blocksize":0}';   % makePyramid.m codecParamsJSON
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
 verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
@@ -733,7 +733,7 @@ assumeCompositionSchema(testCase);
 did2.unittest.helpers.compressionBlockSchema(testCase);
 v1 = levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest');
 v1.lightsheetZarrLevel.codec_params = '{"cname":"lz4","clevel":5,"shuffle":1,"blocksize":0}';
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, numel(out.passthrough), 1, 'carried as v1');
 notes = out.summary.migration_notes;
@@ -902,7 +902,7 @@ function testPyramidAndLevelsTogetherResolve(testCase)
 assumeCompositionSchema(testCase);
 batch = {pyramidV1(), levelV1(0, 'none', 'raw', 4, 'manifest'), ...
     levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest'), levelV1(1, 'max', 'raw', 0, 'none')};
-out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 % 2026-10-26: the level holding no bytes is a file-less body ([compression
 % block and empty levels]), so three bodies and nothing emitted-nothing
@@ -974,7 +974,7 @@ arguments
     v1 (1,1) struct
 end
 
-out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 end
 
 function [out, rep] = runWithPass(batch)
@@ -982,8 +982,8 @@ arguments
     batch {mustBeA(batch, 'cell')}
 end
 
-out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
-[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'did_v2');
+[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'did_v2');
 end
 
 function verifyLightSheetMethod(testCase, obs, msg)
@@ -1338,7 +1338,7 @@ function testANoSourcePyramidWithNoDtypeIsCarriedAsV1(testCase)
 v1 = writerPyramidV1();
 v1.depends_on = v1.depends_on(~strcmp({v1.depends_on.name}, 'source_file_id'));
 v1.lightsheetZarrPyramid.dtype = '';
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
 verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
