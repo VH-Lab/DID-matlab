@@ -68,8 +68,8 @@ function testTwoObservationsMintedOneRowRefusedAndObservesRetired(testCase)
 % epochs_no_file_named and no body is minted.
 % UPDATED for did-schema #88. Two of three rows decompose (the third names a
 % subject not in the batch); the observations are of the specimen, anchored at
-% the minted epoch, with the probe as instrument where it resolves and the
-% channels on a shared acquisition_channels document. NEW ON #88: the
+% the minted epoch, with the probe as instrument where it resolves (the
+% fixture's rows name no devicestring, so nothing is wired). NEW ON #88: the
 % ingestion_manifest has no epochprobemap slot (#73 item 39), so the source is
 % renamed ONLY when every row decomposed; here one did not, so the
 % epochfiles_ingested passes through intact (rename_skipped_rows_without_home).
@@ -242,15 +242,20 @@ function testTwoProbesInOneFileShareItsBodyAndEachKeepsItsChannels(testCase)
 % Jess Haley, 2026-10-21: an opaque_body per epoch file, SHARED by the
 % electrodes recorded in it, with the channel map. Two n-trodes on different
 % channels of one Intan file -> one body per named file (the .rhd and the
-% channel-grouping .txt), each owned by BOTH observations; each observation's
-% channels are its own acquisition_channels document. `epochid://` is not a
+% channel-grouping .txt), each owned by BOTH observations; each probe keeps its
+% own channels on its own wiring relation to the rig (Jess Haley 2026-11-01
+% [probe wiring is a relation]). `epochid://` is not a
 % file. Formats by extension: .rhd Binary format, .txt Textual format.
 subj = subjectBody('spec_f', 'sess_f', 'L');
+elA  = elementBody('el_fa', 'sess_f', 'a', '1', 'n-trode', 1, 'spec_f');
+elB  = elementBody('el_fb', 'sess_f', 'b', '1', 'n-trode', 1, 'spec_f');
+daq  = daqsystemBody('acqsys_f', 'sess_f', 'intan1');
 ing  = ingestedWithDeviceRows('ing_f', 'sess_f', 't0f', { ...
-    {'a', '', 'n-trode', 'intan1:ai1-4', 'L'}, ...
-    {'b', '', 'n-trode', 'intan1:ai5-8', 'L'}}, ...
+    {'a', '1', 'n-trode', 'intan1:ai1-4', 'L'}, ...
+    {'b', '1', 'n-trode', 'intan1:ai5-8', 'L'}}, ...
     {'/data/t0f/t0f.rhd', '/data/t0f/vhintan_channelgrouping.txt'});
-[out, rep] = decompose({sessionBody('sd_f', 'sess_f', 'ref'), subj, ing});
+[out, rep] = decompose({sessionBody('sd_f', 'sess_f', 'ref'), subj, elA, elB, daq, ing});
+verifyEqual(testCase, rep.wiring_relations_minted, 2);
 verifyEqual(testCase, rep.observations_emitted, 2);
 verifyEqual(testCase, rep.epochs_by_location, 1);
 verifyEqual(testCase, rep.bodies_by_location, 2);
@@ -269,7 +274,8 @@ for i = 1:numel(bodies)
 end
 verifyEqual(testCase, sort(fmts), sort({'EDAM:format_2333', 'EDAM:format_2330'}));
 ch1 = channelsOf(out, obs{1}); ch2 = channelsOf(out, obs{2});
-verifyNotEqual(testCase, double(ch1(1).numbers(:))', double(ch2(1).numbers(:))');
+verifyNotEmpty(testCase, ch1); verifyNotEmpty(testCase, ch2);
+verifyNotEqual(testCase, double(ch1(1).matrix(:))', double(ch2(1).matrix(:))');
 end
 
 function testAnIngestedEpochTakesItsArchiveAsAttached(testCase)
@@ -1064,32 +1070,43 @@ verifyEqual(testCase, rep.device_acqsystem_resolved, 0);
 verifyEqual(testCase, rep.device_acqsystem_unresolved, 2);
 verifyEqual(testCase, rep.rigs_without_daqsystem, 1);
 verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_system'), 'no name-only system');
+% [probe wiring is a relation]: with no system there is no parent to wire the
+% channels to, so the rows have no V2 home for them and the v1 document is
+% carried whole, its devicestring intact
+verifyEqual(testCase, rep.rows_unwirable, 2);
+verifyEqual(testCase, rep.wiring_relations_minted, 0);
+verifyEmpty(testCase, bodiesOfClass(out, 'ingestion_manifest'));
+verifyNotEmpty(testCase, bodiesOfClass(out, 'epochfiles_ingested'));
 end
 
 function testADerivedReadModeIsNotAChannelTypeAndIsCounted(testCase)
 % Jess Haley 2026-10-22 [channel types]: NDI's eight derived read modes (dep,
 % den, dimp, dimn, aep, aen, aimp, aimn) are not channel types and get no term.
-% A devicestring naming one mints no acquisition_channels document (the type
-% is bound REQUIRED) and is counted, as the unbindable row and as a read mode.
+% A devicestring naming one mints no wiring relation (a condition's variable is
+% a channel type) and is counted, as the unbindable row and as a read mode.
 subj = subjectBody('spec_r', 'sess_r', 'L');
 daq  = daqsystemBody('acqsys_r', 'sess_r', 'intan1');
 ing  = ingestedWithDeviceRows('ing_r', 'sess_r', 't0r', { ...
     {'p', '', 'n-trode', 'intan1:dep1;ai3', 'L'}});
 [~, rep] = decompose({sessionBody('sd_r', 'sess_r', 'ref'), subj, daq, ing});
 verifyEqual(testCase, rep.device_strings_seen, 1, 'denominator');
-verifyEqual(testCase, rep.acquisition_channels_minted, 0);
+verifyEqual(testCase, rep.wiring_relations_minted, 0);
 verifyEqual(testCase, rep.channels_unbindable_type, 1);
 verifyEqual(testCase, rep.channels_derived_read_mode, 1);
 end
 
 function testDeviceStringResolvesAcqSystemAndParsesGroupedChannels(testCase)
-% UPDATED for #88: the system is named on the acquisition_channels document the
-% observation names (acquisition_system_id), and the grouped channels live there.
+% Jess Haley 2026-11-01 [probe wiring is a relation], [wiring relation term]:
+% the observation names its system (acquisition_system_id) and the probe is
+% `connected to` (RO:0002170) that system by a directed_relation timed by the
+% epoch's anchor, one condition per channel type: variable the channel-type
+% term, value the matrix of that type's numbers.
 subj = subjectBody('spec_d', 'sess_d', 'L');
+el   = elementBody('el_d', 'sess_d', 'p', '1', 'n-trode', 1, 'spec_d');
 daq  = daqsystemBody('acqsys_d', 'sess_d', 'intan1');
 ing  = ingestedWithDeviceRows('ing_d', 'sess_d', 't0d', { ...
-    {'p', '', 'n-trode', 'intan1:ai27-28,45;di0-2', 'L'}});
-[out, rep] = decompose({sessionBody('sd_d', 'sess_d', 'ref'), subj, daq, ing});
+    {'p', '1', 'n-trode', 'intan1:ai27-28,45;di0-2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_d', 'sess_d', 'ref'), subj, el, daq, ing});
 verifyEqual(testCase, rep.device_strings_seen, 1);
 verifyEqual(testCase, rep.device_acqsystem_resolved, 1);
 verifyEqual(testCase, rep.device_acqsystem_unresolved, 0);
@@ -1097,14 +1114,23 @@ verifyEqual(testCase, rep.device_channels_parsed, 1);
 verifyEqual(testCase, rep.device_channels_unparsable, 0);
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 1);
-chDoc = docById(out, depVal(obs{1}, 'acquisition_channels_id'));
-verifyEqual(testCase, depVal(chDoc, 'acquisition_system_id'), 'acqsys_d');
-ch = chDoc.acquisition_channels.channels;
+verifyEqual(testCase, depVal(obs{1}, 'acquisition_system_id'), 'acqsys_d');
+verifyEmpty(testCase, depVal(obs{1}, 'acquisition_channels_id'));
+verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_channels'));
+verifyEqual(testCase, rep.wiring_relations_minted, 1);
+w = wiringOf(out, obs{1});
+verifyNotEmpty(testCase, w, 'the probe has no wiring relation');
+verifyEqual(testCase, char(w.directed_relation.relation.node), 'RO:0002170');
+verifyEqual(testCase, char(w.directed_relation.relation.name), 'connected to');
+verifyEqual(testCase, depVal(w, 'child_id'), depVal(obs{1}, 'instrument_id'));
+verifyEqual(testCase, depVal(w, 'parent_id'), 'acqsys_d');
+verifyEqual(testCase, depVal(w, 'time_reference_id'), depVal(obs{1}, 'time_reference_id'));
+ch = w.directed_relation.conditions;
 verifyEqual(testCase, numel(ch), 2);
-verifyEqual(testCase, char(ch(1).type.node), 'EMPTY:0000370');   % ai ([channel types])
-verifyEqual(testCase, double(ch(1).numbers(:))', [27 28 45]);
-verifyEqual(testCase, char(ch(2).type.node), 'EMPTY:0000372');   % di
-verifyEqual(testCase, double(ch(2).numbers(:))', [0 1 2]);
+verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai ([channel types])
+verifyEqual(testCase, double(ch(1).matrix(:))', [27 28 45]);
+verifyEqual(testCase, char(ch(2).variable.node), 'EMPTY:0000372');   % di
+verifyEqual(testCase, double(ch(2).matrix(:))', [0 1 2]);
 % every row decomposed, so the source is renamed to the manifest
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
@@ -1407,14 +1433,27 @@ end
 
 
 function ch = channelsOf(result, b)
-% #88: an observation's channels live on the acquisition_channels document it
-% names by acquisition_channels_id
+% [probe wiring is a relation] (Jess Haley 2026-11-01): an observation's
+% channels are the conditions of its probe's wiring relation
 ch = [];
-id = depVal(b, 'acquisition_channels_id');
+w = wiringOf(result, b);
+if ~isempty(w); ch = w.directed_relation.conditions; end
+end
+
+
+function w = wiringOf(result, b)
+% the `connected to` relation whose child is the observation's instrument and
+% whose time is the observation's epoch anchor
+w = [];
+instr = depVal(b, 'instrument_id');
+anchor = depVal(b, 'time_reference_id');
+if isempty(instr); return; end
 for k = 1:numel(result.migrated)
     d = result.migrated{k}.toStruct();
-    if strcmp(char(d.base.id), id)
-        ch = d.acquisition_channels.channels;
+    if ~strcmp(char(d.document_class.class_name), 'directed_relation'); continue; end
+    if ~strcmp(char(d.directed_relation.relation.node), 'RO:0002170'); continue; end
+    if strcmp(depVal(d, 'child_id'), instr) && strcmp(depVal(d, 'time_reference_id'), anchor)
+        w = d;
         return;
     end
 end

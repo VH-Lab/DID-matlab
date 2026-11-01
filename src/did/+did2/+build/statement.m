@@ -54,7 +54,14 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %                         -- the edge `method_id`, `method_parameters_id`
 %                         before #88. 'MethodParametersId' is the same
 %                         option under its old name.
-%     'AcquisitionChannelsId'
+%     'AcquisitionSystemId' the acquisition system (rig) it was recorded on
+%                         or delivered through, the edge
+%                         `acquisition_system_id` (did-schema, Jess Haley
+%                         2026-11-01 [probe wiring is a relation]); which
+%                         channels is the instrument's `connected to`
+%                         relation to that system
+%     'AcquisitionChannelsId' the retiring `acquisition_channels_id` edge;
+%                         nothing in DID-matlab writes it any more
 %     'ValueId'           a standalone data_type document holding the value
 %     'InputIds'          cellstr: a calculation's inputs (ordered)
 %     'KeyIds'            cellstr: value documents a covariate takes its
@@ -98,6 +105,7 @@ arguments
     options.MethodId = ''
     options.MethodParametersId = ''
     options.AcquisitionChannelsId = ''
+    options.AcquisitionSystemId = ''
     options.ValueId = ''
     options.InputIds = {}
     options.KeyIds = {}
@@ -145,6 +153,7 @@ edges = struct( ...
     'software_id', options.SoftwareId, ...
     shape.edge, methodId, ...
     'acquisition_channels_id', options.AcquisitionChannelsId, ...
+    'acquisition_system_id', options.AcquisitionSystemId, ...
     'value_id', options.ValueId, ...
     'input_id', {options.InputIds}, ...
     'key_id', {options.KeyIds}, ...

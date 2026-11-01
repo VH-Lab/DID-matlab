@@ -36,7 +36,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   epochfiles_ingested, whose probe-map rows and files they are built from.
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview, element
-%   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity
+%   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity, directed_relation
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
 %       +migrators_j/pyraview through epochMint) are RE-POINTED to the epoch's
@@ -79,7 +79,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %
 %   Every body names, through a REPEATED `owner_id` (did-schema data_body,
 %   T15), every recording observation of that epoch that survived validation;
-%   each observation's own channels are its `acquisition_channels_id`. And the
+%   each observation's rig is its `acquisition_system_id` and its channels are
+%   its probe's `connected to` wiring relation (below). And the
 %   loose `probe observes specimen` relation that +migrators_j/element.m keeps
 %   is RETIRED here for every (probe, specimen) pair that now has a surviving
 %   observation carrying the `instrument_id` edge (`observes_retired`).
@@ -247,7 +248,9 @@ report = struct( ...
     'rename_skipped_no_epoch',        0, ...
     'rename_quarantined',             0, ...
     'rename_skipped_rows_without_home',0, ...
-    'acquisition_channels_minted',    0, ...
+    'wiring_relations_minted',        0, ...
+    'rows_unwirable',                 0, ...
+    'wiring_types_interleaved',       0, ...
     'channels_unbindable_type',       0, ...
     'channels_derived_read_mode',     0, ...
     'fold_quarantined',               0, ...
@@ -532,7 +535,7 @@ retire30AnchorCand = containers.Map('KeyType', 'char', 'ValueType', 'any');
 renameBodyBySrcId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 acIdByKey   = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acBodyById  = containers.Map('KeyType', 'char', 'ValueType', 'any');
-newGroupAc = {};     % acquisition_channels base.id each new body points at ('' = none)
+newGroupAc = {};     % wiring relation base.id each new body depends on ('' = none)
 % 2026-10-21: per epochfiles_ingested document, the observations it minted and
 % where their files are -- the bodies are built after validation, owned by the
 % observations that survived.
@@ -647,32 +650,6 @@ for k = 1:n
             end
         end
 
-        % #73 item 56: the rig + channels are ONE shared acquisition_channels
-        % document per distinct (session, rig, channels), named by the
-        % statement's acquisition_channels_id edge. A channel type outside
-        % the bound set (ai/ao/di/do) is not invented into it: the document is
-        % not minted and the row is counted.
-        acId = '';
-        if ~isempty(acqSystemId) || ~isempty(channels)
-            if channelsBindable(channels)
-                ak = channelsKey(sid, acqSystemId, channels);
-                if isKey(acIdByKey, ak)
-                    acId = acIdByKey(ak);
-                else
-                    acBody = mkAcquisitionChannels(acqSystemId, channels, sid, datestamp);
-                    acId = acBody.base.id;
-                    acIdByKey(ak) = acId;
-                    acBodyById(acId) = acBody;
-                    report.acquisition_channels_minted = ...
-                        report.acquisition_channels_minted + 1;
-                end
-            else
-                report.channels_unbindable_type = report.channels_unbindable_type + 1;
-                report.channels_derived_read_mode = ...
-                    report.channels_derived_read_mode + derivedReadModes(channels);
-            end
-        end
-
         if isKey(anchorByEpochId, epochDocId)
             anchorId = anchorByEpochId(epochDocId);
         else
@@ -683,9 +660,60 @@ for k = 1:n
             report.epoch_anchors_minted = report.epoch_anchors_minted + 1;
         end
 
+        % THE WIRING (Decided by Jess Haley, 2026-11-01, did-schema
+        % did_v2_go_forward_class_audit.md [probe wiring is a relation],
+        % [wiring relation term]; replaces #73 item 56's shared
+        % `acquisition_channels` document): the probe is `connected to`
+        % (RO:0002170) the acquisition system by a directed_relation -- child
+        % the probe, parent the system -- timed by the epoch's anchor, with one
+        % condition per channel type (variable the registered channel-type
+        % term of [channel types], value the matrix of that type's channel
+        % numbers). One relation per (session, probe, system, epoch,
+        % channels), shared by the row's statements, which name the system
+        % directly (`acquisition_system_id`).
+        % A row whose channels cannot be wired -- no probe entity to be the
+        % child (an element carried as v1), or no system to be the parent (a
+        % rig with no daqsystem) -- still gets its statements, but its
+        % channels have no V2 home: the row counts as without a home, so the
+        % v1 epochfiles_ingested is carried whole beside them and its
+        % devicestring is never dropped (rows_unwirable). A channel type
+        % outside the bound set is not invented into a condition: no relation,
+        % and the row is counted (as before, when no acquisition_channels
+        % document was minted for it).
+        acId = '';
+        if ~isempty(channels)
+            if ~channelsBindable(channels)
+                report.channels_unbindable_type = report.channels_unbindable_type + 1;
+                report.channels_derived_read_mode = ...
+                    report.channels_derived_read_mode + derivedReadModes(channels);
+            elseif isempty(instrumentId) || isempty(acqSystemId)
+                report.rows_unwirable = report.rows_unwirable + 1;
+                rowsWithoutHome = rowsWithoutHome + 1;
+            elseif typesInterleaved(channels)
+                % one condition per channel type cannot hold 'ai1-4;di1;ai9':
+                % the order of the groups (NDI's channel order) would be lost,
+                % so the row keeps its v1 document, counted
+                report.wiring_types_interleaved = report.wiring_types_interleaved + 1;
+                rowsWithoutHome = rowsWithoutHome + 1;
+            else
+                ak = wiringKey(sid, instrumentId, acqSystemId, anchorId, channels);
+                if isKey(acIdByKey, ak)
+                    acId = acIdByKey(ak);
+                else
+                    acBody = mkWiring(instrumentId, acqSystemId, channels, ...
+                        anchorId, sid, datestamp);
+                    acId = acBody.base.id;
+                    acIdByKey(ak) = acId;
+                    acBodyById(acId) = acBody;
+                    report.wiring_relations_minted = ...
+                        report.wiring_relations_minted + 1;
+                end
+            end
+        end
+
         if strcmp(disposition, 'stimulator')
             manip = mkManipulation(row.type, subjectId, instrumentId, ...
-                anchorId, sid, datestamp, acId);
+                anchorId, sid, datestamp, acqSystemId);
             newBodies{end+1} = manip;              %#ok<AGROW>
             newGroupAnchor{end+1} = anchorId;      %#ok<AGROW>
             newGroupAc{end+1} = acId;              %#ok<AGROW>
@@ -704,7 +732,7 @@ for k = 1:n
         end
         for e = 1:numel(entries)
             obs = mkObservation(entries(e), subjectId, instrumentId, anchorId, ...
-                sid, datestamp, acId, modeMethod);
+                sid, datestamp, acqSystemId, modeMethod);
             newBodies{end+1} = obs;                 %#ok<AGROW>
             specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
             if ~isempty(instrumentId)
@@ -1040,7 +1068,7 @@ for j = 1:numel(newBodies)
     if ~anchorAlive(aid); continue; end          % group withheld: anchor died
     if ~isKey(producedById, id); continue; end    % this body quarantined
     acId = newGroupAc{j};
-    if ~isempty(acId) && ~isKey(producedById, acId); continue; end  % its channels died
+    if ~isempty(acId) && ~isKey(producedById, acId); continue; end  % its wiring died
     appended{end+1} = producedById(id); %#ok<AGROW>
     % newBodies carries BOTH the recording observations and the stimulator
     % manipulations (#66 increment 3). Count each into its own counter, by the
@@ -1508,14 +1536,15 @@ end
 % ===================== builders ========================================
 
 function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
-        sessionId, datestamp, acId, modeMethod)
+        sessionId, datestamp, acqSystemId, modeMethod)
 % A recording row -> an observation of the specimen (did-schema #88: a
-% direction + a value kind), the probe as instrument (T7), the rig + channels
-% through acquisition_channels_id (#73 item 56). Its value is the epoch's files:
+% direction + a value kind), the probe as instrument (T7), the rig as
+% acquisition_system_id and the channels on the probe's wiring relation
+% ([probe wiring is a relation]). Its value is the epoch's files:
 % `data_body` true (2026-10-21, native V2 shape; mkEpochFileBodies builds them).
 % MODEMETHOD, when not empty, is the recording or imaging mode, written as the
 % observation's method term (recordingModeMethod).
-if nargin < 7; acId = ''; end
+if nargin < 7; acqSystemId = ''; end
 if nargin < 8; modeMethod = []; end
 methodOpt = {};
 if ~isempty(modeMethod); methodOpt = {'Method', modeMethod}; end
@@ -1524,7 +1553,7 @@ obs = did2.build.statement(entry.class, char(subjectId), ...
     did2.convert.registeredTerm('', entry.variable), [], 'ValueKind', entry.mixin, ...
     'DataBody', true, ...
     'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
-    'AcquisitionChannelsId', char(acId), methodOpt{:}, ...
+    'AcquisitionSystemId', char(acqSystemId), methodOpt{:}, ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
 end
@@ -1558,15 +1587,16 @@ end
 end
 
 function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
-        sessionId, datestamp, acId)
+        sessionId, datestamp, acqSystemId)
 % A stimulator row -> a term_manipulation of the specimen: the stimulator type
 % as both the variable and the term value (#66 increment 3), the stimulator
-% element-subject as instrument (T7), the wiring through acquisition_channels_id.
-if nargin < 7; acId = ''; end
+% element-subject as instrument (T7), the rig as acquisition_system_id, the
+% channels on the stimulator's wiring relation ([probe wiring is a relation]).
+if nargin < 7; acqSystemId = ''; end
 typeTerm = did2.convert.registeredTerm('', stimType);
 m = did2.build.statement('manipulation', char(subjectId), typeTerm, typeTerm, ...
     'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
-    'AcquisitionChannelsId', char(acId), ...
+    'AcquisitionSystemId', char(acqSystemId), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false, 'ValueKind', 'term');
 end
@@ -1578,24 +1608,56 @@ anchor = did2.build.relativeTimeReference(char(epochDocId), 'Relation', 'interva
     'Validate', false);
 end
 
-function ac = mkAcquisitionChannels(acqSystemId, channels, sessionId, datestamp)
-fields = struct();
-if ~isempty(channels)
-    fields.channels = channels;
+function rel = mkWiring(probeId, acqSystemId, channels, anchorId, sessionId, datestamp)
+% [probe wiring is a relation] / [wiring relation term] (Jess Haley,
+% 2026-11-01): the probe `connected to` (RO:0002170) its acquisition system,
+% timed by the epoch's anchor, one condition per channel type: variable the
+% channel-type term, value the matrix of that type's numbers. v1's
+% devicestring may give one type in several adjacent groups ('ai1-4;ai9');
+% they are joined here, in order, so a variable appears once (a type whose
+% groups are not adjacent never reaches here: typesInterleaved).
+conds = {};
+seen = {};
+for i = 1:numel(channels)
+    node = char(channels(i).type.node);
+    j = find(strcmp(seen, node), 1);
+    if isempty(j)
+        seen{end+1} = node; %#ok<AGROW>
+        conds{end+1} = {channels(i).type, double(channels(i).numbers(:)')}; %#ok<AGROW>
+    else
+        conds{j}{2} = [conds{j}{2}, double(channels(i).numbers(:)')];
+    end
 end
-edges = struct();
-if ~isempty(acqSystemId)
-    edges.acquisition_system_id = char(acqSystemId);
+entries = cell(1, numel(conds));
+for i = 1:numel(conds)
+    entries{i} = did2.build.condition(conds{i}{1}, 'Matrix', conds{i}{2});
 end
-ac = did2.build.document('acquisition_channels', fields, 'Edges', edges, ...
+rel = did2.build.directedRelation(char(probeId), char(acqSystemId), ...
+    did2.convert.registeredTerm('RO:0002170', 'connected to'), ...
+    'TimeReferenceIds', {char(anchorId)}, ...
+    'Fields', struct('conditions', {did2.build.list(entries{:})}), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
 end
 
+function tf = typesInterleaved(channels)
+% true when a channel type's groups are not contiguous ('ai1-4;di1;ai9'):
+% joining them into one condition would reorder the probe's channels
+tf = false;
+seen = {};
+last = '';
+for i = 1:numel(channels)
+    node = char(channels(i).type.node);
+    if strcmp(node, last); continue; end
+    if any(strcmp(seen, node)); tf = true; return; end
+    seen{end+1} = node; %#ok<AGROW>
+    last = node;
+end
+end
+
 function tf = channelsBindable(channels)
-% acquisition_channels.channels.type is bound REQUIRED to the ten channel
-% types (did-schema #88, Jess Haley 2026-10-22 [channel types]; ai | ao | di |
-% do before). did2.convert.channelType gives a node to exactly those, so a
+% a wiring condition's variable is one of the ten channel types (did-schema
+% #88, Jess Haley 2026-10-22 [channel types]; ai | ao | di | do before). did2.convert.channelType gives a node to exactly those, so a
 % type is bindable when it has a node: compared BY NODE ([vocabulary nodes]
 % L2), never by label.
 tf = true;
@@ -1618,8 +1680,8 @@ for i = 1:numel(channels)
 end
 end
 
-function k = channelsKey(sessionId, acqSystemId, channels)
-parts = {char(sessionId), char(acqSystemId)};
+function k = wiringKey(sessionId, probeId, acqSystemId, anchorId, channels)
+parts = {char(sessionId), char(probeId), char(acqSystemId), char(anchorId)};
 for i = 1:numel(channels)
     t = channels(i).type;
     key = char(t.node);

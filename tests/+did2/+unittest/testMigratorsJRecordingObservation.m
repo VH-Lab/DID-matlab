@@ -200,17 +200,29 @@ end
 function testMultiChannelProbeIsOneObservationWithAChannelAxis(testCase)
 % SIGNED: a 32-site probe is ONE observation, NOT N observations -- per epoch
 % now. The channels it owns in the shared file are its channel map, the
-% acquisition_channels document (from the probe map's device string, here
-% vhspike2:ai11-14), not N statements.
+% conditions of the probe's `connected to` relation to the rig (Jess Haley
+% 2026-11-01 [probe wiring is a relation]; from the probe map's device
+% string, here vhspike2:ai11-14), not N statements.
 out = runEpoch(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.rhd'});
 verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1, ...
     'a multi-site probe must not fan out into one observation per site');
 obs = firstOfClass(out, 'observation+voltage');
-ac = docById(out, depValue(obs, 'acquisition_channels_id'));
-verifyNotEmpty(testCase, ac, 'the observation names no channel map');
-ch = ac.get('acquisition_channels.channels');
-verifyEqual(testCase, double(ch(1).numbers(:))', [11 12 13 14]);
+verifyEqual(testCase, depValue(obs, 'acquisition_system_id'), 'acqsys_09');
+w = [];
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if strcmp(char(d.get('document_class.class_name')), 'directed_relation') ...
+            && strcmp(depValue(d, 'child_id'), depValue(obs, 'instrument_id')) ...
+            && strcmp(depValue(d, 'parent_id'), 'acqsys_09')
+        w = d;
+    end
+end
+verifyNotEmpty(testCase, w, 'the probe is wired to no system');
+verifyEqual(testCase, char(w.get('directed_relation.relation.node')), 'RO:0002170');
+ch = w.get('directed_relation.conditions');
+verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai
+verifyEqual(testCase, double(ch(1).matrix(:))', [11 12 13 14]);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 end
 
@@ -679,7 +691,8 @@ function out = runEpoch(el, files, validate)
 %RUNEPOCH The DID chain over ELEMENT plus one epoch's v1 cache: a session, the
 %   specimen subject (local_identifier 'L'), and an epochfiles_ingested naming
 %   epoch t00001, FILES, and one probe-map row for this element (its name,
-%   reference '1', its type, device vhspike2:ai11-14, subject 'L'). Mirrors
+%   reference '1', its type, device vhspike2:ai11-14, subject 'L'), and the
+%   rig vhspike2 (a daqsystem, id acqsys_09). Mirrors
 %   testResolveEpochProbemap's decompose().
 if nargin < 3; validate = false; end
 sess = struct();
@@ -709,7 +722,17 @@ pm = sprintf('name\treference\ttype\tdevicestring\tsubjectstring\n%s\t1\t%s\tvhs
     el.element.name, el.element.type);
 ing.epochfiles_ingested = struct('epoch_id', 't00001', ...
     'files', {[{'epochid://t00001'}, files]}, 'epochprobemap', pm);
-out = did2.convert.v1_to_v2({sess, subj, el, ing}, 'Validate', false, 'TargetVersion', 'V_eta');
+% the rig the device string names ([probe wiring is a relation]: the probe is
+% wired to it), with the two edges a v1 daqsystem always carries
+daq = struct();
+daq.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+daq.base = struct('id', 'acqsys_09', 'session_id', 'sess_09', ...
+    'name', 'vhspike2', 'datestamp', '2024-05-01T00:00:00.000Z');
+daq.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'id', {'nav_acqsys_09', 'rdr_acqsys_09'});
+out = did2.convert.v1_to_v2({sess, subj, el, daq, ing}, 'Validate', false, 'TargetVersion', 'V_eta');
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
 out = did2.convert.resolveSessionAnchors(out, 'Validate', validate, 'TargetVersion', 'V_eta');
 out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'V_eta');
