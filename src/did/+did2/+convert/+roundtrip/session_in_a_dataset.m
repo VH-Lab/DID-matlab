@@ -1,4 +1,4 @@
-function [v1, spec] = session_in_a_dataset(bodies)
+function [v1, spec] = session_in_a_dataset(bodies, ctx)
 %SESSION_IN_A_DATASET Rebuild a v1 `session_in_a_dataset` from what the
 %   migration made of it.
 %
@@ -12,8 +12,10 @@ function [v1, spec] = session_in_a_dataset(bodies)
 %   session [linked session reference follows the ingested rule], Jess Haley,
 %   2026-10-27):
 %
-%     base.id                       the relation's id (minted: the v1 id is
-%                                   not kept, so the round trip reports it lost)
+%     base.id                       the relation's id, which is the v1 id
+%                                   ([every v1 id survives], Jess Haley,
+%                                   2026-10-27; minted before, and reported
+%                                   lost)
 %     base.session_id               the dataset entity's id (the parent)
 %     base.datestamp                the relation's creation_timestamp
 %     base.name                     '' (the writer sets none)
@@ -37,11 +39,27 @@ function [v1, spec] = session_in_a_dataset(bodies)
 %   Any other emitted document, or a relation or entity field this inverse
 %   does not read, is unplaced.
 %
+%   THE DATASET ENTITY IS SHARED. Every dataset-level source mints a bare
+%   dataset entity on the dataset's id (private/jBareDataset), and
+%   did2.convert.resolveDatasetEntities keeps one per id, the richest; it also
+%   writes the dataset's own session reference into its `local_identifier`
+%   ([dataset session reference], Jess Haley, 2026-10-22). So in the
+%   whole-batch round trip (did2.convert.roundtrip.wholeBatch, which hands
+%   CTX, the index of the final batch) the dataset entity this source names
+%   holds fields other documents gave it: with CTX, its `global_identifier`,
+%   `local_identifier` and `name` are not reported as this source's.
+%   The member SESSION entity is another source's document: with CTX, the
+%   session the relation's child names is read from the batch for
+%   `session_reference` (read, never placed). Test code run 41322059537
+%   (failures B 13, Dab 14, JH 2): the sample lost session_reference and
+%   session_creator_input1 and reported the dataset's identifiers unplaced.
+%
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.session_in_a_dataset.
 
 arguments
     bodies cell
+    ctx = []
 end
 
 spec = emptySpec();
@@ -68,7 +86,11 @@ parent = firstId(rel, 'parent_id');
 if ~strcmp(parent, dsBase.id)
     spec.unplaced{end+1} = 'the relation''s parent is not the dataset entity';
 end
-spec.unplaced = [spec.unplaced, others(dsEntity, {'type'}, 'dataset entity')];
+dsOwn = {'type'};
+if ~isempty(ctx)
+    dsOwn = [dsOwn, {'global_identifier', 'local_identifier', 'name'}];   % shared (above)
+end
+spec.unplaced = [spec.unplaced, others(dsEntity, dsOwn, 'dataset entity')];
 handle = did2.build.vocabularyHandle('relation', getIn(rel, 'directed_relation', 'relation'));
 if ~any(strcmp(handle, {'included_in', 'part_of'}))
     spec.unplaced{end+1} = sprintf('the relation is "%s", not included_in', handle);
@@ -108,6 +130,13 @@ for k = find(~used)
             [~, se] = rebuildBase(bodies{k});
             reference = fieldText(se, 'local_identifier');
         end
+    end
+end
+if isempty(reference) && ~isempty(linked) && ~isempty(ctx)
+    se = ctxDoc(ctx, child);
+    if ~isempty(se) && isEntityOfType(se, 'session')
+        [~, seEntity] = rebuildBase(se);
+        reference = fieldText(seEntity, 'local_identifier');
     end
 end
 for k = find(~used)

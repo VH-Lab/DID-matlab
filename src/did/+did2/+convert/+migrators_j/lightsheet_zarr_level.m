@@ -61,19 +61,23 @@ function bodies = lightsheet_zarr_level(preBody)
 %                         codec as a term ('blosc-zstd' -> Blosc) and EVERY
 %                         codec_params key as a parameter, in order (cname ->
 %                         'inner compressor', clevel -> 'compression level',
-%                         shuffle, blocksize -> 'block size'). The block is
-%                         written only when did2.build.compressionCodec reads
-%                         it back as the level's codec and codec_params
-%                         exactly; otherwise the level is carried whole as v1
-%                         (carry-010).
-%                       - a char, while did-schema still types it so: the
-%                         codec name VERBATIM ('blosc-zstd' stays
-%                         'blosc-zstd'; it was written 'blosc', which lost the
-%                         inner compressor -- [lossless means round trip],
-%                         Jess Haley, 2026-10-26). A level whose codec_params
-%                         hold settings beyond the codec name is then CARRIED
-%                         WHOLE AS V1 (carry-010; they were dropped under #73
-%                         L4 as write-time settings).
+%                         shuffle -> 'shuffle filter', blocksize ->
+%                         'compression block size': [compression term
+%                         definitions approved], Jess Haley, 2026-11-01). The
+%                         block is written only when
+%                         did2.build.compressionCodec reads it back as the
+%                         level's codec and codec_params exactly; otherwise
+%                         (a cname contradicting the codec name: input no
+%                         writer produces) the level is carried whole as v1.
+%                       - a char, on a did-schema from before the block was
+%                         declared: the codec name VERBATIM ('blosc-zstd'
+%                         stays 'blosc-zstd'; it was written 'blosc', which
+%                         lost the inner compressor -- [lossless means round
+%                         trip], Jess Haley, 2026-10-26). A level whose
+%                         codec_params hold settings beyond the codec name is
+%                         then CARRIED WHOLE AS V1 (the interim of
+%                         [compression block and empty levels] (1); the
+%                         settings were dropped under #73 L4).
 %     redundant      true for every level but level 0, the measurement (L1)
 %     conditions     reduced levels (level > 0) only: `summary statistic` =
 %                       'mean' | 'maximum' from reduction_function (L1 option
@@ -204,9 +208,15 @@ elseif ~isempty(extraSettings)
 end
 if isempty(compression) && (~isempty(spelling) || ~isempty(extraSettings))
     if isempty(extraSettings); extraSettings = {'codec'}; end
-    % carry-register: carry-010
+    % carry-register: none (two reasons, neither with a register row: a
+    %   did-schema from before it declared the block, whose awaiting-home row
+    %   did-schema retires with the declaration ([compression block and empty
+    %   levels] (1); did-schema issue #137); and a block
+    %   that would not read back as the level's codec and codec_params, e.g. a
+    %   cname contradicting the codec name -- malformed input, whose row is
+    %   the team's to add)
     did2.convert.reportNote('carried_as_v1', 'lightsheet_zarr_level', baseId(preBody), ...
-        ['[carry-010] unplaced: lightsheet_zarr_level.codec_params (' ...
+        ['unplaced: lightsheet_zarr_level.codec_params (' ...
          strjoin(extraSettings, ', ') '): ' why]);
     bodies = {src};   % the untouched source
     return;

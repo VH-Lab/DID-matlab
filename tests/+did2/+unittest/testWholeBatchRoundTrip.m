@@ -319,6 +319,27 @@ verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element (converted)', {});
 end
 
+function testTheBatchIndexesAreReadFromTheWholeBatch(testCase)
+% a batch pass calls v1_to_v2 on its own sub-batch, which re-indexes the batch
+% (did2.convert.elementSubjects and the others) to THAT sub-batch; the report
+% runs after every pass, so it indexes the whole batch again before an inverse
+% reads it (a unit's subject_id rebuilt from its probe's: [unit direct and
+% subject rebuild from the probe], Jess Haley, 2026-10-27)
+sid = '41268b6f5c6a3d4e_00000000000000c3';
+bodies = {subjectV1('wb_spec_ix', sid, 'L'), ...
+    elementV1('wb_probe_ix', sid, 'p', 1, 'n-trode', 'wb_spec_ix')};
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+did2.convert.v1_to_v2({subject('wb_other_ix', 'x')}, 'Validate', false, ...
+    'TargetVersion', 'V_eta');   % what a batch pass does
+[~, found] = did2.convert.elementSubjects('get', 'wb_probe_ix');
+verifyFalse(testCase, found, 'premise: the sub-batch call re-indexed the batch');
+did2.convert.roundtrip.wholeBatch(bodies, result);
+[subjectId, found] = did2.convert.elementSubjects('get', 'wb_probe_ix');
+verifyTrue(testCase, found, 'the report indexes the whole batch again');
+verifyEqual(testCase, subjectId, 'wb_spec_ix');
+end
+
 % ===================== fixtures =========================================
 
 function [bodies, result] = cleanBatch()
