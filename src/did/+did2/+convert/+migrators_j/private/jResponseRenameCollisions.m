@@ -1,20 +1,23 @@
 function collision = jResponseRenameCollisions(preBody, twins)
-%JRESPONSERENAMECOLLISIONS What universalRenames would have DISCARDED from a raw
-%   v1 stimulus-response document (stimulus_response_scalar,
-%   stimulus_response_scalar_parameters_basic).
+%JRESPONSERENAMECOLLISIONS The rename-era clashes of a raw v1 document: what
+%   universalRenames would have DISCARDED. They are fields outside the
+%   template, carried under carry-100 (Decided by Jess Haley, 2026-11-01
+%   [rename clashes are malformed], did-schema did_v2_go_forward_class_audit.md).
 %
 %   COLLISION = jResponseRenameCollisions(PREBODY, TWINS). PREBODY is the RAW
 %   v1 document (did2.convert.rawV1Classes). On the renamed path,
 %   universalRenames' `dropped` output made v1_to_v2 carry such a document
-%   whole before any migrator ran (carry-049, [renames carry is temporary],
-%   Jess Haley, 2026-10-26). A switched migrator carries the same documents, so
-%   the switch changes no outcome. COLLISION lists, for the parts of the
+%   whole before any migrator ran (carry-049 until [rename clashes are
+%   malformed]). A switched migrator carries the same documents, under
+%   carry-100. COLLISION lists, for the parts of the
 %   document these migrators read:
 %     - a depends_on entry's non-empty `version`, or a second id key (`value`,
 %       `id`, `document_id`) holding a different id
 %       (did2.convert.v1read.readDependsOn: `version`, and the losing key in
 %       `other`);
-%     - an `ndi_document` block beside `base` (the pass discarded it);
+%     - `ndi_document.<field>` of a block beside `base`: one of the four that
+%       it and `base` state with different non-empty values, or a non-empty
+%       field outside them ([ndi_document read as base]);
 %     - an `app` block stating both `name` and `app_name` (or `version` and
 %       `app_version`) with different values (did2.convert.v1read.readApp);
 %     - each row {BLOCK, CAMEL, SNAKE} of TWINS (an Nx3 cell) whose block holds
@@ -44,9 +47,16 @@ for k = 1:numel(deps)
         end
     end
 end
-if isfield(preBody, 'ndi_document') && isfield(preBody, 'base') ...
-        && ~isempty(preBody.ndi_document)
-    collision{end+1} = 'ndi_document';
+% an `ndi_document` block beside `base` is read as `base` (Decided by Jess
+% Haley, 2026-10-31 [ndi_document read as base]): only a field it and `base`
+% state differently, or one of its fields outside base.json's four, is listed
+b = did2.convert.v1read.readBase(preBody);
+collision = [collision, b.conflict];
+lextra = fieldnames(b.legacy_extra);
+for k = 1:numel(lextra)
+    if ~did2.convert.isEmptyBlock(b.legacy_extra.(lextra{k}))
+        collision{end+1} = ['ndi_document.' lextra{k}]; %#ok<AGROW>
+    end
 end
 a = did2.convert.v1read.readApp(preBody);
 for k = 1:numel(a.conflicts)

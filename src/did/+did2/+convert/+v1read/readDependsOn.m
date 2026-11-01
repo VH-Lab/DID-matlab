@@ -30,7 +30,7 @@ function deps = readDependsOn(body, options)
 %   helpers each migrator calls on the raw v1 document, not a pass that rewrites
 %   it. This replaces, for a switched class, universalRenames'
 %   renameDependsOnEntries, which kept one key and DROPPED `version` and any
-%   losing key (carry-049).
+%   losing key (carry-100).
 %
 %   BODY is the raw v1 document (a struct, as jsondecode gives it). A
 %   `depends_on` that is absent or empty gives a 1x0 struct array with the

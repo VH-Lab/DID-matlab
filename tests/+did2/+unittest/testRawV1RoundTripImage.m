@@ -245,7 +245,7 @@ coll = setEdge(imageDoc('im_coll', 'tiff'), 'imageCollection_id', 'coll_1');
 twin = imageDoc('im_twin', 'tiff');
 twin.image_stack_parameters = twin.imageStack_parameters;
 twin.image_stack_parameters.clocktype = 'dev_local_time';
-cases = {'collection', coll, '[carry-153] malformed: '; 'parameters twin', twin, '[carry-049] '};
+cases = {'collection', coll, '[carry-153] malformed: '; 'parameters twin', twin, '[carry-100] '};
 for k = 1:size(cases, 1)
     [label, v1, row] = cases{k, :};
     v1 = jsondecode(jsonencode(v1));
@@ -568,7 +568,7 @@ for k = 1:size(cases, 1)
     old = runRenamed(v1);
     verifyCarriedUntouched(testCase, v1, raw, label);
     d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
-    verifyTrue(testCase, startsWith(d, '[carry-049] '), [label ': ' d]);
+    verifyTrue(testCase, startsWith(d, '[carry-100] '), [label ': ' d]);
     verifyEqual(testCase, numel(old.passthrough), 1, [label ': renamed path carried it']);
     verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1', label);
 end

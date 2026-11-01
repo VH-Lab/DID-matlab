@@ -8,9 +8,12 @@ function carried = jRawCarry(className, preBody, collision, unplaced, row, value
 %   caller then returns {PREBODY}: the carry is the untouched v1 source
 %   ([migrators read raw v1]).
 %
-%     COLLISION  what universalRenames would have discarded: the renamed path
-%                carried the document for it too, carry-049 ([renames carry is
-%                temporary]); cited first
+%     COLLISION  a rename-era clash (what universalRenames would have
+%                discarded: a depends_on `version` or second id, a camelCase /
+%                snake_case twin holding a different value): a field outside
+%                the template, carry-100 like UNPLACED (Decided by Jess Haley,
+%                2026-11-01 [rename clashes are malformed], did-schema
+%                did_v2_go_forward_class_audit.md); listed first
 %     UNPLACED   a v1 field, block or edge no part of the migrator reads
 %                (outside the class's NDI template), which the renamed path
 %                dropped without a word: carry-100 (below); the note names the
@@ -58,12 +61,8 @@ end
 b = did2.convert.v1read.readBase(preBody);
 id = b.id;
 if ~ischar(id); id = ''; end
-if ~isempty(collision)
-    % carry-register: carry-049 (the renamed path carried this collision)
-    did2.convert.reportNote('carried_as_v1', className, id, ...
-        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
-    return;
-end
+% [rename clashes are malformed]: a clash is a field outside the template
+unplaced = [reshape(collision, 1, []), reshape(unplaced, 1, [])];
 rest = '';
 if ~isempty(valueReasons)
     rest = ['unplaced: ' strjoin(valueReasons, ', ')];

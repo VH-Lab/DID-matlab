@@ -139,7 +139,7 @@ function bodies = lightsheet_zarr_level(preBody)
 %   pyramid's observation states the data type; and an empty `codec_params`)
 %   are the round trip's known findings
 %   (did2.convert.roundtrip.lightsheetZarrLevel; testRawV1RoundTripLightsheet).
-%   What the renamed path would have discarded is carried, carry-049; a field,
+%   What the renamed path would have discarded is carried, carry-100; a field,
 %   block or edge outside the template carries the document whole as v1
 %   (private/jRawAccount, jRawCarry; [fields outside the template are
 %   malformed], carry-100). Every carry returns the untouched v1 source.

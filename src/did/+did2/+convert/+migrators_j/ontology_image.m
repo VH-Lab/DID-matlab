@@ -268,7 +268,7 @@ function v2Body = ontology_image(preBody)
 %   met the `ontology_image` class (`retire`); NDI's last step stores the v1
 %   source either way, and no DID batch pass or NDI second-pass step reads the
 %   class by name. What universalRenames would have discarded carries,
-%   carry-049; a field, block or edge outside the template carries the
+%   carry-100; a field, block or edge outside the template carries the
 %   document, carry-100 (private/jRawAccount, jRawCarry). A legacy (vintage A)
 %   document that names an ontologyTableRow_id, which the observation has no
 %   place for, now carries (no register row yet) where it was dropped. A

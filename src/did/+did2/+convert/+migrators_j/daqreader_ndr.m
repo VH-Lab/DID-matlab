@@ -37,7 +37,7 @@ function v2Body = daqreader_ndr(preBody)
 %                                           reader class (carry-017 otherwise)
 %     daqreader_ndr.file_extension       -> carried (carry-039)
 %
-%   What the renamed path would have discarded is carried, carry-049, as
+%   What the renamed path would have discarded is carried, carry-100, as
 %   before; a field or edge no part of this migrator reads now carries the
 %   document whole as v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
 %   are malformed]).

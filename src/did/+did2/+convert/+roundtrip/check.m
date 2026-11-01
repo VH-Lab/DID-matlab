@@ -142,8 +142,29 @@ if ~report.carried && isfield(spec, 'spellings')
 end
 report.unplaced = spec.unplaced;
 
-origLeaves = flattenLeaves(v1Body);
-report.fields_inspected = numel(origLeaves);
+% [ndi_document read as base] (Decided by Jess Haley, 2026-10-31, did-schema
+% did_v2_go_forward_class_audit.md): a CONVERTED document's legacy
+% `ndi_document` block beside `base` was read as `base`, so it is compared as
+% `base`: each of base.json's four fields `base` leaves empty is read from the
+% block, and the block's own leaves are `restated` (the migration carries a
+% document whose block states anything `base` cannot hold, carry-100)
+legacyLeaves = struct('path', {}, 'steps', {}, 'value', {});
+v1Compared = v1Body;
+if ~report.carried && isfield(v1Body, 'base') && isfield(v1Body, 'ndi_document')
+    legacyLeaves = flattenLeaves(struct('ndi_document', {v1Body.ndi_document}));
+    for f = {'id', 'session_id', 'name', 'datestamp'}
+        if any(strcmp(base.present, f{1})) && isstruct(v1Compared.base) ...
+                && isscalar(v1Compared.base)
+            v1Compared.base.(f{1}) = base.(f{1});
+        end
+    end
+    v1Compared = rmfield(v1Compared, 'ndi_document');
+end
+origLeaves = flattenLeaves(v1Compared);
+report.fields_inspected = numel(origLeaves) + numel(legacyLeaves);
+for k = 1:numel(legacyLeaves)
+    report.restated{end+1} = legacyLeaves(k).path;
+end
 for k = 1:numel(origLeaves)
     lf = origLeaves(k);
     if ~report.carried && startsWith(lf.path, 'document_class') ...

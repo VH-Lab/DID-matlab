@@ -93,7 +93,7 @@ function bodies = measurement(preBody)
 %   field `ontology_name` as an undeclared field, so it is carried as v1 at
 %   once (no register row yet), the end state NDI's last step gave the
 %   passthrough ([passthrough stays v1: how]). What the renamed path would have
-%   discarded is carried, carry-049; a field, block or edge outside the
+%   discarded is carried, carry-100; a field, block or edge outside the
 %   template carries the document, carry-100 (private/jRawAccount, jRawCarry).
 
 arguments

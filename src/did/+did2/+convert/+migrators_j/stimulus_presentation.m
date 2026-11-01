@@ -151,7 +151,7 @@ function bodies = stimulus_presentation(preBody)
 %   output, so what NDI receives does not change. The pass-1 carry is now the
 %   v1 source itself (before: the universalRenames output, also stamped
 %   did_v1). The renamed path carried a document universalRenames would have
-%   changed with carry-049 instead; both carry it. The edges are read with
+%   changed with carry-100 instead; both carry it. The edges are read with
 %   did2.convert.v1read.readDependsOn (either key, a struct or a cell), the id
 %   with readBase (a legacy `ndi_document` identity too).
 %   did2.convert.roundtrip.stimulus_presentation holds no inverse of a

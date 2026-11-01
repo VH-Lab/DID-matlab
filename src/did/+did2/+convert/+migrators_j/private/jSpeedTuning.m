@@ -19,9 +19,9 @@ collision = jResponseRenameCollisions(preBody, cell(0, 3));
 if ~isempty(collision)
     % what universalRenames would have discarded: the renamed path carried such
     % a document before any migrator ran ([renames carry is temporary])
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', classNameOf(preBody), char(body.base.id), ...
-        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+        ['[carry-100] malformed: outside the NDI template, unplaced: ' strjoin(collision, ', ')]);
     bodies = {preBody};
     return;
 end

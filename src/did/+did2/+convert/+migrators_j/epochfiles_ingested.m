@@ -250,7 +250,7 @@ function bodies = epochfiles_ingested(preBody)
 %   key where the renamed path had `document_id` changes nothing they read.
 %   What universalRenames would have discarded (a depends_on `version` or
 %   second id, an `ndi_document` beside `base`, an `epochId` beside a differing
-%   `epoch_id`) is carried, carry-049, as the renamed path carried it.
+%   `epoch_id`) is carried, carry-100, as the renamed path carried it.
 %   did2.convert.roundtrip.epochfiles_ingested rebuilds the v1 document from
 %   the passthrough; testRawV1RoundTripIngested compares.
 
@@ -292,9 +292,9 @@ if ~isempty(collision)
     b = did2.convert.v1read.readBase(preBody);
     id = b.id;
     if ~ischar(id); id = ''; end
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'epochfiles_ingested', id, ...
-        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+        ['[carry-100] malformed: outside the NDI template, unplaced: ' strjoin(collision, ', ')]);
 end
 
 % Deliberate passthrough. `bodies = {preBody}` is how a migrator says

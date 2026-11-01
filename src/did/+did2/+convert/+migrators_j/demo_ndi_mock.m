@@ -73,7 +73,7 @@ function v2Body = demo_ndi_mock(preBody)
 %   +ndi/+calc/+example/simple.m: demoNDI.value, + session newdocument(),
 %   add_file('filename1.ext', ...)). jDemoFold reads the blocks in v1's spelling (demoNDI, demoNDIMock)
 %   or the renamed one. What the renamed path would have discarded is carried,
-%   carry-049; a field, block or edge outside the template carries the
+%   carry-100; a field, block or edge outside the template carries the
 %   document, carry-100 (private/jRawAccount, jRawCarry), where the fold
 %   refused it before (an error, so a quarantine). did2.convert.roundtrip.demoNDIMock
 %   rebuilds the v1 document; testRawV1RoundTripDemo compares the two.

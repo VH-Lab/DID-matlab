@@ -110,7 +110,7 @@ function bodies = stimulus_response_scalar(preBody)
 %   source. What universalRenames would have discarded (a depends_on
 %   `version` or a second, different id; an `ndi_document` beside `base`; an
 %   `app` name conflict; a camelCase twin of a field read here) is carried,
-%   carry-049, as the renamed path carried it. Every v1 field and where it
+%   carry-100, as the renamed path carried it. Every v1 field and where it
 %   goes is the MAPPING above; did2.convert.roundtrip.stimulus_response_scalar
 %   rebuilds the v1 document and testRawV1RoundTripStimulusResponse compares.
 %
@@ -148,14 +148,14 @@ RESPONSE_METHOD = 'ndi.app.stimulus.tuning_response';
 % identity block read into `base` by jRawBody), and every carry or passthrough
 % returns PREBODY untouched. First, what universalRenames would have discarded
 % on the renamed path, which carried such a document before any migrator ran
-% (carry-049, [renames carry is temporary]): carried the same way here.
+% (carry-100, [renames carry is temporary]): carried the same way here.
 collision = jResponseRenameCollisions(preBody, {'stimulus_response_scalar', 'responseType', 'response_type'; ...
     'stimulus_response', 'elementEpochid', 'element_epochid'; ...
     'stimulus_response', 'stimulatorEpochid', 'stimulator_epochid'});
 if ~isempty(collision)
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar', ...
-        sourceIdText(preBody), ['[carry-049] universalRenames would discard: ' ...
+        sourceIdText(preBody), ['[carry-100] malformed: outside the NDI template, unplaced: ' ...
         strjoin(collision, ', ')]);
     bodies = {preBody};
     return;
@@ -353,7 +353,10 @@ function body = identityBody(preBody)
 %   where it did on the renamed path.
 body = preBody;
 b = did2.convert.v1read.readBase(preBody);
-if strcmp(b.source, 'ndi_document') && any(strcmp(b.present, 'id'))
+if (strcmp(b.source, 'ndi_document') && any(strcmp(b.present, 'id'))) ...
+        || (strcmp(b.source, 'base') && isfield(preBody, 'ndi_document'))
+    % a block beside `base` is read as `base` too ([ndi_document read as
+    % base], Jess Haley, 2026-10-31)
     body = jRawBody(preBody, 'stimulus_response_scalar');
 end
 end

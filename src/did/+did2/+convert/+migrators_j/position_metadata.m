@@ -89,7 +89,7 @@ function bodies = position_metadata(preBody)
 %   ([passthrough stays v1: how]); it is now carried as v1 at once (no register
 %   row yet), the same end state. No NDI writer at the locked main writes one. What the
 %   renamed path would have discarded is carried,
-%   carry-049, as before; a field or edge no part of this migrator reads now
+%   carry-100, [rename clashes are malformed]; a field or edge no part of this migrator reads now
 %   carries the document whole as v1 (private/jRawAccount, jRawCarry; no
 %   register row yet). The JH writer's documents also hang off an element of
 %   type `position`, which is carried (carry-063), so v1_to_v2 carries them

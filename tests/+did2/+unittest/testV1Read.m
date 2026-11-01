@@ -129,6 +129,30 @@ body = struct('base', struct('id', 'i'), 'ndi_document', struct('id', 'old'));
 b = did2.convert.v1read.readBase(body);
 verifyEqual(testCase, b.source, 'base');
 verifyEqual(testCase, b.legacy, struct('id', 'old'));
+% [ndi_document read as base] (Decided by Jess Haley, 2026-10-31): two
+% different non-empty ids are a conflict; base's value is the one read
+verifyEqual(testCase, b.id, 'i');
+verifyEqual(testCase, b.conflict, {'ndi_document.id'});
+end
+
+function testALegacyBlockBesideBaseIsReadAsBase(testCase)
+% [ndi_document read as base] (Decided by Jess Haley, 2026-10-31, did-schema
+% did_v2_go_forward_class_audit.md): what `base` leaves empty is read from the
+% block; an equal value restates it; a field outside base.json's four is
+% returned in legacy_extra
+body = struct('base', struct('id', 'i', 'session_id', 's', 'name', ''), ...
+    'ndi_document', struct('id', 'i', 'name', 'jrclust.prm', 'type', 'x'));
+b = did2.convert.v1read.readBase(body);
+verifyEqual(testCase, b.source, 'base');
+verifyEqual(testCase, b.id, 'i');
+verifyEqual(testCase, b.name, 'jrclust.prm');
+verifyEmpty(testCase, b.conflict);
+verifyEqual(testCase, b.legacy_extra, struct('type', 'x'));
+% an empty block states nothing
+b0 = did2.convert.v1read.readBase(struct('base', struct('id', 'i', 'name', ''), ...
+    'ndi_document', struct('name', '')));
+verifyEmpty(testCase, b0.name);
+verifyEmpty(testCase, b0.conflict);
 end
 
 function testBaseOfABodyWithNoneIsEmpty(testCase)

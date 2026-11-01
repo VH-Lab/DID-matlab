@@ -55,7 +55,7 @@ function bodies = site2channelmap(preBody)
 %   validates against the same V_eta `site2channelmap` class.
 %   did2.convert.roundtrip.site2channelmap rebuilds the v1 document from the
 %   passthrough; testRawV1RoundTripProbe compares. What the renamed path would
-%   have discarded is carried, carry-049, as before; a field, block or edge
+%   have discarded is carried, carry-100, [rename clashes are malformed]; a field, block or edge
 %   outside the template (which the passthrough would have met as an undeclared
 %   field) carries the document whole as v1 (private/jRawAccount, jRawCarry;
 %   [fields outside the template are malformed],

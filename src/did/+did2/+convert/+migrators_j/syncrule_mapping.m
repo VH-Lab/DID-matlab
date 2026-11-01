@@ -207,8 +207,11 @@ function unplaced = unplacedInFold(preBody, block)
 unplaced = {};
 b = did2.convert.v1read.readBase(preBody);
 if ~strcmp(b.source, 'base') || ~isempty(fieldnames(b.extra)) ...
-        || ~isempty(fieldnames(b.legacy))
-    unplaced{end+1} = 'base';   % a legacy or extended identity block
+        || ~isempty(b.conflict) || ~did2.convert.isEmptyBlock(b.legacy_extra)
+    % a legacy or extended identity block; an `ndi_document` beside `base` is
+    % read as `base` ([ndi_document read as base], Jess Haley, 2026-10-31),
+    % so only what it states that `base` cannot hold is unplaced
+    unplaced{end+1} = 'base';
 end
 if ~isempty(b.name)
     unplaced{end+1} = 'base.name';

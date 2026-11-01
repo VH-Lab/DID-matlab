@@ -77,7 +77,7 @@ function v2Body = oneepoch(preBody)
 %   one outside them carries the document whole as v1 ([fields outside the
 %   template are malformed], carry-100), where the strict-fields check refused
 %   it before. What universalRenames would have discarded (a depends_on
-%   version, an ndi_document beside base) carries it, carry-049, as before. A
+%   version, an ndi_document beside base) carries it, carry-100, [rename clashes are malformed]. A
 %   carry is the untouched v1 source. did2.convert.roundtrip.oneepoch rebuilds
 %   the v1 document; testRawV1RoundTripOneEpoch compares the two.
 %

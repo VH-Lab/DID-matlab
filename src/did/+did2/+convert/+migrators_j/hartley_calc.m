@@ -273,9 +273,9 @@ if ~isempty(collision)
     % second id, an ndi_document beside base, two differing app spellings):
     % the renamed path carried such a document before any migrator ran, and so
     % does this one ([renames carry is temporary])
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'hartley_calc', char(body.base.id), ...
-        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+        ['[carry-100] malformed: outside the NDI template, unplaced: ' strjoin(collision, ', ')]);
     bodies = {preBody};
     return;
 end

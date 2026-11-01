@@ -8,7 +8,7 @@ function [v1, spec] = dataset_session_info(bodies)
 %   checks, after the batch, that the batch's converted `session_in_a_dataset`
 %   memberships rebuild the list exactly, and carries it whole as v1 otherwise
 %   (carry-118), as it carries one that a field outside the template, or a
-%   collision universalRenames would discard, carries (carry-100, carry-049).
+%   collision universalRenames would discard, carries (carry-100, carry-100).
 %   did2.convert.roundtrip.check reads a carried document as the v1 document
 %   itself, so this inverse is reached only for:
 %     - a body that was NOT carried: it rebuilds a single passed-through

@@ -69,7 +69,7 @@ function bodies = vmneuralresponseresiduals(preBody)
 %   template alone fixes its shape. Its blocks are snake_case already and it
 %   has no `app` block, so the raw passthrough is the renamed one but for v1's
 %   `value` edge key, and it validates against the same V_eta class. What the
-%   renamed path would have discarded is carried, carry-049, as before; a
+%   renamed path would have discarded is carried, carry-100, [rename clashes are malformed]; a
 %   field, block or edge outside the template (which the passthrough met as an
 %   undeclared field) carries the document whole as v1 (private/jRawAccount,
 %   jRawCarry; [fields outside the template are malformed], carry-100).

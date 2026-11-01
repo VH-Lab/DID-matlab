@@ -34,7 +34,7 @@ function bodies = kiasort_clusters(preBody)
 %   The checksum is written lower-cased and trimmed: one that is not already
 %   so (the writer's md5sum / md5 output always is) would be rewritten, so it
 %   carries the document. What the renamed path would have discarded is
-%   carried, carry-049, as before; a block, field or edge no part of this fold
+%   carried, carry-100, [rename clashes are malformed]; a block, field or edge no part of this fold
 %   reads (dropped without a word on the renamed path) now carries the
 %   document whole as v1 (private/jRawAccount, jRawCarry; [fields outside the
 %   template are malformed], carry-100; a rewritten checksum has no register

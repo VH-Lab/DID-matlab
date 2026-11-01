@@ -201,7 +201,7 @@ function bodies = ontology_label(preBody)
 %   +setup/+conv/+haley/doImport.m and +babu/import.m, write exactly those)
 %   by private/jRawAccount, and one holding anything else is carried whole
 %   under carry-100 (private/jRawCarry), as every other raw v1 class is. What
-%   universalRenames would discard is carried under carry-049, as before. A
+%   universalRenames would discard is carried under carry-100, [rename clashes are malformed]. A
 %   label that passes is handed back untouched, as before. No template field
 %   of a label is left without a home in pass 1 (it writes none of them; NDI's
 %   second pass places `ontologyNode`), so carry-095 has no site here. The

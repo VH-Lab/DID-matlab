@@ -119,7 +119,7 @@ function v2Body = openminds(preBody)
 %   (referencedIds) and NDI-matlab's ndi.migrate.internal.strainAssembly
 %   (referencedIds), and both read the class name and the `openminds` block,
 %   which the switch does not change. What the renamed path would have
-%   discarded is carried, carry-049, as before; a block, base field or edge
+%   discarded is carried, carry-100, [rename clashes are malformed]; a block, base field or edge
 %   outside the template (which the renamed passthrough kept, to fail
 %   validation as an undeclared field) carries the document whole as v1
 %   (private/jRawAccount, jRawCarry; [fields outside the template are

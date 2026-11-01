@@ -36,5 +36,16 @@ if strcmp(b.source, 'ndi_document')
     end
     body.base = base;
     body = rmfield(body, 'ndi_document');
+elseif strcmp(b.source, 'base') && isfield(body, 'ndi_document')
+    % Decided by Jess Haley, 2026-10-31 [ndi_document read as base]: the block
+    % beside `base` fills what `base` leaves empty; a field the two state
+    % differently, and the block's other fields, are the caller's to account
+    % for (jRawAccount: carry-100)
+    for f = {'id', 'session_id', 'name', 'datestamp'}
+        if any(strcmp(b.present, f{1})) && ~any(strcmp(b.conflict, ['ndi_document.' f{1}]))
+            body.base.(f{1}) = b.(f{1});
+        end
+    end
+    body = rmfield(body, 'ndi_document');
 end
 end

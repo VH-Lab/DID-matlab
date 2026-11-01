@@ -194,8 +194,47 @@ if any(strcmp(regexprep(clk, '^approx_', ''), {'utc', 'dev_global_time', 'exp_gl
     unit = struct('node', 'om:day', 'name', 'day');
     startSec = t * 86400;
 end
+% [UTC treatment time is absolute] (Decided by Jess Haley, 2026-11-01, did-schema
+% did_v2_go_forward_class_audit.md: "Yes", to "store treatment times on a UTC
+% clock as absolute too?"): on a UTC clock (utc, approx_utc) the onset is an
+% absolute_time_reference holding the UTC instant, start.source_value the
+% datenum as v1 wrote it (%.17g), as image_stack.m does for an acquisition time
+% ([UTC acquisition time is absolute]); approx_utc is the same instant with a
+% 5 s clock_tolerance (NDI +ndi/+time/clocktype.m: "within 5 seconds"). A
+% datenum no ISO-8601 instant can hold falls through to the relative reference
+% below.
+if any(strcmp(clk, {'utc', 'approx_utc'}))
+    utc = utcInstant(t);
+    if ~isempty(utc)
+        extra = {};
+        if strcmp(clk, 'approx_utc')
+            extra = {'ClockTolerance', 5};
+        end
+        o = jOpts(preBody, 'SourceValue', sprintf('%.17g', t), 'Approximate', false, extra{:});
+        anchor = did2.build.absoluteTimeReference(utc, o{:});
+        return;
+    end
+end
 o = jOpts(preBody);
 anchor = did2.build.relativeTimeReference(jSid(preBody), 'Clock', clk, ...
     'Start', startSec, 'StartSourceValue', t, 'StartSourceUnit', unit, ...
     'StartApproximate', false, o{:});
+end
+
+function utc = utcInstant(days)
+%UTCINSTANT The ISO-8601 UTC instant ('yyyy-MM-ddTHH:mm:ss.SSSZ') of a MATLAB
+%   datenum read on a UTC clock, rounded to the millisecond; '' when no such
+%   instant has a four-digit year (as image_stack.m's utcInstant).
+utc = '';
+if ~(days >= 1 && days < 3652060)
+    return;
+end
+whole = floor(days);
+d = datetime(whole, 'ConvertFrom', 'datenum', 'TimeZone', 'UTC') ...
+    + milliseconds(round((days - whole) * 86400000));
+d.Format = 'yyyy-MM-dd''T''HH:mm:ss.SSS''Z''';
+utc = char(d);
+if isempty(regexp(utc, '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$', 'once'))
+    utc = '';
+end
 end

@@ -136,7 +136,7 @@ function bodies = stimulus_response_scalar_parameters_basic(preBody)
 %   edge v1_to_v2 makes, none of which universalRenames changed for this
 %   class. What universalRenames would have discarded (a depends_on `version`
 %   or second id, an `ndi_document` beside `base`, an `app` name conflict, a
-%   camelCase twin of a knob) is carried, carry-049, as the renamed path
+%   camelCase twin of a knob) is carried, carry-100, as the renamed path
 %   carried it. did2.convert.roundtrip.stimulus_response_scalar_parameters_basic
 %   rebuilds the v1 document from the pass-1 passthrough or from the batch
 %   pass's `method`; testRawV1RoundTripStimulusResponse compares.
@@ -159,9 +159,9 @@ if ~isempty(collision)
     b = did2.convert.v1read.readBase(preBody);
     id = b.id;
     if ~ischar(id); id = ''; end
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'stimulus_response_scalar_parameters_basic', ...
-        id, ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+        id, ['[carry-100] malformed: outside the NDI template, unplaced: ' strjoin(collision, ', ')]);
 end
 bodies = {preBody};
 end

@@ -56,7 +56,7 @@ function v2Body = stimulus_bath(preBody)
 %   (what the coarse pass does not keep is listed there as known findings).
 %
 %   A document the resolvers cannot read whole is CARRIED, not deferred: what
-%   the renamed path would have discarded (carry-049, as before), and a field,
+%   the renamed path would have discarded (carry-100, [rename clashes are malformed]), and a field,
 %   location field or edge no part of the bath reads, or a mixture_table that
 %   is not text (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
 %   are malformed]). Such a

@@ -198,7 +198,7 @@ v1.distance_metadata.ontology_node_a = 'EMPTY:0000097';
 verifyCarriedFor(testCase, {v1}, 'unplaced: distance_metadata.ontology_node_a');
 v1 = distance('dm_1', 1:19);
 v1.ndi_document = struct('id', 'x', 'type', 'distance_metadata');
-verifyCarriedFor(testCase, {v1}, '[carry-049] universalRenames would discard: ndi_document');
+verifyCarriedFor(testCase, {v1}, '[carry-100] malformed: outside the NDI template, unplaced: ndi_document.');   % [ndi_document read as base]: its id and type are not base's
 end
 
 % ===================== a check that cannot fail proves nothing ===========

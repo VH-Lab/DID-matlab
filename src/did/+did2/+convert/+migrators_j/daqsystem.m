@@ -266,7 +266,7 @@ function bodies = daqsystem(preBody)
 %   Edges are read with either key (`value`, as v1 writes them, or `id` /
 %   `document_id`). What the renamed path would have discarded (a depends_on
 %   `version`, a second id, an `ndi_document` beside `base`) is carried,
-%   carry-049, as before; a field or edge no part of this migrator reads, which
+%   carry-100, [rename clashes are malformed]; a field or edge no part of this migrator reads, which
 %   the renamed path dropped without a word, now carries the document whole as
 %   v1 (private/jRawAccount, jRawCarry; carry-100, [fields outside the template
 %   are malformed]).

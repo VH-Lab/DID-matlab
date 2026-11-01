@@ -145,7 +145,7 @@ function v2Body = element_epoch(preBody)
 %                                  universalRenames gave it, which the batch
 %                                  passes read. An entry with a `version` or a
 %                                  second, different id is carried, as the
-%                                  renamed path carried it (carry-049)
+%                                  renamed path carried it; carry-100, [rename clashes are malformed]
 %     element_epoch.epoch_clock, t0_t1 -> acquisition_epoch.clocks, one
 %                                  {name, t0, t1} per clock
 %                                  (did2.convert.migrators.element_epoch)
@@ -163,9 +163,9 @@ end
 body = jRawBody(preBody, 'element_epoch');
 [deps, collision] = renamedDependsOn(body);
 if ~isempty(collision)
-    % carry-register: carry-049 (the renamed path carried this collision)
+    % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'element_epoch', char(body.base.id), ...
-        ['[carry-049] universalRenames would discard: ' strjoin(collision, ', ')]);
+        ['[carry-100] malformed: outside the NDI template, unplaced: ' strjoin(collision, ', ')]);
     v2Body = {preBody};
     return;
 end

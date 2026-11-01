@@ -328,7 +328,7 @@ old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.passthrough), 1, 'raw: carried');
 verifyEqual(testCase, numel(old.passthrough), 1, 'renamed: carried');
 d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-049] '), d);
+verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
 emitted = raw.migrated{1}.toStruct();
 emitted.document_class = rmfield(emitted.document_class, 'schema_version');
 verifyTrue(testCase, isequaln(emitted, v1), 'the carry is not the v1 source');

@@ -195,7 +195,7 @@ function bodies = image_stack(preBody)
 %       second id, an `ndi_document` beside `base`, `formatOntology` beside a
 %       different `format_ontology`, an `imageStack` / `imageStack_parameters`
 %       block beside a different snake_case twin) carries the document,
-%       carry-049, as the renamed path carried it ([renames carry is
+%       carry-100, as the renamed path carried it ([renames carry is
 %       temporary]);
 %     - the superclass migrator's work (+super/image_stack_parameters: a
 %       non-scalar, non-empty char or non-numeric `timestamp` is refused) is
@@ -243,9 +243,9 @@ if isRaw
             {'imageStack', 'image_stack'; 'imageStack_parameters', 'image_stack_parameters'})];
     end
     if ~isempty(collision)
-        % carry-register: carry-049 (the renamed path carried this collision)
+        % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
         did2.convert.reportNote('carried_as_v1', noteClass, ...
-            baseField(preBody, 'id', ''), ['[carry-049] universalRenames would discard: ' ...
+            baseField(preBody, 'id', ''), ['[carry-100] malformed: outside the NDI template, unplaced: ' ...
             strjoin(collision, ', ')]);
         bodies = {preBody};
         return;

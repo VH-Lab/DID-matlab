@@ -148,7 +148,7 @@ old = runRenamed(v1);
 verifyCarriedUntouched(testCase, raw, v1, 'legacy beside base');
 verifyEqual(testCase, numel(old.passthrough), 1, 'renamed: carried');
 d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-049] '), d);
+verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
 end
 
 % ===================== session_in_a_dataset ==============================

@@ -51,8 +51,9 @@ function tests = testRawV1RoundTripSpike
 %                    Haley, 2026-10-27; it was a known finding); any other
 %                    name carries ([v1 name goes to the class's own name
 %                    field], testAnotherJrclustNameCarries); the Soph vintage whose name is in
-%                    ndi_document.name is carried (carry-049, [one-reading
-%                    quick answers] Q5).
+%                    ndi_document.name converts too: the block is read as
+%                    `base` ([ndi_document read as base], Jess Haley,
+%                    2026-10-31).
 %     neuron_extracellular  converts and loses nothing (Decided by Jess Haley,
 %                    2026-10-27): base.id is the waveform calculation's id
 %                    ([every v1 id survives]; it was a known finding), and
@@ -82,7 +83,7 @@ cases = { ...
     'speed, converted shape', {speedOneFit()}, false, {}; ...
     'jrclust writer output', {jrclust()}, false, {}; ...
     'jrclust with no name', {jrclustNoName()}, false, {}; ...
-    'jrclust Soph vintage (ndi_document.name)', {jrclustNdiDocument()}, true, {}; ...
+    'jrclust Soph vintage (ndi_document.name)', {jrclustNdiDocument()}, false, {}; ...
     'neuron writer output', {neuron()}, false, {}; ...
     'neuron corpus vintage (no sorting output)', {neuronCorpusVintage()}, false, {}; ...
     'neuron with no waveform (kilosort)', {neuronNoWaveform()}, false, {}; ...
@@ -130,7 +131,18 @@ verifyCarriedFor(testCase, {hartley()}, '[carry-040]');
 fourFits = speed();
 fourFits.speed_tuning.fit_other = fourFits.speed_tuning.fit;
 verifyCarriedFor(testCase, {fourFits}, '[carry-056] speed_tuning.fit');
-verifyCarriedFor(testCase, {jrclustNdiDocument()}, '[carry-049] universalRenames would discard: ndi_document');
+% [ndi_document read as base] (Decided by Jess Haley, 2026-10-31): the Soph
+% vintage converts (its block is read as `base`, and its name 'jrclust.prm' is
+% notation, [jrclust default name is notation]); a block stating a field
+% `base` cannot hold carries the document under carry-100
+conflicting = jrclustNdiDocument();
+conflicting.base.name = 'other.prm';
+verifyCarriedFor(testCase, {conflicting}, ...
+    '[carry-100] malformed: outside the NDI template, unplaced: ndi_document.name');
+typed = jrclustNdiDocument();
+typed.ndi_document.type = 'jrclust_clusters';
+verifyCarriedFor(testCase, {typed}, ...
+    '[carry-100] malformed: outside the NDI template, unplaced: ndi_document.type');
 verifyCarriedFor(testCase, {neuronTimesOnly()}, ...
     'neuron_extracellular.waveform_sample_times (no mean_waveform');
 end
@@ -174,9 +186,12 @@ end
 function testTheSwitchChangesNoConvertedDocument(testCase)
 % "keep behaviour identical": every document the raw path CONVERTS is the one
 % the universalRenames path converted; a carry is carried on both paths, the
-% raw one the untouched v1 source
+% raw one the untouched v1 source. The Soph vintage (jrclustNdiDocument) is
+% left out: its `ndi_document` block is read as `base` on the raw path only
+% ([ndi_document read as base], Jess Haley, 2026-10-31), so it converts there
+% and is carried on the renamed path (carry-049) until that path is deleted
 batches = {{hartley(), presentationOf(hartley())}, {hartleyVintage(), presentationOf(hartleyVintage())}, ...
-    {hartley()}, {jrclustNoName()}, {jrclustNdiDocument()}, {neuron()}, {neuronCorpusVintage()}, ...
+    {hartley()}, {jrclustNoName()}, {neuron()}, {neuronCorpusVintage()}, ...
     {neuronNoWaveform()}};
 for k = 1:numel(batches)
     b = batches{k};
