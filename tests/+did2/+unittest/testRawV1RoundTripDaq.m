@@ -135,7 +135,7 @@ function testTheFilefindFoldRoundTrips(testCase)
 for path = {'raw', 'renamed'}
     [batch, rule] = filefindBatch();
     if strcmp(path{1}, 'raw'); out = runRaw(batch); else; out = runRenamed(batch); end
-    out = did2.convert.resolveClockAlignment(out, 'Validate', false, 'TargetVersion', 'V_eta');
+    out = did2.convert.resolveClockAlignment(out, 'Validate', false, 'TargetVersion', 'did_v2');
     verifyEqual(testCase, out.clock_alignment_fold.syncrule_configurations_folded, 1, path{1});
     docs = foldDocs(out, rule.base.id);
     verifyNotEmpty(testCase, docs, path{1});
@@ -157,7 +157,7 @@ for path = {'raw', 'renamed'}
     rule = channelRule();
     batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
     if strcmp(path{1}, 'raw'); out = runRaw(batch); else; out = runRenamed(batch); end
-    out = did2.convert.resolveClockAlignment(out, 'Validate', false, 'TargetVersion', 'V_eta');
+    out = did2.convert.resolveClockAlignment(out, 'Validate', false, 'TargetVersion', 'did_v2');
     verifyEqual(testCase, out.clock_alignment_fold.syncrule_configurations_folded, 1, path{1});
     docs = foldDocs(out, rule.base.id);
     verifyNotEmpty(testCase, docs, path{1});
@@ -182,7 +182,7 @@ function testTheTriggerChannelsRoundTripUnderEitherLabel(testCase)
 % configuration holding one channel under both labels is reported.
 rule = channelRule();
 batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
-out = did2.convert.resolveClockAlignment(runRaw(batch), 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveClockAlignment(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
 docs = foldDocs(out, rule.base.id);
 assertNotEmpty(testCase, docs);
 bodies = cellfun(@(d) d.toStruct(), docs, 'UniformOutput', false);
@@ -507,11 +507,11 @@ c = {'daqsystem', 'filenavigator', 'daqreader', 'daqreader_ndr', ...
 end
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 end
 

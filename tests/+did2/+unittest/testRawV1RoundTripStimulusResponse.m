@@ -389,8 +389,8 @@ end
 % after the batch pass: the same method from either path
 p = writerParameters('par_1', 1);
 r = convertibleResponse('resp_c3', 'F1', '', 'par_1');
-a = did2.convert.resolveResponseParameters(runRaw({r, p}), 'Validate', false, 'TargetVersion', 'V_eta');
-b = did2.convert.resolveResponseParameters(runRenamed({r, p}), 'Validate', false, 'TargetVersion', 'V_eta');
+a = did2.convert.resolveResponseParameters(runRaw({r, p}), 'Validate', false, 'TargetVersion', 'did_v2');
+b = did2.convert.resolveResponseParameters(runRenamed({r, p}), 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, numel(a.migrated), numel(b.migrated));
 for j = 1:min(numel(a.migrated), numel(b.migrated))
     verifyTrue(testCase, isequaln(a.migrated{j}.toStruct(), b.migrated{j}.toStruct()), ...
@@ -421,18 +421,18 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 end
 
 function out = runFold(testCase, bodies)
 out = runRaw(bodies);
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
-out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function b = bodyWithId(out, id)

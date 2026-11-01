@@ -1082,12 +1082,12 @@ r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 
 [~, repA] = did2.convert.epochMint(r, 'Validate', false, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 verifyTrue(testCase, repA.ran);
 verifyEqual(testCase, repA.epochs_minted, 0);
 
 [~, repB] = did2.convert.resolveSessionAnchors(r, 'Validate', false, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 verifyTrue(testCase, repB.ran);
 verifyEqual(testCase, repB.anchors_seen, 0);
 verifyEqual(testCase, repB.refused_total, 0);
@@ -1122,7 +1122,7 @@ function testFoldGenericFilesAttachesADenominatorOnAnEmptyBatch(testCase)
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 [~, rep] = did2.convert.foldGenericFiles(r, 'Validate', false, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.generic_files_seen, 0);
 verifyEqual(testCase, rep.files_folded, 0);

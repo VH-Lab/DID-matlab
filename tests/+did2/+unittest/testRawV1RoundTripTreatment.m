@@ -450,7 +450,7 @@ for k = 1:numel(fixtures)
     v1 = jsondecode(jsonencode(fixtures{k}));   % the shape a corpus delivers
     raw = runRaw(v1);
     old = did2.convert.v1_to_v2(v1, 'Validate', false, ...
-        'TargetVersion', 'V_eta', 'RawV1Classes', {});
+        'TargetVersion', 'did_v2', 'RawV1Classes', {});
     label = sprintf('fixture %d (%s %s)', k, v1.document_class.class_name, v1.base.id);
     verifyEmpty(testCase, raw.quarantine, label);
     verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
@@ -479,7 +479,7 @@ legacy = struct('id', v1.base.id, 'session_id', v1.base.session_id, ...
 v1 = rmfield(v1, 'base');
 v1.ndi_document = legacy;
 raw = runRaw(v1);
-old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
 verifyEmpty(testCase, raw.quarantine);
 verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
 % the minted ids agree too: did2.convert.mintKey keys a base-less document on
@@ -632,7 +632,7 @@ assertEqual(testCase, n, 1, 'one absolute anchor');
 end
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function fx = writerFixtures()

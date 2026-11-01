@@ -133,7 +133,7 @@ batches = {{position('pm_1', 'EMPTY:0000137')}, {positionConvertedShape()}, ...
 for k = 1:numel(batches)
     b = batches{k};
     raw = runRaw(b);
-    old = did2.convert.v1_to_v2(b, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+    old = did2.convert.v1_to_v2(b, 'Validate', false, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
     label = sprintf('batch %d (%s)', k, b{1}.document_class.class_name);
     verifyEmpty(testCase, raw.quarantine, label);
     verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
@@ -158,7 +158,7 @@ function testAPositionNamingNoMeasurementIsCarried(testCase)
 % either path (no NDI writer at the locked main writes one)
 v1 = position('pm_9', '');
 verifyCarriedFor(testCase, {v1}, 'no ontologyNode');
-old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
 verifyTrue(testCase, isCarried(old, []), 'not carried on the renamed path');
 end
 
@@ -171,7 +171,7 @@ function testTheCarriedDistancesPassValidation(testCase)
 % (positionConvertedShape() is carried too, [position and its metadata are one
 % statement]; its carry is checked by testAPositionWithOnlyABodyPartIsCarried.)
 for b = {{distance('dm_1', 1:19)}, {distance('dm_2', 4)}}
-    out = did2.convert.v1_to_v2(b{1}, 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(b{1}, 'Validate', true, 'TargetVersion', 'did_v2');
     label = b{1}{1}.base.id;
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', label, quarantineText(out)));
     verifyTrue(testCase, isCarried(out, b{1}{1}), [label ': not carried as the untouched v1 source']);
@@ -254,7 +254,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(batch)
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function docs = own(migrated, batch)

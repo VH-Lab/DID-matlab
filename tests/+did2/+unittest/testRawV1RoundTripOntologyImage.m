@@ -52,8 +52,8 @@ verifyTrue(testCase, startsWith(notes, '[carry-124] needs_mapping: ngrid'), note
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyTrue(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'ontologyImage, imageDocMaker', {});
-old = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
-raw = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+old = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
+raw = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, raw.quarantine);
 verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough));
 end
@@ -160,5 +160,5 @@ d = jsondecode(jsonencode(d));
 end
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'did_v2');
 end

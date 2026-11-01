@@ -286,7 +286,7 @@ function testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided(testCase)
 % emitted -- and nothing is quarantined either, which the old value-less
 % observation was.
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_1', 'single'});
 verifyEmpty(testCase, out.quarantine, 'the derived element quarantined');
 verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
@@ -538,7 +538,7 @@ function testExtracellularRecordingValidatesAgainstVEta(testCase)
 % true) + its epoch anchor + the channel map + the opaque_body by location.
 % Nothing may quarantine; rule value_inline_or_body is satisfied by data_body.
 el = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
-pass1 = did2.convert.v1_to_v2(el, 'Validate', true, 'TargetVersion', 'V_eta');
+pass1 = did2.convert.v1_to_v2(el, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, pass1.quarantine, 'pass 1 quarantined the element');
 out = runEpoch(el, {'/data/t00001/t00001.rhd'}, true);
 if ~isempty(out.quarantine)
@@ -555,7 +555,7 @@ function testTheSpikeTrainAlsoValidatesAgainstVEta(testCase)
 % value_inline_or_body) -- and emits NO observation until its per-epoch body is
 % decided (see testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided).
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_1', 'single'});
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
@@ -595,7 +595,7 @@ function out = runJ(v1)
 % every element here is el_1; a `spikes` one is a unit its sorting run labels
 % single ([sorted units are cells or groups], Jess Haley, 2026-10-26; without a
 % label it is carried, testRawV1RoundTripElement)
-out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_1', 'single'});
 end
 
@@ -721,10 +721,10 @@ pm = sprintf('name\treference\ttype\tdevicestring\tsubjectstring\n%s\t1\t%s\tvhs
     el.element.name, el.element.type);
 ing.epochfiles_ingested = struct('epoch_id', 't00001', ...
     'files', {[{'epochid://t00001'}, files]}, 'epochprobemap', pm);
-out = did2.convert.v1_to_v2({sess, subj, el, ing}, 'Validate', false, 'TargetVersion', 'V_eta');
-out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
-out = did2.convert.resolveSessionAnchors(out, 'Validate', validate, 'TargetVersion', 'V_eta');
-out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({sess, subj, el, ing}, 'Validate', false, 'TargetVersion', 'did_v2');
+out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
+out = did2.convert.resolveSessionAnchors(out, 'Validate', validate, 'TargetVersion', 'did_v2');
+out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'did_v2');
 end
 
 function c = allOfClass(out, className)

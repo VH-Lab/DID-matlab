@@ -163,7 +163,7 @@ arguments
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'did_v2'
     options.Audits (1,1) logical = true
     options.RawV1Classes cell = did2.convert.rawV1Classes()
     options.NoMigratorCarryClasses cell = did2.convert.noMigratorCarryRows()
@@ -1517,7 +1517,7 @@ function body = applySuperclassMigrators(body, concreteClassName, targetVersion)
 % A superclass override must return exactly one body: it reshapes a
 % property block, it does not split documents.
 if nargin < 3 || isempty(targetVersion)
-    targetVersion = 'V_eta';
+    targetVersion = 'did_v2';
 end
 superPackage = '';
 if did2.convert.isV2Set(targetVersion)

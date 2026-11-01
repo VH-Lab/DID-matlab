@@ -152,7 +152,7 @@ for k = 1:numel(fixtures)
     v1 = fixtures{k};
     raw = runRaw(v1);
     old = did2.convert.v1_to_v2(v1, 'Validate', false, ...
-        'TargetVersion', 'V_eta', 'RawV1Classes', {});
+        'TargetVersion', 'did_v2', 'RawV1Classes', {});
     label = sprintf('fixture %d (%s)', k, v1.document_class.class_name);
     verifyEqual(testCase, raw.summary.legacy_ndi_document.bodies_read_raw_v1, 1, label);
     verifyEmpty(testCase, raw.quarantine, label);
@@ -176,7 +176,7 @@ function testWriterOutputsValidate(testCase)
 % the converted documents pass the V2 schema (the corpus run validates too)
 for cls = {'oridirtuning_calc', 'contrastsensitivity_calc'}
     v1 = writerOutput(cls{1});
-    out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine, cls{1});
     verifyGreaterThan(testCase, numel(out.migrated), 1, cls{1});
 end
@@ -371,7 +371,7 @@ end
 end
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function c = structs(docs)

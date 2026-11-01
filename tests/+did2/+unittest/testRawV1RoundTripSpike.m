@@ -196,7 +196,7 @@ batches = {{hartley(), presentationOf(hartley())}, {hartleyVintage(), presentati
 for k = 1:numel(batches)
     b = batches{k};
     raw = runRaw(b);
-    old = did2.convert.v1_to_v2(b, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+    old = did2.convert.v1_to_v2(b, 'Validate', false, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
     label = sprintf('batch %d (%s)', k, b{1}.document_class.class_name);
     % the presentation beside a Hartley calculation is read raw too (switched
     % with the session family, carried for NDI's second pass)
@@ -232,7 +232,7 @@ function testTheSpeedWriterSpellingNeverReachedItsMigratorBeforeTheSwitch(testCa
 % rawV1Classes' table; the converted shape converts the same way on the
 % migrator's own spelling.
 v1 = speedOneFit();
-old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
 verifyEqual(testCase, numel(old.migrated), 1);
 verifyEqual(testCase, char(old.migrated{1}.get('document_class.class_name')), 'speedtuning_calc');
 raw = runRaw({v1});
@@ -268,7 +268,7 @@ function testTheConvertedDocumentsValidate(testCase)
 batches = {{hartley(), presentationOf(hartley())}, {speedOneFit()}, {jrclustNoName()}, {neuron()}, ...
     {neuronNoWaveform()}};
 for k = 1:numel(batches)
-    out = did2.convert.v1_to_v2(batches{k}, 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(batches{k}, 'Validate', true, 'TargetVersion', 'did_v2');
     label = batches{k}{1}.document_class.class_name;
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', label, quarantineText(out)));
     verifyGreaterThan(testCase, numel(out.migrated), 2, label);
@@ -386,7 +386,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(batch)
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function docs = own(migrated)
