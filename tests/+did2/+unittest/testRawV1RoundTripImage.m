@@ -173,7 +173,9 @@ assertNotEmpty(testCase, obs);
 assertNotEmpty(testCase, body);
 verifyEqual(testCase, char(obs.statement.notes), v1.image.label, 'the label is the notes');
 verifyEqual(testCase, char(body.data_body.format.node), 'EDAM:format_3591');
-verifyEqual(testCase, char(body.data_body.compression), 'lzw');
+% either shape: the char, or the {term, parameters} block ([compression block
+% and empty levels] (1))
+verifyEqual(testCase, did2.build.compressionCodec(body.data_body.compression), 'lzw');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyFalse(testCase, r.carried);
 verifyRoundTrip(testCase, r, 'image', {});
