@@ -7,10 +7,12 @@ function tests = testFromV1Database
 %   covers the quarantine sidecar and the Overwrite policy.
 %
 %   All tests run with Validate=false so the test runner does not need
-%   a checked-out did-schema directory next to it. The fixture classes
-%   (demo_alpha, demo_beta, demo_gamma) have no migrator, so they pass
-%   through the V_eta pipeline 1 -> 1: these tests are about the database
-%   round trip, not about any class's migration. The mksqlite gate
+%   a checked-out did-schema directory next to it. The fixtures are v1
+%   `projectvar` documents (labelled demo_alpha, demo_beta, demo_gamma),
+%   which have no migrator and are carried whole as v1, 1 -> 1
+%   (did2.convert.noMigratorCarryRows; a class with no migrator and no
+%   recorded decision quarantines, [early migration pieces fixed] (1)): these
+%   tests are about the database round trip, not about any class's migration. The mksqlite gate
 %   lives in setupOnce; if mksqlite is missing the whole file is
 %   skipped, matching testSqliteDb.m.
 %
@@ -161,10 +163,11 @@ end
 
 % ---- helpers ----
 
-function body = makeV1Body(className, name)
+function body = makeV1Body(label, name)
+% a v1 `projectvar` (carried whole as v1, carry-162); LABEL names the fixture
 body = struct();
 body.document_class = struct( ...
-    'class_name',    className, ...
+    'class_name',    'projectvar', ...
     'class_version', '1.0.0', ...
     'superclasses',  struct( ...
         'class_name',    'base', ...
@@ -175,7 +178,7 @@ body.base = struct( ...
     'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
     'name',       name, ...
     'datestamp',  '2024-06-01T12:00:00.000Z');
-body.(className) = struct('marker', name);
+body.projectvar = struct('marker', label);
 end
 
 function s = pad16(name)

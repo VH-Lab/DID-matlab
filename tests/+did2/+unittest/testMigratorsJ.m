@@ -721,15 +721,15 @@ end
 
 function otr = tableRow()
 otr = struct();
-otr.document_class = struct('class_name', 'ontology_table_row', 'class_version', '1.0.0', ...
+otr.document_class = struct('class_name', 'ontologyTableRow', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 otr.depends_on = struct('name', {'subject_id'}, 'value', {'subj_001'});
 otr.base = struct('id', 'otr_01', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-otr.ontology_table_row = struct( ...
-    'variable_names', 'BodyWeight,StartleAmplitude,TrialType,SubjectLocalIdentifier', ...
+otr.ontologyTableRow = struct( ...
+    'variableNames', 'BodyWeight,StartleAmplitude,TrialType,SubjectLocalIdentifier', ...
     'names', 'body weight,acoustic startle maximum amplitude,trial type,subject local identifier', ...
-    'ontology_nodes', 'EMPTY:1,EMPTY:2,EMPTY:3,EMPTY:4', ...
+    'ontologyNodes', 'EMPTY:1,EMPTY:2,EMPTY:3,EMPTY:4', ...
     'data', struct('BodyWeight', 24.3, 'StartleAmplitude', 38, ...
         'TrialType', 'Startle 95 dB', 'SubjectLocalIdentifier', 'rat_1'));
 end
@@ -745,8 +745,8 @@ function testAnOntologyTableRowWithASubjectIsCarriedNeedingAMapping(testCase)
 v1 = tableRow();
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'ontology_table_row');
-verifyEqual(testCase, out.migrated{1}.get('ontology_table_row.data'), v1.ontology_table_row.data);
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'ontologyTableRow');
+verifyEqual(testCase, out.migrated{1}.get('ontologyTableRow.data'), v1.ontologyTableRow.data);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-026] needs_mapping: assertion | observation | manipulation'), d);
 verifyTableRowCarryNote(testCase, out);
@@ -1733,13 +1733,13 @@ function v1 = ontologyLabelBody()
 % Fixture built from the NDI TEMPLATE (ndi_common/database_documents/data/
 % ontologyLabel.json), not from our schema. ONE property field, ONE dependency.
 v1 = struct();
-v1.document_class = struct('class_name', 'ontology_label', 'class_version', '1.0.0', ...
+v1.document_class = struct('class_name', 'ontologyLabel', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'document_id'}, 'value', {'imstack_9'});
 v1.base = struct('id', 'ol_01', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 % ontologyNode, snake_cased by universalRenames
-v1.ontology_label = struct('ontology_node', 'uberon:3373');
+v1.ontologyLabel = struct('ontologyNode', 'uberon:3373');
 end
 
 function testOntologyLabelDefersToSecondPass(testCase)
@@ -1753,8 +1753,8 @@ function testOntologyLabelDefersToSecondPass(testCase)
 % graph, so the document is carried through intact for the second pass.
 out = did2.convert.migrators_j.ontology_label(ontologyLabelBody());
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out{1}), 'ontology_label');
-verifyEqual(testCase, out{1}.ontology_label.ontology_node, 'uberon:3373');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out{1}), 'ontologyLabel');
+verifyEqual(testCase, out{1}.ontologyLabel.ontologyNode, 'uberon:3373');
 % the link to the labelled document is kept, and no husk observation is minted
 verifyEqual(testCase, depValue(out{1}, 'document_id'), 'imstack_9');
 verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
@@ -1818,21 +1818,21 @@ out = runJ(ontologyLabelBody());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'ontology_label');
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'ontologyLabel');
 % the load-bearing assertion: the referent id, after the rename step
 verifyEqual(testCase, depVal(doc, 'document_id'), 'imstack_9', ...
     'the document_id edge must survive universalRenames + the migrator');
 verifyEqual(testCase, numel(did2.unittest.helpers.dropSessionEdge(doc.get('depends_on'))), 1);
 % and the passthrough is counted as one -- a DELIBERATE one, per class, so an
 % accidental fall-through to a fallback would show up here as well
-verifyEqual(testCase, out.summary.unconverted_by_class.ontology_label, 1);
+verifyEqual(testCase, out.summary.unconverted_by_class.ontologyLabel, 1);
 end
 
 function testOntologyLabelRejectsInventedShape(testCase)
 % ontology_name/label_id/label came from the false provenance line in the
 % V2 conversion doc (since corrected). None exists on the real class.
 v1 = ontologyLabelBody();
-v1.ontology_label = struct('ontology_name', 'Allen CCF v3', 'label_id', 12345, ...
+v1.ontologyLabel = struct('ontology_name', 'Allen CCF v3', 'label_id', 12345, ...
     'label', 'primary visual cortex');
 verifyError(testCase, @() did2.convert.migrators_j.ontology_label(v1), ...
     'did2:convert:ontologyLabelInventedShape');
@@ -2018,15 +2018,15 @@ function testImageStackDataLimitsOtherThanItsTypeRangeAreAValueRange(testCase)
 % another range is a body condition with variable EMPTY:0000402 "value range"
 % ([census terms] T3), its value the [minimum maximum] pair.
 v1 = foldableBehaviourImageStack();
-v1.image_stack_parameters.data_type = 'uint8';
-v1.image_stack_parameters.data_limits = [0 255];
+v1.imageStack_parameters.data_type = 'uint8';
+v1.imageStack_parameters.data_limits = [0 255];
 out = runJ(v1);
 b = firstOfClassJ(out.migrated, 'sampled_body');
 assertNotEmpty(testCase, b, 'the type''s range folds');
 bs = b.toStruct();
 verifyFalse(testCase, isfield(bs.data_body, 'conditions') && ~isempty(bs.data_body.conditions), ...
     'the type''s range is not written');
-v1.image_stack_parameters.data_limits = [10 200];
+v1.imageStack_parameters.data_limits = [10 200];
 out = runJ(v1);
 b = firstOfClassJ(out.migrated, 'sampled_body');
 assertNotEmpty(testCase, b, 'another range folds too');
@@ -2043,11 +2043,11 @@ function testACarriedImageStackIsTheV1SourceNotTheSuperclassReshape(testCase)
 % stamped did_v2 under its tombstone). It is now the universalRenames output,
 % recorded as a pass-1 passthrough, the timestamp still there.
 v1 = foldableBehaviourImageStack();
-v1.image_stack_parameters.timestamp = [];
-v1.image_stack_parameters.data_limits = 'not a pair';   % carried: not a [min max] pair
+v1.imageStack_parameters.timestamp = [];
+v1.imageStack_parameters.data_limits = 'not a pair';   % carried: not a [min max] pair
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
-verifyTrue(testCase, isfield(out.migrated{1}.get('image_stack_parameters'), 'timestamp'), ...
+verifyTrue(testCase, isfield(out.migrated{1}.get('imageStack_parameters'), 'timestamp'), ...
     'the carried document lost what the superclass override strips');
 end
 
@@ -2055,7 +2055,7 @@ function testImageStackFormatOntologyIsTheBodysFormat(testCase)
 % [image file details placed]: an imageStack's `formatOntology` is the body's
 % `format` (it was dropped as derivable)
 v1 = foldableBehaviourImageStack();
-v1.image_stack.format_ontology = 'NCIT:C85437';
+v1.imageStack.formatOntology = 'NCIT:C85437';
 out = runJ(v1);
 body = firstOfClassJ(out.migrated, 'sampled_body');
 assertNotEmpty(testCase, body);
@@ -2147,13 +2147,13 @@ function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCa
 % validates against NDI templates]) a passed-through document whose class V2
 % does not hold is counted, not quarantined.
 v1 = struct();
-v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+v1.document_class = struct('class_name', 'imageStack', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'document_id'}, 'value', {'otr_42'});
 v1.base = struct('id', 'is_02', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image_stack = struct('format_ontology', 'NCIT:C70631', 'label', 'an image');
-v1.image_stack_parameters = struct('data_type', 'uint8', ...
+v1.imageStack = struct('formatOntology', 'NCIT:C70631', 'label', 'an image');
+v1.imageStack_parameters = struct('data_type', 'uint8', ...
     'dimension_order', 'YX', 'dimension_size', [512 512], ...
     'dimension_scale', [0.5 0.5], 'clocktype', 'exp_global_time', 'timestamp', 0);
 
@@ -2169,28 +2169,28 @@ verifyEqual(testCase, nLeafJ(out.migrated, 'observation+intensity'), 0, ...
 % migrator DIRECTLY and so really do get structs back. Two green CI jobs went
 % red on that alone.
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'image_stack');
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'imageStack');
 verifyEqual(testCase, doc.get('base.id'), 'is_02');
 % the payload survives for the second pass
-verifyEqual(testCase, doc.get('image_stack_parameters.data_type'), 'uint8');
+verifyEqual(testCase, doc.get('imageStack_parameters.data_type'), 'uint8');
 end
 
 function testImageStackWithAnEmptySubjectEdgeIsAlsoGuarded(testCase)
 % Edge PRESENT but blank -- the shape the invented-empty-edge pattern produces.
 v1 = struct();
-v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+v1.document_class = struct('class_name', 'imageStack', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'subject_id'}, 'value', {''});
 v1.base = struct('id', 'is_03', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image_stack = struct('format_ontology', 'NCIT:C70631', 'label', 'an image');
-v1.image_stack_parameters = struct('data_type', 'uint8', ...
+v1.imageStack = struct('formatOntology', 'NCIT:C70631', 'label', 'an image');
+v1.imageStack_parameters = struct('data_type', 'uint8', ...
     'dimension_order', 'YX', 'dimension_size', [512 512], ...
     'dimension_scale', [0.5 0.5], 'clocktype', 'exp_global_time', 'timestamp', 0);
 
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'imageStack');
 end
 
 function testImageStackBecomesBodyBackedObservation(testCase)
@@ -2201,14 +2201,14 @@ function testImageStackBecomesBodyBackedObservation(testCase)
 % observation (owner_id), datum_order 'F' (a MATLAB array, column-major) + the
 % session anchor.
 v1 = struct();
-v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+v1.document_class = struct('class_name', 'imageStack', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.base = struct('id', 'is_01', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image_stack = struct('format_ontology', 'EDAM:format_3591', ...
-    'label', 'a two-photon stack', 'format', 'tiff');
-v1.image_stack_parameters = struct('data_type', 'uint16', ...
+v1.imageStack = struct('formatOntology', 'EDAM:format_3591', ...
+    'label', 'a two-photon stack');
+v1.imageStack_parameters = struct('data_type', 'uint16', ...
     'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
     'dimension_scale', [0.5 0.5 1 1 1], 'clocktype', 'dev_local_time', 'timestamp', 0);
 out = runJ(v1);
@@ -2295,14 +2295,14 @@ end
 
 function v1 = imageStackNoInventionDoc()
 v1 = struct();
-v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+v1.document_class = struct('class_name', 'imageStack', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
 v1.base = struct('id', 'is_01', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image_stack = struct('format_ontology', 'EDAM:format_3591', ...
-    'label', 'a two-photon stack', 'format', 'tiff');
-v1.image_stack_parameters = struct('data_type', 'uint16', ...
+v1.imageStack = struct('formatOntology', 'EDAM:format_3591', ...
+    'label', 'a two-photon stack');
+v1.imageStack_parameters = struct('data_type', 'uint16', ...
     'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
     'dimension_scale', [0.5 0.5 1 1 1], 'clocktype', 'dev_local_time', 'timestamp', 0);
 end
@@ -2311,17 +2311,17 @@ function testImageStackWithNoDimensionOrderPassesThroughAsV1(testCase)
 % No dimension order: no key can be built honestly, so the document passes
 % through unchanged. It used to be given 'YXCZT'.
 v1 = imageStackNoInventionDoc();
-v1.image_stack_parameters = rmfield(v1.image_stack_parameters, 'dimension_order');
+v1.imageStack_parameters = rmfield(v1.imageStack_parameters, 'dimension_order');
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'imageStack');
 end
 
 function testImageStackWithNoDataTypeLeavesDatumTypeEmpty(testCase)
 % No data type: value.data_type is left empty ("not stated"). It used to be
 % given 'uint16'.
 v1 = imageStackNoInventionDoc();
-v1.image_stack_parameters = rmfield(v1.image_stack_parameters, 'data_type');
+v1.imageStack_parameters = rmfield(v1.imageStack_parameters, 'data_type');
 out = runJ(v1);
 verifyEqual(testCase, nLeafJ(out.migrated, 'observation+intensity'), 1);
 obs = out.migrated{1};
@@ -2435,7 +2435,7 @@ cases = { ...
     'nA,pA,furlong',      {'om:nanoampere', 'nanoampere'; 'om:picoampere', 'picoampere'; '', 'furlong'}};
 for c = 1:size(cases, 1)
     v1 = foldableBehaviourImageStack();
-    v1.image_stack_parameters.dimension_scale_units = cases{c, 1};
+    v1.imageStack_parameters.dimension_scale_units = cases{c, 1};
     out = runJ(v1);
     sb = firstOfClassJ(out.migrated, 'sampled_body');
     keys = did2.unittest.helpers.axesOf(sb.toStruct());
@@ -2458,8 +2458,8 @@ function testImageStackAxisWithNoRecordedScaleIsABareDimension(testCase)
 % "yes" to 1..n): three bare dimensions. A recorded scale, even 1, is still a
 % covariate (testImageStackBecomesBodyBackedObservation).
 v1 = foldableBehaviourImageStack();
-v1.image_stack_parameters.dimension_scale = [];        % nothing recorded
-v1.image_stack_parameters.dimension_scale_units = '';
+v1.imageStack_parameters.dimension_scale = [];        % nothing recorded
+v1.imageStack_parameters.dimension_scale_units = '';
 out = runJ(v1);
 keys = did2.unittest.helpers.axesOf(firstOfClassJ(out.migrated, 'sampled_body').toStruct());
 verifyEqual(testCase, numel(keys), 3, 'every dimension is still written');
@@ -2477,12 +2477,12 @@ function v1 = arenaMaskImageStack()
 %   mask fold, which runs on a mask it can place whole.
 v1 = foldableBehaviourImageStack();
 v1.base.id = 'is_mask_01';
-v1.image_stack = struct('format_ontology', 'NCIT:C85437', 'label', ...
+v1.imageStack = struct('formatOntology', 'NCIT:C85437', 'label', ...
     ['A binary image (logical matrix) where pixels within the experimental ' ...
      'arena for C. elegans are marked (true) and pixels outside are unmarked ' ...
      '(false). This mask defines the region of interest for worm tracking ' ...
      'and behavioral analysis.']);
-v1.image_stack_parameters = struct('data_type', 'logical', ...
+v1.imageStack_parameters = struct('data_type', 'logical', ...
     'dimension_order', 'YX', 'dimension_labels', 'height,width', ...
     'dimension_size', [1024 1024], 'dimension_scale', [1.5 1.5], ...
     'dimension_scale_units', 'micrometer,micrometer', 'data_limits', [0 1]);
@@ -2499,17 +2499,17 @@ function testAMaskIsCarriedWholeAsV1NamingItsHome(testCase)
 % 2026-10-30 [Haley mask words leave the generic stage] (Jess Haley): "the
 % generic stage carries a mask whose region it cannot read" -- register row
 % carry-154 (it cited carry-025, mask or map, before).
-labels = {arenaMaskImageStack().image_stack.label, ...
+labels = {arenaMaskImageStack().imageStack.label, ...
     ['A binary image mask (logical matrix) representing the union of all ' ...
      'individually detected bacterial patch areas on an assay plate. This ' ...
      'mask defines all food-containing regions.'], ...
     'a mask'};
 for k = 1:numel(labels)
     v1 = arenaMaskImageStack();
-    v1.image_stack.label = labels{k};
+    v1.imageStack.label = labels{k};
     out = runJ(v1);
     verifyCarriedWholeAsV1(testCase, v1, out);
-    verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'image_stack');
+    verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'imageStack');
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, startsWith(d, '[carry-154] needs_mapping: a mask whose region'), d);
     verifyTrue(testCase, contains(d, '[Haley mask words leave the generic stage]'), d);
@@ -2524,7 +2524,7 @@ base = arenaMaskImageStack();
 notes = {};
 for lbl = {'arena mask', 'bacteria lawn mask', 'reference mark mask', 'a mask'}
     v1 = base;
-    v1.image_stack.label = lbl{1};
+    v1.imageStack.label = lbl{1};
     out = runJ(v1);
     verifyCarriedWholeAsV1(testCase, v1, out);
     notes{end+1} = out.summary.migration_notes.carried_as_v1.distinct_details{1}; %#ok<AGROW>
@@ -2542,7 +2542,7 @@ function testALabelReadingAsMaskAndMapCitesTheMaskOrMapRow(testCase)
 % mask-vs-map detection stays generic: a label that reads as BOTH cannot be
 % told apart, so it keeps carry-025 (mask or map), not carry-154
 v1 = arenaMaskImageStack();
-v1.image_stack.label = 'a label map mask';
+v1.imageStack.label = 'a label map mask';
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
@@ -2555,7 +2555,7 @@ function testAClosestPatchMapIsCarriedNeedingAMapping(testCase)
 % as v1 with a needs_mapping note ([one-reading quick answers] (Q3), Jess Haley,
 % 2026-10-26).
 v1 = arenaMaskImageStack();
-v1.image_stack.label = ['An image or map where each pixel''s value is the ' ...
+v1.imageStack.label = ['An image or map where each pixel''s value is the ' ...
     'identifier of the bacterial patch closest to that pixel''s location.'];
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
@@ -2587,16 +2587,16 @@ function v1 = behaviourImageStack()
 %   the file key is one of the four structural keys universalRenames skips
 %   (universalRenames.m:308), so it is NOT snake_cased on the way through.
 v1 = struct();
-v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+v1.document_class = struct('class_name', 'imageStack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'imageStack_parameters'}, ...
                            'class_version', {'1.0.0', '1.0.0'}));
 v1.depends_on = struct('name', {'document_id', 'subject_id'}, ...
                        'value', {'otr_plate_1', 'subjgrp_7'});
 v1.base = struct('id', 'is_beh_01', 'session_id', 'sess_celegans', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image_stack = struct('format_ontology', 'NCIT:C190180', ...
+v1.imageStack = struct('formatOntology', 'NCIT:C190180', ...
     'label', 'A video recording capturing the behavior of C. elegans');
-v1.image_stack_parameters = struct('data_type', 'uint8', ...
+v1.imageStack_parameters = struct('data_type', 'uint8', ...
     'dimension_order', 'YXT', 'dimension_size', [1024 1024 30], ...
     'dimension_scale', [1.5 1.5 0.2], ...
     'dimension_scale_units', 'micrometer,micrometer,second', ...
@@ -2634,15 +2634,15 @@ function v1 = babuImageStack()
 %   the real one from import.m:455-464 -- a compressed .mp4, hence the T axis
 %   and the frame-rate scale.
 v1 = struct();
-v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+v1.document_class = struct('class_name', 'imageStack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'imageStack_parameters'}, ...
                            'class_version', {'1.0.0', '1.0.0'}));
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subjgrp_babu_3'});
 v1.base = struct('id', 'is_babu_01', 'session_id', 'sess_babu', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.image_stack = struct('format_ontology', 'NCIT:C190180', ...
+v1.imageStack = struct('formatOntology', 'NCIT:C190180', ...
     'label', 'A video recording of a behaving animal');
-v1.image_stack_parameters = struct('data_type', 'uint8', ...
+v1.imageStack_parameters = struct('data_type', 'uint8', ...
     'dimension_order', 'YXT', 'dimension_size', [480 640 900], ...
     'dimension_scale', [1 1 30], ...
     'dimension_scale_units', 'pixel,pixel,second', ...
@@ -2689,7 +2689,7 @@ data.CElegansBehavioralAssay_PlateOrArenaDiameter = 90;
 data.BacterialPatchSpacingTarget = 0;
 nodes = strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ',');
 otr = struct();
-otr.document_class = struct('class_name', 'ontology_table_row', ...
+otr.document_class = struct('class_name', 'ontologyTableRow', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 % THE EDGE IS PRESENT AND EMPTY, which is what the WRITER produces, not a
@@ -2701,8 +2701,8 @@ otr.document_class = struct('class_name', 'ontology_table_row', ...
 otr.depends_on = struct('name', {'document_id'}, 'value', {''});
 otr.base = struct('id', 'otr_plate_1', 'session_id', 'sess_celegans', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
-    'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
+otr.ontologyTableRow = struct('variableNames', strjoin(keys, ','), ...
+    'names', strjoin(keys, ','), 'ontologyNodes', nodes, 'data', data);
 end
 
 function testImageStackNamingADocumentIsCarriedAsNeedsMapping(testCase)
@@ -2718,7 +2718,7 @@ v1 = behaviourImageStack();
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
 d = out.migrated{1};
-verifyEqual(testCase, char(d.get('document_class.class_name')), 'image_stack');
+verifyEqual(testCase, char(d.get('document_class.class_name')), 'imageStack');
 verifyEqual(testCase, depVal(d, 'document_id'), 'otr_plate_1', 'the edge is kept');
 verifyEqual(testCase, depVal(d, 'subject_id'), 'subjgrp_7');
 verifyEqual(testCase, out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
@@ -2773,7 +2773,7 @@ ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
 verifyEqual(testCase, sum(strcmp(ids, 'otr_plate_1')), 1);
 classes = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
     'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(classes, 'ontology_table_row')));
+verifyTrue(testCase, any(strcmp(classes, 'ontologyTableRow')));
 rep = did2.validate.references(out.migrated, ...
     'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
 verifyGreaterThan(testCase, rep.edges_examined, 0);
@@ -2846,13 +2846,13 @@ data.([P 'RelativeDensityOfEncounteredBacteria']) = 0.557;
 data.([P 'RelativeDensityOfCultivationBacteria']) = 2.238;
 nodes = strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ',');
 otr = struct();
-otr.document_class = struct('class_name', 'ontology_table_row', 'class_version', '1.0.0', ...
+otr.document_class = struct('class_name', 'ontologyTableRow', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 otr.depends_on = struct('name', {}, 'value', {});
 otr.base = struct('id', 'otr_enc', 'session_id', 'sess_1', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
-    'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
+otr.ontologyTableRow = struct('variableNames', strjoin(keys, ','), ...
+    'names', strjoin(keys, ','), 'ontologyNodes', nodes, 'data', data);
 end
 
 function d = firstOfClassJ(migrated, className)
@@ -2871,8 +2871,8 @@ function otr = placeableEncounterRow()
 %   WHOLE: the EncounterIdentifier column is present but empty, and no column
 %   carries an ontology node. Kept to show the generic stage maps neither shape.
 otr = encounterRow();
-otr.ontology_table_row.data.CElegansBehavioralAssay_EncounterIdentifier = [];
-otr.ontology_table_row.ontology_nodes = '';
+otr.ontologyTableRow.data.CElegansBehavioralAssay_EncounterIdentifier = [];
+otr.ontologyTableRow.ontologyNodes = '';
 end
 
 function verifyCarriedWholeAsV1(testCase, v1, out)
@@ -2922,9 +2922,9 @@ for r = 1:numel(rows)
     verifyEqual(testCase, numel(out.migrated), 1, 'the v1 row, alone');
     verifyEqual(testCase, out.summary.quarantine_count, 0);
     d = out.migrated{1};
-    verifyEqual(testCase, char(d.get('document_class.class_name')), 'ontology_table_row');
+    verifyEqual(testCase, char(d.get('document_class.class_name')), 'ontologyTableRow');
     verifyEqual(testCase, char(d.get('base.id')), 'otr_enc');
-    verifyEqual(testCase, d.get('ontology_table_row.data'), v1.ontology_table_row.data);
+    verifyEqual(testCase, d.get('ontologyTableRow.data'), v1.ontologyTableRow.data);
     verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 0);
     verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 0);
 end
@@ -2948,13 +2948,13 @@ data.BacterialPatchRadius = 28.512513907289925;
 data.BacterialPatchCircularity = 0.9847680561323107;
 nodes = strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ',');
 otr = struct();
-otr.document_class = struct('class_name', 'ontology_table_row', 'class_version', '1.0.0', ...
+otr.document_class = struct('class_name', 'ontologyTableRow', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 otr.depends_on = struct('name', {}, 'value', {});
 otr.base = struct('id', 'otr_patch', 'session_id', 'sess_1', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
-    'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
+otr.ontologyTableRow = struct('variableNames', strjoin(keys, ','), ...
+    'names', strjoin(keys, ','), 'ontologyNodes', nodes, 'data', data);
 end
 
 function testAPatchGeometryRowIsNotMappedByTheGenericStage(testCase)
@@ -2972,9 +2972,9 @@ verifyTableRowCarryNote(testCase, out);
 verifyEqual(testCase, numel(out.migrated), 1, 'the v1 row, alone');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 d = out.migrated{1};
-verifyEqual(testCase, char(d.get('document_class.class_name')), 'ontology_table_row');
+verifyEqual(testCase, char(d.get('document_class.class_name')), 'ontologyTableRow');
 verifyEqual(testCase, char(d.get('base.id')), 'otr_patch');
-verifyEqual(testCase, d.get('ontology_table_row.data'), v1.ontology_table_row.data);
+verifyEqual(testCase, d.get('ontologyTableRow.data'), v1.ontologyTableRow.data);
 verifyEqual(testCase, nLeafJ(out.migrated, 'culture'), 0);
 verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 0);
 end
@@ -3023,13 +3023,13 @@ data.AmbientTemperature = 20;                  % `temp` -- dropped
 data.CElegansBehavioralAssay_PlateOrArenaDiameter = 90;    % dropped
 nodes = strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ',');
 otr = struct();
-otr.document_class = struct('class_name', 'ontology_table_row', 'class_version', '1.0.0', ...
+otr.document_class = struct('class_name', 'ontologyTableRow', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 otr.depends_on = struct('name', {}, 'value', {});
 otr.base = struct('id', 'otr_cultivation', 'session_id', 'sess_1', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
-    'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
+otr.ontologyTableRow = struct('variableNames', strjoin(keys, ','), ...
+    'names', strjoin(keys, ','), 'ontologyNodes', nodes, 'data', data);
 end
 
 function testCultivationPlateIsNotMigratedAsABacterialPatch(testCase)
@@ -3055,7 +3055,7 @@ verifyTableRowCarryNote(testCase, out);
 verifyEqual(testCase, numel(out.migrated), 1, ...
     'the cultivation plate was fanned out instead of passed through');
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'ontology_table_row');
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'ontologyTableRow');
 verifyEqual(testCase, d.get('base.id'), 'otr_cultivation');
 bc = out.summary.by_class;
 % NOT a patch: no minted subject, and none of the geometry-map outputs

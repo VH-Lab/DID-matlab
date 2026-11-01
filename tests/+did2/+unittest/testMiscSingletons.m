@@ -797,16 +797,23 @@ verifyEqual(testCase, s.projectvar, v1.projectvar, 'the v1 block is untouched');
 verifyEqual(testCase, s.base, v1.base, 'the v1 base block is untouched');
 end
 
-function testNoMigratorCarryTableHoldsTheSevenClasses(testCase)
-% The 7 classes of the 9 Jess answered for that have no conversion anywhere.
-% `ensemble` (NDI's second pass) and `generic_file` (foldGenericFiles) have
-% conversions and are not listed (did-schema docs/V2_PLAN.md #143 Q4).
+function testNoMigratorCarryTableHoldsTheNineClasses(testCase)
+% The 7 classes of the 9 Jess answered for that have no conversion anywhere,
+% and the two NDIcalc-vis-matlab classes with no V2 class ([last rename-pass
+% classes], Jess Haley, 2026-11-01: "each with its own carry row"; their rows
+% are '[carry-pending]' until they are on did-schema main). `ensemble` (NDI's
+% second pass) and `generic_file` (foldGenericFiles) keep their conversions
+% and are not listed ([ensemble and generic_file keep their conversions]).
 [names, rows] = did2.convert.noMigratorCarryRows();
 verifyEqual(testCase, sort(names), sort({'animalsubject', 'demoNDISeries', ...
     'demoNDISeriesMixed', 'imageCollection', 'projectvar', ...
-    'stimulus_parameter_table', 'valid_interval'}));
-verifyEqual(testCase, numel(unique(rows)), numel(names), 'one row per class');
+    'stimulus_parameter_table', 'valid_interval', ...
+    'hartley_reverse_correlation', 'reverse_correlation'}));
+assigned = rows(~strcmp(rows, '[carry-pending]'));
+verifyEqual(testCase, numel(unique(assigned)), numel(assigned), 'one row per class');
+verifyEqual(testCase, numel(assigned), 7);
 verifyEqual(testCase, did2.convert.noMigratorCarryRows('projectvar'), '[carry-162]');
+verifyEqual(testCase, did2.convert.noMigratorCarryRows('reverse_correlation'), '[carry-pending]');
 verifyEqual(testCase, did2.convert.noMigratorCarryRows('ensemble'), '');
 verifyEqual(testCase, did2.convert.noMigratorCarryRows('generic_file'), '');
 verifyEmpty(testCase, intersect(names, did2.convert.rawV1Classes()), ...

@@ -340,9 +340,18 @@ function testAnEdgePointingAtTheWrongClassIsRefused(testCase)
 % `must_refer_to_document_class` is DECLARATIVE and existence-only, so nothing
 % else in the pipeline would notice. This pass reads the referenced document's
 % fields, so it checks the class itself rather than trusting the edge name.
+% The referent here is a v1 `subject` (pass 1 converts it to an entity and
+% keeps its id). It was a standalone `stimulus_response_scalar_parameters`
+% until [last rename-pass classes] (Jess Haley, 2026-11-01) made one standing
+% alone malformed: pass 1 now carries it, and carries the response pointing at
+% it with it (carry-064), so the fold would never see the edge.
 p = parametersFixture();
-p.document_class.class_name = 'stimulus_response_scalar_parameters';
-[~, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
+wrong = did2.unittest.helpers.ndiDocument('subject', 'Id', p.base.id, ...
+    'SessionId', p.base.session_id, 'Datestamp', '2024-06-01T12:00:00.000Z');
+wrong.subject.local_identifier = 'mouse_wrong_class';
+wrong.subject.description = '';
+wrong = jsondecode(jsonencode(wrong));
+[~, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), wrong});
 verifyEqual(testCase, rep.refused_wrong_class, 1);
 verifyEqual(testCase, rep.methods_minted, 0);
 end

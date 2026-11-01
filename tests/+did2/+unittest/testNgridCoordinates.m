@@ -114,18 +114,13 @@ function testCoordinatesSurviveTheFullVEtaPipeline(testCase)
 % dispatcher, because the superclass pass runs before the concrete migrator.
 % So this must go through v1_to_v2, or it tests nothing.
 %
-% BOTH SPELLINGS (2026-10-30). The snake-spelled `ontology_image` fixture is
-% the one that goes through the superclass pass (the renamed path), which is
-% the regression this test was written for. Validate is false, so nothing is
-% validated; did2.convert.ensureClassBlocks pads blocks from the
-% `ontology_image` file when it exists and returns the body unchanged when it
-% does not (its `catch; return;` around resolvePlacement), and neither touches
-% the ngrid block, so this case holds with or without the file. NDI's own
-% spelling, `ontologyImage`, is read raw
-% (did2.convert.rawV1Classes) and is what a real dataset holds; it is driven
-% too, so the coordinates are pinned on the path production takes.
-cases = {ontologyImageVintageB(), 'ontology_image'; ...
-         ontologyImageWriterNoRow(), 'ontologyImage'};
+% NDI's own spelling, `ontologyImage`, is read raw (did2.convert.rawV1Classes)
+% and is what a real dataset holds, so the coordinates are pinned on the path
+% production takes. The snake-spelled `ontology_image` case (the renamed path
+% and its superclass pass, the regression this test was written for) went with
+% universalRenames ([migrators read raw v1]): that spelling now reaches no
+% migrator.
+cases = {ontologyImageWriterNoRow(), 'ontologyImage'};
 for c = 1:size(cases, 1)
     out = runJ(cases{c, 1});
     label = cases{c, 2};

@@ -186,20 +186,17 @@ end
 function testTheSpeedWriterSpellingReachesItsMigrator(testCase)
 % the writer's `speedtuning_calc` reaches speed_tuning_calc through
 % rawV1Classes' table (the rename pass found no migrator by that name, so the
-% document passed through unconverted); the converted shape converts the same
-% way on the migrator's own spelling
+% document passed through unconverted). The migrator's own spelling is no v1
+% class: nothing routes it, so it is quarantined ([early migration pieces
+% fixed] (1)); it reached the migrator only through the deleted rename pass.
 v1 = speedOneFit();
 raw = runRaw({v1});
 names = cellfun(@(d) char(d.get('document_class.class_name')), raw.migrated, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'speed_tuning_calculation')), strjoin(names, ', '));
-snake = respelled(v1, 'speed_tuning_calc');
-b = runRaw({snake});
+b = runRaw({respelled(v1, 'speed_tuning_calc')});
 verifyEqual(testCase, b.summary.legacy_ndi_document.bodies_read_raw_v1, 0);
-verifyEqual(testCase, numel(b.migrated), numel(raw.migrated));
-for j = 1:min(numel(b.migrated), numel(raw.migrated))
-    verifyTrue(testCase, isequaln(b.migrated{j}.toStruct(), raw.migrated{j}.toStruct()), ...
-        sprintf('document %d differs between the two spellings', j));
-end
+assertNumElements(testCase, b.quarantine, 1);
+verifyEqual(testCase, b.quarantine(1).identifier, 'did2:convert:noMigrator');
 end
 
 function testTheOldSpikeWrappersAreGone(testCase)

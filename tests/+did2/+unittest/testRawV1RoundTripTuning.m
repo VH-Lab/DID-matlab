@@ -109,11 +109,12 @@ end
 
 % ===================== the switch ======================================
 
-function testBothSpellingsDispatch(testCase)
-% rawV1Classes lists the v1 spelling and maps it to the migrator in ONE table
-% (temporary: it goes with universalRenames). The v1 spelling is read raw; the
-% migrator's spelling is not switched and reaches it through universalRenames;
-% both give the same documents.
+function testOnlyTheV1SpellingDispatches(testCase)
+% INVERTED 2026-11-01 (was testBothSpellingsDispatch): rawV1Classes lists the
+% v1 spelling and maps it to the migrator in ONE table. The migrator's own
+% spelling reached it only through universalRenames, which is deleted
+% ([migrators read raw v1]); it is no v1 class NDIcalc-vis-matlab writes, and
+% a class nothing routes is quarantined ([early migration pieces fixed] (1)).
 verifyEqual(testCase, did2.convert.rawV1Classes('contrasttuning_calc'), 'contrast_tuning_calc');
 verifyEqual(testCase, did2.convert.rawV1Classes('contrastsensitivity_calc'), ...
     'contrast_sensitivity_calc');
@@ -125,19 +126,15 @@ pairs = {convertedShape('contrasttuning_calc'), 'contrast_tuning_calc'; ...
     writerOutput('contrastsensitivity_calc'), 'contrast_sensitivity_calc'};
 for k = 1:size(pairs, 1)
     v1 = pairs{k, 1};
-    snake = respelled(v1, pairs{k, 2});
     a = runRaw(v1);
-    b = runRaw(snake);
+    b = runRaw(respelled(v1, pairs{k, 2}));
     label = v1.document_class.class_name;
     verifyEqual(testCase, a.summary.legacy_ndi_document.bodies_read_raw_v1, 1, label);
-    verifyEqual(testCase, b.summary.legacy_ndi_document.bodies_read_raw_v1, 0, pairs{k, 2});
+    verifyEmpty(testCase, a.quarantine, label);
     verifyEmpty(testCase, a.passthrough, label);
-    verifyEmpty(testCase, b.passthrough, pairs{k, 2});
-    verifyEqual(testCase, numel(a.migrated), numel(b.migrated), label);
-    for j = 1:min(numel(a.migrated), numel(b.migrated))
-        verifyTrue(testCase, isequaln(a.migrated{j}.toStruct(), b.migrated{j}.toStruct()), ...
-            sprintf('%s: document %d differs between the two spellings', label, j));
-    end
+    verifyEqual(testCase, b.summary.legacy_ndi_document.bodies_no_migrator_quarantined, 1, pairs{k, 2});
+    assertNumElements(testCase, b.quarantine, 1, pairs{k, 2});
+    verifyEqual(testCase, b.quarantine(1).identifier, 'did2:convert:noMigrator', pairs{k, 2});
 end
 end
 
