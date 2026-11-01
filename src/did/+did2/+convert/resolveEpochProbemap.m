@@ -178,9 +178,11 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   THE RECORDING OR IMAGING MODE is the recording observation's method term
 %   ([element type is a device kind term], [imaging mode is a method term],
 %   [element types batch 1], [element types batch 2]; recordingModeMethod):
-%   `patch-attached` OBI:0002179, `brightfield-imaging` EMPTY:0000300. The
-%   other modes have no decided term and write none. `mode_methods_written`
-%   counts the observations built with one.
+%   `patch-attached` OBI:0002179, `brightfield-imaging` EMPTY:0000300, and
+%   ([recording mode terms], [imaging mode terms], 2026-11-01) the current
+%   clamp, voltage clamp, wide-field, two-photon and one-photon terms. A bare
+%   `patch` or `sharp` has no decided mode and writes none.
+%   `mode_methods_written` counts the observations built with one.
 %
 %   Options mirror the sibling passes (Validate / SchemaCache / TargetVersion).
 %
@@ -1542,10 +1544,16 @@ function t = recordingModeMethod(elementType)
 %                          ([element types batch 1], [cell-attached is OBI])
 %     brightfield-imaging  EMPTY:0000300 "brightfield imaging"
 %                          ([element types batch 2])
-%   The voltage and current modes (-Vm, -I, -Im, bare patch / sharp) and the
-%   one-photon, two-photon and wide-field imaging modes have no decided term
-%   yet ("in a later batch"): nothing is written for them, and the element
-%   keeps its `element type` assertion (+migrators_j/element.m).
+%     patch-Vm, sharp-Vm   OBI:0002185 "current clamp assay"
+%     patch-I, sharp-I,    OBI:0002182 "voltage clamp assay"
+%     sharp-Im             ([recording mode terms], Jess Haley, 2026-11-01:
+%                          "OBI:0002185 'current clamp assay' (v1 `-Vm`) and
+%                          OBI:0002182 'voltage clamp assay' (v1 `-I`, `-Im`)")
+%     wide-field-imaging   OBI:0002437 "widefield microscopy assay"
+%     two-photon-imaging   FBbi:00000254 "two-photon laser scanning microscopy"
+%     one-photon-imaging   FBbi:00000246 "fluorescence microscopy"
+%                          ([imaging mode terms], Jess Haley, 2026-11-01)
+%   A bare `patch` or `sharp` names no mode: nothing is written for it.
 %   Types are compared exactly, edge blanks aside, as NDI's probestruct2probe
 %   matches its keys.
 t = [];
@@ -1554,6 +1562,16 @@ switch strtrim(char(elementType))
         t = did2.convert.registeredTerm('OBI:0002179', 'cell-attached patch clamp assay');
     case 'brightfield-imaging'
         t = did2.convert.registeredTerm('EMPTY:0000300', 'brightfield imaging');
+    case {'patch-Vm', 'sharp-Vm'}
+        t = did2.convert.registeredTerm('OBI:0002185', 'current clamp assay');
+    case {'patch-I', 'sharp-I', 'sharp-Im'}
+        t = did2.convert.registeredTerm('OBI:0002182', 'voltage clamp assay');
+    case 'wide-field-imaging'
+        t = did2.convert.registeredTerm('OBI:0002437', 'widefield microscopy assay');
+    case 'two-photon-imaging'
+        t = did2.convert.registeredTerm('FBbi:00000254', 'two-photon laser scanning microscopy');
+    case 'one-photon-imaging'
+        t = did2.convert.registeredTerm('FBbi:00000246', 'fluorescence microscopy');
 end
 end
 
