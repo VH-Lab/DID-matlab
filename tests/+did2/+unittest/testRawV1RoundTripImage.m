@@ -430,7 +430,7 @@ function testTheAcquisitionTimeRoundTripsOnEveryClock(testCase)
 % V_eta_go_forward_class_audit.md): a UTC clock's datenum is the observation's
 % time reference on clock utc, in seconds; any other clock keeps the datenum as
 % the AFO:AFR_0001158 "acquisition time" condition's source_value, its
-% canonical named in needs_info. Every clock reads back as v1 wrote it.
+% canonical listed as a gap in the migration report. Every clock reads back as v1 wrote it.
 clocks = {'utc', 'approx_utc', 'exp_global_time', 'approx_exp_global_time', ...
     'dev_local_time', 'no_time', ''};
 for k = 1:numel(clocks)

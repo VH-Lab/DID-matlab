@@ -19,8 +19,19 @@ function result = fromV1Database(srcPath, dstPath, options)
 %       as a did.implementations.matlabdumbjsondb tree.
 %
 %   Quarantine entries produced by v1_to_v2 are written as a JSON array
-%   to <DSTPATH>.quarantine.json. The function returns the same result
-%   struct v1_to_v2 returns: `migrated`, `quarantine`, `summary`.
+%   to <DSTPATH>.quarantine.json. The function returns the result struct
+%   v1_to_v2 returns (`migrated`, `quarantine`, `summary`, ...) and
+%   `migration_record`: {migration_id, report_id, report}.
+%
+%   THE MIGRATION RECORD. A DID-only run writes its own record (Decided by
+%   Jess Haley, 2026-11-01 [migration record writer], did-schema
+%   did_v2_go_forward_class_audit.md): one `migration` document and its
+%   report, a JSON file attached as an `opaque_body`
+%   (did2.convert.migrationRecord), added to DSTPATH with the migrated
+%   documents. The run's report is begun here, so it lists every gap and
+%   carry of this run and nothing of an earlier one
+%   (did2.convert.migrationReport). Its counts add `source_documents` (read)
+%   and `quarantined`. When the run migrated nothing, no record is written.
 %
 %   Options (name-value):
 %     Validate     (1,1 logical, default true)  - validate each migrated
@@ -88,16 +99,29 @@ else
          'cannot infer reader.'], srcPath);
 end
 
+% this run's report, and nothing of an earlier run's ([migration record])
+did2.convert.migrationReport('begin');
 result = did2.convert.v1_to_v2(bodies, ...
     'TargetVersion', 'V_eta', ...
     'Validate', options.Validate, ...
     'SchemaCache', options.SchemaCache, ...
     'Verbose', options.Verbose);
 
+[records, report] = did2.convert.migrationRecord(result.migrated, ...
+    'Counts', struct('source_documents', result.summary.total, ...
+        'quarantined', result.summary.quarantine_count), ...
+    'Validate', options.Validate, 'SchemaCache', options.SchemaCache);
+result.migration_record = struct('migration_id', '', 'report_id', '', ...
+    'report', report);
+if ~isempty(records)
+    result.migration_record.migration_id = records{1}.get('base.id');
+    result.migration_record.report_id = records{2}.get('base.id');
+end
+
 db = did2.database.sqlitedb(dstPath, 'SchemaCache', options.SchemaCache);
 cleanup = onCleanup(@() db.close()); %#ok<NASGU>
 if ~isempty(result.migrated)
-    db.add(result.migrated, 'Validate', options.Validate);
+    db.add([reshape(result.migrated, 1, []), records], 'Validate', options.Validate);
 end
 
 if ~isempty(result.quarantine)
