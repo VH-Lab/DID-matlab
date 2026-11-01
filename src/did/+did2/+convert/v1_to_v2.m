@@ -502,12 +502,8 @@ for k = 1:numel(bodies)
                         did2.convert.noMigratorCarryRows(rawClass), rawClass);
                 end
                 % carry-register: carry-123 carry-158 carry-159 carry-160
-                %   carry-161 carry-162 carry-163 carry-164 via
-                %   noMigratorCarryRows.m;
-                %   none for hartley_reverse_correlation and
-                %   reverse_correlation ('[carry-pending]') until their rows
-                %   are on did-schema main ([last rename-pass classes],
-                %   did-schema #260)
+                %   carry-161 carry-162 carry-163 carry-164 carry-168
+                %   carry-169 via noMigratorCarryRows.m
                 did2.convert.reportNote('carried_as_v1', className, ...
                     sourceIdOf(preBody), carryNote);
                 v2Body = preBody;
