@@ -104,8 +104,25 @@ verifyTrue(testCase, tf && governed, 'time admits seconds');
 [tf, ~, governed] = did2.schema.unitInSet(struct('node', 'NCIT:C44477', 'name', 'X-Coordinate'), ...
     unit('om:micrometre', 'micrometre'), reg);
 verifyTrue(testCase, tf && governed, 'X-Coordinate admits micrometres');
+% [unit lists widened then armed] (Decided by Jess Haley, 2026-11-01,
+% did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md L3): did-schema
+% widens the lists (frame, ns, us for time; cm, nm, angstrom, pixel for
+% position and X/Y/Z). Siblings first: until that reaches did-schema main this
+% test accepts either list; once frame is admitted, all seven must be.
 [tf, ~, governed] = did2.schema.unitInSet(timeTerm(), unit('EMPTY:0000260', 'frame'), reg);
-verifyTrue(testCase, ~tf && governed, 'frame is not a time source unit (yet)');
+verifyTrue(testCase, governed, 'time is governed');
+if tf
+    for u = {{'om:nanosecond-Time', 'nanosecond'}, {'om:microsecond-Time', 'microsecond'}}
+        [ok, ~, g] = did2.schema.unitInSet(timeTerm(), unit(u{1}{:}), reg);
+        verifyTrue(testCase, ok && g, ['time admits ' u{1}{2}]);
+    end
+    for u = {{'om:centimetre', 'centimetre'}, {'om:nanometre', 'nanometre'}, ...
+            {'om:angstrom', 'angstrom'}, {'om:pixel', 'pixel'}}
+        [ok, ~, g] = did2.schema.unitInSet(struct('node', 'NCIT:C44477', 'name', 'X-Coordinate'), ...
+            unit(u{1}{:}), reg);
+        verifyTrue(testCase, ok && g, ['X-Coordinate admits ' u{1}{2}]);
+    end
+end
 end
 
 % ---- fixture ------------------------------------------------------------------------
