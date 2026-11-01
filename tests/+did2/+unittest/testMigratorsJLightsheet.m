@@ -701,7 +701,7 @@ function testALevelWithCodecSettingsWritesTheBlock(testCase)
 % schema declares `compression` as the {term, parameters} block, the writer's
 % Blosc settings go in it -- the codec as the term (Blosc), every codec_params
 % key a parameter, in order -- and the level migrates instead of being carried
-% (carry-010 retires). Run on a schema copy that declares the block until
+% (its carry register row retires). Run on a schema copy that declares the block until
 % did-schema does (did2.unittest.helpers.compressionBlockSchema).
 assumeCompositionSchema(testCase);
 did2.unittest.helpers.compressionBlockSchema(testCase);
@@ -728,7 +728,8 @@ end
 function testALevelWhoseBlockWouldNotReadBackIsCarried(testCase)
 % [lossless means round trip]: a setting that contradicts the codec's own
 % name ('blosc-zstd' with cname lz4) cannot be written as the block and read
-% back as the level's codec, so the level is carried whole as v1 (carry-010).
+% back as the level's codec, so the level is carried whole as v1 (malformed
+% input; the note says why).
 assumeCompositionSchema(testCase);
 did2.unittest.helpers.compressionBlockSchema(testCase);
 v1 = levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest');
@@ -738,7 +739,8 @@ verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, numel(out.passthrough), 1, 'carried as v1');
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry was not noted');
-verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, 'carry-010'));
+d = notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, contains(d, 'codec_params') && contains(d, 'lz4'), d);
 end
 
 function testALevelCountingChunksItDoesNotCarryQuarantines(testCase)
