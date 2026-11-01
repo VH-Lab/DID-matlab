@@ -232,9 +232,10 @@ verifyTrue(testCase, logical(val.value.data_body));
 verifyEqual(testCase, edge(body, 'owner_id'), {val.base.id});
 verifyEqual(testCase, body.data_body.format.node, 'EDAM:format_3475');
 verifyEqual(testCase, body.files.file_info.name, 'mapping.tsv');
-% [gene list mapping value kind]: the score's scale is a gap in the report
-gaps = out.summary.migration_notes.gap.distinct_details;
-verifyTrue(testCase, any(contains(gaps, 'scale')));
+% [gene list mapping value kind]: the score's scale is a gap in the run's
+% migration report ([migration record]), not in the document
+gaps = did2.convert.migrationReport('gaps', val.base.id);
+verifyEqual(testCase, {gaps.field}, {'value.scale'});
 % round trip: nothing lost (the three counts are recomputed from the file)
 r = did2.convert.roundtrip.check(v1, out.migrated);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'geneListMapping ortholog', {});

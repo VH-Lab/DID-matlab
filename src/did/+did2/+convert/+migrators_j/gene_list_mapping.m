@@ -37,7 +37,8 @@ function bodies = gene_list_mapping(preBody)
 %                "Gene": `key` 0 with `index` = the gene_index_a column and `key`
 %                1 with `index` = the gene_index_b column (0-based), `key_id`
 %                [list A, list B]. A score's scale is not stated: v1 never
-%                records it; the gap is a reportNote 'gap' for the run's report.
+%                records it; the gap is listed in the run's migration report
+%                (did2.build.document 'Gaps', [migration record]).
 %     body       an `opaque_body` owned by the value: mapping.tsv unchanged
 %                (the v1 `files` block as written), `format` EDAM:format_3475
 %                "TSV".
@@ -167,16 +168,18 @@ else
     valueClass = 'logical';
 end
 valueId = did2.convert.mintId(['gene_list_mapping ' valueClass]);
+gaps = struct('field', {}, 'reason', {});
+if hasScore
+    % [gene list mapping value kind]: v1 never states the score's scale; the
+    % gap is listed in the run's migration report ([migration record])
+    gaps = struct('field', 'value.scale', 'reason', ...
+        'v1 geneListMapping never states the score''s scale ([gene list mapping value kind])');
+end
 value = did2.build.document(valueClass, struct('data_body', true, ...
     'dimensions', {did2.build.dimension(rowTerm, rows.n)}, 'covariates', {covs}), ...
-    o{:}, 'Edges', struct('key_id', {{listA, listB}}), 'Id', valueId);
+    o{:}, 'Edges', struct('key_id', {{listA, listB}}), 'Id', valueId, 'Gaps', gaps);
 file = did2.build.opaqueBody(valueId, did2.build.formatTerm('EDAM:format_3475'), o{:});
 file.files = body.files;   % mapping.tsv as written, so the bytes NDI stores stay reachable
-if hasScore
-    % [gene list mapping value kind]: v1 never states the score's scale
-    did2.convert.reportNote('gap', 'score', valueId, ...
-        'score.value.scale (v1 geneListMapping never states the score''s scale; [gene list mapping value kind])');
-end
 
 params = [];
 methodText = char(fieldOr(blk, 'method', ''));
