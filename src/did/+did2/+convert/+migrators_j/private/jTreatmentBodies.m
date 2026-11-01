@@ -21,7 +21,7 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %     'dose'       a `dose_manipulation` whose `formulation_id` names the
 %                  formulation and whose value is the amount (jDoseValue: the
 %                  source's amount; with only ingredient amounts, the whole
-%                  formulation's amount named in base.needs_info
+%                  formulation's amount listed as a gap in the migration report
 %                  ([canonical absent only as needs info], 2026-10-30);
 %                  with none, NaN in `volume.liters`).
 %     'unknown'    no location: nothing is built; UNPLACED is a
@@ -52,7 +52,7 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %   its unit (by name) as a concentration (Molar, molar, M), nothing is built
 %   and UNPLACED names the row. A virus injection's `dilution` is a number
 %   with NO unit, not a unit the table fails to know: jDoseBodies names its
-%   canonical in needs_info ([virus dilution needs info], Decided by Jess
+%   canonical as a gap ([virus dilution needs info], Decided by Jess
 %   Haley, 2026-10-31, did-schema did_v2_go_forward_class_audit.md;
 %   docs/V2_PLAN.md G71), and it is not carried.
 %
@@ -125,7 +125,7 @@ switch route
             variable, [], 'TimeReferenceIds', {anchorId}, 'ValueId', formulationId, ...
             'Id', id, extra{:}, 'ValueKind', 'formulation');
     otherwise
-        [value, chemicals, conflicts, ingredientRows, placeholders, needsInfo] = jDoseValue(chemicals);
+        [value, chemicals, conflicts, ingredientRows, placeholders, gaps] = jDoseValue(chemicals);
         % a vehicle's per-body-mass number (Hunsberger saline `1 mg/kg`) is a
         % placeholder, not an amount (Jess Haley, 2026-10-21 [dose per
         % ingredient]); two rows of one amount kind that disagree (Jess Haley,
@@ -173,18 +173,18 @@ switch route
             edges.ingredient_id = ingIds;
         end
         % [canonical absent only as needs info] (Decided by Jess Haley,
-        % 2026-10-30): an amount the source never states is named in
-        % needs_info (jDoseValue), one `needs_info` note each
+        % 2026-10-30): an amount the source never states is listed as a gap
+        % in the migration report (jDoseValue), one `gap` note each
         niOpt = {};
-        if ~isempty(needsInfo)
-            niOpt = {'NeedsInfo', needsInfo};
+        if ~isempty(gaps)
+            niOpt = {'Gaps', gaps};
         end
         manip = jStatement(preBody, 'manipulation', jSubjectOf(preBody), ...
             variable, value, 'TimeReferenceIds', {anchorId}, ...
             'Edges', edges, 'Id', id, extra{:}, niOpt{:}, 'ValueKind', 'dose');
-        for k = 1:numel(needsInfo)
-            did2.convert.reportNote('needs_info', ...
-                char(preBody.document_class.class_name), id, needsInfo(k).field);
+        for k = 1:numel(gaps)
+            did2.convert.reportNote('gap', ...
+                char(preBody.document_class.class_name), id, gaps(k).field);
         end
         if strcmp(route, 'unknown')
             did2.convert.reportNote('route_unknown', ...
@@ -237,7 +237,7 @@ for k = 1:numel(chemicals)
         end
     end
     if isempty(spelling)
-        continue;           % no unit: jDoseBodies names it in needs_info
+        continue;           % no unit: jDoseBodies lists it as a gap
     end
     [~, factor, kind] = jSourceUnit(spelling);
     if strcmp(kind, 'concentration') && ~isempty(factor)

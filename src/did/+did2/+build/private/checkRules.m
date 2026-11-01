@@ -52,10 +52,11 @@ function checkRules(cache, className, doc, chain)
 %                                 value form", holding one value; a
 %                                 quantity whose canonical `value` is
 %                                 absent holds one when it keeps its
-%                                 source_value and needs_info names the
-%                                 canonical ([missing facts are needs
-%                                 info], [canonical absent only as needs
-%                                 info])
+%                                 source_value and the run's migration
+%                                 report lists the canonical as a gap
+%                                 ([canonical absent only as needs
+%                                 info], [gap accepted when the report
+%                                 lists it])
 %        variable_once            (a schema rule since 2026-10-22, part 1
 %                                 above; checked here) did-schema data_body
 %                                 AMENDMENT 6: "A variable appears at most
@@ -189,17 +190,18 @@ for c = 1:numel(chain)
                 % document itself is inline or in bodies.
                 % [formulation amount needs info] (Jess Haley, 2026-10-31,
                 % did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md
-                % G67 (a)): a blank `value` is also accepted when the
-                % document's needs_info names it or a field within it
-                % (<block>.value...): a fact the source never stated, such as a
-                % formulation in which no ingredient states an amount.
+                % G67 (a)): a blank `value` is also accepted when the run's
+                % migration report lists it, or a field within it
+                % (<block>.value...), as a gap ([gap accepted when the report
+                % lists it], 2026-11-01): a fact the source never stated, such
+                % as a formulation in which no ingredient states an amount.
                 if ~isTrue(findField(doc, blocks, 'data_body')) ...
                         && isBlankValue(findField(doc, blocks, 'value')) ...
                         && ~hasEdge(doc, 'value_id') ...
-                        && ~did2.schema.needsInfoNamesValue(doc)
+                        && ~did2.schema.reportedGapNamesValue(doc)
                     violated(ruleName, className, ...
                         ['`value` is empty, `data_body` is not true and ' ...
-                         'needs_info does not name it: the value is neither ' ...
+                         'the migration report lists no gap for it: the value is neither ' ...
                          'inline nor in data bodies.']);
                 end
             case 'ingredients_or_product'
@@ -360,11 +362,12 @@ if isstruct(conditions)
         end
         n = valueCount(conditions(k), given{1});
         if n == 0 && strcmp(given{1}, 'quantity') ...
-                && canonicalNamedInNeedsInfo(doc, conditions(k).quantity, k)
-            % [missing facts are needs info] (Jess Haley, 2026-10-29) and
-            % [canonical absent only as needs info] (2026-10-30), did-schema
-            % V_eta_go_forward_class_audit.md: a quantity's canonical may be
-            % absent only when the document's needs_info names it. Its one
+                && canonicalListedAsGap(doc, conditions(k).quantity, k)
+            % [missing facts are needs info] (Jess Haley, 2026-10-29),
+            % [canonical absent only as needs info] (2026-10-30) and [gap
+            % accepted when the report lists it] (2026-11-01), did-schema
+            % did_v2_go_forward_class_audit.md: a quantity's canonical may be
+            % absent only when the run's migration report lists it. Its one
             % value is then the source_value it keeps (first use: an image
             % stack's acquisition time on a clock that is not UTC,
             % [acquisition time on its clock])
@@ -788,16 +791,16 @@ for f = {'term', 'quantity', 'count', 'text', 'matrix', 'logical'}
 end
 end
 
-function tf = canonicalNamedInNeedsInfo(doc, quantity, k)
-%CANONICALNAMEDINNEEDSINFO True when condition K's quantity keeps a
-%   source_value and the document's needs_info names its canonical
+function tf = canonicalListedAsGap(doc, quantity, k)
+%CANONICALLISTEDASGAP True when condition K's quantity keeps a source_value
+%   and the run's migration report lists its canonical as a gap
 %   (<block>.conditions(K).quantity.value).
 tf = false;
 if ~isstruct(quantity) || ~isscalar(quantity) || ~isfield(quantity, 'source_value') ...
         || isAbsent(quantity.source_value)
     return;
 end
-named = did2.schema.needsInfoFields(doc);
+named = did2.schema.reportedGaps(doc);
 suffix = sprintf('.conditions(%d).quantity.value', k);
 tf = any(cellfun(@(f) endsWith(f, suffix), named));
 end

@@ -186,7 +186,8 @@ function testAPostnatalDayOfZeroIsNotStated(testCase)
 % [postnatal day 0 not stated] (Decided by Jess Haley, 2026-11-01, did-schema
 % did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G68): "treat a 0 as 'not
 % stated', so it's recorded as a missing fact rather than an age". The Age
-% observation has no value and names `time.value` in needs_info; the round
+% observation has no value and the run's migration report lists `time.value`
+% as a gap ([migration record], 2026-11-01); the round
 % trip reads the template's 0 back.
 v1 = virusAtV1();
 v1.virus_injection.virus_AdministrationPND = 0;
@@ -204,8 +205,8 @@ verifyEqual(testCase, char(age.statement.variable.node), 'NCIT:C25150');
 verifyTrue(testCase, ~isfield(age.time, 'value') || isempty(age.time.value) || ...
     (isstruct(age.time.value) && ~any(isfield(age.time.value, {'seconds', 'source_value'}))), ...
     'no age is stated');
-verifyTrue(testCase, any(strcmp('time.value', did2.schema.needsInfoFields(age))), ...
-    'needs_info names the missing age');
+verifyTrue(testCase, any(strcmp('time.value', did2.schema.reportedGaps(age))), ...
+    'the migration report lists the missing age');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyTrue(testCase, any(strcmp('virus_injection.virus_AdministrationPND', r.matched)), ...
     'the template''s 0 reads back');
