@@ -80,6 +80,7 @@ arguments
 end
 
 bodies = asCellOfStructs(v1Bodies);
+reloadBatchIndexes(bodies);
 if ~isfield(result, 'source_outputs')
     error('did2:convert:roundtrip:noSourceOutputs', ...
         ['RESULT has no source_outputs: it was not made by a v1_to_v2 that ' ...
@@ -193,6 +194,33 @@ report.ok = report.sources_ok == report.sources_compared && report.ids_lost == 0
 end
 
 % ===================== helpers =========================================
+
+function reloadBatchIndexes(bodies)
+%RELOADBATCHINDEXES Index the WHOLE v1 batch again for the inverses that read
+%   it: did2.convert.elementSubjects (roundtrip.element rebuilds a sorted
+%   unit's subject_id from its probe's, [unit direct and subject rebuild from
+%   the probe]), did2.convert.stimulusPresentationSpecs (roundtrip.hartley_calc
+%   rebuilds stimulus_properties from the presentation, [hartley leftovers
+%   checked]) and did2.convert.tuningBatchIndex (did2.convert.inputEdgeNames
+%   and did2.convert.tuningStimids, read by the tuning and response inverses,
+%   [input names rebuild from the input class], [tuning stimids rebuild]).
+%
+%   WHY. did2.convert.v1_to_v2 resets and loads these per call. The batch
+%   passes call v1_to_v2 again on their own small sub-batches (epochMint,
+%   resolveEpochProbemap, foldGenericFiles, ...), so after the last pass the
+%   indexes hold the LAST SUB-BATCH, not the batch this report reads. Every
+%   inverse that read them then found nothing: on Test code run 41322059537
+%   (DID-matlab b513b228) every 20211116 element with an underlying element
+%   (21, all sorted units) lost its subject_id, and the sampled hartley_calc
+%   failures their stimulus_properties, while the per-class round-trip tests
+%   (one v1_to_v2 call) rebuild both. The whole-batch report indexes V1BODIES
+%   itself, as v1_to_v2 does.
+for f = {@did2.convert.elementSubjects, @did2.convert.stimulusPresentationSpecs, ...
+        @did2.convert.tuningBatchIndex}
+    f{1}('reset');
+    f{1}('load', bodies);
+end
+end
 
 function c = asCellOfStructs(v1Bodies)
 if isstruct(v1Bodies)

@@ -429,7 +429,7 @@ if ~isempty(axisWhy)
 end
 
 % the acquisition time ([acquisition time on its clock], below)
-[anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass);
+[anchor, conds, gaps] = acquisitionTime(src, params, noteClass);
 [datumType, sourceDatumType] = jDatumType(dataType);
 extra = {};
 software = {};
@@ -448,7 +448,7 @@ end
 obs = jStatement(src, 'observation', subjectId, ...
     jLabel('image intensity'), [], ...
     'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-    'Conditions', conds, 'Notes', notes, 'NeedsInfo', needsInfo, ...
+    'Conditions', conds, 'Notes', notes, 'Gaps', gaps, ...
     'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
 % DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
 % column-major (a judgment call, recorded in the port report).
@@ -488,7 +488,7 @@ if isfield(preBody, 'file');  body.file  = preBody.file;  end
 bodies = [{obs, body, anchor}, software];
 end
 
-function [anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass)
+function [anchor, conds, gaps] = acquisitionTime(src, params, noteClass)
 %ACQUISITIONTIME The observation's time reference and, on a clock that is not
 %   UTC, its acquisition-time condition.
 %
@@ -511,7 +511,7 @@ function [anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass)
 %       jEpochClockReferences and epochMint de-encode it. A datenum no
 %       ISO-8601 instant can hold (before year 0000 or after 9999) cannot
 %       be converted either, and is written as on a clock that is not UTC
-%       (below), its needs_info reason saying so.
+%       (below), its gap's reason saying so.
 %     * on any other clock the datenum cannot be converted without assuming
 %       UTC: the observation keeps its "during the session" anchor, on the
 %       stack's clock where V2 has that clock (dev_local_time,
@@ -519,14 +519,14 @@ function [anchor, conds, needsInfo] = acquisitionTime(src, params, noteClass)
 %       and a condition with the variable AFO:AFR_0001158 "acquisition time"
 %       ([afo prefix registered]) keeps the datenum as its `source_value`
 %       (source unit day); the canonical `quantity.value` is left out and
-%       named in base.needs_info ([missing facts are needs info]), with a
-%       `needs_info` report note. A clock V2 does not have (none, no_time,
+%       listed as a gap in the migration report ([missing facts are needs info]), with a
+%       `gap` report note. A clock V2 does not have (none, no_time,
 %       inherited, any other name) is named, as v1 wrote it, in that entry's
 %       reason, so the round trip can read it back.
 %   With no finite scalar `timestamp` there is no acquisition time: the
 %   "during the session" anchor alone, as before.
 conds = [];
-needsInfo = struct('field', {}, 'reason', {});
+gaps = struct('field', {}, 'reason', {});
 ts = getField(params, 'timestamp');
 if ~(isnumeric(ts) && isscalar(ts) && isfinite(ts))
     anchor = jSessionAnchor(src, 'during');
@@ -567,11 +567,11 @@ if isempty(raw)
 else
     onClock = sprintf('on clock ''%s''', raw);
 end
-needsInfo = struct('field', 'statement.conditions(1).quantity.value', ...
+gaps = struct('field', 'statement.conditions(1).quantity.value', ...
     'reason', sprintf(['v1 states the acquisition time as a MATLAB datenum %s, ' ...
     '%s ([acquisition time on its clock])'], onClock, why));
-did2.convert.reportNote('needs_info', noteClass, baseField(src, 'id', ''), ...
-    needsInfo.field);
+did2.convert.reportNote('gap', noteClass, baseField(src, 'id', ''), ...
+    gaps.field);
 end
 
 function utc = utcInstant(days)

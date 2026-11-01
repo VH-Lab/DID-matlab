@@ -193,7 +193,7 @@ function testAStandaloneNgridIsCarriedThroughTheDispatcher(testCase)
 v1 = wrap('ngrid', 'ngrid', struct( ...
     'data_size', 1, 'data_type', 'uint8', 'data_dim', [4 3], ...
     'coordinates', [1; 2; 3; 4; 1; 2; 3]));
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');

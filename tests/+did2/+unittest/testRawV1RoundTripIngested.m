@@ -195,7 +195,7 @@ function testTheMappingFoldRoundTrips(testCase)
 % rebuilt from the alignment and the documents its ends are tied to
 for c = {'two epochs', 'one epoch, two systems'}
     [batch, mapping] = foldBatch(c{1});
-    [out, rep] = did2.convert.epochMint(runRaw(batch), 'Validate', false, 'TargetVersion', 'V_eta');
+    [out, rep] = did2.convert.epochMint(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
     verifyEqual(testCase, rep.syncrule_folds_emitted, 1, c{1});
     docs = foldDocs(out);
     verifyNotEmpty(testCase, docs, c{1});
@@ -231,7 +231,7 @@ breaks = {'base.name', @(m) setIn(m, {'base', 'name'}, 'a named mapping'); ...
 for k = 1:size(breaks, 1)
     [batch, mapping] = foldBatch('two epochs');
     batch{end} = jsondecode(jsonencode(breaks{k, 2}(mapping)));
-    [out, rep] = did2.convert.epochMint(runRaw(batch), 'Validate', false, 'TargetVersion', 'V_eta');
+    [out, rep] = did2.convert.epochMint(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
     verifyEqual(testCase, rep.syncrule_folds_emitted, 0, breaks{k, 1});
     verifyEqual(testCase, rep.syncrule_refused_migrator_declined, 1, breaks{k, 1});
     verifyEmpty(testCase, ofClass(out, 'clock_alignment'), breaks{k, 1});
@@ -276,7 +276,7 @@ end
 
 function testAMissingOrExtraDocumentIsUnplaced(testCase)
 [batch, mapping] = foldBatch('two epochs');
-out = did2.convert.epochMint(runRaw(batch), 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.epochMint(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
 docs = foldDocs(out);
 % without the epochs the ends' epoch ids cannot be read back
 keep = cellfun(@(d) ~strcmp(did2.unittest.helpers.classKey(d), 'epoch'), docs);
@@ -318,7 +318,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function verifyRoundTrip(testCase, r, label, expectedLost)

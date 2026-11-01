@@ -219,7 +219,7 @@ function testTheConvertedDocumentsValidate(testCase)
 batches = {{hartley(), presentationOf(hartley())}, {speedOneFit()}, {jrclustNoName()}, {neuron()}, ...
     {neuronNoWaveform()}};
 for k = 1:numel(batches)
-    out = did2.convert.v1_to_v2(batches{k}, 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(batches{k}, 'Validate', true, 'TargetVersion', 'did_v2');
     label = batches{k}{1}.document_class.class_name;
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', label, quarantineText(out)));
     verifyGreaterThan(testCase, numel(out.migrated), 2, label);
@@ -337,7 +337,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(batch)
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function docs = own(migrated)

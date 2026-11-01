@@ -153,7 +153,7 @@ b.document_class.class_name = 'subject';
 b.subject = struct('local_identifier', 'mouse_42@lab', 'description', '');
 b.base.name = 'mouse_42@lab';
 b = jsondecode(jsonencode(b));
-r = did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'V_eta');
+r = did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, r.quarantine);
 verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v2');
 end

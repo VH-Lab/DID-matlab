@@ -238,7 +238,7 @@ r0 = did2.convert.roundtrip.check(v0, elementOutputs(runRaw(v0), 'el_unnamed'));
 verifyEmpty(testCase, r0.lost, describeLost(r0));
 verifyTrue(testCase, any(strcmp('base.name', [r0.matched, r0.not_set])), 'base.name '''' not rebuilt');
 % and the named device validates
-outV = did2.convert.v1_to_v2(v0, 'Validate', true, 'TargetVersion', 'V_eta');
+outV = did2.convert.v1_to_v2(v0, 'Validate', true, 'TargetVersion', 'did_v2');
 reasons = '';
 for k = 1:numel(outV.quarantine)
     reasons = [reasons sprintf('%s: %s; ', outV.quarantine(k).class_name, ...
@@ -472,7 +472,7 @@ function testABatchLabelCanBeGivenByTheCaller(testCase)
 % Its probe is in the batch: without it the unit is carried (carry-151,
 % [unit with no probe in the batch carried], 2026-10-29).
 v1 = unitDoc('el_unit_g', 'leftcortex_21', 1);
-out = did2.convert.v1_to_v2({v1, unitProbe()}, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2({v1, unitProbe()}, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_unit_g', 'multi'});
 docs = elementOutputs(out, 'el_unit_g');
 verifyEqual(testCase, did2.unittest.helpers.classKey(docs{1}), 'group');
@@ -514,7 +514,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function docs = elementOutputs(out, elementId)

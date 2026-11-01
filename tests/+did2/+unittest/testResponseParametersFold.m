@@ -400,7 +400,7 @@ function testAnEmptyBatchRansWithEveryCounterAtZero(testCase)
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 [out, rep] = did2.convert.resolveResponseParameters(r, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, rep.leaves_seen, 0);
@@ -435,13 +435,13 @@ if isempty(getenv('DID_SCHEMA_PATH'))
 end
 out = did2.convert.v1_to_v2( ...
     {withEpochEdge(responseFixture('F2')), parametersFixture(2)}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('pass 1 quarantined %s: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
 [out, rep] = did2.convert.resolveResponseParameters(out, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.methods_minted, 1);
 verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
@@ -464,10 +464,10 @@ function [out, rep] = runFold(testCase, bodies)
 %   resolver. Pass-1 quarantine is asserted empty here rather than left to the
 %   individual tests: a resolver test that silently ran on an empty batch would
 %   pass every assertion about counts being 0.
-out = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 [out, rep] = did2.convert.resolveResponseParameters(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function [out, leaf, rep] = foldPair(testCase, responseType)

@@ -93,8 +93,14 @@ prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
 end
 
+function setup(testCase) %#ok<INUSD>
+% each test is its own migration run: its gaps and carries only
+% (did2.convert.migrationReport; v1_to_v2 keeps a run it did not begin)
+did2.convert.migrationReport('begin');
+end
+
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runJUnit(v1)
@@ -109,7 +115,7 @@ function out = runJUnit(v1)
 probe = unitProbeOf(v1);
 batch = {v1};
 if ~isempty(probe); batch{end+1} = probe; end
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_1', 'single'});
 if isempty(probe); return; end
 probeId = probe.base.id;
@@ -814,12 +820,13 @@ if ~isempty(c)
 end
 verifyNotEmpty(testCase, f, 'the formulation the dose names is not in the batch');
 verifyEqual(testCase, m.get('statement.variable').node, 'CHEBI:5613');
-% No amount recorded: NaN in the dose's volume.
+% No amount recorded: the dose states none, and the run's migration report
+% lists it as a gap ([canonical absent only as needs info]; NaN in the dose's
+% volume until then).
 % numeric_value is NEVER an amount -- not the dose's, not the ingredient's
 % (Jess Haley, 2026-10-21, "yes"): the term (haloperidol) does not say what
 % kind of number 2.5 is, so it is an unlabelled condition, and noted.
-verifyTrue(testCase, isnan(m.get('dose.value').volume.liters), ...
-    'an unrecorded amount is NaN in the dose''s volume');
+verifyDoseNoAmountJ(testCase, m);
 if ~isempty(f)
     % numeric_value is not the ingredient's amount: the ingredient states none
     % ([formulation amount needs info], Jess Haley, 2026-10-31; NaN until then)
@@ -952,10 +959,11 @@ verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol'
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
-% a body site makes it a dose; no amount recorded -> NaN; the route is known
-verifyTrue(testCase, isnan(out.migrated{1}.get('dose.value').volume.liters));
+% a body site makes it a dose; no amount recorded -> no value, listed as a gap
+% (NaN until [canonical absent only as needs info]); the route is known
+verifyDoseNoAmountJ(testCase, out.migrated{1});
 % the formulation still lists its ingredient, with no amount, named in
-% needs_info ([formulation amount needs info], Jess Haley, 2026-10-31; a NaN
+% as a gap ([formulation amount needs info], Jess Haley, 2026-10-31; a NaN
 % concentration until then)
 fT = doseChainJ(out.migrated, out.migrated{1});
 verifyIngredientNoAmountJ(testCase, fT, 1);
@@ -984,16 +992,18 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
 verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 5);
 % [canonical absent only as needs info] (Jess Haley, 2026-10-30): a number with
-% no unit keeps its source_value, has no canonical, and needs_info names the
-% canonical
+% no unit keeps its source_value, has no canonical, and the canonical is
+% listed as a gap in the migration report
 fs = f.toStruct();
-assertTrue(testCase, isfield(fs.base, 'needs_info'), 'the missing canonical is not named');
-verifyEqual(testCase, {fs.base.needs_info.field}, ...
+assertNotEmpty(testCase, gapFieldsJ(fs), 'the missing canonical is not listed as a gap');
+verifyEqual(testCase, gapFieldsJ(fs), ...
     {'formulation.value.ingredients(1).concentration.canonical'});
+verifyFalse(testCase, isfield(fs.base, 'needs_info'), ...
+    'the document no longer says what its source left out ([migration record])');
 verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
-% a body site (a brain area) -> a dose; the row gives no amount unit -> NaN
-verifyTrue(testCase, isnan(d.get('dose.value').volume.liters), ...
-    'an unrecorded amount is NaN in the dose''s volume');
+% a body site (a brain area) -> a dose; the row gives no amount unit -> no
+% value, listed as a gap (NaN until [canonical absent only as needs info])
+verifyDoseNoAmountJ(testCase, d);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 % the site node survives the universalRenames snake-casing (location_ontologyNode
 % -> location_ontology_node)
@@ -1007,7 +1017,7 @@ function testAnIngredientWithNoAmountIsListedWithNoValue(testCase)
 % did-schema V_eta_go_forward_class_audit.md): "an amount the source never
 % states ... is left out (the ingredient is still listed) rather than written
 % as `source_value` NaN (T14: missing is not a value)"; the document's
-% needs_info names it. INVERTS jDoseBodies' NaN for an ingredient beside one
+% migration report lists it as a gap. INVERTS jDoseBodies' NaN for an ingredient beside one
 % that states an amount.
 v1 = treatmentDrugDoc('td_partial', sprintf('CHEBI:5613,haloperidol,5\nCHEBI:7035,muscimol,'), ...
     'uberon:0002436', 'primary visual cortex');
@@ -1024,25 +1034,34 @@ verifyEqual(testCase, ing(1).concentration.source_value, 5);
 verifyTrue(testCase, ~isfield(ing, 'concentration') || isempty(ing(2).concentration) ...
     || (isstruct(ing(2).concentration) && ~isfield(ing(2).concentration, 'source_value')), ...
     'the unstated amount is left out, not NaN');
-fields = {fs.base.needs_info.field};
+[fields, reasons] = gapFieldsJ(fs);
 verifyEqual(testCase, sort(fields), sort({ ...
     'formulation.value.ingredients(1).concentration.canonical', ...
     'formulation.value.ingredients(2).concentration'}));
-verifyTrue(testCase, all(~cellfun(@isempty, {fs.base.needs_info.reason})));
+verifyTrue(testCase, all(~cellfun(@isempty, reasons)));
+% the dose states no amount of its own either (the row's number is the
+% ingredient's): no value, listed as a gap ('dose.value', jDoseValue; it was
+% volume.liters = NaN with no note until then), so the report notes count 3
+verifyDoseNoAmountJ(testCase, d);
 n = out.summary.migration_notes;
-assertTrue(testCase, isfield(n, 'needs_info'), 'needs_info is counted');
-verifyEqual(testCase, n.needs_info.count, 2);
+assertTrue(testCase, isfield(n, 'gap'), 'the gaps are counted');
+verifyEqual(testCase, n.gap.count, 3);
+% and the call's migration report lists them, by document
+r = out.migration_report;
+verifyEqual(testCase, sum(strcmp({r.gaps.document_id}, fs.base.id)), 2);
+verifyEqual(testCase, sum(strcmp({r.gaps.document_id}, d.get('base.id'))), 1);
 % the formulation validates as written
 did2.schema.cache.shared().validateDocument(fs);
 end
 
-function testAFormulationWithNoAmountAtAllNamesItInNeedsInfo(testCase)
+function testAFormulationWithNoAmountAtAllListsItAsAGap(testCase)
 % INVERTS testAFormulationWithNoAmountAtAllKeepsItsNaNUntilTheValueRuleAllowsIt.
 % [formulation amount needs info] (Decided by Jess Haley, 2026-10-31, did-schema
 % did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G67 (a)): "the value rule
-% accepts a blank value that `needs_info` names", so when NO ingredient states
-% an amount the formulation lists its ingredient with no amount, names it in
-% needs_info, and validates; the pre-decision NaN is gone.
+% accepts a blank value that `needs_info` names" (since [migration record],
+% 2026-11-01, the run's migration report lists it), so when NO ingredient
+% states an amount the formulation lists its ingredient with no amount, lists
+% it as a gap, and validates; the pre-decision NaN is gone.
 v1 = treatmentDrugDoc('td_none', 'CHEBI:7035,muscimol,', 'uberon:0002436', 'primary visual cortex');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
@@ -1136,24 +1155,24 @@ verifyEqual(testCase, conc.source_value, 1000);
 % [virus dilution needs info] (Decided by Jess Haley, 2026-10-31, did-schema
 % did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G71): a dilution is a
 % source number with no unit, so no unit is written (the migrator's own label
-% 'dilution' is gone), no canonical is computed, the canonical is named in the
-% formulation's needs_info, and the document is not carried (carry-155)
+% 'dilution' is gone), no canonical is computed, the canonical is listed as a
+% gap of the formulation, and the document is not carried (carry-155)
 verifyFalse(testCase, isfield(conc, 'source_unit') && isstruct(conc.source_unit) ...
     && ~isempty(conc.source_unit) && ~isempty(char(conc.source_unit.name)), ...
     'a dilution has no unit');
 verifyFalse(testCase, isfield(conc, 'molar'), 'a dilution has no molar canonical');
 fs = f.toStruct();
-verifyTrue(testCase, isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info) ...
-    && any(strcmp({fs.base.needs_info.field}, ...
+verifyTrue(testCase, any(strcmp(gapFieldsJ(fs), ...
     'formulation.value.ingredients(1).concentration.canonical')), ...
-    'the dilution''s canonical is named in needs_info');
+    'the dilution''s canonical is listed as a gap');
 verifyFalse(testCase, isfield(out.summary, 'migration_notes') ...
     && isfield(out.summary.migration_notes, 'carried_as_v1'), 'not carried');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
-% a body site makes a virus_injection a dose, its volume NaN when unrecorded,
-% its dilution staying on the formulation (Jess Haley, 2026-10-21
+% a body site makes a virus_injection a dose, with no value and a gap when its
+% amount is unrecorded (its volume NaN until [canonical absent only as needs
+% info]), its dilution staying on the formulation (Jess Haley, 2026-10-21
 % [treatment-location], [virus-location])
-verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+verifyDoseNoAmountJ(testCase, d);
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
 site = firstOfClassJ(out.migrated, 'observation+term');
@@ -1213,7 +1232,7 @@ function testMolarConcentrationRowsGetTheirCanonical(testCase)
 % 2026-10-30): "every quantity holds exactly one canonical value"; carry-155 is
 % resolved_by "a new row in the unit table". Each spelling, in an immersion
 % (bath) and in a dose (a UBERON site), fills `molar`; the formulation names
-% no needs_info for it and the document is not carried.
+% no gap for it and the document is not carried.
 cases = {'OM:MolarVolumeUnit', 'Molar'; '', 'Molar'; '', 'molar'; '', 'M'; ...
     'om:molar', 'molar'};
 locs = {'NCIm:C0179246', 'bath'; 'uberon:0002436', 'primary visual cortex'};
@@ -1240,9 +1259,8 @@ for c = 1:size(cases, 1)
         verifyEqual(testCase, char(conc.source_unit.name), char(given.name), ...
             [label ': the source unit is the term the row gives']);
         fs = form.toStruct();
-        verifyTrue(testCase, ~isfield(fs.base, 'needs_info') || isempty(fs.base.needs_info) ...
-            || ~any(contains({fs.base.needs_info.field}, 'concentration')), ...
-            [label ': no needs_info for a computed canonical']);
+        verifyFalse(testCase, any(contains(gapFieldsJ(fs), 'concentration')), ...
+            [label ': no gap for a computed canonical']);
     end
 end
 end
@@ -1253,7 +1271,7 @@ function testPercentVolumePerVolumeFillsLitersPerLiter(testCase)
 % 'Percent Volume per Volume' (NCIT:C48571) is converted "x0.01 to
 % concentration.liters_per_liter". The unit table names the row's slot, so
 % `molar` is not written; the document is not carried and the formulation
-% names no needs_info for it.
+% lists no gap for it.
 locs = {'NCIm:C0179246', 'bath'; 'uberon:0002436', 'primary visual cortex'};
 for L = 1:size(locs, 1)
     label = sprintf('10 %%v/v at %s', locs{L, 2});
@@ -1332,7 +1350,7 @@ function testTreatmentDrugIntraperitonealTakesTheSourcesAmount(testCase)
 % ingredient]): a `value.ingredients` entry with an `ingredient_id` edge to the
 % alprazolam chemical, taken off the formulation's ingredient entry (it is not a
 % concentration). The whole solution's injected volume is unrecorded: left
-% out and named in needs_info since [canonical absent only as needs info]
+% out and listed as a gap since [canonical absent only as needs info]
 % (Decided by Jess Haley, 2026-10-30; NaN until then).
 v1 = treatmentDrugDoc('td_ip', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
@@ -1344,7 +1362,7 @@ verifyEqual(testCase, numel(out.migrated), 5);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 dv = d.get('dose.value');
-verifyDoseVolumeNeedsInfoJ(testCase, d, dv);   % the solution's volume is unrecorded
+verifyDoseVolumeGapJ(testCase, d, dv);   % the solution's volume is unrecorded
 assertEqual(testCase, numel(dv.ingredients), 1, 'one per-ingredient amount');
 a = dv.ingredients(1).amount_per_body_mass;
 verifyEqual(testCase, a.source_value, 0.25);
@@ -1355,7 +1373,7 @@ verifyEqual(testCase, c.get('chemical.value').substance.name, 'alprazolam');
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
     'the ingredient_id edge names the alprazolam chemical');
 % the per-body-mass amount is the dose's, not the ingredient's concentration:
-% the formulation's entry states no amount and needs_info names it
+% the formulation's entry states no amount and is listed as a gap
 % ([formulation amount needs info], Jess Haley, 2026-10-31; NaN until then)
 verifyIngredientNoAmountJ(testCase, f, 1);
 site = firstOfClassJ(out.migrated, 'observation+term');
@@ -1439,7 +1457,7 @@ v = out.migrated{1}.get('dose.value');
 assertEqual(testCase, numel(v.ingredients), 1);
 verifyEqual(testCase, v.ingredients(1).substance_amount.moles, 3e-3, 'AbsTol', 1e-15);
 verifyEqual(testCase, v.ingredients(1).substance_amount.source_value, 3);
-verifyDoseVolumeNeedsInfoJ(testCase, out.migrated{1}, v);   % the whole formulation's amount is unrecorded
+verifyDoseVolumeGapJ(testCase, out.migrated{1}, v);   % the whole formulation's amount is unrecorded
 end
 
 function testDoseIngredientsAreCheckedAgainstTheirFormulationInBatch(testCase)
@@ -1486,7 +1504,7 @@ verifyEqual(testCase, v.ingredients(1).mass.grams, 0.5e-3, 'AbsTol', 1e-15);
 [~, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'alprazolam');
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
-verifyDoseVolumeNeedsInfoJ(testCase, d, v);
+verifyDoseVolumeGapJ(testCase, d, v);
 end
 
 function testTwoDisagreeingRowsOfOneKindAreCarriedWholeAsV1(testCase)
@@ -1530,7 +1548,7 @@ function testAStatedAmountKindWithNoNumberPutsTheNaNInThatKind(testCase)
 % but has no number is that CHEMICAL's unrecorded amount -- its
 % value.ingredients entry, amount_per_body_mass NaN with the unit, paired with
 % an ingredient_id edge -- and the whole formulation's amount is left out
-% and named in needs_info ([canonical absent only as needs info], Decided by
+% and listed as a gap ([canonical absent only as needs info], Decided by
 % Jess Haley, 2026-10-30; NaN in volume until then).
 v1 = treatmentDrugDoc('td_kind', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,,SNOMED:396163008,mg/kg'), ...
@@ -1547,7 +1565,7 @@ verifyFalse(testCase, isfield(v, 'amount_per_body_mass') && isstruct(v.amount_pe
     && ~isempty(v.amount_per_body_mass) && isfield(v.amount_per_body_mass, 'grams_per_gram') ...
     && ~isempty(v.amount_per_body_mass.grams_per_gram), ...
     'the blank per-body-mass is the ingredient''s, not the dose''s top level');
-verifyDoseVolumeNeedsInfoJ(testCase, d, v);
+verifyDoseVolumeGapJ(testCase, d, v);
 [~, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
 end
@@ -1602,8 +1620,8 @@ end
 verifyNotEmpty(testCase, form);
 if ~isempty(form)
     % dilution 0 is not recorded, and the diluent states no amount: no
-    % ingredient states one, so each entry has no amount and needs_info names
-    % each; the blank value is accepted ([formulation amount needs info],
+    % ingredient states one, so each entry has no amount and is listed as a
+    % gap; the blank value is accepted ([formulation amount needs info],
     % Decided by Jess Haley, 2026-10-31; docs/V2_PLAN.md G67 (a)), not NaN
     ing = form.get('formulation.value').ingredients;
     if iscell(ing); ing = [ing{:}]; end
@@ -1612,14 +1630,11 @@ if ~isempty(form)
         && any(arrayfun(@(e) ~isempty(e.concentration), ing)), ...
         'a dilution of 0 is no amount, not NaN and not a measured 0');
     fs = form.toStruct();
-    named = {};
-    if isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info)
-        named = {fs.base.needs_info.field};
-    end
+    named = gapFieldsJ(fs);
     verifyTrue(testCase, any(strcmp(named, 'formulation.value.ingredients(1).concentration')), ...
-        'the virus''s missing amount is named in needs_info');
+        'the virus''s missing amount is listed as a gap');
     verifyTrue(testCase, any(strcmp(named, 'formulation.value.ingredients(2).concentration')), ...
-        'the diluent''s missing amount is named in needs_info');
+        'the diluent''s missing amount is listed as a gap');
 end
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 end
@@ -3121,12 +3136,12 @@ bath.stimulus_bath = struct( ...
 ee = stimulatorEpochDoc(stimId, 'aabb1122ccdd3344_9900aabbccddeeff', 'epoch_t00001', ...
     'aabb1122ccdd3344_5500000000000005');
 out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, any(arrayfun(@(q) strcmp(q.class_name, 'stimulus_bath'), ...
     out.quarantine)), 'stimulus_bath was not deferred');
 
 out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 
 % a manipulation valued by its formulation; never a dose, never the retired `bath`
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+formulation'), 1, ...
@@ -3231,9 +3246,9 @@ for loc = {struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Labora
     ee = stimulatorEpochDoc(stimId, 'aabb1122ccdd3344_9900aabbccddeeff', ...
         'epoch_t00001', 'aabb1122ccdd3344_5500000000000013');
     out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
-        'Validate', false, 'TargetVersion', 'V_eta');
+        'Validate', false, 'TargetVersion', 'did_v2');
     out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
-        'TargetVersion', 'V_eta');
+        'TargetVersion', 'did_v2');
     verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+formulation'), 1);
     verifyEmpty(testCase, firstOfClassJ(out.migrated, 'observation+term'), ...
         sprintf('the generic bath (%s) is no site on the subject', loc{1}.name));
@@ -3292,9 +3307,9 @@ bath.stimulus_bath = struct( ...
     'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
 
 out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 nPassBefore = numel(out.passthrough);
-out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'did_v2');
 rep = out.deferred_bath_resolution;
 verifyEqual(testCase, rep.deferred_baths_seen, 1);
 verifyEqual(testCase, rep.baths_carried_no_clock, 1);
@@ -3369,8 +3384,8 @@ bath.stimulus_bath = struct( ...
     'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
 
 out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
-out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'did_v2');
 rep = out.deferred_bath_resolution;
 verifyEqual(testCase, rep.baths_resolved, 1);
 verifyEqual(testCase, rep.baths_with_instrument, 1);
@@ -3397,7 +3412,7 @@ e = did2.build.document('entity', ...
     'Id', epochId, 'SessionId', sessId, ...
     'CreationTimestamp', '2024-06-01T12:00:00.000Z', 'Validate', false);
 out.migrated{end+1} = did2.document(e);
-out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.epoch_mint.bath_anchors_handed_over, 1);
 verifyEqual(testCase, out.epoch_mint.bath_anchors_repointed, 1);
 anchor = [];
@@ -3847,7 +3862,7 @@ function out = runJRoundTrip(v1)
 %   shape a MATLAB fixture is written in: serialise the fixture and decode it
 %   back exactly as `v1_to_v2/ensureStruct` does for a corpus file.
 out = did2.convert.v1_to_v2(jsondecode(jsonencode(v1)), ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function n = countRelsByName(migrated, relName)
@@ -4318,7 +4333,7 @@ m2 = sessionInADatasetDoc('member_b');
 m2.base.id = 'sid_b';
 m2.base.name = '';
 % rebuilt exactly by the two memberships: nothing written, nothing carried
-out = did2.convert.v1_to_v2({m1, m2, info}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({m1, m2, info}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(ids, 'dsi_01')), 'the list writes no V2 document');
@@ -4338,7 +4353,7 @@ ref.base = struct('id', 'ref_01', 'session_id', 'dsid_1', 'name', '', ...
 ref.projectvar = struct('foo', 'bar');  % carried whole as v1 (carry-162)
 for c = {{info}, {m2, m1, info}, {m1, m2, v}, {m1, m2, info, ref}}
     batch = c{1};
-    out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine);
     hit = strcmp({out.passthrough.id}, 'dsi_01');
     verifyEqual(testCase, nnz(hit), 1, 'carried');
@@ -4357,9 +4372,9 @@ editor.base.session_id = 'dsid_1';            % put it on the same dataset id
 remote = datasetRemoteDoc();                  % base.session_id = dsid_1 (bare stub)
 member = sessionInADatasetDoc('absent_sess'); % member session NOT in the batch
 batch = {jsonencode(editor), jsonencode(remote), jsonencode(member)};
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyGreaterThan(testCase, nLeafJ(out.migrated, 'dataset'), 1);
-out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
 datasets = allOfClassJ(out.migrated, 'dataset');
 verifyEqual(testCase, numel(datasets), 1);
 verifyEqual(testCase, datasets{1}.get('base.id'), 'dsid_1');
@@ -4394,8 +4409,8 @@ ses.session = struct('reference', 'the_dataset_session');
 remote = datasetRemoteDoc();                    % dataset entity dsid_1
 member = sessionInADatasetDoc('dsid_1');        % lists its own session (jMembershipBodies skips it)
 batch = {jsonencode(ses), jsonencode(remote), jsonencode(member)};
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
-[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
+[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
 ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
 [u, ~, j] = unique(ids);
 dup = u(accumarray(j(:), 1) > 1);
@@ -4433,8 +4448,8 @@ mk = @(id, ref) struct('document_class', struct('class_name', 'session', ...
     'session', struct('reference', ref));
 batch = {jsonencode(datasetRemoteDoc()), jsonencode(mk('s_a', 'first_ref')), ...
     jsonencode(mk('s_b', 'second_ref'))};
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
-[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
+[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.session_entities_dropped_dataset_id, 2, 'DENOMINATOR');
 verifyEqual(testCase, rep.dataset_local_identifier_from_session, 1);
 verifyEqual(testCase, rep.dataset_local_identifier_conflicts, 1);
@@ -5964,7 +5979,6 @@ function testProbeGeometryBecomesPerAxisLengthObservations(testCase)
 % X-Coordinate / Y-Coordinate (they were the labels 'site location
 % (left-right)' / '(front-back)'), and each names the probe's coordinate
 % system (testProbeGeometryWritesOneCoordinateSystem).
-did2.unittest.helpers.assumeNeedsInfo(testCase);
 v1 = struct();
 v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -6016,8 +6030,8 @@ function testProbeGeometryWritesOneCoordinateSystem(testCase)
 % the electrode"), and every site X/Y/Z value names it by coordinate_system_id.
 % [missing facts are needs info] (Jess Haley, 2026-10-29): v1 states neither the
 % zero point nor depth's sign, so reference_point and axes(3).positive_direction
-% are absent, each named by a base.needs_info entry and one report note.
-did2.unittest.helpers.assumeNeedsInfo(testCase);
+% are absent, each listed as a gap in the migration report, with one report
+% note each.
 v1 = struct();
 v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -6054,17 +6068,19 @@ verifyTrue(testCase, ~isfield(ax, 'positive_direction') || isempty(ax(3).positiv
 verifyFalse(testCase, isfield(cs.coordinate_system, 'reference_point'), ...
     'the zero point is not stated in v1');
 
-% the two needs_info entries, and nothing else
-ni = cs.base.needs_info;
-verifyEqual(testCase, sort({ni.field}), sort({'coordinate_system.reference_point', ...
+% the two gaps in the run's migration report, and nothing else; the
+% document itself says nothing about them ([migration record])
+verifyFalse(testCase, isfield(cs.base, 'needs_info'));
+[fields, reasons] = gapFieldsJ(cs);
+verifyEqual(testCase, sort(fields), sort({'coordinate_system.reference_point', ...
     'coordinate_system.axes(3).positive_direction'}));
-verifyTrue(testCase, all(~cellfun(@isempty, {ni.reason})), 'each entry gives a reason');
-[~, problems] = did2.schema.needsInfoFields(cs);
+verifyTrue(testCase, all(~cellfun(@isempty, reasons)), 'each gap gives a reason');
+[~, problems] = did2.schema.reportedGaps(cs);
 verifyEmpty(testCase, problems);
-% ... and the report counts them
-verifyTrue(testCase, isfield(notes, 'needs_info'), 'no needs_info report note');
-if isfield(notes, 'needs_info')
-    verifyEqual(testCase, notes.needs_info.count, 2);
+% ... and the report notes count them
+verifyTrue(testCase, isfield(notes, 'gap'), 'no gap report note');
+if isfield(notes, 'gap')
+    verifyEqual(testCase, notes.gap.count, 2);
 end
 
 % every site observation names it
@@ -6126,7 +6142,6 @@ function testProbeGeometryWritersContourFlagDoesNotCarry(testCase)
 % equal to an NDI writer's fixed default -- 1 (template probe_geometry.json:33)
 % or 0 (fromStruct.m:73) -- counts as not set, so it alone does not carry the
 % document; the fold runs. A non-default value still carries it.
-did2.unittest.helpers.assumeNeedsInfo(testCase);   % the fold writes a coordinate system
 for v = {1, 0, true}
     v1 = struct();
     v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
@@ -7141,7 +7156,7 @@ function testOneEpochOnAGlobalClockIsCarriedUnderValidation(testCase)
 % body is never validated against V_eta"), so with validation ON it must still
 % not quarantine, and comes back carried.
 v1 = oneEpochOnAGlobalClock('oe_4');
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('oneepoch quarantined under validation: %s', ...
         out.quarantine(1).reason));
@@ -7261,26 +7276,50 @@ end
 end
 
 
-function verifyDoseVolumeNeedsInfoJ(testCase, d, v)
+function verifyDoseVolumeGapJ(testCase, d, v)
 % [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30,
 % did-schema V_eta_go_forward_class_audit.md): a dose that states only its
 % ingredients' amounts leaves the whole formulation's amount out (no
-% `volume.liters = NaN`) and names it in base.needs_info (jDoseValue).
+% `volume.liters = NaN`) and lists it as a gap in the migration report
+% (jDoseValue).
 verifyFalse(testCase, isfield(v, 'volume') && isstruct(v.volume) && ~isempty(v.volume) ...
     && isfield(v.volume, 'liters') && ~isempty(v.volume.liters) && any(isnan(v.volume.liters)), ...
     'the unrecorded amount is left out, not NaN');
 ds = d.toStruct();
-assertTrue(testCase, isfield(ds.base, 'needs_info') && ~isempty(ds.base.needs_info), ...
-    'the unrecorded amount is not named in needs_info');
-verifyTrue(testCase, any(strcmp({ds.base.needs_info.field}, 'dose.value.volume')), ...
-    strjoin({ds.base.needs_info.field}, ', '));
+named = gapFieldsJ(ds);
+assertNotEmpty(testCase, named, 'the unrecorded amount is not listed as a gap');
+verifyTrue(testCase, any(strcmp(named, 'dose.value.volume')), strjoin(named, ', '));
+end
+
+function verifyDoseNoAmountJ(testCase, d)
+% [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30):
+% a dose whose source states no amount, nor its kind, states no value (no
+% `volume.liters = NaN`), and the run's migration report lists 'dose.value'
+% as a gap ([migration record], [gap accepted when the report lists it],
+% 2026-11-01; jDoseValue)
+ds = d.toStruct();
+verifyTrue(testCase, ~isfield(ds, 'dose') || ~isfield(ds.dose, 'value') ...
+    || isempty(ds.dose.value), 'the unrecorded amount is left out, not NaN');
+named = gapFieldsJ(ds);
+verifyTrue(testCase, any(strcmp(named, 'dose.value')), strjoin(named, ', '));
+end
+
+function [fields, reasons] = gapFieldsJ(doc)
+% the gaps the run's migration report lists for DOC ([migration record], [gap
+% accepted when the report lists it], Jess Haley, 2026-11-01): the fields and
+% their reasons, as cellstrs
+if isa(doc, 'did2.document'); doc = doc.toStruct(); end
+g = did2.convert.migrationReport('gaps', char(doc.base.id));
+fields = reshape({g.field}, 1, []);
+reasons = reshape({g.reason}, 1, []);
 end
 
 function verifyIngredientNoAmountJ(testCase, f, k)
 % [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30) and
 % [formulation amount needs info] (2026-10-31, docs/V2_PLAN.md G67 (a)): the
-% formulation's ingredient K states no amount (no NaN) and base.needs_info
-% names 'formulation.value.ingredients(K).concentration' (jDoseBodies).
+% formulation's ingredient K states no amount (no NaN) and the migration
+% report lists 'formulation.value.ingredients(K).concentration' as a gap
+% (jDoseBodies).
 ing = f.get('formulation.value').ingredients;
 if iscell(ing); ing = [ing{:}]; end
 assertGreaterThanOrEqual(testCase, numel(ing), k);
@@ -7288,10 +7327,7 @@ e = ing(k);
 verifyFalse(testCase, isfield(e, 'concentration') && ~isempty(e.concentration), ...
     sprintf('ingredient %d states no amount (not NaN)', k));
 fs = f.toStruct();
-named = {};
-if isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info)
-    named = {fs.base.needs_info.field};
-end
+named = gapFieldsJ(fs);
 verifyTrue(testCase, any(strcmp(named, ...
     sprintf('formulation.value.ingredients(%d).concentration', k))), strjoin(named, ', '));
 end

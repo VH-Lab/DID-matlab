@@ -418,7 +418,7 @@ end
 % block used, all go. A fixture whose file is gone leaves the census nothing
 % to read. So each test here runs on a COPY of the loaded schema set to which
 % useRelaxedFixtureSchema adds three classes of its own, the way
-% testBuildNeedsInfo's setupOnce adds a field to base.json:
+% testTuningDecisions adds a field to a class:
 %
 %   relaxed_fixture_one   document_id                 NDI required, V_eta relaxed
 %   relaxed_fixture_two   element_id,                 NDI required, V_eta relaxed
@@ -841,7 +841,7 @@ function useRelaxedFixtureSchema(testCase)
 %   [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
 %   V_eta_go_forward_class_audit.md) deletes every real class carrying the
 %   `ndi_mustBeNonEmpty` marker, so the census is tested on classes this file
-%   owns. Same mechanism as testBuildNeedsInfo's setupOnce: copy the loaded
+%   owns. Same mechanism as testTuningDecisions: copy the loaded
 %   set to a temp folder, edit the copy, did2.schema.cache.setSchemaPath, and
 %   restore the original path on teardown.
 try

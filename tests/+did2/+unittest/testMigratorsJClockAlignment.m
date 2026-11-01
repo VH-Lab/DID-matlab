@@ -500,7 +500,7 @@ function testTheSyncgraphEdgeStillResolvesAfterTheGraphConverts(testCase)
 graph = syncgraphFixture({'rule_ctoe'});
 graph.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
 out = did2.convert.v1_to_v2({graph, mappingFixture(false)}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 policy = findClass(testCase, out, 'clock_alignment_policy');
 mapping = findClass(testCase, out, 'syncrule_mapping');
 verifyEqual(testCase, depVal(mapping, 'syncgraph_id'), policy.get('base.id'));
@@ -581,7 +581,7 @@ function testTheClusterHasNoOrphanEdges(testCase)
 % supplied as KnownIds; everything else must resolve INSIDE the batch.
 out = did2.convert.v1_to_v2( ...
     {syncruleFixture('ctoe'), syncgraphFixture({'rule_ctoe'}), mappingFixture(true)}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 report = did2.validate.references(out.migrated, 'KnownIds', ...
     [{'sess_0001', 'epochdoc_a', 'epochdoc_b', 'tref_a', 'tref_b'}, ...
@@ -601,7 +601,7 @@ function testEdgeFamilyCardinalityIsSatisfied(testCase)
 % silentLoss.m:243). A converted configuration must carry exactly two.
 out = did2.convert.v1_to_v2( ...
     {syncruleFixture('ctoe'), syncgraphFixture({'rule_ctoe'})}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 report = did2.validate.silentLoss(out.migrated);
 % DENOMINATOR FIRST -- silentLoss printed zeros for two days while reading
 % nothing, so a zero is only evidence once total_docs is non-zero.
@@ -624,7 +624,7 @@ graph.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdo
 out = did2.convert.v1_to_v2( ...
     {syncruleFixture('ctoe'), syncruleFixture('filematch'), ...
      graph, mappingFixture(false)}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -650,7 +650,7 @@ function testTheAlignmentFoldValidatesWhenTheGateIsOpen(testCase)
 % a failure here means "#60's shape does not validate", not "the cluster is
 % broken today".
 out = did2.convert.v1_to_v2(mappingFixture(true), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -670,7 +670,7 @@ end
 % ===================== helpers =============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function deps = depsOf(doc)

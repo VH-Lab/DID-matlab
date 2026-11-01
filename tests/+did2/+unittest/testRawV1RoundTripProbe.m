@@ -48,10 +48,10 @@ function tests = testRawV1RoundTripProbe
 %   and [site frame is a coordinate system], Jess Haley, 2026-10-27; [missing
 %   facts are needs info], 2026-10-29) is X-/Y-/Z-Coordinate observations that
 %   name the probe's one coordinate_system, whose zero point and depth sign
-%   are needs_info entries. Building it needs a schema whose base declares
-%   `needs_info`; on one that does not (did-schema main before that lands)
-%   the converted shape is NOT RUN, and each test that drops it says so
-%   (convertedRunnable); the other shapes still run.
+%   are gaps listed in the run's migration report ([migration record], [gap
+%   accepted when the report lists it], Jess Haley, 2026-11-01; they were
+%   base.needs_info entries until then, which needed a schema declaring
+%   `needs_info`).
 tests = functiontests(localfunctions);
 end
 
@@ -133,7 +133,7 @@ end
 function testTheConvertedDocumentsValidate(testCase)
 f = writerFixtures(testCase);
 for k = 1:size(f, 1)
-    out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', f{k, 1}, quarantineText(out)));
 end
 end
@@ -213,9 +213,6 @@ r = did2.convert.roundtrip.check(v1, docs);
 verifyFalse(testCase, r.ok);
 verifyEqual(testCase, {r.lost.path}, {'electrode_offset_voltage.offset'});
 
-if ~convertedRunnable(testCase)
-    return;
-end
 v1 = convertedGeometry();
 docs = structs(runRaw(v1).migrated);
 keep = true(1, numel(docs));
@@ -235,11 +232,10 @@ end
 function testTheConvertedGeometryHasOneCoordinateSystem(testCase)
 % [site frame is a coordinate system] (Jess Haley, 2026-10-27) and [missing
 % facts are needs info] (2026-10-29), through v1_to_v2 WITH validation: one
-% coordinate_system about the probe, its two needs_info entries counted in
-% the report, and every site observation naming it.
-did2.unittest.helpers.assumeNeedsInfo(testCase);
+% coordinate_system about the probe, its two gaps listed and counted in the
+% report, and every site observation naming it.
 v1 = convertedGeometry();
-out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, quarantineText(out));
 docs = structs(out.migrated);
 cls = cellfun(@(d) char(d.document_class.class_name), docs, 'UniformOutput', false);
@@ -248,12 +244,15 @@ if sum(strcmp(cls, 'coordinate_system')) ~= 1; return; end
 cs = docs{strcmp(cls, 'coordinate_system')};
 probe = '41268b6f5c6a3d4e_9e00000000000001';
 verifyEqual(testCase, edgeOf(cs, 'referent_id'), probe);
-verifyEqual(testCase, sort({cs.base.needs_info.field}), sort({ ...
+verifyFalse(testCase, isfield(cs.base, 'needs_info'));
+gaps = out.migration_report.gaps;
+mine = gaps(strcmp({gaps.document_id}, char(cs.base.id)));
+verifyEqual(testCase, sort({mine.field}), sort({ ...
     'coordinate_system.reference_point', 'coordinate_system.axes(3).positive_direction'}));
 notes = out.summary.migration_notes;
-verifyTrue(testCase, isfield(notes, 'needs_info'));
-if isfield(notes, 'needs_info')
-    verifyEqual(testCase, notes.needs_info.count, 2);
+verifyTrue(testCase, isfield(notes, 'gap'));
+if isfield(notes, 'gap')
+    verifyEqual(testCase, notes.gap.count, 2);
 end
 nObs = 0;
 for k = find(strcmp(cls, 'observation'))
@@ -266,9 +265,6 @@ end
 function testASiteThatNamesNoCoordinateSystemIsUnplaced(testCase)
 % a check that cannot fail proves nothing: drop the coordinate system, or a
 % site's link to it, and the round trip says so
-if ~convertedRunnable(testCase)
-    return;
-end
 v1 = convertedGeometry();
 docs = structs(runRaw(v1).migrated);
 cls = cellfun(@(d) char(d.document_class.class_name), docs, 'UniformOutput', false);
@@ -297,7 +293,7 @@ function testAnUnplacedDocumentFailsTheRoundTrip(testCase)
 v1 = writerOffset(0.012, 21.5);
 out = runRaw(v1);
 % an unrelated document: another offset's (a converted geometry's until
-% 2026-10-30, which needs base.needs_info now; convertedRunnable)
+% 2026-10-30)
 extra = runRaw(writerOffset(0.5, 20)).migrated;
 r = did2.convert.roundtrip.check(v1, [out.migrated, extra(1)]);
 verifyFalse(testCase, r.ok);
@@ -309,10 +305,9 @@ end
 
 % ===================== fixtures, from the WRITERS =========================
 
-function f = writerFixtures(testCase)
-% {label, v1, 'converted' | 'passthrough' | 'carried'}; with TESTCASE, the
-% converted geometry is left out (and the test says so) on a schema that
-% cannot build it (convertedRunnable)
+function f = writerFixtures(testCase) %#ok<INUSD>
+% {label, v1, 'converted' | 'passthrough' | 'carried'} (TESTCASE is unused
+% since the converted geometry no longer needs base.needs_info)
 nanTemp = writerOffset(-0.0031, NaN);
 nanTemp.electrode_offset_voltage.temperature = NaN;   % jsonencodenan keeps NaN
 f = { ...
@@ -322,21 +317,6 @@ f = { ...
     'electrode_offset_voltage, with a temperature', writerOffset(0.012, 21.5), 'converted'; ...
     'electrode_offset_voltage, temperature not recorded (null)', writerOffset(-0.0031, NaN), 'converted'; ...
     'electrode_offset_voltage, temperature not recorded (NaN)', nanTemp, 'converted'};
-if nargin > 0 && ~convertedRunnable(testCase)
-    f = f(~strcmp(f(:, 1), 'probe_geometry, converted shape'), :);
-end
-end
-
-function tf = convertedRunnable(testCase)
-% The converted probe_geometry writes a coordinate system with needs_info
-% entries, which needs the loaded base to declare `needs_info`. When it does
-% not, say so in the test log: NOT RUN is never "passed".
-tf = did2.unittest.helpers.schemaDeclares('base', {'needs_info'});
-if ~tf
-    log(testCase, 1, sprintf(['NOT RUN: probe_geometry, converted shape -- the ' ...
-        'loaded schema (%s) declares no base.needs_info'], ...
-        char(did2.schema.cache.shared().schemaPath)));
-end
 end
 
 function d = writerGeometry()
@@ -396,7 +376,7 @@ end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function verifyCarried(testCase, v1, part)

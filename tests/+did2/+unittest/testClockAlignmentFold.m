@@ -179,6 +179,30 @@ end
 end
 
 
+function testAFoldedFilefindRuleRoundTripsInTheWholeBatch(testCase)
+% [whole-batch round trip] (Jess Haley, 2026-10-27): after the fold the rule's
+% two systems are the daqsystems' own documents and its software entity is one
+% the fold appended, none of them the rule's own; the inverse reads them from
+% the whole batch (Test code run 41322059537: every sampled filefind rule lost
+% ndi_syncrule_class, daqsystem1 and daqsystem2 when it did not)
+bodies = { ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')};
+out = did2.convert.resolveClockAlignment(migrate(bodies), 'Validate', false);
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyEqual(testCase, r.sources_inspected, 3);
+isRule = arrayfun(@(f) strcmp(f.source_id, 'rule_ff'), r.failures);
+detail = '';
+if any(isRule)
+    f = r.failures(find(isRule, 1));
+    detail = strjoin([f.lost_values, f.unplaced], ' | ');
+end
+verifyFalse(testCase, isfield(r.failures_by_class, 'syncrule'), detail);
+verifyFalse(testCase, isfield(r.changed_by_class, 'syncrule'));
+verifyFalse(testCase, isfield(r.no_inverse_by_class, 'syncrule'));
+end
+
 function testFilefindFoldValidatesAgainstTheSchema(testCase)
 % The transform test above cannot tell whether the fold and the schema agree;
 % this one validates every body, in pass 1 and in the fold.
@@ -186,7 +210,7 @@ result = did2.convert.v1_to_v2({ ...
     daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
     daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
     filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 out = did2.convert.resolveClockAlignment(result, 'Validate', true);
 rep = out.clock_alignment_fold;
 verifyEqual(testCase, rep.syncrule_fold_quarantined, 0);
@@ -324,7 +348,7 @@ result = did2.convert.v1_to_v2({ ...
     daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
     daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
     channelRuleFixture('rule_ct', 'sess_A', 'mydaq1', 'mydaq2')}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 out = did2.convert.resolveClockAlignment(result, 'Validate', true);
 rep = out.clock_alignment_fold;
 verifyEqual(testCase, rep.syncrule_fold_quarantined, 0);
@@ -351,7 +375,7 @@ end
 % ===================== fixtures & helpers ==================================
 
 function result = migrate(fixtures)
-result = did2.convert.v1_to_v2(fixtures, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(fixtures, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v1 = syncgraphFixture(id, ruleIds, sessionId)

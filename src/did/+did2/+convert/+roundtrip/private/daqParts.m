@@ -1,4 +1,4 @@
-function [doc, sw, swName, spec] = daqParts(bodies, className, spec)
+function [doc, sw, swName, spec] = daqParts(bodies, className, spec, ctx)
 %DAQPARTS The one document of class CLASSNAME a converted acquisition-system
 %   family document became, and the `software` entity its `software_id` edge
 %   names (its name: the v1 implementation class).
@@ -10,8 +10,14 @@ function [doc, sw, swName, spec] = daqParts(bodies, className, spec)
 %   SPEC: the migrators emit exactly the document and, when the v1 document
 %   names its class, its one software entity (private/jSoftware).
 %
+%   [...] = daqParts(BODIES, CLASSNAME, SPEC, CTX): a software entity that is
+%   not among BODIES is read from CTX, the index of the whole final batch
+%   (did2.convert.roundtrip.wholeBatch), by the id the edge names; it is read,
+%   not placed. With no CTX (a per-class round trip) it must be emitted.
+%
 %   See also did2.convert.roundtrip.daqsystem, .filenavigator, .daqreader,
 %            .daqreader_ndr, .daqmetadatareader, .syncgraph.
+if nargin < 4; ctx = []; end
 doc = [];
 sw = [];
 swName = '';
@@ -39,6 +45,13 @@ if ~isempty(swIds)
             used(k) = true;
             swName = fieldText(b.entity, 'name');
             break;
+        end
+    end
+    if isempty(sw)
+        b = ctxDoc(ctx, swIds{1});
+        if ~isempty(b) && isEntityOfType(b, 'software')
+            sw = b;
+            swName = fieldText(b.entity, 'name');
         end
     end
     if isempty(sw)

@@ -142,7 +142,7 @@ function testWriterOutputsValidate(testCase)
 % the converted documents pass the V2 schema (the corpus run validates too)
 for cls = {'oridirtuning_calc', 'contrastsensitivity_calc'}
     v1 = writerOutput(cls{1});
-    out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine, cls{1});
     verifyGreaterThan(testCase, numel(out.migrated), 1, cls{1});
 end
@@ -337,7 +337,7 @@ end
 end
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function c = structs(docs)

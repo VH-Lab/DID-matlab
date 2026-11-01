@@ -91,7 +91,7 @@ end
 function testTheConvertedDocumentsValidate(testCase)
 for c = classNames()
     v1 = convertedShape(c{1});
-    out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine, c{1});
     verifyGreaterThan(testCase, numel(out.migrated), 1, c{1});
 end
@@ -217,7 +217,7 @@ end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function tf = contrastMetricsDeclared()

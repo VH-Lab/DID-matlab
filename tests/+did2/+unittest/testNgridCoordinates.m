@@ -153,7 +153,7 @@ function testTheV1NgridBlockPassesThroughAsV1UnderValidation(testCase)
 % What this still protects, with Validate ON: the writer's v1 ngrid block
 % passes through without a quarantine, nothing reshaped, all four fields kept.
 out = did2.convert.v1_to_v2(ontologyImageWriterNoRow(), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.quarantine_count, 0, ...
     'the v1 ngrid block must pass through as v1, not quarantine');
 verifyEqual(testCase, out.summary.migrated_count, 1);
@@ -256,7 +256,7 @@ end
 % ===================== fixtures (from the WRITER) ==========================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function b = v1NgridBody()

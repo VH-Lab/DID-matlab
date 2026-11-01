@@ -20,8 +20,9 @@ function tests = testQuantityReference
 %
 %   THE CANONICAL (Decided by Jess Haley, 2026-10-30 [canonical absent only
 %   as needs info]): a cell of a one-canonical class stating a unit and a
-%   finite source_value but no canonical fails unless the document's
-%   needs_info names it (testA*Canonical*). NOT TESTED, BECAUSE NOT BUILT:
+%   finite source_value but no canonical fails unless the run's migration
+%   report lists it as a gap (testA*Canonical*; [gap accepted when the report
+%   lists it], Jess Haley, 2026-11-01). NOT TESTED, BECAUSE NOT BUILT:
 %   a cell with no unit, and a cell with several canonicals (concentration:
 %   "exactly one", G38): DID-matlab's own writers (neuron_extracellular,
 %   jMeasurementFold, resolveDeferredBaths, virus_injection's dilution)
@@ -246,27 +247,25 @@ doc.length.value = struct('meters', NaN, 'source_value', 100, ...
 did2.schema.cache.shared().validateDocument(doc);
 end
 
-function testNeedsInfoExcusesAMissingCanonical(testCase)
+function testAGapExcusesAMissingCanonical(testCase)
 doc = did2.schema.cache.shared().buildBlankDocument('measured');
-% a document missing nothing has no needs_info at all (did2.build.document
-% writes it only when there is an entry); the blank structure would be one
-% empty entry, and [] is not the struct the field's type asks for
-if isfield(doc.base, 'needs_info')
-    doc.base = rmfield(doc.base, 'needs_info');
-end
+doc.base.id = 'measured_1';
 doc.measured.reading = struct('source_value', 100, ...
     'source_unit', struct('node', 'om:millimetre', 'name', 'millimetre'));
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
 verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
-    'did2:validation:quantityShape', 'not named: refused');
-doc.base.needs_info = struct('field', 'measured.reading.meters', ...
-    'reason', 'the source states millimetres with no conversion');
+    'did2:validation:quantityShape', 'not listed: refused');
+did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
+    'measured.reading.meters', 'the source states millimetres with no conversion');
 did2.schema.cache.shared().validateDocument(doc);
-% an entry naming the cell itself names a field the document gives (its
-% source_value and source_unit), which [missing facts are needs info] refuses
-% (did2.schema.needsInfoFields): the entry names the canonical
-doc.base.needs_info = struct('field', 'measured.reading', 'reason', 'not stated');
+% a gap naming the cell itself names a field the document gives (its
+% source_value and source_unit), which did2.schema.reportedGaps refuses: the
+% gap names the canonical
+did2.convert.migrationReport('begin');
+did2.convert.migrationReport('gap', doc.base.id, 'measured', 'measured.reading', 'not stated');
 verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
-    'did2:validation:badNeedsInfo', 'the cell is given: naming it is refused');
+    'did2:validation:badGap', 'the cell is given: listing it is refused');
 end
 
 function testWhatTheCanonicalCheckLeavesAlone(testCase) %#ok<INUSD>
@@ -387,12 +386,10 @@ writeClass(dirPath, 'mixture', {'value'}, {mixtureValue});
 
 writeClass(dirPath, 'oddities', {}, {leaf('reading', 'voltage'), leaf('other', 'notvalue')});
 
-% a document with base.needs_info ([missing facts are needs info]) and a
-% reference to a one-canonical class, for the canonical check
-needsInfo = leaf('needs_info', 'structure');
-needsInfo.mustBeScalar = false;
-needsInfo.fields = {leaf('field', 'char'), leaf('reason', 'char')};
-writeClass(dirPath, 'base', {}, {needsInfo});
+% a document with an id (the migration report lists its gaps by id, [gap
+% accepted when the report lists it]) and a reference to a one-canonical
+% class, for the canonical check
+writeClass(dirPath, 'base', {}, {leaf('id', 'char')});
 writeClass(dirPath, 'measured', {'base'}, {leaf('reading', 'length')});
 did2.schema.cache.setSchemaPath(dirPath);
 end

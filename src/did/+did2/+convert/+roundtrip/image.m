@@ -89,7 +89,11 @@ if ~isempty(fnode)
         img.format = lower(fname);
     end
 end
-img.compression = fieldText(getIn(body, 'data_body'), 'compression');
+% `compression` in either shape: the codec name (char), or the {term,
+% parameters} block ([compression block and empty levels] (1), Jess Haley,
+% 2026-10-26), read back to the image's spelling ('lzw') by
+% did2.build.compressionCodec, the inverse of did2.build.compression
+img.compression = did2.build.compressionCodec(getIn(body, 'data_body', 'compression'));
 v1.image = img;
 
 % the stack's formatOntology comparison does not apply; the image's format does

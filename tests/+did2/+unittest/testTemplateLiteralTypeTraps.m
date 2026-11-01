@@ -94,14 +94,14 @@ function out = runJ(v1)
 %   `stimulus_parameter` reach their +migrators_j migrators with the v1 block
 %   keys, and the superclass guard +migrators_j/+super/image_stack_parameters
 %   is called by the leaf.
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runJValidated(v1)
 %RUNJVALIDATED The same, with the validator ARMED. This is the assertion that
 %   actually matters: the placeholder is only worth dropping if dropping it is
 %   what lets the document through.
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 end
 
 function d = onlyClass(testCase, out, className)
@@ -290,7 +290,7 @@ function testASubjectlessImageStackPassesThroughUntouchedAndCounted(testCase)
 % is a v1 document, counted (passthrough_unvalidated_no_schema), not
 % quarantined, with its id and its placeholder as v1 wrote them.
 v1 = imageStackBody([]);
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 assertEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
@@ -358,7 +358,8 @@ function testTheBuiltPathStillReadsARealTimestamp(testCase)
 % [acquisition time on its clock] (Decided by Jess Haley, did-schema
 % V_eta_go_forward_class_audit.md): the fixture's clock (exp_global_time) is
 % not UTC, so the datenum is the AFO:AFR_0001158 "acquisition time"
-% condition's source_value, its canonical left out and named in needs_info,
+% condition's source_value, its canonical left out and listed as a gap in the
+% run's migration report ([migration record], 2026-11-01),
 % and the clock is on the observation's session anchor -- no longer the
 % "acquisition timestamp (<clock>)" label with the datenum as its value.
 [obs, anchor] = builtStack(testCase, 739038.5, 'exp_global_time');
@@ -369,9 +370,12 @@ verifyFalse(testCase, isfield(c.quantity, 'value'), ...
     'a datenum on a clock that is not UTC has no canonical');
 verifyEqual(testCase, char(c.source_unit.name), 'day');
 s = obs.toStruct();
-verifyEqual(testCase, numel(s.base.needs_info), 1);
-verifyEqual(testCase, s.base.needs_info(1).field, 'statement.conditions(1).quantity.value');
-verifyTrue(testCase, contains(s.base.needs_info(1).reason, '''exp_global_time'''));
+verifyFalse(testCase, isfield(s.base, 'needs_info'));
+g = did2.convert.migrationReport('gaps', char(s.base.id));
+verifyEqual(testCase, numel(g), 1);
+if isempty(g); return; end
+verifyEqual(testCase, g(1).field, 'statement.conditions(1).quantity.value');
+verifyTrue(testCase, contains(g(1).reason, '''exp_global_time'''));
 did2.unittest.helpers.verifyClock(testCase, anchor.get('relative_time_reference.value.clock'), ...
     'exp_global_time');   % by node [clock terms get nodes]
 verifyEqual(testCase, char(anchor.get('relative_time_reference.value.relation').node), ...
@@ -385,12 +389,12 @@ function testAUtcTimestampIsTheObservationsTimeReference(testCase)
 % absolute time reference"): on clock utc the datenum IS the observation's time
 % reference, an absolute_time_reference holding the UTC instant (the datenum as
 % its source_value), not a relative_time_reference to the session; no
-% condition and no needs_info. INVERTED: it pinned the relative shape
+% condition and no gap. INVERTED: it pinned the relative shape
 % (start = datenum x 86400 s on clock utc) until then.
 [obs, anchor] = builtStack(testCase, 739038.5, 'utc');
 s = obs.toStruct();
 verifyFalse(testCase, isfield(s.statement, 'conditions') && ~isempty(s.statement.conditions));
-verifyFalse(testCase, isfield(s.base, 'needs_info') && ~isempty(s.base.needs_info));
+verifyEmpty(testCase, did2.convert.migrationReport('gaps', char(s.base.id)));
 verifyEqual(testCase, anchor.get('document_class.class_name'), 'absolute_time_reference');
 st = anchor.get('absolute_time_reference.value.start');
 verifyEqual(testCase, char(st.utc), '2023-06-01T12:00:00.000Z');
@@ -419,6 +423,9 @@ v1.depends_on(1).value = 'sub_1';          % give it a subject -> the built path
 % and no plate row: since [generic stage is lossless] (Jess Haley, 2026-10-25) a
 % stack that names one is carried whole as v1 (no edge for it on the observation)
 v1.depends_on(2).value = '';
+% its own migration run: the gaps of this stack only (the stacks of these
+% tests share their ids)
+did2.convert.migrationReport('begin');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...

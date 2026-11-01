@@ -77,7 +77,7 @@ function testTheCitationPassReadsTheRawEdges(testCase)
 % through its openminds_1 edge
 batch = strainPair();
 raw = runRaw(batch);
-[~, repRaw] = did2.convert.resolveOpenmindsCitations(raw, 'Validate', false, 'TargetVersion', 'V_eta');
+[~, repRaw] = did2.convert.resolveOpenmindsCitations(raw, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyGreaterThan(testCase, repRaw.openminds_documents_seen, 0);
 verifyGreaterThan(testCase, repRaw.openminds_components_seen, 0);
 end
@@ -348,7 +348,7 @@ end
 
 function out = runRaw(batch)
 if ~iscell(batch); batch = {batch}; end
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function s = docWithId(out, id)

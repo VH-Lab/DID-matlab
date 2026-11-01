@@ -360,13 +360,13 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runFold(testCase, bodies)
 out = runRaw(bodies);
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
-out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function b = bodyWithId(out, id)

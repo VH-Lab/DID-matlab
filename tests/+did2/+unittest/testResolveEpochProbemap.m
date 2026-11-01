@@ -45,13 +45,13 @@ function [out, rep] = decompose(v1)
 % one is carried ([unlabelled units need a map])
 labels = {'el_neuron', 'single', 'el_neuron_x', 'single', 'el_neuron_u', 'single', ...
     'el_neuron_u2', 'single', 'el_neuron_q', 'single'};
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', labels);
-out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
 out = did2.convert.resolveSessionAnchors(out, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 [out, rep] = did2.convert.resolveEpochProbemap(out, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 end
 
 % ===================== the headline decomposition =====================
@@ -226,7 +226,9 @@ for i = 1:numel(bodies)
     switch char(db.filename)
         case 'seg.nbf.tgz'
             verifyTrue(testCase, hasComp, 'a .tgz file body states its compression');
-            if hasComp; verifyEqual(testCase, char(db.compression), 'gzip'); end
+            % either shape: the char, or the {term, parameters} block
+            % ([compression block and empty levels] (1))
+            if hasComp; verifyEqual(testCase, did2.build.compressionCodec(db.compression), 'gzip'); end
             seen = seen + 1;
         case 'cell.abf'
             verifyFalse(testCase, hasComp, 'an uncompressed file leaves compression empty');

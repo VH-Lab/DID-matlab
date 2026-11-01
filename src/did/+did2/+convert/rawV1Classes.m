@@ -217,6 +217,9 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         geneExpression (only a superclass block in NDI's
 %                         writers) and geneListMapping have no writer at the
 %                         locked main; no corpus holds any of the seven.
+%                         geneList CONVERTS (a `term` and its opaque_body,
+%                         [gene list as a term, file kept], Jess Haley,
+%                         2026-11-01); the other six pass through.
 %                         Written by +ndi/+fun/+doc/+gene/makeCellTypeLabels.m,
 %                         makeGeneList.m, makeCells.m, makePyramid.m. Round
 %                         trips: testRawV1RoundTripGene.

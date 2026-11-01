@@ -119,18 +119,18 @@ end
 
 function testTheSortingOutputsPassThroughUnderTheirV1Name(testCase)
 v1 = sortingOutputs();
-raw = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta');
+raw = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, numel(raw.passthrough), 1);
 verifyEqual(testCase, char(raw.migrated{1}.get('document_class.class_name')), ...
     'SpikeInterfaceSortingOutputs');
-out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'a passthrough with no V_eta class is counted, not quarantined');
 end
 
 function testTheConvertedDocumentsValidate(testCase)
 f = writerFixtures();
 for k = 1:size(f, 1)
-    out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', f{k, 1}, quarantineText(out)));
 end
 end
@@ -311,7 +311,7 @@ end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function verifyCarried(testCase, v1, part)

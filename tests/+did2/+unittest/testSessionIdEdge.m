@@ -190,7 +190,7 @@ did2.schema.cache.setSchemaPath(dirPath);
 end
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v1 = passthroughV1(sessionId, deps)

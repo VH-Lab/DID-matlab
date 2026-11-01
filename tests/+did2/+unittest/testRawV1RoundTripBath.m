@@ -83,7 +83,7 @@ for c = {{'Dab one drug', dabBath(oneDrug()), {}}, ...
     ids = cellfun(@(d) char(d.get('base.id')), mine, 'UniformOutput', false);
     e = epochEntity(v1);
     out.migrated{end+1} = did2.document(e);
-    out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
+    out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
     verifyEqual(testCase, out.epoch_mint.bath_anchors_repointed, 1, label);
     docs = {};
     for k = 1:numel(out.migrated)
@@ -176,7 +176,7 @@ function testAWholeBathStillDefers(testCase)
 % pass 1 alone: the raw bath is quarantined with the deferral, as before, and
 % its quarantined source is the untouched v1 document both resolvers read
 v1 = dabBath(oneDrug());
-out = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
 verifyEqual(testCase, numel(out.quarantine), 1);
 verifyEqual(testCase, out.quarantine(1).class_name, 'stimulus_bath');
@@ -220,7 +220,7 @@ function testABathWithNoClockRecordIsCarried(testCase)
 % pass carries the bath: its round trip is the carry, nothing lost.
 v1 = dabBath(oneDrug());
 first = did2.convert.v1_to_v2({subjectDoc(), stimulatorDoc(), v1}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 out = resolved(first);
 verifyEmpty(testCase, quarantinedBaths(out), 'left quarantined');
 verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_no_clock, 1);
@@ -306,7 +306,7 @@ function [mine, out] = bathOutputs(v1)
 % pass 1 on the stimulator, its subject and the bath, then the coarse pass;
 % the bath's documents are the ones that pass appended, or its carry
 batch = [fixtureBatch(), {v1}];
-first = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+first = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 out = resolved(first);
 n = numel(first.migrated);
 mine = out.migrated(n + 1:end);
@@ -320,7 +320,7 @@ end
 end
 
 function out = resolved(out)
-out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function q = quarantinedBaths(out)
@@ -333,7 +333,7 @@ end
 end
 
 function verifyCarriedFor(testCase, v1, part)
-out = did2.convert.v1_to_v2([fixtureBatch(), {v1}], 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2([fixtureBatch(), {v1}], 'Validate', false, 'TargetVersion', 'did_v2');
 label = sprintf('stimulus_bath (%s)', part);
 verifyEmpty(testCase, quarantinedBaths(out), [label ': deferred, not carried']);
 hit = [];

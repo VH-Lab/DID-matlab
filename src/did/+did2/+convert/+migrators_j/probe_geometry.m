@@ -60,8 +60,8 @@ function bodies = probe_geometry(preBody)
 %   (the template has no field for it; site_locations_depth is documented only
 %   as "Depth of site positions") nor which way depth runs, so
 %   `reference_point` and the z axis's `positive_direction` are left out and
-%   named in the coordinate system's `base.needs_info` ([missing facts are
-%   needs info], Jess Haley, 2026-10-29), one `needs_info` report note each.
+%   named in the migration report, as gaps of the coordinate system ([missing facts are
+%   needs info], Jess Haley, 2026-10-29), one `gap` report note each.
 %   The coordinate system is written for every converted document, with all
 %   three axes, whichever axes the document populates. z-axis, right and back
 %   are not yet in did-schema's term registry; did2.convert runs with the
@@ -274,8 +274,8 @@ function frame = probeCoordinateSystem(preBody, probeId)
 %   coordinate system], Jess Haley, 2026-10-27): referent the probe's device
 %   entity; axes x (positive right), y (positive back) and z, in that order.
 %   What v1 never states -- where zero is, and which way depth runs -- is left
-%   out and named in base.needs_info ([missing facts are needs info], Jess
-%   Haley, 2026-10-29), with a `needs_info` report note per entry.
+%   out and listed as a gap in the migration report ([missing facts are needs info], Jess
+%   Haley, 2026-10-29), with a `gap` report note per entry.
 term = @(node, name) did2.convert.registeredTerm(node, name);
 ax = { ...
     struct('axis', term('STATO:0000006', 'x-axis'), ...
@@ -293,10 +293,10 @@ missing = struct( ...
          'is positive: the template documents it only as "Depth of site ' ...
          'positions"']});
 o = jOpts(preBody, 'Edges', struct('referent_id', char(probeId)), ...
-    'NeedsInfo', missing);
+    'Gaps', missing);
 frame = did2.build.document('coordinate_system', struct('axes', {ax}), o{:});
 for k = 1:numel(missing)
-    did2.convert.reportNote('needs_info', 'probe_geometry', char(preBody.base.id), ...
+    did2.convert.reportNote('gap', 'probe_geometry', char(preBody.base.id), ...
         missing(k).field);
 end
 end

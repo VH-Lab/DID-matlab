@@ -141,7 +141,7 @@ function testTheCarriedDistancesPassValidation(testCase)
 % (positionConvertedShape() is carried too, [position and its metadata are one
 % statement]; its carry is checked by testAPositionWithOnlyABodyPartIsCarried.)
 for b = {{distance('dm_1', 1:19)}, {distance('dm_2', 4)}}
-    out = did2.convert.v1_to_v2(b{1}, 'Validate', true, 'TargetVersion', 'V_eta');
+    out = did2.convert.v1_to_v2(b{1}, 'Validate', true, 'TargetVersion', 'did_v2');
     label = b{1}{1}.base.id;
     verifyEmpty(testCase, out.quarantine, sprintf('%s: %s', label, quarantineText(out)));
     verifyTrue(testCase, isCarried(out, b{1}{1}), [label ': not carried as the untouched v1 source']);
@@ -224,7 +224,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(batch)
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function docs = own(migrated, batch)

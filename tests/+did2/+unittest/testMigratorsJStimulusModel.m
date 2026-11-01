@@ -208,7 +208,7 @@ function testInventedElementIdEdgeIsRejectedByName(testCase)
 % openminds_stimulus (`stimulus_id`) and epochfiles_ingested (`epochid`).
 v1 = presentationFixture();
 v1.depends_on(1).name = 'element_id';
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 
 verifyEmpty(testCase, out.migrated);
 verifyEqual(testCase, numel(out.quarantine), 1);
@@ -433,7 +433,7 @@ function testTheMigratedPairHasNoOrphanEdges(testCase)
 % supplied as a KnownId (elements migrate in their own right; element.m promotes
 % them to subjects with ids preserved).
 out = did2.convert.v1_to_v2({presentationFixture(), controlFixture()}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 
 report = did2.validate.references(out.migrated, 'KnownIds', ...
@@ -466,7 +466,7 @@ end
 function testPassOneValidatesAgainstTheRealVEtaSchema(testCase)
 % Both pass-1 passthroughs validate against their tombstones. UPDATED for #88.
 out = did2.convert.v1_to_v2({presentationFixture(), controlFixture()}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -482,7 +482,7 @@ end
 % ===================== helpers =============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function names = classNames(out)

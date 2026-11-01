@@ -135,9 +135,9 @@ for j = 1:numel(subDefs)
     if isfield(given, name) && ~isAbsent(given.(name))
         s.(name) = fillField(subDefs{j}, given.(name), subPath);
     elseif logical(getOr(subDefs{j}, 'mustBeNonEmpty', false)) ...
-            && ~needsInfoScope('-has', subPath)
-        % [missing facts are needs info]: excused only when the document's
-        % needs_info names this path (did2.build.document 'NeedsInfo')
+            && ~gapScope('-has', subPath)
+        % [gap accepted when the report lists it]: excused only when the
+        % run's migration report lists this path (did2.build.document 'Gaps')
         error('did2:build:missingField', '"%s" is required.', subPath);
     end
 end
