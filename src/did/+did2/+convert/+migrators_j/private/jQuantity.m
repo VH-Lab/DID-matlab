@@ -16,10 +16,13 @@ function cells = jQuantity(kind, sourceValues, sourceUnit, varargin)
 %   optional in the schema and valueCell requires it.
 
 if nargin < 3; sourceUnit = ''; end
-[term, factor, unitKind] = jSourceUnit(sourceUnit);
+[term, factor, unitKind, slot] = jSourceUnit(sourceUnit);
 canon = '';
 if ~isempty(factor) && strcmp(unitKind, kind)
     canon = canonicalField(kind);
+    if ~isempty(slot)
+        canon = slot;   % a concentration row names its own slot (jSourceUnit)
+    end
 end
 vals = double(sourceValues);
 n = numel(vals);
@@ -52,7 +55,7 @@ switch kind
     case 'temperature', f = 'celsius';
     case 'volume',      f = 'liters';
     case 'current',     f = 'amperes';
-    case 'concentration', f = 'molar';   % every concentration row of jSourceUnit is molar
+    case 'concentration', f = 'molar';   % jSourceUnit's SLOT, when it names one, wins
     otherwise,          f = '';
 end
 end

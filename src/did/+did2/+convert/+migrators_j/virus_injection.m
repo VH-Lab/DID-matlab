@@ -51,7 +51,10 @@ function v2Body = virus_injection(preBody)
 %                                 "Age", on the injection's time reference
 %                                 ([age at injection is an observation], Jess
 %                                 Haley, 2026-10-27; [age is NCIT Age],
-%                                 2026-10-30). A non-numeric value is not
+%                                 2026-10-30). 0 is not stated: the Age
+%                                 observation has no value and names it in
+%                                 needs_info ([postnatal day 0 not stated],
+%                                 2026-11-01). A non-numeric value is not
 %                                 read (the round trip reports it lost).
 %     files.file_list          -> empty in the template and the writer
 
@@ -138,9 +141,17 @@ function obs = ageObservation(preBody, block, anchorId)
 %   2026-10-30): its variable is NCIT:C25150 "Age"; "at injection" is said by
 %   the time reference. The value: `seconds` the days times 86400,
 %   `source_value` the number of days as v1 wrote it, `source_unit` day.
-%   A finite number is read as written, 0 included (the template's default
-%   is 0, and no decision makes 0 "not recorded" for this field, unlike
-%   `dilution`); an empty, NaN or non-numeric value states no age.
+%   0 is NOT STATED: [postnatal day 0 not stated] (Decided by Jess Haley,
+%   2026-11-01, did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md
+%   G68: "treat a 0 as 'not stated', so it's recorded as a missing fact rather
+%   than an age ... A real day-0 injection is rare, and a wrong age is worse
+%   than a missing one"). NDI's template defaults the field to 0, so a 0 cannot
+%   be told from a field nobody filled in: the Age observation is written with
+%   no value, its `time.value` named in base.needs_info ([missing facts are
+%   needs info]; the value rule accepts a blank value needs_info names,
+%   [formulation amount needs info]), with a `needs_info` report note. Any
+%   other finite number is read as written; an empty, NaN or non-numeric
+%   value states no age (no observation).
 obs = [];
 pnd = [];
 for f = {'virus_administration_pnd', 'virus_AdministrationPND'}
@@ -153,6 +164,19 @@ if ~(isnumeric(pnd) && isscalar(pnd) && isfinite(double(pnd)))
     return;
 end
 days = double(pnd);
+if days == 0
+    % [postnatal day 0 not stated]: the template default, not an age
+    needsInfo = struct('field', 'time.value', 'reason', ...
+        ['v1 states postnatal day 0, the NDI template''s default for ' ...
+         'virus_AdministrationPND, which is read as not stated ' ...
+         '([postnatal day 0 not stated])']);
+    obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
+        did2.convert.registeredTerm('NCIT:C25150', 'Age'), [], ...
+        'TimeReferenceIds', {anchorId}, 'ValueKind', 'time', 'NeedsInfo', needsInfo);
+    did2.convert.reportNote('needs_info', char(preBody.document_class.class_name), ...
+        char(preBody.base.id), needsInfo.field);
+    return;
+end
 value = did2.build.composite('time', 'value', {struct('seconds', days * 86400, ...
     'source_value', days, 'source_unit', struct('node', 'om:day', 'name', 'day'))});
 obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...

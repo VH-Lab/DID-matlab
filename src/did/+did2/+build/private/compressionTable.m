@@ -26,6 +26,18 @@ function t = compressionTable()
 %                       written as the `inner compressor` parameter, so the
 %                       term is the codec alone (T19: a term as general as its
 %                       meaning allows; the document carries the rest).
+%   T.compressors rows {spelling, term name}: an inner compressor as a source
+%   spells it (numcodecs.Blosc's `cname`) and the name of the term the
+%   `inner compressor` parameter holds, looked up in the term registry as a
+%   codec is. Only the inner compressor a codec row names ('zstd') has a row;
+%   any other `cname` is written as a term with its own spelling as the name.
+%   The codec and inner-compressor terms are existing ones: [compression terms
+%   registered] (Decided by Jess Haley, 2026-11-01, did-schema
+%   did_v2_go_forward_class_audit.md; docs/V2_PLAN.md L4): gzip
+%   EDAM:format_3989 "GZIP format", LZW wikidata:Q2681 "Lempel-Ziv-Welch",
+%   zstd wikidata:Q26737171 "Zstandard", each registered with the spelling
+%   here as a synonym. Blosc and the setting variables are EMPTY terms waiting
+%   for approval; until they are registered they are written as labels.
 %   T.settings rows {key, variable name}: a codec setting's key as the source
 %   writes it (numcodecs.Blosc's keys, NDI makePyramid.m codecParamsJSON) and
 %   the `variable` of the parameter that holds it. A key not in the table is
@@ -36,6 +48,8 @@ t.codecs = { ...
     'gzip',       'gzip',  ''; ...
     'lzw',        'LZW',   ''; ...
     'blosc-zstd', 'Blosc', 'zstd'};
+t.compressors = { ...
+    'zstd',       'Zstandard'};
 t.settings = { ...
     'cname',     'inner compressor'; ...
     'clevel',    'compression level'; ...
