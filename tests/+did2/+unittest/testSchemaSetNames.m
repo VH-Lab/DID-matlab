@@ -105,3 +105,26 @@ for k = 1:numel(files)
     verifyEmpty(testCase, bad, fullfile(files(k).folder, files(k).name));
 end
 end
+
+function testNoCodeTestsTheTargetByItsOldNameAlone(testCase)
+% [schema set renamed did_v2] step 1 (Jess Haley, 2026-10-25): every
+% TargetVersion check accepts both names (did2.convert.isV2Set). A check
+% that compares the target with 'V_eta' alone stops the code behind it once
+% the default is 'did_v2': the corpus driver's batch-pass gate did, and Test
+% code run 41339468679 ran 1 of its 10 batch passes. Read: src/did and this
+% test tree (the corpus driver is a test helper).
+here = fileparts(mfilename('fullpath'));                                     % tests/+did2/+unittest
+srcDir = fileparts(fileparts(fileparts(which('did2.convert.v1_to_v2'))));   % src/did
+files = [dir(fullfile(srcDir, '**', '*.m')); dir(fullfile(here, '**', '*.m'))];
+verifyGreaterThan(testCase, numel(files), 0, 'no files read');
+verifyTrue(testCase, any(strcmp({files.name}, 'runCorpusDiscovery.m')), ...
+    'the corpus driver is among the files read');
+me = [mfilename '.m'];
+for k = 1:numel(files)
+    if strcmp(files(k).name, me); continue; end
+    txt = fileread(fullfile(files(k).folder, files(k).name));
+    bad = regexp(txt, ['(strcmpi?|isequal)\([^)\n]*[Tt]argetVersion[^)\n]*''V_eta''\)' ...
+        '|(strcmpi?|isequal)\(''V_eta'',[^)\n]*[Tt]argetVersion[^)\n]*\)'], 'match', 'once');
+    verifyEmpty(testCase, bad, fullfile(files(k).folder, files(k).name));
+end
+end
