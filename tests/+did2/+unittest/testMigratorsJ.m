@@ -347,9 +347,10 @@ function testAnOpenmindsIdThatDoesNotRebuildIsCarried(testCase)
 % [openMINDS subject leftovers] (Decided by Jess Haley, 2026-10-27, did-schema
 % V_eta_go_forward_class_audit.md): a controlled term's openminds_id is rebuilt
 % from the term through the registry's `equivalent` list, "and a document whose
-% id does not rebuild is carried"; a lab-made strain's id belongs on the strain
-% entity's global_identifier, which pass 1 does not mint, so it carries too.
-% The register rows are carry-116 and carry-117.
+% id does not rebuild is carried" (register row carry-116); "a lab-made
+% strain's `openminds_id` goes on the strain entity's `global_identifier`",
+% which NDI's second pass writes (NDI-matlab a24ee16a, #1107), so a lab-made
+% strain converts to its term assertion like any other subject document.
 % The id is NOT openMINDS's own C. elegans instance: since did-schema #231
 % ([species text is the openMINDS equivalent], Jess Haley, 2026-10-29) the
 % registry records `openminds:species/caenorhabditisElegans` as NCBITaxon:6239's
@@ -377,9 +378,12 @@ lab.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Strai
     'openminds_id', 'https://openminds.om-i.org/instances/strain/abc123', ...
     'fields', struct('name', 'OP50-GFP'));
 out = runJ(lab);
-verifyCarriedWholeAsV1(testCase, lab, out);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-117] '), d);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'a lab-made strain converts, not carried');
+verifyNumElements(testCase, out.migrated, 1);
+a = out.migrated{1};
+verifyEqual(testCase, a.get('statement.variable').name, 'strain');
+verifyEqual(testCase, a.get('term.value').name, 'OP50-GFP');
 end
 
 function testAnOpenmindsIdRebuildsThroughTheEquivalentList(testCase)

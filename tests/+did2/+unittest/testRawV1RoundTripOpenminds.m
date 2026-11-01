@@ -131,6 +131,22 @@ verifyFalse(testCase, carried, notes);
 verifyFalse(testCase, contains(notes, '[carry-100]'), notes);
 end
 
+function testALabMadeStrainWithAnIdConvertsAndRoundTrips(testCase)
+% [openMINDS subject leftovers] (Jess Haley, 2026-10-27): "a lab-made strain's
+% `openminds_id` goes on the strain entity's `global_identifier` as
+% `openminds:<id>`". NDI's second pass writes it there (NDI-matlab a24ee16a,
+% #1107), so pass 1 converts the document (it is not carried) and the round trip
+% accounts for the id
+v1 = labStrain('41268b6f5c6a3d4e_0e00000000000015', 'AVP-Cre', ...
+    'https://openminds.om-i.org/instances/strain/5b9a95df');
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'a lab-made strain converts, not carried');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject, lab-made strain', {});
+end
+
 function testAFieldOutsideTheSubjectTemplateCarriesIt(testCase)
 f = subjectFixtures();
 v1 = f{1, 2};
@@ -276,6 +292,23 @@ function v1 = subjectTerm(id, type, name, node, definition, synonym)
 % openMINDSobj2ndi_document(term, sessionId, 'subject', subjectId): the
 % template's subject_id edge, then the empty `openminds` edge of a childless term
 v1 = termDocument('openminds_subject', id, type, name, node, definition, synonym);
+v1 = did2.unittest.helpers.setDependency(v1, 'subject_id', '41268b6f5c6a3d4e_0e000000000000a1');
+v1.depends_on(2) = struct('name', 'openminds', 'value', '');
+v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = labStrain(id, name, openmindsId)
+% openMINDSobj2ndi_document(strain, sessionId, 'subject', subjectId) for a
+% Strain with no ontology node (lab-made), its fields in the Strain shape
+v1 = did2.unittest.helpers.ndiDocument('openminds_subject', 'Id', id);
+flds = struct('alternateIdentifier', '', 'backgroundStrain', [], 'breedingType', [], ...
+    'description', '', 'digitalIdentifier', [], 'diseaseModel', [], ...
+    'geneticStrainType', [], 'laboratoryCode', '', 'name', name, ...
+    'ontologyIdentifier', '', 'phenotype', '', 'species', [], ...
+    'stockNumber', [], 'synonym', '');
+v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Strain', ...
+    'matlab_type', 'openminds.core.research.Strain', 'openminds_id', openmindsId, ...
+    'fields', flds);
 v1 = did2.unittest.helpers.setDependency(v1, 'subject_id', '41268b6f5c6a3d4e_0e000000000000a1');
 v1.depends_on(2) = struct('name', 'openminds', 'value', '');
 v1 = jsondecode(jsonencode(v1));

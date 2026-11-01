@@ -12,8 +12,10 @@ function [v1, spec] = openminds_subject(bodies)
 %   differences ([species text is the openMINDS equivalent], Jess Haley,
 %   2026-10-29): compared by spec.same, they are reported as `equivalent`,
 %   not lost. A document the migrator carries (an `openminds_id` that does
-%   not rebuild, a lab-made strain) is stamped did_v1 and never reaches this
-%   inverse (did2.convert.roundtrip.check compares the carry itself).
+%   not rebuild) is stamped did_v1 and never reaches this inverse
+%   (did2.convert.roundtrip.check compares the carry itself). A lab-made
+%   strain converts; its `openminds_id` is accepted, because NDI's second
+%   pass puts it on the strain entity's `global_identifier`.
 
 %   THE ROUND TRIP READ OF `openminds_id` ([term equivalents recorded], Jess
 %   Haley, 2026-10-27: "Build pending: DID-matlab (the fill and the round trip
@@ -42,10 +44,24 @@ if isfield(v1, 'openminds')
         'fn', @(a, b) sameTypeName(a, b), 'why', ['`matlab_type` is notation ' ...
         '([openMINDS subject leftovers], Jess Haley, 2026-10-27)']);
     node = termNodeOf(v1);
-    spec.same(end+1) = struct('path', 'openminds.openminds_id', ...
-        'fn', @(a, b) idRebuilds(node, a), 'why', ['the id is rebuilt from the ' ...
-        'term through the registry''s `equivalent` list ([openMINDS subject ' ...
-        'leftovers], [term equivalents recorded], Jess Haley, 2026-10-27)']);
+    if endsWith(v1.openminds.openminds_type, '/Strain') && isempty(node)
+        % a LAB-MADE strain (a Strain with no ontology node, the migrator's
+        % predicate): [openMINDS subject leftovers] (Jess Haley, 2026-10-27)
+        % puts its `openminds_id` on the strain entity's `global_identifier` as
+        % `openminds:<id>`, and NDI's second pass writes it there
+        % (ndi.migrate.internal.subjectStrainAssembly, NDI-matlab a24ee16a,
+        % #1107) from the v1 input. The assertion pass 1 writes is not that
+        % entity, so any id v1 states is accounted for, not lost.
+        spec.same(end+1) = struct('path', 'openminds.openminds_id', ...
+            'fn', @(a, ~) isText(a), 'why', ['a lab-made strain''s id goes on ' ...
+            'its strain entity''s global_identifier, written by NDI''s second ' ...
+            'pass ([openMINDS subject leftovers], Jess Haley, 2026-10-27)']);
+    else
+        spec.same(end+1) = struct('path', 'openminds.openminds_id', ...
+            'fn', @(a, b) idRebuilds(node, a), 'why', ['the id is rebuilt from the ' ...
+            'term through the registry''s `equivalent` list ([openMINDS subject ' ...
+            'leftovers], [term equivalents recorded], Jess Haley, 2026-10-27)']);
+    end
     if endsWith(v1.openminds.openminds_type, '/Species')
         % [species text is the openMINDS equivalent] (Decided by Jess Haley,
         % 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a v1
