@@ -97,9 +97,8 @@ end
 
 function testAStackNameIsTheBodysFreeText(testCase)
 % [image stack name goes to notes] (Decided by Jess Haley, 2026-10-27): a
-% non-empty v1 base.name is written to the data body's free text --
-% `description` until [one free-text field: notes] renames it -- and the round
-% trip reads it back
+% non-empty v1 base.name is written to the data body's free text, `notes`
+% ([one free-text field: notes]), and the round trip reads it back
 v1 = babuStack('is_named', 'image');
 v1.base.name = 'plate 3, 10x';
 v1 = jsondecode(jsonencode(v1));

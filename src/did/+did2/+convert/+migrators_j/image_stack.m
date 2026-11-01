@@ -476,11 +476,11 @@ if ~isempty(bodyConditions)
 end
 % [image stack name goes to notes] (Decided by Jess Haley, 2026-10-27, as
 % amended by [v1 name goes to the class's own name field]): a non-empty v1
-% base.name is written to the data body's free text -- `description` until
-% [one free-text field: notes] renames it `notes` -- as v1 wrote it
+% base.name is written to the data body's free text, `notes` ([one
+% free-text field: notes]), as v1 wrote it
 stackName = jBaseName(preBody);
 if ~isempty(stackName)
-    o = [o, {'Description', stackName}];
+    o = [o, {'Notes', stackName}];
 end
 body = did2.build.sampledBody(stackId, dims, 'Covariates', covs, o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end

@@ -22,14 +22,10 @@ function doc = document(className, fields, options)
 %   nested structures), and optional fields that are not given are LEFT OUT
 %   of the document rather than filled with blanks.
 %
-%   FREE TEXT: `notes` OR `description`, AS THE SCHEMA SAYS. did-schema
-%   did_v2_go_forward_class_audit.md [one free-text field: notes] and [notes
-%   on three classes] (Jess Haley, 2026-10-25) rename `entity.description`
-%   and `data_body.description` to `notes`. Either name given for those two
-%   blocks is written as the loaded schema spells it
-%   (did2.schema.cache/notesField), so writers are unchanged on either schema
-%   until the rename has landed in every repository; giving both is an error
-%   (did2:build:ambiguousField).
+%   FREE TEXT is `notes`: did-schema did_v2_go_forward_class_audit.md [one
+%   free-text field: notes] and [notes on three classes] (Jess Haley,
+%   2026-10-25) renamed the `description` of `entity` and `data_body` to
+%   `notes`; the old name is an undeclared field.
 %
 %   The base block is not set through FIELDS. `id`, `session_id` and
 %   `creation_timestamp` come from the options below, and the did_v1-only
@@ -193,7 +189,6 @@ doc.depends_on = buildEdges(cache, className, edges, chain);
 
 % ---- blocks ------------------------------------------------------------------
 info = cache.resolvePlacementFor(className, kind);
-fields = notesSpelling(cache, chain, fields);
 givenByBlock = routeFields(info, fields, className);
 needsInfo = needsInfoEntries(info, options.NeedsInfo);
 needsInfoScope('-set', {needsInfo.field});
@@ -565,45 +560,4 @@ for k = 1:numel(files)
     end
 end
 list = reshape(files, 1, []);
-end
-
-function fields = notesSpelling(cache, chain, fields)
-%NOTESSPELLING Give `entity` / `data_body` free text the schema's field name.
-%   [one free-text field: notes] (Jess Haley, 2026-10-25, did-schema
-%   did_v2_go_forward_class_audit.md): `description` on those blocks is
-%   renamed `notes`. A caller may give either; it is written as the loaded
-%   schema declares it (did2.schema.cache/notesField). Top-level and
-%   block-qualified (FIELDS.entity.description) forms are both handled.
-for c = {'entity', 'data_body'}
-    blockName = c{1};
-    if ~any(strcmp(chain, blockName))
-        continue;
-    end
-    want = cache.notesField(blockName);
-    if isempty(want)
-        continue;
-    end
-    other = setdiff({'notes', 'description'}, {want});
-    other = other{1};
-    if isfield(fields, other)
-        if isfield(fields, want)
-            error('did2:build:ambiguousField', ...
-                'Give the %s free text once: `%s` and `%s` are one field ([one free-text field: notes]).', ...
-                blockName, want, other);
-        end
-        fields.(want) = fields.(other);
-        fields = rmfield(fields, other);
-    end
-    if isfield(fields, blockName) && isstruct(fields.(blockName)) && isscalar(fields.(blockName)) ...
-            && isfield(fields.(blockName), other)
-        blk = fields.(blockName);
-        if isfield(blk, want)
-            error('did2:build:ambiguousField', ...
-                'Give the %s free text once: `%s` and `%s` are one field ([one free-text field: notes]).', ...
-                blockName, want, other);
-        end
-        blk.(want) = blk.(other);
-        fields.(blockName) = rmfield(blk, other);
-    end
-end
 end

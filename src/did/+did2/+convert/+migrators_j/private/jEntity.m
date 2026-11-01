@@ -6,7 +6,7 @@ function doc = jEntity(preBody, type, fields, varargin)
 %   signed 2026-10-08): `type` is TYPE ('organism', 'device', 'cell',
 %   'software', 'session', 'dataset', ...; the bound value set
 %   entity_type_bindings names), FIELDS a struct of the identity fields
-%   (`name`, `local_identifier`, `description`, `global_identifier`), and the
+%   (`name`, `local_identifier`, `notes`, `global_identifier`), and the
 %   trailing pairs go to did2.build.document ('Id' to preserve a source id,
 %   'Edges' for `time_reference_id`). Empty fields are left out. What each type
 %   requires (`local_identifier` for the physical types, session and epoch;
@@ -19,7 +19,7 @@ if nargin < 3 || isempty(fields)
     fields = struct();
 end
 ent = struct('type', did2.build.term('', char(type)));
-for n = {'name', 'local_identifier', 'description'}
+for n = {'name', 'local_identifier', 'notes'}
     if isfield(fields, n{1}) && ~isempty(fields.(n{1}))
         ent.(n{1}) = char(fields.(n{1}));
     end

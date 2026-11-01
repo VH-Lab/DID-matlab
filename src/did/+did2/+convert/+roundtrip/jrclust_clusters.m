@@ -15,7 +15,7 @@ function [v1, spec] = jrclust_clusters(bodies)
 %                                       mints when v1 has no `app`, and writes
 %                                       no app block)
 %     depends_on element_id             the calculation's entity_id
-%     jrclust_clusters.res_mat_MD5_checksum   the opaque body's description,
+%     jrclust_clusters.res_mat_MD5_checksum   the opaque body's notes,
 %                                       'JRCLUST results (res_mat_MD5_checksum: X)'
 %     files / file                      the opaque body's, as v1 wrote them
 %
@@ -51,7 +51,7 @@ else
     if ~isequal(owner, {char(getIn(leaf, 'base', 'id'))})
         spec.unplaced{end+1} = 'the opaque_body is not owned by the calculation';
     end
-    d = notesText(getIn(ob, 'data_body'));   % `notes` ([one free-text field: notes]) or `description`
+    d = fieldText(getIn(ob, 'data_body'), 'notes');   % [one free-text field: notes]
     tok = regexp(d, '^JRCLUST results \(res_mat_MD5_checksum: (.*)\)$', 'tokens', 'once');
     if ~isempty(tok)
         blk.res_mat_MD5_checksum = tok{1};

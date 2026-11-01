@@ -31,7 +31,7 @@ function tests = testRawV1RoundTripLightsheet
 %   headers record them): the pyramid's byte_order (its levels carry it); a
 %   level's dtype (the pyramid's observation states it), subject_id and
 %   source_file_id edges. A level's label and its index are no longer lost:
-%   the label is the body's description and the index is read from it
+%   the label is the body's notes and the index is read from it
 %   ([light-sheet level label is a note], Jess Haley, 2026-10-27).
 tests = functiontests(localfunctions);
 end
@@ -116,7 +116,7 @@ for k = 1:numel(L)
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, lost);
     verifyTrue(testCase, any(strcmp('lightsheetZarrLevel.label', r.matched)), label);
     verifyTrue(testCase, any(strcmp('lightsheetZarrLevel.level', r.matched)), label);
-    % the label is the body's description, unchanged
+    % the label is the body's notes, unchanged
     b = out.migrated{1}.toStruct();
     verifyEqual(testCase, did2.unittest.helpers.notesOf(b.data_body), v1.lightsheetZarrLevel.label, label);
 end

@@ -9,7 +9,7 @@ function docs = entityDoc(preBody, className, docId, blockStruct, gids, fresh)
 %   and it is the same table NDI's import applies (ndi.setup.V2.entityDocuments):
 %
 %     identity      name (`full_name` / `title` / given+family for a person),
-%                   local_identifier, description, global_identifier (GIDS:
+%                   local_identifier, notes, global_identifier (GIDS:
 %                   CURIEs or IRIs, did2.convert.entities.buildGids)
 %     term          license (spdx:<id>), accessibility,
 %                   experimental_approach -> term_assertion; ethics_assessment
@@ -69,8 +69,10 @@ if isfield(blockStruct, 'local_identifier') && ~isempty(blockStruct.local_identi
 elseif ~isempty(award)
     ent.local_identifier = award;
 end
-if isfield(blockStruct, 'description') && ~isempty(blockStruct.description)
-    ent.description = char(blockStruct.description);
+% the free text is `notes` ([one free-text field: notes], Jess Haley,
+% 2026-10-25); callers name the source's description so
+if isfield(blockStruct, 'notes') && ~isempty(blockStruct.notes)
+    ent.notes = char(blockStruct.notes);
 end
 if ~isempty(curies)
     ent.global_identifier = curies;
@@ -81,7 +83,7 @@ terms = {'license', 'accessibility', 'ethics_assessment', 'experimental_approach
 dates = {'release_date'};
 texts = {'short_name', 'version', 'version_innovation', 'how_to_cite', ...
     'support_channel', 'keyword', 'given_name', 'family_name', 'email'};
-identity = {'full_name', 'name', 'title', 'label', 'local_identifier', 'description'};
+identity = {'full_name', 'name', 'title', 'label', 'local_identifier', 'notes'};
 variableNodes = struct('accessibility', 'NCIT:C175887', 'given_name', 'IAO:0020016', ...
     'family_name', 'IAO:0020017', 'email', 'NCIT:C42775', 'keyword', 'EDAM:data_0968', ...
     'license', 'NCIT:C43611', 'short_name', 'NCIT:C42610', 'version', 'IAO:0000129', ...

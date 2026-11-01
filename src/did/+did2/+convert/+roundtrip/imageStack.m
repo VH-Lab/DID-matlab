@@ -34,7 +34,7 @@ function [v1, spec] = imageStack(bodies)
 %                                        did2.convert.axisLetter's fixed table
 %                                        ([axis letters derive from labels],
 %                                        Jess Haley, 2026-10-27; 'height' -> Y)
-%     base.name                          the sampled_body's description
+%     base.name                          the sampled_body's notes
 %                                        ([image stack name goes to notes])
 %       dimension_scale                  each covariate's spacing, by `along`
 %                                        (0 for an axis with none)
@@ -125,9 +125,9 @@ v1.depends_on = struct('name', {'document_id', 'subject_id'}, ...
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
 % [image stack name goes to notes] (Jess Haley, 2026-10-27): a non-empty v1
-% base.name is the data body's free text (`notes`, `description` before [one
-% free-text field: notes]; both read)
-stackName = notesText(getIn(body, 'data_body'));
+% base.name is the data body's free text (`notes`, [one
+% free-text field: notes])
+stackName = fieldText(getIn(body, 'data_body'), 'notes');
 if ~isempty(stackName)
     v1.base.name = stackName;
 end

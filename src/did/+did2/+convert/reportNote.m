@@ -120,7 +120,7 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     `carried_as_v1` note.
 %     v1_name_not_kept  ONE note per CONVERTED source that does not become a
 %                     statement and whose non-empty v1 base.name no emitted
-%                     document holds in a top-level `name`, `description` or
+%                     document holds in a top-level `name` or
 %                     `notes` of its own blocks ([v1 name goes to the class's
 %                     own name field]: the name is written to the class's own
 %                     name field "where it has one"). DETAIL is the name. A

@@ -9,7 +9,7 @@ function [v1, spec] = subject(bodies)
 %     base.id, base.session_id, base.datestamp   from the entity (rebuildBase)
 %     base.name                  entity.name ('' when the entity has none)
 %     subject.local_identifier   entity.local_identifier
-%     subject.description        entity.description ('' when left out)
+%     subject.description        entity.notes ('' when left out)
 %
 %   base.name: Decided by Jess Haley, 2026-10-27 [v1 name is the entity name]
 %   (did-schema V_eta_go_forward_class_audit.md): the migrator writes a
@@ -47,5 +47,5 @@ v1.document_class = struct('class_name', 'subject');
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'name', fieldText(entity, 'name'), 'datestamp', base.datestamp);
 v1.subject = struct('local_identifier', li, ...
-    'description', notesText(entity));   % `notes` ([one free-text field: notes]) or `description`
+    'description', fieldText(entity, 'notes'));   % v1 description <- entity.notes
 end
