@@ -307,7 +307,8 @@ function testTheElementTypeAssertionIsKeptOnlyWhereTheKindDoesNotRebuildIt(testC
 % needs the recording or imaging mode, which goes on the recording
 % observation the batch pass mints and is not decided for every mode yet
 % ([element types batch 1], [element types batch 2]), so the word is kept.
-% A sorted unit (no device kind) keeps it too. The `ndi element class`
+% A sorted unit (no device kind) does NOT keep it: [cell spellings are one
+% meaning], [cell spellings amended] (Jess Haley, 2026-10-27). The `ndi element class`
 % assertion is still written for every element ([ndi element class not
 % kept] waits on NDI-matlab's readers).
 dropped = {'n-trode', 'electrode-$', 'lick-spout', 'reward-well', 'intraoral-cannula', ...
@@ -331,11 +332,43 @@ for k = 1:numel(types)
     verifyEqual(testCase, did2.convert.elementTypeOfKind(kind.node), expected, ...
         [ty ': elementTypeOfKind reads the kind back wrongly']);
 end
-% a sorted unit keeps the word
-out = runRaw({unitDoc('el_unit_w', 'leftcortex_25', 1), neuronDoc('ne_w', 'el_unit_w', 'single'), unitProbe()});
-vars = cellfun(@(b) char(b.statement.variable.name), assertionsAbout(out, 'el_unit_w', ''), ...
-    'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(vars, 'element type')), 'spikes: element type assertion');
+% a sorted unit keeps no word: its entity type (cell or Group) is the type
+for label = {'single', 'multi'}
+    id = ['el_unit_w_' label{1}];
+    out = runRaw({unitDoc(id, 'leftcortex_25', 1), neuronDoc(['ne_w_' label{1}], id, label{1}), unitProbe()});
+    vars = cellfun(@(b) char(b.statement.variable.name), assertionsAbout(out, id, ''), ...
+        'UniformOutput', false);
+    verifyFalse(testCase, any(strcmp(vars, 'element type')), ['spikes (' label{1} '): element type assertion written']);
+    verifyTrue(testCase, any(strcmp(vars, 'ndi element class')), ['spikes (' label{1} '): ndi element class assertion']);
+end
+end
+
+function testTheThreeUnitSpellingsRoundTripAsOne(testCase)
+% [cell spellings are one meaning], [cell spellings amended] (Decided by Jess
+% Haley, 2026-10-27, did-schema did_v2_go_forward_class_audit.md): "the round
+% trip counts the three as equivalent spellings". A unit's entity type
+% rebuilds 'spikes'; a v1 type `neuron` or `cell` compares as the same
+% meaning (reported `equivalent`, not lost), and any other word is lost.
+units = {neuronDoc('ne_sp', 'el_unit_sp', 'single'), unitProbe()};
+v1 = unitDoc('el_unit_sp', 'leftcortex_26', 1);
+out = runRaw([{v1}, units]);
+docs = elementOutputs(out, 'el_unit_sp');
+r = did2.convert.roundtrip.check(v1, docs);
+verifyTrue(testCase, any(strcmp(r.matched, 'element.type')), 'spikes rebuilds as spikes');
+for spelling = {'neuron', 'cell'}
+    other = v1;
+    other.element.type = spelling{1};
+    r = did2.convert.roundtrip.check(other, docs);
+    verifyFalse(testCase, any(strcmp({r.lost.path}, 'element.type')), ...
+        [spelling{1} ': element.type reported lost']);
+    verifyTrue(testCase, any(strcmp(r.equivalent, 'element.type')), ...
+        [spelling{1} ': element.type not reported equivalent']);
+end
+other = v1;
+other.element.type = 'ensemble';
+r = did2.convert.roundtrip.check(other, docs);
+verifyTrue(testCase, any(strcmp({r.lost.path}, 'element.type')), ...
+    'a word that is not one of the three spellings is lost');
 end
 
 function testGroupIsWrittenAsTheRegistryNamesIt(testCase)

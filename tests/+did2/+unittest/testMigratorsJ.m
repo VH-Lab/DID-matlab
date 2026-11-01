@@ -461,8 +461,10 @@ sub = firstOfClassJ(out.migrated, 'cell');   % #88: a spikes element is an entit
 verifyEqual(testCase, sub.get('base.id'), 'el_1');                 % id preserved
 % [element local identifier is name and reference] (Jess Haley, 2026-10-26)
 verifyEqual(testCase, sub.get('entity.local_identifier'), 'unit3 | 1');
-% type + ndi_element_class preserved as term_assertions (no silent drop)
-verifyEqual(testCase, nLeafJ(out.migrated, 'assertion+term'), 2);
+% ndi_element_class preserved as a term_assertion; the v1 type `spikes` is the
+% entity type, not a statement ([cell spellings are one meaning], [cell
+% spellings amended], Jess Haley, 2026-10-27), so one assertion, not two
+verifyEqual(testCase, nLeafJ(out.migrated, 'assertion+term'), 1);
 % lineage: derived_from the underlying element (safe computational lineage)
 rel = firstOfClassJ(out.migrated, 'directed_relation');
 verifyTrue(testCase, did2.build.isVocabulary(rel.get('directed_relation.relation'), 'relation', 'derived_from'));   % by node (L1)

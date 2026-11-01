@@ -379,9 +379,15 @@ observesIdxByPair = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % whose kind alone rebuilds its type has no `element type` assertion ([element
 % type is a device kind term]): its type is the one its Equipment Type
 % assertion names (did2.convert.elementTypeOfKind), read when it has no
-% `element type` assertion.
+% `element type` assertion. A sorted unit has neither: [cell spellings are one
+% meaning] and [cell spellings amended] (Decided by Jess Haley, 2026-10-27,
+% did-schema did_v2_go_forward_class_audit.md) keep no `element type`
+% assertion for v1 `spikes`, `neuron` or `cell`, and the unit is its entity
+% type, `cell` or `group` (by node); its type is read as 'spikes' from that,
+% after both assertions (an ensemble, also a group, keeps its assertion).
 elementTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 kindTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
+unitTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acqEpochIdx = [];
 sampledIdx = [];
@@ -415,6 +421,10 @@ for k = 1:n
         if ~isempty(eid) && ~isKey(elementTypeById, eid)
             elementTypeById(eid) = et;
         end
+    end
+    if any(strcmp(classOf{k}, {'cell', 'group'})) && ~isempty(docIds{k}) ...
+            && ~isKey(unitTypeById, docIds{k})
+        unitTypeById(docIds{k}) = 'spikes';
     end
     kt = lower(did2.convert.elementTypeOfKind(equipmentKindOfAssertion(b)));
     if ~isempty(kt)
@@ -819,7 +829,8 @@ for i = 1:numel(acqEpochIdx)
     elId = depValueOf(b, 'element_id');
     elType = '';
     if ~isempty(elId) && isKey(elementTypeById, elId); elType = elementTypeById(elId);
-    elseif ~isempty(elId) && isKey(kindTypeById, elId); elType = kindTypeById(elId); end
+    elseif ~isempty(elId) && isKey(kindTypeById, elId); elType = kindTypeById(elId);
+    elseif ~isempty(elId) && isKey(unitTypeById, elId); elType = unitTypeById(elId); end
     kind = derivedSeriesKind(elType);
     if strcmp(elType, 'ensemble')
         % An ensemble element's epoch holds the COMBINED (times, neuron)
