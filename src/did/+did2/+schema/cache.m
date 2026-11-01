@@ -1580,8 +1580,10 @@ classdef cache < handle
             %                           did-schema `unit_bindings` list
             %                           rejects, raising
             %                           did2:validation:unitOutsideSet.
-            %                           DISARMED; DID_ENFORCE_UNIT_BINDINGS=1
-            %                           arms (see the switch).
+            %                           ARMED (2026-11-01, [unit lists
+            %                           widened then armed]);
+            %                           DID_ENFORCE_UNIT_BINDINGS=0
+            %                           disarms (see the switch).
             %     RetiredClasses        did2.build refuses a new document of
             %                           a class the schema's
             %                           class_disposition_meta.json lists
@@ -1822,18 +1824,19 @@ classdef cache < handle
                     ... are source units] (did-schema
                     ... V_eta_go_forward_class_audit.md): a variable's
                     ... `unit_bindings` row is the closed list of units a source
-                    ... may give its value in. DISARMED BY DEFAULT because
-                    ... writers of today give units outside the seeded lists
-                    ... (siblings first, CLAUDE.md sec. 3): NDI-matlab's Haley
-                    ... import gives a video's `time` covariate in frames
-                    ... (+haley/sessionDocuments.m, SourceUnit 'frame'), and
-                    ... DID-matlab's probe_geometry (cm, nm), jLightsheetAxes
-                    ... (angstrom, nanometre, centimetre, nanosecond,
-                    ... microsecond) and image_stack (any dimension_scale_units
-                    ... spelling) can. The cost on a corpus is NOT MEASURED.
-                    ... DID_ENFORCE_UNIT_BINDINGS=1 turns it on.
+                    ... may give its value in. ARMED BY DEFAULT since
+                    ... [unit lists widened then armed] (Decided by Jess Haley,
+                    ... 2026-11-01; docs/V2_PLAN.md L3: "add all of them [cm,
+                    ... nm, angstrom, ns, us, frame, pixel] to the lists, then
+                    ... switch the check on"): did-schema widened the lists
+                    ... first (siblings first, CLAUDE.md sec. 3), so NDI-matlab's
+                    ... Haley frames and pixels and DID-matlab's probe_geometry
+                    ... and jLightsheetAxes units are admitted. image_stack can
+                    ... still give any dimension_scale_units spelling. The cost
+                    ... on a corpus is NOT MEASURED.
+                    ... DID_ENFORCE_UNIT_BINDINGS=0 turns it off.
                     'UnitBindings', ...
-                        did2.schema.cache.envFlag('DID_ENFORCE_UNIT_BINDINGS'));
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_UNIT_BINDINGS'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;
