@@ -130,7 +130,10 @@ result = did2.unittest.helpers.runBatchPass(result, ...
 % ndi.migrate.local now calls this same function as V_eta second-pass step
 % (4b) -- WIRED 2026-08-10, NOT EXECUTED (no MATLAB available). Not a
 % counterpart: the SAME code, which is what keeps the two pipelines one.
-if strcmp(options.TargetVersion, 'V_eta')
+% 'did_v2' is the same target under its new name (1af6601d made it the
+% default); gating on 'V_eta' alone left every batch post-pass unrun in the
+% corpus jobs while they stayed green ("NOT WIRED INTO THIS RUN").
+if any(strcmp(options.TargetVersion, {'V_eta', 'did_v2'}))
     % TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset
     % CITATION graph into the entity tier -- the same six classes
     % metadata_editor emits, read from the independent openMINDS store. It is
