@@ -20,7 +20,9 @@ function tests = testRawV1RoundTripGene
 %   that `main`: their fixtures are the templates' own values, edges set. No
 %   corpus of the four zips holds any of the seven.
 %
-%   ALL SEVEN PASS THROUGH pass 1 unchanged, as before. The one difference the
+%   geneList CONVERTS (Decided by Jess Haley, 2026-11-01 [gene list as a term,
+%   file kept]): a standalone `term`, its genes.tsv the term's opaque_body
+%   (testGeneList* below). THE OTHER SIX PASS THROUGH pass 1 unchanged, as before. The one difference the
 %   switch makes: the raw passthrough keeps v1's class name, under which V_eta
 %   keeps no class, so it is counted as a passthrough with no schema where the
 %   renamed one was validated against the snake_case class (a `retire` class);
@@ -40,7 +42,7 @@ verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, size(f, 
 end
 
 function testFixturesRoundTripAsPassthroughs(testCase)
-f = fixtures();
+f = passthroughFixtures();
 for k = 1:size(f, 1)
     [label, v1] = f{k, 1:2};
     out = runRaw(v1);
@@ -57,7 +59,7 @@ end
 function testTheRenamedPathPassedThroughTheSnakeCaseClass(testCase)
 % the one difference the switch makes, and nothing else: the same number of
 % documents, both passthroughs, no quarantine on either path, with validation
-f = fixtures();
+f = passthroughFixtures();
 for k = 1:size(f, 1)
     [label, v1, v1Name, migName] = f{k, :};
     raw = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
@@ -104,7 +106,82 @@ verifyFalse(testCase, r.ok);
 verifyNotEmpty(testCase, r.unplaced);
 end
 
+% ===================== geneList converts ================================
+% Decided by Jess Haley, 2026-11-01 [gene list as a term, file kept] (did-schema
+% did_v2_go_forward_class_audit.md; "A ok B ok c ok"), with [gene list mapping
+% in the generic stage] (the v1 id is kept, so a mapping's edges resolve).
+
+function testGeneListBecomesATermWithItsFile(testCase)
+v1 = geneList();
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough);
+verifyEqual(testCase, numel(out.migrated), 2);
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+names = cellfun(@(d) d.document_class.class_name, docs, 'UniformOutput', false);
+verifyEqual(testCase, sort(names), {'opaque_body', 'term'});
+term = docs{strcmp(names, 'term')};
+body = docs{strcmp(names, 'opaque_body')};
+% the term keeps the v1 id; its value is in its body
+verifyEqual(testCase, term.base.id, v1.base.id);
+verifyTrue(testCase, logical(term.value.data_body));
+% the body: owned by the term, genes.tsv unchanged, TSV, one Gene dimension
+% of n_genes, the label as notes
+owner = body.depends_on(strcmp({body.depends_on.name}, 'owner_id'));
+verifyEqual(testCase, {owner.document_id}, {v1.base.id});
+verifyEqual(testCase, body.data_body.format.node, 'EDAM:format_3475');
+verifyEqual(testCase, body.data.dimensions.n, 377);
+verifyEqual(testCase, body.data.dimensions.term.node, 'NCIT:C16612');
+verifyEqual(testCase, body.data_body.notes, 'xenium_panel');
+verifyEqual(testCase, body.files.file_list, v1.files.file_list);
+verifyEqual(testCase, body.files.file_info.name, 'genes.tsv');
+end
+
+function testGeneListListsWhatItDoesNotConvert(testCase)
+% genome_assembly, annotation_source, gene_id_namespace (and
+% gene_symbol_namespace) go to the run's report, not the documents
+out = runRaw(geneList());
+notes = out.summary.migration_notes.not_converted.distinct_details;
+for f = {'genome_assembly = GRCm39', 'annotation_source = Xenium panel v1', ...
+        'gene_id_namespace = ENSEMBL', 'gene_symbol_namespace = MGI'}
+    verifyTrue(testCase, any(contains(notes, ['geneList.' f{1}])), f{1});
+end
+end
+
+function testGeneListRoundTrip(testCase)
+% label, n_genes, the file and the identity come back; what the report lists
+% (four fields) and what item 21 drops as computable from genes.tsv
+% (gene_name_completeness, n_duplicate_gene_names) are the known findings
+v1 = geneList();
+out = runRaw(v1);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'geneList', ...
+    {'geneList.genome_assembly', 'geneList.annotation_source', 'geneList.gene_id_namespace', ...
+     'geneList.gene_symbol_namespace', 'geneList.gene_name_completeness', ...
+     'geneList.n_duplicate_gene_names'});
+end
+
+function testAGeneListNoWriterMakesIsCarried(testCase)
+v1 = geneList();
+v1.files = struct('file_list', {{}});
+v1 = jsondecode(jsonencode(v1));
+verifyCarried(testCase, v1, '[carry-120] files (no genes.tsv attached)');
+v1 = geneList();
+v1.geneList.n_genes = -1;
+verifyCarried(testCase, v1, '[carry-120] geneList.n_genes');
+v1 = geneList();
+v1.base.name = 'my list';
+verifyCarried(testCase, v1, '[carry-120] base.name');
+end
+
 % ===================== fixtures =========================================
+
+function f = passthroughFixtures()
+% the six classes pass 1 still passes through (geneList converts)
+f = fixtures();
+f = f(~strcmp(f(:, 3), 'geneList'), :);
+end
 
 function f = fixtures()
 % {label, v1, v1 class, migrator}
