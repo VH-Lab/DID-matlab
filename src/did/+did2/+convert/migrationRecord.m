@@ -48,8 +48,9 @@ function [records, report] = migrationRecord(docs, options)
 %                    above)
 %     'Counts'       a struct of run counts to add to REPORT.counts (a
 %                    caller's own: source documents read, quarantined, ...)
-%     'ReportFile'   where the JSON file is written (default: a new temporary
-%                    file; the database deletes it once ingested)
+%     'ReportFile'   where the JSON file is written (default: a file in
+%                    tempdir named by the SHA-256 of its content; the
+%                    database deletes it once ingested)
 %     'Version'      the DID-matlab commit (default: read with git from this
 %                    file's checkout; when it cannot be read the parameter is
 %                    left out and REPORT.notes says why)
@@ -123,9 +124,15 @@ rec = did2.build.document('migration', struct('method', method), ...
 
 file = options.ReportFile;
 if isempty(file)
-    file = [tempname() '.json'];
+    % named by its content, so two runs that write the same report write the
+    % same document (its location included)
+    scratch = [tempname() '.json'];
+    writeJson(scratch, report);
+    file = fullfile(tempdir, ['did2_migration_report_' contentKey(scratch) '.json']);
+    movefile(scratch, file, 'f');
+else
+    writeJson(file, report);
 end
-writeJson(file, report);
 bodyId = did2.convert.mintId('migration report', migrationId);
 body = did2.build.opaqueBody(migrationId, ...
     did2.build.term('EDAM:format_3464', 'JSON'), 'SessionId', anchor, ...
@@ -220,8 +227,15 @@ sid = '';
 if isfield(s, 'depends_on') && isstruct(s.depends_on) && isfield(s.depends_on, 'name')
     hit = find(strcmp({s.depends_on.name}, 'session_id'), 1);
     if ~isempty(hit)
-        sid = char(s.depends_on(hit).document_id);
-        return;
+        e = s.depends_on(hit);
+        if isfield(e, 'document_id')        % a V2 edge
+            sid = char(e.document_id);
+        elseif isfield(e, 'value')          % a v1 depends_on entry
+            sid = char(e.value);
+        end
+        if ~isempty(sid)
+            return;
+        end
     end
 end
 if isfield(s.base, 'session_id') && (ischar(s.base.session_id) || isstring(s.base.session_id))
