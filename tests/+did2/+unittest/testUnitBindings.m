@@ -9,8 +9,9 @@ function tests = testUnitBindings
 %   its value in. did2.schema.unitInSet checks one unit,
 %   did2.schema.unitBindingProblems a document, and the validator refuses
 %   (did2:validation:unitOutsideSet) when strictMode('UnitBindings') is on.
-%   The switch is DISARMED by default: writers of today give units outside
-%   the seeded lists (did2.schema.cache strictMode, UnitBindings).
+%   The switch is ARMED by default since 2026-11-01 ([unit lists widened then
+%   armed], docs/V2_PLAN.md L3), after did-schema widened the lists
+%   (did2.schema.cache strictMode, UnitBindings).
 %
 %   The registry here is a hand-made one, so the tests do not move when
 %   did-schema adds rows; testTheLoadedRegistryHoldsTheSeededRows reads the
@@ -86,11 +87,14 @@ end
 
 % ---- the switch and the loaded registry ---------------------------------------------
 
-function testUnitBindingsIsDisarmedByDefault(testCase)
+function testUnitBindingsIsArmedByDefault(testCase)
+% INVERTED 2026-11-01: [unit lists widened then armed] (Decided by Jess Haley,
+% 2026-11-01, did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md L3):
+% did-schema widened the lists, then the check is switched on.
 s = did2.schema.cache.strictMode('-reset');
 if isempty(getenv('DID_ENFORCE_UNIT_BINDINGS'))
-    verifyFalse(testCase, s.UnitBindings, ...
-        'writers of today give units outside the lists: armed only on request');
+    verifyTrue(testCase, s.UnitBindings, ...
+        'armed by default; DID_ENFORCE_UNIT_BINDINGS=0 turns it off');
 end
 end
 
@@ -104,24 +108,19 @@ verifyTrue(testCase, tf && governed, 'time admits seconds');
 [tf, ~, governed] = did2.schema.unitInSet(struct('node', 'NCIT:C44477', 'name', 'X-Coordinate'), ...
     unit('om:micrometre', 'micrometre'), reg);
 verifyTrue(testCase, tf && governed, 'X-Coordinate admits micrometres');
-% [unit lists widened then armed] (Decided by Jess Haley, 2026-11-01,
-% did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md L3): did-schema
-% widens the lists (frame, ns, us for time; cm, nm, angstrom, pixel for
-% position and X/Y/Z). Siblings first: until that reaches did-schema main this
-% test accepts either list; once frame is admitted, all seven must be.
+% INVERTED 2026-11-01 ([unit lists widened then armed]): frame is a time
+% source unit; centimetre, nanometre, angstrom and pixel are coordinate ones
 [tf, ~, governed] = did2.schema.unitInSet(timeTerm(), unit('EMPTY:0000260', 'frame'), reg);
-verifyTrue(testCase, governed, 'time is governed');
-if tf
-    for u = {{'om:nanosecond-Time', 'nanosecond'}, {'om:microsecond-Time', 'microsecond'}}
-        [ok, ~, g] = did2.schema.unitInSet(timeTerm(), unit(u{1}{:}), reg);
-        verifyTrue(testCase, ok && g, ['time admits ' u{1}{2}]);
-    end
-    for u = {{'om:centimetre', 'centimetre'}, {'om:nanometre', 'nanometre'}, ...
-            {'om:angstrom', 'angstrom'}, {'om:pixel', 'pixel'}}
-        [ok, ~, g] = did2.schema.unitInSet(struct('node', 'NCIT:C44477', 'name', 'X-Coordinate'), ...
-            unit(u{1}{:}), reg);
-        verifyTrue(testCase, ok && g, ['X-Coordinate admits ' u{1}{2}]);
-    end
+verifyTrue(testCase, tf && governed, 'time admits frames');
+for u = {{'om:nanosecond-Time', 'nanosecond'}, {'om:microsecond-Time', 'microsecond'}}
+    [tf, ~, governed] = did2.schema.unitInSet(timeTerm(), unit(u{1}{:}), reg);
+    verifyTrue(testCase, tf && governed, ['time admits ' u{1}{2}]);
+end
+for u = {{'om:centimetre', 'centimetre'}, {'om:nanometre', 'nanometre'}, ...
+        {'om:angstrom', 'angstrom'}, {'om:pixel', 'pixel'}}
+    [tf, ~, governed] = did2.schema.unitInSet(struct('node', 'NCIT:C44477', 'name', 'X-Coordinate'), ...
+        unit(u{1}{:}), reg);
+    verifyTrue(testCase, tf && governed, ['X-Coordinate admits ' u{1}{2}]);
 end
 end
 
