@@ -151,7 +151,7 @@ verifyEqual(testCase, b.legacy_extra, struct('type', 'x'));
 % an empty block states nothing
 b0 = did2.convert.v1read.readBase(struct('base', struct('id', 'i', 'name', ''), ...
     'ndi_document', struct('name', '')));
-verifyEqual(testCase, b0.name, '');
+verifyEmpty(testCase, b0.name);
 verifyEmpty(testCase, b0.conflict);
 end
 

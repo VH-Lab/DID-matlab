@@ -186,9 +186,12 @@ end
 function testTheSwitchChangesNoConvertedDocument(testCase)
 % "keep behaviour identical": every document the raw path CONVERTS is the one
 % the universalRenames path converted; a carry is carried on both paths, the
-% raw one the untouched v1 source
+% raw one the untouched v1 source. The Soph vintage (jrclustNdiDocument) is
+% left out: its `ndi_document` block is read as `base` on the raw path only
+% ([ndi_document read as base], Jess Haley, 2026-10-31), so it converts there
+% and is carried on the renamed path (carry-049) until that path is deleted
 batches = {{hartley(), presentationOf(hartley())}, {hartleyVintage(), presentationOf(hartleyVintage())}, ...
-    {hartley()}, {jrclustNoName()}, {jrclustNdiDocument()}, {neuron()}, {neuronCorpusVintage()}, ...
+    {hartley()}, {jrclustNoName()}, {neuron()}, {neuronCorpusVintage()}, ...
     {neuronNoWaveform()}};
 for k = 1:numel(batches)
     b = batches{k};
