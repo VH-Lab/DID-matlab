@@ -44,7 +44,7 @@ end
 
 function testDependsOnKeepsAConflictingKey(testCase)
 % `value` wins; an `id` that names a DIFFERENT document is kept in `other`
-% (universalRenames reported it in carry-049 and discarded it); one that
+% (universalRenames reported it under its own carry row, retired, and discarded it); one that
 % restates the winner is not repeated.
 body = struct('depends_on', struct('name', {'a', 'b'}, 'value', {'x', 'y'}, ...
     'id', {'z', 'y'}));
@@ -179,7 +179,7 @@ verifyEmpty(testCase, fieldnames(a.extra));
 end
 
 function testAppKeepsBothSpellingsWhenTheyDiffer(testCase)
-% universalRenames kept app_name and DROPPED name (carry-049); both are kept
+% universalRenames kept app_name and DROPPED name (its retired carry row); both are kept
 body = struct('app', struct('name', 'v1name', 'app_name', 'v2name', ...
     'version', '1', 'app_version', '1'));
 a = did2.convert.v1read.readApp(body);

@@ -7,8 +7,8 @@ function tests = testRawV1RoundTripDaq
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1] (switched one
 %   family at a time, did2.convert.rawV1Classes), [migration reliability
 %   practices] (a) (a round trip per class, did2.convert.roundtrip.check), and
-%   [renames carry is temporary] (what universalRenames would discard is still
-%   carried, carry-049). The test of the round trip is [lossless means round
+%   [rename clashes are malformed] (what the deleted universalRenames would
+%   have discarded is carried, carry-100). The test of the round trip is [lossless means round
 %   trip].
 %
 %   THE v1 DOCUMENTS are built from NDI's templates at the locked NDI-matlab
@@ -301,7 +301,7 @@ verifyGreaterThan(testCase, numel(out.migrated), 1);
 end
 
 function testWhatTheRenamedPathDiscardedIsCarriedOnBothPaths(testCase)
-% carry-049 ([renames carry is temporary]): a depends_on `version`, an
+% carry-100 ([rename clashes are malformed]): a depends_on `version`, an
 % `ndi_document` beside `base`, a camelCase twin with a different value
 breaks = { ...
     'daqsystem, one metadata reader', @(v) setDep(v, 1, 'version', 2); ...

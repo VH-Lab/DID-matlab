@@ -8,8 +8,8 @@ function tests = testRawV1RoundTripIngested
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1] (switched one
 %   family at a time, did2.convert.rawV1Classes), [migration reliability
 %   practices] (a) (a round trip per class, did2.convert.roundtrip.check), and
-%   [renames carry is temporary] (what universalRenames would discard is still
-%   carried, carry-049). The test of the round trip is [lossless means round
+%   [rename clashes are malformed] (what the deleted universalRenames would
+%   have discarded is carried, carry-100). The test of the round trip is [lossless means round
 %   trip].
 %
 %   THE v1 DOCUMENTS are built from NDI's templates at the locked NDI-matlab

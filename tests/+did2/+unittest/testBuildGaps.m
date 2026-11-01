@@ -203,14 +203,14 @@ v1 = @(id) struct('document_class', struct('class_name', 'stimulus_response', ..
 did2.convert.reportNote('reset');
 did2.convert.reportNote('carried_as_v1', 'stimulus_response', 'a', '[carry-022] needs_mapping: x');
 did2.convert.reportNote('carried_as_v1', 'stimulus_response', 'b', ...
-    '[carry-022] one; [carry-049] two');
+    '[carry-022] one; [carry-100] two');
 r = did2.convert.migrationReport('collect', {v1('a'), v1('b'), v1('c')});
 verifyEqual(testCase, {r.carried_as_v1.document_id}, {'a', 'b', 'c'});
-verifyEqual(testCase, r.carried_as_v1(2).carry, 'carry-022, carry-049');
+verifyEqual(testCase, r.carried_as_v1(2).carry, 'carry-022, carry-100');
 verifyEqual(testCase, r.carried_as_v1(3).carry, '', ...
     'a v1 document with no recorded carry is still listed');
 verifyEqual(testCase, r.counts.carried_as_v1, 3);
-verifyEqual(testCase, {r.counts.carried_by_register_row.row}, {'carry-022', 'carry-049'});
+verifyEqual(testCase, {r.counts.carried_by_register_row.row}, {'carry-022', 'carry-100'});
 verifyEqual(testCase, [r.counts.carried_by_register_row.count], [2 1]);
 verifyEqual(testCase, r.counts.carried_citing_a_row, 2);
 verifyEqual(testCase, r.counts.carried_citing_no_row, 1);
