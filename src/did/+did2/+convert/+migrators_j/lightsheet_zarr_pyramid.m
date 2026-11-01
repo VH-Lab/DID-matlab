@@ -91,7 +91,7 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %                       onto each level's sampled_body covariates, and checks
 %                       the z/y/x units. They become the store body's only
 %                       for an OME-Zarr source.
-%        the TAIL of statement.notes  for the store body's description:
+%        the TAIL of statement.notes  for the store body's notes:
 %                       the NGFF multiscales name, appended to the label
 %                       after NOTES_SEPARATOR (a newline, then
 %                       '-- store body: '), as 'NGFF multiscales name
@@ -139,7 +139,7 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %   * `label`, `pyramid_name`, `pyramid_type` -- DECIDED (Jess 2026-10-15):
 %     `label` is the observation's `notes`, permanently, with or without a
 %     source and with or without the pass. `pyramid_name` (the NGFF
-%     multiscales name) is the store body's `description`, as
+%     multiscales name) is the store body's `notes`, as
 %     'NGFF multiscales name "..."' (carried on the notes tail, moved by the
 %     pass; a pyramid with no source has no store body, so it is not kept).
 %     `pyramid_type` is DROPPED: it repeats the levels' summary statistic,
@@ -283,7 +283,7 @@ end
 % ---- the label, and what the store-record pass needs (header, item 3) ---
 % The label stays on the observation's notes for good (Jess 2026-10-15). With
 % a source, the NGFF multiscales name rides after NOTES_SEPARATOR for the pass
-% to move into the store body's description, and so does the NGFF multiscales
+% to move into the store body's notes, and so does the NGFF multiscales
 % type ([pyramid type kept as text], above).
 carryStore = ~isempty(sourceId);
 notes = strtrim(char(field(blk, 'label', '')));
@@ -407,7 +407,7 @@ if isOmeZarr
     end
 end
 body = did2.build.opaqueBody(obsId, format, opts{:}, ...
-    'Description', strjoin(parts, '; '), ...
+    'Notes', strjoin(parts, '; '), ...
     'Fields', fields, ...
     'SessionId', sessionId, 'CreationTimestamp', created, ...
     'Validate', false);
@@ -441,7 +441,7 @@ end
 
 function s = NOTES_SEPARATOR()
 % Between the label (kept on the observation) and the text the store-record
-% pass moves into the store body's description. The SAME literal is in
+% pass moves into the store body's notes. The SAME literal is in
 % did2.convert.foldGenericFiles (its own NOTES_SEPARATOR) and in NDI-matlab
 % ndi.vintage.lightsheetPyramid; testMigratorsJLightsheet pins the round trip.
 s = sprintf('\n-- store body: ');

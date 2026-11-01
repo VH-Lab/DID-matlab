@@ -17,7 +17,7 @@ function [v1, spec] = subject_group(bodies)
 %                                  number, is the same edge as `subject_id_1`
 %                                  (SPEC.same)
 %     subject_group.group_name     entity.local_identifier
-%     subject_group.description    entity.description ('' when left out)
+%     subject_group.description    entity.notes ('' when left out)
 %
 %   NDI's template block is EMPTY, so a writer-shaped group is carried whole
 %   as v1 (carry-034) and never reaches this function
@@ -94,7 +94,7 @@ end
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'name', fieldText(entity, 'name'), 'datestamp', base.datestamp);
 v1.subject_group = struct('group_name', name, ...
-    'description', notesText(entity));   % `notes` ([one free-text field: notes]) or `description`
+    'description', fieldText(entity, 'notes'));   % v1 description <- entity.notes
 end
 
 function tf = sameMemberEdge(a, b)

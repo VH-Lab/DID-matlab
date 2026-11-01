@@ -215,8 +215,8 @@ end
 % [light-sheet level label is a note] (Decided by Jess Haley, 2026-10-27,
 % did-schema V_eta_go_forward_class_audit.md): the v1 `label` (makePyramid.m
 % makeOneLevel builds it as "<entry name> level <N> (<reduction>)") is written
-% UNCHANGED to the level body's description -- `notes` once [one free-text
-% field: notes] is built -- as display text V2 code does not read; no
+% UNCHANGED to the level body's `notes` ([one free-text field: notes]) as
+% display text V2 code does not read; no
 % level-number field is added; the round trip takes the level number from the
 % label. A level whose label does not follow that pattern (or states another
 % level or reduction than the document) is carried whole as v1, malformed. An
@@ -305,12 +305,12 @@ end
 
 if ~isempty(levelLabel)
     % [light-sheet level label is a note]: the label, unchanged
-    opts = [opts, {'Description', levelLabel}];
+    opts = [opts, {'Notes', levelLabel}];
 elseif nHeld == 0
     % a level holding no bytes (materializeChunks off, the writer's default)
     % and no label: did2.convert.roundtrip.lightsheetZarrLevel reads this
     % sentence as no label
-    opts = [opts, {'Description', ['a pyramid level holding no bytes: no ' ...
+    opts = [opts, {'Notes', ['a pyramid level holding no bytes: no ' ...
         'chunk data is stored for it']}];
 end
 body = did2.build.sampledBody(ownerId, dims, 'Covariates', covs, opts{:});

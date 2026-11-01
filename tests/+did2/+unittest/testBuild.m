@@ -169,6 +169,18 @@ withBase = fields;
 withBase.base = struct('name', 'x');
 verifyError(testCase, @() did2.build.document(cls, withBase, 'SessionId', sid), ...
     'did2:build:unknownField');
+% the free text is `notes` ([one free-text field: notes], Jess Haley,
+% 2026-10-25); the old name `description` is not declared, so it is refused
+if strcmp(cls, 'entity')
+    withNotes = fields;
+    withNotes.notes = 'a note';
+    doc = did2.build.document(cls, withNotes, 'SessionId', sid);
+    verifyEqual(testCase, doc.(cls).notes, 'a note');
+    withDescription = fields;
+    withDescription.description = 'a note';
+    verifyError(testCase, @() did2.build.document(cls, withDescription, 'SessionId', sid), ...
+        'did2:build:unknownField');
+end
 % the required field: `subject.local_identifier`, or `entity.type` since 2026-10-08
 verifyError(testCase, @() did2.build.document(cls, struct(), 'SessionId', sid), ...
     'did2:build:missingField');
@@ -481,15 +493,12 @@ c = did2.build.covariate('control condition', 0, 'Logical', [true false true]);
 verifyEqual(testCase, c.logical, [true false true]);
 verifyClass(testCase, c.logical, 'logical');
 % 'Key' ([covariate key], Jess Haley 2026-11-01: "Yes, rename document to
-% key"); 'Document' is the old name of the same form. The field is written as
-% the loaded schema spells it.
-keyField = did2.schema.cache.shared().covariateKeyField();
+% key"); the old name 'Document' is not an option, and the field is `key`.
 c = did2.build.covariate('encounter', 0, 'Key', 0);
-verifyEqual(testCase, c.(keyField), 0);
-c = did2.build.covariate('encounter', 0, 'Document', 0);
-verifyEqual(testCase, c.(keyField), 0);
-verifyError(testCase, @() did2.build.covariate('encounter', 0, 'Key', 0, 'Document', 0), ...
-    'did2:build:ruleViolated');
+verifyEqual(testCase, c.key, 0);
+verifyFalse(testCase, isfield(c, 'document'));
+verifyError(testCase, @() did2.build.covariate('encounter', 0, 'Document', 0), ...
+    ?MException);   % not an option
 c = did2.build.covariate('colour', 0, 'Matrix', ones(4, 3));
 verifyEqual(testCase, c.matrix, ones(4, 3));
 end
@@ -506,10 +515,8 @@ verifyError(testCase, @() did2.build.covariate('x', 0, 'Origin', 0, 'Spacing', 1
 verifyError(testCase, @() did2.build.covariate('x', [], 'Value', 1), 'did2:build:ruleViolated');
 verifyError(testCase, @() did2.build.covariate('x', [0 0], 'Value', 1), 'did2:build:ruleViolated');
 verifyError(testCase, @() did2.build.covariate('x', -1, 'Value', 1), 'did2:build:ruleViolated');
-% origin+spacing and document run along ONE dimension
+% origin+spacing and key run along ONE dimension
 verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Origin', 0, 'Spacing', 1), ...
-    'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Document', 0), ...
     'did2:build:ruleViolated');
 verifyError(testCase, @() did2.build.covariate('x', [0 1], 'Key', 0), ...
     'did2:build:ruleViolated');
@@ -563,8 +570,7 @@ doc = build(did2.build.covariate('rgb', 1, 'Matrix', ones(2, 3)));
 verifyEqual(testCase, size(doc.data.covariates.matrix), [2 3]);
 verifyError(testCase, @() build(did2.build.covariate('rgb', 1, 'Matrix', ones(3, 3))), ...
     'did2:build:ruleViolated');
-% document: along one dimension (n checked against the other document in batch)
-build(did2.build.covariate('encounter', 0, 'Document', 0));
+% key: along one dimension (n checked against the other document in batch)
 build(did2.build.covariate('encounter', 0, 'Key', 0));
 % a bare dimension (no covariate) is allowed
 did2.build.statement('observation', newId(), 'voltage', v, 'Dimensions', dims, ...
@@ -573,7 +579,7 @@ end
 
 function testCovariateDocumentPositionsFromAnotherDocument(testCase)
 % A covariate takes its positions from a value document through `key_id`,
-% chosen by its `key` (`document` until [covariate key], 2026-11-01; a key's
+% chosen by its `key` ([covariate key], 2026-11-01; a key's
 % `positions_from` before that). Position k is
 % entry k of that document's value.
 cache = did2.schema.cache.shared();
@@ -590,7 +596,7 @@ doc = did2.build.statement('observation', newId(), 'voltage', ...
     'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage');
 hit = doc.depends_on(strcmp({doc.depends_on.name}, 'key_id'));
 verifyEqual(testCase, {hit.document_id}, {list});
-verifyEqual(testCase, doc.data.covariates.(cache.covariateKeyField()), 0);
+verifyEqual(testCase, doc.data.covariates.key, 0);
 end
 
 function testListMergesRaggedEntries(testCase)

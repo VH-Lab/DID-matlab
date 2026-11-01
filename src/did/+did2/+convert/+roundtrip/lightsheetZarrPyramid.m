@@ -19,7 +19,7 @@ function [v1, spec] = lightsheetZarrPyramid(bodies)
 %                                        separator
 %     pyramid_name, pyramid_type         'NGFF multiscales name "..."' / 'type'
 %                                        in the notes tail, or in the file-less
-%                                        store body's description
+%                                        store body's notes
 %     axes_order, shape_level0,          its full-resolution dimensions and
 %     voxel_size_level0,                 covariates (private/lightsheetFrame;
 %     translation_level0, axes_units,    the channel axis's voxel size 1 and
@@ -98,7 +98,7 @@ for k = 1:n
     if ~used(k) && strcmp(classNameOf(bodies{k}), 'opaque_body') ...
             && isequal(edgeIds(bodies{k}, 'owner_id'), {obsId})
         used(k) = true;
-        tail = [tail '; ' textOf(findNotes(bodies{k}))]; %#ok<AGROW>
+        tail = [tail '; ' textOf(findField(bodies{k}, 'notes'))]; %#ok<AGROW>
     end
 end
 

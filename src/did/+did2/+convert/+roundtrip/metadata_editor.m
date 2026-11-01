@@ -72,13 +72,13 @@ used(ds) = true;
 [base, dsEntity] = rebuildBase(bodies{ds});
 dsId = base.id;
 ms = struct();
-spec.unplaced = [spec.unplaced, others(dsEntity, {'type', 'name', 'notes', 'description'}, ...
+spec.unplaced = [spec.unplaced, others(dsEntity, {'type', 'name', 'notes'}, ...
     'dataset entity')];
 if ~isempty(fieldText(dsEntity, 'name'))
     ms.DatasetFullName = fieldText(dsEntity, 'name');
 end
-if ~isempty(notesText(dsEntity))   % `notes` ([one free-text field: notes]) or `description`
-    ms.Description = notesText(dsEntity);
+if ~isempty(fieldText(dsEntity, 'notes'))   % [one free-text field: notes]
+    ms.Description = fieldText(dsEntity, 'notes');
 end
 
 % --- assertions about the dataset ------------------------------------------

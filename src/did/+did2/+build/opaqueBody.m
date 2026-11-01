@@ -27,7 +27,7 @@ function doc = opaqueBody(ownerId, format, options)
 %                     (did2.build.covariate / list)
 %     'DatumOrder'    'C' or 'F', when there is more than one dimension
 %     'Conditions', 'Compression', 'ContentHash',
-%     'HashAlgorithm' ('MD5','SHA-1','SHA-256','SHA-512'), 'Description'
+%     'HashAlgorithm' ('MD5','SHA-1','SHA-256','SHA-512'), 'Notes'
 %                     'Compression' is the codec: a spelling ('gzip'), a term
 %                     or a {term, parameters} block, written in the form the
 %                     schema declares (did2.build.compression; [compression
@@ -54,7 +54,7 @@ arguments
     options.Compression = ''
     options.ContentHash = ''
     options.HashAlgorithm = ''
-    options.Description = ''
+    options.Notes = ''
     options.Fields (1,1) struct = struct()
     options.KeyIds = {}
     options.Edges = struct()
@@ -76,7 +76,7 @@ fields = struct('format', format, 'dimensions', {options.Dimensions}, ...
     'covariates', {options.Covariates}, 'datum_order', options.DatumOrder, ...
     'conditions', {options.Conditions}, ...
     'compression', {did2.build.compression(options.Compression, 'SchemaCache', options.SchemaCache)}, 'content_hash', options.ContentHash, ...
-    'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
+    'hash_algorithm', options.HashAlgorithm, 'notes', options.Notes);
 fields = bodyFields(fields);
 edges = struct('owner_id', {ownerIds(ownerId)}, 'key_id', {options.KeyIds});
 options.Files = bodyFiles(options.Files, options.Chunks);

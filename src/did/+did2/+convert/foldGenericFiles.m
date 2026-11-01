@@ -344,7 +344,7 @@ function [result, report] = foldGenericFiles(result, options)
 %                       computes an OME-Zarr store's checksum over its
 %                       `.zattrs` file ONLY, so it is not a hash of the
 %                       payload, which is what content_hash promises. The
-%                       value and its algorithm are put in `description`, with
+%                       value and its algorithm are put in `notes`, with
 %                       that explanation; `hash_algorithm` stays empty because
 %                       it describes content_hash.
 %   Both halves are re-validated through v1_to_v2 and accepted ONLY TOGETHER;
@@ -1365,7 +1365,7 @@ end
 
 function s = NOTES_SEPARATOR()
 % Between a lightsheet pyramid's label (kept on its observation) and the text
-% this pass moves into the store body's description. The SAME literal is in
+% this pass moves into the store body's notes. The SAME literal is in
 % +migrators_j/lightsheet_zarr_pyramid.m (its own NOTES_SEPARATOR), which
 % writes it, and in NDI-matlab ndi.vintage.lightsheetPyramid;
 % testMigratorsJLightsheet pins the round trip.
@@ -1436,7 +1436,7 @@ if hadChecksum
 end
 
 body = did2.build.opaqueBody(ownerId, format, ...
-    'Description', strjoin(parts, '; '), ...
+    'Notes', strjoin(parts, '; '), ...
     'Fields', fields, ...
     'Files', {'body_data_0'}, ...
     'Id', recId, 'SessionId', sessionId, 'CreationTimestamp', created, ...

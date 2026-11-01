@@ -3533,7 +3533,7 @@ id = ds.get('base.id');
 verifyEqual(testCase, id, 'sess_09');
 verifyEqual(testCase, ds.get('entity.name'), 'The Big Worm Dataset');
 verifyEqual(testCase, did2.unittest.helpers.notesOf(ds.documentProperties.entity), ...
-    'A dataset of worms.');   % `notes` ([one free-text field: notes]) or `description`
+    'A dataset of worms.');   % `notes` ([one free-text field: notes])
 verifyEqual(testCase, textAboutJ(out.migrated, id, 'Abbreviation'), {'BigWorm'});
 verifyEqual(testCase, textAboutJ(out.migrated, id, 'version number'), {'1.0.0'});
 verifyEqual(testCase, textAboutJ(out.migrated, id, 'version innovation'), {'first release'});

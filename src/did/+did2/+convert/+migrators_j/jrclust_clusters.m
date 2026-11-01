@@ -149,7 +149,7 @@ obs = jStatement(preBody, 'calculation', subjectId, ...
 md5 = jGetCharAny(blk, {'res_mat_md5_checksum', 'res_mat_MD5_checksum'});
 o = jOpts(preBody);
 if ~isempty(md5)
-    o = jOpts(preBody, 'Description', sprintf('JRCLUST results (res_mat_MD5_checksum: %s)', md5));
+    o = jOpts(preBody, 'Notes', sprintf('JRCLUST results (res_mat_MD5_checksum: %s)', md5));
 end
 body = did2.build.opaqueBody(obs.base.id, did2.build.formatTerm('EDAM:format_2333'), o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end

@@ -1,13 +1,13 @@
 function v2Body = subject(preBody)
 %SUBJECT Brainstorm-J migrator: a v1 subject -> one `entity` of type
 %   `organism`, id preserved, carrying `name`, `local_identifier` and
-%   `description`. A
+%   `notes` (v1 `description`). A
 %   v1 subject's handle was optional; one that states none is carried whole as
 %   v1 (carry-033).
 
 %   did-schema #88 (V_eta_entity_composition_plan.md sec. 4, signed 2026-10-08):
 %   `subject` is gone; a v1 subject becomes one `entity` with its id preserved,
-%   `local_identifier` and `description` carried, and `type` 'organism' -- the
+%   `local_identifier` and `description` (as `notes`) carried, and `type` 'organism' -- the
 %   v1 subject class names the animal an experiment is about. That default is
 %   PROPOSED, not signed: a v1 subject that is a culture or a plate takes it too
 %   until a source field says otherwise.
@@ -30,7 +30,7 @@ function v2Body = subject(preBody)
 %                                 local_identifier; +NDIMaker/subjectMaker
 %                                 leaves the template's ''.
 %     subject.local_identifier -> entity.local_identifier (empty: carry-033)
-%     subject.description      -> entity.description ('' is left out)
+%     subject.description      -> entity.notes ('' is left out)
 %     document_class           -> the V2 document_class the builder writes
 
 arguments
@@ -65,7 +65,7 @@ if isempty(strtrim(li))
 end
 f = struct('local_identifier', li, 'name', jBaseName(preBody));
 if isfield(blk, 'description') && ~isempty(blk.description)
-    f.description = char(blk.description);
+    f.notes = char(blk.description);
 end
 v2Body = jEntity(preBody, 'organism', f, 'Id', base.id);
 end

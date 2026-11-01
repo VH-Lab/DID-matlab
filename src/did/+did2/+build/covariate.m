@@ -29,13 +29,10 @@ function c = covariate(variable, along, options)
 %                         (data_body AMENDMENT 4) -> matrix
 %     'Key'               the 0-based position of a `key_id` entry on the
 %                         document; position k is entry k of that document's
-%                         value; along ONE dimension -> key. 'Document' is
-%                         the same form under its old name (Jess Haley,
+%                         value; along ONE dimension -> key (Jess Haley,
 %                         2026-11-01, "Yes, rename document to key",
 %                         did-schema did_v2_data_body_model_plan.md
-%                         [covariate key]). The field is written as the
-%                         loaded schema spells it, `key` or `document`
-%                         (did2.schema.cache/covariateKeyField).
+%                         [covariate key]).
 %
 %   Options:
 %     'Unit'           canonical unit (a term or a name) of a number, a count
@@ -78,7 +75,6 @@ arguments
     options.Logical = []
     options.Matrix = []
     options.Key = []
-    options.Document = []
     options.Unit = []
     options.SourceUnit = ''
     options.Approximate = []
@@ -117,13 +113,6 @@ end
 if ~regular && (~isAbsent(options.SourceOrigin) || ~isAbsent(options.SourceSpacing))
     error('did2:build:ruleViolated', ...
         'covariate_one_value_form: ''SourceOrigin''/''SourceSpacing'' need ''Origin'' and ''Spacing''.');
-end
-if ~isAbsent(options.Document)
-    if ~isAbsent(options.Key)
-        error('did2:build:ruleViolated', ...
-            'covariate_one_value_form: ''Key'' and ''Document'' are one form; give one.');
-    end
-    options.Key = options.Document;   % the old name of the same form ([covariate key])
 end
 forms = {'Value', 'Count', 'Term', 'Text', 'Logical', 'Matrix', 'Key'};
 given = forms(cellfun(@(f) ~isAbsent(options.(f)), forms));
@@ -220,7 +209,7 @@ switch form
             error('did2:build:typeMismatch', ...
                 '''Key'' is ONE 0-based index among the document''s `key_id` entries.');
         end
-        s.(schemaCache(options.SchemaCache).covariateKeyField()) = double(v);
+        s.key = double(v);
 end
 if ~isAbsent(options.Cyclic);  s.cyclic = options.Cyclic;  end
 

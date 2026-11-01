@@ -580,7 +580,7 @@ for k = 1:numel(bodies)
             % run". THE CHECK, for every CONVERTED source whose replacement
             % (the emitted document holding its id, else the first) is a
             % STATEMENT: a non-empty v1 name no emitted document holds (a
-            % top-level `name`, `description` or `notes` of its own blocks,
+            % top-level `name` or `notes` of its own blocks,
             % v1NameIsKept) carries the source whole as v1, and is noted
             % `v1_name_statement_carried` (the count); the register row is
             % carry-106. Writing the name to the own name field of the other
@@ -1139,8 +1139,8 @@ end
 
 function tf = v1NameIsKept(bodies, name)
 %V1NAMEISKEPT True when an emitted document holds NAME, unchanged, in a
-%   top-level `name`, `description` or `notes` field of one of its own blocks
-%   (entity.name, acquisition_system.name, method.name, data_body.description,
+%   top-level `name` or `notes` field of one of its own blocks
+%   (entity.name, acquisition_system.name, method.name, data_body.notes,
 %   ...). `base`, `document_class`, `depends_on`, `files` and `statement` are
 %   not read: a statement's notes are not its name.
 tf = false;
@@ -1156,7 +1156,7 @@ for k = 1:numel(bodies)
             continue;
         end
         blk = b.(fns{j});
-        for f = {'name', 'description', 'notes'}
+        for f = {'name', 'notes'}
             if isfield(blk, f{1}) && (ischar(blk.(f{1})) || (isstring(blk.(f{1})) ...
                     && isscalar(blk.(f{1})))) && strcmp(char(blk.(f{1})), name)
                 tf = true;

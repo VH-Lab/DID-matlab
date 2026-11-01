@@ -35,7 +35,7 @@ function doc = sampledBody(ownerId, varargin)
 %                     "-32768"): what a missing chunk holds
 %     'Conditions'    one-value facts true of THIS body only
 %     'Format'        an ontology term: {node, name} or a CURIE (formatTerm)
-%     'Compression', 'ContentHash', 'HashAlgorithm', 'Description'
+%     'Compression', 'ContentHash', 'HashAlgorithm', 'Notes'
 %     'Compression'   the codec: a spelling ('gzip', 'blosc-zstd'), a term or a
 %                     {term, parameters} block, written in the form the
 %                     schema declares (did2.build.compression; [compression
@@ -93,7 +93,7 @@ arguments
     options.Compression = ''
     options.ContentHash = ''
     options.HashAlgorithm = ''
-    options.Description = ''
+    options.Notes = ''
     options.Fields (1,1) struct = struct()
     options.MethodId = ''
     options.KeyIds = {}
@@ -118,7 +118,7 @@ fields = struct('dimensions', {dimensions}, 'covariates', {options.Covariates}, 
     'fill_value', options.FillValue, ...
     'conditions', {options.Conditions}, 'format', did2.build.formatTerm(options.Format, options.SchemaCache), ...
     'compression', {did2.build.compression(options.Compression, 'SchemaCache', options.SchemaCache)}, 'content_hash', options.ContentHash, ...
-    'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
+    'hash_algorithm', options.HashAlgorithm, 'notes', options.Notes);
 fields = bodyFields(fields);
 edges = struct('owner_id', {ownerIds(ownerId)}, 'key_id', {options.KeyIds});
 % the filter edge only when given, so a body with no filter builds on a schema

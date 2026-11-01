@@ -13,7 +13,7 @@ function ax = jAxis(variable, n, varargin)
 %     origin, spacing  ({value, source_value} each)   -> covariate origin/spacing
 %     quantity ({value, source_value})   -> covariate quantity
 %     term                               -> covariate term
-%     positions_from                     -> covariate document
+%     positions_from                     -> covariate key
 %     cyclic                             -> covariate cyclic
 %     chunk                              -> the DIMENSION's chunk
 %     regular                            -> ignored (origin/spacing say it)

@@ -17,7 +17,7 @@ function [v1, spec] = lightsheetZarrLevel(bodies)
 %                                        are NGFF's defaults, which
 %                                        jLightsheetAxes did not write)
 %     chunk_grid                         restated: ceil(shape ./ chunks)
-%     label                              the body's description, unchanged
+%     label                              the body's notes, unchanged
 %                                        ([light-sheet level label is a note],
 %                                        Jess Haley, 2026-10-27); '' when the
 %                                        description is the no-bytes sentence
@@ -83,7 +83,7 @@ blk = struct();
 redundant = findField(b, 'redundant');
 isMeasurement = isempty(redundant) || ~logical(firstOf(redundant));
 NO_BYTES = 'a pyramid level holding no bytes: no chunk data is stored for it';
-label = textOf(findNotes(b));   % `notes` ([one free-text field: notes]) or `description`
+label = textOf(findField(b, 'notes'));   % [one free-text field: notes]
 if strcmp(label, NO_BYTES) && ~(isfield(b, 'files') && isstruct(b.files))
     label = '';
 end

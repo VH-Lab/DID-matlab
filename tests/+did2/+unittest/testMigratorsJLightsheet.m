@@ -125,7 +125,7 @@ function testTheStoreRecordBecomesTheObservationsUnheldBody(testCase)
 % The pyramid, its fileReference and a level, through v1_to_v2 and the batch
 % pass: ONE store body, the fileReference's id, owned by the observation,
 % recorded by location and not ingested, no content_hash, the checksum in
-% `description`; nothing transient left on the observation; no orphans.
+% `notes`; nothing transient left on the observation; no orphans.
 assumeCompositionSchema(testCase);
 assumeClass(testCase, 'file_reference');
 p = pyramidV1();
@@ -1281,7 +1281,7 @@ end
 function testAPyramidsTypeIsKeptAsTextInTheDescription(testCase)
 % [pyramid type kept as text] (Jess Haley, 2026-10-25, "4d"; replaces the
 % 2026-10-15 drop): the writer's NGFF multiscales type rides the notes tail
-% beside the name and the pass moves both into the store body's description,
+% beside the name and the pass moves both into the store body's notes,
 % verbatim. INVERTS testAPyramidStatingItsTypeIsCarriedWholeAsV1.
 assumeCompositionSchema(testCase);
 out = runJ(writerPyramidV1());

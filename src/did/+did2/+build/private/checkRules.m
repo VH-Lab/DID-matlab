@@ -62,7 +62,7 @@ function checkRules(cache, className, doc, chain)
 %                                 variable may repeat]): two covariates may
 %                                 share a variable when they differ in
 %                                 `along` or in `key` (the `key_id` entry
-%                                 they index; `document` before the rename);
+%                                 they index);
 %                                 a condition's variable still appears
 %                                 nowhere else
 %        parameter_one_form       interaction.method.parameters (and the
@@ -621,11 +621,11 @@ for k = 1:numel(covs)
     given = {};
     if hasOrigin && hasSpacing; given{end+1} = 'origin+spacing'; end
     % `key` (Jess Haley, 2026-11-01, "Yes, rename document to key", did-schema
-    % did_v2_data_body_model_plan.md [covariate key]) was `document`; both
-    % are read until every writer has moved.
-    for f = {'quantity', 'count', 'term', 'text', 'logical', 'matrix', 'key', 'document'}
+    % did_v2_data_body_model_plan.md [covariate key]); the old `document`
+    % spelling is not read (an undeclared field).
+    for f = {'quantity', 'count', 'term', 'text', 'logical', 'matrix', 'key'}
         if isfield(c, f{1}) && ~isAbsent(c.(f{1})) ...
-                && ~(any(strcmp(f{1}, {'key', 'document'})) && isequal(c.(f{1}), -1))   % -1: the blank, not used
+                && ~(strcmp(f{1}, 'key') && isequal(c.(f{1}), -1))   % -1: the blank, not used
             given{end+1} = f{1}; %#ok<AGROW>
         end
     end
@@ -635,7 +635,6 @@ for k = 1:numel(covs)
             numel(given), strjoin(given, ', ')));
     end
     form = given{1};
-    if strcmp(form, 'document'); form = 'key'; end
     if any(strcmp(form, {'origin+spacing', 'key'})) && numel(along) ~= 1
         violated('covariate_single_dimension_forms', where, sprintf( ...
             'a covariate given by %s runs along exactly one dimension; `along` has %d.', form, numel(along)));
@@ -660,14 +659,10 @@ end
 end
 
 function k = covariateKeyOf(c)
-% The `key_id` entry a covariate indexes: `key`, or `document` before the
-% rename ([covariate key]); -1 when neither is set.
+% The `key_id` entry a covariate indexes ([covariate key]); -1 when unset.
 k = -1;
-for f = {'key', 'document'}
-    if isfield(c, f{1}) && ~isAbsent(c.(f{1})) && ~isequal(c.(f{1}), -1)
-        k = c.(f{1});
-        return;
-    end
+if isfield(c, 'key') && ~isAbsent(c.key) && ~isequal(c.key, -1)
+    k = c.key;
 end
 end
 

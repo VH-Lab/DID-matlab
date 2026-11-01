@@ -318,13 +318,13 @@ end
 % ===================== a check that cannot fail proves nothing ===========
 
 function testABrokenEmissionIsReportedLost(testCase)
-% jrclust: the checksum in the body's description changed
+% jrclust: the checksum in the body's notes changed
 v1 = jrclustNoName();
 docs = structs(runRaw({v1}).migrated);
 for k = 1:numel(docs)
     if strcmp(docs{k}.document_class.class_name, 'opaque_body')
-        % the free text as the schema spells it ([one free-text field: notes])
-        docs{k}.data_body.(did2.schema.cache.shared().notesField('data_body')) = ...
+        % the free text ([one free-text field: notes])
+        docs{k}.data_body.notes = ...
             'JRCLUST results (res_mat_MD5_checksum: 0)';
     end
 end

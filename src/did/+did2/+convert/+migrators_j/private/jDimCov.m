@@ -12,7 +12,7 @@ function [dims, covs] = jDimCov(axes)
 %     COVS   one entry per axis that states its positions, along that axis
 %            (`along` = its 0-based index): {variable, unit, source_unit,
 %            approximate, along, origin+spacing | quantity | term |
-%            key (was document, and positions_from before that), cyclic}
+%            key (was positions_from), cyclic}
 %
 %   This is the mechanical port of a former `keys` list: the key's variable
 %   becomes BOTH the dimension's term and its covariate's variable, and the
@@ -59,9 +59,8 @@ for k = 1:numel(axes)
         end
     end
     if has(a, 'positions_from') && ~isequal(a.positions_from, -1)
-        % `key` since [covariate key] (Jess Haley, 2026-11-01); the field
-        % is written as the loaded schema spells it
-        c.(did2.schema.cache.shared().covariateKeyField()) = a.positions_from;
+        % `key` ([covariate key], Jess Haley, 2026-11-01)
+        c.key = a.positions_from;
         positioned = true;
     end
     if has(a, 'cyclic'); c.cyclic = a.cyclic; end

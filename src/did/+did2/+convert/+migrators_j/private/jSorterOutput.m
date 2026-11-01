@@ -136,7 +136,7 @@ if ~isempty(md5)
     f.content_hash = lower(strtrim(md5));
     f.hash_algorithm = 'MD5';
 end
-o = jOpts(preBody, 'Description', descr, 'Fields', f);
+o = jOpts(preBody, 'Notes', descr, 'Fields', f);
 body = did2.build.opaqueBody(obs.base.id, ...
     did2.build.formatTerm(SORTER_DIRECTORY_FORMAT()), o{:});
 if ~isempty(directory)
