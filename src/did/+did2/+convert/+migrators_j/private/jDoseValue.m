@@ -1,5 +1,5 @@
 function [value, chemicals, conflicts, ingredientRows, placeholders, gaps] = jDoseValue(chemicals)
-%JDOSEVALUE A migrated dose's `value`: the amount the source gave, else NaN.
+%JDOSEVALUE A migrated dose's `value`: the amount the source gave, else a gap.
 %
 %   [VALUE, CHEMICALS] = jDoseValue(CHEMICALS). CHEMICALS is the struct array
 %   jDoseBodies takes (substance, source_value, source_unit). A dose always
@@ -50,17 +50,19 @@ function [value, chemicals, conflicts, ingredientRows, placeholders, gaps] = jDo
 %   off its row and listed in PLACEHOLDERS (a cellstr, one line each:
 %   substance, number, unit) for the caller to report
 %   (jTreatmentBodies: reportNote 'amount_placeholder'); with no other amount
-%   the dose's volume is NaN.
-%   No such row: the amount is unrecorded and is written as NaN in the
-%   dose's volume:
-%   `value.volume.liters = NaN` ("An unrecorded amount is written as NaN in
-%   its quantity (e.g. a dose's volume.liters: NaN)", Jess Haley,
-%   2026-10-21). NOT YET CHANGED by [canonical absent only as needs info]
-%   (2026-10-30) where the NaN is ALL the dose states: left out, `value`
-%   would be blank and rule value_inline_or_body (did-schema value.json,
-%   checked by did2.build) refuses the dose -- the same question as the
-%   all-blank formulation, docs/V2_PLAN.md G67, left to the team. The same
-%   holds for the NaN canonical of a kind stated with no number, below. When no row gives a number but exactly one kind of amount
+%   the dose states no amount (below).
+%   NO AMOUNT AT ALL, NOR ITS KIND: the dose's `value` is left blank and GAPS
+%   names 'dose.value', the amount the source never states ([canonical absent
+%   only as needs info], Decided by Jess Haley, 2026-10-30: "an amount the
+%   source never states ... is left out ... rather than written as ... NaN";
+%   [formulation amount needs info], 2026-10-31: the value rule
+%   value_inline_or_body accepts a blank value whose gap is recorded; since
+%   [migration record] and [gap accepted when the report lists it],
+%   2026-11-01, the gap is listed in the run's migration report). It was
+%   `value.volume.liters = NaN` until then ("An unrecorded amount is written
+%   as NaN in its quantity", Jess Haley, 2026-10-21).
+%   NOT CHANGED HERE: the NaN canonical of a kind stated with no number,
+%   below. When no row gives a number but exactly one kind of amount
 %   unit is stated, the NaN goes in THAT quantity, with the unit as
 %   `source_unit` ("where the kind is known ... the NaN goes in that quantity
 %   instead", Jess Haley, 2026-10-21 [unknown-amount-slot]). Whether NaN
@@ -189,9 +191,8 @@ if ~isempty(hits) || ~isempty(ingredientRows)
              'of the whole formulation given']);
     elseif isempty(fieldnames(v))
         % nothing else to state (every amount was a vehicle placeholder, which
-        % the caller carries): NaN at the top level, as before -- left out,
-        % `value` would be blank (header: G67)
-        v.volume = struct('liters', NaN);
+        % the caller carries): no amount, listed as a gap (header)
+        gaps(end+1) = noAmountGap();
     end
     if ~isempty(ingredientRows)
         es = cell(1, numel(ingredientRows));
@@ -200,7 +201,11 @@ if ~isempty(hits) || ~isempty(ingredientRows)
         end
         v.ingredients = did2.build.list(es{:});   % ragged entries, merged
     end
-    value = did2.build.composite('dose', 'value', v);
+    if isempty(fieldnames(v))
+        value = [];
+    else
+        value = did2.build.composite('dose', 'value', v);
+    end
 elseif isempty(hits) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1)))
     % The source states the KIND of amount (its unit) but not the number: the
     % NaN goes in that quantity, not in volume (Jess Haley, 2026-10-21
@@ -213,11 +218,19 @@ elseif isempty(hits) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1)))
         chemicals(k).source_unit = [];
     end
 else
-    % Neither the amount nor its kind is known: the NaN goes in
-    % value.volume.liters (Jess Haley, 2026-10-21 [unknown-amount-slot]).
-    value = did2.build.composite('dose', 'value', ...
-        struct('volume', struct('liters', NaN)));
+    % Neither the amount nor its kind is known: the value is left blank and
+    % listed as a gap (header; it was value.volume.liters = NaN, Jess Haley,
+    % 2026-10-21 [unknown-amount-slot], until [canonical absent only as needs
+    % info])
+    value = [];
+    gaps(end+1) = noAmountGap();
 end
+end
+
+function g = noAmountGap()
+% the gap of a dose whose source states no amount, nor its kind
+g = struct('field', 'dose.value', 'reason', ...
+    'the source states no amount given, nor what kind of amount');
 end
 
 function [slot, canon, factor] = amountSlot(unit)

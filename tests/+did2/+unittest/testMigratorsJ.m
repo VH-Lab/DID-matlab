@@ -820,12 +820,13 @@ if ~isempty(c)
 end
 verifyNotEmpty(testCase, f, 'the formulation the dose names is not in the batch');
 verifyEqual(testCase, m.get('statement.variable').node, 'CHEBI:5613');
-% No amount recorded: NaN in the dose's volume.
+% No amount recorded: the dose states none, and the run's migration report
+% lists it as a gap ([canonical absent only as needs info]; NaN in the dose's
+% volume until then).
 % numeric_value is NEVER an amount -- not the dose's, not the ingredient's
 % (Jess Haley, 2026-10-21, "yes"): the term (haloperidol) does not say what
 % kind of number 2.5 is, so it is an unlabelled condition, and noted.
-verifyTrue(testCase, isnan(m.get('dose.value').volume.liters), ...
-    'an unrecorded amount is NaN in the dose''s volume');
+verifyDoseNoAmountJ(testCase, m);
 if ~isempty(f)
     % numeric_value is not the ingredient's amount: the ingredient states none
     % ([formulation amount needs info], Jess Haley, 2026-10-31; NaN until then)
@@ -958,8 +959,9 @@ verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol'
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
-% a body site makes it a dose; no amount recorded -> NaN; the route is known
-verifyTrue(testCase, isnan(out.migrated{1}.get('dose.value').volume.liters));
+% a body site makes it a dose; no amount recorded -> no value, listed as a gap
+% (NaN until [canonical absent only as needs info]); the route is known
+verifyDoseNoAmountJ(testCase, out.migrated{1});
 % the formulation still lists its ingredient, with no amount, named in
 % as a gap ([formulation amount needs info], Jess Haley, 2026-10-31; a NaN
 % concentration until then)
@@ -999,9 +1001,9 @@ verifyEqual(testCase, gapFieldsJ(fs), ...
 verifyFalse(testCase, isfield(fs.base, 'needs_info'), ...
     'the document no longer says what its source left out ([migration record])');
 verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
-% a body site (a brain area) -> a dose; the row gives no amount unit -> NaN
-verifyTrue(testCase, isnan(d.get('dose.value').volume.liters), ...
-    'an unrecorded amount is NaN in the dose''s volume');
+% a body site (a brain area) -> a dose; the row gives no amount unit -> no
+% value, listed as a gap (NaN until [canonical absent only as needs info])
+verifyDoseNoAmountJ(testCase, d);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 % the site node survives the universalRenames snake-casing (location_ontologyNode
 % -> location_ontology_node)
@@ -1161,10 +1163,11 @@ verifyTrue(testCase, any(strcmp(gapFieldsJ(fs), ...
 verifyFalse(testCase, isfield(out.summary, 'migration_notes') ...
     && isfield(out.summary.migration_notes, 'carried_as_v1'), 'not carried');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
-% a body site makes a virus_injection a dose, its volume NaN when unrecorded,
-% its dilution staying on the formulation (Jess Haley, 2026-10-21
+% a body site makes a virus_injection a dose, with no value and a gap when its
+% amount is unrecorded (its volume NaN until [canonical absent only as needs
+% info]), its dilution staying on the formulation (Jess Haley, 2026-10-21
 % [treatment-location], [virus-location])
-verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+verifyDoseNoAmountJ(testCase, d);
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
 site = firstOfClassJ(out.migrated, 'observation+term');
@@ -7281,6 +7284,19 @@ ds = d.toStruct();
 named = gapFieldsJ(ds);
 assertNotEmpty(testCase, named, 'the unrecorded amount is not listed as a gap');
 verifyTrue(testCase, any(strcmp(named, 'dose.value.volume')), strjoin(named, ', '));
+end
+
+function verifyDoseNoAmountJ(testCase, d)
+% [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30):
+% a dose whose source states no amount, nor its kind, states no value (no
+% `volume.liters = NaN`), and the run's migration report lists 'dose.value'
+% as a gap ([migration record], [gap accepted when the report lists it],
+% 2026-11-01; jDoseValue)
+ds = d.toStruct();
+verifyTrue(testCase, ~isfield(ds, 'dose') || ~isfield(ds.dose, 'value') ...
+    || isempty(ds.dose.value), 'the unrecorded amount is left out, not NaN');
+named = gapFieldsJ(ds);
+verifyTrue(testCase, any(strcmp(named, 'dose.value')), strjoin(named, ', '));
 end
 
 function [fields, reasons] = gapFieldsJ(doc)
