@@ -775,7 +775,15 @@ catch retentionPrintErr
 end
 printFileListAudit(result);
 printSourceCensus(result);
-printBatchPasses(result);
+notWired = printBatchPasses(result);
+% A V2 run that wires a batch pass NOT is a failed run, not a smaller one:
+% after #352 the passes stopped behind a gate on the old set name, and runs
+% printing "NOT WIRED" for 9 of 10 stayed green (Test code run 41339468679,
+% B 13.7k documents instead of 32k). Report-only above, FAILED here.
+if did2.convert.isV2Set(options.TargetVersion)
+    verifyEmpty(testCase, notWired, sprintf(['%s: batch post-pass(es) NOT WIRED ' ...
+        'into a %s run: %s'], corpusName, options.TargetVersion, strjoin(notWired, ', ')));
+end
 fprintf('top quarantine reasons:\n');
 for k = 1:min(numel(reasons), 15)
     fprintf('  %5d  [%s] %s\n', reasons(k).count, ...
@@ -1033,7 +1041,7 @@ end
 end
 
 
-function printBatchPasses(result)
+function notWired = printBatchPasses(result)
 %PRINTBATCHPASSES Did the batch post-passes run, and what did each measure?
 %
 %   DENOMINATOR FIRST, and the denominator here is the LIST OF PASSES ITSELF.
@@ -1075,12 +1083,14 @@ expected = { ...
     'valid_interval_decompose', 'did2.convert.resolveValidIntervals'; ...
     'clock_alignment_fold',     'did2.convert.resolveClockAlignment'};
 fprintf('\n--- batch post-passes (%d expected) ---\n', size(expected, 1));
+notWired = {};   % the passes with no report on the result (the caller fails a V2 run on any)
 for k = 1:size(expected, 1)
     field = expected{k, 1};
     name  = expected{k, 2};
     if ~isfield(result, field)
         fprintf('  %-34s NOT WIRED INTO THIS RUN (no `%s` on the result)\n', ...
             name, field);
+        notWired{end+1} = name; %#ok<AGROW>
         continue;
     end
     rep = result.(field);
