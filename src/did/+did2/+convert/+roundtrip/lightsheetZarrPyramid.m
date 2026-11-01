@@ -98,7 +98,7 @@ for k = 1:n
     if ~used(k) && strcmp(classNameOf(bodies{k}), 'opaque_body') ...
             && isequal(edgeIds(bodies{k}, 'owner_id'), {obsId})
         used(k) = true;
-        tail = [tail '; ' textOf(findField(bodies{k}, 'description'))]; %#ok<AGROW>
+        tail = [tail '; ' textOf(findNotes(bodies{k}))]; %#ok<AGROW>
     end
 end
 

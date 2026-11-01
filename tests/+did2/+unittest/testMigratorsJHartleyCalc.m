@@ -310,7 +310,7 @@ planes = planeBodies(out);
 for k = 1:numel(planes)
     verifyEqual(testCase, planes{k}.data_body.filename, 'hartley_results.ngrid');
     verifyEqual(testCase, cellstr(planes{k}.files.file_list), {'hartley_results.ngrid'});
-    verifyTrue(testCase, contains(planes{k}.data_body.description, ...
+    verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(planes{k}.data_body), ...
         sprintf('plane %d of 2', k)));
     % Without `datum_order` a 200x200x36 volume cannot be reassembled from the
     % bytes. 'F' is a property of MATLAB (`fwrite` linearises column-major).

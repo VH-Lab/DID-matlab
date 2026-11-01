@@ -323,7 +323,9 @@ v1 = jrclustNoName();
 docs = structs(runRaw({v1}).migrated);
 for k = 1:numel(docs)
     if strcmp(docs{k}.document_class.class_name, 'opaque_body')
-        docs{k}.data_body.description = 'JRCLUST results (res_mat_MD5_checksum: 0)';
+        % the free text as the schema spells it ([one free-text field: notes])
+        docs{k}.data_body.(did2.schema.cache.shared().notesField('data_body')) = ...
+            'JRCLUST results (res_mat_MD5_checksum: 0)';
     end
 end
 r = did2.convert.roundtrip.check(v1, docs);

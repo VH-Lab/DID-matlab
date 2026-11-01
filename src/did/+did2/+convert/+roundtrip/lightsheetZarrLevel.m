@@ -83,7 +83,7 @@ blk = struct();
 redundant = findField(b, 'redundant');
 isMeasurement = isempty(redundant) || ~logical(firstOf(redundant));
 NO_BYTES = 'a pyramid level holding no bytes: no chunk data is stored for it';
-label = textOf(findField(b, 'description'));
+label = textOf(findNotes(b));   % `notes` ([one free-text field: notes]) or `description`
 if strcmp(label, NO_BYTES) && ~(isfield(b, 'files') && isstruct(b.files))
     label = '';
 end

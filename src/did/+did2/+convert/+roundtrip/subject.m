@@ -47,5 +47,5 @@ v1.document_class = struct('class_name', 'subject');
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'name', fieldText(entity, 'name'), 'datestamp', base.datestamp);
 v1.subject = struct('local_identifier', li, ...
-    'description', fieldText(entity, 'description'));
+    'description', notesText(entity));   % `notes` ([one free-text field: notes]) or `description`
 end
