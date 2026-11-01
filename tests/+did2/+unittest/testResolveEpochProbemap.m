@@ -226,7 +226,9 @@ for i = 1:numel(bodies)
     switch char(db.filename)
         case 'seg.nbf.tgz'
             verifyTrue(testCase, hasComp, 'a .tgz file body states its compression');
-            if hasComp; verifyEqual(testCase, char(db.compression), 'gzip'); end
+            % either shape: the char, or the {term, parameters} block
+            % ([compression block and empty levels] (1))
+            if hasComp; verifyEqual(testCase, did2.build.compressionCodec(db.compression), 'gzip'); end
             seen = seen + 1;
         case 'cell.abf'
             verifyFalse(testCase, hasComp, 'an uncompressed file leaves compression empty');
