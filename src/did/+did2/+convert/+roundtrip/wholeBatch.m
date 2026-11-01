@@ -221,6 +221,7 @@ function c = RELEASED_ID_CLASSES()
 %                         (did2.convert.resolveEpochProbemap retires it only
 %                         then)
 c = {'dataset_session_info', 'daqreader_mfdaq_epochdata_ingested'};
+end
 
 function reloadBatchIndexes(bodies)
 %RELOADBATCHINDEXES Index the WHOLE v1 batch again for the inverses that read
