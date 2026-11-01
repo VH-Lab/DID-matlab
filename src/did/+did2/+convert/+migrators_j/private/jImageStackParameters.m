@@ -1,6 +1,12 @@
-function v2Body = image_stack_parameters(preBody)
-%IMAGE_STACK_PARAMETERS Brainstorm-J SUPERCLASS migrator: normalise the
-%   did_v1 `imageStack_parameters` block's own untypeable placeholder.
+function v2Body = jImageStackParameters(preBody)
+%JIMAGESTACKPARAMETERS Normalise a v1 `imageStack_parameters` block's own untypeable placeholder.
+%
+%   A private helper of did2.convert.migrators_j.image_stack, which calls it
+%   on the raw block. Until 2026-11-01 it was the superclass migrator
+%   did2.convert.migrators_j private jImageStackParameters; [early migration
+%   pieces fixed] (1) (Jess Haley, 2026-10-26) retires superclass migrators,
+%   so it lives here, unchanged in what it does. The history below is kept as
+%   it was written.
 %
 %   STATUS: NOT RUN. There is no MATLAB in the container this was written in, so
 %   nothing here has been executed. Every claim below is read off NDI

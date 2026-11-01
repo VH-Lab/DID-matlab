@@ -293,6 +293,15 @@ v1NoSchemaValues = [];
 % refused (a tombstone that does not describe the v1 shape): counted, by class.
 carriedUnvalNames = {};
 carriedUnvalValues = [];
+% CLASS-BLOCK PADDING, MEASURED ([early migration pieces fixed] (2), Jess
+% Haley, 2026-10-26: "`ensureClassBlocks` padding goes: the builder produces a
+% complete document"). Before the padding is removed, each converted body it
+% CHANGES (a block added, an empty block dropped, or the superclass list
+% rewritten) is counted by its v1 class: those are the migrators that do not
+% yet produce a complete document. Denominator: the converted bodies padded.
+paddedInspected = 0;
+paddedNames = {};
+paddedValues = [];
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
 % each corpus report counts the dimensions whose term has no node, so the move
@@ -480,7 +489,7 @@ for k = 1:numel(bodies)
                 % 2026-10-29 [ngrid with no statement carried]); it was the
                 % deleted +migrators/ngrid.m's whole job. A superclass `ngrid`
                 % block is read by its leaf's migrator
-                % (+migrators_j/+super/ngrid.m).
+                % (+v1read/ngridBlock.m).
                 legacy.bodies_carried_no_migrator = legacy.bodies_carried_no_migrator + 1;
                 className = rawClass;
                 if strcmp(rawClass, 'ngrid')
@@ -705,6 +714,11 @@ for k = 1:numel(bodies)
                 end
             else
                 outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+                paddedInspected = paddedInspected + 1;
+                if ~isequaln(outBody, v2Bodies{bi})
+                    [paddedNames, paddedValues] = bumpClassCounter( ...
+                        paddedNames, paddedValues, className);
+                end
                 outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
                 if isfield(outBody, 'document_class') ...
                         && isstruct(outBody.document_class)
@@ -915,6 +929,9 @@ result.summary = struct( ...
     'carried_failing_veta_validation_by_class', buildByClassTable(carriedUnvalNames, carriedUnvalValues), ...
     'legacy_ndi_document', legacy, ...
     'carried_v1_template_check', carriedTemplateCheck, ...
+    'class_blocks_padding', struct('bodies_inspected', paddedInspected, ...
+        'bodies_changed', sum(paddedValues), ...
+        'changed_by_class', buildByClassTable(paddedNames, paddedValues)), ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...
     'migration_notes', did2.convert.reportNote('collect'));
@@ -1851,6 +1868,7 @@ printStimulusControlEdges(result);
 printTuningResponseVariable(result);
 printMigrationNotes(result);
 printLegacyNdiDocument(result);
+printClassBlocksPadding(result);
 printSilentLoss(result);
 printQuarantine(result);
 end
@@ -2036,6 +2054,23 @@ fprintf('      %8d  no migrator and no recorded decision: QUARANTINED\n', ...
 fprintf('      %8d  failed before routing\n', L.bodies_unreached);
 fprintf('      %8d  held an `ndi_document` block beside `base` (read as `base`)\n', ...
     L.ndi_document_block_seen);
+end
+
+function printClassBlocksPadding(result)
+%PRINTCLASSBLOCKSPADDING The converted bodies ensureClassBlocks changed, by v1
+%   class, denominator first ([early migration pieces fixed] (2)). Printed
+%   unconditionally: a zero is a measurement, an absent line is not.
+if ~isfield(result.summary, 'class_blocks_padding'); return; end
+P = result.summary.class_blocks_padding;
+fprintf(['  class-block padding: %d converted body(ies) padded; %d changed by ' ...
+    'it (a migrator that does not yet build a complete document)\n'], ...
+    P.bodies_inspected, P.bodies_changed);
+t = P.changed_by_class;
+if isstruct(t)
+    for f = fieldnames(t)'
+        fprintf('      %8d  %s\n', t.(f{1}), f{1});
+    end
+end
 end
 
 function printQuarantine(result)

@@ -92,7 +92,7 @@ function out = runJ(v1)
 %   routed as real data is. Every class reads raw v1 (did2.convert.rawV1Classes;
 %   the rename pass is deleted, [migrators read raw v1]): `imageStack` and
 %   `stimulus_parameter` reach their +migrators_j migrators with the v1 block
-%   keys, and the superclass guard +migrators_j/+super/image_stack_parameters
+%   keys, and the superclass guard +migrators_j/private/jImageStackParameters
 %   is called by the leaf.
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end

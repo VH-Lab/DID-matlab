@@ -6,8 +6,8 @@ function tests = testRawV1RoundTripImage
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1] (switched one
 %   family at a time, did2.convert.rawV1Classes), [migration reliability
 %   practices] (a) (a round trip per class, did2.convert.roundtrip.check),
-%   [renames carry is temporary] (what universalRenames would discard is still
-%   carried, carry-049), [image file details placed], [one-reading quick
+%   [rename clashes are malformed] (what the deleted universalRenames would
+%   have discarded is carried, carry-100), [image file details placed], [one-reading quick
 %   answers] (Q3) and [dependents of a carried document carry]. The test of the
 %   round trip is [lossless means round trip].
 %
@@ -240,7 +240,7 @@ end
 
 function testAnImageCarriesOnTheRawShapeAsTheRenamedOneDid(testCase)
 % a collection edge (carry-153), a parameters block beside a different
-% snake_case twin (what universalRenames would discard: carry-049)
+% snake_case twin (what the deleted universalRenames would discard: carry-100)
 coll = setEdge(imageDoc('im_coll', 'tiff'), 'imageCollection_id', 'coll_1');
 twin = imageDoc('im_twin', 'tiff');
 twin.image_stack_parameters = twin.imageStack_parameters;
@@ -491,7 +491,7 @@ end
 end
 
 function testATimestampTheSuperclassMigratorRefusesStillQuarantines(testCase)
-% the superclass migrator's refusals (+super/image_stack_parameters), called by
+% the superclass migrator's refusals (private/jImageStackParameters), called by
 % the leaf on the raw block: the same documents quarantine, with its identifiers
 cases = {[739038.5; 739039.5], 'did2:convert:imageStackParametersNonScalarTimestamp'; ...
     '2024-06-01', 'did2:convert:imageStackParametersCharTimestamp'};

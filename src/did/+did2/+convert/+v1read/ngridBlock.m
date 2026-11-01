@@ -1,5 +1,12 @@
-function v2Body = ngrid(preBody)
-%NGRID Brainstorm-J SUPERCLASS migrator: carry the did_v1 `ngrid` block VERBATIM.
+function v2Body = ngridBlock(preBody)
+%NGRIDBLOCK Read a RAW v1 `ngrid` block VERBATIM, refusing the old base-migrator shape.
+%
+%   A reading helper ([migrators read raw v1]), called by
+%   did2.convert.migrators_j.hartley_calc and ontology_image on the raw block.
+%   Until 2026-11-01 it was the superclass migrator
+%   did2.convert.v1read.ngridBlock; [early migration pieces fixed] (1)
+%   (Jess Haley, 2026-10-26) retires superclass migrators, so it lives here,
+%   unchanged in what it does. The history below is kept as it was written.
 %
 %   STATUS, CORRECTED 2026-08-12. THIS BLOCK READ "NOT RUN ... nothing here has
 %   been executed ... [the unit tests] are also unrun". That was true when it was
@@ -16,9 +23,9 @@ function v2Body = ngrid(preBody)
 %            suite = suite(~contains(names, "testCorpus"));
 %     2. tests/+did2/+unittest/testNgridCoordinates.m sits in that package, its
 %        name contains no "testCorpus", and it calls THIS function by name:
-%            :58  out = did2.convert.migrators_j.super.ngrid(v1NgridBody());
-%            :71  out = did2.convert.migrators_j.super.ngrid(b);
-%            :82  verifyError(testCase, @() did2.convert.migrators_j.super.ngrid(b), ...
+%            :58  out = did2.convert.v1read.ngridBlock(v1NgridBody());
+%            :71  out = did2.convert.v1read.ngridBlock(b);
+%            :82  verifyError(testCase, @() did2.convert.v1read.ngridBlock(b), ...
 %        and at :110/:126/:139 drives did2.convert.v1_to_v2 at TargetVersion
 %        'V_eta', so the DISPATCHER is under test too, not just the function.
 %     3. run 31624396648, head 9fd6593, job "Migrator transform tests (no

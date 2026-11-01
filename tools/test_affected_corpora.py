@@ -67,9 +67,9 @@ class Mapping(unittest.TestCase):
         self.assertEqual(run([p])[1], ["A", "B", "C"])
         self.assertEqual(run([p], narrow=True)[1], ["A"])
 
-    def test_the_driver_validator_and_super_migrators_map_to_all(self):
+    def test_the_driver_validator_and_v1read_helpers_map_to_all(self):
         for p in (ac.CONVERT + "v1_to_v2.m", "src/did/+did2/+schema/cache.m",
-                  ac.MIGRATORS + "+super/ngrid.m",
+                  ac.CONVERT + "+v1read/ngridBlock.m",
                   "tests/+did2/+unittest/+helpers/runCorpusDiscovery.m"):
             self.assertEqual(run([p])[1], ["A", "B", "C"], p)
 

@@ -402,6 +402,24 @@ for f = {'bodies_carried_no_migrator', 'bodies_handed_to_later_step', ...
 end
 end
 
+function testClassBlockPaddingIsMeasuredWithItsDenominator(testCase)
+% [early migration pieces fixed] (2) (Jess Haley, 2026-10-26): before the
+% padding goes, the converted bodies it changes are counted by v1 class, with
+% the number of bodies padded as the denominator. A carried document is not
+% padded and not counted; zero is a measurement, not an absent field.
+result = did2.convert.v1_to_v2(makeSubject(), 'Validate', false);
+P = result.summary.class_blocks_padding;
+verifyGreaterThan(testCase, P.bodies_inspected, 0);
+verifyLessThanOrEqual(testCase, P.bodies_inspected, result.summary.migrated_count);
+verifyLessThanOrEqual(testCase, P.bodies_changed, P.bodies_inspected);
+verifyTrue(testCase, isstruct(P.changed_by_class));
+carried = makeV1Skeleton('projectvar');
+carried.projectvar = struct();
+result = did2.convert.v1_to_v2({carried}, 'Validate', false);
+verifyEqual(testCase, result.summary.class_blocks_padding.bodies_inspected, 0);
+verifyEqual(testCase, result.summary.class_blocks_padding.bodies_changed, 0);
+end
+
 function testTheRoutingSeparatesTheIdempotencyShortCircuit(testCase)
 % A body already at the target is not routed, so it must NOT be counted on a
 % route. Without this, a re-run over migrated bodies would read as routed.

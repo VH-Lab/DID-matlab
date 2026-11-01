@@ -148,7 +148,7 @@ function v2Body = element_epoch(preBody)
 %                                  renamed path carried it; carry-100, [rename clashes are malformed]
 %     element_epoch.epoch_clock, t0_t1 -> acquisition_epoch.clocks, one
 %                                  {name, t0, t1} per clock
-%                                  (did2.convert.migrators.element_epoch)
+%                                  (did2.convert.v1read.elementEpochClocks)
 %     epochid.epochid, files.file_list -> kept
 %
 %   The batch passes then dissolve this carrier (epochMint,
@@ -186,7 +186,7 @@ end
 
 function v2Body = convertElementEpoch(preBody)
 % Reuse the base clocks-block transform (parses epoch_clock / t0_t1).
-v2Body = did2.convert.migrators.element_epoch(preBody);
+v2Body = did2.convert.v1read.elementEpochClocks(preBody);
 if isequaln(v2Body, preBody)
     % the base migrator converted nothing: its t0_t1 does not match its clocks,
     % and it left a `carried_as_v1` note ([small unread settings] (4), Jess

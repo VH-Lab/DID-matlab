@@ -163,6 +163,13 @@ end
 if isfield(result, 'summary') && isfield(result.summary, 'legacy_ndi_document')
     report.legacy_ndi_document = result.summary.legacy_ndi_document;
 end
+% CLASS-BLOCK PADDING ([early migration pieces fixed] (2), Jess Haley,
+% 2026-10-26): the converted bodies did2.convert.ensureClassBlocks changed, by
+% v1 class, with its denominator. Those migrators do not yet produce a complete
+% document; the padding goes once this reads 0. Absent is not zero.
+if isfield(result, 'summary') && isfield(result.summary, 'class_blocks_padding')
+    report.class_blocks_padding = result.summary.class_blocks_padding;
+end
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): pass 1's count of the dimensions whose term has no node,
 % per class, with its denominators (documents_inspected, dimensions_written).

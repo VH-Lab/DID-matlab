@@ -39,10 +39,15 @@ function testTheUnreachedSuperclassMigratorsAreGone(testCase)
 % and they are deleted. pyraview reads both blocks itself. The superclass pass
 % itself, the identity fallback and +migrators/ngrid.m went with the rename
 % pass ([migrators read raw v1]; [early migration pieces fixed] (1)): a leaf
-% migrator calls +migrators_j/+super directly.
-for cls = {'epochclocktimes', 'filter', 'identity', 'ngrid'}
+% migrator calls a did2.convert.v1read helper directly. The +migrators package
+% and +migrators_j/+super are gone ([early migration pieces fixed] (1)).
+for cls = {'epochclocktimes', 'filter', 'identity', 'ngrid', 'element_epoch'}
     verifyEmpty(testCase, which(['did2.convert.migrators.' cls{1}]), ...
         sprintf('+migrators/%s.m is back', cls{1}));
+end
+for cls = {'ngrid', 'image_stack_parameters'}
+    verifyEmpty(testCase, which(['did2.convert.migrators_j.super.' cls{1}]), ...
+        sprintf('+migrators_j/+super/%s.m is back', cls{1}));
 end
 verifyEmpty(testCase, which('did2.convert.universalRenames'), 'universalRenames.m is back');
 verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'pyraview')), ...
@@ -77,7 +82,7 @@ function testElementEpochSingleClockBuildsOneRecord(testCase)
 v1 = wrap('element_epoch', 'element_epoch', struct( ...
     'epoch_clock', 'dev_local_time', ...
     't0_t1',       [0 930.34795]));
-out = did2.convert.migrators.element_epoch(v1);
+out = did2.convert.v1read.elementEpochClocks(v1);
 verifyEqual(testCase, numel(out.element_epoch.clocks), 1);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.element_epoch.clocks(1).t0, 0);
@@ -96,7 +101,7 @@ v1 = wrap('element_epoch', 'element_epoch', struct( ...
     'epoch_clock', 'dev_local_time,exp_global_time', ...
     't0_t1',       [0           738553.4082; ...
                     3599.69855  738553.4498]));
-out = did2.convert.migrators.element_epoch(v1);
+out = did2.convert.v1read.elementEpochClocks(v1);
 verifyEqual(testCase, numel(out.element_epoch.clocks), 2);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.element_epoch.clocks(1).t0, 0);
@@ -110,7 +115,7 @@ function testElementEpochAcceptsLegacyClocktype(testCase)
 v1 = wrap('element_epoch', 'element_epoch', struct( ...
     'clocktype', 'dev_local_time', ...
     't0_t1',     [0 1.5]));
-out = did2.convert.migrators.element_epoch(v1);
+out = did2.convert.v1read.elementEpochClocks(v1);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.element_epoch.clocks(1).t0, 0);
 verifyEqual(testCase, out.element_epoch.clocks(1).t1, 1.5);
@@ -130,7 +135,7 @@ cases = { ...
 for k = 1:size(cases, 1)
     pre = wrap('element_epoch', 'element_epoch', cases{k, 1});
     did2.convert.reportNote('reset');
-    out = did2.convert.migrators.element_epoch(pre);
+    out = did2.convert.v1read.elementEpochClocks(pre);
     notes = did2.convert.reportNote('collect');
     did2.convert.reportNote('reset');
     verifyTrue(testCase, isequaln(out, pre), sprintf('case %d: changed', k));
@@ -150,7 +155,7 @@ cases = { ...
 for k = 1:size(cases, 1)
     pre = wrap('element_epoch', 'element_epoch', cases{k, 1});
     did2.convert.reportNote('reset');
-    out = did2.convert.migrators.element_epoch(pre);
+    out = did2.convert.v1read.elementEpochClocks(pre);
     notes = did2.convert.reportNote('collect');
     did2.convert.reportNote('reset');
     verifyTrue(testCase, isequaln(out, pre), sprintf('case %d: changed', k));
@@ -161,7 +166,7 @@ end
 % the same clock twice: the clocktype restates it and is dropped
 pre = wrap('element_epoch', 'element_epoch', ...
     struct('epoch_clock', 'dev_local_time', 'clocktype', 'dev_local_time', 't0_t1', [0 1]));
-out = did2.convert.migrators.element_epoch(pre);
+out = did2.convert.v1read.elementEpochClocks(pre);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyFalse(testCase, isfield(out.element_epoch, 'clocktype'));
 end
@@ -171,7 +176,7 @@ v1 = struct( ...
     'document_class', struct('class_name', 'element_epoch'), ...
     'base',           struct());
 verifyError(testCase, ...
-    @() did2.convert.migrators.element_epoch(v1), ...
+    @() did2.convert.v1read.elementEpochClocks(v1), ...
     'did2:convert:missingBlock');
 end
 
@@ -181,7 +186,7 @@ end
 % ontologyImage `ngrid` whose only edge is its table row, and a standalone
 % `ngrid`, are carried whole as v1 `needs_mapping`". The base migrator runs
 % only as the concrete migrator of a standalone `ngrid` (a superclass block
-% gets +migrators_j/+super/ngrid.m), and it no longer reshapes the block or
+% gets +v1read/ngridBlock.m), and it no longer reshapes the block or
 % drops `data_size` / `coordinates` (did-schema #227): it returns the body
 % unchanged and notes the carry. The fixtures are ngrid documents now (they
 % were hartley_calc bodies, from when this ran as the superclass pass).

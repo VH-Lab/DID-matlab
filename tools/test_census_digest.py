@@ -5152,7 +5152,7 @@ class TestCarryRegisterRows(unittest.TestCase):
         out = []
         census_digest.render_carry_register_rows({"carried_as_v1": {
             "notes": 7, "notes_citing_a_row": 5, "notes_citing_no_row": 2,
-            "register_rows": ["carry-023", "carry-049"],
+            "register_rows": ["carry-023", "carry-100"],
             "register_row_counts": [4, 1], "by_class": {"treatment": 4}}}, out)
         self.assertIn("7 carried document(s)", out[0])
         self.assertIn("citing a row 5", out[0])
@@ -5160,7 +5160,7 @@ class TestCarryRegisterRows(unittest.TestCase):
         self.assertFalse(any("do not add up" in x for x in out))
         self.assertIn("carry-023", out[1])
         self.assertTrue(out[1].rstrip().endswith("4"))
-        self.assertIn("carry-049", out[2])
+        self.assertIn("carry-100", out[2])
 
     def test_one_row_arrives_as_bare_values(self):
         # MATLAB's jsonencode writes a one-element cellstr as an array but a

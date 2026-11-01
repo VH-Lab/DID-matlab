@@ -367,8 +367,8 @@
 %                          are exposed on the passthrough path -- this one,
 %                          stimulus_parameter (`value`) and imageStack_parameters
 %                          (`timestamp`). BOTH OF THOSE ARE NOW BUILT: see
-%                          stimulus_parameter below and +super/
-%                          image_stack_parameters at the bottom of this file.
+%                          stimulus_parameter below and private/
+%                          jImageStackParameters at the bottom of this file.
 %     stimulus_parameter - 1 -> 1 PASSTHROUGH, placeholder-normalising. The class
 %                          itself is HELD for the stimulus model (#31) and this
 %                          migrator folds nothing. NDI's template supplies the
@@ -528,23 +528,17 @@
 %   (subject_group, treatment_transfer, ontology_table_row) keep their own local
 %   copies (local functions shadow the private ones, so there is no conflict).
 %
-%   SUPERCLASS OVERRIDES live in +super/ -- a SEPARATE subpackage, and the
-%   separation is load-bearing. The dispatcher's superclass pass
-%   (v1_to_v2.applySuperclassMigrators) was never bypassed by the migrators_j
-%   split, so the base (+migrators) superclass migrator kept running under V_eta; a
-%   V_eta class needing different superclass-block handling puts a file in
-%   +super/ and the dispatcher prefers it. It may NOT live in +migrators_j
-%   itself: half the names here (element, subject, image, measurement,
-%   filenavigator, pyraview, ...) are also superclass names somewhere in the
-%   v1 zoo, and a concrete migrator returns a CELL of bodies where the
-%   superclass pass is contracted to return one struct. A superclass override
-%   must return exactly one body.
-%     +super/ngrid.m   carries the did_v1 ngrid block VERBATIM (data_size,
+%   THERE ARE NO SUPERCLASS MIGRATORS. The superclass pass went with the
+%   rename pass ([migrators read raw v1]), and the two former overrides in
+%   +super/ are now helpers a leaf migrator calls on its raw block ([early
+%   migration pieces fixed] (1), Jess Haley, 2026-10-26: "one migrator per
+%   class"):
+%     +v1read/ngridBlock.m   carries the did_v1 ngrid block VERBATIM (data_size,
 %                      data_type, data_dim, coordinates). The base one
 %                      rmfield'd `coordinates` and `data_size` on every
 %                      ontologyImage and hartley_calc document before the
 %                      concrete J migrator ever saw them. #46/#47.
-%     +super/image_stack_parameters.m
+%     private/jImageStackParameters.m
 %                      drops the template's `timestamp: []`. NDI's schema types
 %                      it a scalar `double`, and [] is numeric (so it passes
 %                      validateTypeShape) and then fails mustBeScalar

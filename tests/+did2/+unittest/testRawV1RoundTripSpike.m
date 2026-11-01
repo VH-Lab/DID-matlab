@@ -211,7 +211,7 @@ for cls = {'hartley_calc', 'speed_tuning_calc', 'simple_calc', 'jrclust_clusters
 end
 verifyEmpty(testCase, which('did2.convert.calcCommon'), 'calcCommon is back');
 % the one superclass migrator hartley_calc met stays, for ontology_image
-verifyNotEmpty(testCase, which('did2.convert.migrators_j.super.ngrid'));
+verifyNotEmpty(testCase, which('did2.convert.v1read.ngridBlock'));
 end
 
 function testTheConvertedDocumentsValidate(testCase)

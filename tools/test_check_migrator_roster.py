@@ -140,7 +140,7 @@ def test_a_matcher_that_always_says_mentioned_is_caught():
     # Both are real files -- +migrators_j/image_stack.m and +migrators_j/element.m
     # (+migrators/filter.m was the second until [unreached superclass migrators
     # deleted], 2026-10-27) -- and the fixture names only their longer
-    # containers, +migrators_j/+super/image_stack_parameters.m and
+    # containers, +migrators_j/private/jImageStackParameters.m and
     # +migrators_j/element_epoch.m.
     names = ["image_stack", "element"]
 

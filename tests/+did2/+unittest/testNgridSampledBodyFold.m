@@ -25,7 +25,7 @@ function tests = testNgridSampledBodyFold
 %                            below -- and it is the 4,563-husk lesson.
 %     GUARD 2 (COORDINATES)  explicit coordinate positions this fold cannot
 %                            ACCOUNT FOR are REFUSED. Folding anyway would
-%                            delete real data -- the exact loss +super/ngrid.m
+%                            delete real data -- the exact loss +v1read/ngridBlock.m
 %                            was written to stop, arriving through a different
 %                            door.
 %
@@ -535,7 +535,7 @@ function testExplicitCoordinatePositionsAreRefusedNotSilentlyDropped(testCase)
 %       if f['name']=='axes' for s in f['fields']])"
 % The decided destination `axes[k].values` is #45, blocked on #32. So a fold
 % today has nowhere to put real positions, and folding anyway would delete them
-% -- the same silent loss +super/ngrid.m exists to stop.
+% -- the same silent loss +v1read/ngridBlock.m exists to stop.
 %
 % `mat2ngrid(X,c1,...,cn)` is a DOCUMENTED signature, so such a document is
 % well-formed: it is the model that cannot hold it, not the document that is
@@ -581,7 +581,7 @@ end
 
 function testTheBaseMigratorShapeIsRefusedByTheFoldToo(testCase)
 % `dim_sizes`/`ndims` are the base (+migrators) migrator's OUTPUT and have no did_v1
-% existence. +super/ngrid.m makes the same refusal upstream; the fold repeats it
+% existence. +v1read/ngridBlock.m makes the same refusal upstream; the fold repeats it
 % because a body assembled from names NDI never wrote is a fixture-built-from-
 % our-own-schema bug, which is the mistake that hid both the ontology_image and
 % the distance_metadata defects.

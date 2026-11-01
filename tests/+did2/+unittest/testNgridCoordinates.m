@@ -76,7 +76,7 @@ end
 % ===================== the V_eta superclass migrator =======================
 
 function testVEtaSuperNgridCarriesAllFourV1Fields(testCase)
-out = did2.convert.migrators_j.super.ngrid(v1NgridBody());
+out = did2.convert.v1read.ngridBlock(v1NgridBody());
 verifyEqual(testCase, out.ngrid.data_size, 8);
 verifyEqual(testCase, out.ngrid.data_type, 'double');
 verifyEqual(testCase, out.ngrid.data_dim, [4 4]);
@@ -89,7 +89,7 @@ end
 function testVEtaSuperNgridIsANoOpWhenTheBlockIsAbsent(testCase)
 b = v1NgridBody();
 b = rmfield(b, 'ngrid');
-out = did2.convert.migrators_j.super.ngrid(b);
+out = did2.convert.v1read.ngridBlock(b);
 verifyFalse(testCase, isfield(out, 'ngrid'));
 end
 
@@ -100,7 +100,7 @@ function testVEtaSuperNgridRejectsTheBaseMigratorShape(testCase)
 % already paid for twice, so it must be loud.
 b = v1NgridBody();
 b.ngrid = struct('dim_sizes', [4 4], 'ndims', 2, 'data_type', 'double');
-verifyError(testCase, @() did2.convert.migrators_j.super.ngrid(b), ...
+verifyError(testCase, @() did2.convert.v1read.ngridBlock(b), ...
     'did2:convert:ngridBaseMigratorShape');
 end
 

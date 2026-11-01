@@ -6,7 +6,7 @@ function [v1, spec] = oneepoch(bodies)
 %   base.json at the locked NDI-matlab `main`, 3cb19a8, as ndi.element addepoch
 %   writes it). BODIES is the one `oneepoch` document the migrator keeps (its
 %   `element_epoch` block folded onto `oneepoch` as `clocks`, by
-%   did2.convert.migrators.element_epoch):
+%   did2.convert.v1read.elementEpochClocks):
 %
 %     base.id, session_id, datestamp   the document's
 %     depends_on element_id            its element_id edge

@@ -703,7 +703,7 @@ v1.document_class = struct('class_name', 'hartley_calc', 'class_version', '1.0.0
     ... % class name from the basename. Read off a real document:
     ... %   hartley_reverse_correlation, reverse_correlation, base, ngrid, base
     ... % applySuperclassMigrators dedupes, and the `ngrid` entry is the one
-    ... % that matters: it is why +migrators_j/+super/ngrid.m has to shadow the
+    ... % that matters: it is why +v1read/ngridBlock.m has to shadow the
     ... % legacy +migrators/ngrid.m, which rmfield's `coordinates` outright.
     'superclasses', struct( ...
         'class_name', {'hartley_reverse_correlation', 'reverse_correlation', ...
