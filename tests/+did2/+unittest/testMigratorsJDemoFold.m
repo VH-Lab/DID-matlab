@@ -61,11 +61,11 @@ end
 % ===================== harness =============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runJValidated(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 end
 
 function msg = reasonsOf(out)
@@ -248,7 +248,7 @@ assertEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
 d = strjoin(cellstr(out.summary.migration_notes.carried_as_v1.distinct_details), ' | ');
 verifyTrue(testCase, contains(d, '[carry-100]') && contains(d, 'demoNDI.somethingNew'), d);
-old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
 assertEqual(testCase, numel(old.quarantine), 1, ...
     'the renamed path no longer refuses it; the assertions below would be vacuous');
 verifyEqual(testCase, old.quarantine(1).identifier, 'did2:convert:demoUnknownField');

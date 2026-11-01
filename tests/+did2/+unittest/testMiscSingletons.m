@@ -134,7 +134,7 @@ end
 % ===================== harness =============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function d = onlyClass(testCase, out, className)
@@ -400,7 +400,7 @@ function testBinaryseriesValidatesAgainstItsSchema(testCase)
 % from schemas/V_eta/{stable,draft,deprecated}).
 v1 = { binaryseriesTemplateBody('bsp_v1', 'sess_V'), ...
        binaryseriesPopulatedBody('bsp_v2', 'sess_V') };
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -706,7 +706,7 @@ function testProjectvarWriterShapePassesThroughAndValidates(testCase)
 % copy schemas/V_eta/deprecated/ into DID_SCHEMA_PATH. A passthrough the
 % validator cannot see quarantines, which is the opposite of preserving it.
 out = did2.convert.v1_to_v2(projectvarWriterBody('pv_1', 'sess_V', 'x=3; y=4'), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('projectvar quarantined under validation: %s', ...
         out.quarantine(1).reason));
@@ -730,7 +730,7 @@ function testProjectvarEmptyElementEdgeIsNotInvented(testCase)
 % would put projectvar in the invented-empty-edge table (7,233 documents across
 % two classes at the last census) where it does not belong.
 out = did2.convert.v1_to_v2(projectvarWriterBody('pv_2', 'sess_V', 'note'), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'projectvar');
 verifyEqual(testCase, depValue(d, 'element_id'), '');
@@ -756,7 +756,7 @@ function testProjectvarNumericPayloadPassesThroughCounted(testCase)
 % runs against a schema set that still has `projectvar` and against one that
 % does not. Each state gets its own exact expectation.
 out = did2.convert.v1_to_v2(projectvarWriterBody('pv_3', 'sess_V', [1 2 3]), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if schemaHasClass('projectvar')
     % the tombstone is still in the loaded set: the old typeMismatch
     verifyEqual(testCase, numel(out.quarantine), 1, ...
@@ -777,7 +777,7 @@ function testProjectvarIsCarriedWholeCitingItsRow(testCase)
 % projectvar, did2.convert.noMigratorCarryRows). It does not reach
 % universalRenames: the carried body is the untouched v1 source, stamped did_v1.
 v1 = projectvarWriterBody('pv_4', 'sess_V', 'note');
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 L = out.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_total, 1);
@@ -802,7 +802,7 @@ function testProjectvarRunsTheRenamedPathWhenTheCarryIsOff(testCase)
 % 'NoMigratorCarryClasses', {} restores the old path: universalRenames, then
 % the identity fallback; no carry note.
 v1 = projectvarWriterBody('pv_5', 'sess_V', 'note');
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'NoMigratorCarryClasses', {});
 L = out.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_carried_no_migrator, 0);

@@ -449,7 +449,7 @@ for k = 1:numel(out.migrated)
 end
 assertNotEmpty(testCase, b);
 verifyEqual(testCase, inputSet(b), {'ctrl_20e84c', 'pres_b671ff'});
-txt = evalc('did2.convert.v1_to_v2({withCtl, noCtl, unstamped}, ''Validate'', false, ''TargetVersion'', ''V_eta'', ''Verbose'', true);');
+txt = evalc('did2.convert.v1_to_v2({withCtl, noCtl, unstamped}, ''Validate'', false, ''TargetVersion'', ''did_v2'', ''Verbose'', true);');
 verifySubstring(testCase, txt, ...
     'stimulus_control_id edges dropped: 0 of 2 converted stimulus response document(s)');
 end
@@ -494,7 +494,7 @@ verifyEqual(testCase, d.dimensions_written, 1, 'the stimulus dimension, and no o
 verifyEqual(testCase, d.without_node, 1);
 verifyEqual(testCase, d.by_class.calculation, ...
     struct('dimensions_written', 1, 'without_node', 1));
-txt = evalc('did2.convert.v1_to_v2(v1, ''Validate'', false, ''TargetVersion'', ''V_eta'', ''Verbose'', true);');
+txt = evalc('did2.convert.v1_to_v2(v1, ''Validate'', false, ''TargetVersion'', ''did_v2'', ''Verbose'', true);');
 verifySubstring(testCase, txt, 'dimension terms: 1 of 1 dimension(s) written have a term with no node');
 end
 
@@ -628,7 +628,7 @@ function testTheMigratedPairHasNoOrphanEdges(testCase)
 % and the fifth, the parameters document, must resolve INSIDE the batch, which is
 % exactly what re-homing the edge onto method_parameters_id depends on.
 out = did2.convert.v1_to_v2({withEpochEdge(responseFixture('F1')), parametersFixture()}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 
 % The SIXTH external referent is the `epoch` document the anchor points at. It is
@@ -668,7 +668,7 @@ function testFoldValidatesAgainstTheRealVEtaSchema(testCase)
 % and testMigratorsJIngested/testReferenceLiftValidatesUnderVEta already relies on
 % exactly that, with the same fabricated epoch id.
 out = did2.convert.v1_to_v2({withEpochEdge(responseFixture('F2')), parametersFixture()}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -698,7 +698,7 @@ end
 % ===================== helpers =============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function h = harmonicOf(testCase, responseType)

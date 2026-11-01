@@ -63,7 +63,7 @@ end
 % ===================== shared plumbing =====================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v = depValue(b, name)
@@ -255,7 +255,7 @@ function testACarriedPyraviewIsValidatedNowhereAgainstVEta(testCase)
 % Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md)
 blk = predFilterBlock();
 blk.parameters.order = 4.5;
-out = did2.convert.v1_to_v2(pyraviewBody(blk), 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(pyraviewBody(blk), 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'a carried document is never quarantined by V_eta');
 assertEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
@@ -482,7 +482,7 @@ function testSubjectMeasurementFoldValidates(testCase)
 % emitter before, so this is the first time anything has validated one.
 % runJ deliberately passes Validate=false, so this calls v1_to_v2 directly.
 out = did2.convert.v1_to_v2(subjectMeasurementBody(), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('subjectmeasurement quarantined under validation: %s', ...
         out.quarantine(1).reason));
@@ -981,7 +981,7 @@ function testPyraviewFilterMethodFoldValidates(testCase)
 % and the bodies' method_id edge have to agree with the schema
 useMethodSchema(testCase);
 out = did2.convert.v1_to_v2(pyraviewBody(predFilterBlock()), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('pyraview+filter quarantined under validation: %s', ...
         out.quarantine(1).reason));
