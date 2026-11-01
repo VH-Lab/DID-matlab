@@ -166,6 +166,9 @@ verifyEqual(testCase, numel(docs), 3, 'dataset entity, relation, session entity'
 r = did2.convert.roundtrip.check(m, docs);
 verifyFalse(testCase, r.carried);
 verifyRoundTrip(testCase, r, 'ingested membership', findingsFor('membership'));
+rel = docWithId(out, 'sid_A');
+assertNotEmpty(testCase, rel, 'the relation takes the v1 id ([every v1 id survives])');
+verifyEqual(testCase, char(rel.get('document_class.class_name')), 'directed_relation');
 verifyTrue(testCase, any(strcmp('session_in_a_dataset.session_creator_input1', r.restated)), ...
     'the reference copy in input1 is restated');
 verifyTrue(testCase, any(strcmp('session_in_a_dataset.session_creator_input3', r.restated)), ...
@@ -470,9 +473,9 @@ function f = knownFindings()
 % {fixture, path, why}. On the session_id EDGE shape (did-schema main) the
 % session entity takes the session id as its base.id; the field shape keeps
 % the document's own id.
+% 'membership' base.id is no longer a finding: the relation takes the v1
+% record's id ([every v1 id survives], Jess Haley, 2026-10-27)
 f = { ...
-    'membership', 'base.id', ['the relation''s id is minted; the v1 record''s own id ' ...
-        'is kept nowhere (a question for the team)']; ...
     'remote', 'base.id', 'the v1 record''s own id is kept nowhere (a question)'; ...
     'form', 'base.id', 'the v1 form''s own id is kept nowhere (a question)'};
 if did2.schema.cache.shared().sessionIdIsEdge()
