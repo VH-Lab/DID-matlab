@@ -1,4 +1,4 @@
-function [v1, spec] = dataset_remote(bodies)
+function [v1, spec] = dataset_remote(bodies, ctx)
 %DATASET_REMOTE Rebuild a v1 `dataset_remote` from what the migration made of
 %   it.
 %
@@ -26,11 +26,24 @@ function [v1, spec] = dataset_remote(bodies)
 %   Any other emitted document, or a field this inverse does not read, is
 %   unplaced.
 %
+%   THE DATASET ENTITY IS SHARED. Every dataset-level source mints a bare
+%   dataset entity on the dataset's id (private/jBareDataset), and
+%   did2.convert.resolveDatasetEntities keeps one per id, the richest; it also
+%   writes the dataset's own session reference into its `local_identifier`
+%   ([dataset session reference], Jess Haley, 2026-10-22). So in the
+%   whole-batch round trip (did2.convert.roundtrip.wholeBatch, which hands
+%   CTX, the index of the final batch) the dataset entity this source names
+%   holds fields other documents gave it: with CTX, its `global_identifier`,
+%   `local_identifier` and `name` are not reported as this source's.
+%   (Test code run 41322059537: dataset_remote failures B 1, Dab 2, JH 1, the
+%   sample reporting `dataset entity.local_identifier` unplaced.)
+%
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.dataset_remote.
 
 arguments
     bodies cell
+    ctx = []
 end
 
 spec = emptySpec();
@@ -56,7 +69,11 @@ if isempty(ds)
     return;
 end
 [base, entity] = rebuildBase(ds);
-spec.unplaced = [spec.unplaced, others(entity, {'type', 'global_identifier', 'name'}, 'dataset entity')];
+dsOwn = {'type', 'global_identifier', 'name'};
+if ~isempty(ctx)
+    dsOwn{end+1} = 'local_identifier';   % shared (above)
+end
+spec.unplaced = [spec.unplaced, others(entity, dsOwn, 'dataset entity')];
 cloudId = '';
 gids = asCell(getIn(ds, 'entity', 'global_identifier'));
 for k = 1:numel(gids)
