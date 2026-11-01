@@ -129,13 +129,14 @@ for i = 1:numel(obs)
         verifyEqual(testCase, inst, 'el_1');   % the RESOLVED probe-subject
         withInstrument = withInstrument + 1;
     end
-    ch = channelsOf(out, b);
-    verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
-    % the v1 prefix is its channel type term, compared by node (Jess Haley
-    % 2026-10-22 [channel types])
-    verifyEqual(testCase, char(ch(1).type.node), 'EMPTY:0000370');   % ai
-    verifyEqual(testCase, double(ch(1).numbers(:))', [11 12 13 14]);
+    % the rows' rig has no daqsystem in this batch, so there is no system to
+    % name and no parent to wire the channels (ai11-14) to ([probe wiring is a
+    % relation], Jess Haley 2026-11-01): they stay on the carried v1 document
+    verifyEmpty(testCase, depVal(b, 'acquisition_system_id'));
+    verifyEmpty(testCase, channelsOf(out, b));
 end
+verifyEqual(testCase, rep.rows_unwirable, 2);
+verifyEqual(testCase, rep.wiring_relations_minted, 0);
 verifyEqual(testCase, withInstrument, 1);
 verifyEqual(testCase, numel(unique(anchorIds)), 1);
 anchors = bodiesNamed(out, 'migrated_probemap_epoch_anchor');
