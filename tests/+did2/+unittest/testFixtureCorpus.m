@@ -102,10 +102,11 @@ end
 %             epochfiles_ingested regression.
 %
 % Field spellings and values are the WRITER'S, +setup/+conv/+babu/import.m
-% :526-537 (plasmid) as universalRenames leaves them: formatOntology ->
-% format_ontology, dateCreated -> date_created, dateUpdated -> date_updated;
-% checksum and filename are already snake/flat. The datenums are real-shaped
-% doubles, so `refused_unplaced_dates` counts om_gf_01.
+% :526-537 (plasmid), as v1 writes them: pass 1 hands a generic_file on
+% unchanged ([ensemble and generic_file checked as v1], Jess Haley,
+% 2026-11-01), and a rename-pass spelling (format_ontology, ...) is outside
+% NDI's template, so it would be carried malformed (carry-100). The datenums
+% are real-shaped doubles, so `refused_unplaced_dates` counts om_gf_01.
 function batch = genericFileBatch()
 sub = subjDoc('om_gf_subj', 'plasmidHostStrain');
 
@@ -113,13 +114,13 @@ gf1 = struct();
 gf1.document_class = struct('class_name', 'generic_file', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-gf1.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_subj'});
+gf1.depends_on = struct('name', {'document_id'}, 'value', {'om_gf_subj'});
 gf1.base = struct('id', 'om_gf_01', 'session_id', 'sess_09', ...
     'name', 'plasmid', 'datestamp', '2024-06-01T12:00:00.000Z');
 gf1.generic_file = struct('filename', 'plasmids/pXY-12.gb', ...
-    'format_ontology', 'EMPTY:0000253', ...
+    'formatOntology', 'EMPTY:0000253', ...
     'checksum', 'd41d8cd98f00b204e9800998ecf8427e', ...
-    'date_created', 739000.5, 'date_updated', 739001.5);
+    'dateCreated', 739000.5, 'dateUpdated', 739001.5);
 gf1.files = struct('file_list', {{'generic_file.ext'}});
 
 % The sibling label. This is the whole point of the batch pass: `variable`
@@ -131,18 +132,18 @@ gf2 = struct();
 gf2.document_class = struct('class_name', 'generic_file', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-gf2.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_subj'});
+gf2.depends_on = struct('name', {'document_id'}, 'value', {'om_gf_subj'});
 gf2.base = struct('id', 'om_gf_02', 'session_id', 'sess_09', ...
     'name', 'unlabelled', 'datestamp', '2024-06-01T12:00:00.000Z');
 gf2.generic_file = struct('filename', 'misc/notes.txt', ...
-    'format_ontology', '', 'checksum', '', ...
-    'date_created', 739002.5, 'date_updated', 739002.5);
+    'formatOntology', '', 'checksum', '', ...
+    'dateCreated', 739002.5, 'dateUpdated', 739002.5);
 
 % om_gf_03: om_gf_01 without its dates, with its own label, so the fold's happy
 % path is still driven under validation.
 gf3 = gf1;
 gf3.base.id = 'om_gf_03';
-gf3.generic_file = rmfield(gf3.generic_file, {'date_created', 'date_updated'});
+gf3.generic_file = rmfield(gf3.generic_file, {'dateCreated', 'dateUpdated'});
 ol3 = ontologyLabelV1('om_gf_lbl3', 'om_gf_03', 'EDAM:data_1286');
 
 batch = { sub, gf1, ol2, gf2, gf3, ol3 };
@@ -235,8 +236,8 @@ d.epochid = struct('epochid','t00001');
 d.app = struct('name','ndi.app.ensemble','version','1.0');
 d.ensemble = struct('ensemble_name','ens1','value_type','rate', ...
     'value_description','firing rate','num_neurons',2,'clocktype','dev_local_time');
-% NDI's OWN file name, verbatim -- universalRenames.m:308 skips the `file`/`files`
-% keys, so a passed-through document reaches validation still carrying this spelling.
+% NDI's OWN file name, verbatim: pass 1 hands an ensemble on unchanged, as v1
+% ([ensemble and generic_file checked as v1]).
 d.files = struct('file_list', {{'neuron_names.txt'}});
 batch = { sub, n1, n2, d };
 end
@@ -316,14 +317,14 @@ vi.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
 ol = ontologyLabelV1('om_ol_01', 'om_is_01', 'uberon:3373');
 
 is = struct();
-is.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+is.document_class = struct('class_name', 'imageStack', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 is.depends_on = struct('name', {'subject_id'}, 'value', {'om_animal_i'});
 is.base = struct('id', 'om_is_01', 'session_id', 'sess_09', ...
     'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
-is.image_stack = struct('format_ontology', 'EDAM:format_3591', ...
-    'label', 'a two-photon stack', 'format', 'tiff');
-is.image_stack_parameters = struct('data_type', 'uint16', ...
+is.imageStack = struct('formatOntology', 'EDAM:format_3591', ...
+    'label', 'a two-photon stack');
+is.imageStack_parameters = struct('data_type', 'uint16', ...
     'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
     'dimension_scale', [0.5 0.5 1 1 1], 'clocktype', 'dev_local_time', 'timestamp', 0);
 
@@ -564,7 +565,7 @@ verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEqual(testCase, classOf(result.migrated, 'om_gf_01'), 'generic_file', ...
     'a generic_file whose dates cannot be placed was folded anyway');
 verifyEqual(testCase, result.migrated{strcmp(cellfun(@(d) char(d.get('base.id')), ...
-    result.migrated, 'UniformOutput', false), 'om_gf_01')}.get('generic_file.date_created'), ...
+    result.migrated, 'UniformOutput', false), 'om_gf_01')}.get('generic_file.dateCreated'), ...
     739000.5, 'the carried file keeps its dates');
 
 % THE ID IS PRESERVED and the class changed under it.
@@ -1126,14 +1127,14 @@ function batch = fx_contrast_sensitivity_calc()
 sub  = subjDoc('csx_sub', 'neuronCSX');
 resp = subjDoc('csx_resp', 'responseCSX');   % raw responses (derived_from anchor)
 d = struct();
-d.document_class = struct('class_name','contrast_sensitivity_calc','class_version','1.0.0', ...
+d.document_class = struct('class_name','contrastsensitivity_calc','class_version','1.0.0', ...
     'superclasses', struct('class_name', {'base';'calculator'}, 'class_version', {'1.0.0';'1.0.0'}));
 d.depends_on = [ struct('name','element_id','value','csx_sub'), ...
                  struct('name','stimulus_response_scalar_id','value','csx_resp') ];
 d.base = struct('id','csx_1','session_id','sess_09','name','cs','datestamp','2024-06-01T12:00:00.000Z');
 d.app = struct('name','ndi.calc.vis.contrast_sensitivity','version','1.0','url','https://github.com/VH-Lab/NDI-matlab','os','Linux','os_version','22.04','interpreter','MATLAB','interpreter_version','24.2');
-d.contrast_sensitivity_calc = struct('spatial_frequencies',[0.5 1 2 4], ...
-    'sensitivity_rb',[10 20 15 5], 'response_type','mean', ...
+d.contrastsensitivity_calc = struct('spatial_frequencies',[0.5 1 2 4], ...
+    'sensitivity_RB',[10 20 15 5], 'response_type','mean', ...
     'input_parameters', struct('threshold',1));
 batch = { sub, resp, d };
 end
@@ -1328,11 +1329,11 @@ end
 function batch = fx_spike_interface_sorting_outputs()
 sub = subjDoc('sis_sub', 'recSubSIS');
 d = struct();
-d.document_class = struct('class_name','spike_interface_sorting_outputs','class_version','1.0.0', ...
+d.document_class = struct('class_name','SpikeInterfaceSortingOutputs','class_version','1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
 d.depends_on = struct('name', {}, 'value', {});
 d.base = struct('id','sis_01','session_id','sess_09','name','sis','datestamp','2024-06-01T12:00:00.000Z');
-d.spike_interface_sorting_outputs = struct('sorter_name','kilosort', ...
+d.SpikeInterfaceSortingOutputs = struct('sorter_name','kilosort', ...
     'sample_rate',30000,'unit','ms');
 d.files = struct('file_list', {{'sorting.sioutputs.zip'}});
 batch = { sub, d };
@@ -1481,11 +1482,11 @@ end
 function batch = fx_ontology_image()
 sub = subjDoc('oi_sub', 'elemOI');
 d = struct();
-d.document_class = struct('class_name','ontology_image','class_version','1.0.0', ...
+d.document_class = struct('class_name','ontologyImage','class_version','1.0.0', ...
     'superclasses', struct('class_name','base','class_version','1.0.0'));
 d.depends_on = struct('name','element_id','value','oi_sub');
 d.base = struct('id','oi_01','session_id','sess_09','name','oi','datestamp','2024-06-01T12:00:00.000Z');
-d.ontology_image = struct('ontology_name','uberon:0002436', ...
+d.ontologyImage = struct('ontology_name','uberon:0002436', ...
     'ontology_region','primary visual cortex');
 batch = { sub, d };
 end
@@ -1509,11 +1510,11 @@ end
 % column, so a populated edge may not resolve.
 function batch = fx_ontology_image_ndi()
 d = struct();
-d.document_class = struct('class_name','ontology_image','class_version','1.0.0', ...
+d.document_class = struct('class_name','ontologyImage','class_version','1.0.0', ...
     'superclasses', struct('class_name',{'base','ngrid'}, 'class_version',{'1.0.0','1.0.0'}));
-d.depends_on = struct('name','ontology_table_row_id','value','');
+d.depends_on = struct('name','ontologyTableRow_id','value','');
 d.base = struct('id','oi_02','session_id','sess_09','name','oi2','datestamp','2024-06-01T12:00:00.000Z');
-d.ontology_image = struct('ontology_nodes','uberon:0000955,uberon:0002436');
+d.ontologyImage = struct('ontologyNodes','uberon:0000955,uberon:0002436');
 d.ngrid = struct('data_size',8,'data_type','double','data_dim',[4 4], ...
     'coordinates',[1;2;3;4;1;2;3;4]);
 batch = { d };

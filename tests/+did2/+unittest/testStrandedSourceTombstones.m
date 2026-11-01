@@ -24,8 +24,13 @@ function tests = testStrandedSourceTombstones
 %       find DID-schema/schemas/V_eta -name 'generic_file.json'    ->  (nothing)
 %       find DID-schema/schemas/V_eta -name 'valid_interval.json'  ->  (nothing)
 %
-%   With no migrator, v1_to_v2 falls back to did2.convert.migrators.identity
-%   (v1_to_v2.m:370-376), so the document arrives at validation in its did_v1
+%   (HISTORY: this paragraph describes the tree before the rename pass and the
+%   identity fallback were deleted, [migrators read raw v1]; today pass 1 hands
+%   a `generic_file` on as v1 to did2.convert.foldGenericFiles, [ensemble and
+%   generic_file keep their conversions], and carries a `valid_interval` whole
+%   as v1, carry-164.)
+%   With no migrator, v1_to_v2 fell back to did2.convert.migrators.identity
+%   (v1_to_v2.m:370-376), so the document arrived at validation in its did_v1
 %   shape -- and with no schema of that name there is nothing for it to validate
 %   against. It is not migrated, not passed through, not quarantined-and-kept.
 %   A dataset carrying one loses it.
@@ -176,9 +181,8 @@ end
 end
 
 function v = depValue(doc, name)
-% Read the edge tolerantly: a depends_on entry is spelled `value` on a body a
-% migrator built and `document_id` once universalRenames has normalised it
-% (universalRenames.m:369-422). Both shapes are live on this path.
+% Read the edge tolerantly: a depends_on entry is spelled `value` on a v1 body
+% and `document_id` on one the V2 builder wrote.
 v = '';
 s = doc;
 if isa(doc, 'did2.document'); s = doc.toStruct(); end
@@ -202,9 +206,8 @@ function v1 = genericFileWriterBody(id, sessionId, ownerId)
 % LC-MS branch at :575-580 differs only in the formatOntology CURIE and in
 % pointing document_id at a subject rather than a subject_group).
 %
-% Field names are the v1 CAMEL spellings on purpose -- universalRenames
-% snake_cases a block's immediate field names, and that pass is part of what
-% these tests exercise. Do not pre-snake them here.
+% Field names are the v1 CAMEL spellings, as the writer writes them: pass 1
+% hands the document on unchanged ([ensemble and generic_file checked as v1]).
 v1 = struct();
 v1.document_class = struct('class_name', 'generic_file', ...
     'class_version', '1.0.0', ...
@@ -286,42 +289,38 @@ verifyEqual(testCase, did2.convert.noMigratorCarryRows('valid_interval'), '[carr
 end
 
 function testGenericFilePassesThroughIdPreserved(testCase)
-% No migrator, by decision: the identity fallback carries the document, and the
-% tombstone is what lets it validate. The id must survive -- an ontologyLabel
-% document points its `document_id` AT this one (import.m:534-537), so a changed
-% id dangles that edge.
+% Pass 1 hands it on unchanged, as v1 ([ensemble and generic_file checked as
+% v1], Jess Haley, 2026-11-01), never validated against V_eta. The id must
+% survive -- an ontologyLabel document points its `document_id` AT this one
+% (import.m:534-537), so a changed id dangles that edge.
 out = runJValidated(genericFileWriterBody('gf_1', 'sess_1', 'subjgrp_1'));
 verifyNoQuarantine(testCase, out, 'generic_file');
 d = onlyClass(testCase, out, 'generic_file');
 verifyEqual(testCase, char(d.get('base.id')), 'gf_1');
+verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1');
 verifyEqual(testCase, depValue(d, 'document_id'), 'subjgrp_1');
 end
 
 function testGenericFileKeepsEveryFieldTheWriterWrites(testCase)
-% Five fields, all populated by both construction sites, none dropped. The
-% CAMEL v1 spellings arrive snake_cased by universalRenames -- which is why the
-% tombstone declares format_ontology / date_created / date_updated and not the
-% template's spellings.
-out = runJ(genericFileWriterBody('gf_2', 'sess_1', 'subjgrp_1'));
+% Five fields, all populated by both construction sites, none dropped, in the
+% writer's own spelling (pass 1 renames nothing).
+v1 = genericFileWriterBody('gf_2', 'sess_1', 'subjgrp_1');
+out = runJ(v1);
 b = onlyClass(testCase, out, 'generic_file').get('generic_file');
-verifyEqual(testCase, sort(fieldnames(b)), sort({'filename'; 'format_ontology'; ...
-    'checksum'; 'date_created'; 'date_updated'}));
-verifyEqual(testCase, char(b.format_ontology), 'EMPTY:0000253');
+verifyEqual(testCase, sort(fieldnames(b)), sort(fieldnames(v1.generic_file)));
+verifyEqual(testCase, char(b.formatOntology), 'EMPTY:0000253');
 verifyEqual(testCase, char(b.checksum), 'd41d8cd98f00b204e9800998ecf8427e');
 end
 
 function testGenericFileDatesStayNumeric(testCase)
 % dateCreated/dateUpdated are datenum DOUBLES from the writer
-% (convertTo(...,'datenum')) and generic_file_schema.json types both `double`.
-% Writer and schema agree, so `double` is the tombstone's type and the values
-% must not be stringified on the way through -- `double` demands isnumeric
-% (cache.m validateTypeShape), so a stringified date is a typeMismatch.
+% (convertTo(...,'datenum')); they must not be stringified on the way through.
 out = runJValidated(genericFileWriterBody('gf_3', 'sess_1', 'subjgrp_1'));
 verifyNoQuarantine(testCase, out, 'generic_file');
 b = onlyClass(testCase, out, 'generic_file').get('generic_file');
-verifyTrue(testCase, isnumeric(b.date_created) && isscalar(b.date_created));
-verifyTrue(testCase, isnumeric(b.date_updated) && isscalar(b.date_updated));
-verifyEqual(testCase, b.date_created, 739404.5, 'AbsTol', 1e-9);
+verifyTrue(testCase, isnumeric(b.dateCreated) && isscalar(b.dateCreated));
+verifyTrue(testCase, isnumeric(b.dateUpdated) && isscalar(b.dateUpdated));
+verifyEqual(testCase, b.dateCreated, 739404.5, 'AbsTol', 1e-9);
 end
 
 function testGenericFileKeepsItsFile(testCase)
@@ -338,23 +337,20 @@ function testGenericFileTemplatePlaceholdersDoNotReachTheValidator(testCase)
 % THE TYPE TRAP, recorded rather than assumed. NDI's TEMPLATE carries `""` for
 % all five fields, including the two its own schema types `double`. Nothing the
 % Babu writer produces looks like that -- it fills every field -- so this is a
-% statement about the template, not about documents. But a caller who
-% constructed ndi.document('generic_file') and set nothing WOULD carry the
-% placeholders, and `double` rejects '' (validateTypeShape demands isnumeric).
+% statement about the template, not about documents.
 %
-% ASSERTED AS TODAY'S BEHAVIOUR, NOT AS DESIRED BEHAVIOUR. There is no writer
-% path that produces it and therefore no evidence about what should happen, so
-% this pins the outcome rather than endorsing it. If a real corpus ever turns up
-% blank-dated generic_file documents, the fix is a guarded migrator that DROPS
-% the placeholders (the binaryseries_parameters precedent: absence is how V_eta
-% spells unset), not a re-typing of the field.
+% ASSERTED AS TODAY'S BEHAVIOUR, NOT AS DESIRED BEHAVIOUR. Pass 1 checks a
+% `generic_file` against NDI's template (field names, not types) and hands it
+% on as v1, never validated against V_eta ([ensemble and generic_file checked
+% as v1], Jess Haley, 2026-11-01), so a placeholder date no longer quarantines
+% here; what the later step does with it is foldGenericFiles' to say.
 v1 = genericFileWriterBody('gf_5', 'sess_1', 'subjgrp_1');
 v1.generic_file.dateCreated = '';
 v1.generic_file.dateUpdated = '';
 out = runJValidated(v1);
-verifyEqual(testCase, numel(out.quarantine), 1, ...
-    'a template-placeholder date is expected to quarantine TODAY');
-verifyEqual(testCase, char(out.quarantine(1).class_name), 'generic_file');
+verifyNoQuarantine(testCase, out, 'generic_file');
+d = onlyClass(testCase, out, 'generic_file');
+verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1');
 end
 
 % ===================== valid_interval ======================================

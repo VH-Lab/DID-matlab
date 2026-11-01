@@ -114,8 +114,8 @@ if isfield(preBody, 'position_metadata') && isstruct(preBody.position_metadata)
 end
 
 % measurement CURIE: v1 `ontologyNode`; `ontology_node` is the spelling
-% universalRenames gives it, which this migrator still meets on the renamed path
-% (v1_to_v2 'RawV1Classes', {}) until that pass is deleted
+% the deleted rename pass (universalRenames) gave it; read for a body written
+% while it ran
 node = jGetChar(blk, 'ontologyNode');
 if isempty(node); node = jGetChar(blk, 'ontology_node'); end
 

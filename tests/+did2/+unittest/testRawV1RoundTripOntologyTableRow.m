@@ -27,7 +27,6 @@ verifyFalse(testCase, any(strcmp(did2.convert.rawV1Classes(), 'ontology_table_ro
     'the switch is keyed on the v1 spelling');
 out = runRaw(writerRow('otr_1'));
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testAWriterRowIsCarriedUntouchedAndRoundTrips(testCase)
@@ -64,14 +63,6 @@ v1 = rmfield(v1, 'ontologyTableRow');
 out = runRaw(v1);
 verifyEqual(testCase, numel(out.quarantine), 1);
 verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:missingBlock');
-end
-
-function testTheSwitchChangesNoOutcome(testCase)
-for v1 = {writerRow('otr_1'), did2.unittest.helpers.setDependency(writerRow('otr_s'), ...
-        'subject_id', 'subj_1')}
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(v1);
-    verifyEmpty(testCase, problems, strjoin(problems, '; '));
-end
 end
 
 function testTheInverseOfAnUncarriedRowIsThePassthrough(testCase)

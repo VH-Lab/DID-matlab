@@ -52,10 +52,9 @@ verifyTrue(testCase, startsWith(notes, '[carry-124] needs_mapping: ngrid'), note
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyTrue(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'ontologyImage, imageDocMaker', {});
-old = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
 raw = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, raw.quarantine);
-verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough));
+verifyEqual(testCase, numel(raw.passthrough), 1, 'carried with the validator armed');
 end
 
 function testAWriterDocumentWithNoEdgeIsCarried(testCase)
@@ -107,11 +106,10 @@ verifyEqual(testCase, notes, '');
 verifyEqual(testCase, numel(out.passthrough), 1);
 end
 
-function testTheLegacyVintageConvertsAsBefore(testCase)
-[raw, ~, problems] = did2.unittest.helpers.rawAndRenamed({legacyImage()});
+function testTheLegacyVintageConverts(testCase)
+raw = did2.convert.v1_to_v2({legacyImage()}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, raw.quarantine);
 verifyGreaterThan(testCase, numel(raw.migrated), 1);
-verifyEmpty(testCase, problems, strjoin(problems, '; '));
 end
 
 function testCarries(testCase)

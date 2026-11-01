@@ -33,7 +33,6 @@ verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'dataset_session_in
 verifyEqual(testCase, did2.convert.rawV1Classes('dataset_session_info'), 'dataset_session_info');
 out = runRaw({writerList('dsi_1', 'ds_1', {})});
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testAListTheMembershipsRebuildWritesNothing(testCase)
@@ -80,14 +79,6 @@ v1.notes = struct('text', 'kept');
 verifyCarried(testCase, [{v1}, s(1:4)], 'notes');
 v1 = did2.unittest.helpers.setDependency(s{end}, 'dataset_id', 'ds_1');
 verifyCarried(testCase, [{v1}, s(1:4)], 'depends_on(dataset_id)');
-end
-
-function testTheSwitchChangesNoOutcome(testCase)
-s = rebuildingBatch();
-for batch = {s, {s{end}}, [s(1:4), {reordered(s{end})}]}
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(batch{1});
-    verifyEmpty(testCase, problems, strjoin(problems, '; '));
-end
 end
 
 function testADifferentSourceIsReportedLost(testCase)

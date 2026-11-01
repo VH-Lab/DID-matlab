@@ -210,8 +210,8 @@ function bodies = image_stack(preBody)
 %   too since 2026-10-30 (rawV1Classes): the same checks run on it, with its
 %   own blocks (`image`, `imageStack_parameters`). A body already spelled the
 %   renamed way (class `image_stack`, or an `image` with only an
-%   `image_stack_parameters` block: v1_to_v2's 'RawV1Classes', {}) still
-%   arrives renamed; every read below takes either spelling, and the raw checks
+%   `image_stack_parameters` block, as the deleted rename pass wrote them) may
+%   still arrive; every read below takes either spelling, and the raw checks
 %   find nothing to carry on a renamed body. Carry notes keep the class names
 %   they had ('image_stack', 'image'). The round trips are
 %   did2.convert.roundtrip.imageStack and did2.convert.roundtrip.image

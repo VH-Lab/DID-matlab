@@ -140,7 +140,6 @@ end
 % the defect is UNMEASURED rather than zero, and only a persisted zero makes
 % that distinction survive past the log.
 %
-% READ `bodies_reaching_universal_renames` BEFORE ANY OTHER NUMBER HERE. It is
 % the denominator, and it is NOT `total`: the idempotency short-circuit skips
 % the pass entirely, so a re-run over already-migrated bodies would report
 % every arm at 0 with nothing having been inspected. `bodies_total`,

@@ -149,7 +149,7 @@ end
 function v = depValue(preBody, name)
 %DEPVALUE Read an edge, tolerant of all three key spellings the pipeline uses.
 %   A depends_on entry is `value` as NDI's writer sets it (the raw read),
-%   `document_id` on a body universalRenames normalised ('RawV1Classes', {}),
+%   `document_id` on a body the rename pass (since deleted) normalised,
 %   and `id` on an older v1 body.
 %   Precedence copied from +did2/+validate/references.m.
 v = '';

@@ -25,8 +25,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %   universalRenames is deleted and the migrator files are renamed to the v1
 %   names ([migrators read raw v1]); it is the only place the two spellings are
 %   joined for a switched class. A row may name a class not (yet) in the list
-%   below: it is read only for a listed class, or for one a caller passes in
-%   v1_to_v2's 'RawV1Classes' option.
+%   below: it is read only for a listed class.
 %
 %   WHY. Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema
 %   V_eta_go_forward_class_audit.md): a migrator reads v1 exactly as v1 defines

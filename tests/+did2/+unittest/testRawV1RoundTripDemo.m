@@ -71,14 +71,6 @@ verifyTrue(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'binaryseries_parameters, template', {});
 end
 
-function testTheSwitchChangesNoOutcome(testCase)
-f = fixtures();
-for k = 1:size(f, 1)
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f(k, 2));
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
-
 function testTheDemoDocumentsValidate(testCase)
 for v1 = {demoMock(), demo()}
     out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');

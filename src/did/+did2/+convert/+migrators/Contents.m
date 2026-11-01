@@ -1,34 +1,18 @@
 % +migrators  Per-class did_v1 -> V2 migrator functions.
 %
-%   Each file in this package is named after the post-universal-rename
-%   v1 class name (snake_case) and exports a single function:
+%   The one file left, element_epoch, is not dispatched by class: it splits
+%   t0_t1 -> (t0, t1) on an `element_epoch` block, and
+%   +migrators_j/element_epoch.m and oneepoch.m call it on the raw block.
 %
-%       v2Body = <class_name>(preUniversalBody)
-%
-%   The dispatcher (did2.convert.v1_to_v2) applies the universal
-%   renames first, then looks up the matching migrator by class name.
-%   If no migrator exists, the dispatcher falls back to `identity`,
-%   which returns the post-universal body unchanged.
-%
-%   Currently registered migrators implement the four 2.0.0-bumped
-%   classes plus the PRED-driven additions:
-%
-%     identity            - default passthrough.
-%     probe_location      - collapse (ontology_name, name) -> location.
-%     treatment           - collapse (ontologyName | ontology_name,
-%                           name) -> treatment_name; pass through
-%                           numeric_value and string_value.
-%     element_epoch       - splits t0_t1 -> (t0, t1). epoch_clock is
-%                           already snake_case in v1, no rename
-%                           needed. Accepts the older `clocktype`
-%                           spelling defensively.
-%     ngrid               - a standalone `ngrid` document: CARRIED whole
-%                           as v1, needs_mapping ([ngrid with no statement
-%                           carried], Jess Haley, 2026-10-29). Until then
-%                           it renamed data_dim -> dim_sizes, derived ndims
-%                           and dropped data_size and coordinates. A
-%                           superclass `ngrid` block gets the V2 override
-%                           +migrators_j/+super/ngrid.m, never this file.
+%   The dispatcher no longer looks migrators up here. The rename pass
+%   (universalRenames), the superclass pass and the `identity` fallback are
+%   deleted ([migrators read raw v1]; [early migration pieces fixed] (1), Jess
+%   Haley, 2026-10-26: "a class with no migrator is a recorded decision, not an
+%   identity fallback"). The probe_location and treatment wrappers went
+%   earlier. `ngrid` is deleted too: a standalone `ngrid` document is carried
+%   whole as v1 by did2.convert.v1_to_v2 itself, carry-123 ([ngrid with no
+%   statement carried], Jess Haley, 2026-10-29); a superclass `ngrid` block is
+%   read by +migrators_j/+super/ngrid.m, called by its leaf's migrator.
 %
 %   The calculator-base wrappers are all deleted, with their shared helper
 %   calcCommon: the tuning family's (tuningcurve_calc, oridirtuning_calc,
@@ -57,9 +41,7 @@
 %   NDI main that names either as a superclass, reads raw v1 since DID-matlab
 %   PR #256 (did2.convert.rawV1Classes), so no superclass pass runs on it, and
 %   no writer at that main constructs a leaf `epochclocktimes` or `filter`
-%   document. ngrid stays as
-%   the concrete migrator of a leaf `ngrid` document (+migrators_j has only
-%   the +super guard); identity stays as v1_to_v2's fallback.
+%   document.
 %
 %   See did-schema's
 %   did-schema's per-class conversion notes (deleted with did-schema #88) for the

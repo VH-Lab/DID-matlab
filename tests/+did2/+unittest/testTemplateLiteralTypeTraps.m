@@ -88,26 +88,20 @@ end
 
 function out = runJ(v1)
 %RUNJ The full pipeline at V_eta, validation OFF (transform assertions).
-%   ALWAYS through v1_to_v2, never a direct migrator call: universalRenames
-%   snake-cases `imageStack_parameters` -> `image_stack_parameters` before any
-%   migrator runs (universalRenames.m:302-334), and a direct call would hand the
-%   migrator a block key it never sees on the real pipeline.
-%   ON THE RENAMED PATH ('RawV1Classes', {}): `imageStack` reads raw v1 since
-%   2026-10-27 (did2.convert.rawV1Classes), where no superclass migrator runs
-%   and a passthrough is the untouched v1 source; the v1 `image`, which shares
-%   the block, reads raw too since 2026-10-30. The superclass migrator these
-%   tests pin runs only on this renamed path; the raw path's refusals are
-%   pinned by testRawV1RoundTripImage.
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
-    'RawV1Classes', {});
+%   ALWAYS through v1_to_v2, never a direct migrator call, so the class is
+%   routed as real data is. Every class reads raw v1 (did2.convert.rawV1Classes;
+%   the rename pass is deleted, [migrators read raw v1]): `imageStack` and
+%   `stimulus_parameter` reach their +migrators_j migrators with the v1 block
+%   keys, and the superclass guard +migrators_j/+super/image_stack_parameters
+%   is called by the leaf.
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runJValidated(v1)
 %RUNJVALIDATED The same, with the validator ARMED. This is the assertion that
 %   actually matters: the placeholder is only worth dropping if dropping it is
-%   what lets the document through. On the renamed path, as RUNJ.
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2', ...
-    'RawV1Classes', {});
+%   what lets the document through.
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 end
 
 function d = onlyClass(testCase, out, className)
@@ -262,17 +256,20 @@ end
 
 % ===================== imageStack_parameters.timestamp =====================
 
-function testImageStackTimestampEmptyPlaceholderIsDropped(testCase)
-% THE REPAIR, and note it fails DIFFERENTLY from the one above: [] is numeric,
-% so it PASSES validateTypeShape and dies one line later on mustBeScalar
-% (cache.m:1258). Same disposition, different error -- which is why the sweep
-% had to look at the type AND the shape, not just the type.
+function testImageStackTimestampEmptyPlaceholderIsKeptAsWritten(testCase)
+% INVERTED 2026-11-01 from testImageStackTimestampEmptyPlaceholderIsDropped,
+% which pinned the superclass migrator's drop on the RENAMED path. That path
+% is deleted ([migrators read raw v1]): `imageStack` reads raw v1, and a
+% subject-less stack is returned UNTOUCHED (testASubjectlessImageStack... below),
+% a v1 document never read against V_eta, so the [] placeholder ([] is numeric:
+% it passed validateTypeShape and died on mustBeScalar, cache.m:1258) no longer
+% has to be dropped to get through. It is kept as v1 wrote it, never coerced.
 out = runJ(imageStackBody([]));
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'image_stack');
-p = d.get('image_stack_parameters');
-verifyFalse(testCase, isfield(p, 'timestamp'), ...
-    'the empty [] placeholder must be DROPPED, not coerced to 0');
+d = onlyClass(testCase, out, 'imageStack');
+p = d.get('imageStack_parameters');
+verifyTrue(testCase, isfield(p, 'timestamp'), 'the placeholder is kept, not dropped');
+verifyEmpty(testCase, p.timestamp, 'and not coerced to 0');
 % every other field of the block is left exactly as it was
 verifyEqual(testCase, p.dimension_order, 'YX');
 verifyEqual(testCase, p.dimension_size, [1024 1024]);
@@ -282,7 +279,7 @@ end
 
 function testASubjectlessImageStackPassesThroughUntouchedAndCounted(testCase)
 % INVERTED 2026-10-29 from testImageStackPlaceholderDocumentValidatesOnThePassthrough,
-% which ran the RENAMED path ('RawV1Classes', {}) and asserted that dropping
+% which ran the RENAMED path (since deleted) and asserted that dropping
 % the empty `timestamp` placeholder let the passthrough validate against the
 % did-schema `image_stack` tombstone. That tombstone is deleted (Jess Haley,
 % 2026-10-27 [carried v1 validates against NDI templates]; 2026-10-29
@@ -306,8 +303,8 @@ function testImageStackRealTimestampIsUntouched(testCase)
 % (babu/import.m:463 / haley/doImport.m:414,:788 `convertTo(...,'datenum')`).
 out = runJValidated(imageStackBody(739038.5));
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'image_stack');
-verifyEqual(testCase, d.get('image_stack_parameters.timestamp'), 739038.5, ...
+d = onlyClass(testCase, out, 'imageStack');
+verifyEqual(testCase, d.get('imageStack_parameters.timestamp'), 739038.5, ...
     'AbsTol', 1e-9);
 end
 
@@ -317,8 +314,8 @@ function testImageStackTimestampZeroIsAValueNotAPlaceholder(testCase)
 % Dropping it would delete a datum; this pins that it is kept.
 out = runJ(imageStackBody(0));
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'image_stack');
-verifyEqual(testCase, d.get('image_stack_parameters.timestamp'), 0);
+d = onlyClass(testCase, out, 'imageStack');
+verifyEqual(testCase, d.get('imageStack_parameters.timestamp'), 0);
 end
 
 function testImageStackNonScalarTimestampErrorsRatherThanTruncating(testCase)
@@ -342,8 +339,8 @@ function testImageStackAbsentTimestampIsNotManufactured(testCase)
 % A block that never carried the field must not acquire one.
 out = runJ(imageStackBody([], false));
 verifyEmpty(testCase, out.quarantine);
-d = onlyClass(testCase, out, 'image_stack');
-verifyFalse(testCase, isfield(d.get('image_stack_parameters'), 'timestamp'));
+d = onlyClass(testCase, out, 'imageStack');
+verifyFalse(testCase, isfield(d.get('imageStack_parameters'), 'timestamp'));
 end
 
 % RETIRED 2026-10-28 with did-schema's deprecated/ tombstones (Decided by Jess

@@ -10,8 +10,10 @@ own schema instead of from the writer — `distance_metadata`'s ~2078 quarantine
 came from a migrator written against a nested `endpoints` block that no real
 document has, and its unit test passed because the fixture was built from the
 same assumption as the code. A test written from the same premise as the code
-cannot catch the code. So the vintage classifier in
-`did2.convert.universalRenames` is tested against these bytes.
+cannot catch the code. So the readers of a legacy identity block
+(`did2.convert.v1read`, testV1Read) are tested against these bytes. (The vintage
+classifier in `did2.convert.universalRenames`, which these were first collected
+for, is deleted with that pass, [migrators read raw v1].)
 
 ## How they were obtained
 

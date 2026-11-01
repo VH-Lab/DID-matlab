@@ -36,7 +36,7 @@ function v2Body = treatment_drug(preBody)
 %   as v1 wrote it, with no universalRenames (identity through jRawBody /
 %   did2.convert.v1read.readBase; a carry is the untouched v1 source). Block
 %   fields are read in the v1 spelling first and the universalRenames spelling
-%   second, so 'RawV1Classes', {} still works. Every v1 field (NDI treatment/treatment_drug.json +
+%   second (a body written while the deleted rename pass ran). Every v1 field (NDI treatment/treatment_drug.json +
 %   base.json at the locked NDI-matlab `main`, 3cb19a8, as
 %   +NDIMaker/treatmentMaker writes it) and where it goes;
 %   did2.convert.roundtrip.treatment_drug rebuilds the v1 document and
@@ -101,7 +101,7 @@ variable  = chemicals(1).substance;   % the primary drug is the spine identity
 % line 163) and the template's `location_ontologyNode` are one field: either
 % becomes the treatment's location term; a document holding both with
 % different values is carried whole as v1, kind `malformed`. Each is read in
-% its v1 spelling and in the universalRenames spelling ('RawV1Classes', {}).
+% its v1 spelling and in the deleted rename pass's spelling.
 % The register row(s): carry-110.
 nodeOfTemplate = jGetCharAny(block, {'location_ontologyNode', 'location_ontology_node'});
 nodeOfWriter = jGetCharAny(block, {'location_ontologyName', 'location_ontology_name'});

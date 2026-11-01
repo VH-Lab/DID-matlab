@@ -62,17 +62,6 @@ for k = 1:size(f, 1)
 end
 end
 
-function testTheSwitchChangesNoConvertedDocument(testCase)
-f = fixtures();
-for k = 1:size(f, 1)
-    if strcmp(f{k, 3}, 'carried')
-        continue;   % the one change: see testADateIsCarriedNotPassedThrough
-    end
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f(k, 2));
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
-
 function testADateIsCarriedNotPassedThrough(testCase)
 [carried, notes] = did2.unittest.helpers.carryNote({measurementDate()});
 verifyTrue(testCase, carried);
@@ -107,9 +96,7 @@ function testTheConvertedDocumentsValidate(testCase)
 f = fixtures();
 for k = 1:size(f, 1)
     out = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'did_v2');
-    old = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'did_v2', ...
-        'RawV1Classes', {});
-    verifyLessThanOrEqual(testCase, numel(out.quarantine), numel(old.quarantine), f{k, 1});
+    verifyEmpty(testCase, out.quarantine, f{k, 1});
 end
 end
 

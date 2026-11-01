@@ -720,13 +720,13 @@ function d = ontologyLabelDoc(id, targetId)
 %   and did2.convert.migrators_j.ontology_label passes it through with that
 %   edge intact.
 d = struct();
-d.document_class = struct('class_name', 'ontology_label', ...
+d.document_class = struct('class_name', 'ontologyLabel', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 d.depends_on = struct('name', {'document_id'}, 'value', {targetId});
 d.base = struct('id', id, 'session_id', 'ds_01', 'name', 'label', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-d.ontology_label = struct('ontologyNode', 'UBERON:0000955');
+d.ontologyLabel = struct('ontologyNode', 'UBERON:0000955');
 end
 
 function d = datasetRemoteDoc()
