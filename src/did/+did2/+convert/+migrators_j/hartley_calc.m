@@ -253,7 +253,7 @@ end
 % READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
 % [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
 % as v1 wrote it, with no universalRenames and no superclass migrator. The one
-% superclass migrator the renamed path ran for it, +migrators_j/+super/ngrid.m
+% superclass migrator the renamed path ran for it, +v1read/ngridBlock.m
 % (a guard against a reshaped `ngrid` block; it changes nothing), is called
 % here on the raw block ([early migration pieces fixed] (1)); it stays for
 % ontology_image, which calls it on its raw block too. Identity through jRawBody; the `app`
@@ -279,7 +279,7 @@ if ~isempty(collision)
     bodies = {preBody};
     return;
 end
-body = did2.convert.migrators_j.super.ngrid(body);
+body = did2.convert.v1read.ngridBlock(body);
 bodies = fold(body);
 if isscalar(bodies) && isequaln(bodies{1}, body)
     bodies = {preBody};   % a carry (or a passthrough) is the untouched v1 source

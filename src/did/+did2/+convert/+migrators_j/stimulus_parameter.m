@@ -101,7 +101,7 @@ function bodies = stimulus_parameter(preBody)
 %   The id is preserved: the body is passed through, so base.id is untouched.
 %
 %   See also: did2.convert.migrators_j.binaryseries_parameters (the precedent),
-%   did2.convert.migrators_j.super.image_stack_parameters (the sibling trap).
+%   did2.convert.migrators_j private jImageStackParameters (the sibling trap).
 %
 %   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
 %   2026-10-26 [migrators read raw v1], did-schema

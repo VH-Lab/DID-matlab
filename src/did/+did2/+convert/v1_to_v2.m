@@ -480,7 +480,7 @@ for k = 1:numel(bodies)
                 % 2026-10-29 [ngrid with no statement carried]); it was the
                 % deleted +migrators/ngrid.m's whole job. A superclass `ngrid`
                 % block is read by its leaf's migrator
-                % (+migrators_j/+super/ngrid.m).
+                % (+v1read/ngridBlock.m).
                 legacy.bodies_carried_no_migrator = legacy.bodies_carried_no_migrator + 1;
                 className = rawClass;
                 if strcmp(rawClass, 'ngrid')

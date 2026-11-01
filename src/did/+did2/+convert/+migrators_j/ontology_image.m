@@ -161,7 +161,7 @@ function v2Body = ontology_image(preBody)
 %   pass runs first (v1_to_v2.applySuperclassMigrators) and was never bypassed
 %   by the migrators_j split, so +migrators/ngrid.m deleted `coordinates` and
 %   `data_size` on every one of these documents before this function was
-%   called. Fixed by +migrators_j/+super/ngrid.m, which carries the v1 block
+%   called. Fixed by +v1read/ngridBlock.m, which carries the v1 block
 %   verbatim, plus the matching V_eta `ngrid` tombstone. `coordinates` has no
 %   HOME yet (its decided destination, `axes[k].values`, belongs to #45, which
 %   is blocked on #32) -- it is carried, not placed.
@@ -261,7 +261,7 @@ function v2Body = ontology_image(preBody)
 %   ontologyTableRow_id; the .ngrid file). The block is read in v1's spelling
 %   (`ontologyImage`, `ontologyNodes` / `ontologyNode`, and the legacy vintage's
 %   fields in either spelling) or the renamed one. The superclass migrator the
-%   renamed path ran, +migrators_j/+super/ngrid.m (a guard), is called here on
+%   renamed path ran, +v1read/ngridBlock.m (a guard), is called here on
 %   the raw block first, so a reshaped ngrid block is still refused. A writer document (vintage B) passes through unchanged, as
 %   before: the raw passthrough keeps v1's class name `ontologyImage`, under
 %   which V_eta keeps no class (counted, not validated), where the renamed one
@@ -285,7 +285,7 @@ isRaw = isfield(preBody, 'ontologyImage');
 if isRaw
     % the superclass migrator the renamed path ran first (a guard: a reshaped
     % ngrid block is refused, as before; it changes nothing)
-    did2.convert.migrators_j.super.ngrid(src);
+    did2.convert.v1read.ngridBlock(src);
     % THE RAW READ (see READS RAW v1 above)
     [preBody, collision, unplaced] = jRawAccount(src, struct( ...
         'ontologyImage', {{'ontologyNode', 'ontologyNodes', 'ontologyName', 'ontology_name', ...

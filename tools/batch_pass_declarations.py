@@ -318,7 +318,6 @@ def parse_declaration(text):
 # to owe one, so "nobody looked" stays visible instead of reading as zero.
 HELPER_DIRS = (
     os.path.join("+migrators_j", "private"),
-    os.path.join("+migrators_j", "+super"),
     "+entities",
 )
 

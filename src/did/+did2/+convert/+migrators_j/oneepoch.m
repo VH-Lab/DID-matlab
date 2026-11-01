@@ -45,7 +45,7 @@ function v2Body = oneepoch(preBody)
 %
 %   Two things there are worth keeping. First, the block does NOT arrive holding
 %   `epoch_clock`/`t0_t1`: the BASE superclass migrator
-%   (did2.convert.migrators.element_epoch) runs first, via applySuperclassMigrators,
+%   (did2.convert.v1read.elementEpochClocks) runs first, via applySuperclassMigrators,
 %   and has already collapsed them into the array-of-records `clocks`. So `clocks`
 %   is what the tombstone must declare -- declaring the did_v1 names would reject
 %   every real document. Second, the failure today is `missingClass`, not
@@ -69,7 +69,7 @@ function v2Body = oneepoch(preBody)
 %   addepoch writes it with EPOCHIDS: element_epoch.epoch_clock, .t0_t1 (a
 %   column for one clock), epochid.epochid, oneepoch.epoch_ids, element_id),
 %   with no superclass migrator run on it. So this migrator calls the one the
-%   renamed path ran, did2.convert.migrators.element_epoch (the clocks
+%   renamed path ran, did2.convert.v1read.elementEpochClocks (the clocks
 %   records, or its carry-009 / carry-038 carry), on the raw block itself, as
 %   +migrators_j/element_epoch.m does, and writes its edges as {name,
 %   document_id}, as the renamed path did, so the switch changes no emitted
@@ -152,7 +152,7 @@ if ~(isfield(preBody, 'element_epoch') && isstruct(preBody.element_epoch) ...
     end
     stamp = did2.convert.v1read.readStamp(preBody);
     preBody.document_class.superclasses = struct('class_name', stamp.superclasses);
-    reshaped = did2.convert.migrators.element_epoch(preBody);
+    reshaped = did2.convert.v1read.elementEpochClocks(preBody);
     if isequaln(reshaped, preBody)
         v2Body = {src};   % its carry (noted there): the untouched v1 source
         return;

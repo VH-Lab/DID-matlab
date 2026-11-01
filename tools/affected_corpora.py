@@ -25,7 +25,7 @@ HOW A FILE MAPS TO v1 CLASSES (each rule is printed beside its result):
                               `build_state.batch_pass_consumers` is printed
                               beside it; --narrow-passes uses it instead.
   anything else under src/,   ALL corpora: the driver, the validator, the
-  the corpus test driver      builder and `+super/` migrators reach every class.
+  the corpus test driver      builder and the `+v1read/` helpers reach every class.
   anything else               no corpus.
 
 ALL is the conservative answer, never a guess narrowed for speed: a missed
@@ -147,8 +147,6 @@ def classes_for(path, callers, passes, ledger_helpers, narrow_passes=False):
             return ALL, "private helper with no caller found -> ALL"
         return cls, "private helper, called by %d migrator(s): %s" % (
             len(ms), ", ".join(sorted(ms)) or "(ledger only)")
-    if p.startswith(MIGRATORS + "+super/"):
-        return ALL, "superclass migrator -> ALL"
     if p.startswith(MIGRATORS) and p.endswith(".m"):
         if base == "Contents":
             return set(), "Contents.m (documentation)"

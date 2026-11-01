@@ -86,12 +86,13 @@
 %   Subpackages
 %     +migrators_j     - the did_v1 -> V_eta per-document migrators, one file
 %                        per v1 class.
-%                        +migrators_j/+super holds the superclass migrators.
 %                        Its Contents.m carries a GENERATED roster of every
 %                        migrator (tools/check_migrator_roster.py).
-%     +migrators       - the fallback for a class with no +migrators_j file
-%                        (`identity` returns the body unchanged), and the
-%                        helpers some +migrators_j files delegate to.
+%     +v1read          - reading helpers each migrator calls on the raw v1
+%                        document (base, depends_on, app, the element_epoch
+%                        clocks, the ngrid block). There is no +migrators
+%                        package and no superclass migrator ([early migration
+%                        pieces fixed] (1), Jess Haley, 2026-10-26).
 %     +entities        - shared emitters for the entity tier (entityDoc,
 %                        relationDoc, orgFor, ...).
 %     +readers         - pure-read entry points for the two v1 DID

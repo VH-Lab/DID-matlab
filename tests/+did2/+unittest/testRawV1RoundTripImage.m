@@ -491,7 +491,7 @@ end
 end
 
 function testATimestampTheSuperclassMigratorRefusesStillQuarantines(testCase)
-% the superclass migrator's refusals (+super/image_stack_parameters), called by
+% the superclass migrator's refusals (private/jImageStackParameters), called by
 % the leaf on the raw block: the same documents quarantine, with its identifiers
 cases = {[739038.5; 739039.5], 'did2:convert:imageStackParametersNonScalarTimestamp'; ...
     '2024-06-01', 'did2:convert:imageStackParametersCharTimestamp'};

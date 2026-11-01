@@ -169,7 +169,7 @@ function [body, datumType, sourceDatumType] = jNgridBody(preBody, statementId, n
 %   The caller passes the ONE-PLANE dims; without it this helper would emit a
 %   fourth axis of length 2 describing a dimension the body does not contain.
 %
-%   See also: jSampledBody, did2.convert.migrators_j.super.ngrid,
+%   See also: jSampledBody, did2.convert.v1read.ngridBlock,
 %             did2.convert.migrators_j.ontology_image
 
 % Positional, with `arguments` used only for the shape check every other
@@ -203,7 +203,7 @@ if ~isfield(preBody, 'ngrid') || ~isstruct(preBody.ngrid)
 end
 block = preBody.ngrid;
 
-% The base-migrator output shape cannot come from a did_v1 document; +super/ngrid.m
+% The base-migrator output shape cannot come from a did_v1 document; +v1read/ngridBlock.m
 % makes the same refusal for the same reason and with the same identifier, so a
 % body that somehow reached here past it still cannot be folded from names NDI
 % has never written.
@@ -254,7 +254,7 @@ else
          'they must re-concatenate to the stored vector exactly. Splitting it ' ...
          'here on a guessed order would mislabel axes in a document that ' ...
          'validates -- a silent loss, which is the same failure ' ...
-         '+migrators_j/+super/ngrid.m exists to stop. Refusing loudly instead.'], ...
+         '+v1read/ngridBlock.m exists to stop. Refusing loudly instead.'], ...
         sourceId(preBody), numel(coords), num2str(dataDim), ...
         sum(~cellfun(@isempty, axisCoords)), ...
         sum(cellfun(@numel, axisCoords)));

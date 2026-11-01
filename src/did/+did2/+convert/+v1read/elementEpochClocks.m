@@ -1,5 +1,13 @@
-function v2Body = element_epoch(preBody)
-%ELEMENT_EPOCH Base migrator: did_v1 element_epoch body -> the class-preserving V2 shape.
+function v2Body = elementEpochClocks(preBody)
+%ELEMENTEPOCHCLOCKS Read a RAW v1 `element_epoch` block's clocks: t0_t1 -> clocks(i).{name, t0, t1}.
+%
+%   A reading helper ([migrators read raw v1], Jess Haley, 2026-10-26: what
+%   is shared becomes reading helpers each migrator calls on the raw v1
+%   document), called by did2.convert.migrators_j.element_epoch and
+%   did2.convert.migrators_j.oneepoch. Until 2026-11-01 it was the old
+%   +migrators generation's base migrator did2.convert.v1read.elementEpochClocks;
+%   [early migration pieces fixed] (1) (Jess Haley, 2026-10-26) retires that
+%   generation, so it lives here, unchanged in what it does.
 %
 %   V2 represents element_epoch timing as a single `clocks`
 %   field of array-of-records shape:

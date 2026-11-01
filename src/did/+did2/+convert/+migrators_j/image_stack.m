@@ -197,7 +197,7 @@ function bodies = image_stack(preBody)
 %       block beside a different snake_case twin) carries the document,
 %       carry-100, as the renamed path carried it ([renames carry is
 %       temporary]);
-%     - the superclass migrator's work (+super/image_stack_parameters: a
+%     - the superclass migrator's work (private/jImageStackParameters: a
 %       non-scalar, non-empty char or non-numeric `timestamp` is refused) is
 %       done here by calling it on the parameters block, so the same documents
 %       quarantine with the same identifiers; its other job, stripping an
@@ -251,7 +251,7 @@ if isRaw
         return;
     end
     % the superclass migrator's refusals, on the raw block (see the header)
-    did2.convert.migrators_j.super.image_stack_parameters(struct( ...
+    jImageStackParameters(struct( ...
         'image_stack_parameters', getBlockAny(preBody, ...
         {'imageStack_parameters', 'image_stack_parameters'})));
 end

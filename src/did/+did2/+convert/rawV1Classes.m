@@ -43,7 +43,8 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     - its inverse +roundtrip/<class>.m, and a round-trip test on the NDI
 %       writer shape (tests/+did2/+unittest/testRawV1RoundTrip.m);
 %     - the class has no superclass migrator whose work the raw migrator now
-%       has to do itself (+migrators/<superclass>.m, +migrators_j/+super/).
+%       has to do itself (there is none since 2026-11-01: [early migration
+%       pieces fixed] (1); shared reads are did2.convert.v1read helpers).
 %   testRawV1RoundTrip checks the first two for every name listed.
 %
 %   THE LIST, and why each is here:
@@ -107,7 +108,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         trips: testRawV1RoundTripIngested.
 %     imageStack          the imaging family: superclasses `base` +
 %                         `imageStack_parameters`, no `app` block. The
-%                         superclass migrator (+super/image_stack_parameters)
+%                         superclass migrator (private/jImageStackParameters)
 %                         is called by the leaf on the raw block (and on a
 %                         raw v1 `image`'s, which the leaf converts too).
 %                         Written by +setup/+conv/+haley/doImport.m
@@ -131,7 +132,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     speedtuning_calc      + reverse_correlation + ngrid (hartley_calc), and
 %                         `calculator` + speed_tuning (speedtuning_calc). The
 %                         only superclass migrator any of them met is
-%                         +migrators_j/+super/ngrid.m (a guard, no reshape),
+%                         +v1read/ngridBlock.m (a guard, no reshape),
 %                         which hartley_calc now calls on the raw block; it
 %                         stays for ontologyImage (which calls it too). The old
 %                         +migrators wrappers (hartley_calc, speed_tuning_calc,
@@ -298,7 +299,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         ndi.element addepoch with EPOCHIDS. Round trips:
 %                         testRawV1RoundTripOneEpoch.
 %     ontologyImage       superclasses `base` + `ngrid` (whose guard,
-%                         +migrators_j/+super/ngrid.m, the raw migrator calls
+%                         +v1read/ngridBlock.m, the raw migrator calls
 %                         on the raw block). The writer's documents (they state
 %                         `ontologyNodes`) pass through unchanged under the v1
 %                         class name, which V_eta keeps no class for (counted,
