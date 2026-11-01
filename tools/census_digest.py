@@ -613,9 +613,14 @@ POST_PASSES = [
         # did-schema #88 (#73 item 39): no serialized probemap on the manifest,
         # so a document with ANY row that did not decompose keeps its tombstone.
         ("rename_skipped_rows_without_home", "  rename SKIPPED: a probemap row has no home (tombstone kept)"),
-        # #73 item 56: one shared acquisition_channels document per (rig, channels).
-        ("acquisition_channels_minted", "acquisition_channels documents minted"),
-        ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no channels doc)"),
+        # [probe wiring is a relation] (Jess Haley 2026-11-01): one `connected to`
+        # directed_relation per (probe, rig, epoch, channels); replaces #73 item
+        # 56's shared acquisition_channels document.
+        ("wiring_relations_minted", "probe wiring relations minted (connected to, RO:0002170)"),
+        ("rows_unwirable", "  rows with channels but no probe or no rig to wire (v1 document kept)"),
+        ("wiring_types_interleaved", "  rows whose channel types interleave (v1 document kept)"),
+        ("wiring_probe_in_several_rows", "  rows of a probe listed in several rows of one probe map (v1 document kept)"),
+        ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no wiring)"),
         ("channels_derived_read_mode", "  channel groups naming a derived read mode (dep, den, dimp, ...; not a channel type)"),
         ("rigs_without_daqsystem", "  rigs a devicestring names with no daqsystem document (no system minted)"),
         ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
@@ -795,6 +800,8 @@ POST_PASSES = [
         # date_created/date_updated have no home in the data_body model is no
         # longer folded with the dates dropped; it is refused and carried as v1.
         ("refused_unplaced_dates", "  dates have no home: CARRIED AS v1"),
+        # pass 1 carried it as v1 (carry-100, carry-064): never folded
+        ("refused_carried_as_v1", "  carried as v1 by pass 1: not folded"),
         ("fold_quarantined", "QUARANTINED by the fold"),
         # 0 by construction -- this pass writes to no ontology_label. Printed
         # because `ontology_label` is a ~7,007-document passthrough class and a
@@ -5032,176 +5039,73 @@ def _int_or_none(v):
         return None
 
 
-ical = "moved_vintage_bodies_classified"
-
-# The `ndi_document` block's four shapes, read from NDI origin/main history
-# (`git log --all --follow -- ndi_common/database_documents/ndi_document.json`).
-# (report key, label). ORDER IS CHRONOLOGICAL, because the reading is "how far
-# back does this corpus go" and a sorted-by-size list destroys that.
-LEGACY_VINTAGES = [
-    ("moved_vintage_2019_05_unique_reference",
-     "2019-05 experiment_unique_reference/document_unique_reference"
-     "   NO identity survives"),
-    ("moved_vintage_2019_11_experiment_document_id",
-     "2019-11 experiment_id/document_id"
-     "                              NO identity survives"),
-    ("moved_vintage_2019_12_experiment_id_and_id",
-     "2019-12 experiment_id/id"
-     "                                       `id` lands, session_id does NOT"),
-    ("moved_vintage_2020_05_session_id_and_id",
-     "2020-05 session_id/id"
-     "                             SOUND -- both identity fields land"),
-    ("moved_vintage_unknown",
-     "UNKNOWN field set -- NOT rounded to the nearest vintage"),
-    ("moved_vintage_unreadable_block",
-     "UNREADABLE block (not a scalar struct; no field set to read)"),
+# How pass 1 routed each body (the report key keeps its old name,
+# `legacy_ndi_document`). did2.convert.v1_to_v2 routes every v1 body by its
+# raw v1 class to exactly one of these, or quarantines it, or fails before
+# routing; the rename pass (universalRenames) that once came first is deleted
+# ([migrators read raw v1], Jess Haley, 2026-10-26). (report key, label), in
+# the order v1_to_v2 tries them.
+ROUTES = [
+    ("bodies_skipped_already_target", "already a V2 document"),
+    ("bodies_read_raw_v1", "read raw v1 by its migrator (rawV1Classes)"),
+    ("bodies_carried_no_migrator",
+     "carried whole, no migrator (noMigratorCarryRows)"),
+    ("bodies_handed_to_later_step",
+     "handed on to its later step (ensemble, generic_file)"),
+    ("bodies_carried_parent_only",
+     "a superclass-only class standing alone, carried (carry-100)"),
+    ("bodies_no_migrator_quarantined",
+     "no migrator and no recorded decision: QUARANTINED"),
+    ("bodies_unreached", "failed before routing"),
 ]
 
 
-def render_legacy_vintages(L, p):
-    """The vintage breakdown of the wholesale-move arm, denominator first.
-
-    WHY THIS EXISTS SEPARATELY FROM THE ARM COUNT. `moved_wholesale_no_base` on
-    its own cannot say whether anything broke. The `ndi_document` block had FOUR
-    shapes, and the 2020-05-19 one -- which ran until base.json replaced it on
-    2023-04-13, nearly three years, the longest-lived of the four -- already
-    spells `id`/`session_id`, so the wholesale move lands identity CORRECTLY and
-    only `type` + `database_version` arrive undeclared. The two 2019 shapes land
-    with no usable identity at all. One number mixes a sound migration with a
-    broken one.
-
-    THE SIX PARTITION THE ARM by construction (did2.convert.v1_to_v2 raises
-    did2:convert:legacyVintagePartitionBroken otherwise), so this prints the sum
-    against the denominator and SAYS SO when they disagree rather than rendering
-    a breakdown that does not add up. A report predating the counters is named
-    UNMEASURED, never summed as zero.
-
-    READ `unknown` FIRST WHEN IT IS NON-ZERO. It means a real block carried a
-    field set the four-vintage account does not predict -- which is the way this
-    measurement is most likely to be wrong, and it is deliberately not rounded
-    into a neighbouring bucket.
-    """
-    if not any(k in L for k, _ in LEGACY_VINTAGES) and ical not in L:
-        p("      *** VINTAGE BREAKDOWN: UNMEASURED -- this report predates the")
-        p("      *** classifier. NOT the same as 'no legacy blocks'; the arm")
-        p("      *** count above stands, its composition is simply unknown.")
-        return
-    den = _int_or_none(L.get(ical))
-    p("      vintage of the %s moved block(s), classified on the FIELD SET:"
-      % ("?" if den is None else den))
-    total = 0
-    for key, label in LEGACY_VINTAGES:
-        v = _int_or_none(L.get(key))
-        if v is None:
-            p("          %8s  %s" % ("--", label))
-        else:
-            total += v
-            p("          %8d  %s" % (v, label))
-    if den is not None and total != den:
-        p("      *** THE BUCKETS DO NOT PARTITION THE ARM: %d summed, %d "
-          "classified." % (total, den))
-        p("      *** A body reached no bucket. Do not read the breakdown above")
-        p("      *** as a composition -- it is missing documents.")
-    arm = _int_or_none(L.get("moved_wholesale_no_base"))
-    if den is not None and arm is not None and den != arm:
-        p("      *** %d body(ies) took the wholesale-move arm and %d reached "
-          "the classifier." % (arm, den))
-
-
 def render_legacy_ndi_document(r, out):
-    """Render the legacy identity-block counter (`ndi_document` -> `base`).
+    """Render pass 1's routing table, denominator first.
 
-    THE ZERO IS THE DELIVERABLE HERE, so this block prints whenever the key is
-    present, all-zero included. did_v1 documents written before 2023 carried
-    document identity under `ndi_document`, not `base`, and the six fields of
-    the 2019 block are not the four of `base`:
-
-        ndi_document.json, added 4f1a2b801 (2019-05-05)
-          experiment_unique_reference, document_unique_reference,
-          name, type, datestamp, database_version              SIX
-        base.json, added 9783809c2 (2023-04-13), NDI origin/main today
-          id, session_id, name, datestamp                      FOUR
-
-    did2.convert.universalRenames handles that difference by MOVING THE BLOCK
-    WHOLESALE -- it renames the container and does nothing to the contents, on
-    the one code path that exists precisely because the contents differ. A
-    genuine 2019 body therefore lands in `base` with four undeclared fields and
-    both required identity fields missing, and quarantines.
-
-    THREE READING INSTRUCTIONS, and the first two are the ones that matter:
-
-    (1) THE DENOMINATOR IS `bodies_reaching_universal_renames`, NOT `total`.
-        The dispatcher's idempotency short-circuit skips the rename pass for a
-        body already at the target version, so a re-run over migrated bodies
-        reports every arm at 0 having inspected nothing. `bodies_total`,
-        `bodies_skipped_already_target` and `bodies_unreached` close the gap
-        and sum to `bodies_total` by construction.
-    (2) ALL-ZERO IS THE EXPECTED READING AND IT MEANS "NOT IN THIS SAMPLE".
-        Corpus run 31464483119 inspected 633,432 documents across 6 corpora
-        and quarantined 0, so no pre-`base` document is in any corpus we hold.
-        That is a fact about the sample and NOT evidence none exist -- a
-        2019-era NDI database is exactly what this migration is for. The size
-        of the defect is UNMEASURED, not zero.
-    (3) `moved_wholesale_no_base` MEANS NOTHING WITHOUT THE `moved_carrying_*`
-        LINE UNDER IT. A 2020-vintage `ndi_document` block already spells
-        `id`/`session_id` and moves soundly; only a block carrying
-        `experiment_unique_reference` / `document_unique_reference` / `type` /
-        `database_version` is the 2019 shape the defect is about.
-
-    The two arms are NEVER SUMMED. `discarded_ndi_document_base_present` is a
-    stale block dropped beside a good `base`; `moved_wholesale_no_base` is a
-    block that IS the document's only identity. Different facts.
+    PRINTED WHENEVER THE KEY IS PRESENT, all-zero rows included: a zero row
+    says no body took that route, and an absent row would read the same as an
+    unmeasured one. The routes partition `bodies_total`; when they do not sum
+    to it the block SAYS SO rather than rendering a breakdown that does not add
+    up. A report written while the rename pass still ran (it carries
+    `bodies_reaching_universal_renames`) is named as such: its routes are not
+    this table's.
     """
     p = lambda s="": out.append(s)
     L = r.get("legacy_ndi_document")
     if not L:
         return
-    p("  legacy ndi_document block: %s bod(ies) reached universalRenames "
-      "(of %s; %s already at target, %s never reached it)"
-      % (L.get("bodies_reaching_universal_renames", "?"),
-         L.get("bodies_total", "?"),
-         L.get("bodies_skipped_already_target", "?"),
-         L.get("bodies_unreached", "?")))
-    if L.get("bodies_read_raw_v1"):
-        # [migrators read raw v1] (Jess Haley, 2026-10-26): a switched class's
-        # body is read raw and never reaches the pass; it is not "unreached"
-        p("  %s bod(ies) read raw v1 by a switched class's migrator "
-          "(did2.convert.rawV1Classes; not inspected by the pass)"
-          % L.get("bodies_read_raw_v1"))
-    if L.get("bodies_carried_no_migrator"):
-        # [classes without a migrator carry as v1] (Jess Haley, 2026-10-31): a
-        # class with no migrator is carried whole as v1 and never reaches the pass
-        p("  %s bod(ies) carried whole as v1, their class having no migrator "
-          "(did2.convert.noMigratorCarryRows; not inspected by the pass)"
-          % L.get("bodies_carried_no_migrator"))
-    if L.get("bodies_reaching_universal_renames") == 0:
-        p("  *** 0 bodies reached the rename pass -- every count below is")
-        p("  *** vacuous. This is what a re-run over already-migrated bodies")
-        p("  *** looks like; it is NOT 'no legacy blocks found'.")
-    p("      %8s  carried an `ndi_document` block"
-      % L.get("ndi_document_block_seen", "?"))
-    p("      %8s  MOVED WHOLESALE into `base` (no `base` present)  <-- the defect"
-      % L.get("moved_wholesale_no_base", "?"))
-    p("      %8s  discarded (`base` present and wins)"
-      % L.get("discarded_ndi_document_base_present", "?"))
-    if not L.get("moved_wholesale_no_base"):
+    if "bodies_reaching_universal_renames" in L:
+        p("  pass-1 routing: this report predates the deletion of the rename "
+          "pass; %s of %s bod(ies) reached universalRenames"
+          % (L.get("bodies_reaching_universal_renames", "?"),
+             L.get("bodies_total", "?")))
         return
-    p("      of the moved: %s missing required `id`, %s missing `session_id`"
-      % (L.get("moved_missing_id", "?"), L.get("moved_missing_session_id", "?")))
-    p("                    %s carrying %s field(s) `base` does not declare"
-      % (L.get("moved_with_any_undeclared_field", "?"),
-         L.get("moved_undeclared_field_instances", "?")))
-    p("                    field names present: %s experiment_unique_reference, "
-      "%s document_unique_reference, %s type, %s database_version"
-      % (L.get("moved_carrying_experiment_unique_reference", "?"),
-         L.get("moved_carrying_document_unique_reference", "?"),
-         L.get("moved_carrying_type", "?"),
-         L.get("moved_carrying_database_version", "?")))
-    render_legacy_vintages(L, p)
-    for key, label in (("moved_by_class", "moved wholesale"),
-                       ("discarded_by_class", "discarded")):
-        for k, v in sorted((L.get(key) or {}).items(), key=lambda kv: -kv[1])[:15]:
-            p("      %8s  %s (%s)" % (v, k, label))
+    p("  pass-1 routing: %s bod(ies)" % L.get("bodies_total", "?"))
+    total = 0
+    unmeasured = []
+    for key, label in ROUTES:
+        v = _int_or_none(L.get(key))
+        if v is None:
+            unmeasured.append(key)
+            p("      %8s  %s" % ("--", label))
+        else:
+            total += v
+            p("      %8d  %s" % (v, label))
+    den = _int_or_none(L.get("bodies_total"))
+    if unmeasured:
+        p("      *** NOT MEASURED: %s" % ", ".join(unmeasured))
+    elif den is not None and total != den:
+        p("      *** THE ROUTES DO NOT PARTITION THE BATCH: %d summed, %d "
+          "bod(ies)." % (total, den))
+    if L.get("bodies_handed_to_later_step"):
+        p("      of those handed on: %s checked against the NDI template, %s "
+          "NOT CHECKED (no template set), %s carried malformed (carry-100)"
+          % (L.get("later_step_template_checked", "?"),
+             L.get("later_step_template_not_checked", "?"),
+             L.get("later_step_carried_malformed", "?")))
+    p("      %8s  held an `ndi_document` block beside `base` (read as `base`)"
+      % L.get("ndi_document_block_seen", "?"))
 
 
 # --- THE OTHER HALF OF THE GATE: ORPHAN depends_on EDGES ------------------
@@ -6302,111 +6206,39 @@ def rollup(reports, out):
 
 
 def rollup_legacy_ndi_document(reports, out):
-    """Cross-corpus total for the legacy identity block, denominator first.
+    """Cross-corpus total of pass 1's routing table, denominator first.
 
-    THE TOTAL IS THE NUMBER THAT GETS QUOTED, and for this counter the number
-    that will be quoted is "how many pre-`base` documents are there". It is
-    expected to be 0 over every corpus we hold, and a 0 summed over four
-    corpora is not the same fact as a 0 summed over six -- so the count of
-    reports that CARRIED the block prints beside the count that were summed.
-    A report predating the counter contributes nothing and is NAMED, never
-    silently treated as a zero.
+    A report without the routing counters (none at all, or one written while
+    the rename pass still ran) contributes nothing and is NAMED, never summed
+    as a zero.
     """
     p = lambda s="": out.append(s)
-    keys = ("bodies_reaching_universal_renames", "ndi_document_block_seen",
-            "moved_wholesale_no_base", "discarded_ndi_document_base_present",
-            "moved_missing_id", "moved_missing_session_id",
-            "moved_undeclared_field_instances",
-            "moved_carrying_experiment_unique_reference",
-            "moved_carrying_document_unique_reference")
+    keys = ["bodies_total"] + [k for k, _ in ROUTES] + ["ndi_document_block_seen"]
     totals = dict((k, 0) for k in keys)
     carried, missing = 0, []
     for i, r in enumerate(reports):
         L = r.get("legacy_ndi_document")
         name = str(r.get("corpus") or "report #%d" % (i + 1))
-        if not L:
+        if not L or "bodies_reaching_universal_renames" in L:
             missing.append(name)
             continue
         carried += 1
         for k in keys:
-            try:
-                totals[k] += int(L.get(k) or 0)
-            except (TypeError, ValueError):
-                pass
+            totals[k] += _int_or_none(L.get(k)) or 0
     p("")
-    p("  LEGACY IDENTITY BLOCK (`ndi_document` -> `base`)")
-    p("      DENOMINATOR: %d of %d report(s) carried the counter; "
-      "%d bod(ies) reached did2.convert.universalRenames"
-      % (carried, len(reports), totals["bodies_reaching_universal_renames"]))
+    p("  PASS-1 ROUTING")
+    p("      DENOMINATOR: %d of %d report(s) carried the routing counters; "
+      "%d bod(ies)" % (carried, len(reports), totals["bodies_total"]))
     if missing:
-        p("      *** NOT SUMMED (no counter in the report): %s"
+        p("      *** NOT SUMMED (no routing counters in the report): %s"
           % ", ".join(missing))
     if carried == 0:
-        p("      *** nothing to sum. This is NOT '0 pre-base documents'.")
+        p("      *** nothing to sum.")
         return
-    p("      %8d  carried an `ndi_document` block"
+    for k, label in ROUTES:
+        p("      %8d  %s" % (totals[k], label))
+    p("      %8d  held an `ndi_document` block beside `base` (read as `base`)"
       % totals["ndi_document_block_seen"])
-    p("      %8d  MOVED WHOLESALE into `base` (the defect); %d of them lost "
-      "`id`, %d lost `session_id`"
-      % (totals["moved_wholesale_no_base"], totals["moved_missing_id"],
-         totals["moved_missing_session_id"]))
-    p("      %8d  discarded (`base` present and wins) -- a DIFFERENT fact, "
-      "never summed with the line above"
-      % totals["discarded_ndi_document_base_present"])
-    p("      %8d  field(s) moved into `base` that `base` does not declare"
-      % totals["moved_undeclared_field_instances"])
-    p("      %8d  block(s) carrying experiment_unique_reference, "
-      "%d carrying document_unique_reference"
-      % (totals["moved_carrying_experiment_unique_reference"],
-         totals["moved_carrying_document_unique_reference"]))
-
-    # THE VINTAGE ROLLUP, summed only over the reports that CARRIED it -- which
-    # may be fewer than the reports carrying the parent block, because the
-    # classifier landed later than the arm counter. That gap is printed and the
-    # reports are NAMED; a report predating the classifier is UNMEASURED, never
-    # a zero. Same rule as the parent, one level down.
-    vcarried, vmissing, vtotals = 0, [], dict((k, 0) for k, _ in LEGACY_VINTAGES)
-    vden = 0
-    for i, r in enumerate(reports):
-        L = r.get("legacy_ndi_document") or {}
-        name = str(r.get("corpus") or "report #%d" % (i + 1))
-        if not L:
-            continue
-        if ical not in L and not any(k in L for k, _ in LEGACY_VINTAGES):
-            vmissing.append(name)
-            continue
-        vcarried += 1
-        vden += _int_or_none(L.get(ical)) or 0
-        for k, _label in LEGACY_VINTAGES:
-            vtotals[k] += _int_or_none(L.get(k)) or 0
-    p("      VINTAGE BREAKDOWN: summed over %d of %d report(s) carrying the "
-      "block; %d block(s) classified" % (vcarried, carried, vden))
-    if vmissing:
-        p("      *** NO CLASSIFIER (predates it, UNMEASURED not zero): %s"
-          % ", ".join(vmissing))
-    if vcarried == 0:
-        p("      *** nothing to sum. The arm's COMPOSITION is unknown, which is")
-        p("      *** not the same as the arm being empty.")
-    else:
-        for k, label in LEGACY_VINTAGES:
-            p("          %8d  %s" % (vtotals[k], label))
-        vsum = sum(vtotals.values())
-        if vsum != vden:
-            p("      *** THE BUCKETS DO NOT PARTITION THE ARM ACROSS THE "
-              "SAMPLE: %d summed, %d classified." % (vsum, vden))
-        if vtotals["moved_vintage_unknown"]:
-            p("      *** %d block(s) carried a field set the four-vintage "
-              "account does not predict." % vtotals["moved_vintage_unknown"])
-            p("      *** READ THIS ROW FIRST. It is the way this measurement is")
-            p("      *** most likely to be wrong, and it was NOT rounded into a")
-            p("      *** neighbouring vintage.")
-
-    if totals["moved_wholesale_no_base"] == 0:
-        p("      *** 0 across the sample. Corpus run 31464483119 inspected")
-        p("      *** 633,432 documents across 6 corpora and quarantined 0, so")
-        p("      *** no pre-`base` document is in any corpus we hold. That is")
-        p("      *** a fact about the SAMPLE and NOT evidence none exist: the")
-        p("      *** size of this defect is UNMEASURED, not zero.")
 
 
 def rollup_metadata_tier(reports, out):

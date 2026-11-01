@@ -77,19 +77,6 @@ for k = 1:numel(out.migrated)
 end
 end
 
-function testBothPathsMakeTheSameCarrier(testCase)
-for v1 = {epochDoc('ee_1', 'el_probe', 't00001', 'dev_local_time', [0; 10.5], false), ...
-        epochDoc('ee_3', 'el_probe', 't00002', 'dev_local_time', [0; 12], true)}
-    raw = runRaw(v1{1});
-    old = did2.convert.v1_to_v2(v1{1}, 'Validate', false, 'TargetVersion', 'did_v2', ...
-        'RawV1Classes', {});
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
-    a = raw.migrated{1}.toStruct();
-    b = old.migrated{1}.toStruct();
-    verifyTrue(testCase, isequaln(a, b), sprintf('raw %s; renamed %s', jsonencode(a), jsonencode(b)));
-end
-end
-
 % ===================== helpers =========================================
 
 function out = runRaw(v1)

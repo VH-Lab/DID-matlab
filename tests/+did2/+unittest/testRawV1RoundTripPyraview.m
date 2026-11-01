@@ -147,17 +147,6 @@ verifyEqual(testCase, nLevels, numel(v1.files.file_list), 'one level body per fi
 verifyEqual(testCase, nWithInfo, numel(fi), 'every file_info entry is on its level');
 end
 
-function testTheSwitchChangesNoOutcome(testCase)
-for b = bands()
-    v1 = writerShape(b{1});
-    % pass 1 (both defer) and epochMint's re-run (both fold, or both carry)
-    for batch = {{v1}, {stamped(v1)}}
-        [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(batch{1});
-        verifyEmpty(testCase, problems, sprintf('%s: %s', b{1}, strjoin(problems, '; ')));
-    end
-end
-end
-
 function testTheCarriesNameTheirReason(testCase)
 v1 = writerShape('high');
 v1.pyraview.gain = 2;

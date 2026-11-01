@@ -332,7 +332,6 @@ v1 = jsondecode(jsonencode(controlFixture()));
 out = runJ(v1);
 L = out.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_read_raw_v1, 1);
-verifyEqual(testCase, L.bodies_reaching_universal_renames, 0);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 emitted = out.migrated{1}.toStruct();

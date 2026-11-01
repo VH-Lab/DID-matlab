@@ -25,8 +25,8 @@ function bodies = contrast_sensitivity_calc(preBody)
 %   in either spelling ({name, version} / {app_name, app_version};
 %   jSoftwareFromApp, checked by did2.convert.v1read.readApp); NDI's camelCase
 %   result fields (e.g. sensitivity_RBNS) read case- and underscore-insensitively
-%   (jTuningCurve / jContrastSensitivityValue), so the universalRenames path
-%   ('RawV1Classes', {}) converts the same way. Every other field is accounted
+%   (jTuningCurve / jContrastSensitivityValue), so a body in the spelling
+%   of the rename pass (since deleted) converts the same way. Every other field is accounted
 %   for (jCalculation 'AccountForEveryField'); a carry is the untouched v1
 %   source. did2.convert.roundtrip.contrastsensitivity_calc rebuilds the v1 document;
 %   testRawV1RoundTripTuning compares the two on the writer's output

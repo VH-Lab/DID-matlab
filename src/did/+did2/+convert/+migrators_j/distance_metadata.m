@@ -60,8 +60,7 @@ function bodies = distance_metadata(preBody)
 %   writes it), and the reshape the old base migrator
 %   (+migrators/distance_metadata.m, deleted) did on the universalRenames
 %   spelling (ontology_node_a, integer_i_ds_a, ...) is done here on the v1
-%   spelling (and on that one, which v1_to_v2's 'RawV1Classes', {} path still
-%   hands it until universalRenames is deleted). Every v1 field and where it
+%   spelling (and on that one, which the rename pass, since deleted, wrote). Every v1 field and where it
 %   goes;
 %   did2.convert.roundtrip.distance_metadata rebuilds the v1 document and
 %   testRawV1RoundTripPosition compares the two:

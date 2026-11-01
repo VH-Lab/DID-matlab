@@ -31,7 +31,6 @@ function testTheClassIsSwitched(testCase)
 verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'vmspikefilteringparameters')));
 out = runRaw(writerFilter('vfp_1', ''));
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testTheTemplateShapeFoldsAndRoundTrips(testCase)
@@ -42,22 +41,6 @@ verifyEmpty(testCase, out.passthrough, 'folded, not carried');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'vmspikefilteringparameters', {});
-end
-
-function testTheBagKeepsTheRenamedSpelling(testCase)
-% the raw block says rm60Hz; the bag says filter.rm60_hz, as it did on the
-% renamed path (testMigratorsJMethodParams pins the bag itself)
-v1 = writerFilter('vfp_1', '');
-raw = runRaw(v1);
-old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'did_v2', ...
-    'RawV1Classes', {});
-verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
-for j = 1:min(numel(raw.migrated), numel(old.migrated))
-    a = raw.migrated{j}.toStruct();
-    b = old.migrated{j}.toStruct();
-    verifyTrue(testCase, isequaln(a, b), sprintf('document %d: raw %s; renamed %s', ...
-        j, jsonencode(a), jsonencode(b)));
-end
 end
 
 function testSpiketimesStillCarry(testCase)
@@ -92,16 +75,6 @@ verifyCarried(testCase, v1, 'unplaced: notes');
 v1 = writerFilter('vfp_x', '');
 v1.vmspikefilteringparameters.rm60_hz = 0;
 verifyCarried(testCase, v1, '[carry-100] malformed: outside the NDI template, unplaced: vmspikefilteringparameters.rm60Hz');
-end
-
-function testTheSwitchChangesNoOutcome(testCase)
-for v1 = {writerFilter('vfp_1', ''), writerFilter('vfp_s', [0.11 0.22]), ...
-        setfield(writerFilter('vfp_o', ''), 'app', struct('name', 'vhlab_voltage2firingrate', ...
-        'version', '0.9', 'url', '', 'os', 'GLNXA64', 'os_version', '', ...
-        'interpreter', '', 'interpreter_version', ''))} %#ok<SFLD>
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(v1);
-    verifyEmpty(testCase, problems, strjoin(problems, '; '));
-end
 end
 
 function testAChangedValueIsReportedLost(testCase)

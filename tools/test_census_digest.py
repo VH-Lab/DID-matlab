@@ -1962,36 +1962,28 @@ class TestNdiRequiredIdentities(DigestCase):
         self.assertIsNone(m["drift"])
 
 
-class TestLegacyNdiDocumentBlock(DigestCase):
-    """The legacy identity block (`ndi_document` -> `base`).
+class TestPassOneRouting(DigestCase):
+    """Pass 1's routing table (report key `legacy_ndi_document`).
 
-    THE COUNTER THIS COVERS IS EXPECTED TO READ ZERO on every corpus we hold,
-    which is exactly why it is tested here rather than only on a corpus run:
-    the whole value of the instrument is that a zero it PRINTS is
-    distinguishable from a zero nothing measured. No MATLAB is available in
-    this environment, so the MATLAB half (universalRenames' report,
-    v1_to_v2's accumulator, writeCorpusReport's persist) is UNEXECUTED and CI
-    is its first run; the Python half is covered by these tests.
+    did2.convert.v1_to_v2 routes every v1 body by its raw v1 class (the rename
+    pass universalRenames is deleted, [migrators read raw v1]). The whole value
+    of the instrument is that a zero it PRINTS is distinguishable from a zero
+    nothing measured, and that the routes are shown to partition the batch.
     """
 
     def _legacy(self, **over):
         L = {"bodies_total": 1000,
-             "bodies_reaching_universal_renames": 1000,
              "bodies_skipped_already_target": 0,
-             "bodies_unreached": 0,
+             "bodies_read_raw_v1": 990,
+             "bodies_carried_no_migrator": 4,
+             "bodies_handed_to_later_step": 3,
+             "bodies_carried_parent_only": 1,
+             "bodies_no_migrator_quarantined": 1,
+             "bodies_unreached": 1,
              "ndi_document_block_seen": 0,
-             "moved_wholesale_no_base": 0,
-             "discarded_ndi_document_base_present": 0,
-             "moved_missing_id": 0,
-             "moved_missing_session_id": 0,
-             "moved_with_any_undeclared_field": 0,
-             "moved_undeclared_field_instances": 0,
-             "moved_carrying_experiment_unique_reference": 0,
-             "moved_carrying_document_unique_reference": 0,
-             "moved_carrying_type": 0,
-             "moved_carrying_database_version": 0,
-             "moved_by_class": {},
-             "discarded_by_class": {}}
+             "later_step_template_checked": 3,
+             "later_step_template_not_checked": 0,
+             "later_step_carried_malformed": 0}
         L.update(over)
         return L
 
@@ -2002,231 +1994,79 @@ class TestLegacyNdiDocumentBlock(DigestCase):
             body["legacy_ndi_document"] = legacy
         self.write(name, body)
 
-    def test_an_all_zero_block_is_still_printed(self):
-        # The point of the whole exercise: "nothing in this sample" must be a
-        # line, not an absence. 633,432 documents across 6 corpora quarantined
-        # 0 at run 31464483119, so all-zero is the EXPECTED reading.
+    def test_the_denominator_precedes_the_routes(self):
         self._corpus("A", self._legacy())
         text, failed = self.run_digest()
         self.assertEqual(failed, [])
-        self.assertIn("MOVED WHOLESALE into `base` (no `base` present)", text)
-        self.assertIn("0  carried an `ndi_document` block", text)
+        den = text.index("pass-1 routing: 1000 bod(ies)")
+        route = text.index("read raw v1 by its migrator")
+        self.assertLess(den, route)
 
-    def test_the_denominator_precedes_the_arms(self):
-        # Rule 5, and here the denominator is NOT `total`.
-        self._corpus("A", self._legacy())
+    def test_an_all_zero_row_is_still_printed(self):
+        self._corpus("A", self._legacy(bodies_read_raw_v1=994,
+                                       bodies_handed_to_later_step=0))
         text, _ = self.run_digest()
-        den = text.index("bod(ies) reached universalRenames")
-        arm = text.index("MOVED WHOLESALE")
-        self.assertLess(den, arm)
+        self.assertIn("0  handed on to its later step", text)
+        self.assertIn("0  held an `ndi_document` block", text)
 
-    def test_the_denominator_is_the_pass_not_the_batch(self):
-        # A re-run over already-migrated bodies takes the idempotency
-        # short-circuit, so the rename pass sees nothing. That MUST NOT read as
-        # "no legacy blocks in this corpus".
-        self._corpus("A", self._legacy(bodies_reaching_universal_renames=0,
-                                       bodies_skipped_already_target=1000))
+    def test_routes_that_do_not_partition_the_batch_say_so(self):
+        self._corpus("A", self._legacy(bodies_read_raw_v1=900))
         text, _ = self.run_digest()
-        self.assertIn("0 bodies reached the rename pass", text)
-        self.assertIn("it is NOT 'no legacy blocks found'", text)
+        self.assertIn("THE ROUTES DO NOT PARTITION THE BATCH: 910 summed, "
+                      "1000 bod(ies)", text)
 
-    def test_the_two_arms_are_separate_numbers(self):
-        # Discarding a stale block beside a good `base` and moving a block that
-        # IS the only identity are different facts. Never summed.
-        self._corpus("A", self._legacy(ndi_document_block_seen=5,
-                                       moved_wholesale_no_base=2,
-                                       discarded_ndi_document_base_present=3))
+    def test_a_missing_route_reads_not_measured_not_zero(self):
+        L = self._legacy()
+        del L["bodies_carried_parent_only"]
+        self._corpus("A", L)
         text, _ = self.run_digest()
-        self.assertIn("2  MOVED WHOLESALE into `base` (no `base` present)", text)
-        self.assertIn("3  discarded (`base` present and wins)", text)
+        self.assertIn("NOT MEASURED: bodies_carried_parent_only", text)
+        self.assertNotIn("DO NOT PARTITION", text)
 
-    def test_a_moved_block_prints_the_vintage_discriminator(self):
-        # An arm count alone cannot say whether anything is broken: a
-        # 2020-vintage block already spells id/session_id and moves soundly.
-        self._corpus("A", self._legacy(
-            ndi_document_block_seen=2, moved_wholesale_no_base=2,
-            moved_missing_id=2, moved_missing_session_id=2,
-            moved_with_any_undeclared_field=2,
-            moved_undeclared_field_instances=8,
-            moved_carrying_experiment_unique_reference=2,
-            moved_carrying_document_unique_reference=2,
-            moved_carrying_type=2, moved_carrying_database_version=2,
-            moved_by_class={"projectvar": 2}))
+    def test_the_later_step_template_check_is_reported(self):
+        self._corpus("A", self._legacy(later_step_template_checked=1,
+                                       later_step_template_not_checked=1,
+                                       later_step_carried_malformed=1))
         text, _ = self.run_digest()
-        self.assertIn("2 missing required `id`, 2 missing `session_id`", text)
-        self.assertIn("2 carrying 8 field(s) `base` does not declare", text)
-        # THE LABEL ON THIS ROW WAS "2019 vintage:" AND IT WAS WRONG ABOUT
-        # ITSELF. `type` and `database_version` are in ALL FOUR vintages of the
-        # ndi_document block, not only the 2019 ones, so a row headed "2019
-        # vintage" that counts them read as evidence of a vintage it does not
-        # discriminate. The row is now headed "field names present" and the
-        # vintage question is answered by the classifier below it.
-        self.assertIn("field names present: 2 experiment_unique_reference", text)
-        self.assertNotIn("2019 vintage: 2 experiment_unique_reference", text)
-        self.assertIn("2  projectvar (moved wholesale)", text)
-        # ...and this fixture carries NO classifier, so the composition must
-        # read UNMEASURED rather than as six zeros.
-        self.assertIn("VINTAGE BREAKDOWN: UNMEASURED", text)
-
-    # ---- the vintage classifier on the wholesale-move arm ----------------
-    #
-    # The `ndi_document` block had FOUR shapes and two consecutive pairs differ
-    # by ONE field name, so the moved_carrying_* rows above cannot name a
-    # vintage. These assert the breakdown that can, and -- more importantly --
-    # that a report predating the classifier reads as UNMEASURED rather than as
-    # six zeros, and that a breakdown which does not partition its arm SAYS SO.
-
-    def _vintages(self, **over):
-        v = {"moved_vintage_bodies_classified": 0,
-             "moved_vintage_2019_05_unique_reference": 0,
-             "moved_vintage_2019_11_experiment_document_id": 0,
-             "moved_vintage_2019_12_experiment_id_and_id": 0,
-             "moved_vintage_2020_05_session_id_and_id": 0,
-             "moved_vintage_unknown": 0,
-             "moved_vintage_unreadable_block": 0}
-        v.update(over)
-        return v
-
-    def test_the_vintage_breakdown_prints_its_denominator_before_the_buckets(self):
-        # Rule 5, and here the denominator is the CLASSIFIER's, not the arm's
-        # and not the batch's.
-        self._corpus("A", self._legacy(
-            ndi_document_block_seen=4, moved_wholesale_no_base=4,
-            **self._vintages(moved_vintage_bodies_classified=4,
-                             moved_vintage_2019_05_unique_reference=1,
-                             moved_vintage_2020_05_session_id_and_id=3)))
-        text, _ = self.run_digest()
-        den = text.index("vintage of the 4 moved block(s)")
-        bucket = text.index("2020-05 session_id/id")
-        self.assertLess(den, bucket)
-        self.assertIn("3  2020-05 session_id/id", text)
-        self.assertIn("SOUND -- both identity fields land", text)
-
-    def test_a_report_predating_the_classifier_reads_UNMEASURED_not_zero(self):
-        # THE WHOLE POINT OF THE SEPARATE BUCKET SET. Six printed zeros would
-        # claim the arm is composed entirely of nothing, which is a measurement
-        # that was never taken.
-        self._corpus("A", self._legacy(ndi_document_block_seen=2,
-                                       moved_wholesale_no_base=2))
-        text, _ = self.run_digest()
-        self.assertIn("VINTAGE BREAKDOWN: UNMEASURED", text)
-        self.assertNotIn("0  2020-05 session_id/id", text)
-
-    def test_buckets_that_do_not_partition_the_arm_say_so(self):
-        # A body that reached no bucket is what the `unknown` bucket exists to
-        # catch. If it happens anyway, the breakdown must not render as a
-        # composition -- it is missing documents.
-        self._corpus("A", self._legacy(
-            ndi_document_block_seen=5, moved_wholesale_no_base=5,
-            **self._vintages(moved_vintage_bodies_classified=5,
-                             moved_vintage_2020_05_session_id_and_id=3)))
-        text, _ = self.run_digest()
-        self.assertIn("THE BUCKETS DO NOT PARTITION THE ARM: 3 summed, "
-                      "5 classified", text)
-        self.assertIn("A body reached no bucket", text)
-
-    def test_an_arm_that_outruns_the_classifier_says_so(self):
-        # moved_wholesale_no_base and the classifier denominator are set at
-        # different places in countMovedBlock; if they ever diverge, a body took
-        # the arm and was never classified.
-        self._corpus("A", self._legacy(
-            ndi_document_block_seen=4, moved_wholesale_no_base=4,
-            **self._vintages(moved_vintage_bodies_classified=3,
-                             moved_vintage_2020_05_session_id_and_id=3)))
-        text, _ = self.run_digest()
-        self.assertIn("4 body(ies) took the wholesale-move arm and 3 reached "
-                      "the classifier", text)
-
-    def test_the_unknown_bucket_is_called_out_rather_than_listed_quietly(self):
-        # An unrecognised field set means the four-vintage account is
-        # incomplete, which is the way this measurement is most likely to be
-        # wrong. It must not sit as one row among six.
-        self._corpus("A", self._legacy(
-            ndi_document_block_seen=2, moved_wholesale_no_base=2,
-            **self._vintages(moved_vintage_bodies_classified=2,
-                             moved_vintage_2020_05_session_id_and_id=1,
-                             moved_vintage_unknown=1)))
-        text, _ = self.run_digest()
-        self.assertIn("NOT rounded to the nearest vintage", text)
-        self.assertIn("1 block(s) carried a field set the four-vintage "
-                      "account does not predict", text)
-        self.assertIn("READ THIS ROW FIRST", text)
-
-    def test_the_rollup_names_reports_that_carry_no_classifier(self):
-        # THE legacy_ndi_document PATTERN ONE LEVEL DOWN. The classifier landed
-        # after the arm counter, so a sample can carry the block everywhere and
-        # the breakdown only somewhere. Summing the gap as zero would understate
-        # every vintage.
-        self._corpus("A", self._legacy(
-            ndi_document_block_seen=1, moved_wholesale_no_base=1,
-            **self._vintages(moved_vintage_bodies_classified=1,
-                             moved_vintage_2020_05_session_id_and_id=1)))
-        self._corpus("B", self._legacy(ndi_document_block_seen=1,
-                                       moved_wholesale_no_base=1))
-        text, _ = self.run_digest()
-        self.assertIn("VINTAGE BREAKDOWN: summed over 1 of 2 report(s)", text)
-        self.assertIn("NO CLASSIFIER (predates it, UNMEASURED not zero): B",
+        self.assertIn("of those handed on: 1 checked against the NDI template, "
+                      "1 NOT CHECKED (no template set), 1 carried malformed",
                       text)
 
-    def test_the_rollup_says_when_nothing_carried_the_classifier(self):
-        # A zero over zero reports is not a composition. It must not read like
-        # one.
-        self._corpus("A", self._legacy(ndi_document_block_seen=1,
-                                       moved_wholesale_no_base=1))
+    def test_a_report_from_the_rename_pass_era_is_named_not_routed(self):
+        self._corpus("A", {"bodies_total": 10,
+                           "bodies_reaching_universal_renames": 10})
         text, _ = self.run_digest()
-        self.assertIn("VINTAGE BREAKDOWN: summed over 0 of 1 report(s)", text)
-        self.assertIn("The arm's COMPOSITION is unknown, which is", text)
+        self.assertIn("predates the deletion of the rename pass; 10 of 10", text)
+        self.assertIn("NOT SUMMED (no routing counters in the report): A", text)
 
     def test_a_report_without_the_block_prints_nothing(self):
-        # An older report predates the counter. Rendering it as zeros would
-        # claim a measurement that was never taken.
         self._corpus("A", None)
         text, failed = self.run_digest()
         self.assertEqual(failed, [])
-        self.assertNotIn("legacy ndi_document block", text)
+        self.assertNotIn("pass-1 routing:", text)
 
     def test_the_rollup_sums_across_corpora_with_its_denominator(self):
-        self._corpus("A", self._legacy(ndi_document_block_seen=1,
-                                       moved_wholesale_no_base=1,
-                                       moved_missing_id=1))
-        self._corpus("B", self._legacy(ndi_document_block_seen=2,
-                                       moved_wholesale_no_base=2,
-                                       moved_missing_id=2))
+        self._corpus("A", self._legacy())
+        self._corpus("B", self._legacy(ndi_document_block_seen=2))
         text, _ = self.run_digest()
-        self.assertIn("LEGACY IDENTITY BLOCK (`ndi_document` -> `base`)", text)
-        self.assertIn("DENOMINATOR: 2 of 2 report(s) carried the counter", text)
-        self.assertIn("3  MOVED WHOLESALE into `base` (the defect); 3 of them",
-                      text)
+        self.assertIn("PASS-1 ROUTING", text)
+        self.assertIn("DENOMINATOR: 2 of 2 report(s) carried the routing "
+                      "counters; 2000 bod(ies)", text)
+        self.assertIn("1980  read raw v1 by its migrator", text)
+        self.assertIn("2  held an `ndi_document` block", text)
 
     def test_the_rollup_names_a_report_that_carries_no_counter(self):
-        # A report predating the counter must not be summed as a zero. That
-        # substitution is how "12,296 documents, three classes" survived for
-        # months while the real figure was 26,406.
         self._corpus("A", self._legacy())
         self._corpus("B", None)
         text, _ = self.run_digest()
-        self.assertIn("DENOMINATOR: 1 of 2 report(s) carried the counter", text)
-        self.assertIn("NOT SUMMED (no counter in the report): B", text)
+        self.assertIn("DENOMINATOR: 1 of 2 report(s) carried the routing "
+                      "counters", text)
+        self.assertIn("NOT SUMMED (no routing counters in the report): B", text)
 
-    def test_a_zero_rollup_says_unmeasured_not_clean(self):
-        self._corpus("A", self._legacy())
-        text, _ = self.run_digest()
-        self.assertIn("UNMEASURED, not zero", text)
-
-    def test_no_report_carrying_the_counter_is_not_zero_pre_base_documents(self):
+    def test_no_report_carrying_the_counter_says_nothing_to_sum(self):
         self._corpus("A", None)
         text, _ = self.run_digest()
-        self.assertIn("nothing to sum. This is NOT '0 pre-base documents'",
-                      text)
-
-    def test_a_missing_counter_prints_a_question_mark_not_a_zero(self):
-        L = self._legacy()
-        del L["moved_missing_id"]
-        L["moved_wholesale_no_base"] = 1
-        L["ndi_document_block_seen"] = 1
-        self._corpus("A", L)
-        text, _ = self.run_digest()
-        self.assertIn("? missing required `id`", text)
+        self.assertIn("*** nothing to sum.", text)
 
 
 class ThreePassCase(DigestCase):

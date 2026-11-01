@@ -99,7 +99,6 @@ verifyTrue(testCase, any(strcmp(names, 'stimulus_response_scalar')));
 verifyTrue(testCase, any(strcmp(names, 'stimulus_response_scalar_parameters_basic')));
 r = runRaw({writerResponse('resp_1', 'mean', 3), writerParameters('par_0', 0)});
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, 2);
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 % ===================== writer-shaped responses: wait for their epoch ======
@@ -324,9 +323,7 @@ deps{1}.version = 2;
 v1.depends_on = [deps{:}];
 v1 = jsondecode(jsonencode(v1));
 raw = runRaw(v1);
-old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.passthrough), 1, 'raw: carried');
-verifyEqual(testCase, numel(old.passthrough), 1, 'renamed: carried');
 d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
 emitted = raw.migrated{1}.toStruct();
@@ -338,66 +335,11 @@ function testAConflictingKnobSpellingIsCarriedOnBothPaths(testCase)
 v1 = writerParameters('par_c', 1);
 v1.stimulus_response_scalar_parameters_basic.freqResponse = 2;
 raw = runRaw(v1);
-old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.passthrough), 1);
-verifyEqual(testCase, numel(old.passthrough), 1);
 verifyEqual(testCase, raw.migrated{1}.get('document_class.schema_version'), 'did_v1');
-verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1');
 end
 
 % ===================== the switch changes no outcome ======================
-
-function testTheSwitchChangesNoOutcome(testCase)
-% "keep behaviour identical": a converted document is the one the renamed
-% path converted (ids are deterministic, practice (b)); a carry is carried on
-% both paths, the raw one the untouched v1 source; the parameters passthrough
-% is the same document on both paths, before and after the batch pass
-fixtures = {writerResponse('resp_m', 'mean', 6), writerResponse('resp_one', 'F1', 1), ...
-    convertibleResponse('resp_c1', 'F1', ''), convertibleResponse('resp_c9', 'mean', '', ''), ...
-    writerParameters('par_0', 0), writerParameters('par_2', 2)};
-for k = 1:numel(fixtures)
-    v1 = fixtures{k};
-    raw = runRaw(v1);
-    old = runRenamed(v1);
-    label = sprintf('fixture %d (%s %s)', k, v1.document_class.class_name, v1.base.id);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), [label ': passed through on one path only']);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    if ~isempty(raw.passthrough) && strcmp(raw.migrated{1}.get('document_class.schema_version'), 'did_v1')
-        verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1', label);
-        continue;   % both carry; the raw carry is the v1 source (tested above)
-    end
-    if ~isempty(raw.passthrough) && strcmp(classNameOfBody(raw.migrated{1}.toStruct()), ...
-            'stimulus_response_scalar')
-        % handed on (the epoch gate) on both paths: the raw one keeps v1's
-        % `value` edge key where the renamed one had `document_id`, and
-        % states the same edges
-        a = raw.migrated{1}.toStruct();
-        b = old.migrated{1}.toStruct();
-        verifyEqual(testCase, edgeMap(a), edgeMap(b), label);
-        verifyTrue(testCase, isequaln(rmfield(a, 'depends_on'), rmfield(b, 'depends_on')), label);
-        continue;
-    end
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        b = old.migrated{j}.toStruct();
-        verifyTrue(testCase, isequaln(a, b), sprintf('%s, document %d: raw %s; renamed %s', ...
-            label, j, jsonencode(a), jsonencode(b)));
-    end
-end
-% after the batch pass: the same method from either path
-p = writerParameters('par_1', 1);
-r = convertibleResponse('resp_c3', 'F1', '', 'par_1');
-a = did2.convert.resolveResponseParameters(runRaw({r, p}), 'Validate', false, 'TargetVersion', 'did_v2');
-b = did2.convert.resolveResponseParameters(runRenamed({r, p}), 'Validate', false, 'TargetVersion', 'did_v2');
-verifyEqual(testCase, numel(a.migrated), numel(b.migrated));
-for j = 1:min(numel(a.migrated), numel(b.migrated))
-    verifyTrue(testCase, isequaln(a.migrated{j}.toStruct(), b.migrated{j}.toStruct()), ...
-        sprintf('after the batch pass, document %d differs', j));
-end
-verifyEqual(testCase, a.response_parameters_fold, b.response_parameters_fold);
-end
 
 function testAnUnreadableResponseIsCarriedOnBothPaths(testCase)
 % a response the fold cannot read (an unknown response_type) is carried whole
@@ -406,11 +348,8 @@ function testAnUnreadableResponseIsCarriedOnBothPaths(testCase)
 % no note before)
 v1 = convertibleResponse('resp_p', 'peak', '');
 raw = runRaw(v1);
-old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.passthrough), 1);
-verifyEqual(testCase, numel(old.passthrough), 1);
 verifyEqual(testCase, raw.migrated{1}.get('document_class.schema_version'), 'did_v1');
-verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1');
 d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-100] malformed: '), d);
 r = did2.convert.roundtrip.check(v1, raw.migrated);
@@ -422,11 +361,6 @@ end
 
 function out = runRaw(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
-end
-
-function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
-    'RawV1Classes', {});
 end
 
 function out = runFold(testCase, bodies)

@@ -19,8 +19,8 @@ function bodies = spatial_frequency_tuning_calc(preBody)
 %   in either spelling ({name, version} / {app_name, app_version};
 %   jSoftwareFromApp, checked by did2.convert.v1read.readApp); NDI's camelCase
 %   result fields (e.g. fit_dog.L50, Pref, R2) read case- and underscore-insensitively
-%   (jTuningCurve / jContrastSensitivityValue), so the universalRenames path
-%   ('RawV1Classes', {}) converts the same way. Every other field is accounted
+%   (jTuningCurve / jContrastSensitivityValue), so a body in the spelling
+%   of the rename pass (since deleted) converts the same way. Every other field is accounted
 %   for (jCalculation 'AccountForEveryField'); a carry is the untouched v1
 %   source. did2.convert.roundtrip.spatial_frequency_tuning_calc rebuilds the v1 document;
 %   testRawV1RoundTripTuning compares the two on the writer's output

@@ -194,11 +194,16 @@ out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function v1 = passthroughV1(sessionId, deps)
-% a class no migrator is named for: v1_to_v2 passes it through, so what comes
-% out is the pipeline's own outbound handling and nothing else
+% a body already stamped did_v2 that still holds `base.session_id` (what a
+% batch pass sends back through v1_to_v2): it takes the short-circuit, so what
+% comes out is the pipeline's own outbound handling and nothing else. (It was
+% a v1 class no migrator is named for, which reached the identity fallback;
+% that fallback is deleted, [early migration pieces fixed] (1), and such a
+% class now quarantines.)
 v1 = struct();
 v1.document_class = struct('class_name', 'session_id_probe', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
+    'schema_version', did2.schema.v2Stamp());
 v1.depends_on = deps;
 v1.base = struct('id', 'probe_1', 'session_id', sessionId, ...
     'name', 'probe', 'datestamp', '2024-06-01T12:00:00.000Z');

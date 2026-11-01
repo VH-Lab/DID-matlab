@@ -10,8 +10,8 @@ function tf = isFileReferenceClass(className)
 %                        (did2.convert.rawV1Classes), and keeps when it is
 %                        carried;
 %     'file_reference'   the renamed spelling universalRenames gives it, which a
-%                        record has when a caller runs v1_to_v2 without the
-%                        switch ('RawV1Classes', {}) or hands a batch pass a
+%                        record has when it was written while that pass ran
+%                        (it is deleted) or a caller hands a batch pass a
 %                        document built in that spelling.
 %
 %   The ONE place DID-matlab decides "is this a file record" by its class

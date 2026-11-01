@@ -5,11 +5,10 @@ function collision = jResponseRenameCollisions(preBody, twins)
 %   [rename clashes are malformed], did-schema did_v2_go_forward_class_audit.md).
 %
 %   COLLISION = jResponseRenameCollisions(PREBODY, TWINS). PREBODY is the RAW
-%   v1 document (did2.convert.rawV1Classes). On the renamed path,
-%   universalRenames' `dropped` output made v1_to_v2 carry such a document
-%   whole before any migrator ran (carry-049 until [rename clashes are
-%   malformed]). A switched migrator carries the same documents, under
-%   carry-100. COLLISION lists, for the parts of the
+%   v1 document (did2.convert.rawV1Classes). Such a document is carried
+%   whole under carry-100 ([rename clashes are malformed]; the rename pass,
+%   universalRenames, which carried it under its own temporary row, is
+%   deleted). COLLISION lists, for the parts of the
 %   document these migrators read:
 %     - a depends_on entry's non-empty `version`, or a second id key (`value`,
 %       `id`, `document_id`) holding a different id

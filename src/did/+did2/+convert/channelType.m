@@ -2,9 +2,11 @@ function [term, kind] = channelType(prefix)
 %CHANNELTYPE A v1 channel-type prefix as its acquisition channel type term.
 %
 %   [TERM, KIND] = did2.convert.channelType(PREFIX) maps the letters of a v1
-%   channel ('ai' of 'ai27', 'mk' of 'mk1') to the term
-%   acquisition_channels.channels.type is bound to (did-schema #88, Jess Haley
-%   2026-10-22 [channel types], B2a "with 10"; "should be real terms"):
+%   channel ('ai' of 'ai27', 'mk' of 'mk1') to its channel type term (did-schema
+%   #88, Jess Haley 2026-10-22 [channel types], B2a "with 10"; "should be real
+%   terms"), the variable of a probe wiring relation's condition (Jess Haley
+%   2026-11-01 [probe wiring is a relation]; acquisition_channels.channels.type
+%   before):
 %
 %       ai  EMPTY:0000370 analog input channel
 %       ao  EMPTY:0000371 analog output channel

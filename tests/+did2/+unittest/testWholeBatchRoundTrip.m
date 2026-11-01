@@ -75,6 +75,41 @@ verifyEqual(testCase, r.sources_compared, 2);
 verifyFalse(testCase, r.ok);
 end
 
+function testASourceALaterPassResolvedIsIdCheckedAndCompared(testCase)
+% pass 1 defers some sources (a stimulus_bath whose element it cannot read)
+% and a later pass puts a document under the v1 id (resolveDeferredBaths);
+% the report id-checks and compares it, and counts it apart. A source no
+% final document holds stays quarantined.
+[bodies, result] = cleanBatch();
+k = find(strcmp({result.source_outputs.id}, 'wb_subj_1'));
+% as pass 1 leaves a deferred source: not done, and neither its id nor its
+% class recorded (v1_to_v2 records them only when the body migrates)
+result.source_outputs(k).done = false;
+result.source_outputs(k).id = '';
+result.source_outputs(k).class_name = '';
+result.source_outputs(k).output_ids = {};
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_quarantined, 1);
+verifyEqual(testCase, r.sources_resolved_by_batch_pass, 1);
+verifyEqual(testCase, r.sources_still_quarantined, 0);
+verifyTrue(testCase, isfield(r.resolved_by_batch_pass_by_class, 'subject'), ...
+    'its class is read from the v1 body');
+verifyEqual(testCase, r.ids_kept, 3);
+verifyEqual(testCase, r.sources_compared, 3);
+verifyEqual(testCase, r.sources_ok, 3, describe(r));
+% its document gone: still quarantined, neither id-checked nor compared
+keep = true(1, numel(result.migrated));
+for j = 1:numel(result.migrated)
+    keep(j) = ~strcmp(char(result.migrated{j}.get('base.id')), 'wb_subj_1');
+end
+result.migrated = result.migrated(keep);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_still_quarantined, 1);
+verifyEqual(testCase, r.sources_resolved_by_batch_pass, 0);
+verifyEqual(testCase, r.ids_kept, 2);
+verifyEqual(testCase, r.sources_compared, 2);
+end
+
 function testAnIdADecisionReleasesIsCountedApartFromLost(testCase)
 % [a rebuilt document may lose its id] (Jess Haley, 2026-10-27): a source of a
 % listed class (here daqreader_mfdaq_epochdata_ingested, [segment length is

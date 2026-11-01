@@ -184,7 +184,7 @@ function bodies = ontology_label(preBody)
 %   `ontologyNode`, edge in v1's `value` key) and is handed back untouched, as
 %   a switched class's passthrough must be; did2.convert.roundtrip.ontologyLabel
 %   is its inverse (testRawV1RoundTripImage). The guard reads the block in
-%   either spelling, so the renamed path ('RawV1Classes', {}) still works. The
+%   either spelling, so a body in the deleted rename pass's spelling still reads. The
 %   readers that find labels by class name accept both spellings:
 %   did2.convert.isOntologyLabelClass (did2.convert.foldGenericFiles) and
 %   NDI-matlab's ndi.migrate.internal.isOntologyLabelClass (#1076).

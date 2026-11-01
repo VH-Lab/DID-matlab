@@ -1360,6 +1360,10 @@ if isfield(primary, 'epochid'); primary = rmfield(primary, 'epochid'); end
 if isfield(primary, 'daqmetadatareader_epochdata_ingested')
     primary = rmfield(primary, 'daqmetadatareader_epochdata_ingested');
 end
+% a fold writes V2 through the builder, which stamps did_v2; the rebuild's
+% v1_to_v2 call then takes the short-circuit (there is no identity fallback
+% for a class it would otherwise have to route: [early migration pieces fixed])
+primary.document_class.schema_version = did2.schema.v2Stamp();
 end
 
 

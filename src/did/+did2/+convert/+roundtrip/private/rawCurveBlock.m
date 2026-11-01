@@ -49,6 +49,17 @@ function [blk, bad] = rawCurveBlock(leaf, own, responseId)
 %   42 two-variable curves were reported "2 covariates: only one stimulus
 %   variable is rebuilt"). Covariates that are not one per dimension (the
 %   `experimental condition` shape) are still reported.
+%
+%   THE LABEL'S SPELLING. The writer's label is the calculator's own
+%   `input_parameters.independent_label`, split at ',' and each part trimmed
+%   (NDI-matlab locked `main`, +ndi/+calc/+stimulus/tuningcurve.m: `split`,
+%   `strtrim`), then joined by ',' (tuning_response.m `strjoin`): "Orientation"
+%   stays "Orientation", "spatial_frequency, temporal_frequency" becomes
+%   "spatial_frequency,temporal_frequency". So when OWN states it and its
+%   parts name the covariates' variables (compared ignoring case, ' ' as
+%   '_'), the label is rebuilt from it; otherwise from the term labels, lower
+%   case (Test code run 41339468679: 20211116's 42 Orientation curves lost
+%   only "Orientation" rebuilt "orientation").
 
 if nargin < 2; own = struct(); end
 if nargin < 3; responseId = ''; end
@@ -63,12 +74,12 @@ covs = getIn(leaf, 'data', 'covariates');
 if iscell(covs); covs = [covs{:}]; end
 if isscalar(covs)
     [~, label] = termParts(covs.variable);
-    blk.independent_variable_label = {lower(strrep(strtrim(label), ' ', '_'))};
+    blk.independent_variable_label = {writerLabel(own, {lower(strrep(strtrim(label), ' ', '_'))})};
     blk.independent_variable_value = column(getIn(covs, 'quantity', 'value'));
 elseif numel(covs) > 1
     [labels, points, order, why] = gridPoints(covs);
     if isempty(why)
-        blk.independent_variable_label = {strjoin(labels, ',')};
+        blk.independent_variable_label = {writerLabel(own, labels)};
         blk.independent_variable_value = points;
         value = flattenGrid(value, cellfun(@numel, gridLevels(covs)), order);
     else
@@ -135,6 +146,24 @@ for k = 1:numel(conds)
         names{end+1} = v1Name; %#ok<AGROW>
         values(end+1) = q; %#ok<AGROW>
     end
+end
+end
+
+function label = writerLabel(own, labels)
+%WRITERLABEL The label as the writer spells it (THE LABEL'S SPELLING above):
+%   the calculator's independent_label parts when they name LABELS, else
+%   LABELS; joined by ','.
+label = strjoin(labels, ',');
+src = getIn(own, 'input_parameters', 'independent_label');
+if iscell(src) && isscalar(src); src = src{1}; end
+if isstring(src) && isscalar(src); src = char(src); end
+if ~ischar(src) || isempty(strtrim(src))
+    return;
+end
+parts = strtrim(strsplit(src, ','));
+norm = @(c) lower(strrep(c, ' ', '_'));
+if numel(parts) == numel(labels) && isequal(norm(parts), norm(labels))
+    label = strjoin(parts, ',');
 end
 end
 

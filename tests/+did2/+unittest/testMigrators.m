@@ -36,11 +36,15 @@ function testTheUnreachedSuperclassMigratorsAreGone(testCase)
 % (did-schema V_eta_go_forward_class_audit.md): pyraview, the only class at the
 % locked NDI main that names `epochclocktimes` or `filter` as a superclass,
 % reads raw v1 (did2.convert.rawV1Classes), so no superclass pass reaches them,
-% and they are deleted. pyraview reads both blocks itself.
-for cls = {'epochclocktimes', 'filter'}
+% and they are deleted. pyraview reads both blocks itself. The superclass pass
+% itself, the identity fallback and +migrators/ngrid.m went with the rename
+% pass ([migrators read raw v1]; [early migration pieces fixed] (1)): a leaf
+% migrator calls +migrators_j/+super directly.
+for cls = {'epochclocktimes', 'filter', 'identity', 'ngrid'}
     verifyEmpty(testCase, which(['did2.convert.migrators.' cls{1}]), ...
         sprintf('+migrators/%s.m is back', cls{1}));
 end
+verifyEmpty(testCase, which('did2.convert.universalRenames'), 'universalRenames.m is back');
 verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'pyraview')), ...
     'pyraview no longer reads raw v1, so the superclass pass would reach it again');
 end
@@ -67,51 +71,13 @@ for cls = {'tuningcurve_calc', 'oridirtuning_calc', 'contrast_sensitivity_calc',
 end
 end
 
-function testUniversalRenamesAppBlockNameAndVersion(testCase)
-% v1 carries app.name / app.version; V2 uses app.app_name /
-% app.app_version. The rename is in universalRenames so it applies
-% to every doc that ships an app block, not just calc docs.
-v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
-    'input_parameters', []));
-v1.app = struct( ...
-    'name',                'ndi.calc.vis.oridir_tuning', ...
-    'version',             'fa67d45...', ...
-    'url',                 'https://github.com/VH-lab/NDI-matlab', ...
-    'os',                  'MACA64', ...
-    'os_version',          '15.6.1', ...
-    'interpreter',         'MATLAB', ...
-    'interpreter_version', '24.2');
-out = did2.convert.universalRenames(v1);
-verifyEqual(testCase, out.app.app_name, 'ndi.calc.vis.oridir_tuning');
-verifyEqual(testCase, out.app.app_version, 'fa67d45...');
-verifyFalse(testCase, isfield(out.app, 'name'));
-verifyFalse(testCase, isfield(out.app, 'version'));
-% Other app fields pass through unchanged.
-verifyEqual(testCase, out.app.interpreter, 'MATLAB');
-verifyEqual(testCase, out.app.os_version, '15.6.1');
-end
-
-function testUniversalRenamesAppBlockIsNoOpWithoutAppBlock(testCase)
-% Documents without an app block should be unaffected by the
-% app-block rename pass.
-v1 = wrap('probe_location', 'probe_location', struct( ...
-    'ontology_name', 'uberon:0002436', ...
-    'name',          'primary visual cortex'));
-out = did2.convert.universalRenames(v1);
-verifyFalse(testCase, isfield(out, 'app'));
-% probe_location.name is a *block field*, not the app.name field; it
-% should be left for the per-class migrator.
-verifyEqual(testCase, out.probe_location.name, 'primary visual cortex');
-end
-
 % --- element_epoch (20211116 corpus: 252 docs; JH corpus: 4156 multi-clock) ---
 
 function testElementEpochSingleClockBuildsOneRecord(testCase)
 v1 = wrap('element_epoch', 'element_epoch', struct( ...
     'epoch_clock', 'dev_local_time', ...
     't0_t1',       [0 930.34795]));
-out = did2.convert.migrators.element_epoch( ...
-    did2.convert.universalRenames(v1));
+out = did2.convert.migrators.element_epoch(v1);
 verifyEqual(testCase, numel(out.element_epoch.clocks), 1);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.element_epoch.clocks(1).t0, 0);
@@ -130,8 +96,7 @@ v1 = wrap('element_epoch', 'element_epoch', struct( ...
     'epoch_clock', 'dev_local_time,exp_global_time', ...
     't0_t1',       [0           738553.4082; ...
                     3599.69855  738553.4498]));
-out = did2.convert.migrators.element_epoch( ...
-    did2.convert.universalRenames(v1));
+out = did2.convert.migrators.element_epoch(v1);
 verifyEqual(testCase, numel(out.element_epoch.clocks), 2);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.element_epoch.clocks(1).t0, 0);
@@ -145,8 +110,7 @@ function testElementEpochAcceptsLegacyClocktype(testCase)
 v1 = wrap('element_epoch', 'element_epoch', struct( ...
     'clocktype', 'dev_local_time', ...
     't0_t1',     [0 1.5]));
-out = did2.convert.migrators.element_epoch( ...
-    did2.convert.universalRenames(v1));
+out = did2.convert.migrators.element_epoch(v1);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.element_epoch.clocks(1).t0, 0);
 verifyEqual(testCase, out.element_epoch.clocks(1).t1, 1.5);
@@ -164,7 +128,7 @@ cases = { ...
     struct('epoch_clock', 'dev_local_time'), 'missing'; ...
     struct('epoch_clock', 'dev_local_time', 't0_t1', 'abc'), 'not numeric'};
 for k = 1:size(cases, 1)
-    pre = did2.convert.universalRenames(wrap('element_epoch', 'element_epoch', cases{k, 1}));
+    pre = wrap('element_epoch', 'element_epoch', cases{k, 1});
     did2.convert.reportNote('reset');
     out = did2.convert.migrators.element_epoch(pre);
     notes = did2.convert.reportNote('collect');
@@ -184,7 +148,7 @@ cases = { ...
     struct('epoch_clock', '', 't0_t1', [0 1]), 'epoch_clock (missing'; ...
     struct('epoch_clock', 'dev_local_time', 'clocktype', 'utc', 't0_t1', [0 1]), 'clocktype'};
 for k = 1:size(cases, 1)
-    pre = did2.convert.universalRenames(wrap('element_epoch', 'element_epoch', cases{k, 1}));
+    pre = wrap('element_epoch', 'element_epoch', cases{k, 1});
     did2.convert.reportNote('reset');
     out = did2.convert.migrators.element_epoch(pre);
     notes = did2.convert.reportNote('collect');
@@ -195,8 +159,8 @@ for k = 1:size(cases, 1)
         sprintf('case %d: no note naming "%s"', k, cases{k, 2}));
 end
 % the same clock twice: the clocktype restates it and is dropped
-pre = did2.convert.universalRenames(wrap('element_epoch', 'element_epoch', ...
-    struct('epoch_clock', 'dev_local_time', 'clocktype', 'dev_local_time', 't0_t1', [0 1])));
+pre = wrap('element_epoch', 'element_epoch', ...
+    struct('epoch_clock', 'dev_local_time', 'clocktype', 'dev_local_time', 't0_t1', [0 1]));
 out = did2.convert.migrators.element_epoch(pre);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyFalse(testCase, isfield(out.element_epoch, 'clocktype'));
@@ -221,58 +185,6 @@ end
 % drops `data_size` / `coordinates` (did-schema #227): it returns the body
 % unchanged and notes the carry. The fixtures are ngrid documents now (they
 % were hartley_calc bodies, from when this ran as the superclass pass).
-
-function testNgridKeepsAllFourV1FieldsAndIsCarried(testCase)
-% INVERTED 2026-10-29 from testNgridDerivesNdimsFromDataDim (which asserted
-% the reshape to ndims / dim_sizes and the drop of data_size and coordinates)
-v1 = wrap('ngrid', 'ngrid', struct( ...
-    'data_size',   8, ...
-    'data_type',   'double', ...
-    'data_dim',    [200 200 36 2], ...
-    'coordinates', [0 1 2 3]));
-pre = did2.convert.universalRenames(v1);
-did2.convert.reportNote('reset');
-out = did2.convert.migrators.ngrid(pre);
-verifyEqual(testCase, out, pre, 'the body is returned unchanged');
-verifyEqual(testCase, out.ngrid.data_size, 8);
-verifyEqual(testCase, out.ngrid.data_dim, [200 200 36 2]);
-verifyEqual(testCase, out.ngrid.coordinates, [0 1 2 3]);
-verifyFalse(testCase, isfield(out.ngrid, 'ndims'));
-verifyFalse(testCase, isfield(out.ngrid, 'dim_sizes'));
-verifyEqual(testCase, did2.convert.reportNote('pending', 'carried_as_v1'), 1, ...
-    'the carry is noted');
-did2.convert.reportNote('reset');
-end
-
-function testNgridWithExplicitNdimsIsReturnedUnchanged(testCase)
-% INVERTED 2026-10-29 from testNgridPreservesExplicitNdims: nothing is derived
-% or overwritten; the body is carried as it came
-v1 = wrap('ngrid', 'ngrid', struct( ...
-    'ndims',    7, ...
-    'data_dim', [10 10]));
-pre = did2.convert.universalRenames(v1);
-out = did2.convert.migrators.ngrid(pre);
-did2.convert.reportNote('reset');
-verifyEqual(testCase, out, pre);
-end
-
-function testNgridNoOpWhenBlockAbsent(testCase)
-v1 = wrap('hartley_calc', 'hartley_calc', struct('input_parameters', []));
-out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
-did2.convert.reportNote('reset');
-verifyFalse(testCase, isfield(out, 'ngrid'));
-end
-
-function testNgridWithDimSizesIsReturnedUnchanged(testCase)
-% INVERTED 2026-10-29 from testNgridDerivesFromExistingDimSizes: no ndims is
-% derived
-v1 = wrap('ngrid', 'ngrid', struct('dim_sizes', [5 5 5]));
-pre = did2.convert.universalRenames(v1);
-out = did2.convert.migrators.ngrid(pre);
-did2.convert.reportNote('reset');
-verifyEqual(testCase, out, pre);
-verifyFalse(testCase, isfield(out.ngrid, 'ndims'));
-end
 
 function testAStandaloneNgridIsCarriedThroughTheDispatcher(testCase)
 % [ngrid with no statement carried] end to end: one document, the v1 source,

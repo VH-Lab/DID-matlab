@@ -42,8 +42,7 @@ function bodies = file_reference(preBody)
 %   makeSourceFile.m and +ndi/+fun/+doc/+gene/makeSourceFile.m write it, with
 %   attachFile false). Pass 1 still hands it back UNCHANGED, now under v1's
 %   class name and camelCase field names; the snake_case paragraph above
-%   describes the renamed path ('RawV1Classes', {}), which still passes the
-%   renamed body through. did2.convert.foldGenericFiles reads the record in
+%   describes the renamed path, deleted with universalRenames. did2.convert.foldGenericFiles reads the record in
 %   either spelling (did2.convert.isFileReferenceClass; its fields through
 %   recordBlock / charField / numField, which already took both). A record no
 %   pyramid names is a passthrough on both paths; NDI's last step stores its

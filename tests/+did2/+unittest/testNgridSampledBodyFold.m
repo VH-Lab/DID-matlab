@@ -332,13 +332,14 @@ function testANonAreaNodeIsCountedThroughTheDispatcher(testCase)
 v1 = foldableOntologyImage();
 v1.ontology_image.ontology_name = 'CL:0000540';
 v1.ontology_image.ontology_region = 'neuron';
+v1 = writerSpelled(v1);
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'non_area_ontology_node'));
 verifyEqual(testCase, notes.non_area_ontology_node.count, 1);
 verifyEqual(testCase, notes.non_area_ontology_node.details, {'CL:0000540'});
-area = did2.convert.v1_to_v2(foldableOntologyImage(), 'Validate', true, 'TargetVersion', 'did_v2');
+area = did2.convert.v1_to_v2(writerSpelled(foldableOntologyImage()), 'Validate', true, 'TargetVersion', 'did_v2');
 verifyFalse(testCase, isfield(area.summary.migration_notes, 'non_area_ontology_node'));
 end
 
@@ -596,7 +597,7 @@ function testTheFoldedSetVALIDATESThroughTheDispatcher(testCase)
 % With 'Validate', false this would pass even if image_observation required a
 % field the fold never sets -- which is exactly how a half-landed change slips
 % through. Validation ON is the point of this test.
-out = did2.convert.v1_to_v2(foldableOntologyImage(), ...
+out = did2.convert.v1_to_v2(writerSpelled(foldableOntologyImage()), ...
     'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 verifyEqual(testCase, out.summary.migrated_count, 3);   % was 4: no term observation
@@ -618,7 +619,7 @@ function testTheProductionShapeStillPassesThroughUnderValidation(testCase)
 % longer what this test exercises, and [one folder, final classes only] (Jess
 % Haley, 2026-10-29) deletes it. Every assertion below holds with or without
 % that file: no quarantine, one document, the carry noted.
-out = did2.convert.v1_to_v2(productionOntologyImage(), ...
+out = did2.convert.v1_to_v2(writerSpelled(productionOntologyImage()), ...
     'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 verifyEqual(testCase, out.summary.migrated_count, 1);
@@ -655,6 +656,29 @@ v1.base = struct('id', 'oi_prod', 'session_id', 'sess_09', 'name', '', ...
 v1.ontology_image = struct('ontology_nodes', 'uberon:0000955,uberon:0002436');
 v1.ngrid = struct('data_size', 8, 'data_type', 'double', ...
     'data_dim', [4 4], 'coordinates', defaultCoords([4 4]));
+end
+
+function v1 = writerSpelled(v1)
+%WRITERSPELLED A fixture of this file in NDI's own spelling, for the dispatcher.
+%   The fixtures here are spelled as the deleted rename pass (universalRenames)
+%   left them, which the migrator called directly still reads; through
+%   did2.convert.v1_to_v2 a class reaches its migrator only by its v1 name
+%   ([migrators read raw v1]): `ontologyImage`, its block `ontologyImage`
+%   (`ontologyNodes`; vintage A's `ontology_name` / `ontology_region` are v1's
+%   own legacy names), and the edge `ontologyTableRow_id`.
+v1.document_class.class_name = 'ontologyImage';
+blk = v1.ontology_image;
+if isfield(blk, 'ontology_nodes')
+    blk.ontologyNodes = blk.ontology_nodes;
+    blk = rmfield(blk, 'ontology_nodes');
+end
+v1.ontologyImage = blk;
+v1 = rmfield(v1, 'ontology_image');
+for k = 1:numel(v1.depends_on)
+    if strcmp(v1.depends_on(k).name, 'ontology_table_row_id')
+        v1.depends_on(k).name = 'ontologyTableRow_id';
+    end
+end
 end
 
 function v1 = vintageANoRaster()

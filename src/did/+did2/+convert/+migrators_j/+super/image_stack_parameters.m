@@ -19,9 +19,8 @@ function v2Body = image_stack_parameters(preBody)
 %   quarantine, same identifiers). The empty-placeholder strip has no raw
 %   counterpart: a raw passthrough is the untouched v1 source. A v1 `image`
 %   reads raw too since 2026-10-30 (image_stack calls this on its block the
-%   same way), so v1_to_v2 selects this file as a superclass migrator only on
-%   a body that still runs renamed ('RawV1Classes', {}); the refusals stay,
-%   called by image_stack.
+%   same way), so no superclass pass selects it any more (the pass went with the rename
+%   pass, [migrators read raw v1]); the refusals stay, called by image_stack.
 %
 %   ---------------------------------------------------------------------
 %   WHY A SUPERCLASS MIGRATOR AND NOT A CONCRETE ONE

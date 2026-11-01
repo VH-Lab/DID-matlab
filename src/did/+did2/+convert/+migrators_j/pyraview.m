@@ -126,7 +126,7 @@ function bodies = pyraview(preBody)
 %                                        info], Jess Haley, 2026-10-27)
 %
 %   The fields are read in either spelling (fieldByNormalisedName below), so a
-%   body that did come through universalRenames (v1_to_v2 'RawV1Classes', {})
+%   body that did come through the deleted rename pass (universalRenames)
 %   converts exactly as before; jRawAccount reads a V2-stamped body as already
 %   accounted for. A field, block or edge outside the templates carries the
 %   document whole as v1 (carry-100, [fields outside the template are

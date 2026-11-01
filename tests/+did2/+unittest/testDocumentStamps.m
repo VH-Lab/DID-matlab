@@ -93,11 +93,11 @@ verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v1'), 'V_eta
 end
 
 function testARerunNeverQuarantinesTheNewStamps(testCase)
-% A re-run over documents carrying either new stamp converts (did_v1) or
-% short-circuits (did_v2); neither is refused as an unknown vintage.
+% A re-run over documents carrying either new stamp is routed (did_v1; here
+% `projectvar`, carried whole as v1) or short-circuits (did_v2); neither is
+% refused as an unknown vintage.
 for sv = {'did_v1', 'did_v2'}
-    b = bodyStamped(sv{1});
-    b.unknown_class = struct('foo', 'bar');
+    b = asProjectvar(bodyStamped(sv{1}));
     r = did2.convert.v1_to_v2({b}, 'Validate', false);
     verifyEmpty(testCase, r.quarantine, sprintf('%s was quarantined', sv{1}));
     verifyNumElements(testCase, r.migrated, 1);
@@ -112,20 +112,25 @@ verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_skipped_already_targe
 end
 
 function testPassOneRecordsAPassthrough(testCase)
-% unknown_class has no migrator (identity): recorded, with its position, id
-% and the body pass 1 emitted.
-b = bodyUnstamped();
-b.unknown_class = struct('foo', 'bar');
+% projectvar has no migrator and is carried whole as v1
+% (did2.convert.noMigratorCarryRows): recorded, with its position, id and the
+% body pass 1 emitted.
+b = asProjectvar(bodyUnstamped());
 r = did2.convert.v1_to_v2({b}, 'Validate', false);
 verifyNumElements(testCase, r.passthrough, 1);
 verifyEqual(testCase, r.summary.passthrough_count, 1);
 verifyEqual(testCase, r.passthrough(1).input_index, 1);
 verifyEqual(testCase, r.passthrough(1).id, b.base.id);
-verifyEqual(testCase, r.passthrough(1).class_name, 'unknown_class');
+verifyEqual(testCase, r.passthrough(1).class_name, 'projectvar');
 verifyTrue(testCase, isequaln(r.passthrough(1).body, r.migrated{1}.toStruct()), ...
     'the recorded body must be the body pass 1 emitted');
-% writers stamp 'did_v2' ([document stamps])
-verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v2');
+% a carried document is a v1 document ([passthrough stays v1: how])
+verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v1');
+end
+
+function b = asProjectvar(b)
+b.document_class.class_name = 'projectvar';
+b.projectvar = struct('foo', 'bar');
 end
 
 function testPassOneDoesNotRecordAShortCircuit(testCase)
@@ -142,14 +147,15 @@ function testWritersStampDidV2(testCase)
 % one place, did2.schema.v2Stamp.
 verifyEqual(testCase, did2.schema.v2Stamp(), 'did_v2');
 % v1_to_v2 stamps the migrated body (TargetVersion 'V_eta' is the schema
-% set it targets, not the stamp)
+% set it targets, not the stamp); `subject` is converted by its migrator
 b = bodyUnstamped();
-b.unknown_class = struct('foo', 'bar');
+b.document_class.class_name = 'subject';
+b.subject = struct('local_identifier', 'mouse_42@lab', 'description', '');
+b.base.name = 'mouse_42@lab';
+b = jsondecode(jsonencode(b));
 r = did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'did_v2');
+verifyEmpty(testCase, r.quarantine);
 verifyEqual(testCase, r.migrated{1}.toStruct().document_class.schema_version, 'did_v2');
-% universalRenames defaults an absent stamp to the V2 stamp
-out = did2.convert.universalRenames(bodyUnstamped());
-verifyEqual(testCase, out.document_class.schema_version, 'did_v2');
 end
 
 function testAVEtaStampedBodyIsRefused(testCase)

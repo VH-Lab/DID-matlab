@@ -3,37 +3,49 @@ function result = v1_to_v2(v1Bodies, options)
 %
 %   RESULT = did2.convert.v1_to_v2(V1BODIES) takes one or more
 %   did_v1-shaped document bodies (struct, struct array, cell array, or
-%   JSON char) and runs each through this pipeline:
+%   JSON char) and routes each, by its v1 class (the v1 spelling, read
+%   from the RAW document by did2.convert.v1read.readStamp), to exactly one
+%   of these. No pass rewrites a v1 document before it is routed: Decided
+%   by Jess Haley, 2026-10-26 [migrators read raw v1], "a migrator reads v1
+%   exactly as v1 defines it"; did2.convert.universalRenames is deleted.
 %
-%     0. a class listed by did2.convert.rawV1Classes skips steps 1-2: its
-%        +migrators_j migrator reads the RAW v1 document (Decided by Jess
-%        Haley, 2026-10-26 [migrators read raw v1]); see 'RawV1Classes'.
-%        A class listed by did2.convert.noMigratorCarryRows has no migrator:
-%        it skips steps 1-4 and is carried whole as v1, the untouched v1
-%        source, citing its carry register row (Decided by Jess Haley,
-%        2026-10-31 [classes without a migrator carry as v1]); see
-%        'NoMigratorCarryClasses'
-%     1. did2.convert.universalRenames    (cross-cutting renames)
-%     2. matching superclass migrators: the V_eta override under
-%        +did2.+convert.+migrators_j.+super.<superclass_name> when one
-%        exists, else the base migrator under
-%        +did2.+convert.+migrators.<superclass_name>
-%     3. concrete-class migrator: the V_eta split/fold migrator under
-%        +did2.+convert.+migrators_j.<class_name> when one exists, else
-%        the base migrator under +did2.+convert.+migrators.<class_name>
-%        (identity fallback)
-%     4. ensureClassBlocks: pad empty `struct()` property blocks for
-%        every class in the V_eta inheritance chain that the v1
-%        source or the migrators did not already produce. Lets the
-%        validator pass without each migrator having to manufacture
-%        placeholder blocks for inherited classes. Silent no-op if
-%        the schema cache cannot resolve the chain.
+%     1. a class listed by did2.convert.rawV1Classes: its +migrators_j
+%        migrator reads the RAW v1 document and writes V2.
+%     2. a class listed by did2.convert.noMigratorCarryRows has no
+%        migrator: it is carried whole as v1, the untouched v1 source,
+%        citing its own carry register row (Decided by Jess Haley,
+%        2026-10-31 [classes without a migrator carry as v1]; 2026-11-01
+%        [last rename-pass classes] for hartley_reverse_correlation and
+%        reverse_correlation).
+%     3. `ensemble` and `generic_file` (LATER_STEP_CLASSES below):
+%        checked against NDI's v1 template for the class (did2.validate.
+%        v1Document) and handed on UNCHANGED, stamped did_v1, to the later
+%        step that converts them (NDI's second pass for `ensemble`,
+%        did2.convert.foldGenericFiles for `generic_file`); one holding a
+%        field outside its template is carried under carry-100 (Decided by
+%        Jess Haley, 2026-11-01 [ensemble and generic_file keep their
+%        conversions], [ensemble and generic_file checked as v1]).
+%     4. a superclass-only class standing alone (`app`, `calculator`,
+%        `epochid`, `stimulus_response`,
+%        `stimulus_response_scalar_parameters`; PARENT_ONLY_CLASSES below):
+%        malformed, carried whole
+%        under carry-100 (Decided by Jess Haley, 2026-11-01 [last
+%        rename-pass classes]).
+%     5. any other class: there is no migrator and no recorded decision, so
+%        the document QUARANTINES (did2:convert:noMigrator). There is no
+%        identity fallback ([early migration pieces fixed] (1), Jess Haley,
+%        2026-10-26: "a class with no migrator is a recorded decision, not
+%        an identity fallback").
+%
+%   Each converted (not carried) body then goes through ensureClassBlocks
+%   (pad empty `struct()` property blocks for every class in the V_eta
+%   inheritance chain) and is validated.
 %
 %   Bodies that are already converted (document_class.schema_version is a
 %   V2 stamp, 'did_v2' -- a stamp check, not a rank against 'V_eta', [early
 %   migration pieces fixed] (4), Jess Haley, 2026-10-26 -- AND no v1-only
 %   underscore-prefixed top-level markers; did2.convert.isAlreadyTarget)
-%   short-circuit steps 1-3 and
+%   skip the routing and
 %   go straight to ensureClassBlocks + validate. Makes the converter
 %   safely re-runnable so a partial normalisation or migration run can
 %   resume after an interruption
@@ -46,13 +58,13 @@ function result = v1_to_v2(v1Bodies, options)
 %     migrated   - cell array of did2.document instances that survived
 %                  every step.
 %     quarantine - struct array with original_body (char, JSON-encoded
-%                  input), class_name (char, post-universal-rename class
-%                  name, or '<unknown>' if reading the header failed),
+%                  input), class_name (char, the v1 class name as v1
+%                  spells it, or '<unknown>' if reading the header failed),
 %                  reason (char, the captured error message), and
 %                  failed_at (UTC ISO-8601 timestamp).
-%     passthrough - struct array, one per v1 document NO migrator changed
-%                  (superclass and concrete migrators returned the
-%                  universalRenames output unchanged): `input_index` (its
+%     passthrough - struct array, one per v1 document pass 1 emits
+%                  unchanged (a migrator returned its input, a carry, or a
+%                  class handed on to its later step): `input_index` (its
 %                  position in V1BODIES), `id` (base.id), `class_name`, and
 %                  `body` (the struct emitted for it). Report-only here; see
 %                  ndi.migrate.local, which stamps the ones still unchanged at
@@ -60,7 +72,7 @@ function result = v1_to_v2(v1Bodies, options)
 %                  v1: how]). `summary.passthrough_count` is its length.
 %     summary    - struct with `total`, `migrated_count`,
 %                  `quarantine_count`, and a `by_class` struct mapping
-%                  the post-universal class name to its migrated count.
+%                  each emitted class name to its migrated count.
 %
 %   Options (name-value):
 %     Validate         (1,1 logical, default true) - validate each
@@ -82,12 +94,6 @@ function result = v1_to_v2(v1Bodies, options)
 %                      that resolve to documents already stored in
 %                      this DB (e.g. when ingesting an incremental
 %                      batch on top of a populated database).
-%     RenameClassNames (1,1 logical, default true) - forward to
-%                      did2.convert.universalRenames. Pass false on
-%                      read paths whose bodies still spell their
-%                      identifiers in the legacy (camelCase) form so
-%                      the body stays schema-compatible while still
-%                      gaining the shared shape transformations.
 %     V1FileReader     (function handle or [], default []) - TEXT =
 %                      READER(V1BODY, FILENAME): the bytes of a file a v1
 %                      document attaches, for a migrator that must read it
@@ -102,25 +108,6 @@ function result = v1_to_v2(v1Bodies, options)
 %                      (did2.convert.unitQualityLabels; [sorted units are
 %                      cells or groups], Jess Haley, 2026-10-26). The batch's
 %                      own neuron_extracellular documents are read anyway.
-%     RawV1Classes     (cellstr, default did2.convert.rawV1Classes()) - the
-%                      v1 classes whose migrator takes the RAW v1 document:
-%                      no universalRenames, no superclass migrators, and a
-%                      carry is the untouched v1 source ([migrators read raw
-%                      v1]). Counted as `bodies_read_raw_v1` in
-%                      summary.legacy_ndi_document. Pass {} to run every
-%                      class through universalRenames as before the switch
-%                      (testRawV1RoundTrip compares the two).
-%     NoMigratorCarryClasses (cellstr, default
-%                      did2.convert.noMigratorCarryRows()) - the v1 classes
-%                      with no migrator, each carried whole as v1 (the
-%                      untouched v1 source, stamped did_v1) with a
-%                      `carried_as_v1` note citing its carry register row; no
-%                      universalRenames, no superclass migrators, no identity
-%                      fallback ([classes without a migrator carry as v1],
-%                      Jess Haley, 2026-10-31). Counted as
-%                      `bodies_carried_no_migrator` in
-%                      summary.legacy_ndi_document. Pass {} to run those
-%                      classes through universalRenames as before.
 %     Audits           (1,1 logical, default true) - run the report-only
 %                      census instruments over the batch (silentLoss,
 %                      fileList, timeReferenceFamilies) into
@@ -139,14 +126,13 @@ function result = v1_to_v2(v1Bodies, options)
 %                      callers can name the target they mean.
 %                      'V_eta' routes classes that have a Brainstorm-J
 %                      split/fold migrator under +did2.+convert.+migrators_j
-%                      through that migrator, targeting the V_eta model
+%                      (did2.convert.rawV1Classes) through that migrator,
+%                      targeting the V_eta model
 %                      (one `entity` class with a bound `type`; statements
 %                      whose class is the direction -- observation, assertion,
 %                      manipulation, calculation -- with the value kind as a
 %                      mixin; directed_relation documents; no injection/bath,
-%                      no escape hatch). A class with no +migrators_j file
-%                      takes its +migrators one (identity fallback). A 'V_eta'
-%                      target stamps
+%                      no escape hatch). A 'V_eta' target stamps
 %                      document_class.schema_version with the target name.
 %                      THIS IS PASS 1 ONLY: the batch post-passes and the
 %                      NDI second pass that complete a V_eta migration
@@ -161,7 +147,8 @@ function result = v1_to_v2(v1Bodies, options)
 %   EXECUTED. Neither is available in the environment it was written in, so
 %   CI is the first run of this code.
 %
-%   See also: did2.convert.universalRenames, did2.convert.migrators.
+%   See also: did2.convert.rawV1Classes, did2.convert.noMigratorCarryRows,
+%   did2.validate.v1Document.
 
 arguments
     v1Bodies
@@ -170,22 +157,25 @@ arguments
     options.Verbose (1,1) logical = false
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
-    options.RenameClassNames (1,1) logical = true
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'did_v2'
     options.Audits (1,1) logical = true
-    options.RawV1Classes cell = did2.convert.rawV1Classes()
-    options.NoMigratorCarryClasses cell = did2.convert.noMigratorCarryRows()
     options.UnitQualityLabels cell = {}
     options.V1FileReader = []
 end
 
-% [old ndi_document blocks carry] (Decided by Jess Haley, 2026-10-27): the note
-% for a document carried because it holds a legacy `ndi_document` block beside
-% `base` (hasLegacyBlockBesideBase), on the renamed path only (universalRenames
-% discards the block). On the raw path the block is read as `base` ([ndi_document
-% read as base], Jess Haley, 2026-10-31; readLegacyBlockAsBase).
-LEGACY_BLOCK_NOTE = ['[carry-049] universalRenames would discard: ndi_document ' ...
-    '(a legacy identity block beside base; [old ndi_document blocks carry])'];
+% The classes pass 1 hands on unchanged, stamped did_v1, to the later step that
+% converts them: NDI's second pass converts `ensemble`
+% (ndi.migrate.internal.ensembleMembership; [ensemble retired]),
+% did2.convert.foldGenericFiles converts `generic_file`. Each is first checked
+% against NDI's v1 template for its class (Decided by Jess Haley, 2026-11-01
+% [ensemble and generic_file keep their conversions], [ensemble and
+% generic_file checked as v1]).
+LATER_STEP_CLASSES = {'ensemble', 'generic_file'};
+% Superclass-only v1 templates no writer writes as a leaf. One standing alone
+% is malformed, carried whole under carry-100 (Decided by Jess Haley,
+% 2026-11-01 [last rename-pass classes]).
+PARENT_ONLY_CLASSES = {'app', 'calculator', 'epochid', 'stimulus_response', ...
+    'stimulus_response_scalar_parameters'};
 
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
@@ -287,10 +277,9 @@ emptyNames = {};
 emptyValues = [];
 % PASSED THROUGH, by input position (Decided by Jess Haley, 2026-10-24
 % [passthrough stays v1] and [passthrough stays v1: how], did-schema
-% V_eta_go_forward_class_audit.md): a v1 document that no migrator changed --
-% the superclass migrators AND the concrete migrator handed back the
-% universalRenames output unchanged -- is recorded with the body this pass
-% emitted for it. Pass 1 still emits it as today (the NDI second pass keeps
+% V_eta_go_forward_class_audit.md): a v1 document pass 1 emits unchanged -- a
+% migrator handed back its input, or a class handed on to its later step -- is
+% recorded with the body this pass emitted for it. Pass 1 still emits it as today (the NDI second pass keeps
 % receiving what it receives today); the caller that runs the WHOLE pipeline
 % (ndi.migrate.local) compares each recorded body with the document at the
 % end, and one still identical is stored as its v1 source, stamped 'did_v1'.
@@ -315,54 +304,48 @@ carriedUnvalValues = [];
 dimTermClasses = {};
 dimTermWritten = [];
 dimTermNoNode = [];
-% THE LEGACY IDENTITY BLOCK (`ndi_document` -> `base`). DENOMINATOR FIRST AND
-% UNCONDITIONALLY (Operating Rule 5): this struct is complete before the loop
-% starts and is attached to the summary whether or not any body carries the
-% block, so an all-zero block means "no body in this batch had one" and never
-% means "nothing looked".
+% HOW EACH BODY WAS ROUTED (the summary key keeps its old name,
+% `legacy_ndi_document`, which tools/census_digest.py reads). DENOMINATOR FIRST
+% AND UNCONDITIONALLY (Operating Rule 5): this struct is complete before the
+% loop starts and is attached to the summary whether or not any body is routed
+% to a given branch, so an all-zero row means "no body in this batch took that
+% branch" and never means "nothing looked". Every body takes exactly one
+% branch, or fails before any (`bodies_unreached`); the seven sum to
+% `bodies_total` by construction (see the subtraction after the loop).
 %
-% `bodies_reaching_universal_renames` is incremented AT THE CALL SITE, not
-% summed from the per-body reports, because a body that throws inside
-% universalRenames produces no report and would otherwise vanish from its own
-% denominator. `bodies_skipped_already_target` is the idempotency
-% short-circuit, which never calls the pass at all; the two plus
-% `bodies_unreached` account for `total` exactly.
+%   bodies_skipped_already_target   already a V2 document (isAlreadyTarget)
+%   bodies_read_raw_v1              its +migrators_j migrator read it raw
+%   bodies_carried_no_migrator      a class with no migrator, carried whole
+%                                   citing its own row (noMigratorCarryRows)
+%   bodies_handed_to_later_step     `ensemble` / `generic_file`, checked
+%                                   against its NDI template and handed on
+%   bodies_carried_parent_only      a superclass-only class standing alone,
+%                                   carried under carry-100
+%   bodies_no_migrator_quarantined  a class with no migrator and no recorded
+%                                   decision: quarantined
+%   bodies_unreached                failed before it could be routed (a
+%                                   non-struct input, undecodable JSON)
 %
-% WHAT THE NUMBERS MEAN is in did2.convert.universalRenames's header, and the
-% one-line version is: `moved_wholesale_no_base` is the arm that renames the
-% container and does nothing to the contents, on the one path that exists
-% because the contents differ; the `moved_vintage_*` counters say WHICH of the
-% four `ndi_document` shapes the block was, which is what decides whether the
-% move was sound. The 2020-05-19 vintage (the longest-lived, nearly three years)
-% already spells `id`/`session_id` and moves CORRECTLY; the two 2019 shapes land
-% with no usable identity at all. A single arm count mixes them.
+% `ndi_document_block_seen` counts the bodies that hold a non-empty legacy
+% `ndi_document` block beside `base`, which is read as `base` ([ndi_document
+% read as base], Jess Haley, 2026-10-31). Of the bodies handed to a later step,
+% `later_step_template_checked` were checked against an NDI template,
+% `later_step_template_not_checked` could not be (no template set:
+% DID_NDI_TEMPLATE_PATH / NDI_MATLAB), and `later_step_carried_malformed` held
+% a field outside it and were carried under carry-100 instead.
 legacy = struct( ...
-    'bodies_total',                        numel(bodies), ...
-    'bodies_reaching_universal_renames',   0, ...
-    'bodies_skipped_already_target',       0, ...
-    'bodies_read_raw_v1',                  0, ...
-    'bodies_carried_no_migrator',          0, ...
-    'bodies_unreached',                    0, ...
-    'ndi_document_block_seen',             0, ...
-    'moved_wholesale_no_base',             0, ...
-    'discarded_ndi_document_base_present', 0, ...
-    'moved_missing_id',                    0, ...
-    'moved_missing_session_id',            0, ...
-    'moved_with_any_undeclared_field',     0, ...
-    'moved_undeclared_field_instances',    0, ...
-    'moved_carrying_experiment_unique_reference', 0, ...
-    'moved_carrying_document_unique_reference',   0, ...
-    'moved_carrying_type',                 0, ...
-    'moved_carrying_database_version',     0, ...
-    'moved_vintage_bodies_classified',     0, ...
-    'moved_vintage_2019_05_unique_reference',       0, ...
-    'moved_vintage_2019_11_experiment_document_id', 0, ...
-    'moved_vintage_2019_12_experiment_id_and_id',   0, ...
-    'moved_vintage_2020_05_session_id_and_id',      0, ...
-    'moved_vintage_unknown',               0, ...
-    'moved_vintage_unreadable_block',      0);
-legacyMovedNames = {};   legacyMovedValues = [];
-legacyDiscNames  = {};   legacyDiscValues  = [];
+    'bodies_total',                    numel(bodies), ...
+    'bodies_skipped_already_target',   0, ...
+    'bodies_read_raw_v1',              0, ...
+    'bodies_carried_no_migrator',      0, ...
+    'bodies_handed_to_later_step',     0, ...
+    'bodies_carried_parent_only',      0, ...
+    'bodies_no_migrator_quarantined',  0, ...
+    'bodies_unreached',                0, ...
+    'ndi_document_block_seen',         0, ...
+    'later_step_template_checked',     0, ...
+    'later_step_template_not_checked', 0, ...
+    'later_step_carried_malformed',    0);
 % Notes a migrator leaves about HOW it migrated a document (did2.convert.
 % reportNote), e.g. a treatment whose route is unknown. Reset per batch; a
 % quarantined body's notes are dropped, since that body did not migrate.
@@ -377,12 +360,11 @@ restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
 % What each source became, for [dependents of a carried document carry]
 % (carryDependents, after the loop): done (not quarantined), carried as v1,
-% read raw, already a V2 document, its class, its id, its depends_on edges, and
+% already a V2 document, its class, its id, its depends_on edges, and
 % the indices of its documents in `migrated`.
 nBodies = numel(bodies);
 srcDone = false(nBodies, 1);
 srcCarried = false(nBodies, 1);
-srcRaw = false(nBodies, 1);
 srcTarget = false(nBodies, 1);
 srcClass = cell(nBodies, 1);
 srcId = cell(nBodies, 1);
@@ -403,6 +385,7 @@ for k = 1:numel(bodies)
     className = '<unknown>';
     passedThrough = false;
     carried = false;
+    laterStep = false;   % handed on unchanged to its later step (see the routing)
     noteMark = did2.convert.reportNote('mark');
     did2.convert.mintId('-popto', mintDepth);
     try
@@ -414,7 +397,7 @@ for k = 1:numel(bodies)
         refuseUnknownSchemaVersion(preBody);
         if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already stamped
-            % did_v2 (a stamp check), so skip universalRenames and the per-class migrators.
+            % did_v2 (a stamp check), so skip the routing and the per-class migrators.
             % ensureClassBlocks still runs (it rebuilds the target's
             % superclass chain — required) and validate still runs
             % (gate against drift). Keeps the database normalisation
@@ -432,15 +415,16 @@ for k = 1:numel(bodies)
                 legacy.bodies_skipped_already_target + 1;
         else
             rawClass = rawV1ClassNameOf(preBody);
-            if any(strcmp(rawClass, options.RawV1Classes))
-                % A CLASS SWITCHED TO RAW v1 (did2.convert.rawV1Classes;
+            if hasLegacyBlockBesideBase(preBody)
+                legacy.ndi_document_block_seen = legacy.ndi_document_block_seen + 1;
+            end
+            if any(strcmp(rawClass, did2.convert.rawV1Classes()))
+                % A CLASS WITH A MIGRATOR (did2.convert.rawV1Classes;
                 % Decided by Jess Haley, 2026-10-26 [migrators read raw v1]):
-                % its migrator reads the document exactly as v1 wrote it. No
-                % universalRenames, no superclass migrators; a carry is the
-                % untouched v1 source. Counted in the denominator below
-                % (`bodies_read_raw_v1`), so a raw body is never "unreached".
+                % its migrator reads the document exactly as v1 wrote it; a
+                % carry is the untouched v1 source. Counted in the denominator
+                % below (`bodies_read_raw_v1`).
                 legacy.bodies_read_raw_v1 = legacy.bodies_read_raw_v1 + 1;
-                srcRaw(k) = true;
                 className = rawClass;
                 v2Body = preBody;
                 carryBody = preBody;
@@ -477,26 +461,44 @@ for k = 1:numel(bodies)
                         || did2.convert.reportNote('pending', 'carried_with_element') > 0)
                     carried = true;
                 end
-            elseif any(strcmp(rawClass, options.NoMigratorCarryClasses))
+            elseif ~isempty(did2.convert.noMigratorCarryRows(rawClass)) ...
+                    || strcmp(rawClass, 'ngrid')
                 % A CLASS WITH NO MIGRATOR (did2.convert.noMigratorCarryRows;
                 % Decided by Jess Haley, 2026-10-31 [classes without a
                 % migrator carry as v1]: "the 9 v1 classes with no migrator
                 % are kept unchanged as v1 [...] Each would get a carry row,
-                % and a migrator can replace that row later"). Carried whole
-                % as v1: the untouched v1 source, no universalRenames, no
-                % superclass migrators, no identity fallback. Counted in the
-                % denominator below (`bodies_carried_no_migrator`). A legacy
-                % `ndi_document` block beside `base` is read as `base`
-                % ([ndi_document read as base], Jess Haley, 2026-10-31), so
-                % it needs no carry of its own: the class's row is cited.
+                % and a migrator can replace that row later"; 2026-11-01 [last
+                % rename-pass classes]: hartley_reverse_correlation and
+                % reverse_correlation "carried unchanged as v1, each with its
+                % own carry row"). Carried whole as v1: the untouched v1
+                % source. Counted in the denominator below
+                % (`bodies_carried_no_migrator`). A legacy `ndi_document`
+                % block beside `base` is read as `base` ([ndi_document read
+                % as base], Jess Haley, 2026-10-31), so it needs no carry of
+                % its own: the class's row is cited. A leaf `ngrid` is carried
+                % the same way under its own decision (Decided by Jess Haley,
+                % 2026-10-29 [ngrid with no statement carried]); it was the
+                % deleted +migrators/ngrid.m's whole job. A superclass `ngrid`
+                % block is read by its leaf's migrator
+                % (+migrators_j/+super/ngrid.m).
                 legacy.bodies_carried_no_migrator = legacy.bodies_carried_no_migrator + 1;
-                srcRaw(k) = true;
                 className = rawClass;
-                carryNote = sprintf(['%s awaiting_home: %s has no migrator ' ...
-                    '([classes without a migrator carry as v1])'], ...
-                    did2.convert.noMigratorCarryRows(rawClass), rawClass);
-                % carry-register: carry-158 carry-159 carry-160 carry-161
-                %   carry-162 carry-163 carry-164 via noMigratorCarryRows.m
+                if strcmp(rawClass, 'ngrid')
+                    carryNote = ['[carry-123] needs_mapping: a standalone ngrid ' ...
+                        'names no statement for its sampled_body ' ...
+                        '([ngrid with no statement carried])'];
+                else
+                    carryNote = sprintf(['%s awaiting_home: %s has no migrator ' ...
+                        '([classes without a migrator carry as v1])'], ...
+                        did2.convert.noMigratorCarryRows(rawClass), rawClass);
+                end
+                % carry-register: carry-123 carry-158 carry-159 carry-160
+                %   carry-161 carry-162 carry-163 carry-164 via
+                %   noMigratorCarryRows.m;
+                %   none for hartley_reverse_correlation and
+                %   reverse_correlation ('[carry-pending]') until their rows
+                %   are on did-schema main ([last rename-pass classes],
+                %   did-schema #260)
                 did2.convert.reportNote('carried_as_v1', className, ...
                     sourceIdOf(preBody), carryNote);
                 v2Body = preBody;
@@ -504,89 +506,89 @@ for k = 1:numel(bodies)
                 superUnchanged = true;
                 v2Bodies = {preBody};
                 carried = true;
-            else
-                % Incremented BEFORE the call: a body that throws inside the pass
-                % still reached it, and a denominator that quietly excluded the
-                % failures would be the "all-zero reads as clean" defect again.
-                legacy.bodies_reaching_universal_renames = ...
-                    legacy.bodies_reaching_universal_renames + 1;
-                [postUniversalBody, legacyReport, renameDropped] = did2.convert.universalRenames( ...
-                    preBody, 'RenameClassNames', options.RenameClassNames);
-                className = char(postUniversalBody.document_class.class_name);
-                carryBody = postUniversalBody;
-                legacy = accumulateLegacyReport(legacy, legacyReport);
-                if legacyReport.moved_wholesale_no_base
-                    [legacyMovedNames, legacyMovedValues] = bumpClassCounter( ...
-                        legacyMovedNames, legacyMovedValues, className);
-                end
-                if legacyReport.discarded_ndi_document_base_present
-                    [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
-                        legacyDiscNames, legacyDiscValues, className);
-                end
-                if hasLegacyBlockBesideBase(preBody)
-                    % [old ndi_document blocks carry] (Decided by Jess Haley,
-                    % 2026-10-27, did-schema V_eta_go_forward_class_audit.md:
-                    % "register row carry-049 widens to every class: a v1
-                    % document with an `ndi_document` block beside `base` is
-                    % carried whole as v1, never losing the block"). The carry
-                    % is the v1 source, NOT the universalRenames output, which
-                    % has discarded the block. universalRenames still ran above,
-                    % so its legacy counters still count the body.
-                    % carry-register: carry-049
-                    did2.convert.reportNote('carried_as_v1', className, ...
-                        sourceIdOf(preBody), LEGACY_BLOCK_NOTE);
-                    v2Body = preBody;
-                    superUnchanged = true;
-                    v2Bodies = {v2Body};
-                    carried = true;
-                elseif isempty(renameDropped)
-                    v2Body = applySuperclassMigrators(postUniversalBody, className, ...
-                        options.TargetVersion);
-                    superUnchanged = isequaln(v2Body, postUniversalBody);
-                    % runConcreteMigrator returns a CELL of one-or-more bodies.
-                    % A class with a base migrator only returns a single body; a
-                    % class with a +migrators_j split/fold migrator (treatment,
-                    % ...) may fan out to several (1 -> N).
-                    v2Bodies = runConcreteMigrator(v2Body, className, ...
-                        options.TargetVersion);
-                    % A CARRY IS THE V1 SOURCE, NOT THE SUPERCLASS-RESHAPED BODY.
-                    % A migrator carries a document by returning its input
-                    % unchanged with a `carried_as_v1` note ([generic stage is
-                    % lossless], [partly placed is carried as v1], Jess Haley,
-                    % 2026-10-25). Its input is the body AFTER the superclass
-                    % migrators, which may have reshaped it (+migrators/filter.m
-                    % renamed `type` -> `filter_type` until it was deleted,
-                    % 2026-10-27; the image_stack_parameters
-                    % override strips an empty `timestamp`), and such a body was
-                    % not recorded as a passthrough, so it came out under its
-                    % tombstone stamped did_v2. The carried document is the
-                    % universalRenames output instead -- the same body every other
-                    % passthrough is -- recorded as a passthrough, so the caller
-                    % stores its untouched v1 source, stamped did_v1.
-                    if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body) ...
-                            && (did2.convert.reportNote('pending', 'carried_as_v1') > 0 ...
-                            || did2.convert.reportNote('pending', 'carried_with_element') > 0)
-                        v2Body = postUniversalBody;
-                        v2Bodies = {postUniversalBody};
-                        superUnchanged = true;
-                        carried = true;
+            elseif any(strcmp(rawClass, LATER_STEP_CLASSES))
+                % HANDED ON TO ITS LATER STEP (Decided by Jess Haley,
+                % 2026-11-01 [ensemble and generic_file keep their
+                % conversions] and [ensemble and generic_file checked as v1]:
+                % "in the first pass, a v1 `ensemble` or `generic_file` is
+                % checked against NDI's v1 template at the locked main, as a
+                % carried v1 document already is ([carried v1 validates
+                % against NDI templates]), and is then converted by its later
+                % step as before"). Pass 1 emits the v1 document unchanged,
+                % stamped did_v1 (never validated against V_eta), recorded as
+                % a passthrough: NDI's second pass converts `ensemble`
+                % (ensembleMembership), did2.convert.foldGenericFiles converts
+                % `generic_file`, and what neither converts is stored as its
+                % v1 source (ndi.migrate.local carryUnchangedAsV1). A legacy
+                % `ndi_document` block beside `base` is read as `base`, as on
+                % every raw path.
+                legacy.bodies_handed_to_later_step = legacy.bodies_handed_to_later_step + 1;
+                className = rawClass;
+                carryBody = preBody;
+                superUnchanged = true;
+                [readBody, legacyUnplaced] = readLegacyBlockAsBase(preBody);
+                problems = legacyUnplaced;
+                if isempty(problems)
+                    [problems, checked] = laterStepTemplateProblems(readBody);
+                    if checked
+                        legacy.later_step_template_checked = ...
+                            legacy.later_step_template_checked + 1;
+                    else
+                        legacy.later_step_template_not_checked = ...
+                            legacy.later_step_template_not_checked + 1;
                     end
-                else
-                    % [generic stage is lossless] / [partly placed is carried as
-                    % v1] (Jess Haley, 2026-10-25): universalRenames discarded v1
-                    % content it keeps nowhere, so no migrator runs and the body is
-                    % a passthrough, carried whole as v1 (its v1 source is what the
-                    % end of ndi.migrate.local stores).
-                    % carry-register: carry-049 (v1_class '*', temporary: [renames
-                    % carry is temporary], removed with the pass)
-                    did2.convert.reportNote('carried_as_v1', className, ...
-                        sourceIdOf(preBody), ['[carry-049] universalRenames would discard: ' ...
-                        strjoin(renameDropped, ', ')]);
-                    v2Body = postUniversalBody;
-                    superUnchanged = true;
-                    v2Bodies = {v2Body};
-                    carried = true;
                 end
+                if ~isempty(problems)
+                    % [fields outside the template are malformed] (Jess Haley,
+                    % 2026-10-27): carried whole, never converted half-read
+                    legacy.later_step_carried_malformed = ...
+                        legacy.later_step_carried_malformed + 1;
+                    % carry-register: carry-100
+                    did2.convert.reportNote('carried_as_v1', className, ...
+                        sourceIdOf(preBody), ['[carry-100] malformed: outside ' ...
+                        'the NDI template: ' strjoin(problems, ', ')]);
+                    v2Body = preBody;
+                    v2Bodies = {preBody};
+                    carried = true;
+                else
+                    v2Body = readBody;
+                    v2Bodies = {readBody};
+                    laterStep = true;
+                end
+            elseif any(strcmp(rawClass, PARENT_ONLY_CLASSES))
+                % A SUPERCLASS-ONLY CLASS STANDING ALONE (Decided by Jess
+                % Haley, 2026-11-01 [last rename-pass classes]: "a v1 document
+                % whose own class is one of those five is malformed"). No
+                % writer writes one as a leaf; carried whole, carry-100
+                % ([fields outside the template are malformed]).
+                legacy.bodies_carried_parent_only = legacy.bodies_carried_parent_only + 1;
+                className = rawClass;
+                % carry-register: carry-100
+                did2.convert.reportNote('carried_as_v1', className, ...
+                    sourceIdOf(preBody), sprintf(['[carry-100] malformed: %s is a ' ...
+                    'superclass-only template, written here as a leaf ([last ' ...
+                    'rename-pass classes])'], rawClass));
+                v2Body = preBody;
+                carryBody = preBody;
+                superUnchanged = true;
+                v2Bodies = {preBody};
+                carried = true;
+            else
+                % NO MIGRATOR AND NO RECORDED DECISION ([early migration
+                % pieces fixed] (1), Jess Haley, 2026-10-26: "a class with no
+                % migrator is a recorded decision, not an identity fallback").
+                % Quarantined, so the class is named in the run's quarantine
+                % table rather than passed through unread.
+                legacy.bodies_no_migrator_quarantined = ...
+                    legacy.bodies_no_migrator_quarantined + 1;
+                className = rawClass;
+                if isempty(className)
+                    className = '<unknown>';
+                end
+                error('did2:convert:noMigrator', ...
+                    ['v1 class "%s" has no migrator (did2.convert.rawV1Classes) ' ...
+                    'and no recorded decision (did2.convert.noMigratorCarryRows, ' ...
+                    'or a class pass 1 hands on or carries in v1_to_v2).'], rawClass);
             end
             % [v1 name goes to the class's own name field] (Decided by Jess
             % Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
@@ -681,10 +683,10 @@ for k = 1:numel(bodies)
         % N documents in `migrated` (or quarantines the whole source
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
-            if carried
+            if carried || laterStep
                 % A CARRIED DOCUMENT IS v1 END TO END ([generic stage is
                 % lossless], [passthrough stays v1: how], Jess Haley,
-                % 2026-10-24/25): the universalRenames output, no V_eta
+                % 2026-10-24/25): the v1 source, no V_eta
                 % class blocks padded on, no base fields renamed, stamped
                 % 'did_v1' here and not left for the end of the pipeline --
                 % a did2_v2 stamp let a later reader (a batch pass's
@@ -692,7 +694,11 @@ for k = 1:numel(bodies)
                 % V_eta tombstone of the same name (PRED pyraview:
                 % `filter.type` refused by the `filter` tombstone). A
                 % 'did_v1' body is never validated against V_eta
-                % (did2.schema.cache.validateDocument / rehydrate).
+                % (did2.schema.cache.validateDocument / rehydrate). A
+                % document handed on to its later step (`ensemble`,
+                % `generic_file`) is a v1 document until that step converts
+                % it, checked against its NDI template above, not against
+                % V_eta ([ensemble and generic_file checked as v1]).
                 outBody = v2Bodies{bi};
                 if isfield(outBody, 'document_class') && isstruct(outBody.document_class)
                     outBody.document_class.schema_version = 'did_v1';
@@ -709,7 +715,7 @@ for k = 1:numel(bodies)
                 end
             end
             doc = did2.document(outBody);
-            if options.Validate && carried && passedThrough
+            if options.Validate && (carried || laterStep) && passedThrough
                 % not validated, but still COUNTED when V_eta keeps no
                 % schema for its class (passthrough_unvalidated_no_schema)
                 try
@@ -721,7 +727,7 @@ for k = 1:numel(bodies)
                         v1NoSchemaNames, v1NoSchemaValues, className);
                 end
             end
-            if options.Validate && ~carried
+            if options.Validate && ~carried && ~laterStep
                 try
                     doc.validate('SchemaCache', options.SchemaCache);
                 catch vErr
@@ -816,8 +822,8 @@ end
 % that does not rebuild exactly is carried whole as v1.
 [migrated, passthrough, classCountNames, classCountValues, srcCarried] = ...
     carryUnrebuiltSessionLists(bodies, migrated, passthrough, classCountNames, ...
-    classCountValues, srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, ...
-    srcDepIds, options.RenameClassNames);
+    classCountValues, srcDone, srcCarried, srcTarget, srcClass, srcId, ...
+    srcDepIds);
 
 % [dependents of a carried document carry] (Jess Haley, 2026-10-26, did-schema
 % V_eta_go_forward_class_audit.md): a document whose edge names a document
@@ -825,8 +831,8 @@ end
 carriedBeforeDependents = srcCarried;
 [migrated, passthrough, classCountNames, classCountValues, srcCarried] = carryDependents( ...
     bodies, migrated, passthrough, classCountNames, classCountValues, ...
-    srcDone, srcCarried, srcRaw, srcTarget, srcClass, srcId, srcDepNames, ...
-    srcDepIds, srcOut, options.RenameClassNames);
+    srcDone, srcCarried, srcTarget, srcClass, srcId, srcDepNames, ...
+    srcDepIds, srcOut);
 % what carryDependents carried cites its row (its note: carry-064)
 srcCarryRows(srcCarried & ~carriedBeforeDependents) = {{'carry-064'}};
 
@@ -849,43 +855,17 @@ carryOneEpochsWithElement(srcDone, srcCarried, srcWithElement, srcClass, ...
 carriedTemplateCheck = carriedV1TemplateCheck(bodies, srcCarried, srcDone, ...
     srcClass, srcId, options.Validate);
 
-% `bodies_unreached` closes the denominator: every body either reached
-% universalRenames, took the idempotency short-circuit, was read raw by a
-% switched class's migrator (did2.convert.rawV1Classes), was carried whole as
-% a class with no migrator (did2.convert.noMigratorCarryRows), or failed
-% before any of them (a non-struct input, undecodable JSON). Written as a
-% subtraction so the five sum to `total` by construction rather than by hope.
+% `bodies_unreached` closes the denominator: every body took the idempotency
+% short-circuit, or one of the five routes, or failed before any (a non-struct
+% input, undecodable JSON). Written as a subtraction so the seven sum to
+% `total` by construction rather than by hope.
 legacy.bodies_unreached = legacy.bodies_total ...
-    - legacy.bodies_reaching_universal_renames ...
     - legacy.bodies_skipped_already_target ...
     - legacy.bodies_read_raw_v1 ...
-    - legacy.bodies_carried_no_migrator;
-% THE VINTAGE PARTITION, CHECKED RATHER THAN ASSUMED. Six buckets classify
-% every body that took the wholesale-move arm, and a body falling through all
-% six is exactly what the `unknown` bucket exists to catch -- so if the sum ever
-% stops matching, the counter has started losing bodies silently and must say
-% so here, at the batch, rather than render a plausible breakdown that does not
-% add up. Raised, not warned: a breakdown that does not partition its arm is a
-% wrong measurement, and this project's standing failure is measurements that
-% read clean while measuring nothing.
-vintageSum = legacy.moved_vintage_2019_05_unique_reference ...
-    + legacy.moved_vintage_2019_11_experiment_document_id ...
-    + legacy.moved_vintage_2019_12_experiment_id_and_id ...
-    + legacy.moved_vintage_2020_05_session_id_and_id ...
-    + legacy.moved_vintage_unknown ...
-    + legacy.moved_vintage_unreadable_block;
-if vintageSum ~= legacy.moved_vintage_bodies_classified ...
-        || legacy.moved_vintage_bodies_classified ~= legacy.moved_wholesale_no_base
-    error('did2:convert:legacyVintagePartitionBroken', ...
-        ['The legacy `ndi_document` vintage buckets do not partition the ' ...
-         'wholesale-move arm: %d bucket(s) summed, %d body(ies) classified, ' ...
-         '%d body(ies) took the arm. A body that reaches no bucket is the ' ...
-         'condition the `unknown` bucket exists to make visible.'], ...
-        vintageSum, legacy.moved_vintage_bodies_classified, ...
-        legacy.moved_wholesale_no_base);
-end
-legacy.moved_by_class = buildByClassTable(legacyMovedNames, legacyMovedValues);
-legacy.discarded_by_class = buildByClassTable(legacyDiscNames, legacyDiscValues);
+    - legacy.bodies_carried_no_migrator ...
+    - legacy.bodies_handed_to_later_step ...
+    - legacy.bodies_carried_parent_only ...
+    - legacy.bodies_no_migrator_quarantined;
 
 result = struct();
 result.migrated = migrated;
@@ -1069,7 +1049,7 @@ function refuseUnknownSchemaVersion(body)
 %   refused with the same identifier; the message says which. There are
 %   only two things to do with it and one of them is destructive:
 %
-%     convert it  -- run universalRenames and the v1-era per-class migrators
+%     convert it  -- run the v1-era per-class migrators
 %                    over a document from the future, reshaping fields whose
 %                    meaning this code does not know. SILENT, and lossy.
 %     refuse it   -- quarantine with a named reason and let the caller decide.
@@ -1210,10 +1190,10 @@ end
 
 function tf = hasLegacyBlockBesideBase(body)
 %HASLEGACYBLOCKBESIDEBASE True when a v1 body holds a NON-EMPTY `ndi_document`
-%   block beside `base`: [old ndi_document blocks carry] (Decided by Jess Haley,
-%   2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-049 for
-%   every class. An EMPTY block -- [], JSON `{}`, or one whose every field is
-%   empty -- states nothing and does not carry: [empty ndi_document block is
+%   block beside `base`, which is read as `base` ([ndi_document read as base],
+%   Decided by Jess Haley, 2026-10-31, amending [old ndi_document blocks
+%   carry]). An EMPTY block -- [], JSON `{}`, or one whose every field is
+%   empty -- states nothing: [empty ndi_document block is
 %   notation] (Decided by Jess Haley, 2026-10-27: "Its absence is not a
 %   loss"); the document converts, and the round trip counts a missing block
 %   and an empty one as the same. A body with only `ndi_document` (a pre-2023
@@ -1270,11 +1250,47 @@ end
 function name = rawV1ClassNameOf(body)
 %RAWV1CLASSNAMEOF A raw v1 body's class name, as v1 spells it ('' if none).
 %   The switch (did2.convert.rawV1Classes) is keyed on the v1 spelling, read by
-%   did2.convert.v1read.readStamp, never on a universalRenames output.
+%   did2.convert.v1read.readStamp.
 stamp = did2.convert.v1read.readStamp(body);
 name = stamp.class_name;
 if ~ischar(name)
     name = '';
+end
+end
+
+function [problems, checked] = laterStepTemplateProblems(body)
+%LATERSTEPTEMPLATEPROBLEMS An `ensemble` or `generic_file` checked against
+%   NDI's v1 template for its class at the locked main (did2.schema.v1Templates,
+%   did2.validate.v1Document; Decided by Jess Haley, 2026-11-01 [ensemble and
+%   generic_file checked as v1]). PROBLEMS lists what the document holds
+%   outside the template ([fields outside the template are malformed]);
+%   CHECKED is false when no template is set (DID_NDI_TEMPLATE_PATH /
+%   NDI_MATLAB), and PROBLEMS is then empty: NOT CHECKED, counted by the
+%   caller (`later_step_template_not_checked`), never read as valid.
+%
+%   A writer field the template omits counts as a template field (Decided by
+%   Jess Haley, 2026-10-27 [writer fields over the template are template
+%   fields]): NDI's ensemble writer, ndi.element.ensemble/buildMapDoc at the
+%   locked main, adds `neuron_id_1`, `neuron_id_2`, ... with
+%   add_dependency_value_n('neuron_id', ...), and ensemble.json declares only
+%   `element_id` and `element_epoch_id` (ensemble_schema.json declares
+%   `neuron_id`).
+problems = {};
+checked = false;
+T = did2.schema.v1Templates();
+if ~T.present
+    return;
+end
+checked = true;
+r = did2.validate.v1Document(body, T);
+problems = r.problems;
+if strcmp(r.class_name, 'ensemble')
+    keep = true(size(problems));
+    for k = 1:numel(problems)
+        keep(k) = isempty(regexp(problems{k}, ...
+            '^depends_on\(neuron_id_\d+\) \(not in the template\)$', 'once'));
+    end
+    problems = problems(keep);
 end
 end
 
@@ -1292,40 +1308,6 @@ if isempty(which(fqn))
         '+migrators_j migrator.'], className);
 end
 bodies = normaliseMigratorOutput(feval(str2func(fqn), rawBody));
-end
-
-function fcn = lookupMigrator(className)
-fqn = ['did2.convert.migrators.', className];
-if ~isempty(which(fqn))
-    fcn = str2func(fqn);
-else
-    fcn = @did2.convert.migrators.identity;
-end
-end
-
-function bodies = runConcreteMigrator(v2Body, className, targetVersion)
-%RUNCONCRETEMIGRATOR Run the concrete-class migrator, return a cell of bodies.
-%   A class with no +migrators_j migrator gets its base migrator under
-%   +did2.+convert.+migrators (identity when it has none) and a
-%   single-element cell is returned. A class that has
-%   a Brainstorm-J split/fold migrator under +did2.+convert.+migrators_j is
-%   routed there instead; that migrator may return either a single body
-%   (struct) or several (struct array / cell), enabling the treatment ->
-%   manipulation (1 -> N) split.
-splitPackage = '';
-if did2.convert.isV2Set(targetVersion)
-    splitPackage = 'did2.convert.migrators_j.';
-end
-if ~isempty(splitPackage)
-    fqn = [splitPackage, className];
-    if ~isempty(which(fqn))
-        out = feval(str2func(fqn), v2Body);
-        bodies = normaliseMigratorOutput(out);
-        return;
-    end
-end
-migratorFcn = lookupMigrator(className);
-bodies = {migratorFcn(v2Body)};
 end
 
 function bodies = normaliseMigratorOutput(out)
@@ -1365,15 +1347,15 @@ function body = renameOutboundBaseFields(body, targetVersion, sessionEdge)
 %   that no migrator touched at all.
 %
 %   ---------------------------------------------------------------------
-%   WHY NOT AT THE 65 CONSTRUCTION SITES, AND WHY NOT IN universalRenames
+%   WHY NOT AT THE 65 CONSTRUCTION SITES, AND WHY NOT INBOUND
 %   ---------------------------------------------------------------------
 %   The obvious version of this change is to rename the field wherever a
 %   `base` block is built. That is 65+ sites, and it MISSES EVERY PASSTHROUGH:
 %   a document with no migrator still carries a `base` block, still validates
 %   against a V_eta tombstone, and would still be carrying the old field name.
 %
-%   The other obvious version is universalRenames, which every document also
-%   passes through -- but that runs INBOUND, before the migrators. Renaming
+%   The other obvious version was the inbound rename pass (universalRenames,
+%   deleted with [migrators read raw v1]) -- but that ran before the migrators. Renaming
 %   there would break every migrator that reads `baseField(preBody,
 %   'datestamp')`, and it would break them SILENTLY: the read returns empty,
 %   the caller falls back to the sentinel, and the document validates carrying
@@ -1437,7 +1419,7 @@ function body = moveSessionIdToEdge(body)
 %   The other edges are left exactly as they are, in order and with their key
 %   spelling; the new entry goes LAST and takes the spelling of the entries
 %   beside it (`value` on a raw
-%   migrator body, `document_id` after universalRenames), so a struct array
+%   migrator body, `document_id` on one the builder wrote), so a struct array
 %   stays one struct array.
 sid = char(body.base.session_id);
 body.base = rmfield(body.base, 'session_id');
@@ -1491,94 +1473,6 @@ entry = orderfields(entry, deps);
 entry.name = 'session_id';
 entry.(key) = sid;
 body.depends_on = [reshape(deps, 1, []), entry];
-end
-
-function body = applySuperclassMigrators(body, concreteClassName, targetVersion)
-% Walk document_class.superclasses (as normalised by universalRenames)
-% and run any matching +migrators/<superclass>.m before the
-% concrete-class migrator runs. Skips entries whose name matches the
-% concrete class or is empty, and skips entries that have no
-% registered migrator (silent no-op, same convention as the identity
-% fallback).
-%
-% ---------------------------------------------------------------------
-% TARGET-VERSION OVERRIDE  (added for #46: ngrid.coordinates)
-% ---------------------------------------------------------------------
-% This step was NOT bypassed by the migrators_j split, and that was a
-% silent data loss rather than a design: runConcreteMigrator routes a
-% class to +migrators_j INSTEAD of +migrators, but the SUPERCLASS pass
-% above it kept running the base migrators unconditionally. So under
-% TargetVersion 'V_eta', +migrators/ngrid.m -- whose whole job is the
-% earlier class-preserving reshape (data_dim -> dim_sizes, derive ndims, rmfield
-% coordinates, rmfield data_size) -- was deleting `coordinates` on every
-% ontologyImage and every hartley_calc document before the J migrator
-% ever saw the body. testMigratorsJ records the symptom in its own
-% comment ("in the real pipeline the ngrid SUPERCLASS migrator runs
-% first and deletes it").
-%
-% A target-version override fixes it the same way runConcreteMigrator
-% does. THE OVERRIDE LIVES IN A DEDICATED SUBPACKAGE
-% (+migrators_j/+super/), NOT in +migrators_j itself, and that is
-% load-bearing: +migrators_j is full of CONCRETE-class migrators whose
-% names are also superclass names somewhere in the v1 zoo (element,
-% subject, image, measurement, filenavigator, pyraview, ...), and those
-% return a CELL OF BODIES (1 -> N). Picking one up here would hand a
-% cell to a step contracted to return a single struct. A separate
-% namespace makes that collision impossible by construction rather than
-% by an allow-list somebody has to maintain.
-%
-% A superclass override must return exactly one body: it reshapes a
-% property block, it does not split documents.
-if nargin < 3 || isempty(targetVersion)
-    targetVersion = 'did_v2';
-end
-superPackage = '';
-if did2.convert.isV2Set(targetVersion)
-    superPackage = 'did2.convert.migrators_j.super.';
-end
-if ~isfield(body, 'document_class') ...
-        || ~isfield(body.document_class, 'superclasses') ...
-        || ~isstruct(body.document_class.superclasses) ...
-        || isempty(body.document_class.superclasses)
-    return;
-end
-sc = body.document_class.superclasses;
-seen = {};
-for k = 1:numel(sc)
-    if ~isfield(sc(k), 'class_name')
-        continue;
-    end
-    name = char(sc(k).class_name);
-    if isempty(name) || strcmp(name, concreteClassName) ...
-            || any(strcmp(seen, name))
-        continue;
-    end
-    seen{end+1} = name; %#ok<AGROW>
-    fqn = '';
-    if ~isempty(superPackage) && ~isempty(which([superPackage, name]))
-        fqn = [superPackage, name];
-    elseif ~isempty(which(['did2.convert.migrators.', name]))
-        fqn = ['did2.convert.migrators.', name];
-    end
-    if ~isempty(fqn)
-        % feval IS NECESSARY HERE. GitHub code scanning alert 173 says
-        % "calling functions using 'feval' is usually not necessary; call the
-        % function directly instead" -- a FALSE POSITIVE. `fqn` is COMPUTED
-        % four lines above from the superclass name plus whichever package
-        % `which()` resolves, so there is no name to write literally: dynamic
-        % dispatch by class name is the entire mechanism of the superclass
-        % migrator chain. "Call it directly" is not an available option.
-        out = feval(fqn, body);
-        if ~isstruct(out) || ~isscalar(out)
-            error('did2:convert:badSuperclassMigratorOutput', ...
-                ['Superclass migrator %s returned %s; a superclass ' ...
-                 'migrator reshapes ONE body and must return a scalar ' ...
-                 'struct (splitting is the concrete migrator''s job).'], ...
-                fqn, class(out));
-        end
-        body = out;
-    end
-end
 end
 
 function ts = currentUTCTimestamp()
@@ -1690,8 +1584,8 @@ end
 end
 
 function [migrated, passthrough, names, counts, carried] = carryDependents(bodies, ...
-        migrated, passthrough, names, counts, done, carried, raw, target, ...
-        cls, ids, depNames, depIds, outs, renameClassNames)
+        migrated, passthrough, names, counts, done, carried, target, ...
+        cls, ids, depNames, depIds, outs)
 %CARRYDEPENDENTS [dependents of a carried document carry] (Jess Haley,
 %   2026-10-26, did-schema V_eta_go_forward_class_audit.md): "a document whose
 %   edge points at a document carried as v1 (e.g. an element_epoch,
@@ -1702,9 +1596,8 @@ function [migrated, passthrough, names, counts, carried] = carryDependents(bodie
 %   After every source has been migrated: a CONVERTED source (not carried, not
 %   quarantined, not already a V2 document) any of whose depends_on edges names
 %   the id of a CARRIED source in this batch has its documents replaced by its
-%   v1 source carried whole -- the raw document for a class read raw
-%   (did2.convert.rawV1Classes), else the universalRenames output, as every
-%   other carry -- stamped did_v1, recorded as a passthrough, and noted
+%   v1 source carried whole -- the raw document, as every other carry --
+%   stamped did_v1, recorded as a passthrough, and noted
 %   `carried_as_v1` citing carry-064. Repeated until nothing changes, so a
 %   chain carries to its end. A carried document outside this batch is not
 %   seen. The notes the source's conversion left stay in the report.
@@ -1738,10 +1631,7 @@ while changed
         if isempty(j)
             continue;
         end
-        body = ensureStruct(bodies{k});
-        if ~raw(k)
-            body = did2.convert.universalRenames(body, 'RenameClassNames', renameClassNames);
-        end
+        body = ensureStruct(bodies{k});   % the v1 source, as every carry
         if isfield(body, 'document_class') && isstruct(body.document_class)
             body.document_class.schema_version = 'did_v1';
         end
@@ -1830,8 +1720,8 @@ end
 end
 
 function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSessionLists( ...
-        bodies, migrated, passthrough, names, counts, done, carried, raw, target, ...
-        cls, ids, depIds, renameClassNames)
+        bodies, migrated, passthrough, names, counts, done, carried, target, ...
+        cls, ids, depIds)
 %CARRYUNREBUILTSESSIONLISTS [fit classes kept; session list rebuilt] (Decided
 %   by Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
 %   "`dataset_session_info` (still written by NDI-matlab main +dataset/dir.m,
@@ -1847,8 +1737,8 @@ function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSession
 %   the v1 `dataset_session_info.dataset_session_info` exactly: the same
 %   number of entries, in order, each equal field by field. Anything else --
 %   a member missing, carried or quarantined, an extra member, another order,
-%   another value -- carries the document whole as v1 (the v1 source for a raw
-%   read, else the universalRenames output, as every other carry). The register
+%   another value -- carries the document whole as v1 (the v1 source, as every
+%   other carry). The register
 %   row is carry-118 (awaiting_home).
 %
 %   ITS ID. [a rebuilt document may lose its id] (Decided by Jess Haley,
@@ -1907,9 +1797,6 @@ for k = reshape(find(done & ~carried & ~target & isList), 1, [])
     if isempty(why)
         continue;
     end
-    if ~raw(k)
-        body = did2.convert.universalRenames(body, 'RenameClassNames', renameClassNames);
-    end
     if isfield(body, 'document_class') && isstruct(body.document_class)
         body.document_class.schema_version = 'did_v1';
     end
@@ -1940,33 +1827,6 @@ if isempty(idx)
     counts(end+1) = 1;
 else
     counts(idx) = counts(idx) + 1;
-end
-end
-
-function acc = accumulateLegacyReport(acc, rep)
-%ACCUMULATELEGACYREPORT Sum one universalRenames per-body legacy report.
-%
-%   Every counter universalRenames reports is summed by NAME into the batch
-%   accumulator. A field the pass reports and this accumulator does not
-%   declare is an ERROR rather than a silent drop -- a counter that reached
-%   the pass and stopped here would be exactly the write-only condition the
-%   census work exists to remove. `bodies_inspected` is deliberately NOT
-%   summed: the batch denominator is kept at the call site (see the header on
-%   `legacy` above), because a body that throws inside the pass returns no
-%   report at all.
-names = fieldnames(rep);
-for k = 1:numel(names)
-    fn = names{k};
-    if strcmp(fn, 'bodies_inspected')
-        continue;
-    end
-    if ~isfield(acc, fn)
-        error('did2:convert:legacyCounterUnaccumulated', ...
-            ['did2.convert.universalRenames reports `%s` and ' ...
-             'did2.convert.v1_to_v2 does not accumulate it; the count ' ...
-             'would reach no report.'], fn);
-    end
-    acc.(fn) = acc.(fn) + rep.(fn);
 end
 end
 
@@ -2150,57 +2010,32 @@ end
 end
 
 function printLegacyNdiDocument(result)
-%PRINTLEGACYNDIDOCUMENT The legacy identity block, denominator first.
+%PRINTLEGACYNDIDOCUMENT How each body was routed, denominator first.
 %
-%   PRINTED UNCONDITIONALLY, including when every counter is zero. Zero here
-%   means "no body in this batch carried an `ndi_document` block", which is
-%   the expected reading for every corpus we hold -- corpus run 31464483119
-%   inspected 633,432 documents across 6 corpora and quarantined 0, so no
-%   pre-`base` document is in any of them. That is a fact about the SAMPLE and
-%   NOT evidence none exist: a 2019-era NDI database is precisely what this
-%   migration is for. An absent line and a zero line would be the same output,
-%   which is the failure this project keeps paying for.
+%   PRINTED UNCONDITIONALLY, including when every counter is zero: a zero row
+%   means "no body in this batch took that route", and an absent line and a
+%   zero line would be the same output, which is the failure this project
+%   keeps paying for.
 if ~isfield(result.summary, 'legacy_ndi_document'); return; end
 L = result.summary.legacy_ndi_document;
-fprintf(['  legacy ndi_document: %d body(ies) reached universalRenames ' ...
-    '(of %d; %d already at target, %d read raw v1, %d carried with no ' ...
-    'migrator, %d never reached it)\n'], ...
-    L.bodies_reaching_universal_renames, L.bodies_total, ...
-    L.bodies_skipped_already_target, L.bodies_read_raw_v1, ...
-    L.bodies_carried_no_migrator, L.bodies_unreached);
-fprintf('      %8d  carried an `ndi_document` block\n', ...
+fprintf('  routing: %d body(ies)\n', L.bodies_total);
+fprintf('      %8d  already a V2 document\n', L.bodies_skipped_already_target);
+fprintf('      %8d  read raw v1 by its migrator (did2.convert.rawV1Classes)\n', ...
+    L.bodies_read_raw_v1);
+fprintf('      %8d  carried whole, no migrator (did2.convert.noMigratorCarryRows)\n', ...
+    L.bodies_carried_no_migrator);
+fprintf(['      %8d  handed on to its later step (ensemble, generic_file): ' ...
+    '%d checked against the NDI template, %d NOT CHECKED, %d carried ' ...
+    'malformed\n'], L.bodies_handed_to_later_step, ...
+    L.later_step_template_checked, L.later_step_template_not_checked, ...
+    L.later_step_carried_malformed);
+fprintf('      %8d  a superclass-only class standing alone, carried (carry-100)\n', ...
+    L.bodies_carried_parent_only);
+fprintf('      %8d  no migrator and no recorded decision: QUARANTINED\n', ...
+    L.bodies_no_migrator_quarantined);
+fprintf('      %8d  failed before routing\n', L.bodies_unreached);
+fprintf('      %8d  held an `ndi_document` block beside `base` (read as `base`)\n', ...
     L.ndi_document_block_seen);
-fprintf('      %8d  MOVED WHOLESALE into `base` (no `base` present)\n', ...
-    L.moved_wholesale_no_base);
-fprintf('      %8d  discarded (`base` present and wins)\n', ...
-    L.discarded_ndi_document_base_present);
-if L.moved_wholesale_no_base == 0; return; end
-fprintf('      of the moved: %d missing required `id`, %d missing `session_id`\n', ...
-    L.moved_missing_id, L.moved_missing_session_id);
-fprintf('                    %d carrying %d field(s) `base` does not declare\n', ...
-    L.moved_with_any_undeclared_field, L.moved_undeclared_field_instances);
-fprintf(['                    field names present: %d experiment_unique_reference, ' ...
-    '%d document_unique_reference, %d type, %d database_version\n'], ...
-    L.moved_carrying_experiment_unique_reference, ...
-    L.moved_carrying_document_unique_reference, ...
-    L.moved_carrying_type, L.moved_carrying_database_version);
-% THE VINTAGE BREAKDOWN, denominator first. `moved_wholesale_no_base` on its own
-% says nothing about whether anything broke: the 2020-05-19 vintage moves
-% SOUNDLY and it is the longest-lived of the four.
-fprintf('      vintage of the %d moved block(s), classified on the FIELD SET:\n', ...
-    L.moved_vintage_bodies_classified);
-fprintf('          %8d  2019-05 experiment_unique_reference/document_unique_reference  NO identity survives\n', ...
-    L.moved_vintage_2019_05_unique_reference);
-fprintf('          %8d  2019-11 experiment_id/document_id                              NO identity survives\n', ...
-    L.moved_vintage_2019_11_experiment_document_id);
-fprintf('          %8d  2019-12 experiment_id/id                                       `id` survives, session_id does NOT\n', ...
-    L.moved_vintage_2019_12_experiment_id_and_id);
-fprintf('          %8d  2020-05 session_id/id  (SOUND -- both identity fields land)\n', ...
-    L.moved_vintage_2020_05_session_id_and_id);
-fprintf('          %8d  UNKNOWN field set -- NOT rounded to the nearest vintage\n', ...
-    L.moved_vintage_unknown);
-fprintf('          %8d  UNREADABLE block (not a scalar struct; no field set to read)\n', ...
-    L.moved_vintage_unreadable_block);
 end
 
 function printQuarantine(result)

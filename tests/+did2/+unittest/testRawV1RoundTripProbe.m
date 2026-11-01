@@ -72,7 +72,6 @@ end
 f = writerFixtures(testCase);
 r = runRaw(f(:, 2)');
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, size(f, 1));
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 % ===================== every writer shape round trips =====================
@@ -130,14 +129,6 @@ end
 end
 
 % ===================== the switch changes no outcome ======================
-
-function testTheSwitchChangesNoOutcome(testCase)
-f = writerFixtures(testCase);
-for k = 1:size(f, 1)
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f(k, 2));
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
 
 function testTheConvertedDocumentsValidate(testCase)
 f = writerFixtures(testCase);
