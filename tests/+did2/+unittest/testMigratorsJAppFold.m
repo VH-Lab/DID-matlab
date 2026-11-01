@@ -139,11 +139,11 @@ end
 
 function out = runJ(v1)
 %RUNJ The full pipeline at V_eta, validation OFF (transform assertions).
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runJValidated(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 end
 
 function names = classNames(out)

@@ -174,14 +174,19 @@ function v2Body = element(preBody)
 %     - for a kind several types share (patch electrode, sharp electrode,
 %       microscope): the recording or imaging mode goes on the recording
 %       observation, which the batch pass mints, not this migrator
-%       (did2.convert.resolveEpochProbemap writes the two decided ones as the
+%       (did2.convert.resolveEpochProbemap writes the decided ones as the
 %       observation's method term: patch-attached OBI:0002179,
-%       brightfield-imaging EMPTY:0000300); the voltage, current, one-photon,
-%       two-photon and wide-field mode terms are not decided yet ([element
-%       types batch 1], [element types batch 2]), and an element's round trip
-%       reads no observation, so the word is kept here for every type of a
-%       shared kind ((iii) of [element type is a device kind term]: "until a
-%       type has its term, the migrator keeps writing the current statement");
+%       brightfield-imaging EMPTY:0000300, and since [recording mode terms]
+%       and [imaging mode terms] (Jess Haley, 2026-11-01) -Vm, -I / -Im,
+%       wide-field, two-photon and one-photon). The word is still kept here
+%       for every type of a shared kind: the observation is minted per epoch
+%       by a batch pass, so an element with no ingested epoch has no
+%       observation and no mode, and an element's round trip reads no
+%       observation; and a bare `patch` or `sharp` has no mode term. ((iii)
+%       of [element type is a device kind term]: "until a type has its term,
+%       the migrator keeps writing the current statement".) Stopping it
+%       where a mode is written waits on where the word goes for an element
+%       with no recording observation (not decided);
 %     - for an ensemble (no device kind), which
 %       did2.convert.resolveEpochProbemap keys its epochs on.
 %   It is NOT written for a sorted unit: [cell spellings are one meaning] and

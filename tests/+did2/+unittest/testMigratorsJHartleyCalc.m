@@ -526,12 +526,12 @@ function testTheValueCheckRunsThroughTheDispatcher(testCase)
 % v1_to_v2 loads the batch's presentations itself: with the presentation in
 % the batch the document folds; alone, it is carried whole as v1.
 together = did2.convert.v1_to_v2({hartleyCalcV1(), stimulusPresentationV1()}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 names = cellfun(@(d) d.get('document_class.class_name'), together.migrated, ...
     'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'hartley_calc')), strjoin(names, ', '));
 alone = did2.convert.v1_to_v2(hartleyCalcV1(), 'Validate', false, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 verifyEqual(testCase, numel(alone.migrated), 1);
 verifyEqual(testCase, char(alone.migrated{1}.get('document_class.class_name')), ...
     'hartley_calc');
@@ -596,7 +596,7 @@ function testTheFoldedSetVALIDATESThroughTheDispatcher(testCase)
 % leftovers checked]); without it the document is carried as v1. The
 % presentation itself passes through, so it is counted apart.
 out = did2.convert.v1_to_v2({hartleyCalcV1(), stimulusPresentationV1()}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 hq = out.quarantine(strcmp({out.quarantine.class_name}, 'hartley_calc'));
 verifyEmpty(testCase, hq, ...
     sprintf('quarantined: %s', strjoin(arrayfun(@(q) ...

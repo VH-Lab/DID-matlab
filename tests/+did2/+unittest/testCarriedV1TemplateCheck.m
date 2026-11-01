@@ -63,7 +63,7 @@ bodies = {subject('tc_subj_1', 'mouse_1'), subject('tc_subj_2', '')};
 odd = subject('tc_subj_3', '');
 odd.subject.strain = 'C57BL/6';
 bodies{end+1} = odd;
-out = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'did_v2');
 c = out.summary.carried_v1_template_check;
 verifyTrue(testCase, c.checked, c.reason);
 verifyEqual(testCase, c.carried_inspected, 2);
@@ -73,7 +73,7 @@ verifyEqual(testCase, c.invalid_by_class.subject, 1);
 verifyEqual(testCase, c.problem_ids_sample, {'tc_subj_3'});
 verifyEmpty(testCase, out.quarantine, 'a carry the template refuses is counted, not quarantined');
 % Validate off: not checked, and says so
-out = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyFalse(testCase, out.summary.carried_v1_template_check.checked);
 verifyTrue(testCase, startsWith(out.summary.carried_v1_template_check.reason, 'NOT CHECKED'));
 end

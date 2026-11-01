@@ -60,7 +60,7 @@ end
 % ===================== harness =========================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function [out, rep] = mintFrom(v1)
@@ -69,7 +69,7 @@ function [out, rep] = mintFrom(v1)
 %   test that requires it says so and calls with Validate true.
 out = runJ(v1);
 [out, rep] = did2.convert.epochMint(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function names = classNames(out)
@@ -569,7 +569,7 @@ result.quarantine = struct('original_body', {}, 'class_name', {}, ...
     'reason', {}, 'failed_at', {});
 result.summary = struct('total', 0);
 [result, rep] = did2.convert.epochMint(result, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyTrue(testCase, isfield(result, 'epoch_mint'), ...
@@ -785,7 +785,7 @@ firstEpochs = ofClass(out, 'epoch');
 firstId = char(firstEpochs{1}.get('base.id'));
 
 [out2, rep2] = did2.convert.epochMint(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep2.epochs_minted, 0, 'the second run must mint nothing');
 verifyEqual(testCase, rep2.epochs_found_existing, 1, ...
     'and must say it FOUND the epoch rather than that there was none');
@@ -898,9 +898,9 @@ function testMintedEpochValidatesAgainstItsSchema(testCase)
 out = did2.convert.v1_to_v2({ ...
         sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
         elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 [out, rep] = did2.convert.epochMint(out, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.mint_quarantined, 0, ...
     'a minted epoch that cannot validate is a build defect, not a data problem');
 verifyEqual(testCase, rep.epochs_minted, 1);
@@ -1205,7 +1205,7 @@ v1 = { ...
 [out, rep1] = mintFrom(v1);
 verifyEqual(testCase, rep1.epochs_minted, 1);
 [out2, rep2] = did2.convert.epochMint(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep2.epochs_minted, 0, ...
     'find-or-create: the epoch already in the batch is found, not re-minted');
 verifyEqual(testCase, rep2.epochs_found_existing, 1);
@@ -1250,9 +1250,9 @@ end
 out = did2.convert.v1_to_v2({ ...
         sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
         metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})}, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 [out, rep] = did2.convert.epochMint(out, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.mint_quarantined, 0, ...
     'a body leaving the mint that cannot validate is a build defect, not a data problem');
 verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0, ...
@@ -1366,7 +1366,7 @@ end
 function [out, rep] = mintWithArming(v1, fcn)
 out = runJ(v1);
 [out, rep] = did2.convert.epochMint(out, 'Validate', false, ...
-    'TargetVersion', 'V_eta', 'ArmingMigrators', armingTable(fcn));
+    'TargetVersion', 'did_v2', 'ArmingMigrators', armingTable(fcn));
 end
 
 function v1 = oneMetadataBatch()
@@ -1537,7 +1537,7 @@ function testAnArmingTableWithNoRowForTheClassIsAnError(testCase)
 % while driving 1 -> 1 -- a green result from machinery that never ran.
 out = runJ(oneMetadataBatch());
 verifyError(testCase, @() did2.convert.epochMint(out, 'Validate', false, ...
-        'TargetVersion', 'V_eta', 'ArmingMigrators', struct('something_else', @(b) b)), ...
+        'TargetVersion', 'did_v2', 'ArmingMigrators', struct('something_else', @(b) b)), ...
     'did2:convert:epochMint:noArmingMigrator');
 end
 
@@ -1564,7 +1564,7 @@ catch err
 end
 out = runJ(oneMetadataBatch());
 [out, rep] = did2.convert.epochMint(out, 'Validate', true, ...
-    'TargetVersion', 'V_eta', ...
+    'TargetVersion', 'did_v2', ...
     'ArmingMigrators', armingTable(@(b) foldPlusUnreferencedExtent(b)));
 
 verifyEqual(testCase, rep.arming_bodies_offered, 2);

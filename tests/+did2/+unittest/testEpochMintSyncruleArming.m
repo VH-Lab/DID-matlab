@@ -43,14 +43,14 @@ end
 % ===================== harness =========================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function [out, rep] = mintFrom(v1)
 %MINTFROM Pass 1 then the batch mint, with validation OFF.
 out = runJ(v1);
 [out, rep] = did2.convert.epochMint(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function docs = ofClass(out, className)
@@ -314,7 +314,7 @@ verifyEqual(testCase, rep1.syncrule_folds_emitted, 1);
 verifyEqual(testCase, rep1.epochs_minted, 2);
 
 [out2, rep2] = did2.convert.epochMint(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep2.syncrule_already_folded, 1, ...
     'the second run must RECOGNISE the folded clock_alignment');
 verifyEqual(testCase, rep2.syncrule_seen, 0, ...
@@ -342,9 +342,9 @@ catch err
         ['DID_SCHEMA_PATH does not resolve clock_alignment (' err.message ').']);
 end
 out = did2.convert.v1_to_v2(batchWithBothEndpointEpochs(), ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 [out, rep] = did2.convert.epochMint(out, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.mint_quarantined, 0, ...
     'a folded document that cannot validate is a build defect, not a data problem');
 verifyEqual(testCase, rep.syncrule_folds_emitted, 1);

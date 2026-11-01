@@ -322,7 +322,7 @@ function testAnF2ParametersDocumentValidates(testCase)
 % quarantined a third of the class. Both are repaired; this is the round-trip
 % that proves a real F2 document passes.
 out = did2.convert.v1_to_v2({parametersFixture(2)}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('F2 parameters document quarantined: %s', ...
         out.quarantine(1).reason));
@@ -338,7 +338,7 @@ function testTheThreeHarmonicsOfOneRecordingAllValidate(testCase)
 % than any one of them passing: 0 is the old lower bound, 1 the old upper bound,
 % and 2 the value the old declaration excluded.
 batch = {parametersFixture(0), parametersFixture(1), parametersFixture(2)};
-out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -361,7 +361,7 @@ for k = 1:numel(keys_)
     % must_refer_to_document_class is existence-only and declarative and
     % +did2/+validate/references.m is not run by Validate.
     out = did2.convert.v1_to_v2({withEpochEdge(responseFixture(rt))}, ...
-        'Validate', true, 'TargetVersion', 'V_eta');
+        'Validate', true, 'TargetVersion', 'did_v2');
     if ~isempty(out.quarantine)
         verifyFail(testCase, sprintf('response_type %s quarantined: %s', ...
             rt, out.quarantine(1).reason));
@@ -398,7 +398,7 @@ batch = {withEpochEdge(responseFixture('mean')), ...
          withEpochEdge(responseFixture('F1')), ...
          withEpochEdge(responseFixture('F2')), ...
          parametersFixture(0), parametersFixture(1), parametersFixture(2)};
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 % UPDATED 2026-10-21 for did-schema #88: 6 in, TWELVE out -- each response
 % folds to calculation + epoch anchor + the calculator's software entity
@@ -434,7 +434,7 @@ function testTodayTheGateMakesPassOneANoOpForThisFamily(testCase)
 % would look like the fold had silently stopped working.
 batch = {responseFixture('mean'), responseFixture('F1'), responseFixture('F2'), ...
          parametersFixture(0), parametersFixture(1), parametersFixture(2)};
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 6);
 
@@ -581,7 +581,7 @@ function testAHarmonicAboveTwoAlsoSurvivesBothSchemas(testCase)
 % bound reintroduced on either one alone would fail here.
 out = did2.convert.v1_to_v2( ...
     {withEpochEdge(responseFixture('F3')), parametersFixture(3)}, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -610,7 +610,7 @@ end
 % ===================== helpers =============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function h = harmonicFor(responseType)

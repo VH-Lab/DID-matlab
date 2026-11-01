@@ -71,7 +71,7 @@ verifyEqual(testCase, L.bodies_reaching_universal_renames, 1);
 verifyEqual(testCase, L.bodies_unreached, 0);
 
 r = did2.convert.v1_to_v2({ndiSubject('mouse_42', '', 'mouse_42')}, ...
-    'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+    'Validate', false, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, 0, ...
     'RawV1Classes {} runs every class as before the switch');
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 1);
@@ -86,7 +86,7 @@ fixtures = {ndiSubject('mouse_42@lab', 'a mouse', 'mouse_42@lab'), ...
 for k = 1:numel(fixtures)
     raw = runRaw(fixtures{k});
     old = did2.convert.v1_to_v2(fixtures{k}, 'Validate', false, ...
-        'TargetVersion', 'V_eta', 'RawV1Classes', {});
+        'TargetVersion', 'did_v2', 'RawV1Classes', {});
     verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
     verifyEmpty(testCase, raw.quarantine);
     for j = 1:min(numel(raw.migrated), numel(old.migrated))
@@ -156,7 +156,7 @@ function testASubjectAndAGroupWithANameValidate(testCase)
 g = namedGroup({'41268b6f5c6a3d4e_c0d1a9e2b3f4a5b6'});
 g.base.name = 'the treated cohort, B';
 batch = {ndiSubject('mouse_47', 'a mouse', 'Mouse forty-seven'), g};
-out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'did_v2');
 reasons = '';
 for k = 1:numel(out.quarantine)
     reasons = [reasons sprintf('%s: %s; ', out.quarantine(k).class_name, ...
@@ -308,7 +308,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function verifyRoundTrip(testCase, r)

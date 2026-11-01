@@ -85,7 +85,7 @@ end
 % ===================== harness =========================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function [out, rep] = foldFrom(v1)
@@ -94,7 +94,7 @@ function [out, rep] = foldFrom(v1)
 %   test that requires it says so and calls with Validate true.
 out = runJ(v1);
 [out, rep] = did2.convert.resolveSessionAnchors(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function names = classNames(out)
@@ -324,7 +324,7 @@ end
 function testAnEmptyBatchReportsRatherThanReturningSilently(testCase)
 out = struct('migrated', {{}}, 'quarantine', {{}});
 [out, rep] = did2.convert.resolveSessionAnchors(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyTrue(testCase, isfield(out, 'session_anchor_fold'));
@@ -882,7 +882,7 @@ function testRunningTwiceFoldsNothingTheSecondTime(testCase)
 verifyEqual(testCase, rep1.anchors_folded, 1);
 
 [out2, rep2] = did2.convert.resolveSessionAnchors(out, ...
-    'Validate', false, 'TargetVersion', 'V_eta');
+    'Validate', false, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep2.anchors_seen, 0);
 verifyEqual(testCase, rep2.anchors_folded, 0);
 verifyEqual(testCase, numel(out2.migrated), numel(out.migrated));
@@ -896,7 +896,7 @@ out = runJ({ ...
     sessionBody('sess_doc_1', 'SID_1', 'exp1'), ...
     anchorBody('anchor_1', 'SID_1', 'during')});
 [out, rep] = did2.convert.resolveSessionAnchors(out, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEqual(testCase, rep.anchors_folded, 1);
 verifyTrue(testCase, any(strcmp(classNames(out), 'relative_reference')));

@@ -332,13 +332,13 @@ function testANonAreaNodeIsCountedThroughTheDispatcher(testCase)
 v1 = foldableOntologyImage();
 v1.ontology_image.ontology_name = 'CL:0000540';
 v1.ontology_image.ontology_region = 'neuron';
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 notes = out.summary.migration_notes;
 assertTrue(testCase, isfield(notes, 'non_area_ontology_node'));
 verifyEqual(testCase, notes.non_area_ontology_node.count, 1);
 verifyEqual(testCase, notes.non_area_ontology_node.details, {'CL:0000540'});
-area = did2.convert.v1_to_v2(foldableOntologyImage(), 'Validate', true, 'TargetVersion', 'V_eta');
+area = did2.convert.v1_to_v2(foldableOntologyImage(), 'Validate', true, 'TargetVersion', 'did_v2');
 verifyFalse(testCase, isfield(area.summary.migration_notes, 'non_area_ontology_node'));
 end
 
@@ -597,7 +597,7 @@ function testTheFoldedSetVALIDATESThroughTheDispatcher(testCase)
 % field the fold never sets -- which is exactly how a half-landed change slips
 % through. Validation ON is the point of this test.
 out = did2.convert.v1_to_v2(foldableOntologyImage(), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 verifyEqual(testCase, out.summary.migrated_count, 3);   % was 4: no term observation
 end
@@ -619,7 +619,7 @@ function testTheProductionShapeStillPassesThroughUnderValidation(testCase)
 % Haley, 2026-10-29) deletes it. Every assertion below holds with or without
 % that file: no quarantine, one document, the carry noted.
 out = did2.convert.v1_to_v2(productionOntologyImage(), ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 verifyEqual(testCase, out.summary.quarantine_count, 0);
 verifyEqual(testCase, out.summary.migrated_count, 1);
 verifyEqual(testCase, numel(out.passthrough), 1);

@@ -58,7 +58,7 @@ function [v1, spec] = imageStack(bodies)
 %                                        the AFO:AFR_0001158 "acquisition
 %                                        time" condition's source_value and the
 %                                        anchor's clock, else the clock its
-%                                        needs_info entry names. The former
+%                                        migration-report gap names. The former
 %                                        "acquisition timestamp (<clock>)"
 %                                        condition is still read.
 %   The anchor is the stack's own (minted by the migration); anything else
@@ -308,7 +308,8 @@ function [ts, clk, extra] = acquisitionTime(conds, anchor, obs)
 %   utc (the shape before that decision) is read the same way.
 %   Any other clock: the AFO:AFR_0001158 "acquisition time" condition holds
 %   the datenum as its source_value; the clock is the anchor's, else the one
-%   the observation's needs_info entry names ('' for "on no named clock").
+%   the observation's gap in the migration report names ('' for "on no named
+%   clock").
 %   The former "acquisition timestamp (<clock>)" condition (the label the
 %   migrator wrote before) is read as before. Any other condition is unplaced.
 ts = [];
@@ -343,7 +344,7 @@ for k = 1:numel(conds)
         if ~isempty(aclk)
             clk = withApprox(aclk, atol);
         else
-            clk = needsInfoClock(obs);
+            clk = gapClock(obs);
         end
         continue;
     end
@@ -382,12 +383,14 @@ if tol == 5 && any(strcmp(clk, {'utc', 'dev_global_time', 'exp_global_time'}))
 end
 end
 
-function clk = needsInfoClock(obs)
-% the clock the acquisition-time needs_info entry names, as v1 wrote it
+function clk = gapClock(obs)
+% the clock the acquisition-time gap names, as v1 wrote it: the gap is in the
+% migration run's report, not in the document ([migration record], Jess Haley,
+% 2026-11-01)
 clk = '';
-entries = asCell(getIn(obs, 'base', 'needs_info'));
+entries = did2.convert.migrationReport('gaps', idOf(obs));
 for k = 1:numel(entries)
-    tok = regexp(fieldText(entries{k}, 'reason'), 'on clock ''([^'']*)''', 'tokens', 'once');
+    tok = regexp(char(entries(k).reason), 'on clock ''([^'']*)''', 'tokens', 'once');
     if ~isempty(tok)
         clk = tok{1};
         return;

@@ -25,8 +25,8 @@ arguments
     batch cell
 end
 
-raw = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
-renamed = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
+raw = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
+renamed = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 problems = {};
 if numel(raw.quarantine) ~= numel(renamed.quarantine)

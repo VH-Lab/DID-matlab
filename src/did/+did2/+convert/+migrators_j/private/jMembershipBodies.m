@@ -42,6 +42,13 @@ function bodies = jMembershipBodies(preBody, entries)
 %   opener, input 4..6, any other input -- the document is returned UNCHANGED,
 %   carried whole as v1 ([generic stage is lossless]).
 %   Shared Brainstorm-J (+migrators_j) helper.
+%
+%   ITS ID ([every v1 id survives], Jess Haley, 2026-10-27: "each v1
+%   document's id becomes the id of the V2 document that most directly
+%   replaces it"): a document holding ONE membership (session_in_a_dataset)
+%   becomes one relation, which takes the v1 document's base.id. With several
+%   entries no one relation replaces the document, and every relation's id is
+%   minted, as before.
 
 datasetId = jDatasetId(preBody);
 bodies = {jBareDataset(preBody, datasetId)};
@@ -52,6 +59,11 @@ if sessionIdIsEdge()
 end
 unplaced = {};
 rels = {};
+relId = '';
+if isscalar(entries) && isfield(preBody, 'base') && isstruct(preBody.base) ...
+        && isfield(preBody.base, 'id')
+    relId = char(preBody.base.id);   % ITS ID (above)
+end
 for k = 1:numel(entries)
     memberSession = jGetChar(entries(k), 'session_id');
     if isempty(memberSession); continue; end
@@ -62,7 +74,7 @@ for k = 1:numel(entries)
         continue;
     end
     rels{end+1} = membershipRelation(preBody, memberSession, datasetId, ...
-        relation, method, params); %#ok<AGROW>
+        relation, method, params, relId); %#ok<AGROW>
 end
 if ~isempty(unplaced)
     % carry-register: carry-060 carry-066 carry-068 carry-069 carry-074 carry-075
@@ -75,7 +87,7 @@ end
 bodies = [bodies, rels];
 end
 
-function rel = membershipRelation(preBody, childId, parentId, relation, method, params)
+function rel = membershipRelation(preBody, childId, parentId, relation, method, params, relId)
 if isempty(relation{1})
     r = relation{2};
 else
@@ -84,6 +96,9 @@ end
 opts = jOpts(preBody, 'Method', method);
 if ~isempty(params)
     opts = [opts, {'MethodParameters', params}];
+end
+if ~isempty(relId)
+    opts = [opts, {'Id', relId}];
 end
 rel = did2.build.directedRelation(char(childId), char(parentId), r, opts{:});
 end

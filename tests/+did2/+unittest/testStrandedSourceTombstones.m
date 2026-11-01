@@ -30,6 +30,11 @@ function tests = testStrandedSourceTombstones
 %   against. It is not migrated, not passed through, not quarantined-and-kept.
 %   A dataset carrying one loses it.
 %
+%   (2026-11-01: valid_interval no longer strands for a different reason. It
+%   is carried whole as v1 by did2.convert.noMigratorCarryRows (carry-164),
+%   never validated against V_eta, so its did-schema tombstone is deleted and
+%   no test here reads a valid_interval schema file.)
+%
 %   THE FIX IS A TOMBSTONE, NOT A MODEL. Both classes are now restated in
 %   DID-schema tools/build_v_eta.py (deleted 2026-10-21) from the NDI WRITER, marked `retire` (a v1
 %   SOURCE name, never a go-forward class). No migrator is added, deliberately:
@@ -143,11 +148,11 @@ end
 % ===================== harness =============================================
 
 function out = runJ(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runJValidated(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
 end
 
 function d = onlyClass(testCase, out, className)
@@ -265,11 +270,19 @@ function testGenericFileHasASchemaAtAll(testCase)
 % let the class strand: nothing anywhere checked that a did_v1 class the corpora
 % could contain has SOMETHING to validate against. getClass raises
 % did2:schema:missingClass when there is no schema file (cache.m:125-129).
+%
+% valid_interval's SOMETHING is no longer a schema file. Since [classes without
+% a migrator carry as v1] (did-schema did_v2_go_forward_class_audit.md) it is
+% carried whole as v1 (did2.convert.noMigratorCarryRows, carry-164): stamped
+% did_v1 and never validated against V_eta, so it needs no V_eta class, and its
+% did-schema tombstone is deleted ([one folder, final classes only]). What must
+% hold for it now is that it is in the carry table, so it cannot strand.
 cache = did2.schema.cache.shared();
 s = cache.getClass('generic_file');
 verifyEqual(testCase, char(s.document_class.class_name), 'generic_file');
-s = cache.getClass('valid_interval');
-verifyEqual(testCase, char(s.document_class.class_name), 'valid_interval');
+verifyTrue(testCase, any(strcmp(did2.convert.noMigratorCarryRows(), 'valid_interval')), ...
+    'valid_interval has no migrator and no V_eta schema: it must be carried as v1');
+verifyEqual(testCase, did2.convert.noMigratorCarryRows('valid_interval'), '[carry-164]');
 end
 
 function testGenericFilePassesThroughIdPreserved(testCase)

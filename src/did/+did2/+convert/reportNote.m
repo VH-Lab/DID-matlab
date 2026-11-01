@@ -39,6 +39,14 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                                                     notes after v1_to_v2
 %                                                     collected its own
 %                                                     (resolveDeferredBaths).
+%   A `carried_as_v1` note is also recorded, IN FULL, in the run's migration
+%   report (did2.convert.migrationReport 'carried': the document, its class,
+%   the carry register rows its DETAIL cites and the DETAIL as the reason),
+%   which is not sampled ([migration report is an attached file], Jess Haley,
+%   2026-11-01: `carried_as_v1` (document_id, class, carry, reason)). A note
+%   truncated away is still there; the report keeps only the documents the
+%   run writes ('collect').
+%
 %   S = did2.convert.reportNote('collect')            the notes, summarised:
 %       S.<kind>.count       how many notes of this kind were recorded (EXACT)
 %       S.<kind>.by_class    a struct, class name -> note count (EXACT)
@@ -126,13 +134,17 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     name field "where it has one"). DETAIL is the name. A
 %                     measure only: the document is not carried (what it
 %                     should do is not decided).
-%     needs_info      ONE note per `base.needs_info` entry a migrator writes
-%                     on a document it emits: a fact the source never stated
-%                     ([missing facts are needs info], Jess Haley, 2026-10-29,
-%                     did-schema V_eta_go_forward_class_audit.md: "the
-%                     migration report counts the entries"). DETAIL is the
-%                     entry's field path ('coordinate_system.reference_point').
-%                     Written by probe_geometry (two per converted document).
+%     gap             ONE note per gap a migrator lists in the migration
+%                     report (did2.build.document 'Gaps'): a fact the source
+%                     never stated ([missing facts are needs info], Jess Haley,
+%                     2026-10-29: "the migration report counts the entries";
+%                     [gap accepted when the report lists it], 2026-11-01: the
+%                     gap is listed in the run's report, not in the document).
+%                     DETAIL is the gap's field path
+%                     ('coordinate_system.reference_point'). Written by
+%                     probe_geometry (two per converted document), image_stack,
+%                     virus_injection and the dose and formulation writers.
+%                     Called `needs_info` until 2026-11-01.
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
 %                     location, so whether it was an immersion or a dose cannot
 %                     be read from it; it migrates as a dose with a NaN amount
@@ -260,6 +272,11 @@ switch action
         st.pId{n} = char(docId);
         st.pDetail{n} = char(detail);
         st.nPending = n;
+        if strcmp(action, 'carried_as_v1')
+            % every carry, in full, in the run's migration report (header)
+            did2.convert.migrationReport('carried', char(docId), ...
+                char(className), char(detail), char(detail));
+        end
 end
 end
 

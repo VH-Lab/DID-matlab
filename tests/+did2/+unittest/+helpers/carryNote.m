@@ -14,7 +14,7 @@ arguments
     batch cell
 end
 
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 v1 = batch{1};
 id = '';
 if isfield(v1, 'base') && isfield(v1.base, 'id'); id = char(v1.base.id); end

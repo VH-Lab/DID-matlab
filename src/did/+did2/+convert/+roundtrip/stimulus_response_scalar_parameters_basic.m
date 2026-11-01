@@ -1,4 +1,4 @@
-function [v1, spec] = stimulus_response_scalar_parameters_basic(bodies)
+function [v1, spec] = stimulus_response_scalar_parameters_basic(bodies, ctx)
 %STIMULUS_RESPONSE_SCALAR_PARAMETERS_BASIC Rebuild a v1
 %   `stimulus_response_scalar_parameters_basic` from what the migration made of
 %   it.
@@ -46,12 +46,21 @@ function [v1, spec] = stimulus_response_scalar_parameters_basic(bodies)
 %                                        them and they agree; otherwise not
 %                                        rebuilt (reported lost)
 %
+%   [V1, SPEC] = ...(BODIES, CTX), in the whole-batch round trip
+%   (did2.convert.roundtrip.wholeBatch; [whole-batch round trip], Jess Haley,
+%   2026-10-27): the responses that use this method are OTHER sources'
+%   documents, so they are read from CTX, the index of the final batch, as the
+%   documents whose method_id names this method (read, never placed). Test
+%   code run 41322059537: all 273 of 20211116 failed, the sample losing
+%   freq_response 0.
+%
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.stimulus_response_scalar_parameters_basic,
 %            did2.convert.resolveResponseParameters.
 
 arguments
     bodies cell
+    ctx = []
 end
 
 CLASS = 'stimulus_response_scalar_parameters_basic';
@@ -89,6 +98,17 @@ for k = 1:numel(bodies)
             harmonics(end+1) = h; %#ok<AGROW>
         end
         used(k) = true;
+    end
+end
+% ... and, in the whole batch, the responses of other sources (CTX)
+for k = ctxReferrers(ctx, base.id)
+    b = ctx.docs{k};
+    if strcmp(classNameOf(b), 'calculation') && isfield(b, 'harmonic_component') ...
+            && isequal(edgeIds(b, 'method_id'), {base.id})
+        h = numberOf(getIn(b, 'harmonic_component', 'value', 'harmonic'));
+        if ~isempty(h)
+            harmonics(end+1) = h; %#ok<AGROW>
+        end
     end
 end
 for k = find(~used)

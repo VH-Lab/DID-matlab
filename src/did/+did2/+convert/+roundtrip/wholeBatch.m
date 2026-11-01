@@ -60,6 +60,15 @@ function report = wholeBatch(v1Bodies, result)
 %     ids_kept / ids_lost      sources whose v1 id some final document holds,
 %                              or does not ([every v1 id survives]);
 %                              ids_lost_by_class, ids_lost_ids (all of them)
+%     ids_released             of the ids no final document holds, those a
+%                              decision lets go (RELEASED_ID_CLASSES, below):
+%                              the source's class is listed there AND no final
+%                              document references the id ([a rebuilt document
+%                              may lose its id], Jess Haley, 2026-10-27:
+%                              allowed "when no other document references
+%                              it"). Counted apart from ids_lost, never in it;
+%                              ids_released_by_class. A listed class whose id
+%                              IS referenced is counted lost.
 %     sources_without_id       sources stating no v1 id
 %     sources_compared         sources handed to the per-class check
 %     sources_ok               of those, the ones that round trip clean
@@ -92,6 +101,7 @@ arguments
 end
 
 bodies = asCellOfStructs(v1Bodies);
+reloadBatchIndexes(bodies);
 if ~isfield(result, 'source_outputs')
     error('did2:convert:roundtrip:noSourceOutputs', ...
         ['RESULT has no source_outputs: it was not made by a v1_to_v2 that ' ...
@@ -112,7 +122,8 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
     'sources_quarantined', 0, 'sources_resolved_by_batch_pass', 0, ...
     'resolved_by_batch_pass_by_class', struct(), 'sources_still_quarantined', 0, ...
     'ids_kept', 0, 'ids_lost', 0, ...
-    'ids_lost_by_class', struct(), 'ids_lost_ids', {{}}, 'sources_without_id', 0, ...
+    'ids_lost_by_class', struct(), 'ids_lost_ids', {{}}, ...
+    'ids_released', 0, 'ids_released_by_class', struct(), 'sources_without_id', 0, ...
     'sources_compared', 0, 'sources_ok', 0, ...
     'sources_stored_as_v1', 0, 'stored_as_v1_by_class', struct(), ...
     'sources_changed_by_batch_pass', 0, 'changed_by_class', struct(), ...
@@ -146,6 +157,9 @@ for r = 1:numel(rows)
         report.sources_without_id = report.sources_without_id + 1;
     elseif any(strcmp(finalIds, row.id))
         report.ids_kept = report.ids_kept + 1;
+    elseif any(strcmp(cls, RELEASED_ID_CLASSES())) && isempty(ctxReferrers(ctx, row.id))
+        report.ids_released = report.ids_released + 1;
+        report.ids_released_by_class = bump(report.ids_released_by_class, cls);
     else
         report.ids_lost = report.ids_lost + 1;
         report.ids_lost_by_class = bump(report.ids_lost_by_class, cls);
@@ -221,6 +235,48 @@ c = '<unknown>';
 if isstruct(v1) && isfield(v1, 'document_class') && isstruct(v1.document_class) ...
         && isfield(v1.document_class, 'class_name') && ~isempty(v1.document_class.class_name)
     c = char(v1.document_class.class_name);
+end
+end
+
+function c = RELEASED_ID_CLASSES()
+% the v1 classes a decision lets lose their id when nothing references it
+% ([a rebuilt document may lose its id], Jess Haley, 2026-10-27, amending
+% [every v1 id survives]):
+%   dataset_session_info  the decision's own example: rebuilt from the
+%                         memberships, it writes no V2 document
+%   daqreader_mfdaq_epochdata_ingested  [segment length is the time chunk]
+%                         (Jess Haley, 2026-10-29): "The v1 archive document
+%                         is not kept: its id goes under [a rebuilt document
+%                         may lose its id] unless something links to it"
+%                         (did2.convert.resolveEpochProbemap retires it only
+%                         then)
+c = {'dataset_session_info', 'daqreader_mfdaq_epochdata_ingested'};
+end
+
+function reloadBatchIndexes(bodies)
+%RELOADBATCHINDEXES Index the WHOLE v1 batch again for the inverses that read
+%   it: did2.convert.elementSubjects (roundtrip.element rebuilds a sorted
+%   unit's subject_id from its probe's, [unit direct and subject rebuild from
+%   the probe]), did2.convert.stimulusPresentationSpecs (roundtrip.hartley_calc
+%   rebuilds stimulus_properties from the presentation, [hartley leftovers
+%   checked]) and did2.convert.tuningBatchIndex (did2.convert.inputEdgeNames
+%   and did2.convert.tuningStimids, read by the tuning and response inverses,
+%   [input names rebuild from the input class], [tuning stimids rebuild]).
+%
+%   WHY. did2.convert.v1_to_v2 resets and loads these per call. The batch
+%   passes call v1_to_v2 again on their own small sub-batches (epochMint,
+%   resolveEpochProbemap, foldGenericFiles, ...), so after the last pass the
+%   indexes hold the LAST SUB-BATCH, not the batch this report reads. Every
+%   inverse that read them then found nothing: on Test code run 41322059537
+%   (DID-matlab b513b228) every 20211116 element with an underlying element
+%   (21, all sorted units) lost its subject_id, and the sampled hartley_calc
+%   failures their stimulus_properties, while the per-class round-trip tests
+%   (one v1_to_v2 call) rebuild both. The whole-batch report indexes V1BODIES
+%   itself, as v1_to_v2 does.
+for f = {@did2.convert.elementSubjects, @did2.convert.stimulusPresentationSpecs, ...
+        @did2.convert.tuningBatchIndex}
+    f{1}('reset');
+    f{1}('load', bodies);
 end
 end
 
