@@ -1626,9 +1626,10 @@ end
 % actually produce is a StimulationApproach term, an epoch, and an edge named
 % `stimulus_element_id` pointing at the stimulator element.
 %
-% The document now PASSES THROUGH for the NDI second pass (its destination is
-% `interaction_purpose`, which needs the migrated graph), so the fixture asserts
-% that the v1 shape still validates against the V_eta tombstone with 0 orphans.
+% The document is CARRIED whole as v1 for the NDI second pass (its destination
+% is `interaction_purpose`, which needs the migrated graph; carry-165 since
+% 2026-11-01, so it is no longer validated against a V_eta tombstone), and the
+% fixture asserts it reaches the batch with 0 orphans.
 function batch = fx_openminds_stimulus()
 sub = subjDoc('oms_sub', 'stimOMS');
 d = struct();
