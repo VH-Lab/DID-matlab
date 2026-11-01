@@ -3317,7 +3317,12 @@ classdef cache < handle
             if isempty(value) || (isstruct(value) && isempty(fieldnames(value))) ...
                     || (ischar(value) && isempty(strtrim(value))) ...
                     || obj.isVacuousValue(value)
-                tf = true;
+                % [formulation amount needs info] (Jess Haley, 2026-10-31,
+                % did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md
+                % G67 (a)): a blank value that needs_info names -- the value
+                % or a field within it, <block>.value... -- is not nowhere:
+                % the source never stated it.
+                tf = ~did2.schema.needsInfoNamesValue(s);
             end
         end
 

@@ -47,10 +47,14 @@ function [v1, spec] = imageStack(bodies)
 %                                        placed]: left unwritten when it is
 %                                        that range), stated as an equivalent
 %       timestamp, clocktype             [acquisition time on its clock]
-%                                        (Jess Haley, 2026-10-30): on a UTC
-%                                        clock, the anchor's start.source_value
-%                                        and its clock (approx_ when its
-%                                        clock_tolerance is 5 s); on any other,
+%                                        (Jess Haley, 2026-10-30) and [UTC
+%                                        acquisition time is absolute]
+%                                        (2026-10-31): on a UTC clock, the
+%                                        absolute anchor's start.source_value
+%                                        and clock utc (approx_utc when its
+%                                        clock_tolerance is 5 s); a relative
+%                                        anchor on clock utc (the shape before
+%                                        2026-10-31) is still read; on any other,
 %                                        the AFO:AFR_0001158 "acquisition
 %                                        time" condition's source_value and the
 %                                        anchor's clock, else the clock its
@@ -98,7 +102,8 @@ for k = 1:numel(bodies)
     if strcmp(cn, 'sampled_body') && isempty(body) && any(strcmp(base.id, edgeIds(b, 'owner_id')))
         body = b;
         used(k) = true;
-    elseif strcmp(cn, 'relative_time_reference') && any(strcmp(idOf(b), anchorIds))
+    elseif any(strcmp(cn, {'relative_time_reference', 'absolute_time_reference'})) ...
+            && any(strcmp(idOf(b), anchorIds))
         used(k) = true;
         if isempty(anchor)
             anchor = b;
@@ -297,8 +302,10 @@ end
 function [ts, clk, extra] = acquisitionTime(conds, anchor, obs)
 % [acquisition time on its clock] (Jess Haley, 2026-10-30, did-schema
 % V_eta_go_forward_class_audit.md): the v1 `timestamp` and `clocktype`.
-%   A UTC clock: the anchor states the time (start.source_value, the datenum)
-%   on clock utc; approx_utc when its clock_tolerance is 5 s.
+%   A UTC clock: the absolute anchor states the time (start.source_value, the
+%   datenum; [UTC acquisition time is absolute], Jess Haley, 2026-10-31);
+%   approx_utc when its clock_tolerance is 5 s. A relative anchor on clock
+%   utc (the shape before that decision) is read the same way.
 %   Any other clock: the AFO:AFR_0001158 "acquisition time" condition holds
 %   the datenum as its source_value; the clock is the anchor's, else the one
 %   the observation's needs_info entry names ('' for "on no named clock").
@@ -312,6 +319,16 @@ start = numberOf(getIn(anchor, 'relative_time_reference', 'value', 'start', 'sou
 if ~isempty(start) && strcmp(aclk, 'utc')
     ts = start;
     clk = withApprox(aclk, atol);
+end
+if strcmp(classNameOf(anchor), 'absolute_time_reference')
+    abs0 = str2double(fieldText(getIn(anchor, 'absolute_time_reference', 'value', 'start'), ...
+        'source_value'));
+    if isfinite(abs0)
+        ts = abs0;
+        clk = withApprox('utc', atol);
+    else
+        extra{end+1} = 'the absolute anchor holds no datenum as its source_value';
+    end
 end
 conds = asCell(conds);
 for k = 1:numel(conds)

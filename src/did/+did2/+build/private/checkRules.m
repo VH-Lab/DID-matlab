@@ -171,12 +171,20 @@ for c = 1:numel(chain)
                 % value from a shared value document through a non-empty
                 % `value_id` edge (did-schema statement.json); the shared
                 % document itself is inline or in bodies.
+                % [formulation amount needs info] (Jess Haley, 2026-10-31,
+                % did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md
+                % G67 (a)): a blank `value` is also accepted when the
+                % document's needs_info names it or a field within it
+                % (<block>.value...): a fact the source never stated, such as a
+                % formulation in which no ingredient states an amount.
                 if ~isTrue(findField(doc, blocks, 'data_body')) ...
                         && isBlankValue(findField(doc, blocks, 'value')) ...
-                        && ~hasEdge(doc, 'value_id')
+                        && ~hasEdge(doc, 'value_id') ...
+                        && ~did2.schema.needsInfoNamesValue(doc)
                     violated(ruleName, className, ...
-                        ['`value` is empty and `data_body` is not true: the ' ...
-                         'value is neither inline nor in data bodies.']);
+                        ['`value` is empty, `data_body` is not true and ' ...
+                         'needs_info does not name it: the value is neither ' ...
+                         'inline nor in data bodies.']);
                 end
             case 'ingredients_or_product'
                 % A statement whose value kind is `formulation` (a bath: a

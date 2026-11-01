@@ -448,6 +448,57 @@ for k = 1:numel(clocks)
 end
 end
 
+function testAUtcAcquisitionTimeIsAnAbsoluteInstant(testCase)
+% [UTC acquisition time is absolute] (Decided by Jess Haley, 2026-10-31,
+% did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G65: "That
+% should be an absolute time reference"): on a UTC clock the acquisition time
+% is the observation's absolute_time_reference holding the UTC instant, the
+% datenum kept as start.source_value -- not a relative_time_reference to the
+% session. approx_utc adds a 5 s clock_tolerance. Any other clock keeps the
+% session anchor.
+cases = {'utc', []; 'approx_utc', 5};
+for k = 1:size(cases, 1)
+    v1 = babuStack(sprintf('is_b_abs%d', k), 'image');
+    v1.imageStack_parameters.clocktype = cases{k, 1};
+    v1.imageStack_parameters.timestamp = 739321.4166666666;
+    out = runRaw(v1);
+    label = sprintf('clock "%s"', cases{k, 1});
+    verifyEmpty(testCase, out.quarantine, label);
+    names = cellfun(@(d) d.className(), out.migrated, 'UniformOutput', false);
+    verifyFalse(testCase, any(strcmp(names, 'relative_time_reference')), ...
+        [label ': no relative reference to the session']);
+    i = find(strcmp(names, 'absolute_time_reference'));
+    assertNumElements(testCase, i, 1, label);
+    a = out.migrated{i}.toStruct();
+    obs = out.migrated{strcmp(names, 'observation')}.toStruct();
+    ids = {};
+    for e = 1:numel(obs.depends_on)
+        dep = obs.depends_on(e);
+        if ~strcmp(dep.name, 'time_reference_id'); continue; end
+        if isfield(dep, 'document_id') && ~isempty(dep.document_id)
+            ids{end+1} = char(dep.document_id); %#ok<AGROW>
+        elseif isfield(dep, 'value')
+            ids{end+1} = char(dep.value); %#ok<AGROW>
+        end
+    end
+    verifyTrue(testCase, any(strcmp(ids, a.base.id)), ...
+        [label ': the observation''s time reference']);
+    verifyEqual(testCase, char(a.absolute_time_reference.value.start.utc), ...
+        '2024-03-10T10:00:00.000Z', label);
+    verifyEqual(testCase, str2double(a.absolute_time_reference.value.start.source_value), ...
+        739321.4166666666, [label ': the datenum as v1 wrote it']);
+    if isempty(cases{k, 2})
+        verifyFalse(testCase, isfield(a, 'time_reference') && isfield(a.time_reference, 'clock_tolerance') ...
+            && ~isempty(a.time_reference.clock_tolerance), label);
+    else
+        verifyEqual(testCase, a.time_reference.clock_tolerance.seconds, cases{k, 2}, label);
+    end
+    did2.schema.cache.shared().validateDocument(a);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyRoundTrip(testCase, r, label, {});
+end
+end
+
 % ===================== the other carries, on the raw shape ===============
 
 function testTheRawShapeCarriesAsTheRenamedOneDid(testCase)

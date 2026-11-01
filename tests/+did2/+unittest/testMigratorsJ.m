@@ -815,8 +815,9 @@ verifyEqual(testCase, m.get('statement.variable').node, 'CHEBI:5613');
 verifyTrue(testCase, isnan(m.get('dose.value').volume.liters), ...
     'an unrecorded amount is NaN in the dose''s volume');
 if ~isempty(f)
-    verifyTrue(testCase, isnan(f.get('formulation.value').ingredients(1).concentration.source_value), ...
-        'numeric_value is not the ingredient''s amount');
+    % numeric_value is not the ingredient's amount: the ingredient states none
+    % ([formulation amount needs info], Jess Haley, 2026-10-31; NaN until then)
+    verifyIngredientNoAmountJ(testCase, f, 1);
 end
 p = m.toStruct();
 cnd = p.statement.conditions;
@@ -947,9 +948,11 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 % a body site makes it a dose; no amount recorded -> NaN; the route is known
 verifyTrue(testCase, isnan(out.migrated{1}.get('dose.value').volume.liters));
-% the formulation still carries its ingredient inline (NaN concentration)
+% the formulation still lists its ingredient, with no amount, named in
+% needs_info ([formulation amount needs info], Jess Haley, 2026-10-31; a NaN
+% concentration until then)
 fT = doseChainJ(out.migrated, out.migrated{1});
-verifyTrue(testCase, isnan(fT.get('formulation.value').ingredients(1).concentration.source_value));
+verifyIngredientNoAmountJ(testCase, fT, 1);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
 end
 
@@ -1027,19 +1030,20 @@ verifyEqual(testCase, n.needs_info.count, 2);
 did2.schema.cache.shared().validateDocument(fs);
 end
 
-function testAFormulationWithNoAmountAtAllKeepsItsNaNUntilTheValueRuleAllowsIt(testCase)
-% NOT BUILT, pinned so it is seen: when NO ingredient states an amount the
-% formulation's `value` would be blank, which the value rule
-% (value_inline_or_body) refuses, so jDoseBodies writes the pre-decision NaN
-% and no needs_info (reported to the team with [canonical absent only as needs
-% info]). When the rule changes, this test is inverted.
+function testAFormulationWithNoAmountAtAllNamesItInNeedsInfo(testCase)
+% INVERTS testAFormulationWithNoAmountAtAllKeepsItsNaNUntilTheValueRuleAllowsIt.
+% [formulation amount needs info] (Decided by Jess Haley, 2026-10-31, did-schema
+% did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G67 (a)): "the value rule
+% accepts a blank value that `needs_info` names", so when NO ingredient states
+% an amount the formulation lists its ingredient with no amount, names it in
+% needs_info, and validates; the pre-decision NaN is gone.
 v1 = treatmentDrugDoc('td_none', 'CHEBI:7035,muscimol,', 'uberon:0002436', 'primary visual cortex');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 f = doseChainJ(out.migrated, out.migrated{1});
+verifyIngredientNoAmountJ(testCase, f, 1);
 fs = f.toStruct();
-verifyTrue(testCase, isnan(fs.formulation.value.ingredients(1).concentration.source_value));
-verifyFalse(testCase, isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info));
+did2.schema.cache.shared().validateDocument(fs);
 end
 
 function ids = dependencyIds(s, name)
@@ -1123,12 +1127,22 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'pAAV-hSyn-hChR2(H134R)-EYFP');
 conc = f.get('formulation.value').ingredients(1).concentration;
 verifyEqual(testCase, conc.source_value, 1000);
-verifyEqual(testCase, conc.source_unit.name, 'dilution');
-% 'dilution' is the migrator's label for v1's unitless number, not a unit the
-% source spelled: it has no canonical and is NOT carried as carry-155 (a team
-% question whether it is carry-155 or needs_info, [canonical absent only as
-% needs info], Jess Haley, 2026-10-30; jTreatmentBodies' header)
+% [virus dilution needs info] (Decided by Jess Haley, 2026-10-31, did-schema
+% did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G71): a dilution is a
+% source number with no unit, so no unit is written (the migrator's own label
+% 'dilution' is gone), no canonical is computed, the canonical is named in the
+% formulation's needs_info, and the document is not carried (carry-155)
+verifyFalse(testCase, isfield(conc, 'source_unit') && isstruct(conc.source_unit) ...
+    && ~isempty(conc.source_unit) && ~isempty(char(conc.source_unit.name)), ...
+    'a dilution has no unit');
 verifyFalse(testCase, isfield(conc, 'molar'), 'a dilution has no molar canonical');
+fs = f.toStruct();
+verifyTrue(testCase, isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info) ...
+    && any(strcmp({fs.base.needs_info.field}, ...
+    'formulation.value.ingredients(1).concentration.canonical')), ...
+    'the dilution''s canonical is named in needs_info');
+verifyFalse(testCase, isfield(out.summary, 'migration_notes') ...
+    && isfield(out.summary.migration_notes, 'carried_as_v1'), 'not carried');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
 % a body site makes a virus_injection a dose, its volume NaN when unrecorded,
 % its dilution staying on the formulation (Jess Haley, 2026-10-21
@@ -1303,10 +1317,9 @@ verifyEqual(testCase, c.get('chemical.value').substance.name, 'alprazolam');
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
     'the ingredient_id edge names the alprazolam chemical');
 % the per-body-mass amount is the dose's, not the ingredient's concentration:
-% the ingredient's own amount is unrecorded, NaN (a blank entry would leave the
-% formulation's value empty, which value_inline_or_body refuses)
-e = f.get('formulation.value').ingredients(1);
-verifyTrue(testCase, isnan(e.concentration.source_value));
+% the formulation's entry states no amount and needs_info names it
+% ([formulation amount needs info], Jess Haley, 2026-10-31; NaN until then)
+verifyIngredientNoAmountJ(testCase, f, 1);
 site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, site.get('term.value').node, 'UBERON:0001179');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
@@ -1365,9 +1378,13 @@ verifyEqual(testCase, v.volume.source_value, 0.5);
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
     'the entry is paired with the alprazolam chemical');
 ing = f.get('formulation.value').ingredients;
+if iscell(ing); ing = [ing{:}]; end
 verifyEqual(testCase, numel(ing), 2);
-verifyTrue(testCase, all(arrayfun(@(e) isnan(e.concentration.source_value), ing)), ...
-    'an amount taken by the dose is not also an ingredient concentration');
+% an amount taken by the dose is not also an ingredient concentration: each
+% entry states none ([formulation amount needs info], Jess Haley, 2026-10-31;
+% NaN until then)
+verifyIngredientNoAmountJ(testCase, f, 1);
+verifyIngredientNoAmountJ(testCase, f, 2);
 verifyFalse(testCase, isfield(out.summary.migration_notes, 'dose_amount_conflict'));
 end
 
@@ -1546,11 +1563,25 @@ for k = 1:numel(out.migrated)
 end
 verifyNotEmpty(testCase, form);
 if ~isempty(form)
-    % dilution 0 is not recorded: NaN, and no "dilution" unit is claimed
-    conc = form.get('formulation.value').ingredients(1).concentration;
-    verifyTrue(testCase, isnan(conc.source_value), 'a dilution of 0 is NaN, not a measured 0');
-    verifyFalse(testCase, isfield(conc, 'source_unit') && isstruct(conc.source_unit) ...
-        && ~isempty(conc.source_unit) && strcmp(conc.source_unit.name, 'dilution'));
+    % dilution 0 is not recorded, and the diluent states no amount: no
+    % ingredient states one, so each entry has no amount and needs_info names
+    % each; the blank value is accepted ([formulation amount needs info],
+    % Decided by Jess Haley, 2026-10-31; docs/V2_PLAN.md G67 (a)), not NaN
+    ing = form.get('formulation.value').ingredients;
+    if iscell(ing); ing = [ing{:}]; end
+    verifyEqual(testCase, numel(ing), 2, 'the virus and the diluent are listed');
+    verifyFalse(testCase, isfield(ing, 'concentration') ...
+        && any(arrayfun(@(e) ~isempty(e.concentration), ing)), ...
+        'a dilution of 0 is no amount, not NaN and not a measured 0');
+    fs = form.toStruct();
+    named = {};
+    if isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info)
+        named = {fs.base.needs_info.field};
+    end
+    verifyTrue(testCase, any(strcmp(named, 'formulation.value.ingredients(1).concentration')), ...
+        'the virus''s missing amount is named in needs_info');
+    verifyTrue(testCase, any(strcmp(named, 'formulation.value.ingredients(2).concentration')), ...
+        'the diluent''s missing amount is named in needs_info');
 end
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 end
@@ -7204,6 +7235,26 @@ assertTrue(testCase, isfield(ds.base, 'needs_info') && ~isempty(ds.base.needs_in
     'the unrecorded amount is not named in needs_info');
 verifyTrue(testCase, any(strcmp({ds.base.needs_info.field}, 'dose.value.volume')), ...
     strjoin({ds.base.needs_info.field}, ', '));
+end
+
+function verifyIngredientNoAmountJ(testCase, f, k)
+% [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30) and
+% [formulation amount needs info] (2026-10-31, docs/V2_PLAN.md G67 (a)): the
+% formulation's ingredient K states no amount (no NaN) and base.needs_info
+% names 'formulation.value.ingredients(K).concentration' (jDoseBodies).
+ing = f.get('formulation.value').ingredients;
+if iscell(ing); ing = [ing{:}]; end
+assertGreaterThanOrEqual(testCase, numel(ing), k);
+e = ing(k);
+verifyFalse(testCase, isfield(e, 'concentration') && ~isempty(e.concentration), ...
+    sprintf('ingredient %d states no amount (not NaN)', k));
+fs = f.toStruct();
+named = {};
+if isfield(fs.base, 'needs_info') && ~isempty(fs.base.needs_info)
+    named = {fs.base.needs_info.field};
+end
+verifyTrue(testCase, any(strcmp(named, ...
+    sprintf('formulation.value.ingredients(%d).concentration', k))), strjoin(named, ', '));
 end
 
 function t = paramTextJ(leaf, varName)

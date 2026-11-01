@@ -109,6 +109,52 @@ verifyError(testCase, @() buildObs(testCase, cond, other), 'did2:build:ruleViola
     'an entry for another condition excuses nothing here');
 end
 
+function testNeedsInfoNamesValueReadsThePath(testCase)
+% did2.schema.needsInfoNamesValue: the value, or a field within it, by path
+s = struct('base', struct('id', 'x'));
+cases = {'formulation.value.ingredients(1).concentration', true; ...
+    'formulation.value', true; 'value', true; 'statement.value(2).x', true; ...
+    'formulation.values', false; 'statement.value_id', false; ...
+    'formulation.data_type', false};
+for k = 1:size(cases, 1)
+    s.base.needs_info = struct('field', cases{k, 1}, 'reason', 'not stated');
+    verifyEqual(testCase, did2.schema.needsInfoNamesValue(s), cases{k, 2}, cases{k, 1});
+end
+s.base.needs_info = struct('field', 'formulation.value', 'reason', '');
+verifyFalse(testCase, did2.schema.needsInfoNamesValue(s), 'an entry with no reason');
+end
+
+function testABlankValueNamedInNeedsInfoIsAccepted(testCase)
+% value_inline_or_body, [formulation amount needs info] (Decided by Jess Haley,
+% 2026-10-31, did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G67
+% (a)): "the value rule accepts a blank value that `needs_info` names" -- a
+% formulation in which no ingredient states an amount. The builder and the
+% validator both accept it; unnamed, or named for another field, it is
+% refused as before.
+cache = did2.schema.cache.shared();
+if ~cache.hasClass('formulation') || ~cache.hasClass('chemical')
+    assumeFail(testCase, 'the loaded schema has no formulation class');
+end
+sid = testCase.TestData.sid;
+chem = did2.build.document('chemical', struct('value', struct('substance', ...
+    did2.build.term('CHEBI:7035', 'muscimol'))), 'SessionId', sid);
+value = struct('ingredients', {{struct()}});
+edges = struct('ingredient_id', {{chem.base.id}});
+ni = struct('field', 'formulation.value.ingredients(1).concentration', ...
+    'reason', 'the source lists this ingredient but states no amount');
+doc = did2.build.document('formulation', struct('value', value), ...
+    'SessionId', sid, 'Edges', edges, 'NeedsInfo', ni);
+verifyEqual(testCase, doc.base.needs_info(1).field, ni.field);
+cache.validateDocument(jsondecode(jsonencode(doc)));
+verifyError(testCase, @() did2.build.document('formulation', struct('value', value), ...
+    'SessionId', sid, 'Edges', edges), 'did2:build:ruleViolated', ...
+    'a blank value nothing names is nowhere');
+other = struct('field', 'formulation.data_type', 'reason', 'not stated');
+verifyError(testCase, @() did2.build.document('formulation', struct('value', value), ...
+    'SessionId', sid, 'Edges', edges, 'NeedsInfo', other), 'did2:build:ruleViolated', ...
+    'an entry for a field outside the value excuses nothing');
+end
+
 function doc = buildObs(testCase, conditions, needsInfo)
 args = {'SessionId', testCase.TestData.sid, 'TimeReferenceIds', {did.ido.unique_id()}, ...
     'Conditions', conditions, 'ValueKind', 'voltage'};
