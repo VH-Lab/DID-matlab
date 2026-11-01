@@ -102,10 +102,11 @@ end
 %             epochfiles_ingested regression.
 %
 % Field spellings and values are the WRITER'S, +setup/+conv/+babu/import.m
-% :526-537 (plasmid) as universalRenames leaves them: formatOntology ->
-% format_ontology, dateCreated -> date_created, dateUpdated -> date_updated;
-% checksum and filename are already snake/flat. The datenums are real-shaped
-% doubles, so `refused_unplaced_dates` counts om_gf_01.
+% :526-537 (plasmid), as v1 writes them: pass 1 hands a generic_file on
+% unchanged ([ensemble and generic_file checked as v1], Jess Haley,
+% 2026-11-01), and a rename-pass spelling (format_ontology, ...) is outside
+% NDI's template, so it would be carried malformed (carry-100). The datenums
+% are real-shaped doubles, so `refused_unplaced_dates` counts om_gf_01.
 function batch = genericFileBatch()
 sub = subjDoc('om_gf_subj', 'plasmidHostStrain');
 
@@ -113,13 +114,13 @@ gf1 = struct();
 gf1.document_class = struct('class_name', 'generic_file', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-gf1.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_subj'});
+gf1.depends_on = struct('name', {'document_id'}, 'value', {'om_gf_subj'});
 gf1.base = struct('id', 'om_gf_01', 'session_id', 'sess_09', ...
     'name', 'plasmid', 'datestamp', '2024-06-01T12:00:00.000Z');
 gf1.generic_file = struct('filename', 'plasmids/pXY-12.gb', ...
-    'format_ontology', 'EMPTY:0000253', ...
+    'formatOntology', 'EMPTY:0000253', ...
     'checksum', 'd41d8cd98f00b204e9800998ecf8427e', ...
-    'date_created', 739000.5, 'date_updated', 739001.5);
+    'dateCreated', 739000.5, 'dateUpdated', 739001.5);
 gf1.files = struct('file_list', {{'generic_file.ext'}});
 
 % The sibling label. This is the whole point of the batch pass: `variable`
@@ -131,18 +132,18 @@ gf2 = struct();
 gf2.document_class = struct('class_name', 'generic_file', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-gf2.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_subj'});
+gf2.depends_on = struct('name', {'document_id'}, 'value', {'om_gf_subj'});
 gf2.base = struct('id', 'om_gf_02', 'session_id', 'sess_09', ...
     'name', 'unlabelled', 'datestamp', '2024-06-01T12:00:00.000Z');
 gf2.generic_file = struct('filename', 'misc/notes.txt', ...
-    'format_ontology', '', 'checksum', '', ...
-    'date_created', 739002.5, 'date_updated', 739002.5);
+    'formatOntology', '', 'checksum', '', ...
+    'dateCreated', 739002.5, 'dateUpdated', 739002.5);
 
 % om_gf_03: om_gf_01 without its dates, with its own label, so the fold's happy
 % path is still driven under validation.
 gf3 = gf1;
 gf3.base.id = 'om_gf_03';
-gf3.generic_file = rmfield(gf3.generic_file, {'date_created', 'date_updated'});
+gf3.generic_file = rmfield(gf3.generic_file, {'dateCreated', 'dateUpdated'});
 ol3 = ontologyLabelV1('om_gf_lbl3', 'om_gf_03', 'EDAM:data_1286');
 
 batch = { sub, gf1, ol2, gf2, gf3, ol3 };
@@ -235,8 +236,8 @@ d.epochid = struct('epochid','t00001');
 d.app = struct('name','ndi.app.ensemble','version','1.0');
 d.ensemble = struct('ensemble_name','ens1','value_type','rate', ...
     'value_description','firing rate','num_neurons',2,'clocktype','dev_local_time');
-% NDI's OWN file name, verbatim -- universalRenames.m:308 skips the `file`/`files`
-% keys, so a passed-through document reaches validation still carrying this spelling.
+% NDI's OWN file name, verbatim: pass 1 hands an ensemble on unchanged, as v1
+% ([ensemble and generic_file checked as v1]).
 d.files = struct('file_list', {{'neuron_names.txt'}});
 batch = { sub, n1, n2, d };
 end
@@ -564,7 +565,7 @@ verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEqual(testCase, classOf(result.migrated, 'om_gf_01'), 'generic_file', ...
     'a generic_file whose dates cannot be placed was folded anyway');
 verifyEqual(testCase, result.migrated{strcmp(cellfun(@(d) char(d.get('base.id')), ...
-    result.migrated, 'UniformOutput', false), 'om_gf_01')}.get('generic_file.date_created'), ...
+    result.migrated, 'UniformOutput', false), 'om_gf_01')}.get('generic_file.dateCreated'), ...
     739000.5, 'the carried file keeps its dates');
 
 % THE ID IS PRESERVED and the class changed under it.

@@ -112,8 +112,8 @@ end
 
 function testABaseLessDocumentMintsTheSameIdsTwice(testCase)
 % a 2020-vintage treatment (identity only in `ndi_document`) whose migration
-% mints an anchor: converting it twice gives identical ids, on the raw path and
-% on the universalRenames path. (It minted random ids before mintKey.)
+% mints an anchor: converting it twice gives identical ids. (It minted random
+% ids before mintKey.)
 v1 = struct();
 v1.document_class = struct('class_name', 'treatment', 'class_version', 1);
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_1'});
@@ -123,12 +123,10 @@ v1.ndi_document = struct('id', '41e1b2c3d4e5f60d_0123456789abcdef', ...
 v1.treatment = struct('ontologyName', 'EMPTY:0000199', ...
     'name', 'treatment: grating direction-of-motion visual stimulation', ...
     'numeric_value', 6.5, 'string_value', '');
-for raw = {did2.convert.rawV1Classes(), {}}
-    r1 = did2.convert.v1_to_v2({v1}, 'Validate', false, 'RawV1Classes', raw{1});
-    r2 = did2.convert.v1_to_v2({v1}, 'Validate', false, 'RawV1Classes', raw{1});
-    verifyEmpty(testCase, r1.quarantine);
-    verifyGreaterThan(testCase, numel(r1.migrated), 1, 'the anchor was not minted');
-    verifyEqual(testCase, cellfun(@(d) d.get('base.id'), r1.migrated, 'UniformOutput', false), ...
-        cellfun(@(d) d.get('base.id'), r2.migrated, 'UniformOutput', false));
-end
+r1 = did2.convert.v1_to_v2({v1}, 'Validate', false);
+r2 = did2.convert.v1_to_v2({v1}, 'Validate', false);
+verifyEmpty(testCase, r1.quarantine);
+verifyGreaterThan(testCase, numel(r1.migrated), 1, 'the anchor was not minted');
+verifyEqual(testCase, cellfun(@(d) d.get('base.id'), r1.migrated, 'UniformOutput', false), ...
+    cellfun(@(d) d.get('base.id'), r2.migrated, 'UniformOutput', false));
 end

@@ -141,37 +141,6 @@ for k = 1:size(pairs, 1)
 end
 end
 
-function testTheSwitchChangesNoConvertedTuning(testCase)
-% "keep behaviour identical": every document the raw path CONVERTS is the one
-% the universalRenames path converted (ids are deterministic, practice (b));
-% a carry is carried on both paths, the raw one the untouched v1 source
-fixtures = [cellfun(@writerOutput, familyNames(), 'UniformOutput', false), ...
-    cellfun(@convertedShape, {'contrasttuning_calc', 'spatial_frequency_tuning_calc', ...
-    'temporal_frequency_tuning_calc', 'tuningcurve_calc'}, 'UniformOutput', false)];
-for k = 1:numel(fixtures)
-    v1 = fixtures{k};
-    raw = runRaw(v1);
-    old = did2.convert.v1_to_v2(v1, 'Validate', false, ...
-        'TargetVersion', 'V_eta', 'RawV1Classes', {});
-    label = sprintf('fixture %d (%s)', k, v1.document_class.class_name);
-    verifyEqual(testCase, raw.summary.legacy_ndi_document.bodies_read_raw_v1, 1, label);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), ...
-        [label ': carried on one path only']);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    if ~isempty(raw.passthrough)
-        verifyTrue(testCase, isequaln(stripStamp(raw.migrated{1}.toStruct()), v1), ...
-            [label ': the carry is not the v1 source']);
-        continue;
-    end
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        verifyTrue(testCase, isequaln(raw.migrated{j}.toStruct(), old.migrated{j}.toStruct()), ...
-            sprintf('%s, document %d differs between the raw and the renamed path', label, j));
-    end
-end
-end
-
 function testWriterOutputsValidate(testCase)
 % the converted documents pass the V2 schema (the corpus run validates too)
 for cls = {'oridirtuning_calc', 'contrastsensitivity_calc'}

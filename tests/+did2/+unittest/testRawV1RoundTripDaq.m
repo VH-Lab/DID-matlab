@@ -67,7 +67,6 @@ end
 f = writerFixtures();
 r = runRaw(f(:, 2)');
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, size(f, 1));
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 % ===================== every writer shape round trips =====================
@@ -132,9 +131,9 @@ function testTheFilefindFoldRoundTrips(testCase)
 % resolves its two system NAMES to the migrated acquisition systems and re-runs
 % the migrator: a configuration linking the two systems (from, to) and its
 % software. The rule is rebuilt from those and the two systems.
-for path = {'raw', 'renamed'}
+for path = {'raw'}
     [batch, rule] = filefindBatch();
-    if strcmp(path{1}, 'raw'); out = runRaw(batch); else; out = runRenamed(batch); end
+    out = runRaw(batch);
     out = did2.convert.resolveClockAlignment(out, 'Validate', false, 'TargetVersion', 'V_eta');
     verifyEqual(testCase, out.clock_alignment_fold.syncrule_configurations_folded, 1, path{1});
     docs = foldDocs(out, rule.base.id);
@@ -153,10 +152,10 @@ function testTheChannelRuleFoldRoundTrips(testCase)
 % a commonTriggersOverlappingEpochs rule: its systems are the from / to edges
 % (daqsystem1_name, daqsystem2_name), its trigger channels and errorOnFailure
 % method parameters; the v1 rule rebuilds exactly
-for path = {'raw', 'renamed'}
+for path = {'raw'}
     rule = channelRule();
     batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
-    if strcmp(path{1}, 'raw'); out = runRaw(batch); else; out = runRenamed(batch); end
+    out = runRaw(batch);
     out = did2.convert.resolveClockAlignment(out, 'Validate', false, 'TargetVersion', 'V_eta');
     verifyEqual(testCase, out.clock_alignment_fold.syncrule_configurations_folded, 1, path{1});
     docs = foldDocs(out, rule.base.id);
@@ -248,32 +247,6 @@ end
 
 % ===================== the switch changes no outcome ======================
 
-function testTheSwitchChangesNoOutcome(testCase)
-% a converted document is the one the renamed path converted; a passthrough is
-% the same document but for v1's `value` edge key; a carry is carried on both
-f = writerFixtures();
-for k = 1:size(f, 1)
-    [label, v1] = f{k, 1:2};
-    raw = runRaw(v1);
-    old = runRenamed(v1);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), label);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        b = old.migrated{j}.toStruct();
-        if ~isempty(raw.passthrough)
-            verifyEqual(testCase, edgeMap(a), edgeMap(b), label);
-            a = rmfieldIf(a, 'depends_on');
-            b = rmfieldIf(b, 'depends_on');
-        end
-        verifyTrue(testCase, isequaln(a, b), sprintf('%s, document %d: raw %s; renamed %s', ...
-            label, j, jsonencode(a), jsonencode(b)));
-    end
-end
-end
-
 % ===================== what the migrator does not read is carried =========
 
 function testAnUnreadFieldIsCarried(testCase)
@@ -339,11 +312,8 @@ for k = 1:size(breaks, 1)
     label = breaks{k, 1};
     v1 = jsondecode(jsonencode(breaks{k, 2}(f{strcmp(f(:, 1), label), 2})));
     raw = runRaw(v1);
-    old = runRenamed(v1);
     verifyEqual(testCase, numel(raw.passthrough), 1, [label ': raw carries']);
-    verifyEqual(testCase, numel(old.passthrough), 1, [label ': renamed carries']);
     verifyEqual(testCase, char(raw.migrated{1}.get('document_class.schema_version')), 'did_v1', label);
-    verifyEqual(testCase, char(old.migrated{1}.get('document_class.schema_version')), 'did_v1', label);
     d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
 end
@@ -508,11 +478,6 @@ end
 
 function out = runRaw(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
-end
-
-function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
-    'RawV1Classes', {});
 end
 
 function verifyRoundTrip(testCase, r, label, expectedLost)

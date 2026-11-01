@@ -184,35 +184,6 @@ verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:needsSessionCo
 verifyTrue(testCase, isequaln(jsondecode(out.quarantine(1).original_body), v1));
 end
 
-function testTheSwitchChangesNoBath(testCase)
-% "keep behaviour identical": the raw and the universalRenames path defer the
-% same bath and the coarse pass assembles the same documents from it
-for v1 = {dabBath(oneDrug()), dabBath(acsfWithDrug()), marderBath()}
-    batch = [fixtureBatch(), v1];
-    raw = resolved(did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta'));
-    old = resolved(did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
-        'RawV1Classes', {}));
-    label = v1{1}.base.id;
-    verifyEqual(testCase, raw.deferred_bath_resolution.baths_resolved, 1, label);
-    verifyEqual(testCase, old.deferred_bath_resolution.baths_resolved, 1, label);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    % a carried document is its v1 source as each path spells it (v1_to_v2:
-    % postUniversalBody), so it is compared by id only, as
-    % testRawV1RoundTripElement's testBothPathsConvertAnElementAlike does.
-    % The stimulator element is no longer one: it is a device of kind
-    % SNOMEDCT:36645008 ([stimulator is SNOMED CT Stimulator], Jess Haley,
-    % 2026-10-30, replacing [element types batch 4] (4), which carried it)
-    verifyEqual(testCase, sort({raw.passthrough.id}), sort({old.passthrough.id}), label);
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        if any(strcmp(char(a.base.id), {raw.passthrough.id})); continue; end
-        verifyTrue(testCase, isequaln(a, old.migrated{j}.toStruct()), ...
-            sprintf('%s, document %d differs between the raw and the renamed path', label, j));
-    end
-end
-end
-
 % ===================== every field accounted for =========================
 
 function testAFieldNoResolverReadsCarriesTheBath(testCase)

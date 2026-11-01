@@ -58,7 +58,6 @@ end
 r = runRaw({writerMfdaq('mf_1', 1), writerManifest('efi_1', 't00001', 'nav_1', probemap('a')), ...
     writerMapping('map_1', identityNodes()), writerStimulusFile('sf_1')});
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, 4);
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 % ===================== the mfdaq cache: converted ========================
@@ -123,8 +122,6 @@ d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, contains(d, 'daqreader_mfdaq_epochdata_ingested.segment_format'), d);
 verifyTrue(testCase, did2.convert.roundtrip.check(v1, raw.migrated).ok);
 % the migrator runs on both paths now, so the renamed path carries it too
-old = runRenamed(v1);
-verifyEqual(testCase, numel(old.passthrough), 1);
 end
 
 function testAMfdaqDependencyVersionIsCarriedOnBothPaths(testCase)
@@ -132,9 +129,7 @@ v1 = writerMfdaq('mf_5', 1);
 v1.depends_on.version = 2;
 v1 = jsondecode(jsonencode(v1));
 raw = runRaw(v1);
-old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.passthrough), 1, 'raw: carried');
-verifyEqual(testCase, numel(old.passthrough), 1, 'renamed: carried');
 d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
 emitted = raw.migrated{1}.toStruct();
@@ -164,11 +159,8 @@ function testAManifestEpochIdTwinIsCarriedOnBothPaths(testCase)
 v1 = writerManifest('efi_3', 't00001', 'nav_1', probemap('a'));
 v1.epochfiles_ingested.epochId = 't00002';
 raw = runRaw(v1);
-old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.passthrough), 1);
-verifyEqual(testCase, numel(old.passthrough), 1);
 verifyEqual(testCase, char(raw.migrated{1}.get('document_class.schema_version')), 'did_v1');
-verifyEqual(testCase, char(old.migrated{1}.get('document_class.schema_version')), 'did_v1');
 end
 
 % ===================== the mapping: carried, then folded =================
@@ -178,8 +170,8 @@ cases = {'identity (Dab)', writerMapping('map_d', identityNodes()); ...
     'drift (Soph)', writerMapping('map_s', driftNodes(), [1.00000241750492, -4.33176506573082])};
 for k = 1:size(cases, 1)
     [label, v1] = cases{k, :};
-    for path = {'raw', 'renamed'}
-        if strcmp(path{1}, 'raw'); out = runRaw(v1); else; out = runRenamed(v1); end
+    for path = {'raw'}
+        out = runRaw(v1);
         verifyEmpty(testCase, out.quarantine, label);
         verifyEqual(testCase, numel(out.passthrough), 1, [label ', ' path{1} ': carried']);
         verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
@@ -221,26 +213,6 @@ for c = {'two epochs', 'one epoch, two systems'}
 end
 end
 
-function testTheFoldIsTheSameOnBothPaths(testCase)
-% the same clock_alignment from either path (the references epochMint mints
-% get fresh ids each run, so the two ends are compared by what they state),
-% and both folds round trip to the same v1 mapping
-[batch, mapping] = foldBatch('two epochs');
-a = did2.convert.epochMint(runRaw(batch), 'Validate', false, 'TargetVersion', 'V_eta');
-b = did2.convert.epochMint(runRenamed(batch), 'Validate', false, 'TargetVersion', 'V_eta');
-ca = ofClass(a, 'clock_alignment');
-cb = ofClass(b, 'clock_alignment');
-verifyNumElements(testCase, ca, 1);
-verifyNumElements(testCase, cb, 1);
-verifyTrue(testCase, isequaln(endsBlanked(ca{1}), endsBlanked(cb{1})), ...
-    'the clock_alignment differs between the raw and the renamed path');
-ra = did2.convert.roundtrip.check(mapping, foldDocs(a));
-rb = did2.convert.roundtrip.check(mapping, foldDocs(b));
-verifyTrue(testCase, ra.ok, 'raw path');
-verifyTrue(testCase, rb.ok, 'renamed path');
-verifyEqual(testCase, sort(ra.matched), sort(rb.matched));
-end
-
 function s = endsBlanked(doc)
 s = doc.toStruct();
 for k = 1:numel(s.depends_on)
@@ -271,8 +243,8 @@ end
 
 function testWriterStimulusFilesAreCarriedAndRoundTrip(testCase)
 v1 = writerStimulusFile('sf_2');
-for path = {'raw', 'renamed'}
-    if strcmp(path{1}, 'raw'); out = runRaw(v1); else; out = runRenamed(v1); end
+for path = {'raw'}
+    out = runRaw(v1);
     verifyEmpty(testCase, out.quarantine, path{1});
     verifyEqual(testCase, numel(out.passthrough), 1, [path{1} ': carried']);
     verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1', path{1});
@@ -289,39 +261,6 @@ verifyRoundTrip(testCase, r, 'stimulus file', {});
 end
 
 % ===================== the switch changes no outcome ======================
-
-function testTheSwitchChangesNoOutcome(testCase)
-% a converted document is the one the renamed path converted; a passthrough is
-% the same document but for v1's `value` edge key; a carry is carried on both
-fixtures = {writerMfdaq('mf_1', 1), writerMfdaq('mf_2', 2), ...
-    writerManifest('efi_1', 't00001', 'nav_1', probemap('a')), ...
-    writerMapping('map_1', identityNodes()), writerStimulusFile('sf_1')};
-for k = 1:numel(fixtures)
-    v1 = fixtures{k};
-    raw = runRaw(v1);
-    old = runRenamed(v1);
-    label = sprintf('fixture %d (%s %s)', k, v1.document_class.class_name, v1.base.id);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), label);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    if strcmp(char(raw.migrated{1}.get('document_class.schema_version')), 'did_v1')
-        verifyEqual(testCase, char(old.migrated{1}.get('document_class.schema_version')), 'did_v1', label);
-        continue;
-    end
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        b = old.migrated{j}.toStruct();
-        if ~isempty(raw.passthrough)
-            verifyEqual(testCase, edgeMap(a), edgeMap(b), label);
-            a = rmfield(a, 'depends_on');
-            b = rmfield(b, 'depends_on');
-        end
-        verifyTrue(testCase, isequaln(a, b), sprintf('%s, document %d: raw %s; renamed %s', ...
-            label, j, jsonencode(a), jsonencode(b)));
-    end
-end
-end
 
 % ===================== the round trip can fail ===========================
 
@@ -380,11 +319,6 @@ end
 
 function out = runRaw(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
-end
-
-function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
-    'RawV1Classes', {});
 end
 
 function verifyRoundTrip(testCase, r, label, expectedLost)

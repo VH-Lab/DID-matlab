@@ -106,32 +106,6 @@ end
 
 % ===================== the base ngrid migrator: a carry ===================
 
-function testBaseNgridMigratorCarriesTheBlockUnchanged(testCase)
-% INVERTED 2026-10-29 from testBaseNgridMigratorStillReshapesAndDrops, which
-% pinned the base migrator's reshape (ndims, dim_sizes) and its deletion of
-% `coordinates` and `data_size`. [ngrid with no statement carried] (Decided by
-% Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a
-% standalone `ngrid` ... [is] carried whole as v1 `needs_mapping`" -- the only
-% document the base migrator still reaches (a superclass block gets the V2
-% override above). did-schema #227 recorded the loss this removes. The body is
-% returned unchanged and the carry is noted.
-b = v1NgridBody();
-b.document_class.class_name = 'ngrid';
-b.document_class.superclasses = struct('class_name', 'base', 'class_version', '1.0.0');
-b.depends_on = struct('name', {}, 'value', {});
-b = rmfield(b, 'ontology_image');
-did2.convert.reportNote('reset');
-out = did2.convert.migrators.ngrid(b);
-n = did2.convert.reportNote('pending', 'carried_as_v1');
-did2.convert.reportNote('reset');
-verifyEqual(testCase, out, b, 'the body is returned unchanged');
-verifyEqual(testCase, out.ngrid.coordinates, [1;2;3;4;1;2;3;4]);
-verifyEqual(testCase, out.ngrid.data_size, 8);
-verifyFalse(testCase, isfield(out.ngrid, 'ndims'));
-verifyFalse(testCase, isfield(out.ngrid, 'dim_sizes'));
-verifyEqual(testCase, n, 1, 'the carry is noted');
-end
-
 % ===================== end to end, through the dispatcher ==================
 
 function testCoordinatesSurviveTheFullVEtaPipeline(testCase)

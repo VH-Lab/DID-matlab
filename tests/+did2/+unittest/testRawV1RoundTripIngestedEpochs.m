@@ -75,25 +75,6 @@ for k = 1:size(f, 1)
 end
 end
 
-function testTheSwitchChangesNoOutcome(testCase)
-f = fixtures();
-for k = 1:size(f, 1)
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f(k, 2));
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
-
-function testValidationIsAsBefore(testCase)
-% a raw passthrough validates exactly where the renamed one did
-f = fixtures();
-for k = 1:size(f, 1)
-    raw = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta');
-    old = did2.convert.v1_to_v2(f(k, 2), 'Validate', true, 'TargetVersion', 'V_eta', ...
-        'RawV1Classes', {});
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), f{k, 1});
-end
-end
-
 function testAFieldOutsideTheTemplateCarriesTheDocument(testCase)
 v1 = ingested();
 v1.daqreader_epochdata_ingested.sample_rate = 20000;

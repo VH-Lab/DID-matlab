@@ -53,9 +53,10 @@ for k = 1:numel(names)
 end
 end
 
-function testASwitchedClassSkipsUniversalRenames(testCase)
-% the denominator: a raw body is counted as read raw, not as reaching the pass
-% and not as unreached; a class not on the list still reaches the pass
+function testAReadRawClassIsCountedOnItsRoute(testCase)
+% the denominator: a raw body is counted as read raw and not as unreached; a
+% class no route names (no migrator, no recorded decision) is quarantined and
+% counted on that route ([early migration pieces fixed] (1))
 other = struct();
 other.document_class = struct('class_name', 'unknown_class', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -67,33 +68,8 @@ r = runRaw({ndiSubject('mouse_42', '', 'mouse_42'), other});
 L = r.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_total, 2);
 verifyEqual(testCase, L.bodies_read_raw_v1, 1);
-verifyEqual(testCase, L.bodies_reaching_universal_renames, 1);
+verifyEqual(testCase, L.bodies_no_migrator_quarantined, 1);
 verifyEqual(testCase, L.bodies_unreached, 0);
-
-r = did2.convert.v1_to_v2({ndiSubject('mouse_42', '', 'mouse_42')}, ...
-    'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, 0, ...
-    'RawV1Classes {} runs every class as before the switch');
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 1);
-end
-
-function testTheSwitchChangesNoConvertedDocument(testCase)
-% "keep behaviour identical": every CONVERTED document the raw path emits is
-% the one the universalRenames path emitted (ids are deterministic, practice
-% (b), and every fixture states its datestamp)
-fixtures = {ndiSubject('mouse_42@lab', 'a mouse', 'mouse_42@lab'), ...
-    ndiSubject('mouse_43', '', ''), namedGroup({'m_1', 'm_2', 'm_3'})};
-for k = 1:numel(fixtures)
-    raw = runRaw(fixtures{k});
-    old = did2.convert.v1_to_v2(fixtures{k}, 'Validate', false, ...
-        'TargetVersion', 'V_eta', 'RawV1Classes', {});
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
-    verifyEmpty(testCase, raw.quarantine);
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        verifyTrue(testCase, isequaln(raw.migrated{j}.toStruct(), old.migrated{j}.toStruct()), ...
-            sprintf('fixture %d, document %d differs between the raw and the renamed path', k, j));
-    end
-end
 end
 
 % ===================== subject =========================================

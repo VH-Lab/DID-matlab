@@ -43,7 +43,6 @@ function testFitcurveIsSwitched(testCase)
 verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'fitcurve')));
 out = runRaw(writerFitcurve('fc_1'));
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testAFitcurveWithASubjectConvertsAndRoundTrips(testCase)
@@ -93,7 +92,6 @@ function testVmspikefitIsSwitched(testCase)
 verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'vmspikefit')));
 out = runRaw(writerVmspikefit('vf_1', false));
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testAVmspikefitConvertsAndRoundTrips(testCase)
@@ -135,14 +133,6 @@ verifyCarried(testCase, v1, 'depends_on(stimulus_presentation_id)');
 end
 
 % ===================== both ============================================
-
-function testTheSwitchChangesNoOutcome(testCase)
-f = fixtures();
-for k = 1:size(f, 1)
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f(k, 2));
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
 
 function testAChangedValueIsReportedLost(testCase)
 f = fixtures();

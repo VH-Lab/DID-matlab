@@ -144,7 +144,6 @@ r = runRaw({babuStack('is_b1', 'video'), haleyLabel('lab_1', 'is_b1', 'EMPTY:000
     imageDoc('im_b1', 'tiff')});
 L = r.summary.legacy_ndi_document;
 verifyEqual(testCase, L.bodies_read_raw_v1, 3, 'the stack, the label and the image are read raw');
-verifyEqual(testCase, L.bodies_reaching_universal_renames, 0);
 verifyEqual(testCase, L.bodies_unreached, 0);
 end
 
@@ -252,9 +251,6 @@ for k = 1:size(cases, 1)
     verifyCarriedUntouched(testCase, v1, out, label);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, startsWith(d, row), [label ': ' d]);
-    old = runRenamed(v1);
-    verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1', ...
-        [label ': the renamed path carried it too']);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     verifyTrue(testCase, r.carried, label);
     verifyRoundTrip(testCase, r, label, {});
@@ -269,38 +265,6 @@ raw = runRaw(v1);
 verifyEqual(testCase, numel(raw.quarantine), 1);
 verifyEqual(testCase, raw.quarantine(1).identifier, ...
     'did2:convert:imageStackParametersNonScalarTimestamp');
-verifyEqual(testCase, numel(runRenamed(v1).quarantine), 1, 'renamed: refused too');
-end
-
-function testTheImageSwitchChangesNoOutcome(testCase)
-% converted: the same documents on both paths (ids are deterministic); a
-% passthrough on both, the raw one the untouched v1 source with the same edges
-% and identity
-nosub = jsondecode(jsonencode(setEdge(imageDoc('im_s_ns', 'tiff'), 'subject_id', '')));
-fixtures = {imageDoc('im_s_conv', 'tiff'), nosub};
-for k = 1:numel(fixtures)
-    v1 = fixtures{k};
-    raw = runRaw(v1);
-    old = runRenamed(v1);
-    label = sprintf('image fixture %d (%s)', k, v1.base.id);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEmpty(testCase, old.quarantine, label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), label);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    if ~isempty(raw.passthrough)
-        a = raw.migrated{1}.toStruct();
-        b = old.migrated{1}.toStruct();
-        verifyEqual(testCase, edgeMap(a), edgeMap(b), [label ': the edges differ']);
-        verifyEqual(testCase, a.base, b.base, [label ': the identity differs']);
-        continue;
-    end
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        b = old.migrated{j}.toStruct();
-        verifyTrue(testCase, isequaln(a, b), sprintf('%s, document %d: raw %s; renamed %s', ...
-            label, j, jsonencode(a), jsonencode(b)));
-    end
-end
 end
 
 function testTheLabelClassHelperAcceptsBothSpellings(testCase)
@@ -520,9 +484,6 @@ for k = 1:size(cases, 1)
     verifyCarriedUntouched(testCase, v1, out, label);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, contains(d, row), [label ': ' d]);
-    old = runRenamed(v1);
-    verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1', ...
-        [label ': the renamed path carried it too']);
     verifyRoundTrip(testCase, did2.convert.roundtrip.check(v1, out.migrated), label, {});
 end
 end
@@ -536,11 +497,9 @@ for k = 1:size(cases, 1)
     v1 = haleyEColiStack(sprintf('is_t%d', k), 'image');
     v1.imageStack_parameters.timestamp = cases{k, 1};
     raw = runRaw(v1);
-    old = runRenamed(v1);
     verifyEqual(testCase, numel(raw.quarantine), 1, cases{k, 2});
     verifyEmpty(testCase, raw.migrated, cases{k, 2});
     verifyEqual(testCase, raw.quarantine(1).identifier, cases{k, 2});
-    verifyEqual(testCase, numel(old.quarantine), 1, ['renamed: ' cases{k, 2}]);
 end
 end
 
@@ -564,51 +523,13 @@ for k = 1:size(cases, 1)
     [label, v1] = cases{k, :};
     v1 = jsondecode(jsonencode(v1));
     raw = runRaw(v1);
-    old = runRenamed(v1);
     verifyCarriedUntouched(testCase, v1, raw, label);
     d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, startsWith(d, '[carry-100] '), [label ': ' d]);
-    verifyEqual(testCase, numel(old.passthrough), 1, [label ': renamed path carried it']);
-    verifyEqual(testCase, old.migrated{1}.get('document_class.schema_version'), 'did_v1', label);
 end
 end
 
 % ===================== the switch changes no outcome ======================
-
-function testTheSwitchChangesNoOutcome(testCase)
-% a converted document is the one the renamed path converted (ids are
-% deterministic, practice (b)); a carry is carried on both paths; a passthrough
-% passes through on both, the raw one the untouched v1 source with the same
-% edges and identity
-fixtures = {babuStack('is_b_v', 'video'), babuStack('is_b_i', 'image'), ...
-    didBrightfield('is_d_xy', ''), didBrightfield('is_d_lab', 'height,width'), ...
-    haleyBehaviourStack('is_h_v', 'video'), haleyBehaviourStack('is_h_c', 'closest patch'), ...
-    haleyEColiStack('is_e_i', 'image'), haleyEColiStack('is_e_m', 'mask')};
-for k = 1:numel(fixtures)
-    v1 = fixtures{k};
-    raw = runRaw(v1);
-    old = runRenamed(v1);
-    label = sprintf('fixture %d (%s)', k, v1.base.id);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEmpty(testCase, old.quarantine, label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), [label ': passed through on one path only']);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    if ~isempty(raw.passthrough)
-        a = raw.migrated{1}.toStruct();
-        b = old.migrated{1}.toStruct();
-        verifyEqual(testCase, a.document_class.schema_version, b.document_class.schema_version, label);
-        verifyEqual(testCase, edgeMap(a), edgeMap(b), [label ': the edges differ']);
-        verifyEqual(testCase, a.base, b.base, [label ': the identity differs']);
-        continue;
-    end
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        b = old.migrated{j}.toStruct();
-        verifyTrue(testCase, isequaln(a, b), sprintf('%s, document %d: raw %s; renamed %s', ...
-            label, j, jsonencode(a), jsonencode(b)));
-    end
-end
-end
 
 % ===================== the round trip can fail ===========================
 
@@ -701,8 +622,8 @@ function testACarriedLabelHasOnePassthroughRecord(testCase)
 % record per source, on both paths, and the record is the carried v1 body.
 beh = haleyBehaviourStack('is_h3', 'video');
 lab = haleyLabel('lab_h3', 'is_h3', 'EMPTY:0000129');
-paths = {{}, {'RawV1Classes', {}}};
-pathName = {'raw', 'renamed'};
+paths = {{}};
+pathName = {'raw'};
 for p = 1:numel(paths)
     out = did2.convert.v1_to_v2({beh, lab}, 'Validate', false, ...
         'TargetVersion', 'V_eta', paths{p}{:});
@@ -718,14 +639,6 @@ for p = 1:numel(paths)
     verifyEqual(testCase, rec.input_index, 2, pathName{p});
     verifyEqual(testCase, out.summary.passthrough_count, 2, pathName{p});
 end
-end
-
-function testTheRenamedPathStillRenamesTheLabel(testCase)
-% 'RawV1Classes', {} runs the label as before the switch
-eco = haleyEColiStack('is_e2', 'image');
-out = runRenamed({eco, haleyLabel('lab_e2', 'is_e2', 'EMPTY:0000133')});
-verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, docWithId(out, 'lab_e2').document_class.class_name, 'ontology_label');
 end
 
 function testTheGenericFileFoldReadsARawLabel(testCase)
@@ -820,9 +733,7 @@ function testAnInventedLabelShapeIsStillRefusedInEitherSpelling(testCase)
 v1 = haleyLabel('lab_bad', 'is_x', 'EMPTY:0000129');
 v1.ontologyLabel.label_id = 12;
 raw = runRaw(v1);
-old = runRenamed(v1);
 verifyEqual(testCase, numel(raw.quarantine), 1);
-verifyEqual(testCase, numel(old.quarantine), 1);
 verifyEqual(testCase, raw.quarantine(1).identifier, 'did2:convert:ontologyLabelInventedShape');
 end
 
@@ -830,11 +741,6 @@ end
 
 function out = runRaw(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
-end
-
-function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
-    'RawV1Classes', {});
 end
 
 function verifyCarriedUntouched(testCase, v1, out, label)
@@ -870,11 +776,11 @@ function g = foldGenericFile(id, subjectId)
 g = struct();
 g.document_class = struct('class_name', 'generic_file', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-g.depends_on = struct('name', {'document_id'}, 'document_id', {subjectId});
+g.depends_on = struct('name', {'document_id'}, 'value', {subjectId});
 g.base = struct('id', id, 'session_id', '41269430c597c3e6_c0c9895d35d19b54', ...
     'name', 'plasmid', 'datestamp', '2024-06-01T12:00:00.000Z');
 g.generic_file = struct('filename', 'plasmids/pXY-12.gb', ...
-    'format_ontology', 'EMPTY:0000253', ...
+    'formatOntology', 'EMPTY:0000253', ...
     'checksum', 'd41d8cd98f00b204e9800998ecf8427e');
 g.files = struct('file_list', {{'generic_file.ext'}});
 end

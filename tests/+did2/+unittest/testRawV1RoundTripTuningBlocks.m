@@ -74,14 +74,6 @@ for k = 1:size(f, 1)
 end
 end
 
-function testTheSwitchChangesNoOutcome(testCase)
-f = fixtures();
-for k = 1:size(f, 1)
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f(k, 2));
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
-
 function testTheCarriesNameTheirReason(testCase)
 % (SF / TF `abs` and the speed fits are placed since 2026-10-27; a speed fit
 % block no constraint tells apart still carries)

@@ -532,17 +532,15 @@ end
 
 % ===================== the rename trap, pinned =============================
 
-function testTheFoldSurvivesTheUniversalRename(testCase)
-% THE REGRESSION TEST FOR THE BUG THAT MADE THIS FOLD EMIT NOTHING FOR WEEKS.
-% universalRenames rewrites app.name -> app.app_name and app.version ->
-% app.app_version (universalRenames.m:145-164). This asserts the RENAMED
-% spelling is what actually reached the fold -- i.e. the software name did not
-% come from a fixture that happened to also carry the old spelling.
+function testTheFoldReadsTheV1AppSpelling(testCase)
+% THE REGRESSION TEST FOR THE BUG THAT MADE THIS FOLD EMIT NOTHING FOR WEEKS
+% (a rename pass rewrote app.name -> app.app_name and the fold read one
+% spelling). The rename pass is deleted ([migrators read raw v1]): the fold
+% reads the v1 document as v1 writes it, `app.name`.
 v1 = sorterBody('kilosort_clusters', 'kilosort_directory', true);
-renamed = did2.convert.universalRenames(v1);
-verifyTrue(testCase, isfield(renamed.app, 'app_name'), ...
-    'universalRenames must have produced app_name -- if not, this test is vacuous');
-verifyFalse(testCase, isfield(renamed.app, 'name'));
+verifyTrue(testCase, isfield(v1.app, 'name'), ...
+    'the fixture must carry v1''s app.name -- if not, this test is vacuous');
+verifyFalse(testCase, isfield(v1.app, 'app_name'));
 
 out = runJ(v1);
 sw  = softwareNamed(testCase, out, 'ndi.app.spikesorter');

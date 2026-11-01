@@ -511,32 +511,6 @@ end
 
 % ===================== the switch changes nothing else ==================
 
-function testBothPathsConvertAnElementAlike(testCase)
-% the migrator is the same on the raw and the universalRenames path; the
-% inputs differ only in spelling it reads both ways
-% the unit comes with its probe (carry-151 otherwise)
-fixtures = {{probeDoc('el_probe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq')}, ...
-    {unitDoc('el_unit_s', 'leftcortex_17', 1), unitProbe()}, ...
-    {jhTrack('el_pos', 'worm1_head_position', 'position')}};
-for k = 1:numel(fixtures)
-    v1 = fixtures{k};
-    raw = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
-        'UnitQualityLabels', {'el_unit_s', 'single'});
-    old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
-        'UnitQualityLabels', {'el_unit_s', 'single'}, 'RawV1Classes', {});
-    id = v1{1}.base.id;
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), id);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), id);
-    if ~isempty(raw.passthrough); continue; end
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        b = old.migrated{j}.toStruct();
-        verifyTrue(testCase, isequaln(a, b), sprintf('%s document %d: raw %s; renamed %s', ...
-            id, j, jsonencode(a), jsonencode(b)));
-    end
-end
-end
-
 % ===================== helpers =========================================
 
 function out = runRaw(v1)

@@ -88,26 +88,20 @@ end
 
 function out = runJ(v1)
 %RUNJ The full pipeline at V_eta, validation OFF (transform assertions).
-%   ALWAYS through v1_to_v2, never a direct migrator call: universalRenames
-%   snake-cases `imageStack_parameters` -> `image_stack_parameters` before any
-%   migrator runs (universalRenames.m:302-334), and a direct call would hand the
-%   migrator a block key it never sees on the real pipeline.
-%   ON THE RENAMED PATH ('RawV1Classes', {}): `imageStack` reads raw v1 since
-%   2026-10-27 (did2.convert.rawV1Classes), where no superclass migrator runs
-%   and a passthrough is the untouched v1 source; the v1 `image`, which shares
-%   the block, reads raw too since 2026-10-30. The superclass migrator these
-%   tests pin runs only on this renamed path; the raw path's refusals are
-%   pinned by testRawV1RoundTripImage.
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
-    'RawV1Classes', {});
+%   ALWAYS through v1_to_v2, never a direct migrator call, so the class is
+%   routed as real data is. Every class reads raw v1 (did2.convert.rawV1Classes;
+%   the rename pass is deleted, [migrators read raw v1]): `imageStack` and
+%   `stimulus_parameter` reach their +migrators_j migrators with the v1 block
+%   keys, and the superclass guard +migrators_j/+super/image_stack_parameters
+%   is called by the leaf.
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 end
 
 function out = runJValidated(v1)
 %RUNJVALIDATED The same, with the validator ARMED. This is the assertion that
 %   actually matters: the placeholder is only worth dropping if dropping it is
-%   what lets the document through. On the renamed path, as RUNJ.
-out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta', ...
-    'RawV1Classes', {});
+%   what lets the document through.
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 end
 
 function d = onlyClass(testCase, out, className)
@@ -282,7 +276,7 @@ end
 
 function testASubjectlessImageStackPassesThroughUntouchedAndCounted(testCase)
 % INVERTED 2026-10-29 from testImageStackPlaceholderDocumentValidatesOnThePassthrough,
-% which ran the RENAMED path ('RawV1Classes', {}) and asserted that dropping
+% which ran the RENAMED path (since deleted) and asserted that dropping
 % the empty `timestamp` placeholder let the passthrough validate against the
 % did-schema `image_stack` tombstone. That tombstone is deleted (Jess Haley,
 % 2026-10-27 [carried v1 validates against NDI templates]; 2026-10-29

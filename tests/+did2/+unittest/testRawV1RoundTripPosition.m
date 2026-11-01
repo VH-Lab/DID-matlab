@@ -123,34 +123,6 @@ for cls = {'position_metadata', 'distance_metadata'}
 end
 end
 
-function testTheSwitchChangesNoConvertedDocument(testCase)
-% "keep behaviour identical": every document the raw path CONVERTS is the one
-% the universalRenames path converted; a carry is carried on both paths, the
-% raw one the untouched v1 source
-batches = {{position('pm_1', 'EMPTY:0000137')}, {positionConvertedShape()}, ...
-    {distance('dm_1', 1:19)}, {distance('dm_2', 4)}, ...
-    {distance('dm_1', 1:19), track('el_dist', 'distance')}};
-for k = 1:numel(batches)
-    b = batches{k};
-    raw = runRaw(b);
-    old = did2.convert.v1_to_v2(b, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
-    label = sprintf('batch %d (%s)', k, b{1}.document_class.class_name);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), ...
-        [label ': carried on one path only']);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    if isCarried(raw, b{1})
-        verifyTrue(testCase, isCarried(old, []), [label ': carried on the raw path only']);
-        continue;
-    end
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        verifyTrue(testCase, isequaln(raw.migrated{j}.toStruct(), old.migrated{j}.toStruct()), ...
-            sprintf('%s, document %d differs between the raw and the renamed path', label, j));
-    end
-end
-end
-
 function testAPositionNamingNoMeasurementIsCarried(testCase)
 % the one change of the switch: before it, such a document passed through as a
 % V2 position_metadata (a class to retire), which NDI's last step stamps v1
@@ -158,8 +130,6 @@ function testAPositionNamingNoMeasurementIsCarried(testCase)
 % either path (no NDI writer at the locked main writes one)
 v1 = position('pm_9', '');
 verifyCarriedFor(testCase, {v1}, 'no ontologyNode');
-old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
-verifyTrue(testCase, isCarried(old, []), 'not carried on the renamed path');
 end
 
 function testTheCarriedDistancesPassValidation(testCase)

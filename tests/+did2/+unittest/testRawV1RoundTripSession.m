@@ -74,7 +74,6 @@ r = runRaw({writerSession('sd_1', 'sess_1', 'exp1'), ...
     writerRemote('dr_1', 'ds_1'), writerEditor('me_1', 'ds_1', sophForm()), ...
     writerPresentation('sp_1')});
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, 5);
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 % ===================== session ==========================================
@@ -134,8 +133,6 @@ for k = 1:size(cases, 1)
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, contains(d, what), d);
     verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
-    old = runRenamed(body);
-    verifyEmpty(testCase, old.passthrough, [what ': the renamed path dropped it']);
 end
 end
 
@@ -144,9 +141,7 @@ v1 = writerSession('sd_L', 'sess_L', 'exp4');
 v1.ndi_document = struct('id', 'sd_L', 'type', 'session');
 v1 = jsondecode(jsonencode(v1));
 raw = runRaw(v1);
-old = runRenamed(v1);
 verifyCarriedUntouched(testCase, raw, v1, 'legacy beside base');
-verifyEqual(testCase, numel(old.passthrough), 1, 'renamed: carried');
 d = raw.summary.migration_notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-100] '), d);
 end
@@ -334,8 +329,8 @@ cases = {'parameters', writerPresentation('sp_1'); ...
     'no stimulus parameters', writerPresentation('sp_2', false)};
 for k = 1:size(cases, 1)
     [label, v1] = cases{k, :};
-    for path = {'raw', 'renamed'}
-        if strcmp(path{1}, 'raw'); out = runRaw(v1); else; out = runRenamed(v1); end
+    for path = {'raw'}
+        out = runRaw(v1);
         verifyEmpty(testCase, out.quarantine, [label ', ' path{1}]);
         verifyEqual(testCase, numel(out.passthrough), 1, [label ', ' path{1} ': carried']);
         verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
@@ -358,37 +353,6 @@ verifyEqual(testCase, out.quarantine(1).identifier, 'did2:convert:stimulusPresen
 end
 
 % ===================== the switch changes no outcome ======================
-
-function testTheSwitchChangesNoConvertedDocument(testCase)
-% a converted document is the one the renamed path converted; a carry is
-% carried on both
-s = writerSession('sd_A', 'sess_A', '2021-04-01');
-fixtures = {{writerSession('sd_B', 'sess_B', 'exp1')}, ...
-    {s, writerMembership('sid_A', 'ds_1', 'sess_A', '2021-04-01', 0, '')}, ...
-    {s, writerMembership('sid_L', 'ds_1', 'sess_A', '2021-04-01', 1, '/data/x')}, ...
-    {writerRemote('dr_1', 'ds_1')}, {writerEditor('me_S', 'ds_S', sophForm())}, ...
-    {writerEditor('me_F', 'ds_F', fullForm())}, {writerPresentation('sp_1')}};
-for k = 1:numel(fixtures)
-    batch = fixtures{k};
-    raw = runRaw(batch);
-    old = runRenamed(batch);
-    label = sprintf('fixture %d (%s)', k, batch{end}.document_class.class_name);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), label);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        b = old.migrated{j}.toStruct();
-        if strcmp(char(a.document_class.schema_version), 'did_v1')
-            verifyEqual(testCase, char(b.document_class.schema_version), 'did_v1', label);
-            continue;
-        end
-        verifyTrue(testCase, isequaln(a, b), sprintf('%s, document %d: raw %s; renamed %s', ...
-            label, j, jsonencode(a), jsonencode(b)));
-    end
-end
-end
 
 function testWriterShapesValidate(testCase)
 % everything converted above is a valid V2 document (the tests above run with
@@ -491,11 +455,6 @@ end
 
 function out = runRaw(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
-end
-
-function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
-    'RawV1Classes', {});
 end
 
 function verifyRoundTrip(testCase, r, label, expectedLost)

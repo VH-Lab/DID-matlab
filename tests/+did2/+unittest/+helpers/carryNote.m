@@ -8,7 +8,7 @@ function [carried, notes, out] = carryNote(batch)
 %   distinct `carried_as_v1` note of the run, joined by ' || ' ('' when none).
 %   OUT is did2.convert.v1_to_v2's result ('Validate', false).
 %
-%   See also did2.unittest.helpers.rawAndRenamed.
+%   See also did2.convert.reportNote.
 
 arguments
     batch cell

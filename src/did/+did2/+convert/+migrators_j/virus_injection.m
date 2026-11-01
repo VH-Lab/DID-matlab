@@ -31,7 +31,7 @@ function v2Body = virus_injection(preBody)
 %   as v1 wrote it, with no universalRenames (identity through jRawBody /
 %   did2.convert.v1read.readBase; a carry is the untouched v1 source). Block
 %   fields are read in the v1 spelling first and the universalRenames spelling
-%   second, so 'RawV1Classes', {} still works. Every v1 field (NDI treatment/virus_injection.json +
+%   second (a body written while the deleted rename pass ran). Every v1 field (NDI treatment/virus_injection.json +
 %   base.json at the locked NDI-matlab `main`, 3cb19a8, as
 %   +NDIMaker/treatmentMaker writes it) and where it goes;
 %   did2.convert.roundtrip.virus_injection rebuilds the v1 document and

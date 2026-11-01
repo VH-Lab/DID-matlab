@@ -54,22 +54,15 @@ for k = 1:size(f, 1)
 end
 end
 
-function testTheRenamedPathPassedThroughTheSnakeCaseClass(testCase)
-% the one difference the switch makes, and nothing else: the same number of
-% documents, both passthroughs, no quarantine on either path, with validation
+function testTheV1ClassPassesThroughUnderItsV1Name(testCase)
+% with validation: no quarantine, one passthrough, under the v1 class name
 f = fixtures();
 for k = 1:size(f, 1)
-    [label, v1, v1Name, migName] = f{k, :};
+    [label, v1, v1Name] = f{k, 1:3};
     raw = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
-    old = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
     verifyEmpty(testCase, raw.quarantine, [label ': raw']);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
     verifyEqual(testCase, numel(raw.passthrough), 1, label);
-    verifyEqual(testCase, numel(old.passthrough), numel(raw.passthrough), label);
     verifyEqual(testCase, raw.passthrough(1).class_name, v1Name, label);
-    if ~isempty(old.passthrough)
-        verifyEqual(testCase, old.passthrough(1).class_name, migName, label);
-    end
 end
 end
 

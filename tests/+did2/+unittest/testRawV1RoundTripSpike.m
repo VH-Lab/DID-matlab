@@ -183,58 +183,12 @@ verifyTrue(testCase, any(strcmp(names, 'simple_calc')), ...
     'simple_calc is read raw and carried (rawV1Classes)');
 end
 
-function testTheSwitchChangesNoConvertedDocument(testCase)
-% "keep behaviour identical": every document the raw path CONVERTS is the one
-% the universalRenames path converted; a carry is carried on both paths, the
-% raw one the untouched v1 source. The Soph vintage (jrclustNdiDocument) is
-% left out: its `ndi_document` block is read as `base` on the raw path only
-% ([ndi_document read as base], Jess Haley, 2026-10-31), so it converts there
-% and is carried on the renamed path (carry-049) until that path is deleted
-batches = {{hartley(), presentationOf(hartley())}, {hartleyVintage(), presentationOf(hartleyVintage())}, ...
-    {hartley()}, {jrclustNoName()}, {neuron()}, {neuronCorpusVintage()}, ...
-    {neuronNoWaveform()}};
-for k = 1:numel(batches)
-    b = batches{k};
-    raw = runRaw(b);
-    old = did2.convert.v1_to_v2(b, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
-    label = sprintf('batch %d (%s)', k, b{1}.document_class.class_name);
-    % the presentation beside a Hartley calculation is read raw too (switched
-    % with the session family, carried for NDI's second pass)
-    verifyEqual(testCase, raw.summary.legacy_ndi_document.bodies_read_raw_v1, numel(b), label);
-    verifyEmpty(testCase, raw.quarantine, label);
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
-    verifyEqual(testCase, numel(raw.passthrough), numel(old.passthrough), ...
-        [label ': carried on one path only']);
-    verifyEqual(testCase, numel(raw.migrated), numel(old.migrated), label);
-    if isCarried(raw, b{1})
-        verifyTrue(testCase, isCarried(old, []), [label ': carried on the raw path only']);
-        continue;
-    end
-    for j = 1:min(numel(raw.migrated), numel(old.migrated))
-        a = raw.migrated{j}.toStruct();
-        if strcmp(char(a.document_class.schema_version), 'did_v1')
-            % a carried presentation: the raw path carries the v1 source, the
-            % renamed path its universalRenames output; both did_v1
-            verifyEqual(testCase, char(old.migrated{j}.get('document_class.schema_version')), ...
-                'did_v1', label);
-            continue;
-        end
-        verifyTrue(testCase, isequaln(a, old.migrated{j}.toStruct()), ...
-            sprintf('%s, document %d differs between the raw and the renamed path', label, j));
-    end
-end
-end
-
-function testTheSpeedWriterSpellingNeverReachedItsMigratorBeforeTheSwitch(testCase)
-% the renamed path keeps `speedtuning_calc` (universalRenames maps only the
-% contrast spellings) and finds no migrator by that name: the document passed
-% through unconverted. The raw path reaches speed_tuning_calc through
-% rawV1Classes' table; the converted shape converts the same way on the
-% migrator's own spelling.
+function testTheSpeedWriterSpellingReachesItsMigrator(testCase)
+% the writer's `speedtuning_calc` reaches speed_tuning_calc through
+% rawV1Classes' table (the rename pass found no migrator by that name, so the
+% document passed through unconverted); the converted shape converts the same
+% way on the migrator's own spelling
 v1 = speedOneFit();
-old = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
-verifyEqual(testCase, numel(old.migrated), 1);
-verifyEqual(testCase, char(old.migrated{1}.get('document_class.class_name')), 'speedtuning_calc');
 raw = runRaw({v1});
 names = cellfun(@(d) char(d.get('document_class.class_name')), raw.migrated, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'speed_tuning_calculation')), strjoin(names, ', '));

@@ -63,7 +63,6 @@ end
 f = writerFixtures();
 r = runRaw(f(:, 2)');
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, size(f, 1));
-verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 % ===================== every writer shape round trips =====================
@@ -118,29 +117,12 @@ end
 
 % ===================== the switch changes no outcome ======================
 
-function testTheSwitchChangesNoOutcome(testCase)
-% SpikeInterfaceSortingOutputs is the one known difference: its raw
-% passthrough keeps v1's class name (V_eta keeps no class under it), where the
-% renamed path passed it through as `spike_interface_sorting_outputs`
-f = writerFixtures();
-for k = 1:size(f, 1)
-    if strcmp(f{k, 1}, 'SpikeInterfaceSortingOutputs, template')
-        continue;
-    end
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f(k, 2));
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
-
 function testTheSortingOutputsPassThroughUnderTheirV1Name(testCase)
 v1 = sortingOutputs();
-[raw, renamed] = did2.unittest.helpers.rawAndRenamed({v1});
+raw = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, numel(raw.passthrough), 1);
-verifyEqual(testCase, numel(renamed.passthrough), 1);
 verifyEqual(testCase, char(raw.migrated{1}.get('document_class.class_name')), ...
     'SpikeInterfaceSortingOutputs');
-verifyEqual(testCase, char(renamed.migrated{1}.get('document_class.class_name')), ...
-    'spike_interface_sorting_outputs');
 out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine, 'a passthrough with no V_eta class is counted, not quarantined');
 end

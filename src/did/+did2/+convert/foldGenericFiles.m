@@ -454,6 +454,7 @@ report = struct( ...
     'refused_no_document_id',        0, ...
     'refused_referent_not_in_batch', 0, ...
     'refused_unplaced_dates',        0, ...
+    'refused_carried_as_v1',         0, ...
     'refused_total',                 0, ...
     'fold_quarantined',              0, ...
     'labels_deleted',                0, ...
@@ -567,6 +568,24 @@ for k = 1:n
     end
 end
 
+% A generic_file PASS 1 CARRIED AS v1 is not folded. Pass 1 hands every
+% generic_file on as v1 (stamped did_v1, [ensemble and generic_file checked as
+% v1], Jess Haley, 2026-11-01), so the stamp cannot tell a carried one (a field
+% outside its NDI template, carry-100; an edge to a carried document, carry-064)
+% from one handed on to this fold: pass 1's per-source record can
+% (result.source_outputs, `carried`). Folding a carried one would leave it
+% half-converted under a carry note that says it was kept whole.
+carriedSourceIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if isfield(result, 'source_outputs') && isstruct(result.source_outputs) ...
+        && isfield(result.source_outputs, 'carried')
+    for k = 1:numel(result.source_outputs)
+        so = result.source_outputs(k);
+        if so.carried && ~isempty(so.id)
+            carriedSourceIds(char(so.id)) = true;
+        end
+    end
+end
+
 % --- fold every generic_file that can be folded honestly --------------------
 rebuilt    = {};      % the new bodies, statement and body interleaved
 changedIdx = [];      % index into docs of the source each PAIR replaces
@@ -579,6 +598,10 @@ for f = 1:numel(fileIds)
     b   = bodies{k};
     blk = blockOf(b, 'generic_file');
 
+    if isKey(carriedSourceIds, id)
+        report.refused_carried_as_v1 = report.refused_carried_as_v1 + 1;
+        continue;
+    end
     subjectId = depValueOf(b, 'document_id');
     if isempty(subjectId)
         report.refused_no_document_id = report.refused_no_document_id + 1;
@@ -617,10 +640,16 @@ for f = 1:numel(fileIds)
     % has no place for `date_created` / `date_updated` (see "WHAT THE FOLD
     % LOSES" above), so a file that states either is not folded: it is left
     % exactly as it is and carried whole as v1, counted here.
-    if ~isempty(charField(blk, {'date_created'})) ...
-            || ~isempty(charField(blk, {'date_updated'})) ...
+    % Both spellings: pass 1 hands a `generic_file` on as v1 writes it
+    % (`dateCreated`, `dateUpdated`; [ensemble and generic_file checked as v1],
+    % Jess Haley, 2026-11-01); the snake_case pair is what the deleted rename
+    % pass wrote.
+    if ~isempty(charField(blk, {'date_created', 'dateCreated'})) ...
+            || ~isempty(charField(blk, {'date_updated', 'dateUpdated'})) ...
             || isNumericField(blk, 'date_created') ...
-            || isNumericField(blk, 'date_updated')
+            || isNumericField(blk, 'date_updated') ...
+            || isNumericField(blk, 'dateCreated') ...
+            || isNumericField(blk, 'dateUpdated')
         report.refused_unplaced_dates = report.refused_unplaced_dates + 1;
         continue;
     end
@@ -640,7 +669,8 @@ report.refused_total = report.refused_no_label ...
     + report.refused_label_node_empty ...
     + report.refused_no_document_id ...
     + report.refused_referent_not_in_batch ...
-    + report.refused_unplaced_dates;
+    + report.refused_unplaced_dates ...
+    + report.refused_carried_as_v1;
 
 if isempty(changedIdx)
     [result, report] = foldStoreRecords(result, report, options);
@@ -1649,11 +1679,10 @@ end
 
 function v = charField(block, names)
 %CHARFIELD The first of NAMES present and non-empty, as char.
-%   Both spellings are accepted for the same reason every nested read in
-%   +migrators_j does: universalRenames snake_cases a block's immediate field
-%   names, but a body that reached us another way may still carry the did_v1
-%   camelCase, and reading one spelling only is the bug that made the calc fold
-%   emit nothing on every real document for weeks.
+%   Both spellings are accepted: pass 1 hands a v1 document on as v1 writes it
+%   (camelCase), and a body written while the rename pass (universalRenames,
+%   deleted) still ran carries snake_case; reading one spelling only is the bug
+%   that made the calc fold emit nothing on every real document for weeks.
 v = '';
 if ~isstruct(block); return; end
 for i = 1:numel(names)

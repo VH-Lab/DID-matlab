@@ -164,51 +164,6 @@ end
 
 % ===================== the switch changes no outcome =====================
 
-function testTheSwitchChangesNoOutcome(testCase)
-% the pyramid and level conversions are the same on both paths, document for
-% document (pass 1)
-for b = [{omeZarrPyramid(), smartSpimPyramid(), noSourcePyramid()}, levels()]
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(b);
-    verifyEmpty(testCase, problems, sprintf('%s: %s', char(b{1}.base.id), ...
-        strjoin(problems, '; ')));
-end
-end
-
-function testTheFoldIsTheSameOnBothPaths(testCase)
-% a pyramid, its store record and its levels, through pass 1 AND the batch
-% pass: the same documents and the same fold counters on both paths
-batch = [{omeZarrPyramid()}, fileReferences(), levels()];
-[raw, rawRep] = withFold(batch, {});
-[old, oldRep] = withFold(batch, {'RawV1Classes', {}});
-verifyEmpty(testCase, raw.quarantine, 'raw');
-verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine));
-verifyEqual(testCase, rawRep.stores_folded, 1, 'the store record folds');
-verifyEqual(testCase, rawRep.store_records_seen, 2, 'both records are seen');
-verifyEqual(testCase, rawRep.store_records_left_passthrough, 1, ...
-    'the gene source no pyramid names stays a passthrough');
-for f = reshape(fieldnames(oldRep), 1, [])
-    if isnumeric(oldRep.(f{1})) && isfield(rawRep, f{1})
-        verifyEqual(testCase, rawRep.(f{1}), oldRep.(f{1}), ['fold counter ' f{1}]);
-    end
-end
-a = byId(raw.migrated);
-b = byId(old.migrated);
-verifyEqual(testCase, fieldnames(a), fieldnames(b), 'the same document ids');
-passId = matlab.lang.makeValidName('fref_gene_1');
-for k = reshape(fieldnames(a), 1, [])
-    if ~isfield(b, k{1}); continue; end
-    if strcmp(k{1}, passId)
-        % the one difference: the unfolded record's class name and block
-        verifyEqual(testCase, a.(k{1}).document_class.class_name, 'fileReference');
-        verifyEqual(testCase, b.(k{1}).document_class.class_name, 'file_reference');
-        continue;
-    end
-    verifyTrue(testCase, isequaln(a.(k{1}), b.(k{1})), ...
-        sprintf('%s differs: raw %s; renamed %s', k{1}, jsonencode(a.(k{1})), ...
-        jsonencode(b.(k{1}))));
-end
-end
-
 function testACarriedFileReferenceIsNotFolded(testCase)
 % Decided by Jess Haley, 2026-10-27 [carried file references are not folded]:
 % the store fold skips a fileReference pass 1 carried as v1 (stamped 'did_v1');

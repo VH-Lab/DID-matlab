@@ -53,7 +53,6 @@ function testOpenmindsIsSwitched(testCase)
 verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'openminds')));
 out = runRaw(strainPair());
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 2);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testBareOpenmindsPassesThroughAndRoundTrips(testCase)
@@ -74,16 +73,13 @@ end
 end
 
 function testTheCitationPassReadsTheRawEdges(testCase)
-% referencedIds reads `value` (raw) as it read `document_id` (renamed): the
-% strain's child is found through its openminds_1 edge on both paths
+% referencedIds reads v1's `value` edge key: the strain's child is found
+% through its openminds_1 edge
 batch = strainPair();
 raw = runRaw(batch);
-old = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta', ...
-    'RawV1Classes', {});
 [~, repRaw] = did2.convert.resolveOpenmindsCitations(raw, 'Validate', false, 'TargetVersion', 'V_eta');
-[~, repOld] = did2.convert.resolveOpenmindsCitations(old, 'Validate', false, 'TargetVersion', 'V_eta');
-verifyEqual(testCase, repRaw.openminds_documents_seen, repOld.openminds_documents_seen);
-verifyEqual(testCase, repRaw.openminds_components_seen, repOld.openminds_components_seen);
+verifyGreaterThan(testCase, repRaw.openminds_documents_seen, 0);
+verifyGreaterThan(testCase, repRaw.openminds_components_seen, 0);
 end
 
 function testAFieldOutsideTheOpenmindsTemplateCarriesIt(testCase)
@@ -102,7 +98,6 @@ verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'openminds_subject'
 out = runRaw(subjectTerm('41268b6f5c6a3d4e_0e00000000000011', 'BiologicalSex', ...
     'hermaphrodite', 'PATO:0001340', '', ''));
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testWriterSubjectTermsConvertAndRoundTrip(testCase)
@@ -165,7 +160,6 @@ function testOpenmindsElementIsSwitched(testCase)
 verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'openminds_element')));
 out = runRaw(elementTerm('41268b6f5c6a3d4e_0e00000000000021', ''));
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testAWriterElementTermConvertsAndRoundTrips(testCase)
@@ -206,7 +200,6 @@ function testOpenmindsStimulusIsSwitched(testCase)
 verifyTrue(testCase, any(strcmp(did2.convert.rawV1Classes(), 'openminds_stimulus')));
 out = runRaw(approachLabel('41268b6f5c6a3d4e_0e00000000000031'));
 verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_read_raw_v1, 1);
-verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_reaching_universal_renames, 0);
 end
 
 function testAnApproachLabelPassesThroughAndRoundTrips(testCase)
@@ -241,25 +234,6 @@ verifyCarried(testCase, v1, 'depends_on(element_id)');
 end
 
 % ===================== the family ======================================
-
-function testTheSwitchChangesNoOutcome(testCase)
-f = fixtures();
-for k = 1:size(f, 1)
-    [~, ~, problems] = did2.unittest.helpers.rawAndRenamed(f{k, 2});
-    verifyEmpty(testCase, problems, sprintf('%s: %s', f{k, 1}, strjoin(problems, '; ')));
-end
-end
-
-function testValidationIsAsBefore(testCase)
-% a raw passthrough validates exactly where the renamed one did
-f = fixtures();
-for k = 1:size(f, 1)
-    raw = did2.convert.v1_to_v2(f{k, 2}, 'Validate', true, 'TargetVersion', 'V_eta');
-    old = did2.convert.v1_to_v2(f{k, 2}, 'Validate', true, 'TargetVersion', 'V_eta', ...
-        'RawV1Classes', {});
-    verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), f{k, 1});
-end
-end
 
 % ===================== fixtures, from the TEMPLATES and WRITER ============
 
