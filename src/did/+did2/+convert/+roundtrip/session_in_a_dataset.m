@@ -12,8 +12,10 @@ function [v1, spec] = session_in_a_dataset(bodies)
 %   session [linked session reference follows the ingested rule], Jess Haley,
 %   2026-10-27):
 %
-%     base.id                       the relation's id (minted: the v1 id is
-%                                   not kept, so the round trip reports it lost)
+%     base.id                       the relation's id, which is the v1 id
+%                                   ([every v1 id survives], Jess Haley,
+%                                   2026-10-27; minted before, and reported
+%                                   lost)
 %     base.session_id               the dataset entity's id (the parent)
 %     base.datestamp                the relation's creation_timestamp
 %     base.name                     '' (the writer sets none)
