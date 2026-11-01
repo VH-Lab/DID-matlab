@@ -88,6 +88,14 @@ function result = v1_to_v2(v1Bodies, options)
 %                      identifiers in the legacy (camelCase) form so
 %                      the body stays schema-compatible while still
 %                      gaining the shared shape transformations.
+%     V1FileReader     (function handle or [], default []) - TEXT =
+%                      READER(V1BODY, FILENAME): the bytes of a file a v1
+%                      document attaches, for a migrator that must read it
+%                      (did2.convert.v1Files; first: gene_list_mapping reads
+%                      `mapping.tsv`, [key covariate index], [mapping rows
+%                      counted, indices 0-based], Jess Haley, 2026-11-01).
+%                      [] reads a local `file` location when one exists; a
+%                      file that cannot be read carries its document as v1.
 %     UnitQualityLabels (cell, default {}) - {ELEMENTID, LABEL, ...}: the
 %                      single/multi label of sorted units whose
 %                      neuron_extracellular is not in this batch
@@ -168,6 +176,7 @@ arguments
     options.RawV1Classes cell = did2.convert.rawV1Classes()
     options.NoMigratorCarryClasses cell = did2.convert.noMigratorCarryRows()
     options.UnitQualityLabels cell = {}
+    options.V1FileReader = []
 end
 
 % [old ndi_document blocks carry] (Decided by Jess Haley, 2026-10-27): the note
@@ -219,6 +228,10 @@ did2.convert.sessionReferences('load', bodies);
 % 2026-10-26).
 did2.convert.unitQualityLabels('reset');
 did2.convert.unitQualityLabels('load', bodies);
+% The reader of the files a v1 document attaches (did2.convert.v1Files), for
+% gene_list_mapping's mapping.tsv ([key covariate index], Jess Haley, 2026-11-01)
+did2.convert.v1Files('reset');
+did2.convert.v1Files('set', options.V1FileReader);
 did2.convert.unitQualityLabels('add', options.UnitQualityLabels);
 % The subject_id of every v1 element in this batch, read by
 % migrators_j.element to check a sorted unit's subject against its probe's,

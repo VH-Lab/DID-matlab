@@ -748,15 +748,9 @@
 %         Brainstorm-J migrator: did_v1 geneList -> a standalone `term` document, its
 %         `genes.tsv` kept unchanged as the term's opaque_body. 1 -> 2.
 %     gene_list_mapping
-%         Brainstorm-J migrator: did_v1 geneListMapping -> V_eta gene_list_mapping, an
-%         id-preserving 1:1 passthrough. ⊂ base in V_eta; the two gene_list_id_a /
-%         gene_list_id_b edges are both required and carry through, and the block
-%         fields (label, mapping_type, method, symmetric, n_pairs, n_genes_mapped_a,
-%         n_genes_mapped_b, has_score) carry through verbatim. `mapping_type` and
-%         `symmetric` are LOAD-BEARING per the class's own .md doc: alias-vs-ortholog
-%         is not collapsible to a bare `directed_relation` (the two answer different
-%         questions -- symbol drift vs. species mapping), and this migrator makes no
-%         attempt to normalise or infer either. base.id is preserved.
+%         Brainstorm-J migrator: did_v1 geneListMapping -> a relation between the two
+%         gene lists, its pairs a standalone value with `mapping.tsv` as that value's
+%         opaque_body. 1 -> 3.
 %     hartley_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.hartley reverse-correlation OUTPUT
 %         document -> the named calculator class `receptive_field_calculation` + the
