@@ -223,12 +223,12 @@ rec.fileReference.mimeType = 'application/zarr';   % outside the template: carry
 % two came out of separate pass-1 calls, as here: the batches are joined, then
 % folded.
 first = did2.convert.v1_to_v2([{omeZarrPyramid()}, levels()], 'Validate', true, ...
-    'TargetVersion', 'V_eta');
-second = did2.convert.v1_to_v2({rec, f{2}}, 'Validate', true, 'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
+second = did2.convert.v1_to_v2({rec, f{2}}, 'Validate', true, 'TargetVersion', 'did_v2');
 out = first;
 out.migrated = [first.migrated, second.migrated];
 out.quarantine = [first.quarantine, second.quarantine];
-[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'V_eta');
+[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, rep.store_records_seen, 2);
 verifyEqual(testCase, rep.store_records_carried_as_v1, 1, 'the carried record is seen as carried');
@@ -400,12 +400,12 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(batch)
-out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function [out, rep] = withFold(batch, extra)
-out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta', extra{:});
-[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'did_v2', extra{:});
+[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'did_v2');
 end
 
 function m = byId(docs)

@@ -745,13 +745,8 @@
 %         (see spatial_gene_expression_pyramid.m). Block fields carry through
 %         verbatim; base.id is preserved.
 %     gene_list
-%         Brainstorm-J migrator: did_v1 geneList -> V_eta gene_list, an id-preserving
-%         1:1 passthrough. ⊂ base in V_eta; a reference table -- `genes.tsv` names the
-%         columns of a pyramid's count space, and the block fields (label, n_genes,
-%         genome_assembly, gene_id_namespace, gene_symbol_namespace,
-%         annotation_source, gene_name_completeness, n_duplicate_gene_names) are
-%         metadata about that table. All carry through verbatim; base.id is preserved
-%         so a pyramid's `gene_list_id` edge (mustBeNonEmpty: true) still resolves.
+%         Brainstorm-J migrator: did_v1 geneList -> a standalone `term` document, its
+%         `genes.tsv` kept unchanged as the term's opaque_body. 1 -> 2.
 %     gene_list_mapping
 %         Brainstorm-J migrator: did_v1 geneListMapping -> V_eta gene_list_mapping, an
 %         id-preserving 1:1 passthrough. ⊂ base in V_eta; the two gene_list_id_a /

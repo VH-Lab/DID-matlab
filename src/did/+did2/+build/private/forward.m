@@ -48,10 +48,10 @@ kindOpt = {};
 if isfield(options, 'ValueKind') && ~isempty(options.ValueKind)
     kindOpt = {'ValueKind', options.ValueKind};
 end
-% 'NeedsInfo' ([missing facts are needs info]) is passed on only by a
+% 'Gaps' ([gap accepted when the report lists it]) is passed on only by a
 % wrapper that declares it (did2.build.statement) and only when given
-if isfield(options, 'NeedsInfo') && ~isempty(options.NeedsInfo)
-    kindOpt = [kindOpt, {'NeedsInfo', options.NeedsInfo}];
+if isfield(options, 'Gaps') && ~isempty(options.Gaps)
+    kindOpt = [kindOpt, {'Gaps', options.Gaps}];
 end
 doc = did2.build.document(className, fields, ...
     'SessionId', options.SessionId, 'Edges', edges, 'Files', options.Files, ...

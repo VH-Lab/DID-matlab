@@ -166,6 +166,9 @@ verifyEqual(testCase, numel(docs), 3, 'dataset entity, relation, session entity'
 r = did2.convert.roundtrip.check(m, docs);
 verifyFalse(testCase, r.carried);
 verifyRoundTrip(testCase, r, 'ingested membership', findingsFor('membership'));
+rel = docWithId(out, 'sid_A');
+assertNotEmpty(testCase, rel, 'the relation takes the v1 id ([every v1 id survives])');
+verifyEqual(testCase, char(rel.get('document_class.class_name')), 'directed_relation');
 verifyTrue(testCase, any(strcmp('session_in_a_dataset.session_creator_input1', r.restated)), ...
     'the reference copy in input1 is restated');
 verifyTrue(testCase, any(strcmp('session_in_a_dataset.session_creator_input3', r.restated)), ...
@@ -399,7 +402,7 @@ batch = {s, writerMembership('sid_A', 'ds_1', 'sess_A', '2021-04-01', 0, ''), ..
     writerMembership('sid_B', 'ds_1', 'sess_B', '2021-04-02', 1, '/data/2021-04-02'), ...
     writerRemote('dr_1', 'ds_1'), writerEditor('me_S', 'ds_S', sophForm()), ...
     writerEditor('me_F', 'ds_F', fullForm()), writerPresentation('sp_1')};
-out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'did_v2');
 reasons = '';
 for k = 1:numel(out.quarantine)
     reasons = [reasons sprintf('%s: %s; ', out.quarantine(k).class_name, ...
@@ -470,9 +473,9 @@ function f = knownFindings()
 % {fixture, path, why}. On the session_id EDGE shape (did-schema main) the
 % session entity takes the session id as its base.id; the field shape keeps
 % the document's own id.
+% 'membership' base.id is no longer a finding: the relation takes the v1
+% record's id ([every v1 id survives], Jess Haley, 2026-10-27)
 f = { ...
-    'membership', 'base.id', ['the relation''s id is minted; the v1 record''s own id ' ...
-        'is kept nowhere (a question for the team)']; ...
     'remote', 'base.id', 'the v1 record''s own id is kept nowhere (a question)'; ...
     'form', 'base.id', 'the v1 form''s own id is kept nowhere (a question)'};
 if did2.schema.cache.shared().sessionIdIsEdge()
@@ -490,11 +493,11 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function out = runRenamed(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'RawV1Classes', {});
 end
 

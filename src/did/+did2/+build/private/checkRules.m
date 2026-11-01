@@ -23,6 +23,13 @@ function checkRules(cache, className, doc, chain)
 %      [covariate details], 5.1a; numeric `count` and `matrix` before).
 %      dimension_chunk_sampled_only also refuses a `chunk` on an
 %      acquisition_epoch's dimensions ([covariate details], 5.3a).
+%      A `key` covariate's `index` (Jess Haley, 2026-11-01, "2. Ok",
+%      did-schema did_v2_go_forward_class_audit.md [key covariate index]) is
+%      checked under the same two names: covariate_one_value_form (`index`
+%      only beside `key`) and covariate_shape (one 0-based entry number,
+%      an integer >= 0, per position of the key's dimension). Whether each
+%      entry exists in the keyed document is a batch check, as the keyed
+%      document's length is.
 %
 %      The 2026-10-22 tenet-audit rules (did-schema #88, Jess Haley):
 %        method_shared_and_own        [method shared plus own]: beside a
@@ -45,10 +52,11 @@ function checkRules(cache, className, doc, chain)
 %                                 value form", holding one value; a
 %                                 quantity whose canonical `value` is
 %                                 absent holds one when it keeps its
-%                                 source_value and needs_info names the
-%                                 canonical ([missing facts are needs
-%                                 info], [canonical absent only as needs
-%                                 info])
+%                                 source_value and the run's migration
+%                                 report lists the canonical as a gap
+%                                 ([canonical absent only as needs
+%                                 info], [gap accepted when the report
+%                                 lists it])
 %        variable_once            (a schema rule since 2026-10-22, part 1
 %                                 above; checked here) did-schema data_body
 %                                 AMENDMENT 6: "A variable appears at most
@@ -182,17 +190,18 @@ for c = 1:numel(chain)
                 % document itself is inline or in bodies.
                 % [formulation amount needs info] (Jess Haley, 2026-10-31,
                 % did-schema did_v2_go_forward_class_audit.md; docs/V2_PLAN.md
-                % G67 (a)): a blank `value` is also accepted when the
-                % document's needs_info names it or a field within it
-                % (<block>.value...): a fact the source never stated, such as a
-                % formulation in which no ingredient states an amount.
+                % G67 (a)): a blank `value` is also accepted when the run's
+                % migration report lists it, or a field within it
+                % (<block>.value...), as a gap ([gap accepted when the report
+                % lists it], 2026-11-01): a fact the source never stated, such
+                % as a formulation in which no ingredient states an amount.
                 if ~isTrue(findField(doc, blocks, 'data_body')) ...
                         && isBlankValue(findField(doc, blocks, 'value')) ...
                         && ~hasEdge(doc, 'value_id') ...
-                        && ~did2.schema.needsInfoNamesValue(doc)
+                        && ~did2.schema.reportedGapNamesValue(doc)
                     violated(ruleName, className, ...
                         ['`value` is empty, `data_body` is not true and ' ...
-                         'needs_info does not name it: the value is neither ' ...
+                         'the migration report lists no gap for it: the value is neither ' ...
                          'inline nor in data bodies.']);
                 end
             case 'ingredients_or_product'
@@ -353,11 +362,12 @@ if isstruct(conditions)
         end
         n = valueCount(conditions(k), given{1});
         if n == 0 && strcmp(given{1}, 'quantity') ...
-                && canonicalNamedInNeedsInfo(doc, conditions(k).quantity, k)
-            % [missing facts are needs info] (Jess Haley, 2026-10-29) and
-            % [canonical absent only as needs info] (2026-10-30), did-schema
-            % V_eta_go_forward_class_audit.md: a quantity's canonical may be
-            % absent only when the document's needs_info names it. Its one
+                && canonicalListedAsGap(doc, conditions(k).quantity, k)
+            % [missing facts are needs info] (Jess Haley, 2026-10-29),
+            % [canonical absent only as needs info] (2026-10-30) and [gap
+            % accepted when the report lists it] (2026-11-01), did-schema
+            % did_v2_go_forward_class_audit.md: a quantity's canonical may be
+            % absent only when the run's migration report lists it. Its one
             % value is then the source_value it keeps (first use: an image
             % stack's acquisition time on a clock that is not UTC,
             % [acquisition time on its clock])
@@ -635,6 +645,12 @@ for k = 1:numel(covs)
             numel(given), strjoin(given, ', ')));
     end
     form = given{1};
+    hasIndex = isfield(c, 'index') && ~isAbsent(c.index);
+    if hasIndex && ~strcmp(form, 'key')
+        % [key covariate index]: `index` picks entries of a keyed document
+        violated('covariate_one_value_form', where, sprintf( ...
+            '`index` goes only with `key`; this covariate is given by %s.', form));
+    end
     if any(strcmp(form, {'origin+spacing', 'key'})) && numel(along) ~= 1
         violated('covariate_single_dimension_forms', where, sprintf( ...
             'a covariate given by %s runs along exactly one dimension; `along` has %d.', form, numel(along)));
@@ -670,8 +686,24 @@ function covariateShape(c, form, ext, where)
 % Shape: the extents of the `along` dimensions, in that order; for `matrix`,
 % those extents followed by the array's own shape (AMENDMENT 6).
 switch form
-    case {'origin+spacing', 'key'}
-        return;   % generated, or n entries of another document (a batch check)
+    case 'origin+spacing'
+        return;   % generated
+    case 'key'
+        % n entries of another document (a batch check); with `index`
+        % ([key covariate index], Jess Haley 2026-11-01), one 0-based entry
+        % number per position instead, each below that document's length
+        % (also a batch check)
+        if isfield(c, 'index') && ~isAbsent(c.index)
+            ix = c.index;
+            if iscell(ix); ix = cell2mat(ix); end
+            if ~(isnumeric(ix) && isreal(ix) && all(isfinite(ix(:))) ...
+                    && all(ix(:) >= 0) && all(ix(:) == round(ix(:))))
+                violated('covariate_shape', where, ...
+                    '`index` holds 0-based entry numbers: integers >= 0.');
+            end
+            shapeMatches(ix, ext, false, 'index', where);
+        end
+        return;
     case 'quantity'
         for f = {'value', 'source_value'}
             if isfield(c.quantity, f{1}) && ~isAbsent(c.quantity.(f{1}))
@@ -759,16 +791,16 @@ for f = {'term', 'quantity', 'count', 'text', 'matrix', 'logical'}
 end
 end
 
-function tf = canonicalNamedInNeedsInfo(doc, quantity, k)
-%CANONICALNAMEDINNEEDSINFO True when condition K's quantity keeps a
-%   source_value and the document's needs_info names its canonical
+function tf = canonicalListedAsGap(doc, quantity, k)
+%CANONICALLISTEDASGAP True when condition K's quantity keeps a source_value
+%   and the run's migration report lists its canonical as a gap
 %   (<block>.conditions(K).quantity.value).
 tf = false;
 if ~isstruct(quantity) || ~isscalar(quantity) || ~isfield(quantity, 'source_value') ...
         || isAbsent(quantity.source_value)
     return;
 end
-named = did2.schema.needsInfoFields(doc);
+named = did2.schema.reportedGaps(doc);
 suffix = sprintf('.conditions(%d).quantity.value', k);
 tf = any(cellfun(@(f) endsWith(f, suffix), named));
 end

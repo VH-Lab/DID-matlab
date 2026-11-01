@@ -163,7 +163,7 @@ arguments
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'V_eta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'did_v2'
     options.Audits (1,1) logical = true
     options.RawV1Classes cell = did2.convert.rawV1Classes()
     options.NoMigratorCarryClasses cell = did2.convert.noMigratorCarryRows()
@@ -194,6 +194,11 @@ if isempty(did2.convert.migrationTime('get'))
     did2.convert.migrationTime('pin');
     unpinMigrationTime = onCleanup(@() did2.convert.migrationTime('unpin'));
 end
+% The run's migration report ([migration record], [gap accepted when the report
+% lists it], Jess Haley, 2026-11-01): a run writer begins one around the whole
+% run; a call with none held begins its own and leaves it held after it
+% returns, until the next such call (migrationReport 'call').
+closeReportCall = did2.convert.migrationReport('call'); %#ok<NASGU>
 
 bodies = normaliseInput(v1Bodies);
 
@@ -920,6 +925,9 @@ result.summary = struct( ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...
     'migration_notes', did2.convert.reportNote('collect'));
+% the report of this call's documents (gaps, carries, counts); a run writer
+% collects the whole run's instead (did2.convert.migrationRecord)
+result.migration_report = did2.convert.migrationReport('collect', migrated);
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
 % migrates away without a trace: required depends_on edges left empty, and
@@ -1509,7 +1517,7 @@ function body = applySuperclassMigrators(body, concreteClassName, targetVersion)
 % A superclass override must return exactly one body: it reshapes a
 % property block, it does not split documents.
 if nargin < 3 || isempty(targetVersion)
-    targetVersion = 'V_eta';
+    targetVersion = 'did_v2';
 end
 superPackage = '';
 if did2.convert.isV2Set(targetVersion)

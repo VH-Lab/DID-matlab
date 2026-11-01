@@ -81,7 +81,7 @@ function testBothPathsMakeTheSameCarrier(testCase)
 for v1 = {epochDoc('ee_1', 'el_probe', 't00001', 'dev_local_time', [0; 10.5], false), ...
         epochDoc('ee_3', 'el_probe', 't00002', 'dev_local_time', [0; 12], true)}
     raw = runRaw(v1{1});
-    old = did2.convert.v1_to_v2(v1{1}, 'Validate', false, 'TargetVersion', 'V_eta', ...
+    old = did2.convert.v1_to_v2(v1{1}, 'Validate', false, 'TargetVersion', 'did_v2', ...
         'RawV1Classes', {});
     verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
     a = raw.migrated{1}.toStruct();
@@ -93,7 +93,7 @@ end
 % ===================== helpers =========================================
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function s = describeLost(r)

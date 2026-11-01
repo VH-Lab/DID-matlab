@@ -252,7 +252,7 @@ function result = batchOf(bodies)
 %   [classes without a migrator carry as v1], did2.convert.noMigratorCarryRows),
 %   which is exactly the state the pass finds it in on the real path.
 result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 end
 
 function result = runPass(result)
@@ -263,7 +263,7 @@ function result = runPass(result)
 %   tests call the function directly, without the flag, so the DEFAULT is what
 %   they measure.
 result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta', 'Decompose', true);
+    'TargetVersion', 'did_v2', 'Decompose', true);
 end
 
 function out = docsOfClass(result, className)
@@ -346,7 +346,7 @@ before = numel(result.migrated);
 
 % NO `Decompose` ARGUMENT -- the production call.
 result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 
 rep = result.valid_interval_decompose;
 verifyTrue(testCase, rep.ran, 'the pass must report that it ran');
@@ -381,7 +381,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     elementSubject('element_2'), ...
     validIntervalBody('vi_2', 'element_2', intervalEntry(0, 5, 'dev_local_time', 't00001'))});
 result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 rep = result.valid_interval_decompose;
 verifyEqual(testCase, rep.sources_seen, 2, ...
     'the dormant pass stopped counting its source documents');
@@ -412,7 +412,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     elementSubject('element_1')});
 before = numel(result.migrated);
 result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 
 rep = result.valid_interval_decompose;
 verifyTrue(testCase, rep.ran, 'the pass must report that it ran');
@@ -434,7 +434,7 @@ function testAnEmptyBatchIsNotAnErrorAndReportsItsDenominator(testCase)
 % without it.
 result = struct('migrated', {{}}, 'quarantine', {{}});
 result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 rep = result.valid_interval_decompose;
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);

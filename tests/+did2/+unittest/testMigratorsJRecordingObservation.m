@@ -286,7 +286,7 @@ function testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided(testCase)
 % emitted -- and nothing is quarantined either, which the old value-less
 % observation was.
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_1', 'single'});
 verifyEmpty(testCase, out.quarantine, 'the derived element quarantined');
 verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
@@ -379,13 +379,25 @@ function testTheDecidedModeIsTheObservationsMethodTerm(testCase)
 % suffix goes on the recording observation; [imaging mode is a method term]
 % (2026-10-29): as a method term. [element types batch 1] / [cell-attached is
 % OBI]: -attached is OBI:0002179; [element types batch 2]: brightfield is
-% EMPTY:0000300. The other modes have no decided term ("in a later batch"),
-% so their observations have no method.
+% EMPTY:0000300. [recording mode terms] (2026-11-01): -Vm is OBI:0002185
+% "current clamp assay", -I / -Im OBI:0002182 "voltage clamp assay";
+% [imaging mode terms] (2026-11-01): wide-field OBI:0002437, two-photon
+% FBbi:00000254, one-photon FBbi:00000246. A bare patch or sharp names no
+% mode, so its observation has no method.
+abf = '/data/t00001/t00001.abf';
+tif = '/data/t00001/frames.tif';
+ts = 'ndi.probe.timeseries.mfdaq';
 cases = { ...
-    'patch-attached', 'ndi.probe.timeseries.mfdaq', '/data/t00001/t00001.abf', 'observation+voltage', 'OBI:0002179'; ...
-    'brightfield-imaging', 'ndi.probe.image', '/data/t00001/frames.tif', 'observation+intensity', 'EMPTY:0000300'; ...
-    'patch-Vm', 'ndi.probe.timeseries.mfdaq', '/data/t00001/t00001.abf', 'observation+voltage', ''; ...
-    'two-photon-imaging', 'ndi.probe.image', '/data/t00001/frames.tif', 'observation+intensity', ''};
+    'patch-attached', ts, abf, 'observation+voltage', 'OBI:0002179'; ...
+    'brightfield-imaging', 'ndi.probe.image', tif, 'observation+intensity', 'EMPTY:0000300'; ...
+    'patch-Vm', ts, abf, 'observation+voltage', 'OBI:0002185'; ...
+    'sharp-Vm', ts, abf, 'observation+voltage', 'OBI:0002185'; ...
+    'patch-I', ts, abf, 'observation+current', 'OBI:0002182'; ...
+    'sharp-Im', ts, abf, 'observation+current', 'OBI:0002182'; ...
+    'wide-field-imaging', 'ndi.probe.image', tif, 'observation+intensity', 'OBI:0002437'; ...
+    'two-photon-imaging', 'ndi.probe.image', tif, 'observation+intensity', 'FBbi:00000254'; ...
+    'one-photon-imaging', 'ndi.probe.image', tif, 'observation+intensity', 'FBbi:00000246'; ...
+    'patch', ts, abf, 'observation+voltage', ''};
 for k = 1:size(cases, 1)
     [ty, cls, file, key, node] = cases{k, :};
     out = runEpoch(elementDoc('p', ty, cls, 1, 'specimen_1', ''), {file});
@@ -526,7 +538,7 @@ function testExtracellularRecordingValidatesAgainstVEta(testCase)
 % true) + its epoch anchor + the channel map + the opaque_body by location.
 % Nothing may quarantine; rule value_inline_or_body is satisfied by data_body.
 el = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
-pass1 = did2.convert.v1_to_v2(el, 'Validate', true, 'TargetVersion', 'V_eta');
+pass1 = did2.convert.v1_to_v2(el, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, pass1.quarantine, 'pass 1 quarantined the element');
 out = runEpoch(el, {'/data/t00001/t00001.rhd'}, true);
 if ~isempty(out.quarantine)
@@ -543,7 +555,7 @@ function testTheSpikeTrainAlsoValidatesAgainstVEta(testCase)
 % value_inline_or_body) -- and emits NO observation until its per-epoch body is
 % decided (see testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided).
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
-out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', true, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_1', 'single'});
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
@@ -583,7 +595,7 @@ function out = runJ(v1)
 % every element here is el_1; a `spikes` one is a unit its sorting run labels
 % single ([sorted units are cells or groups], Jess Haley, 2026-10-26; without a
 % label it is carried, testRawV1RoundTripElement)
-out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', false, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'el_1', 'single'});
 end
 
@@ -709,10 +721,10 @@ pm = sprintf('name\treference\ttype\tdevicestring\tsubjectstring\n%s\t1\t%s\tvhs
     el.element.name, el.element.type);
 ing.epochfiles_ingested = struct('epoch_id', 't00001', ...
     'files', {[{'epochid://t00001'}, files]}, 'epochprobemap', pm);
-out = did2.convert.v1_to_v2({sess, subj, el, ing}, 'Validate', false, 'TargetVersion', 'V_eta');
-out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'V_eta');
-out = did2.convert.resolveSessionAnchors(out, 'Validate', validate, 'TargetVersion', 'V_eta');
-out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({sess, subj, el, ing}, 'Validate', false, 'TargetVersion', 'did_v2');
+out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
+out = did2.convert.resolveSessionAnchors(out, 'Validate', validate, 'TargetVersion', 'did_v2');
+out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'did_v2');
 end
 
 function c = allOfClass(out, className)

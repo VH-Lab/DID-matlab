@@ -1,4 +1,4 @@
-function [v1, spec] = syncrule(bodies)
+function [v1, spec] = syncrule(bodies, ctx)
 %SYNCRULE Rebuild a v1 `syncrule` from what the migration made of it.
 %
 %   [V1, SPEC] = did2.convert.roundtrip.syncrule(BODIES). V1 is the rule in
@@ -38,11 +38,24 @@ function [v1, spec] = syncrule(bodies)
 %                                      commonTriggersOverlappingEpochs and
 %                                      randomPulses (the key each writer uses)
 %
+%   [V1, SPEC] = did2.convert.roundtrip.syncrule(BODIES, CTX), in the
+%   whole-batch round trip (did2.convert.roundtrip.wholeBatch; [whole-batch
+%   round trip], Jess Haley, 2026-10-27): the two acquisition systems are
+%   OTHER sources' documents (each `daqsystem` became its own), and the
+%   software entity may be one another document of the batch holds, so a
+%   system or the software entity that is not among BODIES is read from CTX,
+%   the index of the final batch, by the id the edge names. A document read
+%   from CTX is read, never placed (did2.convert.roundtrip.check). Test code
+%   run 41322059537 (failures B 13, Dab 13, 20211116 1): the sampled
+%   `filefind` rules lost `ndi_syncrule_class`, `daqsystem1` and `daqsystem2`,
+%   their systems and software not being among their own documents.
+
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.syncrule,
 %            did2.convert.resolveClockAlignment.
 
 arguments
     bodies cell
+    ctx = []
 end
 
 CLASS = 'syncrule';
@@ -75,15 +88,21 @@ if ~isempty(cfg)
             continue;
         end
         s = find(strcmp(ids, sysIds{1}), 1);
-        if isempty(s) || ~strcmp(classNameOf(bodies{s}), 'acquisition_system')
-            spec.unplaced{end+1} = sprintf('%s names no acquisition_system among the documents', role{1}); %#ok<AGROW>
+        if ~isempty(s) && strcmp(classNameOf(bodies{s}), 'acquisition_system')
+            claimed(s) = true;
+            systemNames{end+1} = fieldText(getIn(bodies{s}, 'acquisition_system'), 'name'); %#ok<AGROW>
             continue;
         end
-        claimed(s) = true;
-        systemNames{end+1} = fieldText(getIn(bodies{s}, 'acquisition_system'), 'name'); %#ok<AGROW>
+        % another source's system, read from the whole batch (CTX)
+        sys = ctxDoc(ctx, sysIds{1});
+        if isempty(s) && ~isempty(sys) && strcmp(classNameOf(sys), 'acquisition_system')
+            systemNames{end+1} = fieldText(getIn(sys, 'acquisition_system'), 'name'); %#ok<AGROW>
+            continue;
+        end
+        spec.unplaced{end+1} = sprintf('%s names no acquisition_system among the documents', role{1}); %#ok<AGROW>
     end
 end
-[doc, ~, swName, spec] = daqParts(bodies(~claimed), 'clock_alignment_configuration', spec);
+[doc, ~, swName, spec] = daqParts(bodies(~claimed), 'clock_alignment_configuration', spec, ctx);
 if isempty(doc)
     return;
 end

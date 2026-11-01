@@ -30,7 +30,7 @@ end
 
 function testFoldGenericFilesRestoresTermRegistry(testCase)
 verifyRestored(testCase, 'TermRegistry', @() did2.convert.foldGenericFiles( ...
-    emptyResult(), 'Validate', false, 'TargetVersion', 'V_eta'));
+    emptyResult(), 'Validate', false, 'TargetVersion', 'did_v2'));
 end
 
 function testV1ToV2RestoresTermRegistry(testCase)
@@ -40,7 +40,7 @@ end
 
 function testFoldGenericFilesRestoresRetiredClasses(testCase)
 verifyRestored(testCase, 'RetiredClasses', @() did2.convert.foldGenericFiles( ...
-    emptyResult(), 'Validate', false, 'TargetVersion', 'V_eta'));
+    emptyResult(), 'Validate', false, 'TargetVersion', 'did_v2'));
 end
 
 function testV1ToV2RestoresRetiredClasses(testCase)

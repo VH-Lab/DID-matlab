@@ -429,9 +429,9 @@ end
 bodies = v1Fixtures();
 
 % the full V_eta corpus pipeline, validation ON
-result = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'did_v2');
 result = did2.convert.resolveDeferredBaths(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 % TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
 % graph into the entity tier. BEFORE resolveDatasetEntities, and that order is
 % load-bearing -- the `dataset` entity minted here is keyed on the same dataset
@@ -441,14 +441,14 @@ result = did2.convert.resolveDeferredBaths(result, ...
 % is strictly more useful than a captured message (runBatchPass.m states the
 % rule).
 result = did2.convert.resolveOpenmindsCitations(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 result = did2.convert.resolveDatasetEntities(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 % #60: mint the `epoch` entities (one per (session, epoch-id) PAIR). Same
 % post-pass set as runCorpusDiscovery and testCorpusPRED; this is the fast gate,
 % so it is where a broken mint should be caught first.
 result = did2.convert.epochMint(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 % #65: fold session_relative_reference + session_bounded_reference into
 % `relative_reference`, base.id PRESERVED, anchored to the session DOCUMENT.
 % Same post-pass set and the SAME ORDER as runCorpusDiscovery, testCorpusPRED
@@ -463,7 +463,7 @@ result = did2.convert.epochMint(result, ...
 % strictly more informative than a captured message. This is the fast gate: a
 % broken post-pass should die here, loudly, before any corpus job starts.
 result = did2.convert.resolveSessionAnchors(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 % #66 INCREMENT 1: decompose an ingested epoch's `epochprobemap` into
 % epoch-scoped `<modality>_observation`s, retiring #30's coarse session-scoped
 % observation per probe. Same post-pass set and the SAME ORDER as
@@ -471,7 +471,7 @@ result = did2.convert.resolveSessionAnchors(result, ...
 % for the identical reason: this test writes no report, so there is nothing for
 % the guard to protect and a raw stack trace is strictly more informative.
 result = did2.convert.resolveEpochProbemap(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 % #61: inline the stimulus-response run knobs onto the
 % `harmonic_component_calculation` leaf and drop `method_parameters_id`. Same
 % post-pass set and the SAME ORDER as runCorpusDiscovery and testCorpusPRED.
@@ -479,7 +479,7 @@ result = did2.convert.resolveEpochProbemap(result, ...
 % writes no report, so there is nothing for the guard to protect and a raw stack
 % trace is strictly more informative than a captured message.
 result = did2.convert.resolveResponseParameters(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 % TEAM DECISION 2026-08-11: `generic_file` -> an `opaque_body` + a statement
 % whose `variable` comes from the sibling ontologyLabel. Same post-pass set and
 % the SAME ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE, like
@@ -487,7 +487,7 @@ result = did2.convert.resolveResponseParameters(result, ...
 % there is nothing for the guard to protect and a raw stack trace is strictly
 % more informative than a captured message.
 result = did2.convert.foldGenericFiles(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 % DORMANT BY TEAM DECISION 2026-08-12: the target is ONE statement holding an
 % ARRAY of booleans on a TIME AXIS, and we wait for `axes[]` rather than ship
 % the 1->N decomposition. Called with the DEFAULT (`Decompose` false), so this
@@ -496,13 +496,13 @@ result = did2.convert.foldGenericFiles(result, ...
 % no reordering. CALLED BARE, like the passes above and for the identical
 % reason.
 result = did2.convert.resolveValidIntervals(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 
 % #57 syncgraph half: un-gate syncgraph -> clock_alignment_policy. In the SAME
 % ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE like the passes
 % above, for the identical reason.
 result = did2.convert.resolveClockAlignment(result, ...
-    'Validate', true, 'TargetVersion', 'V_eta');
+    'Validate', true, 'TargetVersion', 'did_v2');
 
 % GATE 1: nothing quarantined. Each one is NAMED first (class, error id,
 % message), so a red gate is readable from the log rather than as a count.
@@ -649,7 +649,7 @@ for k = 1:numel(bodies)
     end
     did2.build.unregisteredTerms('-reset');
     try
-        did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'V_eta');
+        did2.convert.v1_to_v2({b}, 'Validate', false, 'TargetVersion', 'did_v2');
     catch err
         fprintf('UNREGISTERED-TERMS %s: the run threw %s (not measured)\n', ...
             cn, err.identifier);
@@ -669,14 +669,14 @@ fprintf(['UNREGISTERED-TERMS per-document: %d term line(s); %d of %d body(ies) '
 % the batch passes, on the whole batch
 did2.build.unregisteredTerms('-reset');
 try
-    result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
     did2.build.unregisteredTerms('-reset');
-    result = did2.convert.resolveDeferredBaths(result, 'Validate', false, 'TargetVersion', 'V_eta');
-    result = did2.convert.resolveOpenmindsCitations(result, 'Validate', false, 'TargetVersion', 'V_eta');
-    result = did2.convert.resolveDatasetEntities(result, 'Validate', false, 'TargetVersion', 'V_eta');
-    result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
-    result = did2.convert.resolveSessionAnchors(result, 'Validate', false, 'TargetVersion', 'V_eta');
-    did2.convert.resolveEpochProbemap(result, 'Validate', false, 'TargetVersion', 'V_eta');
+    result = did2.convert.resolveDeferredBaths(result, 'Validate', false, 'TargetVersion', 'did_v2');
+    result = did2.convert.resolveOpenmindsCitations(result, 'Validate', false, 'TargetVersion', 'did_v2');
+    result = did2.convert.resolveDatasetEntities(result, 'Validate', false, 'TargetVersion', 'did_v2');
+    result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+    result = did2.convert.resolveSessionAnchors(result, 'Validate', false, 'TargetVersion', 'did_v2');
+    did2.convert.resolveEpochProbemap(result, 'Validate', false, 'TargetVersion', 'did_v2');
     rows = did2.build.unregisteredTerms();
     for r = 1:numel(rows)
         fprintf('UNREGISTERED-TERM <batch pass> | %s | %s | %s | %s (x%d)\n', ...
@@ -706,7 +706,7 @@ end
 batch = fx_contrast_tuning();
 batch{3}.contrast_tuning.properties.unplaced_note = 'outside the template';
 result = did2.convert.v1_to_v2(batch, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 verifyEmpty(testCase, result.quarantine, 'a carried v1 document was quarantined');
 verifyGreaterThanOrEqual(testCase, result.summary.passthrough_unvalidated_no_schema_count, 1);
 verifyTrue(testCase, isfield(result.summary.passthrough_unvalidated_no_schema_by_class, ...
@@ -1244,15 +1244,10 @@ d.probe_geometry = struct( ...
 % no `manufacturer` (2026-10-26): one that is set carries the document whole as
 % v1 ([probe contact geometry carried]), and this fixture exercises the fold
 batch = { sub, d };
-% 2026-10-30: the fold writes the probe's coordinate system with two
-% base.needs_info entries ([site frame is a coordinate system], [missing facts
-% are needs info]); a schema whose base declares no needs_info cannot hold it,
-% so there the fixture is left out and the run says so
-if ~did2.unittest.helpers.schemaDeclares('base', {'needs_info'})
-    fprintf(['FIXTURE NOT RUN: fx_probe_geometry -- the loaded schema declares ' ...
-        'no base.needs_info\n']);
-    batch = {};
-end
+% 2026-10-30: the fold writes the probe's coordinate system with two gaps
+% ([site frame is a coordinate system], [missing facts are needs info]),
+% listed in the run's migration report since [migration record] (2026-11-01),
+% so any schema holds it
 end
 
 % ---- position_metadata (element_id) ----------------------------------------

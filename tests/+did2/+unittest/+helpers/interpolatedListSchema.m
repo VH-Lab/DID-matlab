@@ -32,8 +32,8 @@ function varargout = interpolatedListSchema(testCase, declared)
 %   registers teardowns that point the cache back and delete the copy. It may
 %   be called more than once in a test (each call copies the schema in use).
 %
-%   The declaration is edited as text, the way testBuildNeedsInfo and
-%   testTuningDecisions already declare a field on a copy, so the file keeps
+%   The declaration is edited as text, the way testTuningDecisions
+%   already declares a field on a copy, so the file keeps
 %   did-schema's formatting and nothing else in it moves.
 %
 %   '-path' returns the class file holding the field and the field's path in

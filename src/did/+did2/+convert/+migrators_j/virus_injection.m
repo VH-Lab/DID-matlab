@@ -15,10 +15,10 @@ function v2Body = virus_injection(preBody)
 %   The virus identity is the spine `subject_statement.variable` AND the
 %   formulation's first ingredient (a `chemical`); a non-zero dilution is that
 %   ingredient's concentration `source_value`, a number with no unit, its
-%   canonical named in needs_info ([virus dilution needs info], Decided by
+%   canonical listed as a gap ([virus dilution needs info], Decided by
 %   Jess Haley, 2026-10-31, did-schema did_v2_go_forward_class_audit.md;
 %   docs/V2_PLAN.md G71); 0 is not recorded, so the ingredient has no amount
-%   and needs_info names it ([canonical absent only as needs info]; when no
+%   and the migration report lists it as a gap ([canonical absent only as needs info]; when no
 %   ingredient states an amount, [formulation amount needs info], 2026-10-31,
 %   G67); a named diluent is a second ingredient. Routing is jTreatmentRoute /
 %   jTreatmentBodies: bath -> immersion; a body site -> a dose whose amount is
@@ -40,8 +40,8 @@ function v2Body = virus_injection(preBody)
 %     base.*, depends_on subject_id  -> as treatment.m
 %     virus_OntologyName, virus_name -> the variable and the first chemical
 %     dilution                 -> its concentration source_value, no unit,
-%                                 the canonical named in needs_info (0: no
-%                                 amount, named in needs_info, [virus-location])
+%                                 the canonical listed as a gap (0: no
+%                                 amount, listed as a gap, [virus-location])
 %     diluent_OntologyName, diluent_name -> the second chemical
 %     virusLocation_OntologyName, virusLocation_name -> the route and the
 %                                 site observation of a dose
@@ -52,8 +52,8 @@ function v2Body = virus_injection(preBody)
 %                                 ([age at injection is an observation], Jess
 %                                 Haley, 2026-10-27; [age is NCIT Age],
 %                                 2026-10-30). 0 is not stated: the Age
-%                                 observation has no value and names it in
-%                                 needs_info ([postnatal day 0 not stated],
+%                                 observation has no value and lists it as a
+%                                 gap ([postnatal day 0 not stated],
 %                                 2026-11-01). A non-numeric value is not
 %                                 read (the round trip reports it lost).
 %     files.file_list          -> empty in the template and the writer
@@ -86,10 +86,10 @@ dilutionUnit = '';
 if isfield(block, 'dilution') && isnumeric(block.dilution) && ~isempty(block.dilution) ...
         && double(block.dilution(1)) ~= 0
     % 0 is the template blank, not a measured dilution: left unrecorded, so
-    % jDoseBodies writes the ingredient with no amount and names it in
-    % needs_info. Any other number is a ratio with NO unit: jDoseBodies keeps
-    % it as the concentration's source_value and names its canonical in
-    % needs_info ([virus dilution needs info], Jess Haley, 2026-10-31). No
+    % jDoseBodies writes the ingredient with no amount and lists it as a gap.
+    % Any other number is a ratio with NO unit: jDoseBodies keeps it as the
+    % concentration's source_value and lists its canonical as a gap ([virus
+    % dilution needs info], Jess Haley, 2026-10-31). No
     % unit label is made up for it (it was 'dilution' before).
     dilution = double(block.dilution(1));
 end
@@ -147,9 +147,9 @@ function obs = ageObservation(preBody, block, anchorId)
 %   than an age ... A real day-0 injection is rare, and a wrong age is worse
 %   than a missing one"). NDI's template defaults the field to 0, so a 0 cannot
 %   be told from a field nobody filled in: the Age observation is written with
-%   no value, its `time.value` named in base.needs_info ([missing facts are
-%   needs info]; the value rule accepts a blank value needs_info names,
-%   [formulation amount needs info]), with a `needs_info` report note. Any
+%   no value, its `time.value` listed as a gap in the migration report ([missing facts are
+%   needs info]; the value rule accepts a blank value listed as a gap,
+%   [formulation amount needs info]), with a `gap` report note. Any
 %   other finite number is read as written; an empty, NaN or non-numeric
 %   value states no age (no observation).
 obs = [];
@@ -166,15 +166,15 @@ end
 days = double(pnd);
 if days == 0
     % [postnatal day 0 not stated]: the template default, not an age
-    needsInfo = struct('field', 'time.value', 'reason', ...
+    gaps = struct('field', 'time.value', 'reason', ...
         ['v1 states postnatal day 0, the NDI template''s default for ' ...
          'virus_AdministrationPND, which is read as not stated ' ...
          '([postnatal day 0 not stated])']);
     obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
         did2.convert.registeredTerm('NCIT:C25150', 'Age'), [], ...
-        'TimeReferenceIds', {anchorId}, 'ValueKind', 'time', 'NeedsInfo', needsInfo);
-    did2.convert.reportNote('needs_info', char(preBody.document_class.class_name), ...
-        char(preBody.base.id), needsInfo.field);
+        'TimeReferenceIds', {anchorId}, 'ValueKind', 'time', 'Gaps', gaps);
+    did2.convert.reportNote('gap', char(preBody.document_class.class_name), ...
+        char(preBody.base.id), gaps.field);
     return;
 end
 value = did2.build.composite('time', 'value', {struct('seconds', days * 86400, ...

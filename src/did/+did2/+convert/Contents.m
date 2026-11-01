@@ -56,7 +56,13 @@
 %                          runs v1_to_v2 with its default TargetVersion,
 %                          writes the successes into a fresh
 %                          did2.database.sqlitedb and the quarantine to
-%                          <dst>.quarantine.json.
+%                          <dst>.quarantine.json, with the run's
+%                          migration record.
+%     migrationReport    - the run's report: every gap (a required field
+%                          the source never stated) and carry, by document;
+%                          the validator reads the gaps there.
+%     migrationRecord    - the run's `migration` document and its report,
+%                          a JSON file attached as an opaque_body.
 %
 %   Shared helpers used by migrators
 %     axisKey, axisTerm, channelType, epochIndex,

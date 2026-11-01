@@ -186,7 +186,8 @@ function testAPostnatalDayOfZeroIsNotStated(testCase)
 % [postnatal day 0 not stated] (Decided by Jess Haley, 2026-11-01, did-schema
 % did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G68): "treat a 0 as 'not
 % stated', so it's recorded as a missing fact rather than an age". The Age
-% observation has no value and names `time.value` in needs_info; the round
+% observation has no value and the run's migration report lists `time.value`
+% as a gap ([migration record], 2026-11-01); the round
 % trip reads the template's 0 back.
 v1 = virusAtV1();
 v1.virus_injection.virus_AdministrationPND = 0;
@@ -204,8 +205,8 @@ verifyEqual(testCase, char(age.statement.variable.node), 'NCIT:C25150');
 verifyTrue(testCase, ~isfield(age.time, 'value') || isempty(age.time.value) || ...
     (isstruct(age.time.value) && ~any(isfield(age.time.value, {'seconds', 'source_value'}))), ...
     'no age is stated');
-verifyTrue(testCase, any(strcmp('time.value', did2.schema.needsInfoFields(age))), ...
-    'needs_info names the missing age');
+verifyTrue(testCase, any(strcmp('time.value', did2.schema.reportedGaps(age))), ...
+    'the migration report lists the missing age');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyTrue(testCase, any(strcmp('virus_injection.virus_AdministrationPND', r.matched)), ...
     'the template''s 0 reads back');
@@ -449,7 +450,7 @@ for k = 1:numel(fixtures)
     v1 = jsondecode(jsonencode(fixtures{k}));   % the shape a corpus delivers
     raw = runRaw(v1);
     old = did2.convert.v1_to_v2(v1, 'Validate', false, ...
-        'TargetVersion', 'V_eta', 'RawV1Classes', {});
+        'TargetVersion', 'did_v2', 'RawV1Classes', {});
     label = sprintf('fixture %d (%s %s)', k, v1.document_class.class_name, v1.base.id);
     verifyEmpty(testCase, raw.quarantine, label);
     verifyEqual(testCase, numel(raw.quarantine), numel(old.quarantine), label);
@@ -478,7 +479,7 @@ legacy = struct('id', v1.base.id, 'session_id', v1.base.session_id, ...
 v1 = rmfield(v1, 'base');
 v1.ndi_document = legacy;
 raw = runRaw(v1);
-old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta', 'RawV1Classes', {});
+old = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', 'RawV1Classes', {});
 verifyEmpty(testCase, raw.quarantine);
 verifyEqual(testCase, numel(raw.migrated), numel(old.migrated));
 % the minted ids agree too: did2.convert.mintKey keys a base-less document on
@@ -631,7 +632,7 @@ assertEqual(testCase, n, 1, 'one absolute anchor');
 end
 
 function out = runRaw(v1)
-out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
 function fx = writerFixtures()

@@ -64,16 +64,20 @@ function doc = document(className, fields, options)
 %                          one ('temperature' for an `observation`); its chain
 %                          is listed after the class's own and its blocks,
 %                          fields and edges are the document's too.
-%     'NeedsInfo'          struct array {field, reason}: the facts the source
-%                          never stated, written to base.needs_info. A required
-%                          field (or nested field) may be left out only when an
-%                          entry names its path, as the errors name it:
+%     'Gaps'               struct array {field, reason}: the facts the source
+%                          never stated, listed in the migration run's report
+%                          (did2.convert.migrationReport 'gap') under this
+%                          document's id and class. A required field (or
+%                          nested field) may be left out only when a gap names
+%                          its path, as the errors name it:
 %                          'coordinate_system.reference_point',
 %                          'coordinate_system.axes(2).positive_direction'.
-%                          [missing facts are needs info] (Jess Haley,
-%                          2026-10-29, did-schema
-%                          V_eta_go_forward_class_audit.md). The loaded base
-%                          must declare `needs_info`.
+%                          The document itself says nothing about it: Decided
+%                          by Jess Haley, 2026-11-01 (did-schema
+%                          did_v2_go_forward_class_audit.md) [migration record]
+%                          (`base.needs_info` dropped) and [gap accepted when
+%                          the report lists it]. With no run held, the first
+%                          gap begins one.
 %
 %   VALUE KINDS. On a schema where a direction declares `value_kind`
 %   (did-schema V_eta_entity_composition_plan.md sec. 1, 2026-10-08), the
@@ -92,10 +96,8 @@ function doc = document(className, fields, options)
 %     did2:build:unknownField     a name no block declares (also nested)
 %     did2:build:ambiguousField   a name two blocks declare, not qualified
 %     did2:build:missingField     a required field (or nested field) not given
-%     did2:build:needsInfoNotDeclared 'NeedsInfo' given, but the loaded base
-%                                 declares no `needs_info`
-%     did2:build:badNeedsInfo     a 'NeedsInfo' entry without a field and a
-%                                 reason, or naming a field the document gives
+%     did2:build:badGap           a 'Gaps' entry without a field and a reason,
+%                                 or naming a field the document gives
 %     did2:build:unknownEdge      an edge name the chain does not declare
 %                                 (nor accepts ahead of the schema:
 %                                 +build/private/pendingEdges.m)
@@ -129,7 +131,7 @@ arguments
     options.Validate (1,1) logical = true
     options.SchemaCache = []
     options.ValueKind (1,:) char = ''
-    options.NeedsInfo = struct('field', {}, 'reason', {})
+    options.Gaps = struct('field', {}, 'reason', {})
 end
 
 cache = schemaCache(options.SchemaCache);
@@ -190,16 +192,13 @@ doc.depends_on = buildEdges(cache, className, edges, chain);
 % ---- blocks ------------------------------------------------------------------
 info = cache.resolvePlacementFor(className, kind);
 givenByBlock = routeFields(info, fields, className);
-needsInfo = needsInfoEntries(info, options.NeedsInfo);
-needsInfoScope('-set', {needsInfo.field});
-clearScope = onCleanup(@() needsInfoScope('-clear'));
+gaps = gapEntries(options.Gaps);
+gapScope('-set', {gaps.field});
+clearScope = onCleanup(@() gapScope('-clear'));
 for k = 1:numel(info.blocksContributed)
     blockName = info.blocksContributed{k};
     if strcmp(blockName, 'base')
         doc.base = baseBlock(info, options, sessionEdge, className);
-        if ~isempty(needsInfo)
-            doc.base.needs_info = needsInfo;
-        end
         continue;
     end
     doc.(blockName) = fillBlock(info, blockName, givenByBlock);
@@ -211,9 +210,16 @@ if ~isempty(options.Files)
 end
 
 clear clearScope
-[~, problems] = did2.schema.needsInfoFields(doc);
+% [gap accepted when the report lists it]: the gaps go in the run's migration
+% report, under this document's id; a gap for a field the document gives says
+% something false
+for k = 1:numel(gaps)
+    did2.convert.migrationReport('gap', doc.base.id, className, ...
+        gaps(k).field, gaps(k).reason);
+end
+[~, problems] = did2.schema.reportedGaps(doc);
 if ~isempty(problems)
-    error('did2:build:badNeedsInfo', '%s.', strjoin(problems, '; '));
+    error('did2:build:badGap', '%s.', strjoin(problems, '; '));
 end
 
 checkRules(cache, className, doc, chain);
@@ -310,7 +316,7 @@ for f = 1:numel(entries)
     if isfield(given, name) && ~isAbsent(given.(name))
         block.(name) = fillField(def, given.(name), path);
     elseif isfield(def, 'mustBeNonEmpty') && logical(def.mustBeNonEmpty) ...
-            && ~needsInfoScope('-has', path)
+            && ~gapScope('-has', path)
         error('did2:build:missingField', 'Required field "%s" was not given.', path);
     end
 end
@@ -351,32 +357,22 @@ if ~isempty(missing)
 end
 end
 
-function entries = needsInfoEntries(info, given)
-% The 'NeedsInfo' option as base.needs_info entries {field, reason}.
+function entries = gapEntries(given)
+% The 'Gaps' option as {field, reason} entries, each with both.
 entries = struct('field', {}, 'reason', {});
 if isempty(given)
     return;
 end
 if ~isstruct(given) || ~all(isfield(given, {'field', 'reason'}))
-    error('did2:build:badNeedsInfo', ...
-        '''NeedsInfo'' is a struct array with fields field and reason.');
-end
-declared = false;
-if isKey(info.fieldsByBlock, 'base')
-    b = info.fieldsByBlock('base');
-    declared = any(arrayfun(@(e) strcmp(char(e.fieldDef.name), 'needs_info'), b));
-end
-if ~declared
-    error('did2:build:needsInfoNotDeclared', ...
-        ['''NeedsInfo'' was given, but the loaded base declares no ' ...
-         '`needs_info` ([missing facts are needs info]); check DID_SCHEMA_PATH.']);
+    error('did2:build:badGap', ...
+        '''Gaps'' is a struct array with fields field and reason.');
 end
 for k = 1:numel(given)
     f = strtrim(char(given(k).field));
     r = strtrim(char(given(k).reason));
     if isempty(f) || isempty(r)
-        error('did2:build:badNeedsInfo', ...
-            '''NeedsInfo''(%d) needs both a field and a reason.', k);
+        error('did2:build:badGap', ...
+            '''Gaps''(%d) needs both a field and a reason.', k);
     end
     entries(end+1) = struct('field', f, 'reason', r); %#ok<AGROW>
 end
