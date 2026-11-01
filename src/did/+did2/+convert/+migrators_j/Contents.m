@@ -844,7 +844,7 @@
 %         kind `term`.
 %     openminds_stimulus
 %         Brainstorm-J migrator: did_v1 openminds_stimulus -- DEFERRED to the NDI
-%         second pass; the document is passed through UNCHANGED.
+%         second pass; the document is CARRIED whole as v1 (carry-165).
 %     openminds_subject
 %         Brainstorm-J migrator: did_v1 openminds_subject -> an `assertion` with value
 %         kind `term`.
