@@ -36,7 +36,16 @@ function [v1, spec] = element(bodies)
 %                                      plus mode"; a kind several types share
 %                                      keeps the 'element type' assertion
 %                                      until its mode is written, so needs no
-%                                      mode here)
+%                                      mode here); with neither, a sorted
+%                                      unit's entity type (`cell` or
+%                                      `group`, by node) rebuilds 'spikes'
+%                                      ([cell spellings are one meaning],
+%                                      [cell spellings amended], Jess Haley,
+%                                      2026-10-27). The three v1 spellings
+%                                      `spikes`, `neuron` and `cell` are one
+%                                      meaning: a v1 type that is one of them
+%                                      and a rebuilt type that is another are
+%                                      the same (spec.same, `equivalent`)
 %     element.ndi_element_class        the 'ndi element class' assertion's value
 %     (a device's Equipment Type assertion states its device kind,
 %     did2.convert.elementDeviceKind; it is placed when its node is the kind
@@ -166,6 +175,20 @@ end
 if ~hasType && isscalar(kindNodes)
     type = did2.convert.elementTypeOfKind(kindNodes{1});
 end
+% neither: a sorted unit, whose entity type (cell or group) is all that is
+% kept of its v1 type ([cell spellings are one meaning], [cell spellings
+% amended]); 'spikes' is the spelling NDI's writers use
+if ~hasType && isempty(kindNodes) && isUnitEntity(entity)
+    type = 'spikes';
+end
+if any(strcmp(strtrim(type), UNIT_SPELLINGS()))
+    spec.same(end+1) = struct('path', 'element.type', ...
+        'fn', @(a, ~) (ischar(a) || (isstring(a) && isscalar(a))) ...
+            && any(strcmp(strtrim(char(a)), UNIT_SPELLINGS())), ...
+        'why', ['`spikes`, `neuron` and `cell` are three spellings of one meaning ' ...
+        '([cell spellings are one meaning], [cell spellings amended], Jess Haley, ' ...
+        '2026-10-27)']);
+end
 % the device kind restates the type ([element type is a device kind term]):
 % exactly the decided kind of the rebuilt type, or it is not placed
 want = did2.convert.elementDeviceKind(type);
@@ -182,7 +205,7 @@ if nElectrodeCounts > 0 && (nElectrodeCounts > 1 || ~strcmp(strtrim(type), 'n-tr
 end
 % [unit direct and subject rebuild from the probe] (Jess Haley, 2026-10-27)
 if ~isempty(underlying) && isempty(direct) && isempty(subject) ...
-        && any(strcmp(strtrim(type), {'spikes', 'neuron', 'cell'}))
+        && any(strcmp(strtrim(type), UNIT_SPELLINGS()))
     direct = false;
     subject = did2.convert.elementSubjects('get', underlying);
 end
@@ -203,4 +226,21 @@ if ~isempty(direct)
     blk.direct = direct;
 end
 v1.element = blk;
+end
+
+function s = UNIT_SPELLINGS()
+% the v1 element types that are one meaning, a sorted unit ([cell spellings
+% are one meaning], Jess Haley, 2026-10-27)
+s = {'spikes', 'neuron', 'cell'};
+end
+
+function tf = isUnitEntity(entity)
+% the entity type of a sorted unit: cell or group, by node ([vocabulary
+% nodes] L2), so the stored name ('cell', 'Group') is notation
+tf = false;
+if ~isstruct(entity) || ~isfield(entity, 'type')
+    return;
+end
+tf = did2.build.isVocabulary(entity.type, 'entity_type', 'cell') ...
+    || did2.build.isVocabulary(entity.type, 'entity_type', 'group');
 end

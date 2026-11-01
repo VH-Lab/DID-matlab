@@ -118,7 +118,8 @@ function v2Body = element(preBody)
 %     element.type             -> the entity type (elementEntityType); a
 %                                 device's kind, one Equipment Type assertion;
 %                                 and the "element type" assertion where the
-%                                 kind alone does not rebuild the word
+%                                 kind alone does not rebuild the word (none
+%                                 for a sorted unit)
 %     element.ndi_element_class -> the entity type (elementEntityType) and one
 %                                 term assertion
 %     element.direct           -> which lineage relation is written; for a
@@ -181,8 +182,15 @@ function v2Body = element(preBody)
 %       reads no observation, so the word is kept here for every type of a
 %       shared kind ((iii) of [element type is a device kind term]: "until a
 %       type has its term, the migrator keeps writing the current statement");
-%     - for a sorted unit and an ensemble (no device kind), which
-%       did2.convert.resolveEpochProbemap keys their epochs on.
+%     - for an ensemble (no device kind), which
+%       did2.convert.resolveEpochProbemap keys its epochs on.
+%   It is NOT written for a sorted unit: [cell spellings are one meaning] and
+%   [cell spellings amended] (Decided by Jess Haley, 2026-10-27, did-schema
+%   did_v2_go_forward_class_audit.md) -- "the v1 element type strings
+%   `spikes`, `neuron` and `cell` are not kept as a statement or a note"; the
+%   unit becomes the entity type [sorted units are cells or groups] gives it,
+%   and the round trip and the readers (resolveEpochProbemap, NDI-matlab's
+%   ndi.vintage.elementTypeOf) read `spikes` back from that entity type.
 %   The "ndi element class" assertion is still written ([ndi element class
 %   not kept] waits on NDI-matlab's readers, its Build pending line).
 %
@@ -344,7 +352,11 @@ bodies = {subjectDoc};
 % --- kind assertions (nothing dropped) --------------------------------------
 [kindTerm, kindVariable] = did2.convert.elementDeviceKind(type);
 isDevice = strcmp(entityType, 'device') && ~isempty(kindTerm);
-if ~isempty(type) && ~(isDevice && strcmp(did2.convert.elementTypeOfKind(kindTerm.node), type))
+% a sorted unit (entity type cell or Group) keeps no `element type` assertion:
+% [cell spellings are one meaning], [cell spellings amended] (header)
+isUnit = isSortedUnit(type) && any(strcmp(entityType, {'cell', 'Group'}));
+if ~isempty(type) && ~isUnit ...
+        && ~(isDevice && strcmp(did2.convert.elementTypeOfKind(kindTerm.node), type))
     % the v1 word exactly as v1 wrote it: a registered term is taken only when
     % its name IS the word. jLabel matches the registry ignoring case, and since
     % [five probe kinds from NCIT] registered NCIT:C88166 "Accelerometer" it
