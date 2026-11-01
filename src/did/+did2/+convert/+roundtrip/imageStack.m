@@ -125,9 +125,9 @@ v1.depends_on = struct('name', {'document_id', 'subject_id'}, ...
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
 % [image stack name goes to notes] (Jess Haley, 2026-10-27): a non-empty v1
-% base.name is the data body's free text (`description` until [one free-text
-% field: notes] is built)
-stackName = fieldText(getIn(body, 'data_body'), 'description');
+% base.name is the data body's free text (`notes`, `description` before [one
+% free-text field: notes]; both read)
+stackName = notesText(getIn(body, 'data_body'));
 if ~isempty(stackName)
     v1.base.name = stackName;
 end

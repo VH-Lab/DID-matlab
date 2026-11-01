@@ -165,17 +165,17 @@ verifyEqual(testCase, b.data_body.file_created, '2024-01-02T03:04:05.000');
 verifyEqual(testCase, b.data_body.file_modified, '2024-01-03T03:04:05.000');
 verifyFalse(testCase, isfield(b.data_body, 'content_hash') && ~isempty(b.data_body.content_hash), ...
     'the .zattrs MD5 is not a payload hash (L3(e) / L4)');
-verifyTrue(testCase, contains(b.data_body.description, '0123456789abcdef0123456789abcdef'));
-verifyTrue(testCase, contains(b.data_body.description, '.zattrs'));
+verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(b.data_body), '0123456789abcdef0123456789abcdef'));
+verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(b.data_body), '.zattrs'));
 % Jess 2026-10-15: the NGFF multiscales name goes to the description; the
 % label stays on the observation. (pyramidV1 states no pyramid_type; the
 % writer's type is kept as text: testAPyramidsTypeIsKeptAsTextInTheDescription.)
-verifyTrue(testCase, contains(b.data_body.description, 'NGFF multiscales name "mean"'));
-verifyFalse(testCase, contains(b.data_body.description, 'brain 7 cleared'), ...
+verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(b.data_body), 'NGFF multiscales name "mean"'));
+verifyFalse(testCase, contains(did2.unittest.helpers.notesOf(b.data_body), 'brain 7 cleared'), ...
     'the label is the observation''s, not the store body''s');
-verifyFalse(testCase, contains(b.data_body.description, 'multiscales type'), ...
+verifyFalse(testCase, contains(did2.unittest.helpers.notesOf(b.data_body), 'multiscales type'), ...
     'this fixture states no pyramid_type');
-verifyFalse(testCase, contains(b.data_body.description, '-- store body:'), ...
+verifyFalse(testCase, contains(did2.unittest.helpers.notesOf(b.data_body), '-- store body:'), ...
     'the separator is not copied into the description');
 % recorded BY LOCATION, NOT INGESTED
 info = b.files.file_info;
@@ -249,8 +249,8 @@ verifyEqual(testCase, b.data_body.format.name, 'TIFF');
 verifyTrue(testCase, isfield(b.data_body, 'redundant') && isequal(b.data_body.redundant, false));
 verifyTrue(testCase, ~isfield(b, 'data') || ~isfield(b.data, 'dimensions') || isempty(b.data.dimensions), ...
     'a TIFF folder body carries no dimensions');
-verifyTrue(testCase, contains(b.data_body.description, 'folder of raw TIFF slices'));
-verifyTrue(testCase, contains(b.data_body.description, 'NGFF multiscales name "mean"'));
+verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(b.data_body), 'folder of raw TIFF slices'));
+verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(b.data_body), 'NGFF multiscales name "mean"'));
 info = b.files.file_info;
 if iscell(info); info = info{1}; end
 loc = info(1).locations;
@@ -317,8 +317,8 @@ obs = pickById(out, 'pyr_ls_1');
 verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared');
 bodies = pickByClass(out, 'opaque_body');
 assertEqual(testCase, numel(bodies), 1, 'the file-less store body');
-verifyFalse(testCase, contains(bodies{1}.data_body.description, 'NGFF'), ...
-    bodies{1}.data_body.description);
+verifyFalse(testCase, contains(did2.unittest.helpers.notesOf(bodies{1}.data_body), 'NGFF'), ...
+    did2.unittest.helpers.notesOf(bodies{1}.data_body));
 end
 
 function testAnEmptyLabelLeavesNoNotesAfterThePass(testCase)
@@ -333,7 +333,7 @@ verifyEqual(testCase, rep.stores_folded, 1);
 obs = pickById(out, 'pyr_ls_1');
 verifyTrue(testCase, isempty(blockField(obs, 'notes')));
 b = pickByClass(out, 'opaque_body');
-verifyTrue(testCase, contains(b{1}.data_body.description, 'NGFF multiscales name "mean"'));
+verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(b{1}.data_body), 'NGFF multiscales name "mean"'));
 end
 
 % ===================== point 8: the pyramid completes its levels ==========
@@ -665,7 +665,7 @@ verifyEqual(testCase, edge(b, 'owner_id'), 'pyr_ls_1');
 verifyFalse(testCase, isfield(b, 'files'), 'a level holding no bytes has no file member');
 % [light-sheet level label is a note] (Jess Haley, 2026-10-27): the level's
 % label is its description, unchanged; no files says no bytes are stored
-verifyEqual(testCase, b.data_body.description, v1.lightsheetZarrLevel.label);
+verifyEqual(testCase, did2.unittest.helpers.notesOf(b.data_body), v1.lightsheetZarrLevel.label);
 keys = axisList(b.data);
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 200 1024 1024]);
 verifyTrue(testCase, isequal(b.data_body.redundant, true), 'a reduced level stays redundant');
@@ -1295,8 +1295,8 @@ assumeClass(testCase, 'file_reference');
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 bodies = pickByClass(out, 'opaque_body');
 assertEqual(testCase, numel(bodies), 1, reasonsOf(out));
-verifyTrue(testCase, contains(bodies{1}.data_body.description, ...
-    'NGFF multiscales name "mean"; NGFF multiscales type "mean"'), bodies{1}.data_body.description);
+verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(bodies{1}.data_body), ...
+    'NGFF multiscales name "mean"; NGFF multiscales type "mean"'), did2.unittest.helpers.notesOf(bodies{1}.data_body));
 end
 
 function testANoSourcePyramidGetsAFileLessStoreBody(testCase)
@@ -1324,7 +1324,7 @@ for pass = [false true]
     verifyEqual(testCase, b.data_body.format.node, 'EMPTY:0000259');
     verifyTrue(testCase, ~isfield(b, 'files') || isempty(b.files) ...
         || ~isfield(b.files, 'file_list') || isempty(b.files.file_list), 'no file member');
-    d = b.data_body.description;
+    d = did2.unittest.helpers.notesOf(b.data_body);
     verifyTrue(testCase, contains(d, 'NGFF multiscales name "mean"; NGFF multiscales type "mean"'), d);
     verifyTrue(testCase, contains(d, 'location is not recorded'), d);
     obs = pickById(out, 'pyr_ls_1');

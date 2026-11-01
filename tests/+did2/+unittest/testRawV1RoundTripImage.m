@@ -112,7 +112,7 @@ for k = 1:numel(out.migrated)
     end
 end
 assertNotEmpty(testCase, b);
-verifyEqual(testCase, char(b.data_body.description), 'plate 3, 10x');
+verifyEqual(testCase, did2.unittest.helpers.notesOf(b.data_body), 'plate 3, 10x');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyTrue(testCase, any(strcmp('base.name', r.matched)));
 verifyRoundTrip(testCase, r, 'named stack', {});

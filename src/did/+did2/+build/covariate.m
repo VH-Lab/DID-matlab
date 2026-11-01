@@ -27,9 +27,15 @@ function c = covariate(variable, along, options)
 %     'Logical'           true/false -> logical
 %     'Matrix'            a whole numeric array at each position
 %                         (data_body AMENDMENT 4) -> matrix
-%     'Document'          the 0-based position of a `key_id` entry on the
+%     'Key'               the 0-based position of a `key_id` entry on the
 %                         document; position k is entry k of that document's
-%                         value; along ONE dimension -> document
+%                         value; along ONE dimension -> key. 'Document' is
+%                         the same form under its old name (Jess Haley,
+%                         2026-11-01, "Yes, rename document to key",
+%                         did-schema did_v2_data_body_model_plan.md
+%                         [covariate key]). The field is written as the
+%                         loaded schema spells it, `key` or `document`
+%                         (did2.schema.cache/covariateKeyField).
 %
 %   Options:
 %     'Unit'           canonical unit (a term or a name) of a number, a count
@@ -43,9 +49,12 @@ function c = covariate(variable, along, options)
 %                      'Matrix').
 %     'SchemaCache'    a did2.schema.cache; default the shared one.
 %
-%   Join several with did2.build.list. A variable appears at most once across
-%   a statement's conditions and its covariates (checked when the document is
-%   built).
+%   Join several with did2.build.list. A condition's variable appears once
+%   across a statement's conditions and its covariates; two covariates may
+%   share a variable when they differ in ALONG or in 'Key' (rule
+%   variable_once, relaxed by Jess Haley, 2026-11-01, "Yes, relax it",
+%   did-schema did_v2_data_body_model_plan.md [covariate variable may
+%   repeat]; checked when the document is built).
 %
 %   Examples:
 %     t  = did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 1/30000, 'Unit', 'second');
@@ -68,6 +77,7 @@ arguments
     options.Text = []
     options.Logical = []
     options.Matrix = []
+    options.Key = []
     options.Document = []
     options.Unit = []
     options.SourceUnit = ''
@@ -108,7 +118,14 @@ if ~regular && (~isAbsent(options.SourceOrigin) || ~isAbsent(options.SourceSpaci
     error('did2:build:ruleViolated', ...
         'covariate_one_value_form: ''SourceOrigin''/''SourceSpacing'' need ''Origin'' and ''Spacing''.');
 end
-forms = {'Value', 'Count', 'Term', 'Text', 'Logical', 'Matrix', 'Document'};
+if ~isAbsent(options.Document)
+    if ~isAbsent(options.Key)
+        error('did2:build:ruleViolated', ...
+            'covariate_one_value_form: ''Key'' and ''Document'' are one form; give one.');
+    end
+    options.Key = options.Document;   % the old name of the same form ([covariate key])
+end
+forms = {'Value', 'Count', 'Term', 'Text', 'Logical', 'Matrix', 'Key'};
 given = forms(cellfun(@(f) ~isAbsent(options.(f)), forms));
 if regular
     given = [{'Origin+Spacing'}, given];
@@ -116,14 +133,14 @@ end
 if numel(given) ~= 1
     error('did2:build:ruleViolated', ...
         ['covariate_one_value_form: give exactly one of ''Origin''+''Spacing'', ''Value'', ' ...
-         '''Count'', ''Term'', ''Text'', ''Logical'', ''Matrix'', ''Document''; got %d (%s).'], ...
+         '''Count'', ''Term'', ''Text'', ''Logical'', ''Matrix'', ''Key''; got %d (%s).'], ...
         numel(given), strjoin(given, ', '));
 end
 form = given{1};
 if isAbsent(options.Value) && ~isAbsent(options.SourceValue)
     error('did2:build:ruleViolated', '''SourceValue'' needs ''Value''.');
 end
-if any(strcmp(form, {'Origin+Spacing', 'Document'})) && numel(along) ~= 1
+if any(strcmp(form, {'Origin+Spacing', 'Key'})) && numel(along) ~= 1
     error('did2:build:ruleViolated', ...
         'covariate_single_dimension_forms: a covariate given by ''%s'' runs along exactly one dimension; ALONG has %d.', ...
         form, numel(along));
@@ -197,13 +214,13 @@ switch form
             error('did2:build:typeMismatch', '''Matrix'' is a real numeric array.');
         end
         s.matrix = double(v);
-    case 'Document'
-        v = options.Document;
+    case 'Key'
+        v = options.Key;
         if ~(isnumeric(v) && isscalar(v) && v >= 0 && v == round(v))
             error('did2:build:typeMismatch', ...
-                '''Document'' is ONE 0-based index among the document''s `key_id` entries.');
+                '''Key'' is ONE 0-based index among the document''s `key_id` entries.');
         end
-        s.document = double(v);
+        s.(schemaCache(options.SchemaCache).covariateKeyField()) = double(v);
 end
 if ~isAbsent(options.Cyclic);  s.cyclic = options.Cyclic;  end
 

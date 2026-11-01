@@ -94,7 +94,7 @@ end
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'name', fieldText(entity, 'name'), 'datestamp', base.datestamp);
 v1.subject_group = struct('group_name', name, ...
-    'description', fieldText(entity, 'description'));
+    'description', notesText(entity));   % `notes` ([one free-text field: notes]) or `description`
 end
 
 function tf = sameMemberEdge(a, b)

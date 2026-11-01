@@ -55,7 +55,16 @@ function checkRules(cache, className, doc, chain)
 %                                 once across a statement's conditions, its
 %                                 value's covariates, and any one of its
 %                                 bodies' covariates" -- per document, its
-%                                 conditions and covariates
+%                                 conditions and covariates. RELAXED for
+%                                 covariates (Jess Haley, 2026-11-01, "Yes,
+%                                 relax it", did-schema
+%                                 did_v2_data_body_model_plan.md [covariate
+%                                 variable may repeat]): two covariates may
+%                                 share a variable when they differ in
+%                                 `along` or in `key` (the `key_id` entry
+%                                 they index; `document` before the rename);
+%                                 a condition's variable still appears
+%                                 nowhere else
 %        parameter_one_form       interaction.method.parameters (and the
 %                                 standalone method's): the same entry --
 %                                 exactly one of `term`, `quantity`, `count`,
@@ -315,7 +324,7 @@ a6Blocks = blocks(ismember(blocks, {'data', 'acquisition_epoch'}));
 dims = findField(doc, a6Blocks, 'dimensions');
 covs = findField(doc, a6Blocks, 'covariates');
 conditions = findField(doc, blocks, 'conditions');
-seen = checkDimensionsCovariates(dims, covs, any(strcmp(chain, 'sampled_body')), className);
+[seen, covIdent] = checkDimensionsCovariates(dims, covs, any(strcmp(chain, 'sampled_body')), className);
 % [covariate details] 5.3a (Jess Haley 2026-10-22): an acquisition_epoch's
 % dimensions carry no `chunk`. Checked on that block by name, so a document
 % carrying both blocks cannot hide it behind the first one findField reads.
@@ -333,6 +342,7 @@ if isfield(doc, 'acquisition_epoch') && isstruct(doc.acquisition_epoch) ...
         end
     end
 end
+condSeen = {};
 if isstruct(conditions)
     for k = 1:numel(conditions)
         given = valueForms(conditions(k));
@@ -357,13 +367,24 @@ if isstruct(conditions)
             violated('conditions_one_value', className, sprintf( ...
                 'condition %d carries %d values; a condition is ONE value true of the whole statement (use a covariate along a dimension for more).', k, n));
         end
-        seen{end+1} = termKey(conditions(k).variable); %#ok<AGROW>
+        condSeen{end+1} = termKey(conditions(k).variable); %#ok<AGROW>
     end
 end
-dup = duplicates(seen);
+% variable_once, relaxed for covariates (Jess Haley, 2026-11-01, "Yes, relax
+% it", did-schema did_v2_data_body_model_plan.md [covariate variable may
+% repeat]): a covariate is identified by its variable, its `along` and the
+% `key_id` entry it indexes, so two covariates may share a variable when they
+% differ in either (a channel x channel matrix; the two gene columns of a
+% gene-list mapping). A condition has no axis and no list, so its variable
+% appears once across the conditions and every covariate.
+dup = [duplicates(covIdent), duplicates(condSeen), ...
+    reshape(intersect(condSeen(~cellfun(@isempty, condSeen)), ...
+                      seen(~cellfun(@isempty, seen))), 1, [])];
 if ~isempty(dup)
     violated('variable_once', className, sprintf( ...
-        'variable(s) %s appear more than once across covariates and conditions.', strjoin(dup, ', ')));
+        ['variable(s) %s appear more than once across covariates and conditions ' ...
+         '(two covariates may share a variable only when they differ in `along` or `key`; ' ...
+         'a condition''s variable appears once).'], strjoin(unique(dup), ', ')));
 end
 
 hasMethodEdge = any(ismember(edgeNames, {'method_id', 'method_parameters_id'}));
@@ -549,12 +570,14 @@ for b = 1:numel(blocks)
 end
 end
 
-function seen = checkDimensionsCovariates(dims, covs, isSampledBody, className)
+function [seen, ident] = checkDimensionsCovariates(dims, covs, isSampledBody, className)
 %CHECKDIMENSIONSCOVARIATES did-schema data_body AMENDMENT 6 (Jess Haley,
 %   2026-10-22 [covariates], [along by index], [matrix covariate]): the rules
 %   on a value's `dimensions` and `covariates`. Returns the covariates'
-%   variable identities, for variable_once.
+%   variable identities (SEEN) and their full identities, variable + `along`
+%   + `key` (IDENT, labelled by the variable), for variable_once.
 seen = {};
+ident = {};
 nDims = 0;
 extents = [];
 if isstruct(dims)
@@ -597,19 +620,23 @@ for k = 1:numel(covs)
     end
     given = {};
     if hasOrigin && hasSpacing; given{end+1} = 'origin+spacing'; end
-    for f = {'quantity', 'count', 'term', 'text', 'logical', 'matrix', 'document'}
+    % `key` (Jess Haley, 2026-11-01, "Yes, rename document to key", did-schema
+    % did_v2_data_body_model_plan.md [covariate key]) was `document`; both
+    % are read until every writer has moved.
+    for f = {'quantity', 'count', 'term', 'text', 'logical', 'matrix', 'key', 'document'}
         if isfield(c, f{1}) && ~isAbsent(c.(f{1})) ...
-                && ~(strcmp(f{1}, 'document') && isequal(c.document, -1))   % -1: the blank, not used
+                && ~(any(strcmp(f{1}, {'key', 'document'})) && isequal(c.(f{1}), -1))   % -1: the blank, not used
             given{end+1} = f{1}; %#ok<AGROW>
         end
     end
     if numel(given) ~= 1
         violated('covariate_one_value_form', where, sprintf( ...
-            'carries %d value forms (%s); exactly one of origin+spacing, quantity, count, term, text, logical, matrix, document.', ...
+            'carries %d value forms (%s); exactly one of origin+spacing, quantity, count, term, text, logical, matrix, key.', ...
             numel(given), strjoin(given, ', ')));
     end
     form = given{1};
-    if any(strcmp(form, {'origin+spacing', 'document'})) && numel(along) ~= 1
+    if strcmp(form, 'document'); form = 'key'; end
+    if any(strcmp(form, {'origin+spacing', 'key'})) && numel(along) ~= 1
         violated('covariate_single_dimension_forms', where, sprintf( ...
             'a covariate given by %s runs along exactly one dimension; `along` has %d.', form, numel(along)));
     end
@@ -622,6 +649,25 @@ for k = 1:numel(covs)
     end
     covariateShape(c, form, extents(along + 1), where);
     seen{end+1} = termKey(c.variable); %#ok<AGROW>
+    keyIndex = -1;
+    if strcmp(form, 'key')
+        keyIndex = double(covariateKeyOf(c));
+    end
+    if ~isempty(seen{end})
+        ident{end+1} = sprintf('%s (along %s, key %d)', seen{end}, mat2str(sort(along)), keyIndex); %#ok<AGROW>
+    end
+end
+end
+
+function k = covariateKeyOf(c)
+% The `key_id` entry a covariate indexes: `key`, or `document` before the
+% rename ([covariate key]); -1 when neither is set.
+k = -1;
+for f = {'key', 'document'}
+    if isfield(c, f{1}) && ~isAbsent(c.(f{1})) && ~isequal(c.(f{1}), -1)
+        k = c.(f{1});
+        return;
+    end
 end
 end
 
@@ -629,7 +675,7 @@ function covariateShape(c, form, ext, where)
 % Shape: the extents of the `along` dimensions, in that order; for `matrix`,
 % those extents followed by the array's own shape (AMENDMENT 6).
 switch form
-    case {'origin+spacing', 'document'}
+    case {'origin+spacing', 'key'}
         return;   % generated, or n entries of another document (a batch check)
     case 'quantity'
         for f = {'value', 'source_value'}

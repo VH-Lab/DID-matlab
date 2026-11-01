@@ -51,7 +51,7 @@ else
     if ~isequal(owner, {char(getIn(leaf, 'base', 'id'))})
         spec.unplaced{end+1} = 'the opaque_body is not owned by the calculation';
     end
-    d = char(getIn(ob, 'data_body', 'description'));
+    d = notesText(getIn(ob, 'data_body'));   % `notes` ([one free-text field: notes]) or `description`
     tok = regexp(d, '^JRCLUST results \(res_mat_MD5_checksum: (.*)\)$', 'tokens', 'once');
     if ~isempty(tok)
         blk.res_mat_MD5_checksum = tok{1};

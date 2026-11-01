@@ -3532,7 +3532,8 @@ ds = firstOfClassJ(out.migrated, 'dataset');
 id = ds.get('base.id');
 verifyEqual(testCase, id, 'sess_09');
 verifyEqual(testCase, ds.get('entity.name'), 'The Big Worm Dataset');
-verifyEqual(testCase, ds.get('entity.description'), 'A dataset of worms.');
+verifyEqual(testCase, did2.unittest.helpers.notesOf(ds.document_properties.entity), ...
+    'A dataset of worms.');   % `notes` ([one free-text field: notes]) or `description`
 verifyEqual(testCase, textAboutJ(out.migrated, id, 'Abbreviation'), {'BigWorm'});
 verifyEqual(testCase, textAboutJ(out.migrated, id, 'version number'), {'1.0.0'});
 verifyEqual(testCase, textAboutJ(out.migrated, id, 'version innovation'), {'first release'});
@@ -5791,7 +5792,7 @@ verifyEqual(testCase, depValue(sbod, 'owner_id'), obs.base.id);   % == 'jc_1'
 verifyTrue(testCase, logical(obs.value.data_body));
 verifyFalse(testCase, isfield(obs.value, 'data_type') && ~isempty(obs.value.data_type));
 verifyEqual(testCase, sbod.data_body.format.node, 'EDAM:format_2333');
-verifyTrue(testCase, contains(sbod.data_body.description, 'd41d8cd9'));   % MD5 noted
+verifyTrue(testCase, contains(did2.unittest.helpers.notesOf(sbod.data_body), 'd41d8cd9'));   % MD5 noted
 verifyEqual(testCase, sbod.files.file_list{1}, 'clusters.mat');
 end
 
@@ -5853,7 +5854,7 @@ verifyEqual(testCase, ob.files.file_info(1).locations.location, 'ks_out/session1
 verifyEqual(testCase, double(ob.files.file_info(1).locations.ingest), 0);
 verifyEqual(testCase, ob.data_body.content_hash, 'd41d8cd98f00b204e9800998ecf8427e');
 verifyEqual(testCase, ob.data_body.hash_algorithm, 'MD5');
-verifyFalse(testCase, contains(ob.data_body.description, 'd41d8cd9'), ...
+verifyFalse(testCase, contains(did2.unittest.helpers.notesOf(ob.data_body), 'd41d8cd9'), ...
     'the MD5 is the checksum, not free text');
 verifyEqual(testCase, ob.data_body.format.node, 'EMPTY:0000315');   % "directory of files"
 % Decided by Jess Haley, 2026-10-21 [sorter keys]: kilosort carries NO keys --

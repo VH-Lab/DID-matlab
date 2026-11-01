@@ -118,7 +118,7 @@ for k = 1:numel(L)
     verifyTrue(testCase, any(strcmp('lightsheetZarrLevel.level', r.matched)), label);
     % the label is the body's description, unchanged
     b = out.migrated{1}.toStruct();
-    verifyEqual(testCase, char(b.data_body.description), v1.lightsheetZarrLevel.label, label);
+    verifyEqual(testCase, did2.unittest.helpers.notesOf(b.data_body), v1.lightsheetZarrLevel.label, label);
 end
 end
 
