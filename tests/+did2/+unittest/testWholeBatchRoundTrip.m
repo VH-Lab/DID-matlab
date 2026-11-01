@@ -75,6 +75,34 @@ verifyEqual(testCase, r.sources_compared, 2);
 verifyFalse(testCase, r.ok);
 end
 
+function testAnIdADecisionReleasesIsCountedApartFromLost(testCase)
+% [a rebuilt document may lose its id] (Jess Haley, 2026-10-27): a source of a
+% listed class (here daqreader_mfdaq_epochdata_ingested, [segment length is
+% the time chunk], 2026-10-29) whose documents are gone and whose id nothing
+% references is RELEASED, not lost; the same source with a referrer is lost
+[bodies, result] = cleanBatch();
+k = find(strcmp({result.source_outputs.id}, 'wb_subj_2'));
+result.source_outputs(k).class_name = 'daqreader_mfdaq_epochdata_ingested';
+keep = true(1, numel(result.migrated));
+for j = 1:numel(result.migrated)
+    keep(j) = ~strcmp(char(result.migrated{j}.get('base.id')), 'wb_subj_2');
+end
+result.migrated = result.migrated(keep);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.ids_released, 1);
+verifyTrue(testCase, isfield(r.ids_released_by_class, 'daqreader_mfdaq_epochdata_ingested'));
+verifyEqual(testCase, r.ids_lost, 0);
+verifyEqual(testCase, r.sources_changed_by_batch_pass, 1, 'its round trip is still not measured');
+verifyFalse(testCase, r.ok);
+% a final document that references it: the id is lost, not released
+s1 = result.migrated{1}.toStruct();
+s1.depends_on = struct('name', 'archive_id', 'value', 'wb_subj_2');
+result.migrated{1} = did2.document(s1);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.ids_released, 0);
+verifyEqual(testCase, r.ids_lost, 1);
+end
+
 function testADocumentNoSourceBecameIsCountedUnattributed(testCase)
 [bodies, result] = cleanBatch();
 extra = result.migrated{1}.toStruct();
