@@ -113,7 +113,8 @@ if isfield(f, 'file_info') && ~isempty(f.file_info)
         end
     end
 end
-if isfield(f, 'file_list') && any(strcmp(cellstr(f.file_list), name))
+if isfield(f, 'file_list') && (ischar(f.file_list) || iscell(f.file_list) || isstring(f.file_list)) ...
+        && any(strcmp(f.file_list, name))
     info = struct('name', name);
 end
 end
