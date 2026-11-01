@@ -184,8 +184,12 @@ name2 = jGetCharAny(params, {'daqsystem2_name', 'daqsystem2', 'daqsystem2Name'})
 ch1   = jGetCharAny(params, {'daqsystem_ch1', 'daqsystemCh1'});
 ch2   = jGetCharAny(params, {'daqsystem_ch2', 'daqsystemCh2'});
 
-channelsA = jAcquisitionChannels(preBody, name1, ch1);
-channelsB = jAcquisitionChannels(preBody, name2, ch2);
+% the device each end names: its daqsystem name, or the device half of a
+% devicestring in the channel slot ('dev:ai1'). No `acquisition_channels`
+% document is built: that class is retired (Jess Haley 2026-11-01, did-schema
+% [probe wiring is a relation]; the rule's ends point at the systems).
+channelsA = namedDevice(name1, ch1);
+channelsB = namedDevice(name2, ch2);
 
 % THE GUARD, AMENDED 2026-08-18 for the FILE-BASED rule. TEAM-SIGN-OFF
 % [sync configuration amendment 1] (DID-schema V_eta_clock_alignment_cluster_
@@ -204,7 +208,7 @@ channelsB = jAcquisitionChannels(preBody, name2, ch2);
 %   * exactly one present, or neither with no criterion  -> PASSTHROUGH. A
 %     half-specified device pair would lose its one named device if flattened to
 %     a channel-less config, and a rule with neither devices nor a criterion is
-%     genuinely empty. `jAcquisitionChannels` is NOT widened -- its refusal
+%     genuinely empty. `namedDevice` is NOT widened -- its refusal
 %     stays correct (inventing an empty channel is the invented-empty-edge
 %     pattern this repository has paid for six times).
 haveBoth    = ~isempty(channelsA) && ~isempty(channelsB);
@@ -216,8 +220,7 @@ isFileBased = ~isempty(minPaths);
 % `to_acquisition_system_id` EDGES, and the v1 rule names them by NAME;
 % resolving a name to the system's id needs the batch, which a single-document
 % migrator does not have. The batch pass below supplies it. (Here
-% jAcquisitionChannels only tells a named device from none; its bodies are
-% not emitted.)
+% namedDevice only tells a named device from none.)
 %
 % THE BATCH SEAM (did2.convert.resolveClockAlignment, the device-pair arm). A
 % device-pair rule names its two systems by NAME: `filefind` as daqsystem1 /
@@ -490,5 +493,23 @@ for k = 1:numel(names)
             return;
         end
     end
+end
+end
+
+
+function name = namedDevice(deviceName, channelSpec)
+%NAMEDDEVICE The device a sync rule's end names: DEVICENAME, or the device half
+%   of a devicestring given in the channel slot ('intan1:ai1' -> 'intan1');
+%   '' when neither names one (formerly jAcquisitionChannels, which built an
+%   acquisition_channels body only to test this).
+name = strtrim(char(deviceName));
+if ~isempty(name)
+    return;
+end
+spec = char(channelSpec);
+spec(isspace(spec)) = [];
+colon = find(spec == ':', 1);
+if ~isempty(colon)
+    name = spec(1:colon-1);
 end
 end

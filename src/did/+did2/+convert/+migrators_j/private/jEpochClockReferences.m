@@ -134,7 +134,7 @@ for k = 1:n
     % Replacing either with `~` would delete a populated field from every
     % emitted reference. Verified by reading the uses, not assumed -- the same
     % check that caught a real dead variable in pyraview.m and correctly spared
-    % a live one in jAcquisitionChannels.m.
+    % a live one in jAcquisitionChannels.m (since removed).
     [bareClock, toleranceSeconds] = deEncodeApprox(clockName);
     % did-schema #88: a relative_time_reference whose referent is the epoch
     % (`referent_id`; `relative_to` before #73), built through did2.build.
