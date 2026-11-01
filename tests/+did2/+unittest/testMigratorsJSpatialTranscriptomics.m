@@ -13,7 +13,12 @@ function tests = testMigratorsJSpatialTranscriptomics
 %     spatial_gene_expression_cells         -- 1 -> 1 passthrough
 %     spatial_gene_expression_tiles         -- 1 -> 1 passthrough
 %     cell_type_labels                      -- 1 -> 1 passthrough
-%     gene_list_mapping                     -- 1 -> 1 passthrough
+%     gene_list_mapping                     -- 1 -> 3 (a relation, its value
+%                                              and the value's opaque_body;
+%                                              tested on the raw v1 shape in
+%                                              testRawV1RoundTripGene). The
+%                                              snake_case fixture below is
+%                                              outside the template: carried.
 %     file_reference                        -- 1 -> 1 passthrough (NOT folded
 %                                              to generic_file)
 %     gene_list                             -- 1 -> 2 (a `term` and its

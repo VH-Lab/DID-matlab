@@ -94,6 +94,14 @@ function result = v1_to_v2(v1Bodies, options)
 %                      that resolve to documents already stored in
 %                      this DB (e.g. when ingesting an incremental
 %                      batch on top of a populated database).
+%     V1FileReader     (function handle or [], default []) - TEXT =
+%                      READER(V1BODY, FILENAME): the bytes of a file a v1
+%                      document attaches, for a migrator that must read it
+%                      (did2.convert.v1Files; first: gene_list_mapping reads
+%                      `mapping.tsv`, [key covariate index], [mapping rows
+%                      counted, indices 0-based], Jess Haley, 2026-11-01).
+%                      [] reads a local `file` location when one exists; a
+%                      file that cannot be read carries its document as v1.
 %     UnitQualityLabels (cell, default {}) - {ELEMENTID, LABEL, ...}: the
 %                      single/multi label of sorted units whose
 %                      neuron_extracellular is not in this batch
@@ -152,6 +160,7 @@ arguments
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'did_v2'
     options.Audits (1,1) logical = true
     options.UnitQualityLabels cell = {}
+    options.V1FileReader = []
 end
 
 % The classes pass 1 hands on unchanged, stamped did_v1, to the later step that
@@ -214,6 +223,10 @@ did2.convert.sessionReferences('load', bodies);
 % 2026-10-26).
 did2.convert.unitQualityLabels('reset');
 did2.convert.unitQualityLabels('load', bodies);
+% The reader of the files a v1 document attaches (did2.convert.v1Files), for
+% gene_list_mapping's mapping.tsv ([key covariate index], Jess Haley, 2026-11-01)
+did2.convert.v1Files('reset');
+did2.convert.v1Files('set', options.V1FileReader);
 did2.convert.unitQualityLabels('add', options.UnitQualityLabels);
 % The subject_id of every v1 element in this batch, read by
 % migrators_j.element to check a sorted unit's subject against its probe's,

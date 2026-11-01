@@ -22,7 +22,12 @@ function tests = testRawV1RoundTripGene
 %
 %   geneList CONVERTS (Decided by Jess Haley, 2026-11-01 [gene list as a term,
 %   file kept]): a standalone `term`, its genes.tsv the term's opaque_body
-%   (testGeneList* below). THE OTHER SIX PASS THROUGH pass 1 unchanged, as before. The one difference the
+%   (testGeneList* below). geneListMapping CONVERTS on a schema that declares
+%   the covariate `index` (and, for a symmetric mapping, `relatum_id`): a
+%   relation between the two lists, a `logical` or `score` value and
+%   mapping.tsv as its opaque_body (testGeneListMapping* below, on a schema
+%   copy that declares both until did-schema does). THE OTHER FIVE PASS
+%   THROUGH pass 1 unchanged, as before. The one difference the
 %   switch makes: the raw passthrough keeps v1's class name, under which V_eta
 %   keeps no class, so it is counted as a passthrough with no schema where the
 %   renamed one was validated against the snake_case class (a `retire` class);
@@ -168,12 +173,208 @@ v1.base.name = 'my list';
 verifyCarried(testCase, v1, '[carry-120] base.name');
 end
 
+% ===================== geneListMapping converts =========================
+% Decided by Jess Haley, 2026-11-01 (did-schema did_v2_go_forward_class_audit.md):
+% [gene list mapping value shape], [gene list mapping value kind], [gene list
+% mapping method text], [orthology mapping has no method term], [gene list
+% mapping leftovers], [gene list mapping other types carried], [mapping rows
+% counted, indices 0-based], [key covariate index], [undirected relation
+% widened], [undirected ends are relata].
+
+function testGeneListMappingPassesThroughWithoutIndex(testCase)
+% siblings first: on a schema that does not declare the covariate `index`
+% the mapping passes through, as before
+if schemaDeclaresIndex()
+    return;
+end
+out = runRaw(geneListMapping());
+verifyEqual(testCase, numel(out.passthrough), 1);
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), 'geneListMapping');
+end
+
+function testGeneListMappingOrthologIsDirected(testCase)
+useMappingSchema(testCase);
+[v1, tsv] = orthologMapping();
+out = runMapping(v1, tsv, true);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough);
+[rel, val, body] = mappingDocs(testCase, out, 'directed_relation', 'score');
+listA = '41268b6f5c6a3d4e_6e0000000000000a';
+listB = '41268b6f5c6a3d4e_6e00000000000011';
+% the relation: list A -> list B, the v1 id, the label as notes
+verifyEqual(testCase, rel.base.id, v1.base.id);
+verifyEqual(testCase, edge(rel, 'child_id'), {listA});
+verifyEqual(testCase, edge(rel, 'parent_id'), {listB});
+verifyEqual(testCase, rel.directed_relation.relation.node, 'EMPTY:0000386');
+verifyEqual(testCase, rel.relation.notes, 'mouse to human orthologs');
+% [orthology mapping has no method term]: only the tool text, as a parameter
+verifyFalse(testCase, isfield(rel.relation.method, 'term') && ~isempty(rel.relation.method.term) ...
+    && ~isempty(rel.relation.method.term.node));
+verifyEqual(testCase, rel.relation.method.parameters.text, 'OrthoFinder v2.5.5');
+verifyEqual(testCase, edge(rel, 'value_id'), {val.base.id});
+% the value: one row dimension of 3, two gene covariates keyed to A and B
+verifyEqual(testCase, val.data.dimensions.n, 3);
+covs = val.data.covariates;
+verifyEqual(testCase, [covs.key], [0 1]);
+verifyEqual(testCase, double(covs(1).index(:)'), [417 418 418]);
+verifyEqual(testCase, double(covs(2).index(:)'), [1902 2044 2045]);
+verifyEqual(testCase, covs(1).variable.node, 'NCIT:C16612');
+verifyEqual(testCase, edge(val, 'key_id'), {listA, listB});
+verifyTrue(testCase, logical(val.value.data_body));
+% the body: mapping.tsv unchanged, TSV, owned by the value
+verifyEqual(testCase, edge(body, 'owner_id'), {val.base.id});
+verifyEqual(testCase, body.data_body.format.node, 'EDAM:format_3475');
+verifyEqual(testCase, body.files.file_info.name, 'mapping.tsv');
+% [gene list mapping value kind]: the score's scale is a gap in the run's
+% migration report ([migration record]), not in the document
+gaps = did2.convert.migrationReport('gaps', val.base.id);
+verifyEqual(testCase, {gaps.field}, {'value.scale'});
+% round trip: nothing lost (the three counts are recomputed from the file)
+r = did2.convert.roundtrip.check(v1, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'geneListMapping ortholog', {});
+end
+
+function testGeneListMappingSymmetricAliasIsUndirected(testCase)
+useMappingSchema(testCase);
+[v1, tsv] = aliasMapping();
+out = runMapping(v1, tsv, true);
+verifyEmpty(testCase, out.quarantine);
+[rel, val, ~] = mappingDocs(testCase, out, 'undirected_relation', 'logical');
+verifyEqual(testCase, did2.build.relatumIds(rel), ...
+    {'41268b6f5c6a3d4e_6e0000000000000a', '41268b6f5c6a3d4e_6e00000000000011'});
+verifyEqual(testCase, rel.undirected_relation.relation.node, 'EMPTY:0000381');
+% an alias mapping's method term is ID mapping, the v1 text its parameter
+verifyEqual(testCase, rel.relation.method.term.node, 'EDAM:operation_3282');
+verifyEqual(testCase, rel.relation.method.parameters.text, 'GEF geneID/geneName pairing');
+verifyEqual(testCase, val.data.dimensions.n, 2);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'geneListMapping alias', {});
+end
+
+function testGeneListMappingCarries(testCase)
+useMappingSchema(testCase);
+[v1, tsv] = orthologMapping();
+% [mapping rows counted, indices 0-based]: n_pairs disagrees with the file
+bad = v1;
+bad.geneListMapping.n_pairs = 4;
+verifyMappingCarried(testCase, bad, tsv, '[carry-120] geneListMapping.n_pairs');
+bad = v1;
+bad.geneListMapping.n_genes_mapped_a = 3;
+verifyMappingCarried(testCase, bad, tsv, '[carry-120] geneListMapping.n_genes_mapped_a');
+% a gene index that is not an integer >= 0
+verifyMappingCarried(testCase, v1, strrep(tsv, '417', '-1'), '[carry-120] mapping.tsv');
+% a score that is not a number
+verifyMappingCarried(testCase, v1, strrep(tsv, '0.9', 'high'), '[carry-120] mapping.tsv');
+% [gene list mapping other types carried]
+bad = v1;
+bad.geneListMapping.mapping_type = 'paralog';
+verifyMappingCarried(testCase, bad, tsv, 'geneListMapping.mapping_type');
+% a mapping.tsv this run cannot read (no reader; its location is not here)
+[carried, notes] = mappingCarry(v1, []);
+verifyTrue(testCase, carried);
+verifyTrue(testCase, contains(notes, 'files mapping.tsv'), notes);
+end
+
+function tf = schemaDeclaresIndex()
+s = did2.schema.cache.shared().getClass('data');
+tf = false;
+f = s.fields;
+if ~iscell(f); f = num2cell(f); end
+for k = 1:numel(f)
+    if strcmp(char(f{k}.name), 'covariates')
+        sub = f{k}.fields;
+        if ~iscell(sub); sub = num2cell(sub); end
+        tf = any(cellfun(@(x) strcmp(char(x.name), 'index'), sub));
+    end
+end
+end
+
+function useMappingSchema(testCase)
+src = did2.schema.cache.shared().schemaPath;
+p = did2.unittest.helpers.geneMappingSchema(testCase, src);
+did2.schema.cache.setSchemaPath(p);
+testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+end
+
+function out = runMapping(v1, tsv, validate)
+reader = [];
+if ~isempty(tsv)
+    reader = @(~, name) tsvFor(name, tsv);
+end
+out = did2.convert.v1_to_v2({v1}, 'Validate', validate, 'TargetVersion', 'V_eta', ...
+    'V1FileReader', reader);
+end
+
+function t = tsvFor(name, tsv)
+if ~strcmp(name, 'mapping.tsv')
+    error('test:noSuchFile', 'no %s', name);
+end
+t = tsv;
+end
+
+function [carried, notes] = mappingCarry(v1, tsv)
+out = runMapping(v1, tsv, false);
+carried = numel(out.migrated) == 1 ...
+    && did2.schema.isV1Stamp(out.migrated{1}.toStruct(), 'Explicit', true);
+notes = '';
+if isfield(out.summary.migration_notes, 'carried_as_v1')
+    notes = strjoin(out.summary.migration_notes.carried_as_v1.distinct_details, ' || ');
+end
+end
+
+function verifyMappingCarried(testCase, v1, tsv, part)
+[carried, notes] = mappingCarry(v1, tsv);
+verifyTrue(testCase, carried, [part ': not carried']);
+verifyTrue(testCase, contains(notes, part), sprintf('%s: the note does not name it: %s', part, notes));
+end
+
+function [rel, val, body] = mappingDocs(testCase, out, relClass, valClass)
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+names = cellfun(@(d) char(d.document_class.class_name), docs, 'UniformOutput', false);
+verifyEqual(testCase, sort(names), sort({relClass, valClass, 'opaque_body'}));
+rel = docs{strcmp(names, relClass)};
+val = docs{strcmp(names, valClass)};
+body = docs{strcmp(names, 'opaque_body')};
+end
+
+function ids = edge(doc, name)
+d = doc.depends_on;
+if ~iscell(d); d = num2cell(d); end
+ids = {};
+for k = 1:numel(d)
+    if strcmp(char(d{k}.name), name)
+        ids{end+1} = char(d{k}.document_id); %#ok<AGROW>
+    end
+end
+end
+
+function [d, tsv] = orthologMapping()
+d = geneListMapping();
+d.geneListMapping = struct('label', 'mouse to human orthologs', 'mapping_type', 'ortholog', ...
+    'method', 'OrthoFinder v2.5.5', 'symmetric', 0, 'n_pairs', 3, ...
+    'n_genes_mapped_a', 2, 'n_genes_mapped_b', 3, 'has_score', 1);
+d.files = storedFiles({'mapping.tsv'});
+d = jsondecode(jsonencode(d));
+tsv = sprintf('gene_index_a\tgene_index_b\tscore\n417\t1902\t0.9\n418\t2044\t0.5\n418\t2045\t0.4\n');
+end
+
+function [d, tsv] = aliasMapping()
+d = geneListMapping();
+d.geneListMapping = struct('label', '', 'mapping_type', 'alias', ...
+    'method', 'GEF geneID/geneName pairing', 'symmetric', 1, 'n_pairs', 2, ...
+    'n_genes_mapped_a', 2, 'n_genes_mapped_b', 2, 'has_score', 0);
+d.files = storedFiles({'mapping.tsv'});
+d = jsondecode(jsonencode(d));
+tsv = sprintf('gene_index_a\tgene_index_b\n0\t5\n1\t7\n');
+end
+
 % ===================== fixtures =========================================
 
 function f = passthroughFixtures()
-% the six classes pass 1 still passes through (geneList converts)
+% the five classes pass 1 still passes through (geneList and geneListMapping
+% convert)
 f = fixtures();
-f = f(~strcmp(f(:, 3), 'geneList'), :);
+f = f(~ismember(f(:, 3), {'geneList', 'geneListMapping'}), :);
 end
 
 function f = fixtures()
