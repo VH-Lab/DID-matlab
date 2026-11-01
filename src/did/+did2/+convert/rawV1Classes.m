@@ -453,7 +453,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         trips: testRawV1RoundTripOpenminds.
 %     openminds_subject   superclasses `base` + `openminds`, no `app` block, no
 %                         superclass migrator; one term assertion about the
-%                         subject, as before, or carried (carry-116, carry-117).
+%                         subject, as before, or carried (carry-116).
 %                         Its `openminds_<n>` edges are not written to the
 %                         assertion; they are accounted for because NDI's
 %                         subjectStrainAssembly reads them from the v1 input.

@@ -86,34 +86,28 @@ valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 % `equivalent` list ([term equivalents recorded]), and a document whose id does
 % not rebuild is carried; a lab-made strain's `openminds_id` goes on the strain
 % entity's `global_identifier` as `openminds:<id>`". Pass 1 mints no strain
-% entity for an openMINDS subject document (it writes one term assertion), so a
-% lab-made strain (a Strain with no ontology node) that states an id has no
-% home here yet and is carried; and until a row of the registry's `equivalent`
-% column is filled (did-schema 3a1b316 added it; 0 of 896 rows fill it at
-% did-schema 013d198) no id rebuilds (did2.convert.openmindsIdRebuilds), so a
-% controlled term that states one is carried too. The register rows are
-% carry-117 (a lab-made strain) and carry-116 (an id that does not rebuild).
+% entity for an openMINDS subject document (it writes one term assertion); NDI's
+% second pass (ndi.migrate.internal.subjectStrainAssembly, NDI-matlab a24ee16a,
+% #1107) mints the strain entity from that assertion and writes a lab-made
+% strain's id on its `global_identifier`. So a lab-made strain (a Strain with no
+% ontology node) converts like any other subject document, and its id is NOT
+% checked against the registry here: the decision's build order was "NDI-matlab
+% ... first, then DID-matlab (stop carrying ...)". Until a row of
+% the registry's `equivalent` column is filled no controlled term's id rebuilds
+% (did2.convert.openmindsIdRebuilds), so a controlled term that states an id
+% that does not rebuild is carried (register row carry-116).
 omId = jGetChar(block, 'openminds_id');
-if ~isempty(strtrim(omId))
-    isLabStrain = strcmp(lower(typeSuffix(jGetChar(block, 'openminds_type'))), 'strain') ...
-        && isempty(node);
-    if isLabStrain
-        % carry-register: carry-117
-        did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...
-            sprintf(['[carry-117] awaiting_home: openminds_id "%s" of a lab-made strain ' ...
-            '(its strain entity''s global_identifier openminds:<id>; pass 1 mints ' ...
-            'no strain entity) ([openMINDS subject leftovers])'], omId));
-        v2Body = {src};   % a carry is the untouched v1 source
-        return;
-    elseif ~did2.convert.openmindsIdRebuilds(node, omId)
-        % carry-register: carry-116
-        did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...
-            sprintf(['[carry-116] awaiting_home: openminds_id "%s" does not rebuild from ' ...
-            'term "%s" through the registry''s equivalent list ([openMINDS subject ' ...
-            'leftovers])'], omId, node));
-        v2Body = {src};   % a carry is the untouched v1 source
-        return;
-    end
+isLabStrain = strcmp(lower(typeSuffix(jGetChar(block, 'openminds_type'))), 'strain') ...
+    && isempty(node);
+if ~isempty(strtrim(omId)) && ~isLabStrain ...
+        && ~did2.convert.openmindsIdRebuilds(node, omId)
+    % carry-register: carry-116
+    did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...
+        sprintf(['[carry-116] awaiting_home: openminds_id "%s" does not rebuild from ' ...
+        'term "%s" through the registry''s equivalent list ([openMINDS subject ' ...
+        'leftovers])'], omId, node));
+    v2Body = {src};   % a carry is the untouched v1 source
+    return;
 end
 
 % term_assertion: a timeless subject_assertion leaf (no method/interaction).
