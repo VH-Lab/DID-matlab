@@ -619,6 +619,7 @@ POST_PASSES = [
         ("wiring_relations_minted", "probe wiring relations minted (connected to, RO:0002170)"),
         ("rows_unwirable", "  rows with channels but no probe or no rig to wire (v1 document kept)"),
         ("wiring_types_interleaved", "  rows whose channel types interleave (v1 document kept)"),
+        ("wiring_probe_in_several_rows", "  rows of a probe listed in several rows of one probe map (v1 document kept)"),
         ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no wiring)"),
         ("channels_derived_read_mode", "  channel groups naming a derived read mode (dep, den, dimp, ...; not a channel type)"),
         ("rigs_without_daqsystem", "  rigs a devicestring names with no daqsystem document (no system minted)"),

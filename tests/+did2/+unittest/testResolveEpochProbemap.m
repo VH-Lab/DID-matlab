@@ -1138,6 +1138,28 @@ end
 
 % ===================== the rename-thin guard (increment 3) =============
 
+function testAProbeInSeveralRowsKeepsItsV1Document(testCase)
+% [probe wiring is a relation]: a probe listed in two rows of one probe map
+% (as B's stimulator is, once per marker channel) cannot be wired row by row,
+% because nothing would say which row's channels are whose. Its rows keep
+% their statements, no relation is minted for them, and the v1 document is
+% carried whole, its devicestrings intact.
+subj = subjectBody('spec_m', 'sess_m', 'L');
+el   = elementBody('el_m', 'sess_m', 'p', '1', 'n-trode', 1, 'spec_m');
+daq  = daqsystemBody('acqsys_m', 'sess_m', 'intan1');
+ing  = ingestedWithDeviceRows('ing_m', 'sess_m', 't0m', { ...
+    {'p', '1', 'n-trode', 'intan1:ai1', 'L'}, ...
+    {'p', '1', 'n-trode', 'intan1:ai2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subj, el, daq, ing});
+verifyEqual(testCase, rep.wiring_probe_in_several_rows, 2);
+verifyEqual(testCase, rep.wiring_relations_minted, 0);
+verifyEqual(testCase, rep.observations_emitted, 2);
+verifyEmpty(testCase, bodiesOfClass(out, 'ingestion_manifest'));
+src = bodiesOfClass(out, 'epochfiles_ingested');
+verifyEqual(testCase, numel(src), 1);
+verifyEqual(testCase, src{1}.epochfiles_ingested.epochprobemap, ing.epochfiles_ingested.epochprobemap);
+end
+
 function testRenameIsGuardedWhenNoFilenavigatorId(testCase)
 % ingestion_manifest REQUIRES filenavigator_id. A source epochfiles_ingested
 % that carries none is LEFT as the tombstone (never quarantined) and counted --

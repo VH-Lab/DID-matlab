@@ -253,6 +253,7 @@ report = struct( ...
     'wiring_relations_minted',        0, ...
     'rows_unwirable',                 0, ...
     'wiring_types_interleaved',       0, ...
+    'wiring_probe_in_several_rows',   0, ...
     'channels_unbindable_type',       0, ...
     'channels_derived_read_mode',     0, ...
     'fold_quarantined',               0, ...
@@ -580,6 +581,19 @@ for k = 1:n
     pm = probemapCharOf(b);
     rowsPM = [];
     if ~isempty(pm); rowsPM = parseProbemapRows(pm); end
+    % how many rows with a devicestring name each probe in THIS probe map
+    % (see THE WIRING below: a probe in several rows cannot be wired)
+    rowsPerProbe = containers.Map('KeyType', 'char', 'ValueType', 'double');
+    for r = 1:numel(rowsPM)
+        if isempty(rowsPM(r).devicestring); continue; end
+        pk = probeLocalIdentifier(rowsPM(r).name, rowsPM(r).reference);
+        if isempty(pk); continue; end
+        if isKey(rowsPerProbe, pk)
+            rowsPerProbe(pk) = rowsPerProbe(pk) + 1;
+        else
+            rowsPerProbe(pk) = 1;
+        end
+    end
     for r = 1:numel(rowsPM)
         report.probe_rows_total = report.probe_rows_total + 1;
         row = rowsPM(r);
@@ -690,6 +704,17 @@ for k = 1:n
                     report.channels_derived_read_mode + derivedReadModes(channels);
             elseif isempty(instrumentId) || isempty(acqSystemId)
                 report.rows_unwirable = report.rows_unwirable + 1;
+                rowsWithoutHome = rowsWithoutHome + 1;
+            elseif isKey(rowsPerProbe, probeLocalId) && rowsPerProbe(probeLocalId) > 1
+                % one probe in several rows of one epoch's probe map (B and Dab:
+                % a stimulator listed once per marker channel, mk1, mk2, ...):
+                % its rows' statements are alike and a relation cannot say
+                % which row's channels are whose, so the round trip could not
+                % rebuild the rows. The row keeps its v1 document, counted,
+                % until the team decides the shape (one relation with every
+                % row's channels, or one per row with its position).
+                report.wiring_probe_in_several_rows = ...
+                    report.wiring_probe_in_several_rows + 1;
                 rowsWithoutHome = rowsWithoutHome + 1;
             elseif typesInterleaved(channels)
                 % one condition per channel type cannot hold 'ai1-4;di1;ai9':
