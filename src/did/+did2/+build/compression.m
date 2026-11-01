@@ -26,8 +26,10 @@ function c = compression(codec, options)
 %   value as `text`, a logical as `logical`, an integer as `count`, any other
 %   real number as `quantity.value`. The parameter's variable is named by the key's row in
 %   the shared table (cname -> 'inner compressor', clevel -> 'compression
-%   level', shuffle -> 'shuffle', blocksize -> 'block size'), else by the key
-%   itself.
+%   level', shuffle -> 'shuffle filter', blocksize -> 'compression block
+%   size': the labels of EMPTY:0000430, 0000427, 0000429 and 0000428,
+%   [compression term definitions approved], Jess Haley, 2026-11-01), else by
+%   the key itself.
 %
 %   CODEC may be:
 %     a spelling (char/string)   'gzip', 'lzw', 'blosc-zstd', ...: the term is
@@ -46,7 +48,7 @@ function c = compression(codec, options)
 %   spelling itself states (a Blosc spelling's own inner compressor) have no
 %   home: did2:build:compressionSettingsNotDeclared. A caller with such
 %   settings asks did2.build.compressionBlockDeclared first and carries what
-%   it cannot place (lightsheet_zarr_level: carry-010).
+%   it cannot place (lightsheet_zarr_level).
 %
 %   Errors:
 %     did2:build:compressionSettingsNotDeclared   settings on a char schema
