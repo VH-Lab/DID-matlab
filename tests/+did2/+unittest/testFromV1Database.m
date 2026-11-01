@@ -116,7 +116,9 @@ verifyEqual(testCase, m.className(), 'migration');
 method = m.get('migration.method');
 verifyEqual(testCase, char(method.term.node), 'EDAM:operation_3434');
 names = arrayfun(@(p) char(p.variable.name), method.parameters, 'UniformOutput', false);
-verifyEqual(testCase, names, {'software', 'version number', 'source format', 'target format'});
+% (the stored list reads back as a column)
+verifyEqual(testCase, reshape(names, 1, []), ...
+    {'software', 'version number', 'source format', 'target format'});
 verifyEqual(testCase, char(method.parameters(1).text), 'DID-matlab');
 verifyEqual(testCase, char(method.parameters(3).text), 'did_v1');
 verifyEqual(testCase, char(method.parameters(4).text), 'did_v2');
