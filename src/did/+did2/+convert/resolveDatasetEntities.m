@@ -161,7 +161,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true %#ok<INUSA>
     options.SchemaCache = []
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'did_v2'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'did_v2'})} = 'did_v2'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a

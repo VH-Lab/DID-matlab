@@ -176,7 +176,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'did_v2'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'did_v2'})} = 'did_v2'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
@@ -530,7 +530,7 @@ function [bodies, anchorInfo] = makeBath(v1Body, subjectId, stimulatorId, ...
 %   did-schema #88 (OPEN_WORK #128).
 if ~did2.convert.isV2Set(targetVersion)
     error('did2:convert:unsupportedTarget', ...
-        ['resolveDeferredBaths assembles V_eta only; TargetVersion "%s" has ' ...
+        ['resolveDeferredBaths assembles did_v2 only; TargetVersion "%s" has ' ...
          'no bath model (V_epsilon/V_zeta were deleted, did-schema #88).'], ...
         targetVersion);
 end
