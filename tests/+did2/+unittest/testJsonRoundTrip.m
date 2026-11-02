@@ -74,59 +74,64 @@ end
 % and its `global_identifier` is a list of strings, not of structures, so that
 % field can no longer carry the shape under test. rehydrate's repair is about
 % ANY non-scalar `structure` field, so these tests drive the one the #88 schema
-% declares with the plainest subfields: `acquisition_channels.channels`
-% {type, numbers}. The round trip below keeps the entity, as the writer emits it.
+% declares with the plainest subfields. That was `acquisition_channels.channels`
+% {type, numbers} until did-schema retired the class (Jess Haley 2026-11-01
+% [probe wiring is a relation]); it is now `coordinate_system.axes`
+% {axis, positive_direction, spacing}, a persist class. The round trip below
+% keeps the entity, as the writer emits it.
 
 function testRehydrateRestoresAnEmptyStructArrayField(testCase)
 cache = localCache(testCase);
 s = localStructArrayBody(testCase, cache);
-s.acquisition_channels.channels = [];     % what jsondecode hands back
+s.coordinate_system.axes = [];     % what jsondecode hands back
 
 out = cache.rehydrate(s);
 
-verifyTrue(testCase, isstruct(out.acquisition_channels.channels), sprintf( ...
-    ['rehydrate left acquisition_channels.channels a %s. That is the exact ' ...
+verifyTrue(testCase, isstruct(out.coordinate_system.axes), sprintf( ...
+    ['rehydrate left coordinate_system.axes a %s. That is the exact ' ...
      'shape that made seven documents unreadable.'], ...
-    class(out.acquisition_channels.channels)));
-verifyEqual(testCase, numel(out.acquisition_channels.channels), 0, ...
+    class(out.coordinate_system.axes)));
+verifyEqual(testCase, numel(out.coordinate_system.axes), 0, ...
     'An empty field must rehydrate to ZERO elements, not one blank one.');
-verifyEqual(testCase, sort(fieldnames(out.acquisition_channels.channels)), ...
-    {'numbers'; 'type'}, ...
+verifyEqual(testCase, sort(fieldnames(out.coordinate_system.axes)), ...
+    {'axis'; 'positive_direction'; 'spacing'}, ...
     'The declared subfield names come from the schema, not from the data.');
 end
 
 function testRehydrateRestoresARaggedArrayToAStructArray(testCase)
 cache = localCache(testCase);
 s = localStructArrayBody(testCase, cache);
-ai = struct('node', '', 'name', 'ai');
-s.acquisition_channels.channels = { struct('type', ai), ...
-                                    struct('numbers', [1 2]) };
+x = struct('node', '', 'name', 'x');
+up = struct('node', '', 'name', 'up');
+s.coordinate_system.axes = { struct('axis', x), ...
+                             struct('positive_direction', up) };
 
 out = cache.rehydrate(s);
 
-g = out.acquisition_channels.channels;
+g = out.coordinate_system.axes;
 verifyTrue(testCase, isstruct(g), sprintf( ...
     'A ragged array stayed a %s after rehydrate.', class(g)));
 verifyEqual(testCase, numel(g), 2);
-verifyEqual(testCase, g(1).type, ai);
-verifyEmpty(testCase, g(1).numbers, ...
+verifyEqual(testCase, g(1).axis, x);
+verifyEmpty(testCase, g(1).positive_direction, ...
     'A key absent from one JSON object must fill as [], not vanish.');
-verifyEmpty(testCase, g(2).type);
-verifyEqual(testCase, g(2).numbers, [1 2]);
+verifyEmpty(testCase, g(2).axis);
+verifyEqual(testCase, g(2).positive_direction, up);
 end
 
 function testRehydrateLeavesAPopulatedFieldAlone(testCase)
 % The repair must be a no-op on documents that were already fine.
 cache = localCache(testCase);
 s = localStructArrayBody(testCase, cache);
-ai = struct('node', '', 'name', 'ai');
-s.acquisition_channels.channels = struct('type', ai, 'numbers', [27 28]);
+x = struct('node', '', 'name', 'x');
+up = struct('node', '', 'name', 'up');
+s.coordinate_system.axes = struct('axis', x, 'positive_direction', up);
 
 out = cache.rehydrate(s);
 
-verifyEqual(testCase, numel(out.acquisition_channels.channels), 1);
-verifyEqual(testCase, out.acquisition_channels.channels(1).type, ai);
-verifyEqual(testCase, out.acquisition_channels.channels(1).numbers, [27 28]);
+verifyEqual(testCase, numel(out.coordinate_system.axes), 1);
+verifyEqual(testCase, out.coordinate_system.axes(1).axis, x);
+verifyEqual(testCase, out.coordinate_system.axes(1).positive_direction, up);
 end
 
 function testRehydrateDoesNotInventAnAbsentField(testCase)
@@ -136,13 +141,13 @@ function testRehydrateDoesNotInventAnAbsentField(testCase)
 % silently and wrongly.
 cache = localCache(testCase);
 s = localStructArrayBody(testCase, cache);
-if isfield(s.acquisition_channels, 'channels')
-    s.acquisition_channels = rmfield(s.acquisition_channels, 'channels');
+if isfield(s.coordinate_system, 'axes')
+    s.coordinate_system = rmfield(s.coordinate_system, 'axes');
 end
 
 out = cache.rehydrate(s);
 
-verifyFalse(testCase, isfield(out.acquisition_channels, 'channels'), ...
+verifyFalse(testCase, isfield(out.coordinate_system, 'axes'), ...
     'rehydrate materialised a field the document did not carry.');
 end
 
@@ -152,11 +157,11 @@ function testRehydrateLeavesARealTypeErrorForTheValidator(testCase)
 % repair exists to remove, reintroduced by the repair.
 cache = localCache(testCase);
 s = localStructArrayBody(testCase, cache);
-s.acquisition_channels.channels = 42;
+s.coordinate_system.axes = 42;
 
 out = cache.rehydrate(s);
 
-verifyEqual(testCase, out.acquisition_channels.channels, 42, ...
+verifyEqual(testCase, out.coordinate_system.axes, 42, ...
     'rehydrate silently reshaped a value that is genuinely wrong.');
 end
 
@@ -336,14 +341,15 @@ end
 end
 
 function s = localStructArrayBody(testCase, cache)
-% A blank `acquisition_channels`: the #88 class whose `channels` is a
-% non-scalar `structure` with plain subfields {type, numbers}. rehydrate is
-% called directly on it; nothing here is validated.
-if ~cache.hasClass('acquisition_channels')
-    assumeFail(testCase, ...
-        'acquisition_channels is not in this schema set; nothing to check.');
-end
-doc = did2.document.blank('acquisition_channels', 'SchemaCache', cache);
+% A blank `coordinate_system`: a persist class whose `axes` is a non-scalar
+% `structure` with plain subfields {axis, positive_direction, spacing}.
+% rehydrate is called directly on it; nothing here is validated. A schema
+% set without it is a FAILURE, not an assumption: these five tests used to
+% drive `acquisition_channels` behind a hasClass guard, which would have
+% turned them into silent no-ops the day did-schema retired that class.
+assertTrue(testCase, cache.hasClass('coordinate_system'), ...
+    'coordinate_system is not in this schema set; pick another non-scalar structure field.');
+doc = did2.document.blank('coordinate_system', 'SchemaCache', cache);
 s = doc.toStruct();
 end
 
