@@ -431,6 +431,28 @@ verifyFalse(testCase, r.ok);
 verifyNotEmpty(testCase, r.unplaced);
 end
 
+function testADatasetsOwnSessionRoundTripsThroughTheDatasetEntity(testCase)
+% [dataset session reference] (Jess Haley, 2026-10-22): a session stored under
+% the dataset's own id is dropped by resolveDatasetEntities and its reference
+% becomes the dataset entity's local_identifier; the session inverse reads it
+% there (Test code run 41350082866: JH's such session lost everything)
+s = writerSession('sd_DS', 'ds_X', 'haley_2025');
+dr = writerRemote('dr_X', 'ds_X');
+out = did2.convert.v1_to_v2({s, dr}, 'Validate', false, 'TargetVersion', 'did_v2');
+[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
+assertEqual(testCase, rep.session_entities_dropped_dataset_id, 1, ...
+    'premise: the session entity under the dataset id is dropped');
+assertEqual(testCase, rep.dataset_local_identifier_from_session, 1, ...
+    'premise: its reference moves to the dataset entity');
+r = did2.convert.roundtrip.wholeBatch({s, dr}, out);
+k = find(strcmp({r.failures.source_id}, 'sd_DS'));
+lost = {};
+if ~isempty(k); lost = r.failures(k).lost; end
+verifyFalse(testCase, any(strcmp(lost, 'session.reference')), strjoin(lost, ', '));
+verifyEmpty(testCase, setdiff(lost, findingsFor('session')), ...
+    ['lost beyond the known findings: ' strjoin(lost, ', ')]);
+end
+
 % ===================== known findings ===================================
 
 function f = knownFindings()

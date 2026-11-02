@@ -16,8 +16,12 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %   `observation` per recording entry, two for a `patch` / `sharp` row; a
 %   `manipulation` for a stimulator row), all anchored to ONE "during the
 %   epoch" relative_time_reference whose referent is the manifest's epoch, and
-%   each naming its rig and channels through an `acquisition_channels`
-%   document. A row is read back from its statement:
+%   each naming its rig by `acquisition_system_id`; the row's channels are the
+%   conditions of the probe's `connected to` (RO:0002170) directed_relation to
+%   that rig, timed by the same anchor (Jess Haley 2026-11-01 [probe wiring is
+%   a relation], [wiring relation term]). A batch migrated before that names
+%   rig and channels through an `acquisition_channels` document; both shapes
+%   are read. A row is read back from its statement:
 %
 %     name, reference  the instrument_id entity's `name` and what follows it
 %                      in its local_identifier
@@ -31,8 +35,9 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %                      kind names (its Equipment Type assertion,
 %                      did2.convert.elementTypeOfKind; [element type is a
 %                      device kind term])
-%     devicestring     the acquisition_channels' acquisition_system name, ':',
-%                      its channel groups ';'-joined, each the v1 prefix of its
+%     devicestring     the acquisition system's name, ':', the wiring
+%                      relation's conditions ';'-joined (or the
+%                      acquisition_channels' groups), each the v1 prefix of its
 %                      channel type (did2.convert.channelType, by node) and its
 %                      numbers, runs of two or more written 'a-b'
 %     subjectstring    the entity_id entity's local_identifier
@@ -90,8 +95,7 @@ for a = ctxReferrers(ctx, epochId)
                 || ~any(strcmp(edgeIds(st, 'time_reference_id'), char(anchor.base.id)))
             continue;
         end
-        ac = ctxDoc(ctx, firstEdge(st, 'acquisition_channels_id'));
-        if isempty(ac) || ~any(strcmp(firstEdge(ac, 'acquisition_system_id'), systems))
+        if ~any(strcmp(systemIdOf(st, ctx), systems))
             continue;
         end
         found(end+1) = s; %#ok<AGROW>
@@ -160,7 +164,7 @@ end
 % devicestring: the rig and its channels
 dev = '';
 ac = ctxDoc(ctx, firstEdge(st, 'acquisition_channels_id'));
-sys = ctxDoc(ctx, firstEdge(ac, 'acquisition_system_id'));
+sys = ctxDoc(ctx, systemIdOf(st, ctx));
 if isempty(sys)
     why{end+1} = sprintf('statement %s: its acquisition system is not in the batch', char(st.base.id));
 else
@@ -168,7 +172,11 @@ else
     if isempty(dev)
         dev = fieldText(sys.base, 'name');
     end
-    [groups, bad] = channelText(getIn(ac, 'acquisition_channels'), prefixes);
+    if ~isempty(ac)
+        [groups, bad] = channelText(getIn(ac, 'acquisition_channels'), prefixes);
+    else
+        [groups, bad] = wiringText(st, ctx, char(sys.base.id), prefixes);
+    end
     why = [why, bad];
     if ~isempty(groups)
         dev = [dev ':' groups];
@@ -214,6 +222,69 @@ if isscalar(kindNodes)
     end
 end
 why = sprintf('statement %s: its instrument states no element type', char(st.base.id));
+end
+
+function id = systemIdOf(st, ctx)
+% the statement's rig: `acquisition_system_id` ([probe wiring is a relation]),
+% or, in a batch migrated before it, its acquisition_channels' system
+id = firstEdge(st, 'acquisition_system_id');
+if isempty(id)
+    ac = ctxDoc(ctx, firstEdge(st, 'acquisition_channels_id'));
+    id = firstEdge(ac, 'acquisition_system_id');
+end
+end
+
+function [text, why] = wiringText(st, ctx, sysId, prefixes)
+% 'ai11-14;di1' from the conditions of the probe's wiring relation: the
+% directed_relation `connected to` (RO:0002170) whose child is the statement's
+% instrument, whose parent is SYSID and whose time is the statement's anchor.
+% None: the row had no channels ('' and no complaint).
+text = '';
+why = {};
+instrumentId = firstEdge(st, 'instrument_id');
+anchorId = firstEdge(st, 'time_reference_id');
+if isempty(instrumentId) || isempty(anchorId)
+    return;
+end
+hits = {};
+for k = ctxReferrers(ctx, anchorId)
+    b = ctx.docs{k};
+    if ~strcmp(classNameOf(b), 'directed_relation'); continue; end
+    blk = getIn(b, 'directed_relation');
+    [node, ~] = termParts(getIn(blk, 'relation'));
+    if ~strcmp(curieKeyOf(node), curieKeyOf('RO:0002170')); continue; end
+    if ~any(strcmp(edgeIds(b, 'child_id'), instrumentId)) ...
+            || ~any(strcmp(edgeIds(b, 'parent_id'), sysId)) ...
+            || ~any(strcmp(edgeIds(b, 'time_reference_id'), anchorId))
+        continue;
+    end
+    hits{end+1} = blk; %#ok<AGROW>
+end
+if isempty(hits)
+    return;
+end
+if numel(hits) > 1
+    why{end+1} = sprintf('statement %s: its probe has %d wiring relations to its rig in this epoch', ...
+        char(st.base.id), numel(hits));
+end
+conds = getIn(hits{1}, 'conditions');
+if isempty(conds)
+    return;
+end
+if isstruct(conds)
+    conds = num2cell(reshape(conds, 1, []));
+end
+groups = cell(1, numel(conds));
+for g = 1:numel(conds)
+    c = conds{g};
+    nums = [];
+    if isstruct(c) && isfield(c, 'matrix')
+        nums = c.matrix;
+    end
+    groups{g} = struct('type', {getIn(c, 'variable')}, 'numbers', {nums});
+end
+[text, why2] = channelText(struct('channels', {groups}), prefixes);
+why = [why, why2];
 end
 
 function [text, why] = channelText(blk, prefixes)
