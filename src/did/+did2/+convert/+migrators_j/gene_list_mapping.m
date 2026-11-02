@@ -19,8 +19,8 @@ function bodies = gene_list_mapping(preBody)
 %     relation   v1 `symmetric` 0: a `directed_relation` from gene list A
 %                (`child_id`, v1 geneList_id_a) to gene list B (`parent_id`,
 %                v1 geneList_id_b). v1 `symmetric` 1: an `undirected_relation`
-%                whose two ends (`relatum_id`, or `entity_id` on a schema from
-%                before the rename; did2.build.undirectedRelation) are [A, B].
+%                whose two ends (`relatum_id`; did2.build.undirectedRelation)
+%                are [A, B].
 %                base.id = the v1 id. `relation`: EMPTY:0000381 "gene alias
 %                mapping" (mapping_type `alias`) or EMPTY:0000386 "orthologous
 %                gene mapping" (`ortholog`). `method`: an alias mapping's term

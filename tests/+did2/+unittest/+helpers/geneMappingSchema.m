@@ -5,13 +5,12 @@ function p = geneMappingSchema(testCase, src)
 %   P = did2.unittest.helpers.geneMappingSchema(TESTCASE, SRC) copies the
 %   schema set at SRC flat into a temporary folder (removed at TESTCASE's
 %   teardown) and returns its path. Siblings first: until did-schema declares
-%   them, the copy adds, as text,
-%     - data.json's covariate `index`, after `key` (Jess Haley, 2026-11-01,
-%       did-schema did_v2_go_forward_class_audit.md [key covariate index]);
-%     - undirected_relation.json's `relatum_id` in place of `entity_id`
-%       ([undirected ends are relata]), with its ends allowed to be a
-%       standalone value ([undirected relation widened]).
-%   What SRC already declares is left as it is.
+%   it, the copy adds, as text, data.json's covariate `index`, after `key`
+%   (Jess Haley, 2026-11-01, did-schema did_v2_go_forward_class_audit.md [key
+%   covariate index]). What SRC already declares is left as it is.
+%   undirected_relation's `relatum_id` ([undirected ends are relata],
+%   [undirected relation widened]) is not added here: did-schema declares it,
+%   and the code no longer reads or writes the old `entity_id`.
 %
 %   See also did2.convert.migrators_j.gene_list_mapping.
 
@@ -35,18 +34,6 @@ if isempty(strfind(txt, '"name": "index"'))
         '"queryable": true, "ontology": null, ' ...
         '"documentation": "test copy: [key covariate index].", "constraints": {}}'];
     writeText(f, [txt(1:at) ', ' def txt(at+1:end)]);
-end
-
-f = fullfile(tmp, 'undirected_relation.json');
-txt = fileread(f);
-if isempty(strfind(txt, '"name": "relatum_id"'))
-    old = '"name": "entity_id"';
-    assert(numel(strfind(txt, old)) == 1, ...
-        'geneMappingSchema: undirected_relation declares neither relatum_id nor one entity_id.');
-    txt = strrep(txt, old, '"name": "relatum_id"');
-    txt = strrep(txt, '"must_refer_to_document_class": "entity",', ...
-        '"must_refer_to_document_class": "entity,statement,value",');
-    writeText(f, txt);
 end
 end
 
