@@ -716,6 +716,7 @@ for k = 1:numel(bodies)
                 outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
                 paddedInspected = paddedInspected + 1;
                 if ~isequaln(outBody, v2Bodies{bi})
+                    global RDUMP; RDUMP{end+1} = {className, v2Bodies{bi}, outBody};
                     [paddedNames, paddedValues] = bumpClassCounter( ...
                         paddedNames, paddedValues, className);
                 end
