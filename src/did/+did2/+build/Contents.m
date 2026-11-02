@@ -26,6 +26,8 @@
 %                            id of its own (`method_parameters` before #88)
 %     undirectedRelation     a symmetric relation between two ends (relata):
 %                            entities, statements or standalone values
+%     superclasses           a class's document_class.superclasses list, for a
+%                            migrator that writes a document's header itself
 %
 %   Parts of documents
 %     valueCell              a data_type's `value` cells (volts, seconds, count, ...)

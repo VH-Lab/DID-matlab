@@ -8,8 +8,8 @@ function bodies = daqreader_mfdaq_epochdata_ingested(preBody)
 %   an OPTIONAL field. The `epochid` block is CARRIED THROUGH -- it is a did_v1
 %   SUPERCLASS holding the epoch-id string, not a stale duplicate of a dependency
 %   (there is no epochid dependency; see the note at the bottom of this file).
-%   The daqreader_epochdata_ingested superclass chain is rebuilt by
-%   ensureClassBlocks after this.
+%   The daqreader_epochdata_ingested superclass chain is written here, from
+%   the schema (did2.build.superclasses).
 %
 %   ---------------------------------------------------------------------
 %   IT NOW DELEGATES THE EPOCH-EXTENT LIFT TO THE PARENT MIGRATOR
@@ -83,11 +83,12 @@ v2Body = body;
 if isfield(v2Body, 'depends_on')
     v2Body.depends_on = deps;
 end
-% the superclass list by name (did2.convert.v1read.readStamp: v1 names a
-% superclass by its definition path); v1_to_v2's ensureClassBlocks rebuilds
-% the V_eta chain from the class name, as on the renamed path
-stamp = did2.convert.v1read.readStamp(body);
-v2Body.document_class.superclasses = struct('class_name', stamp.superclasses);
+% the superclass list of the class this document becomes, from the schema
+% (did2.build.superclasses), so the document is complete as emitted
+% ([early migration pieces fixed] (2), Jess Haley, 2026-10-26: "the builder
+% produces a complete document"; before, v1_to_v2's ensureClassBlocks rebuilt
+% it from v1's {base, epochid, daqreader_epochdata_ingested})
+v2Body.document_class.superclasses = did2.build.superclasses('daqreader_epochdata_ingested');
 v2Body.document_class.class_name = 'daqreader_epochdata_ingested';
 v2Body.document_class.class_version = '2.0.0';
 
