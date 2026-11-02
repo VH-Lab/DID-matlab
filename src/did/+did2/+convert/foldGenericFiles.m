@@ -48,6 +48,20 @@ function [result, report] = foldGenericFiles(result, options)
 %       where it is.
 %   ---------------------------------------------------------------------
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: generic_file, ontologyLabel, ontology_label,
+%       fileReference, file_reference, observation(file carrier),
+%       sampled_body(lightsheet pyramid level), result.source_outputs
+%   BATCH-PASS-ADDS: observation(generic file),
+%       opaque_body(directory store by location),
+%       opaque_body(generic file content),
+%       relative_time_reference(generic file)
+%   BATCH-PASS-CHANGES: observation(file carrier),
+%       sampled_body(lightsheet pyramid level)
+%   BATCH-PASS-REMOVES: generic_file, fileReference, file_reference
+%
 %   ---------------------------------------------------------------------
 %   STATUS: WRITTEN 2026-08-11 in a container with NO MATLAB AND NO OCTAVE
 %   (`command -v matlab octave octave-cli` -> nothing, exit 1), so nothing here

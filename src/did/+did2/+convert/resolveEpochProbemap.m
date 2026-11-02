@@ -45,6 +45,29 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       emission twice.
 %   BATCH-PASS-EMITS: element -> document: observation+voltage, observation+current, observation+intensity, observation+acceleration, observation+temperature, observation+time, opaque_body, relative_time_reference
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: acquisition_epoch, epochfiles_ingested,
+%       daqmetadatareader_epochdata_ingested, sampled_body(pyraview level),
+%       entity(epoch), acquisition_system, directed_relation(element lineage),
+%       directed_relation(observes), entity(element),
+%       calculation(spike sorter), observation(session-scoped recording),
+%       observation(pyraview),
+%       relative_time_reference(session anchor of a recording observation),
+%       relative_reference(folded session anchor),
+%       relative_time_reference(epoch anchor), result.epoch_mint
+%   BATCH-PASS-ADDS: observation(recording per epoch),
+%       manipulation(stimulator per epoch), opaque_body(epoch file by location),
+%       opaque_body(spike train), opaque_body(ingested archive),
+%       relative_time_reference(epoch anchor), relative_reference(epoch anchor),
+%       ingestion_manifest, directed_relation(wiring)
+%   BATCH-PASS-CHANGES: sampled_body(pyraview level), calculation(spike sorter)
+%   BATCH-PASS-REMOVES: acquisition_epoch, epochfiles_ingested,
+%       daqmetadatareader_epochdata_ingested,
+%       observation(session-scoped recording), observation(pyraview),
+%       directed_relation(observes)
+%
 %   ---------------------------------------------------------------------
 %   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)
 %   ---------------------------------------------------------------------
