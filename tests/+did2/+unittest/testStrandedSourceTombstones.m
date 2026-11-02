@@ -268,21 +268,26 @@ end
 
 % ===================== generic_file ========================================
 
-function testGenericFileHasASchemaAtAll(testCase)
+function testGenericFileHasSomewhereToGo(testCase)
 % THE NEGATIVE CONTROL FOR THE WHOLE FILE. This is the assertion whose absence
 % let the class strand: nothing anywhere checked that a did_v1 class the corpora
-% could contain has SOMETHING to validate against. getClass raises
-% did2:schema:missingClass when there is no schema file (cache.m:125-129).
+% could contain has SOMEWHERE TO GO.
 %
-% valid_interval's SOMETHING is no longer a schema file. Since [classes without
-% a migrator carry as v1] (did-schema did_v2_go_forward_class_audit.md) it is
-% carried whole as v1 (did2.convert.noMigratorCarryRows, carry-164): stamped
-% did_v1 and never validated against V_eta, so it needs no V_eta class, and its
-% did-schema tombstone is deleted ([one folder, final classes only]). What must
-% hold for it now is that it is in the carry table, so it cannot strand.
-cache = did2.schema.cache.shared();
-s = cache.getClass('generic_file');
-verifyEqual(testCase, char(s.document_class.class_name), 'generic_file');
+% Neither class's SOMEWHERE is a V2 schema file any more. A `generic_file` is
+% handed on as v1 to its later step (did2.convert.foldGenericFiles), checked
+% against NDI's own v1 template, stamped did_v1 and never validated against
+% V2 ([ensemble and generic_file keep their conversions], [ensemble and
+% generic_file checked as v1], Jess Haley, 2026-11-01, did-schema
+% did_v2_go_forward_class_audit.md), so its did-schema `retiring/` file can be
+% deleted; this test reads no schema file for it. What must hold is that pass
+% 1 hands it on, unquarantined, as v1. valid_interval is carried whole as v1
+% (did2.convert.noMigratorCarryRows, carry-164; [classes without a migrator
+% carry as v1]): it must be in the carry table, so it cannot strand.
+out = runJValidated(genericFileWriterBody('gf_0', 'sess_1', 'subjgrp_1'));
+verifyNoQuarantine(testCase, out, 'generic_file');
+d = onlyClass(testCase, out, 'generic_file');
+verifyEqual(testCase, char(d.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, out.summary.legacy_ndi_document.bodies_handed_to_later_step, 1);
 verifyTrue(testCase, any(strcmp(did2.convert.noMigratorCarryRows(), 'valid_interval')), ...
     'valid_interval has no migrator and no V_eta schema: it must be carried as v1');
 verifyEqual(testCase, did2.convert.noMigratorCarryRows('valid_interval'), '[carry-164]');
