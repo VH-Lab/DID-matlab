@@ -1,4 +1,35 @@
 function body = ensureClassBlocks(body, schemaCacheOverride)
+% SCRATCH PROBE (branch claude/W-padding-probe, not for merge): print every
+% body the padding changes, with its class and callers, so deleting the
+% padding can be measured on every path (pass 1 and the batch passes).
+persistent n
+before = body;
+body = ensureClassBlocksImpl(body, schemaCacheOverride);
+if ~isequaln(before, body)
+    if isempty(n); n = containers.Map('KeyType', 'char', 'ValueType', 'double'); end
+    cls = '<none>';
+    try cls = char(body.document_class.class_name); catch, end
+    st = dbstack(1);
+    callers = strjoin({st(1:min(3, numel(st))).name}, '<');
+    what = {};
+    if ~isequal(fieldnames(before), fieldnames(body)); what{end+1} = 'blocks'; end
+    try
+        if ~isequaln(before.document_class.superclasses, body.document_class.superclasses)
+            what{end+1} = 'superclasses';
+        end
+    catch
+        what{end+1} = 'superclasses?';
+    end
+    key = [cls '|' callers '|' strjoin(what, '+')];
+    if isKey(n, key); n(key) = n(key) + 1; else; n(key) = 1; end
+    c = n(key);
+    if c <= 3 || any(c == [10 100 1000 10000 100000])
+        fprintf('PADPROBE %d %s\n', c, key);
+    end
+end
+end
+
+function body = ensureClassBlocksImpl(body, schemaCacheOverride)
 %ENSURECLASSBLOCKS Give a body exactly the class blocks its schema chain hosts.
 %
 %   BODY = did2.convert.ensureClassBlocks(BODY, SCHEMACACHE) (SCHEMACACHE
