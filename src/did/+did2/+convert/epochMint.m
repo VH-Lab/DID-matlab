@@ -51,6 +51,25 @@ function [result, report] = epochMint(result, options)
 %       THERE, in +migrators_j, and credited to that migrator. Declaring them
 %       here would count one emission twice.
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: epochid, entity(session), entity(epoch),
+%       acquisition_epoch, daqmetadatareader_epochdata_ingested,
+%       stimulus_response_scalar, syncrule_mapping, pyraview,
+%       epochfiles_ingested, method(method_parameters), acquisition_system,
+%       entity(element), directed_relation(element lineage),
+%       result.deferred_bath_anchors
+%   BATCH-PASS-ADDS: entity(epoch), relative_time_reference(epoch anchor),
+%       relative_reference(clock alignment endpoint),
+%       calculation(harmonic_component),
+%       entity(software minted by a batch pass), observation(pyraview),
+%       sampled_body(pyraview level), method(pyraview), clock_alignment,
+%       result.epoch_mint
+%   BATCH-PASS-CHANGES: relative_time_reference(bath anchor),
+%       daqmetadatareader_epochdata_ingested(epoch_id edge stamped)
+%   BATCH-PASS-REMOVES: stimulus_response_scalar, syncrule_mapping, pyraview
+%
 %   `acquisition_epoch` ADDED 2026-08-17, and it was a REAL OMISSION, not a
 %   tidy-up. The #60 OPTION A loop below reads `acquisition_epoch` bodies (see
 %   `if ~strcmp(rows(k).class_name, 'acquisition_epoch')`) and mints one
