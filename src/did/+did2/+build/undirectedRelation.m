@@ -9,10 +9,11 @@ function doc = undirectedRelation(relatumIds, relation, options)
 %   relation widened]). RELATION is a term, or a name completed from the
 %   field's bound value set when it matches one exactly.
 %
-%   The ends are written under the edge name the schema in use declares:
-%   `relatum_id` ([undirected ends are relata], 2026-11-01), or `entity_id`
-%   for a schema from before that rename. Readers take both
-%   (did2.build.relatumIds).
+%   The ends are written as `relatum_id` edges ([undirected ends are relata],
+%   Jess Haley 2026-11-01). The old name, `entity_id`, is neither written nor
+%   read any more: did-schema declares only `relatum_id`, and the code drops
+%   `entity_id` after the schema renamed it (the decision's last step).
+%   did2.build.relatumIds reads the ends.
 %
 %   Options:
 %     'Method'   a term (or a name)
@@ -41,25 +42,7 @@ end
 
 fields = struct('relation', {relation});
 fields = methodFields(fields, options.Method, options.MethodParameters, options.SchemaCache);
-edges = struct(relatumEdge(options.SchemaCache), {cellstr(relatumIds)}, 'value_id', options.ValueId);
+edges = struct('relatum_id', {cellstr(relatumIds)}, 'value_id', options.ValueId);
 options.Files = {};
 doc = forward('undirected_relation', fields, edges, options);
-end
-
-function name = relatumEdge(cache)
-% `relatum_id` when the schema's undirected_relation declares it, else the
-% name it had before [undirected ends are relata], `entity_id`
-cache = schemaCache(cache);
-name = 'entity_id';
-if ~cache.hasClass('undirected_relation')
-    return;
-end
-s = cache.getClass('undirected_relation');
-if ~isfield(s, 'depends_on') || isempty(s.depends_on)
-    return;
-end
-deps = asDefs(s.depends_on);
-if any(cellfun(@(d) strcmp(char(d.name), 'relatum_id'), deps))
-    name = 'relatum_id';
-end
 end

@@ -51,9 +51,9 @@
 %     compressionCodec       read `compression` in either shape: the codec's
 %                            spelling and its settings
 %     compressionBlockDeclared  does the schema declare the block?
-%     relatumIds             read an undirected_relation's ends under either
-%                            name: `relatum_id`, or `entity_id` before
-%                            [undirected ends are relata] (2026-11-01)
+%     relatumIds             read an undirected_relation's ends, its
+%                            `relatum_id` edges ([undirected ends are
+%                            relata], 2026-11-01)
 
 %   Checks across documents
 %     checkDoseIngredients   a dose's ingredient_id edges are among its
