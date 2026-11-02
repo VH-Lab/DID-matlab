@@ -498,7 +498,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'did_v2'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'did_v2'})} = 'did_v2'
     options.Decompose (1,1) logical = false
 end
 % Ids this pass mints are derived from their source document's id and role,

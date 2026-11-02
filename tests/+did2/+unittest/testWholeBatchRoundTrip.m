@@ -270,11 +270,11 @@ bodies = {sessionV1('wb_sess_doc_o', sid), subjectV1('wb_spec_o', sid, 'L'), ...
 bodies{3}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
     'value', {'', 'wb_spec_o'});
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
-result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
-result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'V_eta');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'did_v2');
 assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
     'premise: the pass retired the probe''s observes relation');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
@@ -401,9 +401,9 @@ sid = '41268b6f5c6a3d4e_00000000000000c3';
 bodies = {subjectV1('wb_spec_ix', sid, 'L'), ...
     elementV1('wb_probe_ix', sid, 'p', 1, 'n-trode', 'wb_spec_ix')};
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
-result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'V_eta');
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 did2.convert.v1_to_v2({subject('wb_other_ix', 'x')}, 'Validate', false, ...
-    'TargetVersion', 'V_eta');   % what a batch pass does
+    'TargetVersion', 'did_v2');   % what a batch pass does
 [~, found] = did2.convert.elementSubjects('get', 'wb_probe_ix');
 verifyFalse(testCase, found, 'premise: the sub-batch call re-indexed the batch');
 did2.convert.roundtrip.wholeBatch(bodies, result);

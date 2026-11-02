@@ -55,13 +55,13 @@ end
 function testAV1BodyIsNotAtTheTarget(testCase)
 b = makeBody();
 b.document_class = rmfield(b.document_class, 'schema_version');
-verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'V_eta'));
+verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'did_v2'));
 end
 
 function testABlankDocumentIsAtTheTarget(testCase)
 % did2.document.blank stamps the V2 stamp ('did_v2', did2.schema.v2Stamp), so
 % a freshly built document is already at the target.
-verifyTrue(testCase, did2.convert.isAlreadyTarget(makeBody(), 'V_eta'));
+verifyTrue(testCase, did2.convert.isAlreadyTarget(makeBody(), 'did_v2'));
 end
 
 function body = makeBodyOf(className)

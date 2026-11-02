@@ -86,10 +86,13 @@ verifyEqual(testCase, did2.schema.stampOf(42), '');
 end
 
 function testADidV2BodyIsAlreadyTarget(testCase)
-verifyTrue(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v2'), 'V_eta'));
-verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped('V_eta'), 'V_eta'), ...
+verifyTrue(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v2'), 'did_v2'));
+verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped('V_eta'), 'did_v2'), ...
     '[V_eta stamp not accepted]: a V_eta-stamped body is not at the target');
-verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v1'), 'V_eta'));
+verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v1'), 'did_v2'));
+% [V_eta not kept as an alias]: 'V_eta' is no TargetVersion, so nothing is
+% at a "V_eta target", not even a did_v2 body
+verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v2'), 'V_eta'));
 end
 
 function testARerunNeverQuarantinesTheNewStamps(testCase)
@@ -186,9 +189,11 @@ end
 
 function testTargetStampMapsTheSetToTheStamp(testCase)
 % TargetVersion names the schema set; the stamp it writes is did_v2.
-verifyEqual(testCase, did2.convert.targetStamp('V_eta'), 'did_v2');
-verifyEqual(testCase, did2.convert.targetStamp("V_eta"), 'did_v2');
+% [V_eta not kept as an alias] (Jess Haley, 2026-11-02): the set's earlier
+% name is no longer mapped to the stamp.
 verifyEqual(testCase, did2.convert.targetStamp('did_v2'), 'did_v2');
+verifyEqual(testCase, did2.convert.targetStamp("did_v2"), 'did_v2');
+verifyNotEqual(testCase, did2.convert.targetStamp('V_eta'), 'did_v2');
 end
 
 % ---- fixtures ----
@@ -220,6 +225,6 @@ function testAlreadyConvertedIsAStampCheckNotARank(testCase)
 % ([V_eta stamp not accepted]).
 verifyTrue(testCase, did2.convert.isAlreadyTarget(bodyStamped('did_v2'), 'did_v2'));
 for sv = {'', 'did_v1', 'V_alpha', 'V_zeta', 'V_eta'}
-    verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped(sv{1}), 'V_eta'), sv{1});
+    verifyFalse(testCase, did2.convert.isAlreadyTarget(bodyStamped(sv{1}), 'did_v2'), sv{1});
 end
 end
