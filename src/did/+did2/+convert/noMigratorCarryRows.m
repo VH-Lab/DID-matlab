@@ -14,9 +14,7 @@ function [names, rows] = noMigratorCarryRows(v1Name)
 %   v1_to_v2 carry site names this file with `via`).
 %
 %   ROW = did2.convert.noMigratorCarryRows(V1NAME) is the tag for V1NAME, or
-%   '' when V1NAME is not listed. A listed class whose register row is not in
-%   did-schema yet has the tag '[carry-pending]' (below); its note cites no row
-%   until the tag is replaced by the row's.
+%   '' when V1NAME is not listed.
 %
 %   WHY. Decided by Jess Haley, 2026-10-31 [classes without a migrator carry
 %   as v1] (did-schema docs/plans/did_v2_go_forward_class_audit.md), "Ok" to:
@@ -37,9 +35,7 @@ function [names, rows] = noMigratorCarryRows(v1Name)
 %   2026-11-01 [last rename-pass classes], "a v1 `hartley_reverse_correlation`
 %   or `reverse_correlation` is carried unchanged as v1, each with its own
 %   carry row. Their V2 home is tracked in did-schema #260." Their rows are
-%   added to the did-schema register with this change and are not on
-%   did-schema `main` yet, so they are '[carry-pending]' here until they are
-%   (tools/check_carry_citations.py fails on a row the register does not hold).
+%   carry-168 and carry-169 (OPEN_WORK #165).
 %
 %   See also did2.convert.v1_to_v2, did2.convert.rawV1Classes.
 
@@ -55,8 +51,8 @@ table = { ...
     'projectvar',               '[carry-162]'; ...
     'stimulus_parameter_table', '[carry-163]'; ...
     'valid_interval',           '[carry-164]'; ...
-    'hartley_reverse_correlation', '[carry-pending]'; ...
-    'reverse_correlation',      '[carry-pending]'};
+    'hartley_reverse_correlation', '[carry-168]'; ...
+    'reverse_correlation',      '[carry-169]'};
 
 if nargin > 0
     i = find(strcmp(table(:, 1), char(v1Name)), 1);

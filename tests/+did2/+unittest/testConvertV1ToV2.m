@@ -532,8 +532,7 @@ end
 function testTheTwoNdiCalcVisClassesWithNoV2ClassAreCarriedWhole(testCase)
 % [last rename-pass classes]: "a v1 `hartley_reverse_correlation` or
 % `reverse_correlation` is carried unchanged as v1, each with its own carry
-% row" (rows added to did-schema with this change; '[carry-pending]' until
-% they are on did-schema main)
+% row" (carry-168, carry-169)
 for c = {'hartley_reverse_correlation', 'reverse_correlation'}
     v1 = makeV1Skeleton(c{1});
     v1.(c{1}) = struct('foo', 'bar');
