@@ -176,6 +176,15 @@ LATER_STEP_CLASSES = {'ensemble', 'generic_file'};
 % 2026-11-01 [last rename-pass classes]).
 PARENT_ONLY_CLASSES = {'app', 'calculator', 'epochid', 'stimulus_response', ...
     'stimulus_response_scalar_parameters'};
+% v1 classes whose migrator HANDS ON a document unchanged to a later batch
+% pass (resolveClockAlignment: syncrule; epochMint / resolveEpochProbemap:
+% epochfiles_ingested; resolveResponseParameters: stimulus_response_scalar and
+% its parameters; resolveOpenmindsCitations: openminds). Such a document gets
+% V2's superclass list from its one named step,
+% did2.convert.handOnSuperclasses (Decided by Jess Haley, 2026-11-02
+% [handed-on classes carried at the end] (2)).
+HAND_ON_CLASSES = {'syncrule', 'epochfiles_ingested', 'stimulus_response_scalar', ...
+    'stimulus_response_scalar_parameters_basic', 'openminds'};
 
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
@@ -301,6 +310,8 @@ carriedUnvalValues = [];
 % yet produce a complete document. Denominator: the converted bodies padded.
 paddedInspected = 0;
 paddedNames = {};
+handOnNames = {};
+handOnValues = [];
 paddedValues = [];
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
@@ -709,9 +720,18 @@ for k = 1:numel(bodies)
                     outBody.document_class.schema_version = 'did_v1';
                 end
             else
-                outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+                outBody = v2Bodies{bi};
+                if passedThrough && any(strcmp(className, HAND_ON_CLASSES))
+                    % the hand-on step ([handed-on classes carried at the
+                    % end] (2)): V2's superclass list, nothing else
+                    outBody = did2.convert.handOnSuperclasses(outBody, options.SchemaCache);
+                    [handOnNames, handOnValues] = bumpClassCounter( ...
+                        handOnNames, handOnValues, className);
+                end
+                beforePadding = outBody;
+                outBody = did2.convert.ensureClassBlocks(outBody, options.SchemaCache);
                 paddedInspected = paddedInspected + 1;
-                if ~isequaln(outBody, v2Bodies{bi})
+                if ~isequaln(outBody, beforePadding)
                     [paddedNames, paddedValues] = bumpClassCounter( ...
                         paddedNames, paddedValues, className);
                 end
@@ -925,6 +945,8 @@ result.summary = struct( ...
     'carried_failing_veta_validation_by_class', buildByClassTable(carriedUnvalNames, carriedUnvalValues), ...
     'legacy_ndi_document', legacy, ...
     'carried_v1_template_check', carriedTemplateCheck, ...
+    'hand_on_superclasses', struct('bodies_written', sum(handOnValues), ...
+        'by_class', buildByClassTable(handOnNames, handOnValues)), ...
     'class_blocks_padding', struct('bodies_inspected', paddedInspected, ...
         'bodies_changed', sum(paddedValues), ...
         'changed_by_class', buildByClassTable(paddedNames, paddedValues)), ...
