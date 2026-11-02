@@ -111,7 +111,7 @@ end
 
 function testGeneListBecomesATermWithItsFile(testCase)
 v1 = geneList();
-out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 verifyEmpty(testCase, out.passthrough);
 verifyEqual(testCase, numel(out.migrated), 2);
@@ -301,7 +301,7 @@ reader = [];
 if ~isempty(tsv)
     reader = @(~, name) tsvFor(name, tsv);
 end
-out = did2.convert.v1_to_v2({v1}, 'Validate', validate, 'TargetVersion', 'V_eta', ...
+out = did2.convert.v1_to_v2({v1}, 'Validate', validate, 'TargetVersion', 'did_v2', ...
     'V1FileReader', reader);
 end
 

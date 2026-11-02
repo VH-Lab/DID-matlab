@@ -157,7 +157,7 @@ arguments
     options.Verbose (1,1) logical = false
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
-    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_eta', 'did_v2'})} = 'did_v2'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'did_v2'})} = 'did_v2'
     options.Audits (1,1) logical = true
     options.UnitQualityLabels cell = {}
     options.V1FileReader = []

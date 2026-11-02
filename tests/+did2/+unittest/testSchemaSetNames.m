@@ -1,12 +1,13 @@
 function tests = testSchemaSetNames
-%TESTSCHEMASETNAMES The V2 schema set answers to both its names.
+%TESTSCHEMASETNAMES The V2 schema set answers to 'did_v2' only.
 %
 %   Decided by Jess Haley, 2026-10-25 [schema set renamed did_v2] (did-schema
 %   V_eta_go_forward_class_audit.md): the set named `V_eta` is renamed
-%   `did_v2`, siblings first -- step 1, built here, is "accept both names":
-%   every TargetVersion check takes 'did_v2' as well as 'V_eta', and a reader
-%   of the set by path takes schemas/did_v2/<tier>, preferring it when present,
-%   else schemas/V_eta/<tier>.
+%   `did_v2`, siblings first. Step 1 accepted both names; step 3, Decided by
+%   Jess Haley, 2026-11-02 [V_eta not kept as an alias]: only 'did_v2' is a
+%   TargetVersion, and 'V_eta' is an argument error. A reader of the set by
+%   PATH still takes schemas/did_v2/<tier>, preferring it when present, else
+%   the folder schemas/V_eta/<tier> of an older did-schema checkout.
 
 tests = functiontests(localfunctions);
 end
@@ -16,16 +17,16 @@ prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
 end
 
-function testBothNamesAreTheV2Set(testCase)
+function testOnlyDidV2IsTheV2Set(testCase)
 verifyTrue(testCase, did2.convert.isV2Set('did_v2'));
-verifyTrue(testCase, did2.convert.isV2Set('V_eta'));
+verifyTrue(testCase, did2.convert.isV2Set("did_v2"));
+verifyFalse(testCase, did2.convert.isV2Set('V_eta'), '[V_eta not kept as an alias]');
 verifyFalse(testCase, did2.convert.isV2Set('V_zeta'));
 verifyFalse(testCase, did2.convert.isV2Set('did_v1'));
 verifyFalse(testCase, did2.convert.isV2Set(''));
 end
 
-function testEitherNameStampsTheDocumentDidV2(testCase)
-verifyEqual(testCase, did2.convert.targetStamp('V_eta'), 'did_v2');
+function testTheSetStampsTheDocumentDidV2(testCase)
 verifyEqual(testCase, did2.convert.targetStamp('did_v2'), 'did_v2');
 end
 
@@ -37,12 +38,14 @@ v1.depends_on = struct('name', {}, 'value', {});
 v1.base = struct('id', 'sd_1', 'session_id', 'sess_1', ...
     'name', '', 'datestamp', '2024-03-23T13:47:40.237Z');
 v1.session = struct('reference', 'ref');
-a = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+verifyError(testCase, @() did2.convert.v1_to_v2(v1, 'Validate', false, ...
+    'TargetVersion', 'V_eta'), 'MATLAB:validators:mustBeMember', ...
+    '[V_eta not kept as an alias]: the earlier name is an argument error');
+verifyError(testCase, @() did2.convert.epochMint(struct('migrated', {{}}), ...
+    'Validate', false, 'TargetVersion', 'V_eta'), 'MATLAB:validators:mustBeMember');
 b = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
-verifyEqual(testCase, b.summary.migrated_count, a.summary.migrated_count);
-verifyEqual(testCase, char(b.migrated{1}.get('document_class.schema_version')), ...
-    char(a.migrated{1}.get('document_class.schema_version')), ...
-    'the two names are one set: the same stamp');
+verifyEqual(testCase, b.summary.migrated_count, 1);
+verifyEqual(testCase, char(b.migrated{1}.get('document_class.schema_version')), 'did_v2');
 [~, rep] = did2.convert.epochMint(b, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyTrue(testCase, rep.ran);
 end
