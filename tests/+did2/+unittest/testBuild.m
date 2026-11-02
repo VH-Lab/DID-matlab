@@ -1492,45 +1492,32 @@ verifyError(testCase, @() did2.build.directedRelation(child, parent, ...
 end
 
 function testUndirectedRelationNeedsTwoEntities(testCase)
-% the ends are written under the name the schema in use declares (`relatum_id`
-% after did-schema [undirected ends are relata], `entity_id` before) and read
-% back under either by did2.build.relatumIds
+% the ends are written as `relatum_id` edges (did-schema [undirected ends are
+% relata], Jess Haley 2026-11-01) and read back by did2.build.relatumIds
 sid = testCase.TestData.sid;
 ends = {newId(), newId()};
 rel = did2.build.undirectedRelation(ends, did2.build.term('', 'same_as'), ...
     'SessionId', sid);
-edge = declaredRelatumEdge();
-verifyEqual(testCase, sum(strcmp({rel.depends_on.name}, edge)), 2);
+verifyEqual(testCase, sum(strcmp({rel.depends_on.name}, 'relatum_id')), 2);
 verifyEqual(testCase, did2.build.relatumIds(rel), ends);
 verifyError(testCase, @() did2.build.undirectedRelation({newId()}, ...
     did2.build.term('', 'same_as'), 'SessionId', sid), 'did2:build:missingEdge');
 end
 
-function testUndirectedRelationWritesRelatumIdOnceDeclared(testCase)
+function testUndirectedRelationWritesRelatumIdOnly(testCase)
 % Jess Haley 2026-11-01 [undirected ends are relata] (did-schema
-% did_v2_go_forward_class_audit.md): `undirected_relation.entity_id` becomes
-% `relatum_id`, the code first. On a copy of the schema whose
-% undirected_relation declares `relatum_id` (renamed here as text when the
-% schema in use still says `entity_id`), the builder writes `relatum_id`
-% only, and did2.build.relatumIds reads the ends.
-src = testCase.TestData.schemaPath;
-tmp = tempname;
-mkdir(tmp);
-did2.schema.cache.copySchemaSet(src, tmp);
-testCase.addTeardown(@() rmdir(tmp, 's'));
-file = fullfile(tmp, 'undirected_relation.json');
-jsonText = fileread(file);
-if isempty(strfind(jsonText, '"name": "relatum_id"'))
-    old = '"name": "entity_id"';
-    verifyNumElements(testCase, strfind(jsonText, old), 1, ...
-        'undirected_relation declares neither relatum_id nor one entity_id');
-    jsonText = strrep(jsonText, old, '"name": "relatum_id"');
-    fid = fopen(file, 'w');
-    fwrite(fid, jsonText);
-    fclose(fid);
-end
-did2.schema.cache.setSchemaPath(tmp);
-testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
+% did_v2_go_forward_class_audit.md): `undirected_relation.entity_id` became
+% `relatum_id`; the code read both names, then the schema renamed it, and now
+% the code drops `entity_id`. The schema in use declares `relatum_id` and not
+% `entity_id`; the builder writes `relatum_id` only.
+s = did2.schema.cache.shared().getClass('undirected_relation');
+deps = s.depends_on;
+if isstruct(deps), deps = num2cell(deps); end
+declared = cellfun(@(d) char(d.name), deps, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(declared, 'relatum_id')), ...
+    'the schema in use does not declare relatum_id');
+verifyFalse(testCase, any(strcmp(declared, 'entity_id')), ...
+    'the schema in use still declares entity_id on undirected_relation');
 ends = {newId(), newId()};
 rel = did2.build.undirectedRelation(ends, did2.build.term('', 'same_as'), ...
     'SessionId', testCase.TestData.sid);
@@ -1540,30 +1527,18 @@ verifyFalse(testCase, any(strcmp(names, 'entity_id')));
 verifyEqual(testCase, did2.build.relatumIds(rel), ends);
 end
 
-function testRelatumIdsReadsBothNames(testCase)
-% a document written before the rename (`entity_id`) and one after
-% (`relatum_id`) read the same; a did2.document reads as its body
-before = struct('depends_on', struct('name', {'entity_id', 'entity_id', 'session_id'}, ...
+function testRelatumIdsReadsRelatumIdOnly(testCase)
+% the ends are the `relatum_id` edges; an `entity_id` edge (the name before
+% [undirected ends are relata]) is not an end and is not read. A did2.document
+% reads as its body.
+old = struct('depends_on', struct('name', {'entity_id', 'entity_id', 'session_id'}, ...
     'document_id', {'a', 'b', 's'}));
-after = struct('depends_on', struct('name', {'session_id', 'relatum_id', 'relatum_id'}, ...
+cur = struct('depends_on', struct('name', {'session_id', 'relatum_id', 'relatum_id'}, ...
     'document_id', {'s', 'a', 'b'}));
-verifyEqual(testCase, did2.build.relatumIds(before), {'a', 'b'});
-verifyEqual(testCase, did2.build.relatumIds(after), {'a', 'b'});
-verifyEqual(testCase, did2.build.relatumIds(did2.document(after)), {'a', 'b'});
+verifyEqual(testCase, did2.build.relatumIds(old), {});
+verifyEqual(testCase, did2.build.relatumIds(cur), {'a', 'b'});
+verifyEqual(testCase, did2.build.relatumIds(did2.document(cur)), {'a', 'b'});
 verifyEqual(testCase, did2.build.relatumIds(struct('depends_on', [])), {});
-end
-
-function name = declaredRelatumEdge()
-% the edge name the loaded schema's undirected_relation declares for its ends
-s = did2.schema.cache.shared().getClass('undirected_relation');
-deps = s.depends_on;
-if isstruct(deps), deps = num2cell(deps); end
-names = cellfun(@(d) char(d.name), deps, 'UniformOutput', false);
-if any(strcmp(names, 'relatum_id'))
-    name = 'relatum_id';
-else
-    name = 'entity_id';
-end
 end
 
 function [cls, fields, supers] = subjectSpec(localId)
