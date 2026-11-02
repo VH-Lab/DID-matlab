@@ -18,9 +18,8 @@ function v2Body = element_epoch(preBody)
 %   elements), so the class and its property block are renamed to
 %   `acquisition_epoch`. The clock-block transform (v1 epoch_clock/t0_t1 -> the
 %   clocks array-of-records) is identical to the base migrator, so this reuses it
-%   and then renames. The acquisition_epoch superclass chain (base + epochid) and
-%   the empty axes/channels/storage blocks are rebuilt by ensureClassBlocks
-%   against the V_eta schema.
+%   and then renames. The acquisition_epoch superclass chain (base + epochid)
+%   is written here from the V_eta schema (did2.build.superclasses).
 %
 %   ---------------------------------------------------------------------------
 %   CORRECTION -- THIS CLASS IS NOT "THE EPOCH", AND THIS HEADER SAID IT WAS
@@ -177,11 +176,12 @@ end
 if isfield(v2Body, 'depends_on')
     v2Body.depends_on = deps;
 end
-% the superclass list by name (did2.convert.v1read.readStamp: v1 names a
-% superclass by its definition path); v1_to_v2's ensureClassBlocks rebuilds
-% the V_eta chain from the class name, as on the renamed path
-stamp = did2.convert.v1read.readStamp(body);
-v2Body.document_class.superclasses = struct('class_name', stamp.superclasses);
+% the superclass list of acquisition_epoch, from the schema
+% (did2.build.superclasses), so the document is complete as emitted
+% ([early migration pieces fixed] (2), Jess Haley, 2026-10-26: "the builder
+% produces a complete document"; before, v1_to_v2's ensureClassBlocks added
+% the class versions to v1's {base, epochid})
+v2Body.document_class.superclasses = did2.build.superclasses('acquisition_epoch');
 end
 
 function v2Body = convertElementEpoch(preBody)

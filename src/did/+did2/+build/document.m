@@ -165,13 +165,7 @@ end
 chain = cache.documentChain(className, kind);
 
 % ---- document_class --------------------------------------------------------
-ancestors = cache.documentAncestors(className, kind);
-sc = struct('class_name', {}, 'class_version', {});
-for k = 1:numel(ancestors)
-    ancDC = cache.getClass(ancestors{k}).document_class;
-    sc(end+1) = struct('class_name', char(ancDC.class_name), ...
-        'class_version', char(ancDC.class_version)); %#ok<AGROW>
-end
+sc = did2.build.superclasses(className, 'ValueKind', kind, 'SchemaCache', cache);
 doc = struct();
 doc.document_class = struct( ...
     'class_name', char(dc.class_name), ...
