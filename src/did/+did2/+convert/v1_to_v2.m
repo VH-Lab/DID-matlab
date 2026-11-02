@@ -182,9 +182,15 @@ PARENT_ONLY_CLASSES = {'app', 'calculator', 'epochid', 'stimulus_response', ...
 % its parameters; resolveOpenmindsCitations: openminds). Such a document gets
 % V2's superclass list from its one named step,
 % did2.convert.handOnSuperclasses (Decided by Jess Haley, 2026-11-02
-% [handed-on classes carried at the end] (2)).
+% [handed-on classes carried at the end] (2), which names those five, the
+% ones the corpora hold). daqreader_epochdata_ingested and
+% daqreader_image_epochdata_ingested are handed on the same way (to epochMint)
+% when their source names no epoch document; no corpus holds one, and the
+% padding probe on the unit fixtures found them (DID-matlab
+% claude/W-padding-probe), so they take the same step.
 HAND_ON_CLASSES = {'syncrule', 'epochfiles_ingested', 'stimulus_response_scalar', ...
-    'stimulus_response_scalar_parameters_basic', 'openminds'};
+    'stimulus_response_scalar_parameters_basic', 'openminds', ...
+    'daqreader_epochdata_ingested', 'daqreader_image_epochdata_ingested'};
 
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check

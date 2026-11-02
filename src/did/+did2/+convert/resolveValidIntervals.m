@@ -996,9 +996,14 @@ ref.base = freshBase(src, 'migrated_valid_interval_anchor');
 if ~isempty(anchor.tolerance_seconds)
     % Written ONLY when the source clock stated a tolerance. An empty tolerance
     % cell would assert "the timeline is good to 0 s", which the source never
-    % said; with no block, ensureClassBlocks pads it.
+    % said; with none, the block is written empty here, so the document is
+    % complete as built ([early migration pieces fixed] (2), Jess Haley,
+    % 2026-10-26: "the builder produces a complete document"; before,
+    % ensureClassBlocks added it).
     ref.time_reference = struct('clock_tolerance', ...
         durationCell(anchor.tolerance_seconds));
+else
+    ref.time_reference = struct();
 end
 value = struct('clock', struct('node', '', 'name', anchor.clock), ...
     'start', durationCell(startSeconds));

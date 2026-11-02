@@ -343,7 +343,14 @@ refs = jEpochClockReferences(getSubStruct(blk, 'epochtable'), epochDocId, ...
 % document rather than being deleted -- deciding it is redundant is the fold's
 % call to make, not this one's.
 
-bodies = [{preBody}, refs];
+% the document is kept beside its clock references, so it is emitted
+% complete: the superclass list of its class, from the schema
+% (did2.build.superclasses; [early migration pieces fixed] (2), Jess Haley,
+% 2026-10-26: "the builder produces a complete document"; before,
+% v1_to_v2's ensureClassBlocks rewrote v1's list)
+kept = preBody;
+kept.document_class.superclasses = did2.build.superclasses('daqreader_image_epochdata_ingested');
+bodies = [{kept}, refs];
 end
 
 % ===================== small helpers =======================================

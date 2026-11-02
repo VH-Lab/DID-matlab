@@ -144,6 +144,10 @@ end
 % ---- the rename, and the consumed blocks ----
 v2Body = preBody;
 v2Body.document_class.class_name = 'demo';
+% the superclass list of `demo`, from the schema (did2.build.superclasses), so
+% the document is complete as emitted ([early migration pieces fixed] (2),
+% Jess Haley, 2026-10-26; before, v1_to_v2's ensureClassBlocks rewrote it)
+v2Body.document_class.superclasses = did2.build.superclasses('demo');
 v2Body.demo = demoBlock;
 % `demo_ndi_mock` is the concrete block of the mock class and carries no fields;
 % it is listed so the removal does not depend on ensureClassBlocks' empty-block
