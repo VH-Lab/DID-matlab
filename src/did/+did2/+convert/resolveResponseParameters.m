@@ -18,6 +18,15 @@ function [result, report] = resolveResponseParameters(result, options)
 %   BATCH-PASS-EMITS: stimulus_response_scalar_parameters_basic -> document:
 %       method
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: stimulus_response_scalar_parameters_basic,
+%       calculation(harmonic_component)
+%   BATCH-PASS-ADDS: method(response parameters)
+%   BATCH-PASS-CHANGES: calculation(harmonic_component)
+%   BATCH-PASS-REMOVES: stimulus_response_scalar_parameters_basic
+%
 %   `inline` IS NOT A SOFTER `document`, AND THE DISTINCTION IS THE THIRD OF
 %   THE THREE EMISSION SHAPES row 107 names. The destination is the
 %   `subject_interaction.method_parameters` BLOCK, written at :328 onto the

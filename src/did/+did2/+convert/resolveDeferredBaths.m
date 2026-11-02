@@ -31,6 +31,19 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   BATCH-PASS-EMITS: stimulus_bath -> document: relative_time_reference,
 %       manipulation+formulation, formulation, chemical, observation+term
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: stimulus_bath, element, entity(element),
+%       directed_relation(element lineage), acquisition_epoch, element_epoch,
+%       result.passthrough
+%   BATCH-PASS-ADDS: relative_time_reference(bath anchor),
+%       manipulation(bath), formulation, chemical, observation(bath),
+%       result.deferred_bath_anchors
+%   BATCH-PASS-CHANGES: NONE -- it only appends; the deferred stimulus_bath
+%       entries leave the quarantine, not the batch
+%   BATCH-PASS-REMOVES: NONE -- it folds no document that is in the batch
+%
 %   SCOPE OF THAT LINE: V_eta is the only path. The V_zeta branch (makeBath
 %   emitting `bath` + `pharmacological_manipulation`) was deleted with
 %   +migrators_e/+migrators_i (did-schema #88, OPEN_WORK #128): only

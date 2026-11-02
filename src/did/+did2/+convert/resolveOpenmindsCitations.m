@@ -22,6 +22,18 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %   BATCH-PASS-EMITS: openminds -> document: dataset, person, organization,
 %       funding, publication, web_resource, directed_relation
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   (dataset citation: the subject-side types -- Subject, Species, Strain,
+%   ... -- are left out of the walk, routeIsSubjectSide below.)
+%   BATCH-PASS-READS: openminds(dataset citation)
+%   BATCH-PASS-ADDS: entity(dataset), entity(person), entity(organization),
+%       funding, publication, web_resource, directed_relation(openMINDS role)
+%   BATCH-PASS-CHANGES: NONE -- it appends the assembled documents and
+%       removes the sources
+%   BATCH-PASS-REMOVES: openminds(dataset citation)
+%
 %   The seven are the six entity classes named in the H1 line plus the
 %   `directed_relation` edges between them, all minted through
 %   did2.convert.entities (entityDoc :586/:610/:664/:703/:731, orgFor

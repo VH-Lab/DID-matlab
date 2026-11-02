@@ -30,6 +30,17 @@ function [result, report] = resolveDatasetEntities(result, options)
 %       jMembershipBodies already skips "the dataset's own root".)
 %   ---------------------------------------------------------------------
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: entity(dataset), entity(session),
+%       directed_relation(included_in)
+%   BATCH-PASS-ADDS: NONE -- it only keeps, drops or fills in what is there
+%   BATCH-PASS-CHANGES: entity(dataset), entity(session),
+%       directed_relation(included_in)
+%   BATCH-PASS-REMOVES: NONE -- it prunes duplicates and dangling edges
+%       (CHANGES), it folds no class away
+%
 %     1. DEDUPLICATE dataset entities. Every dataset-level source
 %        (metadata_editor / dataset_remote / session_in_a_dataset /
 %        dataset_session_info) mints a `dataset` entity keyed on the SAME dataset

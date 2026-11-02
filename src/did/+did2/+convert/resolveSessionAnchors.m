@@ -18,6 +18,16 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   BATCH-PASS-EMITS: session_relative_reference -> document: relative_reference
 %   BATCH-PASS-EMITS: session_bounded_reference -> document: relative_reference
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: session, session_relative_reference,
+%       session_bounded_reference
+%   BATCH-PASS-ADDS: relative_reference(folded session anchor)
+%   BATCH-PASS-CHANGES: NONE -- each fold replaces its source under the same
+%       id (REMOVES, ADDS)
+%   BATCH-PASS-REMOVES: session_relative_reference, session_bounded_reference
+%
 %   NEITHER CONSUMED NAME IS A did_v1 SOURCE CLASS. Both are DID-side
 %   intermediates -- V_zeta/V_eta time_reference classes that the per-document
 %   migrators and resolveDeferredBaths mint on the way through -- so neither

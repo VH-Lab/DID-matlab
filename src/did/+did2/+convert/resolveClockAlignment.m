@@ -21,6 +21,15 @@ function [result, report] = resolveClockAlignment(result, options)
 %       clock_alignment_configuration (and its software entity) and is
 %       credited there; crediting it here would count that emission twice.
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: session, syncgraph, acquisition_system, syncrule
+%   BATCH-PASS-ADDS: clock_alignment_policy, clock_alignment_configuration,
+%       entity(software minted by a batch pass)
+%   BATCH-PASS-CHANGES: NONE -- each fold replaces its source (REMOVES, ADDS)
+%   BATCH-PASS-REMOVES: syncgraph, syncrule
+%
 %   `syncrule`: the DEVICE-PAIR rules are consumed here -- `filefind`, and the
 %   channel-based `commonTriggersOverlappingEpochs` and `randomPulses`. A
 %   file-based `filematch` rule reaches its `clock_alignment_configuration` in

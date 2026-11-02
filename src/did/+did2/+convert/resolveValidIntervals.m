@@ -54,6 +54,17 @@ function [result, report] = resolveValidIntervals(result, options)
 %       decomposition behind the guard is NOT the signed model and waits on
 %       `axes[]`.
 %
+%   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
+%   pass order from these; [migration reliability practices] (c), Jess Haley,
+%   2026-10-26). Read from this file's code, class by class.
+%   BATCH-PASS-READS: valid_interval, entity(epoch),
+%       directed_relation(element lineage)
+%   BATCH-PASS-ADDS: observation(validity),
+%       relative_reference(validity interval)
+%   BATCH-PASS-CHANGES: NONE -- it appends; dormant by default (Decompose
+%       false), these are what its guarded branch writes
+%   BATCH-PASS-REMOVES: valid_interval
+%
 %   THAT `nothing` IS LOAD-BEARING AND MUST NOT BE "FIXED" INTO AN EMISSION.
 %   The `valid_interval` ledger row carries `logical_observation` as its
 %   DECIDED target, so declaring it emitted here would move that row to the

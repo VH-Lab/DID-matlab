@@ -310,6 +310,18 @@ jobs:
         # EXISTS cannot notice something that stopped existing.
         run: python3 tools/test_batch_pass_wiring.py
 
+      - name: The batch-pass order is derived from declarations and checked (python, <1s)
+        # [migration reliability practices] (c) (Jess Haley, 2026-10-26, did-schema
+        # docs/plans/did_v2_go_forward_class_audit.md): each whole-dataset pass
+        # declares what it reads, adds, changes and removes; the order is
+        # derived from those declarations and every composition (the two
+        # report-writing call sites here; NDI-matlab's second pass in
+        # NDI-matlab's own CI, with --ndi) fails if a pass reads what a later
+        # pass writes, or reads what an earlier pass removed.
+        run: |
+          python3 tools/batch_pass_order.py
+          python3 tools/test_batch_pass_order.py
+
       - name: Every migrator is in Contents.m and has a test (python, <1s)
         # +migrators_j/Contents.m is consulted as FACT about which classes
         # deliberately have NO migrator -- DID-schema/CLAUDE.md cites its
