@@ -79,8 +79,9 @@ function bodies = daqmetadatareader_epochdata_ingested(preBody)
 %   + base.json at the locked NDI-matlab `main`, 3cb19a8, as
 %   +ndi/+daq/metadatareader.m ingest_epochfiles writes it), and pass 1 carries
 %   it UNTOUCHED, whatever it holds: every field reaches NDI's second pass,
-%   which places it or carries it (carry-086, carry-087, carry-088; [extra field
-%   on an ingested stimulus file is malformed]). Its id is read through
+%   which places it or carries it (carry-086, carry-088; a block field or edge
+%   outside NDI's template is carry-100, [fields outside the template are
+%   malformed], NDI-matlab #1144). Its id is read through
 %   did2.convert.v1read.readBase, so a legacy `ndi_document` identity is read
 %   too. The renamed path carried a document universalRenames would have
 %   changed with carry-100 instead; both carry it.
