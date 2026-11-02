@@ -67,9 +67,13 @@ function bodies = gene_list_mapping(preBody)
 %                 they disagree, the document is malformed"), or
 %                 n_genes_mapped_a/_b not the number of distinct genes of
 %                 that list in the file
-%     no row yet  a `mapping_type` other than alias or ortholog ([gene list
+%     carry-166   a `mapping_type` other than alias or ortholog ([gene list
 %                 mapping other types carried]: "anything else keeps the whole
-%                 document as v1"); a mapping.tsv this run cannot read
+%                 document as v1"; not_modelled)
+%     carry-167   a mapping.tsv this run cannot read (malformed: NDI's
+%                 template declares the file and no NDI writer makes the
+%                 class; a DID-only run given no 'V1FileReader' and no local
+%                 file location carries every mapping this way)
 %
 %   READS RAW v1 (did2.convert.rawV1Classes; [migrators read raw v1]): the
 %   document exactly as v1 wrote it (`geneListMapping`, NDI-matlab locked
@@ -128,17 +132,15 @@ switch mappingType
         relationTerm = did2.convert.registeredTerm('EMPTY:0000386', 'orthologous gene mapping');
         methodTerm = [];   % [orthology mapping has no method term]
     otherwise
-        % [gene list mapping other types carried] (Jess Haley, 2026-11-01);
-        % no carry register row yet: a question for the team
-        reasons{end+1} = sprintf(['geneListMapping.mapping_type (''%s'': only alias and ' ...
+        % [gene list mapping other types carried] (Jess Haley, 2026-11-01)
+        reasons{end+1} = sprintf(['[carry-166] geneListMapping.mapping_type (''%s'': only alias and ' ...
             'ortholog have relation terms; [gene list mapping other types carried])'], mappingType);
 end
 rows = struct('a', [], 'b', [], 'n', 0);
 if isempty(reasons)
     [text, ok, why] = did2.convert.v1Files('read', body, 'mapping.tsv');
     if ~ok
-        % no carry register row yet: a question for the team
-        reasons{end+1} = sprintf('files mapping.tsv (%s)', why);
+        reasons{end+1} = sprintf('[carry-167] files mapping.tsv (%s)', why);
     else
         [rows, problem] = readMapping(text, hasScore);
         if ~isempty(problem)
@@ -148,8 +150,7 @@ if isempty(reasons)
         end
     end
 end
-% carry-register: carry-100 carry-120; none for a mapping_type with no
-%   relation term or a mapping.tsv this run cannot read
+% carry-register: carry-100 carry-120 carry-166 carry-167
 if jRawCarry('gene_list_mapping', preBody, collision, unplaced, 'carry-100', reasons)
     bodies = {preBody};   % the carry of the untouched v1 source
     return;
