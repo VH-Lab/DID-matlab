@@ -37,9 +37,12 @@ NON_CLASS_NAMES = ("index", "topics", "ndi_reserved_keys")
 NON_CLASS_PREFIXES = ("did_v2_", "V_eta_")
 
 
-PROBE_DROPPED = ("syncrule", "epochfiles_ingested", "stimulus_response_scalar",
-                 "stimulus_response_scalar_parameters_basic", "openminds",
-                 "daqreader_epochdata_ingested", "daqreader_image_epochdata_ingested")
+PROBE_DROPPED = ("acquisition_epoch", "app", "calculator", "daqreader",
+                 "daqreader_epochdata_ingested", "daqreader_image_epochdata_ingested",
+                 "epochfiles_ingested", "epochid", "filenavigator", "openminds",
+                 "stimulus_presentation", "stimulus_response", "stimulus_response_scalar",
+                 "stimulus_response_scalar_parameters",
+                 "stimulus_response_scalar_parameters_basic", "syncrule")
 
 
 def is_class_name(stem):
