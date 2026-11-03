@@ -66,11 +66,14 @@ for k = 1:size(f, 1)
         verifyTrue(testCase, carried, [label ': carried as the untouched v1 source']);
         verifyTrue(testCase, contains(notes, 'has no V2 home'), notes);
     else
+        % handed on to epochMint exactly as v1 wrote it, stamped did_v1
+        % ([handed-on are v1 as written], Jess Haley, 2026-11-03); INVERTED: it was a did_v2 passthrough
         verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
-            'did_v2', [label ': a passthrough is not a carry']);
+            'did_v1', [label ': handed on as v1']);
     end
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyEqual(testCase, r.carried, isCarry, label);
+    % carried or handed on, it round trips as the v1 document it is
+    verifyTrue(testCase, r.carried, label);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
 end
 end

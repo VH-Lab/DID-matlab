@@ -84,11 +84,14 @@ for k = 1:size(f, 1)
         case 'passthrough'
             verifyEqual(testCase, numel(out.passthrough), 1, [label ': a pass-1 passthrough']);
             verifyEqual(testCase, numel(out.migrated), 1, label);
+            % handed on to its batch pass exactly as v1 wrote it, stamped
+            % did_v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03); INVERTED: it was a did_v2 passthrough
             verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
-                'did_v2', [label ': a passthrough is not a carry']);
+                'did_v1', [label ': handed on as v1']);
     end
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyFalse(testCase, r.carried, label);
+    % a handed-on document round trips as the v1 document it is
+    verifyEqual(testCase, r.carried, strcmp(outcome, 'passthrough'), label);
     verifyRoundTrip(testCase, r, label, findingsFor(label));
 end
 end

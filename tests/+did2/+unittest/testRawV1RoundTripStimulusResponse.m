@@ -119,8 +119,11 @@ for k = 1:size(cases, 1)
     verifyEqual(testCase, numel(out.passthrough), 1, [label ': handed on']);
     verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
         [label ': not carried']);
+    % handed on exactly as v1 wrote it, stamped did_v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03): it
+    % round trips as the v1 document it is (INVERTED: a did_v2 passthrough)
+    verifyEqual(testCase, out.migrated{1}.get('document_class.schema_version'), 'did_v1', label);
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyFalse(testCase, r.carried, label);
+    verifyTrue(testCase, r.carried, label);
     verifyRoundTrip(testCase, r, label, {});
 end
 end
@@ -208,9 +211,11 @@ for h = 0:2
     verifyEmpty(testCase, out.quarantine, label);
     verifyEqual(testCase, numel(out.migrated), 1, label);
     verifyEqual(testCase, numel(out.passthrough), 1, [label ': a pass-1 passthrough']);
-    verifyEqual(testCase, out.migrated{1}.get('document_class.schema_version'), 'did_v2', label);
+    % handed on exactly as v1 wrote it, stamped did_v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03);
+    % INVERTED: it was a did_v2 passthrough
+    verifyEqual(testCase, out.migrated{1}.get('document_class.schema_version'), 'did_v1', label);
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyFalse(testCase, r.carried, label);
+    verifyTrue(testCase, r.carried, label);
     verifyRoundTrip(testCase, r, label, {});
 end
 end
