@@ -163,9 +163,9 @@ for k = 1:2
     verifyEqual(testCase, m.className(), 'migration');
     ms = m.toStruct();
     anchors{k} = char(ms.depends_on(strcmp({ms.depends_on.name}, 'session_id')).document_id);
-    body = db.get(rec.report_ids{k});
-    verifyEqual(testCase, char(body.get('data_body.owner_id')), rec.migration_ids{k}, ...
-        'each report is attached to its own record');
+    bs = db.get(rec.report_ids{k}).toStruct();
+    verifyEqual(testCase, char(bs.depends_on(strcmp({bs.depends_on.name}, 'owner_id')).document_id), ...
+        rec.migration_ids{k}, 'each report is attached to its own record');
     report = jsondecode(fileread(db.filePath(rec.report_ids{k}, 'body_data_0')));
     verifyEqual(testCase, report.anchor, anchors{k});
     verifyEqual(testCase, report.counts.run.source_documents, 3, 'the run''s counts');
