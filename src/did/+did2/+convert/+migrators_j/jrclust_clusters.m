@@ -11,7 +11,7 @@ function bodies = jrclust_clusters(preBody)
 %   folds to a count_observation whose value stream is the assignment series:
 %
 %       count_observation  the discoverable spine handle: subject_id, a shared time
-%                          anchor, variable = 'spike cluster assignment',
+%                          anchor, variable = OBI:0000648 "clustered data set" ([term picks batch 1] (2)),
 %                          storage_mode 'body'.
 %       sampled_body       one datum per spike (the cluster index); NO axes and no
 %                          sample_time -- the length is unknown (this class has no
@@ -143,7 +143,7 @@ if ~isempty(swId); swOpt = [swOpt, {'SoftwareId', swId}]; end
 % is the `software` entity on software_id.
 spikeSorting = jMethod(did2.convert.registeredTerm('wikidata:Q2003571', 'Spike sorting'));
 obs = jStatement(preBody, 'calculation', subjectId, ...
-    jLabel('spike cluster assignment'), [], 'DataBody', true, ...
+    did2.convert.registeredTerm('OBI:0000648', 'clustered data set'), [], 'DataBody', true, ...
     'Fields', struct('method', spikeSorting), ...
     'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', obsId, 'ValueKind', 'label');
 md5 = jGetCharAny(blk, {'res_mat_md5_checksum', 'res_mat_MD5_checksum'});
