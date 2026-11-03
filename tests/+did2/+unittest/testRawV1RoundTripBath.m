@@ -36,11 +36,13 @@ function tests = testRawV1RoundTripBath
 %   lost). KNOWN FINDINGS of the bath pass's own output, listed exactly:
 %     epochid.epochid         the anchor is still on the session until epochMint
 %                             re-points it
-%   A table with a pH or osm row (the ACSF) is no longer a finding: those rows
-%   go on the formulation's `ph` / `osmolarity`, which keep no ontology node
-%   (NCIm:C4048290, NCIm:C0439186) and not where the row stood, and the round
-%   trip counts them equal (Decided by Jess Haley, 2026-10-27 [bath ph and
-%   osmolarity are formulation fields]).
+%   A table with a pH row is no longer a finding: it goes on the formulation's
+%   `ph`, which keeps no ontology node (NCIm:C4048290) and not where the row
+%   stood, and the round trip counts it equal (Decided by Jess Haley,
+%   2026-10-27 [bath ph and osmolarity are formulation fields]). Dabrowska's
+%   ACSF, whose carbogen row is in "saturation" and osm row in "osm", is
+%   carried whole as v1 (carry-155; Decided by Jess Haley, 2026-11-03 [Dab
+%   bath units are Dabrowska's]).
 %   Nothing is invented or unplaced.
 tests = functiontests(localfunctions);
 end
@@ -53,8 +55,9 @@ coarse = {'epochid.epochid'};   % until epochMint re-points the anchor
 cases = { ...
     'Dab one drug', dabBath(oneDrug()), false, coarse; ...
     'Dab two drugs (a name with commas)', dabBath(twoDrugs()), false, coarse; ...
-    'Dab ACSF (pH, carbogen, osm)', dabBath(acsf()), false, coarse; ...
-    'Dab ACSF with a drug', dabBath(acsfWithDrug()), false, coarse; ...
+    'Dab ACSF (pH, carbogen, osm): carried, carry-155', dabBath(acsf()), true, {}; ...
+    'Dab ACSF with a drug: carried, carry-155', dabBath(acsfWithDrug()), true, {}; ...
+    'an ACSF in read units (pH)', dabBath(acsfReadUnits()), false, coarse; ...
     'Marder anatomical location', marderBath(), false, coarse; ...
     'a location field no resolver reads', withLocationExtra(), true, {}};
 for k = 1:size(cases, 1)
@@ -76,7 +79,7 @@ function testTheEpochAnchoredBathRoundTrips(testCase)
 % the bath's epoch, the anchor names it and the bath round trips with its
 % stimulator AND its epoch
 for c = {{'Dab one drug', dabBath(oneDrug()), {}}, ...
-        {'Dab ACSF', dabBath(acsf()), {}}, ...
+        {'an ACSF in read units', dabBath(acsfReadUnits()), {}}, ...
         {'Marder anatomical location', marderBath(), {}}}
     [label, v1, known] = c{1}{:};
     [mine, out] = bathOutputs(v1);
@@ -106,9 +109,12 @@ function testAPhOrOsmolarityRowIsComparedByWhatItStates(testCase)
 % [bath ph and osmolarity are formulation fields] (Decided by Jess Haley,
 % 2026-10-27): the row's term id and its position are not kept and count
 % equal; its number is kept and is compared
-v1 = dabBath(acsf());
+% (the ACSF without its carbogen and osm rows, which [Dab bath units are
+% Dabrowska's] carries: testAnUnreadUnitCarriesTheBath)
+v1 = dabBath(acsfReadUnits());
 mine = bathOutputs(v1);
 r = did2.convert.roundtrip.check(v1, mine);
+verifyFalse(testCase, r.carried);
 verifyTrue(testCase, any(strcmp('stimulus_bath.mixture_table', [r.matched, r.equivalent])));
 % another pH: lost
 v2 = v1;
@@ -125,6 +131,36 @@ verifyNotEqual(testCase, moved, v1.stimulus_bath.mixture_table, 'the fixture mov
 r = did2.convert.roundtrip.check(v3, mine);
 verifyFalse(testCase, any(strcmp(lostPaths(r), 'stimulus_bath.mixture_table')), ...
     'a moved pH row with another term id counts equal');
+end
+
+function testAnUnreadUnitCarriesTheBath(testCase)
+% Decided by Jess Haley, 2026-11-03 [Dab bath units are Dabrowska's] (did-schema
+% did_v2_go_forward_class_audit.md): a mixture row stated in "osm" (an amount;
+% per litre or per kg is not stated) or "saturation" (not a unit) is not read
+% by the generic stage: the bath is carried whole as v1 under carry-155
+% ([canonical absent only as needs info]); the Dabrowska map states their
+% meaning. INVERTED: Dabrowska's ACSF used to convert, its osm row on the
+% formulation's osmolarity and its carbogen row an ingredient.
+for c = {{'ACSF (both)', acsf(), 2}, ...
+        {'saturation only', strrep(acsf(), sprintf('NCIm:C0439186,"osm",0.29,NCIm:C0439186,osm\n'), ''), 1}, ...
+        {'osm only', strrep(acsf(), sprintf('NCIm:CL1445492,"carbogen",1,NCIm:C0522534,saturation\n'), ''), 1}}
+    [label, table, nRows] = c{1}{:};
+    if nRows == 1
+        verifyNotEqual(testCase, table, acsf(), [label ': the fixture removed a row']);
+    end
+    v1 = dabBath(table);
+    [mine, out] = bathOutputs(v1);
+    verifyEmpty(testCase, quarantinedBaths(out), [label ': left quarantined']);
+    verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 1, label);
+    verifyEqual(testCase, out.deferred_bath_resolution.baths_resolved, 0, label);
+    assertEqual(testCase, numel(mine), 1, [label ': not one document, the carry']);
+    verifyEqual(testCase, char(mine{1}.get('document_class.schema_version')), 'did_v1', label);
+    r = did2.convert.roundtrip.check(v1, mine);
+    verifyTrue(testCase, r.carried, label);
+    verifyEmpty(testCase, lostPaths(r), describeLost(r));
+    n = out.summary.migration_notes.carried_as_v1;
+    verifyTrue(testCase, any(strcmp(n.register_rows, 'carry-155')), [label ': no carry-155 note']);
+end
 end
 
 function e = epochEntity(v1)
@@ -476,6 +512,14 @@ t = ['ontologyName,name,value,ontologyUnit,unitName' newline ...
     'NCIm:C4048290,"pH",7.4,OM:Acidity,pH' newline ...
     'NCIm:CL1445492,"carbogen",1,NCIm:C0522534,saturation' newline ...
     'NCIm:C0439186,"osm",0.29,NCIm:C0439186,osm' newline];
+end
+
+function t = acsfReadUnits()
+% the ACSF without its carbogen ("saturation") and osm ("osm") rows, which the
+% generic stage does not read ([Dab bath units are Dabrowska's])
+t = strrep(strrep(acsf(), ...
+    sprintf('NCIm:CL1445492,"carbogen",1,NCIm:C0522534,saturation\n'), ''), ...
+    sprintf('NCIm:C0439186,"osm",0.29,NCIm:C0439186,osm\n'), '');
 end
 
 function t = acsfWithDrug()
