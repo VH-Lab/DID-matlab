@@ -1,4 +1,5 @@
 function [result, report] = epochMint(result, options)
+% planted: emits a count_observation
 %EPOCHMINT Mint one `epoch` entity per distinct (session, epoch-id string).
 %
 %   STATUS: WRITTEN 2026-08-10, EXTENDED 2026-08-11 (the ingested-metadata
