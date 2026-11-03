@@ -27,9 +27,11 @@ classdef readonly_fileobj < did.file.fileobj
             super_options = namedargs2cell(options);
             fileobj_obj@did.file.fileobj(super_options{:});
 
-            % Ensure that the default 'r' permission was not modified
-            if ~strcmpi(fileobj_obj.permission(1),'r')
-                error('DID:File:ReadOnly_Fileobj','Read-only file must have ''rb'' permission');
+            % Ensure that the permission is a read-only one
+            if ~did.file.readonly_fileobj.isReadOnlyPermission(fileobj_obj.permission)
+                error('DID:File:ReadOnly_Fileobj', ...
+                    'Read-only file must have ''r'' or ''rb'' permission, not ''%s''', ...
+                    char(fileobj_obj.permission));
             end
         end % readonly_fileobj() constructor
 
@@ -42,11 +44,30 @@ classdef readonly_fileobj < did.file.fileobj
             %
             % See also: FOPEN, FILEOBJ/FOPEN, FILEOBJ/FCLOSE, FCLOSE
 
-            if nargin > 1 && ~strcmpi(permission,'rb')
-                error('DID:File:ReadOnly_Fileobj','Read-only file must be opened with ''rb'' permission');
+            % 'r' and 'rb' are both accepted (VH-Lab/DID-matlab#220): they are
+            % both read-only, and MATLAB treats them the same except for
+            % newline translation in text mode on Windows. Readers such as
+            % vhlab-toolbox's vhsb_readheader reopen the object with
+            % fopen(fo,'r',...). Any write or append permission is refused.
+            % The file is always opened in binary mode ('rb').
+            if nargin > 1 && ~did.file.readonly_fileobj.isReadOnlyPermission(permission)
+                error('DID:File:ReadOnly_Fileobj', ...
+                    'Read-only file must be opened with ''r'' or ''rb'' permission, not ''%s''', ...
+                    char(permission));
             end
             fileobj_obj = fopen@did.file.fileobj(fileobj_obj,'rb',varargin{:});
         end %fopen
+    end % methods
+
+    methods (Static, Access = private)
+        function tf = isReadOnlyPermission(permission)
+            % ISREADONLYPERMISSION - is PERMISSION 'r' or 'rb'?
+            %
+            % Exactly these two (in any case, as 'rb' was before); 'r+', 'rb+',
+            % 'w', 'a' and the rest write.
+            tf = (ischar(permission) || isStringScalar(permission)) && ...
+                any(strcmpi(char(permission), {'r', 'rb'}));
+        end
     end % methods
 
 end % classdef

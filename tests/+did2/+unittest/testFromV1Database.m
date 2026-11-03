@@ -136,6 +136,80 @@ verifyTrue(testCase, all(isfield(report, {'gaps', 'carried_as_v1', 'counts'})));
 verifyEqual(testCase, report.counts.documents, 2);
 end
 
+function testTwoSessionsWriteOneMigrationRecordEach(testCase)
+% [one migration document per dataset] (Decided by Jess Haley, 2026-11-03,
+% did-schema did_v2_go_forward_class_audit.md): "a run with two or more
+% sessions and no dataset writes one per session", each pointing at its
+% session with its own attached report. It stopped with
+% did2:convert:migrationAnchor until then.
+b1 = makeV1Body('demo_alpha', 'alpha');
+b2 = makeV1Body('demo_beta', 'beta');
+b3 = makeV1Body('demo_gamma', 'gamma');
+b3.base.session_id = 'aabb1122ccdd3344_7700aabbccddeeff';
+buildV1Sqlite(testCase.TestData.srcSqlite, {jsonencode(b1), jsonencode(b2), jsonencode(b3)});
+result = did2.convert.fromV1Database(testCase.TestData.srcSqlite, ...
+    testCase.TestData.dstPath, 'Validate', false);
+rec = result.migration_record;
+verifyNumElements(testCase, rec.migration_ids, 2);
+verifyNumElements(testCase, rec.report_ids, 2);
+verifyNumElements(testCase, rec.report, 2);
+db = did2.database.sqlitedb(testCase.TestData.dstPath);
+cleanup = onCleanup(@() db.close()); %#ok<NASGU>
+verifyEqual(testCase, db.count(), 3 + 2 * 2, 'three documents, two records and two reports');
+anchors = cell(1, 2);
+docs = zeros(1, 2);
+for k = 1:2
+    m = db.get(rec.migration_ids{k});
+    verifyEqual(testCase, m.className(), 'migration');
+    ms = m.toStruct();
+    anchors{k} = char(ms.depends_on(strcmp({ms.depends_on.name}, 'session_id')).document_id);
+    bs = db.get(rec.report_ids{k}).toStruct();
+    verifyEqual(testCase, char(bs.depends_on(strcmp({bs.depends_on.name}, 'owner_id')).document_id), ...
+        rec.migration_ids{k}, 'each report is attached to its own record');
+    report = jsondecode(fileread(db.filePath(rec.report_ids{k}, 'body_data_0')));
+    verifyEqual(testCase, report.anchor, anchors{k});
+    verifyEqual(testCase, report.counts.run.source_documents, 3, 'the run''s counts');
+    docs(k) = report.counts.documents;
+end
+verifyEqual(testCase, sort(anchors), sort({'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'aabb1122ccdd3344_7700aabbccddeeff'}));
+verifyEqual(testCase, sort(docs), [1 2], 'each report counts its own session''s documents');
+end
+
+function testTwoDatasetsWriteOneMigrationRecordEach(testCase) %#ok<INUSD>
+% [one migration document per dataset]: two datasets, each with one session
+% `included_in` it and a document of that session: one record per dataset,
+% pointing at it, each report holding its own dataset's documents. A document
+% naming a dataset directly belongs to it too.
+ds = {'ds00000000000001_0000000000000001', 'ds00000000000002_0000000000000002'};
+ss = {'se00000000000001_0000000000000001', 'se00000000000002_0000000000000002'};
+docs = {};
+for k = 1:2
+    docs{end+1} = entityDoc(ds{k}, 'dataset', ds{k}); %#ok<AGROW>
+    docs{end+1} = entityDoc(ss{k}, 'session', ss{k}); %#ok<AGROW>
+    docs{end+1} = includedIn(sprintf('rel%014d_0000000000000000', k), ss{k}, ds{k}); %#ok<AGROW>
+    docs{end+1} = entityDoc(sprintf('ob%014d_0000000000000000', k), 'organism', ss{k}); %#ok<AGROW>
+end
+docs{end+1} = entityDoc('ob00000000000009_0000000000000000', 'organism', ds{2});
+[records, report] = did2.convert.migrationRecord(docs, 'Validate', false, ...
+    'Version', 'test', 'Counts', struct('source_documents', 9));
+verifyNumElements(testCase, records, 4);
+verifyNumElements(testCase, report, 2);
+verifyEqual(testCase, {report.anchor}, ds);
+verifyEqual(testCase, [report(1).counts.documents, report(2).counts.documents], [4 5]);
+for k = 1:2
+    m = records{2 * k - 1}.toStruct();
+    verifyEqual(testCase, m.document_class.class_name, 'migration');
+    verifyEqual(testCase, char(m.depends_on(strcmp({m.depends_on.name}, 'session_id')).document_id), ds{k});
+    verifyEqual(testCase, report(k).counts.run.source_documents, 9);
+end
+verifyNotEqual(testCase, records{1}.get('base.id'), records{3}.get('base.id'));
+% a document belonging to neither dataset: not decided
+docs{end+1} = entityDoc('ob00000000000010_0000000000000000', 'organism', 'elsewhere0000000_0000000000000000');
+verifyError(testCase, @() did2.convert.migrationRecord(docs, 'Validate', false, ...
+    'Version', 'test'), 'did2:convert:migrationAnchor');
+end
+
 % ---- quarantine ----
 
 function testQuarantineFileWrittenForMalformedDoc(testCase)
@@ -279,4 +353,26 @@ try
     if isfolder(p), rmdir(p, 's'); end
 catch
 end
+end
+
+function d = entityDoc(id, kind, sessionId)
+% an `entity` of KIND (an entity_type handle) whose session_id edge names SESSIONID
+d = struct();
+d.document_class = struct('class_name', 'entity', 'class_version', '1.0.0', ...
+    'schema_version', 'did_v2');
+d.depends_on = struct('name', {'session_id'}, 'document_id', {sessionId});
+d.base = struct('id', id, 'datestamp', '2024-06-01T12:00:00.000Z');
+d.entity = struct('type', struct('node', did2.build.vocabulary('entity_type', kind), 'name', kind));
+end
+
+function d = includedIn(id, sessionId, datasetId)
+% a session `included_in` its dataset
+d = struct();
+d.document_class = struct('class_name', 'directed_relation', 'class_version', '1.0.0', ...
+    'schema_version', 'did_v2');
+d.depends_on = struct('name', {'session_id', 'child_id', 'parent_id'}, ...
+    'document_id', {sessionId, sessionId, datasetId});
+d.base = struct('id', id, 'datestamp', '2024-06-01T12:00:00.000Z');
+d.directed_relation = struct('relation', struct('node', did2.build.vocabulary('relation', 'included_in'), ...
+    'name', 'included in'));
 end
