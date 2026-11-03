@@ -489,18 +489,20 @@ end
 function testDimensionTermsWithNoNodeAreCountedPerClass(testCase)
 % Jess Haley 2026-10-22 [covariate details], answer "B" to 5.4: pass 1 counts
 % the dimensions whose term has no node, per class, with its denominators.
-% The response's one `stimulus` dimension is a label (no node).
+% INVERTED 2026-11-03: the response's one dimension is NCIT:C41210 "Stimulus"
+% (Jess Haley, 2026-11-03, batch 2 "Ok"; a label with no node before), so the
+% count is 0 of 1 -- the denominator is still stated.
 v1 = withEpochEdge(responseFixture('F1'));
 out = runJ(v1);
 d = out.summary.dimension_terms;
 verifyEqual(testCase, d.documents_inspected, numel(out.migrated), ...
     'DENOMINATOR: every migrated document is inspected');
 verifyEqual(testCase, d.dimensions_written, 1, 'the stimulus dimension, and no other');
-verifyEqual(testCase, d.without_node, 1);
+verifyEqual(testCase, d.without_node, 0);
 verifyEqual(testCase, d.by_class.calculation, ...
-    struct('dimensions_written', 1, 'without_node', 1));
+    struct('dimensions_written', 1, 'without_node', 0));
 txt = evalc('did2.convert.v1_to_v2(v1, ''Validate'', false, ''TargetVersion'', ''did_v2'', ''Verbose'', true);');
-verifySubstring(testCase, txt, 'dimension terms: 1 of 1 dimension(s) written have a term with no node');
+verifySubstring(testCase, txt, 'dimension terms: 0 of 1 dimension(s) written have a term with no node');
 end
 
 function testTheUnstampedFixtureIsSuppressedNotFolded(testCase)

@@ -119,13 +119,15 @@ end
 function testTheFoldEmitsTheLeafTheTwoPlanesAndTheSpikeInput(testCase)
 % The leaf, the session anchor every calculator fold carries, the entities the
 % app block becomes (software, operating system, interpreter on #88; the
-% pre-#88 `runtime_environment` entity is gone), TWO plane bodies and ONE
-% input body.
+% pre-#88 `runtime_environment` entity is gone), TWO statements (one per
+% plane, [hartley planes are two statements], Jess Haley, 2026-11-03), TWO
+% plane bodies, the hartley numbers body ([hartley numbers stored, copies
+% not]) and ONE input body.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1, strjoin(names, ', '));
-verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 3, ...
-    'two planes plus the spike-time input body');
+verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 2, strjoin(names, ', '));
+verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 4, ...
+    'two planes, the hartley numbers and the spike-time input body');
 verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
 % the calculator, its operating system and its interpreter are each a
 % `software` entity on #88

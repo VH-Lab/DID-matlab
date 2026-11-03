@@ -851,6 +851,10 @@ end
 % ===================== [empty prestimulus normalization is zero] =========
 
 function testEmptyPrestimulusNormalizationIsZero(testCase)
+% UPDATED 2026-11-03 ([fixed writer values not written], Decided by Jess
+% Haley): the writer's empty prestimulus_normalization is no longer written as
+% 0; the round trip writes the empty default back, so it compares equal
+% (matched or not set) rather than through the [] = 0 equivalence.
 p = parameters('par_e1');   % the writer's prestimulus_normalization []
 out = runRaw({p});
 out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'did_v2');
@@ -858,7 +862,10 @@ m = outputsOf(out, 'par_e1');
 r = did2.convert.roundtrip.check(p, m);
 P = 'stimulus_response_scalar_parameters_basic.';
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'parameters as a method', {[P 'freq_response']});
-verifyTrue(testCase, any(strcmp([P 'prestimulus_normalization'], r.equivalent)));
+verifyTrue(testCase, any(strcmp([P 'prestimulus_normalization'], ...
+    [r.matched, r.not_set, r.equivalent])));
+verifyTrue(testCase, any(strcmp([P 'temporalfreqfunc'], r.matched)), ...
+    'the default temporalfreqfunc is written back');
 end
 
 % ===================== [carried documents may point at converted ones] ===
