@@ -102,7 +102,8 @@ function bodies = hartley_calc(preBody)
 %   TWO STATEMENTS, ONE PER PLANE ([hartley planes are two statements], Decided
 %   by Jess Haley, 2026-11-03): the spike-triggered average (the source id) and
 %   the null cumulative probability (a new id, did2.convert.mintId), each the
-%   owner of its plane body, with no "represented quantity" condition. Their
+%   owner of its plane body, with no "represented quantity" condition (the
+%   second is built by the same fold and shares the first's edges). Their
 %   variables are plain labels until the team approves the terms
 %   (docs/v2_working/UNREGISTERED_TERMS_PROPOSAL.md group D #5, #6).
 %
@@ -444,13 +445,13 @@ if isempty(jSubjectOf(preBody, {'element_id', 'subject_id'}))
     bodies = {preBody};
     return;
 end
-bodies = jCalculation(calcBody, 'receptive_field_calculation', 'rf', ...
-    'hartley_calc', 'spike-triggered average', 'ndi.calc.vis.hartley', ...
-    'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
+calcOpts = {'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
     'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
     'Dropped', dropped, 'AccountForEveryField', true, ...
     'OtherBlocks', {'files', 'hartley_reverse_correlation', 'ngrid', ...
-    'reverse_correlation'});
+    'reverse_correlation'}};
+bodies = jCalculation(calcBody, 'receptive_field_calculation', 'rf', ...
+    'hartley_calc', 'spike-triggered average', 'ndi.calc.vis.hartley', calcOpts{:});
 leaf = bodies{1};
 if isscalar(bodies) && strcmp(leaf.document_class.class_name, 'hartley_calc')
     bodies = {preBody};
@@ -460,9 +461,17 @@ end
 % probability plane. Its variable, like the first's, is a plain label until the
 % team approves the terms (docs/v2_working/UNREGISTERED_TERMS_PROPOSAL.md group
 % D #5, #6).
-pValue = leaf;
-pValue.base.id = pValueId;
-pValue.statement.variable = jLabel('null cumulative probability');
+% It is BUILT (the same fold, its own id and variable), not copied, so its
+% variable goes through did2.build's term check like every other term (the
+% registry check, the unregistered-term census). Its edges are then the
+% first statement's: the same entity, inputs, time anchor and software, so
+% the anchor and entities the second fold minted are not kept.
+pBody = calcBody;
+pBody.base.id = pValueId;
+pOut = jCalculation(pBody, 'receptive_field_calculation', 'rf', ...
+    'hartley_calc', 'null cumulative probability', 'ndi.calc.vis.hartley', calcOpts{:});
+pValue = pOut{1};
+pValue.depends_on = leaf.depends_on;
 bodies{end+1} = pValue;
 for k = 1:numel(planeBodies)
     bodies{end+1} = planeBodies{k}; %#ok<AGROW>
