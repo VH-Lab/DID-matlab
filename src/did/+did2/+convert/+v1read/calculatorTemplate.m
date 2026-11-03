@@ -41,7 +41,7 @@ function t = calculatorTemplate(className)
 %   (did-schema V_eta_go_forward_class_audit.md): a tuning-family v1 document
 %   holding a field outside its NDI template is carried under carry-100
 %   ([fields outside the template are malformed]); carry-056 keeps only fields
-%   an NDIcalc-vis writer does write that V2 has no home for yet.
+%   an NDIcalc-vis writer does write that v2 has no home for yet.
 %   private/jCalculation reads this table to tell the two apart.
 %
 %   See also did2.convert.v1read.readApp.

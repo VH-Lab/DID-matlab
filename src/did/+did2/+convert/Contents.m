@@ -40,7 +40,7 @@
 %                          NDI templates define it and drop nothing.
 %     +roundtrip         - the round trip of a switched class
 %                          ([migration reliability practices] (a)): check
-%                          rebuilds the v1 document from the emitted V2
+%                          rebuilds the v1 document from the emitted v2
 %                          documents with the class's inverse and compares.
 %     ensureClassBlocks  - give a body exactly the class blocks its schema
 %                          chain hosts.
@@ -70,7 +70,7 @@
 %     stimulusPresentationSpecs (the batch's presentation settings, loaded
 %     by v1_to_v2), tuningBatchIndex (the classes, responses and
 %     presentations the tuning and response migrators read, loaded by
-%     v1_to_v2), tuningNames (the one v1 <-> V2 name table for tuning
+%     v1_to_v2), tuningNames (the one v1 <-> v2 name table for tuning
 %     properties and settings), tuningStimids (a tuning curve's stimids
 %     rebuilt), tuningBestValues (the value a tuning curve's `best`
 %     selection chose, read from its log), inputEdgeNames (input edge names

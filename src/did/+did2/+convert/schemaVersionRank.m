@@ -38,9 +38,9 @@ function [rank, known] = schemaVersionRank(version)
 %
 %   THE STAMPS did_v1 AND did_v2 (Decided by Jess Haley, 2026-10-25
 %   [document stamps], did-schema V_eta_go_forward_class_audit.md): a v1
-%   document's `document_class.schema_version` is 'did_v1' and a V2
+%   document's `document_class.schema_version` is 'did_v1' and a v2
 %   document's is 'did_v2'. 'did_v1' ranks with the empty name (0, a v1
-%   document). The V2 names, rank 6, are did2.schema.v2Stamps -- the one
+%   document). The v2 names, rank 6, are did2.schema.v2Stamps -- the one
 %   list. 'V_eta' is not on the line ([V_eta stamp not accepted], same
 %   date: "Stop accepting veta"; no alias, as with V_delta): a document
 %   stamped 'V_eta' is unknown and v1_to_v2 quarantines it as
@@ -61,7 +61,7 @@ end
 
 % did_v1 documents written before [document stamps] carry no schema_version
 % at all, so the empty name IS the origin of the line rather than a missing
-% value; 'did_v1' is the same vintage, named. The V2 generation's names come
+% value; 'did_v1' is the same vintage, named. The v2 generation's names come
 % from did2.schema.v2Stamps and are not repeated here.
 v2 = did2.schema.v2Stamps();
 NAMES = [{'', 'did_v1', 'V_alpha', 'V_beta', 'V_gamma', 'V_epsilon', 'V_zeta'}, v2(:)'];
@@ -73,6 +73,6 @@ if isempty(idx)
     known = false;
     return;
 end
-rank = RANKS(idx);   % '' and did_v1 -> 0, V_alpha -> 1, ... the V2 stamps -> 6
+rank = RANKS(idx);   % '' and did_v1 -> 0, V_alpha -> 1, ... the v2 stamps -> 6
 known = true;
 end

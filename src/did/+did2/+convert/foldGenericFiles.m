@@ -337,7 +337,7 @@ function [result, report] = foldGenericFiles(result, options)
 %                       original_path, location_type 'file', ingest 0,
 %                       delete_original 0} -- the record ndi.document/add_file
 %                       writes for a file it does not take in, and the one
-%                       NDI's Haley V2 import writes for a recording
+%                       NDI's Haley v2 import writes for a recording
 %                       (sessionDocuments.m). DID-matlab has no other "not
 %                       held" marker (#73 item 34 asks for one; not built).
 %       size_bytes      <- file_size, ONLY WHEN > 0: the fileReference schema

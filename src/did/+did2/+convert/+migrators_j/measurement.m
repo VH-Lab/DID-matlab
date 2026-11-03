@@ -87,8 +87,8 @@ function bodies = measurement(preBody)
 %
 %   A manipulation_id or protocol_id that names a document (no writer sets one,
 %   above) has no place in the observation: it now carries the document, where
-%   the renamed path dropped it. A measurement with no V2 statement (a date, an
-%   untyped number, text) passed through before, as a V2 `measurement`
+%   the renamed path dropped it. A measurement with no v2 statement (a date, an
+%   untyped number, text) passed through before, as a v2 `measurement`
 %   (a `retire` class); its raw passthrough would meet that class's renamed
 %   field `ontology_name` as an undeclared field, so it is carried as v1 at
 %   once (no register row yet), the end state NDI's last step gave the
@@ -153,7 +153,7 @@ if isempty(bodies)
         % [values no writer produces are malformed] covers (Jess Haley,
         % 2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-120
         jRawCarry('measurement', src, {}, {}, 'carry-100', ...
-            {'[carry-120] measurement (no V2 statement: a date, an untyped number or text)'});
+            {'[carry-120] measurement (no v2 statement: a date, an untyped number or text)'});
     end
     bodies = {src};
 elseif isscalar(bodies) && isequaln(bodies{1}, preBody)

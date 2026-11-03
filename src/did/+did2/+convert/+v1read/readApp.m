@@ -12,7 +12,7 @@ function a = readApp(body)
 %     name, version, url, os, os_version, interpreter, interpreter_version
 %                 as text ('' when the block does not state the field)
 %     app_name, app_version
-%                 the V2 spellings, read as given when a body carries them
+%                 the v2 spellings, read as given when a body carries them
 %                 ('' otherwise). A raw v1 body never does; they are read so
 %                 that a body which holds BOTH spellings loses neither.
 %     conflicts   cellstr: 'name' and/or 'version' when both spellings are

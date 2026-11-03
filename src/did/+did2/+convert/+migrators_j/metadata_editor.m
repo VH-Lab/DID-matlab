@@ -222,7 +222,7 @@ unplaced = [unplaced, formUnplaced];
 % [dataset form lists carried until homed] (Decided by Jess Haley, 2026-10-27,
 % did-schema V_eta_go_forward_class_audit.md): "a v1 dataset form whose
 % subject, species, strain or sex list is non-empty is carried whole as v1 with
-% a needs-home register row until those lists have a V2 home (likely rebuilt
+% a needs-home register row until those lists have a v2 home (likely rebuilt
 % from the subjects); revises the earlier drop under [lossless means round
 % trip]". The register row is carry-105.
 for listField = {'Subjects', 'SpeciesList', 'StrainList', 'BiologicalSexList'}

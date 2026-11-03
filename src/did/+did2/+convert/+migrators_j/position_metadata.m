@@ -9,8 +9,8 @@ function bodies = position_metadata(preBody)
 %   V_eta_go_forward_class_audit.md, answering did-schema #147): "this shouldn't
 %   be a term observation ... Both v1 position and position metadata should map
 %   to the same v2 position observation"; a v1 position element's values and
-%   its `position_metadata` map to ONE V2 `calculation` with the `position`
-%   value-kind mixin (the Haley V2 import's shape): `units` the value's unit,
+%   its `position_metadata` map to ONE v2 `calculation` with the `position`
+%   value-kind mixin (the Haley v2 import's shape): `units` the value's unit,
 %   `dimensions` the axis terms, `ontologyNode` the body part in the variable;
 %   "no term observation is written. Until position elements are mapped
 %   (carry-063) both stay carried together."
@@ -84,7 +84,7 @@ function bodies = position_metadata(preBody)
 %                                         is carried.
 %
 %   A document stating no ontologyNode has nothing to observe. Before the
-%   switch it passed through as a V2 `position_metadata` (a class whose
+%   switch it passed through as a v2 `position_metadata` (a class whose
 %   disposition is `retire`), which NDI's final step stamps v1 again
 %   ([passthrough stays v1: how]); it is now carried as v1 at once (no register
 %   row yet), the same end state. No NDI writer at the locked main writes one. What the

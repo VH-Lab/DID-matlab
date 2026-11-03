@@ -1,8 +1,8 @@
 classdef sqlitedb < handle
-    % did2.database.sqlitedb  SQLite + JSON1 backend for V2 (V_eta) documents.
+    % did2.database.sqlitedb  SQLite + JSON1 backend for v2 (V_eta) documents.
     %
     %   First database backend in the v2 line. Stores each document's full
-    %   V2 JSON body in a single TEXT column on the `documents`
+    %   v2 JSON body in a single TEXT column on the `documents`
     %   table; the `superclasses` and `depends_on` sidecar tables hold
     %   the entries needed for `isa` and `depends_on` queries without
     %   walking JSON.
@@ -700,7 +700,7 @@ classdef sqlitedb < handle
             % every insert maintain 675 indexes, almost all for empty
             % values: 3.9 ms per document against 0.26 ms with the side
             % table (measured 2026-10-06 over 2,158 documents shaped like
-            % the Haley V2 import, SQLite 3.45).
+            % the Haley v2 import, SQLite 3.45).
             arguments
                 obj (1,1) did2.database.sqlitedb %#ok<INUSA> a method; the SQL does not depend on the instance
             end
@@ -916,7 +916,7 @@ classdef sqlitedb < handle
             % at (arrayDefsByBlock), with their paths split once
             % (arrayDefParts): every def was tried on every document,
             % splitting its path each time -- 910,420 tries for 4,975
-            % documents of the Haley V2 import, nearly all finding no
+            % documents of the Haley v2 import, nearly all finding no
             % block. Defs are visited in their sorted order and the rows
             % go in with one statement per chunk (insertMany), so the
             % table holds the same rows in the same order as before.
@@ -1055,7 +1055,7 @@ classdef sqlitedb < handle
             % statements as SQLite's bound-variable limit allows. SQLHEAD
             % ends with VALUES. One statement per row was one mksqlite
             % call per row: ~20 per document (99,800 for 4,975 documents
-            % of the Haley V2 import, 35 s).
+            % of the Haley v2 import, 35 s).
             arguments
                 obj (1,1) did2.database.sqlitedb
                 sqlHead {mustBeText}
@@ -1178,7 +1178,7 @@ classdef sqlitedb < handle
             % migrateDependsOnKeyForRepeatedEdges - widen the depends_on
             % key from (doc_id, name) to (doc_id, name, document_id).
             %
-            % A V2 edge may be declared `multiple` (repeated under ONE
+            % A v2 edge may be declared `multiple` (repeated under ONE
             % name, e.g. `time_reference_id` on a statement or an epoch),
             % so one document can carry several depends_on rows with the
             % same name. The old key allowed one, and the second insert
@@ -1662,7 +1662,7 @@ classdef sqlitedb < handle
                 if ~isstruct(e) || ~isfield(e, 'name')
                     continue;
                 end
-                % V2 uses `document_id`; tolerate the earlier
+                % v2 uses `document_id`; tolerate the earlier
                 % `value` draft and the raw v1 `id` so mid-migration
                 % bodies still write their sidecar rows.
                 if isfield(e, 'document_id')

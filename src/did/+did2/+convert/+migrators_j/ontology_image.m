@@ -521,7 +521,7 @@ function names = nonEmptyEdges(preBody)
 %   `ontology_table_row_id` (a fixture's renamed one). Edges are read by
 %   did2.convert.v1read.readDependsOn (a struct array or a cell of entries;
 %   `value`, `id` or `document_id`). A `session_id` entry is v1's
-%   base.session_id moved to an edge (V2's shape, on a body already renamed),
+%   base.session_id moved to an edge (v2's shape, on a body already renamed),
 %   not an edge the v1 document states, so it is not counted.
 names = {};
 deps = did2.convert.v1read.readDependsOn(preBody);

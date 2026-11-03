@@ -34,7 +34,7 @@ function bodies = ontology_label(preBody)
 %
 %   The two extra property fields the migrator also reads -- `ontology_name` and
 %   `label_id`, with `label` -- do not exist either. They came from the false
-%   provenance line in the V2 conversion doc, which has since been corrected.
+%   provenance line in the v2 conversion doc, which has since been corrected.
 %
 %   WHY THIS CANNOT BE FIXED BY RENAMING THE EDGE. `document_id` points at the
 %   document being labelled, which is NOT a subject -- typically an image stack.

@@ -1,23 +1,23 @@
 function tests = testSqliteDbNonFinite
-% testSqliteDbNonFinite - NaN, Inf and -Inf survive a V2 write and read.
+% testSqliteDbNonFinite - NaN, Inf and -Inf survive a v2 write and read.
 %
 %   DECISION (Jess Haley, 2026-10-21, did-schema
 %   V_eta_go_forward_class_audit.md): "An unrecorded amount is written as NaN
 %   in its quantity (e.g. a dose's volume.liters: NaN), and V2 stores NaN the
 %   way V1 does."
 %
-%   V1 writes document text with did.datastructures.jsonencodenan, which is
+%   v1 writes document text with did.datastructures.jsonencodenan, which is
 %   jsonencode(..., 'ConvertInfAndNaN', false): NaN, Inf and -Inf are written
 %   as the literals NaN, Infinity and -Infinity, and jsondecode reads them
-%   back. V2's did2.document/toJSON used plain jsonencode, which writes a
+%   back. v2's did2.document/toJSON used plain jsonencode, which writes a
 %   non-finite number as null; jsondecode reads a scalar null back as [], so
 %   a NaN amount came out of the database as an ABSENT one, and Inf as NaN
 %   inside an array. These tests were written before the encoder changed.
 %
 %   WHAT IS PINNED, in order:
 %     1. the premise (plain jsonencode loses a scalar NaN; jsondecode reads
-%        the V1 literals);
-%     2. did2.document writes what V1 writes and reads it back, scalar and
+%        the v1 literals);
+%     2. did2.document writes what v1 writes and reads it back, scalar and
 %        matrix;
 %     3. through did2.database.sqlitedb: the stored text carries the
 %        literals, a read gives the numbers back, SQLite's JSON functions
@@ -27,7 +27,7 @@ function tests = testSqliteDbNonFinite
 %        json_extract gives, and every query answers as the in-memory
 %        evaluator (did2.query.matches) does.
 %
-%   The schema is a hermetic copy of the V2 fixtures plus one class,
+%   The schema is a hermetic copy of the v2 fixtures plus one class,
 %   demoNumeric, written by this file (a double scalar, a matrix, and an
 %   array of structures with a double sub-field, all queryable).
 %
@@ -84,7 +84,7 @@ end
 % ===================== 1. the premise =======================================
 
 function testPlainJsonencodeLosesAScalarNaN(testCase)
-% THE DEFECT IN ONE LINE: why V2 could not store an unrecorded amount.
+% THE DEFECT IN ONE LINE: why v2 could not store an unrecorded amount.
 s = jsondecode(jsonencode(struct('liters', NaN)));
 verifyEmpty(testCase, s.liters, ...
     ['jsondecode(jsonencode(NaN)) now gives a value back. MATLAB changed; ' ...
@@ -106,10 +106,10 @@ props = nonFiniteProps();
 doc = did2.document(props);
 txt = doc.toJSON();
 verifyEqual(testCase, txt, jsonencode(props, 'ConvertInfAndNaN', false), ...
-    'V2 must write a non-finite number exactly as jsonencode(..., ''ConvertInfAndNaN'', false)');
+    'v2 must write a non-finite number exactly as jsonencode(..., ''ConvertInfAndNaN'', false)');
 v1 = jsondecode(did.datastructures.jsonencodenan(props));
 verifyTrue(testCase, isequaln(jsondecode(txt), v1), ...
-    'V2 text and V1 text must decode to the same values');
+    'v2 text and v1 text must decode to the same values');
 verifyNotEmpty(testCase, strfind(txt, 'NaN'));
 verifyNotEmpty(testCase, strfind(txt, 'Infinity'));
 end

@@ -177,7 +177,7 @@ function testFilenavigatorWithNothingToDeclareIsCarried(testCase)
 % INVERTED 2026-10-29 from testFilenavigatorWithNothingToDeclarePassesThrough,
 % which relied on the source class keeping its V_eta tombstone. Decided by Jess
 % Haley, 2026-10-29 [one folder, final classes only] (did-schema
-% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
 % v1 document passes through under it, so the guard now carries the document
 % whole as v1 with a `carried_as_v1` note ([passthrough stays v1]).
 % THE GUARD: all four source fields empty means an epoch_file_pattern with no

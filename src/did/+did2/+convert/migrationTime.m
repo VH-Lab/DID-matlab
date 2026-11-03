@@ -1,5 +1,5 @@
 function ts = migrationTime(action)
-%MIGRATIONTIME The time the migration ran, as a V2 creation timestamp.
+%MIGRATIONTIME The time the migration ran, as a v2 creation timestamp.
 %
 %   TS = did2.convert.migrationTime() returns the timestamp a migrated document
 %   carries when its v1 source states no creation time of its own, formatted

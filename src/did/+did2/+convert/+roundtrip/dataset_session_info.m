@@ -2,7 +2,7 @@ function [v1, spec] = dataset_session_info(bodies)
 %DATASET_SESSION_INFO The v1 `dataset_session_info` the migration emitted.
 %
 %   [V1, SPEC] = did2.convert.roundtrip.dataset_session_info(BODIES). Pass 1
-%   writes NO V2 document for a list ([fit classes kept; session list rebuilt],
+%   writes NO v2 document for a list ([fit classes kept; session list rebuilt],
 %   Decided by Jess Haley, 2026-10-27, did-schema
 %   V_eta_go_forward_class_audit.md): v1_to_v2 (carryUnrebuiltSessionLists)
 %   checks, after the batch, that the batch's converted `session_in_a_dataset`

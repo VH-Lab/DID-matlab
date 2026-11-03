@@ -74,7 +74,7 @@ function [v1, spec] = element(bodies, ctx)
 %   migrator carries a unit whose values differ). When the underlying element
 %   is not in that index, `subject_id` is left empty and the check reports it.
 %
-%   NOT REBUILT, because V2 does not keep it (the round trip reports it): for
+%   NOT REBUILT, because v2 does not keep it (the round trip reports it): for
 %   any OTHER element with an underlying element, its `direct` and its
 %   `subject_id`. A 'modality unresolved' assertion is a worklist label made
 %   from `type` and states nothing more; it is placed.

@@ -277,7 +277,7 @@ end
 function testARuleThePassLeavesIsStillTheV1Document(testCase)
 % [handed-on classes carried at the end] (1) (Decided by Jess Haley,
 % 2026-11-02): what the batch pass leaves unconverted is still the v1 document,
-% stamped did_v1, so it is carried at the end of the batch and no V2 class
+% stamped did_v1, so it is carried at the end of the batch and no v2 class
 % file for `syncrule` is read on the way.
 src = filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2');
 result = migrate({daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), src});
@@ -295,7 +295,7 @@ end
 function testAHandedOnRuleStampedDidV2IsHandedOnAsV1(testCase)
 % A syncrule stamped did_v2 the way DID-matlab #372 handed it on is a v1
 % document a migrator handed on unchanged: v1_to_v2 hands it on again as a v1
-% passthrough (stamped did_v1, not validated against V2), so a batch pass's
+% passthrough (stamped did_v1, not validated against v2), so a batch pass's
 % re-check never validates it against a retire class file.
 src = filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2');
 src.document_class.schema_version = 'did_v2';

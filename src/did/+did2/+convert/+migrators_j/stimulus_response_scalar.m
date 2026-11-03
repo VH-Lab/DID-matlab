@@ -30,7 +30,7 @@ function bodies = stimulus_response_scalar(preBody)
 %     stimulus_presentation_id       -> input_id, the ONLY input
 %     stimulus_control_id            -> NOT CARRIED: the control record
 %                                       (v1 control_stimulus_ids) becomes no
-%                                       V2 document; its content is the
+%                                       v2 document; its content is the
 %                                       presentation's `control condition`
 %                                       covariate, folded by NDI's second pass
 %                                       ([control as covariate], Jess Haley,

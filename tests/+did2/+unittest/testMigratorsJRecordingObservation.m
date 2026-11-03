@@ -6,7 +6,7 @@ function tests = testMigratorsJRecordingObservation
 %   ---------------------------------------------------------------------
 %   Decided by Jess Haley, 2026-10-21 (did-schema
 %   V_eta_recording_observation_plan.md): migrated recordings link their epoch
-%   files as data bodies, matching native V2 (NDI
+%   files as data bodies, matching native v2 (NDI
 %   ndi.setup.V2.recordingDocuments): one observation per element per epoch,
 %   `data_body` true, an `opaque_body` per epoch file by location (ingested
 %   archives as attached), shared by the electrodes recorded in it, with the

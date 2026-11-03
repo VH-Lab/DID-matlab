@@ -30,7 +30,7 @@ function tests = testRawV1RoundTripPosition
 %   distance_metadata, element, base).
 %
 %   WHAT THE WRITER'S DOCUMENTS DO TODAY.
-%     position_metadata  carried (carry-053): V2 has no place for its units and
+%     position_metadata  carried (carry-053): v2 has no place for its units and
 %                        dimensions. The same document without them (the
 %                        "converted shape") is carried too: it converted to a
 %                        term observation until [position and its metadata
@@ -40,11 +40,11 @@ function tests = testRawV1RoundTripPosition
 %                        become one position calculation, and until position
 %                        elements are mapped (carry-063) both stay carried.
 %     distance_metadata  carried (carry-147): until 2026-10-29 it converted
-%                        to the V2 distance_metadata (a class whose
+%                        to the v2 distance_metadata (a class whose
 %                        disposition is `retire`); since [reshaped retire
 %                        classes carried] (Jess Haley, 2026-10-29, did-schema
 %                        V_eta_go_forward_class_audit.md, "B") it is carried
-%                        whole as v1 until its V2 home is decided.
+%                        whole as v1 until its v2 home is decided.
 %     both, beside their element   the element's type (`position`,
 %                        `distance`, on ndi.element.timeseries) is not on the
 %                        element type list, so it is carried (carry-063) and
@@ -125,7 +125,7 @@ end
 
 function testAPositionNamingNoMeasurementIsCarried(testCase)
 % the one change of the switch: before it, such a document passed through as a
-% V2 position_metadata (a class to retire), which NDI's last step stamps v1
+% v2 position_metadata (a class to retire), which NDI's last step stamps v1
 % again ([passthrough stays v1: how]); it is now carried as v1 at once, on
 % either path (no NDI writer at the locked main writes one)
 v1 = position('pm_9', '');
@@ -134,7 +134,7 @@ end
 
 function testTheCarriedDistancesPassValidation(testCase)
 % INVERTED 2026-10-29 from testTheConvertedDocumentsValidate, which validated
-% the V2 distance_metadata the migrator wrote. Since [reshaped retire classes
+% the v2 distance_metadata the migrator wrote. Since [reshaped retire classes
 % carried] (Jess Haley, 2026-10-29, did-schema V_eta_go_forward_class_audit.md)
 % no distance_metadata is converted: with validation ON the writer's documents
 % must still not quarantine, and come back as their untouched v1 sources.
@@ -175,7 +175,7 @@ end
 
 function testABrokenEmissionIsReportedLost(testCase)
 % distance: a patch number and an id changed. INVERTED 2026-10-29: it broke
-% the V2 `endpoints` the migrator wrote; since [reshaped retire classes
+% the v2 `endpoints` the migrator wrote; since [reshaped retire classes
 % carried] (Jess Haley, 2026-10-29) the document is carried whole as v1, so
 % the same two values are changed on the carried body
 v1 = distance('dm_1', 1:19);

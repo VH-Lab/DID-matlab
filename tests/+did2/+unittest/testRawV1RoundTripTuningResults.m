@@ -21,7 +21,7 @@ function tests = testRawV1RoundTripTuningResults
 %   their edges.
 %
 %   WHAT THE WRITERS' DOCUMENTS DO TODAY. stimulus_tuningcurve is carried
-%   (carry-056: stimid and stimulus_presentation_number have no V2 home, as for
+%   (carry-056: stimid and stimulus_presentation_number have no v2 home, as for
 %   tuningcurve_calc); the same document with those removed converts and loses
 %   nothing. A field outside the template carries the document under carry-100
 %   instead (Decided by Jess Haley, 2026-10-27 [tuning stray fields are
@@ -81,7 +81,7 @@ end
 
 function testATemplateFieldWithNoHomeCitesCarry056(testCase)
 % [tuning stray fields are malformed]: carry-056 keeps only fields the writer
-% does write that V2 has no home for yet. The writer's own tuning curve states
+% does write that v2 has no home for yet. The writer's own tuning curve states
 % stimid and stimulus_presentation_number (stimulus_tuningcurve.json declares
 % both); with a stray field beside them, the one note cites each by its row.
 [~, notes] = did2.unittest.helpers.carryNote({curve()});

@@ -422,7 +422,7 @@ function testAnOpenmindsSubjectRoundTripsWithTheSpeciesTextAccepted(testCase)
 % INVERTED 2026-10-29 from testAnOpenmindsSubjectRoundTrips, which asserted the
 % species' definition and synonym were LOST. Decided by Jess Haley, 2026-10-29
 % [species text is the openMINDS equivalent] (did-schema
-% V_eta_go_forward_class_audit.md): they are not stored in V2 (the registry
+% V_eta_go_forward_class_audit.md): they are not stored in v2 (the registry
 % records the openMINDS species instance as the term's equivalent), and "the
 % round trip reports the v1 text as an accepted difference".
 % JH's shapes (ndi.database.fun.openMINDSobj2ndi_document): a sex states no

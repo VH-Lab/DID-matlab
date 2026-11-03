@@ -62,7 +62,7 @@ function f = knownFindings()
 % (testADrugsOffsetAndDurationAreItsAnchorsEndAndDuration).
 %
 % INVERTED 2026-10-29: the row 'virus at V1' virus_injection.virusLocation_name
-% ("the writer's label "V1" is kept nowhere") is gone. [term names compare by
+% ("the writer's label "v1" is kept nowhere") is gone. [term names compare by
 % node] (Decided by Jess Haley, 2026-10-29, did-schema
 % V_eta_go_forward_class_audit.md): a v1 term name that differs from the
 % registry label of the same node is notation, and the round trip compares

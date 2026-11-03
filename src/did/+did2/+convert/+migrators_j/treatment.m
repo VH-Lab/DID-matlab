@@ -23,7 +23,7 @@ function v2Body = treatment(preBody)
 %   Everything else -- a treatment whose temperature, substance or procedure
 %   reading would be chosen from words in its label -- is returned UNCHANGED,
 %   carried whole as v1 with a `carried_as_v1` note beginning `needs_mapping:`
-%   that names the V2 homes and what decides between them.
+%   that names the v2 homes and what decides between them.
 %
 %   numeric_value: NEVER an amount (Jess Haley, 2026-10-21, "yes"). Without a
 %   term that states its kind, the number is an unlabelled condition ('numeric

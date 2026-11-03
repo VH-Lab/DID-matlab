@@ -8,7 +8,7 @@ function stamp = targetStamp(targetVersion)
 %   did2.schema.v2Stamp() ('did_v2'; did-schema `schema_version_value`).
 %
 %   Decided by Jess Haley, 2026-10-25 [document stamps] (did-schema
-%   V_eta_go_forward_class_audit.md): a V2 document's
+%   V_eta_go_forward_class_audit.md): a v2 document's
 %   document_class.schema_version is 'did_v2'. Before that decision the set
 %   name and the stamp were the same string, so v1_to_v2 wrote
 %   TargetVersion itself as the stamp; this function is where they part.

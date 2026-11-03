@@ -847,7 +847,7 @@ end
 function testAnUnrecordedAmountIsNaNAndCountsAsStated(testCase)
 % Jess Haley, 2026-10-21 (did-schema V_eta_go_forward_class_audit.md): an
 % unrecorded amount is written as NaN in its quantity (e.g. a dose's
-% volume.liters: NaN), and V2 stores NaN the way V1 does. So a NaN-valued
+% volume.liters: NaN), and v2 stores NaN the way v1 does. So a NaN-valued
 % dose is a STATED value under value_inline_or_body, and it survives a
 % did2.database.sqlitedb write and read (did2.document/toJSON writes the
 % literal NaN; plain jsonencode wrote null, which read back as []).
@@ -1438,7 +1438,7 @@ end
 function testCoordinateSystemDimensionsAreNotAmendment6s(testCase)
 % coordinate_system has its own list of axes ({axis, positive_direction,
 % spacing}); the AMENDMENT 6 checks read only the `data` and
-% `acquisition_epoch` blocks (NDI #1021 V2 import stages, run 39739660924:
+% `acquisition_epoch` blocks (NDI #1021 v2 import stages, run 39739660924:
 % 'Unrecognized field name "n"' from the Haley geometry import). The list is
 % `axes` and the point `reference_point` since Jess Haley 2026-10-22
 % [coordinate system names] (`dimensions` / `origin` until then).

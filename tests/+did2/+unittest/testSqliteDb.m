@@ -1,7 +1,7 @@
 function tests = testSqliteDb
 % testSqliteDb - did2.database.sqlitedb integration tests.
 %
-%   Round-trips V2 documents through a real SQLite file via
+%   Round-trips v2 documents through a real SQLite file via
 %   mksqlite, and verifies that the JSON1 query compiler + post-filter
 %   returns the same hits as the in-memory reference evaluator
 %   (did2.query.matches).
@@ -387,7 +387,7 @@ verifyEqual(testCase, numel(db.search(did2.query('base.name', '~wildcard', 'N2*'
 end
 
 function testARepeatedEdgeNameIsStored(testCase)
-% A V2 edge declared `multiple` (e.g. time_reference_id) repeats ONE name;
+% A v2 edge declared `multiple` (e.g. time_reference_id) repeats ONE name;
 % the depends_on key used to be (doc_id, name) and refused the second row.
 db = testCase.TestData.db;
 d = makeDemoA('a', 'x');
@@ -858,7 +858,7 @@ catch
 end
 end
 
-% ---- v1 documents in the V2 database ([passthrough stays v1: how]) ----
+% ---- v1 documents in the v2 database ([passthrough stays v1: how]) ----
 %
 % Decided by Jess Haley, 2026-10-24 [passthrough stays v1: how] (did-schema
 % V_eta_go_forward_class_audit.md): "a v1 document is stored in the same V2

@@ -119,7 +119,7 @@ end
 
 function testAStrayFieldCitesCarry100AndAWriterFieldCarry056(testCase)
 % [tuning stray fields are malformed] (Jess Haley, 2026-10-27): carry-056
-% keeps only fields the NDIcalc-vis writer does write that V2 has no home for
+% keeps only fields the NDIcalc-vis writer does write that v2 has no home for
 % yet. The SF writer's `abs` block has a home since 2026-10-27 (on the one
 % calculation since [absolute-value fits are fit entries], 2026-10-28); a
 % field inside it the template does not declare is cited on its own under

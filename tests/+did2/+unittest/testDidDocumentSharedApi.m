@@ -8,8 +8,8 @@ function tests = testDidDocumentSharedApi
 %   NDI-matlab V2 deletes its own copies of dependency_value,
 %   dependency_value_n, set_dependency_value, remove_dependency_value_n,
 %   remove_file, reset_file_info and setproperties and inherits these, as
-%   NDI main already does. One implementation then serves v1 and V2
-%   documents alike, so what NDI's copies did for a V2 document has to hold
+%   NDI main already does. One implementation then serves v1 and v2
+%   documents alike, so what NDI's copies did for a v2 document has to hold
 %   here.
 %
 %   These live in did2.unittest, not did.unittest, because did2.unittest is
@@ -57,7 +57,7 @@ props.files.file_list = {'data.bin'};
 props.files.file_info = struct('name', 'data.bin', 'locations', [locA locB]);
 end
 
-% ---- the V2 depends_on shape ------------------------------------------
+% ---- the v2 depends_on shape ------------------------------------------
 
 function testConstructorKeysEntriesByDocumentId(testCase)
 % The premise of the readers below: after construction an entry carries
@@ -161,7 +161,7 @@ end
 
 function testResetFileInfoClearsFileInfoAndSeriesInfo(testCase)
 % NDI's copy cleared file_info only; did.document's also clears the
-% per-instance series record. NDI V2's two callers that must keep it
+% per-instance series record. NDI v2's two callers that must keep it
 % (ndi.cloud.sync.internal.updateFileInfoForLocalFiles and
 % ndi.database.fun.extract_docs_files) save and restore it around the call.
 props = filesProps();

@@ -581,7 +581,7 @@ v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
      'number_of_samples_per_channel', 'number_of_channels'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
-% [every v1 id survives] (Jess Haley, 2026-10-27): with no calculation no V2
+% [every v1 id survives] (Jess Haley, 2026-10-27): with no calculation no v2
 % document can take the v1 id, so the neuron is carried whole as v1
 verifyTrue(testCase, isscalar(out) && isequaln(out{1}, v1), 'carried unchanged');
 end

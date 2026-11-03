@@ -46,9 +46,9 @@ function testFixturesRoundTripAsPassthroughsOrCarries(testCase)
 % INVERTED 2026-10-29 from testFixturesRoundTripAsPassthroughs, which asserted
 % all four were silent pass-1 passthroughs stamped did_v2. Decided by Jess
 % Haley, 2026-10-29 [one folder, final classes only] (did-schema
-% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
 % v1 document passes through under it. vmneuralresponseresiduals and
-% vmspikesummary (no V2 home, read by no later pass) are now carried whole as
+% vmspikesummary (no v2 home, read by no later pass) are now carried whole as
 % v1 with a note ([passthrough stays v1]); the two readers still pass through
 % for resolveEpochProbemap, which folds their files.
 f = fixtures();
@@ -64,7 +64,7 @@ for k = 1:size(f, 1)
             'did_v1', [label ': carried whole as v1']);
         [carried, notes] = did2.unittest.helpers.carryNote({v1});
         verifyTrue(testCase, carried, [label ': carried as the untouched v1 source']);
-        verifyTrue(testCase, contains(notes, 'has no V2 home'), notes);
+        verifyTrue(testCase, contains(notes, 'has no v2 home'), notes);
     else
         % handed on to epochMint exactly as v1 wrote it, stamped did_v1
         % ([handed-on are v1 as written], Jess Haley, 2026-11-03); INVERTED: it was a did_v2 passthrough

@@ -32,7 +32,7 @@ function [blk, bad] = rawCurveBlock(leaf, own, responseId)
 %                                 the batch, nothing is written (the migrator
 %                                 converted such a curve only when it stated
 %                                 neither).
-%   control_stimid has no V2 home: a document stating it is carried, so a
+%   control_stimid has no v2 home: a document stating it is carried, so a
 %   converted one stated none.
 %
 %   SEVERAL STIMULUS VARIABLES ON A FULL GRID ([tuning grid], Jess Haley,

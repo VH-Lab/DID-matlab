@@ -121,7 +121,7 @@ function testSettingsNamingTheRunEnvironmentAreCarriedAsV1(testCase)
 % INVERTED 2026-10-26 (was testSettingsExecutionEnvironmentIsParkedNotDropped,
 % which asserted the run environment was dropped from the method). [small
 % unread settings] (1) (Jess Haley, 2026-10-26): `method` gains no OS or
-% interpreter link (V2 records a run's environment on the calculation), so a
+% interpreter link (v2 records a run's environment on the calculation), so a
 % settings document whose app block names one is carried whole as v1, and no
 % software entity is minted for it.
 v1 = extractionParamsBody('ndi.app.spikeextractor', '2.1');

@@ -262,7 +262,7 @@ function [sql, params] = compileDependsOn(name, value, isNeg, ctx)
 % id. A correlated EXISTS is evaluated once per document, so the planner
 % has to walk the documents table first, and a query with nothing else to
 % narrow it (an isa plus an edge, as ndi.dataset sends) SCANNED every
-% document. Measured on the Haley V2 dataset (187,673 documents, a worm's
+% document. Measured on the Haley v2 dataset (187,673 documents, a worm's
 % 22 statements): 0.708 s as EXISTS, 0.0007 s starting from the edge
 % (EXPLAIN QUERY PLAN via sqlitedb.testHookExplain). doc_id is NOT NULL,
 % so the negated NOT IN has no NULL trap.
@@ -877,7 +877,7 @@ function [sql, params] = compileSessionIdScalar(op, target, isNeg)
 % (did2.schema.cache.sessionIdOf), so this one predicate finds a did_v1 or older
 % V_eta document by its field and a newer one by its edge -- which is what
 % lets `ndi.query('base.session_id', 'exact_string', sid)` keep working on a
-% V2 database unchanged. The in-memory recheck agrees: did2.query reads the
+% v2 database unchanged. The in-memory recheck agrees: did2.query reads the
 % edge for this path when the field is absent.
 %
 % On a field-shape document the column IS the field (it always was filled from

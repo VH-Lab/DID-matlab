@@ -21,7 +21,7 @@ function report = check(v1Body, v2Docs, ctx)
 %   back to v1 and compared with its source -- built with each class's switch
 %   to raw v1 ([migrators read raw v1]). The test it serves is [lossless means
 %   round trip] (2026-10-26): a v1 value may be left unwritten only when it is
-%   100% recoverable from what V2 keeps.
+%   100% recoverable from what v2 keeps.
 %
 %   HOW THE v1 DOCUMENT IS REBUILT.
 %     - CARRIED (V2DOCS is one document stamped 'did_v1'): the carried body
@@ -29,12 +29,12 @@ function report = check(v1Body, v2Docs, ctx)
 %     - CONVERTED: the class's inverse, did2.convert.roundtrip.<class_name>
 %       (class_name as v1 spells it, did2.convert.v1read.readStamp), returns
 %       the rebuilt body and a SPEC of what it cannot rebuild exactly:
-%         spec.equivalents  struct array {path, values, why}: a v1 field V2
+%         spec.equivalents  struct array {path, values, why}: a v1 field v2
 %                           does not keep but that can only have been one of
 %                           VALUES (a writer default, or a restatement of a
 %                           kept value), each with the decision that allows it
 %         spec.same         struct array {path, fn, why} (optional): a v1
-%                           field V2 keeps in another notation, compared by
+%                           field v2 keeps in another notation, compared by
 %                           FN(v1Value, rebuiltValue) -> true when both state
 %                           the same thing (a CSV table's rows, a CURIE's
 %                           prefix case: [spelling is notation], Jess Haley,
@@ -52,7 +52,7 @@ function report = check(v1Body, v2Docs, ctx)
 %         spec.spellings    struct array {paths, why} (optional): a v1 field
 %                           that v1 writes under more than one name (PATHS,
 %                           full paths that differ only in their last name),
-%                           one field in V2; the rebuilt field is moved to
+%                           one field in v2; the rebuilt field is moved to
 %                           the spelling V1BODY uses (Decided by Jess Haley,
 %                           2026-10-27 [hotelling spellings are one field]:
 %                           "the round trip writes back the spelling v1
@@ -69,10 +69,10 @@ function report = check(v1Body, v2Docs, ctx)
 %                 same thing in another notation
 %     exempt      `document_class.*` except `class_name`, on a CONVERTED
 %                 document only: the v1 stamp (template paths, class_version,
-%                 superclasses), which V2 replaces with its own and
+%                 superclasses), which v2 replaces with its own and
 %                 did2.convert.v1read.readStamp reads; the class name is
 %                 compared
-%     lost        anything else: V2 does not keep it
+%     lost        anything else: v2 does not keep it
 %   and every leaf of the rebuilt document V1BODY does not have, with a
 %   non-empty value, is INVENTED.
 %

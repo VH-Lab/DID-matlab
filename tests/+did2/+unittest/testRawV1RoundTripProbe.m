@@ -32,10 +32,10 @@ function tests = testRawV1RoundTripProbe
 %                       ([probe contact geometry carried]). The same document
 %                       with no shank_id (the "converted shape", DID-side)
 %                       converts and loses nothing.
-%     site2channelmap   carried whole as v1 (no V2 home; nothing joins it to
+%     site2channelmap   carried whole as v1 (no v2 home; nothing joins it to
 %                       its geometry yet). INVERTED 2026-10-29 from "a pass-1
 %                       passthrough": [one folder, final classes only] (Jess
-%                       Haley, 2026-10-29) deletes a retire class's V2 file once
+%                       Haley, 2026-10-29) deletes a retire class's v2 file once
 %                       no v1 document passes through under it, so the
 %                       migrator now carries it with a note. It round trips as
 %                       itself.

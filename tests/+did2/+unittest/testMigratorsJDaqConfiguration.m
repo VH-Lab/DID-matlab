@@ -441,7 +441,7 @@ end
 
 function testHollowReadersAndSystemsAreCarriedWithANote(testCase)
 % [one folder, final classes only] (Decided by Jess Haley, 2026-10-29, did-schema
-% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
 % v1 document passes through under it. The nothing-to-declare branches above
 % (daqreader, daqmetadatareader, daqsystem) still hand the document back
 % unchanged, but now as a carry: stamped did_v1, with a `carried_as_v1` note
@@ -666,12 +666,12 @@ function testTheResidualDaqsystemIsCarriedWholeAsV1(testCase)
 % INVERTED 2026-10-29 from testTheResidualPassthroughIsAQuarantinePathByConstruction,
 % which pinned the all-empty daqsystem as a quarantine (1 quarantined, nothing
 % surviving). Decided by Jess Haley, 2026-10-29 [one folder, final classes
-% only] (did-schema V_eta_go_forward_class_audit.md): a retire class's V2 file
+% only] (did-schema V_eta_go_forward_class_audit.md): a retire class's v2 file
 % is deleted once no v1 document passes through under it, so the residual
 % branch no longer passes the body through to be validated against the
 % `daqsystem` tombstone: it carries it whole as v1 with a `carried_as_v1`
 % note ([passthrough stays v1], [generic stage is lossless]). A carried
-% document is v1 and is not read against V2, so nothing is quarantined and the
+% document is v1 and is not read against v2, so nothing is quarantined and the
 % body survives untouched. That answers the open question the history below
 % leaves to the team ("Either it should go, or it should refuse loudly").
 %
@@ -715,7 +715,7 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, ...
     'an all-empty daqsystem is carried whole as v1, never quarantined');
 verifyEqual(testCase, numel(out.migrated), 1, 'one document: the v1 source');
 verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), ...
-    'did_v1', 'carried, not passed through as a V2 document');
+    'did_v1', 'carried, not passed through as a v2 document');
 verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), 'daqsystem');
 notes = out.summary.migration_notes;
 verifyTrue(testCase, isfield(notes, 'carried_as_v1'), 'the carry is noted');

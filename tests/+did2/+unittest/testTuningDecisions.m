@@ -483,7 +483,7 @@ for name = {'independent_label', 'min_xi', 'prestimulus_time', 'selection.proper
 end
 verifyEqual(testCase, did2.convert.tuningNames('v2', 'sFrequency'), 'spatial frequency');
 [~, found] = did2.convert.tuningNames('v2', 'sPhaseShift');
-verifyFalse(testCase, found, 'sPhaseShift changes unit in the V2 method: not in the table');
+verifyFalse(testCase, found, 'sPhaseShift changes unit in the v2 method: not in the table');
 end
 
 function testASettingNotInTheTableCarriesTheDocument(testCase)

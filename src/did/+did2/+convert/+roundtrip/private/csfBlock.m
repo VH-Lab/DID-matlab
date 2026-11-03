@@ -15,7 +15,7 @@ function [blk, bad] = csfBlock(leaf)
 %                                    (0/1; v1 wrote 0 or 1)
 %     parameters_<V>                 the 'naka rushton <V>' fit's coefficients,
 %                                    'parameter k, spatial frequency j' at (k, j)
-%     sensitivity_<V>, relative_max_gain_<V>, empirical_c50_<V> (V2 c50),
+%     sensitivity_<V>, relative_max_gain_<V>, empirical_c50_<V> (v2 c50),
 %     saturation_index_<V>           that fit's fields, as stored
 %   for each variant V of RB, RBN, RBNS.
 

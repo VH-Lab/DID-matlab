@@ -14,7 +14,7 @@ function out = mintId(action, arg2)
 %       context (its key). The n-th id of one ROLE for one source in one
 %       context is a pure function of (source, ROLE, n). With no context open,
 %       or a context whose key is empty, it is did.ido.unique_id() -- random,
-%       exactly as before. So a caller outside the migration (an NDI V2 writer
+%       exactly as before. So a caller outside the migration (an NDI v2 writer
 %       calling did2.build.document) is unchanged.
 %   ID = did2.convert.mintId(ROLE, SOURCEID)
 %       the same, for a named SOURCEID (the v1 or migrated document the new

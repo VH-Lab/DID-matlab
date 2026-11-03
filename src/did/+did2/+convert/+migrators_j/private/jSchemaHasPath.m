@@ -1,5 +1,5 @@
 function tf = jSchemaHasPath(className, steps)
-%JSCHEMAHASPATH Does the V2 schema in use declare the field STEPS of class
+%JSCHEMAHASPATH Does the v2 schema in use declare the field STEPS of class
 %   CLASSNAME? (e.g. jSchemaHasPath('tuning_curve', {'value', 'model_fit',
 %   'metrics', 'relative_max_gain'})).
 %

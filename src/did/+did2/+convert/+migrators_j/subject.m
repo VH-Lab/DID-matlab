@@ -31,7 +31,7 @@ function v2Body = subject(preBody)
 %                                 leaves the template's ''.
 %     subject.local_identifier -> entity.local_identifier (empty: carry-033)
 %     subject.description      -> entity.notes ('' is left out)
-%     document_class           -> the V2 document_class the builder writes
+%     document_class           -> the v2 document_class the builder writes
 
 arguments
     preBody (1,1) struct

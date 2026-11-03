@@ -62,7 +62,7 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %     + the named class's own blocks (significance, model_fit[],
 %       circular_statistics, interpolated_values)
 %
-%   V1 FIELDS WITH NO HOME are listed by jTuningCurve / jContrastSensitivityValue
+%   v1 FIELDS WITH NO HOME are listed by jTuningCurve / jContrastSensitivityValue
 %   (and OPTS.Dropped). Until 2026-10-25 they were dropped with one
 %   `field_dropped` note each. Since [generic stage is lossless] and [partly
 %   placed is carried as v1] (Jess Haley, 2026-10-25) a document with any such
@@ -161,7 +161,7 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %     [tuning best value is a condition] (2026-10-28)  each `best` selection
 %         of tuningcurve_calc's input_parameters.selection: the value it chose,
 %         read once from the log (did2.convert.tuningBestValues), is a
-%         condition named by the V2 stimulus variable (e.g. orientation = 90),
+%         condition named by the v2 stimulus variable (e.g. orientation = 90),
 %         after the stim_property_list conditions, and the rule is the method
 %         parameter {'<V2 name> selection', text 'best'} after the v1
 %         settings; the stimid rebuild reads these conditions too. A curve
@@ -169,7 +169,7 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         does not hold) is carried (carry-056).
 %     [varied properties are conditions by V2 name]  each property in
 %         tuningcurve_calc's `stim_property_list` is a condition, its variable
-%         the V2 stimulus method's (did2.convert.tuningNames), its value the
+%         the v2 stimulus method's (did2.convert.tuningNames), its value the
 %         v1 value; a name the table does not hold carries the curve
 %         (carry-056).
 %     [tuning stimids rebuild]  a raw curve's `stimid` and
@@ -290,7 +290,7 @@ if useTable
     [params, unknownSettings] = jParameterList(calcInputParameters(preBody), '', ...
         @(n) did2.convert.tuningNames('v2', n));
     for k = 1:numel(unknownSettings)
-        reasons{end+1} = sprintf(['[carry-056] input_parameters.%s (no V2 name in ' ...
+        reasons{end+1} = sprintf(['[carry-056] input_parameters.%s (no v2 name in ' ...
             'the table: [parameter names map by table])'], unknownSettings{k}); %#ok<AGROW>
     end
 else
@@ -747,7 +747,7 @@ if isfield(own, 'log') && ~isEmptyValue(own.log)
         curve.reasons{end+1} = sprintf('[carry-056] %s.log (not one text)', cls);
     end
 end
-% the held-fixed properties, as conditions by their V2 names
+% the held-fixed properties, as conditions by their v2 names
 condNames = {};
 condValues = [];
 conds = {};
@@ -756,7 +756,7 @@ if isfield(own, 'stim_property_list') && ~isEmptyValue(own.stim_property_list)
     for k = 1:numel(condNames)
         [v2, found] = did2.convert.tuningNames('v2', condNames{k});
         if ~found
-            why = sprintf('no V2 name in the table for "%s": [varied properties are conditions by V2 name]', ...
+            why = sprintf('no v2 name in the table for "%s": [varied properties are conditions by V2 name]', ...
                 condNames{k});
             break;
         end
@@ -786,7 +786,7 @@ if ~isempty(bestNames)
         if ~isempty(why); break; end
         [v2, found] = did2.convert.tuningNames('v2', bestNames{k});
         if ~found
-            why = sprintf('no V2 name in the table for "%s"', bestNames{k});
+            why = sprintf('no v2 name in the table for "%s"', bestNames{k});
         elseif any(strcmp(bestNames{k}, condNames))
             why = sprintf('"%s" is both a best selection and in stim_property_list', bestNames{k});
         else

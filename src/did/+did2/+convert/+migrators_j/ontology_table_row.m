@@ -25,8 +25,8 @@ function bodies = ontology_table_row(preBody)
 %   NO PER-TABLE MAPS. The JH C. elegans encounter map and bacterial-patch
 %   geometry map that once lived here encoded one dataset's tables, and left
 %   the generic migration ([dataset-specific logic leaves the generic
-%   migration], [dataset audit batch 1 and 2]); the Haley dataset's V2 shape
-%   comes from its V2 re-import (ndi.setup.conv.haley.import_V2).
+%   migration], [dataset audit batch 1 and 2]); the Haley dataset's v2 shape
+%   comes from its v2 re-import (ndi.setup.conv.haley.import_V2).
 %
 %   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
 %   2026-10-26 [migrators read raw v1], did-schema

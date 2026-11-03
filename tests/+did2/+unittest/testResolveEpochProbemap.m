@@ -1103,7 +1103,7 @@ verifyEqual(testCase, rep.device_acqsystem_unresolved, 2);
 verifyEqual(testCase, rep.rigs_without_daqsystem, 1);
 verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_system'), 'no name-only system');
 % [probe wiring is a relation]: with no system there is no parent to wire the
-% channels to, so the rows have no V2 home for them and the v1 document is
+% channels to, so the rows have no v2 home for them and the v1 document is
 % carried whole, its devicestring intact
 verifyEqual(testCase, rep.rows_unwirable, 2);
 verifyEqual(testCase, rep.wiring_relations_minted, 0);

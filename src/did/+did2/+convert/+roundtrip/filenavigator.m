@@ -7,7 +7,7 @@ function [v1, spec] = filenavigator(bodies)
 %   it). BODIES holds the `epoch_file_pattern` and its `software` entity:
 %
 %     base.id, session_id, datestamp     the epoch_file_pattern's
-%     base.name                          '' (the writer sets none; V2 writes
+%     base.name                          '' (the writer sets none; v2 writes
 %                                        none)
 %     ndi_filenavigator_class            the software entity's name
 %     fileparameters                     file_pattern, written back as the

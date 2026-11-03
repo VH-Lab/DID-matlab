@@ -226,7 +226,7 @@ end
 % did-schema V_eta_go_forward_class_audit.md): the v1 `label` (makePyramid.m
 % makeOneLevel builds it as "<entry name> level <N> (<reduction>)") is written
 % UNCHANGED to the level body's `notes` ([one free-text field: notes]) as
-% display text V2 code does not read; no
+% display text v2 code does not read; no
 % level-number field is added; the round trip takes the level number from the
 % label. A level whose label does not follow that pattern (or states another
 % level or reduction than the document) is carried whole as v1, malformed. An

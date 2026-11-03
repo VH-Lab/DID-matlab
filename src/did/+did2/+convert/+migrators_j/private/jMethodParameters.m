@@ -67,7 +67,7 @@ function bodies = jMethodParameters(preBody, entries, other, opts)
 %       method, by design: [small unread settings] (1) (Jess Haley,
 %       2026-10-26) -- the OS is where the settings were SAVED (ndi.app/
 %       newdocument stamps every app document), not a property of the recipe;
-%       V2 puts a run's OS and interpreter on the CALCULATION, and `method` is
+%       v2 puts a run's OS and interpreter on the CALCULATION, and `method` is
 %       NOT to gain OS or interpreter links. A document whose app block names
 %       any of the four is CARRIED WHOLE AS V1 (they were dropped, reported,
 %       until 2026-10-26).

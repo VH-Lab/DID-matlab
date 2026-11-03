@@ -187,7 +187,7 @@ end
 function testMixedBatchOfV1AndTargetBodies(testCase)
 % A batch with both v1 bodies (routed) and V_eta bodies (short-circuit)
 % migrates every document successfully. A v1 body is converted (stamped
-% did_v2) or carried (stamped did_v1); a V2 body keeps its own stamp.
+% did_v2) or carried (stamped did_v1); a v2 body keeps its own stamp.
 v1A = makeV1Skeleton('projectvar');
 v1A.projectvar = struct('foo', 'bar_v1');
 targetA = makeTargetSkeleton('unknown_class');

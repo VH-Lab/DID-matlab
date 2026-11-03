@@ -7,7 +7,7 @@ function [v1, spec] = session(bodies)
 %   the session `entity` (type session):
 %
 %     base.id             the entity's base.id: on the edge shape that is the
-%                         SESSION id, not the v1 document's own id, which V2
+%                         SESSION id, not the v1 document's own id, which v2
 %                         does not keep (the round trip reports it lost when
 %                         they differ, as they do on every writer document)
 %     base.session_id     the entity's session_id (its own id)

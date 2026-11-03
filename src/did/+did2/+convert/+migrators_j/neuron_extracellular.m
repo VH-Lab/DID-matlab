@@ -12,7 +12,7 @@ function bodies = neuron_extracellular(preBody)
 %         and derived_from relation listed below are no longer emitted. A
 %         neuron with no element_id has no unit entity to point at and is
 %         carried whole as v1 (register row pending).
-%     [every v1 id survives]  the v1 id becomes the id of the V2 document that
+%     [every v1 id survives]  the v1 id becomes the id of the v2 document that
 %         most directly replaces it: the mean waveform calculation; with no
 %         waveform, the first calculation emitted (cluster index, quality
 %         label, quality number, in that order). A neuron that yields no
@@ -527,13 +527,13 @@ if isnumeric(quality) && isscalar(quality)
     nCalc = nCalc + 1;
 end
 
-% [every v1 id survives]: no calculation, so no V2 document takes the v1 id;
+% [every v1 id survives]: no calculation, so no v2 document takes the v1 id;
 % the neuron is carried whole as v1
 if nCalc == 0
     % carry-register: carry-112
     did2.convert.reportNote('carried_as_v1', 'neuron_extracellular', ...
         char(baseField(preBody, 'id', '')), ['[carry-112] awaiting_home: no ' ...
-        'calculation about the unit, so no V2 document takes its id ([every v1 ' ...
+        'calculation about the unit, so no v2 document takes its id ([every v1 ' ...
         'id survives])']);
     bodies = {raw};
     return;

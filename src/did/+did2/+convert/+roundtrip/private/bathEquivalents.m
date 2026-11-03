@@ -1,5 +1,5 @@
 function spec = bathEquivalents(spec, nodePath, namePath)
-%BATHEQUIVALENTS An immersion's v1 location, which V2 does not write: an
+%BATHEQUIVALENTS An immersion's v1 location, which v2 does not write: an
 %   immersion IS a treatment at the bath, so its v1 location can only have
 %   been the bath, NCIm:C0179246 "bath", the node and name NDI's writers use
 %   (+birren/TreatmentCreator.m, createSayaTreatments.m, +babu/treatments.json)

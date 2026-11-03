@@ -2005,11 +2005,11 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
                             for m = 1 : numel(matchIdx)
                                 % Read via the depends_on shape helper:
-                                % accepts document_id (V2),
-                                % value (V2 draft), and id (V_alpha),
+                                % accepts document_id (v2),
+                                % value (v2 draft), and id (V_alpha),
                                 % precedence document_id > value > id. A
                                 % direct .value read would return empty on
-                                % any doc constructed via V2's
+                                % any doc constructed via v2's
                                 % did.document, which canonicalizes the
                                 % depends_on key to document_id.
                                 value = did.document.i_readDependencyTarget(depends(matchIdx(m)));
@@ -2107,7 +2107,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         docSubFields = strjoin(unique(fieldnames(docValue)),',');
                         areSame = strcmpi(expectedSubFields,docSubFields);
                         if ~areSame
-                            % Compensate for v1 -> V2 property-block
+                            % Compensate for v1 -> v2 property-block
                             % field renames the V_alpha validator does not
                             % know about. Normalise both sides via the
                             % small alias map and re-compare. See #801.
@@ -2128,10 +2128,10 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             definition = expected(idx);
                             subfield = definition.name;
                             field_name = [field '.' subfield];
-                            % Tolerate v1 -> V2 property-block
+                            % Tolerate v1 -> v2 property-block
                             % renames the schema does not know about:
                             % if the schema's declared subfield isn't on
-                            % the body, look for the V2 canonical
+                            % the body, look for the v2 canonical
                             % via the rename map. See #801.
                             if isfield(docValue, subfield)
                                 docSubValue = docValue.(subfield);

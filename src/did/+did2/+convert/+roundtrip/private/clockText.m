@@ -1,5 +1,5 @@
 function h = clockText(t)
-%CLOCKTEXT The did_v1 clocktype string a V2 clock term restores ('' when absent).
+%CLOCKTEXT The did_v1 clocktype string a v2 clock term restores ('' when absent).
 %
 %   H = clockText(T): T is a relative_time_reference `value.clock` or a
 %   clock_alignment_configuration `clock` ({node, name}, or a name). H is the

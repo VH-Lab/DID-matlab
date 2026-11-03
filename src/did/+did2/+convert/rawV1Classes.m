@@ -29,7 +29,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %
 %   WHY. Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema
 %   V_eta_go_forward_class_audit.md): a migrator reads v1 exactly as v1 defines
-%   it (the NDI template and writer at the locked `main`), writes V2 only
+%   it (the NDI template and writer at the locked `main`), writes v2 only
 %   through the builder, and accounts for every v1 field; the shared reads are
 %   helpers (did2.convert.v1read.*), not a pass that rewrites the document.
 %   Migrators switch ONE AT A TIME, each with a check that every v1 field is
@@ -59,7 +59,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     virus_injection     by +NDIMaker/treatmentMaker (all four),
 %                         table2treatment, +haley and +dabrowska (treatment).
 %                         Round trips: testRawV1RoundTripTreatment, which
-%                         lists what V2 does not keep as known findings.
+%                         lists what v2 does not keep as known findings.
 %     element             superclass `base` only, no `app` block; the old
 %                         +migrators/element.m, never run for it (a class
 %                         with a +migrators_j migrator skips it), is deleted. Written by
@@ -227,8 +227,8 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     measurement         the measurement family: superclass `base` (+
 %     subjectmeasurement  `epochid` for stimulus_parameter), no `app` block, no
 %     stimulus_parameter  superclass migrator. measurement reads v1's
-%                         `ontologyName`; one with no V2 statement (a date, an
-%                         untyped number, text), which passed through as a V2
+%                         `ontologyName`; one with no v2 statement (a date, an
+%                         untyped number, text), which passed through as a v2
 %                         `measurement` (`retire`) whose renamed field its raw
 %                         passthrough would not match, is carried as v1 at
 %                         once (no register row yet), the end state NDI's last
@@ -388,7 +388,7 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         2026-10-30: the label back from the observation's
 %                         notes, `format` 'tiff' from EDAM:format_3591).
 %     dataset_session_info  superclass `base` only, no `app` block, no
-%                         superclass migrator. Writes no V2 document ([fit
+%                         superclass migrator. Writes no v2 document ([fit
 %                         classes kept; session list rebuilt], Jess Haley,
 %                         2026-10-27): v1_to_v2 carryUnrebuiltSessionLists,
 %                         which reads the v1 input, carries a list the batch's

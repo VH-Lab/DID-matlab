@@ -66,7 +66,7 @@ if isfield(v1, 'openminds')
         % [species text is the openMINDS equivalent] (Decided by Jess Haley,
         % 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a v1
         % openMINDS subject's species `definition` and `synonym` are not stored
-        % in V2: the term registry records the openMINDS species instance as
+        % in v2: the term registry records the openMINDS species instance as
         % the term's equivalent ([term equivalents recorded]), and the round
         % trip reports the v1 text as an accepted difference". So whatever text
         % v1 states there is accepted (reported under `equivalent`, never lost).

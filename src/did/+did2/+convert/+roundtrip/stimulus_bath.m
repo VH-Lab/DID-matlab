@@ -144,7 +144,7 @@ end
 
 function rows = propertyRow(rows, q, name)
 % A whole-mixture property the pass put on the formulation (`ph`,
-% `osmolarity`) as the row it was read from, with no node (V2 keeps none)
+% `osmolarity`) as the row it was read from, with no node (v2 keeps none)
 if ~isstruct(q) || ~isscalar(q) || ~isfield(q, 'source_value')
     return;
 end

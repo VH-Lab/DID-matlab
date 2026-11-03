@@ -152,7 +152,7 @@ readerString = jGetChar(blk, 'reader_string');
 % and minting entities from it would be the hollow-document defect.
 if isempty(implClass) && isempty(readerString)
     % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
-    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
     % 2026-10-24) instead of passing through silently. Register row carry-130 covers it.

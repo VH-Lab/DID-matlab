@@ -2,7 +2,7 @@ function problems = unitBindingProblems(s, registry)
 %UNITBINDINGPROBLEMS Every source unit in a document its variable's unit
 %   binding does not admit.
 %
-%   PROBLEMS = did2.schema.unitBindingProblems(S, REGISTRY) reads the V2
+%   PROBLEMS = did2.schema.unitBindingProblems(S, REGISTRY) reads the v2
 %   document struct S and returns a cellstr, one line per quantity whose
 %   `source_unit` is outside its variable's did-schema `unit_bindings` list
 %   (did2.schema.unitInSet; Decided by Jess Haley, 2026-10-27 [allowed units

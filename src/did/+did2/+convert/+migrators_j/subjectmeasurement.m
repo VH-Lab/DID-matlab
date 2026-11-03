@@ -151,7 +151,7 @@ end
 subjectId = dependencyValue(preBody, 'subject_id');
 if isempty(subjectId)
     % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
-    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
     % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
@@ -166,7 +166,7 @@ end
 name = getCharField(blk, 'measurement');
 if isempty(strtrim(name))
     % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
-    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
     % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
@@ -181,7 +181,7 @@ value = [];
 if isfield(blk, 'value'); value = blk.value; end
 if ~(isnumeric(value) && isscalar(value) && isfinite(value))
     % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
-    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
     % 2026-10-24) instead of passing through silently. Register row carry-144 covers it.
@@ -218,7 +218,7 @@ if isempty(folded)
         % jMeasurementFold left no note of its own (it writes one, carry-059,
         % for a second value): it found no quantity leaf for the name
         % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
-        % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+        % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
         % v1 document passes through under it, so this document, left as v1 on purpose,
         % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
         % 2026-10-24) instead of passing through silently. Register row carry-145 covers it.

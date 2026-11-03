@@ -1,5 +1,5 @@
 function tf = schemaDeclares(className, steps)
-%SCHEMADECLARES Does the V2 schema in use declare the field STEPS (a cellstr
+%SCHEMADECLARES Does the v2 schema in use declare the field STEPS (a cellstr
 %   path of field names) of class CLASSNAME? For a test whose expectation
 %   changes when a did-schema change lands (e.g. [contrast metrics added],
 %   Jess Haley, 2026-10-27: the fit entry's relative_max_gain, saturation_index

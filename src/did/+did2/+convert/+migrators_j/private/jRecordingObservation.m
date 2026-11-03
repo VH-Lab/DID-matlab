@@ -8,7 +8,7 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   ---------------------------------------------------------------------
 %   Decided by Jess Haley, 2026-10-21 (did-schema
 %   V_eta_recording_observation_plan.md): migrated recordings link their epoch
-%   files as data bodies, matching native V2 (NDI ndi.setup.V2.recordingDocuments):
+%   files as data bodies, matching native v2 (NDI ndi.setup.V2.recordingDocuments):
 %   one observation per element PER EPOCH, `data_body` true, an `opaque_body` per
 %   epoch file recorded by location (ingested archives as attached), shared by
 %   the electrodes recorded in it, with the channel map.
@@ -90,7 +90,7 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   would have been -- 11 of them in one PRED-like session, each with dtype '',
 %   shape [] and an empty sample_time.
 %
-%   V1'S OWN ANSWER IS THE ONE TAKEN. `ndi.file.navigator` has exactly two
+%   v1'S OWN ANSWER IS THE ONE TAKEN. `ndi.file.navigator` has exactly two
 %   states (`navigator.m:218`, `:795-807`): not ingested -> the files are on
 %   disk, located BY PATTERN through the file navigator, and no document points
 %   at them; ingested -> an `epochfiles_ingested` document carries them. No v1

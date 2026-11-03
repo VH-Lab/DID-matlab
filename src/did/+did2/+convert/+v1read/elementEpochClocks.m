@@ -9,7 +9,7 @@ function v2Body = elementEpochClocks(preBody)
 %   [early migration pieces fixed] (1) (Jess Haley, 2026-10-26) retires that
 %   generation, so it lives here, unchanged in what it does.
 %
-%   V2 represents element_epoch timing as a single `clocks`
+%   v2 represents element_epoch timing as a single `clocks`
 %   field of array-of-records shape:
 %
 %       element_epoch.clocks(i).name   - clock identifier (char)

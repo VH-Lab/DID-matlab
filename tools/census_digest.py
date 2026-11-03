@@ -5059,7 +5059,7 @@ def _int_or_none(v):
 # ([migrators read raw v1], Jess Haley, 2026-10-26). (report key, label), in
 # the order v1_to_v2 tries them.
 ROUTES = [
-    ("bodies_skipped_already_target", "already a V2 document"),
+    ("bodies_skipped_already_target", "already a v2 document"),
     ("bodies_read_raw_v1", "read raw v1 by its migrator (rawV1Classes)"),
     ("bodies_carried_no_migrator",
      "carried whole, no migrator (noMigratorCarryRows)"),

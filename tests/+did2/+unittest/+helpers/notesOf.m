@@ -1,5 +1,5 @@
 function s = notesOf(block)
-%NOTESOF A V2 `entity` or `data_body` block's free text, as char.
+%NOTESOF A v2 `entity` or `data_body` block's free text, as char.
 %
 %   S = did2.unittest.helpers.notesOf(BLOCK) is BLOCK.notes, else ''.
 %   did-schema did_v2_go_forward_class_audit.md [one free-text field: notes]

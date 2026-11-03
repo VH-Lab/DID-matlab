@@ -17,7 +17,7 @@ function tests = testRawV1RoundTripSessionList
 %   testRawV1RoundTripSession builds them (+session/dir.m, +ndi/dataset.m).
 %   No corpus of the four zips holds a dataset_session_info.
 %
-%   A list the converted memberships rebuild exactly writes no V2 document;
+%   A list the converted memberships rebuild exactly writes no v2 document;
 %   any other list is carried whole as v1 and round trips as itself. The
 %   switch changes no outcome. No known findings.
 tests = functiontests(localfunctions);
@@ -40,7 +40,7 @@ batch = rebuildingBatch();
 out = runRaw(batch);
 verifyEmpty(testCase, out.quarantine);
 ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
-verifyFalse(testCase, any(strcmp(ids, 'dsi_1')), 'the list writes no V2 document');
+verifyFalse(testCase, any(strcmp(ids, 'dsi_1')), 'the list writes no v2 document');
 verifyFalse(testCase, any(strcmp({out.passthrough.id}, 'dsi_1')), 'not carried');
 % the inverse of nothing rebuilds nothing, and says so
 [~, spec] = did2.convert.roundtrip.dataset_session_info({});

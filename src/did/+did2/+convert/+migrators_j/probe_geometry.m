@@ -80,7 +80,7 @@ function bodies = probe_geometry(preBody)
 %   2026-10-26; a home needs a contact-geometry model (a shape composite and a
 %   per-site shank axis), which is modelling, not repair. [probe contact geometry
 %   carried] (Jess Haley, 2026-10-26): a document that sets ANY of them is
-%   carried whole as v1 until V2 has that model. `has_planar_contour` equal
+%   carried whole as v1 until v2 has that model. `has_planar_contour` equal
 %   to a v1 writer's own fixed default counts as NOT set ([writer default is
 %   not set], Jess Haley, 2026-10-26: the default is recoverable): 1, the NDI
 %   template's (src/ndi/ndi_common/database_documents/probe/probe_geometry.json:33)
@@ -186,7 +186,7 @@ if jRawCarry('probe_geometry', src, collision, unplacedRaw, 'carry-100', valueRe
     return;
 end
 
-% [probe contact geometry carried] (Jess Haley, 2026-10-26): no V2 home yet
+% [probe contact geometry carried] (Jess Haley, 2026-10-26): no v2 home yet
 unplacedNames = {'shank_id', 'contact_shape', 'contact_shape_width', ...
     'contact_shape_height', 'contact_shape_radius', 'manufacturer', ...
     'has_planar_contour', 'contour_x', 'contour_y'};
@@ -224,7 +224,7 @@ end
 
 if ~any(populated)
     % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
-    % V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+    % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
     % v1 document passes through under it, so this document, left as v1 on purpose,
     % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
     % 2026-10-24) instead of passing through silently. Register row carry-134 covers it.

@@ -1,5 +1,5 @@
 function tf = isAlreadyTarget(body, targetVersion)
-%ISALREADYTARGET True when a body is already a V2 document (stamped did_v2).
+%ISALREADYTARGET True when a body is already a v2 document (stamped did_v2).
 %
 %   TF = did2.convert.isAlreadyTarget(BODY, TARGETVERSION). The test
 %   did2.convert.v1_to_v2 uses for its idempotency short-circuit (a body
@@ -11,7 +11,7 @@ function tf = isAlreadyTarget(body, targetVersion)
 %   migration pieces fixed] (4) (did-schema V_eta_go_forward_class_audit.md):
 %   "already converted" is a stamp check (`did_v1` / `did_v2`), not a rank
 %   against `V_eta`. Both must hold:
-%   (a) BODY's document_class.schema_version is a V2 stamp
+%   (a) BODY's document_class.schema_version is a v2 stamp
 %       (did2.schema.isV2Stamp: 'did_v2', [document stamps]) AND the stamp
 %       TARGETVERSION writes (did2.convert.targetStamp: 'V_eta', the schema
 %       SET's name, writes 'did_v2') is one too. 'V_eta' itself is not a
@@ -21,11 +21,11 @@ function tf = isAlreadyTarget(body, targetVersion)
 %       V_zeta) or a v1 stamp (did_v1, or none): those are converted.
 %   (b) the body carries no v1-only structural markers: underscore-prefixed
 %       top-level keys (e.g. legacy _classname, _class_version) that predate
-%       the document_class header and could not survive a real V2 build.
+%       the document_class header and could not survive a real v2 build.
 %
-% (a) alone would misclassify a body that was tagged V2 out-of-band but still
+% (a) alone would misclassify a body that was tagged v2 out-of-band but still
 % carries legacy field shapes; (b) alone would skip the bulk of v1 corpora,
-% which do not use the underscore markers but still need every other v1 -> V2
+% which do not use the underscore markers but still need every other v1 -> v2
 % rewrite.
 arguments
     body % anything; only a scalar struct can be a target document

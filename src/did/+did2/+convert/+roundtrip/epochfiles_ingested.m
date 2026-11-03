@@ -20,7 +20,7 @@ function [v1, spec] = epochfiles_ingested(bodies, ctx)
 %   Haley, 2026-10-27), is where those statements are read:
 %
 %     base.id, session_id, datestamp   the manifest's (rebuildBase)
-%     base.name                        '' (V2 writes none)
+%     base.name                        '' (v2 writes none)
 %     depends_on filenavigator_id      its epoch_file_pattern_id (the v1
 %                                      filenavigator keeps its id)
 %     epochfiles_ingested.epoch_id     its epoch_id entity's local_identifier

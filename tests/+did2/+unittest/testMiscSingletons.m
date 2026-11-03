@@ -799,7 +799,7 @@ end
 
 function testNoMigratorCarryTableHoldsTheNineClasses(testCase)
 % The 7 classes of the 9 Jess answered for that have no conversion anywhere,
-% and the two NDIcalc-vis-matlab classes with no V2 class ([last rename-pass
+% and the two NDIcalc-vis-matlab classes with no v2 class ([last rename-pass
 % classes], Jess Haley, 2026-11-01: "each with its own carry row": carry-168,
 % carry-169). `ensemble` (NDI's
 % second pass) and `generic_file` (foldGenericFiles) keep their conversions

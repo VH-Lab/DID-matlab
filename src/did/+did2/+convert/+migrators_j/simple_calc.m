@@ -23,7 +23,7 @@ function bodies = simple_calc(preBody)
 %
 %       simple_calc:  { input_parameters: { answer: N }, answer: N }
 %       depends_on:   document_id     <- the INPUT DOCUMENT, not a subject
-%       superclasses: base, app       <- `calculator` is a V2 invention
+%       superclasses: base, app       <- `calculator` is a v2 invention
 %
 %   Three separate problems, only the first of which is a rename:
 %
@@ -80,7 +80,7 @@ id = b.id;
 if ~ischar(id); id = ''; end
 % carry-register: carry-104
 did2.convert.reportNote('carried_as_v1', 'simple_calc', id, ...
-    ['[carry-104] awaiting_home: simple_calc has no V2 home yet ' ...
+    ['[carry-104] awaiting_home: simple_calc has no v2 home yet ' ...
     '([simple_calc carries as needs home])']);
 bodies = {preBody};
 end

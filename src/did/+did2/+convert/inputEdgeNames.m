@@ -2,7 +2,7 @@ function names = inputEdgeNames(ids, defaults)
 %INPUTEDGENAMES The v1 names of a calculation's input edges, rebuilt from the
 %   class of the document each input points at.
 %
-%   NAMES = did2.convert.inputEdgeNames(IDS, DEFAULTS). IDS are a V2
+%   NAMES = did2.convert.inputEdgeNames(IDS, DEFAULTS). IDS are a v2
 %   calculation's `input_id` edges, in order (a cellstr). NAMES{k} is the v1
 %   edge name input k had:
 %     - the class of document IDS{k}, when the batch index holds it
@@ -16,7 +16,7 @@ function names = inputEdgeNames(ids, defaults)
 %   THE DECISION. Decided by Jess Haley, 2026-10-27 [input names rebuild from
 %   the input class] (did-schema V_eta_go_forward_class_audit.md): "a v1
 %   calculation's named `depends_on` input links (e.g. `stimulus_tuningcurve`'s
-%   `stimulus_response_scalar_id`) become unnamed `input_id` edges on the V2
+%   `stimulus_response_scalar_id`) become unnamed `input_id` edges on the v2
 %   `calculation`; the round trip rebuilds each v1 name from the class of the
 %   document the input points at; a calculation with two inputs of one class
 %   under different v1 names is carried whole as v1, kind `malformed`."

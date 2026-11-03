@@ -10,7 +10,7 @@ function result = v1_to_v2(v1Bodies, options)
 %   exactly as v1 defines it"; did2.convert.universalRenames is deleted.
 %
 %     1. a class listed by did2.convert.rawV1Classes: its +migrators_j
-%        migrator reads the RAW v1 document and writes V2.
+%        migrator reads the RAW v1 document and writes v2.
 %     2. a class listed by did2.convert.noMigratorCarryRows has no
 %        migrator: it is carried whole as v1, the untouched v1 source,
 %        citing its own carry register row (Decided by Jess Haley,
@@ -48,7 +48,7 @@ function result = v1_to_v2(v1Bodies, options)
 %   inheritance chain) and is validated.
 %
 %   Bodies that are already converted (document_class.schema_version is a
-%   V2 stamp, 'did_v2' -- a stamp check, not a rank against 'V_eta', [early
+%   v2 stamp, 'did_v2' -- a stamp check, not a rank against 'V_eta', [early
 %   migration pieces fixed] (4), Jess Haley, 2026-10-26 -- AND no v1-only
 %   underscore-prefixed top-level markers; did2.convert.isAlreadyTarget)
 %   skip the routing and
@@ -122,7 +122,7 @@ function result = v1_to_v2(v1Bodies, options)
 %                      change no outcome. Pass false on a READ path that
 %                      discards them: on one-document reads they cost more
 %                      than the conversion itself (NDI reading the 10,536
-%                      Haley V2 subjects: 23.5 s of 51 s profiled). When false,
+%                      Haley v2 subjects: 23.5 s of 51 s profiled). When false,
 %                      each of the three fields is struct('audit_skipped',
 %                      true) -- never an empty census, which would read as
 %                      clean.
@@ -188,7 +188,7 @@ PARENT_ONLY_CLASSES = {'app', 'calculator', 'epochid', 'stimulus_response', ...
 % its parameters; resolveOpenmindsCitations: openminds; epochMint:
 % daqreader_epochdata_ingested and daqreader_image_epochdata_ingested when
 % their source names no epoch document). Such a document is handed on EXACTLY
-% AS v1 WROTE IT, stamped did_v1 and never validated against V2, as `ensemble`
+% AS v1 WROTE IT, stamped did_v1 and never validated against v2, as `ensemble`
 % and `generic_file` are (Decided by Jess Haley, 2026-11-03 [handed-on are v1
 % as written]: (1) the five classes, and `did2.convert.handOnSuperclasses`
 % (DID-matlab #372), a temporary step, removed; (2) the two daqreader
@@ -360,7 +360,7 @@ dimTermNoNode = [];
 % branch, or fails before any (`bodies_unreached`); the seven sum to
 % `bodies_total` by construction (see the subtraction after the loop).
 %
-%   bodies_skipped_already_target   already a V2 document (isAlreadyTarget)
+%   bodies_skipped_already_target   already a v2 document (isAlreadyTarget)
 %   bodies_read_raw_v1              its +migrators_j migrator read it raw
 %   bodies_carried_no_migrator      a class with no migrator, carried whole
 %                                   citing its own row (noMigratorCarryRows)
@@ -407,7 +407,7 @@ restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
 % What each source became, for [dependents of a carried document carry]
 % (carryDependents, after the loop): done (not quarantined), carried as v1,
-% already a V2 document, its class, its id, its depends_on edges, and
+% already a v2 document, its class, its id, its depends_on edges, and
 % the indices of its documents in `migrated`.
 nBodies = numel(bodies);
 srcDone = false(nBodies, 1);
@@ -465,7 +465,7 @@ for k = 1:numel(bodies)
                 % handed these classes on in, before [handed-on are v1 as
                 % written], Jess Haley, 2026-11-03): it is a v1 document a
                 % migrator handed on unchanged, so it is handed on again as a
-                % v1 passthrough (stamped did_v1, not validated against V2),
+                % v1 passthrough (stamped did_v1, not validated against v2),
                 % never validated against a retire class file that need not
                 % exist (did2:schema:missingClass would quarantine it).
                 laterStep = true;
@@ -648,7 +648,7 @@ for k = 1:numel(bodies)
             end
             % [v1 name goes to the class's own name field] (Decided by Jess
             % Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
-            % a v1 base.name is written to the V2 class's own name field
+            % a v1 base.name is written to the v2 class's own name field
             % (entity, method, acquisition_system, element, measurement) or,
             % for a data body, to its free text; "a statement with a non-empty
             % v1 name is carried whole as v1 with a needs-home register row,
@@ -666,7 +666,7 @@ for k = 1:numel(bodies)
             % acquisition_system.name; image_stack: its body). THE MEASURE,
             % for every other CONVERTED source: a non-empty v1 name no
             % emitted document holds in one of its own blocks (`base` is not
-            % read: V2 base.name is kept only until the retire classes leave,
+            % read: v2 base.name is kept only until the retire classes leave,
             % [base.name kept until retire classes leave]) is noted
             % `v1_name_not_kept` (DETAIL the name), so a migrator that drops
             % it, or a target class with no name field, is counted rather than
@@ -731,7 +731,7 @@ for k = 1:numel(bodies)
                     % HANDED ON AS v1 TO ITS BATCH PASS ([handed-on are v1 as
                     % written], Jess Haley, 2026-11-03): exactly as v1 wrote
                     % it, as `ensemble` and `generic_file` are (below: stamped
-                    % did_v1, not validated against V2, recorded as a
+                    % did_v1, not validated against v2, recorded as a
                     % passthrough)
                     laterStep = true;
                     [handOnNames, handOnValues] = bumpClassCounter( ...
@@ -785,7 +785,7 @@ for k = 1:numel(bodies)
                 if isfield(outBody, 'document_class') ...
                         && isstruct(outBody.document_class)
                     % the STAMP, not the set name TargetVersion (Jess Haley,
-                    % 2026-10-25 [document stamps]: a V2 document is 'did_v2')
+                    % 2026-10-25 [document stamps]: a v2 document is 'did_v2')
                     outBody.document_class.schema_version = ...
                         did2.convert.targetStamp(options.TargetVersion);
                 end
@@ -894,7 +894,7 @@ end
 
 % [fit classes kept; session list rebuilt] (Decided by Jess Haley, 2026-10-27,
 % did-schema V_eta_go_forward_class_audit.md): a dataset_session_info writes no
-% V2 document; it is rebuilt from the dataset's session memberships, and one
+% v2 document; it is rebuilt from the dataset's session memberships, and one
 % that does not rebuild exactly is carried whole as v1.
 [migrated, passthrough, classCountNames, classCountValues, srcCarried] = ...
     carryUnrebuiltSessionLists(bodies, migrated, passthrough, classCountNames, ...
@@ -1126,7 +1126,7 @@ end
 function refuseUnknownSchemaVersion(body)
 %REFUSEUNKNOWNSCHEMAVERSION Stop, rather than migrate a vintage we do not know.
 %   A body whose `document_class.schema_version` is present but NOT on the
-%   did_v1 -> did_v2 line is either RETIRED (an earlier name of the V2 stamp,
+%   did_v1 -> did_v2 line is either RETIRED (an earlier name of the v2 stamp,
 %   'V_eta' or 'V_delta', no longer accepted: [V_eta stamp not accepted], Jess
 %   Haley, 2026-10-25) or written by a did2 NEWER than this one. Both are
 %   refused with the same identifier; the message says which. There are
@@ -1166,8 +1166,8 @@ end
 [~, known] = did2.convert.schemaVersionRank(sv);
 if ~known && any(strcmp(sv, {'V_eta', 'V_delta'}))
     error('did2:convert:unknownSchemaVersion', ...
-        ['document_class.schema_version is ''%s'', a RETIRED name of the V2 ' ...
-         'stamp. did2 no longer accepts it: V2 documents are stamped ''%s'' ' ...
+        ['document_class.schema_version is ''%s'', a RETIRED name of the v2 ' ...
+         'stamp. did2 no longer accepts it: v2 documents are stamped ''%s'' ' ...
          '([V_eta stamp not accepted], 2026-10-25). Re-run the import or ' ...
          'migration that wrote this document with the current did2.'], ...
         sv, did2.schema.v2Stamp());
@@ -1568,7 +1568,7 @@ if ischar(rawBody) || (isstring(rawBody) && isscalar(rawBody))
     text = char(rawBody);
 elseif isstruct(rawBody)
     try
-        % the v1 body as V1 wrote it: NaN / Infinity kept (jsonencodenan)
+        % the v1 body as v1 wrote it: NaN / Infinity kept (jsonencodenan)
         text = jsonencode(rawBody, 'ConvertInfAndNaN', false);
     catch
         text = '';
@@ -1677,7 +1677,7 @@ function [migrated, passthrough, names, counts, carried] = carryDependents(bodie
 %   (carry-064, any class).
 %
 %   After every source has been migrated: a CONVERTED source (not carried, not
-%   quarantined, not already a V2 document) any of whose depends_on edges names
+%   quarantined, not already a v2 document) any of whose depends_on edges names
 %   the id of a CARRIED source in this batch has its documents replaced by its
 %   v1 source carried whole -- the raw document, as every other carry --
 %   stamped did_v1, recorded as a passthrough, and noted
@@ -1826,7 +1826,7 @@ function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSession
 %
 %   ITS ID. [a rebuilt document may lose its id] (Decided by Jess Haley,
 %   2026-10-27, amending [every v1 id survives]): a list that rebuilds writes
-%   no V2 document and so keeps no id, which is allowed only when no other
+%   no v2 document and so keeps no id, which is allowed only when no other
 %   document references it; a list some source in the batch names by an edge
 %   is carried whole as v1 instead.
 isList = cellfun(@(c) ischar(c) && strcmp(c, 'dataset_session_info'), cls);
@@ -2103,7 +2103,7 @@ function printLegacyNdiDocument(result)
 if ~isfield(result.summary, 'legacy_ndi_document'); return; end
 L = result.summary.legacy_ndi_document;
 fprintf('  routing: %d body(ies)\n', L.bodies_total);
-fprintf('      %8d  already a V2 document\n', L.bodies_skipped_already_target);
+fprintf('      %8d  already a v2 document\n', L.bodies_skipped_already_target);
 fprintf('      %8d  read raw v1 by its migrator (did2.convert.rawV1Classes)\n', ...
     L.bodies_read_raw_v1);
 fprintf('      %8d  carried whole, no migrator (did2.convert.noMigratorCarryRows)\n', ...

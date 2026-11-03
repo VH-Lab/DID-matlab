@@ -68,7 +68,7 @@ if ~isempty(ndrClass) && ~strcmp(ndrClass, readerClass)
     unplaced{end+1} = sprintf(['[carry-017] daqreader_ndr.ndi_daqreader_ndr_class "%s" (differs ' ...
         'from daqreader.ndi_daqreader_class "%s")'], ndrClass, readerClass);
 end
-% `file_extension` is restated nowhere on the V2 output (the acquisition_reader
+% `file_extension` is restated nowhere on the v2 output (the acquisition_reader
 % and its software entity hold no extension; see below for why it is not
 % written either), so a document that sets one is carried whole as v1
 % ([generic stage is lossless], Jess Haley, 2026-10-25) instead of losing it.
@@ -86,7 +86,7 @@ end
 % NO RENAME TO `daqreader`: that class is `retire` and leaves V2 (Decided by
 % Jess Haley, 2026-10-25 [retired classes leave V2] (1), did-schema
 % V_eta_go_forward_class_audit.md: the generic migration stops writing retired
-% classes as V2 documents). The reading copy keeps its v1 class name;
+% classes as v2 documents). The reading copy keeps its v1 class name;
 % daqreader.m reads only its `daqreader` block, never the class name, and
 % writes the decided target, an `acquisition_reader`.
 v2Body = preBody;
