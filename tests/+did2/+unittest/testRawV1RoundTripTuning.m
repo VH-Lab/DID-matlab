@@ -311,7 +311,7 @@ end
 end
 
 function verifyCarriedFor(testCase, v1, path, row)
-% v1 is carried whole as v1, and its note cites PATH under register row ROW
+% V1 is carried whole as v1, and its note cites PATH under register row ROW
 % (did2.unittest.helpers.carryRowFor)
 out = runRaw(v1);
 label = sprintf('%s with %s', v1.document_class.class_name, path);
@@ -396,7 +396,7 @@ end
 end
 
 function s = respelled(v1, name)
-% v1 with its class and block spelled NAME (the migrator's spelling)
+% V1 with its class and block spelled NAME (the migrator's spelling)
 s = v1;
 old = s.document_class.class_name;
 s.document_class.class_name = name;

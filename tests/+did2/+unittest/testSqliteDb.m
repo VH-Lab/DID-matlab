@@ -861,7 +861,7 @@ end
 % ---- v1 documents in the v2 database ([passthrough stays v1: how]) ----
 %
 % Decided by Jess Haley, 2026-10-24 [passthrough stays v1: how] (did-schema
-% V_eta_go_forward_class_audit.md): "a v1 document is stored in the same v2
+% V_eta_go_forward_class_audit.md): "a v1 document is stored in the same V2
 % database, with V_eta validation skipped for it and counted". A document
 % stamped 'did_v1' is stored WITHOUT V_eta validation, add's report counts it,
 % countV1 counts what is held, and reading it back gives the stored body.

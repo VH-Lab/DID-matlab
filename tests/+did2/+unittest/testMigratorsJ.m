@@ -4341,7 +4341,7 @@ function testDatasetSessionInfoAggregate(testCase)
 % INVERTED 2026-10-27 (was: one membership relation per listed session).
 % [fit classes kept; session list rebuilt] (Decided by Jess Haley, 2026-10-27,
 % did-schema V_eta_go_forward_class_audit.md): a dataset_session_info "writes
-% no v2 document: the round trip rebuilds it from the session entities'
+% no V2 document: the round trip rebuilds it from the session entities'
 % `included_in` relations to the dataset, and one that does not rebuild
 % exactly is carried whole as v1" (carry-118)
 info = struct();

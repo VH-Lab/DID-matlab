@@ -226,7 +226,7 @@ tf = did2.unittest.helpers.schemaDeclares('tuning_curve', ...
 end
 
 function verifyCarriedUnder(testCase, v1, path, row)
-% v1 is carried whole as v1, and its note cites PATH under register row ROW
+% V1 is carried whole as v1, and its note cites PATH under register row ROW
 [carried, notes, out] = did2.unittest.helpers.carryNote({v1});
 label = sprintf('%s (%s)', v1.document_class.class_name, path);
 verifyEmpty(testCase, out.quarantine, label);

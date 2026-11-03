@@ -58,7 +58,7 @@ classdef sqlitedb < handle
     %
     %   V1 DOCUMENTS (Decided by Jess Haley, 2026-10-24 [passthrough stays v1:
     %   how], did-schema V_eta_go_forward_class_audit.md): "a v1 document is
-    %   stored in the same v2 database, with V_eta validation skipped for it
+    %   stored in the same V2 database, with V_eta validation skipped for it
     %   and counted". A document whose document_class.schema_version is
     %   'did_v1' (did2.schema.isV1Stamp, 'Explicit') is stored WITHOUT V_eta
     %   validation, and add's REPORT counts it (denominator first); countV1

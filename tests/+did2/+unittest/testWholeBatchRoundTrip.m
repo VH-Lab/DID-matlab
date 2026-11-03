@@ -4,7 +4,7 @@ function tests = testWholeBatchRoundTrip
 %
 %   Decided by Jess Haley, 2026-10-27 (did-schema
 %   V_eta_go_forward_class_audit.md): [whole-batch round trip] ("one test takes
-%   a migrated corpus's FINAL v2 batch (after every batch pass ...) back to v1
+%   a migrated corpus's FINAL V2 batch (after every batch pass ...) back to v1
 %   and compares it with the original") and [every v1 id survives] ("a
 %   whole-batch id check"). The corpus driver
 %   (did2.unittest.helpers.runCorpusDiscovery) runs it on every corpus after

@@ -1808,7 +1808,7 @@ function [migrated, passthrough, names, counts, carried] = carryUnrebuiltSession
 %CARRYUNREBUILTSESSIONLISTS [fit classes kept; session list rebuilt] (Decided
 %   by Jess Haley, 2026-10-27, did-schema V_eta_go_forward_class_audit.md):
 %   "`dataset_session_info` (still written by NDI-matlab main +dataset/dir.m,
-%   +session/dir.m) is not retired and writes no v2 document: the round trip
+%   +session/dir.m) is not retired and writes no V2 document: the round trip
 %   rebuilds it from the session entities' `included_in` relations to the
 %   dataset, and one that does not rebuild exactly is carried whole as v1".
 %

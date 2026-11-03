@@ -3,8 +3,8 @@ function tests = testSqliteDbNonFinite
 %
 %   DECISION (Jess Haley, 2026-10-21, did-schema
 %   V_eta_go_forward_class_audit.md): "An unrecorded amount is written as NaN
-%   in its quantity (e.g. a dose's volume.liters: NaN), and v2 stores NaN the
-%   way v1 does."
+%   in its quantity (e.g. a dose's volume.liters: NaN), and V2 stores NaN the
+%   way V1 does."
 %
 %   v1 writes document text with did.datastructures.jsonencodenan, which is
 %   jsonencode(..., 'ConvertInfAndNaN', false): NaN, Inf and -Inf are written

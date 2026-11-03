@@ -157,7 +157,7 @@ classdef document < handle
             %   NON-FINITE NUMBERS ARE WRITTEN AS V1 WRITES THEM (Jess Haley,
             %   2026-10-21, did-schema V_eta_go_forward_class_audit.md: "An
             %   unrecorded amount is written as NaN in its quantity [...], and
-            %   v2 stores NaN the way v1 does"). v1 encodes with
+            %   V2 stores NaN the way V1 does"). v1 encodes with
             %   did.datastructures.jsonencodenan, i.e. jsonencode(...,
             %   'ConvertInfAndNaN', false): the literals NaN, Infinity and
             %   -Infinity, which jsondecode reads back. Plain jsonencode writes

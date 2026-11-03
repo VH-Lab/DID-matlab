@@ -11,11 +11,11 @@ function report = wholeBatch(v1Bodies, result)
 %
 %   WHY. Decided by Jess Haley, 2026-10-27 [whole-batch round trip] (did-schema
 %   V_eta_go_forward_class_audit.md): "one test takes a migrated corpus's FINAL
-%   v2 batch (after every batch pass: epochs, baths, the file-reference fold)
+%   V2 batch (after every batch pass: epochs, baths, the file-reference fold)
 %   back to v1 and compares it with the original, alongside the per-class round
 %   trips ([lossless means round trip]); it runs before the final corpus run".
 %   And [every v1 id survives] (the same day): "each v1 document's id becomes
-%   the id of the v2 document that most directly replaces it ... a whole-batch
+%   the id of the V2 document that most directly replaces it ... a whole-batch
 %   id check".
 %
 %   HOW. For each source: its documents are looked up in the final batch by
@@ -368,7 +368,7 @@ tf = isscalar(docs) && isEntityOfType(docs{1}, 'dataset');
 end
 
 function tf = unrecordedModeDropped(v1, docs, ~)
-% v1's element.type is a type of a shared device kind, and DOCS state that
+% V1's element.type is a type of a shared device kind, and DOCS state that
 % kind and no `element type`
 tf = false;
 if ~isstruct(v1) || ~isfield(v1, 'element') || ~isstruct(v1.element) ...
