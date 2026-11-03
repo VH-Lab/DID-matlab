@@ -373,6 +373,77 @@ verifyEqual(testCase, rep.archive_docs_retired, 1);
 verifyEqual(testCase, rep.archive_docs_kept_unowned_files, 0);
 verifyEqual(testCase, rep.archive_dangling_references, 0);
 verifyEmpty(testCase, docById(out, 'arc_i'), 'the fully-owned archive is retired');
+% [clock only on the time reference] (Jess Haley, 2026-11-01): the archive
+% was the only record of the epoch's clock and t0_t1, so before it retires
+% they go on the recording observation's time references: one
+% relative_time_reference onto the epoch per clock, {clock, start, duration}.
+verifyEqual(testCase, rep.epoch_clock_archives_read, 1);
+verifyEqual(testCase, rep.epoch_clocks_stated, 1);
+verifyEqual(testCase, rep.epoch_clocks_refused, 0);
+verifyEqual(testCase, rep.epoch_clock_references_minted, 1);
+verifyEqual(testCase, rep.epoch_clock_references_emitted, 1);
+verifyEqual(testCase, rep.archive_kept_clock_not_carried, 0);
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+assertNumElements(testCase, obs, 1);
+trs = depVals(obs{1}, 'time_reference_id');
+verifyNumElements(testCase, trs, 2, 'the epoch''s ''during'' anchor and its one clock');
+clocked = {};
+for i = 1:numel(trs)
+    r = docById(out, trs{i});
+    assertNotEmpty(testCase, r, 'every time reference is in the batch');
+    v = r.relative_time_reference.value;
+    if isfield(v, 'clock') && ~isempty(v.clock); clocked{end+1} = r; end %#ok<AGROW>
+end
+assertNumElements(testCase, clocked, 1);
+ref = clocked{1};
+ep = docById(out, depVal(ref, 'referent_id'));
+assertNotEmpty(testCase, ep, 'the clock reference is onto the epoch');
+verifyEqual(testCase, char(ep.entity.local_identifier), 't0i');
+did2.unittest.helpers.verifyClock(testCase, ref.relative_time_reference.value.clock, 'dev_local_time');
+verifyEqual(testCase, ref.relative_time_reference.value.start.seconds, 0, 'AbsTol', 1e-12);
+verifyEqual(testCase, ref.relative_time_reference.value.duration.seconds, 10, 'AbsTol', 1e-12);
+verifyEmpty(testCase, out.quarantine);
+end
+
+function testAnArchiveWhoseClockCannotBeCarriedIsKept(testCase)
+% [clock only on the time reference]: an archive stating a clock that does not
+% become a time reference (here `utc`, with no t0_t1 column paired to it) is
+% KEPT, counted, though every file it holds has a new owner; the clock it
+% could carry (dev_local_time) is still written on the observation.
+subj = subjectBody('spec_c', 'sess_c', 'L');
+daq  = struct();
+daq.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+daq.base = struct('id', 'acqsys_c', 'session_id', 'sess_c', ...
+    'name', 'intan1', 'datestamp', '2024-05-01T00:00:00.000Z');
+daq.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'value', {'nav_1', 'rdr_c'});
+arc = struct();
+arc.document_class = struct('class_name', 'daqreader_mfdaq_epochdata_ingested', ...
+    'class_version', 1, 'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+arc.base = struct('id', 'arc_c', 'session_id', 'sess_c', 'name', '', ...
+    'datestamp', '2024-05-01T00:00:00.000Z');
+arc.depends_on = struct('name', 'daqreader_id', 'value', 'rdr_c');
+arc.epochid = struct('epochid', 't0c');
+arc.daqreader_epochdata_ingested = struct('epochtable', ...
+    struct('epochclock', {{'dev_local_time', 'utc'}}, 't0_t1', [0 10]));
+loc = @(u) struct('delete_original', 0, 'uid', u, 'location', ['ndic://ds/' u], ...
+    'parameters', '', 'location_type', 'ndicloud', 'ingest', 0);
+arc.files = struct('file_list', {{'ai_group1_seg.nbf_#'}}, ...
+    'file_info', struct('name', {'ai_group1_seg.nbf_1'}, 'locations', {loc('u1')}));
+ing  = ingestedWithDeviceRows('ing_c', 'sess_c', 't0c', { ...
+    {'p', '', 'n-trode', 'intan1:ai1-4', 'L'}}, {'/raw/t0c/t0c.rhd'});
+[out, rep] = decompose({sessionBody('sd_c', 'sess_c', 'ref'), subj, daq, arc, ing});
+verifyEqual(testCase, rep.bodies_from_archive, 1);
+verifyEqual(testCase, rep.archive_docs_kept_unowned_files, 0);
+verifyEqual(testCase, rep.epoch_clocks_stated, 2);
+verifyEqual(testCase, rep.epoch_clocks_refused, 1);
+verifyEqual(testCase, rep.epoch_clock_references_emitted, 1);
+verifyEqual(testCase, rep.archive_kept_clock_not_carried, 1);
+verifyEqual(testCase, rep.archive_docs_retired, 0);
+verifyNotEmpty(testCase, docById(out, 'arc_c'), 'an archive with a clock not carried is kept');
+verifyEmpty(testCase, out.quarantine);
 end
 
 function testAnArchiveWithAFileNoBodyCarriesIsKept(testCase)

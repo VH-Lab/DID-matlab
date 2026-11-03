@@ -463,7 +463,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   THE STAGED ONTOLOGY NODES
 %   ---------------------------------------------------------------------
 %   `variable`, `clock` and `method` are emitted as `{node: '', name: ...}`.
-%   That is the standing practice (jEpochClockReferences stages `clock` the same
+%   That is the standing practice (did2.convert.epochClockReferences stages `clock` the same
 %   way; the NDIC identifier authority is in no repository in scope since
 %   NDIC.txt left NDI-matlab at 2c19bf24c) -- but `tools/check_empty_ontology_nodes.py`
 %   walks ONLY `+migrators_j` and matches ONLY `jOntologyTerm('', ...)`
@@ -964,7 +964,7 @@ function [bare, toleranceSeconds] = deEncodeApprox(clockName)
 %   Returns [] (not 0) when the clock states no tolerance, so "no stated
 %   tolerance" and "stated as zero" stay distinguishable.
 %
-%   DUPLICATED FROM +migrators_j/private/jEpochClockReferences.m, and said out
+%   DUPLICATED FROM did2.convert.epochClockReferences, and said out
 %   loud rather than hidden: `private/` is not reachable from +did2/+convert, and
 %   the two are twelve lines. If a third copy is ever wanted, that is the signal
 %   to promote it to a shared function instead.

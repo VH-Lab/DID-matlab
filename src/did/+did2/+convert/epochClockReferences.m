@@ -1,11 +1,33 @@
-function refs = jEpochClockReferences(epochTable, epochDocId, sessionId, datestamp)
-%JEPOCHCLOCKREFERENCES did_v1 `epochtable` -> one V_eta relative_reference per clock.
+function [refs, stats] = epochClockReferences(epochTable, epochDocId, sessionId, datestamp)
+%EPOCHCLOCKREFERENCES did_v1 `epochtable` -> one V_eta relative_reference per clock.
 %
-%   REFS = jEpochClockReferences(EPOCHTABLE, EPOCHDOCID, SESSIONID, DATESTAMP)
-%   turns the `daqreader_epochdata_ingested.epochtable` block into a cell array
-%   of `relative_reference` bodies -- one per (clock, interval) pair -- each
-%   anchored to the epoch document EPOCHDOCID. Returns {} when there is nothing
-%   interpretable to say.
+%   [REFS, STATS] = did2.convert.epochClockReferences(EPOCHTABLE, EPOCHDOCID,
+%   SESSIONID, DATESTAMP) turns the `daqreader_epochdata_ingested.epochtable`
+%   block into a cell array of `relative_reference` bodies -- one per (clock,
+%   interval) pair -- each anchored to the epoch document EPOCHDOCID. Returns
+%   {} when there is nothing interpretable to say.
+%
+%   STATS says what became of the clocks the epochtable states, so a caller
+%   that drops the source document can tell a clock with no times (nothing to
+%   carry) from a clock it failed to carry:
+%     stated    clock entries the epochtable names
+%     emitted   references built (numel(REFS))
+%     no_time   entries that correctly become nothing ('no_time', an empty
+%               name, a non-finite t0 or t1)
+%     refused   entries stated with times that did NOT become a reference (a
+%               clock outside the bound set, or a clock with no interval
+%               paired to it); a caller that retires the source must keep it
+%               when this is not 0
+%
+%   Callers: the two daqreader ingested migrators (+migrators_j, armed when the
+%   pre-body carries an `epoch_id` edge), and did2.convert.resolveEpochProbemap,
+%   which writes these references on an ingested epoch's recording
+%   observations before it retires the v1 archive document (Decided by Jess
+%   Haley, 2026-11-01 [clock only on the time reference], did-schema
+%   did_v2_go_forward_class_audit.md: "the recording observation's time
+%   references say when the epoch starts on each clock"). Public since
+%   2026-11-03 (it was +migrators_j/private/jEpochClockReferences.m) so that
+%   pass can call it.
 %
 %   ---------------------------------------------------------------------
 %   THE SOURCE SHAPE, READ FROM THE WRITER (NOT FROM THE TEMPLATE)
@@ -92,25 +114,35 @@ function refs = jEpochClockReferences(epochTable, epochDocId, sessionId, datesta
 %   it. The node is empty because the NDIC identifier authority is in no
 %   repository in scope: NDIC.txt was removed from NDI-matlab in 2c19bf24c.
 %
-%   STATUS: NOT EXECUTED. This environment has no MATLAB. Nothing below has run,
-%   and this function has never fired on real data anyway -- jEpochDocId answers
-%   '' for every did_v1 document today, so the guard above returns {} and no
-%   reference is emitted. It goes live with the epoch mint (#60).
-%
-%   Shared helper for the Brainstorm-J (+migrators_j) ingested-payload migrators.
+%   In the +migrators_j ingested migrators this fires only on an armed pre-body
+%   (jEpochDocId answers '' for every did_v1 document in pass 1); on real data
+%   it runs from resolveEpochProbemap, which knows the minted epoch.
 
 % No `arguments` size validation on epochDocId: the guarded callers pass '' (a
 % 0-by-0 char) on the every-real-document-today path, and `(1,:) char` rejects
 % that. The emptiness check below is the contract.
 refs = {};
-if isempty(epochDocId) || ~ischar(epochDocId) ...
-        || ~isstruct(epochTable) || ~isscalar(epochTable)
+stats = struct('stated', 0, 'emitted', 0, 'no_time', 0, 'refused', 0);
+if ~isstruct(epochTable) || ~isscalar(epochTable)
     return;
 end
-
 clocks    = clockNames(epochTable);
 intervals = intervalColumns(epochTable);
+stats.stated = numel(clocks);
+if isempty(epochDocId) || ~ischar(epochDocId)
+    % nothing to anchor on: every clock with times is not carried here
+    for k = 1:numel(clocks)
+        if k <= numel(intervals) && ~clockHasTimes(clocks{k}, intervals{k})
+            stats.no_time = stats.no_time + 1;
+        else
+            stats.refused = stats.refused + 1;
+        end
+    end
+    return;
+end
 n = min(numel(clocks), numel(intervals));
+% a clock with no interval paired to it is stated and not carried
+stats.refused = stats.refused + max(0, numel(clocks) - n);
 % Deliberately min(): a mismatch means one of the two lists is not what the
 % writer produces, and pairing a clock with the wrong interval is worse than
 % emitting fewer references. The unpaired remainder stays on the source
@@ -118,11 +150,9 @@ n = min(numel(clocks), numel(intervals));
 
 for k = 1:n
     clockName = clocks{k};
-    if isempty(clockName) || strcmp(clockName, 'no_time')
-        continue;                       % NO TIMES => NO REFERENCE
-    end
     t = intervals{k};
-    if numel(t) < 2 || ~all(isfinite(t(1:2)))
+    if ~clockHasTimes(clockName, t)
+        stats.no_time = stats.no_time + 1;
         continue;                       % NO TIMES => NO REFERENCE
     end
     % CHANGE 4: the prefix is DE-ENCODED, not folded into a boolean. What is
@@ -150,10 +180,20 @@ for k = 1:n
         'ClockTolerance', ct, 'SessionId', sessionId, ...
         'CreationTimestamp', datestamp, 'Validate', false);
     catch
-        continue;   % a clock outside the bound set: no reference, never a guess
+        % a clock outside the bound set: no reference, never a guess
+        stats.refused = stats.refused + 1;
+        continue;
     end
     refs{end+1} = ref; %#ok<AGROW>
 end
+stats.emitted = numel(refs);
+end
+
+function tf = clockHasTimes(clockName, t)
+%CLOCKHASTIMES NO TIMES => NO REFERENCE: false for the `no_time` sentinel, an
+%   empty clock name, or an interval without a finite t0 and t1.
+tf = ~(isempty(clockName) || strcmp(clockName, 'no_time') ...
+    || numel(t) < 2 || ~all(isfinite(t(1:2))));
 end
 
 % ===================== shape readers =======================================

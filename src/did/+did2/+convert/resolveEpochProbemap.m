@@ -331,6 +331,14 @@ report = struct( ...
     'acquisition_epoch_kept_ensemble_unverified', 0, ...
     'acquisition_epoch_kept_extent_carried', 0, ...
     'element_epoch_anchors_minted',   0, ...
+    'epoch_clock_archives_read',      0, ...
+    'epoch_clocks_stated',            0, ...
+    'epoch_clocks_no_time',           0, ...
+    'epoch_clocks_refused',           0, ...
+    'epoch_clock_references_minted',  0, ...
+    'epoch_clock_references_emitted', 0, ...
+    'observations_withheld_clock',    0, ...
+    'archive_kept_clock_not_carried', 0, ...
     'archive_docs_inspected',         0, ...
     'archive_docs_retired',           0, ...
     'archive_docs_kept_unowned_files',0, ...
@@ -586,6 +594,21 @@ renameBodyBySrcId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 acIdByKey   = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acBodyById  = containers.Map('KeyType', 'char', 'ValueType', 'any');
 newGroupAc = {};     % wiring relation base.id each new body depends on ('' = none)
+% [clock only on the time reference] (Decided by Jess Haley, 2026-11-01,
+% did-schema did_v2_go_forward_class_audit.md): "the recording observation's
+% time references say when the epoch starts on each clock". An ingested
+% epoch's clocks and t0_t1 are stated only by its v1 archive
+% (daqreader_*_epochdata_ingested.epochtable), which this pass retires once
+% its files have new owners. So, per archive, one relative_time_reference per
+% clock onto the epoch entity, {clock, start, duration}, built by
+% did2.convert.epochClockReferences (the shape the ingested migrators write),
+% and named by every recording observation minted from that epoch's
+% epochfiles_ingested, beside the epoch's 'during' anchor.
+newGroupClock = {};  % the clock reference ids each new body names ({} = none)
+clockIdsByArchive = containers.Map('KeyType', 'char', 'ValueType', 'any');   % archive key -> {ids}
+clockIdsByArchiveIdx = containers.Map('KeyType', 'double', 'ValueType', 'any');
+clockStatsByArchiveIdx = containers.Map('KeyType', 'double', 'ValueType', 'any');
+clockBodyById = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % 2026-10-21: per epochfiles_ingested document, the observations it minted and
 % where their files are -- the bodies are built after validation, owned by the
 % observations that survived.
@@ -631,6 +654,36 @@ for k = 1:n
     if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
     if isempty(datestamp); datestamp = did2.convert.migrationTime(); end
     fnId = depValueOf(b, 'filenavigator_id');
+    clockIds = {};
+    if ~isempty(fnId) && isKey(readerIdByNavId, fnId)
+        cak = archiveKey(sid, readerIdByNavId(fnId), es);
+        if isKey(archiveIdxByKey, cak)
+            if ~isKey(clockIdsByArchive, cak)
+                aIdx = archiveIdxByKey(cak);
+                arcB = bodies{aIdx};
+                arcStamp = baseField(arcB, 'creation_timestamp');
+                if isempty(arcStamp); arcStamp = baseField(arcB, 'datestamp'); end
+                if isempty(arcStamp); arcStamp = datestamp; end
+                [crefs, cstats] = did2.convert.epochClockReferences( ...
+                    archiveEpochTable(arcB), char(epochDocId), char(sid), char(arcStamp));
+                ids = cell(1, numel(crefs));
+                for c = 1:numel(crefs)
+                    ids{c} = char(crefs{c}.base.id);
+                    clockBodyById(ids{c}) = crefs{c};
+                end
+                clockIdsByArchive(cak) = ids;
+                clockIdsByArchiveIdx(aIdx) = ids;
+                clockStatsByArchiveIdx(aIdx) = cstats;
+                report.epoch_clock_archives_read = report.epoch_clock_archives_read + 1;
+                report.epoch_clocks_stated = report.epoch_clocks_stated + cstats.stated;
+                report.epoch_clocks_no_time = report.epoch_clocks_no_time + cstats.no_time;
+                report.epoch_clocks_refused = report.epoch_clocks_refused + cstats.refused;
+                report.epoch_clock_references_minted = ...
+                    report.epoch_clock_references_minted + cstats.emitted;
+            end
+            clockIds = clockIdsByArchive(cak);
+        end
+    end
 
     % did-schema #88 (#73 review item 39): ingestion_manifest carries NO
     % serialized epochprobemap. Every row must have a home before the v1
@@ -828,6 +881,7 @@ for k = 1:n
             newBodies{end+1} = manip;              %#ok<AGROW>
             newGroupAnchor{end+1} = anchorId;      %#ok<AGROW>
             newGroupAc{end+1} = acId;              %#ok<AGROW>
+            newGroupClock{end+1} = {};             %#ok<AGROW>
             specManipIds{end+1} = manip.base.id;   %#ok<AGROW>
             if isempty(instrumentId)
                 report.instrument_omitted = report.instrument_omitted + 1;
@@ -842,8 +896,8 @@ for k = 1:n
             report.mode_methods_written = report.mode_methods_written + numel(entries);
         end
         for e = 1:numel(entries)
-            obs = mkObservation(entries(e), subjectId, instrumentId, anchorId, ...
-                sid, datestamp, acqSystemId, modeMethod);
+            obs = mkObservation(entries(e), subjectId, instrumentId, ...
+                [{anchorId}, clockIds], sid, datestamp, acqSystemId, modeMethod);
             newBodies{end+1} = obs;                 %#ok<AGROW>
             specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
             if ~isempty(instrumentId)
@@ -853,6 +907,7 @@ for k = 1:n
             end
             newGroupAnchor{end+1} = anchorId;       %#ok<AGROW>
             newGroupAc{end+1} = acId;               %#ok<AGROW>
+            newGroupClock{end+1} = clockIds;        %#ok<AGROW>
 
             if ~isempty(instrumentId)
                 tk = obs30TripleKey(subjectId, instrumentId, entries(e).class, entries(e).mixin);
@@ -1055,6 +1110,7 @@ for i = 1:numel(acqEpochIdx)
         newBodies{end+1} = stmt;             %#ok<AGROW>
         newGroupAnchor{end+1} = anchorId;    %#ok<AGROW>
         newGroupAc{end+1} = '';              %#ok<AGROW> no channels
+        newGroupClock{end+1} = {};           %#ok<AGROW> its own anchor states its clock
         spikeObsIds(stmt.base.id) = k;
         spikeAnchorByObs(stmt.base.id) = anchorId;
         seriesKindById(stmt.base.id) = st.counter;
@@ -1114,7 +1170,8 @@ producedById = containers.Map('KeyType', 'char', 'ValueType', 'any');
 if ~isempty(newBodies)
     anchorBodies = anchorBodyById.values;
     acBodies = acBodyById.values;
-    out = did2.convert.v1_to_v2([newBodies, anchorBodies(:)', acBodies(:)'], ...
+    clockBodies = clockBodyById.values;
+    out = did2.convert.v1_to_v2([newBodies, anchorBodies(:)', acBodies(:)', clockBodies(:)'], ...
         'Validate',      options.Validate, ...
         'SchemaCache',   options.SchemaCache, ...
         'TargetVersion', options.TargetVersion);
@@ -1169,6 +1226,7 @@ for a = 1:numel(anchorKeys)
 end
 anchorHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 acHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+clockHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 
 emittedNewIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 recIdsByInstr = containers.Map('KeyType', 'char', 'ValueType', 'any');   % electrode -> its recording observations
@@ -1180,6 +1238,15 @@ for j = 1:numel(newBodies)
     if ~isKey(producedById, id); continue; end    % this body quarantined
     acId = newGroupAc{j};
     if ~isempty(acId) && ~isKey(producedById, acId); continue; end  % its wiring died
+    cids = newGroupClock{j};
+    if ~all(cellfun(@(c) isKey(producedById, c), cids))
+        % a clock reference it names quarantined: withheld, so it never
+        % names a missing document; its epoch's files then have no new
+        % owner and the v1 archive (which states the clock) is kept
+        report.observations_withheld_clock = report.observations_withheld_clock + 1;
+        continue;
+    end
+    for c = 1:numel(cids); clockHasSurvivor(cids{c}) = true; end
     appended{end+1} = producedById(id); %#ok<AGROW>
     % newBodies carries BOTH the recording observations and the stimulator
     % manipulations (#66 increment 3). Count each into its own counter, by the
@@ -1209,6 +1276,12 @@ acKeys = acHasSurvivor.keys;
 for a = 1:numel(acKeys)
     appended{end+1} = producedById(acKeys{a}); %#ok<AGROW>
 end
+% Clock references: emitted where a surviving observation names them.
+clockKeys = clockHasSurvivor.keys;
+for a = 1:numel(clockKeys)
+    appended{end+1} = producedById(clockKeys{a}); %#ok<AGROW>
+end
+report.epoch_clock_references_emitted = numel(clockKeys);
 % Anchors: emit only where a surviving observation references them.
 for a = 1:numel(anchorKeys)
     aid = anchorKeys{a};
@@ -1432,6 +1505,13 @@ for i = 1:numel(archiveIdxAll)
     if isempty(held) || ~isempty(unowned)
         report.archive_docs_kept_unowned_files = report.archive_docs_kept_unowned_files + 1;
         report.archive_files_unowned = report.archive_files_unowned + numel(unowned);
+        continue;
+    end
+    % [clock only on the time reference]: the archive is also the only record
+    % of the epoch's clocks and t0_t1. It retires only when every clock it
+    % states with times is on an emitted time reference.
+    if ~archiveClocksCarried(k, clockStatsByArchiveIdx, clockIdsByArchiveIdx, clockHasSurvivor)
+        report.archive_kept_clock_not_carried = report.archive_kept_clock_not_carried + 1;
         continue;
     end
     candidates{end+1} = docIds{k}; %#ok<AGROW>
@@ -1699,7 +1779,7 @@ end
 
 % ===================== builders ========================================
 
-function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
+function obs = mkObservation(entry, subjectId, instrumentId, timeRefIds, ...
         sessionId, datestamp, acqSystemId, modeMethod)
 % A recording row -> an observation of the specimen (did-schema #88: a
 % direction + a value kind), the probe as instrument (T7), the rig as
@@ -1716,7 +1796,7 @@ if ~isempty(modeMethod); methodOpt = {'Method', modeMethod}; end
 obs = did2.build.statement(entry.class, char(subjectId), ...
     recordingVariable(entry.variable), [], 'ValueKind', entry.mixin, ...
     'DataBody', true, ...
-    'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
+    'TimeReferenceIds', timeRefIds, 'InstrumentId', char(instrumentId), ...
     'AcquisitionSystemId', char(acqSystemId), methodOpt{:}, ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
@@ -1800,6 +1880,33 @@ m = did2.build.statement('manipulation', char(subjectId), typeTerm, typeTerm, ..
     'AcquisitionSystemId', char(acqSystemId), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false, 'ValueKind', 'term');
+end
+
+function et = archiveEpochTable(b)
+% the v1 archive's `daqreader_epochdata_ingested.epochtable` (struct() if none)
+et = struct();
+if isfield(b, 'daqreader_epochdata_ingested') && isstruct(b.daqreader_epochdata_ingested) ...
+        && isscalar(b.daqreader_epochdata_ingested) ...
+        && isfield(b.daqreader_epochdata_ingested, 'epochtable') ...
+        && isstruct(b.daqreader_epochdata_ingested.epochtable) ...
+        && isscalar(b.daqreader_epochdata_ingested.epochtable)
+    et = b.daqreader_epochdata_ingested.epochtable;
+end
+end
+
+function tf = archiveClocksCarried(k, statsByIdx, idsByIdx, survivor)
+% true when every clock archive K states with times is on an emitted time
+% reference: its epochtable was read, none of its clocks was refused, and each
+% reference built from it was named by a surviving observation
+tf = false;
+if ~isKey(statsByIdx, k); return; end
+st = statsByIdx(k);
+if st.refused > 0; return; end
+ids = idsByIdx(k);
+for i = 1:numel(ids)
+    if ~isKey(survivor, ids{i}); return; end
+end
+tf = true;
 end
 
 function anchor = mkEpochAnchor(epochDocId, sessionId, datestamp)

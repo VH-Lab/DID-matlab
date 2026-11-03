@@ -97,7 +97,7 @@ function bodies = jClockAlignmentBodies(preBody, block, epochDocIdA, epochDocIdB
 %   document -- the thing silentLoss and isFragment exist to catch -- so a node
 %   with clock 'no_time' or a non-finite t0/t1 yields NO reference, and this
 %   function then returns {} rather than a clock_alignment with a blank REQUIRED
-%   edge. Same rule, same wording, as private/jEpochClockReferences.m.
+%   edge. Same rule, same wording, as did2.convert.epochClockReferences.
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) clock-alignment migrators.
 

@@ -35,7 +35,7 @@ function tests = testTimeReferenceFamilies
 %                             Decision C disagreeing case: two `relative_reference`
 %                             INSTANTS, each anchored to its own epoch document,
 %                             base.name `migrated_valid_interval_anchor`.
-%     nClockPair()            +migrators_j/private/jEpochClockReferences.m:139-175
+%     nClockPair()            did2.convert.epochClockReferences:139-175
 %                             -- one `relative_reference` per (clock, interval)
 %                             pair, ALL anchored to the SAME epoch document,
 %                             each carrying start AND duration, base.name
@@ -564,7 +564,7 @@ end
 end
 
 function refs = nClockPair(n, tag)
-%NCLOCKPAIR jEpochClockReferences.m:139-175 -- one `relative_reference` per
+%NCLOCKPAIR did2.convert.epochClockReferences.m:139-175 -- one `relative_reference` per
 %   (clock, interval) pair, ALL anchored to the SAME epoch document, each
 %   carrying start AND duration. NDI's `epochtable` is exactly this shape: a
 %   cell of clock names with a matching t0_t1 column each.
@@ -586,7 +586,7 @@ end
 
 function r = relativeReference(refId, clockName, anchorId, startSeconds, durationSeconds)
 %RELATIVEREFERENCE resolveValidIntervals.m:787-816 (makeReference) and
-%   jEpochClockReferences.m:139-175, which build the identical body. An EMPTY
+%   did2.convert.epochClockReferences.m:139-175, which build the identical body. An EMPTY
 %   DURATIONSECONDS is an INSTANT -- `duration` is not written at all, which is
 %   how the split case says "a point, not a span".
 r = bodyOf('relative_time_reference', refId);

@@ -686,6 +686,17 @@ POST_PASSES = [
         ("archive_files_unowned", "    files with no new owner"),
         ("archive_kept_referenced", "  KEPT: still referenced by a survivor"),
         ("archive_dangling_references", "    dangling references found (and avoided)"),
+        ("archive_kept_clock_not_carried", "  KEPT: a clock it states is on no emitted time reference"),
+        # [clock only on the time reference] (Jess Haley 2026-11-01): the
+        # archive's epochtable -> one relative_time_reference per clock onto the
+        # epoch, named by the epoch's recording observations.
+        ("epoch_clock_archives_read", "v1 ingested archive epochtables read  <- EPOCH CLOCK DENOMINATOR"),
+        ("epoch_clocks_stated", "  clocks stated"),
+        ("epoch_clocks_no_time", "    no times (no_time or non-finite: nothing to carry)"),
+        ("epoch_clocks_refused", "    REFUSED: stated with times, no reference built (archive kept)"),
+        ("epoch_clock_references_minted", "  clock time references minted"),
+        ("epoch_clock_references_emitted", "  clock time references emitted (named by a surviving observation)"),
+        ("observations_withheld_clock", "  observations WITHHELD: a clock reference they name did not validate"),
         # #73 review item 61: a v1 daqmetadatareader_epochdata_ingested's data.bin
         # becomes an opaque_body owned by the epoch's stimulator manipulation(s).
         ("metadata_archives_inspected", "v1 metadata archives inspected  <- METADATA ARCHIVE DENOMINATOR"),

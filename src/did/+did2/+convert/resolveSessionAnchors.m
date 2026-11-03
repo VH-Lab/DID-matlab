@@ -795,7 +795,7 @@ function [c, status] = cellField(blk, name)
 %   A unit this cannot read is NOT assumed to be seconds -- the cell stays
 %   ABSENT, because assuming a unit is the distance_metadata assumed-shape error
 %   and would silently rescale real data. Today every duration cell that reaches
-%   here is either already canonical (jClockAlignmentBodies, jEpochClockReferences,
+%   here is either already canonical (jClockAlignmentBodies, did2.convert.epochClockReferences,
 %   resolveValidIntervals all write `seconds`) or is `durationSeconds`'s literal
 %   's', so the unreadable-unit path has no known population -- it exists so that
 %   a future unit cannot be silently misread.
