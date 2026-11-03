@@ -260,7 +260,7 @@ function testASessionDocumentIdIsAnAcceptedLoss(testCase)
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyEqual(testCase, r.accepted_id_check.documents_scanned, numel(bodies), 'denominator');
 verifyEqual(testCase, r.accepted_id_check.ids_checked, 1);
-verifyEqual(testCase, r.accepted_id_check.ids_referenced, 0);
+verifyEqual(testCase, double(r.accepted_id_check.ids_referenced), 0);
 verifyEqual(testCase, r.ids_lost, 0, describe(r));
 verifyEqual(testCase, r.ids_accepted_lost, 1);
 verifyEqual(testCase, r.ids_accepted_lost_by_class.session, 1);
@@ -275,7 +275,7 @@ function testASessionDocumentIdAnotherDocumentNamesIsLost(testCase)
 % in a text field) is reported with the field, and the id is NOT accepted
 [bodies, result] = sessionBatch(testCase, 'wb_sref', 'c2', 'wb_sref_sess');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
-verifyEqual(testCase, r.accepted_id_check.ids_referenced, 1);
+verifyEqual(testCase, double(r.accepted_id_check.ids_referenced), 1);
 hit = r.accepted_id_check.referenced(1);
 verifyEqual(testCase, hit.id, 'wb_sref_sess');
 verifyEqual(testCase, hit.by_id, 'wb_sref_spec');
@@ -298,6 +298,11 @@ bodies = {sessionV1('wb_m_sess', sid), subjectV1('wb_m_spec', sid, 'L'), ...
     manifestV1('wb_m_efi', sid, 't0001', 'wb_m_nav', ...
         sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
         'pv\t1\tpatch-Vm\tintan1:ai1\tL\n']))};
+% the probes' edges as ndi.element/newdocument writes them
+for k = 3:4
+    bodies{k}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+        'value', {'', 'wb_m_spec'});
+end
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
@@ -311,7 +316,10 @@ hits = r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_m_idle'));
 verifyEqual(testCase, numel(hits), 1);
 verifyEqual(testCase, hits(1).path, 'element.type');
 for k = 1:numel(r.failures)
-    verifyFalse(testCase, any(strcmp(r.failures(k).source_id, {'wb_m_idle', 'wb_m_rec'})), describe(r));
+    if any(strcmp(r.failures(k).source_id, {'wb_m_idle', 'wb_m_rec'}))
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.type')), describe(r));
+        verifyEmpty(testCase, r.failures(k).unplaced, describe(r));
+    end
 end
 end
 

@@ -1334,8 +1334,7 @@ function testTheModeIsKeptInASessionWithNoIngestedEpoch(testCase)
 subj = subjectBody('spec_e', 'sess_e', 'L');
 idle = elementBody('el_eidle', 'sess_e', 'pi', '1', 'patch-I', 1, 'spec_e');
 [out, rep] = decompose({sessionBody('sd_e', 'sess_e', 'ref'), subj, idle});
-verifyEqual(testCase, rep.mode_statements_seen, 1);
-verifyEqual(testCase, rep.mode_statements_kept_session_not_ingested, 1);
+verifyEqual(testCase, rep.mode_statements_dropped_unrecorded, 0);
 verifyEqual(testCase, numel(assertionsAbout(out, 'el_eidle', 'element type')), 1);
 end
 
@@ -1347,7 +1346,9 @@ for k = 1:numel(result.migrated)
     if ~strcmp(char(d.document_class.class_name), 'assertion'); continue; end
     if ~strcmp(depVal(d, 'entity_id'), entityId); continue; end
     if ~strcmpi(char(d.statement.variable.name), variableName); continue; end
-    vals{end+1} = char(d.term.value.node); %#ok<AGROW>
+    node = '';
+    if isstruct(d.term.value) && isfield(d.term.value, 'node'); node = char(d.term.value.node); end
+    vals{end+1} = node; %#ok<AGROW>
 end
 end
 

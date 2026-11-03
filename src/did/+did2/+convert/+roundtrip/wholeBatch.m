@@ -495,7 +495,7 @@ for i = 1:numel(ids)
             'by_id', idOf(ctx.docs{hits(1)}), 'by_class', '<final batch>', 'field', '');
     end
 end
-check.ids_referenced = referenced.Count;
+check.ids_referenced = double(referenced.Count);
 end
 
 function p = fieldNaming(v, id, path)
