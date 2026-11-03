@@ -1628,8 +1628,11 @@ function t = recordingModeMethod(elementType)
 %                          OBI:0002182 'voltage clamp assay' (v1 `-I`, `-Im`)")
 %     wide-field-imaging   OBI:0002437 "widefield microscopy assay"
 %     two-photon-imaging   FBbi:00000254 "two-photon laser scanning microscopy"
-%     one-photon-imaging   FBbi:00000246 "fluorescence microscopy"
-%                          ([imaging mode terms], Jess Haley, 2026-11-01)
+%     one-photon-imaging   NCIT:C16856 "Fluorescence Microscopy"
+%                          ([imaging mode terms], Jess Haley, 2026-11-01;
+%                          term amended by [one-photon is NCIT fluorescence
+%                          microscopy], Jess Haley, 2026-11-03: the NCIT term
+%                          already registered and used for Haley, T19)
 %   A bare `patch` or `sharp` names no mode: nothing is written for it.
 %   Types are compared exactly, edge blanks aside, as NDI's probestruct2probe
 %   matches its keys.
@@ -1648,7 +1651,7 @@ switch strtrim(char(elementType))
     case 'two-photon-imaging'
         t = did2.convert.registeredTerm('FBbi:00000254', 'two-photon laser scanning microscopy');
     case 'one-photon-imaging'
-        t = did2.convert.registeredTerm('FBbi:00000246', 'fluorescence microscopy');
+        t = did2.convert.registeredTerm('NCIT:C16856', 'Fluorescence Microscopy');
 end
 end
 
