@@ -1,6 +1,6 @@
 function bodies = jModelFit(preBody, blk, inputEdges)
 %JMODELFIT A v1 curve fit (`fitcurve`, `vmspikefit`) as did-schema #88's
-%   `model_fit_calculation`: a generic `calculation` whose value kind is
+%   `calculation` whose value kind is
 %   `model_fit` (#73 review item 68, decided 2026-09-29: "fitcurve -> a
 %   standalone model_fit data type ... model_fit + model_fit_calculation ...
 %   no subject -> refused").

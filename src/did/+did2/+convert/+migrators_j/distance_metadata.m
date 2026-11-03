@@ -43,7 +43,7 @@ function bodies = distance_metadata(preBody)
 %   label order, so a third endpoint would be kept too.
 %
 %   It deliberately does NOT:
-%     - emit a `length_observation`: there is no scalar distance in the metadata
+%     - emit an `observation` with value kind `length`: there is no scalar distance in the metadata
 %       doc (the value is the linked element's timeseries) -- Part B, a genuine
 %       second pass riding on the element-data -> observation decomposition
 %       (deferred, overlaps #9); do not fabricate a values-less observation; and

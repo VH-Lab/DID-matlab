@@ -34,7 +34,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %   THE IMAGE FOLD IS NOT BUILT HERE, AND THAT IS DELIBERATE. THREE BLOCKERS.
 %   ---------------------------------------------------------------------
 %   The signed plan folds `frames.bin` + the raster header into
-%   `image_observation` + `sampled_body`. Each of the three obstacles below is
+%   `image_observation` + `sampled_body` (pre-#88 names). Each of the three obstacles below is
 %   sufficient on its own; together they make emitting the fold today a net loss.
 %
 %   1. NO REAL DOCUMENT HAS A SUBJECT, AND THE WRITER IS THE PROOF -- not the
@@ -44,7 +44,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %      origin/main -- '*.m'` returns two files, this writer and
 %      +ndi/+database/+fun/find_ingested_docs.m, which READS.
 %
-%      `image_observation` inherits `subject_id` from `subject_statement`, where
+%      `image_observation` (pre-#88) inherited `subject_id` from `subject_statement`, where
 %      it is REQUIRED. Emitting it empty is not caught by anything --
 %      `+did2/+validate/references.m:90` skips empty edges -- so it would produce
 %      observations about nobody that pass every gate. That is not hypothetical:
@@ -57,7 +57,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %      lines_per_frame, pixels_per_line, bidirectional
 %      (+ndi/+daq/+reader/image.m:373-380, `emptymetadata`) -- which the V_eta
 %      source tombstone declares field-for-field and which NEITHER
-%      `image_observation` NOR `sampled_body` declares anywhere. The plan says as
+%      `image_observation` (pre-#88) NOR `sampled_body` declares anywhere. The plan says as
 %      much ("metadata[] -> UNTYPED ARRAY. Bag it honestly or read real documents
 %      first") and leaves it open. Retiring the source therefore drops it
 %      silently, and a passthrough keeps it losslessly.
@@ -235,7 +235,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %       AND THE COST OF GETTING THIS WRONG WENT UP. #37 RequiredDependencies
 %       is ARMED BY DEFAULT since 2026-08-10 -- `+did2/+schema/cache.m:1104`
 %       reads `~did2.schema.cache.envFlagIsOff('DID_ENFORCE_REQUIRED_-
-%       DEPENDENCIES')`, ON unless explicitly disabled. `image_observation`
+%       DEPENDENCIES')`, ON unless explicitly disabled. `image_observation` (pre-#88)
 %       requires exactly one edge, `subject_id`, inherited from
 %       subject_statement; `sampled_body` requires `statement` ->
 %       subject_statement, so BOTH of the two unemitted targets hang off the
@@ -250,7 +250,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %       UNTYPED ARRAY. Bag it honestly or read real documents first").
 %
 %   SO THE TEAM QUESTION, RECORDED AND NOT RESOLVED (Operating Rule 4). The
-%   signature decides the SHAPE -- image_observation + sampled_body +
+%   signature decides the SHAPE -- image_observation (pre-#88) + sampled_body +
 %   relative_reference -- and it cannot supply the subject, because the
 %   device-to-subject join is not in the database: +ndi/+daq/system.m:229-234
 %   matches the EPOCHPROBEMAP files and takes `subject_id` from

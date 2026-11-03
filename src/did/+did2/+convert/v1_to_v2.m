@@ -2144,7 +2144,7 @@ function printQuarantine(result)
 %
 %   WHY THIS IS A ROLLUP AND NOT A LIST. Arming #37 (2026-08-10) is expected
 %   to quarantine ~7,233 documents in two known rows --
-%   stimulus_presentation.element_id 2,670 and image_observation.subject_id
+%   stimulus_presentation.element_id 2,670 and (pre-#88) image_observation.subject_id
 %   4,563. The previous version printed ONE LINE PER DOCUMENT, so that is
 %   7,233 near-identical lines; the summary line above it prints ONE NUMBER,
 %   7,233. Both are unreadable in the same way, from opposite ends: neither

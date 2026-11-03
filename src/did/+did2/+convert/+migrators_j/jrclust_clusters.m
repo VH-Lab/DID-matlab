@@ -8,7 +8,7 @@ function bodies = jrclust_clusters(preBody)
 %   recording: the cluster label of each spike (assignments held in the attached
 %   JRCLUST output file), tied to a subject via element_id. #9 analysis-tier fold
 %   (pattern 1, body-backed series): the label series is a per-spike integer, so it
-%   folds to a count_observation whose value stream is the assignment series:
+%   folded (pre-#88) to a count_observation whose value stream is the assignment series:
 %
 %       count_observation  the discoverable spine handle: subject_id, a shared time
 %                          anchor, variable = OBI:0000648 "clustered data set" ([term picks batch 1] (2)),
@@ -39,7 +39,7 @@ function bodies = jrclust_clusters(preBody)
 %         superclasses: [ base.json, app.json ]
 %
 %   This migrator BUILDS NEW BODIES, so the source block had no successor in
-%   {count_observation, sampled_body, session_relative_reference} and every
+%   {count_observation (pre-#88), sampled_body, session_relative_reference} and every
 %   app.name / app.version / app.url was discarded. No counter saw it:
 %   silentLoss counts empty edges, vacuous fields and fragments, and a source
 %   block with no successor is none of the three.
@@ -49,7 +49,7 @@ function bodies = jrclust_clusters(preBody)
 %   per-run os/interpreter in `execution_environment`. BOTH SLOTS ARE DECLARED
 %   ON THE TARGET -- checked in did-schema/schemas/V_eta/stable/
 %   subject_interaction.json (depends_on `software_id`, must_refer_to_document_class
-%   `software`; field `execution_environment`), which count_observation reaches
+%   `software`; field `execution_environment`), which count_observation (pre-#88) reached
 %   via subject_observation -> subject_interaction. Nothing is invented.
 %
 %   RequireSession is TRUE: base.session_id is mustBeNonEmpty and v1_to_v2

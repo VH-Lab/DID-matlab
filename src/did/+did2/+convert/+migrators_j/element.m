@@ -14,7 +14,7 @@ function v2Body = element(preBody)
 %     - entity            the element itself (id preserved; name -> `name`,
 %                         exactly; name/reference -> local_identifier
 %                         '<name> | <reference>').
-%     - term_assertion(s) its kind, nothing dropped: `type` -> variable
+%     - `assertion`(s), value kind `term`: its kind, nothing dropped: `type` -> variable
 %                         "element type", unless the device kind alone
 %                         rebuilds it (THE DEVICE KIND, below);
 %                         `ndi_element_class` -> variable "ndi element class"
@@ -22,7 +22,7 @@ function v2Body = element(preBody)
 %                         lost -- reshaping it into a typed kind is a needs-NDI
 %                         companion, the same disposition as the config-class
 %                         `ndi_*_class` fields).
-%     - term_assertion    a device's kind, variable NCIT:C178920 "Equipment
+%     - `assertion`+`term` a device's kind, variable NCIT:C178920 "Equipment
 %                         Type" (the binding registry's subject-defining
 %                         variable for a device's finer kind): every device
 %                         has one (did2.convert.elementDeviceKind).
@@ -76,7 +76,7 @@ function v2Body = element(preBody)
 %   tests/+did2/+unittest/testMigratorsJ.m carries
 %   `testElementDirectDeviceObservesSpecimen`, which asserts the `observes`
 %   relation for a direct 'n-trode' element. That type now resolves to a
-%   voltage_observation, so the relation is gone and THAT TEST WILL FAIL. It
+%   voltage-valued `observation`, so the relation is gone and THAT TEST WILL FAIL. It
 %   asserts the behaviour this decision retires, so it needs INVERTING, not
 %   patching -- the same call as the three tests that had asserted the `epochid`
 %   bug (CLAUDE.md: "A TEST WRITTEN FROM THE SAME PREMISE AS THE CODE CANNOT
@@ -427,7 +427,7 @@ end
 % 2026-08-18 this branch emitted NOTHING -- the `if isDirect` below returned
 % before jRecordingModality was ever consulted. THAT IS A CORRECTION TO
 % V_eta_OPEN_WORK.md row #118, which says 'spikes' elements "take this path
-% today", meaning Guard A's `modality unresolved` term_assertion. They do not
+% today", meaning Guard A's `modality unresolved` `assertion` (value kind `term`). They do not
 % and never did: Guard A is inside jRecordingObservation, and nothing derived
 % reached it. Measured on 20211116: 21 of 23 elements are
 % `type = 'spikes', direct = false, ndi_element_class = 'ndi.neuron'`, and each

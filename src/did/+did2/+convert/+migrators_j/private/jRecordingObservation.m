@@ -138,7 +138,7 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   TWO QUANTITIES ARE NOT MULTI-CHANNEL. `patch` and `sharp` are documented as
 %   two channels of DIFFERENT quantities (Vm and I). Two quantities are two
 %   `variable`s and therefore two statements, so those types produce a
-%   voltage_observation AND a current_observation, each single-channel. This is a
+%   voltage-valued `observation` AND a current-valued one, each single-channel. This is a
 %   refinement of the signed multi-channel rule, not a contradiction of it: that
 %   rule is about N SITES OF ONE MODALITY. Flagged for the team in the build
 %   report -- labelling a current trace 'voltage' to keep the document count at
@@ -210,7 +210,7 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   Both halves of that need V_eta classes/fields that DO NOT EXIST, verified
 %   rather than assumed:
 %
-%     1. AN UNDIMENSIONED CONCRETE OBSERVATION LEAF. `subject_observation`
+%     1. AN UNDIMENSIONED CONCRETE OBSERVATION LEAF. The pre-#88 `subject_observation`
 %        carries "abstract": true in
 %        schemas/V_eta/stable/subject_observation.json, and
 %        +did2/+schema/cache.m:507-511 raises
@@ -233,7 +233,7 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   exists to END that, not to spread it.
 %
 %   So the unresolved path emits NO observation and instead returns
-%   UNRESOLVEDLABEL, which migrators_j.element records as a `term_assertion` on
+%   UNRESOLVEDLABEL, which migrators_j.element records as an `assertion` with value kind `term` on
 %   the element-subject:
 %
 %       subject_statement.variable.name = 'modality unresolved'
@@ -268,7 +268,7 @@ retireObserves = false;
 unresolvedLabel = '';
 
 % NO SUBJECT => NO OBSERVATION. `subject_statement.subject_id` is the ONE
-% required edge on this chain (measured: subject_observation declares only
+% required edge on this chain (measured pre-#88: subject_observation declared only
 % `derived_from_#`, subject_interaction only optional edges), and an empty
 % required edge validates clean because +did2/+validate/references.m:90 skips
 % empty edges -- the invented-empty-edge pattern, 7,233 documents and counting.

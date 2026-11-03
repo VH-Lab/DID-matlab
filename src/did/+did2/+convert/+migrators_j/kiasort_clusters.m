@@ -7,7 +7,7 @@ function bodies = kiasort_clusters(preBody)
 %   kiasort_clusters is a Kiasort spike-sorting RUN: an external, session-relative
 %   output DIRECTORY (`kiasort_directory`) plus a curated-output MD5. Identical
 %   disposition to kilosort_clusters (a sibling sorter class) -- an id-preserved
-%   count_observation handle on the recording subject + the sorter output directory
+%   `calculation` (value kind `label`) on the recording subject + the sorter output directory
 %   as an opaque_body + the 'during' anchor. 1 -> 3. See
 %   did2.convert.migrators_j.private.jSorterOutput.
 %

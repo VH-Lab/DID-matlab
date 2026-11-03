@@ -30,7 +30,7 @@ function v2Body = treatment(preBody)
 %   value') and a `treatment_number_unlabelled` report note. The anchor is the
 %   recorded administration onset when there is one, else the session
 %   (jTreatmentAnchor; Jess Haley, 2026-10-21, "a"). A merely-located site
-%   becomes a `term_observation` (D3); an ATTRIBUTED site is promoted by the
+%   becomes an `observation` with value kind `term` (D3); an ATTRIBUTED site is promoted by the
 %   NDI second pass.
 %
 %   Substance rows whose dose amounts cannot all be placed are also

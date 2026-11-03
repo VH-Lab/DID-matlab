@@ -63,7 +63,7 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %      here and on each level's sampled_body.
 %   2. THE SOFTWARE ENTITY, `entity` with type `software`, named for the
 %      program that writes every v1 pyramid (point 5), always; plus a
-%      `text_assertion` 'version' about it carrying pipeline_version when that
+%      text-valued `assertion` 'version' about it carrying pipeline_version when that
 %      is non-empty.
 %   3. NO STORE BODY, when the pyramid names a source file (a pyramid with
 %      none gets a FILE-LESS store body from this migrator; see
@@ -134,7 +134,7 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %     `software` entity named 'NDI lightsheet pyramid builder
 %     (ndi.fun.doc.lightsheet.makePyramid)', always emitted, always the
 %     observation's software_id; pipeline_version (the writer's tag for the
-%     pyramid, makePyramid.m:28) is a text_assertion 'version' about it when
+%     pyramid, makePyramid.m:28) is an `assertion` (value kind `text`) 'version' about it when
 %     non-empty.
 %   * `label`, `pyramid_name`, `pyramid_type` -- DECIDED (Jess 2026-10-15):
 %     `label` is the observation's `notes`, permanently, with or without a
@@ -259,7 +259,7 @@ end
 % NAMED for the program that writes every v1 pyramid, always emitted: the
 % builder is known whether or not the document records a pipeline_version.
 % `pipeline_version` is the writer's "tag for the pyramid" (makePyramid.m:28),
-% NOT a program name, so it becomes a `text_assertion` (variable 'version')
+% NOT a program name, so it becomes an `assertion` with value kind `text` (variable 'version')
 % about this entity, the way ndi.setup.V2.entityDocuments records a software
 % version -- only when it is non-empty. Software dedup across pyramids is
 % NDI's resolveSoftwareDedup's job, not this migrator's.

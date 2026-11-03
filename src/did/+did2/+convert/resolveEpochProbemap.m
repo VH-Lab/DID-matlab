@@ -16,7 +16,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %        (filenavigator_id RESTORED, epoch_id an EDGE, the char `epoch_id` dropped;
 %        the serialized `epochprobemap` KEPT VERBATIM for lossless read-back)
 %        once the probemap has been decomposed off it. STIMULATOR rows ALSO
-%        decompose as of the 2026-08-21 increment -- one `term_manipulation` each
+%        decompose as of the 2026-08-21 increment -- one `manipulation` (value kind `term`) each
 %        (T3, mkManipulation) -- so only IMAGING rows still ride the string alone.
 %
 %   ---------------------------------------------------------------------
@@ -113,7 +113,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %
 %   THREE MORE JOBS, all decided by Jess Haley, 2026-10-21 ("a"):
 %     SPIKE TRAINS   a derived `spikes` element (a sorted neuron) gets one
-%                    time_observation per epoch -- entity the neuron, instrument
+%                    `observation` (value kind `time`) per epoch -- entity the neuron, instrument
 %                    the element it was sorted from (`derived_from`), variable
 %                    GO:0001508 "action potential", `data_body` true -- and its
 %                    element_epoch's epoch_binary_data.vhsb is the opaque_body
@@ -1789,7 +1789,7 @@ end
 
 function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
         sessionId, datestamp, acqSystemId)
-% A stimulator row -> a term_manipulation of the specimen: the stimulator type
+% A stimulator row -> a `manipulation` with value kind `term` of the specimen: the stimulator type
 % as both the variable and the term value (#66 increment 3), the stimulator
 % element-subject as instrument (T7), the rig as acquisition_system_id, the
 % channels on the stimulator's wiring relation ([probe wiring is a relation]).
@@ -2029,7 +2029,7 @@ end
 function ch = emptyChannels()
 %EMPTYCHANNELS A 0x0 struct array of the channels shape, so `isempty` is true and
 %   the observation OMITS the field (absent-is-valid) when no device string
-%   parsed. Fields match subject_observation.channels ({type, numbers}).
+%   parsed. Fields match the pre-#88 subject_observation.channels ({type, numbers}).
 ch = struct('type', {}, 'numbers', {});
 end
 
@@ -2138,7 +2138,7 @@ if strcmp(key, 'n-trode') || ~isempty(regexp(key, '^([a-z0-9_]*_)?electrode-', '
 end
 
 % IMAGE IS DEFERRED, NOT UNRESOLVED. Imaging types ARE a recognised modality --
-% jRecordingModality maps them to image_observation and the entry below records
+% jRecordingModality maps them to an intensity `observation` and the entry below records
 % that mapping so the map still mirrors it -- but they cannot be emitted VALIDLY
 % in increment 1. `image` is the one data_type whose `value` cell is
 % mustBeNonEmpty, and a probemap row carries NO raster metadata, so every

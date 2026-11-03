@@ -23,7 +23,7 @@ function v2Body = virus_injection(preBody)
 %   G67); a named diluent is a second ingredient. Routing is jTreatmentRoute /
 %   jTreatmentBodies: bath -> immersion; a body site -> a dose whose amount is
 %   NaN in `volume.liters` (the template has no volume field) plus the site
-%   `term_observation` (Path S, D3); no location -> that dose, listed in the
+%   `observation` + `term` (Path S, D3); no location -> that dose, listed in the
 %   migration report as `route_unknown`.
 %
 %   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26

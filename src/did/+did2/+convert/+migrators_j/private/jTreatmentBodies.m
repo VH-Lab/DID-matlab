@@ -18,7 +18,7 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %                  naming the V2 homes, so the caller carries the document
 %                  whole as v1 ([one correct reading], [dataset audit batch 1
 %                  and 2] (2), Jess Haley, 2026-10-26).
-%     'dose'       a `dose_manipulation` whose `formulation_id` names the
+%     'dose'       a `manipulation` with value kind `dose` whose `formulation_id` names the
 %                  formulation and whose value is the amount (jDoseValue: the
 %                  source's amount; with only ingredient amounts, the whole
 %                  formulation's amount listed as a gap in the migration report
@@ -119,7 +119,7 @@ switch route
             return;
         end
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
-        % `formulation_manipulation` is no class: did2.build reads it as the
+        % Not a joined class name: did2.build reads the statement as the
         % direction `manipulation` with the value kind `formulation`.
         manip = jStatement(preBody, 'manipulation', jSubjectOf(preBody), ...
             variable, [], 'TimeReferenceIds', {anchorId}, 'ValueId', formulationId, ...

@@ -1,5 +1,5 @@
 function bodies = jMeasurementFold(preBody, variable, hay, numValue, strValue, anchor, wordBoundary)
-%JMEASUREMENTFOLD The shared did_v1 measurement -> typed subject_observation fold.
+%JMEASUREMENTFOLD The shared did_v1 measurement -> typed `observation` fold.
 %
 %   BODIES = jMeasurementFold(PREBODY, VARIABLE, HAY, NUMVALUE, STRVALUE, ANCHOR)
 %   returns {OBSERVATION, ANCHOR} when the measurement can be typed honestly, and
@@ -25,11 +25,11 @@ function bodies = jMeasurementFold(preBody, variable, hay, numValue, strValue, a
 %
 %   WHAT FOLDS, AND WHAT DELIBERATELY DOES NOT
 %     a number whose dimension jQuantityLeaf can name -> <leaf>_observation
-%     a CURIE-shaped string value                     -> term_observation
+%     a CURIE-shaped string value                     -> an `observation` with value kind `term`
 %     anything else                                   -> {} (carried through)
 %
 %   Date of birth is the important member of that last group and it is not an
-%   oversight: there is no `date_observation` leaf in V_eta and a birth date is
+%   oversight: there is no `observation` with value kind `date` here and a birth date is
 %   arguably a property of the subject ENTITY rather than an observation of it.
 %   `treatment.m` routes it out of its tier for the same reason.
 %

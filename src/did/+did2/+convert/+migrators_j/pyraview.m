@@ -28,7 +28,7 @@ function bodies = pyraview(preBody)
 %   element_id. In J it dissolves into the data_body model (2.D), exactly like the
 %   image_stack fold:
 %
-%       voltage_observation the discoverable spine handle: subject_id, a shared
+%       `observation`+`voltage` the discoverable spine handle: subject_id, a shared
 %                           time anchor, a placeholder subject_statement.variable
 %                           (the signal `label`), and storage_mode 'body' (the
 %                           cadence lives in the body, D1).

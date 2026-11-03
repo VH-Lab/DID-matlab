@@ -8,7 +8,7 @@ function bodies = spike_interface_sorting_outputs(preBody)
 %   ---------------------------------------------------------------------
 %   WHY THIS IS NOT A MIGRATION
 %   ---------------------------------------------------------------------
-%   This migrator used to emit an inline count_observation of `num_units` about
+%   This migrator used to emit an inline `observation` (value kind `count`) of `num_units` about
 %   the recording subject reached via element_id. BOTH HALVES ARE WRONG. The real
 %   NDI class (ndi_common/database_documents/sorting/SpikeInterfaceSortingOutputs
 %   .json) is:

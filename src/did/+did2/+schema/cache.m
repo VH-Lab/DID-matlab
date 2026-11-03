@@ -1606,7 +1606,7 @@ classdef cache < handle
             %   RequiredDependencies: cost measured, and it is NOT zero. The
             %   same run reports 7,233 empty required edges --
             %   stimulus_presentation.element_id 2,670 and
-            %   image_observation.subject_id 4,563. IT IS ARMED ANYWAY, on the
+            %   (pre-#88) image_observation.subject_id 4,563. IT IS ARMED ANYWAY, on the
             %   team's explicit instruction: "Arm it. We want to see issues so
             %   we can fix them." So EXPECT THE CORPUS GATES TO GO RED. (The
             %   image_stack guard post-dates that run, so the 4,563 row may
@@ -3010,7 +3010,7 @@ classdef cache < handle
             %   data_type composites emitted nothing at all, i.e. no measured value
             %   was indexable.
             %
-            %     scalar cell -> dotted scalar paths (voltage_assertion.value.volts)
+            %     scalar cell -> dotted scalar paths (an assertion's value.volts)
             %     array cell  -> '[*]' sidecar paths (voltage.value[*].volts)
             %     leaf        -> itself, as before.
             sc = struct('path', {}, 'declaringClass', {}, 'fieldName', {}, ...

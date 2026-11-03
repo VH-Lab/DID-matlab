@@ -5,7 +5,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   did2.convert.v1_to_v2 returns (after the sibling post-passes) and rewrites
 %   every `generic_file` document it can fold HONESTLY into
 %
-%       term_observation   the statement -- `subject_id` from the source's
+%       `observation`+`term` the statement -- `subject_id` from the source's
 %                          `document_id`, `variable` from the SIBLING
 %                          ontologyLabel's `ontologyNode`, storage_mode 'body'.
 %                          ITS base.id IS THE SOURCE'S base.id, unchanged.
@@ -214,7 +214,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   typed `value` (term, image, date, tuning_curve, ...) or names a physical
 %   quantity the bytes of a plasmid map do not have.
 %
-%   CHOSEN: `term_observation` (subject_observation + term), with
+%   CHOSEN: an `observation` with value kind `term`, with
 %   `subject_statement.variable` = the label's node, verbatim per the team, and
 %   `term.value` = THE SAME NODE. That restatement is the cost, and it is
 %   deliberate: `term.value` is mustBeNonEmpty, the label's node is the only
@@ -224,7 +224,7 @@ function [result, report] = foldGenericFiles(result, options)
 %     * an empty `term.value` -> mustBeNonEmpty -> every Babu document
 %       QUARANTINES. The gate would stay green (0 generic_file in all six
 %       corpora) while the data it exists for was rejected.
-%     * `count_observation` with an empty `count` block, which is what
+%     * an `observation` with value kind `count` with an empty `count` block, which is what
 %       migrators_j.private.jSorterOutput does for an opaque sorter directory.
 %       It validates (`count.value` is optional) and the class name is FALSE:
 %       a plasmid map is not a count of anything. A false class name survives
@@ -1582,7 +1582,7 @@ end
 % ===================== the two bodies ==================================
 
 function [body, anchor] = makeStatement(src, node, subjectId)
-%MAKESTATEMENT The term_observation, WITH THE SOURCE'S OWN base.id.
+%MAKESTATEMENT The `observation` (value kind `term`), WITH THE SOURCE'S OWN base.id.
 %   did-schema #88: built by did2.build.statement. `variable` is the label's
 %   node (the team's instruction, verbatim); the term value restates it,
 %   because the node is the only term the source carries. Both go through the
