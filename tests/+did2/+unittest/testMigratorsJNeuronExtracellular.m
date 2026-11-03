@@ -313,6 +313,23 @@ verifyTrue(testCase, all(~[value.approximate]));
 end
 
 
+function testTheUnstatedUnitIsOneGapForTheWholeWaveform(testCase)
+% [waveform unit gap once] (Decided by Jess Haley, 2026-11-03, did-schema
+% did_v2_go_forward_class_audit.md): a value with no stated unit is ONE gap in
+% the migration report, however many samples it holds -- one entry per
+% waveform, not one per sample (672 here)
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+w = pick(out, 'calculation+voltage');
+g = did2.convert.migrationReport('gaps', char(w.base.id));
+verifyNumElements(testCase, g, 1, 'one gap for the waveform, not one per sample');
+verifyEqual(testCase, g(1).field, 'voltage.value.volts');
+verifyTrue(testCase, contains(g(1).reason, 'unit not stated'), g(1).reason);
+verifyTrue(testCase, contains(g(1).reason, '672 samples'), g(1).reason);
+end
+
+
 function testTheStatementIsInlineAndCarriesTheEncoding(testCase)
 % UPDATED for #88: the encoding is value.data_type / source_data_type, and an
 % inline value is simply a value with no data_body flag.

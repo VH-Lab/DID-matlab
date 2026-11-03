@@ -61,13 +61,17 @@ function [value, chemicals, conflicts, ingredientRows, placeholders, gaps] = jDo
 %   2026-11-01, the gap is listed in the run's migration report). It was
 %   `value.volume.liters = NaN` until then ("An unrecorded amount is written
 %   as NaN in its quantity", Jess Haley, 2026-10-21).
-%   NOT CHANGED HERE: the NaN canonical of a kind stated with no number,
-%   below. When no row gives a number but exactly one kind of amount
-%   unit is stated, the NaN goes in THAT quantity, with the unit as
-%   `source_unit` ("where the kind is known ... the NaN goes in that quantity
-%   instead", Jess Haley, 2026-10-21 [unknown-amount-slot]). Whether NaN
-%   survives a did2 write and read is DID-matlab
-%   #218's work (testSqliteDbNonFinite); this function only writes it.
+%   A STATED UNIT WITH NO AMOUNT IS A GAP (Decided by Jess Haley, 2026-11-03
+%   [stated unit with no amount is a gap], superseding for this case
+%   [unknown-amount-slot] and [blank per-body-mass on the ingredient],
+%   2026-10-21, in favour of [canonical absent only as needs info]): a row
+%   that states the unit of an amount but no number writes no amount -- no
+%   NaN in the quantity, no NaN ingredient entry -- and GAPS names
+%   'dose.value.<slot>' (volume, mass, substance_amount, count,
+%   amount_per_body_mass) with the unit in its reason: 'amount not stated;
+%   unit mg/kg' (and the row's substance, when it names one). The unit is
+%   taken off its row, so it is not read as a concentration either. Until
+%   then the NaN went in that quantity with the unit as `source_unit`.
 
 gaps = struct('field', {}, 'reason', {});
 hits = [];
@@ -93,26 +97,23 @@ conflicts = {};
 placeholders = {};
 ingredientRows = [];
 entryByRow = containers.Map('KeyType', 'double', 'ValueType', 'any');
-% A per-body-mass row that NAMES a chemical but gives no number is that
-% chemical's unrecorded amount: its value.ingredients entry, amount_per_body_mass
-% NaN with the unit, paired with its ingredient_id edge -- not the dose's top
-% level (Jess Haley, 2026-10-21 [blank per-body-mass on the ingredient]).
-keepKind = true(size(kindOnly));
+% [stated unit with no amount is a gap] (Jess Haley, 2026-11-03): each row
+% stating an amount's unit but no number writes no amount; its gap names the
+% slot, the unit in the reason, and the unit leaves the row (header)
 for i = 1:numel(kindOnly)
     k = kindOnly(i);
     c = chemicals(k);
-    if strcmp(kindSlots{i, 1}, 'amount_per_body_mass') && namesChemical(c.substance) ...
-            && ~isVehicle(c.substance)
-        q = struct(kindSlots{i, 2}, NaN, 'source_unit', unitTerm(c.source_unit));
-        entryByRow(k) = struct('amount_per_body_mass', q);
-        ingredientRows(end+1) = k; %#ok<AGROW>
-        chemicals(k).source_value = [];
-        chemicals(k).source_unit = [];
-        keepKind(i) = false;
+    why = ['amount not stated; unit ' unitSpelling(c.source_unit)];
+    if namesChemical(c.substance) && ~isempty(termName(c.substance))
+        why = [why ' (' termName(c.substance) ')']; %#ok<AGROW>
     end
+    gaps(end+1) = struct('field', ['dose.value.' kindSlots{i, 1}], 'reason', why); %#ok<AGROW>
+    chemicals(k).source_value = [];
+    chemicals(k).source_unit = [];
 end
-kindOnly = kindOnly(keepKind);
-kindSlots = kindSlots(keepKind, :);
+unitOnlyGaps = numel(kindOnly);
+kindOnly = [];
+kindSlots = cell(0, 2);
 if ~isempty(hits) || ~isempty(ingredientRows)
     v = struct();
     firstSpelled = struct();   % the first row's unit spelling, per slot
@@ -171,17 +172,7 @@ if ~isempty(hits) || ~isempty(ingredientRows)
                 num2str(sv, 17), spelled); %#ok<AGROW>
         end
     end
-    if isempty(fieldnames(v)) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1))) ...
-            && ~strcmp(kindSlots{1, 1}, 'amount_per_body_mass')
-        % the whole formulation's amount is unrecorded but its KIND is stated
-        % ([unknown-amount-slot]): the NaN goes in that quantity
-        c = chemicals(kindOnly(1));
-        v.(kindSlots{1, 1}) = struct(kindSlots{1, 2}, NaN, 'source_unit', unitTerm(c.source_unit));
-        for k = kindOnly
-            chemicals(k).source_value = [];
-            chemicals(k).source_unit = [];
-        end
-    elseif isempty(fieldnames(v)) && ~isempty(ingredientRows)
+    if isempty(fieldnames(v)) && ~isempty(ingredientRows)
         % only per-ingredient amounts: the whole formulation's amount is
         % unrecorded. [canonical absent only as needs info] (Decided by Jess
         % Haley, 2026-10-30): left out and listed as a gap, not
@@ -189,7 +180,7 @@ if ~isempty(hits) || ~isempty(ingredientRows)
         gaps(end+1) = struct('field', 'dose.value.volume', 'reason', ...
             ['the source states each ingredient''s amount but not the amount ' ...
              'of the whole formulation given']);
-    elseif isempty(fieldnames(v))
+    elseif isempty(fieldnames(v)) && unitOnlyGaps == 0
         % nothing else to state (every amount was a vehicle placeholder, which
         % the caller carries): no amount, listed as a gap (header)
         gaps(end+1) = noAmountGap();
@@ -206,17 +197,12 @@ if ~isempty(hits) || ~isempty(ingredientRows)
     else
         value = did2.build.composite('dose', 'value', v);
     end
-elseif isempty(hits) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1)))
-    % The source states the KIND of amount (its unit) but not the number: the
-    % NaN goes in that quantity, not in volume (Jess Haley, 2026-10-21
-    % [unknown-amount-slot]). The unit is carried as `source_unit`.
-    c = chemicals(kindOnly(1));
-    q = struct(kindSlots{1, 2}, NaN, 'source_unit', unitTerm(c.source_unit));
-    value = did2.build.composite('dose', 'value', struct(kindSlots{1, 1}, q));
-    for k = kindOnly
-        chemicals(k).source_value = [];
-        chemicals(k).source_unit = [];
-    end
+elseif unitOnlyGaps > 0
+    % The source states the KIND of amount (its unit) but no number: no amount
+    % is written; each such row's gap, its unit in the reason, is in GAPS
+    % ([stated unit with no amount is a gap], Jess Haley, 2026-11-03; it was
+    % NaN in that quantity, [unknown-amount-slot])
+    value = [];
 else
     % Neither the amount nor its kind is known: the value is left blank and
     % listed as a gap (header; it was value.volume.liters = NaN, Jess Haley,

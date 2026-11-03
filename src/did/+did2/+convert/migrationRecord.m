@@ -39,9 +39,25 @@ function [records, report] = migrationRecord(docs, options)
 %   THE EDGE. The record's `session_id` names the one dataset entity in DOCS
 %   (an `entity` of type dataset). With none, the one session the documents
 %   belong to: the one session entity in DOCS, else the one id their
-%   `session_id` edges (or v1 base.session_id) name. Two or more of either
-%   is not decided: did2:convert:migrationAnchor, and nothing is written
-%   (pass 'Anchor' to name it).
+%   `session_id` edges (or v1 base.session_id) name.
+%
+%   ONE RECORD PER DATASET (Decided by Jess Haley, 2026-11-03 [one migration
+%   document per dataset]): "a run that migrates two or more datasets writes
+%   one `migration` document per dataset, each pointing at its dataset with
+%   its own attached report; a run with two or more sessions and no dataset
+%   writes one per session". DOCS is split by the anchor each document belongs
+%   to and each part gets its own record and report (RECORDS holds the pairs in
+%   anchor order: {migration 1, report 1, migration 2, report 2, ...}; REPORT is
+%   then a struct array, one per record, each with `anchor`). A document
+%   belongs to a DATASET when it is that dataset entity, its `session_id` edge
+%   names the dataset, or it (or its session) is a session that an
+%   `included_in` directed_relation places in the dataset; to a SESSION when it
+%   is that session entity or its `session_id` edge (v1 base.session_id) names
+%   it. A document that belongs to none of them is not decided:
+%   did2:convert:migrationAnchor, and nothing is written (pass 'Anchor' to
+%   write one record for the whole run). options.Counts are the caller's
+%   whole-run counts; with two or more records each report carries them under
+%   `counts.run` instead of beside the record's own counts.
 %
 %   Options:
 %     'Anchor'       the id the record's session_id edge names (default: as
@@ -86,7 +102,36 @@ end
 
 anchor = options.Anchor;
 if isempty(anchor)
-    anchor = anchorOf(docs);
+    [anchors, groupOf] = anchorsOf(docs);
+    if numel(anchors) > 1
+        % [one migration document per dataset]: one record per anchor, each
+        % from its own documents; the caller's counts are the whole run's
+        parts = {};
+        reports = [];
+        for g = 1:numel(anchors)
+            o = options;
+            o.Anchor = anchors{g};
+            o.Counts = struct();
+            if ~isempty(options.ReportFile)
+                [d, n, e] = fileparts(options.ReportFile);
+                o.ReportFile = fullfile(d, sprintf('%s_%d%s', n, g, e));
+            end
+            args = namedArgs(o);
+            [recs, rep1] = did2.convert.migrationRecord(docs(groupOf == g), args{:});
+            rep1.counts.run = options.Counts;
+            rep1.anchor = anchors{g};
+            rep1 = orderfields(rep1);
+            if ~isempty(recs)
+                recs = rewriteReport(recs, rep1, o);
+            end
+            parts = [parts, recs]; %#ok<AGROW>
+            if isempty(reports); reports = rep1; else; reports(end+1) = rep1; end %#ok<AGROW>
+        end
+        records = parts;
+        report = reports;
+        return;
+    end
+    anchor = anchors{1};
 end
 
 % the record is migration output: its plain-text parameter labels (source
@@ -154,46 +199,164 @@ end
 
 % =============================================================================
 
-function anchor = anchorOf(docs)
-% [migration record points at the dataset]: the dataset, else the session
+function [anchors, groupOf] = anchorsOf(docs)
+% [migration record points at the dataset]: the dataset, else the session;
+% [one migration document per dataset]: with two or more, every document's
+% own (GROUPOF(k) indexes ANCHORS; all 1 with one anchor)
+n = numel(docs);
+structs = cell(1, n);
+ids = repmat({''}, 1, n);
+kinds = repmat({''}, 1, n);
+sids = repmat({''}, 1, n);
 datasets = {};
 sessions = {};
 edges = {};
-for k = 1:numel(docs)
+datasetOfSession = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:n
     s = docs{k};
     if isa(s, 'did2.document')
         s = s.toStruct();
     end
+    structs{k} = s;
     if ~isstruct(s) || ~isfield(s, 'base') || ~isfield(s.base, 'id')
         continue;
     end
-    kind = entityKind(s);
-    if strcmp(kind, 'dataset')
-        datasets{end+1} = char(s.base.id); %#ok<AGROW>
-    elseif strcmp(kind, 'session')
-        sessions{end+1} = char(s.base.id); %#ok<AGROW>
+    ids{k} = char(s.base.id);
+    kinds{k} = entityKind(s);
+    if strcmp(kinds{k}, 'dataset')
+        datasets{end+1} = ids{k}; %#ok<AGROW>
+    elseif strcmp(kinds{k}, 'session')
+        sessions{end+1} = ids{k}; %#ok<AGROW>
     end
-    sid = sessionIdOf(s);
-    if ~isempty(sid)
-        edges{end+1} = sid; %#ok<AGROW>
+    sids{k} = sessionIdOf(s);
+    if ~isempty(sids{k})
+        edges{end+1} = sids{k}; %#ok<AGROW>
     end
-end
-for c = {unique(datasets), unique(sessions), unique(edges)}
-    ids = c{1};
-    if isscalar(ids)
-        anchor = ids{1};
-        return;
-    elseif numel(ids) > 1
-        error('did2:convert:migrationAnchor', ...
-            ['The run''s migration record names the dataset it migrated, else ' ...
-             'the session ([migration record points at the dataset], Jess Haley, ' ...
-             '2026-11-01), and this run holds %d of them (%s), so which one is ' ...
-             'not decided. Pass ''Anchor''.'], numel(ids), strjoin(ids(1:min(5, end)), ', '));
+    if isIncludedIn(s)
+        c = edgeOf(s, 'child_id');
+        p = edgeOf(s, 'parent_id');
+        if ~isempty(c) && ~isempty(p)
+            datasetOfSession(c) = p;
+        end
     end
 end
+datasets = unique(datasets);
+sessions = unique(sessions);
+edges = unique(edges);
+groupOf = ones(1, n);
+if isscalar(datasets)
+    anchors = datasets;
+    return;
+elseif numel(datasets) > 1
+    anchors = datasets;
+    for k = 1:n
+        g = find(strcmp(datasets, ids{k}), 1);                        % the dataset
+        if isempty(g); g = find(strcmp(datasets, sids{k}), 1); end    % names it
+        if isempty(g)
+            for sess = {ids{k}, sids{k}}                              % a session in it
+                if ~isempty(sess{1}) && isKey(datasetOfSession, sess{1})
+                    g = find(strcmp(datasets, datasetOfSession(sess{1})), 1);
+                    if ~isempty(g); break; end
+                end
+            end
+        end
+        if isempty(g)
+            unplacedError('dataset', datasets, ids{k});
+        end
+        groupOf(k) = g;
+    end
+    return;
+end
+if isscalar(sessions)
+    anchors = sessions;
+    return;
+end
+if isempty(sessions) && isscalar(edges)
+    anchors = edges;
+    return;
+end
+anchors = unique([sessions, edges]);
+if isempty(anchors)
+    error('did2:convert:migrationAnchor', ...
+        ['The run''s documents name no dataset and no session, so its migration ' ...
+         'record has nothing to point at. Pass ''Anchor''.']);
+end
+for k = 1:n
+    g = [];
+    if strcmp(kinds{k}, 'session'); g = find(strcmp(anchors, ids{k}), 1); end
+    if isempty(g); g = find(strcmp(anchors, sids{k}), 1); end
+    if isempty(g)
+        unplacedError('session', anchors, ids{k});
+    end
+    groupOf(k) = g;
+end
+end
+
+function unplacedError(kind, anchors, id)
 error('did2:convert:migrationAnchor', ...
-    ['The run''s documents name no dataset and no session, so its migration ' ...
-     'record has nothing to point at. Pass ''Anchor''.']);
+    ['This run holds %d %ss (%s), so it writes one migration record per %s ' ...
+     '([one migration document per dataset], Jess Haley, 2026-11-03), and ' ...
+     'document "%s" belongs to none of them, so which record reports it is ' ...
+     'not decided. Pass ''Anchor''.'], numel(anchors), kind, ...
+    strjoin(anchors(1:min(5, end)), ', '), kind, id);
+end
+
+function tf = isIncludedIn(s)
+% a directed_relation `included_in` (a session's membership in its dataset)
+tf = false;
+if ~isfield(s, 'document_class') || ~isfield(s.document_class, 'class_name') ...
+        || ~strcmp(char(s.document_class.class_name), 'directed_relation') ...
+        || ~isfield(s, 'directed_relation') || ~isfield(s.directed_relation, 'relation')
+    return;
+end
+r = s.directed_relation.relation;
+tf = isstruct(r) && did2.build.isVocabulary(r, 'relation', 'included_in');
+end
+
+function v = edgeOf(s, name)
+% the document id a V2 edge (or a v1 depends_on entry) of NAME names
+v = '';
+if ~isfield(s, 'depends_on') || ~isstruct(s.depends_on) || ~isfield(s.depends_on, 'name')
+    return;
+end
+hit = find(strcmp({s.depends_on.name}, name), 1);
+if isempty(hit); return; end
+e = s.depends_on(hit);
+if isfield(e, 'document_id')
+    v = char(e.document_id);
+elseif isfield(e, 'value')
+    v = char(e.value);
+end
+end
+
+function args = namedArgs(o)
+% OPTIONS back as name-value pairs for the per-anchor call
+args = {'Anchor', o.Anchor, 'Counts', o.Counts, 'ReportFile', o.ReportFile, ...
+    'Version', o.Version, 'Validate', o.Validate, 'SchemaCache', o.SchemaCache};
+end
+
+function recs = rewriteReport(recs, report, o)
+% the report file of a per-anchor record, rewritten with what the split adds
+% (`anchor`, `counts.run`), under a new content-named file
+body = recs{2}.toStruct();
+loc = body.files.file_info.locations;
+old = loc.location;
+if isempty(o.ReportFile)
+    scratch = [tempname() '.json'];
+    writeJson(scratch, report);
+    file = fullfile(tempdir, ['did2_migration_report_' contentKey(scratch) '.json']);
+    movefile(scratch, file, 'f');
+    if ~strcmp(old, file) && isfile(old)
+        delete(old);
+    end
+else
+    file = o.ReportFile;
+    writeJson(file, report);
+end
+loc.location = file;
+loc.uid = did2.convert.mintId('migration report file', contentKey(file));
+body.files.file_info.locations = loc;
+recs{2} = did2.document(body);
 end
 
 function kind = entityKind(s)
