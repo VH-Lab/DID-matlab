@@ -30,7 +30,10 @@ function [v1, spec] = syncrule_mapping(bodies, ctx)
 %       epochprobemap                  the epoch's manifest: the v1
 %                                      epochfiles_ingested of that session and
 %                                      epoch read by the system's file navigator
-%                                      (its epoch_file_pattern_id)
+%                                      (its epoch_file_pattern_id); a probe
+%                                      listed in several rows is compared as
+%                                      its merged row (spec.same,
+%                                      private/sameProbemapSeveralRows)
 %
 %   base.name is not rebuilt (V2 writes none; the fold takes only an empty
 %   one); `files` is not rebuilt (the fold takes only one that lists no file).
@@ -93,6 +96,17 @@ for e = 1:size(ends, 1)
         spec.unplaced{end+1} = sprintf('%s: %s', ends{e, 2}, why);
     end
     blk.(ends{e, 2}) = node;
+end
+% a probe the v1 map lists in several rows comes back as one row per system
+% (manifestProbemap), compared as the same probe and the same ordered channel
+% list ([probe in several rows is one wiring], Jess Haley, 2026-11-03;
+% private/sameProbemapSeveralRows), at both ends
+for e = 1:size(ends, 1)
+    spec.same(end+1) = struct('path', ['syncrule_mapping.' ends{e, 2} '.epochprobemap'], ...
+        'fn', @sameProbemapSeveralRows, ...
+        'why', ['a probe listed in several rows of one probe map is one row per ' ...
+        'acquisition system holding its rows'' channels in row order ([probe in ' ...
+        'several rows is one wiring], Jess Haley, 2026-11-03)']);
 end
 for k = find(~used(1:nOwn))
     spec.unplaced{end+1} = sprintf('emitted document %d (%s) has no role in the mapping', ...
