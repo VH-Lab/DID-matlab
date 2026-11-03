@@ -63,11 +63,13 @@ verifyEqual(testCase, numel(out.passthrough), 2, 'both pass through');
 for k = 1:numel(batch)
     v1 = batch{k};
     doc = docWithId(out, v1.base.id);
-    verifyEqual(testCase, char(doc.document_class.schema_version), 'did_v2', ...
-        'a passthrough, not a carry');
+    % handed on exactly as v1 wrote it, stamped did_v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03);
+    % INVERTED: it was a did_v2 passthrough
+    verifyEqual(testCase, char(doc.document_class.schema_version), 'did_v1', ...
+        'handed on as v1');
     verifyEqual(testCase, doc.openminds, v1.openminds, 'the block, untouched');
     r = did2.convert.roundtrip.check(v1, {doc});
-    verifyFalse(testCase, r.carried);
+    verifyTrue(testCase, r.carried);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, v1.base.id, {});
 end
 end

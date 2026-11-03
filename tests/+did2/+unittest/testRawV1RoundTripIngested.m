@@ -148,9 +148,11 @@ for k = 1:size(cases, 1)
     verifyEmpty(testCase, out.quarantine, label);
     verifyEqual(testCase, numel(out.migrated), 1, label);
     verifyEqual(testCase, numel(out.passthrough), 1, [label ': a pass-1 passthrough']);
-    verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v2', label);
+    % handed on exactly as v1 wrote it, stamped did_v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03);
+    % INVERTED: it was a did_v2 passthrough
+    verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1', label);
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyFalse(testCase, r.carried, label);
+    verifyTrue(testCase, r.carried, label);
     verifyRoundTrip(testCase, r, label, findingsFor(label));
 end
 end
@@ -298,6 +300,11 @@ function testTheStimulusFileInverseRefusesAConversion(testCase)
 % pass 1 never converts it, so anything handed to its inverse is unplaced
 v1 = writerStimulusFile('sf_3');
 fake = runRaw(writerManifest('efi_8', 't00001', 'nav_1', probemap('a'))).migrated;
+% pass 1 hands the manifest on as v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03); stamped did_v2 here
+% so the check hands it to the stimulus file's inverse, not the v1 comparison
+b = fake{1}.toStruct();
+b.document_class.schema_version = 'did_v2';
+fake = {did2.document(b)};
 r = did2.convert.roundtrip.check(v1, fake);
 verifyFalse(testCase, r.ok);
 verifyNotEmpty(testCase, r.unplaced);

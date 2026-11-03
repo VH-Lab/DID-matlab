@@ -25,6 +25,12 @@ function result = v1_to_v2(v1Bodies, options)
 %        field outside its template is carried under carry-100 (Decided by
 %        Jess Haley, 2026-11-01 [ensemble and generic_file keep their
 %        conversions], [ensemble and generic_file checked as v1]).
+%        The classes whose migrator hands a document on unchanged to a
+%        later BATCH pass (HAND_ON_CLASSES below) are handed on the same
+%        way, exactly as v1 wrote them, stamped did_v1 (Decided by Jess
+%        Haley, 2026-11-03 [handed-on are v1 as written]); what the batch
+%        passes leave unconverted is carried at the end of the batch
+%        ([handed-on classes carried at the end] (1), 2026-11-02).
 %     4. a superclass-only class standing alone (`app`, `calculator`,
 %        `epochid`, `stimulus_response`,
 %        `stimulus_response_scalar_parameters`; PARENT_ONLY_CLASSES below):
@@ -179,15 +185,20 @@ PARENT_ONLY_CLASSES = {'app', 'calculator', 'epochid', 'stimulus_response', ...
 % v1 classes whose migrator HANDS ON a document unchanged to a later batch
 % pass (resolveClockAlignment: syncrule; epochMint / resolveEpochProbemap:
 % epochfiles_ingested; resolveResponseParameters: stimulus_response_scalar and
-% its parameters; resolveOpenmindsCitations: openminds). Such a document gets
-% V2's superclass list from its one named step,
-% did2.convert.handOnSuperclasses (Decided by Jess Haley, 2026-11-02
-% [handed-on classes carried at the end] (2), which names those five, the
-% ones the corpora hold). daqreader_epochdata_ingested and
-% daqreader_image_epochdata_ingested are handed on the same way (to epochMint)
-% when their source names no epoch document; no corpus holds one, and the
-% padding probe on the unit fixtures found them (DID-matlab
-% claude/W-padding-probe), so they take the same step.
+% its parameters; resolveOpenmindsCitations: openminds; epochMint:
+% daqreader_epochdata_ingested and daqreader_image_epochdata_ingested when
+% their source names no epoch document). Such a document is handed on EXACTLY
+% AS v1 WROTE IT, stamped did_v1 and never validated against V2, as `ensemble`
+% and `generic_file` are (Decided by Jess Haley, 2026-11-03 [handed-on are v1
+% as written]: (1) the five classes, and `did2.convert.handOnSuperclasses`
+% (DID-matlab #372), a temporary step, removed; (2) the two daqreader
+% ingested-epoch kinds stay on the hand-on path). What the batch passes leave
+% unconverted is still that v1 document at the end of the batch, and is stored
+% as its v1 source there ([handed-on classes carried at the end] (1), Decided
+% by Jess Haley, 2026-11-02: "carried at the end of the batch, not in pass
+% 1"; ndi.migrate.internal.carryUnchangedAsV1, and
+% did2.convert.roundtrip.wholeBatch for the corpus harness). Their retire
+% class files are then read by nothing on this path.
 HAND_ON_CLASSES = {'syncrule', 'epochfiles_ingested', 'stimulus_response_scalar', ...
     'stimulus_response_scalar_parameters_basic', 'openminds', ...
     'daqreader_epochdata_ingested', 'daqreader_image_epochdata_ingested'};
@@ -316,8 +327,13 @@ carriedUnvalValues = [];
 % yet produce a complete document. Denominator: the converted bodies padded.
 paddedInspected = 0;
 paddedNames = {};
+% the documents handed on as v1 to a later batch pass (HAND_ON_CLASSES), by
+% class; and of the bodies already stamped did_v2 (isAlreadyTarget), those of a
+% HAND_ON_CLASSES class, handed on as the v1 document they are (below)
 handOnNames = {};
 handOnValues = [];
+handOnTargetNames = {};
+handOnTargetValues = [];
 paddedValues = [];
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
@@ -439,6 +455,19 @@ for k = 1:numel(bodies)
             srcTarget(k) = true;
             legacy.bodies_skipped_already_target = ...
                 legacy.bodies_skipped_already_target + 1;
+            if any(strcmp(className, HAND_ON_CLASSES))
+                % A HANDED-ON DOCUMENT STAMPED did_v2 (the shape DID-matlab #372
+                % handed these classes on in, before [handed-on are v1 as
+                % written], Jess Haley, 2026-11-03): it is a v1 document a
+                % migrator handed on unchanged, so it is handed on again as a
+                % v1 passthrough (stamped did_v1, not validated against V2),
+                % never validated against a retire class file that need not
+                % exist (did2:schema:missingClass would quarantine it).
+                laterStep = true;
+                passedThrough = true;
+                [handOnTargetNames, handOnTargetValues] = bumpClassCounter( ...
+                    handOnTargetNames, handOnTargetValues, className);
+            end
         else
             rawClass = rawV1ClassNameOf(preBody);
             if hasLegacyBlockBesideBase(preBody)
@@ -693,6 +722,16 @@ for k = 1:numel(bodies)
                 [unconvNames, unconvValues] = bumpClassCounter( ...
                     unconvNames, unconvValues, className);
                 passedThrough = superUnchanged;
+                if passedThrough && ~carried && any(strcmp(className, HAND_ON_CLASSES))
+                    % HANDED ON AS v1 TO ITS BATCH PASS ([handed-on are v1 as
+                    % written], Jess Haley, 2026-11-03): exactly as v1 wrote
+                    % it, as `ensemble` and `generic_file` are (below: stamped
+                    % did_v1, not validated against V2, recorded as a
+                    % passthrough)
+                    laterStep = true;
+                    [handOnNames, handOnValues] = bumpClassCounter( ...
+                        handOnNames, handOnValues, className);
+                end
             elseif did2.validate.isFragment(v2Bodies, 'SchemaCache', options.SchemaCache)
                 % PHASE 1 REPORT-ONLY: the FRAGMENT mode. See countFragments.
                 [fragNames, fragValues] = bumpClassCounter( ...
@@ -720,20 +759,16 @@ for k = 1:numel(bodies)
                 % document handed on to its later step (`ensemble`,
                 % `generic_file`) is a v1 document until that step converts
                 % it, checked against its NDI template above, not against
-                % V_eta ([ensemble and generic_file checked as v1]).
+                % V_eta ([ensemble and generic_file checked as v1]); so is a
+                % document handed on to a batch pass (HAND_ON_CLASSES; its
+                % migrator checked it against the template, jRawAccount)
+                % ([handed-on are v1 as written]).
                 outBody = v2Bodies{bi};
                 if isfield(outBody, 'document_class') && isstruct(outBody.document_class)
                     outBody.document_class.schema_version = 'did_v1';
                 end
             else
                 outBody = v2Bodies{bi};
-                if passedThrough && any(strcmp(className, HAND_ON_CLASSES))
-                    % the hand-on step ([handed-on classes carried at the
-                    % end] (2)): V2's superclass list, nothing else
-                    outBody = did2.convert.handOnSuperclasses(outBody, options.SchemaCache);
-                    [handOnNames, handOnValues] = bumpClassCounter( ...
-                        handOnNames, handOnValues, className);
-                end
                 beforePadding = outBody;
                 outBody = did2.convert.ensureClassBlocks(outBody, options.SchemaCache);
                 paddedInspected = paddedInspected + 1;
@@ -951,8 +986,10 @@ result.summary = struct( ...
     'carried_failing_veta_validation_by_class', buildByClassTable(carriedUnvalNames, carriedUnvalValues), ...
     'legacy_ndi_document', legacy, ...
     'carried_v1_template_check', carriedTemplateCheck, ...
-    'hand_on_superclasses', struct('bodies_written', sum(handOnValues), ...
-        'by_class', buildByClassTable(handOnNames, handOnValues)), ...
+    'handed_on_as_v1', struct('bodies_handed_on', sum(handOnValues), ...
+        'by_class', buildByClassTable(handOnNames, handOnValues), ...
+        'already_target_handed_on', sum(handOnTargetValues), ...
+        'already_target_by_class', buildByClassTable(handOnTargetNames, handOnTargetValues)), ...
     'class_blocks_padding', struct('bodies_inspected', paddedInspected, ...
         'bodies_changed', sum(paddedValues), ...
         'changed_by_class', buildByClassTable(paddedNames, paddedValues)), ...

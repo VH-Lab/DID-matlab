@@ -253,6 +253,58 @@ verifyEqual(testCase, firstOf(out, 'syncrule').get('base.id'), 'rule_ff');
 end
 
 
+function testPassOneHandsTheRuleOnExactlyAsV1WroteIt(testCase)
+% [handed-on are v1 as written] (Decided by Jess Haley, 2026-11-03, did-schema
+% did_v2_go_forward_class_audit.md): pass 1 hands a syncrule on to this pass
+% exactly as v1 wrote it, stamped did_v1 (as ensemble and generic_file are),
+% not as a did_v2 document of its retire class. Recorded as a passthrough and
+% counted in summary.handed_on_as_v1.
+src = filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2');
+result = migrate({daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), src});
+rule = firstOf(result, 'syncrule');
+expected = src;
+expected.document_class.schema_version = 'did_v1';
+verifyEqual(testCase, rule.toStruct(), expected);
+verifyEqual(testCase, result.summary.handed_on_as_v1.bodies_handed_on, 1);
+verifyEqual(testCase, result.summary.handed_on_as_v1.by_class.syncrule, 1);
+ids = {result.passthrough.id};
+verifyTrue(testCase, any(strcmp(ids, 'rule_ff')));
+end
+
+
+function testARuleThePassLeavesIsStillTheV1Document(testCase)
+% [handed-on classes carried at the end] (1) (Decided by Jess Haley,
+% 2026-11-02): what the batch pass leaves unconverted is still the v1 document,
+% stamped did_v1, so it is carried at the end of the batch and no V2 class
+% file for `syncrule` is read on the way.
+src = filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2');
+result = migrate({daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), src});
+out = did2.convert.resolveClockAlignment(result, 'Validate', true);
+verifyEqual(testCase, out.clock_alignment_fold.syncrule_refused_name_missing, 1);
+verifyEmpty(testCase, out.quarantine);
+rule = firstOf(out, 'syncrule');
+verifyEqual(testCase, rule.get('document_class.schema_version'), 'did_v1');
+expected = src;
+expected.document_class.schema_version = 'did_v1';
+verifyEqual(testCase, rule.toStruct(), expected);
+end
+
+
+function testAHandedOnRuleStampedDidV2IsHandedOnAsV1(testCase)
+% A syncrule stamped did_v2 the way DID-matlab #372 handed it on is a v1
+% document a migrator handed on unchanged: v1_to_v2 hands it on again as a v1
+% passthrough (stamped did_v1, not validated against V2), so a batch pass's
+% re-check never validates it against a retire class file.
+src = filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2');
+src.document_class.schema_version = 'did_v2';
+out = did2.convert.v1_to_v2({src}, 'Validate', true, 'TargetVersion', 'did_v2');
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, out.migrated{1}.get('document_class.schema_version'), 'did_v1');
+verifyEqual(testCase, out.summary.handed_on_as_v1.already_target_handed_on, 1);
+end
+
+
 function testFilefindNameInAnotherSessionDoesNotResolve(testCase)
 % Resolution is WITHIN the rule's session: a same-named system elsewhere is a
 % different device.
