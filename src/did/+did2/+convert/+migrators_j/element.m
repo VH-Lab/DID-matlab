@@ -345,6 +345,31 @@ if strcmp(entityType, 'device') && strcmp(strtrim(type), 'n-trode')
     end
 end
 
+% --- a probe recorded from several subjects ---------------------------------
+% A v1 element names ONE subject. When the batch's epochprobemap rows name this
+% probe with two or more subjectstrings, resolveEpochProbemap would make it the
+% instrument of observations of several specimens and retire its `observes`
+% relation, and its subject link and `direct` flag could not be rebuilt (4
+% Dab probes, whole-batch round trip). Which subject it has is the dataset's
+% question: [dataset-specific logic leaves the generic migration] (Jess Haley,
+% 2026-10-26) and the lossless rule; the element is carried whole as v1 and
+% the dataset map decides (did-schema docs/V2_PLAN.md G94,
+% did2.convert.probemapSubjects). A stimulator's rows make manipulations,
+% which keep `observes`, so it is not carried for this.
+if ~strcmp(strtrim(type), 'stimulator')
+    rowSubjects = did2.convert.probemapSubjects('get', elementId);
+    if numel(rowSubjects) > 1
+        % carry-register: none (proposed row: a probe whose probe-map rows name
+        % several subjects)
+        did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
+            sprintf(['needs_mapping: its epochprobemap rows name %d subjects (%s); ' ...
+            'a v1 element names one ([dataset-specific logic leaves the generic ' ...
+            'migration])'], numel(rowSubjects), strjoin(rowSubjects, ', ')));
+        v2Body = {preBody};
+        return;
+    end
+end
+
 % --- the element as an entity (id preserved) -------------------------------
 % did-schema #88: one `entity` class with a bound `type`
 % (V_eta_entity_composition_plan.md sec. 4), read off the v1 `type` and

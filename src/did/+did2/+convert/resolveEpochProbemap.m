@@ -66,7 +66,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   BATCH-PASS-REMOVES: acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested,
 %       observation(session-scoped recording), observation(pyraview),
-%       directed_relation(observes)
+%       directed_relation(observes), assertion(element type)
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)
@@ -348,6 +348,10 @@ report = struct( ...
     'pyraview_data_type_moved',       0, ...
     'pyraview_kept_data_type_conflict', 0, ...
     'pyraview_anchor_equal_epoch_dropped', 0, ...
+    'mode_statements_seen',           0, ...
+    'mode_statements_dropped_unrecorded', 0, ...
+    'mode_statements_kept_named_in_probemap', 0, ...
+    'mode_statements_kept_session_not_ingested', 0, ...
     'pyraview_anchor_to_time_key',    0, ...
     'pyraview_anchor_not_comparable_to_time_key', 0, ...
     'pyraview_kept_start_conflict',   0, ...
@@ -596,11 +600,26 @@ spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'double');  % obs i
 spikeAnchorByObs = containers.Map('KeyType', 'char', 'ValueType', 'char');  % obs id -> its own anchor id
 seriesKindById = containers.Map('KeyType', 'char', 'ValueType', 'char');    % stmt id -> its report counter
 
+ingestedSessions = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+namedInstruments = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
     report.epochfiles_ingested_seen = report.epochfiles_ingested_seen + 1;
     b = bodies{k};
     sid = sessionIds{k};
+    % [clamp mode of unrecorded probe dropped]: which sessions are ingested,
+    % and which probes any of their probe-map rows names (modeRetire, below)
+    ingestedSessions(char(sid)) = true;
+    pmAll = probemapCharOf(b);
+    if ~isempty(pmAll)
+        rowsAll = parseProbemapRows(pmAll);
+        for r = 1:numel(rowsAll)
+            lidAll = probeLocalIdentifier(rowsAll(r).name, rowsAll(r).reference);
+            if ~isempty(lidAll) && isKey(subjectIdByKey, epochKey(sid, lidAll))
+                namedInstruments(subjectIdByKey(epochKey(sid, lidAll))) = true;
+            end
+        end
+    end
     es = epochStringOf(b);
     if isempty(es) || ~isKey(epochIdByKey, epochKey(sid, es))
         report.refused_no_epoch = report.refused_no_epoch + 1;
@@ -1507,6 +1526,59 @@ for i = 1:numel(emittedKeys)
     end
 end
 
+% --- [clamp mode of unrecorded probe dropped] ------------------------------
+% Decided by Jess Haley, 2026-11-03 (did-schema did_v2_go_forward_class_audit.md):
+% "a patch, sharp or imaging element with no recording keeps its device kind
+% (e.g. EMPTY:0000411 patch electrode) and its v1 `element type` statement is
+% not kept for the mode; the clamp or imaging mode of a probe that never
+% recorded is not migrated, a recorded exception to [every v1 id survives] /
+% lossless for that one value, and the round trip reports it as an accepted
+% loss". +migrators_j/element.m writes the `element type` statement for every
+% type of a kind several types share (patch electrode, sharp electrode,
+% microscope), because it cannot see the recordings; here they are seen. The
+% statement is DROPPED when its element has such a shared device kind, its
+% session is ingested (it has an epochfiles_ingested document, so its
+% recordings are the probe-map rows decomposed here) and NO probe-map row of
+% that session names the probe: the probe never recorded. It is KEPT when a
+% row names the probe (the recording observation carries the mode, and a row
+% that did not decompose keeps its v1 document) and when the session has no
+% ingested epoch (its recordings are minted later, by NDI's second pass, which
+% reads the mode from the statement). Counters mode_statements_*.
+modeRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+modeIdx = containers.Map('KeyType', 'char', 'ValueType', 'double');
+sharedKind = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:n
+    if ~strcmp(classOf{k}, 'assertion'); continue; end
+    b = bodies{k};
+    ent = depValueOf(b, 'entity_id');
+    if isempty(ent); continue; end
+    [vName, valNode] = assertionTerms(b);
+    if strcmpi(vName, 'element type')
+        modeIdx(ent) = k;
+    elseif strcmpi(vName, 'equipment type') && ~isempty(valNode) ...
+            && isempty(did2.convert.elementTypeOfKind(valNode))
+        sharedKind(ent) = true;
+    end
+end
+modeEnts = modeIdx.keys;
+for i = 1:numel(modeEnts)
+    ent = modeEnts{i};
+    if ~isKey(sharedKind, ent); continue; end
+    k = modeIdx(ent);
+    report.mode_statements_seen = report.mode_statements_seen + 1;
+    if ~isKey(ingestedSessions, char(sessionIds{k}))
+        report.mode_statements_kept_session_not_ingested = ...
+            report.mode_statements_kept_session_not_ingested + 1;
+    elseif isKey(namedInstruments, ent)
+        report.mode_statements_kept_named_in_probemap = ...
+            report.mode_statements_kept_named_in_probemap + 1;
+    elseif ~isempty(docIds{k})
+        modeRetire(docIds{k}) = true;
+        report.mode_statements_dropped_unrecorded = ...
+            report.mode_statements_dropped_unrecorded + 1;
+    end
+end
+
 % --- commit retirements, gated on a surviving replacement -----------------
 % A matched #30 observation is removed ONLY if at least one of the observations
 % minted to replace it survived. Otherwise the coarse observation is kept -- a
@@ -1590,7 +1662,7 @@ for k = 1:n
     id = docIds{k};
     if ~isempty(id) && (isKey(retireSet, id) || isKey(removeAnchorSet, id) ...
             || isKey(observesRetire, id) || isKey(archiveRetire, id) ...
-            || isKey(pyraviewRetire, id))
+            || isKey(pyraviewRetire, id) || isKey(modeRetire, id))
         continue;
     end
     if ~isempty(id) && isKey(acqEpochRetire, id) && strcmp(classOf{k}, 'acquisition_epoch')
@@ -1717,6 +1789,20 @@ function anchor = mkEpochAnchor(epochDocId, sessionId, datestamp)
 anchor = did2.build.relativeTimeReference(char(epochDocId), 'Relation', 'intervalDuring', ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
+end
+
+function [variableName, valueNode] = assertionTerms(b)
+% an assertion's variable name and its term value's node ('' when absent)
+variableName = '';
+valueNode = '';
+if isfield(b, 'statement') && isstruct(b.statement) && isfield(b.statement, 'variable')
+    v = b.statement.variable;
+    if isstruct(v) && isfield(v, 'name'); variableName = char(v.name); end
+end
+if isfield(b, 'term') && isstruct(b.term) && isfield(b.term, 'value')
+    v = b.term.value;
+    if isstruct(v) && isfield(v, 'node'); valueNode = char(v.node); end
+end
 end
 
 function rel = mkWiring(probeId, acqSystemId, channels, anchorId, sessionId, datestamp)

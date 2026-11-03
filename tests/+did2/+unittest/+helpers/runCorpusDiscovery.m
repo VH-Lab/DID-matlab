@@ -447,6 +447,23 @@ try
         wb.sources_stored_as_v1, ...
         wb.failures_total, wb.sources_changed_by_batch_pass, ...
         wb.sources_no_inverse, wb.unattributed_documents);
+    % ACCEPTED LOSSES: recorded exceptions to the lossless rule, by name, and
+    % the check an accepted id loss needs first (did2.convert.roundtrip.wholeBatch)
+    ic = wb.accepted_id_check;
+    fprintf(['[%s] ACCEPTED LOSSES: %d value(s); ids accepted lost %d. ' ...
+        'Id check: %d v1 document(s) scanned for %d id(s); %d id(s) referenced ' ...
+        '(not accepted)\n'], corpusName, wb.accepted_losses_total, ...
+        wb.ids_accepted_lost, ic.documents_scanned, ic.ids_checked, ic.ids_referenced);
+    names = fieldnames(wb.accepted_losses_by_name);
+    for k = 1:numel(names)
+        fprintf('[%s]   accepted loss %s: %d\n', corpusName, names{k}, ...
+            wb.accepted_losses_by_name.(names{k}));
+    end
+    for k = 1:numel(ic.referenced)
+        h = ic.referenced(k);
+        fprintf('[%s]   id %s (%s) is named by %s (%s) at %s\n', corpusName, h.id, ...
+            h.class_name, h.by_id, h.by_class, h.field);
+    end
 catch wbErr
     result.whole_batch_round_trip = struct('audit_failed', wbErr.message);
     fprintf('[%s] WHOLE-BATCH ROUND TRIP NOT MEASURED: %s\n', corpusName, wbErr.message);

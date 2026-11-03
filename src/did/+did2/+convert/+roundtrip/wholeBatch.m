@@ -80,6 +80,31 @@ function report = wholeBatch(v1Bodies, result)
 %                              it"). Counted apart from ids_lost, never in it;
 %                              ids_released_by_class. A listed class whose id
 %                              IS referenced is counted lost.
+%     ACCEPTED LOSSES          a v1 value a decision lets go as a recorded
+%                              exception to the lossless rule, listed by name
+%                              and counted, never silently (ACCEPTED_LOSSES,
+%                              below):
+%       accepted_losses_total, accepted_losses_by_name
+%                              how many values each accepted loss covered
+%       accepted_losses        struct array {name, decision, source_id,
+%                              class_name, path}, every one (they are few)
+%       ids_accepted_lost, ids_accepted_lost_by_class
+%                              of the ids no final document holds, those an
+%                              accepted loss covers (counted apart from
+%                              ids_lost and ids_released, and in
+%                              accepted_losses)
+%       accepted_id_check      the check an accepted id loss needs first
+%                              ([v1 session document id not kept]: "the
+%                              build first checks that no v1 document in the
+%                              corpora points at such an id (by depends_on
+%                              or by value); one that does is reported, not
+%                              dropped"): {documents_scanned, ids_checked,
+%                              ids_referenced, referenced} where referenced
+%                              is a struct array {id, class_name, by_id,
+%                              by_class, field}: a v1 document (or, by_class
+%                              '<final batch>', a final document) that
+%                              names the id. A referenced id is NOT accepted:
+%                              it counts in ids_lost
 %     sources_without_id       sources stating no v1 id
 %     sources_compared         sources handed to the per-class check
 %     sources_ok               of those, the ones that round trip clean
@@ -138,7 +163,12 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
     'resolved_by_batch_pass_by_class', struct(), 'sources_still_quarantined', 0, ...
     'ids_kept', 0, 'ids_lost', 0, ...
     'ids_lost_by_class', struct(), 'ids_lost_ids', {{}}, ...
-    'ids_released', 0, 'ids_released_by_class', struct(), 'sources_without_id', 0, ...
+    'ids_released', 0, 'ids_released_by_class', struct(), ...
+    'ids_accepted_lost', 0, 'ids_accepted_lost_by_class', struct(), ...
+    'accepted_losses_total', 0, 'accepted_losses_by_name', struct(), ...
+    'accepted_losses', struct('name', {}, 'decision', {}, 'source_id', {}, ...
+        'class_name', {}, 'path', {}), ...
+    'accepted_id_check', struct(), 'sources_without_id', 0, ...
     'sources_compared', 0, 'sources_ok', 0, ...
     'sources_stored_as_v1', 0, 'stored_as_v1_by_class', struct(), ...
     'sources_compared_after_batch_pass', 0, 'compared_after_batch_pass_by_class', struct(), ...
@@ -147,6 +177,8 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
     'unattributed_documents', 0, 'failures_total', 0, 'failures_by_class', struct(), ...
     'failures', struct('source_id', {}, 'class_name', {}, 'lost', {}, ...
         'lost_values', {}, 'invented', {}, 'unplaced', {}), 'ok', false);
+accepted = ACCEPTED_LOSSES();
+[report.accepted_id_check, idReferenced] = acceptedIdCheck(bodies, rows, accepted, ctx);
 sampled = struct();
 attributed = false(1, numel(final));
 for r = 1:numel(rows)
@@ -182,6 +214,11 @@ for r = 1:numel(rows)
     elseif any(strcmp(cls, RELEASED_ID_CLASSES())) && isempty(ctxReferrers(ctx, row.id))
         report.ids_released = report.ids_released + 1;
         report.ids_released_by_class = bump(report.ids_released_by_class, cls);
+    elseif ~isempty(acceptedIdLoss(accepted, cls)) && ~isKey(idReferenced, row.id)
+        a = acceptedIdLoss(accepted, cls);
+        report.ids_accepted_lost = report.ids_accepted_lost + 1;
+        report.ids_accepted_lost_by_class = bump(report.ids_accepted_lost_by_class, cls);
+        report = noteAccepted(report, a, row.id, cls, '(the v1 id)');
     else
         report.ids_lost = report.ids_lost + 1;
         report.ids_lost_by_class = bump(report.ids_lost_by_class, cls);
@@ -225,6 +262,8 @@ for r = 1:numel(rows)
         end
         rethrow(err);
     end
+    % an ACCEPTED LOSS is listed and counted, and is not a failure
+    [c, report] = takeAcceptedLosses(c, report, accepted, row.id, cls, v1, docs, ctx, idReferenced);
     report.sources_compared = report.sources_compared + 1;
     if afterPass
         report.sources_compared_after_batch_pass = report.sources_compared_after_batch_pass + 1;
@@ -281,6 +320,206 @@ function c = BATCH_PASS_INVERSES()
 % the classes whose inverse reads, from the whole batch, what a batch pass did
 % to their documents (AN INVERSE FOR A BATCH PASS, above)
 c = {'element'};   % resolveEpochProbemap retires `observes`; roundtrip.element
+end
+
+function a = ACCEPTED_LOSSES()
+%ACCEPTED_LOSSES The v1 values a decision lets go, as recorded exceptions to
+%   the lossless rule ([lossless means round trip], [every v1 id survives]).
+%   Each: NAME (how the report lists it), DECISION (the did-schema
+%   did_v2_go_forward_class_audit.md tag), CLASSES (the v1 classes), PATHS
+%   (the round-trip paths it covers; '(the v1 id)' for the source's own id in
+%   the id check), ID (true when the source's v1 id itself may be gone: the id
+%   is first checked, acceptedIdCheck) and WHEN (@(v1, docs, ctx) -> true when
+%   the loss applies to this source; [] for always).
+a = struct('name', {}, 'decision', {}, 'classes', {}, 'paths', {}, 'id', {}, 'when', {});
+% [v1 session document id not kept] (Decided by Jess Haley, 2026-11-03): the
+% own base.id of a v1 `session` and of a v1 `dataset_remote` document is not
+% kept; the session (dataset) entity keeps the session (dataset) id, as NDI's
+% V2 writer does
+a(end+1) = struct('name', 'v1 session document id', ...
+    'decision', '[v1 session document id not kept] (Jess Haley, 2026-11-03)', ...
+    'classes', {{'session', 'dataset_remote'}}, 'paths', {{'base.id'}}, ...
+    'id', true, 'when', []);
+% [clamp mode of unrecorded probe dropped] (Decided by Jess Haley, 2026-11-03):
+% a patch, sharp or imaging element with no recording keeps its device kind
+% and its v1 `element type` statement is not kept; did2.convert.
+% resolveEpochProbemap drops it. Accepted only for such an element: its v1
+% type is one of a device kind several types share, and its documents hold
+% that kind and no `element type` statement
+a(end+1) = struct('name', 'mode of a probe that never recorded', ...
+    'decision', '[clamp mode of unrecorded probe dropped] (Jess Haley, 2026-11-03)', ...
+    'classes', {{'element'}}, 'paths', {{'element.type'}}, ...
+    'id', false, 'when', @unrecordedModeDropped);
+end
+
+function tf = unrecordedModeDropped(v1, docs, ~)
+% V1's element.type is a type of a shared device kind, and DOCS state that
+% kind and no `element type`
+tf = false;
+if ~isstruct(v1) || ~isfield(v1, 'element') || ~isstruct(v1.element) ...
+        || ~isfield(v1.element, 'type')
+    return;
+end
+type = strtrim(char(v1.element.type));
+kind = did2.convert.elementDeviceKind(type);
+if isempty(kind) || ~isempty(did2.convert.elementTypeOfKind(kind.node))
+    return;
+end
+hasKind = false;
+for k = 1:numel(docs)
+    b = docs{k};
+    if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
+            || ~isfield(b.statement, 'variable') || ~isstruct(b.statement.variable)
+        continue;
+    end
+    v = lower(char(b.statement.variable.name));
+    if strcmp(v, 'element type')
+        return;
+    end
+    if strcmp(v, 'equipment type') && isfield(b, 'term') && isstruct(b.term) ...
+            && isfield(b.term, 'value') && isstruct(b.term.value) ...
+            && strcmp(char(b.term.value.node), char(kind.node))
+        hasKind = true;
+    end
+end
+tf = hasKind;
+end
+
+function a = acceptedIdLoss(accepted, cls)
+% the accepted loss that lets a source of class CLS lose its own v1 id ([] if none)
+a = [];
+for k = 1:numel(accepted)
+    if accepted(k).id && any(strcmp(accepted(k).classes, cls))
+        a = accepted(k);
+        return;
+    end
+end
+end
+
+function report = noteAccepted(report, a, sourceId, cls, path)
+report.accepted_losses_total = report.accepted_losses_total + 1;
+report.accepted_losses_by_name = bump(report.accepted_losses_by_name, a.name);
+report.accepted_losses(end+1) = struct('name', a.name, 'decision', a.decision, ...
+    'source_id', sourceId, 'class_name', cls, 'path', path);
+end
+
+function [c, report] = takeAcceptedLosses(c, report, accepted, sourceId, cls, v1, docs, ctx, idReferenced)
+% move the lost fields an accepted loss covers out of C.lost into the report's
+% accepted list, and recompute C.ok
+if isempty(c.lost)
+    return;
+end
+keep = true(1, numel(c.lost));
+for k = 1:numel(accepted)
+    a = accepted(k);
+    if ~any(strcmp(a.classes, cls))
+        continue;
+    end
+    if a.id && isKey(idReferenced, sourceId)
+        continue;   % a referenced id is not accepted (acceptedIdCheck)
+    end
+    if ~isempty(a.when) && ~a.when(v1, docs, ctx)
+        continue;
+    end
+    for j = find(keep)
+        if any(strcmp(c.lost(j).path, a.paths))
+            keep(j) = false;
+            if a.id && strcmp(c.lost(j).path, 'base.id') && ~isempty(report.accepted_losses) ...
+                    && strcmp(report.accepted_losses(end).source_id, sourceId) ...
+                    && strcmp(report.accepted_losses(end).name, a.name)
+                continue;   % the same value the id check listed: once
+            end
+            report = noteAccepted(report, a, sourceId, cls, c.lost(j).path);
+        end
+    end
+end
+c.lost = c.lost(keep);
+c.ok = isempty(c.lost) && isempty(c.invented) && isempty(c.unplaced);
+end
+
+function [check, referenced] = acceptedIdCheck(bodies, rows, accepted, ctx)
+%ACCEPTEDIDCHECK Before an accepted loss lets a v1 id go, check that nothing
+%   points at it: no other v1 document names it, by a depends_on value or as
+%   any value anywhere in the document (its JSON text holds the id), and no
+%   final document references it. REFERENCED maps each id that something
+%   names to true; CHECK reports the denominator and every hit.
+referenced = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+check = struct('documents_scanned', 0, 'ids_checked', 0, 'ids_referenced', 0, ...
+    'referenced', struct('id', {}, 'class_name', {}, 'by_id', {}, 'by_class', {}, 'field', {}));
+ids = {};
+classes = {};
+owners = [];
+for r = 1:numel(rows)
+    row = rows(r);
+    if row.input_index < 1 || row.input_index > numel(bodies)
+        continue;
+    end
+    v1 = bodies{row.input_index};
+    cls = row.class_name;
+    if isempty(cls); cls = v1ClassName(v1); end
+    id = v1Id(v1);
+    if isempty(id) || isempty(acceptedIdLoss(accepted, cls))
+        continue;
+    end
+    ids{end+1} = id; %#ok<AGROW>
+    classes{end+1} = cls; %#ok<AGROW>
+    owners(end+1) = row.input_index; %#ok<AGROW>
+end
+check.ids_checked = numel(ids);
+if isempty(ids)
+    check.documents_scanned = numel(bodies);
+    return;
+end
+for k = 1:numel(bodies)
+    check.documents_scanned = check.documents_scanned + 1;
+    try
+        txt = jsonencode(bodies{k});
+    catch
+        txt = '';
+    end
+    for i = 1:numel(ids)
+        if owners(i) == k || ~contains(txt, ids{i})
+            continue;
+        end
+        referenced(ids{i}) = true;
+        check.referenced(end+1) = struct('id', ids{i}, 'class_name', classes{i}, ...
+            'by_id', v1Id(bodies{k}), 'by_class', v1ClassName(bodies{k}), ...
+            'field', fieldNaming(bodies{k}, ids{i}, ''));
+    end
+end
+for i = 1:numel(ids)
+    hits = ctxReferrers(ctx, ids{i});
+    if ~isempty(hits)
+        referenced(ids{i}) = true;
+        check.referenced(end+1) = struct('id', ids{i}, 'class_name', classes{i}, ...
+            'by_id', idOf(ctx.docs{hits(1)}), 'by_class', '<final batch>', 'field', '');
+    end
+end
+check.ids_referenced = referenced.Count;
+end
+
+function p = fieldNaming(v, id, path)
+% the first path under V whose text value holds ID ('' when none is found)
+p = '';
+if ischar(v) || (isstring(v) && isscalar(v))
+    if contains(char(v), id); p = path; end
+elseif isstruct(v)
+    for e = 1:numel(v)
+        fns = fieldnames(v);
+        for f = 1:numel(fns)
+            sub = path;
+            if numel(v) > 1; sub = sprintf('%s(%d)', sub, e); end
+            if isempty(sub); sub = fns{f}; else; sub = [sub '.' fns{f}]; end %#ok<AGROW>
+            p = fieldNaming(v(e).(fns{f}), id, sub);
+            if ~isempty(p); return; end
+        end
+    end
+elseif iscell(v)
+    for e = 1:numel(v)
+        p = fieldNaming(v{e}, id, sprintf('%s{%d}', path, e));
+        if ~isempty(p); return; end
+    end
+end
 end
 
 function c = RELEASED_ID_CLASSES()

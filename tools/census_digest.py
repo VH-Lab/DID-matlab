@@ -628,6 +628,11 @@ POST_PASSES = [
         ("wiring_several_rows_merged", "  relations holding a probe's several rows' channels (one per probe, system, epoch)"),
         ("wiring_several_rows_folded", "  rows folded into an earlier row of the same probe and system"),
         ("wiring_several_rows_disagree", "  rows of a probe whose several rows disagree on type or subject (v1 document kept)"),
+        # [clamp mode of unrecorded probe dropped] (Jess Haley 2026-11-03)
+        ("mode_statements_seen", "`element type` statements of a shared device kind (patch, sharp, microscope)"),
+        ("mode_statements_dropped_unrecorded", "  DROPPED: the probe never recorded (ingested session, no probe-map row names it)"),
+        ("mode_statements_kept_named_in_probemap", "  kept: a probe-map row names the probe"),
+        ("mode_statements_kept_session_not_ingested", "  kept: the session has no ingested epoch (NDI's second pass reads it)"),
         ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no wiring)"),
         ("channels_derived_read_mode", "  channel groups naming a derived read mode (dep, den, dimp, ...; not a channel type)"),
         ("rigs_without_daqsystem", "  rigs a devicestring names with no daqsystem document (no system minted)"),
