@@ -1541,33 +1541,39 @@ verifyEqual(testCase, v.volume.source_value, 1);
 verifyFalse(testCase, isfield(out.summary.migration_notes, 'dose_amount_conflict'));
 end
 
-function testAStatedAmountKindWithNoNumberPutsTheNaNInThatKind(testCase)
-% "...where the kind is known ... the NaN goes in that quantity instead" (Jess
-% Haley, 2026-10-21 [unknown-amount-slot]). INVERTED by [blank per-body-mass on
-% the ingredient] (Jess Haley, 2026-10-21): a mg/kg row that NAMES a chemical
-% but has no number is that CHEMICAL's unrecorded amount -- its
-% value.ingredients entry, amount_per_body_mass NaN with the unit, paired with
-% an ingredient_id edge -- and the whole formulation's amount is left out
-% and listed as a gap ([canonical absent only as needs info], Decided by
-% Jess Haley, 2026-10-30; NaN in volume until then).
-v1 = treatmentDrugDoc('td_kind', ...
-    sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,,SNOMED:396163008,mg/kg'), ...
-    'UBERON:0001179', 'peritoneal cavity');
-out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
-v = d.get('dose.value');
-assertEqual(testCase, numel(v.ingredients), 1);
-verifyTrue(testCase, isnan(v.ingredients(1).amount_per_body_mass.grams_per_gram));
-verifyEqual(testCase, v.ingredients(1).amount_per_body_mass.source_unit.node, 'SNOMED:396163008');
-verifyFalse(testCase, isfield(v, 'amount_per_body_mass') && isstruct(v.amount_per_body_mass) ...
-    && ~isempty(v.amount_per_body_mass) && isfield(v.amount_per_body_mass, 'grams_per_gram') ...
-    && ~isempty(v.amount_per_body_mass.grams_per_gram), ...
-    'the blank per-body-mass is the ingredient''s, not the dose''s top level');
-verifyDoseVolumeGapJ(testCase, d, v);
-[~, c] = doseChainJ(out.migrated, d);
-verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
+function testAStatedUnitWithNoAmountIsAGapWithItsUnit(testCase)
+% Decided by Jess Haley, 2026-11-03 [stated unit with no amount is a gap]
+% (did-schema did_v2_go_forward_class_audit.md): a treatment that states the
+% unit of an amount but no number is written with the amount left out, not as
+% NaN with the unit, and the migration report lists the gap with the unit in
+% its reason. INVERTS testAStatedAmountKindWithNoNumberPutsTheNaNInThatKind
+% ([unknown-amount-slot], [blank per-body-mass on the ingredient],
+% 2026-10-21: a NaN ingredient amount_per_body_mass, or NaN in the stated
+% kind's quantity).
+cases = { ...
+    'mg/kg, a chemical', sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,,SNOMED:396163008,mg/kg'), ...
+        'dose.value.amount_per_body_mass', 'amount not stated; unit mg/kg (alprazolam)'; ...
+    'mL, the whole formulation', sprintf('ontologyName,name,value,ontologyUnit,unitName\n,,,UO:0000098,mL'), ...
+        'dose.value.volume', 'amount not stated; unit mL'};
+for k = 1:size(cases, 1)
+    [label, table, field, reason] = cases{k, :};
+    v1 = treatmentDrugDoc(sprintf('td_kind%d', k), table, 'UBERON:0001179', 'peritoneal cavity');
+    out = runJ(v1);
+    verifyEmpty(testCase, out.quarantine, label);
+    d = firstOfClassJ(out.migrated, 'manipulation+dose');
+    assertNotEmpty(testCase, d, [label ': no dose']);
+    ds = d.toStruct();
+    txt = jsonencode(ds);
+    verifyFalse(testCase, contains(txt, 'NaN') || contains(txt, 'null'), ...
+        [label ': an amount was written: ' txt]);
+    verifyTrue(testCase, ~isfield(ds.dose, 'value') || isempty(ds.dose.value) ...
+        || ~isfield(ds.dose.value, 'ingredients') || isempty(ds.dose.value.ingredients), ...
+        [label ': an ingredient entry with no amount']);
+    [fields, reasons] = gapFieldsJ(ds);
+    hit = find(strcmp(fields, field), 1);
+    assertNotEmpty(testCase, hit, sprintf('%s: gaps %s', label, strjoin(fields, ', ')));
+    verifyEqual(testCase, reasons{hit}, reason, label);
+end
 end
 
 function testTreatmentDrugWithNoLocationIsCarried(testCase)
