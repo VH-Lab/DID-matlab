@@ -358,9 +358,11 @@ assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2', ...
 leaf = mine{1};
 c = asCell(leaf.statement.conditions);
 assertEqual(testCase, numel(c), 1);
-verifyEqual(testCase, lower(char(c{1}.variable.name)), 'orientation');
+% `angle` is NCIT:C42677 "Direction" (Jess Haley, 2026-11-03, "Ok": a tuning
+% angle runs 0-360, the direction of motion), not "orientation"
+verifyEqual(testCase, lower(char(c{1}.variable.name)), 'direction');
 verifyEqual(testCase, c{1}.quantity.value, 90);
-verifyEqual(testCase, parameterText(leaf, 'orientation selection'), 'best');
+verifyEqual(testCase, lower(parameterText(leaf, 'Direction selection')), 'best');
 verifyEqual(testCase, leaf.statement.notes, tc.tuningcurve_calc.log, '[tuning log in notes]');
 n = out.summary.migration_notes.tuning_stimid_rebuild;
 verifyEqual(testCase, n.count, 1, 'one note per curve: the denominator');
@@ -383,7 +385,7 @@ mine = outputsOf(out, tc.base.id);
 assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2');
 c = asCell(mine{1}.statement.conditions);
 got = sort(cellfun(@(x) lower(char(x.variable.name)), c, 'UniformOutput', false));
-verifyEqual(testCase, got, {'orientation', 'spatial frequency'});
+verifyEqual(testCase, got, {'direction', 'spatial frequency'});
 r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'best value beside a dealt property', {});
 verifyTrue(testCase, any(startsWith(r.matched, 'tuningcurve_calc.stim_property_list')), ...
@@ -849,6 +851,10 @@ end
 % ===================== [empty prestimulus normalization is zero] =========
 
 function testEmptyPrestimulusNormalizationIsZero(testCase)
+% UPDATED 2026-11-03 ([fixed writer values not written], Decided by Jess
+% Haley): the writer's empty prestimulus_normalization is no longer written as
+% 0; the round trip writes the empty default back, so it compares equal
+% (matched or not set) rather than through the [] = 0 equivalence.
 p = parameters('par_e1');   % the writer's prestimulus_normalization []
 out = runRaw({p});
 out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'did_v2');
@@ -856,7 +862,10 @@ m = outputsOf(out, 'par_e1');
 r = did2.convert.roundtrip.check(p, m);
 P = 'stimulus_response_scalar_parameters_basic.';
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'parameters as a method', {[P 'freq_response']});
-verifyTrue(testCase, any(strcmp([P 'prestimulus_normalization'], r.equivalent)));
+verifyTrue(testCase, any(strcmp([P 'prestimulus_normalization'], ...
+    [r.matched, r.not_set, r.equivalent])));
+verifyTrue(testCase, any(strcmp([P 'temporalfreqfunc'], r.matched)), ...
+    'the default temporalfreqfunc is written back');
 end
 
 % ===================== [carried documents may point at converted ones] ===

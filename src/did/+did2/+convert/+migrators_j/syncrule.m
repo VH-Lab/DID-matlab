@@ -402,7 +402,11 @@ if ~isempty(minPaths)
 end
 syncFile = jGetCharAny(params0(block), {'syncfilename', 'syncFilename', 'sync_filename'});
 if ~isempty(syncFile)
-    entries{end+1} = did2.build.parameter(jLabel('sync file name'), 'Text', syncFile);
+    % EDAM:data_1050 "File name" (Jess Haley, 2026-11-03, "Ok" to Claude's
+    % answers on docs/V2_PLAN.md G96 batch 2: the method, clock alignment by
+    % file match, carries "sync"; T19); the label 'sync file name' before
+    entries{end+1} = did2.build.parameter( ...
+        did2.convert.registeredTerm('EDAM:data_1050', 'File name'), 'Text', syncFile);
 end
 minOverlap = readNumber(params0(block), {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'});
 if ~isempty(minOverlap)

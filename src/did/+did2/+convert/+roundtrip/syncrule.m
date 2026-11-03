@@ -19,7 +19,8 @@ function [v1, spec] = syncrule(bodies, ctx)
 %     syncrule.ndi_syncrule_class      the software entity's name
 %     syncrule.parameters              the method parameters, by name:
 %       number_fullpath_matches        'minimum matching file paths'
-%       syncfilename                   'sync file name'
+%       syncfilename                   EDAM:data_1050 'File name' ('sync file name'
+%                                      before 2026-11-03)
 %       minEmbeddedFileOverlap         'minimum embedded file overlap'
 %       daqsystem_ch1, daqsystem_ch2   'from trigger channel', 'to trigger
 %                                      channel' ([trigger channels named by
@@ -160,7 +161,8 @@ if isstruct(params)
     params = num2cell(reshape(params, 1, []));
 end
 named = {'minimum matching file paths', 'number_fullpath_matches'; ...
-    'sync file name', 'syncfilename'; ...
+    'File name', 'syncfilename'; ...   % EDAM:data_1050 (2026-11-03)
+    'sync file name', 'syncfilename'; ...   % migrated before 2026-11-03
     'minimum embedded file overlap', 'minEmbeddedFileOverlap'; ...
     'from trigger channel', 'daqsystem_ch1'; ...   % [trigger channels named by their link]
     'to trigger channel', 'daqsystem_ch2'};

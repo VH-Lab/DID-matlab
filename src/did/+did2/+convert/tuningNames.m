@@ -45,6 +45,16 @@ function [out, found] = tuningNames(direction, name)
 %   measured 2026-10-27 by a MATLAB scratch run of this branch): an earlier
 %   writer's copy of its input edge, kept under the same labels.
 %
+%   TWO ROWS NAME REGISTERED TERMS (Jess Haley, 2026-11-03, "Ok" to Claude's
+%   answers on docs/V2_PLAN.md G96; did-schema term registry rows):
+%     angle          'Direction', NCIT:C42677: the 0-360 direction of motion
+%                    (NDI's stimulus method writes 'orientation'; a tuning
+%                    `angle` runs 0-360, so it is a direction)
+%     spiketrain_dt  'bin width', EMPTY:0000308: the step at which spike times
+%                    are binned into a train
+%   The names resolve to their nodes through the registry
+%   (did2.convert.registeredTerm by name).
+%
 %   See also did2.convert.tuningStimids, did2.convert.resolveResponseParameters.
 
 arguments
@@ -81,7 +91,7 @@ if ~isempty(cached)
     return;
 end
 stimulus = { ...
-    'angle',          'orientation'; ...
+    'angle',          'Direction'; ...
     'sFrequency',     'spatial frequency'; ...
     'tFrequency',     'temporal frequency'; ...
     'contrast',       'contrast'; ...
@@ -121,7 +131,7 @@ settings = { ...
     'prestimulus_time',           'prestimulus time'; ...
     'prestimulus_normalization',  'prestimulus normalization'; ...
     'isspike',                    'isspike'; ...
-    'spiketrain_dt',              'spiketrain dt'};
+    'spiketrain_dt',              'bin width'};
 T = [stimulus; settings];
 cached = T;
 end

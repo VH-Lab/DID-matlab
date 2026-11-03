@@ -31,7 +31,13 @@ function [v1, spec] = stimulus_response_scalar_parameters_basic(bodies, ctx)
 %                                        value, or its text
 %     prestimulus_time                   not written when v1 held [] (no
 %                                        baseline period): rebuilt absent
-%     prestimulus_normalization          written 0 when v1 held []
+%     temporalfreqfunc                   not written when it is the writer's
+%                                        fixed 'ndi.fun.stimulustemporalfrequency'
+%                                        ([fixed writer values not written],
+%                                        Jess Haley, 2026-11-03): rebuilt so
+%     prestimulus_normalization          not written when v1 held [] (since
+%                                        2026-11-03, the same decision):
+%                                        rebuilt []; written 0 before
 %                                        ([empty response settings] "c"):
 %                                        rebuilt 0, and a v1 [] counts as
 %                                        equal to it (SPEC.same; Decided by
@@ -139,6 +145,16 @@ for k = 1:numel(entries)
     else
         spec.unplaced{end+1} = sprintf('method parameter "%s" has no quantity or text', name);
     end
+end
+% [fixed writer values not written] (Decided by Jess Haley, 2026-11-03): a
+% setting the migration left out because it was the writer's fixed default is
+% written back: `temporalfreqfunc` 'ndi.fun.stimulustemporalfrequency', an
+% empty `prestimulus_normalization`
+if ~isfield(blk, 'temporalfreqfunc')
+    blk.temporalfreqfunc = 'ndi.fun.stimulustemporalfrequency';
+end
+if ~isfield(blk, 'prestimulus_normalization')
+    blk.prestimulus_normalization = [];
 end
 if ~isempty(harmonics)
     if all(harmonics == harmonics(1))

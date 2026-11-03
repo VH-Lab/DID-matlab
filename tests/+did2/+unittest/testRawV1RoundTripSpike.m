@@ -305,9 +305,11 @@ v1 = hartley();
 docs = structs(own(runRaw({v1, presentationOf(v1)}).migrated));
 keep = true(1, numel(docs));
 for k = 1:numel(docs)
-    if strcmp(docs{k}.document_class.class_name, 'sampled_body') ...
-            && ~isfield(docs{k}.data_body, 'conditions')
-        keep(k) = false;
+    % the spike-time body: one dimension, time (the planes have three, the
+    % hartley numbers one, "frame")
+    if strcmp(docs{k}.document_class.class_name, 'sampled_body')
+        ax = did2.unittest.helpers.axesOf(docs{k});
+        keep(k) = ~(isscalar(ax) && strcmp(char(ax.term.name), 'time'));
     end
 end
 r = did2.convert.roundtrip.check(v1, docs(keep));
