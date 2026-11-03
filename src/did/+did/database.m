@@ -2005,13 +2005,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
                             for m = 1 : numel(matchIdx)
                                 % Read via the depends_on shape helper:
-                                % accepts document_id (v2),
-                                % value (v2 draft), and id (V_alpha),
-                                % precedence document_id > value > id. A
-                                % direct .value read would return empty on
-                                % any doc constructed via v2's
-                                % did.document, which canonicalizes the
-                                % depends_on key to document_id.
+                                % accepts document_id (v2), value (v1)
+                                % and id (older v1), precedence
+                                % document_id > value > id. did.document
+                                % keeps the key a document was read with
+                                % (DID-matlab #204), so both shapes reach
+                                % this validator.
                                 value = did.document.i_readDependencyTarget(depends(matchIdx(m)));
                                 % Report the document's own name for the entry
                                 % ('syncrule_id_2'), which says which of

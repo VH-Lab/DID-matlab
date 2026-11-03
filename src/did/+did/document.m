@@ -54,13 +54,16 @@ classdef document
                 end
             end
 
-            % Canonicalize depends_on entry keys to `document_id`
-            % (v2). Accepts v1 `id` and the earlier draft
-            % `value` as synonyms. Establishes the invariant that
-            % every dependency accessor on this class can rely on:
-            % after construction, depends_on entries use
-            % document_id. See did-schema#52 and ndi-matlab#801.
-            document_properties = did.document.i_normalizeDependsOn(document_properties);
+            % depends_on is kept in the shape it was read or defined in:
+            % a v1 body keeps its v1 entry key (`value`, or the older
+            % `id`), a v2 body its `document_id`. Nothing is converted
+            % here. did-schema did_v2_go_forward_class_audit.md [v2 line
+            % reads and writes both] (Jess Haley, 2026-11-03), after
+            % DID-matlab #204: read v1 -> write v1, read v2 -> write v2;
+            % migration is an explicit action. The accessors read every
+            % key (i_readDependencyTarget) and write the key the entries
+            % already carry (i_dependencyKeys). i_normalizeDependsOn stays
+            % as the explicit conversion for a caller that asks for it.
 
             did_document_obj.document_properties = document_properties;
 
@@ -151,6 +154,12 @@ classdef document
                 % B wins a name collision, which is what structmerge does for
                 % every other field in step 4, and what ndi.document's plus
                 % has always done for dependencies.
+                %
+                % When the two lists key their targets differently (a v1
+                % `value` list and a v2 `document_id` list), B's entries
+                % are written in A's shape: the output is A, and a
+                % document keeps the shape it was read in (DID-matlab
+                % #204). With the same keys, B's entries are taken whole.
                 aDepends = did_document_obj_out.document_properties.depends_on;
                 bDepends = did_document_obj_b.document_properties.depends_on;
                 if isempty(aDepends)
@@ -160,13 +169,28 @@ classdef document
                 else
                     merged = aDepends(:);
                     mergedNames = {merged.name};
+                    sameShape = isstruct(bDepends) && ...
+                        isequal(sort(fieldnames(merged)), sort(fieldnames(bDepends)));
+                    keys = did.document.i_dependencyKeys(did_document_obj_out.document_properties);
                     for k=1:numel(bDepends)
                         match = find(strcmpi(bDepends(k).name, mergedNames));
-                        if isempty(match)
-                            merged(end+1) = bDepends(k); %#ok<AGROW>
-                            mergedNames{end+1} = bDepends(k).name; %#ok<AGROW>
+                        if sameShape
+                            if isempty(match)
+                                merged(end+1) = orderfields(bDepends(k), merged(1)); %#ok<AGROW>
+                                mergedNames{end+1} = bDepends(k).name; %#ok<AGROW>
+                            else
+                                merged(match(1)) = orderfields(bDepends(k), merged(1));
+                            end
                         else
-                            merged(match(1)) = bDepends(k);
+                            target = did.document.i_readDependencyTarget(bDepends(k));
+                            if isempty(match)
+                                merged = localAppendDependency(merged, bDepends(k).name, target, keys);
+                                mergedNames{end+1} = bDepends(k).name; %#ok<AGROW>
+                            else
+                                for q = 1:numel(keys)
+                                    merged(match(1)).(keys{q}) = target;
+                                end
+                            end
                         end
                     end
                 end
@@ -274,23 +298,38 @@ classdef document
                 % through to creating the list.
                 hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
             end
-            % The constructor's i_normalizeDependsOn pass guarantees
-            % depends_on entries use the v2 canonical key
-            % `document_id`. Build d_struct with the same key so
-            % struct-array assignment / append stays consistent.
-            d_struct = struct('name', dependency_name, 'document_id', value);
+            % Write in the shape the document was read in (DID-matlab
+            % #204; did-schema [v2 line reads and writes both]): the
+            % target goes under the key the entries already carry --
+            % `value` (v1), `id` (older v1) or `document_id` (v2) -- and
+            % under each of them when a hand-built list carries more than
+            % one, so every reader (precedence document_id > value > id)
+            % sees the new target. A document with no keyed entries yet
+            % takes its version's key (i_dependencyKeys).
+            keys = did.document.i_dependencyKeys(did_document_obj.document_properties);
 
             if hasdependencies
                 matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
                 if numel(matches)>0
                     notfound = 0;
-                    did_document_obj.document_properties.depends_on(matches(1)).document_id = value;
+                    for k = 1:numel(keys)
+                        did_document_obj.document_properties.depends_on(matches(1)).(keys{k}) = value;
+                    end
                 elseif ~options.ErrorIfNotFound % add it
-                    did_document_obj.document_properties.depends_on(end+1) = d_struct;
+                    did_document_obj.document_properties.depends_on = ...
+                        localAppendDependency(did_document_obj.document_properties.depends_on, ...
+                        dependency_name, value, keys);
                     notfound = 0;
                 end
             elseif ~options.ErrorIfNotFound
-                did_document_obj.document_properties.depends_on = d_struct;
+                existing = [];
+                if isfield(did_document_obj.document_properties,'depends_on') && ...
+                        isstruct(did_document_obj.document_properties.depends_on)
+                    % an empty list keeps its declared fields
+                    existing = did_document_obj.document_properties.depends_on;
+                end
+                did_document_obj.document_properties.depends_on = ...
+                    localAppendDependency(existing, dependency_name, value, keys);
                 notfound = 0;
             end
 
@@ -1263,13 +1302,11 @@ classdef document
             % i_readDependencyTarget - read the cross-document target
             % id from a single depends_on struct entry.
             %
-            % The constructor's i_normalizeDependsOn pass guarantees
-            % entries carry `document_id` (v2 canonical), but
-            % callers occasionally hand us hand-built structs that
-            % skip the constructor and still use `value` (earlier
-            % v2 draft) or `id` (v1). This helper
-            % accepts all three with precedence
-            % document_id > value > id.
+            % A document keeps the dependency shape it was read in
+            % (DID-matlab #204): `document_id` (v2), `value` (v1, as
+            % NDI's v1 templates and DID's demo definitions write it)
+            % or `id` (older v1). This helper accepts all three with
+            % precedence document_id > value > id.
             if ~isstruct(entry) || ~isscalar(entry)
                 targetId = '';
                 return;
@@ -1362,16 +1399,69 @@ classdef document
                 {'ndi_daqmetadatareader_class'});
         end % i_propertyBlockRenameMap
 
+        function keys = i_dependencyKeys(document_properties)
+            % i_dependencyKeys - the depends_on key(s) a write uses
+            %
+            % KEYS = did.document.i_dependencyKeys(DOCUMENT_PROPERTIES)
+            %
+            % Returns, as a cellstr in read precedence order
+            % (document_id > value > id), the target keys the
+            % document's depends_on entries carry. A document is
+            % written in the shape it was read in (DID-matlab #204;
+            % did-schema did_v2_go_forward_class_audit.md [v2 line
+            % reads and writes both], Jess Haley, 2026-11-03): v1
+            % entries keyed `value` (or `id`) stay so, v2 entries
+            % keyed `document_id` stay so. Normally one key; a
+            % hand-built list carrying several returns them all, so a
+            % write reaches whichever one a reader takes.
+            %
+            % When no entry carries a key yet (no depends_on, an empty
+            % one, or entries with a name only), the document's
+            % version decides: `document_id` for a document stamped v2
+            % (did2.schema.isV2Stamp), `value` otherwise -- an
+            % unstamped document is v1 (did2.schema.isV1Stamp).
+            keys = {};
+            if isstruct(document_properties) && isscalar(document_properties) && ...
+                    isfield(document_properties, 'depends_on') && ...
+                    isstruct(document_properties.depends_on)
+                candidates = {'document_id', 'value', 'id'};
+                present = isfield(document_properties.depends_on, candidates);
+                keys = candidates(present);
+            end
+            if isempty(keys)
+                keys = {did.document.i_dependencyShape(document_properties)};
+            end
+        end % i_dependencyKeys
+
+        function shape = i_dependencyShape(document_properties)
+            % i_dependencyShape - the depends_on key of a document's version
+            %
+            % SHAPE = did.document.i_dependencyShape(DOCUMENT_PROPERTIES)
+            %
+            % 'document_id' when the document carries a v2 stamp
+            % (document_class.schema_version, did2.schema.isV2Stamp),
+            % 'value' otherwise (v1). This is the shape a document
+            % with no keyed entries yet is written in; a document
+            % whose entries carry a key keeps that key
+            % (i_dependencyKeys).
+            if did2.schema.isV2Stamp(document_properties)
+                shape = 'document_id';
+            else
+                shape = 'value';
+            end
+        end % i_dependencyShape
+
         function body = i_normalizeDependsOn(body)
             % i_normalizeDependsOn - canonicalise depends_on entry
             % keys to v2 `document_id`. Accepts `id` (V_alpha)
-            % and `value` (earlier v2 draft) as synonyms with
+            % and `value` (v1) as synonyms with
             % precedence document_id > value > id. The resulting
             % depends_on struct schema is exactly {name, document_id}.
             %
-            % Called from the constructor so every dependency
-            % accessor on this class can rely on the invariant
-            % "after construction, depends_on uses document_id".
+            % An explicit conversion. The constructor does NOT call
+            % it: a document keeps the dependency shape it was read in
+            % (DID-matlab #204; did-schema [v2 line reads and writes
+            % both]), and converting is a caller's deliberate step.
             if ~isstruct(body) || ~isfield(body, 'depends_on')
                 return;
             end
@@ -1856,5 +1946,27 @@ function localValidateFileDeclarations(did_document_obj)
                  '%s of the file series "%s", so the series answers for it.'], ...
                 thisName, tail, stem);
         end
+    end
+end
+
+function deps = localAppendDependency(deps, name, value, keys)
+    % LOCALAPPENDDEPENDENCY - add entry NAME -> VALUE to a depends_on list
+    %
+    % The new entry carries the list's own fields: the target goes under
+    % every key in KEYS (see did.document.i_dependencyKeys) and any other
+    % field the list declares is left empty. A list that is not a struct
+    % yet (absent, or "depends_on": [ ]) becomes {name, KEYS{:}}.
+    if isempty(deps) && ~isstruct(deps)
+        entry = struct('name', name);
+        for k = 1:numel(keys)
+            entry.(keys{k}) = value;
+        end
+        deps = entry;
+        return;
+    end
+    n = numel(deps) + 1;
+    deps(n).name = name;
+    for k = 1:numel(keys)
+        deps(n).(keys{k}) = value;
     end
 end

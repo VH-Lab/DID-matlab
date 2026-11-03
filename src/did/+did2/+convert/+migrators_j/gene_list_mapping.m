@@ -14,6 +14,8 @@ function bodies = gene_list_mapping(preBody)
 %     method term], [mapping rows counted, indices 0-based], [key covariate
 %     index], [undirected relation widened], [undirected ends are relata]
 %         (2026-11-01)
+%     [gene-list mapping dimension is gene pair], [gene pair term is NCIT
+%     Pair], [gene-list method text is a description] (2026-11-03)
 %
 %   THE DOCUMENTS
 %     relation   v1 `symmetric` 0: a `directed_relation` from gene list A
@@ -26,14 +28,16 @@ function bodies = gene_list_mapping(preBody)
 %                gene mapping" (`ortholog`). `method`: an alias mapping's term
 %                is EDAM:operation_3282 "ID mapping"; an orthology mapping has
 %                no method term. The v1 `method` text is kept unchanged as the
-%                text of one method parameter (its variable NCIT:C150832
-%                "Software Name" is Proposed (not decided), [gene list mapping
-%                terms]). `notes` = v1 label. `value_id` = the value below.
+%                text of one method parameter, its variable NCIT:C25365
+%                "Description" ([gene-list method text is a description]).
+%                `notes` = v1 label. `value_id` = the value below.
 %     value      a standalone `logical` (v1 has_score 0: true for each listed
 %                pair) or `score` (has_score 1), `data_body: true`, with ONE
-%                dimension, one position per data row of mapping.tsv (its term
-%                SIO:000752 "row" is Proposed (not decided), [gene list mapping
-%                terms]), and two covariates along it, variable NCIT:C16612
+%                dimension, one position per data row of mapping.tsv, each
+%                position one gene of list A matched to one gene of list B (its
+%                term NCIT:C48046 "Pair": [gene-list mapping dimension is gene
+%                pair], [gene pair term is NCIT Pair]), and two covariates
+%                along it, variable NCIT:C16612
 %                "Gene": `key` 0 with `index` = the gene_index_a column and `key`
 %                1 with `index` = the gene_index_b column (0-based), `key_id`
 %                [list A, list B]. A score's scale is not stated: v1 never
@@ -158,8 +162,9 @@ end
 
 o = jOpts(body);
 gene = did2.convert.registeredTerm('NCIT:C16612', 'Gene');
-% Proposed (not decided), [gene list mapping terms]: the `row` dimension's term
-rowTerm = did2.convert.registeredTerm('SIO:000752', 'row');
+% the dimension's term: each position is one gene pair ([gene-list mapping
+% dimension is gene pair], [gene pair term is NCIT Pair])
+pairTerm = did2.convert.registeredTerm('NCIT:C48046', 'Pair');
 covs = did2.build.list( ...
     did2.build.covariate(gene, 0, 'Key', 0, 'Index', rows.a), ...
     did2.build.covariate(gene, 0, 'Key', 1, 'Index', rows.b));
@@ -177,7 +182,7 @@ if hasScore
         'v1 geneListMapping never states the score''s scale ([gene list mapping value kind])');
 end
 value = did2.build.document(valueClass, struct('data_body', true, ...
-    'dimensions', {did2.build.dimension(rowTerm, rows.n)}, 'covariates', {covs}), ...
+    'dimensions', {did2.build.dimension(pairTerm, rows.n)}, 'covariates', {covs}), ...
     o{:}, 'Edges', struct('key_id', {{listA, listB}}), 'Id', valueId, 'Gaps', gaps);
 file = did2.build.opaqueBody(valueId, did2.build.formatTerm('EDAM:format_3475'), o{:});
 file.files = body.files;   % mapping.tsv as written, so the bytes NDI stores stay reachable
@@ -185,9 +190,9 @@ file.files = body.files;   % mapping.tsv as written, so the bytes NDI stores sta
 params = [];
 methodText = char(fieldOr(blk, 'method', ''));
 if ~isempty(strtrim(methodText))
-    % Proposed (not decided), [gene list mapping terms]: the parameter's variable
+    % [gene-list method text is a description]: the parameter's variable
     params = did2.build.parameter( ...
-        did2.convert.registeredTerm('NCIT:C150832', 'Software Name'), 'Text', methodText);
+        did2.convert.registeredTerm('NCIT:C25365', 'Description'), 'Text', methodText);
 end
 fields = struct();
 label = char(fieldOr(blk, 'label', ''));
