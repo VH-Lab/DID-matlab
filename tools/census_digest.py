@@ -153,6 +153,9 @@ POST_PASSES = [
         # [one-reading quick answers] Q2 (Jess Haley, 2026-10-26): a bath whose
         # epoch has no clock record for its stimulator is carried as v1
         ("baths_carried_no_clock", "baths CARRIED as v1: epoch has no clock record (carry-157)"),
+        # [Dab bath units are Dabrowska's] (Jess Haley, 2026-11-03): a bath with
+        # a mixture row in "osm" or "saturation" is carried as v1
+        ("baths_carried_unread_unit", "baths CARRIED as v1: a row in osm / saturation (carry-155)"),
         ("bath_anchors_no_time", "  'no_time' clock: session anchor kept"),
         ("bath_anchors_handed_over", "anchors handed to epochMint for their epoch"),
     ]),

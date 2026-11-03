@@ -1159,6 +1159,9 @@ for k = 1:size(expected, 1)
             % as v1 (carry-157), not anchored on an invented dev_local_time
             fprintf(['      carried %d bath(s) as v1: epoch has no clock ' ...
                      'record (carry-157)\n'], numGet(rep, 'baths_carried_no_clock'));
+            fprintf(['      carried %d bath(s) as v1: a mixture row in a unit the ' ...
+                     'generic stage does not read, osm or saturation (carry-155)\n'], ...
+                     numGet(rep, 'baths_carried_unread_unit'));
             % REFUSALS BY CAUSE, NEVER SUMMED INTO ONE. Only
             % `element-not-in-batch` is the designed best-effort outcome; the
             % other four are defects, and the last one is a defect this pass

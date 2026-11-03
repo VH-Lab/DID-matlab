@@ -220,6 +220,7 @@ report = struct( ...
     'bath_clocks_from_element_epoch', 0, ...
     'bath_clocks_defaulted',          0, ...
     'baths_carried_no_clock',         0, ...
+    'baths_carried_unread_unit',      0, ...
     'unexpected_error_reasons',       {{}}, ...
     'ran',                            false);
 result.deferred_bath_resolution = report;
@@ -301,6 +302,30 @@ for k = 1:numel(q)
             [report, seenErrorIds] = noteUnexpected(report, seenErrorIds, ...
                 'subjectOfElement', resolveErr);
         end
+        continue;
+    end
+
+    % STAGE 3a: a mixture row stated in a unit the generic stage does not
+    % read. Decided by Jess Haley, 2026-11-03 [Dab bath units are
+    % Dabrowska's] (did-schema did_v2_go_forward_class_audit.md): rows stated
+    % in "osm" (an amount; per litre or per kg is not stated) and
+    % "saturation" (not a unit) are not read by the generic stage; the bath is
+    % carried as v1 ([canonical absent only as needs info]: carry-155) and the
+    % Dabrowska dataset map states their meaning. The decided rule [bath ph
+    % and osmolarity are formulation fields] still places a row NAMED osm or
+    % osmolarity whose unit is read (makeBathVEta).
+    unread = unreadUnitRows(v1Body);
+    if ~isempty(unread)
+        if isfield(v1Body, 'document_class') && isstruct(v1Body.document_class)
+            v1Body.document_class.schema_version = 'did_v1';
+        end
+        carriedBodies{end+1} = v1Body; %#ok<AGROW>
+        % carry-register: carry-155
+        carriedNotes{end+1} = sprintf(['[carry-155] needs_mapping: mixture ' ...
+            'row(s) in a unit the generic stage does not read: %s ([Dab bath ' ...
+            'units are Dabrowska''s])'], strjoin(unread, '; ')); %#ok<AGROW>
+        report.baths_carried_unread_unit = report.baths_carried_unread_unit + 1;
+        keep(k) = false;   % carried -> drop the original deferral
         continue;
     end
 
@@ -843,6 +868,23 @@ for i = 1:numel(lines)
     amount = struct('source_value', str2double(cols{3}), ...
         'source_unit', struct('node', cols{4}, 'name', cols{5}), 'approximate', false);
     mixture(end+1) = struct('chemical', chemical, 'amount', amount); %#ok<AGROW>
+end
+end
+
+function rows = unreadUnitRows(body)
+%UNREADUNITROWS The mixture rows whose unit the generic stage does not read
+%   ([Dab bath units are Dabrowska's], Jess Haley, 2026-11-03): "osm" and
+%   "saturation", compared by the row's unit name, edge blanks aside. Each as
+%   'name: value unit'; {} when none.
+UNREAD = {'osm', 'saturation'};
+rows = {};
+mixture = parseMixture(body);
+for i = 1:numel(mixture)
+    u = strtrim(char(mixture(i).amount.source_unit.name));
+    if any(strcmp(u, UNREAD))
+        rows{end+1} = sprintf('%s: %s %s', mixture(i).chemical.name, ...
+            num2str(mixture(i).amount.source_value, 17), u); %#ok<AGROW>
+    end
 end
 end
 
