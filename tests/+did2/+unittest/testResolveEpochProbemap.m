@@ -1138,22 +1138,147 @@ end
 
 % ===================== the rename-thin guard (increment 3) =============
 
-function testAProbeInSeveralRowsKeepsItsV1Document(testCase)
-% [probe wiring is a relation]: a probe listed in two rows of one probe map
-% (as B's stimulator is, once per marker channel) cannot be wired row by row,
-% because nothing would say which row's channels are whose. Its rows keep
-% their statements, no relation is minted for them, and the v1 document is
-% carried whole, its devicestrings intact.
+function testAProbeInSeveralRowsIsOneWiringInRowOrder(testCase)
+% Decided by Jess Haley, 2026-11-03 [probe in several rows is one wiring]: a
+% probe listed in several rows of one probe map is ONE `connected to` relation
+% per acquisition system holding all its rows' channels, and the rows' alike
+% statements merge into one. Guard (1): the channels are kept in row order,
+% never sorted (ai2 before ai1 stays [2 1]).
 subj = subjectBody('spec_m', 'sess_m', 'L');
 el   = elementBody('el_m', 'sess_m', 'p', '1', 'n-trode', 1, 'spec_m');
 daq  = daqsystemBody('acqsys_m', 'sess_m', 'intan1');
 ing  = ingestedWithDeviceRows('ing_m', 'sess_m', 't0m', { ...
+    {'p', '1', 'n-trode', 'intan1:ai2', 'L'}, ...
     {'p', '1', 'n-trode', 'intan1:ai1', 'L'}, ...
-    {'p', '1', 'n-trode', 'intan1:ai2', 'L'}});
+    {'p', '1', 'n-trode', 'intan1:di4', 'L'}});
 [out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subj, el, daq, ing});
-verifyEqual(testCase, rep.wiring_probe_in_several_rows, 2);
+verifyEqual(testCase, rep.probe_rows_total, 3, 'denominator');
+verifyEqual(testCase, rep.device_strings_seen, 3);
+verifyEqual(testCase, rep.wiring_several_rows_merged, 1);
+verifyEqual(testCase, rep.wiring_several_rows_folded, 2);
+verifyEqual(testCase, rep.wiring_several_rows_disagree, 0);
+verifyEqual(testCase, rep.wiring_relations_minted, 1);
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+verifyEqual(testCase, numel(obs), 1, 'the rows'' alike statements are one');
+w = wiringOf(out, obs{1});
+verifyNotEmpty(testCase, w);
+verifyEqual(testCase, depVal(w, 'parent_id'), 'acqsys_m');
+ch = w.directed_relation.conditions;
+verifyEqual(testCase, numel(ch), 2);
+verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai
+verifyEqual(testCase, double(ch(1).matrix(:))', [2 1], 'row order, never sorted');
+verifyEqual(testCase, char(ch(2).variable.node), 'EMPTY:0000372');   % di
+verifyEqual(testCase, double(ch(2).matrix(:))', 4);
+% every row has its home, so the source is renamed to the manifest
+verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
+verifyEmpty(testCase, bodiesOfClass(out, 'epochfiles_ingested'));
+end
+
+function testAStimulatorOncePerMarkerChannelIsOneManipulationAndOneWiring(testCase)
+% B and Dab: a stimulator listed once per channel (mk1, mk2, mk3, e1, md1).
+subj = subjectBody('spec_k', 'sess_k', 'L');
+stim = elementBody('stim_k', 'sess_k', 'vis', '1', 'stimulator', 1, 'spec_k');
+daq  = daqsystemBody('acqsys_k', 'sess_k', 'vis');
+ing  = ingestedWithDeviceRows('ing_k', 'sess_k', 't0k', { ...
+    {'vis', '1', 'stimulator', 'vis:mk1', 'L'}, ...
+    {'vis', '1', 'stimulator', 'vis:mk2', 'L'}, ...
+    {'vis', '1', 'stimulator', 'vis:mk3', 'L'}, ...
+    {'vis', '1', 'stimulator', 'vis:e1', 'L'}, ...
+    {'vis', '1', 'stimulator', 'vis:md1', 'L'}});
+[out, rep] = decompose({sessionBody('sd_k', 'sess_k', 'ref'), subj, stim, daq, ing});
+verifyEqual(testCase, rep.probe_rows_total, 5, 'denominator');
+verifyEqual(testCase, rep.wiring_several_rows_merged, 1);
+verifyEqual(testCase, rep.wiring_several_rows_folded, 4);
+verifyEqual(testCase, rep.manipulations_emitted, 1);
+m = bodiesNamed(out, 'migrated_probemap_manipulation');
+verifyEqual(testCase, numel(m), 1);
+verifyEqual(testCase, depVal(m{1}, 'acquisition_system_id'), 'acqsys_k');
+w = wiringOf(out, m{1});
+verifyNotEmpty(testCase, w);
+ch = w.directed_relation.conditions;
+verifyEqual(testCase, arrayfun(@(c) char(c.variable.node), ch, 'UniformOutput', false), ...
+    {'EMPTY:0000377', 'EMPTY:0000376', 'NCIT:C52095'});   % mk, e, md
+verifyEqual(testCase, double(ch(1).matrix(:))', [1 2 3]);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
+end
+
+function testSeveralRowsOnTwoSystemsAreOneWiringPerSystem(testCase)
+% Guard (2): one relation per acquisition system the rows name, each holding
+% that system's rows' channels in row order.
+subj = subjectBody('spec_t', 'sess_t', 'L');
+el   = elementBody('el_t', 'sess_t', 'p', '1', 'n-trode', 1, 'spec_t');
+daqA = daqsystemBody('acqsys_ta', 'sess_t', 'intanA');
+daqB = daqsystemBody('acqsys_tb', 'sess_t', 'intanB');
+ing  = ingestedWithDeviceRows('ing_t', 'sess_t', 't0t', { ...
+    {'p', '1', 'n-trode', 'intanA:ai3', 'L'}, ...
+    {'p', '1', 'n-trode', 'intanB:ai1', 'L'}, ...
+    {'p', '1', 'n-trode', 'intanA:ai2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_t', 'sess_t', 'ref'), subj, el, daqA, daqB, ing});
+verifyEqual(testCase, rep.wiring_relations_minted, 2);
+verifyEqual(testCase, rep.wiring_several_rows_merged, 1);
+verifyEqual(testCase, rep.wiring_several_rows_folded, 1);
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+verifyEqual(testCase, numel(obs), 2, 'one statement per system');
+sys = cellfun(@(o) depVal(o, 'acquisition_system_id'), obs, 'UniformOutput', false);
+verifyEqual(testCase, sort(sys), {'acqsys_ta', 'acqsys_tb'});
+for i = 1:numel(obs)
+    rels = {};
+    for k = 1:numel(out.migrated)
+        d = out.migrated{k}.toStruct();
+        if strcmp(char(d.document_class.class_name), 'directed_relation') ...
+                && strcmp(depVal(d, 'parent_id'), sys{i}) ...
+                && strcmp(depVal(d, 'child_id'), depVal(obs{i}, 'instrument_id'))
+            rels{end+1} = d; %#ok<AGROW>
+        end
+    end
+    verifyEqual(testCase, numel(rels), 1);
+    if strcmp(sys{i}, 'acqsys_ta')
+        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).matrix(:))', [3 2]);
+    else
+        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).matrix(:))', 1);
+    end
+end
+end
+
+function testSeveralRowsThatDisagreeKeepTheirV1Document(testCase)
+% Guard (3): rows of one probe that disagree on anything but the devicestring
+% (here the subject column) do not merge. They keep their statements, no
+% relation is minted for them, the v1 document is carried whole, and the rows
+% are counted (wiring_several_rows_disagree).
+subjL = subjectBody('spec_d1', 'sess_q', 'L');
+subjR = subjectBody('spec_d2', 'sess_q', 'R');
+el   = elementBody('el_q', 'sess_q', 'p', '1', 'n-trode', 1, 'spec_d1');
+daq  = daqsystemBody('acqsys_q', 'sess_q', 'intan1');
+ing  = ingestedWithDeviceRows('ing_q', 'sess_q', 't0q', { ...
+    {'p', '1', 'n-trode', 'intan1:ai1', 'L'}, ...
+    {'p', '1', 'n-trode', 'intan1:ai2', 'R'}});
+[out, rep] = decompose({sessionBody('sd_q', 'sess_q', 'ref'), subjL, subjR, el, daq, ing});
+verifyEqual(testCase, rep.wiring_several_rows_disagree, 2);
+verifyEqual(testCase, rep.wiring_several_rows_merged, 0);
+verifyEqual(testCase, rep.wiring_several_rows_folded, 0);
 verifyEqual(testCase, rep.wiring_relations_minted, 0);
 verifyEqual(testCase, rep.observations_emitted, 2);
+verifyEmpty(testCase, bodiesOfClass(out, 'ingestion_manifest'));
+src = bodiesOfClass(out, 'epochfiles_ingested');
+verifyEqual(testCase, numel(src), 1);
+verifyEqual(testCase, src{1}.epochfiles_ingested.epochprobemap, ing.epochfiles_ingested.epochprobemap);
+end
+
+function testSeveralRowsWhoseJoinedTypesInterleaveKeepTheirV1Document(testCase)
+% The joined channel list of a probe in several rows is refused like any row
+% whose types interleave (mk1, e1, mk2: one condition per type would lose the
+% order): one statement, no relation, the v1 document carried whole.
+subj = subjectBody('spec_i', 'sess_i', 'L');
+stim = elementBody('stim_i', 'sess_i', 'vis', '1', 'stimulator', 1, 'spec_i');
+daq  = daqsystemBody('acqsys_i', 'sess_i', 'vis');
+ing  = ingestedWithDeviceRows('ing_i', 'sess_i', 't0i', { ...
+    {'vis', '1', 'stimulator', 'vis:mk1', 'L'}, ...
+    {'vis', '1', 'stimulator', 'vis:e1', 'L'}, ...
+    {'vis', '1', 'stimulator', 'vis:mk2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_i', 'sess_i', 'ref'), subj, stim, daq, ing});
+verifyEqual(testCase, rep.wiring_types_interleaved, 1);
+verifyEqual(testCase, rep.wiring_relations_minted, 0);
+verifyEqual(testCase, rep.manipulations_emitted, 1);
 verifyEmpty(testCase, bodiesOfClass(out, 'ingestion_manifest'));
 src = bodiesOfClass(out, 'epochfiles_ingested');
 verifyEqual(testCase, numel(src), 1);

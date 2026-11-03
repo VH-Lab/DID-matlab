@@ -26,7 +26,14 @@ function [v1, spec] = epochfiles_ingested(bodies, ctx)
 %     epochfiles_ingested.epoch_id     its epoch_id entity's local_identifier
 %     epochfiles_ingested.files        its files, verbatim
 %     epochfiles_ingested.epochprobemap  rebuilt from the batch
-%                                      (private/manifestProbemap)
+%                                      (private/manifestProbemap); a probe
+%                                      the v1 map lists in several rows is
+%                                      one row per system, compared as the
+%                                      same probe and the same ordered
+%                                      channel list (spec.same,
+%                                      private/sameProbemapSeveralRows;
+%                                      [probe in several rows is one
+%                                      wiring], Jess Haley, 2026-11-03)
 %
 %   With no CTX the epoch string and the probe map cannot be read, and say so
 %   (unplaced). Anything else is unplaced.
@@ -64,6 +71,15 @@ if isscalar(bodies) && strcmp(classNameOf(bodies{1}), 'ingestion_manifest')
     end
     [pm, why, epochString] = manifestProbemap(m, ctx);
     spec.unplaced = [spec.unplaced, why];
+    % a probe listed in several rows comes back as one row per system, the
+    % NDI-equivalent form; compared as the same probe and the same ordered
+    % channel list, for those rows only (private/sameProbemapSeveralRows)
+    spec.same(end+1) = struct('path', 'epochfiles_ingested.epochprobemap', ...
+        'fn', @sameProbemapSeveralRows, ...
+        'why', ['a probe listed in several rows of one probe map is one row per ' ...
+        'acquisition system holding its rows'' channels in row order, the probe ' ...
+        'and channels NDI reads ([probe in several rows is one wiring], Jess ' ...
+        'Haley, 2026-11-03)']);
     v1.document_class = struct('class_name', CLASS);
     v1.depends_on = struct('name', 'filenavigator_id', 'value', nav{1});
     v1.base = struct('id', base.id, 'session_id', base.session_id, 'name', '', ...
