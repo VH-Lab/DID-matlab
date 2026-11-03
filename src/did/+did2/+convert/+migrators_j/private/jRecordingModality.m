@@ -223,13 +223,13 @@ switch key
           'one-photon-imaging', 'brightfield-imaging'}
         % did-schema #88 retired the `image` value kind and its observation
         % (#73 review item 51, decided 2026-09-25): "a raster goes by what its
-        % pixels measure ... camera frames are an intensity_observation" (quoted
+        % pixels measure ... camera frames are an intensity_observation" (quoted  (pre-#88)
         % as decided; built as an `observation` with the `intensity` mixin).
         entries = mk('intensity', 'intensity', false);
 
     % --- the one DERIVED type with a signed shape ---------------------------
     % TEAM-SIGN-OFF [spike train leaf], V_eta_ensemble_plan.md:218,
-    % 2026-08-17: "a per-neuron spike train is a `time_observation` [...] with
+    % 2026-08-17: "a per-neuron spike train is a `time_observation` [...] with  (pre-#88)
     % `subject_statement.variable` = spike. The SPIKE TIMES ARE THE VALUE".
     %
     % `spikes` IS NOT A PROBE TYPE, so it is outside the 24-row denominator

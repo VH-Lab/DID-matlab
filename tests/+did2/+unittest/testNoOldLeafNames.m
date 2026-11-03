@@ -18,6 +18,14 @@ function tests = testNoOldLeafNames
 %   The scan prints its DENOMINATOR first (files, code lines, literals
 %   inspected) and refuses to pass over an empty tree; a second test plants a
 %   violation to prove the scanner can see one.
+%
+%   testNoOldLeafNameInComments guards the COMMENTS too (DID-matlab #225;
+%   Jess Haley, 2026-11-03, option a): the comment part of every line is
+%   scanned for a joined leaf name, by the regex of #225's count script. The
+%   eight named calculators and the two non-class strings in COMMENT_EXCLUDED
+%   do not count. A line that mentions an old name deliberately (quoted team
+%   text, a comment about the old names, an old code or path citation, a
+%   pre-#88 structure note) carries the exemption marker `pre-#88`.
 tests = functiontests(localfunctions);
 end
 
@@ -85,7 +93,98 @@ verifyFalse(testCase, isOldLeafLiteral('it''s an observation'));
 verifyEqual(testCase, quotedLiterals('a = ''it''''s''; b = x'';'), {'it''s'});
 end
 
+function testNoOldLeafNameInComments(testCase)
+root = srcRoot();
+files = mFilesUnder(root);
+nComments = 0;
+nNames = 0;
+nExempt = 0;
+hits = {};
+for k = 1:numel(files)
+    p = files{k};
+    rel = strrep(p(numel(root) + 2:end), '\', '/');
+    txt = fileread(p);
+    lines = regexp(txt, '\r?\n', 'split');
+    for i = 1:numel(lines)
+        c = commentPart(lines{i});
+        if isempty(c); continue; end
+        nComments = nComments + 1;
+        names = oldLeafNamesIn(c);
+        if isempty(names); continue; end
+        nNames = nNames + numel(names);
+        if hasExemption(c)
+            nExempt = nExempt + numel(names);
+        else
+            hits{end+1} = sprintf('%s:%d: %s', rel, i, strtrim(lines{i})); %#ok<AGROW>
+        end
+    end
+end
+fprintf(['testNoOldLeafNameInComments DENOMINATOR: %d .m file(s) under %s, ' ...
+    '%d comment(s) inspected; %d leaf-name occurrence(s), %d on lines marked ' ...
+    '"pre-#88", %d unmarked line(s)\n'], ...
+    numel(files), root, nComments, nNames, nExempt, numel(hits));
+for k = 1:numel(hits)
+    fprintf('  VIOLATION %s\n', hits{k});
+end
+% an empty tree is "not measured", never "clean"
+verifyGreaterThan(testCase, numel(files), 100, ...
+    sprintf('only %d .m files found under %s: wrong root?', numel(files), root));
+verifyGreaterThan(testCase, nComments, 1000);
+verifyEmpty(testCase, hits, sprintf( ...
+    ['%d comment line(s) under src/did/+did2 name a pre-composition leaf. ' ...
+     'Write the statement as direction + value kind (e.g. "an `observation` ' ...
+     'with value kind `count`"), or, if the old name is deliberate history, ' ...
+     'mark the line "pre-#88":\n%s'], ...
+    numel(hits), strjoin(hits, newline)));
+end
+
+function testTheCommentScannerSeesAPlantedViolation(testCase)
+% A scanner that cannot match proves nothing: plant one, then exempt it.
+c = commentPart('x = ''count_observation''; % a count_observation here');
+verifyEqual(testCase, c, '% a count_observation here');   % the literal is code
+verifyEqual(testCase, oldLeafNamesIn(c), {'count_observation'});
+verifyFalse(testCase, hasExemption(c));
+verifyTrue(testCase, hasExemption('% a count_observation here (pre-#88)'));
+verifyEqual(testCase, commentPart('x = ''50% term_assertion'';'), '');   % % in a literal
+verifyEqual(testCase, commentPart('y = a'' % term_assertion'), '% term_assertion');   % transpose
+verifyEqual(testCase, oldLeafNamesIn( ...
+    '% two: term_assertion and harmonic_component_calculation.'), ...
+    {'term_assertion', 'harmonic_component_calculation'});
+verifyEmpty(testCase, oldLeafNamesIn('% tuning_curve_calculation'));   % named calculator
+verifyEmpty(testCase, oldLeafNamesIn('% migrated_recording_observation'));   % not a class
+verifyEmpty(testCase, oldLeafNamesIn('% an observation; MyTerm_observation; term_observations'));
+verifyEmpty(testCase, oldLeafNamesIn('% x.term_observation_y'));   % part of a longer word
+end
+
 % ===================== the rules =========================================
+
+function names = oldLeafNamesIn(comment)
+% #225's count script: a lower-case joined word ending _<direction>, not part
+% of a longer word, minus the named calculators and COMMENT_EXCLUDED.
+names = regexp(comment, ['(?<![A-Za-z0-9_])[a-z0-9]+(_[a-z0-9]+)*_' ...
+    '(observation|manipulation|assertion|calculation)(?![A-Za-z0-9_])'], 'match');
+names = names(~ismember(names, [namedCalculators(), commentExcluded()]));
+end
+
+function names = commentExcluded()
+% Not statement class names (the code ALLOW list's two strings).
+names = {'migrated_recording_observation', 'pyraview_kept_no_recording_observation'};
+end
+
+function tf = hasExemption(comment)
+tf = ~isempty(strfind(comment, 'pre-#88'));
+end
+
+function c = commentPart(line)
+% The comment of LINE from its first % outside a literal ('' if none).
+code = stripComment(line);
+if numel(code) < numel(line)
+    c = line(numel(code) + 1:end);
+else
+    c = '';
+end
+end
+
 
 function tf = isOldLeafLiteral(s)
 tf = ~isempty(regexp(s, '^[a-z0-9_]*_(observation|manipulation|assertion|calculation)$', 'once')) ...

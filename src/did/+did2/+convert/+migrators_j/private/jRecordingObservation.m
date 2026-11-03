@@ -212,7 +212,7 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %
 %     1. AN UNDIMENSIONED CONCRETE OBSERVATION LEAF. The pre-#88 `subject_observation`
 %        carries "abstract": true in
-%        schemas/V_eta/stable/subject_observation.json, and
+%        schemas/V_eta/stable/subject_observation.json, and  (pre-#88)
 %        +did2/+schema/cache.m:507-511 raises
 %        `did2:validation:abstractInstantiation` for any document naming an
 %        abstract class. Every concrete leaf under it

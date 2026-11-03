@@ -63,7 +63,7 @@ function bodies = vmspikefit(preBody)
 %
 %   R1 (TEAM-SIGN-OFF [software], V_eta_tenet_audit.md): a `software` ENTITY +
 %   `software_id` + `execution_environment`. `score_observation` (pre-#88) reached both
-%   through subject_observation -> subject_interaction (checked in
+%   through subject_observation -> subject_interaction (checked in  (pre-#88)
 %   did-schema/schemas/V_eta/stable/subject_interaction.json), and the
 %   session_relative_reference anchor reaches neither.
 %

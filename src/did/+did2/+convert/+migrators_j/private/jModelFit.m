@@ -2,7 +2,7 @@ function bodies = jModelFit(preBody, blk, inputEdges)
 %JMODELFIT A v1 curve fit (`fitcurve`, `vmspikefit`) as did-schema #88's
 %   `calculation` whose value kind is
 %   `model_fit` (#73 review item 68, decided 2026-09-29: "fitcurve -> a
-%   standalone model_fit data type ... model_fit + model_fit_calculation ...
+%   standalone model_fit data type ... model_fit + model_fit_calculation ...  (pre-#88)
 %   no subject -> refused").
 %
 %   BODIES = jModelFit(PREBODY, BLK, INPUTEDGES). BLK is the v1 fit block

@@ -81,7 +81,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %   ---------------------------------------------------------------------
 %   THE SIGNATURE COVERS THIS CLASS. `V_eta_ingested_payload_findings.md:275`
 %   -- "the reader and image classes RETIRE by decomposing into
-%   relative_reference + sampled_body + image_observation" -- so the fold is
+%   relative_reference + sampled_body + image_observation" -- so the fold is  (pre-#88)
 %   decided, not undecided, and what follows is about whether it can be BUILT.
 %   The rejection at that document's `:339` is a NAMING decision about the two
 %   parent classes' `_epoch_cache` rename and does not bear on the fold.

@@ -29,7 +29,7 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %   WHY THE SOURCE IS PRESERVED RATHER THAN RETIRED
 %   ---------------------------------------------------------------------
 %   The signed decision retires this class ("the reader and image classes RETIRE
-%   by decomposing into relative_reference + sampled_body + image_observation"),
+%   by decomposing into relative_reference + sampled_body + image_observation"),  (pre-#88)
 %   and the plan attaches an explicit gate to that half: "A cannot be built until
 %   #65 and #30 land -- it decomposes into `relative_reference` documents AND a
 %   `sampled_body` on an observation".

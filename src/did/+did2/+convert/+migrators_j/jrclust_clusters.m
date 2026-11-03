@@ -10,7 +10,7 @@ function bodies = jrclust_clusters(preBody)
 %   (pattern 1, body-backed series): the label series is a per-spike integer, so it
 %   folded (pre-#88) to a count_observation whose value stream is the assignment series:
 %
-%       count_observation  the discoverable spine handle: subject_id, a shared time
+%       count_observation  the discoverable spine handle: subject_id, a shared time  (pre-#88)
 %                          anchor, variable = OBI:0000648 "clustered data set" ([term picks batch 1] (2)),
 %                          storage_mode 'body'.
 %       sampled_body       one datum per spike (the cluster index); NO axes and no
@@ -50,7 +50,7 @@ function bodies = jrclust_clusters(preBody)
 %   ON THE TARGET -- checked in did-schema/schemas/V_eta/stable/
 %   subject_interaction.json (depends_on `software_id`, must_refer_to_document_class
 %   `software`; field `execution_environment`), which count_observation (pre-#88) reached
-%   via subject_observation -> subject_interaction. Nothing is invented.
+%   via subject_observation -> subject_interaction. Nothing is invented.  (pre-#88)
 %
 %   RequireSession is TRUE: base.session_id is mustBeNonEmpty and v1_to_v2
 %   quarantines the SOURCE when a body it produced fails. It removes nothing --
