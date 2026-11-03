@@ -166,14 +166,16 @@ verifyEqual(testCase, depValue(cfg, 'to_acquisition_system_id'), 'sys_2');
 m = cfg.get('clock_alignment_configuration.method');
 entries = asEntries(m.parameters);
 names = cellfun(@(e) char(e.variable.name), entries, 'UniformOutput', false);
-verifyEqual(testCase, sort(names), sort({'minimum matching file paths', 'sync file name'}));
+% syncfilename is EDAM:data_1050 "File name" (Jess Haley, 2026-11-03, batch 2)
+verifyEqual(testCase, sort(names), sort({'minimum matching file paths', 'File name'}));
 for k = 1:numel(entries)
     e = entries{k};
     switch char(e.variable.name)
         case 'minimum matching file paths'
             verifyEqual(testCase, double(e.count), 1);
-        case 'sync file name'
+        case 'File name'
             verifyEqual(testCase, char(e.text), 'syncfile.txt');
+            verifyEqual(testCase, char(e.variable.node), 'EDAM:data_1050');
     end
 end
 end

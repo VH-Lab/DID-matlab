@@ -110,7 +110,9 @@ function s = typeSuffixOf(variable)
 % the openMINDS type the migrator's variableForType maps to VARIABLE
 switch lower(strtrim(variable))
     case 'species';             s = 'Species';
-    case 'strain';              s = 'Strain';
+    case {'organism strain', 'strain'}
+        % NCIT:C14419 "Organism Strain" since 2026-11-03 ('strain' before)
+        s = 'Strain';
     case 'genetic strain type'; s = 'GeneticStrainType';
     case 'biological sex';      s = 'BiologicalSex';
     case 'phenotype';           s = 'Phenotype';

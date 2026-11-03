@@ -358,9 +358,11 @@ assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2', ...
 leaf = mine{1};
 c = asCell(leaf.statement.conditions);
 assertEqual(testCase, numel(c), 1);
-verifyEqual(testCase, lower(char(c{1}.variable.name)), 'orientation');
+% `angle` is NCIT:C42677 "Direction" (Jess Haley, 2026-11-03, "Ok": a tuning
+% angle runs 0-360, the direction of motion), not "orientation"
+verifyEqual(testCase, lower(char(c{1}.variable.name)), 'direction');
 verifyEqual(testCase, c{1}.quantity.value, 90);
-verifyEqual(testCase, parameterText(leaf, 'orientation selection'), 'best');
+verifyEqual(testCase, lower(parameterText(leaf, 'Direction selection')), 'best');
 verifyEqual(testCase, leaf.statement.notes, tc.tuningcurve_calc.log, '[tuning log in notes]');
 n = out.summary.migration_notes.tuning_stimid_rebuild;
 verifyEqual(testCase, n.count, 1, 'one note per curve: the denominator');
@@ -383,7 +385,7 @@ mine = outputsOf(out, tc.base.id);
 assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2');
 c = asCell(mine{1}.statement.conditions);
 got = sort(cellfun(@(x) lower(char(x.variable.name)), c, 'UniformOutput', false));
-verifyEqual(testCase, got, {'orientation', 'spatial frequency'});
+verifyEqual(testCase, got, {'direction', 'spatial frequency'});
 r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'best value beside a dealt property', {});
 verifyTrue(testCase, any(startsWith(r.matched, 'tuningcurve_calc.stim_property_list')), ...

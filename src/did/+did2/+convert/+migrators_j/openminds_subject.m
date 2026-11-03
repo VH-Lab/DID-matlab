@@ -135,6 +135,12 @@ switch suffix
     otherwise;                name = deCamel(typeSuffix(omType));
 end
 variable = jOntologyTerm('', name);
+if strcmp(suffix, 'strain')
+    % NCIT:C14419 "Organism Strain" (Jess Haley, 2026-11-03, "Ok on those other
+    % 2 from the first batch", docs/V2_PLAN.md G96 group B), registered; the
+    % bare label 'strain' before
+    variable = did2.convert.registeredTerm('NCIT:C14419', 'Organism Strain');
+end
 end
 
 function s = typeSuffix(omType)

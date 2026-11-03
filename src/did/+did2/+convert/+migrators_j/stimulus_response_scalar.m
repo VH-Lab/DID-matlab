@@ -47,7 +47,7 @@ function bodies = stimulus_response_scalar(preBody)
 %                                       tuning's). Both parts of both pairs are
 %                                       kept: migration is lossless for complex
 %                                       responses (Jess Haley, 2026-10-21).
-%     responses.stimid               -> dimension 0: term 'stimulus' (a label),
+%     responses.stimid               -> dimension 0: term NCIT:C41210 'Stimulus',
 %                                       n readings; the stimid values a
 %                                       `stimulus` covariate along it (revision
 %                                       1: an axis, not a condition; data_body
@@ -57,7 +57,8 @@ function bodies = stimulus_response_scalar(preBody)
 %                                       document when one exists
 %     stimulus_response.stimulator_epochid -> DROPPED by the plan (a copy of the
 %                                       presentation's own epoch), REPORTED
-%   `variable` is the label 'stimulus response': the quantity measured (rate,
+%   `variable` is EMPTY:0000398 'neural response' ([term picks batch 1] (1),
+%   Jess Haley, 2026-11-03; the label 'stimulus response' before): the quantity measured (rate,
 %   voltage) is recorded on no document in this family (the plan's OPEN 1/2).
 %   `value.response_unit` is not written: the response document records none.
 %
@@ -245,8 +246,11 @@ if isempty(value.imaginary); value = rmfield(value, 'imaginary'); end
 dims = [];
 covs = [];
 if ~isempty(stimid)
-    dims = did2.build.dimension(jLabel('stimulus'), numel(stimid));
-    covs = did2.build.covariate(jLabel('stimulus'), 0, 'Value', double(stimid(:))');
+    % NCIT:C41210 "Stimulus" (Jess Haley, 2026-11-03, "Ok" to Claude's answers
+    % on docs/V2_PLAN.md G96 batch 2)
+    stimulusTerm = did2.convert.registeredTerm('NCIT:C41210', 'Stimulus');
+    dims = did2.build.dimension(stimulusTerm, numel(stimid));
+    covs = did2.build.covariate(stimulusTerm, 0, 'Value', double(stimid(:))');
 end
 
 % The time anchor: the epoch (revision 2) when its document exists, else the
@@ -281,8 +285,10 @@ else
     methodOpt = {'MethodId', methodId};
 end
 
+% [term picks batch 1] (1) (Decided by Jess Haley, 2026-11-03): the variable is
+% the registered EMPTY:0000398 "neural response" ("stimulus response" before)
 calc = jStatement(body, 'calculation', subjectId, ...
-    jLabel('stimulus response'), value, ...
+    did2.convert.registeredTerm('EMPTY:0000398', 'neural response'), value, ...
     'ValueKind', 'harmonic_component', ...
     'Dimensions', dims, 'Covariates', covs, ...
     'TimeReferenceIds', {anchor.base.id}, ...

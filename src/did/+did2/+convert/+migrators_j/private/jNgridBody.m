@@ -484,6 +484,13 @@ for k = 1:numel(dataDim)
     if k <= numel(labels) && ~isempty(labels{k})
         nm = labels{k};
     end
+    % a label given as a term {node, name} is written as given (a caller that
+    % names the axis by an ontology node, e.g. hartley_calc's lag axis)
+    if isstruct(nm)
+        term = nm;
+    else
+        term = did2.convert.axisTerm(nm);
+    end
     v = [];
     if k <= numel(axisCoords); v = axisCoords{k}; end
     if isempty(v) || isDefaultIndexVector(v)
@@ -492,13 +499,13 @@ for k = 1:numel(dataDim)
         % so no covariate is written (Jess Haley 2026-10-22 [covariate rules
         % named] 6.2a, and "yes" to 1..n; origin 1 + spacing 1 until then).
         % Position k (0-based) is MATLAB index k + 1.
-        entry = jAxis(did2.convert.axisTerm(nm), dataDim(k));
+        entry = jAxis(term, dataDim(k));
     else
         % IRREGULAR. `values` is REQUIRED iff not regular; origin/spacing stay
         % blank, because a stored vector that is not an arithmetic progression
         % has neither. `source_values` repeats them: nothing was converted, and
         % saying so explicitly is cheaper than a reader wondering.
-        entry = jAxis(did2.convert.axisTerm(nm), dataDim(k), ...
+        entry = jAxis(term, dataDim(k), ...
             'quantity', struct('value', v, 'source_value', v));
     end
     entries{end+1} = entry; %#ok<AGROW>
@@ -516,7 +523,8 @@ tf = isequal(double(v(:)), (1:numel(v))');
 end
 
 function labels = normaliseLabels(axisLabels)
-%NORMALISELABELS Accept a cellstr or a comma-separated char.
+%NORMALISELABELS Accept a cellstr or a comma-separated char; a cell entry
+%   may also be a term struct {node, name}, kept as given.
 %
 %   The comma-separated form is NDI's: `reverse_correlation.dimension_labels` is
 %   documented as "Comma-separated names for the axes ... (e.g. 'Time, X, Y')".
@@ -526,7 +534,12 @@ if isempty(axisLabels)
     return;
 end
 if iscell(axisLabels)
-    labels = cellfun(@(s) strtrim(char(s)), axisLabels, 'UniformOutput', false);
+    labels = axisLabels;
+    for k = 1:numel(labels)
+        if ~isstruct(labels{k})
+            labels{k} = strtrim(char(labels{k}));
+        end
+    end
     return;
 end
 if ischar(axisLabels) || (isstring(axisLabels) && isscalar(axisLabels))

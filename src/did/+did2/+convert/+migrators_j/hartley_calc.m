@@ -90,15 +90,32 @@ function bodies = hartley_calc(preBody)
 %   (verified 1..200 in 210/210), so they stay regular with origin 1 / spacing 1
 %   and carry no `values` -- nothing is lost, because `n` restates them.
 %
-%   THE TWO 200-AXES ARE NAMED POSITIONALLY (`axis_1`, `axis_2`) ON PURPOSE.
-%   Nothing in the document distinguishes X from Y: both coordinate vectors are
-%   the identical default index vector, both dims are 200, and
-%   `reverse_correlation.dimension_labels` -- the field whose job is to name the
-%   axes -- is '' in 210 of 210. Naming one of them `x position` would be a
-%   guess recorded as a fact, and `axes[].variable` is queryable. The lag axis
-%   IS named, on positive evidence: its coordinates equal
-%   `hartley_calc.input_parameters.T`, the reverse-correlation lag vector, in
-%   210 of 210.
+%   THE TWO 200-AXES ARE Y-Coordinate (ROWS) AND X-Coordinate (COLUMNS), read
+%   from the writer's code, not from the document ([term picks batch 1] (3),
+%   Decided by Jess Haley, 2026-11-03; the evidence is at planeAxes). Until
+%   then they were `axis_1`, `axis_2`: nothing IN the document tells X from Y
+%   (identical index vectors, `dimension_labels` '' in 210 of 210). The lag
+%   axis is AFO:AFR_0001625 "delay" (batch 2, 2026-11-03), on positive
+%   evidence: its coordinates equal `hartley_calc.input_parameters.T`, the
+%   reverse-correlation lag vector, in 210 of 210.
+%
+%   TWO STATEMENTS, ONE PER PLANE ([hartley planes are two statements], Decided
+%   by Jess Haley, 2026-11-03): the spike-triggered average (the source id) and
+%   the null cumulative probability (a new id, did2.convert.mintId), each the
+%   owner of its plane body, with no "represented quantity" condition. Their
+%   variables are plain labels until the team approves the terms
+%   (docs/v2_working/UNREGISTERED_TERMS_PROPOSAL.md group D #5, #6).
+%
+%   THE HARTLEY NUMBERS ARE DATA ([hartley numbers stored, copies not], Decided
+%   by Jess Haley, 2026-11-03): S, KXV, KYV, ORDER as covariates of one body,
+%   dimension EMPTY:0000260 "frame", owned by the spike-triggered average
+%   (hartleyNumbersBody). `T` is not written when it is an exact copy of the
+%   delay axis (batch 2). The same decision says the frame times and the spike
+%   times are not stored and the round trip rebuilds them; on the corpora the
+%   round trip has no document to rebuild them from (the presentation's timing
+%   is in presentation_time.bin, the spikes in the element's .vhsb), so that
+%   part is NOT built here and they are still stored as before (a question for
+%   the team).
 %
 %   ---------------------------------------------------------------------
 %   BLOCK-BY-BLOCK, AND WHERE EACH FIELD LANDS
@@ -144,8 +161,10 @@ function bodies = hartley_calc(preBody)
 %                                  `derived_from_1` -> the neuron. See below.
 %     hartley_reverse_correlation.stimulus_properties
 %                               -> DROPPED, GUARDED. See below.
-%     hartley_reverse_correlation.frame_times + .hartley_numbers
+%     hartley_reverse_correlation.frame_times
 %                               -> method_parameters.stimulus_sequence. See below.
+%     hartley_reverse_correlation.hartley_numbers
+%                               -> a `frame` body (hartleyNumbersBody)
 %     app                       -> a `software` entity + execution_environment
 %                                  (jSoftwareFromApp, the R1 model).
 %     base.id                   -> PRESERVED on the leaf. depends_on carried.
@@ -371,13 +390,24 @@ end
 % bodies' data type, `data_body` true, the stimulus sequence among its method
 % parameters, and the presentation among its inputs.
 leafId = char(preBody.base.id);
+% [hartley planes are two statements] (Decided by Jess Haley, 2026-11-03): the
+% second plane's statement is a new document, its id derived from the source
+% (did2.convert.mintId), so two runs give the same id
+pValueId = did2.convert.mintId('receptive_field_calculation null cumulative probability');
 [planeBodies, datumType, sourceDatumType] = planeSampledBodies(preBody, ...
-    leafId, planeDim, axisCoords, axisLabels);
+    {leafId, pValueId}, planeDim, axisCoords, axisLabels);
 extra = [];
 sequence = stimulusSequence(hrc);
 if ~isempty(fieldnames(sequence))
     extra = jParameterList(struct('stimulus_sequence', sequence));
 end
+% [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03): the
+% per-frame hartley numbers are data, one row per frame, not method parameters
+[numbersBody, numbersUnplaced] = hartleyNumbersBody(preBody, hrc, leafId);
+% batch 2 (Jess Haley, 2026-11-03: "Ok"): the setting `T` is not written when it
+% is an exact copy of the delay axis (T_coords); the round trip writes it back
+% from that axis. A T that differs is kept as a method parameter.
+calcBody = withoutRestatedLagSetting(preBody, hrc);
 inputs = {};
 if ~isempty(presentationId)
     inputs = {presentationId};
@@ -400,7 +430,7 @@ end
 % one this fold reads nowhere is unplaced, and jCalculation carries the
 % document whole as v1 (carry-100 outside the template, carry-056 inside it),
 % as it does for an unread calculator field
-dropped = [dropped, unreadFields(preBody)];
+dropped = [dropped, unreadFields(preBody), numbersUnplaced];
 % NO SUBJECT: jCalculation hands such a document back unchanged (a calculation
 % requires its subject). [one folder, final classes only] (Jess Haley,
 % 2026-10-29, did-schema V_eta_go_forward_class_audit.md): a retire class's V2
@@ -414,8 +444,8 @@ if isempty(jSubjectOf(preBody, {'element_id', 'subject_id'}))
     bodies = {preBody};
     return;
 end
-bodies = jCalculation(preBody, 'receptive_field_calculation', 'rf', ...
-    'hartley_calc', 'receptive field', 'ndi.calc.vis.hartley', ...
+bodies = jCalculation(calcBody, 'receptive_field_calculation', 'rf', ...
+    'hartley_calc', 'spike-triggered average', 'ndi.calc.vis.hartley', ...
     'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
     'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
     'Dropped', dropped, 'AccountForEveryField', true, ...
@@ -423,10 +453,22 @@ bodies = jCalculation(preBody, 'receptive_field_calculation', 'rf', ...
     'reverse_correlation'});
 leaf = bodies{1};
 if isscalar(bodies) && strcmp(leaf.document_class.class_name, 'hartley_calc')
-    return;     % passed through (no subject): no bodies
+    bodies = {preBody};
+    return;     % carried (or passed through): the untouched v1 source, no bodies
 end
+% the second statement: the same calculation, its value the null cumulative
+% probability plane. Its variable, like the first's, is a plain label until the
+% team approves the terms (docs/v2_working/UNREGISTERED_TERMS_PROPOSAL.md group
+% D #5, #6).
+pValue = leaf;
+pValue.base.id = pValueId;
+pValue.statement.variable = jLabel('null cumulative probability');
+bodies{end+1} = pValue;
 for k = 1:numel(planeBodies)
     bodies{end+1} = planeBodies{k}; %#ok<AGROW>
+end
+if ~isempty(numbersBody)
+    bodies{end+1} = numbersBody;
 end
 
 spikeBody = spikeTimesBody(preBody, hrc, leaf);
@@ -480,14 +522,27 @@ end
 lagCoords = numericColumn(fieldOr(recon, 'T_coords', []));
 xCoords   = numericColumn(fieldOr(recon, 'X_coords', []));
 yCoords   = numericColumn(fieldOr(recon, 'Y_coords', []));
-supplied  = {lagCoords, xCoords, yCoords};
-% The lag axis is the ONLY one named, and the name rests on positive evidence:
-% its coordinates equal `hartley_calc.input_parameters.T` in 210 of 210. The
-% other two are positional -- see the header for why guessing X vs Y is not
-% available from this document.
-suppliedLabels = {'lag', '', ''};
-supplied  = supplied(~cellfun(@isempty, supplied));
-suppliedLabels = suppliedLabels(1:numel(supplied));
+% [term picks batch 1] (3) (Decided by Jess Haley, 2026-11-03, did-schema
+% did_v2_go_forward_class_audit.md): the two spatial dimensions are NCIT:C44478
+% "Y-Coordinate" (the stimulus grid ROWS, `Y_coords`) and NCIT:C44477
+% "X-Coordinate" (the COLUMNS, `X_coords`), in that array order. Read from the
+% code that fills the M x M x T block (NDIcalc-vis-matlab 00e3e0f
+% vis.revcorr.generate_STA -> hartley_stimulus_resampled_time, which reshapes
+% vlt.neuro.reverse_correlation.hartley.hartley_image(s, kx, ky, M) into
+% planes; hartley_image is `[l,m] = meshgrid(0:M-1,0:M-1); IM = s *
+% cas(2*pi*(kx.*l+ky.*m)/M)`, so kx varies along dimension 2, the columns, and
+% ky along dimension 1, the rows; vis.revcorr.setRF and main.m build their
+% receptive fields with the same meshgrid convention, and the calculator's plot
+% shows each plane with imshow, rows down the screen). The time dimension is
+% AFO:AFR_0001625 "delay" (batch 2, Jess Haley, 2026-11-03: "Ok"), named on
+% positive evidence: its coordinates equal `hartley_calc.input_parameters.T`.
+% Matched to dims BY LENGTH, in this order: the first M-long dim is the rows.
+supplied  = {lagCoords, yCoords, xCoords};
+suppliedLabels = {did2.convert.registeredTerm('AFO:AFR_0001625', 'delay'), ...
+    did2.convert.axisTerm('y'), did2.convert.axisTerm('x')};
+present = ~cellfun(@isempty, supplied);
+supplied  = supplied(present);
+suppliedLabels = suppliedLabels(present);
 
 % Which dims does the coordinate vector account for? Drop dims from the END
 % until the remainder sums to numel(coords) -- the trailing plane-count
@@ -535,7 +590,7 @@ end
 % ===================== the bodies ==========================================
 
 function [planeBodies, datumType, sourceDatumType] = planeSampledBodies( ...
-        preBody, statementId, planeDim, axisCoords, axisLabels)
+        preBody, statementIds, planeDim, axisCoords, axisLabels)
 %PLANESAMPLEDBODIES One `sampled_body` per plane of the response volume.
 %
 %   TWO BODIES, ONE FILE, AND THAT IS STATED RATHER THAN HIDDEN. The v1
@@ -552,26 +607,26 @@ function [planeBodies, datumType, sourceDatumType] = planeSampledBodies( ...
 %   `hartley_results.ngrid` arrives unrenamed and must leave unrenamed -- the
 %   image_stack tombstone declared `imagestack_file` while NDI writes
 %   `imageStack`, which is this exact mistake in both directions at once.
+%   [hartley planes are two statements] (Decided by Jess Haley, 2026-11-03):
+%   each plane is the value of its own statement, so plane k's body is owned
+%   by STATEMENTIDS{k} (the spike-triggered average; the null cumulative
+%   probability) and carries no "represented quantity" condition.
 nPlanes = 2;
-planeNames = {'response estimate', 'significance'};
+planeNames = {'spike-triggered average', 'null cumulative probability'};
 planeBodies = cell(1, nPlanes);
 datumType = '';
 sourceDatumType = '';
 for k = 1:nPlanes
-    % #73 audit 2 D11: bodies have no order, so each plane says what it holds
-    % as one body condition {variable: represented quantity, term: ...}.
-    cond = did2.build.condition(jLabel('represented quantity'), ...
-        'Term', jLabel(planeNames{k}));
     desc = sprintf(['plane %d of %d in the source ngrid file: ' ...
             'the %s. The v1 writer stores both planes in one stream ' ...
             '(cat(4, sta, p_val)), so both bodies name the same file.'], ...
             k, nPlanes, planeNames{k});
-    bodyOpts = {'DatumOrder', 'F', 'Conditions', cond, 'Notes', desc};
+    bodyOpts = {'DatumOrder', 'F', 'Notes', desc};
     fname = sourceFileName(preBody);
     if ~isempty(fname)
         bodyOpts = [bodyOpts, {'Fields', struct('filename', fname)}]; %#ok<AGROW>
     end
-    [b, dt, sdt] = jNgridBody(preBody, statementId, ...
+    [b, dt, sdt] = jNgridBody(preBody, statementIds{k}, ...
         sprintf('migrated_receptive_field_plane_%d', k), axisLabels, ...
         'DataDim', planeDim, 'AxisCoordinates', axisCoords, 'BodyOptions', bodyOpts);
     if k == 1
@@ -724,9 +779,114 @@ frameTimes = fieldOr(hrc, 'frame_times', fieldOr(hrc, 'frameTimes', []));
 if ~isempty(frameTimes)
     sequence.frame_times = frameTimes;
 end
-if isstruct(hrc) && isfield(hrc, 'hartley_numbers') ...
-        && isstruct(hrc.hartley_numbers)
-    sequence.hartley_numbers = hrc.hartley_numbers;
+% hartley_numbers: data, not parameters (hartleyNumbersBody)
+end
+
+function [body, unplaced] = hartleyNumbersBody(preBody, hrc, ownerId)
+%HARTLEYNUMBERSBODY The per-frame hartley numbers as data: one `sampled_body`
+%   owned by the spike-triggered-average statement, one dimension EMPTY:0000260
+%   "frame" (one position per stimulus frame), and one covariate along it per
+%   number (S, KXV, KYV, ORDER), each holding that number for every frame.
+%
+%   [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03):
+%   computed by the stimulus program's hartleystim / hartleynumbers, code the
+%   database does not hold, so they are stored, one row per frame. The four
+%   column variables are NOT decided: they are written as plain labels
+%   ('hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'), pending terms.
+%
+%   Returns [] when the block holds no numbers (the current writer moves them to
+%   hartley_numbers.bin and leaves empty arrays). UNPLACED names why the block
+%   cannot be stored this way (a field other than the four, a value that is not
+%   a numeric vector, columns of different lengths): the caller carries the
+%   document whole as v1 (jCalculation 'Dropped').
+body = [];
+unplaced = {};
+if ~isstruct(hrc) || ~isfield(hrc, 'hartley_numbers') || isEmptyValue(hrc.hartley_numbers)
+    return;
+end
+hn = hrc.hartley_numbers;
+if ~isstruct(hn) || ~isscalar(hn)
+    unplaced{end+1} = 'hartley_reverse_correlation.hartley_numbers (not one struct)';
+    return;
+end
+COLUMNS = hartleyNumberColumns();
+extra = setdiff(fieldnames(hn), COLUMNS(:, 1));
+if ~isempty(extra)
+    unplaced{end+1} = sprintf('hartley_reverse_correlation.hartley_numbers.%s (not a hartley number)', ...
+        strjoin(reshape(extra, 1, []), ', '));
+    return;
+end
+vals = {};
+names = {};
+n = [];
+for k = 1:size(COLUMNS, 1)
+    if ~isfield(hn, COLUMNS{k, 1}) || isempty(hn.(COLUMNS{k, 1}))
+        continue;
+    end
+    v = hn.(COLUMNS{k, 1});
+    if ~(isnumeric(v) || islogical(v)) || ~isvector(v)
+        unplaced{end+1} = sprintf('hartley_reverse_correlation.hartley_numbers.%s (not a numeric vector)', ...
+            COLUMNS{k, 1}); %#ok<AGROW>
+        continue;
+    end
+    v = double(v(:));
+    if isempty(n)
+        n = numel(v);
+    elseif numel(v) ~= n
+        unplaced{end+1} = sprintf(['hartley_reverse_correlation.hartley_numbers.%s ' ...
+            '(%d values, not one per frame: %d)'], COLUMNS{k, 1}, numel(v), n); %#ok<AGROW>
+        continue;
+    end
+    vals{end+1} = v; %#ok<AGROW>
+    names{end+1} = COLUMNS{k, 2}; %#ok<AGROW>
+end
+if ~isempty(unplaced) || isempty(vals)
+    return;
+end
+dims = did2.build.list(did2.build.dimension( ...
+    did2.convert.registeredTerm('EMPTY:0000260', 'frame'), n));
+covList = cell(1, numel(vals));
+for k = 1:numel(vals)
+    covList{k} = did2.build.composite('data', 'covariates', struct( ...
+        'variable', jLabel(names{k}), 'along', 0, ...
+        'quantity', struct('value', vals{k}, 'source_value', vals{k})));
+end
+o = jOpts(preBody, 'Notes', ...
+    ['the hartley numbers of each stimulus frame (S, KXV, KYV, ORDER: which ' ...
+     'basis function was shown on that frame), as the stimulus program ' ...
+     'computed them ([hartley numbers stored, copies not])']);
+body = did2.build.sampledBody(ownerId, dims, 'Covariates', did2.build.list(covList{:}), o{:});
+end
+
+function c = hartleyNumberColumns()
+%HARTLEYNUMBERCOLUMNS v1 field -> the plain label its covariate is written
+%   under (pending terms; the round trip reads the same table).
+c = {'S', 'hartley S'; 'KXV', 'hartley KXV'; 'KYV', 'hartley KYV'; ...
+    'ORDER', 'hartley ORDER'};
+end
+
+function out = withoutRestatedLagSetting(preBody, hrc)
+%WITHOUTRESTATEDLAGSETTING PREBODY less `hartley_calc.input_parameters.T` when
+%   T is an exact copy of `reconstruction_properties.T_coords`, the delay axis
+%   (NDIcalc-vis-matlab hartley.m writes `'T_coords', parameters.input_parameters.T`).
+%   Otherwise PREBODY unchanged: a differing T is kept as a method parameter.
+out = preBody;
+if ~isfield(preBody, 'hartley_calc') || ~isstruct(preBody.hartley_calc) ...
+        || ~isfield(preBody.hartley_calc, 'input_parameters') ...
+        || ~isstruct(preBody.hartley_calc.input_parameters) ...
+        || ~isfield(preBody.hartley_calc.input_parameters, 'T')
+    return;
+end
+T = preBody.hartley_calc.input_parameters.T;
+recon = struct();
+if isstruct(hrc) && isfield(hrc, 'reconstruction_properties') ...
+        && isstruct(hrc.reconstruction_properties)
+    recon = hrc.reconstruction_properties;
+end
+Tc = fieldOr(recon, 'T_coords', []);
+if isnumeric(T) && isnumeric(Tc) && ~isempty(T) && numel(T) == numel(Tc) ...
+        && isequal(double(T(:)), double(Tc(:)))
+    out.hartley_calc.input_parameters = rmfield(out.hartley_calc.input_parameters, 'T');
 end
 end
 

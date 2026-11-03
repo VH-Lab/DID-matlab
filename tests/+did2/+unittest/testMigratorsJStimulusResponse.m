@@ -293,7 +293,10 @@ verifyFalse(testCase, isfield(s, 'value') && isfield(s.value, 'data_body') ...
 verifyFalse(testCase, isfield(s.interaction, 'method'));
 % OPEN 1/OPEN 2 of the plan are not closed: the quantity actually measured is not
 % recorded anywhere in this family, so `variable` is the v1-level label.
-verifyEqual(testCase, leaf.get('statement.variable.name'), 'stimulus response');
+% [term picks batch 1] (1) (Decided by Jess Haley, 2026-11-03): the registered
+% EMPTY:0000398 "neural response" ("stimulus response" before).
+verifyEqual(testCase, leaf.get('statement.variable.name'), 'neural response');
+verifyEqual(testCase, leaf.get('statement.variable.node'), 'EMPTY:0000398');
 
 v1 = responseFixture('F1');
 v1.depends_on(strcmp({v1.depends_on.name}, ...
@@ -331,10 +334,12 @@ s    = leaf.toStruct();
 % reading count) with the stimid values a `stimulus` covariate along it
 k = did2.unittest.helpers.axesOf(s);
 verifyEqual(testCase, numel(k), 1);
-verifyEqual(testCase, k.term.name, 'stimulus');
+% NCIT:C41210 "Stimulus" (Jess Haley, 2026-11-03, batch 2 "Ok")
+verifyEqual(testCase, k.term.name, 'Stimulus');
+verifyEqual(testCase, k.term.node, 'NCIT:C41210');
 verifyEqual(testCase, k.n, 6);
 verifyEqual(testCase, numel(s.harmonic_component.value.real), 6);
-verifyEqual(testCase, k.cov.variable.name, 'stimulus');
+verifyEqual(testCase, k.cov.variable.name, 'Stimulus');
 verifyEqual(testCase, k.cov.quantity.value(:)', [1 2 3 1 2 3]);
 verifyFalse(testCase, isfield(s.data, 'conditions') && ~isempty(s.data.conditions));
 % the presentation is still the first input
