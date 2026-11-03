@@ -1048,21 +1048,25 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Charset-restrict the field name (interpolated into SQL below) and
             % escape every user-supplied literal to prevent SQL injection - the
             % search path does not use mksqlite bind parameters, so values must
-            % be neutralized here (see sqlEscapeLiteral / validateSqlFieldName).
+            % be neutralized here (see sqlStringLiteral / validateSqlFieldName).
             field  = did.database.validateSqlFieldName(query_struct.field);
             param1 = query_struct.param1;
             param2 = query_struct.param2;
             param1Str = num2str(param1);
-            param1StrEsc = did.database.sqlEscapeLiteral(param1Str);   % for double-quoted literals
+            param1Lit = did.database.sqlStringLiteral(param1Str);        % single-quoted SQL literal
             param1RegexEsc = regexptranslate('escape', param1Str);      % literal inside a regex() pattern
             if numel(param1)>=1
                 param1Val = sprintf('%.17g', param1(1));  % full double precision (was num2str, ~5 sig digits)
             else
                 param1Val = [];
             end
-            param1Like = did.database.sqlEscapeLiteral( ...
-                regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'}));
-            field_check = ['fields.field_name="' field '"'];
+            param1Like = did.database.sqlStringLiteral(['%' ...
+                regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'}) '%']);
+            % Every value goes into the SQL as a single-quoted string
+            % literal (see sqlStringLiteral): SQLite reads a double-quoted
+            % token as a column name when a column of that name exists, so
+            % "value" compared doc_data.value with itself (issue #240).
+            field_check = ['fields.field_name=' did.database.sqlStringLiteral(field)];
             op = strtrim(lower(query_struct.operation));
             isNot = op(1)=='~';
             if isNot
@@ -1076,11 +1080,11 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1, restricted) ' OR ' ...
                         query_struct_to_sql_str(sqlitedb_obj, param2, restricted)];
                 case 'exact_string'
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1StrEsc '"'];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value = ' param1Lit];
                 case 'exact_string_anycase'
-                    sql_str = [field_check ' AND ' notStr 'LOWER(doc_data.value) = "' lower(param1StrEsc) '"'];
+                    sql_str = [field_check ' AND ' notStr 'LOWER(doc_data.value) = ' did.database.sqlStringLiteral(lower(param1Str))];
                 case 'contains_string'
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value like ' param1Like ' ESCAPE ''\'''];
                 case 'exact_number'
                     if ~isempty(param1Val)
                         sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
@@ -1104,7 +1108,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         'not in SQL']);
                 case 'hasfield'
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
-                    sql_str = [field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\"'];
+                    sql_str = [field_check ' OR fields.field_name like ' ...
+                        did.database.sqlStringLiteral([fieldNameLike '.%']) ' ESCAPE ''\'''];
                 case 'depends_on'
                     % Matched exactly as did.query/fieldsearch do (see
                     % dependsOnSqlMatch); a query that cannot be is searched
@@ -1114,7 +1119,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         error('DID:Database:SQL', ['depends_on with name "%s" and value "%s" ' ...
                             'cannot be searched in SQL'], num2str(param1), num2str(param2));
                     end
-                    field_check = 'fields.field_name="meta.depends_on"';
+                    field_check = 'fields.field_name=''meta.depends_on''';
                     sql_str = [field_check ' AND ' notStr valueMatch];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
@@ -1125,15 +1130,15 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 case 'regexp'
                     % 'regexp' intentionally accepts a user-supplied regex, so
                     % do NOT regex-escape param1; only SQL-escape the literal.
-                    sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,"' param1StrEsc '") NOT NULL'];
+                    sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,' param1Lit ') NOT NULL'];
                 case 'isa'
                     %sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
                     %    '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\")'];
                     % param1 is a class name matched literally within the
                     % comma-separated superclass list, so regex-escape it (so
                     % metacharacters are literal) then SQL-escape the pattern.
-                    param1regExp = did.database.sqlEscapeLiteral(['(^|, )' param1RegexEsc '(,|$)']);
-                    superclassMatch = ['regex(doc_data.value,"' param1regExp '") NOT NULL'];
+                    param1regExp = did.database.sqlStringLiteral(['(^|, )' param1RegexEsc '(,|$)']);
+                    superclassMatch = ['regex(doc_data.value,' param1regExp ') NOT NULL'];
                     if ~isNot && ~restricted && sqlitedb_obj.hasSearchIndexes()
                         % Over a whole branch, running the regex on every
                         % document's superclass list took seconds (~5 s for
@@ -1149,12 +1154,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             'SELECT superclasses FROM (' ...
                                 'SELECT DISTINCT sc.value AS superclasses ' ...
                                 'FROM doc_data sc, fields scf ' ...
-                                'WHERE scf.field_name="meta.superclass" ' ...
+                                'WHERE scf.field_name=''meta.superclass'' ' ...
                                 'AND sc.field_idx = scf.field_idx LIMIT -1) ' ...
-                            'WHERE regex(superclasses,"' param1regExp '") NOT NULL)'];
+                            'WHERE regex(superclasses,' param1regExp ') NOT NULL)'];
                     end
-                    sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1StrEsc '") OR ' ...
-                        '(fields.field_name="meta.superclass" AND ' notStr superclassMatch ')'];
+                    sql_str = ['(fields.field_name=''meta.class''      AND ' notStr 'doc_data.value = ' param1Lit ') OR ' ...
+                        '(fields.field_name=''meta.superclass'' AND ' notStr superclassMatch ')'];
                 otherwise
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
             end
@@ -1187,7 +1192,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 'FROM   ' from_str ' ' ...
                 'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
                 '  AND  docs.doc_idx = branch_docs.doc_idx ' ...
-                '  AND  branch_docs.branch_id = "' did.database.sqlEscapeLiteral(branch_id) '" ' ...
+                '  AND  branch_docs.branch_id = ' did.database.sqlStringLiteral(branch_id) ' ' ...
                 '  AND  fields.field_idx = doc_data.field_idx'];
             if restrict
                 query_str = [query_str ...
@@ -1487,7 +1492,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             for k = 1 : chunk : numel(ids)
                 these_ids = ids(k : min(k+chunk-1, numel(ids)));
                 query_str = [get_sql_query_str(sqlitedb_obj, [], branch_id, these_ids) ...
-                    ' AND fields.field_name="base.id"' ...
+                    ' AND fields.field_name=''base.id''' ...
                     ' AND doc_data.value IN (' did.database.sqlStringList(these_ids) ')'];
                 new_doc_ids = run_sql_query(sqlitedb_obj, query_str);
                 if numel(new_doc_ids)==1 && iscell(new_doc_ids{1})
@@ -2360,24 +2365,29 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
         end
 
-        function s = sqlEscapeLiteral(s)
-            % sqlEscapeLiteral - escape a value for a double-quoted SQL literal
+        function s = sqlStringLiteral(s)
+            % sqlStringLiteral - a value as a single-quoted SQL string literal
             %
-            % S = sqlEscapeLiteral(S)
+            % S = sqlStringLiteral(S)
             %
-            % The search query builder (query_struct_to_sql_str /
-            % get_sql_query_str) interpolates user-supplied did.query values,
-            % branch ids and field names into SQL string literals delimited by
-            % double quotes, e.g. ['... doc_data.value = "' value '"']. Those
-            % values are NOT passed to mksqlite as bind parameters
-            % (run_sql_query does not forward varargin for search), so they must
-            % be escaped to prevent SQL injection from a crafted query value.
-            % Inside a double-quoted token SQLite treats "" as an escaped ", so
-            % doubling the double quotes neutralizes any attempt to break out of
-            % the literal. This mirrors sqlitedb.escapeSqlLiteral and the
-            % DID-python _sql_escape primitive.
-            s = strrep(char(s), '"', '""');
-        end % sqlEscapeLiteral()
+            % Returns the text S as an SQL string literal: in single quotes,
+            % with each ' inside doubled, e.g. O'Brien -> 'O''Brien'. The
+            % search query builder (query_struct_to_sql_str /
+            % get_sql_query_str) and the sqlitedb queries put user-supplied
+            % values (query values, branch ids, document ids, file names,
+            % field names) into the SQL text rather than passing them to
+            % mksqlite as bind parameters, so each must be one literal that
+            % cannot be broken out of (no SQL injection).
+            %
+            % Single quotes, not double: SQLite reads a double-quoted token
+            % as an identifier when a column of that name is in scope, and
+            % only falls back to a string when none is. So "value" was read
+            % as the column doc_data.value and matched every document, and
+            % "field_idx" was an ambiguous column name (issue #240). A
+            % single-quoted token is always a string. DID-python's
+            % _sql_escape does the same.
+            s = ['''' strrep(char(s), '''', '''''') ''''];
+        end % sqlStringLiteral()
 
         function s = sqlStringList(values)
             % sqlStringList - a list of SQL string literals, for an IN (...) clause
@@ -2389,8 +2399,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % quotes are used (with ' doubled inside) because a double-quoted
             % token that happens to equal a column name, such as "doc_id", is
             % read by SQLite as that column rather than as a string.
-            values = cellfun(@(v) ['''' strrep(char(v), '''', '''''') ''''], ...
-                values, 'UniformOutput', false);
+            values = cellfun(@did.database.sqlStringLiteral, values, 'UniformOutput', false);
             s = strjoin(values, ',');
         end % sqlStringList()
 

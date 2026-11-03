@@ -266,6 +266,11 @@ did2.convert.elementSubjects('load', bodies);
 % 2026-10-29).
 did2.convert.nTrodeElectrodeCounts('reset');
 did2.convert.nTrodeElectrodeCounts('load', bodies);
+% The subjectstrings every probe's epochprobemap rows name, read by
+% migrators_j.element to carry a probe recorded from several subjects
+% ([dataset-specific logic leaves the generic migration]).
+did2.convert.probemapSubjects('reset');
+did2.convert.probemapSubjects('load', bodies);
 
 % Asked ONCE per call, of the schema the documents validate against: does
 % `base` declare `session_id` as an edge (did-schema

@@ -225,7 +225,17 @@ end
 % the device kind restates the type ([element type is a device kind term]):
 % exactly the decided kind of the rebuilt type, or it is not placed
 want = did2.convert.elementDeviceKind(type);
+% [clamp mode of unrecorded probe dropped] (Jess Haley, 2026-11-03): a probe of
+% a kind several types share (patch electrode, sharp electrode, microscope)
+% that never recorded keeps its device kind and no `element type` statement;
+% its type is not rebuilt (element.type: an accepted loss in
+% did2.convert.roundtrip.wholeBatch), and its one kind is placed
+modeDropped = ~hasType && isscalar(kindNodes) && isempty(type) ...
+    && ~isempty(kindNodes{1}) && isempty(did2.convert.elementTypeOfKind(kindNodes{1}));
 for k = 1:numel(kindNodes)
+    if modeDropped
+        continue;
+    end
     if isempty(want) || ~sameCurie(kindNodes{k}, want.node) || numel(kindNodes) > 1
         spec.unplaced{end+1} = sprintf(['an Equipment Type assertion (%s) is not ' ...
             'the device kind decided for element type "%s"'], kindNodes{k}, type); %#ok<AGROW>

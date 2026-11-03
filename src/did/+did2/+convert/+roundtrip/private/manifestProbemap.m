@@ -21,7 +21,11 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %   that rig, timed by the same anchor (Jess Haley 2026-11-01 [probe wiring is
 %   a relation], [wiring relation term]). A batch migrated before that names
 %   rig and channels through an `acquisition_channels` document; both shapes
-%   are read. A row is read back from its statement:
+%   are read. A probe the v1 map listed in several rows has ONE statement and
+%   ONE relation per system holding all those rows' channels in row order
+%   ([probe in several rows is one wiring], Jess Haley, 2026-11-03), so it
+%   comes back as one row ('vhvis_spike2:mk1-3;e1-3;md1'), the probe and
+%   channels NDI reads. A row is read back from its statement:
 %
 %     name, reference  the instrument_id entity's `name` and what follows it
 %                      in its local_identifier

@@ -251,6 +251,136 @@ verifyFalse(testCase, isfield(r.no_inverse_by_class, 'epochfiles_ingested'), des
 verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
 end
 
+function testASessionDocumentIdIsAnAcceptedLoss(testCase)
+% [v1 session document id not kept] (Jess Haley, 2026-11-03): the own base.id
+% of a v1 `session` document is not kept (the session entity keeps the
+% session id). After the check that nothing points at it, the round trip
+% lists it as an accepted loss, named and counted, not a failure.
+[bodies, result] = sessionBatch(testCase, 'wb_sdoc', 'c1', '');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.accepted_id_check.documents_scanned, numel(bodies), 'denominator');
+verifyEqual(testCase, r.accepted_id_check.ids_checked, 1);
+verifyEqual(testCase, double(r.accepted_id_check.ids_referenced), 0);
+verifyEqual(testCase, r.ids_lost, 0, describe(r));
+verifyEqual(testCase, r.ids_accepted_lost, 1);
+verifyEqual(testCase, r.ids_accepted_lost_by_class.session, 1);
+verifyEqual(testCase, r.accepted_losses_total, 1, 'listed once');
+verifyEqual(testCase, r.accepted_losses_by_name.v1SessionDocumentId, 1);
+verifyEqual(testCase, r.accepted_losses(1).source_id, 'wb_sdoc_sess');
+verifyFalse(testCase, isfield(r.failures_by_class, 'session'), describe(r));
+end
+
+function testASessionDocumentIdAnotherDocumentNamesIsLost(testCase)
+% the check first: a v1 document that names the session document's id (here
+% in a text field) is reported with the field, and the id is NOT accepted
+[bodies, result] = sessionBatch(testCase, 'wb_sref', 'c2', 'wb_sref_sess');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, double(r.accepted_id_check.ids_referenced), 1);
+hit = r.accepted_id_check.referenced(1);
+verifyEqual(testCase, hit.id, 'wb_sref_sess');
+verifyEqual(testCase, hit.by_id, 'wb_sref_spec');
+verifyEqual(testCase, hit.field, 'subject.description');
+verifyEqual(testCase, r.ids_accepted_lost, 0);
+verifyEqual(testCase, r.ids_lost, 1);
+end
+
+function testTheModeOfAProbeThatNeverRecordedIsAnAcceptedLoss(testCase)
+% [clamp mode of unrecorded probe dropped] (Jess Haley, 2026-11-03): the
+% patch-I probe no probe-map row names loses its `element type`; the round
+% trip lists element.type as an accepted loss, named and counted, not a failure
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = '41268b6f5c6a3d4e_00000000000000c3';
+bodies = {sessionV1('wb_m_sess', sid), subjectV1('wb_m_spec', sid, 'L'), ...
+    elementV1('wb_m_rec', sid, 'pv', 1, 'patch-Vm', 'wb_m_spec'), ...
+    elementV1('wb_m_idle', sid, 'pi', 1, 'patch-I', 'wb_m_spec'), ...
+    daqsystemV1('wb_m_daq', sid, 'intan1', 'wb_m_nav'), ...
+    manifestV1('wb_m_efi', sid, 't0001', 'wb_m_nav', ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'pv\t1\tpatch-Vm\tintan1:ai1\tL\n']))};
+% the probes' edges as ndi.element/newdocument writes them
+for k = 3:4
+    bodies{k}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+        'value', {'', 'wb_m_spec'});
+end
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'did_v2');
+assertEqual(testCase, rep.mode_statements_dropped_unrecorded, 1, 'premise');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.accepted_losses_by_name.modeOfAProbeThatNeverRecorded, 1, describe(r));
+hits = r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_m_idle'));
+verifyEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, hits(1).path, 'element.type');
+for k = 1:numel(r.failures)
+    if any(strcmp(r.failures(k).source_id, {'wb_m_idle', 'wb_m_rec'}))
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.type')), describe(r));
+        verifyEmpty(testCase, r.failures(k).unplaced, describe(r));
+    end
+end
+end
+
+function [bodies, result] = sessionBatch(testCase, stem, tail, description)
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = ['41268b6f5c6a3d4e_00000000000000' tail];
+bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L')};
+bodies{2}.subject.description = description;
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+end
+
+function testAProbeInSeveralRowsRoundTripsAsItsMergedRow(testCase)
+% [probe in several rows is one wiring] (Jess Haley, 2026-11-03): a stimulator
+% listed once per channel (B and Dab) is one statement and one wiring holding
+% every row's channels in row order; the round trip writes the merged row
+% ('vis:mk1-3;e1;md1'), the probe and channels NDI reads, and the comparison
+% accepts it as the same probe with the same ordered channel list
+[bodies, result] = severalRowsBatch(testCase, 'wb_sev', 'b4');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyFalse(testCase, isfield(r.changed_by_class, 'epochfiles_ingested'), describe(r));
+verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
+end
+
+function testAMergedRowWithAnotherChannelOrderIsLost(testCase)
+% the equivalence is the ordered channel list: a v1 map whose rows list the
+% same channels in another order is not what the merged row states
+[bodies, result] = severalRowsBatch(testCase, 'wb_sevx', 'b5');
+k = find(cellfun(@(b) strcmp(b.document_class.class_name, 'epochfiles_ingested'), bodies));
+pm = bodies{k}.epochfiles_ingested.epochprobemap;
+bodies{k}.epochfiles_ingested.epochprobemap = strrep(strrep(strrep(pm, ...
+    'vis:mk1', 'vis:TMP'), 'vis:mk2', 'vis:mk1'), 'vis:TMP', 'vis:mk2');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyTrue(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
+end
+
+function [bodies, result] = severalRowsBatch(testCase, stem, tail)
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = ['41268b6f5c6a3d4e_00000000000000' tail];
+bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), ...
+    elementV1([stem '_stim'], sid, 'vis', 1, 'stimulator', [stem '_spec']), ...
+    daqsystemV1([stem '_daq'], sid, 'vis', [stem '_nav']), ...
+    manifestV1([stem '_efi'], sid, 't0001', [stem '_nav'], ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'vis\t1\tstimulator\tvis:mk1\tL\n' ...
+        'vis\t1\tstimulator\tvis:mk2\tL\n' ...
+        'vis\t1\tstimulator\tvis:mk3\tL\n' ...
+        'vis\t1\tstimulator\tvis:e1\tL\n' ...
+        'vis\t1\tstimulator\tvis:md1\tL\n']))};
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'did_v2');
+assert(rep.manifests_renamed == 1 && rep.wiring_several_rows_merged == 1, ...
+    'premise: the five rows merged and the manifest was renamed');
+end
+
 function testAProbeWhoseObservesRelationWasRetiredIsComparedAfterThePass(testCase)
 % resolveEpochProbemap retires the probe's `observes` relation once a recording
 % observation carries the same (instrument, specimen) pair; the element's
