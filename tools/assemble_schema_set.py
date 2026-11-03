@@ -37,8 +37,15 @@ NON_CLASS_NAMES = ("index", "topics", "ndi_reserved_keys")
 NON_CLASS_PREFIXES = ("did_v2_", "V_eta_")
 
 
+PROBE_DROPPED = ("syncrule", "epochfiles_ingested", "stimulus_response_scalar",
+                 "stimulus_response_scalar_parameters_basic", "openminds",
+                 "daqreader_epochdata_ingested", "daqreader_image_epochdata_ingested")
+
+
 def is_class_name(stem):
     """Is `<stem>.json` a class file? Mirrors did2.schema.cache.isClassFileName."""
+    if stem in PROBE_DROPPED:  # SCRATCH PROBE, not for merge: retire files gone
+        return False
     return not (stem.endswith("_meta") or stem in NON_CLASS_NAMES
                 or stem.startswith(NON_CLASS_PREFIXES))
 
