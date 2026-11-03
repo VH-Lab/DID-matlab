@@ -1242,26 +1242,46 @@ end
 
 function testSeveralRowsThatDisagreeKeepTheirV1Document(testCase)
 % Guard (3): rows of one probe that disagree on anything but the devicestring
-% (here the subject column) do not merge. They keep their statements, no
-% relation is minted for them, the v1 document is carried whole, and the rows
-% are counted (wiring_several_rows_disagree).
+% (here the subject column of a stimulator's rows) do not merge. They keep
+% their statements, no relation is minted for them, the v1 document is
+% carried whole, and the rows are counted (wiring_several_rows_disagree).
 subjL = subjectBody('spec_d1', 'sess_q', 'L');
 subjR = subjectBody('spec_d2', 'sess_q', 'R');
-el   = elementBody('el_q', 'sess_q', 'p', '1', 'n-trode', 1, 'spec_d1');
-daq  = daqsystemBody('acqsys_q', 'sess_q', 'intan1');
+stim = elementBody('stim_q', 'sess_q', 'vis', '1', 'stimulator', 1, 'spec_d1');
+daq  = daqsystemBody('acqsys_q', 'sess_q', 'vis');
 ing  = ingestedWithDeviceRows('ing_q', 'sess_q', 't0q', { ...
-    {'p', '1', 'n-trode', 'intan1:ai1', 'L'}, ...
-    {'p', '1', 'n-trode', 'intan1:ai2', 'R'}});
-[out, rep] = decompose({sessionBody('sd_q', 'sess_q', 'ref'), subjL, subjR, el, daq, ing});
+    {'vis', '1', 'stimulator', 'vis:mk1', 'L'}, ...
+    {'vis', '1', 'stimulator', 'vis:mk2', 'R'}});
+[out, rep] = decompose({sessionBody('sd_q', 'sess_q', 'ref'), subjL, subjR, stim, daq, ing});
 verifyEqual(testCase, rep.wiring_several_rows_disagree, 2);
 verifyEqual(testCase, rep.wiring_several_rows_merged, 0);
 verifyEqual(testCase, rep.wiring_several_rows_folded, 0);
 verifyEqual(testCase, rep.wiring_relations_minted, 0);
-verifyEqual(testCase, rep.observations_emitted, 2);
+verifyEqual(testCase, rep.manipulations_emitted, 2);
 verifyEmpty(testCase, bodiesOfClass(out, 'ingestion_manifest'));
 src = bodiesOfClass(out, 'epochfiles_ingested');
 verifyEqual(testCase, numel(src), 1);
 verifyEqual(testCase, src{1}.epochfiles_ingested.epochprobemap, ing.epochfiles_ingested.epochprobemap);
+end
+
+function testAProbeRecordedFromTwoSubjectsIsCarriedWhole(testCase)
+% A v1 element names one subject; a recording probe whose probe-map rows name
+% two (4 Dab probes) is the dataset map's question ([dataset-specific logic
+% leaves the generic migration], lossless): the generic stage carries the
+% element whole as v1, and its rows, with no probe entity to wire, keep the
+% v1 epochfiles_ingested document
+subjL = subjectBody('spec_w1', 'sess_w', 'L');
+subjR = subjectBody('spec_w2', 'sess_w', 'R');
+el   = elementBody('el_w', 'sess_w', 'p', '1', 'n-trode', 1, 'spec_w1');
+daq  = daqsystemBody('acqsys_w', 'sess_w', 'intan1');
+ing1 = ingestedWithDeviceRows('ing_w1', 'sess_w', 't0w1', { ...
+    {'p', '1', 'n-trode', 'intan1:ai1', 'L'}});
+ing2 = ingestedWithDeviceRows('ing_w2', 'sess_w', 't0w2', { ...
+    {'p', '1', 'n-trode', 'intan1:ai1', 'R'}});
+[out, rep] = decompose({sessionBody('sd_w', 'sess_w', 'ref'), subjL, subjR, el, daq, ing1, ing2});
+verifyTrue(testCase, any(strcmp(carriedIds(out), 'el_w')), 'the element is carried whole');
+verifyEqual(testCase, rep.rows_unwirable, 2);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'epochfiles_ingested')), 2);
 end
 
 function testSeveralRowsWhoseJoinedTypesInterleaveKeepTheirV1Document(testCase)
@@ -1283,6 +1303,53 @@ verifyEmpty(testCase, bodiesOfClass(out, 'ingestion_manifest'));
 src = bodiesOfClass(out, 'epochfiles_ingested');
 verifyEqual(testCase, numel(src), 1);
 verifyEqual(testCase, src{1}.epochfiles_ingested.epochprobemap, ing.epochfiles_ingested.epochprobemap);
+end
+
+% ===================== [clamp mode of unrecorded probe dropped] ==========
+
+function testTheModeOfAProbeThatNeverRecordedIsDropped(testCase)
+% Decided by Jess Haley, 2026-11-03 [clamp mode of unrecorded probe dropped]:
+% a patch element of an ingested session that no probe-map row names keeps
+% its device kind (EMPTY:0000411 patch electrode) and loses its `element
+% type` statement; a patch element a row names keeps it.
+subj = subjectBody('spec_c', 'sess_c', 'L');
+rec  = elementBody('el_crec', 'sess_c', 'pv', '1', 'patch-Vm', 1, 'spec_c');
+idle = elementBody('el_cidle', 'sess_c', 'pi', '1', 'patch-I', 1, 'spec_c');
+daq  = daqsystemBody('acqsys_c', 'sess_c', 'intan1');
+ing  = ingestedWithDeviceRows('ing_c', 'sess_c', 't0c', { ...
+    {'pv', '1', 'patch-Vm', 'intan1:ai1', 'L'}});
+[out, rep] = decompose({sessionBody('sd_c', 'sess_c', 'ref'), subj, rec, idle, daq, ing});
+verifyEqual(testCase, rep.mode_statements_seen, 2, 'denominator');
+verifyEqual(testCase, rep.mode_statements_dropped_unrecorded, 1);
+verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 1);
+verifyEqual(testCase, rep.mode_statements_kept_session_not_ingested, 0);
+verifyEqual(testCase, assertionsAbout(out, 'el_cidle', 'element type'), {});
+verifyEqual(testCase, assertionsAbout(out, 'el_cidle', 'equipment type'), {'EMPTY:0000411'});
+verifyEqual(testCase, numel(assertionsAbout(out, 'el_crec', 'element type')), 1);
+end
+
+function testTheModeIsKeptInASessionWithNoIngestedEpoch(testCase)
+% a session with no epochfiles_ingested: its recordings are minted later (NDI's
+% second pass reads the mode from the statement), so it is kept
+subj = subjectBody('spec_e', 'sess_e', 'L');
+idle = elementBody('el_eidle', 'sess_e', 'pi', '1', 'patch-I', 1, 'spec_e');
+[out, rep] = decompose({sessionBody('sd_e', 'sess_e', 'ref'), subj, idle});
+verifyEqual(testCase, rep.mode_statements_dropped_unrecorded, 0);
+verifyEqual(testCase, numel(assertionsAbout(out, 'el_eidle', 'element type')), 1);
+end
+
+function vals = assertionsAbout(result, entityId, variableName)
+% the term value nodes of ENTITYID's assertions of VARIABLENAME
+vals = {};
+for k = 1:numel(result.migrated)
+    d = result.migrated{k}.toStruct();
+    if ~strcmp(char(d.document_class.class_name), 'assertion'); continue; end
+    if ~strcmp(depVal(d, 'entity_id'), entityId); continue; end
+    if ~strcmpi(char(d.statement.variable.name), variableName); continue; end
+    node = '';
+    if isstruct(d.term.value) && isfield(d.term.value, 'node'); node = char(d.term.value.node); end
+    vals{end+1} = node; %#ok<AGROW>
+end
 end
 
 function testRenameIsGuardedWhenNoFilenavigatorId(testCase)
