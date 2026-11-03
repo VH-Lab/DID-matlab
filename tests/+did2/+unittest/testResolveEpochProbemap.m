@@ -187,6 +187,37 @@ verifyEqual(testCase, double(bodies{1}.files.file_info(1).locations.ingest), 0);
 verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_recording_observation')), 0);
 end
 
+function testAVoltageIsAFOAndACurrentIsNCIT(testCase)
+% [voltage AFO, current NCIT] (Jess Haley, 2026-11-03): the recording
+% observation's variable for a voltage is AFO:AFR_0001916 "voltage" and for a
+% current NCIT:C48434 "Electrical Current", written by node
+subj = subjectBody('specimen_v', 'sess_v', 'L');
+el   = elementBody('el_v', 'sess_v', 'pat', '1', 'patch', 1, 'specimen_v');
+ing  = ingestedWithRows('ing_v', 'sess_v', 't0000v', {{'pat', '1', 'patch', 'L'}});
+[out, ~] = decompose({sessionBody('sd_v', 'sess_v', 'ref'), subj, el, ing});
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+verifyEqual(testCase, numel(obs), 2);
+got = sort(cellfun(@(b) [char(b.statement.variable.node) '|' char(b.statement.variable.name)], ...
+    obs, 'UniformOutput', false));
+verifyEqual(testCase, got, sort({'AFO:AFR_0001916|voltage', 'NCIT:C48434|Electrical Current'}));
+end
+
+function testASorterOutputIsAClusteredDataSet(testCase)
+% [term picks batch 1] (2) (Jess Haley, 2026-11-03): a spike sorter output's
+% variable is OBI:0000648 "clustered data set"; the pass still finds it as
+% the sorter (sorter_calculations_seen)
+subj = subjectBody('specimen_cd', 'sess_cd', 'L');
+el   = elementBody('el_cd', 'sess_cd', 'tet', '1', 'n-trode', 1, 'specimen_cd');
+ing  = ingestedWithRows('ing_cd', 'sess_cd', 't00cd', {{'tet', '1', 'n-trode', 'L'}});
+jc   = jrclustV1('jc_cd', 'sess_cd', 'el_cd');
+[out, rep] = decompose({sessionBody('sd_cd', 'sess_cd', 'ref'), subj, el, ing, jc});
+verifyEqual(testCase, rep.sorter_calculations_seen, 1);
+calc = docById(out, 'jc_cd');
+assertNotEmpty(testCase, calc);
+verifyEqual(testCase, char(calc.statement.variable.node), 'OBI:0000648');
+verifyEqual(testCase, char(calc.statement.variable.name), 'clustered data set');
+end
+
 function testASpikeSortedProbeGetsOnlyItsOwnEpochObservation(testCase)
 % RENAMED 2026-10-21 from testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording.
 % Pass 1 now emits no observation for EITHER element (the probe's is per

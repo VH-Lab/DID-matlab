@@ -1714,12 +1714,30 @@ methodOpt = {};
 if ~isempty(modeMethod); methodOpt = {'Method', modeMethod}; end
 % did-schema #88: the direction class plus ONE value-kind mixin
 obs = did2.build.statement(entry.class, char(subjectId), ...
-    did2.convert.registeredTerm('', entry.variable), [], 'ValueKind', entry.mixin, ...
+    recordingVariable(entry.variable), [], 'ValueKind', entry.mixin, ...
     'DataBody', true, ...
     'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
     'AcquisitionSystemId', char(acqSystemId), methodOpt{:}, ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
+end
+
+function t = recordingVariable(name)
+%RECORDINGVARIABLE The recording observation's variable term for the modality
+%   variable NAME. Decided by Jess Haley, 2026-11-03 [voltage AFO, current
+%   NCIT] (did-schema did_v2_go_forward_class_audit.md): "the recording
+%   observation's variable for a voltage is AFO:AFR_0001916 "voltage" and for
+%   a current NCIT:C48434 "Electrical Current"". Written by node and name, so
+%   the node is there before did-schema registers AFO:AFR_0001916 (siblings
+%   first). Any other variable is looked up by name, as before.
+switch char(name)
+    case 'voltage'
+        t = did2.convert.registeredTerm('AFO:AFR_0001916', 'voltage');
+    case 'current'
+        t = did2.convert.registeredTerm('NCIT:C48434', 'Electrical Current');
+    otherwise
+        t = did2.convert.registeredTerm('', name);
+end
 end
 
 function t = recordingModeMethod(elementType)
@@ -2813,13 +2831,17 @@ end
 end
 
 function tf = isSorterVariable(b)
-% the spike-sorter output's variable, 'spike cluster assignment'
+% the spike-sorter output's variable: OBI:0000648 "clustered data set" ([term
+% picks batch 1] (2), Jess Haley, 2026-11-03), compared by node first, or, in a
+% batch migrated before it, the label 'spike cluster assignment'
 tf = false;
 if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
         || ~isfield(b.statement, 'variable'); return; end
 v = b.statement.variable;
-if isstruct(v) && isfield(v, 'name')
-    tf = strcmpi(strtrim(char(v.name)), 'spike cluster assignment');
+if isstruct(v) && isfield(v, 'node') && strcmpi(strtrim(char(v.node)), 'OBI:0000648')
+    tf = true;
+elseif isstruct(v) && isfield(v, 'name')
+    tf = any(strcmpi(strtrim(char(v.name)), {'spike cluster assignment', 'clustered data set'}));
 end
 end
 

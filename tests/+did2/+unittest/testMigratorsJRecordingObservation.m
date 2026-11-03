@@ -343,8 +343,11 @@ verifyEqual(testCase, depValue(curr, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(volt, 'instrument_id'), 'el_1');
 verifyEqual(testCase, depValue(curr, 'instrument_id'), 'el_1');
 verifyEqual(testCase, depValue(volt, 'time_reference_id'), depValue(curr, 'time_reference_id'));
+% [voltage AFO, current NCIT] (Jess Haley, 2026-11-03): by node
 verifyEqual(testCase, volt.get('statement.variable').name, 'voltage');
-verifyEqual(testCase, curr.get('statement.variable').name, 'current');
+verifyEqual(testCase, volt.get('statement.variable').node, 'AFO:AFR_0001916');
+verifyEqual(testCase, curr.get('statement.variable').name, 'Electrical Current');
+verifyEqual(testCase, curr.get('statement.variable').node, 'NCIT:C48434');
 bodies = allOfClass(out, 'opaque_body');
 verifyEqual(testCase, numel(bodies), 1, 'one file, one body');
 verifyEqual(testCase, sort(ownersOf(bodies{1}.toStruct())), ...
