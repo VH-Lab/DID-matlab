@@ -453,6 +453,27 @@ verifyEmpty(testCase, setdiff(lost, findingsFor('session')), ...
     ['lost beyond the known findings: ' strjoin(lost, ', ')]);
 end
 
+function testADatasetsOwnSessionDateIsAnAcceptedLoss(testCase)
+% [dataset storage session date dropped] (Jess Haley, 2026-11-03): the
+% datestamp of a dataset's own session (when NDI first opened the dataset's
+% storage) is not kept; the round trip lists it as an accepted loss, named and
+% counted (JH: 2025-09-05 session vs 2025-09-09 dataset)
+s = writerSession('sd_DT', 'ds_T', 'haley_2025');
+s.base.datestamp = '2025-09-05T02:46:05.544Z';
+dr = writerRemote('dr_T', 'ds_T');
+out = did2.convert.v1_to_v2({s, dr}, 'Validate', false, 'TargetVersion', 'did_v2');
+out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
+r = did2.convert.roundtrip.wholeBatch({s, dr}, out);
+verifyTrue(testCase, isfield(r.accepted_losses_by_name, 'datasetStorageSessionDate'));
+if isfield(r.accepted_losses_by_name, 'datasetStorageSessionDate')
+    verifyEqual(testCase, r.accepted_losses_by_name.datasetStorageSessionDate, 1);
+end
+k = find(strcmp({r.failures.source_id}, 'sd_DT'));
+lost = {};
+if ~isempty(k); lost = r.failures(k).lost; end
+verifyFalse(testCase, any(strcmp(lost, 'base.datestamp')), strjoin(lost, ', '));
+end
+
 % ===================== known findings ===================================
 
 function f = knownFindings()
