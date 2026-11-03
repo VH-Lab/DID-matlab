@@ -170,6 +170,13 @@ end
 if isfield(result, 'summary') && isfield(result.summary, 'class_blocks_padding')
     report.class_blocks_padding = result.summary.class_blocks_padding;
 end
+% HANDED ON AS v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03):
+% pass 1's count, by class, of the documents it handed on to a batch pass
+% exactly as v1 wrote them (did2.convert.v1_to_v2 HAND_ON_CLASSES). Absent is
+% not zero.
+if isfield(result, 'summary') && isfield(result.summary, 'handed_on_as_v1')
+    report.handed_on_as_v1 = result.summary.handed_on_as_v1;
+end
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): pass 1's count of the dimensions whose term has no node,
 % per class, with its denominators (documents_inspected, dimensions_written).
