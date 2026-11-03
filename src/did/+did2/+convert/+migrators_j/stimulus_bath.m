@@ -4,7 +4,7 @@ function v2Body = stimulus_bath(preBody)
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'. Same
 %   disposition as the Brainstorm-E/I paths, retargeted for strict J (D8, which
-%   retired the `bath`/`pharmacological_manipulation` family): the legacy
+%   retired the `bath`/`pharmacological_manipulation` family (pre-#88 names)): the legacy
 %   stimulus_bath is a `manipulation` whose value is the bath's `formulation`,
 %   through `value_id` -- not a dose, since a dose always has an amount and a
 %   bath gives none (Jess Haley, 2026-10-21; did-schema

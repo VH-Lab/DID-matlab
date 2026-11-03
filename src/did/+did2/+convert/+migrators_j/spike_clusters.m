@@ -7,7 +7,7 @@ function bodies = spike_clusters(preBody)
 %   ---------------------------------------------------------------------
 %   WHY THIS IS NOT A MIGRATION
 %   ---------------------------------------------------------------------
-%   This migrator used to emit a body-backed count_observation whose sampled_body
+%   This migrator used to emit a body-backed `observation` (value kind `count`) whose sampled_body
 %   declared n = num_spikes. `num_spikes` DOES NOT EXIST. The real NDI class
 %   (ndi_common/database_documents/apps/spikesorter/spike_clusters.json, and its
 %   matching schema_documents entry) is:

@@ -24,7 +24,7 @@ function [entries, disposition] = jRecordingModality(elementType)
 %                   lands the loose `observes` relation is KEPT for them, so
 %                   nothing is lost in the meantime.
 %     'unresolved'  Guard A. ENTRIES is empty; the caller records a queryable
-%                   `modality unresolved` term_assertion naming the type, and
+%                   `modality unresolved` `assertion` (value kind `term`) naming the type, and
 %                   keeps `observes`. See jRecordingObservation for why Guard A
 %                   cannot be built in its signed form today.
 %
@@ -221,7 +221,7 @@ switch key
     % --- imaging ------------------------------------------------------------
     case {'wide-field-imaging', 'two-photon-imaging', ...
           'one-photon-imaging', 'brightfield-imaging'}
-        % did-schema #88 retired the `image` value kind and image_observation
+        % did-schema #88 retired the `image` value kind and its observation
         % (#73 review item 51, decided 2026-09-25): "a raster goes by what its
         % pixels measure ... camera frames are an intensity_observation" (quoted
         % as decided; built as an `observation` with the `intensity` mixin).

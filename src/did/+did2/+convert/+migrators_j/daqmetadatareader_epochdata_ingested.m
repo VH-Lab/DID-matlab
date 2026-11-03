@@ -97,7 +97,7 @@ b = did2.convert.v1read.readBase(preBody);
 id = b.id;
 if ~ischar(id); id = ''; end
 % did-schema #88 RETIRED `acquisition_metadata_file` (#73 review item 61): the
-% bytes become an opaque_body OWNED BY the stimulator term_manipulation of the
+% bytes become an opaque_body OWNED BY the stimulator `manipulation` (value kind `term`) of the
 % same epoch, which resolveEpochProbemap mints in a batch pass. A single
 % document cannot name that owner, so pass 1 PASSES IT THROUGH on its v1
 % tombstone, unchanged; did2.convert.resolveEpochProbemap

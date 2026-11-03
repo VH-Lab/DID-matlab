@@ -6,10 +6,10 @@ function bodies = fitcurve(preBody)
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   fitcurve is a generic curve fit, tied to a subject via element_id. #9
 %   analysis-tier fold (scalar pattern, pragmatic): the fit residual becomes a
-%   score_observation of the subject, with the fit EQUATION carried as the
+%   score-valued `observation` (pre-#73 fold) of the subject, with the fit EQUATION carried as the
 %   observation's method:
 %
-%       score_observation  variable = 'residual sum of squares', value =
+%       `observation`+`score` variable = 'residual sum of squares', value =
 %                          fit_sse, method = the fit_equation term. inline.
 %       session_relative_reference   the 'during' anchor.
 %
@@ -87,7 +87,7 @@ if jRawCarry('fitcurve', src, collision, unplaced, 'carry-100')
     return;
 end
 
-% did-schema #88: a model_fit_calculation (jModelFit; #73 review item 68).
+% did-schema #88: a `calculation` with value kind `model_fit` (jModelFit; #73 review item 68).
 % The pre-#73 fold kept only the residual, as a score observation.
 bodies = jModelFit(preBody, getBlock(preBody, 'fitcurve'), {'fit_example_data_id', 'fit_input_id'});
 if isscalar(bodies) && isequaln(bodies{1}, preBody)

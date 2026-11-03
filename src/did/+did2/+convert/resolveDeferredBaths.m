@@ -45,11 +45,11 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   BATCH-PASS-REMOVES: NONE -- it folds no document that is in the batch
 %
 %   SCOPE OF THAT LINE: V_eta is the only path. The V_zeta branch (makeBath
-%   emitting `bath` + `pharmacological_manipulation`) was deleted with
+%   emitting `bath` + `pharmacological_manipulation`, pre-#88 names) was deleted with
 %   +migrators_e/+migrators_i (did-schema #88, OPEN_WORK #128): only
 %   +migrators_j.stimulus_bath defers a bath now, so no other target can
 %   reach this pass with work to do.
-%   `term_observation` is CONDITIONAL (makeBathVEta, only when the source names an
+%   The `observation` with value kind `term` is CONDITIONAL (makeBathVEta, only when the source names an
 %   ANATOMICAL location -- not the generic bath, see below); the declaration
 %   states what the pass can emit, not what every document produces.
 %
@@ -543,7 +543,7 @@ function [bodies, anchorInfo] = makeBath(v1Body, subjectId, stimulatorId, ...
     clockByElementEpoch, targetVersion)
 %MAKEBATH Assemble the resolved bath (+ its anchor) for TARGETVERSION. Returns a
 %   cell of bodies {anchor, manipulation, ...} to fold back through v1_to_v2.
-%   Strict J (V_eta) retired the `bath`/`pharmacological_manipulation` family
+%   Strict J (V_eta) retired the `bath`/`pharmacological_manipulation` family (pre-#88 names)
 %   (D8). A bath is a `manipulation` whose value is the bath's `formulation`,
 %   taken through `value_id` -- NOT a dose: "A bath is a manipulation whose
 %   value is the formulation (pointed at through `value_id`), not a dose; a
@@ -642,7 +642,7 @@ fv.ingredients = entries;
 f = did2.build.document('formulation', struct('value', fv), ...
     o{:}, 'Edges', struct('ingredient_id', {ids}));
 bodies{end+1} = f;
-% `formulation_manipulation` is no class: did2.build reads it as the direction
+% Not a joined class name: did2.build reads the statement as the direction
 % `manipulation` with the value kind `formulation`. Its own `value` stays empty;
 % the formulation document holds it.
 % [one bath shape]: the stimulator is the instrument, as NDI's vetaBath writes

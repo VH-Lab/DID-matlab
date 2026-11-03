@@ -130,7 +130,7 @@ function v2Body = ontology_image(preBody)
 %                  must_refer_to_document_class: subject). The subject is
 %                  reachable only THROUGH the table row, which requires the
 %                  migrated-id graph that a single-document migrator cannot
-%                  see. Emitting a term_observation with an empty subject_id
+%                  see. Emitting an `observation` with value kind `term` with an empty subject_id
 %                  is exactly the husk this fix exists to stop -- so we do not
 %                  emit one. The document is left intact so the second pass can
 %                  decompose it with the graph in hand (the same strategy
@@ -143,13 +143,13 @@ function v2Body = ontology_image(preBody)
 %
 %                  Deferred with it: the raster itself (the ngrid block + the
 %                  .ngrid file) and the ontologyTableRow_id provenance edge.
-%                  Under R6 the natural target is an image_observation beside
+%                  Under R6 the natural target is an image_observation (pre-#88) beside
 %                  the term observations; that is part of the ngrid work, not
 %                  this fix.
 %
 %   #47 UPDATE, 2026-08-10 -- THE RASTER'S HOME, AND WHAT CHANGED UNDERNEATH.
 %   The R6 home is confirmed and it is a SECOND-PASS target, not a pass-1 one:
-%   an `image_observation` (+ a data_body) beside the term observations. It
+%   an `image_observation` (pre-#88) (+ a data_body) beside the term observations. It
 %   cannot be minted here for the same reason the term observation cannot --
 %   `subject_statement.subject_id` declares `must_refer_to_document_class:
 %   subject`, and this document's only edge is a table row. Emitting one would
@@ -199,12 +199,12 @@ function v2Body = ontology_image(preBody)
 %   migrated)"; the direction now confirmed is that document's own R4 section,
 %   "`ngrid` -> phases into `sampled_body`".
 %
-%   Built below as a THIRD arm: subject + raster -> the term_observation this
-%   migrator already emitted, PLUS an image_observation whose value is body-
+%   Built below as a THIRD arm: subject + raster -> the `observation`+`term` this
+%   migrator already emitted, PLUS an image_observation (pre-#88) whose value is body-
 %   backed, PLUS the sampled_body carrying the grid, PLUS the shared anchor.
 %   1 -> 4. The mapping itself lives in jNgridBody (shared, so the RF fold can
-%   reuse it), and the sampled_body is bound to the image_observation, not to the
-%   term_observation: the body IS the picture, and the term says what the picture
+%   reuse it), and the sampled_body is bound to the image observation, not to the
+%   term observation: the body IS the picture, and the term says what the picture
 %   depicts.
 %
 %   THE ARM IS KEYED ON THE SUBJECT, NOT ON THE VINTAGE, because "can we name
@@ -314,7 +314,7 @@ isVintageA = hasText(block, 'ontology_name') || hasText(block, 'ontology_region'
 
 if isVintageB
     % Deferred to the NDI second pass -- pass the document through intact.
-    % Deliberately NOT emitting a term_observation: see the header. Vintage B
+    % Deliberately NOT emitting an `observation` with value kind `term`: see the header. Vintage B
     % wins when both are somehow present, because its terms are authoritative.
     %
     % [ngrid with no statement carried] (Decided by Jess Haley, 2026-10-29,

@@ -7,7 +7,7 @@ function bodies = binnedspikeratevm(preBody)
 %   ---------------------------------------------------------------------
 %   WHY THIS IS NOT A MIGRATION
 %   ---------------------------------------------------------------------
-%   This migrator used to emit a body-backed frequency_observation whose
+%   This migrator used to emit a body-backed `observation` (value kind `frequency`) whose
 %   sampled_body declared a REGULAR timeline of n = num_bins samples at
 %   dt = bin_size, with unit 'Hz'. NEITHER `num_bins` NOR `bin_size` EXISTS. The
 %   real NDI class

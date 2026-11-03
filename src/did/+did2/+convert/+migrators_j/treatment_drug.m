@@ -13,12 +13,12 @@ function v2Body = treatment_drug(preBody)
 %                           formulation, through `value_id`. No location
 %                           observation -- "bath" is where the subject sat, not
 %                           a site on it, and the leaf already says so.
-%     any other location    a DOSE: `dose_manipulation`, its amount the
+%     any other location    a DOSE: `manipulation` + `dose`, its amount the
 %                           mixture row's when that row is in an amount unit
 %                           (Hunsberger: mg/kg; the whole formulation's
 %                           amount then listed as a gap), else NaN in
 %                           `volume.liters` (jDoseValue); the site is Path S -- a merely-located
-%                           site becomes a `term_observation` here (D3), an
+%                           site becomes an `observation` with value kind `term` here (D3), an
 %                           attributed site is promoted by the NDI second pass.
 %     no location           a dose with a NaN amount, listed in the migration
 %                           report as `route_unknown` (did2.convert.reportNote).

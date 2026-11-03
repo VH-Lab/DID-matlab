@@ -7,7 +7,7 @@ function bodies = openminds_stimulus(preBody)
 %   ---------------------------------------------------------------------
 %   WHY THIS IS NO LONGER A TERM_ASSERTION
 %   ---------------------------------------------------------------------
-%   This migrator used to emit one `term_assertion` per document, mirroring its
+%   This migrator used to emit one `assertion` (value kind `term`) per document, mirroring its
 %   openminds_subject sibling. Every one of the ~635 documents in the corpora came
 %   out with an EMPTY `subject_id`, and even correcting that would still have been
 %   the wrong shape. Both faults have the same root: the document is not a
@@ -36,7 +36,7 @@ function bodies = openminds_stimulus(preBody)
 %                                     stimulator_id, 'epochid.epochid', epoch_id)
 %        +setup/+stimulus/+vhlab/add_stimulus_approach.m:59-65   the same, on probe_id
 %
-%      `subject_assertion` declares no fields and no edges, and `time_reference_#`
+%      `subject_assertion` (pre-#88) declared no fields and no edges, and `time_reference_#`
 %      lives on `subject_interaction` -- the OTHER branch of the statement tier. So
 %      an assertion cannot carry an epoch. The old migrator dropped it outright,
 %      and asserted, timelessly, that the STIMULATOR is-a spatial-frequency-tuning.

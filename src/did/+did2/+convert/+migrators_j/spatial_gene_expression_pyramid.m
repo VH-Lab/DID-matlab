@@ -16,10 +16,10 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %   TEAM-SIGN-OFF [spatial_transcriptomics_family], Steve Van Hooser
 %   2026-09-22 (did-schema/schemas/V_eta_go_forward_class_audit.md):
 %   Corrected Option C from Waltham-Data-Science/DID-schema#70. Structural:
-%   the pyramid becomes ⊂ [base, gene_expression, subject_observation]
+%   the pyramid becomes ⊂ [base, gene_expression, subject_observation (pre-#88)]
 %   (was ⊂ [base, geneExpression]), picking up variable /
 %   method_parameters / sample_time / time_reference_# from the
-%   subject_observation direction; the existing subject_id required-ness
+%   `observation` direction; the existing subject_id required-ness
 %   moves from the class's own declaration to the inherited slot. The
 %   `variable` binding was landed by the same DID-schema commit
 %   (71298fd, schemas/V_eta/stable/binding_registry_meta.json) --
@@ -66,8 +66,8 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %   ---------------------------------------------------------------------
 %   The brief flagged a possible `jGeneExpressionObservation` helper
 %   analogous to jCalculation. Held off for now: only ONE class in this
-%   family carries the subject_observation direction (the pyramid), so
-%   there is no duplication to extract. If a second subject_observation
+%   family carries the `observation` direction (the pyramid), so
+%   there is no duplication to extract. If a second `observation`
 %   -shaped source lands (a bulk RNA-seq class, say), the shape below
 %   promotes cleanly to a helper by copying the three lines that set
 %   subject_statement.variable / subject_interaction.sample_time /

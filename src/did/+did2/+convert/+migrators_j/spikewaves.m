@@ -7,7 +7,7 @@ function bodies = spikewaves(preBody)
 %   ---------------------------------------------------------------------
 %   WHY THIS IS NOT A MIGRATION
 %   ---------------------------------------------------------------------
-%   This migrator used to emit a body-backed voltage_observation whose
+%   This migrator used to emit a body-backed `observation` (value kind `voltage`) whose
 %   sampled_body declared one datum per spike, shaped [samples_per_spike], with
 %   n = num_spikes. NEITHER `num_spikes` NOR `samples_per_spike` EXISTS. The real
 %   NDI class (ndi_common/database_documents/apps/spikeextractor/spikewaves.json)

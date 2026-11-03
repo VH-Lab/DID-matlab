@@ -50,7 +50,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   BATCH-PASS-EMITS: valid_interval -> nothing: DORMANT BY TEAM DECISION
 %       2026-08-12. `options.Decompose` is FALSE by default (:471) and the
 %       census arm at :594 returns before any emission, so this pass emits
-%       nothing today. The `logical_observation` + `relative_reference`
+%       nothing today. The `observation` (value kind `logical`) + `relative_reference`
 %       decomposition behind the guard is NOT the signed model and waits on
 %       `axes[]`.
 %
@@ -66,7 +66,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   BATCH-PASS-REMOVES: valid_interval
 %
 %   THAT `nothing` IS LOAD-BEARING AND MUST NOT BE "FIXED" INTO AN EMISSION.
-%   The `valid_interval` ledger row carries `logical_observation` as its
+%   The `valid_interval` ledger row carried `logical_observation` (pre-#88 name) as its
 %   DECIDED target, so declaring it emitted here would move that row to the
 %   top of the completion ladder on the strength of code that is switched off
 %   -- the reassuring-direction error this repository keeps paying for, in a
@@ -81,13 +81,13 @@ function [result, report] = resolveValidIntervals(result, options)
 %   `mustBeNonEmpty` or `undeclaredField`. That is the same pattern every other
 %   deferred family uses.
 %
-%   WHEN `axes[]` LANDS, the class this emits is `logical_observation`
-%   (over {subject_observation, logical}) and NOT `validity_observation` -- see
+%   WHEN `axes[]` LANDS, the class this emits is an `observation` with value kind `logical`
+%   (pre-#88: over {subject_observation, logical}) and NOT the old `validity_observation` -- see
 %   THE CLASS NAMING below. The dormant emission path already names it, so the
 %   rename does not have to be rediscovered later.
 %
 %   THE DECOMPOSING PATH, for when it is re-armed: for every `valid_interval`
-%   document it emits ONE `logical_observation` per interval -- a boolean
+%   document it emits ONE `observation` (value kind `logical`) per interval -- a boolean
 %   statement about the element-subject -- plus the `relative_reference` each
 %   statement is anchored to.
 %
@@ -227,7 +227,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   HAZARD 2 -- ORDER IS *NOT* LOAD-BEARING. THIS SECTION SAID THE OPPOSITE.
 %   ---------------------------------------------------------------------
 %   IT USED TO READ "ORDER IS LOAD-BEARING, AND THE CONSUMER IS AN ANALYSIS",
-%   and every statement carried `validity_observation.sequence` = its 1-based
+%   and every statement carried `validity_observation.sequence` (pre-2026-08-12 name) = its 1-based
 %   position in the v1 array because of it. The premise was one unchecked
 %   reading of a call site, and it is FALSE. Positive evidence, from NDI
 %   `origin/main` (42c94e53b):
@@ -252,7 +252,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   -- it iterates EVERY row and accumulates through a SET UNION. It never
 %   indexes `vi` by position. So v1's append order is invisible to every reader
 %   of the class: it is a storage artifact, not a fact. `sequence` IS DELETED
-%   and `logical_observation` declares NO FIELDS AT ALL, like
+%   and the pre-#88 `logical_observation` declared NO FIELDS AT ALL, like
 %   `length_observation` and `count_observation`.
 %
 %   LIMIT OF THIS CHECK, STATED RATHER THAN GLOSSED. `vlt.math.interval_add` is
@@ -287,7 +287,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %       nothing else, so a re-deriving answer still has the exact v1 graph --
 %       `migrators_j/element.m:131` already emits the
 %       `child --derived_from--> parent` relation it would walk;
-%     * `subject_observation.derived_from_#` exists, is OPTIONAL, and is left
+%     * `subject_observation.derived_from_#` (pre-#88) exists, is OPTIONAL, and is left
 %       EMPTY here, so a materialising answer needs no schema change and pass 1
 %       has invented no edge it would have to undo;
 %     * there is no per-statement ordinal to reconcile across a merged set --
@@ -311,7 +311,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %                               own, emit a copy with a fresh id,
 %                               `derived_from_#` pointing at the original, and
 %                               (per T6's cache rule) an `is_cache`-style marker
-%                               -- which `subject_observation` does NOT declare
+%                               -- which `subject_observation` (pre-#88) does NOT declare
 %                               today, so the schema half would need it, or the
 %                               copies would be indistinguishable from primary
 %                               curation.
@@ -382,7 +382,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   ---------------------------------------------------------------------
 %   THE VERB -- WHY `method` IS STATED, AND WITH WHAT
 %   ---------------------------------------------------------------------
-%   A validity `logical_observation` records a CURATORIAL JUDGEMENT: a person ran
+%   A validity `observation` (value kind `logical`) records a CURATORIAL JUDGEMENT: a person ran
 %   `ndi.app.markgarbage` and marked which stretches of a recording are good
 %   data. It is NOT a measurement taken from the subject. V_eta's four statement
 %   directions are assertion / observation / manipulation / calculation and none
@@ -655,7 +655,7 @@ if ~options.Decompose
     return;
 end
 report.dormant = false;
-% did-schema #88 retired `logical_observation` (#73 review item 52), the class
+% did-schema #88 retired the `observation` of value kind `logical` (#73 review item 52), the class
 % the decomposition below emits, so there is no target to decompose into. Say so
 % rather than build a shape the schema no longer has.
 error('did2:convert:validIntervalTargetRetired', ...
@@ -1030,7 +1030,7 @@ function body = makeLogicalObservation(src, elementId, isValid, refIds, methodTe
 %   'markinvalidinterval' companion"). The parameter exists because the CLASS
 %   can say false; nothing in v1 can.
 %
-%   THE STATEMENT CARRIES NO FIELDS OF ITS OWN. `logical_observation` declares
+%   THE STATEMENT CARRIES NO FIELDS OF ITS OWN. The pre-#88 `logical_observation` declared
 %   none (`sequence` went with HAZARD 2), so everything here is inherited:
 %   `subject_id` + `variable` from subject_statement, `method` +
 %   `time_reference_#` from subject_interaction, the boolean from `logical`.
