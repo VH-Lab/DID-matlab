@@ -1665,7 +1665,9 @@ if isempty(instr); return; end
 for k = 1:numel(result.migrated)
     d = result.migrated{k}.toStruct();
     if ~strcmp(char(d.document_class.class_name), 'directed_relation'); continue; end
-    if ~strcmp(char(d.directed_relation.relation.node), 'RO:0002170'); continue; end
+    % a pass-1 `observes` handle has no node
+    rel = d.directed_relation.relation;
+    if ~isstruct(rel) || ~isfield(rel, 'node') || ~strcmp(char(rel.node), 'RO:0002170'); continue; end
     if strcmp(depVal(d, 'child_id'), instr) && strcmp(depVal(d, 'time_reference_id'), anchor)
         w = d;
         return;
