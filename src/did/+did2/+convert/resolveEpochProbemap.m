@@ -208,6 +208,24 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   `patch` or `sharp` has no decided mode and writes none.
 %   `mode_methods_written` counts the observations built with one.
 %
+%   A PROBE IN SEVERAL ROWS IS ONE WIRING (Decided by Jess Haley, 2026-11-03,
+%   [probe in several rows is one wiring]). A probe listed in several rows of
+%   one epoch's probe map (B and Dab: a stimulator once per marker channel,
+%   `vhvis_spike2:mk1`, `...:mk2`, ...) gets ONE statement and ONE `connected
+%   to` relation per acquisition system its rows name, holding every row's
+%   channels in row order (NDI's ndi.probe.getchanneldevinfo joins the
+%   matching rows' channels in row order); its later rows fold into the first
+%   (severalRowsPlan). Rows of the probe that disagree on anything but the
+%   devicestring (type, subject) do not merge: they keep their statements and
+%   their v1 document. A joined channel list whose types interleave keeps the
+%   v1 document as any interleaved row does. Counters:
+%   `wiring_several_rows_merged` (relations holding several rows' channels),
+%   `wiring_several_rows_folded` (rows folded into an earlier row of their
+%   group) and `wiring_several_rows_disagree` (rows that keep their v1
+%   document because the probe's rows disagree). The round trip writes the
+%   merged row (`vhvis_spike2:mk1-3;e1-3;md1`), the probe and channels NDI
+%   reads (did2.convert.roundtrip.epochfiles_ingested).
+%
 %   Options mirror the sibling passes (Validate / SchemaCache / TargetVersion).
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
@@ -276,7 +294,9 @@ report = struct( ...
     'wiring_relations_minted',        0, ...
     'rows_unwirable',                 0, ...
     'wiring_types_interleaved',       0, ...
-    'wiring_probe_in_several_rows',   0, ...
+    'wiring_several_rows_merged',     0, ...
+    'wiring_several_rows_folded',     0, ...
+    'wiring_several_rows_disagree',   0, ...
     'channels_unbindable_type',       0, ...
     'channels_derived_read_mode',     0, ...
     'fold_quarantined',               0, ...
@@ -604,22 +624,25 @@ for k = 1:n
     pm = probemapCharOf(b);
     rowsPM = [];
     if ~isempty(pm); rowsPM = parseProbemapRows(pm); end
-    % how many rows with a devicestring name each probe in THIS probe map
-    % (see THE WIRING below: a probe in several rows cannot be wired)
-    rowsPerProbe = containers.Map('KeyType', 'char', 'ValueType', 'double');
-    for r = 1:numel(rowsPM)
-        if isempty(rowsPM(r).devicestring); continue; end
-        pk = probeLocalIdentifier(rowsPM(r).name, rowsPM(r).reference);
-        if isempty(pk); continue; end
-        if isKey(rowsPerProbe, pk)
-            rowsPerProbe(pk) = rowsPerProbe(pk) + 1;
-        else
-            rowsPerProbe(pk) = 1;
-        end
-    end
+    % A probe listed in several rows of THIS probe map (B and Dab: a
+    % stimulator once per marker channel) is one wiring: see severalRowsPlan
+    % and THE WIRING below. groupOf{r} lists, for a row that leads its
+    % (probe, system) group, every row of the group in row order; foldedInto(r)
+    % is the leading row a later row of the group folds into (0: none);
+    % disagree(r) marks a row of a probe whose rows disagree on anything but
+    % the devicestring (it keeps its v1 document).
+    [groupOf, foldedInto, disagree] = severalRowsPlan(rowsPM);
     for r = 1:numel(rowsPM)
         report.probe_rows_total = report.probe_rows_total + 1;
         row = rowsPM(r);
+        if foldedInto(r) > 0
+            % [probe in several rows is one wiring]: this row's statement is
+            % its leading row's (alike: same probe, type, subject and system)
+            % and its channels are on that row's one wiring relation, after
+            % the leading row's own, in row order
+            report.wiring_several_rows_folded = report.wiring_several_rows_folded + 1;
+            continue;
+        end
         if isempty(row.subjectstring)
             report.rows_no_subjectstring = report.rows_no_subjectstring + 1;
             rowsWithoutHome = rowsWithoutHome + 1;
@@ -659,13 +682,29 @@ for k = 1:n
         acqSystemId = '';
         channels = emptyChannels();
         if ~isempty(row.devicestring)
-            report.device_strings_seen = report.device_strings_seen + 1;
-            [deviceName, channels, chanOk] = parseDeviceString(row.devicestring);
-            if chanOk
-                report.device_channels_parsed = report.device_channels_parsed + 1;
-            else
-                report.device_channels_unparsable = ...
-                    report.device_channels_unparsable + 1;
+            % the row, and, when it leads a probe's several rows on one
+            % system, every row of that group in row order: their channels
+            % are joined in that order, never sorted (NDI's
+            % ndi.probe.getchanneldevinfo concatenates the matching rows'
+            % channels in row order)
+            members = groupOf{r};
+            if isempty(members); members = r; end
+            for mi = 1:numel(members)
+                report.device_strings_seen = report.device_strings_seen + 1;
+                [deviceNameM, channelsM, chanOk] = ...
+                    parseDeviceString(rowsPM(members(mi)).devicestring);
+                if mi == 1
+                    deviceName = deviceNameM;
+                    channels = channelsM;
+                else
+                    channels = [channels, channelsM]; %#ok<AGROW>
+                end
+                if chanOk
+                    report.device_channels_parsed = report.device_channels_parsed + 1;
+                else
+                    report.device_channels_unparsable = ...
+                        report.device_channels_unparsable + 1;
+                end
             end
             if ~isempty(deviceName)
                 dk = epochKey(sid, deviceName);
@@ -728,21 +767,20 @@ for k = 1:n
             elseif isempty(instrumentId) || isempty(acqSystemId)
                 report.rows_unwirable = report.rows_unwirable + 1;
                 rowsWithoutHome = rowsWithoutHome + 1;
-            elseif isKey(rowsPerProbe, probeLocalId) && rowsPerProbe(probeLocalId) > 1
-                % one probe in several rows of one epoch's probe map (B and Dab:
-                % a stimulator listed once per marker channel, mk1, mk2, ...):
-                % its rows' statements are alike and a relation cannot say
-                % which row's channels are whose, so the round trip could not
-                % rebuild the rows. The row keeps its v1 document, counted,
-                % until the team decides the shape (one relation with every
-                % row's channels, or one per row with its position).
-                report.wiring_probe_in_several_rows = ...
-                    report.wiring_probe_in_several_rows + 1;
+            elseif disagree(r)
+                % [probe in several rows is one wiring], guard (3): a probe
+                % whose several rows disagree on anything but the devicestring
+                % (its type, its subject) is not one wiring. Its rows keep
+                % their statements and their v1 document, counted.
+                report.wiring_several_rows_disagree = ...
+                    report.wiring_several_rows_disagree + 1;
                 rowsWithoutHome = rowsWithoutHome + 1;
             elseif typesInterleaved(channels)
                 % one condition per channel type cannot hold 'ai1-4;di1;ai9':
                 % the order of the groups (NDI's channel order) would be lost,
-                % so the row keeps its v1 document, counted
+                % so the row keeps its v1 document, counted. For a probe in
+                % several rows this is the JOINED list ('mk1', 'e1', 'mk2'):
+                % those rows keep their v1 document too.
                 report.wiring_types_interleaved = report.wiring_types_interleaved + 1;
                 rowsWithoutHome = rowsWithoutHome + 1;
             else
@@ -757,6 +795,10 @@ for k = 1:n
                     acBodyById(acId) = acBody;
                     report.wiring_relations_minted = ...
                         report.wiring_relations_minted + 1;
+                end
+                if numel(groupOf{r}) > 1
+                    report.wiring_several_rows_merged = ...
+                        report.wiring_several_rows_merged + 1;
                 end
             end
         end
@@ -1707,6 +1749,77 @@ rel = did2.build.directedRelation(char(probeId), char(acqSystemId), ...
     'Fields', struct('conditions', {did2.build.list(entries{:})}), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false);
+end
+
+function [groupOf, foldedInto, disagree] = severalRowsPlan(rows)
+%SEVERALROWSPLAN Which rows of one probe map are one probe's several rows,
+%   and how they merge.
+%   Decided by Jess Haley, 2026-11-03, did-schema
+%   did_v2_go_forward_class_audit.md [probe in several rows is one wiring]: a
+%   probe listed in several rows of one epoch's probe map (a stimulator once
+%   per marker channel, mk1..mk7) is wired by ONE `connected to` relation per
+%   acquisition system, holding all its rows' channels, and the rows' alike
+%   statements merge into one. Guards: (1) channels kept in row order, never
+%   sorted; (2) one relation per acquisition system the rows name; (3) only
+%   rows that agree on everything else (e.g. the subject column) merge,
+%   otherwise the rows keep their v1 document, counted.
+%
+%   A probe is a row's (name, reference), as NDI's epochprobemapmatch and
+%   probeLocalIdentifier read it; only rows that name a device count (a row
+%   with no devicestring is wired by nothing, and is read as before). For a
+%   probe in two or more such rows:
+%     - the rows AGREE when their name, reference, type and subjectstring are
+%       the same text. Then the rows are grouped by the device name of their
+%       devicestring (the acquisition system), each group in row order: its
+%       first row LEADS (groupOf{lead} = the group's rows, in row order) and
+%       every later row FOLDS into it (foldedInto(row) = lead). A group of one
+%       row is an ordinary row.
+%     - otherwise every such row of the probe is marked DISAGREE.
+%   ROWS is parseProbemapRows' struct array.
+n = numel(rows);
+groupOf = cell(1, n);
+foldedInto = zeros(1, n);
+disagree = false(1, n);
+probeKeys = cell(1, n);
+for r = 1:n
+    probeKeys{r} = '';
+    if isempty(rows(r).devicestring); continue; end
+    probeKeys{r} = probeLocalIdentifier(rows(r).name, rows(r).reference);
+end
+named = find(~cellfun(@isempty, probeKeys));
+done = false(1, n);
+for r = named
+    if done(r); continue; end
+    same = named(strcmp(probeKeys(named), probeKeys{r}));
+    done(same) = true;
+    if isscalar(same); continue; end
+    agree = true;
+    for f = {'name', 'reference', 'type', 'subjectstring'}
+        vals = arrayfun(@(i) char(rows(i).(f{1})), same, 'UniformOutput', false);
+        if ~all(strcmp(vals, vals{1}))
+            agree = false;
+        end
+    end
+    if ~agree
+        disagree(same) = true;
+        continue;
+    end
+    devs = arrayfun(@(i) deviceNameOf(rows(i).devicestring), same, 'UniformOutput', false);
+    taken = false(1, numel(same));
+    for i = 1:numel(same)
+        if taken(i); continue; end
+        g = find(strcmp(devs, devs{i}));    % in row order
+        taken(g) = true;
+        groupOf{same(i)} = same(g);
+        foldedInto(same(g(2:end))) = same(i);
+    end
+end
+end
+
+function d = deviceNameOf(devicestring)
+% the device (acquisition system) name of a devicestring, as parseDeviceString
+% reads it
+[d, ~, ~] = parseDeviceString(devicestring);
 end
 
 function tf = typesInterleaved(channels)

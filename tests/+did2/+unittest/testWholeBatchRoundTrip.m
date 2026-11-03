@@ -251,6 +251,54 @@ verifyFalse(testCase, isfield(r.no_inverse_by_class, 'epochfiles_ingested'), des
 verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
 end
 
+function testAProbeInSeveralRowsRoundTripsAsItsMergedRow(testCase)
+% [probe in several rows is one wiring] (Jess Haley, 2026-11-03): a stimulator
+% listed once per channel (B and Dab) is one statement and one wiring holding
+% every row's channels in row order; the round trip writes the merged row
+% ('vis:mk1-3;e1;md1'), the probe and channels NDI reads, and the comparison
+% accepts it as the same probe with the same ordered channel list
+[bodies, result] = severalRowsBatch(testCase, 'wb_sev', 'b4');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyFalse(testCase, isfield(r.changed_by_class, 'epochfiles_ingested'), describe(r));
+verifyFalse(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
+end
+
+function testAMergedRowWithAnotherChannelOrderIsLost(testCase)
+% the equivalence is the ordered channel list: a v1 map whose rows list the
+% same channels in another order is not what the merged row states
+[bodies, result] = severalRowsBatch(testCase, 'wb_sevx', 'b5');
+k = find(cellfun(@(b) strcmp(b.document_class.class_name, 'epochfiles_ingested'), bodies));
+pm = bodies{k}.epochfiles_ingested.epochprobemap;
+bodies{k}.epochfiles_ingested.epochprobemap = strrep(strrep(strrep(pm, ...
+    'vis:mk1', 'vis:TMP'), 'vis:mk2', 'vis:mk1'), 'vis:TMP', 'vis:mk2');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyTrue(testCase, isfield(r.failures_by_class, 'epochfiles_ingested'), describe(r));
+end
+
+function [bodies, result] = severalRowsBatch(testCase, stem, tail)
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = ['41268b6f5c6a3d4e_00000000000000' tail];
+bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), ...
+    elementV1([stem '_stim'], sid, 'vis', 1, 'stimulator', [stem '_spec']), ...
+    daqsystemV1([stem '_daq'], sid, 'vis', [stem '_nav']), ...
+    manifestV1([stem '_efi'], sid, 't0001', [stem '_nav'], ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'vis\t1\tstimulator\tvis:mk1\tL\n' ...
+        'vis\t1\tstimulator\tvis:mk2\tL\n' ...
+        'vis\t1\tstimulator\tvis:mk3\tL\n' ...
+        'vis\t1\tstimulator\tvis:e1\tL\n' ...
+        'vis\t1\tstimulator\tvis:md1\tL\n']))};
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'did_v2');
+assert(rep.manifests_renamed == 1 && rep.wiring_several_rows_merged == 1, ...
+    'premise: the five rows merged and the manifest was renamed');
+end
+
 function testAProbeWhoseObservesRelationWasRetiredIsComparedAfterThePass(testCase)
 % resolveEpochProbemap retires the probe's `observes` relation once a recording
 % observation carries the same (instrument, specimen) pair; the element's
