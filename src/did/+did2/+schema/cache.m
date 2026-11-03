@@ -1,11 +1,11 @@
 classdef cache < handle
-    % did2.schema.cache  V2 schema cache.
+    % did2.schema.cache  v2 schema cache.
     %
-    %   Loads V2 schema files lazily, resolves superclass chains,
-    %   builds blank documents in the V2 class-scoped wire shape,
+    %   Loads v2 schema files lazily, resolves superclass chains,
+    %   builds blank documents in the v2 class-scoped wire shape,
     %   and validates documents against their class definitions.
     %
-    %   Document shape (V2 "JSON Format: Document Instances"):
+    %   Document shape (v2 "JSON Format: Document Instances"):
     %     document_class
     %       .class_name       string         concrete class
     %       .class_version    string         semver of the concrete class
@@ -17,15 +17,15 @@ classdef cache < handle
     %                                        declared (empty {} if it
     %                                        declares no fields).
     %
-    %   MATLAB representation: every key in the V2 wire shape is a
+    %   MATLAB representation: every key in the v2 wire shape is a
     %   valid MATLAB struct field name (no leading underscores anywhere
-    %   after the V2 SPEC's "drop underscore prefixes" update), so
+    %   after the v2 SPEC's "drop underscore prefixes" update), so
     %   the in-memory representation is the JSON shape verbatim.
     %   `jsondecode` returns a struct with the same field names, and
     %   `jsonencode` writes them back without any rename pass.
     %
     %   did2.schema.cache Properties:
-    %       schemaPath      - filesystem path to a V2 schema dir.
+    %       schemaPath      - filesystem path to a v2 schema dir.
     %       loadedClasses   - containers.Map of classname -> raw schema.
     %       curieRegistry   - parsed CURIE_lookups_meta.json contents.
     %
@@ -139,7 +139,7 @@ classdef cache < handle
     %       loadAllSchemas      - parse every *.json in the schema dir.
     %       queryablePaths      - scalar and array-iteration paths
     %                             declared by the loaded schemas.
-    %       buildBlankDocument  - blank V2 document in the wire shape.
+    %       buildBlankDocument  - blank v2 document in the wire shape.
     %       validateDocument    - validate a did2.document instance.
     %
     %   See also: did2.document.
@@ -161,7 +161,7 @@ classdef cache < handle
         % pure functions of the loaded schemas, which only ever grow here
         % (getClass caches every file it reads; a new schema path makes a
         % new instance), so a remembered answer cannot go stale. Every
-        % document read used to recompute them: listing the 10,536 Haley V2
+        % document read used to recompute them: listing the 10,536 Haley v2
         % subjects called getClass 900,580 times.
         superclassMemo
         placementMemo
@@ -1189,7 +1189,7 @@ classdef cache < handle
         end
 
         function doc = buildBlankDocument(obj, className, kind)
-            % buildBlankDocument - blank V2 document in the
+            % buildBlankDocument - blank v2 document in the
             %   class-scoped wire shape. Mints a fresh did_uid for
             %   base.id and the current UTC timestamp for base.datestamp.
             %   KIND names the value kind of a statement direction that
@@ -1301,7 +1301,7 @@ classdef cache < handle
                     || ~all(cellfun(@strcmp, declaredAncestors, expectedAncestors))
                 error('did2:validation:superclassesChainMismatch', ...
                     ['document_class.superclasses for "%s" is {%s} but ' ...
-                     'the schema chain is {%s}. V2 requires the ' ...
+                     'the schema chain is {%s}. v2 requires the ' ...
                      'snapshot to match the schema-derived chain ' ...
                      'class-name-by-class-name.'], ...
                     className, ...
@@ -1361,9 +1361,9 @@ classdef cache < handle
                     if ~any(strcmp(fn, declaredNames))
                         error('did2:validation:undeclaredField', ...
                             ['Property block "%s" carries undeclared ' ...
-                             'field "%s". V2 requires every block ' ...
+                             'field "%s". v2 requires every block ' ...
                              'field to be declared by the schema; v1 ' ...
-                             'fields without a V2 counterpart must ' ...
+                             'fields without a v2 counterpart must ' ...
                              'be migrated or explicitly dropped.'], ...
                             blockClass, fn);
                     end
@@ -1384,7 +1384,7 @@ classdef cache < handle
                     error('did2:validation:undeclaredBlock', ...
                         ['Document carries undeclared top-level block ' ...
                          '"%s". Either snake_case the key to match a ' ...
-                         'V2 chain class or remove it in a per-class ' ...
+                         'v2 chain class or remove it in a per-class ' ...
                          'migrator.'], tn);
                 end
             end
@@ -1864,14 +1864,14 @@ classdef cache < handle
     methods (Static)
         function p = schemaSetTierPath(schemasDir, tier)
             % schemaSetTierPath - <schemasDir>/did_v2/<tier> when that folder
-            %   exists, else <schemasDir>/V_eta/<tier>: the V2 set's two names
+            %   exists, else <schemasDir>/V_eta/<tier>: the v2 set's two names
             %   ([schema set renamed did_v2], Jess Haley, 2026-10-25, step 1:
             %   accept both, prefer did_v2). The V_eta path is returned when
             %   neither exists, so a caller reports the name it looked for.
             %
             %   THE FLAT LAYOUT. [one folder, final classes only] (Decided by
             %   Jess Haley, 2026-10-29, did-schema
-            %   V_eta_go_forward_class_audit.md): every V2 class moves into
+            %   V_eta_go_forward_class_audit.md): every v2 class moves into
             %   one folder, schemas/did_v2/*.json, with no stable/ or draft/
             %   tier, and the siblings read the flat layout first. A did_v2
             %   folder holding neither a stable/ nor a draft/ tier is that
@@ -2630,13 +2630,13 @@ classdef cache < handle
             %   Always lowercase so the convention round-trips cleanly
             %   through `pragma_table_info` (which reports column names
             %   in the case SQLite parses them) regardless of how the
-            %   class names happen to be spelled in the V2 schema
+            %   class names happen to be spelled in the v2 schema
             %   files.
             name = ['q_' lower(strrep(path, '.', '_'))];
         end
 
         function aff = affinityFor(fieldType)
-            % affinityFor - SQLite type affinity for a V2 scalar type.
+            % affinityFor - SQLite type affinity for a v2 scalar type.
             switch fieldType
                 case {'char', 'did_uid', 'timestamp', 'date', 'string'}
                     aff = 'TEXT';

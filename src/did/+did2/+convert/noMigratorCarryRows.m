@@ -30,11 +30,11 @@ function [names, rows] = noMigratorCarryRows(v1Name)
 %   did_v2_ensemble_plan.md [ensemble retired]). `generic_file` is converted by
 %   the batch pass did2.convert.foldGenericFiles.
 %
-%   AND the two NDIcalc-vis-matlab classes with no V2 class,
+%   AND the two NDIcalc-vis-matlab classes with no v2 class,
 %   hartley_reverse_correlation and reverse_correlation: Decided by Jess Haley,
 %   2026-11-01 [last rename-pass classes], "a v1 `hartley_reverse_correlation`
 %   or `reverse_correlation` is carried unchanged as v1, each with its own
-%   carry row. Their V2 home is tracked in did-schema #260." Their rows are
+%   carry row. Their v2 home is tracked in did-schema #260." Their rows are
 %   carry-168 and carry-169 (OPEN_WORK #165).
 %
 %   See also did2.convert.v1_to_v2, did2.convert.rawV1Classes.

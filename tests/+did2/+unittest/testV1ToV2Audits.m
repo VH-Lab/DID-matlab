@@ -59,7 +59,7 @@ verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'did_v2'));
 end
 
 function testABlankDocumentIsAtTheTarget(testCase)
-% did2.document.blank stamps the V2 stamp ('did_v2', did2.schema.v2Stamp), so
+% did2.document.blank stamps the v2 stamp ('did_v2', did2.schema.v2Stamp), so
 % a freshly built document is already at the target.
 verifyTrue(testCase, did2.convert.isAlreadyTarget(makeBody(), 'did_v2'));
 end

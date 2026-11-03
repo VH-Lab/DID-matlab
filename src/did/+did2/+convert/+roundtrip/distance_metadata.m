@@ -5,7 +5,7 @@ function [v1, spec] = distance_metadata(bodies)
 %   [V1, SPEC] = did2.convert.roundtrip.distance_metadata(BODIES). V1 is the
 %   document in NDI's v1 shape (element/distance_metadata.json + base.json at
 %   the locked NDI-matlab `main`, 3cb19a8, as +setup/+conv/+haley/doImport.m
-%   writes it). BODIES holds the one V2 `distance_metadata` the migrator
+%   writes it). BODIES holds the one v2 `distance_metadata` the migrator
 %   reshapes it into:
 %
 %     base.id, session_id, name, datestamp  the document's (name is kept on a
@@ -29,7 +29,7 @@ function [v1, spec] = distance_metadata(bodies)
 %   carried] (Jess Haley, 2026-10-29, did-schema
 %   V_eta_go_forward_class_audit.md): migrators_j.distance_metadata carries every document
 %   whole as v1 (carry-147), and a carry's round trip is the carry itself
-%   (did2.convert.roundtrip.check). It is kept until the class's V2 home is
+%   (did2.convert.roundtrip.check). It is kept until the class's v2 home is
 %   built, whose inverse replaces it.
 %
 %   See also did2.convert.roundtrip.check,

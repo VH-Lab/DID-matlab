@@ -29,7 +29,7 @@ function bodies = stimulus_tuningcurve(preBody)
 %   'AccountForEveryField', as for the calculator outputs: carry-100 outside
 %   the template, carry-056 for a template field with no home). The
 %   writer always writes stimid and stimulus_presentation_number, which have no
-%   V2 home, so every writer document is carried (carry-056), as before. A
+%   v2 home, so every writer document is carried (carry-056), as before. A
 %   carry is the untouched v1 source. did2.convert.roundtrip.stimulus_tuningcurve
 %   rebuilds the v1 document; testRawV1RoundTripTuningResults compares the two.
 arguments

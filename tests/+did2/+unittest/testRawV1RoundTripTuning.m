@@ -139,7 +139,7 @@ end
 end
 
 function testWriterOutputsValidate(testCase)
-% the converted documents pass the V2 schema (the corpus run validates too)
+% the converted documents pass the v2 schema (the corpus run validates too)
 for cls = {'oridirtuning_calc', 'contrastsensitivity_calc'}
     v1 = writerOutput(cls{1});
     out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
@@ -157,7 +157,7 @@ function testAFieldTheFoldDoesNotReadCarriesTheDocument(testCase)
 % Haley, 2026-10-27 [tuning stray fields are malformed]): carry-100 for a
 % field, block or edge outside the class's NDI template ([fields outside the
 % template are malformed]); carry-056 for a field the template defines and the
-% writer writes that V2 has no home for yet.
+% writer writes that v2 has no home for yet.
 % (tuningcurve_calc.log is placed since 2026-10-27, [tuning log in notes]; a
 % held-fixed property the name table does not hold has no home:
 % [varied properties are conditions by V2 name])
@@ -311,7 +311,7 @@ end
 end
 
 function verifyCarriedFor(testCase, v1, path, row)
-% V1 is carried whole as v1, and its note cites PATH under register row ROW
+% v1 is carried whole as v1, and its note cites PATH under register row ROW
 % (did2.unittest.helpers.carryRowFor)
 out = runRaw(v1);
 label = sprintf('%s with %s', v1.document_class.class_name, path);
@@ -396,7 +396,7 @@ end
 end
 
 function s = respelled(v1, name)
-% V1 with its class and block spelled NAME (the migrator's spelling)
+% v1 with its class and block spelled NAME (the migrator's spelling)
 s = v1;
 old = s.document_class.class_name;
 s.document_class.class_name = name;

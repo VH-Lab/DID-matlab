@@ -35,7 +35,7 @@ function [v1, spec] = syncrule_mapping(bodies, ctx)
 %                                      its merged row (spec.same,
 %                                      private/sameProbemapSeveralRows)
 %
-%   base.name is not rebuilt (V2 writes none; the fold takes only an empty
+%   base.name is not rebuilt (v2 writes none; the fold takes only an empty
 %   one); `files` is not rebuilt (the fold takes only one that lists no file).
 %   Any other document in BODIES, or a missing one, is unplaced.
 %

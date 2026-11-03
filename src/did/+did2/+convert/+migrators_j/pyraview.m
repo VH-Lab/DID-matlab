@@ -127,7 +127,7 @@ function bodies = pyraview(preBody)
 %
 %   The fields are read in either spelling (fieldByNormalisedName below), so a
 %   body that did come through the deleted rename pass (universalRenames)
-%   converts exactly as before; jRawAccount reads a V2-stamped body as already
+%   converts exactly as before; jRawAccount reads a v2-stamped body as already
 %   accounted for. A field, block or edge outside the templates carries the
 %   document whole as v1 (carry-100, [fields outside the template are
 %   malformed]), and what universalRenames would have discarded carries it

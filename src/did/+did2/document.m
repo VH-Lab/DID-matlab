@@ -1,22 +1,22 @@
 classdef document < handle
-    % did2.document  V2 document object.
+    % did2.document  v2 document object.
     %
-    %   Holds a single V2 document in the class-scoped wire shape
-    %   (see the V2 SPEC's "JSON Format: Document Instances"), validates
-    %   it against the V2 schema set, and serialises it back to JSON.
+    %   Holds a single v2 document in the class-scoped wire shape
+    %   (see the v2 SPEC's "JSON Format: Document Instances"), validates
+    %   it against the v2 schema set, and serialises it back to JSON.
     %
-    %   In-memory representation. The V2 document shape carries a
+    %   In-memory representation. The v2 document shape carries a
     %   top-level `document_class` header (with sub-keys `class_name`,
     %   `class_version`, `superclasses`), plus a top-level `depends_on`
     %   array, plus one property block per class in the chain keyed by
-    %   class name. After V2's "drop underscore prefixes" pass,
+    %   class name. After v2's "drop underscore prefixes" pass,
     %   every key in the wire shape is a valid MATLAB struct field name,
     %   so the in-memory representation is the JSON shape verbatim.
     %   `jsonencode`/`jsondecode` round-trip without any name-rewrite
     %   pass.
     %
     %   did2.document Properties:
-    %       documentProperties - struct mirroring the V2 JSON shape.
+    %       documentProperties - struct mirroring the v2 JSON shape.
     %
     %   did2.document Methods:
     %       document     - construct from JSON text, a struct, or
@@ -24,7 +24,7 @@ classdef document < handle
     %       get          - dot-path getter into documentProperties.
     %       set          - dot-path setter into documentProperties.
     %       iterate      - element iterator over an array-of-structure path.
-    %       toJSON       - serialise to V2 JSON text.
+    %       toJSON       - serialise to v2 JSON text.
     %       toStruct     - return the underlying struct.
     %       className    - shorthand for document_class.class_name.
     %       classVersion - shorthand for document_class.class_version.
@@ -135,7 +135,7 @@ classdef document < handle
         end
 
         function jsonText = toJSON(obj, opts)
-            % toJSON - serialise documentProperties to V2 JSON text.
+            % toJSON - serialise documentProperties to v2 JSON text.
             %
             %   TXT = D.toJSON() / D.toJSON('PrettyPrint', true,
             %   'SchemaCache', C)
@@ -157,7 +157,7 @@ classdef document < handle
             %   NON-FINITE NUMBERS ARE WRITTEN AS V1 WRITES THEM (Jess Haley,
             %   2026-10-21, did-schema V_eta_go_forward_class_audit.md: "An
             %   unrecorded amount is written as NaN in its quantity [...], and
-            %   V2 stores NaN the way V1 does"). V1 encodes with
+            %   v2 stores NaN the way v1 does"). v1 encodes with
             %   did.datastructures.jsonencodenan, i.e. jsonencode(...,
             %   'ConvertInfAndNaN', false): the literals NaN, Infinity and
             %   -Infinity, which jsondecode reads back. Plain jsonencode writes
@@ -218,7 +218,7 @@ classdef document < handle
         end
 
         function validate(obj, opts)
-            % validate - check this document against its V2 schema.
+            % validate - check this document against its v2 schema.
             arguments
                 obj
                 opts.SchemaCache = []
@@ -271,7 +271,7 @@ classdef document < handle
         end
 
         function obj = blank(className, opts)
-            % blank - construct a blank V2 document of the named class.
+            % blank - construct a blank v2 document of the named class.
             arguments
                 className (1,:) char
                 opts.SchemaCache = []

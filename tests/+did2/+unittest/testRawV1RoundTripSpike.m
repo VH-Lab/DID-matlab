@@ -215,7 +215,7 @@ verifyNotEmpty(testCase, which('did2.convert.v1read.ngridBlock'));
 end
 
 function testTheConvertedDocumentsValidate(testCase)
-% the converted documents pass the V2 schema (the corpus run validates too)
+% the converted documents pass the v2 schema (the corpus run validates too)
 batches = {{hartley(), presentationOf(hartley())}, {speedOneFit()}, {jrclustNoName()}, {neuron()}, ...
     {neuronNoWaveform()}};
 for k = 1:numel(batches)
@@ -249,7 +249,7 @@ v1.depends_on(end + 1) = struct('name', 'sorting_parameters_id', 'value', 'sp_1'
 verifyCarriedFor(testCase, {v1}, 'depends_on sorting_parameters_id');
 % Decided by Jess Haley, 2026-10-27 [tuning stray fields are malformed]: a
 % field outside the class's NDI template cites carry-100 ([fields outside the
-% template are malformed]); a template field the writer writes with no V2 home
+% template are malformed]); a template field the writer writes with no v2 home
 % (or whose value the fold cannot place) cites carry-056
 v1 = hartley();
 v1.hartley_reverse_correlation.window = [0 1];   % not in the template

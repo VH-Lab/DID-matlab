@@ -182,7 +182,7 @@ end
 
 function v = depValue(doc, name)
 % Read the edge tolerantly: a depends_on entry is spelled `value` on a v1 body
-% and `document_id` on one the V2 builder wrote.
+% and `document_id` on one the v2 builder wrote.
 v = '';
 s = doc;
 if isa(doc, 'did2.document'); s = doc.toStruct(); end
@@ -273,10 +273,10 @@ function testGenericFileHasSomewhereToGo(testCase)
 % let the class strand: nothing anywhere checked that a did_v1 class the corpora
 % could contain has SOMEWHERE TO GO.
 %
-% Neither class's SOMEWHERE is a V2 schema file any more. A `generic_file` is
+% Neither class's SOMEWHERE is a v2 schema file any more. A `generic_file` is
 % handed on as v1 to its later step (did2.convert.foldGenericFiles), checked
 % against NDI's own v1 template, stamped did_v1 and never validated against
-% V2 ([ensemble and generic_file keep their conversions], [ensemble and
+% v2 ([ensemble and generic_file keep their conversions], [ensemble and
 % generic_file checked as v1], Jess Haley, 2026-11-01, did-schema
 % did_v2_go_forward_class_audit.md), so its did-schema `retiring/` file can be
 % deleted; this test reads no schema file for it. What must hold is that pass

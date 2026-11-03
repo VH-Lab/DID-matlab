@@ -6,7 +6,7 @@ function tests = testMigratorsJRecordingObservation
 %   ---------------------------------------------------------------------
 %   Decided by Jess Haley, 2026-10-21 (did-schema
 %   V_eta_recording_observation_plan.md): migrated recordings link their epoch
-%   files as data bodies, matching native V2 (NDI
+%   files as data bodies, matching native v2 (NDI
 %   ndi.setup.V2.recordingDocuments): one observation per element per epoch,
 %   `data_body` true, an `opaque_body` per epoch file by location (ingested
 %   archives as attached), shared by the electrodes recorded in it, with the
@@ -616,8 +616,8 @@ out = did2.convert.v1_to_v2(withUnitProbe(v1), 'Validate', false, 'TargetVersion
 end
 
 function batch = withUnitProbe(v1)
-%WITHUNITPROBE {V1} plus, when V1 names an underlying element, that probe (an
-%   n-trode on V1's subject, id = the underlying_element_id): a sorted unit
+%WITHUNITPROBE {v1} plus, when v1 names an underlying element, that probe (an
+%   n-trode on v1's subject, id = the underlying_element_id): a sorted unit
 %   whose probe is not in the batch is carried whole as v1, carry-151 ([unit
 %   with no probe in the batch carried], Jess Haley, 2026-10-29). A probe
 %   names no epoch, so it emits no observation of its own.

@@ -15,7 +15,7 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %                  (DID-matlab ff6d542). No amount: the subject sat in it.
 %     'needs_mapping'  a non-body (non-UBERON) location (jTreatmentRoute):
 %                  nothing is built; DOCS is {} and UNPLACED is the `needs_mapping:` note
-%                  naming the V2 homes, so the caller carries the document
+%                  naming the v2 homes, so the caller carries the document
 %                  whole as v1 ([one correct reading], [dataset audit batch 1
 %                  and 2] (2), Jess Haley, 2026-10-26).
 %     'dose'       a `dose_manipulation` whose `formulation_id` names the

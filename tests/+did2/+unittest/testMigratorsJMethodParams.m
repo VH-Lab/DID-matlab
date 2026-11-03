@@ -468,7 +468,7 @@ function testAnAppNamingTheRunEnvironmentIsCarriedAsV1(testCase)
 % INVERTED 2026-10-26 (was testExtractionParksTheEnvironmentFieldsRatherThan
 % DroppingThem, which asserted they were dropped from the method). [small
 % unread settings] (1) (Jess Haley, 2026-10-26): the OS is where the settings
-% were SAVED, not a property of the recipe; V2 records a run's OS and
+% were SAVED, not a property of the recipe; v2 records a run's OS and
 % interpreter on the calculation and `method` gains no such link. So a
 % settings document whose app block names any of the four is carried whole as
 % v1, for each of the four classes.

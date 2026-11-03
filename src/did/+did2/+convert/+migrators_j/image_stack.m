@@ -358,9 +358,9 @@ end
 % THE REGION WORDS LEFT (Decided by Jess Haley, 2026-10-26 [dataset-specific
 % logic leaves the generic migration], [one correct reading]): the region a mask
 % marks was read from Haley label words ("arena", "bacteria" / "lawn",
-% "reference mark") and named as the Haley V2 import names it
+% "reference mark") and named as the Haley v2 import names it
 % (ndi.setup.conv.haley.geometryDocuments). No rule that holds for every dataset
-% reads a region from a label, so a mask is carried whole as v1, naming its V2
+% reads a region from a label, so a mask is carried whole as v1, naming its v2
 % home and what decides it. A MAP (each pixel an identifier, EMPTY:0000132) is
 % recognised by label words too, so it is carried the same way ([one-reading
 % quick answers] (Q3), Jess Haley, 2026-10-26: "mask or map detection" chosen
@@ -368,7 +368,7 @@ end
 %
 % [Haley mask words leave the generic stage] (Decided by Jess Haley, 2026-10-30,
 % did-schema V_eta_go_forward_class_audit.md): the region words ("arena",
-% "bacteria" / "lawn", "reference mark") belong to the Haley V2 import's map;
+% "bacteria" / "lawn", "reference mark") belong to the Haley v2 import's map;
 % "the generic stage carries a mask whose region it cannot read". The generic
 % stage keeps mask-vs-map detection (generic: the label says "mask", or says
 % each pixel is an identifier / a label map) and reads no region, so a label
@@ -514,13 +514,13 @@ function [anchor, conds, gaps] = acquisitionTime(src, params, noteClass)
 %       (below), its gap's reason saying so.
 %     * on any other clock the datenum cannot be converted without assuming
 %       UTC: the observation keeps its "during the session" anchor, on the
-%       stack's clock where V2 has that clock (dev_local_time,
+%       stack's clock where v2 has that clock (dev_local_time,
 %       dev_global_time, exp_global_time; approx_ as a 5 s clock_tolerance),
 %       and a condition with the variable AFO:AFR_0001158 "acquisition time"
 %       ([afo prefix registered]) keeps the datenum as its `source_value`
 %       (source unit day); the canonical `quantity.value` is left out and
 %       listed as a gap in the migration report ([missing facts are needs info]), with a
-%       `gap` report note. A clock V2 does not have (none, no_time,
+%       `gap` report note. A clock v2 does not have (none, no_time,
 %       inherited, any other name) is named, as v1 wrote it, in that entry's
 %       reason, so the round trip can read it back.
 %   With no finite scalar `timestamp` there is no acquisition time: the
@@ -594,9 +594,9 @@ end
 end
 
 function [clk, tol] = v2Clock(raw)
-%V2CLOCK The V2 clock (relative_time_reference.value.clock) a v1 clocktype
+%V2CLOCK The v2 clock (relative_time_reference.value.clock) a v1 clocktype
 %   names, and the clock_tolerance in seconds its approx_ prefix states; ''
-%   for a clocktype V2 has no clock for (none, no_time, inherited, other).
+%   for a clocktype v2 has no clock for (none, no_time, inherited, other).
 clk = '';
 tol = 0;
 switch raw

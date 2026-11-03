@@ -68,7 +68,7 @@ function out = migrationReport(action, varargin)
 %                           DOCS (a gap listed for a document that was later
 %                           quarantined, discarded or replaced is not in it)
 %         R.carried_as_v1   struct array {document_id, class, carry, reason}:
-%                           every document of DOCS that is not a V2 document
+%                           every document of DOCS that is not a v2 document
 %                           and was recorded as carried, and every document
 %                           stamped 'did_v1' (the reason of one with no
 %                           recorded carry says so)

@@ -130,7 +130,7 @@ result = did2.unittest.helpers.runBatchPass(result, ...
 % ndi.migrate.local now calls this same function as V_eta second-pass step
 % (4b) -- WIRED 2026-08-10, NOT EXECUTED (no MATLAB available). Not a
 % counterpart: the SAME code, which is what keeps the two pipelines one.
-% The batch passes run on the V2 set by EITHER name ([schema set renamed
+% The batch passes run on the v2 set by EITHER name ([schema set renamed
 % did_v2], Jess Haley, 2026-10-25; did2.convert.isV2Set). This was
 % strcmp(..., 'V_eta'), so when #352 made 'did_v2' the default, every pass
 % but resolveDeferredBaths stopped running and the report said NOT WIRED
@@ -407,7 +407,7 @@ if did2.convert.isV2Set(options.TargetVersion)
             'Validate', true, 'TargetVersion', options.TargetVersion));
 end
 
-% Census of the V1 SOURCE bodies -- the only instrument here that reads the
+% Census of the v1 SOURCE bodies -- the only instrument here that reads the
 % INPUT rather than the output. Three separate open items each say a build must
 % not proceed until something is MEASURED on real data, and none of those
 % numbers exists anywhere: whether grouping on `epochid.epochid` would fuse
@@ -796,7 +796,7 @@ end
 printFileListAudit(result);
 printSourceCensus(result);
 notWired = printBatchPasses(result);
-% A V2 run that wires a batch pass NOT is a failed run, not a smaller one:
+% A v2 run that wires a batch pass NOT is a failed run, not a smaller one:
 % after #352 the passes stopped behind a gate on the old set name, and runs
 % printing "NOT WIRED" for 9 of 10 stayed green (Test code run 41339468679,
 % B 13.7k documents instead of 32k). Report-only above, FAILED here.
@@ -1123,7 +1123,7 @@ expected = { ...
     'valid_interval_decompose', 'did2.convert.resolveValidIntervals'; ...
     'clock_alignment_fold',     'did2.convert.resolveClockAlignment'};
 fprintf('\n--- batch post-passes (%d expected) ---\n', size(expected, 1));
-notWired = {};   % the passes with no report on the result (the caller fails a V2 run on any)
+notWired = {};   % the passes with no report on the result (the caller fails a v2 run on any)
 for k = 1:size(expected, 1)
     field = expected{k, 1};
     name  = expected{k, 2};
@@ -1701,7 +1701,7 @@ end
 
 
 function printSourceCensus(result)
-%PRINTSOURCECENSUS The V1 SOURCE census: the three pre-build measurements.
+%PRINTSOURCECENSUS The v1 SOURCE census: the three pre-build measurements.
 %   Report-only, and deliberately verbose about its DENOMINATOR first -- a
 %   count without one is not evidence, which is the lesson from a census that
 %   printed zeros while reading nothing for two days.

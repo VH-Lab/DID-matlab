@@ -44,7 +44,7 @@ function bodies = jMembershipBodies(preBody, entries)
 %   Shared Brainstorm-J (+migrators_j) helper.
 %
 %   ITS ID ([every v1 id survives], Jess Haley, 2026-10-27: "each v1
-%   document's id becomes the id of the V2 document that most directly
+%   document's id becomes the id of the v2 document that most directly
 %   replaces it"): a document holding ONE membership (session_in_a_dataset)
 %   becomes one relation, which takes the v1 document's base.id. With several
 %   entries no one relation replaces the document, and every relation's id is

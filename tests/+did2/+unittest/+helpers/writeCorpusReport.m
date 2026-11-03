@@ -248,7 +248,7 @@ if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
         'by_class', n.by_class);
 end
 
-% The V1 SOURCE census: three pre-build measurements that exist nowhere else
+% The v1 SOURCE census: three pre-build measurements that exist nowhere else
 % (epoch-id shape and its grouping hazard, session-document presence,
 % stimulation-approach coverage). Persisted rather than left in the log, because
 % each of these blocks a build and will be read weeks after the run.

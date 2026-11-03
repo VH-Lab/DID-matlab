@@ -110,7 +110,7 @@ if isempty(id)
     reasons{end+1} = '[carry-120] base.id (empty)';
 end
 if ~isempty(bb.name)
-    reasons{end+1} = '[carry-120] base.name (V2 never writes base.name)';
+    reasons{end+1} = '[carry-120] base.name (v2 never writes base.name)';
 end
 if isempty(listA) || isempty(listB)
     reasons{end+1} = '[carry-120] depends_on geneList_id_a/geneList_id_b (one is empty)';

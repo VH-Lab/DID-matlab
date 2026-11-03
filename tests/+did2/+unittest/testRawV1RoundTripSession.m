@@ -358,7 +358,7 @@ end
 % ===================== the switch changes no outcome ======================
 
 function testWriterShapesValidate(testCase)
-% everything converted above is a valid V2 document (the tests above run with
+% everything converted above is a valid v2 document (the tests above run with
 % Validate false)
 s = writerSession('sd_A', 'sess_A', '2021-04-01');
 batch = {s, writerMembership('sid_A', 'ds_1', 'sess_A', '2021-04-01', 0, ''), ...

@@ -4,7 +4,7 @@ function why = jCarryWhy(unplaced)
 %
 %   A `needs_mapping:` entry ([one correct reading], Jess Haley, 2026-10-26,
 %   did-schema V_eta_go_forward_class_audit.md: the v1 document admits more
-%   than one V2 reading) is the note as it stands, so the note starts with the
+%   than one v2 reading) is the note as it stands, so the note starts with the
 %   carry register row it cites and the register kind ('[carry-023]
 %   needs_mapping: ...', [carry register], Jess Haley, 2026-10-26); any other
 %   entry is something a dose could not place, noted 'unplaced: ...' as before.

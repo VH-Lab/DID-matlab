@@ -55,7 +55,7 @@ classdef document
             end
 
             % Canonicalize depends_on entry keys to `document_id`
-            % (V2). Accepts v1 `id` and the earlier draft
+            % (v2). Accepts v1 `id` and the earlier draft
             % `value` as synonyms. Establishes the invariant that
             % every dependency accessor on this class can rely on:
             % after construction, depends_on entries use
@@ -275,7 +275,7 @@ classdef document
                 hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
             end
             % The constructor's i_normalizeDependsOn pass guarantees
-            % depends_on entries use the V2 canonical key
+            % depends_on entries use the v2 canonical key
             % `document_id`. Build d_struct with the same key so
             % struct-array assignment / append stays consistent.
             d_struct = struct('name', dependency_name, 'document_id', value);
@@ -885,7 +885,7 @@ classdef document
             %   1  a did_v1 document (no document_class.schema_version, or one
             %      before V_eta): NAME_1 is manifest slot 0, the live
             %      convention of ingested epoch data and NDI's series writers.
-            %   0  a V2 document (schema_version V_eta or did_v2): member
+            %   0  a v2 document (schema_version V_eta or did_v2): member
             %      NAME_k is chunk k is manifest slot k, so an unchunked body is
             %      body_data_0 (DID-schema #73 item 17, kept by Jess 2026-10-14).
             % The manifest format is the same either way; only the names differ.
@@ -1264,10 +1264,10 @@ classdef document
             % id from a single depends_on struct entry.
             %
             % The constructor's i_normalizeDependsOn pass guarantees
-            % entries carry `document_id` (V2 canonical), but
+            % entries carry `document_id` (v2 canonical), but
             % callers occasionally hand us hand-built structs that
             % skip the constructor and still use `value` (earlier
-            % V2 draft) or `id` (v1). This helper
+            % v2 draft) or `id` (v1). This helper
             % accepts all three with precedence
             % document_id > value > id.
             if ~isstruct(entry) || ~isscalar(entry)
@@ -1287,7 +1287,7 @@ classdef document
 
         function names = i_normalizePropertyBlockFields(blockName, names)
             % i_normalizePropertyBlockFields - normalise a list of
-            % field names inside a class property block so V2
+            % field names inside a class property block so v2
             % renames compare equal to their V_alpha originals.
             %
             % Used by did.database/validate_doc_vs_schema when the
@@ -1297,7 +1297,7 @@ classdef document
             % sides via this map and compare.
             %
             % Currently covers only `daqmetadatareader.reader_class`
-            % (V2) -> `ndi_daqmetadatareader_class` (V_alpha).
+            % (v2) -> `ndi_daqmetadatareader_class` (V_alpha).
             % Extend the rename map (i_propertyBlockRenameMap) as
             % additional block-level renames surface. The
             % probe_location / treatment / ontology_image /
@@ -1321,13 +1321,13 @@ classdef document
         function aliased = i_aliasV1ToV2(blockName, vAlphaName)
             % i_aliasV1ToV2 - inverse of the rename map
             % above: given a V_alpha legacy field name (e.g.,
-            % `ndi_daqmetadatareader_class`), return the V2
+            % `ndi_daqmetadatareader_class`), return the v2
             % canonical name (e.g., `reader_class`). Returns '' if
             % the name is not aliased.
             %
             % Used by did.database/validate_doc_vs_schema when the
-            % schema-declared subfield isn't on the V2 body and
-            % we need to look up the body via the V2-renamed
+            % schema-declared subfield isn't on the v2 body and
+            % we need to look up the body via the v2-renamed
             % key.
             arguments
                 blockName (1,:) char
@@ -1355,7 +1355,7 @@ classdef document
 
         function map = i_propertyBlockRenameMap()
             % i_propertyBlockRenameMap - source-of-truth rename map
-            % for v1 <-> V2 property-block field renames.
+            % for v1 <-> v2 property-block field renames.
             % Keys: "<block>.<v2_name>". Values: v1 name.
             map = containers.Map( ...
                 {'daqmetadatareader.reader_class'}, ...
@@ -1364,8 +1364,8 @@ classdef document
 
         function body = i_normalizeDependsOn(body)
             % i_normalizeDependsOn - canonicalise depends_on entry
-            % keys to V2 `document_id`. Accepts `id` (V_alpha)
-            % and `value` (earlier V2 draft) as synonyms with
+            % keys to v2 `document_id`. Accepts `id` (V_alpha)
+            % and `value` (earlier v2 draft) as synonyms with
             % precedence document_id > value > id. The resulting
             % depends_on struct schema is exactly {name, document_id}.
             %

@@ -22,7 +22,7 @@ function s = readStamp(body)
 %                         written before the stamps were named carries none)
 %     is_v1, is_v2        did2.schema.isV1Stamp / isV2Stamp of that stamp
 %                         (Decided by Jess Haley, 2026-10-25 [document
-%                         stamps]: v1 = 'did_v1', V2 = 'did_v2')
+%                         stamps]: v1 = 'did_v1', v2 = 'did_v2')
 %     extra               a struct of every other `document_class` field
 %
 %   Decided by Jess Haley, 2026-10-26 [migrators read raw v1] (did-schema

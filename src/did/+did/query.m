@@ -316,7 +316,7 @@ function ss = dependsOnSearchstructure(name, value, negate)
     %
     % SS = DEPENDSONSEARCHSTRUCTURE(NAME, VALUE, NEGATE)
     %
-    % A depends_on entry names its target under `document_id` (V2: the
+    % A depends_on entry names its target under `document_id` (v2: the
     % did.document constructor renames every entry's key to it), `value`
     % (v1, and structs built without the constructor) or `id`; see
     % did.document.i_readDependencyTarget, which doc2sql uses for the SQL

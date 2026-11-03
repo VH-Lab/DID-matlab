@@ -76,7 +76,7 @@ if isempty(block)
     % as v1 ([passthrough stays v1], Jess Haley, 2026-10-24) rather than
     % passed through silently under the retire class `openminds_element`
     % ([one folder, final classes only], Jess Haley, 2026-10-29, did-schema
-    % V_eta_go_forward_class_audit.md: a retire class's V2 file is deleted
+    % V_eta_go_forward_class_audit.md: a retire class's v2 file is deleted
     % once no v1 document passes through under it). No register row covers a
     % missing block yet (a question for the team).
     % carry-register: carry-146

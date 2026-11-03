@@ -1,10 +1,10 @@
 function [out, found] = tuningNames(direction, name)
 %TUNINGNAMES The ONE name table between v1 tuning and response names and the
-%   V2 variables they become.
+%   v2 variables they become.
 %
 %   [V2NAME, FOUND] = did2.convert.tuningNames('v2', V1NAME)
 %   [V1NAME, FOUND] = did2.convert.tuningNames('v1', V2NAME)
-%   T = did2.convert.tuningNames('table')    the table, {v1 name, V2 name; ...}
+%   T = did2.convert.tuningNames('table')    the table, {v1 name, v2 name; ...}
 %
 %   FOUND is false (and the output '') for a name the table does not hold.
 %
@@ -12,17 +12,17 @@ function [out, found] = tuningNames(direction, name)
 %   V_eta_go_forward_class_audit.md):
 %     [varied properties are conditions by V2 name] ("35 b"): each property in
 %       a tuning curve's `stim_property_list` becomes a condition whose
-%       variable is the variable the V2 stimulus `method` uses (e.g.
+%       variable is the variable the v2 stimulus `method` uses (e.g.
 %       `sFrequency` -> "spatial frequency", NDI `stimulusRecipe.m`), through a
 %       name table; a v1 name missing from the table carries the curve.
 %     [parameter names map by table] ("38 yes"): v1 settings names (e.g.
-%       `prestimulus_time`) become V2 method parameter variables through the
+%       `prestimulus_time`) become v2 method parameter variables through the
 %       same name table; the round trip maps back; a v1 name missing from the
 %       table carries the document.
 %
 %   THE STIMULUS ROWS are NDI-matlab's own (V2 line, locked head a2ab2d1,
 %   +ndi/+migrate/+internal/stimulusRecipe.m periodicRows and gratingRecipe.m,
-%   which write the V2 stimulus `method` of a NewStim periodicstim): the v1
+%   which write the v2 stimulus `method` of a NewStim periodicstim): the v1
 %   NewStim field name and the variable that method gives it. Two of NDI's rows
 %   are NOT here:
 %     sPhaseShift  NDI's method writes it in DEGREES, converted from v1's
@@ -35,7 +35,7 @@ function [out, found] = tuningNames(direction, name)
 %   (NDI-matlab locked `main` +ndi/+calc/+stimulus/tuningcurve.m
 %   input_parameters, +ndi/+app/+stimulus/tuning_response.m's response
 %   parameters; NDIcalc-vis-matlab 00e3e0f ndi.calc.vis.speed_tuning
-%   min_xi / max_xi). No V2 name was decided for them, so each keeps the
+%   min_xi / max_xi). No v2 name was decided for them, so each keeps the
 %   variable the migration already wrote (the v1 name, '_' as ' '; a nested
 %   setting joined by '.', jParameterList): the table pins those names and is
 %   what the round trip maps back through. A nested `selection` holds its

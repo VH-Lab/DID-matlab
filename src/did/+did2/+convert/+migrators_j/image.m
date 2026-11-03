@@ -185,7 +185,7 @@ function bodies = image(preBody)
 %   "sampled_body has no encoding field"; data_body declares both.)
 %
 %   `imageCollection_id` -- an image that names a collection is CARRIED WHOLE
-%   AS V1, `malformed`, register row carry-153, by image_stack ([image
+%   AS v1, `malformed`, register row carry-153, by image_stack ([image
 %   collection carried until a writer], Jess Haley, 2026-10-30, did-schema
 %   V_eta_go_forward_class_audit.md: NDI has no writer of the edge at the
 %   locked main, so no group is designed). It cited an awaiting_home register row (a

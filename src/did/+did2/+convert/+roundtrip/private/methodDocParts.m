@@ -18,7 +18,7 @@ function [v1, entries, spec] = methodDocParts(bodies, v1Class, edgeNames)
 %                                document stating them is carried, carry-002
 %                                to carry-005)
 %     depends_on                 the method's edges, renamed back by EDGENAMES
-%                                (a struct: V2 edge name -> v1 edge name, e.g.
+%                                (a struct: v2 edge name -> v1 edge name, e.g.
 %                                entity_id -> element_id)
 %   ENTRIES is the cell of the method's parameter entries, for the caller to
 %   map back (the bound variables, the bag, a parked epoch string). SPEC holds

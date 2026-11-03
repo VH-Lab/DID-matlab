@@ -176,7 +176,7 @@ function [result, report] = resolveResponseParameters(result, options)
 %     freq_response ~= value.harmonic         -> refused_harmonic_mismatch
 %     a setting the name table does not hold  -> refused_unknown_setting
 %       ([parameter names map by table], Jess Haley, 2026-10-27: v1
-%       settings names become V2 method parameter variables through
+%       settings names become v2 method parameter variables through
 %       did2.convert.tuningNames; "a v1 name missing from the table carries
 %       the document": the parameters document stays v1)
 %

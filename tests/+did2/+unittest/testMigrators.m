@@ -1,12 +1,12 @@
 function tests = testMigrators
-%TESTMIGRATORS Per-class did_v1 -> V2 migrator tests.
+%TESTMIGRATORS Per-class did_v1 -> v2 migrator tests.
 %
 %   Exercises the base class migrators against the worked examples of
 %   did-schema's per-class conversion notes (deleted with did-schema #88).
 %
 %   Tests run with Validate=false on the end-to-end dispatcher case
 %   so they do not depend on the schema cache being able to resolve
-%   V2 schemas at the test-runner working directory.
+%   v2 schemas at the test-runner working directory.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testMigrators');

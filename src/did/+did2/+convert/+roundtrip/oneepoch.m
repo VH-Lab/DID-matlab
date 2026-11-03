@@ -22,7 +22,7 @@ function [v1, spec] = oneepoch(bodies)
 %   whole as v1 (carry-126, or with its output element: [global-clock oneepoch
 %   carried with its element], Jess Haley, 2026-10-30), and a carry's round
 %   trip is the carry itself
-%   (did2.convert.roundtrip.check). It is kept until the class's V2 home is
+%   (did2.convert.roundtrip.check). It is kept until the class's v2 home is
 %   built, whose inverse replaces it.
 %
 %   See also did2.convert.roundtrip.check,

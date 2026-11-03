@@ -749,7 +749,7 @@ function testAnOntologyTableRowWithASubjectIsCarriedNeedingAMapping(testCase)
 % ("body weight" -> mass, an unrecognised number -> intensity, a string -> a
 % term observation). Decided by Jess Haley, 2026-10-26 [one correct reading],
 % [dataset audit batch 1 and 2] (4): the row is carried whole as v1, its note
-% naming the V2 homes and what decides between them.
+% naming the v2 homes and what decides between them.
 v1 = tableRow();
 out = runJ(v1);
 verifyCarriedWholeAsV1(testCase, v1, out);
@@ -1687,7 +1687,7 @@ function testBabuAgarMediumIsCarriedNeedingAMapping(testCase)
 % generic stage (Decided by Jess Haley, 2026-10-26 [dataset audit batch 1 and
 % 2] (2), superseding [babu-media] there; [one correct reading]: "a medium the
 % worms live on written as a dose" is never written). A treatment_drug at agar
-% plate medium is carried whole as v1, its note naming the V2 homes.
+% plate medium is carried whole as v1, its note naming the v2 homes.
 v1 = treatmentDrugDoc('td_agar', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nCHEBI:82021,imazapyr,0.08,OM:MolarVolumeUnit,Molar'), ...
     'MICRO:0000480', 'agar plate medium');
@@ -1716,7 +1716,7 @@ end
 function testBabuHeatRowIsCarriedNeedingAMapping(testCase)
 % INVERTS testBabuHeatRowIsATemperatureManipulation (same decision): Babu's
 % heat pulse (one mixture row OM:Heat, 37 Degree Celsius) is carried whole as
-% v1, its note naming a temperature manipulation as a V2 home.
+% v1, its note naming a temperature manipulation as a v2 home.
 v1 = treatmentDrugDoc('td_heat', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nOM:Heat,heat,37,NCIT:C42559,Degree Celsius'), ...
     'MICRO:0000480', 'agar plate medium');
@@ -1872,7 +1872,7 @@ end
 
 function testOntologyLabelRejectsInventedShape(testCase)
 % ontology_name/label_id/label came from the false provenance line in the
-% V2 conversion doc (since corrected). None exists on the real class.
+% v2 conversion doc (since corrected). None exists on the real class.
 v1 = ontologyLabelBody();
 v1.ontologyLabel = struct('ontology_name', 'Allen CCF v3', 'label_id', 12345, ...
     'label', 'primary visual cortex');
@@ -2005,7 +2005,7 @@ function testDidV1ImageInACollectionIsCarriedAsV1(testCase)
 % (Jess Haley, 2026-10-26): the imageCollection_id edge becomes a `member_of`
 % relation to a group entity -- a later step -- so until then an image that
 % names a collection is carried whole as v1. Still no dangling edge: the v1
-% document is carried, not a V2 one naming a document that does not exist.
+% document is carried, not a v2 one naming a document that does not exist.
 v1 = struct();
 v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
@@ -2170,7 +2170,7 @@ end
 % Haley, 2026-10-27 [carried v1 validates against NDI templates], did-schema
 % V_eta_go_forward_class_audit.md): a carried or passed-through v1 document is
 % checked against NDI's v1 templates (did2.validate.v1Document), not a
-% did-schema tombstone, and one whose class has no V2 schema is counted
+% did-schema tombstone, and one whose class has no v2 schema is counted
 % (summary.passthrough_unvalidated_no_schema_count), never quarantined
 % (v1_to_v2.m). This test asserted the `image` / `image_stack` schema EXISTS, which
 % that decision removes; the passthrough tests beside it, which assert no
@@ -2185,8 +2185,8 @@ function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCa
 % required subject_id: an observation about nobody, invisible to every gate
 % because references.m skips empty edges.
 %
-% The passthrough is safe without a V2 schema: since 2026-10-28 ([carried v1
-% validates against NDI templates]) a passed-through document whose class V2
+% The passthrough is safe without a v2 schema: since 2026-10-28 ([carried v1
+% validates against NDI templates]) a passed-through document whose class v2
 % does not hold is counted, not quarantined.
 v1 = struct();
 v1.document_class = struct('class_name', 'imageStack', 'class_version', '1.0.0', ...
@@ -2537,7 +2537,7 @@ function testAMaskIsCarriedWholeAsV1NamingItsHome(testCase)
 % generic migration (Decided by Jess Haley, 2026-10-26 [dataset-specific logic
 % leaves the generic migration], [one correct reading]). Every mask -- the arena
 % mask, the bacterial-patch mask and one whose label names no region -- is
-% carried whole as v1 with a `needs_mapping` note naming its V2 home.
+% carried whole as v1 with a `needs_mapping` note naming its v2 home.
 % 2026-10-30 [Haley mask words leave the generic stage] (Jess Haley): "the
 % generic stage carries a mask whose region it cannot read" -- register row
 % carry-154 (it cited carry-025, mask or map, before).
@@ -4341,7 +4341,7 @@ function testDatasetSessionInfoAggregate(testCase)
 % INVERTED 2026-10-27 (was: one membership relation per listed session).
 % [fit classes kept; session list rebuilt] (Decided by Jess Haley, 2026-10-27,
 % did-schema V_eta_go_forward_class_audit.md): a dataset_session_info "writes
-% no V2 document: the round trip rebuilds it from the session entities'
+% no v2 document: the round trip rebuilds it from the session entities'
 % `included_in` relations to the dataset, and one that does not rebuild
 % exactly is carried whole as v1" (carry-118)
 info = struct();
@@ -4363,7 +4363,7 @@ m2.base.name = '';
 out = did2.convert.v1_to_v2({m1, m2, info}, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
-verifyFalse(testCase, any(strcmp(ids, 'dsi_01')), 'the list writes no V2 document');
+verifyFalse(testCase, any(strcmp(ids, 'dsi_01')), 'the list writes no v2 document');
 verifyFalse(testCase, any(strcmp({out.passthrough.id}, 'dsi_01')), 'not carried');
 % alone, another order, or another value: carried whole as v1
 v = info;
@@ -4546,7 +4546,7 @@ end
 
 function testDaqreaderNdrWithAFileExtensionIsCarriedAsV1(testCase)
 % [generic stage is lossless] (Jess Haley, 2026-10-25): `file_extension` is
-% written nowhere on the V2 output (acquisition_reader declares software_id
+% written nowhere on the v2 output (acquisition_reader declares software_id
 % and reader_string only) and restated nowhere, so a document that sets one
 % is carried whole as v1 instead of losing it.
 body = struct();
@@ -4614,7 +4614,7 @@ body.base = struct('id', 'ndr_1', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 body.daqreader = struct('ndi_daqreader_class', 'ndi.daq.reader.mfdaq.ndr');
 % 2026-10-26: no `file_extension` here; one that is set is carried whole as
-% v1, since nothing on the V2 output restates it
+% v1, since nothing on the v2 output restates it
 % (testDaqreaderNdrWithAFileExtensionIsCarriedAsV1)
 body.daqreader_ndr = struct('ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr', ...
     'ndr_reader_string', 'intan');
@@ -4749,7 +4749,7 @@ function testDistanceMetadataIsCarriedWholeAsV1(testCase)
 % classes carried] (Jess Haley, 2026-10-29, did-schema
 % V_eta_go_forward_class_audit.md, "B"): v1 `distance_metadata` is "carried
 % whole as v1 for now, not reshaped into [its] retire class"; the reshape
-% waits for its V2 home. So the same document comes back as its untouched v1
+% waits for its v2 home. So the same document comes back as its untouched v1
 % source, noted under register row carry-147. What stays true: no
 % length_observation and no endpoint relation is written.
 v1 = struct();
@@ -6130,7 +6130,7 @@ end
 function testProbeGeometryWithContactGeometryIsCarriedAsV1(testCase)
 % [probe contact geometry carried] (Jess Haley, 2026-10-26): `shank_id`, the
 % contact shape and its width / height / radius, `manufacturer`,
-% `has_planar_contour` and the contour have no V2 home until a contact-geometry
+% `has_planar_contour` and the contour have no v2 home until a contact-geometry
 % model exists, so a document that sets any of them is carried whole as v1
 % (they were dropped as "still deferred"). One field at a time.
 % (has_planar_contour 2: neither writer default -- 0 and 1 count as not set,
@@ -7075,7 +7075,7 @@ end
 
 function testOneEpochOnAGlobalClockIsCarriedWholeAsV1(testCase)
 % INVERTED 2026-10-29 from testOneEpochFoldsItsInheritedBlockAndKeepsItsClass,
-% which asserted the class was KEPT (`oneepoch`, stamped V2) with its
+% which asserted the class was KEPT (`oneepoch`, stamped v2) with its
 % element_epoch block folded away. [reshaped retire classes carried] (Jess
 % Haley, 2026-10-29): it is carried whole as v1. [global-clock oneepoch
 % carried with its element] (Jess Haley, 2026-10-30): its note cites its

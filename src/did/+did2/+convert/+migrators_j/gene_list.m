@@ -70,7 +70,7 @@ if isempty(id)
 end
 bb = did2.convert.v1read.readBase(body);
 if ~isempty(bb.name)
-    reasons{end+1} = '[carry-120] base.name (makeGeneList writes none, and V2 never writes base.name)';
+    reasons{end+1} = '[carry-120] base.name (makeGeneList writes none, and v2 never writes base.name)';
 end
 if ~hasFile(body, 'genes.tsv')
     reasons{end+1} = '[carry-120] files (no genes.tsv attached)';

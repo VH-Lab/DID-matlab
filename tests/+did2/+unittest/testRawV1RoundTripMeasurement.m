@@ -23,14 +23,14 @@ function tests = testRawV1RoundTripMeasurement
 %   No corpus of the four zips holds any of them.
 %
 %   WHAT THE WRITERS' DOCUMENTS DO TODAY. A numeric measurement and a term
-%   measurement convert; a date has no V2 statement and is carried as v1 (on
-%   the renamed path it passed through as a V2 `measurement`, a `retire` class,
+%   measurement convert; a date has no v2 statement and is carried as v1 (on
+%   the renamed path it passed through as a v2 `measurement`, a `retire` class,
 %   which NDI's last step stored as v1: the same end state). subjectmeasurement
 %   converts with its datestamp as an absolute time reference.
 %   stimulus_parameter is carried whole as v1 (its decided target is built by
 %   no migrator yet; INVERTED 2026-10-29 from "kept as it is", a silent
 %   pass-1 passthrough: [one folder, final classes only], Jess Haley,
-%   2026-10-29, deletes a retire class's V2 file once no v1 document passes
+%   2026-10-29, deletes a retire class's v2 file once no v1 document passes
 %   through under it). No known findings.
 tests = functiontests(localfunctions);
 end
@@ -65,7 +65,7 @@ end
 function testADateIsCarriedNotPassedThrough(testCase)
 [carried, notes] = did2.unittest.helpers.carryNote({measurementDate()});
 verifyTrue(testCase, carried);
-verifyTrue(testCase, contains(notes, 'no V2 statement'), notes);
+verifyTrue(testCase, contains(notes, 'no v2 statement'), notes);
 end
 
 function testAStimulusParameterIsCarriedNotPassedThrough(testCase)
@@ -74,7 +74,7 @@ function testAStimulusParameterIsCarriedNotPassedThrough(testCase)
 % ([passthrough stays v1]); no register row covers it yet
 [carried, notes] = did2.unittest.helpers.carryNote({stimulusParameter()});
 verifyTrue(testCase, carried);
-verifyTrue(testCase, contains(notes, 'stimulus_parameter has no V2 home'), notes);
+verifyTrue(testCase, contains(notes, 'stimulus_parameter has no v2 home'), notes);
 end
 
 function testASubjectMeasurementItCannotStateIsCarried(testCase)

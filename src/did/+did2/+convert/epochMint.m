@@ -2273,7 +2273,7 @@ end
 
 function [clockName, toleranceSeconds, verdict] = bathClockTerm(raw)
 % NDI's epochAnchorFold clockTerm, verbatim in effect: the v1 clock string ->
-% the V2 clock name, an approx_ clock's 5 s tolerance, or a refusal
+% the v2 clock name, an approx_ clock's 5 s tolerance, or a refusal
 verdict = 'ok';
 toleranceSeconds = 0;
 clockName = '';

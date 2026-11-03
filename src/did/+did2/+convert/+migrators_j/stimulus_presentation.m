@@ -181,7 +181,7 @@ end
 % deferral is visible. NDI's second pass (stimulusPresentationToItem) does the
 % decomposition.
 % [stimulus_presentation retired] (Decided by Jess Haley, 2026-10-26, did-schema
-% V_eta_go_forward_class_audit.md): not a V2 class; pass 1 carries the v1
+% V_eta_go_forward_class_audit.md): not a v2 class; pass 1 carries the v1
 % document UNCHANGED as v1 ([passthrough stays v1]) -- stamped did_v1 by
 % v1_to_v2, never read against V_eta -- for NDI's second pass.
 b = did2.convert.v1read.readBase(preBody);

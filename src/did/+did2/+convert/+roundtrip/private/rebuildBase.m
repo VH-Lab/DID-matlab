@@ -1,6 +1,6 @@
 function [base, entity] = rebuildBase(body)
 %REBUILDBASE The v1 `base` block (id, session_id, datestamp) of an emitted
-%   V2 document BODY, and its `entity` block (struct() when it has none).
+%   v2 document BODY, and its `entity` block (struct() when it has none).
 %
 %   id          base.id
 %   session_id  base.session_id, or the `session_id` edge when `base` has no
@@ -9,7 +9,7 @@ function [base, entity] = rebuildBase(body)
 %   datestamp   base.creation_timestamp (v1_to_v2 renames datestamp on the
 %               way out), else base.datestamp
 %
-%   `name` is NOT rebuilt here: V2 never writes base.name (#73 item 54), so
+%   `name` is NOT rebuilt here: v2 never writes base.name (#73 item 54), so
 %   each inverse states what it can only have been (spec.equivalents).
 
 base = struct('id', '', 'session_id', '', 'datestamp', '');

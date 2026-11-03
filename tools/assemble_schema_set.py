@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble did-schema's V2 schema set into ONE flat folder for DID_SCHEMA_PATH.
+"""Assemble did-schema's v2 schema set into ONE flat folder for DID_SCHEMA_PATH.
 
     python3 tools/assemble_schema_set.py <did-schema>/schemas <dest>
 

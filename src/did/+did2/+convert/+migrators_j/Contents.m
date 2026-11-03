@@ -956,7 +956,7 @@
 %         (since 2026-10-29, [one folder, final classes only]; see the end of the
 %         function). Until then it was a PASSTHROUGH that normalised the template's
 %         own untypeable placeholder; the history below explains that repair, which a
-%         carried document no longer needs (it is not read against V2). A non-empty
+%         carried document no longer needs (it is not read against v2). A non-empty
 %         char or a non-numeric `value` still errors.
 %     stimulus_presentation
 %         Brainstorm-J migrator: did_v1 stimulus_presentation -- the decomposition is

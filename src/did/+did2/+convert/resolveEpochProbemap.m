@@ -73,7 +73,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   ---------------------------------------------------------------------
 %   Decided by Jess Haley, 2026-10-21 (did-schema
 %   V_eta_recording_observation_plan.md): migrated recordings link their epoch
-%   files as data bodies, matching native V2 (NDI
+%   files as data bodies, matching native v2 (NDI
 %   ndi.setup.V2.recordingDocuments): one observation per element per epoch,
 %   `data_body` true, an `opaque_body` per epoch file by location (ingested
 %   archives as attached), SHARED by the electrodes recorded in it, with the
@@ -118,7 +118,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %                    GO:0001508 "action potential", `data_body` true -- and its
 %                    element_epoch's epoch_binary_data.vhsb is the opaque_body
 %                    owned by it (spike_* counters).
-%     V1 ARCHIVES    a daqreader_*_epochdata_ingested is RETIRED once every file
+%     v1 ARCHIVES    a daqreader_*_epochdata_ingested is RETIRED once every file
 %                    it holds is carried by a surviving per-epoch body, verified
 %                    per document, and only if nothing that survives names it;
 %                    otherwise kept and counted (archive_* counters).
@@ -771,7 +771,7 @@ for k = 1:n
         % A row whose channels cannot be wired -- no probe entity to be the
         % child (an element carried as v1), or no system to be the parent (a
         % rig with no daqsystem) -- still gets its statements, but its
-        % channels have no V2 home: the row counts as without a home, so the
+        % channels have no v2 home: the row counts as without a home, so the
         % v1 epochfiles_ingested is carried whole beside them and its
         % devicestring is never dropped (rows_unwirable). A channel type
         % outside the bound set is not invented into a condition: no relation,
@@ -941,7 +941,7 @@ end
 % and 2] (1), did-schema V_eta_go_forward_class_audit.md, superseding [JH
 % position and distance] for the generic stage): a Haley `position` / `distance`
 % epoch has no row here, so it keeps its acquisition_epoch, counted by type; the
-% Haley V2 import makes the worm tracks.
+% Haley v2 import makes the worm tracks.
 seriesGroups = containers.Map('KeyType', 'double', 'ValueType', 'any');  % k -> {stmt ids}
 % [device clocks on one epoch] (Jess Haley, 2026-10-26): an acquisition_epoch
 % whose extent did2.convert.epochMint could not tie to exactly one acquisition
@@ -1705,7 +1705,7 @@ function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
 % direction + a value kind), the probe as instrument (T7), the rig as
 % acquisition_system_id and the channels on the probe's wiring relation
 % ([probe wiring is a relation]). Its value is the epoch's files:
-% `data_body` true (2026-10-21, native V2 shape; mkEpochFileBodies builds them).
+% `data_body` true (2026-10-21, native v2 shape; mkEpochFileBodies builds them).
 % MODEMETHOD, when not empty, is the recording or imaging mode, written as the
 % observation's method term (recordingModeMethod).
 if nargin < 7; acqSystemId = ''; end
@@ -2520,7 +2520,7 @@ function kind = derivedSeriesKind(elementType)
 %               2026-10-21 [spike train variable]; [spike train leaf])
 %   The JH `position` / `distance` rows left the generic stage (Decided by Jess
 %   Haley, 2026-10-26 [dataset audit batch 1 and 2] (1)): such an epoch stays
-%   a plain acquisition_epoch, and the Haley V2 import makes the tracks.
+%   a plain acquisition_epoch, and the Haley v2 import makes the tracks.
 kind = [];
 blank = struct('variable', [], 'valueKind', '', 'method', [], 'methodParameters', [], ...
     'conditions', [], 'counter', '');
@@ -2897,7 +2897,7 @@ end
 
 function f = formatForExtension(ext)
 %FORMATFOREXTENSION An EDAM file-format term for a raw file, by extension, as
-%   the native V2 Haley import chooses one (sessionDocuments.m: .mp4 MPEG-4,
+%   the native v2 Haley import chooses one (sessionDocuments.m: .mp4 MPEG-4,
 %   .tif TIFF); text files are Textual format; every other acquisition format
 %   (Intan .rhd, Spike2 .smr, .mat, ...) has no EDAM term and is Binary format.
 switch lower(char(ext))

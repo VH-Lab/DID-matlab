@@ -10,11 +10,11 @@ function tf = isV1Stamp(v, opts)
 %   V_eta_go_forward_class_audit.md): a v1 document's
 %   document_class.schema_version is 'did_v1'. Both rank 0 in
 %   did2.convert.schemaVersionRank. The brainstorm names (V_alpha ..
-%   V_zeta) and unknown names are neither v1 nor V2: false here and in
+%   V_zeta) and unknown names are neither v1 nor v2: false here and in
 %   did2.schema.isV2Stamp.
 %
 %   TF = did2.schema.isV1Stamp(V, 'Explicit', true) is true for 'did_v1'
-%   only: the stamp must be PRESENT. That is the question a V2 database asks
+%   only: the stamp must be PRESENT. That is the question a v2 database asks
 %   before it skips V_eta validation and reads a body as stored (Decided by
 %   Jess Haley, 2026-10-24 [passthrough stays v1: how]): a v1 document is
 %   stored there by declaring itself one, and an unstamped body is

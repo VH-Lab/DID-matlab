@@ -6,7 +6,7 @@ function bodies = distance_metadata(preBody)
 %   Decided by Jess Haley, 2026-10-29 (did-schema
 %   V_eta_go_forward_class_audit.md, "B"): v1 `distance_metadata` and
 %   `oneepoch` are carried whole as v1 for now, not reshaped into their retire
-%   classes; the reshape waits for their V2 homes (`distance_metadata`: a
+%   classes; the reshape waits for their v2 homes (`distance_metadata`: a
 %   decision still to make, docs/V2_PLAN.md G50). So EVERY distance_metadata
 %   is carried whole as v1 (the untouched v1 source, with a `carried_as_v1`
 %   note): one holding a field outside its NDI template under carry-100, as
@@ -113,13 +113,13 @@ end
 
 % [reshaped retire classes carried] (Jess Haley, 2026-10-29, did-schema
 % V_eta_go_forward_class_audit.md): no longer reshaped into the retire class
-% `distance_metadata`; carried whole as v1 until its V2 home is decided.
+% `distance_metadata`; carried whole as v1 until its v2 home is decided.
 b = did2.convert.v1read.readBase(src);
 id = b.id;
 if ~ischar(id); id = ''; end
 % carry-register: carry-147
 did2.convert.reportNote('carried_as_v1', 'distance_metadata', id, ...
-    ['[carry-147] awaiting_home: distance_metadata, until its V2 home is ' ...
+    ['[carry-147] awaiting_home: distance_metadata, until its v2 home is ' ...
     'decided ([reshaped retire classes carried])']);
 bodies = {src};
 end

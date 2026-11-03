@@ -314,7 +314,7 @@ tf = isstruct(r) && did2.build.isVocabulary(r, 'relation', 'included_in');
 end
 
 function v = edgeOf(s, name)
-% the document id a V2 edge (or a v1 depends_on entry) of NAME names
+% the document id a v2 edge (or a v1 depends_on entry) of NAME names
 v = '';
 if ~isfield(s, 'depends_on') || ~isstruct(s.depends_on) || ~isfield(s.depends_on, 'name')
     return;
@@ -391,7 +391,7 @@ if isfield(s, 'depends_on') && isstruct(s.depends_on) && isfield(s.depends_on, '
     hit = find(strcmp({s.depends_on.name}, 'session_id'), 1);
     if ~isempty(hit)
         e = s.depends_on(hit);
-        if isfield(e, 'document_id')        % a V2 edge
+        if isfield(e, 'document_id')        % a v2 edge
             sid = char(e.document_id);
         elseif isfield(e, 'value')          % a v1 depends_on entry
             sid = char(e.value);

@@ -175,7 +175,7 @@ if ~isempty(methodName)
 end
 v1.(CLASS) = blk;
 % [empty prestimulus normalization is zero] (Jess Haley, 2026-10-27): for this
-% one setting a v1 [] and the V2 0 are the same value (the writer gives them
+% one setting a v1 [] and the v2 0 are the same value (the writer gives them
 % one meaning: tuning_response.m, "[] or 0) No normalization")
 spec.same(end+1) = struct('path', [CLASS '.prestimulus_normalization'], ...
     'fn', @(a, b) (isempty(a) && isnumeric(b) && isscalar(b) && b == 0) ...

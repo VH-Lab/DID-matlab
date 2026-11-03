@@ -11,11 +11,11 @@ function report = wholeBatch(v1Bodies, result)
 %
 %   WHY. Decided by Jess Haley, 2026-10-27 [whole-batch round trip] (did-schema
 %   V_eta_go_forward_class_audit.md): "one test takes a migrated corpus's FINAL
-%   V2 batch (after every batch pass: epochs, baths, the file-reference fold)
+%   v2 batch (after every batch pass: epochs, baths, the file-reference fold)
 %   back to v1 and compares it with the original, alongside the per-class round
 %   trips ([lossless means round trip]); it runs before the final corpus run".
 %   And [every v1 id survives] (the same day): "each v1 document's id becomes
-%   the id of the V2 document that most directly replaces it ... a whole-batch
+%   the id of the v2 document that most directly replaces it ... a whole-batch
 %   id check".
 %
 %   HOW. For each source: its documents are looked up in the final batch by
@@ -335,7 +335,7 @@ a = struct('name', {}, 'decision', {}, 'classes', {}, 'paths', {}, 'id', {}, 'wh
 % [v1 session document id not kept] (Decided by Jess Haley, 2026-11-03): the
 % own base.id of a v1 `session` and of a v1 `dataset_remote` document is not
 % kept; the session (dataset) entity keeps the session (dataset) id, as NDI's
-% V2 writer does
+% v2 writer does
 a(end+1) = struct('name', 'v1 session document id', ...
     'decision', '[v1 session document id not kept] (Jess Haley, 2026-11-03)', ...
     'classes', {{'session', 'dataset_remote'}}, 'paths', {{'base.id'}}, ...
@@ -368,7 +368,7 @@ tf = isscalar(docs) && isEntityOfType(docs{1}, 'dataset');
 end
 
 function tf = unrecordedModeDropped(v1, docs, ~)
-% V1's element.type is a type of a shared device kind, and DOCS state that
+% v1's element.type is a type of a shared device kind, and DOCS state that
 % kind and no `element type`
 tf = false;
 if ~isstruct(v1) || ~isfield(v1, 'element') || ~isstruct(v1.element) ...
@@ -542,7 +542,7 @@ function c = RELEASED_ID_CLASSES()
 % ([a rebuilt document may lose its id], Jess Haley, 2026-10-27, amending
 % [every v1 id survives]):
 %   dataset_session_info  the decision's own example: rebuilt from the
-%                         memberships, it writes no V2 document
+%                         memberships, it writes no v2 document
 %   daqreader_mfdaq_epochdata_ingested  [segment length is the time chunk]
 %                         (Jess Haley, 2026-10-29): "The v1 archive document
 %                         is not kept: its id goes under [a rebuilt document

@@ -19,7 +19,7 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %                                    them: stimulus_presentation_id,
 %                                    stimulus_response_scalar_id,
 %                                    contrasttuning_id_1..N
-%   Only the order of the inputs is kept in V2, not their v1 names. Decided
+%   Only the order of the inputs is kept in v2, not their v1 names. Decided
 %   by Jess Haley, 2026-10-27 [input names rebuild from the input class]
 %   (did-schema V_eta_go_forward_class_audit.md): each single-input name is
 %   rebuilt from the class of the document the input points at
@@ -284,7 +284,7 @@ end
 end
 
 function best = bestRuleVariables(leaf)
-%BESTRULEVARIABLES The V2 variables a '<name> selection' = 'best' method
+%BESTRULEVARIABLES The v2 variables a '<name> selection' = 'best' method
 %   parameter names ([tuning best value is a condition]).
 best = {};
 entries = asCell(getIn(leaf, 'interaction', 'method', 'parameters'));

@@ -4,7 +4,7 @@ function verifyRoundTrip(testCase, r, label, expectedLost)
 %
 %   did2.unittest.helpers.verifyRoundTrip(TESTCASE, R, LABEL, EXPECTEDLOST).
 %   R is did2.convert.roundtrip.check's report; EXPECTEDLOST a cellstr of the
-%   paths V2 is known not to keep for this fixture (a known finding each; {}
+%   paths v2 is known not to keep for this fixture (a known finding each; {}
 %   for none). The round trip must have inspected something (Operating Rule
 %   5: a check that inspected nothing is not a pass).
 %

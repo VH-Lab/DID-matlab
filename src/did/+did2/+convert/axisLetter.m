@@ -17,7 +17,7 @@ function L = axisLetter(term)
 %
 %   Decided by Jess Haley, 2026-10-27 [axis letters derive from labels]
 %   (did-schema V_eta_go_forward_class_audit.md): "a v1 `dimension_order`
-%   (e.g. "YX") is not stored; the round trip derives each letter from the V2
+%   (e.g. "YX") is not stored; the round trip derives each letter from the v2
 %   dimension's label through a fixed table; a video or image whose labels do
 %   not map one-to-one onto its v1 letters is carried whole as v1".
 %   did2.convert.migrators_j.image_stack carries such a stack;

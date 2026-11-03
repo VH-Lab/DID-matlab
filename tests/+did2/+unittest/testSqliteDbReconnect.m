@@ -6,7 +6,7 @@ function tests = testSqliteDbReconnect
 %   closes them by number: ndi.dataset runs mksqlite('close') (dbid 1)
 %   after opening a session, and ndi.session.dir runs mksqlite(0, 'close')
 %   (all of them) before deleting one. The legacy backend reopens on next
-%   use; did2.database.sqlitedb did not, so a V2 session opened from an
+%   use; did2.database.sqlitedb did not, so a v2 session opened from an
 %   ndi.dataset failed every search with "database not open". And a closed
 %   number is REUSED by the next open, so a database still holding it could
 %   have queried another database's file without an error. These tests pin

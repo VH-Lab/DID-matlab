@@ -97,7 +97,7 @@ function v2Body = oneepoch(preBody)
 %     [reshaped retire classes carried]  (Jess Haley, 2026-10-29, "B")
 %         v1 `distance_metadata` and `oneepoch` are carried whole as v1 for
 %         now, not reshaped into their retire classes; the reshape waits for
-%         their V2 homes (`oneepoch`: docs/V2_PLAN.md G44).
+%         their v2 homes (`oneepoch`: docs/V2_PLAN.md G44).
 %   BUILT HERE: both carries. ndi.element.oneepoch picks the first GLOBAL
 %   clock of the input's epoch table (ndi.time.clocktype.isGlobal: utc,
 %   approx_utc, exp_global_time, approx_exp_global_time, dev_global_time,

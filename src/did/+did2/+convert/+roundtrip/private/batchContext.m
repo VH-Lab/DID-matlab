@@ -13,7 +13,7 @@ function ctx = batchContext(docs)
 %                edge is not indexed: every document has one, and no inverse
 %                looks a document up by the session it is in.
 %
-%   WHY. Some v1 values are kept by V2 on documents a batch pass made and no
+%   WHY. Some v1 values are kept by v2 on documents a batch pass made and no
 %   source became: the documents an ingested epoch's probe map decomposes
 %   into (did2.convert.resolveEpochProbemap), the per-system time references
 %   a clock mapping's ends are read from (did2.convert.epochMint). The

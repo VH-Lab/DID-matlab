@@ -10,7 +10,7 @@ function sv = stampOf(body)
 %   What the stamp MEANS is asked of did2.schema.isV1Stamp and
 %   did2.schema.isV2Stamp (Decided by Jess Haley, 2026-10-25 [document
 %   stamps], did-schema V_eta_go_forward_class_audit.md: v1 = 'did_v1',
-%   V2 = 'did_v2', which is 'V_eta' today).
+%   v2 = 'did_v2', which is 'V_eta' today).
 %
 %   See also did2.schema.isV1Stamp, did2.schema.isV2Stamp,
 %            did2.convert.schemaVersionRank.

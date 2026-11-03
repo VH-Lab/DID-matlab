@@ -257,7 +257,7 @@ end
 end
 
 function [out, bad] = renamed(s, map, where)
-% OUT.(v1 name) = S.(V2 name) for each row of MAP; the rest of S is BAD
+% OUT.(v1 name) = S.(v2 name) for each row of MAP; the rest of S is BAD
 out = struct();
 bad = {};
 if ~isstruct(s) || isempty(fieldnames(s))

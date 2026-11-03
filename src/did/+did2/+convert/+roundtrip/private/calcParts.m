@@ -12,7 +12,7 @@ function [v1, leaf, inputs, spec, absLeaf] = calcParts(bodies, leafClass, v1Clas
 %   locked NDI-matlab `main`, 3cb19a8):
 %     document_class.class_name   V1CLASS (the v1 spelling)
 %     base.id, session_id, datestamp   the calculation (rebuildBase); base.name
-%                                 is '' (V2 never writes it; #73 item 54)
+%                                 is '' (v2 never writes it; #73 item 54)
 %     app.name, version, url      the `software_id` entity: its name, its
 %                                 version assertion, its global_identifier
 %     app.os, os_version          the `operating_system_id` entity
@@ -43,7 +43,7 @@ function [v1, leaf, inputs, spec, absLeaf] = calcParts(bodies, leafClass, v1Clas
 %       when none), and LEAF is the other one. Kept so a batch migrated
 %       before reads back;
 %     - [tuning fits use curve fitting now]: the method parameters
-%       'function' and 'response transform' are the V2 method's own (the
+%       'function' and 'response transform' are the v2 method's own (the
 %       fits' models; the transform), not v1 settings, and are not rebuilt.
 %       Since [fit model stated once] (Jess Haley, 2026-10-29, did-schema
 %       V_eta_go_forward_class_audit.md) the migrator writes no 'function'
@@ -195,8 +195,8 @@ end
 end
 
 function out = withoutFitParameters(entries)
-%WITHOUTFITPARAMETERS The method parameters less the V2 method's own
-%   ('function', 'response transform', and a best selection's rule '<V2
+%WITHOUTFITPARAMETERS The method parameters less the v2 method's own
+%   ('function', 'response transform', and a best selection's rule '<v2
 %   stimulus variable> selection' = 'best').
 c = asCell(entries);
 keep = true(1, numel(c));

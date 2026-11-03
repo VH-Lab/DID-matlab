@@ -434,7 +434,7 @@ end
 dropped = [dropped, unreadFields(preBody), numbersUnplaced];
 % NO SUBJECT: jCalculation hands such a document back unchanged (a calculation
 % requires its subject). [one folder, final classes only] (Jess Haley,
-% 2026-10-29, did-schema V_eta_go_forward_class_audit.md): a retire class's V2
+% 2026-10-29, did-schema V_eta_go_forward_class_audit.md): a retire class's v2
 % file is deleted once no v1 document passes through under it, so it is carried
 % whole as v1 with a note here ([passthrough stays v1], Jess Haley, 2026-10-24)
 % instead of passing through silently. Register row carry-138 covers it.

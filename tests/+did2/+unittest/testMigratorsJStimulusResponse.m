@@ -210,7 +210,7 @@ function testTheFiveV1EdgesAreAllRehomed(testCase)
 % The point of the repair: V_eta dropped stimulator_id and stimulus_control_id
 % and inverted the parameters edge. Four come back, under J names; the fifth,
 % the control record, does NOT: [control as covariate] (Jess Haley,
-% 2026-10-22) makes a v1 control_stimulus_ids document no V2 document, and
+% 2026-10-22) makes a v1 control_stimulus_ids document no v2 document, and
 % "responses point at the presentation only".
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findHarmonicCalc(testCase, out);
@@ -225,7 +225,7 @@ verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
 % at it.
 verifyEqual(testCase, inputSet(b), {'pres_b671ff'});
 verifyFalse(testCase, ismember('ctrl_20e84c', inputSet(b)), ...
-    'the control record is not an input: it becomes no V2 document');
+    'the control record is not an input: it becomes no v2 document');
 verifyEqual(testCase, depValue(b, 'method_id'), 'param_77c19b');
 
 % the anchor is a real sibling document, not a dangling string. With the epoch

@@ -78,7 +78,7 @@ function tests = testTemplateLiteralTypeTraps
 %   BACK OUT of _DELETE_PHASE8 precisely so a passthrough has a schema to
 %   validate against. These tests gate the normalisation, not a fold. Since
 %   2026-10-28 ([carried v1 validates against NDI templates]) a passthrough
-%   whose class has no V2 schema is counted, not quarantined, so the
+%   whose class has no v2 schema is counted, not quarantined, so the
 %   tombstones' existence is no longer pinned here.
 
 tests = functiontests(localfunctions);
@@ -185,10 +185,10 @@ end
 function testStimulusParameterEmptyValuePlaceholderIsCarriedAsWritten(testCase)
 % INVERTED 2026-10-29 from testStimulusParameterEmptyValuePlaceholderIsDropped.
 % Decided by Jess Haley, 2026-10-29 [one folder, final classes only] (did-schema
-% V_eta_go_forward_class_audit.md): a retire class's V2 file is deleted once no
+% V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
 % v1 document passes through under it, so a stimulus_parameter is now carried
 % whole as v1 ([passthrough stays v1]). A carried document is not read against
-% V2, so the template's `value: ""` (a char in a field NDI's schema types
+% v2, so the template's `value: ""` (a char in a field NDI's schema types
 % `double`, which validateTypeShape rejected) no longer has to be dropped to
 % get through: it is kept as v1 wrote it, never coerced.
 out = runJ(stimulusParameterBody(''));
@@ -207,7 +207,7 @@ function testStimulusParameterPlaceholderDocumentValidates(testCase)
 % The assertion that matters: the document -- exactly what
 % ndi.document('stimulus_parameter') produces -- gets through the validator
 % instead of quarantining on typeMismatch. Since 2026-10-29 it is carried whole
-% as v1 ([one folder, final classes only]), which is not validated against V2.
+% as v1 ([one folder, final classes only]), which is not validated against v2.
 out = runJValidated(stimulusParameterBody(''));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
@@ -347,7 +347,7 @@ end
 % Haley, 2026-10-27 [carried v1 validates against NDI templates], did-schema
 % V_eta_go_forward_class_audit.md): a carried or passed-through v1 document is
 % checked against NDI's v1 templates (did2.validate.v1Document), not a
-% did-schema tombstone, and one whose class has no V2 schema is counted
+% did-schema tombstone, and one whose class has no v2 schema is counted
 % (summary.passthrough_unvalidated_no_schema_count), never quarantined
 % (v1_to_v2.m). This test asserted the `image_stack` / `image_stack_parameters` schema EXISTS, which
 % that decision removes; the passthrough tests beside it, which assert no

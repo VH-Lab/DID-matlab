@@ -3,7 +3,7 @@ function tests = testDocumentStamps
 %
 %   Decided by Jess Haley, 2026-10-25 [document stamps] (did-schema
 %   V_eta_go_forward_class_audit.md): a v1 document's
-%   document_class.schema_version is 'did_v1' and a V2 document's is
+%   document_class.schema_version is 'did_v1' and a v2 document's is
 %   'did_v2'. Writers stamp 'did_v2' (did2.schema.v2Stamp); readers accept
 %   'did_v2' as V2, and 'did_v1' (or no stamp) as v1. Decided by Jess Haley,
 %   2026-10-25 [V_eta stamp not accepted]: a document stamped 'V_eta' is no
@@ -23,7 +23,7 @@ end
 function testTheV2StampsAreOneList(testCase)
 v2 = did2.schema.v2Stamps();
 verifyTrue(testCase, iscellstr(v2));
-verifyTrue(testCase, ismember('did_v2', v2), 'did_v2 is the V2 stamp');
+verifyTrue(testCase, ismember('did_v2', v2), 'did_v2 is the v2 stamp');
 verifyEqual(testCase, v2, {'did_v2'}, '[V_eta stamp not accepted]: did_v2 only');
 verifyEqual(testCase, v2{1}, did2.schema.v2Stamp(), ...
     'the stamp writers put is the first stamp readers accept');
@@ -43,7 +43,7 @@ verifyFalse(testCase, ke, 'V_eta is not a stamp: it must be unknown');
 verifyTrue(testCase, isnan(re));
 verifyEqual(testCase, r1, 0, 'did_v1 is v1: rank 0, like the empty name');
 verifyEqual(testCase, r1, r0);
-verifyEqual(testCase, r2, 6, 'did_v2 is the V2 generation, after V_zeta');
+verifyEqual(testCase, r2, 6, 'did_v2 is the v2 generation, after V_zeta');
 [~, kx] = did2.convert.schemaVersionRank('did_v3');
 verifyFalse(testCase, kx, 'an unknown name stays unknown');
 end
@@ -54,7 +54,7 @@ verifyTrue(testCase, did2.schema.isV2Stamp('did_v2'));
 verifyTrue(testCase, did2.schema.isV2Stamp("did_v2"));
 verifyFalse(testCase, did2.schema.isV2Stamp('did_v1'));
 verifyFalse(testCase, did2.schema.isV2Stamp(''));
-verifyFalse(testCase, did2.schema.isV2Stamp('V_zeta'), 'a brainstorm name is not V2');
+verifyFalse(testCase, did2.schema.isV2Stamp('V_zeta'), 'a brainstorm name is not v2');
 verifyFalse(testCase, did2.schema.isV2Stamp('V_omega'));
 verifyTrue(testCase, did2.schema.isV2Stamp(bodyStamped('did_v2')));
 verifyTrue(testCase, did2.schema.isV2Stamp(did2.document(bodyStamped('did_v2'))));
@@ -146,7 +146,7 @@ verifyEqual(testCase, r.summary.passthrough_count, 0);
 end
 
 function testWritersStampDidV2(testCase)
-% [document stamps]: every V2 writer puts 'did_v2'. The value is written in
+% [document stamps]: every v2 writer puts 'did_v2'. The value is written in
 % one place, did2.schema.v2Stamp.
 verifyEqual(testCase, did2.schema.v2Stamp(), 'did_v2');
 % v1_to_v2 stamps the migrated body (TargetVersion 'V_eta' is the schema

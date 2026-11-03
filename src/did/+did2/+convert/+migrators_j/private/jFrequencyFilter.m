@@ -15,13 +15,13 @@ function [ff, edgeName, unplaced] = jFrequencyFilter(preBody, nativeRate)
 %
 %   NATIVERATE (optional, [] when not given) is the caller's own sample rate
 %   (a pyraview's `native_rate`). An all-pass's `sampleFrequency` equal to it
-%   is not a carry: the V2 body keeps that rate, so it is recoverable
+%   is not a carry: the v2 body keeps that rate, so it is recoverable
 %   ([pass-through filter sample frequency], Jess Haley, 2026-10-26; NDI's
 %   writer sets both from one variable, makePyraviewDoc.m:53/58/157). One that
 %   differs carries the document, citing carry-061 (malformed).
 %
 %   FILTERS ARE METHODS (Jess Haley 2026-10-22 [filters are methods], N1a,
-%   V_eta_frequency_filter_model_plan.md): `frequency_filter` is deleted (a V2
+%   V_eta_frequency_filter_model_plan.md): `frequency_filter` is deleted (a v2
 %   invention; 0 occurrences in NDI's ground truth) and the filter is a
 %   `method` document -- term the filter design, parameters the band, the
 %   passband edges in Hz, the filter order (a count), the passband ripple and

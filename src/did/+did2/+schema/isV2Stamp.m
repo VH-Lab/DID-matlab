@@ -1,5 +1,5 @@
 function tf = isV2Stamp(v)
-%ISV2STAMP True when V names the current V2 document generation.
+%ISV2STAMP True when V names the current v2 document generation.
 %
 %   TF = did2.schema.isV2Stamp(V). V is a stamp (char or string), or a
 %   document (struct, did2.document or did.document), whose stamp is read
@@ -7,7 +7,7 @@ function tf = isV2Stamp(v)
 %
 %   The accepted names are did2.schema.v2Stamps, the ONE list (Decided by
 %   Jess Haley, 2026-10-25 [document stamps] and [V_eta stamp not
-%   accepted]): 'did_v2'. 'V_eta' is not a V2 stamp (no alias).
+%   accepted]): 'did_v2'. 'V_eta' is not a v2 stamp (no alias).
 %   An unknown name is false, and so is every v1 stamp (did2.schema.isV1Stamp).
 %
 %   See also did2.schema.isV1Stamp, did2.schema.stampOf,
