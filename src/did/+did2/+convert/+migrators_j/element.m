@@ -359,7 +359,8 @@ end
 if ~strcmp(strtrim(type), 'stimulator')
     rowSubjects = did2.convert.probemapSubjects('get', elementId);
     if numel(rowSubjects) > 1
-        % carry-register: carry-170 (a probe whose probe-map rows name several
+        % carry-register: carry-170 ([probe with two subjects is Dab's]; a probe
+        % whose probe-map rows name several
         % subjects)
         did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
             sprintf(['[carry-170] needs_mapping: its epochprobemap rows name %d subjects (%s); ' ...
