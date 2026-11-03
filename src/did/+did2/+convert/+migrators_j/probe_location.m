@@ -4,7 +4,7 @@ function v2Body = probe_location(preBody)
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Per D5, an element/probe location is not its own class in J: the probe IS a
-%   `subject` (device-as-subject, D2) and the location is a `term_observation`
+%   `subject` (device-as-subject, D2) and the location is an `observation` with value kind `term`
 %   about it -- `subject_statement.variable` = a spatial relation, the leaf
 %   `value` = the atlas term. did_v1 carried the atlas term as a coordinated
 %   (ontology_name, name) char pair; here they compose the ontology_term value.

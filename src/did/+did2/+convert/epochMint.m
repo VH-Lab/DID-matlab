@@ -34,7 +34,7 @@ function [result, report] = epochMint(result, options)
 %   BATCH-PASS-EMITS: stimulus_response_scalar -> nothing: SAME REASON, exactly.
 %       The second armed loop stamps the `epoch_id` edge and re-runs
 %       +migrators_j/stimulus_response_scalar; the
-%       `harmonic_component_calculation` leaf and its anchor are minted THERE
+%       `calculation` (value kind `harmonic_component`) and its anchor are minted THERE
 %       and are already credited to that migrator, whose rung 3 reads `yes` on
 %       the ladder today. Declaring them here would count one emission twice --
 %       which is the failure the `-> nothing` form exists to prevent, and is
@@ -1360,7 +1360,7 @@ end
 %
 %     source class    daqmetadatareader_epochdata_ingested  vs stimulus_response_scalar
 %     epoch string    the `epochid` MIXIN                   vs `stimulus_response.element_epochid`
-%     primary class   acquisition_metadata_file             vs harmonic_component_calculation
+%     primary class   acquisition_metadata_file             vs calculation + harmonic_component
 %     counters        metadata_*                            vs response_*
 %
 % Unifying the two would be the better end state and is OWED -- but it means
@@ -1506,7 +1506,7 @@ end
 %
 %     source class    stimulus_response_scalar   vs syncrule_mapping
 %     epoch string    element_epochid (ONE)      vs TWO, one per endpoint node
-%     primary class   harmonic_component_calculation vs clock_alignment
+%     primary class   calculation+harmonic_component vs clock_alignment
 %     counters        response_*                 vs syncrule_*
 %     edges stamped   ONE (epoch_id)             vs TWO (epoch_id_1, epoch_id_2)
 %
@@ -2366,7 +2366,7 @@ function tbl = defaultArmingMigrators()
 %   grep): exactly FOUR classes declare an `epoch_id` dependency --
 %   acquisition_metadata_file, ingestion_manifest, directed_relation,
 %   method_parameters. Unchanged from the 2026-08-12 reading, and
-%   `harmonic_component_calculation` is NOT among them.
+%   a `calculation` with value kind `harmonic_component` is NOT among them.
 %
 %   WHY THAT DOES NOT BLOCK THIS ROW. The refusal exists to stop a body being
 %   PERSISTED with an `epoch_id` its class does not declare. The two daqreader

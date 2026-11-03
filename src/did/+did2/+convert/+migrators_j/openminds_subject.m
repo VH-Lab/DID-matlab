@@ -12,7 +12,7 @@ function v2Body = openminds_subject(preBody)
 %   entity about a subject -- a `Species`, `Strain`, `GeneticStrainType`, or
 %   `BiologicalSex` -- carrying its ontology id in `fields.preferredOntologyIdentifier`
 %   and pointing at the subject via the `subject_id` dependency. Each therefore
-%   becomes ONE `term_assertion` on that subject (a subject typically has
+%   becomes ONE `assertion` (value kind `term`) on that subject (a subject typically has
 %   several: species + strain + sex ...). The openMINDS entity `type` names the
 %   asserted `variable` (species/strain/sex -- the D9 kind-variables); the
 %   ontology id + label are the term `value`. 1 -> 1.
@@ -110,8 +110,8 @@ if ~isempty(strtrim(omId)) && ~isLabStrain ...
     return;
 end
 
-% term_assertion: a timeless subject_assertion leaf (no method/interaction).
-% did-schema #88: a term_assertion built through did2.build, id preserved.
+% An `assertion` with value kind `term`: timeless (no method/interaction).
+% did-schema #88: an `assertion` (value kind `term`) built through did2.build, id preserved.
 body = jStatement(preBody, 'assertion', jSubjectOf(preBody, {'subject_id'}), ...
     variable, valueTerm, 'Id', char(preBody.base.id), 'ValueKind', 'term');
 v2Body = body;

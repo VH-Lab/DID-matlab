@@ -12,14 +12,14 @@ function docs = entityDoc(preBody, className, docId, blockStruct, gids, fresh)
 %                   local_identifier, notes, global_identifier (GIDS:
 %                   CURIEs or IRIs, did2.convert.entities.buildGids)
 %     term          license (spdx:<id>), accessibility,
-%                   experimental_approach -> term_assertion; ethics_assessment
+%                   experimental_approach -> an `assertion` with value kind `term`; ethics_assessment
 %                   -> an `ethics jurisdiction` (EMPTY:0000359) term assertion
 %                   (did2.convert.ethicsJurisdiction, Jess Haley 2026-10-22
 %                   [ethics assessment to jurisdiction]; EMPTY:0000355 before)
-%     date          release_date -> date_assertion
+%     date          release_date -> an `assertion` with value kind `date`
 %     text          short_name, version, version_innovation, how_to_cite,
 %                   support_channel, keyword, given_name, family_name, email
-%                   -> text_assertion
+%                   -> an `assertion` with value kind `text`
 %
 %   CLASSNAME is the type, except `web_resource`, which #88 retired (sec. 7: a
 %   URL is an address for the thing it names): a dataset's FULL DOCUMENTATION

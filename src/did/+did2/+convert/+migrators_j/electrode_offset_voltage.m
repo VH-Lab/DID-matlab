@@ -35,7 +35,7 @@ function bodies = electrode_offset_voltage(preBody)
 %   TEMPERATURE IS A CONDITION, NOT A SECOND OBSERVATION. The offset was measured
 %   AT a temperature; the two are one statement, not two. It therefore rides on
 %   `subject_statement.conditions` (the D10 qualifier slot, same idiom as
-%   jTuningFold) rather than becoming an independent temperature_observation
+%   jTuningFold) rather than becoming an independent `observation` (value kind `temperature`)
 %   about the probe. The writer treats it as optional and skips it when NaN, so
 %   the condition is emitted only when the value is finite.
 %

@@ -28,8 +28,8 @@ function [body, datumType, sourceDatumType] = jNgridBody(preBody, statementId, n
 %   it never mints a statement and never reads a subject edge. That is deliberate:
 %   the team's decision is "an ngrid document becomes a sampled_body, and the
 %   sampled_body needs a corresponding subject_statement", and WHICH statement
-%   differs per consumer (an image_observation for ontologyImage; a
-%   subject_calculation leaf for the RF family). A helper that guessed would be
+%   differs per consumer (an intensity `observation` for ontologyImage; a
+%   `calculation` for the RF family). A helper that guessed would be
 %   making a model decision at the wrong altitude.
 %
 %   STATUS 2026-08-11: written in a container with neither MATLAB nor Octave, so

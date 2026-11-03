@@ -42,10 +42,10 @@ function bodies = ontology_label(preBody)
 %   subject is one hop further on, through the migrated-id graph:
 %
 %       ontology_label --document_id--> imageStack --migrates-->
-%           image_observation --subject_id--> subject
+%           image_observation (pre-#88) --subject_id--> subject
 %
 %   DECIDED TARGET for the second pass (which can see that graph): emit a
-%   term_observation about the resolved subject, with `derived_from` pointing at
+%   term-valued `observation` about the resolved subject, with `derived_from` pointing at
 %   the migrated data statement. That keeps BOTH facts -- the term, and what it
 %   was about -- and asserts nothing false. Until then the document is carried
 %   through intact, so nothing is lost and no false claim is minted.
@@ -136,7 +136,7 @@ function bodies = ontology_label(preBody)
 %   THE NEXT SENTENCE USED TO READ: "`generic_file` has NO V_eta home and NO
 %   migrator (it is one of the 4 UNVERIFIED coverage rows)". BOTH HALVES ARE NOW
 %   STALE, and the second half was misleading even when it was written.
-%   `generic_file` HAS a V_eta home: it folds to a `term_observation` +
+%   `generic_file` HAS a V_eta home: it folds to an `observation` with value kind `term` +
 %   `opaque_body`, signed 2026-08-11, and the fold ran in 6 of 6 corpora in
 %   corpus run 31522068566. It has no MIGRATOR because it was never going to
 %   have one -- it is handled by a BATCH POST-PASS,

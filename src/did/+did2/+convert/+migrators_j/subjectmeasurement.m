@@ -69,7 +69,7 @@ function bodies = subjectmeasurement(preBody)
 %   `value: 30` for `measurement: 'age'` is 30 of something the document does
 %   not say. The leaf is meant to come from the D9 binding registry, and the
 %   registry cannot answer today -- `binding_registry_meta.json` ships five
-%   `subject_statement_bindings`, all of them binding to `term_assertion`, none
+%   `subject_statement_bindings`, all of them binding to an `assertion` + `term`, none
 %   dimensional. `jQuantityLeaf` is the pass-1 stand-in and is the single place
 %   that changes when the registry gains dimensional rows.
 %

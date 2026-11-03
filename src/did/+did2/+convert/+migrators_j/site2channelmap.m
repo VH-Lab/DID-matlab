@@ -7,7 +7,7 @@ function bodies = site2channelmap(preBody)
 %   ---------------------------------------------------------------------
 %   WHY THIS IS NOT A MIGRATION
 %   ---------------------------------------------------------------------
-%   This migrator used to emit an inline count_observation of `num_sites` about
+%   This migrator used to emit an inline `observation` (value kind `count`) of `num_sites` about
 %   the probe-subject. `num_sites` DOES NOT EXIST. The real NDI class
 %   (ndi_common/database_documents/probe/site2channelmap.json) has exactly one
 %   property field:

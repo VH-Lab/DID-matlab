@@ -16,9 +16,9 @@ function v2Body = openminds_element(preBody)
 %   `element_id` dependency (falling back to `subject_id`) rather than from
 %   `subject_id` directly -- the element concept is dissolved (D2) and its
 %   referent is a `subject` (device-as-subject). Each therefore becomes ONE
-%   `term_assertion` on that element-subject. The openMINDS entity `type` names
+%   `assertion` (value kind `term`) on that element-subject. The openMINDS entity `type` names
 %   the asserted `variable`; the ontology id + label are the term `value`. It is
-%   a timeless subject_assertion (no interaction, no session anchor). 1 -> 1.
+%   a timeless `assertion` (no interaction, no session anchor). 1 -> 1.
 %
 %   If no openMINDS block is present, or the block states an `openminds_id` or
 %   a `fields.description` (carry-128), the document is carried whole as v1
@@ -117,8 +117,8 @@ node = firstNonEmpty( ...
     jGetChar(flds, 'alternateIdentifier'));
 valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 
-% term_assertion: a timeless subject_assertion leaf (no method/interaction).
-% did-schema #88: a term_assertion built through did2.build, id preserved.
+% An `assertion` with value kind `term`: timeless (no method/interaction).
+% did-schema #88: an `assertion` (value kind `term`) built through did2.build, id preserved.
 body = jStatement(preBody, 'assertion', jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
     variable, valueTerm, 'Id', char(preBody.base.id), 'ValueKind', 'term');
 v2Body = {body};

@@ -4,7 +4,7 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %   kiasort_clusters) whose doc holds a session-relative output DIRECTORY + a
 %   curated-output MD5 rather than attached bytes:
 %
-%     count_observation           the id-preserved discoverable handle on the
+%     `calculation`+`label`        the id-preserved discoverable handle on the
 %                                 recording subject (variable 'spike cluster
 %                                 assignment', method = "Spike sorting",
 %                                 the sorter is the software; storage_mode 'body'). Its id
@@ -48,7 +48,7 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %   So a real document carries app.name / app.version / app.url plus the four
 %   os/interpreter fields. This helper BUILDS NEW BODIES rather than passing the
 %   source through, so until now every one of those facts was discarded: the
-%   source `app` block simply had no successor in {count_observation,
+%   source `app` block simply had no successor in {count_observation (pre-#88),
 %   opaque_body, session_relative_reference}. NOTHING COUNTED IT -- silentLoss
 %   counts empty edges, vacuous fields and fragments, and a source block with no
 %   successor is none of the three.
@@ -62,12 +62,12 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %         depends_on: software_id  (must_refer_to_document_class: software)
 %         fields:     execution_environment {os, os_version, interpreter,
 %                                            interpreter_version}
-%     count_observation -> subject_observation -> subject_interaction
+%     count_observation -> subject_observation -> subject_interaction (pre-#88)
 %
 %   RequireSession IS TRUE HERE. `base.session_id` is mustBeNonEmpty and
 %   v1_to_v2 quarantines the SOURCE when a body it produced fails, so an
 %   unguarded mint can turn a clean fold into a loss. It costs nothing: the
-%   count_observation, the opaque_body and the anchor all take their session_id
+%   statement, the opaque_body and the anchor all take their session_id
 %   from the same preBody.base.session_id, so a document with no session was
 %   already going to fail on those three -- the guard only makes it impossible
 %   for the NEW body to be the reason.
@@ -87,7 +87,7 @@ end
 directory = jGetChar(blk, dirField);
 md5 = jGetCharAny(blk, {'curated_output_md5_checksum', 'curated_output_MD5_checksum'});
 
-% ---- the id-preserved count_observation handle (the run) --------------------
+% ---- the id-preserved statement (the run) --------------------------------
 % did-schema #88: the assignment is an `observation` with a `count` value kind,
 % about the recording element, whose value is the sorter's output, an
 % opaque_body (the directory) named by its `owner_id`. `data_body` IS true:

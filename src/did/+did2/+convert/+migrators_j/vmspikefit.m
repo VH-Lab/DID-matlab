@@ -37,7 +37,7 @@ function bodies = vmspikefit(preBody)
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   vmspikefit is a Vm spike-shape fit, tied to a subject via element_id. #9
 %   analysis-tier fold (scalar pattern, pragmatic, same shape as fitcurve):
-%   fit_sse becomes a score_observation of the subject, with the fit EQUATION as
+%   fit_sse became (pre-#73) an `observation` (value kind `score`) of the subject, with the fit EQUATION as
 %   the observation's method. 1 -> 2.
 %
 %   DEFERRED (flagged): the fit_parameters structure and the vmspikefit_file (the
@@ -62,7 +62,7 @@ function bodies = vmspikefit(preBody)
 %   program wrote the fit, and the answer was thrown away with the block.
 %
 %   R1 (TEAM-SIGN-OFF [software], V_eta_tenet_audit.md): a `software` ENTITY +
-%   `software_id` + `execution_environment`. `score_observation` reaches both
+%   `software_id` + `execution_environment`. `score_observation` (pre-#88) reached both
 %   through subject_observation -> subject_interaction (checked in
 %   did-schema/schemas/V_eta/stable/subject_interaction.json), and the
 %   session_relative_reference anchor reaches neither.
@@ -116,7 +116,7 @@ if jRawCarry('vmspikefit', src, collision, unplaced, 'carry-100')
     return;
 end
 
-% did-schema #88: a model_fit_calculation (jModelFit; #73 review item 68).
+% did-schema #88: a `calculation` with value kind `model_fit` (jModelFit; #73 review item 68).
 % The pre-#73 fold kept only the residual, as a score observation.
 bodies = jModelFit(preBody, getBlock(preBody, 'vmspikefit'), {'fit_input_id'});
 if isscalar(bodies) && isequaln(bodies{1}, preBody)

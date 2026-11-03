@@ -22,7 +22,7 @@ function bodies = hartley_calc(preBody)
 %   this file implements:
 %
 %     "A `hartley_calc` document migrates 1->1, id- and deps-PRESERVED, into a
-%      `receptive_field_calculation` leaf (= `subject_calculation` +
+%      `receptive_field_calculation` leaf (= `subject_calculation` (pre-#88) +
 %      `receptive_field`), with the payload in TWO `sampled_body` documents --
 %      one for the STA plane, one for the p-value plane, because the writer
 %      itself gives the length-2 dimension no coordinates (436 coordinate

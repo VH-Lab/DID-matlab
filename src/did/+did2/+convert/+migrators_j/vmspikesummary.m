@@ -10,10 +10,10 @@ function bodies = vmspikesummary(preBody)
 %   This migrator used to decompose the class into one inline scalar observation
 %   per summary statistic, dispatching on four field names:
 %
-%       mean_vm            -> voltage_observation   (mV)
-%       mean_firing_rate   -> frequency_observation (Hz)
-%       num_spikes         -> count_observation
-%       recording_duration -> duration_observation  (s)
+%       mean_vm            -> `observation` + `voltage`   (mV)
+%       mean_firing_rate   -> `observation` + `frequency` (Hz)
+%       num_spikes         -> `observation` + `count`
+%       recording_duration -> duration_observation (pre-#88)  (s)
 %
 %   NONE OF THE FOUR EXISTS. The real NDI class
 %   (ndi_common/database_documents/apps/vhlab_voltage2firingrate/

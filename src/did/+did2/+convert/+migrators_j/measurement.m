@@ -38,16 +38,16 @@ function bodies = measurement(preBody)
 %   leaf -- and inventing one is exactly the class of error this whole repair
 %   track exists to undo. So:
 %
-%     mass / weight        -> mass_observation
-%     temperature          -> temperature_observation
-%     length / height      -> length_observation
-%     age / duration       -> time_observation   (was duration_observation
+%     mass / weight        -> an `observation` with value kind `mass`
+%     temperature          -> an `observation` with value kind `temperature`
+%     length / height      -> an `observation` with value kind `length`
+%     age / duration       -> an `observation` with value kind `time` (was duration_observation
 %                             until TEAM-SIGN-OFF [time dtype], 2026-08-17)
-%     a CURIE string_value -> term_observation (the value IS an ontology term)
+%     a CURIE string_value -> an `observation` with value kind `term` (the value IS an ontology term)
 %     anything else        -> CARRIED THROUGH UNCHANGED
 %
 %   DATE OF BIRTH is the important member of that last group, and it is not an
-%   oversight. There is no `date_observation` leaf in V_eta, and a birth date is
+%   oversight. There is no `observation` with value kind `date` here, and a birth date is
 %   arguably a property of the subject ENTITY rather than an observation of it --
 %   a modelling decision a single-document migrator has no business making.
 %   `treatment.m` already routes date-of-birth OUT of its tier for the same

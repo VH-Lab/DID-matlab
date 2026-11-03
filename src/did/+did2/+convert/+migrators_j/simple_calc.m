@@ -31,7 +31,7 @@ function bodies = simple_calc(preBody)
 %
 %     2. `result_units` DOES NOT EXIST. The class carries no units field at all,
 %        so the unit dispatch had nothing to dispatch on: every document fell to
-%        the `otherwise` branch and became a score_observation with scale_min 0
+%        the `otherwise` branch and became an `observation` (value kind `score`) with scale_min 0
 %        and scale_max 0 -- a degenerate range on a value with no rubric.
 %
 %     3. THERE IS NO SUBJECT. The migrator looked for `element_id` / `subject_id`;

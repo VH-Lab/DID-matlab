@@ -8,11 +8,11 @@ function bodies = image_stack(preBody)
 %   image_stack / image_stack_parameters are a pre-Brainstorm-I standalone image
 %   document (a file-backed pixel blob + geometry bundle tied to a subject). It
 %   is the main did_v1 class exercising J's new storage model (§C.4; 7,007 docs
-%   in the JH corpus). Strict J has NO imageseries_observation class (§A.9): the
+%   in the JH corpus). Strict J has NO imageseries_observation class (pre-#88 names here) (§A.9): the
 %   discoverable subject-side view is a plain `subject_observation` data-type
 %   leaf whose value is body-backed --
 %
-%       image_observation   the spine handle: subject_id, a shared time anchor, a
+%       `observation`+`intensity` the spine handle: subject_id, a shared time anchor, a
 %                           placeholder `subject_statement.variable` (the observed
 %                           quantity is the linked ontology label, set by a
 %                           second-pass join -- see V_eta_discovery_notes.md; NOT
@@ -26,7 +26,7 @@ function bodies = image_stack(preBody)
 %                           Haley, 2026-10-26; dropped as derivable before).
 %       sampled_body        the DIGITAL frames: datum (kind/dtype/unit/shape) +
 %                           sample_time (t0/dt/n) + the carried pixel bytes;
-%                           `statement` -> the image_observation it belongs to.
+%                           `statement` -> the `observation` it belongs to.
 %       session_relative_reference   the ordinal 'during' anchor (a v1 image
 %                           stack carries a bare timestamp+clocktype, not a DAQ
 %                           epoch -- the same honest fallback the treatment fold
@@ -38,7 +38,7 @@ function bodies = image_stack(preBody)
 %   daqreader infrastructure is left to the NDI second pass (D2: pass-1 migrators
 %   populate no individuated element referent).
 %
-%   NOTE: image_observation and the *_body classes are `draft` in V_eta -- the
+%   NOTE (pre-#88): image_observation and the *_body classes are `draft` in V_eta -- the
 %   broader imageseries/dataseries/timeseries_observation branch this supersedes
 %   is retired with the NDI-side ingest work, not here.
 %
@@ -116,7 +116,7 @@ function bodies = image_stack(preBody)
 %   orphan gate says nothing about it either way.
 %
 %   WHY WAS THE EDGE STILL DROPPED AFTER THAT? BECAUSE THERE WAS NOWHERE TO PUT
-%   IT. `image_observation` and its seven ancestors -- subject_observation,
+%   IT. The pre-#88 `image_observation` and its seven ancestors -- subject_observation,
 %   subject_interaction, subject_statement, base, image, data_type, data --
 %   declared SIX `depends_on` slots between them: subject_id, time_reference_#,
 %   instrument_id, software_id, method_parameters_id, derived_from_#. Not one

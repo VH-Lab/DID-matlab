@@ -46,7 +46,7 @@ function bodies = position_metadata(preBody)
 %
 %   Because there are NO numeric values to fold, emitting a length/position
 %   leaf with a value would be INVENTING data. Per the honest-minimal rule we
-%   take FOLD B: a single `term_observation` of the element-subject whose
+%   take FOLD B: a single `observation` (value kind `term`) of the element-subject whose
 %   spine variable is 'position' (the kind of measurement) and whose leaf
 %   `value` is the measurement ontology_term (the v1 `ontologyNode` CURIE).
 %   This records WHAT was measured about the subject without fabricating the

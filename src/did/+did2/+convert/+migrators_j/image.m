@@ -29,7 +29,7 @@ function bodies = image(preBody)
 %   Two ways out. RENAMING THE V_eta DATA_TYPE was rejected: R6 chose `image`
 %   deliberately (it killed `array` to get there, because a bare N-D numeric grid
 %   duplicates sampled_body and names a container), and the name is load-bearing
-%   across image_observation, image_manipulation and the tenets. CONSUMING THE v1
+%   across image_observation, image_manipulation (pre-#88 names) and the tenets. CONSUMING THE v1
 %   CLASS is better: once every did_v1 image document migrates, no document can
 %   reach that schema under that name, so the collision is gone BY CONSTRUCTION
 %   rather than by moving the problem to a new name.
@@ -116,7 +116,7 @@ function bodies = image(preBody)
 %
 %   THIS IS NOT THE MODEL DECISION. What a subject-less did_v1 `image` SHOULD
 %   become is a team call and is stated, not taken: an `image` with no subject is
-%   a raster belonging to nobody, and V_eta has no home for one (`image_observation`
+%   a raster belonging to nobody, and V_eta has no home for one (the pre-#88 `image_observation`
 %   and `image_manipulation` both inherit `subject_statement.subject_id`,
 %   mustBeNonEmpty TRUE). The options are the same three the E. coli lawn plates
 %   got: mint a subject for whatever the image is of, restore a v1-shaped
@@ -149,7 +149,7 @@ function bodies = image(preBody)
 %   image_stack reads in either spelling), same file-backed pixels, plus a
 %   direct `subject_id`.
 %   migrators_j.image_stack already folds exactly that shape into
-%   image_observation + sampled_body + anchor with the source id PRESERVED, and
+%   `observation` (value kind `intensity`) + sampled_body + anchor with the source id PRESERVED, and
 %   it reads only the parameters block, the dependencies, base and files -- never
 %   its own `image_stack` property block. So it applies to this class verbatim,
 %   and duplicating ~200 lines to say the same thing would be two places to keep

@@ -23,7 +23,7 @@ function leaf = jQuantityLeaf(hay, wordBoundary)
 %   `schemas/V_eta/stable/binding_registry_meta.json` ships FIVE
 %   `subject_statement_bindings` rows -- species, instrument type, cell type,
 %   material type, developmental stage -- and every one of them binds to
-%   `term_assertion`. NOT ONE names a dimensional leaf. The only dimensional row
+%   `assertion` + `term`. NOT ONE names a dimensional leaf. The only dimensional row
 %   in the file ("body mass" -> mass_observation) sits under `binding_examples`,
 %   which is illustrative, not a registry.
 %

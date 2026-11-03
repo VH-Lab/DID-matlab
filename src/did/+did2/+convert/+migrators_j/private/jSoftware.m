@@ -4,7 +4,7 @@ function [software, swId] = jSoftware(name, version, url, sessionId, datestamp, 
 %
 %   [SOFTWARE, SWID] = jSoftware(NAME, VERSION, URL, SESSIONID, DATESTAMP)
 %   SOFTWARE is a CELL of documents -- the entity, then, when VERSION is given,
-%   a text_assertion of its version (`software.version` became a text
+%   an `assertion` with value kind `text` of its version (`software.version` became a text
 %   assertion, V_eta_entity_composition_plan.md sec. 4) -- and SWID the
 %   entity's id. A caller appends the cell: `bodies = [bodies, software]`.
 %   SOFTWARE is {} and SWID '' when NAME is empty (no identity, no entity; the

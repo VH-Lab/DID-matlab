@@ -37,7 +37,7 @@ function bodies = probe_geometry(preBody)
 %   indexed by site (the ProbeInterface convention). Concatenating them back into
 %   one anonymous array would discard naming the source hands us for free, and
 %   would force an arbitrary ordering choice. So each populated axis becomes its
-%   own length_observation with its own spine variable, and per-site identity
+%   own `observation` (value kind `length`) with its own spine variable, and per-site identity
 %   stays positional within each array -- the same series-as-cardinality rule
 %   jMeasureArray already uses.
 %
@@ -72,7 +72,7 @@ function bodies = probe_geometry(preBody)
 %   actually populated, so a 2-D probe simply yields two observations.
 %
 %   `probe_model` (formerly read as the non-existent `probe_type`) becomes a
-%   timeless `term_assertion` about the same probe-subject when non-empty.
+%   timeless `assertion` (value kind `term`) about the same probe-subject when non-empty.
 %
 %   NO HOME YET, AND NOW CARRIED: `shank_id`, `contact_shape` + its
 %   width/height/radius, `manufacturer`, `has_planar_contour` and
@@ -258,7 +258,7 @@ end
 bodies = obsBodies;
 bodies{end+1} = frame;
 if ~isempty(probeModel)
-    % Optional probe-model assertion: a timeless subject_assertion leaf (no
+    % Optional probe-model assertion: a timeless `assertion` (no
     % interaction), a secondary sibling body so it mints a fresh base id.
     assertion = jStatement(preBody, 'assertion', jSubjectOf(preBody, subjectSrc), ...
         jLabel('probe model'), jLabel(probeModel), 'ValueKind', 'term');

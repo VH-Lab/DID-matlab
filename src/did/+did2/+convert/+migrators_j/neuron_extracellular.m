@@ -117,7 +117,7 @@ function bodies = neuron_extracellular(preBody)
 %   THIS IS A DEVIATION FROM THE SHAPE THE INVESTIGATION SKETCHED, and it is
 %   recorded here rather than done quietly. The audit note proposed "a
 %   `sampled_body` with TWO axes: time and channel". Everything else in that
-%   sketch is built exactly as written -- a `voltage_observation` of the
+%   sketch is built exactly as written -- a `voltage_observation` (pre-#88; now a `calculation`+`voltage`, header) of the
 %   neuron-subject, over a time axis and a channel axis. What moved is WHERE the
 %   axes mount, and the signed model makes that a consequence rather than a
 %   choice:
@@ -207,7 +207,7 @@ function bodies = neuron_extracellular(preBody)
 %   the derived subject's `local_identifier`, `unit_<cluster_index>` -- findable
 %   by a human, not by a query.
 %
-%   IT IS EMITTED AS A `count_assertion` OF THE UNIT, and the team may overturn
+%   IT WAS EMITTED (pre-#88) AS A `count_assertion` OF THE UNIT (now a `calculation`+`label`, header), and the team may overturn
 %   that. The honest statement of the problem: a cluster index is a NOMINAL
 %   integer -- a label that happens to be a number -- and V_eta has no nominal
 %   integer type. The three candidates and why the others lose:
@@ -272,15 +272,15 @@ function bodies = neuron_extracellular(preBody)
 %       subject                     -> entity -> base            NO software_id
 %       directed_relation           -> relation -> base          NO software_id
 %       session_relative_reference  -> time_reference -> base    NO software_id
-%       count_assertion             -> subject_assertion
+%       count_assertion (pre-#88)   -> subject_assertion
 %                                   -> subject_statement         NO software_id
-%       voltage_observation         -> subject_observation
+%       voltage_observation (pre-#88) -> subject_observation
 %                                   -> subject_interaction       YES (+ exec env)
-%       score_observation           -> subject_observation
+%       score_observation (pre-#88) -> subject_observation
 %                                   -> subject_interaction       YES (+ exec env)
 %
 %   THE RESIDUAL IS SMALLER THAN IT WAS AND IS NOT CLOSED. Before the waveform
-%   fold the only carrier was the score_observation, which is emitted only when
+%   fold the only carrier was the score_observation (pre-#88), which is emitted only when
 %   `quality_number` is a numeric scalar; a unit without a quality number had
 %   nowhere typed to put its software. Now the waveform observation is a second
 %   carrier, so the gap is only a document with NEITHER a quality number NOR a
@@ -307,7 +307,7 @@ function bodies = neuron_extracellular(preBody)
 %                                     the term is built above the regular/
 %                                     irregular branch so it is not staged twice)
 %       'channel'                     the channel axis's `variable`
-%       'spike sorter cluster index'  the count_assertion's `variable` (since
+%       'spike sorter cluster index'  the cluster-index statement's `variable` (since
 %                                     2026-10-27 AFO:AFR_0003339 "cluster
 %                                     identifier", [afo prefix registered])
 %
