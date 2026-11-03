@@ -21,7 +21,8 @@ function result = fromV1Database(srcPath, dstPath, options)
 %   Quarantine entries produced by v1_to_v2 are written as a JSON array
 %   to <DSTPATH>.quarantine.json. The function returns the result struct
 %   v1_to_v2 returns (`migrated`, `quarantine`, `summary`, ...) and
-%   `migration_record`: {migration_id, report_id, report}.
+%   `migration_record`: {migration_id, report_id, migration_ids, report_ids,
+%   report} (one record per dataset, [one migration document per dataset]).
 %
 %   THE MIGRATION RECORD. A DID-only run writes its own record (Decided by
 %   Jess Haley, 2026-11-01 [migration record writer], did-schema
@@ -111,11 +112,20 @@ result = did2.convert.v1_to_v2(bodies, ...
     'Counts', struct('source_documents', result.summary.total, ...
         'quarantined', result.summary.quarantine_count), ...
     'Validate', options.Validate, 'SchemaCache', options.SchemaCache);
+% [one migration document per dataset] (Jess Haley, 2026-11-03): a run of two
+% or more datasets (or sessions, with no dataset) writes one record per
+% dataset; RECORDS holds the (migration, report) pairs and REPORT one report
+% each. migration_id / report_id are the first pair's; migration_ids /
+% report_ids name every pair.
 result.migration_record = struct('migration_id', '', 'report_id', '', ...
-    'report', report);
+    'migration_ids', {{}}, 'report_ids', {{}}, 'report', {report});
 if ~isempty(records)
-    result.migration_record.migration_id = records{1}.get('base.id');
-    result.migration_record.report_id = records{2}.get('base.id');
+    result.migration_record.migration_ids = cellfun(@(d) char(d.get('base.id')), ...
+        records(1:2:end), 'UniformOutput', false);
+    result.migration_record.report_ids = cellfun(@(d) char(d.get('base.id')), ...
+        records(2:2:end), 'UniformOutput', false);
+    result.migration_record.migration_id = result.migration_record.migration_ids{1};
+    result.migration_record.report_id = result.migration_record.report_ids{1};
 end
 
 db = did2.database.sqlitedb(dstPath, 'SchemaCache', options.SchemaCache);
