@@ -796,6 +796,25 @@ for k = 1:numel(cases)
 end
 end
 
+function testVhlabDateRowsReachTheGenericFallback(testCase)
+% Decided by Jess Haley, 2026-11-03 [treatment word list deleted] (did-schema
+% did_v2_go_forward_class_audit.md): the label-word list that carried "date of
+% birth" / "experiment time" rows under carry-032 is deleted; the rows vhlab's
+% treatmentTable writes reach the generic fallback and are carried whole as v1
+% under carry-022. INVERTED: they cited carry-032 ("not a manipulation").
+cases = {treatmentDoc('EMPTY:Treatment: Date of birth', '', [], '2021-03-04'), ...
+    treatmentDoc('EMPTY:Treatment: Non-survival experiment time', '', [], '2021-05-06'), ...
+    treatmentDoc('', 'experiment time', [], 't00001')};
+for k = 1:numel(cases)
+    v1 = cases{k};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, '[carry-022] needs_mapping: manipulation'), d);
+    verifyFalse(testCase, contains(d, 'carry-032'), d);
+end
+end
+
 function testTreatmentSubstanceIsDoseManipulation(testCase)
 % (Located at a body site since 2026-10-26: with no location a treatment is
 % carried as v1, [one-reading quick answers] (Q1),

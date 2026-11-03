@@ -33,7 +33,7 @@ function v2Body = treatment(preBody)
 %   becomes a `term_observation` (D3); an ATTRIBUTED site is promoted by the
 %   NDI second pass.
 %
-%   Not-a-manipulation rows (date of birth, experiment time) and substance rows whose dose amounts cannot all be placed are also
+%   Substance rows whose dose amounts cannot all be placed are also
 %   carried whole as v1 ([generic stage is lossless], [partly placed is
 %   carried as v1], Jess Haley, 2026-10-25).
 %
@@ -109,7 +109,6 @@ numValue = [];
 if isfield(block, 'numeric_value'); numValue = block.numeric_value; end
 
 variable = jOntologyTerm(node, label);
-hay = lower([node ' ' label]);
 
 % --- Dab "Target Location" idiom: string_value is an ontology site, not prose.
 % [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
@@ -126,14 +125,11 @@ if looksLikeCURIE(strValue)
 end
 notesText = strValue;
 
-% --- not-a-manipulation rows -> carried as v1 (were quarantined) --------
-if containsAny(hay, {'date of birth', 'non-survival experiment time', ...
-        'experiment time'})
-    % carry-register: carry-032
-    v2Body = carryAsV1(preBody, sprintf(['[carry-032] treatment "%s" is not a manipulation ' ...
-        '(was did2:convert:notAManipulation)'], label));
-    return;
-end
+% --- no label-word list (Decided by Jess Haley, 2026-11-03 [treatment word
+% list deleted], did-schema did_v2_go_forward_class_audit.md): the rows the
+% list recognised by their words ("date of birth", "non-survival experiment
+% time", "experiment time", vhlab's) are not singled out; they reach the
+% generic fallback below and are carried as v1 under carry-022.
 
 % --- branch dispatch into strict-J leaves (first match wins) -----------
 anchor = jTreatmentAnchor(preBody, block);   % the recorded onset, else the session
@@ -281,10 +277,3 @@ function tf = looksLikeCURIE(s)
 tf = ~isempty(s) && ~isempty(regexp(char(s), '^[A-Za-z][A-Za-z0-9_]*:[^\s:]+$', 'once'));
 end
 
-function tf = containsAny(hay, needles)
-tf = false;
-for k = 1:numel(needles)
-    pat = ['\<', regexptranslate('escape', needles{k}), '\>'];
-    if ~isempty(regexp(hay, pat, 'once')); tf = true; return; end
-end
-end
