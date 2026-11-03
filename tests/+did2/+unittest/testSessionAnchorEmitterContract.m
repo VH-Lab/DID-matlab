@@ -237,7 +237,7 @@ function tests = testSessionAnchorEmitterContract
 %
 %   WHICH SIDE IS WRONG IS NOT DECIDED HERE. What is not in doubt is that the two
 %   sides disagree and that every OTHER duration cell in the converter writes
-%   `seconds` -- jClockAlignmentBodies.m:242, jEpochClockReferences.m:287,
+%   `seconds` -- jClockAlignmentBodies.m:242, did2.convert.epochClockReferences.m:287,
 %   resolveValidIntervals.m:957 -- while ontology_table_row.m:559 alone does not.
 %   `seconds` is documented in the schema as *"Canonical duration value -- the
 %   normalised, cross-document comparable number"*, and the fold writes its own

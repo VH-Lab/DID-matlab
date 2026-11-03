@@ -98,7 +98,7 @@ function v2Body = metadata_editor(preBody)
 %   drives the migrator through a real jsonencode/jsondecode round trip --
 %   testMigratorsJ.m's `runJRoundTrip` block.
 %
-%   The idiom is the pipeline's own, not a new one: `jEpochClockReferences`
+%   The idiom is the pipeline's own, not a new one: `did2.convert.epochClockReferences`
 %   (clockNames/intervalColumns, "the two shapes a serialisation round-trip
 %   can leave behind"), `jFileMatchList:71`, `epochfiles_ingested:158`,
 %   `sourceCensus:407` and `silentLoss:984` all read the cell alternative.

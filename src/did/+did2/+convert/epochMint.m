@@ -266,7 +266,7 @@ function [result, report] = epochMint(result, options)
 %         branch REPLACES bodies{2} with `epochAnchor`'s relative_reference and
 %         retargets the leaf's `time_reference_1` onto it.
 %     +migrators_j/daqreader_epochdata_ingested.m:105
-%         `bodies = [{preBody}, refs]` -- jEpochClockReferences mints ONE
+%         `bodies = [{preBody}, refs]` -- did2.convert.epochClockReferences mints ONE
 %         relative_reference PER epochtable entry.
 %     +migrators_j/daqreader_image_epochdata_ingested.m:103   same, same helper.
 %
@@ -1056,7 +1056,7 @@ for m = 1:numel(minted)
     end
     % Code scanning flags this line as "variable appears to change size on
     % every loop iteration" (alert 218). FALSE POSITIVE, verified by reading
-    % rather than assumed -- the same check jEpochClockReferences records for
+    % rather than assumed -- the same check did2.convert.epochClockReferences records for
     % alerts 170 and 171. `minted` is indexed by `m` over `1:numel(minted)`, so
     % this OVERWRITES an existing cell and cannot grow it; the only growth in
     % this loop is `extraBodies{end+1}` two lines up, which carries the
@@ -3394,7 +3394,7 @@ function entries = acquisitionEpochClocks(body)
 %
 %   NOT snake_case-fallback'd: `clocks` is an IMMEDIATE field of the property
 %   block, so universalRenames has already normalised it. The camelCase fallback
-%   rule applies one level down, which is why jEpochClockReferences needs it for
+%   rule applies one level down, which is why did2.convert.epochClockReferences needs it for
 %   `epochtable.epochclock` and this does not.
 entries = {};
 if ~isstruct(body) || ~isfield(body, 'acquisition_epoch') ...

@@ -219,7 +219,7 @@ function c = durationCell(seconds)
 %   testSessionAnchorEmitterContract.m found it by driving the real migrator.
 %
 %   This fixture is LEFT AS IT IS: it exercises the already-canonical cell,
-%   which is a real shape (jClockAlignmentBodies, jEpochClockReferences and
+%   which is a real shape (jClockAlignmentBodies, did2.convert.epochClockReferences and
 %   resolveValidIntervals all write `seconds`), and changing it would weaken the
 %   tests above that depend on it. What must not happen is a SECOND fixture with
 %   the same flaw -- see `emitterDurationCell` below, which is the emitter's

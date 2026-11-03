@@ -15,7 +15,7 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %
 %   THIS LINE READ `value { start, end, clock, approximate }` UNTIL 2026-08-11
 %   and named three fields the emitter does not write. Corrected against the
-%   emitter rather than against memory: jEpochClockReferences.m builds
+%   emitter rather than against memory: did2.convert.epochClockReferences.m builds
 %   `relative_reference.value` as {clock, start, duration} (its CHANGE 1 --
 %   `end` became `duration`) and puts the approximation on the ROOT block as
 %   `time_reference.clock_tolerance` (its CHANGE 2 and 4 -- `approximate` on the
@@ -89,7 +89,7 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %   against the session would state an offset that is not the one stored.
 %
 %   Which entries become documents, and which correctly become nothing, is in
-%   jEpochClockReferences (NO TIMES => NO REFERENCE: `no_time` and NaN intervals
+%   did2.convert.epochClockReferences (NO TIMES => NO REFERENCE: `no_time` and NaN intervals
 %   are both real, reachable values here).
 %
 %   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
@@ -141,7 +141,7 @@ if isempty(epochDocId)
 end
 
 blk = getBlock(preBody, 'daqreader_epochdata_ingested');
-refs = jEpochClockReferences(getSubStruct(blk, 'epochtable'), epochDocId, ...
+refs = did2.convert.epochClockReferences(getSubStruct(blk, 'epochtable'), epochDocId, ...
     baseField(preBody, 'session_id', ''), ...
     baseField(preBody, 'datestamp', did2.convert.migrationTime()));
 

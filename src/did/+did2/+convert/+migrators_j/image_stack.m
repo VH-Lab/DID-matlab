@@ -508,7 +508,7 @@ function [anchor, conds, gaps] = acquisitionTime(src, params, noteClass)
 %       copied from jTreatmentAnchor's global-clock transfer time, until
 %       then. approx_utc is the same instant with a 5 s clock_tolerance
 %       (NDI +ndi/+time/clocktype.m: "within 5 seconds"), as
-%       jEpochClockReferences and epochMint de-encode it. A datenum no
+%       did2.convert.epochClockReferences and epochMint de-encode it. A datenum no
 %       ISO-8601 instant can hold (before year 0000 or after 9999) cannot
 %       be converted either, and is written as on a clock that is not UTC
 %       (below), its gap's reason saying so.

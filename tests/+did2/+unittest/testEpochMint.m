@@ -1296,7 +1296,7 @@ end
 %
 %   THE STUB IS NOT AN INVENTION. It calls the REAL fold for the primary and the
 %   REAL +migrators_j/daqreader_epochdata_ingested for the extras, so the extra
-%   bodies are built by jEpochClockReferences -- the very helper both daqreader
+%   bodies are built by did2.convert.epochClockReferences -- the very helper both daqreader
 %   arms use. Fixtures come from the emitter, never from a schema.
 
 function tbl = armingTable(fcn)
@@ -1307,7 +1307,7 @@ end
 function refs = realEpochExtentReferences(nClocks)
 %REALEPOCHEXTENTREFERENCES N `relative_reference` bodies from the REAL emitter.
 %   +migrators_j/daqreader_epochdata_ingested returns [{preBody}, refs] on its
-%   armed branch; refs is what jEpochClockReferences built, one per clock. Take
+%   armed branch; refs is what did2.convert.epochClockReferences built, one per clock. Take
 %   everything after the pre-body.
 refs = {};
 if nClocks < 1
