@@ -211,9 +211,13 @@ verifyEqual(testCase, rel.relation.notes, 'mouse to human orthologs');
 verifyFalse(testCase, isfield(rel.relation.method, 'term') && ~isempty(rel.relation.method.term) ...
     && ~isempty(rel.relation.method.term.node));
 verifyEqual(testCase, rel.relation.method.parameters.text, 'OrthoFinder v2.5.5');
+% [gene-list method text is a description]: the parameter's variable
+verifyEqual(testCase, rel.relation.method.parameters.variable.node, 'NCIT:C25365');
 verifyEqual(testCase, edge(rel, 'value_id'), {val.base.id});
-% the value: one row dimension of 3, two gene covariates keyed to A and B
+% the value: one gene-pair dimension of 3 ([gene pair term is NCIT Pair]),
+% two gene covariates keyed to A and B
 verifyEqual(testCase, val.data.dimensions.n, 3);
+verifyEqual(testCase, val.data.dimensions.term.node, 'NCIT:C48046');
 covs = val.data.covariates;
 verifyEqual(testCase, [covs.key], [0 1]);
 verifyEqual(testCase, double(covs(1).index(:)'), [417 418 418]);
