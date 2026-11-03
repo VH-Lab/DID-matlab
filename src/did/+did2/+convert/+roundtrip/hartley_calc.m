@@ -5,6 +5,15 @@ function [v1, spec] = hartley_calc(bodies)
 %   its spike-time body (`sampled_body`), the session anchor and the software
 %   entities (with their version assertions).
 %
+%   Since [hartley planes are two statements] and [hartley numbers stored,
+%   copies not] (Decided by Jess Haley, 2026-11-03): TWO
+%   `receptive_field_calculation` statements (the spike-triggered average, with
+%   the source id, and the null cumulative probability, identical but for its
+%   id and variable), each owning its plane body; the hartley numbers body
+%   (dimension "frame") owned by the first. `hartley_calc.input_parameters.T`,
+%   when it is not a method parameter, is the delay axis (an exact copy, not
+%   written: batch 2, Jess Haley, 2026-11-03).
+%
 %   [V1, SPEC] = did2.convert.roundtrip.hartley_calc(BODIES). V1 is the
 %   document in the shape NDIcalc-vis-matlab ndi.calc.vis.hartley writes it
 %   (its stored self-test output, mock/hartley/mock.1.json, and the corpus
@@ -60,37 +69,63 @@ end
 
 n = numel(bodies);
 isBody = cellfun(@(b) strcmp(classNameOf(b), 'sampled_body'), bodies);
-[v1, leaf, inputs, spec] = calcParts(bodies(~isBody), 'receptive_field_calculation', ...
+% the null-cumulative-probability statement is set apart first; calcParts reads
+% the spike-triggered-average one (the source id) with the shared parts
+isPValue = false(1, n);
+for k = find(~isBody)
+    isPValue(k) = strcmp(classNameOf(bodies{k}), 'receptive_field_calculation') ...
+        && strcmpi(variableName(bodies{k}), P_VALUE);
+end
+[v1, leaf, inputs, spec] = calcParts(bodies(~isBody & ~isPValue), 'receptive_field_calculation', ...
     'hartley_calc', 'ndi.calc.vis.hartley');
 if isempty(leaf)
     return;
 end
 leafId = char(getIn(leaf, 'base', 'id'));
+if ~strcmpi(variableName(leaf), STA)
+    spec.unplaced{end+1} = sprintf('the calculation''s variable is "%s", not "%s"', ...
+        variableName(leaf), STA);
+end
+pLeafId = '';
+pIdx = find(isPValue);
+if isscalar(pIdx)
+    pLeaf = bodies{pIdx};
+    pLeafId = char(getIn(pLeaf, 'base', 'id'));
+    % the same calculation: about the same entity, from the same inputs (it
+    % rebuilds nothing of its own beyond its plane, so nothing else is compared)
+    if ~isequal(edgeIds(pLeaf, 'entity_id'), edgeIds(leaf, 'entity_id')) ...
+            || ~isequal(edgeIds(pLeaf, 'input_id'), edgeIds(leaf, 'input_id'))
+        spec.unplaced{end+1} = ['the null cumulative probability statement is not ' ...
+            'about the same entity from the same inputs'];
+    end
+else
+    spec.unplaced{end+1} = sprintf('%d null cumulative probability statement(s), not one', numel(pIdx));
+end
 
 % ---- the bodies -------------------------------------------------------------
-planes = {};
-planeNames = {};
+planes = {[], []};
 spike = [];
+numbers = [];
 for k = find(isBody)
     b = bodies{k};
-    if ~isequal(edgeIds(b, 'owner_id'), {leafId})
-        spec.unplaced{end+1} = sprintf('sampled_body %d is not owned by the calculation', k);
-        continue;
-    end
-    [~, plane] = termParts(getIn(b, 'data_body', 'conditions', 'term'));
-    if ~isempty(plane)
-        planes{end+1} = b; %#ok<AGROW>
-        planeNames{end+1} = plane; %#ok<AGROW>
-    elseif isempty(spike)
+    owner = edgeIds(b, 'owner_id');
+    dims = asCell(getIn(b, 'data', 'dimensions'));
+    if isequal(owner, {leafId}) && numel(dims) == 3 && isempty(planes{1})
+        planes{1} = b;
+    elseif ~isempty(pLeafId) && isequal(owner, {pLeafId}) && numel(dims) == 3 && isempty(planes{2})
+        planes{2} = b;
+    elseif isequal(owner, {leafId}) && isscalar(dims) && isFrameDimension(dims{1}) && isempty(numbers)
+        numbers = b;
+    elseif isequal(owner, {leafId}) && isscalar(dims) && isempty(spike)
         spike = b;
     else
         spec.unplaced{end+1} = sprintf('sampled_body %d has no role in a hartley_calc', k);
     end
 end
-if ~isequal(planeNames, {'response estimate', 'significance'})
-    spec.unplaced{end+1} = sprintf('the plane bodies are {%s}, not the response estimate and the significance', ...
-        strjoin(planeNames, ', '));
+if any(cellfun(@isempty, planes))
+    spec.unplaced{end+1} = 'a plane body is missing (one per statement)';
 end
+planes = planes(~cellfun(@isempty, planes));
 
 % ---- identity, edges ----------------------------------------------------------
 entity = edgeIds(leaf, 'entity_id');
@@ -165,6 +200,17 @@ if ~isempty(dataType)
     end
 end
 
+% ---- T: the delay axis, when it is not a method parameter -------------------------
+hc = v1.hartley_calc;
+if isfield(hrc, 'reconstruction_properties') ...
+        && ~(isfield(hc, 'input_parameters') && isfield(hc.input_parameters, 'T'))
+    hc.input_parameters.T = hrc.reconstruction_properties.T_coords;
+    v1.hartley_calc = hc;
+    spec.same(end+1) = struct('path', 'hartley_calc.input_parameters.T', ...
+        'fn', @sameNumbers, 'why', ['an exact copy of the delay axis, not written ' ...
+        '(batch 2, Jess Haley, 2026-11-03: "Ok"); compared as numbers']);
+end
+
 % ---- the spike times, the stimulus sequence -------------------------------------
 if ~isempty(spike)
     c = asCell(getIn(spike, 'data', 'covariates'));
@@ -177,13 +223,24 @@ end
 if isstruct(seq) && isfield(seq, 'frame_times')
     hrc.frameTimes = column(seq.frame_times);
 end
-if isstruct(seq) && isfield(seq, 'hartley_numbers')
-    hn = seq.hartley_numbers;
-    fns = fieldnames(hn);
-    for k = 1:numel(fns)
-        hn.(fns{k}) = column(hn.(fns{k}));
+if ~isempty(numbers)
+    % [hartley numbers stored, copies not]: one covariate per number, along frame
+    cols = hartleyNumberColumns();
+    hn = struct();
+    covs = asCell(getIn(numbers, 'data', 'covariates'));
+    for k = 1:numel(covs)
+        [~, label] = termParts(getIn(covs{k}, 'variable'));
+        ix = find(strcmpi(cols(:, 2), label), 1);
+        if isempty(ix) || isfield(hn, cols{ix, 1})
+            spec.unplaced{end+1} = sprintf('hartley numbers covariate "%s" has no v1 field', label);
+            continue;
+        end
+        hn.(cols{ix, 1}) = column(getIn(covs{k}, 'quantity', 'value'));
     end
     hrc.hartley_numbers = hn;
+end
+if isstruct(seq) && isfield(seq, 'hartley_numbers')
+    spec.unplaced{end+1} = 'the hartley numbers are a method parameter, not data';
 end
 
 % ---- stimulus_properties: the presentation's settings ---------------------------
@@ -227,15 +284,16 @@ end
 
 function [ext, coords, bad] = planeAxes(b)
 % the plane's extents in dimension order, and the coordinate vectors in the
-% writer's [T; X; Y] order: the `lag` dimension, then the other two in order
+% writer's [T; X; Y] order: the delay, X-Coordinate, Y-Coordinate dimensions
 bad = {};
 coords = {};
 dims = asCell(getIn(b, 'data', 'dimensions'));
 ext = zeros(1, numel(dims));
 labels = cell(1, numel(dims));
+nodes = cell(1, numel(dims));
 for k = 1:numel(dims)
     ext(k) = numberOf(getIn(dims{k}, 'n'));
-    [~, labels{k}] = termParts(getIn(dims{k}, 'term'));
+    [nodes{k}, labels{k}] = termParts(getIn(dims{k}, 'term'));
 end
 vals = cell(1, numel(dims));
 covs = asCell(getIn(b, 'data', 'covariates'));
@@ -252,13 +310,40 @@ for k = 1:numel(dims)
         vals{k} = (1:ext(k))';   % jNgridBody writes no covariate for 1..n
     end
 end
-lag = find(strcmp(labels, 'lag'));
-if ~isscalar(lag) || numel(dims) ~= 3
-    bad{end+1} = 'the plane is not (axis, axis, lag)';
+% [term picks batch 1] (3): rows are Y-Coordinate, columns X-Coordinate; the
+% time dimension is AFO:AFR_0001625 "delay" (batch 2)
+lag = find(strcmpi(labels, 'delay') | strcmpi(nodes, 'AFO:AFR_0001625'));
+x = find(strcmpi(labels, 'X-Coordinate') | strcmpi(nodes, 'NCIT:C44477'));
+y = find(strcmpi(labels, 'Y-Coordinate') | strcmpi(nodes, 'NCIT:C44478'));
+if ~isscalar(lag) || ~isscalar(x) || ~isscalar(y) || numel(dims) ~= 3
+    bad{end+1} = 'the plane is not (Y-Coordinate, X-Coordinate, delay)';
     return;
 end
-others = setdiff(1:numel(dims), lag);
-coords = [vals(lag), vals(others)];
+coords = [vals(lag), vals(x), vals(y)];   % the writer's [T; X; Y]
+end
+
+function tf = isFrameDimension(d)
+% the hartley numbers body's one dimension: EMPTY:0000260 "frame"
+[node, name] = termParts(getIn(d, 'term'));
+tf = strcmpi(node, 'EMPTY:0000260') || strcmpi(name, 'frame');
+end
+
+function name = variableName(b)
+[~, name] = termParts(getIn(b, 'statement', 'variable'));
+end
+
+function c = hartleyNumberColumns()
+% v1 field -> covariate label (did2.convert.migrators_j.hartley_calc's table)
+c = {'S', 'hartley S'; 'KXV', 'hartley KXV'; 'KYV', 'hartley KYV'; ...
+    'ORDER', 'hartley ORDER'};
+end
+
+function s = STA()
+s = 'spike-triggered average';
+end
+
+function s = P_VALUE()
+s = 'null cumulative probability';
 end
 
 function n = bytesOf(dataType)

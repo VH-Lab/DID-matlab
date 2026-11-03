@@ -70,8 +70,11 @@ function [result, report] = resolveResponseParameters(result, options)
 %                     variable a label of the v1 field name (jParameterList's
 %                     convention). A writer-empty `[]` knob takes the meaning
 %                     NDI defines for it (Jess Haley, 2026-10-21, "c"):
-%                     prestimulus_normalization -> 0, prestimulus_time -> left
-%                     out; both counted in `knobs_empty_ndi_defined`. Any other
+%                     prestimulus_normalization -> 0 (left out since [fixed
+%                     writer values not written], Jess Haley, 2026-11-03, as
+%                     is a `temporalfreqfunc` equal to the writer's fixed
+%                     'ndi.fun.stimulustemporalfrequency'), prestimulus_time
+%                     -> left out; all counted in `knobs_empty_ndi_defined`. Any other
 %                     empty knob is not stated and is counted in
 %                     `knobs_empty_not_stated`.
 %     the check       `freq_response` is still compared with the harmonic of
@@ -607,10 +610,13 @@ function [params, copied, emptied, defined] = knobsOf(pBlk, knobs)
 %   2026-10-21, [empty response settings] "c"). The writer documents what `[]`
 %   means for two knobs (NDI origin/main +ndi/+app/+stimulus/tuning_response.m,
 %   the parameter table above `temporalfreqfunc = ...`):
-%     prestimulus_normalization  "[] or 0) No normalization"  -> written as 0
+%     prestimulus_normalization  "[] or 0) No normalization"  -> LEFT OUT
+%                                (written as 0 until [fixed writer values not
+%                                written], Jess Haley, 2026-11-03)
 %     prestimulus_time           [] = no baseline period      -> LEFT OUT
-%   Both are counted in DEFINED, not EMPTIED. The 0 carries no source_value:
-%   the source wrote no number. Never NaN. Any OTHER empty knob has no defined
+%   and `temporalfreqfunc` equal to the writer's fixed
+%   'ndi.fun.stimulustemporalfrequency' is LEFT OUT ([fixed writer values not
+%   written]). All are counted in DEFINED, not EMPTIED. Never NaN. Any OTHER empty knob has no defined
 %   meaning, is not stated, and is counted in EMPTIED.
 %   NOT named `inline`: that was a MATLAB function name for two decades.
 params = [];
@@ -631,11 +637,20 @@ for k = 1:numel(knobs)
     % [parameter names map by table] (Jess Haley, 2026-10-27)
     v2 = did2.convert.tuningNames('v2', name);
     var = did2.convert.registeredTerm('', v2);
+    % [fixed writer values not written] (Decided by Jess Haley, 2026-11-03):
+    % a setting whose value is the writer's fixed default is not written; the
+    % round trip writes the default back. A value that differs is kept.
+    if strcmp(name, 'temporalfreqfunc') && ischar(v) ...
+            && strcmp(v, TEMPORAL_FREQUENCY_FUNCTION_DEFAULT())
+        defined = defined + 1;
+        continue;
+    end
     if isempty(v)
         switch name
             case 'prestimulus_normalization'
-                entries{end+1} = did2.build.parameter(var, 'Value', 0); %#ok<AGROW>
-                copied = copied + 1;
+                % [fixed writer values not written] (2026-11-03) supersedes
+                % "written as 0" ([empty response settings] "c", 2026-10-21):
+                % the writer's empty default is not written
                 defined = defined + 1;
             case 'prestimulus_time'
                 defined = defined + 1;      % no baseline period: left out
@@ -660,6 +675,14 @@ end
 if ~isempty(entries)
     params = did2.build.list(entries{:});
 end
+end
+
+function v = TEMPORAL_FREQUENCY_FUNCTION_DEFAULT()
+%TEMPORAL_FREQUENCY_FUNCTION_DEFAULT The value NDI's tuning writer always
+%   writes for `temporalfreqfunc` (+ndi/+app/+stimulus/tuning_response.m:172);
+%   did2.convert.roundtrip.stimulus_response_scalar_parameters_basic writes it
+%   back.
+v = 'ndi.fun.stimulustemporalfrequency';
 end
 
 function names = unknownSettings(pBlk, knobs)

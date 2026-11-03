@@ -205,10 +205,12 @@ if isempty(covs)
 end
 for k = 1:numel(covs)
     c = covs{k};
-    [~, name] = termParts(getIn(c, 'variable'));
+    [node, name] = termParts(getIn(c, 'variable'));
     along = getIn(c, 'along');
     if iscell(along); along = cell2mat(along); end
-    if strcmp(name, 'stimulus') && isnumeric(along) && isequal(double(along), 0)
+    % NCIT:C41210 "Stimulus" since 2026-11-03 (the label 'stimulus' before)
+    if (strcmpi(name, 'stimulus') || strcmpi(node, 'NCIT:C41210')) ...
+            && isnumeric(along) && isequal(double(along), 0)
         v = getIn(c, 'quantity', 'value');
         return;
     end

@@ -388,7 +388,9 @@ verifyEmpty(testCase, out.quarantine);
 verifyEmpty(testCase, out.passthrough, 'a lab-made strain converts, not carried');
 verifyNumElements(testCase, out.migrated, 1);
 a = out.migrated{1};
-verifyEqual(testCase, a.get('statement.variable').name, 'strain');
+% NCIT:C14419 "Organism Strain" (Jess Haley, 2026-11-03), not the label 'strain'
+verifyEqual(testCase, a.get('statement.variable').name, 'Organism Strain');
+verifyEqual(testCase, a.get('statement.variable').node, 'NCIT:C14419');
 verifyEqual(testCase, a.get('term.value').name, 'OP50-GFP');
 end
 

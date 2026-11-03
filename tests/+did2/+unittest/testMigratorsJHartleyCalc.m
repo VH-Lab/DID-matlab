@@ -119,13 +119,15 @@ end
 function testTheFoldEmitsTheLeafTheTwoPlanesAndTheSpikeInput(testCase)
 % The leaf, the session anchor every calculator fold carries, the entities the
 % app block becomes (software, operating system, interpreter on #88; the
-% pre-#88 `runtime_environment` entity is gone), TWO plane bodies and ONE
-% input body.
+% pre-#88 `runtime_environment` entity is gone), TWO statements (one per
+% plane, [hartley planes are two statements], Jess Haley, 2026-11-03), TWO
+% plane bodies, the hartley numbers body ([hartley numbers stored, copies
+% not]) and ONE input body.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1, strjoin(names, ', '));
-verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 3, ...
-    'two planes plus the spike-time input body');
+verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 2, strjoin(names, ', '));
+verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 4, ...
+    'two planes, the hartley numbers and the spike-time input body');
 verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
 % the calculator, its operating system and its interpreter are each a
 % `software` entity on #88
@@ -140,7 +142,7 @@ function testTheLeafIsTheSignedClassAndItsSuperclassPair(testCase)
 % this also pins that no class called `spike_triggered_average` or
 % `hartley_receptive_field` is emitted.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-leaf = pick(out, 'receptive_field_calculation');
+leaf = staLeaf(out);
 supers = {leaf.document_class.superclasses.class_name};
 verifyTrue(testCase, ismember('calculation', supers));
 verifyTrue(testCase, ismember('receptive_field', supers));
@@ -157,7 +159,7 @@ function testTheSourceIdIsPRESERVEDOnTheLeafAndOnNothingElse(testCase)
 % and every inbound reference dangles. Soph went red with 11,448 such orphans.
 % The id lands on EXACTLY ONE emitted body, or a follower cannot tell which.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-verifyEqual(testCase, pick(out, 'receptive_field_calculation').base.id, 'hc_1');
+verifyEqual(testCase, staLeaf(out).base.id, 'hc_1');
 carriers = 0;
 for k = 1:numel(out)
     if isfield(out{k}, 'base') && isfield(out{k}.base, 'id') ...
@@ -176,7 +178,7 @@ function testElementIdBecomesTheEntityAndThePresentationBecomesAnInput(testCase)
 % `derived_from_1`). A calculation REQUIRES an operating system, named from
 % the app block.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-leaf = pick(out, 'receptive_field_calculation');
+leaf = staLeaf(out);
 verifyEqual(testCase, depValueOf(leaf, 'entity_id'), 'elem_7');
 verifyEqual(testCase, depValueOf(leaf, 'input_id'), 'pres_3');
 verifyNotEmpty(testCase, depValueOf(leaf, 'time_reference_id'));
@@ -214,26 +216,41 @@ v1.depends_on = struct('name', {'element_id', 'stimulus_presentation_id'}, ...
     'document_id', {'elem_7', 'pres_3'});
 out = did2.convert.migrators_j.hartley_calc(v1);
 verifyEqual(testCase, ...
-    depValueOf(pick(out, 'receptive_field_calculation'), 'entity_id'), 'elem_7');
+    depValueOf(staLeaf(out), 'entity_id'), 'elem_7');
 end
 
 % ===================== the composite value =================================
 
-function testTheMethodIsTheCalculatorAndEachPlaneSaysWhatItHolds(testCase)
+function testTheMethodIsTheCalculatorAndEachPlaneIsItsOwnStatement(testCase)
 % #73 item 57 moved the method onto the statement: its term is the
-% calculator. #73 audit 2 D11 dropped `planes[]`: bodies have no order, so
-% each plane body says what it holds as ONE body condition {variable:
-% represented quantity, term: response estimate | significance}.
+% calculator. INVERTED 2026-11-03 ([hartley planes are two statements],
+% Decided by Jess Haley): each plane is the value of its own statement, the
+% spike-triggered average (the source id) and the null cumulative
+% probability, and no body carries a "represented quantity" condition. The
+% two variables are plain labels until the terms are approved.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-leaf = pick(out, 'receptive_field_calculation');
+leaf = staLeaf(out);
 % INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
 % V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
 % is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2945');
+leaves = allOf(out, 'receptive_field_calculation');
+verifyEqual(testCase, numel(leaves), 2, 'one statement per plane');
+verifyEqual(testCase, cellfun(@(b) char(b.statement.variable.name), leaves, ...
+    'UniformOutput', false), {'spike-triggered average', 'null cumulative probability'});
+verifyEqual(testCase, leaves{1}.base.id, 'hc_1', 'the source id is the spike-triggered average''s');
+verifyNotEqual(testCase, leaves{2}.base.id, 'hc_1');
+verifyEqual(testCase, depValueOf(leaves{2}, 'entity_id'), depValueOf(leaves{1}, 'entity_id'));
+verifyEqual(testCase, depValueOf(leaves{2}, 'input_id'), depValueOf(leaves{1}, 'input_id'));
 planes = planeBodies(out);
 verifyEqual(testCase, numel(planes), 2);
-verifyEqual(testCase, cellfun(@planeName, planes, 'UniformOutput', false), ...
-    {'response estimate', 'significance'});
+verifyEqual(testCase, depValueOf(planes{1}, 'owner_id'), leaves{1}.base.id);
+verifyEqual(testCase, depValueOf(planes{2}, 'owner_id'), leaves{2}.base.id);
+sb = allOf(out, 'sampled_body');
+for k = 1:numel(sb)
+    verifyFalse(testCase, isfield(sb{k}.data_body, 'conditions') ...
+        && ~isempty(sb{k}.data_body.conditions), 'no body carries a condition');
+end
 end
 
 function testTheValueIsInItsBodiesAndCarriesTheEncoding(testCase)
@@ -242,7 +259,7 @@ function testTheValueIsInItsBodiesAndCarriesTheEncoding(testCase)
 % empty. The bytes are a plain array in sampled_body documents, so the leaf
 % says their type (`data_type`), with the source spelling beside it.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-leaf = pick(out, 'receptive_field_calculation');
+leaf = staLeaf(out);
 verifyTrue(testCase, logical(leaf.value.data_body));
 verifyEqual(testCase, leaf.value.data_type, 'float64');
 verifyEqual(testCase, leaf.value.source_data_type, 'double');
@@ -284,20 +301,37 @@ verifyEqual(testCase, [ax.nCov], [0 0 1], 'only the lag has a covariate');
 verifyEqual(testCase, ax(3).cov.quantity.value(:), realLagVector());
 end
 
-function testTheLagAxisIsNamedAndTheTwoSpatialAxesAreNotGuessed(testCase)
-% The lag dimension is named on POSITIVE EVIDENCE (its coordinates equal
-% `hartley_calc.input_parameters.T` in 210 of 210). Nothing distinguishes X
-% from Y, so they stay positional: a guess recorded in a queryable `variable`
-% is a guess recorded as a fact.
+function testTheAxesAreRowsColumnsAndDelay(testCase)
+% INVERTED 2026-11-03 ([term picks batch 1] (3), Decided by Jess Haley; was
+% testTheLagAxisIsNamedAndTheTwoSpatialAxesAreNotGuessed, `axis_1`, `axis_2`,
+% `lag`). The writer's code fills the M x M x T block from
+% vlt.neuro.reverse_correlation.hartley.hartley_image, `[l,m] =
+% meshgrid(0:M-1,0:M-1)`, kx on l (dimension 2, columns), ky on m (dimension 1,
+% rows): dimension 1 is Y-Coordinate, dimension 2 X-Coordinate. The time
+% dimension is AFO:AFR_0001625 "delay" (batch 2, Jess Haley, 2026-11-03).
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
-verifyEqual(testCase, ...
-    arrayfun(@(a) char(a.term.name), ax, 'UniformOutput', false), ...
-    {'axis_1', 'axis_2', 'lag'});
+names = arrayfun(@(a) char(a.term.name), ax, 'UniformOutput', false);
+verifyEqual(testCase, names(3), {'delay'});
+verifyEqual(testCase, char(ax(3).term.node), 'AFO:AFR_0001625');
+verifyEqual(testCase, names(1:2), {did2.convert.axisTerm('y').name, ...
+    did2.convert.axisTerm('x').name});
 % the spatial dimensions are bare (1..200 only repeated their positions); the
-% lag's covariate names the same term as its dimension
-verifyEqual(testCase, char(ax(3).cov.variable.name), 'lag');
+% delay's covariate names the same term as its dimension
+verifyEqual(testCase, char(ax(3).cov.variable.name), 'delay');
 verifyEqual(testCase, [ax(1:2).nCov], [0 0]);
+end
+
+function testRowsTakeYCoordsAndColumnsTakeXCoords(testCase)
+% The coordinate vectors follow the names: a document whose X_coords and
+% Y_coords differ puts Y_coords on dimension 1 and X_coords on dimension 2.
+v1 = hartleyCalcV1();
+v1.hartley_reverse_correlation.reconstruction_properties.X_coords = (2:201)';
+v1.ngrid.coordinates = [realLagVector(); (2:201)'; (1:200)'];
+out = did2.convert.migrators_j.hartley_calc(v1);
+ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
+verifyEqual(testCase, [ax.nCov], [0 1 1], 'Y is 1..200 (bare); X carries 2..201');
+verifyEqual(testCase, ax(2).cov.quantity.value(:), (2:201)');
 end
 
 function testBothPlanesNameTheSourceFileAndSayWhichPlaneTheyAre(testCase)
@@ -327,13 +361,50 @@ end
 function testEveryBodyIsBoundToTheCalculationByItsOwnerEdge(testCase)
 % `owner_id` is the ONE required edge on a body (`statement` before #88), and
 % it is what makes the volume findable from the subject side.
+% Two planes (one per statement), the hartley numbers and the spike times.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-leafId = pick(out, 'receptive_field_calculation').base.id;
+leaves = allOf(out, 'receptive_field_calculation');
 bodies = allOf(out, 'sampled_body');
-verifyEqual(testCase, numel(bodies), 3);
-for k = 1:numel(bodies)
-    verifyEqual(testCase, depValueOf(bodies{k}, 'owner_id'), leafId);
+verifyEqual(testCase, numel(bodies), 4);
+owners = cellfun(@(b) depValueOf(b, 'owner_id'), bodies, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(owners, leaves{1}.base.id)), 3, ...
+    'plane 1, the numbers and the spike times are the spike-triggered average''s');
+verifyEqual(testCase, sum(strcmp(owners, leaves{2}.base.id)), 1, ...
+    'plane 2 is the null cumulative probability''s');
 end
+
+% ===================== the hartley numbers ===================================
+
+function testTheHartleyNumbersAreDataOneRowPerFrame(testCase)
+% [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03): S,
+% KXV, KYV, ORDER are data, one row per frame (dimension EMPTY:0000260
+% "frame"), not method parameters. Their four variables are not decided:
+% plain labels.
+out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
+nb = numbersBody(out);
+assertNotEmpty(testCase, nb);
+verifyEqual(testCase, depValueOf(nb, 'owner_id'), 'hc_1');
+dims = nb.data.dimensions;
+if iscell(dims); dims = [dims{:}]; end
+verifyEqual(testCase, numel(dims), 1);
+verifyEqual(testCase, char(dims.term.node), 'EMPTY:0000260');
+verifyEqual(testCase, dims.n, 3360);
+covs = nb.data.covariates;
+if iscell(covs); covs = [covs{:}]; end
+verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
+    {'hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'});
+v1 = hartleyCalcV1();
+verifyEqual(testCase, covs(2).quantity.value(:), v1.hartley_reverse_correlation.hartley_numbers.KXV);
+names = paramNames(staLeaf(out));
+verifyFalse(testCase, any(contains(names, 'hartley numbers')), strjoin(names, ', '));
+end
+
+function testRaggedHartleyNumbersAreCarriedAsV1(testCase)
+% one row per frame or nothing: columns of different lengths carry the
+% document whole as v1
+v1 = hartleyCalcV1();
+v1.hartley_reverse_correlation.hartley_numbers.ORDER = (1:10)';
+verifyCarriedAsV1(testCase, v1, 'hartley_numbers.ORDER');
 end
 
 % ===================== the spike-time input body ===========================
@@ -374,8 +445,8 @@ function testNoSpiketimesMeansNoInputBodyRatherThanAnEmptyOne(testCase)
 v1 = hartleyCalcV1();
 v1.hartley_reverse_correlation.spiketimes = [];
 out = did2.convert.migrators_j.hartley_calc(v1);
-verifyEqual(testCase, numel(allOf(out, 'sampled_body')), 2, ...
-    'the two planes remain; the input body does not appear empty');
+verifyEqual(testCase, numel(allOf(out, 'sampled_body')), 3, ...
+    'the two planes and the numbers remain; the input body does not appear empty');
 end
 
 % ===================== what is dropped, and what is parked =================
@@ -429,30 +500,40 @@ verifyTrue(testCase, contains(notes.carried_as_v1.distinct_details{1}, ...
     'reverse_correlation.method'));
 end
 
-function testTheStimulusSequenceIsCARRIEDRatherThanDropped(testCase)
-% `frame_times` + `hartley_numbers` are parallel 3,360-vectors naming which
-% basis function was shown on each frame. Their signed home (the
-% per-presentation sequence) cannot be built here, so they are carried in the
-% method parameters, entries named `stimulus sequence.<field>` -- the
-% reverse correlation's regressors. Dropping them would be a silent loss.
+function testTheFrameTimesAreStillCARRIEDRatherThanDropped(testCase)
+% `frame_times` is carried in the method parameters, `stimulus sequence.frame
+% times`. [hartley numbers stored, copies not] (2026-11-03) says the frame
+% times are not stored and the round trip rebuilds them from the presentation;
+% the corpora hold no document to rebuild them from (the presentation's timing
+% is in presentation_time.bin), so that part is not built: they stay here.
+% `T`, an exact copy of the delay axis, is not written (batch 2, 2026-11-03);
+% the other settings still land here.
 %
 % THIS TEST IS ALSO THE CAMELCASE FALLBACK'S ONLY WITNESS: universalRenames
 % snake_cases `frameTimes` to `frame_times`, and both spellings are read.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-leaf = pick(out, 'receptive_field_calculation');
-verifyEqual(testCase, jsondecode(paramText(leaf, 'T')), realLagVector(), 'AbsTol', 1e-12, ...
-    'input_parameters still land here');
+leaf = staLeaf(out);
+names = paramNames(leaf);
+verifyFalse(testCase, any(strcmp(names, 'T')), strjoin(names, ', '));
+verifyTrue(testCase, any(strcmp(names, 'X sample')), strjoin(names, ', '));
 verifyEqual(testCase, numel(jsondecode(paramText(leaf, 'stimulus sequence.frame times'))), 3360);
-verifyEqual(testCase, numel(jsondecode(paramText(leaf, 'stimulus sequence.hartley numbers.KXV'))), 3360);
 
 v1 = hartleyCalcV1();
 ft = v1.hartley_reverse_correlation.frame_times;
 v1.hartley_reverse_correlation = rmfield(v1.hartley_reverse_correlation, 'frame_times');
 v1.hartley_reverse_correlation.frameTimes = ft;
 out2 = did2.convert.migrators_j.hartley_calc(v1);
-leaf2 = pick(out2, 'receptive_field_calculation');
+leaf2 = staLeaf(out2);
 verifyEqual(testCase, numel(jsondecode(paramText(leaf2, 'stimulus sequence.frame times'))), 3360, ...
     'the camelCase spelling must be read too');
+end
+
+function testATDifferentFromTheDelayAxisIsKept(testCase)
+% only an exact copy is left unwritten
+v1 = hartleyCalcV1();
+v1.hartley_calc.input_parameters.T(1) = -0.2;
+leaf = staLeaf(did2.convert.migrators_j.hartley_calc(v1));
+verifyTrue(testCase, any(strcmp(paramNames(leaf), 'T')));
 end
 
 function testStimulusPropertiesAreDroppedWhenTheReferentHoldsThem(testCase)
@@ -460,7 +541,7 @@ function testStimulusPropertiesAreDroppedWhenTheReferentHoldsThem(testCase)
 % `stimulus_presentation` holds the same spec and survives migration. The
 % VALUE comparison is did2.validate.sourceCensus's half.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-leaf = pick(out, 'receptive_field_calculation');
+leaf = staLeaf(out);
 names = paramNames(leaf);
 verifyFalse(testCase, any(startsWith(names, 'stimulus properties')), strjoin(names, ', '));
 end
@@ -487,7 +568,7 @@ v1 = hartleyCalcV1();
 v1.hartley_reverse_correlation.stimulus_properties.gamma = 2.2;
 verifyCarriedAsV1(testCase, v1, 'gamma');
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-verifyEqual(testCase, numel(allOf(out, 'receptive_field_calculation')), 1, ...
+verifyEqual(testCase, numel(allOf(out, 'receptive_field_calculation')), 2, ...
     'the same document without the extra key folds');
 end
 
@@ -512,7 +593,7 @@ function testATransposedVectorStillCompareEqual(testCase)
 v1 = hartleyCalcV1();
 v1.hartley_reverse_correlation.stimulus_properties.rect = [-7; -138; 793; 662];
 out = did2.convert.migrators_j.hartley_calc(v1);
-verifyEqual(testCase, numel(allOf(out, 'receptive_field_calculation')), 1);
+verifyEqual(testCase, numel(allOf(out, 'receptive_field_calculation')), 2);
 end
 
 function testNonEmptyDimensionLabelsAreCarriedAsV1(testCase)
@@ -807,44 +888,51 @@ for k = 1:numel(bodies)
 end
 end
 
+function b = staLeaf(bodies)
+%STALEAF The spike-triggered-average statement: the receptive_field_calculation
+%   with the source id, erroring rather than returning the first of several.
+hits = {};
+leaves = allOf(bodies, 'receptive_field_calculation');
+for k = 1:numel(leaves)
+    if strcmp(char(leaves{k}.statement.variable.name), 'spike-triggered average')
+        hits{end+1} = leaves{k}; %#ok<AGROW>
+    end
+end
+if numel(hits) ~= 1
+    error('testMigratorsJHartleyCalc:pick', ...
+        'expected exactly 1 spike-triggered average, found %d', numel(hits));
+end
+b = hits{1};
+end
+
 function out = planeBodies(bodies)
-%PLANEBODIES The plane bodies, IN EMISSION ORDER: the sampled bodies that say
-%   what they hold in a `represented quantity` condition (#73 audit 2 D11). #88
-%   writes no base.name, so a plane is found by what it says it is.
+%PLANEBODIES The two plane bodies (three dimensions each), the spike-triggered
+%   average's first: each is owned by its own statement.
 out = {};
 sb = allOf(bodies, 'sampled_body');
 for k = 1:numel(sb)
-    if ~isempty(planeName(sb{k}))
+    if numel(did2.unittest.helpers.axesOf(sb{k})) == 3
         out{end+1} = sb{k}; %#ok<AGROW>
     end
 end
 end
 
-function name = planeName(b)
-name = '';
-c = [];
-for blk = {'data_body', 'data', 'sampled_body'}
-    if isfield(b, blk{1}) && isfield(b.(blk{1}), 'conditions') ...
-            && ~isempty(b.(blk{1}).conditions)
-        c = b.(blk{1}).conditions;
-        break;
-    end
-end
-if isempty(c); return; end
-if iscell(c); c = c{1}; end
-c = c(1);
-if isfield(c, 'variable') && strcmp(char(c.variable.name), 'represented quantity') ...
-        && isfield(c, 'term')
-    name = char(c.term.name);
-end
+function b = numbersBody(bodies)
+%NUMBERSBODY The hartley numbers body: one dimension, EMPTY:0000260 "frame".
+b = oneDimBody(bodies, 'frame');
 end
 
 function b = spikeBody(bodies)
-%SPIKEBODY The input body: the sampled body that is not a plane.
+%SPIKEBODY The input body: one dimension, time.
+b = oneDimBody(bodies, 'time');
+end
+
+function b = oneDimBody(bodies, dimName)
 b = [];
 sb = allOf(bodies, 'sampled_body');
 for k = 1:numel(sb)
-    if isempty(planeName(sb{k}))
+    ax = did2.unittest.helpers.axesOf(sb{k});
+    if isscalar(ax) && strcmpi(char(ax.term.name), dimName)
         b = sb{k};
         return;
     end

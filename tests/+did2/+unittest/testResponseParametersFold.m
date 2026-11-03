@@ -150,31 +150,43 @@ verifyEqual(testCase, m.base.id, 'param_77c19b');
 % is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
 verifyEqual(testCase, char(m.method.term.node), 'EDAM:operation_2945');
 p = m.method.parameters;
-verifyEqual(testCase, knob(p, 'temporalfreqfunc').text, 'ndi.fun.stimulustemporalfrequency');
+% INVERTED 2026-11-03 ([fixed writer values not written], Decided by Jess
+% Haley): `temporalfreqfunc` 'ndi.fun.stimulustemporalfrequency' and an empty
+% `prestimulus_normalization` are the writer's fixed defaults and are not
+% written (the round trip writes them back); `spiketrain_dt` is EMPTY:0000308
+% "bin width" (2026-11-03, Jess Haley: "Ok on those other 2 from the first batch").
+verifyEmpty(testCase, knob(p, 'temporalfreqfunc'));
 verifyEqual(testCase, knob(p, 'isspike').quantity.value, 1);
-verifyEqual(testCase, knob(p, 'spiketrain dt').quantity.value, 0.001, 'AbsTol', 1e-12);
-verifyEqual(testCase, knob(p, 'spiketrain dt').quantity.source_value, '0.001');
+verifyEqual(testCase, knob(p, 'bin width').quantity.value, 0.001, 'AbsTol', 1e-12);
+verifyEqual(testCase, knob(p, 'bin width').quantity.source_value, '0.001');
 verifyEmpty(testCase, knob(p, 'prestimulus time'));
-verifyEqual(testCase, knob(p, 'prestimulus normalization').quantity.value, 0);
-verifyEqual(testCase, numel(p), 4);
-verifyEqual(testCase, rep.fields_copied, 4);
-verifyEqual(testCase, rep.knobs_empty_ndi_defined, 2);
+verifyEmpty(testCase, knob(p, 'prestimulus normalization'));
+verifyEqual(testCase, numel(p), 2);
+verifyEqual(testCase, rep.fields_copied, 2);
+verifyEqual(testCase, rep.knobs_empty_ndi_defined, 3);
 verifyEqual(testCase, rep.knobs_empty_not_stated, 0);
 verifyEqual(testCase, rep.methods_minted, 1);
 end
 
-function testAnEmptyNormalizationIsWrittenAsNoNormalization(testCase)
-% "c", case 1: prestimulus_normalization [] -> 0 ("[] or 0) No normalization",
-% tuning_response.m's parameter table). A number, never NaN, and no invented
-% source_value: the source wrote none.
+function testAnEmptyNormalizationIsNotWritten(testCase)
+% INVERTED 2026-11-03 (was testAnEmptyNormalizationIsWrittenAsNoNormalization,
+% "c" case 1: [] -> 0). [fixed writer values not written] (Decided by Jess
+% Haley, 2026-11-03): the writer's empty `prestimulus_normalization` is not
+% written; the round trip writes [] back. Counted as given its defined meaning.
 [out, ~, rep] = foldPair(testCase, 'F1');
-e = knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
-    'prestimulus normalization');
-verifyEqual(testCase, e.quantity.value, 0);
-verifyFalse(testCase, isnan(e.quantity.value));
-verifyFalse(testCase, isfield(e.quantity, 'source_value') ...
-    && ~isempty(e.quantity.source_value));
+verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
+    'prestimulus normalization'));
 verifyGreaterThanOrEqual(testCase, rep.knobs_empty_ndi_defined, 1);
+end
+
+function testATemporalFrequencyFunctionThatDiffersIsKept(testCase)
+% [fixed writer values not written]: only the writer's fixed default is left
+% out; any other value is the source's own and is written.
+p = parametersFixture();
+p.stimulus_response_scalar_parameters_basic.temporalfreqfunc = 'my.own.function';
+[out, ~] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
+params = bodyOfClass(testCase, out, 'method').method.parameters;
+verifyEqual(testCase, knob(params, 'temporalfreqfunc').text, 'my.own.function');
 end
 
 function testAnEmptyPrestimulusTimeIsLeftOut(testCase)
@@ -183,7 +195,7 @@ function testAnEmptyPrestimulusTimeIsLeftOut(testCase)
 [out, ~, rep] = foldPair(testCase, 'F1');
 verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
     'prestimulus time'));
-verifyEqual(testCase, rep.knobs_empty_ndi_defined, 2);
+verifyEqual(testCase, rep.knobs_empty_ndi_defined, 3);
 verifyEqual(testCase, rep.knobs_empty_not_stated, 0);
 end
 
@@ -196,7 +208,7 @@ p.stimulus_response_scalar_parameters_basic.prestimulus_normalization = 2;
 params = bodyOfClass(testCase, out, 'method').method.parameters;
 verifyEqual(testCase, knob(params, 'prestimulus time').quantity.value, 0.5);
 verifyEqual(testCase, knob(params, 'prestimulus normalization').quantity.value, 2);
-verifyEqual(testCase, rep.knobs_empty_ndi_defined, 0);
+verifyEqual(testCase, rep.knobs_empty_ndi_defined, 1, 'the default temporalfreqfunc');
 end
 
 function testAnyOtherEmptyKnobIsCountedNotStated(testCase)
@@ -206,9 +218,9 @@ p = parametersFixture();
 p.stimulus_response_scalar_parameters_basic.spiketrain_dt = [];
 [out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
 verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
-    'spiketrain dt'));
+    'bin width'));
 verifyEqual(testCase, rep.knobs_empty_not_stated, 1);
-verifyEqual(testCase, rep.knobs_empty_ndi_defined, 2);
+verifyEqual(testCase, rep.knobs_empty_ndi_defined, 3);
 end
 
 function testTheEdgeIsDroppedBecauseTheSchemaSaysNeverBoth(testCase)
@@ -449,7 +461,7 @@ leaf = findHarmonicCalc(testCase, out).toStruct();
 verifyFalse(testCase, isfield(leaf.interaction, 'method'));   % "b": never inline
 verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
 verifyEqual(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
-    'spiketrain dt').quantity.value, ...
+    'bin width').quantity.value, ...
     0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 2);
 % The id is untouched, so every inbound `stimulus_response_scalar_id` reference
