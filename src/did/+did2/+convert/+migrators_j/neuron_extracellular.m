@@ -212,9 +212,9 @@ function bodies = neuron_extracellular(preBody)
 %   integer -- a label that happens to be a number -- and V_eta has no nominal
 %   integer type. The three candidates and why the others lose:
 %
-%     count_assertion  CHOSEN. There is an in-tree precedent for exactly this
+%     count_assertion  CHOSEN. There is an in-tree precedent for exactly this  (pre-#88)
 %                      semantic: jSorterOutput.m:87 models the per-spike cluster
-%                      LABEL series as a `count_observation` with variable
+%                      LABEL series as a `count_observation` with variable  (pre-#88)
 %                      'spike cluster assignment', and the team confirmed that
 %                      shape for `jrclust_clusters` on 2026-08-17
 %                      (V_eta_go_forward_class_audit.md, TEAM-SIGN-OFF
@@ -222,7 +222,7 @@ function bodies = neuron_extracellular(preBody)
 %                      is counted", and a label counts nothing, so it is left
 %                      BLANK rather than invented -- which is also the visible
 %                      marker that this is not a cardinality.
-%     term_assertion   REJECTED. `term.value` is an ontology_term and is a bound
+%     term_assertion   REJECTED. `term.value` is an ontology_term and is a bound  (pre-#88)
 %                      field; staging the string '7' there says the sorter's
 %                      label is an ontology term, which it is not.
 %     entity.global_identifier  REJECTED. The {scheme, value} shape fits an

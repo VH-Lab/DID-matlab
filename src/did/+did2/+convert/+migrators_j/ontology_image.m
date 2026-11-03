@@ -18,7 +18,7 @@ function v2Body = ontology_image(preBody)
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
 %   did-schema #88 (2026-10-21), READ BEFORE THE HISTORY BELOW. Where the text
-%   below says `term_observation` / `image_observation`, #88 emits DIRECTION
+%   below says `term_observation` / `image_observation`, #88 emits DIRECTION  (pre-#88)
 %   classes with ONE value-kind mixin: the region is an `observation` with the
 %   `term` value kind, and the raster (#73 review item 51: an ontologyImage's
 %   pixels are an ordinary numeric image) an `observation` with the
@@ -32,7 +32,7 @@ function v2Body = ontology_image(preBody)
 %   node as a condition (NCIT:C13717 for a UBERON area, for pathSPromotion to
 %   promote onto the region part; the label 'ontology node' otherwise), plus its
 %   sampled_body and the anchor: 1 -> 3.
-%   Text below that says "term_observation + image_observation", "1 -> 4" or
+%   Text below that says "term_observation + image_observation", "1 -> 4" or  (pre-#88)
 %   "the term says what the picture depicts" is history.
 %
 %   2026-10-29, [ngrid with no statement carried] (Jess Haley, answering
@@ -153,7 +153,7 @@ function v2Body = ontology_image(preBody)
 %   cannot be minted here for the same reason the term observation cannot --
 %   `subject_statement.subject_id` declares `must_refer_to_document_class:
 %   subject`, and this document's only edge is a table row. Emitting one would
-%   reproduce, exactly, the 4,563-document `image_observation.subject_id` husk
+%   reproduce, exactly, the 4,563-document `image_observation.subject_id` husk  (pre-#88)
 %   that the image_stack guard was just added to stop.
 %
 %   So the pass-1 obligation is to carry the raster INTACT, and until 2026-08-10
@@ -194,7 +194,7 @@ function v2Body = ontology_image(preBody)
 %   TEAM DECISION (jess, in session, 2026-08-11): "The ngrid documents should be
 %   migrated into sampled_bodys. However, the sampled_body needs a corresponding
 %   subject_statement. For ontology_image, that's most likely an
-%   image_observation." That SUPERSEDES the older sign-off in
+%   image_observation." That SUPERSEDES the older sign-off in  (pre-#88)
 %   V_eta_image_model_plan.md, which reads "ngrid is DISSOLVED (deleted, not
 %   migrated)"; the direction now confirmed is that document's own R4 section,
 %   "`ngrid` -> phases into `sampled_body`".

@@ -9,7 +9,7 @@ function bodies = image_stack(preBody)
 %   document (a file-backed pixel blob + geometry bundle tied to a subject). It
 %   is the main did_v1 class exercising J's new storage model (§C.4; 7,007 docs
 %   in the JH corpus). Strict J has NO imageseries_observation class (pre-#88 names here) (§A.9): the
-%   discoverable subject-side view is a plain `subject_observation` data-type
+%   discoverable subject-side view is a plain `subject_observation` data-type  (pre-#88)
 %   leaf whose value is body-backed --
 %
 %       `observation`+`intensity` the spine handle: subject_id, a shared time anchor, a
@@ -39,7 +39,7 @@ function bodies = image_stack(preBody)
 %   populate no individuated element referent).
 %
 %   NOTE (pre-#88): image_observation and the *_body classes are `draft` in V_eta -- the
-%   broader imageseries/dataseries/timeseries_observation branch this supersedes
+%   broader imageseries/dataseries/timeseries_observation branch this supersedes  (pre-#88)
 %   is retired with the NDI-side ingest work, not here.
 %
 %   STATUS 2026-08-11 (second edit of the day) -- the `document_id` edge is now
@@ -128,7 +128,7 @@ function bodies = image_stack(preBody)
 %   THE SLOT LANDED (did-schema 6cf31f2, 2026-08-11), so the carry is built:
 %
 %       $ python3 -c "import json;print(json.load(open( \
-%           'schemas/V_eta/draft/image_observation.json'))['depends_on'])"
+%           'schemas/V_eta/draft/image_observation.json'))['depends_on'])"  (pre-#88)
 %       [{'name': 'ontology_table_row_id', 'mustBeNonEmpty': False,
 %         'must_refer_to_document_class': 'ontology_table_row', ...}]
 %
@@ -336,8 +336,8 @@ end
 
 % ---- did-schema #88: what the raster IS (#73 review item 51, decided
 % 2026-09-25): "a raster goes by what its pixels measure, keyed [y, x,
-% (channel)]: JH's microscopy images -> intensity_observation, its masks /
-% closest-patch maps -> label_calculation, chosen from the document's label".
+% (channel)]: JH's microscopy images -> intensity_observation, its masks /  (pre-#88)
+% closest-patch maps -> label_calculation, chosen from the document's label".  (pre-#88)
 % BUILT 2026-10-22: a mask or a map is a `calculation` with the `label`
 % value kind (its pixels are identifiers local to the image), body-backed by
 % the same sampled_body and keys as an intensity image. NDI's Haley writer

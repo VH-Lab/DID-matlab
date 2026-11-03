@@ -41,7 +41,7 @@ function bodies = measurement(preBody)
 %     mass / weight        -> an `observation` with value kind `mass`
 %     temperature          -> an `observation` with value kind `temperature`
 %     length / height      -> an `observation` with value kind `length`
-%     age / duration       -> an `observation` with value kind `time` (was duration_observation
+%     age / duration       -> an `observation` with value kind `time` (was duration_observation  (pre-#88)
 %                             until TEAM-SIGN-OFF [time dtype], 2026-08-17)
 %     a CURIE string_value -> an `observation` with value kind `term` (the value IS an ontology term)
 %     anything else        -> CARRIED THROUGH UNCHANGED

@@ -112,7 +112,7 @@ end
 swOpt = {'OperatingSystemId', osId, 'InterpreterId', interpreterId};
 if ~isempty(swId); swOpt = [swOpt, {'SoftwareId', swId}]; end
 % 2026-10-21: a CALCULATION with the `label` value kind (TEAM-SIGN-OFF
-% [spike-sorter output] 2026-09-29: "migrate to label_calculation", and a
+% [spike-sorter output] 2026-09-29: "migrate to label_calculation", and a  (pre-#88)
 % cluster number is a label local to one run, not a count), about the sorted
 % electrode. Decided by Jess Haley, 2026-10-21 [sorter input]: its input is the
 % electrode's per-epoch recording observations when they exist -- those are

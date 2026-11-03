@@ -24,7 +24,7 @@ function leaf = jQuantityLeaf(hay, wordBoundary)
 %   `subject_statement_bindings` rows -- species, instrument type, cell type,
 %   material type, developmental stage -- and every one of them binds to
 %   `assertion` + `term`. NOT ONE names a dimensional leaf. The only dimensional row
-%   in the file ("body mass" -> mass_observation) sits under `binding_examples`,
+%   in the file ("body mass" -> mass_observation) sits under `binding_examples`,  (pre-#88)
 %   which is illustrative, not a registry.
 %
 %   So a strict registry lookup resolves NOTHING for `age`, `weight` or

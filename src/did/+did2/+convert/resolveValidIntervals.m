@@ -121,8 +121,8 @@ function [result, report] = resolveValidIntervals(result, options)
 %   the decision arrived and it was "not this shape, and not yet".
 %
 %   THE CLASS NAMING -- DECIDED 2026-08-12 by jess@walthamdatascience.com:
-%   `validity` and `validity_observation` are REPLACED by `logical` and
-%   `logical_observation`. The 32 `*_observation` data_types name a KIND OF
+%   `validity` and `validity_observation` are REPLACED by `logical` and  (pre-#88)
+%   `logical_observation`. The 32 `*_observation` data_types name a KIND OF  (pre-#88)
 %   VALUE (length, intensity, count, score, term, image); `validity` was the
 %   only one naming a SEMANTIC -- what the measurement is ABOUT -- and the
 %   semantic belongs in `subject_statement.variable`. It is also the error
@@ -227,7 +227,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   HAZARD 2 -- ORDER IS *NOT* LOAD-BEARING. THIS SECTION SAID THE OPPOSITE.
 %   ---------------------------------------------------------------------
 %   IT USED TO READ "ORDER IS LOAD-BEARING, AND THE CONSUMER IS AN ANALYSIS",
-%   and every statement carried `validity_observation.sequence` (pre-2026-08-12 name) = its 1-based
+%   and every statement carried `validity_observation.sequence` (pre-2026-08-12 name) = its 1-based  (pre-#88)
 %   position in the v1 array because of it. The premise was one unchecked
 %   reading of a call site, and it is FALSE. Positive evidence, from NDI
 %   `origin/main` (42c94e53b):
@@ -253,7 +253,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   indexes `vi` by position. So v1's append order is invisible to every reader
 %   of the class: it is a storage artifact, not a fact. `sequence` IS DELETED
 %   and the pre-#88 `logical_observation` declared NO FIELDS AT ALL, like
-%   `length_observation` and `count_observation`.
+%   `length_observation` and `count_observation`.  (pre-#88)
 %
 %   LIMIT OF THIS CHECK, STATED RATHER THAN GLOSSED. `vlt.math.interval_add` is
 %   in vhlab-toolbox-matlab, which was not available when this was re-verified,

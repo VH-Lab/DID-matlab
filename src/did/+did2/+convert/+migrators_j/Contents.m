@@ -16,7 +16,7 @@
 %       value kind (`mass`, `term`, `dose`, `formulation`, ...) is a mixin in
 %       `superclasses`; it points at its entity by `entity_id`. The only named
 %       statement classes are the eight vision calculators. A joined name such
-%       as `term_observation` is NOT a class (did2.convert.statementKind reads
+%       as `term_observation` is NOT a class (did2.convert.statementKind reads  (pre-#88)
 %       one on old-vintage input; tests/+did2/+unittest/testNoOldLeafNames.m
 %       keeps code from writing one).
 %     - A substance manipulation takes value kind `dose` or `formulation`
@@ -32,7 +32,7 @@
 %   the pre-#88 schema, and some entries still use that era's names: `subject`
 %   (now an `entity`), `subject_statement` / `subject_interaction` and
 %   `subject_id` (now the direction class and its `entity_id` edge), and
-%   joined leaf names such as `term_observation` (now `observation` with value
+%   joined leaf names such as `term_observation` (now `observation` with value  (pre-#88)
 %   kind `term`). The roster at the bottom is generated from each migrator's
 %   H1 summary and uses the current names; read it for what a migrator emits.
 %
@@ -439,8 +439,8 @@
 %   #45 -> #32) rather than ship the 1->N one-statement-per-interval shape as
 %   an interim. `did2.convert.resolveValidIntervals` is therefore DORMANT: it
 %   runs as a census, counts `sources_seen`/`intervals_seen`, and appends
-%   nothing. When it is re-armed the class it emits is `logical_observation`
-%   (renamed from `validity_observation` on 2026-08-12: the 32 `*_observation`
+%   nothing. When it is re-armed the class it emits is `logical_observation`  (pre-#88)
+%   (renamed from `validity_observation` on 2026-08-12: the 32 `*_observation`  (pre-#88)
 %   data_types name a KIND OF VALUE, and the SEMANTIC belongs in
 %   `subject_statement.variable`). [2026-10-23: in did-schema #88's names, an
 %   `observation` with value kind `logical`, the semantic in its `variable`;

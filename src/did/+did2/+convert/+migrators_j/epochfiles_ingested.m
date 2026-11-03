@@ -133,7 +133,7 @@ function bodies = epochfiles_ingested(preBody)
 %     $ grep -c TEAM-SIGN-OFF DID-schema/schemas/V_eta_recording_observation_plan.md
 %     1                       (the line is at :99, dated 2026-08-10)
 %     2  <- RE-DERIVED 2026-08-15. A SECOND signature landed on 2026-08-13 (the
-%           pyraview clause: "`pyraview` ENDS AS a `voltage_observation` + one
+%           pyraview clause: "`pyraview` ENDS AS a `voltage_observation` + one  (pre-#88)
 %           `sampled_body` PER STORED RESOLUTION LEVEL + a `frequency_filter`,
 %           and that is the end state"). The `1` is kept as the 2026-08-12
 %           reading rather than overwritten -- a dated measurement is a

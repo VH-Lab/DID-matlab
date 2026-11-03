@@ -89,7 +89,7 @@ function bodies = ontology_label(preBody)
 %       14f5c6f Add flat-table-free J migrators: ... ontology_label
 %
 %     git show a81b275:.../ontology_label.m   (the pre-fix body)
-%       :48  obs = jStartInteraction(preBody, 'term_observation', ...
+%       :48  obs = jStartInteraction(preBody, 'term_observation', ...  (pre-#88)
 %       :49      {'element_id', 'subject_id', 'probe_id'});
 %     .../+migrators_j/private/jStartInteraction.m:38
 %       body.depends_on = jCarrySubject(preBody, subjectSrc);   % ASSIGN, not extend

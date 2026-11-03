@@ -6,16 +6,16 @@ function bodies = pyraview(preBody)
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
-%   THIS HEADER SAID `dataseries_observation` IN THREE PLACES UNTIL 2026-08-13
-%   AND THE CODE HAS EMITTED `voltage_observation` THROUGHOUT. Team, 2026-08-13:
-%   "There is no dataseries_observation anymore. Voltage is correct." The CODE
+%   THIS HEADER SAID `dataseries_observation` IN THREE PLACES UNTIL 2026-08-13  (pre-#88)
+%   AND THE CODE HAS EMITTED `voltage_observation` THROUGHOUT. Team, 2026-08-13:  (pre-#88)
+%   "There is no dataseries_observation anymore. Voltage is correct." The CODE  (pre-#88)
 %   was right; the header named a class that does not exist:
 %
 %     DENOMINATOR: 248 json file(s) under DID-schema schemas/V_eta/
-%       dataseries_observation    NOT IN THE BUILT SET
-%       imageseries_observation   NOT IN THE BUILT SET
-%       timeseries_observation    NOT IN THE BUILT SET
-%       voltage_observation       stable/voltage_observation.json  (stable)
+%       dataseries_observation    NOT IN THE BUILT SET  (pre-#88)
+%       imageseries_observation   NOT IN THE BUILT SET  (pre-#88)
+%       timeseries_observation    NOT IN THE BUILT SET  (pre-#88)
+%       voltage_observation       stable/voltage_observation.json  (stable)  (pre-#88)
 %
 %   The three series-observation classes were phase-8 DELETED -- abstract and
 %   unminted in J, so no document can be an instance of one. A reader trusting
@@ -75,11 +75,11 @@ function bodies = pyraview(preBody)
 %   2026-10-26).
 %
 %   NOTE ON MATURITY, RE-DERIVED 2026-08-13 RATHER THAN CARRIED FORWARD. This
-%   read "dataseries_observation and the *_body classes are `draft`", and half
+%   read "dataseries_observation and the *_body classes are `draft`", and half  (pre-#88)
 %   of it was wrong in each direction -- it named a class that no longer exists,
 %   and it grouped the observation with the bodies when they now differ:
 %
-%       voltage_observation   stable      method                   stable
+%       voltage_observation   stable      method                   stable  (pre-#88)
 %       sampled_body          DRAFT       epoch_bounded_reference  stable
 %       opaque_body           DRAFT
 %
