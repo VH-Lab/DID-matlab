@@ -37,7 +37,8 @@ end
 
 function doc = docWithPlaceholder()
 % The shape a blank definition carries: a declared name, an empty target,
-% keyed `value` as in the definition JSON. The constructor renames the key.
+% keyed `value` as in the definition JSON. The constructor keeps the key
+% (DID-matlab #204: a document is written in the shape it was read in).
 doc = did.document(depsProps(struct('name', {'item1','item2'}, 'value', {'',''})));
 end
 
@@ -59,19 +60,23 @@ end
 
 % ---- the v2 depends_on shape ------------------------------------------
 
-function testConstructorKeysEntriesByDocumentId(testCase)
-% The premise of the readers below: after construction an entry carries
-% document_id and no value.
+function testConstructorKeepsTheKeyItWasGiven(testCase)
+% Inverted 2026-11-03 (DID-matlab #204; did-schema [v2 line reads and writes
+% both], Jess Haley): the constructor used to rename every entry's key to
+% document_id. A v1 body keeps `value`; a v2 body keeps `document_id`.
 doc = docWithPlaceholder();
-verifyTrue(testCase, isfield(doc.document_properties.depends_on, 'document_id'));
-verifyFalse(testCase, isfield(doc.document_properties.depends_on, 'value'));
+verifyTrue(testCase, isfield(doc.document_properties.depends_on, 'value'));
+verifyFalse(testCase, isfield(doc.document_properties.depends_on, 'document_id'));
+v2 = did.document(depsProps(struct('name', {'item1'}, 'document_id', {'x'})));
+verifyTrue(testCase, isfield(v2.document_properties.depends_on, 'document_id'));
+verifyFalse(testCase, isfield(v2.document_properties.depends_on, 'value'));
 end
 
 % ---- dependency_value_n -----------------------------------------------
 
 function testDependencyValueNFindsAnUnnumberedEntry(testCase)
-% The unnumbered fallback reads the entry's target. It used to read
-% .value, which a constructed document does not have, so this threw.
+% The unnumbered fallback reads the entry's target through
+% i_readDependencyTarget, whichever key the entry carries.
 doc = docWithPlaceholder();
 doc = doc.set_dependency_value('item1', 'a_value');
 verifyEqual(testCase, doc.dependency_value_n('item1'), {'a_value'});
@@ -92,8 +97,8 @@ verifyEqual(testCase, doc.dependency_value_n('extra'), {'first','second'});
 end
 
 function testV1IdKeyedEntriesAreReadToo(testCase)
-% v1 bodies key the target `id`. The constructor canonicalises that as well,
-% so a v1 document reads the same through the same code.
+% Older v1 bodies key the target `id`. The constructor keeps it, and the
+% readers read it through the same code.
 doc = did.document(depsProps(struct('name', {'item1_1','item1_2'}, 'id', {'x','y'})));
 verifyEqual(testCase, doc.dependency_value_n('item1'), {'x','y'});
 verifyEqual(testCase, doc.dependency_value('item1_2'), 'y');
@@ -105,7 +110,8 @@ function testDependencyValueReadsWhatWasSet(testCase)
 doc = docWithPlaceholder();
 doc = doc.set_dependency_value('item2', 'abc123');
 verifyEqual(testCase, doc.dependency_value('item2'), 'abc123');
-verifyEqual(testCase, doc.document_properties.depends_on(2).document_id, 'abc123');
+verifyEqual(testCase, doc.document_properties.depends_on(2).value, 'abc123', ...
+    'a v1 entry is written under its v1 key');
 end
 
 function testErrorIfNotFoundAcceptsADouble(testCase)

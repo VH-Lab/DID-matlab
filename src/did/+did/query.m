@@ -316,9 +316,9 @@ function ss = dependsOnSearchstructure(name, value, negate)
     %
     % SS = DEPENDSONSEARCHSTRUCTURE(NAME, VALUE, NEGATE)
     %
-    % A depends_on entry names its target under `document_id` (v2: the
-    % did.document constructor renames every entry's key to it), `value`
-    % (v1, and structs built without the constructor) or `id`; see
+    % A depends_on entry names its target under `document_id` (v2), `value`
+    % (v1) or `id` (older v1); did.document keeps whichever key a document
+    % was read with (DID-matlab #204); see
     % did.document.i_readDependencyTarget, which doc2sql uses for the SQL
     % search. The test is therefore whether ANY entry has name NAME (any
     % name if NAME is '*') and VALUE under one of those keys.
