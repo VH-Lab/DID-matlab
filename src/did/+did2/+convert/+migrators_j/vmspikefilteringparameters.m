@@ -131,11 +131,11 @@ function bodies = vmspikefilteringparameters(preBody)
 %                       and an absolute level are not the same quantity and must
 %                       not be numerically comparable.
 %     sampling_rate  -> other.sampling_rate.  The plan says DROP it as a
-%                       duplicate of the data body's own time axis (#45) -- but
-%                       #45 is not built, this class has no body, and this
-%                       document is the only place the number exists. Kept
-%                       rather than dropped on a duplicate that does not yet
-%                       exist; raised as an open question.
+%                       duplicate of the data body's own time axis (#45). This
+%                       migrator emits a `method` document with no data body,
+%                       so there is no time axis here for it to duplicate, and
+%                       this document is the only place the number exists.
+%                       Kept rather than dropped; raised as an open question.
 %     new_sampling_rate, filter_algorithm, filter_algorithm_parameters, rm60Hz
 %                    -> other.* (filter settings grouped under other.filter, as
 %                       in jSpikeExtractionSettings, because the built

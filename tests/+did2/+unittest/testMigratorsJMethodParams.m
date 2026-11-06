@@ -637,10 +637,10 @@ end
 
 function testVmspikeKeepsSamplingRateRatherThanDroppingIt(testCase)
 % The plan says DROP sampling_rate as a duplicate of the data body's own time
-% axis (#45). But #45 is not built, this class has no body, and this document is
-% the only place the number exists -- so dropping it now would lose it against a
-% duplicate that does not yet exist. Kept in the bag; raised as an open question
-% rather than decided by a migrator.
+% axis (#45). But this class emits a `method` document with no data body, so
+% there is no time axis for it to duplicate, and this document is the only place
+% the number exists -- dropping it would lose it. Kept in the bag; raised as an
+% open question rather than decided by a migrator.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_5', 'sess_A', 'elem_1', 't00001', '')), ...
     'method');
 b = bag(d);
