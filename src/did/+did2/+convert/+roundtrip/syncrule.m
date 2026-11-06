@@ -29,8 +29,12 @@ function [v1, spec] = syncrule(bodies, ctx)
 %                                      holds them as 'daqsystem ch1' /
 %                                      'daqsystem ch2', read below as any
 %                                      other name
-%       any other                      its own name ('_' written as a space;
-%                                      errorOnFailure)
+%       errorOnFailure                 EMPTY:0000435 'error on failure' ([sync
+%                                      rule terms], Jess Haley, 2026-11-06); a
+%                                      configuration migrated before holds it
+%                                      as 'errorOnFailure', read below as any
+%                                      other name
+%       any other                      its own name ('_' written as a space)
 %       epochclocktype                 the configuration's clock
 %       daqsystem1, daqsystem2         (filefind) the names of the
 %                                      acquisition systems the from / to
@@ -141,7 +145,7 @@ end
 
 function [s, bad] = ruleParameters(params)
 %RULEPARAMETERS The rule's v1 parameters from the configuration's method
-%   parameters: the five the migrator names back to their writer spelling,
+%   parameters: the six the migrator names back to their writer spelling,
 %   every other one by its own name (a space read back as '_', a '.' as a
 %   nested field: private/jParameterList's naming).
 %
@@ -165,7 +169,8 @@ named = {'minimum matching file paths', 'number_fullpath_matches'; ...
     'sync file name', 'syncfilename'; ...   % migrated before 2026-11-03
     'minimum embedded file overlap', 'minEmbeddedFileOverlap'; ...
     'from trigger channel', 'daqsystem_ch1'; ...   % [trigger channels named by their link]
-    'to trigger channel', 'daqsystem_ch2'};
+    'to trigger channel', 'daqsystem_ch2'; ...
+    'error on failure', 'errorOnFailure'};   % EMPTY:0000435 [sync rule terms] (2026-11-06)
 for k = 1:numel(params)
     e = params{k};
     [~, name] = termParts(getIn(e, 'variable'));
