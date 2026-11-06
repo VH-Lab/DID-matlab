@@ -32,6 +32,7 @@ classdef sqlitedb < handle
     %       count        - number of documents in the database.
     %       search       - return documents matching a did2.query.
     %       searchIds    - return the ids of documents matching a query.
+    %       searchEdges  - the matches' named edges, without decoding bodies.
     %       hasFile      - is a document's named file on this computer? (and where)
     %       filePath     - the path to a document's named file, or an error
     %       fileNames    - the file names a document records
@@ -393,6 +394,66 @@ classdef sqlitedb < handle
             % about half the cost of reading a migrated NDI session
             % (NDI-matlab run 42261433789). Anything inexact is rechecked.
             docs = obj.rowsToDocs(rows, q, ~exact || obj.alwaysRecheck);
+        end
+
+        function edges = searchEdges(obj, q, names)
+            % searchEdges - the edges of the documents matching a query,
+            % read from the depends_on sidecar without decoding the bodies.
+            %
+            %   EDGES = db.searchEdges(Q, NAMES) returns a struct array with
+            %   fields doc_id, name and document_id: for every document Q
+            %   matches, in the order search(Q) returns them (rowid), each of
+            %   its depends_on entries whose name is in NAMES (a cellstr), in
+            %   the order the document lists them. A document with none of
+            %   those edges contributes no row. An entry the sidecar does not
+            %   hold (an empty name or target) is not returned.
+            %
+            %   The bodies are not decoded when Q is EXACT (compileQuery):
+            %   the SQL then matches exactly what search would return. A
+            %   did_v1 document among the matches, and every match of an
+            %   inexact Q, is read and rechecked as search does, so the
+            %   answer is search's either way. For a reader that needs only
+            %   ids (NDI's migrated-element reads; Jess Haley, 2026-11-06:
+            %   "Speed can't be slower than v1").
+            arguments
+                obj
+                q (1,1) did2.query
+                names
+            end
+            names = reshape(cellstr(names), 1, []);
+            q = obj.resolveNested(q);
+            [whereSQL, params, exact] = did2.database.compileQuery(q, ...
+                'QueryablePaths', obj.compileScalarPaths(), ...
+                'QueryableArrayPaths', obj.compileArrayPaths());
+            sql = ['SELECT documents.id AS doc_id, edge_out.name AS name, ' ...
+                'edge_out.document_id AS document_id, ' ...
+                'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp ' ...
+                'FROM documents JOIN depends_on edge_out ON edge_out.doc_id = documents.id ' ...
+                'WHERE (' whereSQL ') AND edge_out.name IN (SELECT value FROM json_each(?)) ' ...
+                'ORDER BY documents.rowid ASC, edge_out.rowid ASC'];
+            obj.ensureConnection();
+            rows = mksqlite(obj.dbid, sql, params{:}, jsonencode(names));
+            edges = struct('doc_id', {}, 'name', {}, 'document_id', {});
+            if isempty(rows)
+                return;
+            end
+            keep = true(1, numel(rows));
+            verdict = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+            for k = 1:numel(rows)
+                id = char(rows(k).doc_id);
+                stamp = rows(k).stamp;
+                if exact && ~obj.alwaysRecheck && ~(ischar(stamp) && strcmp(stamp, 'did_v1'))
+                    continue;
+                end
+                if ~isKey(verdict, id)
+                    verdict(id) = q.matches(obj.get(id));
+                end
+                keep(k) = verdict(id);
+            end
+            rows = rows(keep);
+            edges = struct('doc_id', cellfun(@char, {rows.doc_id}, 'UniformOutput', false), ...
+                'name', cellfun(@char, {rows.name}, 'UniformOutput', false), ...
+                'document_id', cellfun(@char, {rows.document_id}, 'UniformOutput', false));
         end
 
         function ids = searchIds(obj, q)
