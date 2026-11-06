@@ -69,13 +69,16 @@ function bodies = syncrule(preBody)
 %   between rules for the same fact -- `daqsystem1_name` (ctoe, randomPulses) vs
 %   `daqsystem1` (filefind) -- and both are read below.
 %
-%   `errorOnFailure` WAS DROPPED (repair 5 in the plan): throw-or-return-quietly
-%   is runtime behaviour, not a fact about the experiment. [small unread
-%   settings] (3) (Jess Haley, 2026-10-26): on the configuration arms every
-%   parameter the migrator does not read (errorOnFailure, filefind's
-%   daqsystem1/2 when no stamped system pair reads them, ...) becomes one more
-%   method parameter (jParameterList's entry); one that cannot be written (a
-%   number that is not finite) carries the rule whole as v1.
+%   `errorOnFailure` is a method parameter. The plan's repair 5 dropped it;
+%   that was superseded twice: the plan's #73 review item 63 amendment
+%   (2026-09-29: one method parameter per v1 knob, `errorOnFailure` included)
+%   and [small unread settings] (3) (Jess Haley, 2026-10-26). It is written as
+%   EMPTY:0000435 'error on failure', its logical value kept ([sync rule
+%   terms], Jess Haley, 2026-11-06). On the configuration arms every other
+%   parameter the migrator does not read (filefind's daqsystem1/2 when no
+%   stamped system pair reads them, ...) becomes one more method parameter
+%   (jParameterList's entry); one that cannot be written (a number that is not
+%   finite) carries the rule whole as v1.
 %
 %   ---------------------------------------------------------------------
 %   THE GUARD: NO DEVICE PAIR => NO CONFIGURATION. PASS THE DOCUMENT THROUGH.
@@ -325,6 +328,9 @@ for chKey = {'daqsystem_ch1', 'daqsystem_ch2'}
         read{end+1} = chKey{1}; %#ok<AGROW>
     end
 end
+if ~isempty(failureFlag(params))
+    read{end+1} = 'errorOnFailure';
+end
 read = [read, reshape(nameKeys, 1, [])];
 rest = struct();
 fns = fieldnames(params);
@@ -348,6 +354,22 @@ for k = 1:numel(names)
         name = names(k);
         return;
     end
+end
+end
+
+function tf = failureFlag(params)
+%FAILUREFLAG The v1 `errorOnFailure` setting when it is one logical ([] when
+%   absent or anything else: then it stays a method parameter by its own name,
+%   jParameterList, so the round trip rebuilds its type). Written as
+%   EMPTY:0000435 'error on failure' ([sync rule terms], Jess Haley,
+%   2026-11-06).
+tf = [];
+if ~isstruct(params) || ~isscalar(params) || ~isfield(params, 'errorOnFailure')
+    return;
+end
+v = params.errorOnFailure;
+if islogical(v) && isscalar(v)
+    tf = v;
 end
 end
 
@@ -394,10 +416,14 @@ implClass = jGetCharAny(block, {'ndi_syncrule_class', 'ndiSyncruleClass'});
 % fields before). A filefind rule carries two of them (number_fullpath_matches,
 % syncfilename); its daqsystem1 / daqsystem2 NAMES are the from / to edges, not
 % entries.
+% The registered terms of the settings: did-schema did_v2_go_forward_class_audit.md
+% [sync rule terms] (Jess Haley, 2026-11-06, "Approve all five"), EMPTY:0000431
+% to EMPTY:0000435 (empty-ontology).
 entries = {};
 minPaths = readNumber(params0(block), {'number_fullpath_matches', 'numberFullpathMatches'});
 if ~isempty(minPaths)
-    entries{end+1} = did2.build.parameter(jLabel('minimum matching file paths'), ...
+    entries{end+1} = did2.build.parameter( ...
+        did2.convert.registeredTerm('EMPTY:0000431', 'minimum matching file paths'), ...
         'Count', minPaths);
 end
 syncFile = jGetCharAny(params0(block), {'syncfilename', 'syncFilename', 'sync_filename'});
@@ -411,7 +437,8 @@ end
 minOverlap = readNumber(params0(block), {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'});
 if ~isempty(minOverlap)
     entries{end+1} = did2.build.parameter( ...
-        jLabel('minimum embedded file overlap'), 'Value', minOverlap);
+        did2.convert.registeredTerm('EMPTY:0000432', 'minimum embedded file overlap'), ...
+        'Value', minOverlap);
 end
 % The trigger channels, named by the link each belongs to: v1 daqsystem_ch1 is
 % the channel read on daqsystem1 (commonTriggersOverlappingEpochs.m:29), the
@@ -419,11 +446,20 @@ end
 % `to_acquisition_system_id`. Decided by Jess Haley, 2026-10-30, did-schema
 % V_eta_go_forward_class_audit.md [trigger channels named by their link]:
 % labels 'from trigger channel' / 'to trigger channel', not the v1 names.
-for ch = {{'daqsystem_ch1', 'from trigger channel'}, {'daqsystem_ch2', 'to trigger channel'}}
+for ch = {{'daqsystem_ch1', 'EMPTY:0000433', 'from trigger channel'}, ...
+        {'daqsystem_ch2', 'EMPTY:0000434', 'to trigger channel'}}
     chText = channelText(params0(block), ch{1}{1});
     if ~isempty(chText)
-        entries{end+1} = did2.build.parameter(jLabel(ch{1}{2}), 'Text', chText); %#ok<AGROW>
+        entries{end+1} = did2.build.parameter( ...
+            did2.convert.registeredTerm(ch{1}{2}, ch{1}{3}), 'Text', chText); %#ok<AGROW>
     end
+end
+% errorOnFailure, its logical value kept (EMPTY:0000435 'error on failure');
+% a value that is not one logical stays a method parameter by its own name
+failFlag = failureFlag(params0(block));
+if ~isempty(failFlag)
+    entries{end+1} = did2.build.parameter( ...
+        did2.convert.registeredTerm('EMPTY:0000435', 'error on failure'), 'Logical', failFlag);
 end
 % the parameters read nowhere above, written as method parameters too
 % ([small unread settings] (3), Jess Haley, 2026-10-26)
