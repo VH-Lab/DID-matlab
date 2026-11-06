@@ -77,10 +77,12 @@ function [body, datumType, sourceDatumType] = jNgridBody(preBody, statementId, n
 %       datum.shape   data_dim         the intra-datum extent
 %       datum.unit    ''               an ngrid carries no unit; the meaning
 %                                      rides on the statement's `variable`
-%       sample_time   regular, n = 1   an ngrid has NO time axis. One datum,
-%                                      t0 = dt = 0. (Contrast image_stack, whose
-%                                      v1 block declares dimension_order/T, so it
-%                                      really does have frames to count.)
+%       sample_time   NOT EMITTED      the block is retired (signed data_body
+%                                      model; see below). An ngrid has NO time
+%                                      dimension and no time covariate.
+%                                      (Contrast image_stack, whose v1 block
+%                                      declares dimension_order/T, so it really
+%                                      does have frames to count.)
 %       axes[k]       one per dim      name (labelled or positional), kind
 %                                      'index', length data_dim(k), regularity
 %                                      'regular', spacing 1, unit ''

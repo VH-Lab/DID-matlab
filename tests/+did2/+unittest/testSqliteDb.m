@@ -495,6 +495,43 @@ row = mksqlite(dbid, 'SELECT session_id FROM documents WHERE id = ?', doc.get('b
 verifyEqual(testCase, char(row(1).session_id), 'session-edge');
 end
 
+function testSessionScopeLetsTheEdgeLead(testCase)
+% NDI ANDs `base.session_id = <session>` onto every search, and nearly every
+% document is in that one session. With no statistics SQLite took the session
+% index for selective and walked every document of the session, testing the
+% edge on each (about 60 ms a search on the migrated Dab corpus, 16.4 s in
+% mksqlite over 272 searches, VH-Lab/NDI-matlab#785 run 41876678241). When the
+% conjunction also holds a term the plan can start from, the session test must
+% not take the index; alone it keeps it. The answers do not change.
+db = testCase.TestData.db;
+inS = @(d) d.set('base.session_id', 'S1');
+withEdge = @(d, id) d.set('depends_on', struct('name', {'parent'}, 'document_id', {id}));
+db.add(withEdge(inS(makeDemoA('a1', 'x')), 'id-1'), 'Validate', false);
+db.add(withEdge(inS(makeDemoA('a2', 'y')), 'id-2'), 'Validate', false);
+db.add(withEdge(makeDemoA('a3', 'z'), 'id-1'), 'Validate', false);   % another session
+names = @(q) sort(cellfun(@(h) char(h.get('base.name')), db.search(q), 'UniformOutput', false));
+sess = did2.query('base.session_id', 'exact_string', 'S1');
+edge1 = did2.query('', 'depends_on', 'parent', 'id-1');
+anyEdge = did2.query('', 'depends_on', 'parent', 'id-1') | did2.query('', 'depends_on', 'parent', 'id-2');
+verifyEqual(testCase, names(did2.query('', 'isa', 'demoA') & edge1 & sess), {'a1'});
+verifyEqual(testCase, names(anyEdge & sess), {'a1', 'a2'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'parent', {'id-1', 'id-2'}) & sess), {'a1', 'a2'});
+verifyEqual(testCase, names(sess), {'a1', 'a2'});
+verifyEqual(testCase, names(did2.query('', 'isa', 'demoA') & sess), {'a1', 'a2'});
+for q = {did2.query('', 'isa', 'demoA') & edge1 & sess, anyEdge & sess, ...
+        did2.query('', 'depends_on', 'parent', {'id-1', 'id-2'}) & sess}
+    details = planDetails(db, q{1});
+    verifyFalse(testCase, any(contains(details, 'documents_session_id')), ...
+        sprintf('the session index led: %s', strjoin(details, ' | ')));
+    verifyTrue(testCase, any(contains(details, 'depends_on_name_document_id')), ...
+        sprintf('plan: %s', strjoin(details, ' | ')));
+end
+% with nothing else to start from, the session index still leads
+details = planDetails(db, did2.query('', 'isa', 'demoA') & sess);
+verifyTrue(testCase, any(contains(details, 'documents_session_id')), ...
+    sprintf('plan: %s', strjoin(details, ' | ')));
+end
+
 function testGetReadsTheSessionIdFromTheEdge(testCase)
 doc = withSessionEdge(makeDemoA('edge', 'e'));
 verifyFalse(testCase, isfield(doc.toStruct().base, 'session_id'));
@@ -514,6 +551,12 @@ doc = did2.document(s);
 end
 
 % ---- helpers ----
+
+function details = planDetails(db, q)
+% the rows of SQLite's EXPLAIN QUERY PLAN for Q's search
+r = db.testHookExplain(q);
+details = {r.plan.detail};
+end
 
 function doc = makeDemoA(name, value)
 doc = did2.document.blank('demoA');

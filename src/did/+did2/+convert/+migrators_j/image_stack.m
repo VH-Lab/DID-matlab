@@ -17,16 +17,17 @@ function bodies = image_stack(preBody)
 %                           quantity is the linked ontology label, set by a
 %                           second-pass join -- see V_eta_discovery_notes.md; NOT
 %                           the file format), the inline image geometry on the
-%                           `image` mixin, and `storage_mode: body` (so the
-%                           statement carries no sample_time -- the cadence lives
-%                           in the body, D1/§A.7). The `format_ontology`
+%                           `image` mixin, and `data_body: true` (so the
+%                           statement carries no positions -- they are covariates
+%                           on the body's `data`, D1/§A.7). The `format_ontology`
 %                           file-type (an `image`'s `format`) and an `image`'s
 %                           `compression` go on the body's `format` and
 %                           `compression` ([image file details placed], Jess
 %                           Haley, 2026-10-26; dropped as derivable before).
-%       sampled_body        the DIGITAL frames: datum (kind/dtype/unit/shape) +
-%                           sample_time (t0/dt/n) + the carried pixel bytes;
-%                           `statement` -> the `observation` it belongs to.
+%       sampled_body        the DIGITAL frames: one dimension per stack axis on
+%                           `data`, each axis's positions (origin + spacing) a
+%                           covariate along it, + the carried pixel bytes;
+%                           `owner_id` -> the `observation` it belongs to.
 %       session_relative_reference   the ordinal 'during' anchor (a v1 image
 %                           stack carries a bare timestamp+clocktype, not a DAQ
 %                           epoch -- the same honest fallback the treatment fold

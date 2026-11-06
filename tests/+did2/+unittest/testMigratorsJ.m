@@ -1938,7 +1938,8 @@ end
 
 function testDidV1ImageLabelIsTheObservationsNotes(testCase)
 % INVERTED 2026-10-29 from testDidV1ImageWithALabelIsCarriedAsV1, which pinned
-% the carry of an image that states a label (carry-051). [image label goes to
+% the carry of an image that states a label (a carry row retired 2026-11-06,
+% Jess Haley, did-schema did_v2_go_forward_class_audit.md). [image label goes to
 % the observation's notes] (Jess Haley, 2026-10-29, did-schema
 % V_eta_go_forward_class_audit.md; supersedes [image label goes to notes]):
 % "a non-empty v1 `image.label` is written to the image observation's `notes`;
@@ -4872,9 +4873,10 @@ for j = 1:numel(sbods)
     verifyEqual(testCase, ax(2).nCov, 0, 'no index covariate along channel');
     verifyNotEmpty(testCase, ax(1).cov.origin, 'the time covariate is origin + spacing');
 end
-% Levels are told apart by the TIME axis spacing now, not by sample_time.dt --
-% that block is no longer written here (step 5 of the signed build order), and
-% writing the cadence into both would store one fact twice.
+% Levels are told apart by the spacing of the time covariate on `data` now, not
+% by the retired sample_time.dt -- that block is no longer written here (step 5
+% of the signed build order), and writing the cadence into both would store one
+% fact twice.
 dts = sort(arrayfun(@(k) sbods{k}.data.covariates(1).spacing.source_value, ...
     1:numel(sbods)));
 verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
@@ -5804,7 +5806,7 @@ end
 function testJrclustClustersFoldsToCountObservation(testCase)
 % #9 (pattern 1, body-backed): jrclust_clusters (per-spike JRCLUST cluster
 % labels) -> count_observation + sampled_body (one datum per spike) + anchor.
-% 1->3. No num_spikes metadata on this class, so sample_time.n == 0.
+% 1->3.
 body = struct();
 body.document_class = struct('class_name', 'jrclust_clusters', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'; 'app'}, 'class_version', {'1.0.0'; '1.0.0'}));

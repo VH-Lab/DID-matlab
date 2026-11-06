@@ -4,8 +4,8 @@ function tests = testFixtureCorpus
 %   of self-contained v1 fixtures through the FULL V_eta migration pipeline WITH
 %   schema validation ON (Validate=true), then asserts the two corpus gates:
 %   0 quarantine and 0 orphan depends_on edges. It catches the errors the full
-%   corpus catches -- wrong shapes, reviving a dead class, dangling references,
-%   sample_time-style inconsistencies -- in seconds instead of hours.
+%   corpus catches -- wrong shapes, reviving a dead class, dangling references --
+%   in seconds instead of hours.
 %
 %   Requires the assembled V_eta schema on DID_SCHEMA_PATH (the CI workflow
 %   test-fixtures.yml assembles it by copying did-schema V_eta stable+draft, same
