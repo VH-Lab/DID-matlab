@@ -343,6 +343,64 @@ for label = {'single', 'multi'}
 end
 end
 
+function testAProbeThatNeverRecordedRebuildsItsGeneralType(testCase)
+% [clamp mode of unrecorded probe dropped] (Jess Haley, 2026-11-03): a patch,
+% sharp or imaging probe that never recorded keeps its device kind and no
+% `element type` statement (resolveEpochProbemap drops it). Decided by Jess
+% Haley, 2026-11-06 ("Read back patch"): its type rebuilds as the general
+% registered v1 type of its kind, 'patch' or 'sharp'; a microscope has none
+% and rebuilds ''. Its kind is placed either way.
+rows = {
+    'patch-I',            'patch'
+    'patch-Vm',           'patch'
+    'patch-attached',     'patch'
+    'patch',              'patch'
+    'sharp-Vm',           'sharp'
+    'sharp-Im',           'sharp'
+    'sharp',              'sharp'
+    'two-photon-imaging', ''
+    'wide-field-imaging', ''};
+testCase.log(sprintf('DENOMINATOR: %d v1 type(s) of a shared device kind', size(rows, 1)));
+for k = 1:size(rows, 1)
+    [ty, want] = rows{k, :};
+    id = sprintf('el_nrec_%d', k);
+    ndiClass = 'ndi.probe.timeseries.mfdaq';
+    if endsWith(ty, 'imaging'); ndiClass = 'ndi.probe.image'; end
+    v1 = probeDoc(id, 'p', 1, ty, ndiClass);
+    docs = elementOutputs(runRaw(v1), id);
+    isType = cellfun(@(b) strcmp(char(b.document_class.class_name), 'assertion') ...
+        && strcmpi(char(b.statement.variable.name), 'element type'), docs);
+    assertEqual(testCase, nnz(isType), 1, [ty ': premise, one element type assertion']);
+    docs = docs(~isType);   % what resolveEpochProbemap leaves of a probe that never recorded
+    [rebuilt, spec] = did2.convert.roundtrip.element(docs);
+    verifyEqual(testCase, rebuilt.element.type, want, ty);
+    verifyEmpty(testCase, spec.unplaced, [ty ': unplaced: ' strjoin(spec.unplaced, '; ')]);
+    r = did2.convert.roundtrip.check(v1, docs);
+    verifyEmpty(testCase, r.unplaced, ty);
+    lostType = any(strcmp({r.lost.path}, 'element.type'));
+    verifyEqual(testCase, lostType, ~strcmp(ty, want), ...
+        sprintf('%s: element.type lost (only the mode is): %s', ty, describeLost(r)));
+end
+end
+
+function testTheGeneralTypeOfEachKind(testCase)
+% did2.convert.elementGeneralTypeOfKind, from the elementDeviceKind table
+[~, ~, types] = did2.convert.elementDeviceKind('');
+nodes = unique(types(:, 2));
+testCase.log(sprintf('DENOMINATOR: %d kind node(s)', numel(nodes)));
+assertNotEmpty(testCase, nodes);
+general = struct('EMPTY_0000411', 'patch', 'EMPTY_0000412', 'sharp');
+for k = 1:numel(nodes)
+    key = strrep(nodes{k}, ':', '_');
+    want = '';
+    if isfield(general, key); want = general.(key); end
+    verifyEqual(testCase, did2.convert.elementGeneralTypeOfKind(nodes{k}), want, nodes{k});
+end
+verifyEqual(testCase, did2.convert.elementGeneralTypeOfKind('empty:0000411'), 'patch');
+verifyEqual(testCase, did2.convert.elementGeneralTypeOfKind(''), '');
+verifyEqual(testCase, did2.convert.elementGeneralTypeOfKind('NCIT:C0000000'), '');
+end
+
 function testTheThreeUnitSpellingsRoundTripAsOne(testCase)
 % [cell spellings are one meaning], [cell spellings amended] (Decided by Jess
 % Haley, 2026-10-27, did-schema did_v2_go_forward_class_audit.md): "the round
