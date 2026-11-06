@@ -270,3 +270,26 @@ for k = 1:min(numel(got), numel(docs))
     end
 end
 end
+
+% ---- json_extract on a block no stored chain contains ----
+
+function testABlockNoStoredChainHasIsExact(testCase)
+% a block named by no stored document's class chain is never reshaped by
+% rehydrate, so a text match on it read with json_extract is exact; a block
+% of a stored chain is not (demoA.tags, a string list, can be reshaped)
+db = testCase.TestData.db;
+d = did2.document.blank('demoA');
+d = d.set('base.session_id', 'sessC');
+d = d.set('base.name', 'old');
+s = d.toStruct();
+s.oldblock = struct('variable', struct('name', 'class label'));
+db.add({did2.document(s)}, 'Validate', false);
+testCase.TestData.docs{end+1} = did2.document(s);
+verifyEqual(testCase, check(testCase, did2.query('oldblock.variable.name', 'exact_string', 'class label'), true), ...
+    {'old'});
+check(testCase, did2.query('oldblock.variable.name', 'exact_string', 'other'), true);
+check(testCase, did2.query('', 'isa', 'demoA') & ...
+    (did2.query('demoA.value', 'exact_string', 'alpha') | ...
+     did2.query('oldblock.variable.name', 'exact_string', 'class label')), true);
+check(testCase, did2.query('demoA.tags', 'exact_string', 'green'), false);
+end

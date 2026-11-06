@@ -71,6 +71,7 @@ arguments
     q (1,1) did2.query
     opts.QueryablePaths = {}
     opts.QueryableArrayPaths = []
+    opts.PresentClasses = []
 end
 
 [scalarMap, arrayMap] = did2.database.queryablePathMaps( ...
@@ -80,7 +81,8 @@ ctx = struct( ...
     'queryableArrayPaths', {arrayMap}, ...
     'root', 'body', ...          % the JSON every body path is read from
     'inElement', false, ...      % inside a hasanyelement sub-query?
-    'depth', 0);                 % hasanyelement nesting depth (for aliases)
+    'depth', 0, ...              % hasanyelement nesting depth (for aliases)
+    'presentClasses', {opts.PresentClasses});   % for exactness (arrayIsExact)
 [whereSQL, params] = compileSearchstructArray(q.searchstructure, ctx);
 if nargout > 2
     exact = arrayIsExact(q.searchstructure, ctx);
@@ -112,9 +114,11 @@ end
 %   ~ of those     the negated forms are already compiled from the exact
 %                  predicates (NOT EXISTS / NOT IN of the same sidecars)
 %
-% A text exact_string read with json_extract is NOT counted exact: the
-% evaluator compares the REHYDRATED value, and rehydrate can reshape a field
-% the schema declares as a list. Proven per operator by
+% A text exact_string read with json_extract is counted exact only on a
+% block that no stored document's class chain contains (PresentClasses,
+% given by did2.database.sqlitedb): the evaluator compares the REHYDRATED
+% value, and rehydrate can reshape a field of a block in the document's
+% chain (a field the schema declares as a list). Proven per operator by
 % did2.unittest.testExactSql against the evaluator on stored documents.
 
 function tf = arrayIsExact(ssArray, ctx)
@@ -176,6 +180,19 @@ switch op
             tf = true;
         elseif scalarPathIsIndexed(f, ctx)
             tf = strcmpi(char(ctx.queryablePaths(f)), 'TEXT');
+        else
+            % read with json_extract: exact when the path's block is in NO
+            % stored document's class chain (PresentClasses, from the
+            % superclasses sidecar). rehydrate reshapes only the blocks of a
+            % document's own chain, so such a block is evaluated as stored:
+            % json_extract gives text equal to the target exactly when the
+            % path runs through objects to that string, which is when the
+            % evaluator's walkPath reaches the same char. (Typically an old
+            % block name a query still names for older databases, such as
+            % subject_statement.)
+            blk = strtok(f, '.');
+            tf = isa(ctx.presentClasses, 'containers.Map') && ~isempty(blk) ...
+                && ~isKey(ctx.presentClasses, blk);
         end
 end
 end
