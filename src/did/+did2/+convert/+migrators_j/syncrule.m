@@ -74,7 +74,9 @@ function bodies = syncrule(preBody)
 %   (2026-09-29: one method parameter per v1 knob, `errorOnFailure` included)
 %   and [small unread settings] (3) (Jess Haley, 2026-10-26). It is written as
 %   EMPTY:0000435 'error on failure', its logical value kept ([sync rule
-%   terms], Jess Haley, 2026-11-06). On the configuration arms every other
+%   terms], Jess Haley, 2026-11-06); a finite numeric errorOnFailure is the
+%   same term with its number as a quantity, so the round trip rebuilds the
+%   number (see failureValue). On the configuration arms every other
 %   parameter the migrator does not read (filefind's daqsystem1/2 when no
 %   stamped system pair reads them, ...) becomes one more method parameter
 %   (jParameterList's entry); one that cannot be written (a number that is not
@@ -328,7 +330,7 @@ for chKey = {'daqsystem_ch1', 'daqsystem_ch2'}
         read{end+1} = chKey{1}; %#ok<AGROW>
     end
 end
-if ~isempty(failureFlag(params))
+if ~isempty(failureValue(params))
     read{end+1} = 'errorOnFailure';
 end
 read = [read, reshape(nameKeys, 1, [])];
@@ -357,19 +359,35 @@ for k = 1:numel(names)
 end
 end
 
-function tf = failureFlag(params)
-%FAILUREFLAG The v1 `errorOnFailure` setting when it is one logical ([] when
-%   absent or anything else: then it stays a method parameter by its own name,
-%   jParameterList, so the round trip rebuilds its type). Written as
+function v = failureValue(params)
+%FAILUREVALUE The v1 `errorOnFailure` setting when it is one logical or one
+%   finite number ([] when absent or anything else). Both are written as
 %   EMPTY:0000435 'error on failure' ([sync rule terms], Jess Haley,
-%   2026-11-06).
-tf = [];
+%   2026-11-06): a logical as `logical`, a number as `quantity`, so the round
+%   trip (did2.convert.roundtrip.syncrule, entryValue) rebuilds the type from
+%   the value form.
+%
+%   A number is written under the term, not under its v1 name, because the
+%   registry finds a term by its name ignoring case and spacing ([term names
+%   match ignoring spacing], Jess Haley, 2026-10-29; did2.schema.termNameKey):
+%   'errorOnFailure' and 'error on failure' share the key 'erroronfailure', so
+%   once EMPTY:0000435 is registered the own-name path (jParameterList ->
+%   jLabel -> did2.convert.registeredTerm) resolves to the term anyway, and an
+%   entry named 'errorOnFailure' with no node would fail
+%   did2.schema.termRegistered ('registered with node EMPTY:0000435; give the
+%   node'). Writing the term here makes the result the same with or without
+%   the registry row. Anything else (text, an array, a number that is not
+%   finite) is left to unreadParameters: written by its own name, or the rule
+%   carried as v1.
+v = [];
 if ~isstruct(params) || ~isscalar(params) || ~isfield(params, 'errorOnFailure')
     return;
 end
-v = params.errorOnFailure;
-if islogical(v) && isscalar(v)
-    tf = v;
+x = params.errorOnFailure;
+if islogical(x) && isscalar(x)
+    v = x;
+elseif isnumeric(x) && isreal(x) && isscalar(x) && isfinite(x)
+    v = x;
 end
 end
 
@@ -386,6 +404,17 @@ if ischar(v) && (isrow(v) || isempty(v))
     t = v;
 elseif isstring(v) && isscalar(v)
     t = char(v);
+end
+end
+
+function t = shortestText(x)
+% The shortest decimal text that reads back as exactly X (private/jParameterList's
+% rule for a number's source value).
+for p = 1:17
+    t = sprintf('%.*g', p, x);
+    if str2double(t) == x
+        return;
+    end
 end
 end
 
@@ -454,12 +483,17 @@ for ch = {{'daqsystem_ch1', 'EMPTY:0000433', 'from trigger channel'}, ...
             did2.convert.registeredTerm(ch{1}{2}, ch{1}{3}), 'Text', chText); %#ok<AGROW>
     end
 end
-% errorOnFailure, its logical value kept (EMPTY:0000435 'error on failure');
-% a value that is not one logical stays a method parameter by its own name
-failFlag = failureFlag(params0(block));
-if ~isempty(failFlag)
+% errorOnFailure (EMPTY:0000435 'error on failure'): a logical as `logical`, a
+% finite number as `quantity` (its source text kept, as jParameterList writes
+% a number), so the round trip rebuilds the type; see failureValue
+failVal = failureValue(params0(block));
+if islogical(failVal)
     entries{end+1} = did2.build.parameter( ...
-        did2.convert.registeredTerm('EMPTY:0000435', 'error on failure'), 'Logical', failFlag);
+        did2.convert.registeredTerm('EMPTY:0000435', 'error on failure'), 'Logical', failVal);
+elseif ~isempty(failVal)
+    entries{end+1} = did2.build.parameter( ...
+        did2.convert.registeredTerm('EMPTY:0000435', 'error on failure'), ...
+        'Value', double(failVal), 'SourceValue', shortestText(double(failVal)));
 end
 % the parameters read nowhere above, written as method parameters too
 % ([small unread settings] (3), Jess Haley, 2026-10-26)
