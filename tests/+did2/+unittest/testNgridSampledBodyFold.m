@@ -288,10 +288,10 @@ verifyFalse(testCase, isfield(pickKind(out, 'observation', 'intensity'), 'file')
 end
 
 function testStorageModeIsBodyAndTheStatementCarriesNoCadence(testCase)
-% D1: one home for a body-backed value. storage_mode 'body' says the pixels live
-% in the sampled_body, so `pixels` stays empty and the statement carries no
-% sample_time (jStartInteraction seeds the inline single-point cadence, which is
-% the wrong half here).
+% D1: one home for a body-backed value. `value.data_body` true says the pixels
+% live in the sampled_body, so the inline value stays empty, and the statement
+% carries none of the retired `sample_time` block (positions are covariates on
+% the body's `data`).
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
 imgObs = pickKind(out, 'observation', 'intensity');
 % #88: `storage_mode` 'body' is `value.data_body` true (rule

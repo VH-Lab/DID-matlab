@@ -343,7 +343,8 @@ end
 
 
 function testTheWaveformStatementHasNoSampleTimeBlock(testCase)
-% UPDATED for #88: time is an ordinary key; neither observation carries a
+% UPDATED for #88: time is a covariate on the body's `data` (a key until
+% 2026-10-22, data_body AMENDMENT 6); neither statement carries the retired
 % sample_time block (the interaction block has none to carry).
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 verifyFalse(testCase, isfield(pick(out, 'calculation+voltage').interaction, 'sample_time'));

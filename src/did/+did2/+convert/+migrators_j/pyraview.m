@@ -32,16 +32,18 @@ function bodies = pyraview(preBody)
 %                           time anchor, a placeholder subject_statement.variable
 %                           (the signal `label`), and storage_mode 'body' (the
 %                           cadence lives in the body, D1).
-%       sampled_body        the NATIVE-resolution signal: datum (kind/dtype/shape)
-%                           + sample_time (t0 = native_start_time, dt = 1/native_rate)
-%                           + the carried bytes; statement -> the observation.
+%       sampled_body        the NATIVE-resolution signal: a time dimension (and a
+%                           channel dimension) on `data`, the time covariate's
+%                           origin = native_start_time and spacing = 1/native_rate,
+%                           + the carried bytes; owner_id -> the observation.
 %       session_relative_reference   the ordinal 'during' anchor (a pyraview has no
 %                           DAQ epoch -- the honest fallback the treatment/image
 %                           folds use).
 %
 %   1 -> (2 + N): the observation, ONE sampled_body per stored resolution level
 %   (all sharing the statement -- the multi-body stream sampled_body was designed
-%   for; levels told apart by sample_time.dt), and the anchor. Each level keeps its
+%   for; levels told apart by the spacing of their time covariate), and the
+%   anchor. Each level keeps its
 %   own bytes (a pyramid is a precomputed performance cache, not a disposable
 %   thumbnail), so nothing is dropped.
 %
