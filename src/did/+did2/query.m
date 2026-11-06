@@ -303,6 +303,32 @@ classdef query
 
     % ---- private static helpers ----
     methods (Static, Access = private)
+        function parts = splitPath(fieldPath)
+            % splitPath - strsplit(fieldPath, '.'), remembered per path.
+            %   The in-memory recheck walks the same few paths for every
+            %   document a search returns; splitting each anew was the
+            %   largest self time of a migrated NDI session's reads
+            %   (NDI-matlab run 42261433789: 701,340 strsplit calls, 28 s
+            %   of a 157 s getprobes). Paths are few, so the memo stays small;
+            %   it is capped all the same.
+            persistent memo
+            if ~ischar(fieldPath)
+                parts = strsplit(fieldPath, '.');   % as before, not remembered
+                return;
+            end
+            if isempty(memo)
+                memo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            end
+            if isKey(memo, fieldPath)
+                parts = memo(fieldPath);
+                return;
+            end
+            parts = strsplit(fieldPath, '.');
+            if memo.Count < 20000
+                memo(fieldPath) = parts;
+            end
+        end
+
         function ss = emptySearchstruct()
             ss = struct('field', {}, 'operation', {}, 'param1', {}, 'param2', {});
         end
@@ -581,7 +607,7 @@ classdef query
             if isempty(fieldPath)
                 arr = [];
             else
-                parts = strsplit(fieldPath, '.');
+                parts = did2.query.splitPath(fieldPath);
                 arr = doc;
                 ok = true;
                 for k = 1:numel(parts)
@@ -755,7 +781,7 @@ classdef query
                 end
                 return;
             end
-            parts = strsplit(fieldPath, '.');
+            parts = did2.query.splitPath(fieldPath);
             current = {s};
             for k = 1:numel(parts)
                 segment = parts{k};
