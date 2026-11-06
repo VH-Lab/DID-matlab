@@ -248,7 +248,7 @@ function testAnUnreadParameterBecomesAMethodParameter(testCase)
 % parameter the migrator does not read becomes one more method parameter
 % instead of being dropped. errorOnFailure is now read: [sync rule terms]
 % (Jess Haley, 2026-11-06) writes it as EMPTY:0000435 'error on failure', its
-% logical value kept; one that is not a logical stays under its own name.
+% logical value kept, and a numeric one as the same term with a quantity.
 v1 = syncruleFixture('filematch');
 v1.syncrule.parameters.errorOnFailure = true;
 out = runJ(v1);
@@ -264,18 +264,25 @@ if isscalar(ix)
     verifyEqual(testCase, p(ix).logical, true);
 end
 verifyFalse(testCase, any(strcmp(names, 'errorOnFailure')), strjoin(names, ', '));
-% a numeric errorOnFailure is not one logical: it stays a method parameter
-% by its own name, so the round trip rebuilds its type
+% a numeric errorOnFailure is the same term with its number as a quantity
+% (not its v1 name: the registry finds 'errorOnFailure' as 'error on failure',
+% did2.schema.termNameKey, so the own-name path resolved to the term once
+% EMPTY:0000435 was registered, and to 'errorOnFailure' before). The value
+% form (quantity, not logical) is what lets the round trip rebuild the number.
 v1.syncrule.parameters.errorOnFailure = 1;
 out = runJ(v1);
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
 p = cfg.get('clock_alignment_configuration').method.parameters;
 names = arrayfun(@(e) char(e.variable.name), p, 'UniformOutput', false);
-ix = find(strcmp(names, 'errorOnFailure'));
+verifyEqual(testCase, numel(p), 2, strjoin(names, ', '));
+ix = find(strcmp(names, 'error on failure'));
 verifyNumElements(testCase, ix, 1, strjoin(names, ', '));
 if isscalar(ix)
+    verifyEqual(testCase, p(ix).variable.node, 'EMPTY:0000435');
     verifyEqual(testCase, p(ix).quantity.value, 1);
+    verifyFalse(testCase, isfield(p(ix), 'logical') && ~isempty(p(ix).logical));
 end
+verifyFalse(testCase, any(strcmp(names, 'errorOnFailure')), strjoin(names, ', '));
 end
 
 function testAnUnreadParameterThatCannotBeWrittenCarriesTheRuleAsV1(testCase)

@@ -238,6 +238,30 @@ verifyTrue(testCase, any(strcmp('syncrule.parameters.errorOnFailure', r.matched)
     'errorOnFailure not matched');
 end
 
+function testANumericErrorOnFailureRoundTrips(testCase)
+% [sync rule terms] (Jess Haley, 2026-11-06): a numeric v1 errorOnFailure is
+% written as EMPTY:0000435 'error on failure' with its number as a quantity;
+% the round trip rebuilds the number, not a logical.
+rule = channelRule();
+rule.syncrule.parameters.errorOnFailure = 1;
+batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
+out = did2.convert.resolveClockAlignment(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
+docs = foldDocs(out, rule.base.id);
+assertNotEmpty(testCase, docs);
+bodies = cellfun(@(d) d.toStruct(), docs, 'UniformOutput', false);
+c = methodParameters(bodies{1});
+names = cellfun(@(e) char(e.variable.name), c, 'UniformOutput', false);
+ix = find(strcmp(names, 'error on failure'));
+assertNumElements(testCase, ix, 1, strjoin(names, ', '));
+verifyEqual(testCase, char(c{ix}.variable.node), 'EMPTY:0000435');
+verifyEqual(testCase, c{ix}.quantity.value, 1);
+r = did2.convert.roundtrip.check(rule, docs);
+verifyFalse(testCase, r.carried);
+verifyRoundTrip(testCase, r, 'the channel rule with a numeric errorOnFailure', {});
+verifyTrue(testCase, any(strcmp('syncrule.parameters.errorOnFailure', r.matched)), ...
+    'errorOnFailure not matched');
+end
+
 function c = methodParameters(body)
 c = body.clock_alignment_configuration.method.parameters;
 if isstruct(c); c = num2cell(reshape(c, 1, [])); end

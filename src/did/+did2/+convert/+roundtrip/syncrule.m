@@ -30,7 +30,10 @@ function [v1, spec] = syncrule(bodies, ctx)
 %                                      'daqsystem ch2', read below as any
 %                                      other name
 %       errorOnFailure                 EMPTY:0000435 'error on failure' ([sync
-%                                      rule terms], Jess Haley, 2026-11-06); a
+%                                      rule terms], Jess Haley, 2026-11-06),
+%                                      a logical as `logical`, a number as
+%                                      `quantity` (the value form gives the
+%                                      type back); a
 %                                      configuration migrated before holds it
 %                                      as 'errorOnFailure', read below as any
 %                                      other name
