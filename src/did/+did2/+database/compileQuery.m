@@ -1,4 +1,4 @@
-function [whereSQL, params] = compileQuery(q, opts)
+function [whereSQL, params, exact] = compileQuery(q, opts)
 % did2.database.compileQuery  Compile a did2.query to a SQL WHERE clause.
 %
 %   [WHERESQL, PARAMS] = did2.database.compileQuery(Q) returns a SQL WHERE
@@ -82,6 +82,102 @@ ctx = struct( ...
     'inElement', false, ...      % inside a hasanyelement sub-query?
     'depth', 0);                 % hasanyelement nesting depth (for aliases)
 [whereSQL, params] = compileSearchstructArray(q.searchstructure, ctx);
+if nargout > 2
+    exact = arrayIsExact(q.searchstructure, ctx);
+end
+end
+
+% -----------------------------------------------------------------------
+% exactness: does the SQL match EXACTLY the documents the evaluator does?
+% -----------------------------------------------------------------------
+%
+% EXACT is true only when every term of the query compiles to SQL that
+% matches a stored document if and only if did2.query's in-memory evaluator
+% matches it; did2.database.sqlitedb then skips the in-memory recheck. It
+% is decided from the query alone, term by term, and anything not listed
+% here is inexact (the recheck runs, as before):
+%
+%   and / or       exact when every part is
+%   isa            the `superclasses` sidecar holds document_class.class_name
+%                  and every superclasses(k).class_name of the stored body
+%                  (sqlitedb.classChainFromStruct), which is what opIsa reads
+%   depends_on     a named edge (or '*') to a non-empty id or a list of
+%                  non-empty ids: the `depends_on` sidecar holds every entry
+%                  with a non-empty name and target, read from document_id,
+%                  value or id as opDependsOn reads them
+%   exact_string   a non-empty text, on base.session_id (the session_id
+%                  column, filled from the field or the edge as walkPath's
+%                  alias reads it) or on a queryable scalar path of TEXT
+%                  affinity (queryable_scalar_elem, one row per value)
+%   ~ of those     the negated forms are already compiled from the exact
+%                  predicates (NOT EXISTS / NOT IN of the same sidecars)
+%
+% A text exact_string read with json_extract is NOT counted exact: the
+% evaluator compares the REHYDRATED value, and rehydrate can reshape a field
+% the schema declares as a list. Proven per operator by
+% did2.unittest.testExactSql against the evaluator on stored documents.
+
+function tf = arrayIsExact(ssArray, ctx)
+tf = true;
+for k = 1:numel(ssArray)
+    if ~termIsExact(ssArray(k), ctx)
+        tf = false;
+        return;
+    end
+end
+end
+
+function tf = termIsExact(ss, ctx)
+tf = false;
+op = char(ss.operation);
+if isempty(op)
+    return;
+end
+isNeg = op(1) == '~';
+if isNeg
+    op = op(2:end);
+end
+switch op
+    case 'or'
+        tf = ~isNeg && arrayIsExact(asStructArray(ss.param1), ctx) ...
+            && arrayIsExact(asStructArray(ss.param2), ctx);
+    case 'isa'
+        c = ss.param1;
+        tf = (ischar(c) || (isstring(c) && isscalar(c))) && strlength(string(c)) > 0;
+    case 'depends_on'
+        name = ss.param1;
+        v = ss.param2;
+        if ~(ischar(name) || (isstring(name) && isscalar(name))) || strlength(string(name)) == 0
+            return;
+        end
+        if isa(v, 'did2.query')
+            return;
+        end
+        if ischar(v) || (isstring(v) && isscalar(v))
+            ids = {char(v)};
+        elseif iscell(v) || isstring(v)
+            try
+                ids = cellstr(v);
+            catch
+                return;
+            end
+        else
+            return;
+        end
+        tf = ~isempty(ids) && all(cellfun(@(x) ~isempty(x), ids));
+    case 'exact_string'
+        t = ss.param1;
+        f = char(ss.field);
+        if ~(ischar(t) || (isstring(t) && isscalar(t))) || strlength(string(t)) == 0 ...
+                || isempty(f) || contains(f, '[*]')
+            return;
+        end
+        if strcmp(f, sessionIdPath())
+            tf = true;
+        elseif scalarPathIsIndexed(f, ctx)
+            tf = strcmpi(char(ctx.queryablePaths(f)), 'TEXT');
+        end
+end
 end
 
 % -----------------------------------------------------------------------
