@@ -91,6 +91,28 @@ verifyFalse(testCase, contains(sql, 'queryable_scalar_elem'), ...
     'a queryable base.session_id must still be answered from the column');
 end
 
+function testSessionIdBesideAnEdgeDoesNotTakeTheIndex(testCase)
+% beside a term the plan can start from, the session test is written with a
+% unary + so SQLite does not choose documents_session_id (see
+% sessionScopeFollows); alone, or beside an isa, it is unchanged
+sess = did2.query('base.session_id', 'exact_string', 'sid1');
+sql = did2.database.compileQuery(did2.query('', 'depends_on', 'parent', 'id-1') & sess);
+verifySubstring(testCase, sql, '(+documents.session_id = ?)');
+sql = did2.database.compileQuery(did2.query('base.id', 'exact_string', 'x') & sess, ...
+    'QueryablePaths', {'base.id'});
+verifySubstring(testCase, sql, '(+documents.session_id = ?)');
+sql = did2.database.compileQuery(did2.query('', 'isa', 'demoA') & sess);
+verifySubstring(testCase, sql, '(documents.session_id = ?)');
+verifyFalse(testCase, contains(sql, '+documents.session_id'));
+sql = did2.database.compileQuery(did2.query('base.id', 'exact_string', 'x') & sess);
+verifyFalse(testCase, contains(sql, '+documents.session_id'), ...
+    'a path that is not queryable is read from the body and cannot lead');
+sql = did2.database.compileQuery(did2.query('', '~depends_on', 'parent', 'id-1') & sess);
+verifyFalse(testCase, contains(sql, '+documents.session_id'), 'a negated edge cannot lead');
+sql = did2.database.compileQuery(did2.query('', 'depends_on', '*', 'id-1') & sess);
+verifyFalse(testCase, contains(sql, '+documents.session_id'), 'the wildcard edge is a correlated EXISTS');
+end
+
 function testSessionIdNegatedMatchesADocumentWithNone(testCase)
 q = did2.query('base.session_id', '~exact_string', 'sid1');
 [sql, params] = did2.database.compileQuery(q);

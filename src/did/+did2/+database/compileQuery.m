@@ -151,6 +151,7 @@ for k = 1:numel(ssArray)
     [parts{k}, sub] = compileSearchstruct(ssArray(k), ctx);
     params = [params, sub]; %#ok<AGROW>
 end
+parts = sessionScopeFollows(ssArray, parts, ctx);
 if isscalar(parts)
     % A single conjunct doesn't need outer parens; this keeps the SQL
     % readable and lets `compileQuery(did2.query('x','regexp','y'))`
@@ -159,6 +160,86 @@ if isscalar(parts)
     sql = parts{1};
 else
     sql = ['(' strjoin(parts, ') AND (') ')'];
+end
+end
+
+function parts = sessionScopeFollows(ssArray, parts, ctx)
+% A conjunction that holds a term SQLite can START from (an uncorrelated
+% `documents.id IN (...)`: a named depends_on, an exact match on a queryable
+% scalar path, or an `or` of such) scopes by session WITHOUT the session
+% index: its `documents.session_id` is written `+documents.session_id`, and
+% the unary + only stops SQLite choosing that index (the value is the same).
+%
+% WHY. NDI scopes every search to its session (ndi.session/database_search
+% ANDs `base.session_id = <id>`), and nearly every document of a database is
+% in one session. With no ANALYZE statistics SQLite takes an equality on an
+% indexed column to be selective, so it picked documents_session_id and
+% walked EVERY document of the session, testing the edge for each, instead
+% of starting from the edge's index. Measured on the migrated Dab corpus
+% (VH-Lab/NDI-matlab#785, run 41876678241): 272 searches spent 16.4 s in
+% mksqlite, about 60 ms each, to return a few documents apiece; the same
+% shape on a 40,000-document SQLite 3.45 file takes 49 ms through the
+% session index and 0.03 ms from the edge (EXPLAIN QUERY PLAN: SEARCH
+% documents USING INDEX documents_session_id vs sqlite_autoindex_documents_1).
+%
+% A conjunction with no such term keeps the index: the session is then the
+% best place to start (`isa` is a correlated EXISTS and cannot lead).
+if ctx.inElement || numel(ssArray) < 2
+    return;
+end
+leads = false(1, numel(ssArray));
+for k = 1:numel(ssArray)
+    leads(k) = canLead(ssArray(k), ctx);
+end
+if ~any(leads)
+    return;
+end
+for k = 1:numel(ssArray)
+    if isSessionScope(ssArray(k))
+        parts{k} = strrep(parts{k}, 'documents.session_id', '+documents.session_id');
+    end
+end
+end
+
+function tf = isSessionScope(ss)
+% a positive scalar test of base.session_id (compileSessionIdScalar)
+op = char(ss.operation);
+tf = ~isempty(op) && op(1) ~= '~' && strcmp(char(ss.field), sessionIdPath()) ...
+    && any(strcmp(op, {'exact_string', 'exact_string_anycase', 'contains_string', ...
+        'wildcard', 'regexp', 'exact_number', 'lessthan', 'lessthaneq', ...
+        'greaterthan', 'greaterthaneq'}));
+end
+
+function tf = canLead(ss, ctx)
+% Does SS compile to an uncorrelated `documents.id IN (...)` (or an `or` of
+% them) that SQLite can start from through an index?
+tf = false;
+op = char(ss.operation);
+if isempty(op) || op(1) == '~'
+    return;
+end
+switch op
+    case 'depends_on'
+        tf = ~strcmp(char(ss.param1), '*');
+    case 'or'
+        a = asStructArray(ss.param1);
+        b = asStructArray(ss.param2);
+        tf = anyLeads(a, ctx) && anyLeads(b, ctx);
+    case {'exact_string', 'exact_number'}
+        stars = splitPathOnStar(ss.field);
+        field = char(ss.field);
+        tf = isempty(stars) && ~strcmp(field, sessionIdPath()) ...
+            && scalarPathIsIndexed(field, ctx);
+end
+end
+
+function tf = anyLeads(ssArray, ctx)
+tf = false;
+for k = 1:numel(ssArray)
+    if canLead(ssArray(k), ctx)
+        tf = true;
+        return;
+    end
 end
 end
 
