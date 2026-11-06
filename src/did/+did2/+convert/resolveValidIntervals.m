@@ -353,9 +353,10 @@ function [result, report] = resolveValidIntervals(result, options)
 %   ---------------------------------------------------------------------
 %   Per-interval is migratable: the intervals are literally in the document. A
 %   per-sample validity mask is NOT -- it needs the sample grid, and a migrator
-%   does not read file bytes to learn it. No `sample_time` cadence is emitted
-%   for the same reason: there is no sampling here, and stating `kind: point`
-%   would assert a cadence the source never described.
+%   does not read file bytes to learn it. For the same reason the statement is
+%   inline and no data body is written, so there are no dimensions and no time
+%   covariate: there is no sampling here, and a time grid would assert a cadence
+%   the source never described.
 %
 %   ---------------------------------------------------------------------
 %   WHAT IT REFUSES TO DO, AND COUNTS INSTEAD
@@ -1037,8 +1038,9 @@ function body = makeLogicalObservation(src, elementId, isValid, refIds, methodTe
 %   THE SEMANTIC IS IN `variable`, NOT IN THE CLASS NAME -- `data validity` --
 %   which is the whole reason the class is `logical` and not `validity`.
 %
-%   NO `sample_time`: there is no sampling here (the value is per INTERVAL), and
-%   `kind: point` would assert a cadence the source never described.
+%   NO DATA BODY, SO NO TIME COVARIATE: there is no sampling here (the value is
+%   per INTERVAL), and a time grid would assert a cadence the source never
+%   described.
 %   NO `derived_from_#`: see HAZARD 3 in the header -- leaving it empty is what
 %   keeps both answers to the inheritance question buildable.
 %
