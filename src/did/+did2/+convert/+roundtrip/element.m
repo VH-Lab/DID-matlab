@@ -36,7 +36,16 @@ function [v1, spec] = element(bodies, ctx)
 %                                      plus mode"; a kind several types share
 %                                      keeps the 'element type' assertion
 %                                      until its mode is written, so needs no
-%                                      mode here); with neither, a sorted
+%                                      mode here); a kind several types
+%                                      share with no 'element type'
+%                                      assertion (a probe that never
+%                                      recorded, [clamp mode of unrecorded
+%                                      probe dropped]) rebuilds its general
+%                                      type, 'patch' or 'sharp', by
+%                                      did2.convert.elementGeneralTypeOfKind
+%                                      (Decided by Jess Haley, 2026-11-06,
+%                                      "Read back patch"; a microscope has
+%                                      none and rebuilds ''); with neither, a sorted
 %                                      unit's entity type (`cell` or
 %                                      `group`, by node) rebuilds 'spikes'
 %                                      ([cell spellings are one meaning],
@@ -207,6 +216,12 @@ end
 % no 'element type' assertion: the type is the one its device kind names
 if ~hasType && isscalar(kindNodes)
     type = did2.convert.elementTypeOfKind(kindNodes{1});
+    % a kind several types share, whose mode was not kept (a probe that never
+    % recorded): its general type, 'patch' or 'sharp' (Jess Haley,
+    % 2026-11-06, "Read back patch"); '' for a microscope
+    if isempty(type)
+        type = did2.convert.elementGeneralTypeOfKind(kindNodes{1});
+    end
 end
 % neither: a sorted unit, whose entity type (cell or group) is all that is
 % kept of its v1 type ([cell spellings are one meaning], [cell spellings
@@ -228,8 +243,10 @@ want = did2.convert.elementDeviceKind(type);
 % [clamp mode of unrecorded probe dropped] (Jess Haley, 2026-11-03): a probe of
 % a kind several types share (patch electrode, sharp electrode, microscope)
 % that never recorded keeps its device kind and no `element type` statement;
-% its type is not rebuilt (element.type: an accepted loss in
-% did2.convert.roundtrip.wholeBatch), and its one kind is placed
+% its mode is not rebuilt (element.type: an accepted loss in
+% did2.convert.roundtrip.wholeBatch), and its one kind is placed. A patch or
+% sharp electrode rebuilds its general type (above), whose decided kind is
+% that kind, so it is placed below; a microscope rebuilds '' and is placed here
 modeDropped = ~hasType && isscalar(kindNodes) && isempty(type) ...
     && ~isempty(kindNodes{1}) && isempty(did2.convert.elementTypeOfKind(kindNodes{1}));
 for k = 1:numel(kindNodes)
