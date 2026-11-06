@@ -1938,7 +1938,8 @@ end
 
 function testDidV1ImageLabelIsTheObservationsNotes(testCase)
 % INVERTED 2026-10-29 from testDidV1ImageWithALabelIsCarriedAsV1, which pinned
-% the carry of an image that states a label (carry-051). [image label goes to
+% the carry of an image that states a label (a carry row retired 2026-11-06,
+% Jess Haley, did-schema did_v2_go_forward_class_audit.md). [image label goes to
 % the observation's notes] (Jess Haley, 2026-10-29, did-schema
 % V_eta_go_forward_class_audit.md; supersedes [image label goes to notes]):
 % "a non-empty v1 `image.label` is written to the image observation's `notes`;
