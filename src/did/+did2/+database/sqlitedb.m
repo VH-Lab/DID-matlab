@@ -94,6 +94,7 @@ classdef sqlitedb < handle
         scalarDefParts = {}          % per queryable scalar: its path split on '.', once
         scalarDefsByBlock = []       % containers.Map: top-level block -> scalar indices
         queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
+        alwaysRecheck (1,1) logical = false   % test hook: recheck even an exact query
         queryableScalarMap = []      % path -> affinity, built once for compileQuery
         queryableArrayMap = []       % path -> affinity, built once for compileQuery
         queryableBootstrapOk (1,1) logical = false
@@ -380,14 +381,18 @@ classdef sqlitedb < handle
                 q (1,1) did2.query
             end
             q = obj.resolveNested(q);
-            [whereSQL, params] = did2.database.compileQuery(q, ...
+            [whereSQL, params, exact] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
                 'QueryableArrayPaths', obj.compileArrayPaths());
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
             obj.ensureConnection();
             rows = mksqlite(obj.dbid, sql, params{:});
-            docs = obj.rowsToDocs(rows, q);
+            % EXACT (compileQuery): the SQL matches exactly what the
+            % evaluator matches, so the in-memory recheck is skipped. It was
+            % about half the cost of reading a migrated NDI session
+            % (NDI-matlab run 42261433789). Anything inexact is rechecked.
+            docs = obj.rowsToDocs(rows, q, ~exact || obj.alwaysRecheck);
         end
 
         function ids = searchIds(obj, q)
@@ -436,6 +441,23 @@ classdef sqlitedb < handle
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ' ORDER BY rowid ASC'];
             plan = mksqlite(obj.dbid, ['EXPLAIN QUERY PLAN ' sql], params{:});
             r = struct('sql', sql, 'params', {params}, 'plan', plan);
+        end
+
+        function tf = testHookIsExact(obj, q)
+            % testHookIsExact - would this query skip the in-memory recheck?
+            arguments
+                obj
+                q (1,1) did2.query
+            end
+            q = obj.resolveNested(q);
+            [~, ~, tf] = did2.database.compileQuery(q, ...
+                'QueryablePaths', obj.compileScalarPaths(), ...
+                'QueryableArrayPaths', obj.compileArrayPaths());
+        end
+
+        function testHookAlwaysRecheck(obj, tf)
+            % testHookAlwaysRecheck - recheck every query (to compare)
+            obj.alwaysRecheck = logical(tf);
         end
 
         function n = testHookReconnects(obj)
@@ -1538,7 +1560,10 @@ classdef sqlitedb < handle
             end
         end
 
-        function docs = rowsToDocs(obj, rows, q)
+        function docs = rowsToDocs(obj, rows, q, recheck)
+            if nargin < 4
+                recheck = true;
+            end
             n = numel(rows);
             docs = {};
             % Resolved ONCE for the batch, not per row: `shared()` is cheap
@@ -1553,9 +1578,15 @@ classdef sqlitedb < handle
             for k = 1:n
                 d = did2.document.fromJSON(rows(k).body, ...
                     'SchemaCache', batchCache);
-                if q.matches(d)
-                    docs{end+1} = d; %#ok<AGROW>
+                % A did_v1 document was stored without validation, so a
+                % field may hold a type its schema does not declare (a number
+                % in a text path, which the TEXT sidecar holds as text): it
+                % is always rechecked.
+                if (recheck || did2.schema.isV1Stamp(d.documentProperties, 'Explicit', true)) ...
+                        && ~q.matches(d)
+                    continue;
                 end
+                docs{end+1} = d; %#ok<AGROW>
             end
         end
 
