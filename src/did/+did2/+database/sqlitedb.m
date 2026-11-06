@@ -94,6 +94,8 @@ classdef sqlitedb < handle
         scalarDefParts = {}          % per queryable scalar: its path split on '.', once
         scalarDefsByBlock = []       % containers.Map: top-level block -> scalar indices
         queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
+        queryableScalarMap = []      % path -> affinity, built once for compileQuery
+        queryableArrayMap = []       % path -> affinity, built once for compileQuery
         queryableBootstrapOk (1,1) logical = false
     end
 
@@ -379,8 +381,8 @@ classdef sqlitedb < handle
             end
             q = obj.resolveNested(q);
             [whereSQL, params] = did2.database.compileQuery(q, ...
-                'QueryablePaths', obj.queryableScalarColumns, ...
-                'QueryableArrayPaths', obj.queryableArrayPathDefs);
+                'QueryablePaths', obj.compileScalarPaths(), ...
+                'QueryableArrayPaths', obj.compileArrayPaths());
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
             obj.ensureConnection();
@@ -429,8 +431,8 @@ classdef sqlitedb < handle
             obj.ensureConnection();
             q = obj.resolveNested(q);       % as search() does
             [whereSQL, params] = did2.database.compileQuery(q, ...
-                'QueryablePaths', obj.queryableScalarColumns, ...
-                'QueryableArrayPaths', obj.queryableArrayPathDefs);
+                'QueryablePaths', obj.compileScalarPaths(), ...
+                'QueryableArrayPaths', obj.compileArrayPaths());
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ' ORDER BY rowid ASC'];
             plan = mksqlite(obj.dbid, ['EXPLAIN QUERY PLAN ' sql], params{:});
             r = struct('sql', sql, 'params', {params}, 'plan', plan);
@@ -513,6 +515,8 @@ classdef sqlitedb < handle
             % stays in effect, and the reconcile* methods become no-ops
             % (so we don't strip a healthy DB's q_* columns or sidecar
             % rows on a host that temporarily lacks the schema dir).
+            obj.queryableScalarMap = [];
+            obj.queryableArrayMap = [];
             obj.queryableScalarColumns = obj.emptyColumnStruct();
             obj.queryableScalarPaths = {};
             obj.queryableArrayPathDefs = obj.emptyArrayPathStruct();
@@ -551,6 +555,35 @@ classdef sqlitedb < handle
                 obj.indexArrayDefs();
             end
             obj.queryableBootstrapOk = true;
+            obj.buildQueryableMaps();
+        end
+
+        function buildQueryableMaps(obj)
+            % The path -> affinity maps compileQuery reads, built ONCE from
+            % the snapshot above rather than on every search: building them
+            % took about 6 ms a search (NDI-matlab run 42241497254: 26 s of a
+            % 68 s getelements over 4,418 searches).
+            [obj.queryableScalarMap, obj.queryableArrayMap] = ...
+                did2.database.queryablePathMaps(obj.queryableScalarColumns, ...
+                obj.queryableArrayPathDefs);
+        end
+
+        function m = compileScalarPaths(obj)
+            % the scalar map built once (buildQueryableMaps), else the struct
+            if isa(obj.queryableScalarMap, 'containers.Map')
+                m = obj.queryableScalarMap;
+            else
+                m = obj.queryableScalarColumns;
+            end
+        end
+
+        function m = compileArrayPaths(obj)
+            % the array map built once (buildQueryableMaps), else the struct
+            if isa(obj.queryableArrayMap, 'containers.Map')
+                m = obj.queryableArrayMap;
+            else
+                m = obj.queryableArrayPathDefs;
+            end
         end
 
         function createSchema(obj)

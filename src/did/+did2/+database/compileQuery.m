@@ -58,6 +58,12 @@ function [whereSQL, params] = compileQuery(q, opts)
 %   compiles exactly (exact_string, hasfield, and/or of those, nested
 %   hasanyelement), and to the conservative 1=1 otherwise.
 %
+%   QueryablePaths and QueryableArrayPaths may also be given already
+%   normalised, as the containers.Map (path -> affinity) this function
+%   builds from them: did2.database.sqlitedb builds the two maps once per
+%   database instead of once per search (they cost about 6 ms a search,
+%   26 s of one 68 s NDI getelements; NDI-matlab run 42241497254).
+%
 %   See also: did2.query, did2.database.sqlitedb,
 %   did-schema/schemas/did_query_model.md.
 
@@ -67,72 +73,15 @@ arguments
     opts.QueryableArrayPaths = []
 end
 
+[scalarMap, arrayMap] = did2.database.queryablePathMaps( ...
+    opts.QueryablePaths, opts.QueryableArrayPaths);
 ctx = struct( ...
-    'queryablePaths', {asPathSet(opts.QueryablePaths)}, ...
-    'queryableArrayPaths', {asArrayPathMap(opts.QueryableArrayPaths)}, ...
+    'queryablePaths', {scalarMap}, ...
+    'queryableArrayPaths', {arrayMap}, ...
     'root', 'body', ...          % the JSON every body path is read from
     'inElement', false, ...      % inside a hasanyelement sub-query?
     'depth', 0);                 % hasanyelement nesting depth (for aliases)
 [whereSQL, params] = compileSearchstructArray(q.searchstructure, ctx);
-end
-
-function set = asPathSet(paths)
-% Normalise the queryable scalar paths into a path -> affinity map. PATHS
-% is a struct array with `path` and `affinity` (what did2.database.sqlitedb
-% passes, so each value is compared in the column it was stored in), or a
-% cellstr of bare paths, whose affinity is then UNKNOWN and the value is
-% compared across all three value columns.
-set = containers.Map('KeyType', 'char', 'ValueType', 'char');
-if isstruct(paths)
-    for k = 1:numel(paths)
-        p = char(paths(k).path);
-        if isempty(p), continue; end
-        a = '';
-        if isfield(paths(k), 'affinity') && ~isempty(paths(k).affinity)
-            a = upper(char(paths(k).affinity));
-        end
-        set(p) = a;
-    end
-    return;
-end
-for k = 1:numel(paths)
-    p = char(paths{k});
-    if isempty(p)
-        continue;
-    end
-    set(p) = 'UNKNOWN';
-end
-end
-
-function map = asArrayPathMap(arrayDefs)
-% Normalise the QueryableArrayPaths input into a path -> affinity map.
-% Accepts a struct array (one entry per sidecar-indexed path; the
-% schema-cache shape with `.path` and `.affinity`), a cellstr of bare
-% paths (assumes TEXT affinity), or empty for "no indexed array paths."
-map = containers.Map('KeyType', 'char', 'ValueType', 'char');
-if isempty(arrayDefs)
-    return;
-end
-if isstruct(arrayDefs)
-    for k = 1:numel(arrayDefs)
-        p = char(arrayDefs(k).path);
-        if isempty(p)
-            continue;
-        end
-        if isfield(arrayDefs(k), 'affinity') && ~isempty(arrayDefs(k).affinity)
-            map(p) = char(arrayDefs(k).affinity);
-        else
-            map(p) = 'TEXT';
-        end
-    end
-elseif iscell(arrayDefs)
-    for k = 1:numel(arrayDefs)
-        p = char(arrayDefs{k});
-        if ~isempty(p)
-            map(p) = 'TEXT';
-        end
-    end
-end
 end
 
 % -----------------------------------------------------------------------

@@ -549,3 +549,25 @@ sql = did2.database.compileQuery(q, 'QueryableArrayPaths', {'demoArray.axes[*].u
 testCase.verifyFalse(contains(sql, 'queryable_array_elem'), ...
     'exact_string of an empty text matches an empty leaf, which has no sidecar row');
 end
+
+% ---- path maps built once (did2.database.queryablePathMaps) ----
+
+function testPrebuiltPathMapsCompileTheSameSql(testCase)
+% did2.database.sqlitedb builds the path -> affinity maps once and passes
+% them; the SQL must be the one the struct / cellstr inputs give.
+scalars = struct('path', {'base.name', 'demoA.size'}, 'affinity', {'TEXT', 'REAL'});
+arrays = struct('path', {'depends_on[*].name'}, 'affinity', {'TEXT'});
+q = did2.query('base.name', 'exact_string', 'alice') & ...
+    did2.query('demoA.size', 'lessthan', 3);
+[sql1, p1] = did2.database.compileQuery(q, 'QueryablePaths', scalars, ...
+    'QueryableArrayPaths', arrays);
+[sm, am] = did2.database.queryablePathMaps(scalars, arrays);
+verifyClass(testCase, sm, 'containers.Map');
+verifyClass(testCase, am, 'containers.Map');
+[sql2, p2] = did2.database.compileQuery(q, 'QueryablePaths', sm, ...
+    'QueryableArrayPaths', am);
+verifyEqual(testCase, sql2, sql1);
+verifyEqual(testCase, p2, p1);
+[sm2, am2] = did2.database.queryablePathMaps(sm, am);
+verifyTrue(testCase, sm2 == sm && am2 == am, 'a map is passed through, not rebuilt');
+end
