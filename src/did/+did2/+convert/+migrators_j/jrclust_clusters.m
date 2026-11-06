@@ -5,26 +5,38 @@ function bodies = jrclust_clusters(preBody)
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   jrclust_clusters is a JRCLUST spike-sorting RESULT on an extracellular
-%   recording: the cluster label of each spike (assignments held in the attached
-%   JRCLUST output file), tied to a subject via element_id. #9 analysis-tier fold
-%   (pattern 1, body-backed series): the label series is a per-spike integer, so it
-%   folded (pre-#88) to a count_observation whose value stream is the assignment series:
+%   recording: the cluster label of each spike, held in an external JRCLUST
+%   results file (*_res.mat). NDI's writer attaches no file to this document;
+%   it records only that file's MD5 checksum. Emitted (see the body):
 %
-%       count_observation  the discoverable spine handle: subject_id, a shared time  (pre-#88)
-%                          anchor, variable = OBI:0000648 "clustered data set" ([term picks batch 1] (2)),
-%                          storage_mode 'body'.
-%       sampled_body       one datum per spike (the cluster index); NO axes and no
-%                          sample_time -- the length is unknown (this class has no
-%                          num_spikes/num_clusters metadata and the count lives in
-%                          the payload, which a migrator does not read); + the bytes;
-%                          statement -> the observation. The *_res.mat MD5 checksum
-%                          is carried into the body summary note.
-%       session_relative_reference   the 'during' anchor.
+%       calculation (value kind `label`)  the id-preserved handle (its base.id
+%                          IS the v1 id), about the sorted electrode (`entity_id`
+%                          = element_id, else subject_id); variable OBI:0000648
+%                          "clustered data set" ([term picks batch 1] (2)); method
+%                          {term: wikidata:Q2003571 "Spike sorting"}; `data_body`
+%                          true and no inline value; `time_reference_id` -> the
+%                          anchor; `software_id` -> the software; and
+%                          `operating_system_id` / `interpreter_id` when the `app`
+%                          block records them. Its `input_id` edges are added
+%                          later, by did2.convert.resolveEpochProbemap ([sorter
+%                          input]).
+%       opaque_body        the value: `owner_id` -> the calculation, format
+%                          EDAM:format_2333; carries the source's `files` /
+%                          `file` block when there is one, and the *_res.mat MD5
+%                          checksum in its notes. No keys: there is no array here
+%                          to key ([sorter keys], see the body).
+%       relative_time_reference  the 'during' session anchor (jSessionAnchor).
+%       software           the `app` block's program, or, with none, one named
+%                          'jrclust' (a calculation requires its `software_id`).
+%       software (0-2)     the run's operating system and interpreter, when the
+%                          `app` block records them (jRunEntities).
+%       assertion (value kind `text`)  each software's version, when given
+%                          (jSoftware).
 %
-%   1 -> 3 (1 -> 4 when the source carries an `app` block; see below).
+%   1 -> 4 at least; more with the run's software and the version assertions.
 %   NOTE: the individual sorted UNITS are the separate neuron_extracellular
-%   docs (each -> a derived subject, grain B); this doc is the run's label series,
-%   not the units.
+%   docs (each a set of calculations about the sorted unit's entity); this doc
+%   is the run's label series, not the units.
 %
 %   ---------------------------------------------------------------------
 %   THE `app` BLOCK WAS BEING DROPPED ON THE FLOOR (repaired here)
@@ -38,23 +50,23 @@ function bodies = jrclust_clusters(preBody)
 %     git show origin/main:src/ndi/ndi_common/database_documents/apps/jrclust/jrclust_clusters.json
 %         superclasses: [ base.json, app.json ]
 %
-%   This migrator BUILDS NEW BODIES, so the source block had no successor in
-%   {count_observation (pre-#88), sampled_body, session_relative_reference} and every
-%   app.name / app.version / app.url was discarded. No counter saw it:
+%   This migrator BUILDS NEW BODIES, so before this repair the source block had
+%   no successor among the emitted documents and every app.name / app.version /
+%   app.url was discarded. No counter saw it:
 %   silentLoss counts empty edges, vacuous fields and fragments, and a source
 %   block with no successor is none of the three.
 %
 %   R1 (TEAM-SIGN-OFF [software], did-schema/schemas/V_eta_tenet_audit.md) says
-%   what it becomes: a `software` ENTITY referenced by `software_id`, with the
-%   per-run os/interpreter in `execution_environment`. BOTH SLOTS ARE DECLARED
-%   ON THE TARGET -- checked in did-schema/schemas/V_eta/stable/
-%   subject_interaction.json (depends_on `software_id`, must_refer_to_document_class
-%   `software`; field `execution_environment`), which count_observation (pre-#88) reached
-%   via subject_observation -> subject_interaction. Nothing is invented.  (pre-#88)
+%   what it becomes: a `software` ENTITY referenced by the calculation's
+%   `software_id` (jSoftwareFromApp). The run's os / interpreter become two more
+%   `software` entities on the calculation's `operating_system_id` /
+%   `interpreter_id` edges (jRunEntities). With no program name in the block,
+%   the software is the sorter by name, 'jrclust', as jCalculation does for a
+%   calculator with no app block.
 %
 %   RequireSession is TRUE: base.session_id is mustBeNonEmpty and v1_to_v2
 %   quarantines the SOURCE when a body it produced fails. It removes nothing --
-%   the observation, the body and the anchor all take the same session_id, so a
+%   the calculation, the body and the anchor all take the same session_id, so a
 %   sessionless document already fails on those three; the guard only makes it
 %   impossible for the new body to be the cause.
 
