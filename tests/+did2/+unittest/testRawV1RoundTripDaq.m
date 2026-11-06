@@ -211,6 +211,33 @@ verifyTrue(testCase, any(contains(r.unplaced, 'daqsystem_ch1 is stated twice')),
     strjoin(r.unplaced, '; '));
 end
 
+function testErrorOnFailureRoundTripsUnderEitherLabel(testCase)
+% [sync rule terms] (Jess Haley, 2026-11-06): the migrator writes v1
+% errorOnFailure as EMPTY:0000435 'error on failure', its logical value kept;
+% a configuration migrated before holds it as 'errorOnFailure'. The round trip
+% rebuilds the v1 rule from either.
+rule = channelRule();
+batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
+out = did2.convert.resolveClockAlignment(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
+docs = foldDocs(out, rule.base.id);
+assertNotEmpty(testCase, docs);
+bodies = cellfun(@(d) d.toStruct(), docs, 'UniformOutput', false);
+c = methodParameters(bodies{1});
+names = cellfun(@(e) char(e.variable.name), c, 'UniformOutput', false);
+ix = find(strcmp(names, 'error on failure'));
+assertNumElements(testCase, ix, 1, strjoin(names, ', '));
+verifyEqual(testCase, char(c{ix}.variable.node), 'EMPTY:0000435');
+verifyEqual(testCase, c{ix}.logical, true);
+verifyFalse(testCase, any(strcmp(names, 'errorOnFailure')), strjoin(names, ', '));
+old = bodies;
+old{1} = relabelParameter(old{1}, 'error on failure', 'errorOnFailure');
+r = did2.convert.roundtrip.check(rule, old);
+verifyFalse(testCase, r.carried);
+verifyRoundTrip(testCase, r, 'the channel rule under the v1 errorOnFailure label', {});
+verifyTrue(testCase, any(strcmp('syncrule.parameters.errorOnFailure', r.matched)), ...
+    'errorOnFailure not matched');
+end
+
 function c = methodParameters(body)
 c = body.clock_alignment_configuration.method.parameters;
 if isstruct(c); c = num2cell(reshape(c, 1, [])); end

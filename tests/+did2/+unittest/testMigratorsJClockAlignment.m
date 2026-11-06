@@ -238,14 +238,17 @@ verifyFalse(testCase, isfield(block, 'errorOnFailure'));
 p = block.method.parameters;
 verifyEqual(testCase, numel(p), 1);
 verifyEqual(testCase, p(1).variable.name, 'minimum matching file paths');
+verifyEqual(testCase, p(1).variable.node, 'EMPTY:0000431');   % [sync rule terms]
 verifyEqual(testCase, p(1).count, 2);
 end
 
 
 function testAnUnreadParameterBecomesAMethodParameter(testCase)
 % [small unread settings] (3) (Jess Haley, 2026-10-26): a configuration-arm
-% parameter the migrator does not read (errorOnFailure) becomes one more
-% method parameter instead of being dropped.
+% parameter the migrator does not read becomes one more method parameter
+% instead of being dropped. errorOnFailure is now read: [sync rule terms]
+% (Jess Haley, 2026-11-06) writes it as EMPTY:0000435 'error on failure', its
+% logical value kept; one that is not a logical stays under its own name.
 v1 = syncruleFixture('filematch');
 v1.syncrule.parameters.errorOnFailure = true;
 out = runJ(v1);
@@ -254,6 +257,20 @@ block = cfg.get('clock_alignment_configuration');
 p = block.method.parameters;
 names = arrayfun(@(e) char(e.variable.name), p, 'UniformOutput', false);
 verifyEqual(testCase, numel(p), 2, strjoin(names, ', '));
+ix = find(strcmp(names, 'error on failure'));
+verifyNumElements(testCase, ix, 1, strjoin(names, ', '));
+if isscalar(ix)
+    verifyEqual(testCase, p(ix).variable.node, 'EMPTY:0000435');
+    verifyEqual(testCase, p(ix).logical, true);
+end
+verifyFalse(testCase, any(strcmp(names, 'errorOnFailure')), strjoin(names, ', '));
+% a numeric errorOnFailure is not one logical: it stays a method parameter
+% by its own name, so the round trip rebuilds its type
+v1.syncrule.parameters.errorOnFailure = 1;
+out = runJ(v1);
+cfg = findClass(testCase, out, 'clock_alignment_configuration');
+p = cfg.get('clock_alignment_configuration').method.parameters;
+names = arrayfun(@(e) char(e.variable.name), p, 'UniformOutput', false);
 ix = find(strcmp(names, 'errorOnFailure'));
 verifyNumElements(testCase, ix, 1, strjoin(names, ', '));
 if isscalar(ix)

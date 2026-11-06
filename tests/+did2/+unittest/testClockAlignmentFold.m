@@ -173,6 +173,7 @@ for k = 1:numel(entries)
     switch char(e.variable.name)
         case 'minimum matching file paths'
             verifyEqual(testCase, double(e.count), 1);
+            verifyEqual(testCase, char(e.variable.node), 'EMPTY:0000431');   % [sync rule terms]
         case 'File name'
             verifyEqual(testCase, char(e.text), 'syncfile.txt');
             verifyEqual(testCase, char(e.variable.node), 'EDAM:data_1050');
@@ -390,6 +391,8 @@ assertNotEmpty(testCase, chFrom);
 assertNotEmpty(testCase, chTo);
 verifyEqual(testCase, char(chFrom.text), 'dep1');   % v1 daqsystem_ch1, on sys_1 (from)
 verifyEqual(testCase, char(chTo.text), 'mk1');      % v1 daqsystem_ch2, on sys_2 (to)
+verifyEqual(testCase, char(chFrom.variable.node), 'EMPTY:0000433');   % [sync rule terms]
+verifyEqual(testCase, char(chTo.variable.node), 'EMPTY:0000434');
 verifyEmpty(testCase, entryNamed(entries, 'daqsystem ch1'));
 verifyEmpty(testCase, entryNamed(entries, 'daqsystem ch2'));
 verifyEmpty(testCase, entryNamed(entries, 'daqsystem1 name'));   % a name is an edge
