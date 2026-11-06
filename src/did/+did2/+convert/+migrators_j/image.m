@@ -197,8 +197,11 @@ function bodies = image(preBody)
 %   2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a non-empty v1
 %   `image.label` is written to the image observation's `notes`; `data_body`
 %   gains no field". Supersedes [image label goes to notes] (the data body's
-%   notes, never built). Until 2026-10-29 an image that stated a label was
-%   CARRIED WHOLE AS V1 (carry-051, 2026-10-26); before that it was dropped.
+%   notes, never built). From 2026-10-26 until that decision an image that
+%   stated a label was CARRIED WHOLE AS V1; before that it was dropped. That
+%   carry row was retired by Jess Haley's decision of 2026-11-06 retiring the
+%   image-label and ontologyLabel carry rows (did-schema
+%   did_v2_go_forward_class_audit.md; its tag names the two row ids).
 
 arguments
     preBody (1,1) struct
@@ -210,7 +213,8 @@ end
 % `image.label` is the observation's notes ([image label goes to the
 % observation's notes] (Jess Haley, 2026-10-29, did-schema
 % V_eta_go_forward_class_audit.md)); image_stack writes it. It was carried
-% whole as v1 (carry-051) until that decision.
+% whole as v1 until that decision; that carry row was retired on 2026-11-06
+% (Jess Haley, did-schema did_v2_go_forward_class_audit.md).
 bodies = did2.convert.migrators_j.image_stack(preBody);
 % did-schema #88 restated `image` as the did_v1 tombstone (deprecated/image,
 % #73 review item 51), so a document image_stack hands back unchanged now

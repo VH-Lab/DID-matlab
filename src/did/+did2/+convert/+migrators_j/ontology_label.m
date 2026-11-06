@@ -191,12 +191,12 @@ function bodies = ontology_label(preBody)
 %
 %   A LABEL OUTSIDE ITS TEMPLATE IS CARRIED, carry-100. Decided by Jess Haley,
 %   2026-10-27 [ontologyLabel row split] (did-schema
-%   V_eta_go_forward_class_audit.md; "carry-095 splits as the tuning rows did
-%   ([tuning stray fields are malformed]): a field outside NDI's
-%   `ontologyLabel` template, or an edge other than `document_id`, is carried
-%   under carry-100 (malformed); carry-095 keeps only template fields with no
-%   home"). A raw v1 label is read against its template at the locked
-%   NDI-matlab `main` (ontologyLabel.json + base.json: one field,
+%   V_eta_go_forward_class_audit.md): the ontologyLabel carry row split as the
+%   tuning rows did ([tuning stray fields are malformed]): a field outside
+%   NDI's `ontologyLabel` template, or an edge other than `document_id`, is
+%   carried under carry-100 (malformed); the ontologyLabel row kept only
+%   template fields with no home. A raw v1 label is read against its
+%   template at the locked NDI-matlab `main` (ontologyLabel.json + base.json: one field,
 %   `ontologyNode`, one edge, `document_id`; the ten writer sites,
 %   +setup/+conv/+haley/doImport.m and +babu/import.m, write exactly those)
 %   by private/jRawAccount, and one holding anything else is carried whole
@@ -204,7 +204,10 @@ function bodies = ontology_label(preBody)
 %   universalRenames would discard is carried under carry-100, [rename clashes are malformed]. A
 %   label that passes is handed back untouched, as before. No template field
 %   of a label is left without a home in pass 1 (it writes none of them; NDI's
-%   second pass places `ontologyNode`), so carry-095 has no site here. The
+%   second pass places `ontologyNode`), so that row never had a site here, and
+%   it was retired by Jess Haley's decision of 2026-11-06 retiring the
+%   image-label and ontologyLabel carry rows (did-schema
+%   did_v2_go_forward_class_audit.md; its tag names the two row ids). The
 %   invented-shape guard below still runs first: those three names are a
 %   DID-side fixture shape, refused by name.
 
