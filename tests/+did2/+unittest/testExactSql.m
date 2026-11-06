@@ -249,6 +249,18 @@ for k = 1:numel(queries)
 end
 % a path that is not a queryable text path is read from the documents
 valuesMatchSearch(testCase, did2.query('', 'isa', 'demoA'), {'demoA.tags'});
+% an array text path gives its first element, from the array sidecar
+db = testCase.TestData.db;
+two = did2.document.blank('demoArray');
+two = two.set('base.session_id', 'sessA');
+two = two.set('base.name', 'arr2');
+two = two.set('demoArray.axes', struct('name', {'p', 'q'}, 'unit', {'deg', 'pct'}, 'size', {1, 2}));
+blank1 = did2.document.blank('demoArray');
+blank1 = blank1.set('base.session_id', 'sessA');
+blank1 = blank1.set('base.name', 'arrBlank');
+blank1 = blank1.set('demoArray.axes', struct('name', {'r', 's'}, 'unit', {'', 'pct'}, 'size', {1, 2}));
+db.add({two, blank1});
+valuesMatchSearch(testCase, did2.query('', 'isa', 'demoArray'), {'demoArray.axes[*].unit', 'base.name'});
 end
 
 function valuesMatchSearch(testCase, q, paths)
@@ -263,6 +275,7 @@ for k = 1:min(numel(got), numel(docs))
     s = docs{k}.toStruct();
     for j = 1:numel(paths)
         x = did2.query.resolvePath(s, paths{j});
+        if contains(paths{j}, '[*]') && ~isempty(x); x = x(1); end
         want = '';
         if isscalar(x) && ischar(x{1}); want = x{1}; end
         verifyEqual(testCase, got(k).values{j}, want, sprintf('searchValues: %s of %s', ...
