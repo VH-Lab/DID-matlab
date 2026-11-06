@@ -47,22 +47,27 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %
 %   So a real document carries app.name / app.version / app.url plus the four
 %   os/interpreter fields. This helper BUILDS NEW BODIES rather than passing the
-%   source through, so until now every one of those facts was discarded: the
-%   source `app` block simply had no successor in {count_observation (pre-#88),
-%   opaque_body, session_relative_reference}. NOTHING COUNTED IT -- silentLoss
-%   counts empty edges, vacuous fields and fragments, and a source block with no
-%   successor is none of the three.
+%   source through, so before this repair every one of those facts was
+%   discarded: the source `app` block had no successor among the emitted
+%   documents. NOTHING COUNTED IT -- silentLoss counts empty edges, vacuous
+%   fields and fragments, and a source block with no successor is none of the
+%   three.
 %
 %   The R1 fold is what it becomes (TEAM-SIGN-OFF [software],
-%   did-schema/schemas/V_eta_tenet_audit.md): a `software` ENTITY referenced by
-%   `software_id`, with the per-run os/interpreter in `execution_environment`.
-%   Both slots are DECLARED on the target -- checked, not assumed:
+%   did-schema/schemas/V_eta_tenet_audit.md), and the calculation carries it
+%   as three `software` edges:
 %
-%     did-schema/schemas/V_eta/stable/subject_interaction.json
-%         depends_on: software_id  (must_refer_to_document_class: software)
-%         fields:     execution_environment {os, os_version, interpreter,
-%                                            interpreter_version}
-%     count_observation -> subject_observation -> subject_interaction (pre-#88)
+%     software_id          the `app` block's program (jSoftwareFromApp), or,
+%                          when the block names none, the sorter by name
+%                          (sorterName, jSoftware): a calculation requires its
+%                          calculator (rule require_inherited)
+%     operating_system_id  the run's operating system, when the block records it
+%     interpreter_id       the run's interpreter, when the block records it
+%                          (both from jRunEntities, each a `software` entity)
+%
+%   Each software's version, when given, is an `assertion` with value kind
+%   `text` (jSoftware). The software documents are appended after the
+%   calculation, the opaque_body and the anchor.
 %
 %   RequireSession IS TRUE HERE. `base.session_id` is mustBeNonEmpty and
 %   v1_to_v2 quarantines the SOURCE when a body it produced fails, so an

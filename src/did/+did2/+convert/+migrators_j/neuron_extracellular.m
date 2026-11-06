@@ -200,42 +200,22 @@ function bodies = neuron_extracellular(preBody)
 %   counts are not compared (the writer then sets each to 1, max(size(..),1)).
 %
 %   ---------------------------------------------------------------------
-%   CLUSTER_INDEX -- A PROPOSAL, PARKED IN THE OPEN
+%   CLUSTER_INDEX -- A `calculation` WITH VALUE KIND `label`
 %   ---------------------------------------------------------------------
 %   `cluster_index` is the sorter's own label for the unit, unique per neuron
-%   (1..21 across the corpus). Before this change it survived only as TEXT inside
-%   the derived subject's `local_identifier`, `unit_<cluster_index>` -- findable
-%   by a human, not by a query.
+%   (1..21 across the corpus). It is emitted as a `calculation` with value kind
+%   `label` about the sorted unit's entity (`entity_id` = the source's
+%   `element_id`), when `cluster_index` is one finite number:
 %
-%   IT WAS EMITTED (pre-#88) AS A `count_assertion` OF THE UNIT (now a `calculation`+`label`, header), and the team may overturn
-%   that. The honest statement of the problem: a cluster index is a NOMINAL
-%   integer -- a label that happens to be a number -- and V_eta has no nominal
-%   integer type. The three candidates and why the others lose:
+%       variable           AFO:AFR_0003339 "cluster identifier"
+%       label.value.name   the index as an integer string,
+%                          sprintf('%d', round(cluster_index))
 %
-%     count_assertion  CHOSEN. There is an in-tree precedent for exactly this  (pre-#88)
-%                      semantic: jSorterOutput.m:87 models the per-spike cluster
-%                      LABEL series as a `count_observation` with variable  (pre-#88)
-%                      'spike cluster assignment', and the team confirmed that
-%                      shape for `jrclust_clusters` on 2026-08-17
-%                      (V_eta_go_forward_class_audit.md, TEAM-SIGN-OFF
-%                      [confirm sheet 2026-08-17]). `count.value.unit` is "what
-%                      is counted", and a label counts nothing, so it is left
-%                      BLANK rather than invented -- which is also the visible
-%                      marker that this is not a cardinality.
-%     term_assertion   REJECTED. `term.value` is an ontology_term and is a bound  (pre-#88)
-%                      field; staging the string '7' there says the sorter's
-%                      label is an ontology term, which it is not.
-%     entity.global_identifier  REJECTED. The {scheme, value} shape fits an
-%                      identifier perfectly, but the field's own documentation
-%                      names cross-reference registries (ORCID | ROR | DOI |
-%                      RRID | ...), and a cluster index is local to one sorting
-%                      run -- the scheme string cannot even name that run.
-%
-%   THE OBJECTION, stated so nobody has to reconstruct it: a consumer that reads
-%   every `count` document as a cardinality will pick this up. It is mitigated by
-%   `variable` = AFO:AFR_0003339 "cluster identifier" and by the blank unit, and it is
-%   one block on one document -- removable in a line if the team says no.
-%   NOTHING HERE IS SIGNED. Operating Rule 4: this is a proposal.
+%   A cluster index is a NOMINAL label, not a count (did-schema #73 review item
+%   48), so it takes the `label` value kind: a `label` value is a string even
+%   when it looks numeric. Like every calculation here it carries the 'during'
+%   anchor, the software and run edges (below) and, when `spike_clusters_id`
+%   is populated, `input_id`.
 %
 %   ---------------------------------------------------------------------
 %   THE EMPTY EDGE THAT IS NOT EMITTED
@@ -249,7 +229,7 @@ function bodies = neuron_extracellular(preBody)
 %   body declares the edge at all.
 %
 %   ---------------------------------------------------------------------
-%   THE `app` BLOCK -> A software ENTITY (the residual is now SMALLER)
+%   THE `app` BLOCK -> A software ENTITY ON EVERY CALCULATION
 %   ---------------------------------------------------------------------
 %   STATUS OF THIS REPAIR: NOT RUN. There is no MATLAB in the environment it was
 %   written in. The gate is tests/+did2/+unittest/testMigratorsJAppFold.m, unrun.
@@ -263,31 +243,26 @@ function bodies = neuron_extracellular(preBody)
 %   This migrator builds new bodies, so the block had no successor and the
 %   sorting program that produced the unit was discarded on every document.
 %
-%   R1 (TEAM-SIGN-OFF [software], V_eta_tenet_audit.md): the block becomes a
-%   `software` ENTITY + a `software_id` edge + `execution_environment`. WHICH
-%   EMITTED BODIES CAN CARRY THAT EDGE -- checked against the built schemas, not
-%   assumed. `software_id` is declared once in the statement tier, on
-%   `subject_interaction`:
+%   jSoftwareFromApp (RequireSession true) folds the block into a `software`
+%   ENTITY (R1, TEAM-SIGN-OFF [software], V_eta_tenet_audit.md), and
+%   jRunEntities makes the run's operating system and interpreter (the block's
+%   os / interpreter fields) `software` entities of their own; each software's
+%   version, when given, is an `assertion` with value kind `text` (jSoftware).
+%   EVERY emitted calculation -- the mean waveform, the cluster index, the
+%   quality label and the quality number -- carries the same edges:
 %
-%       subject                     -> entity -> base            NO software_id
-%       directed_relation           -> relation -> base          NO software_id
-%       session_relative_reference  -> time_reference -> base    NO software_id
-%       count_assertion (pre-#88)   -> subject_assertion
-%                                   -> subject_statement         NO software_id
-%       voltage_observation (pre-#88) -> subject_observation
-%                                   -> subject_interaction       YES (+ exec env)
-%       score_observation (pre-#88) -> subject_observation
-%                                   -> subject_interaction       YES (+ exec env)
+%       software_id          the app's `software` entity, when the block names a
+%                            program and the document has a session; else no
+%                            edge and no entity, nothing invented (Decided by
+%                            Jess Haley, 2026-10-22 [sorter software], quoted
+%                            in the body)
+%       operating_system_id  the run's OS entity, when the block records one
+%       interpreter_id       the run's interpreter entity, when it records one
 %
-%   THE RESIDUAL IS SMALLER THAN IT WAS AND IS NOT CLOSED. Before the waveform
-%   fold the only carrier was the score_observation (pre-#88), which is emitted only when
-%   `quality_number` is a numeric scalar; a unit without a quality number had
-%   nowhere typed to put its software. Now the waveform observation is a second
-%   carrier, so the gap is only a document with NEITHER a quality number NOR a
-%   waveform. That case still has nowhere to put it, and no slot is invented for
-%   it -- inventing an edge on a class that does not declare it is the pattern
-%   that produced the invented-empty-edge family. The `software` entity is
-%   emitted ONLY when some body took the edge, so it is never left unreferenced.
+%   So any unit with at least one calculation carries its software. The
+%   software and run entities are emitted after the calculations, and only
+%   when at least one calculation is emitted (a neuron with none is carried
+%   whole as v1, carry-112), so none is left unreferenced.
 %
 %   ---------------------------------------------------------------------
 %   FOUR UNMINTED TERMS ARE ADDED, NAMED HERE SO THE DEBT IS NOT ANONYMOUS
