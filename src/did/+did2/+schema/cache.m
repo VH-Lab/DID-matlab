@@ -165,6 +165,9 @@ classdef cache < handle
         % subjects called getClass 900,580 times.
         superclassMemo
         placementMemo
+        % Per (class, declared superclasses): what rehydrate coerces (the
+        % blocks and their field definitions). Pure in the loaded schemas.
+        rehydrateMemo
         % Per class (and value kind): where the class declares a `matrix`
         % field (matrixFieldPaths). Pure in the loaded schemas, as above.
         matrixPathMemo
@@ -186,6 +189,7 @@ classdef cache < handle
             obj.loadedClasses = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.superclassMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.placementMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.rehydrateMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.matrixPathMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.valueClassMemo = containers.Map('KeyType', 'char', 'ValueType', 'logical');
             obj.classFiles = did2.schema.cache.classFilesIn(schemaPath);
@@ -577,8 +581,48 @@ classdef cache < handle
                     s.depends_on, {'name', 'value'});
             end
 
+            % WHAT TO COERCE depends only on the class and the superclass
+            % list the document declares (its value kind), so it is worked
+            % out once per (class, superclasses) and remembered: worked out
+            % per document it was most of rehydrate's cost, about 0.7 ms a
+            % document (NDI-matlab run 42261433789: 35 s over 49,390
+            % documents in one getprobes; resolvePlacementFor merged two
+            % placement maps for every statement). Jess Haley, 2026-11-06:
+            % "Speed can't be slower than v1." The plan keeps only the
+            % blocks that have field definitions (a block contributed with
+            % no field earns no fieldsByBlock entry; see the note below).
+            names = {};
+            hasSuper = isfield(s, 'document_class') && isfield(s.document_class, 'superclasses');
+            if hasSuper
+                try
+                    names = obj.superclassClassNames(s.document_class.superclasses);
+                catch
+                    names = {char(0)};   % unreadable: its own key; kind '' below
+                end
+            end
+            memoKey = [className '|' sprintf('%d|', hasSuper) strjoin(names, ',')];
+            if isKey(obj.rehydrateMemo, memoKey)
+                plan = obj.rehydrateMemo(memoKey);
+            else
+                plan = obj.rehydratePlan(s, className, hasSuper);
+                obj.rehydrateMemo(memoKey) = plan;
+            end
+            for k = 1:numel(plan.blocks)
+                blockName = plan.blocks{k};
+                if ~isfield(s, blockName) || ~isstruct(s.(blockName))
+                    continue;
+                end
+                s.(blockName) = did2.schema.cache.coerceBlock( ...
+                    s.(blockName), plan.defs{k});
+            end
+        end
+
+        function plan = rehydratePlan(obj, s, className, hasSuper)
+            % rehydratePlan - the blocks rehydrate coerces, with each block's
+            % field definitions, for a document of CLASSNAME with the
+            % superclasses S declares (see rehydrate).
             kind = '';
-            if isfield(s, 'document_class') && isfield(s.document_class, 'superclasses')
+            if hasSuper
                 try
                     kind = obj.documentValueKind(className, ...
                         obj.superclassClassNames(s.document_class.superclasses));
@@ -587,11 +631,9 @@ classdef cache < handle
                 end
             end
             info = obj.resolvePlacementFor(className, kind);
+            plan = struct('blocks', {{}}, 'defs', {{}});
             for k = 1:numel(info.blocksContributed)
                 blockName = info.blocksContributed{k};
-                if ~isfield(s, blockName) || ~isstruct(s.(blockName))
-                    continue;
-                end
                 % `blocksContributed` and `fieldsByBlock` DO NOT HAVE THE
                 % SAME KEYS, and this line was written as though they did.
                 % A concrete class ALWAYS contributes a block; it earns a
@@ -609,8 +651,8 @@ classdef cache < handle
                     continue;
                 end
                 entries = info.fieldsByBlock(blockName);
-                s.(blockName) = did2.schema.cache.coerceBlock( ...
-                    s.(blockName), {entries.fieldDef});
+                plan.blocks{end+1} = blockName;
+                plan.defs{end+1} = {entries.fieldDef};
             end
         end
 
