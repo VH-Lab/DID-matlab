@@ -97,6 +97,7 @@ classdef sqlitedb < handle
         scalarDefsByBlock = []       % containers.Map: top-level block -> scalar indices
         queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
         alwaysRecheck (1,1) logical = false   % test hook: recheck even an exact query
+        presentClassMap = []         % classname -> true for every class in a stored chain; [] = not read
         queryableScalarMap = []      % path -> affinity, built once for compileQuery
         queryableArrayMap = []       % path -> affinity, built once for compileQuery
         queryableBootstrapOk (1,1) logical = false
@@ -214,6 +215,7 @@ classdef sqlitedb < handle
                     report.(how) = report.(how) + 1;
                 end
                 obj.insertFileRows(plan);
+                obj.presentClassMap = [];   % the stored chains changed
                 mksqlite(obj.dbid, 'COMMIT');
             catch err
                 try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
@@ -236,6 +238,7 @@ classdef sqlitedb < handle
                 'SELECT DISTINCT uid FROM files WHERE doc_id = ? AND ingested = 1', id);
             % ON DELETE CASCADE handles superclasses / depends_on / files rows.
             mksqlite(obj.dbid, 'DELETE FROM documents WHERE id = ?', id);
+            obj.presentClassMap = [];   % the stored chains changed
             % The bytes this document ingested go with it, unless another
             % document still records the same uid.
             for k = 1:numel(stored)
@@ -385,7 +388,8 @@ classdef sqlitedb < handle
             q = obj.resolveNested(q);
             [whereSQL, params, exact] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
-                'QueryableArrayPaths', obj.compileArrayPaths());
+                'QueryableArrayPaths', obj.compileArrayPaths(), ...
+                'PresentClasses', obj.presentClasses());
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
             obj.ensureConnection();
@@ -425,7 +429,8 @@ classdef sqlitedb < handle
             q = obj.resolveNested(q);
             [whereSQL, params, exact] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
-                'QueryableArrayPaths', obj.compileArrayPaths());
+                'QueryableArrayPaths', obj.compileArrayPaths(), ...
+                'PresentClasses', obj.presentClasses());
             sql = ['SELECT documents.id AS doc_id, edge_out.name AS name, ' ...
                 'edge_out.document_id AS document_id, ' ...
                 'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp ' ...
@@ -464,7 +469,9 @@ classdef sqlitedb < handle
             %   ROWS = db.searchValues(Q, PATHS) returns a struct array, one
             %   element per document search(Q) returns, in its order, with
             %   fields doc_id and values: a 1xN cell, the text at each of the
-            %   N dot-paths in PATHS ('' where the document has none).
+            %   N dot-paths in PATHS ('' where the document has none). A path
+            %   with a `[*]` level ('term.value[*].node') gives the text of
+            %   the array's FIRST element.
             %
             %   The bodies are not decoded when Q is EXACT (compileQuery) and
             %   every path is a queryable scalar path of TEXT affinity: the
@@ -485,10 +492,16 @@ classdef sqlitedb < handle
             q = obj.resolveNested(q);
             [whereSQL, params, exact] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
-                'QueryableArrayPaths', obj.compileArrayPaths());
+                'QueryableArrayPaths', obj.compileArrayPaths(), ...
+                'PresentClasses', obj.presentClasses());
             m = obj.compileScalarPaths();
-            textPaths = isa(m, 'containers.Map') && all(cellfun(@(p) isKey(m, p) ...
-                && strcmpi(char(m(p)), 'TEXT'), paths));
+            am = obj.compileArrayPaths();
+            isScalarText = @(p) isa(m, 'containers.Map') && isKey(m, p) ...
+                && strcmpi(char(m(p)), 'TEXT');
+            isArrayText = @(p) isa(am, 'containers.Map') && isKey(am, p) ...
+                && strcmpi(char(am(p)), 'TEXT');
+            fromArray = cellfun(@(p) ~isScalarText(p) && isArrayText(p), paths);
+            textPaths = all(cellfun(@(p) isScalarText(p) || isArrayText(p), paths));
             rows = struct('doc_id', {}, 'values', {});
             if ~exact || ~textPaths || obj.alwaysRecheck
                 docs = obj.search(q);
@@ -506,9 +519,23 @@ classdef sqlitedb < handle
                 return;
             end
             ids = cellfun(@char, {hits.doc_id}, 'UniformOutput', false);
-            vals = mksqlite(obj.dbid, ['SELECT doc_id, path, value_text FROM queryable_scalar_elem ' ...
-                'WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
-                'AND path IN (SELECT value FROM json_each(?))'], jsonencode(ids), jsonencode(paths));
+            vals = struct('doc_id', {}, 'path', {}, 'value_text', {});
+            if any(~fromArray)
+                vals = mksqlite(obj.dbid, ['SELECT doc_id, path, value_text FROM queryable_scalar_elem ' ...
+                    'WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
+                    'AND path IN (SELECT value FROM json_each(?))'], jsonencode(ids), ...
+                    jsonencode(paths(~fromArray)));
+            end
+            if any(fromArray)
+                % an array path ('a.b[*].c') gives its FIRST element's text
+                % (elem_index 1): the array sidecar keeps one row per
+                % element that has a non-empty value
+                more = mksqlite(obj.dbid, ['SELECT doc_id, path, value_text FROM queryable_array_elem ' ...
+                    'WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
+                    'AND path IN (SELECT value FROM json_each(?)) AND elem_index = 1'], ...
+                    jsonencode(ids), jsonencode(paths(fromArray)));
+                vals = [reshape(vals, 1, []), reshape(more, 1, [])];
+            end
             byDoc = containers.Map('KeyType', 'char', 'ValueType', 'any');
             for k = 1:numel(vals)
                 d = char(vals(k).doc_id);
@@ -583,7 +610,8 @@ classdef sqlitedb < handle
             q = obj.resolveNested(q);       % as search() does
             [whereSQL, params] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
-                'QueryableArrayPaths', obj.compileArrayPaths());
+                'QueryableArrayPaths', obj.compileArrayPaths(), ...
+                'PresentClasses', obj.presentClasses());
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ' ORDER BY rowid ASC'];
             plan = mksqlite(obj.dbid, ['EXPLAIN QUERY PLAN ' sql], params{:});
             r = struct('sql', sql, 'params', {params}, 'plan', plan);
@@ -598,7 +626,8 @@ classdef sqlitedb < handle
             q = obj.resolveNested(q);
             [~, ~, tf] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
-                'QueryableArrayPaths', obj.compileArrayPaths());
+                'QueryableArrayPaths', obj.compileArrayPaths(), ...
+                'PresentClasses', obj.presentClasses());
         end
 
         function testHookAlwaysRecheck(obj, tf)
@@ -734,6 +763,41 @@ classdef sqlitedb < handle
             [obj.queryableScalarMap, obj.queryableArrayMap] = ...
                 did2.database.queryablePathMaps(obj.queryableScalarColumns, ...
                 obj.queryableArrayPathDefs);
+        end
+
+        function m = presentClasses(obj)
+            % every class name in some stored document's chain (the
+            % superclasses sidecar), read once and kept until the database
+            % changes: compileQuery counts a json_extract text match on a
+            % block NO stored chain contains as exact, since rehydrate
+            % reshapes only the blocks of a document's own chain
+            if ~isa(obj.presentClassMap, 'containers.Map')
+                obj.ensureConnection();
+                rows = mksqlite(obj.dbid, 'SELECT DISTINCT classname FROM superclasses');
+                names = obj.rowsToCellstr(rows, 'classname');
+                obj.presentClassMap = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+                cache = [];
+                try
+                    cache = obj.resolveSchemaCache();
+                catch
+                end
+                for k = 1:numel(names)
+                    obj.presentClassMap(names{k}) = true;
+                    % and the schema's chain of it, which is what rehydrate
+                    % reads (a stored snapshot could list fewer)
+                    if isempty(cache); continue; end
+                    try
+                        if cache.hasClass(names{k})
+                            up = cache.superclasses(names{k});
+                            for j = 1:numel(up)
+                                obj.presentClassMap(char(up{j})) = true;
+                            end
+                        end
+                    catch
+                    end
+                end
+            end
+            m = obj.presentClassMap;
         end
 
         function m = compileScalarPaths(obj)
@@ -1713,6 +1777,9 @@ classdef sqlitedb < handle
             s = d.toStruct();
             for j = 1:numel(paths)
                 x = did2.query.resolvePath(s, paths{j});
+                if contains(paths{j}, '[*]') && ~isempty(x)
+                    x = x(1);   % an array path: its first element
+                end
                 if isscalar(x) && (ischar(x{1}) || (isstring(x{1}) && isscalar(x{1})))
                     v{j} = char(x{1});
                 end

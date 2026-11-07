@@ -249,6 +249,18 @@ for k = 1:numel(queries)
 end
 % a path that is not a queryable text path is read from the documents
 valuesMatchSearch(testCase, did2.query('', 'isa', 'demoA'), {'demoA.tags'});
+% an array text path gives its first element, from the array sidecar
+db = testCase.TestData.db;
+two = did2.document.blank('demoArray');
+two = two.set('base.session_id', 'sessA');
+two = two.set('base.name', 'arr2');
+two = two.set('demoArray.axes', struct('name', {'p', 'q'}, 'unit', {'deg', 'pct'}, 'size', {1, 2}));
+blank1 = did2.document.blank('demoArray');
+blank1 = blank1.set('base.session_id', 'sessA');
+blank1 = blank1.set('base.name', 'arrBlank');
+blank1 = blank1.set('demoArray.axes', struct('name', {'r', 's'}, 'unit', {'', 'pct'}, 'size', {1, 2}));
+db.add({two, blank1});
+valuesMatchSearch(testCase, did2.query('', 'isa', 'demoArray'), {'demoArray.axes[*].unit', 'base.name'});
 end
 
 function valuesMatchSearch(testCase, q, paths)
@@ -263,10 +275,34 @@ for k = 1:min(numel(got), numel(docs))
     s = docs{k}.toStruct();
     for j = 1:numel(paths)
         x = did2.query.resolvePath(s, paths{j});
+        if contains(paths{j}, '[*]') && ~isempty(x); x = x(1); end
         want = '';
         if isscalar(x) && ischar(x{1}); want = x{1}; end
         verifyEqual(testCase, got(k).values{j}, want, sprintf('searchValues: %s of %s', ...
             paths{j}, got(k).doc_id));
     end
 end
+end
+
+% ---- json_extract on a block no stored chain contains ----
+
+function testABlockNoStoredChainHasIsExact(testCase)
+% a block named by no stored document's class chain is never reshaped by
+% rehydrate, so a text match on it read with json_extract is exact; a block
+% of a stored chain is not (demoA.tags, a string list, can be reshaped)
+db = testCase.TestData.db;
+d = did2.document.blank('demoA');
+d = d.set('base.session_id', 'sessC');
+d = d.set('base.name', 'old');
+s = d.toStruct();
+s.oldblock = struct('variable', struct('name', 'class label'));
+db.add({did2.document(s)}, 'Validate', false);
+testCase.TestData.docs{end+1} = did2.document(s);
+verifyEqual(testCase, check(testCase, did2.query('oldblock.variable.name', 'exact_string', 'class label'), true), ...
+    {'old'});
+check(testCase, did2.query('oldblock.variable.name', 'exact_string', 'other'), true);
+check(testCase, did2.query('', 'isa', 'demoA') & ...
+    (did2.query('demoA.value', 'exact_string', 'alpha') | ...
+     did2.query('oldblock.variable.name', 'exact_string', 'class label')), true);
+check(testCase, did2.query('demoA.tags', 'exact_string', 'green'), false);
 end
