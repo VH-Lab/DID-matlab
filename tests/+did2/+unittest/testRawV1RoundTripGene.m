@@ -22,7 +22,10 @@ function tests = testRawV1RoundTripGene
 %
 %   geneList CONVERTS (Decided by Jess Haley, 2026-11-01 [gene list as a term,
 %   file kept]): a standalone `term`, its genes.tsv the term's opaque_body
-%   (testGeneList* below). geneListMapping CONVERTS on a schema that declares
+%   (testGeneList* below); since 2026-11-07 ([gene-list facts split],
+%   [gene-list history entities]) its two namespaces are conditions on that
+%   body and its annotation and assembly are Data Set entities it is derived
+%   from. geneListMapping CONVERTS on a schema that declares
 %   the covariate `index` (and, for a symmetric mapping, `relatum_id`): a
 %   relation between the two lists, a `logical` or `score` value and
 %   mapping.tsv as its opaque_body (testGeneListMapping* below, on a schema
@@ -114,10 +117,11 @@ v1 = geneList();
 out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 verifyEmpty(testCase, out.passthrough);
-verifyEqual(testCase, numel(out.migrated), 2);
+verifyEqual(testCase, numel(out.migrated), 6);
 docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
 names = cellfun(@(d) d.document_class.class_name, docs, 'UniformOutput', false);
-verifyEqual(testCase, sort(names), {'opaque_body', 'term'});
+verifyEqual(testCase, sort(names), ...
+    {'directed_relation', 'directed_relation', 'entity', 'entity', 'opaque_body', 'term'});
 term = docs{strcmp(names, 'term')};
 body = docs{strcmp(names, 'opaque_body')};
 % the term keeps the v1 id; its value is in its body
@@ -135,29 +139,113 @@ verifyEqual(testCase, body.files.file_list, v1.files.file_list);
 verifyEqual(testCase, body.files.file_info.name, 'genes.tsv');
 end
 
-function testGeneListListsWhatItDoesNotConvert(testCase)
-% genome_assembly, annotation_source, gene_id_namespace (and
-% gene_symbol_namespace) go to the run's report, not the documents
-out = runRaw(geneList());
-notes = out.summary.migration_notes.not_converted.distinct_details;
-for f = {'genome_assembly = GRCm39', 'annotation_source = Xenium panel v1', ...
-        'gene_id_namespace = ENSEMBL', 'gene_symbol_namespace = MGI'}
-    verifyTrue(testCase, any(contains(notes, ['geneList.' f{1}])), f{1});
+function testGeneListNamespacesAreBodyConditions(testCase)
+% [gene-list facts split], [namespace variable terms], [gene symbol
+% namespace kept]: the two namespaces say how to read genes.tsv
+docs = migratedStructs(geneList());
+body = docs{strcmp(classNames(docs), 'opaque_body')};
+conds = body.data_body.conditions;
+if ~iscell(conds); conds = num2cell(conds); end
+verifyEqual(testCase, numel(conds), 2);
+verifyEqual(testCase, conds{1}.variable.node, 'EMPTY:0000436');
+verifyEqual(testCase, conds{1}.text, 'ENSEMBL');
+verifyEqual(testCase, conds{2}.variable.node, 'EMPTY:0000437');
+verifyEqual(testCase, conds{2}.text, 'MGI');
 end
+
+function testGeneListHistoryIsAChainOfDataSets(testCase)
+% [gene-list history entities]: gene list -> annotation -> assembly, each a
+% Data Set named by the v1 text; [annotation source is GENEPIO]: each
+% relation's one parameter keeps the v1 text
+v1 = geneList();
+docs = migratedStructs(v1);
+names = classNames(docs);
+ents = docs(strcmp(names, 'entity'));
+rels = docs(strcmp(names, 'directed_relation'));
+entNames = cellfun(@(e) e.entity.name, ents, 'UniformOutput', false);
+verifyEqual(testCase, sort(entNames), {'GRCm39', 'Xenium panel v1'});
+for k = 1:2
+    verifyEqual(testCase, ents{k}.entity.type.node, 'NCIT:C47824');
+end
+ann = ents{strcmp(entNames, 'Xenium panel v1')};
+asm = ents{strcmp(entNames, 'GRCm39')};
+fromTerm = rels{cellfun(@(r) isequal(edge(r, 'child_id'), {v1.base.id}), rels)};
+verifyEqual(testCase, edge(fromTerm, 'parent_id'), {ann.base.id});
+verifyEqual(testCase, fromTerm.directed_relation.relation.node, 'prov:wasDerivedFrom');
+verifyEqual(testCase, fromTerm.relation.method.parameters.variable.node, 'GENEPIO:0000096');
+verifyEqual(testCase, fromTerm.relation.method.parameters.text, 'Xenium panel v1');
+fromAnn = rels{cellfun(@(r) isequal(edge(r, 'child_id'), {ann.base.id}), rels)};
+verifyEqual(testCase, edge(fromAnn, 'parent_id'), {asm.base.id});
+verifyEqual(testCase, fromAnn.relation.method.parameters.variable.node, 'NCIT:C164815');
+verifyEqual(testCase, fromAnn.relation.method.parameters.text, 'GRCm39');
+end
+
+function testGeneListWithOnlyAnAssembly(testCase)
+% no annotation: the term is derived from the assembly directly, and the
+% parameter's variable says which fact it is
+v1 = geneList();
+v1.geneList.annotation_source = '';
+v1.geneList.gene_symbol_namespace = '';
+out = runRaw(v1);
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+verifyEqual(testCase, sort(classNames(docs)), ...
+    {'directed_relation', 'entity', 'opaque_body', 'term'});
+rel = docs{strcmp(classNames(docs), 'directed_relation')};
+verifyEqual(testCase, edge(rel, 'child_id'), {v1.base.id});
+verifyEqual(testCase, rel.relation.method.parameters.variable.node, 'NCIT:C164815');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'geneList, assembly only', ...
+    {'geneList.gene_name_completeness', 'geneList.n_duplicate_gene_names'});
+end
+
+function testGeneListWithNoFacts(testCase)
+% makeGeneList's defaults ('') write no condition, entity or relation
+v1 = geneList();
+for f = {'genome_assembly', 'annotation_source', 'gene_id_namespace', 'gene_symbol_namespace'}
+    v1.geneList.(f{1}) = '';
+end
+out = runRaw(v1);
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+verifyEqual(testCase, sort(classNames(docs)), {'opaque_body', 'term'});
+body = docs{strcmp(classNames(docs), 'opaque_body')};
+verifyTrue(testCase, ~isfield(body.data_body, 'conditions') || isempty(body.data_body.conditions));
+r = did2.convert.roundtrip.check(v1, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'geneList, no facts', ...
+    {'geneList.gene_name_completeness', 'geneList.n_duplicate_gene_names'});
+end
+
+function testGeneListListsNothingAsNotConverted(testCase)
+% [no source-facts list]: the run's report holds gaps and carries only
+out = runRaw(geneList());
+notes = out.summary.migration_notes;
+verifyFalse(testCase, isfield(notes, 'not_converted') ...
+    && any(contains(notes.not_converted.distinct_details, 'geneList.')));
+end
+
+function testGeneListAnnotationIsNotTheRunsDataset(testCase)
+% a reference Data Set (the annotation, the assembly) is not the dataset the
+% migration record points at: the record points at the session
+v1 = geneList();
+out = runRaw(v1);
+[records, report] = did2.convert.migrationRecord(out.migrated, 'Validate', false, ...
+    'Version', 'test');
+verifyNumElements(testCase, records, 2);
+verifyNumElements(testCase, report, 1);
+m = records{1}.toStruct();
+verifyEqual(testCase, char(m.depends_on(strcmp({m.depends_on.name}, 'session_id')).document_id), ...
+    char(v1.base.session_id));
 end
 
 function testGeneListRoundTrip(testCase)
-% label, n_genes, the file and the identity come back; what the report lists
-% (four fields) and what item 21 drops as computable from genes.tsv
-% (gene_name_completeness, n_duplicate_gene_names) are the known findings
+% label, n_genes, the four source facts, the file and the identity come
+% back; what item 21 drops as computable from genes.tsv
+% (gene_name_completeness, n_duplicate_gene_names) is the known finding
 v1 = geneList();
 out = runRaw(v1);
 r = did2.convert.roundtrip.check(v1, out.migrated);
 verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'geneList', ...
-    {'geneList.genome_assembly', 'geneList.annotation_source', 'geneList.gene_id_namespace', ...
-     'geneList.gene_symbol_namespace', 'geneList.gene_name_completeness', ...
-     'geneList.n_duplicate_gene_names'});
+    {'geneList.gene_name_completeness', 'geneList.n_duplicate_gene_names'});
 end
 
 function testAGeneListNoWriterMakesIsCarried(testCase)
@@ -171,6 +259,9 @@ verifyCarried(testCase, v1, '[carry-120] geneList.n_genes');
 v1 = geneList();
 v1.base.name = 'my list';
 verifyCarried(testCase, v1, '[carry-120] base.name');
+v1 = geneList();
+v1.geneList.genome_assembly = 39;
+verifyCarried(testCase, v1, '[carry-120] geneList.genome_assembly (not text)');
 end
 
 % ===================== geneListMapping converts =========================
@@ -482,6 +573,15 @@ d = jsondecode(jsonencode(d));
 end
 
 % ===================== helpers =========================================
+
+function docs = migratedStructs(v1)
+out = runRaw(v1);
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+end
+
+function names = classNames(docs)
+names = cellfun(@(d) char(d.document_class.class_name), docs, 'UniformOutput', false);
+end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end

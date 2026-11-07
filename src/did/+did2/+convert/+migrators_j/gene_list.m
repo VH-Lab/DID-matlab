@@ -19,17 +19,33 @@ function bodies = gene_list(preBody)
 %                   EDAM:format_3475 "TSV"; `dimensions` [{NCIT:C16612 "Gene",
 %                   n = v1 n_genes}]; `notes` = v1 label
 %
-%   NOT CONVERTED by the generic migration, and listed in the run's report so
-%   nothing is lost ([gene list as a term, file kept] (c); item 22's
-%   `derived_from` links to the assembly and annotation are a per-dataset
-%   import's work): `genome_assembly`, `annotation_source`,
-%   `gene_id_namespace`. `gene_symbol_namespace` (item 23: dropped, "the
-%   annotation it came from is recorded") is listed beside them, because the
-%   annotation is only listed, not recorded, until that import runs. Each
-%   non-empty value is one did2.convert.reportNote of kind 'not_converted'
-%   (summary.migration_notes.not_converted), DETAIL '<field> = <value> (...)'.
-%   The run's migration report ([migration record], [migration report is an
-%   attached file]) takes these notes once its DID-matlab part is built.
+%   THE FOUR SOURCE FACTS (Decided by Jess Haley, 2026-11-07, did-schema
+%   did_v2_go_forward_class_audit.md [gene-list facts split] "C2",
+%   [gene-list history entities] "1. A", [gene symbol namespace kept],
+%   [annotation source is GENEPIO], [namespace variable terms], [no
+%   source-facts list]; amending (c) of [gene list as a term, file kept]):
+%     gene_id_namespace       a condition on the opaque_body, variable
+%                             EMPTY:0000436 "identifier namespace", text the
+%                             v1 value (it says how to read genes.tsv)
+%     gene_symbol_namespace   a condition on the opaque_body, variable
+%                             EMPTY:0000437 "symbol namespace" (kept: item 23,
+%                             which dropped it, is amended)
+%     annotation_source       history: a minimal `entity` of type Data Set
+%                             (NCIT:C47824) named by the v1 text, and a
+%                             `directed_relation` term -wasDerivedFrom->
+%                             annotation (item 22) whose method carries the
+%                             v1 text as one parameter, variable GENEPIO:0000096
+%                             "genome annotation source"
+%     genome_assembly         the same, one step further: annotation
+%                             -wasDerivedFrom-> assembly (term -> assembly
+%                             when there is no annotation), parameter
+%                             variable NCIT:C164815 "Reference Genome Assembly
+%                             Version"
+%   Only a non-empty value is written. The relation's parameter keeps the v1
+%   words when a per-dataset import later fills in the entity and keeps its
+%   id ([gene-list history filled by import]), and it says which of the two
+%   facts an entity is when only one is present. Nothing goes to the run's
+%   report as not converted ([no source-facts list]).
 %
 %   DROPPED (item 21: "computable" from genes.tsv, which is kept):
 %   `gene_name_completeness`, `n_duplicate_gene_names`.
@@ -47,8 +63,9 @@ function bodies = gene_list(preBody)
 %   READS RAW v1 (did2.convert.rawV1Classes; [migrators read raw v1]): the
 %   document exactly as v1 wrote it (`geneList`, NDI-matlab locked `main`, as
 %   +ndi/+fun/+doc/+gene/makeGeneList.m writes it).
-%   did2.convert.roundtrip.geneList rebuilds the v1 document from the term and
-%   its body; testRawV1RoundTripGene compares the two.
+%   did2.convert.roundtrip.geneList rebuilds the v1 document from the term, its
+%   body and the history entities and relations; testRawV1RoundTripGene
+%   compares the two.
 arguments
     preBody (1,1) struct
 end
@@ -79,6 +96,13 @@ if ~(isnumeric(nGenes) && isscalar(nGenes) && isreal(nGenes) && isfinite(nGenes)
         && nGenes >= 0 && nGenes == round(nGenes))
     reasons{end+1} = '[carry-120] geneList.n_genes (not one integer >= 0)';
 end
+facts = {'gene_id_namespace', 'gene_symbol_namespace', 'annotation_source', 'genome_assembly'};
+for f = facts
+    v = fieldOr(blk, f{1}, '');
+    if ~(ischar(v) || (isstring(v) && isscalar(v)))
+        reasons{end+1} = sprintf('[carry-120] geneList.%s (not text)', f{1}); %#ok<AGROW>
+    end
+end
 if jRawCarry('gene_list', preBody, collision, unplaced, 'carry-100', reasons)
     bodies = {preBody};   % the carry of the untouched v1 source
     return;
@@ -92,19 +116,64 @@ bodyOpts = [o, {'Dimensions', did2.build.dimension(gene, double(nGenes))}];
 if ~isempty(strtrim(label))
     bodyOpts = [bodyOpts, {'Notes', label}];
 end
+% the two namespaces say how to read genes.tsv: conditions on its body
+% ([gene-list facts split], [namespace variable terms])
+conds = {};
+idNs = factText(blk, 'gene_id_namespace');
+if ~isempty(idNs)
+    conds{end+1} = did2.build.condition( ...
+        did2.convert.registeredTerm('EMPTY:0000436', 'identifier namespace'), 'Text', idNs);
+end
+symNs = factText(blk, 'gene_symbol_namespace');
+if ~isempty(symNs)
+    conds{end+1} = did2.build.condition( ...
+        did2.convert.registeredTerm('EMPTY:0000437', 'symbol namespace'), 'Text', symNs);
+end
+if ~isempty(conds)
+    bodyOpts = [bodyOpts, {'Conditions', did2.build.list(conds{:})}];
+end
 file = did2.build.opaqueBody(id, did2.build.formatTerm('EDAM:format_3475'), bodyOpts{:});
 file.files = body.files;   % genes.tsv as written, so the bytes NDI stores stay reachable
 
-% listed in the run's report, not converted
-for f = {'genome_assembly', 'annotation_source', 'gene_id_namespace', 'gene_symbol_namespace'}
-    v = fieldOr(blk, f{1}, '');
-    if (ischar(v) || isstring(v)) && ~isempty(strtrim(char(v)))
-        did2.convert.reportNote('not_converted', 'gene_list', id, sprintf( ...
-            'geneList.%s = %s (a per-dataset import''s work; [gene list as a term, file kept])', ...
-            f{1}, char(v)));
-    end
-end
+% the history: gene list -> annotation -> assembly ([gene-list history
+% entities]; item 22), each a minimal Data Set named by the v1 text
 bodies = {term, file};
+child = id;
+steps = { ...
+    'annotation_source', 'GENEPIO:0000096', 'genome annotation source', 'gene_list annotation'; ...
+    'genome_assembly',   'NCIT:C164815',    'Reference Genome Assembly Version', 'gene_list assembly'};
+for k = 1:size(steps, 1)
+    v = factText(blk, steps{k, 1});
+    if isempty(v)
+        continue;
+    end
+    [ent, rel] = historyStep(o, child, v, steps{k, 2:4});
+    bodies = [bodies, {ent, rel}]; %#ok<AGROW>
+    child = ent.base.id;
+end
+end
+
+function [ent, rel] = historyStep(o, childId, text, varNode, varName, role)
+% a minimal Data Set entity named TEXT, and CHILDID -wasDerivedFrom-> it,
+% whose method's one parameter keeps TEXT under the fact's variable
+ent = did2.build.document('entity', struct( ...
+    'type', did2.convert.registeredTerm('NCIT:C47824', 'Data Set'), 'name', text), ...
+    o{:}, 'Id', did2.convert.mintId(role));
+param = did2.build.parameter(did2.convert.registeredTerm(varNode, varName), 'Text', text);
+rel = did2.build.directedRelation(childId, ent.base.id, ...
+    did2.convert.registeredTerm('prov:wasDerivedFrom', 'wasDerivedFrom'), ...
+    'MethodParameters', param, o{:}, 'Id', did2.convert.mintId([role ' derived_from']));
+end
+
+function v = factText(blk, name)
+% the v1 fact NAME as char, '' when absent or blank (makeGeneList's default)
+v = fieldOr(blk, name, '');
+if isstring(v)
+    v = char(v);
+end
+if ~ischar(v) || isempty(strtrim(v))
+    v = '';
+end
 end
 
 function v = fieldOr(s, name, default)
