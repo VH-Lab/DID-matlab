@@ -234,3 +234,39 @@ verifyEqual(testCase, {got.doc_id}, {want.doc_id}, 'searchEdges: documents or th
 verifyEqual(testCase, {got.name}, {want.name}, 'searchEdges: edge names');
 verifyEqual(testCase, {got.document_id}, {want.document_id}, 'searchEdges: targets');
 end
+
+% ---- searchValues: the same text search's documents hold ----
+
+function testSearchValuesMatchesTheDocumentsOfSearch(testCase)
+ids = testCase.TestData.ids;
+paths = {'demoA.value', 'base.name'};
+queries = {did2.query('', 'isa', 'demoA'), ...                          % exact, text paths
+    did2.query('demoA.value', 'exact_string', 'alpha'), ...              % exact
+    did2.query('demoA.value', 'contains_string', 'lph'), ...             % inexact
+    did2.query('', 'depends_on', 'item1', ids.a1)};                      % exact; v1 doc among them
+for k = 1:numel(queries)
+    valuesMatchSearch(testCase, queries{k}, paths);
+end
+% a path that is not a queryable text path is read from the documents
+valuesMatchSearch(testCase, did2.query('', 'isa', 'demoA'), {'demoA.tags'});
+end
+
+function valuesMatchSearch(testCase, q, paths)
+db = testCase.TestData.db;
+got = db.searchValues(q, paths);
+db.testHookAlwaysRecheck(true);
+docs = db.search(q);
+db.testHookAlwaysRecheck(false);
+verifyEqual(testCase, {got.doc_id}, cellfun(@(d) char(d.get('base.id')), docs, ...
+    'UniformOutput', false), 'searchValues: documents or their order');
+for k = 1:min(numel(got), numel(docs))
+    s = docs{k}.toStruct();
+    for j = 1:numel(paths)
+        x = did2.query.resolvePath(s, paths{j});
+        want = '';
+        if isscalar(x) && ischar(x{1}); want = x{1}; end
+        verifyEqual(testCase, got(k).values{j}, want, sprintf('searchValues: %s of %s', ...
+            paths{j}, got(k).doc_id));
+    end
+end
+end

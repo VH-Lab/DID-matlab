@@ -33,6 +33,7 @@ classdef sqlitedb < handle
     %       search       - return documents matching a did2.query.
     %       searchIds    - return the ids of documents matching a query.
     %       searchEdges  - the matches' named edges, without decoding bodies.
+    %       searchValues - the matches' text at given paths, without decoding bodies.
     %       hasFile      - is a document's named file on this computer? (and where)
     %       filePath     - the path to a document's named file, or an error
     %       fileNames    - the file names a document records
@@ -454,6 +455,90 @@ classdef sqlitedb < handle
             edges = struct('doc_id', cellfun(@char, {rows.doc_id}, 'UniformOutput', false), ...
                 'name', cellfun(@char, {rows.name}, 'UniformOutput', false), ...
                 'document_id', cellfun(@char, {rows.document_id}, 'UniformOutput', false));
+        end
+
+        function rows = searchValues(obj, q, paths)
+            % searchValues - text values of the documents matching a query,
+            % read from the queryable scalar sidecar without decoding bodies.
+            %
+            %   ROWS = db.searchValues(Q, PATHS) returns a struct array, one
+            %   element per document search(Q) returns, in its order, with
+            %   fields doc_id and values: a 1xN cell, the text at each of the
+            %   N dot-paths in PATHS ('' where the document has none).
+            %
+            %   The bodies are not decoded when Q is EXACT (compileQuery) and
+            %   every path is a queryable scalar path of TEXT affinity: the
+            %   queryable_scalar_elem sidecar holds, per document, the text
+            %   json_extract reads at that path (no row for an empty value,
+            %   read back as ''). A did_v1 match, a match of an inexact Q, and
+            %   any path that is not such a path, are answered from the
+            %   decoded, rechecked document as search does, where a value that
+            %   is not text reads as ''. For readers that need a few short
+            %   text fields of many documents (NDI's migrated-element reads;
+            %   Jess Haley, 2026-11-06: "Speed can't be slower than v1").
+            arguments
+                obj
+                q (1,1) did2.query
+                paths
+            end
+            paths = reshape(cellstr(paths), 1, []);
+            q = obj.resolveNested(q);
+            [whereSQL, params, exact] = did2.database.compileQuery(q, ...
+                'QueryablePaths', obj.compileScalarPaths(), ...
+                'QueryableArrayPaths', obj.compileArrayPaths());
+            m = obj.compileScalarPaths();
+            textPaths = isa(m, 'containers.Map') && all(cellfun(@(p) isKey(m, p) ...
+                && strcmpi(char(m(p)), 'TEXT'), paths));
+            rows = struct('doc_id', {}, 'values', {});
+            if ~exact || ~textPaths || obj.alwaysRecheck
+                docs = obj.search(q);
+                for k = 1:numel(docs)
+                    rows(end+1) = struct('doc_id', char(docs{k}.get('base.id')), ...
+                        'values', {obj.textValuesOf(docs{k}, paths)}); %#ok<AGROW>
+                end
+                return;
+            end
+            obj.ensureConnection();
+            hits = mksqlite(obj.dbid, ['SELECT documents.id AS doc_id, ' ...
+                'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp ' ...
+                'FROM documents WHERE ' whereSQL ' ORDER BY documents.rowid ASC'], params{:});
+            if isempty(hits)
+                return;
+            end
+            ids = cellfun(@char, {hits.doc_id}, 'UniformOutput', false);
+            vals = mksqlite(obj.dbid, ['SELECT doc_id, path, value_text FROM queryable_scalar_elem ' ...
+                'WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
+                'AND path IN (SELECT value FROM json_each(?))'], jsonencode(ids), jsonencode(paths));
+            byDoc = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            for k = 1:numel(vals)
+                d = char(vals(k).doc_id);
+                if ~isKey(byDoc, d)
+                    byDoc(d) = repmat({''}, 1, numel(paths));
+                end
+                v = byDoc(d);
+                j = find(strcmp(paths, char(vals(k).path)), 1);
+                t = vals(k).value_text;
+                if ischar(t)
+                    v{j} = t;
+                end
+                byDoc(d) = v;
+            end
+            for k = 1:numel(hits)
+                id = ids{k};
+                stamp = hits(k).stamp;
+                if ischar(stamp) && strcmp(stamp, 'did_v1')
+                    d = obj.get(id);
+                    if ~q.matches(d)
+                        continue;
+                    end
+                    v = obj.textValuesOf(d, paths);
+                elseif isKey(byDoc, id)
+                    v = byDoc(id);
+                else
+                    v = repmat({''}, 1, numel(paths));
+                end
+                rows(end+1) = struct('doc_id', id, 'values', {v}); %#ok<AGROW>
+            end
         end
 
         function ids = searchIds(obj, q)
@@ -1618,6 +1703,19 @@ classdef sqlitedb < handle
 
             if q.hasNested()
                 q = q.resolveNested(@(inner) obj.searchIds(inner));
+            end
+        end
+
+        function v = textValuesOf(~, d, paths)
+            % the text at each path of document D ('' where it has none or a
+            % value that is not text), as searchValues reports it
+            v = repmat({''}, 1, numel(paths));
+            s = d.toStruct();
+            for j = 1:numel(paths)
+                x = did2.query.resolvePath(s, paths{j});
+                if isscalar(x) && (ischar(x{1}) || (isstring(x{1}) && isscalar(x{1})))
+                    v{j} = char(x{1});
+                end
             end
         end
 
