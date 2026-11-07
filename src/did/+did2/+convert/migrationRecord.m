@@ -37,7 +37,11 @@ function [records, report] = migrationRecord(docs, options)
 %                          that is DID-only.
 %
 %   THE EDGE. The record's `session_id` names the one dataset entity in DOCS
-%   (an `entity` of type dataset). With none, the one session the documents
+%   (an `entity` of type dataset). A reference dataset -- a Data Set entity
+%   something in DOCS was derived from (`derived_from`), that no document names
+%   as its session and no session is included in, such as a gene list's
+%   annotation or assembly ([gene-list history entities], Jess Haley,
+%   2026-11-07) -- is not the run's dataset. With none, the one session the documents
 %   belong to: the one session entity in DOCS, else the one id their
 %   `session_id` edges (or v1 base.session_id) name.
 %
@@ -212,6 +216,7 @@ datasets = {};
 sessions = {};
 edges = {};
 datasetOfSession = containers.Map('KeyType', 'char', 'ValueType', 'char');
+derivedFrom = {};
 for k = 1:n
     s = docs{k};
     if isa(s, 'did2.document')
@@ -238,8 +243,27 @@ for k = 1:n
         if ~isempty(c) && ~isempty(p)
             datasetOfSession(c) = p;
         end
+    elseif isDerivedFrom(s)
+        p = edgeOf(s, 'parent_id');
+        if ~isempty(p)
+            derivedFrom{end+1} = p; %#ok<AGROW>
+        end
     end
 end
+% a REFERENCE dataset is not the run's dataset: a Data Set entity something in
+% the run was derived from (a gene list's annotation and assembly, Jess Haley,
+% 2026-11-07 [gene-list history entities]; "ours" vs "reference" is read off
+% the graph, did_v2_spatial_transcriptomics_plan.md item 22) that no document
+% names as its session and no session is included in. It is placed like any
+% other document, by its own session_id.
+anchored = [reshape(edges, 1, []), reshape(values(datasetOfSession), 1, [])];
+reference = setdiff(intersect(datasets, derivedFrom), anchored);
+for k = 1:n
+    if any(strcmp(reference, ids{k}))
+        kinds{k} = '';
+    end
+end
+datasets = setdiff(datasets, reference);
 datasets = unique(datasets);
 sessions = unique(sessions);
 edges = unique(edges);
@@ -311,6 +335,18 @@ if ~isfield(s, 'document_class') || ~isfield(s.document_class, 'class_name') ...
 end
 r = s.directed_relation.relation;
 tf = isstruct(r) && did2.build.isVocabulary(r, 'relation', 'included_in');
+end
+
+function tf = isDerivedFrom(s)
+% a directed_relation `derived_from` (prov:wasDerivedFrom)
+tf = false;
+if ~isfield(s, 'document_class') || ~isfield(s.document_class, 'class_name') ...
+        || ~strcmp(char(s.document_class.class_name), 'directed_relation') ...
+        || ~isfield(s, 'directed_relation') || ~isfield(s.directed_relation, 'relation')
+    return;
+end
+r = s.directed_relation.relation;
+tf = isstruct(r) && did2.build.isVocabulary(r, 'relation', 'derived_from');
 end
 
 function v = edgeOf(s, name)
