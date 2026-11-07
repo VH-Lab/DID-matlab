@@ -2104,7 +2104,7 @@ classdef sqlitedb < handle
                 flat = repmat({did2.database.sqlitedb.missingOf(kinds{j})}, 1, sum(Mj));
                 offs = [0; cumsum(Mj(1:end-1))];
                 if strcmp(kinds{j}, 'num'); vals = nums(on); else; vals = texts(on); end
-                flat(offs(di(on)).' + ei(on)) = vals;
+                flat(reshape(offs(di(on)), 1, []) + ei(on)) = vals;
                 parts = mat2cell(flat, 1, Mj.');
                 has = Mj > 0;
                 V(has, j) = parts(has);
