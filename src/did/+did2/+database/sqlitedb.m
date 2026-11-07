@@ -777,6 +777,15 @@ classdef sqlitedb < handle
         end
     end
 
+    methods (Static)
+        function tf = searchEdgesTakesAllNames()
+            % searchEdgesTakesAllNames - true: searchEdges(Q, '*') returns
+            % every edge. A caller that needs it (NDI-matlab) asks with
+            % ismethod first, so on an older DID-matlab it reads as before.
+            tf = true;
+        end
+    end
+
     % ---- test-only hooks ----
     methods (Hidden)
         function id = testHookDbId(obj)

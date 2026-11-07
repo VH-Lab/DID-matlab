@@ -209,6 +209,7 @@ for k = 1:numel(queries)
     edgesMatchSearch(testCase, queries{k}, {'item1', 'item3'});
     edgesMatchSearch(testCase, queries{k}, '*');   % every edge, whatever its name
 end
+verifyTrue(testCase, did2.database.sqlitedb.searchEdgesTakesAllNames());
 end
 
 function edgesMatchSearch(testCase, q, names)
