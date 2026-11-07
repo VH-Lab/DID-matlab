@@ -396,6 +396,7 @@ for recheck = [false true]
     verifyEqual(testCase, {r.doc_id}, {a.get('base.id'), b.get('base.id')});
     ax = r(1).values{1};
     if isstruct(ax); ax = num2cell(ax); end
+    ax = reshape(ax, 1, []);   % either orientation: the shapes are not rebuilt
     verifyEqual(testCase, cellfun(@(e) e.name, ax, 'UniformOutput', false), {'x', 'y'}, ...
         sprintf('axes names (rebuilt %d)', recheck));
     verifyEqual(testCase, cellfun(@(e) double(e.size), ax), [10 20], ...
