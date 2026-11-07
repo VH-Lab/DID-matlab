@@ -328,9 +328,7 @@ classdef sqlitedb < handle
         function doc = get(obj, idOrDoc)
             % get - fetch a did2.document for the given id.
             id = obj.coerceId(idOrDoc);
-            obj.ensureConnection();
-            row = mksqlite(obj.dbid, ...
-                'SELECT body FROM documents WHERE id = ?', id);
+            row = obj.verifiedRead('SELECT body FROM documents WHERE id = ?', {id});
             if isempty(row)
                 error('did2:database:missingDocument', ...
                     'No document with id "%s".', id);
@@ -392,8 +390,7 @@ classdef sqlitedb < handle
                 'PresentClasses', obj.presentClasses());
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
-            obj.ensureConnection();
-            rows = mksqlite(obj.dbid, sql, params{:});
+            rows = obj.verifiedRead(sql, params);
             % EXACT (compileQuery): the SQL matches exactly what the
             % evaluator matches, so the in-memory recheck is skipped. It was
             % about half the cost of reading a migrated NDI session
@@ -437,8 +434,7 @@ classdef sqlitedb < handle
                 'FROM documents JOIN depends_on edge_out ON edge_out.doc_id = documents.id ' ...
                 'WHERE (' whereSQL ') AND edge_out.name IN (SELECT value FROM json_each(?)) ' ...
                 'ORDER BY documents.rowid ASC, edge_out.rowid ASC'];
-            obj.ensureConnection();
-            rows = mksqlite(obj.dbid, sql, params{:}, jsonencode(names));
+            rows = obj.verifiedRead(sql, [params, {jsonencode(names)}]);
             edges = struct('doc_id', {}, 'name', {}, 'document_id', {});
             if isempty(rows)
                 return;
@@ -547,10 +543,9 @@ classdef sqlitedb < handle
                 end
                 return;
             end
-            obj.ensureConnection();
-            hits = mksqlite(obj.dbid, ['SELECT documents.id AS doc_id, documents.classname AS classname, ' ...
+            hits = obj.verifiedRead(['SELECT documents.id AS doc_id, documents.classname AS classname, ' ...
                 'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp ' ...
-                'FROM documents WHERE ' whereSQL ' ORDER BY documents.rowid ASC'], params{:});
+                'FROM documents WHERE ' whereSQL ' ORDER BY documents.rowid ASC'], params);
             if isempty(hits)
                 return;
             end
@@ -756,6 +751,46 @@ classdef sqlitedb < handle
             catch
                 tf = false;
             end
+        end
+
+        function rows = verifiedRead(obj, sql, params)
+            % verifiedRead - run a SELECT on THIS file's connection, checking
+            % the connection in the same round trip.
+            %
+            % ensureConnection checks with its own `PRAGMA database_list`
+            % before every operation, which doubled the SQLite round trips
+            % of a read (NDI-matlab run 42323890088: 1,385 of 2,805 mksqlite
+            % calls in one getprobes). Here the check rides on the read: the
+            % SELECT also returns the main file (pragma_database_list) and
+            % the answer stands when it is this file. When the read returns
+            % no row, raises (a closed connection), or names another file,
+            % the connection is checked and reopened as ensureConnection
+            % does, and the read is run again. Same answer, one round trip
+            % in the common case.
+            if obj.closedByOwner || isempty(obj.dbid)
+                obj.ensureConnection();
+            end
+            vsql = regexprep(sql, '^SELECT ', ['SELECT (SELECT file FROM pragma_database_list ' ...
+                'WHERE name = ''main'') AS conn_file_check__, '], 'once');
+            ok = true;
+            try
+                rows = mksqlite(obj.dbid, vsql, params{:});
+            catch
+                ok = false;
+            end
+            if ok && ~isempty(rows) && strcmp(char(rows(1).conn_file_check__), obj.connFile)
+                rows = rmfield(rows, 'conn_file_check__');
+                return;
+            end
+            if ok && isempty(rows) && obj.ownsConnection()
+                % no row, and the connection is this file's: the empty answer
+                if isstruct(rows) && isfield(rows, 'conn_file_check__')
+                    rows = rmfield(rows, 'conn_file_check__');
+                end
+                return;
+            end
+            obj.ensureConnection();
+            rows = mksqlite(obj.dbid, sql, params{:});
         end
 
         function ensureConnection(obj)
