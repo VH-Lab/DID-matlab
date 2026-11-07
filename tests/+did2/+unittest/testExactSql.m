@@ -319,11 +319,11 @@ a = a.set('demoArray.axes', struct('name', {'x', 'y', 'z'}, 'unit', {'deg', '', 
 db.add({a});
 q = did2.query('base.name', 'exact_string', 'n3');
 verifyTrue(testCase, db.testHookIsExact(q));
-paths = {'demoArray.axes[*].unit', 'demoArray.axes[*].size', 'base.name'};
+paths = {'demoArray.axes[*].unit', 'demoArray.axes[*].size', 'base.name', 'document_class.class_name'};
 for recheck = [false true]
     db.testHookAlwaysRecheck(recheck);   % true: the decoded route
     r = db.searchValues(q, paths);
-    verifyEqual(testCase, r.values, {'deg', 10, 'n3'}, sprintf('first element (decoded %d)', recheck));
+    verifyEqual(testCase, r.values, {'deg', 10, 'n3', 'demoArray'}, sprintf('first element (decoded %d)', recheck));
     r = db.searchValues(q, paths, 'AllElements', true);
     verifyEqual(testCase, r.values{1}, {'deg', '', 'um'}, sprintf('every unit (decoded %d)', recheck));
     verifyEqual(testCase, r.values{2}, {10, 20, 30}, sprintf('every size (decoded %d)', recheck));

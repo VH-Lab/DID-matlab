@@ -474,6 +474,9 @@ classdef sqlitedb < handle
             %   ([] where none). A path with one `[*]` level
             %   ('term.value[*].node') gives its array's FIRST element's value.
             %
+            %   The path 'document_class.class_name' is read from the
+            %   documents table's classname column.
+            %
             %   ROWS = db.searchValues(Q, PATHS, 'AllElements', true) gives,
             %   for each `[*]` path, a 1xM cell of every element's value, in
             %   element order ('' / [] for an element without one), M the
@@ -510,6 +513,11 @@ classdef sqlitedb < handle
             where = repmat({''}, 1, numel(paths));
             for j = 1:numel(paths)
                 aff = '';
+                if strcmp(paths{j}, 'document_class.class_name')
+                    % the documents table's classname column
+                    where{j} = 'c'; kinds{j} = 'text';
+                    continue;
+                end
                 if isa(m, 'containers.Map') && isKey(m, paths{j})
                     where{j} = 's'; aff = upper(char(m(paths{j})));
                 elseif isa(am, 'containers.Map') && isKey(am, paths{j}) ...
@@ -540,13 +548,14 @@ classdef sqlitedb < handle
                 return;
             end
             obj.ensureConnection();
-            hits = mksqlite(obj.dbid, ['SELECT documents.id AS doc_id, ' ...
+            hits = mksqlite(obj.dbid, ['SELECT documents.id AS doc_id, documents.classname AS classname, ' ...
                 'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp ' ...
                 'FROM documents WHERE ' whereSQL ' ORDER BY documents.rowid ASC'], params{:});
             if isempty(hits)
                 return;
             end
             ids = cellfun(@char, {hits.doc_id}, 'UniformOutput', false);
+            isC = strcmp(where, 'c');
             isS = strcmp(where, 's');
             isA = strcmp(where, 'a');
             sv = struct('doc_id', {}, 'path', {}, 'value_text', {}, 'value_num', {});
@@ -613,6 +622,9 @@ classdef sqlitedb < handle
                     v = byDoc(id);
                 else
                     v = missing;
+                end
+                if any(isC) && ~(ischar(stamp) && strcmp(stamp, 'did_v1'))
+                    v(isC) = {char(hits(k).classname)};
                 end
                 if opts.AllElements
                     % pad each array to the largest index among the paths of
