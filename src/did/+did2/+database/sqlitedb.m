@@ -608,6 +608,156 @@ classdef sqlitedb < handle
             end
         end
 
+        function rows = searchJson(obj, q, paths)
+            % searchJson - parts of the documents matching a query, decoded
+            % from their stored JSON without rebuilding the documents.
+            %
+            %   ROWS = db.searchJson(Q, PATHS) returns a struct array, one
+            %   element per document search(Q) returns, in its order, with
+            %   fields doc_id and values: a 1xN cell, the value at each of
+            %   the N dot-paths in PATHS (no `[*]`), as jsondecode reads that
+            %   part of the stored body ([] where the document has none).
+            %
+            %   The values are NOT rehydrated: an array of structs may come
+            %   back as a struct array or a cell, a number list as a column,
+            %   a one-element list as a scalar -- jsondecode's shapes, not
+            %   the MATLAB shapes search's documents are rebuilt to
+            %   (did2.schema.cache/rehydrate). For a reader that only looks
+            %   at leaf values and accepts either shape (NDI's probe wiring
+            %   reader, ndi.vintage.wiredDeviceString). Rebuilding was most of
+            %   the cost of reading a document (NDI-matlab run 42334220421:
+            %   rehydrate 5.05 s of fromJSON's 6.32 s for 15,657 documents).
+            %
+            %   When Q is EXACT (compileQuery) the bodies are read with one
+            %   json_extract per document and no recheck. A did_v1 match,
+            %   and every match of an inexact Q, is read and rechecked as
+            %   search does, and its values are taken from the rebuilt
+            %   document.
+            arguments
+                obj
+                q (1,1) did2.query
+                paths
+            end
+            paths = reshape(cellstr(paths), 1, []);
+            if any(contains(paths, '['))
+                error('did2:sqlitedb:searchJsonPath', ...
+                    'searchJson takes plain dot-paths (no array index): %s', strjoin(paths, ', '));
+            end
+            q = obj.resolveNested(q);
+            [whereSQL, params, exact] = did2.database.compileQuery(q, ...
+                'QueryablePaths', obj.compileScalarPaths(), ...
+                'QueryableArrayPaths', obj.compileArrayPaths(), ...
+                'PresentClasses', obj.presentClasses());
+            rows = struct('doc_id', {}, 'values', {});
+            if ~exact || obj.alwaysRecheck
+                docs = obj.search(q);
+                for k = 1:numel(docs)
+                    rows(end+1) = struct('doc_id', char(docs{k}.get('base.id')), ...
+                        'values', {did2.database.sqlitedb.structPaths(docs{k}.toStruct(), paths)}); %#ok<AGROW>
+                end
+                return;
+            end
+            % json_extract with several paths returns one JSON array of
+            % their values; base.id (always text) leads it, so jsondecode
+            % always gives a cell, whatever the values
+            sel = strjoin(cellfun(@(p) ['''$.' p ''''], paths, 'UniformOutput', false), ', ');
+            hits = obj.verifiedRead(['SELECT documents.id AS doc_id, ' ...
+                'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp, ' ...
+                'json_extract(documents.body, ''$.base.id'', ' sel ') AS vals ' ...
+                'FROM documents WHERE ' whereSQL ' ORDER BY documents.rowid ASC'], params);
+            for k = 1:numel(hits)
+                id = char(hits(k).doc_id);
+                stamp = hits(k).stamp;
+                if ischar(stamp) && strcmp(stamp, 'did_v1')
+                    d = obj.get(id);
+                    if ~q.matches(d)
+                        continue;
+                    end
+                    v = did2.database.sqlitedb.structPaths(d.toStruct(), paths);
+                else
+                    v = jsondecode(char(hits(k).vals));
+                    v = reshape(v(2:end), 1, []);
+                end
+                rows(end+1) = struct('doc_id', id, 'values', {v}); %#ok<AGROW>
+            end
+        end
+
+        function [found, sid] = sessionOfId(obj, id)
+            % sessionOfId - is there a document with this id, and its session.
+            %
+            %   [FOUND, SID] = db.sessionOfId(ID): FOUND is true when the
+            %   database holds a document with base.id ID (what get(ID)
+            %   finds); SID is its documents.session_id column, which add
+            %   fills from did2.schema.cache.sessionIdOf (the column the
+            %   compiled `base.session_id` predicate reads). One query, no
+            %   decode: for a caller that only asks whether a document of a
+            %   session exists (NDI's ndi.element/id; NDI-matlab run
+            %   42336070408: 612 such checks, each a compiled search).
+            arguments
+                obj
+                id
+            end
+            sid = '';
+            rows = obj.verifiedRead(['SELECT documents.id AS doc_id, ' ...
+                'documents.session_id AS sid FROM documents WHERE documents.id = ?'], {char(id)});
+            found = ~isempty(rows);
+            if found && ischar(rows(1).sid)
+                sid = rows(1).sid;
+            end
+        end
+
+        function rows = jsonById(obj, ids, paths)
+            % jsonById - documents by id, parts of each decoded but not rebuilt.
+            %
+            %   ROWS = db.jsonById(IDS, PATHS): one row per id in IDS that
+            %   the database holds, in IDS order (each id once), with fields
+            %   doc_id, session_id (the documents.session_id column) and
+            %   values, as searchJson gives them: the value at each plain
+            %   dot-path of PATHS as jsondecode reads it from the stored body,
+            %   not rebuilt. A did_v1 document's values are taken from the
+            %   rebuilt document. Read by key with one query and no query to
+            %   compile: NDI read element entities as an `or` of 200 base.id
+            %   tests (NDI-matlab run 42336070408: 1,275 query translations
+            %   in one getelements).
+            arguments
+                obj
+                ids
+                paths
+            end
+            ids = unique(reshape(cellstr(ids), 1, []), 'stable');
+            paths = reshape(cellstr(paths), 1, []);
+            if any(contains(paths, '['))
+                error('did2:sqlitedb:searchJsonPath', ...
+                    'jsonById takes plain dot-paths (no array index): %s', strjoin(paths, ', '));
+            end
+            rows = struct('doc_id', {}, 'session_id', {}, 'values', {});
+            if isempty(ids)
+                return;
+            end
+            sel = strjoin(cellfun(@(p) ['''$.' p ''''], paths, 'UniformOutput', false), ', ');
+            if ~isempty(sel); sel = [', ' sel]; end
+            hits = obj.verifiedRead(['SELECT documents.id AS doc_id, documents.session_id AS sid, ' ...
+                'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp, ' ...
+                'json_extract(documents.body, ''$.base.id''' sel ') AS vals ' ...
+                'FROM json_each(?) w JOIN documents ON documents.id = w.value ORDER BY w.key'], ...
+                {jsonencode(ids)});
+            for k = 1:numel(hits)
+                id = char(hits(k).doc_id);
+                stamp = hits(k).stamp;
+                sid = '';
+                if ischar(hits(k).sid); sid = hits(k).sid; end
+                if ischar(stamp) && strcmp(stamp, 'did_v1')
+                    v = did2.database.sqlitedb.structPaths(obj.get(id).toStruct(), paths);
+                elseif isempty(paths)
+                    v = cell(1, 0);
+                else
+                    v = jsondecode(char(hits(k).vals));
+                    v = reshape(v(2:end), 1, []);
+                end
+                rows(end+1) = struct('doc_id', id, 'session_id', sid, 'values', {v}); %#ok<AGROW>
+            end
+        end
+
         function ids = searchIds(obj, q)
             % searchIds - return the ids of documents matching a query.
             arguments
@@ -2119,6 +2269,24 @@ classdef sqlitedb < handle
                 for d = find(Mj > 0).'
                     V{d, j} = repmat({did2.database.sqlitedb.missingOf(kinds{j})}, 1, Mj(d));
                 end
+            end
+        end
+
+        function v = structPaths(s, paths)
+            % searchJson's values from a rebuilt document's struct S
+            v = cell(1, numel(paths));
+            for j = 1:numel(paths)
+                parts = strsplit(paths{j}, '.');
+                x = s;
+                for i = 1:numel(parts)
+                    if isstruct(x) && isscalar(x) && isfield(x, parts{i})
+                        x = x.(parts{i});
+                    else
+                        x = [];
+                        break;
+                    end
+                end
+                v{j} = x;
             end
         end
 
