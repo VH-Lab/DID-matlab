@@ -462,31 +462,40 @@ classdef sqlitedb < handle
                 'document_id', cellfun(@char, {rows.document_id}, 'UniformOutput', false));
         end
 
-        function rows = searchValues(obj, q, paths)
-            % searchValues - text values of the documents matching a query,
-            % read from the queryable scalar sidecar without decoding bodies.
+        function rows = searchValues(obj, q, paths, opts)
+            % searchValues - field values of the documents matching a query,
+            % read from the queryable sidecars without decoding bodies.
             %
             %   ROWS = db.searchValues(Q, PATHS) returns a struct array, one
             %   element per document search(Q) returns, in its order, with
-            %   fields doc_id and values: a 1xN cell, the text at each of the
-            %   N dot-paths in PATHS ('' where the document has none). A path
-            %   with a `[*]` level ('term.value[*].node') gives the text of
-            %   the array's FIRST element.
+            %   fields doc_id and values: a 1xN cell, the value at each of
+            %   the N dot-paths in PATHS. A TEXT path gives char ('' where
+            %   the document has none); a REAL or INTEGER path gives a double
+            %   ([] where none). A path with one `[*]` level
+            %   ('term.value[*].node') gives its array's FIRST element's value.
+            %
+            %   ROWS = db.searchValues(Q, PATHS, 'AllElements', true) gives,
+            %   for each `[*]` path, a 1xM cell of every element's value, in
+            %   element order ('' / [] for an element without one), M the
+            %   largest element index among that document's requested paths
+            %   with the same array.
             %
             %   The bodies are not decoded when Q is EXACT (compileQuery) and
-            %   every path is a queryable scalar path of TEXT affinity: the
-            %   queryable_scalar_elem sidecar holds, per document, the text
-            %   json_extract reads at that path (no row for an empty value,
-            %   read back as ''). A did_v1 match, a match of an inexact Q, and
-            %   any path that is not such a path, are answered from the
-            %   decoded, rechecked document as search does, where a value that
-            %   is not text reads as ''. For readers that need a few short
-            %   text fields of many documents (NDI's migrated-element reads;
-            %   Jess Haley, 2026-11-06: "Speed can't be slower than v1").
+            %   every path is a queryable path (queryable_scalar_elem, or
+            %   queryable_array_elem for a `[*]` path) of TEXT, REAL or
+            %   INTEGER affinity: the sidecars hold, per document (and per
+            %   element), the value json_extract reads there; an empty value
+            %   or NaN has no row and reads as missing. A did_v1 match, a
+            %   match of an inexact Q, and any other path, are answered from
+            %   the decoded, rechecked document as search does. For readers
+            %   that need a few fields of many documents (NDI's migrated-
+            %   session reads; Jess Haley, 2026-11-06: "Speed can't be
+            %   slower than v1").
             arguments
                 obj
                 q (1,1) did2.query
                 paths
+                opts.AllElements (1,1) logical = false
             end
             paths = reshape(cellstr(paths), 1, []);
             q = obj.resolveNested(q);
@@ -496,18 +505,37 @@ classdef sqlitedb < handle
                 'PresentClasses', obj.presentClasses());
             m = obj.compileScalarPaths();
             am = obj.compileArrayPaths();
-            isScalarText = @(p) isa(m, 'containers.Map') && isKey(m, p) ...
-                && strcmpi(char(m(p)), 'TEXT');
-            isArrayText = @(p) isa(am, 'containers.Map') && isKey(am, p) ...
-                && strcmpi(char(am(p)), 'TEXT');
-            fromArray = cellfun(@(p) ~isScalarText(p) && isArrayText(p), paths);
-            textPaths = all(cellfun(@(p) isScalarText(p) || isArrayText(p), paths));
+            % each path: its sidecar ('s' scalar, 'a' array, '' none) and kind
+            kinds = repmat({''}, 1, numel(paths));   % 'text' | 'num'
+            where = repmat({''}, 1, numel(paths));
+            for j = 1:numel(paths)
+                aff = '';
+                if isa(m, 'containers.Map') && isKey(m, paths{j})
+                    where{j} = 's'; aff = upper(char(m(paths{j})));
+                elseif isa(am, 'containers.Map') && isKey(am, paths{j}) ...
+                        && numel(strfind(paths{j}, '[*]')) == 1
+                    where{j} = 'a'; aff = upper(char(am(paths{j})));
+                end
+                switch aff
+                    case 'TEXT'
+                        kinds{j} = 'text';
+                    case {'REAL', 'INTEGER'}
+                        kinds{j} = 'num';
+                    otherwise
+                        where{j} = '';
+                end
+            end
+            for j = 1:numel(paths)
+                if isempty(kinds{j})   % read from the document: by its shape
+                    kinds{j} = 'any';
+                end
+            end
             rows = struct('doc_id', {}, 'values', {});
-            if ~exact || ~textPaths || obj.alwaysRecheck
+            if ~exact || any(cellfun(@isempty, where)) || obj.alwaysRecheck
                 docs = obj.search(q);
                 for k = 1:numel(docs)
                     rows(end+1) = struct('doc_id', char(docs{k}.get('base.id')), ...
-                        'values', {obj.textValuesOf(docs{k}, paths)}); %#ok<AGROW>
+                        'values', {obj.valuesOf(docs{k}, paths, kinds, opts.AllElements)}); %#ok<AGROW>
                 end
                 return;
             end
@@ -519,34 +547,56 @@ classdef sqlitedb < handle
                 return;
             end
             ids = cellfun(@char, {hits.doc_id}, 'UniformOutput', false);
-            vals = struct('doc_id', {}, 'path', {}, 'value_text', {});
-            if any(~fromArray)
-                vals = mksqlite(obj.dbid, ['SELECT doc_id, path, value_text FROM queryable_scalar_elem ' ...
-                    'WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
+            isS = strcmp(where, 's');
+            isA = strcmp(where, 'a');
+            sv = struct('doc_id', {}, 'path', {}, 'value_text', {}, 'value_num', {});
+            if any(isS)
+                sv = mksqlite(obj.dbid, ['SELECT doc_id, path, value_text, value_num ' ...
+                    'FROM queryable_scalar_elem WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
                     'AND path IN (SELECT value FROM json_each(?))'], jsonencode(ids), ...
-                    jsonencode(paths(~fromArray)));
+                    jsonencode(paths(isS)));
             end
-            if any(fromArray)
-                % an array path ('a.b[*].c') gives its FIRST element's text
-                % (elem_index 1): the array sidecar keeps one row per
-                % element that has a non-empty value
-                more = mksqlite(obj.dbid, ['SELECT doc_id, path, value_text FROM queryable_array_elem ' ...
-                    'WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
-                    'AND path IN (SELECT value FROM json_each(?)) AND elem_index = 1'], ...
-                    jsonencode(ids), jsonencode(paths(fromArray)));
-                vals = [reshape(vals, 1, []), reshape(more, 1, [])];
+            av = struct('doc_id', {}, 'path', {}, 'elem_index', {}, 'value_text', {}, 'value_num', {});
+            if any(isA)
+                sql = ['SELECT doc_id, path, elem_index, value_text, value_num ' ...
+                    'FROM queryable_array_elem WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
+                    'AND path IN (SELECT value FROM json_each(?))'];
+                if ~opts.AllElements
+                    sql = [sql ' AND elem_index = 1'];
+                end
+                av = mksqlite(obj.dbid, sql, jsonencode(ids), jsonencode(paths(isA)));
+            end
+            missing = cell(1, numel(paths));
+            for j = 1:numel(paths)
+                if strcmp(kinds{j}, 'num'); missing{j} = []; else; missing{j} = ''; end
+                if isA(j) && opts.AllElements; missing{j} = {}; end
             end
             byDoc = containers.Map('KeyType', 'char', 'ValueType', 'any');
-            for k = 1:numel(vals)
-                d = char(vals(k).doc_id);
-                if ~isKey(byDoc, d)
-                    byDoc(d) = repmat({''}, 1, numel(paths));
-                end
+            for k = 1:numel(sv)
+                d = char(sv(k).doc_id);
+                if ~isKey(byDoc, d); byDoc(d) = missing; end
                 v = byDoc(d);
-                j = find(strcmp(paths, char(vals(k).path)), 1);
-                t = vals(k).value_text;
-                if ischar(t)
-                    v{j} = t;
+                j = find(strcmp(paths, char(sv(k).path)), 1);
+                v{j} = did2.database.sqlitedb.sidecarValue(sv(k), kinds{j});
+                byDoc(d) = v;
+            end
+            maxIdx = containers.Map('KeyType', 'char', 'ValueType', 'double');
+            for k = 1:numel(av)
+                d = char(av(k).doc_id);
+                if ~isKey(byDoc, d); byDoc(d) = missing; end
+                v = byDoc(d);
+                j = find(strcmp(paths, char(av(k).path)), 1);
+                x = did2.database.sqlitedb.sidecarValue(av(k), kinds{j});
+                if opts.AllElements
+                    i = double(av(k).elem_index);
+                    list = v{j};
+                    list(numel(list)+1:i) = {did2.database.sqlitedb.missingOf(kinds{j})};
+                    list{i} = x;
+                    v{j} = list;
+                    key = [d '|' strtok(paths{j}, '[')];
+                    if ~isKey(maxIdx, key) || maxIdx(key) < i; maxIdx(key) = i; end
+                else
+                    v{j} = x;
                 end
                 byDoc(d) = v;
             end
@@ -558,11 +608,21 @@ classdef sqlitedb < handle
                     if ~q.matches(d)
                         continue;
                     end
-                    v = obj.textValuesOf(d, paths);
+                    v = obj.valuesOf(d, paths, kinds, opts.AllElements);
                 elseif isKey(byDoc, id)
                     v = byDoc(id);
                 else
-                    v = repmat({''}, 1, numel(paths));
+                    v = missing;
+                end
+                if opts.AllElements
+                    % pad each array to the largest index among the paths of
+                    % the same array
+                    for j = find(isA)
+                        key = [id '|' strtok(paths{j}, '[')];
+                        if isKey(maxIdx, key) && iscell(v{j}) && numel(v{j}) < maxIdx(key)
+                            v{j}(numel(v{j})+1:maxIdx(key)) = {did2.database.sqlitedb.missingOf(kinds{j})};
+                        end
+                    end
                 end
                 rows(end+1) = struct('doc_id', id, 'values', {v}); %#ok<AGROW>
             end
@@ -1770,18 +1830,33 @@ classdef sqlitedb < handle
             end
         end
 
-        function v = textValuesOf(~, d, paths)
-            % the text at each path of document D ('' where it has none or a
-            % value that is not text), as searchValues reports it
-            v = repmat({''}, 1, numel(paths));
+        function v = valuesOf(~, d, paths, kinds, allElements)
+            % the value at each path of document D, as searchValues reports
+            % it: text, a number, or missing ('' / []); for a `[*]` path the
+            % first element's, or every element's when ALLELEMENTS
+            v = cell(1, numel(paths));
             s = d.toStruct();
             for j = 1:numel(paths)
-                x = did2.query.resolvePath(s, paths{j});
-                if contains(paths{j}, '[*]') && ~isempty(x)
-                    x = x(1);   % an array path: its first element
-                end
-                if isscalar(x) && (ischar(x{1}) || (isstring(x{1}) && isscalar(x{1})))
-                    v{j} = char(x{1});
+                p = paths{j};
+                if contains(p, '[*]')
+                    star = strfind(p, '[*]');
+                    parent = p(1:star(1) + 2);
+                    sub = p(star(1) + 4:end);
+                    elems = did2.query.resolvePath(s, parent);
+                    list = cell(1, numel(elems));
+                    for i = 1:numel(elems)
+                        list{i} = did2.database.sqlitedb.leafOf( ...
+                            did2.query.resolvePath(elems{i}, sub), kinds{j});
+                    end
+                    if allElements
+                        v{j} = list;
+                    elseif isempty(list)
+                        v{j} = did2.database.sqlitedb.missingOf(kinds{j});
+                    else
+                        v{j} = list{1};
+                    end
+                else
+                    v{j} = did2.database.sqlitedb.leafOf(did2.query.resolvePath(s, p), kinds{j});
                 end
             end
         end
@@ -1974,6 +2049,35 @@ classdef sqlitedb < handle
     end
 
     methods (Static, Access = private)
+        function x = missingOf(kind)
+            % searchValues' missing value: [] for a number, '' otherwise
+            if strcmp(kind, 'num'); x = []; else; x = ''; end
+        end
+
+        function x = leafOf(values, kind)
+            % one resolved value as searchValues reports it
+            x = did2.database.sqlitedb.missingOf(kind);
+            if ~isscalar(values); return; end
+            y = values{1};
+            if (strcmp(kind, 'text') || strcmp(kind, 'any')) && (ischar(y) || (isstring(y) && isscalar(y)))
+                x = char(y);
+            elseif (strcmp(kind, 'num') || strcmp(kind, 'any')) && (isnumeric(y) || islogical(y)) ...
+                    && isscalar(y) && ~isnan(double(y))
+                x = double(y);
+            end
+        end
+
+        function x = sidecarValue(row, kind)
+            % a sidecar row's value as searchValues reports it
+            if strcmp(kind, 'num')
+                x = row.value_num;
+                if ~(isnumeric(x) && isscalar(x)); x = []; else; x = double(x); end
+            else
+                x = row.value_text;
+                if ~ischar(x); x = ''; end
+            end
+        end
+
         function [v, isNull] = jsonExtractValue(x)
             % What json_extract(body, '$.path') returns for a field whose
             % MATLAB value is X, in the body as jsonencode writes it:

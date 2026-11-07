@@ -306,3 +306,28 @@ check(testCase, did2.query('', 'isa', 'demoA') & ...
      did2.query('oldblock.variable.name', 'exact_string', 'class label')), true);
 check(testCase, did2.query('demoA.tags', 'exact_string', 'green'), false);
 end
+
+% ---- searchValues: numbers and every element of an array ----
+
+function testSearchValuesNumbersAndAllElements(testCase)
+db = testCase.TestData.db;
+a = did2.document.blank('demoArray');
+a = a.set('base.session_id', 'sessN');
+a = a.set('base.name', 'n3');
+a = a.set('demoArray.axes', struct('name', {'x', 'y', 'z'}, 'unit', {'deg', '', 'um'}, ...
+    'size', {10, 20, 30}));
+db.add({a});
+q = did2.query('base.name', 'exact_string', 'n3');
+verifyTrue(testCase, db.testHookIsExact(q));
+paths = {'demoArray.axes[*].unit', 'demoArray.axes[*].size', 'base.name'};
+for recheck = [false true]
+    db.testHookAlwaysRecheck(recheck);   % true: the decoded route
+    r = db.searchValues(q, paths);
+    verifyEqual(testCase, r.values, {'deg', 10, 'n3'}, sprintf('first element (decoded %d)', recheck));
+    r = db.searchValues(q, paths, 'AllElements', true);
+    verifyEqual(testCase, r.values{1}, {'deg', '', 'um'}, sprintf('every unit (decoded %d)', recheck));
+    verifyEqual(testCase, r.values{2}, {10, 20, 30}, sprintf('every size (decoded %d)', recheck));
+    verifyEqual(testCase, r.values{3}, 'n3');
+end
+db.testHookAlwaysRecheck(false);
+end
