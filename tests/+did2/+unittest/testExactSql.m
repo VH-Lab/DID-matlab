@@ -331,3 +331,46 @@ for recheck = [false true]
 end
 db.testHookAlwaysRecheck(false);
 end
+
+function testSearchValuesManyDocumentsPadded(testCase)
+% several documents in one read: each gets its own rows, in search order; a
+% trailing element without a value is padded to the array's length; a
+% document without the array reads as {} (searchValues places rows by
+% position, NDI-matlab run 42325912635)
+db = testCase.TestData.db;
+a = did2.document.blank('demoArray');
+a = a.set('base.session_id', 'sessP');
+a = a.set('base.name', 'p1');
+a = a.set('demoArray.axes', struct('name', {'x', 'y'}, 'unit', {'deg', ''}, 'size', {1, 2}));
+b = did2.document.blank('demoArray');
+b = b.set('base.session_id', 'sessP');
+b = b.set('base.name', 'p2');
+c = did2.document.blank('demoArray');
+c = c.set('base.session_id', 'sessP');
+c = c.set('base.name', 'p3');
+c = c.set('demoArray.axes', struct('name', {'u'}, 'unit', {'mm'}, 'size', {7}));
+db.add({a, b, c});
+q = did2.query('base.session_id', 'exact_string', 'sessP');
+verifyTrue(testCase, db.testHookIsExact(q));
+paths = {'demoArray.axes[*].unit', 'base.name', 'demoArray.axes[*].size'};
+% b keeps the blank document's axes (whatever the template holds): only
+% the two routes' agreement is checked for it
+got = cell(1, 2);
+gotAll = cell(1, 2);
+for recheck = [false true]
+    db.testHookAlwaysRecheck(recheck);
+    r = db.searchValues(q, paths, 'AllElements', true);
+    verifyEqual(testCase, {r.doc_id}, cellfun(@(x) x.get('base.id'), {a, b, c}, 'UniformOutput', false));
+    verifyEqual(testCase, r(1).values, {{'deg', ''}, 'p1', {1, 2}}, sprintf('p1 (decoded %d)', recheck));
+    verifyEqual(testCase, r(2).values{2}, 'p2');
+    verifyEqual(testCase, r(3).values, {{'mm'}, 'p3', {7}}, sprintf('p3 (decoded %d)', recheck));
+    gotAll{recheck + 1} = cellfun(@numel, r(2).values([1 3]));
+    r = db.searchValues(q, paths);
+    verifyEqual(testCase, r(1).values, {'deg', 'p1', 1});
+    verifyEqual(testCase, r(3).values, {'mm', 'p3', 7});
+    got{recheck + 1} = r;
+end
+verifyEqual(testCase, got{1}, got{2}, 'the sidecar and decoded routes agree');
+verifyEqual(testCase, gotAll{1}, gotAll{2}, 'the routes agree on the blank document''s element count');
+db.testHookAlwaysRecheck(false);
+end

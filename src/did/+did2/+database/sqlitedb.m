@@ -553,56 +553,41 @@ classdef sqlitedb < handle
             isC = strcmp(where, 'c');
             isS = strcmp(where, 's');
             isA = strcmp(where, 'a');
-            sv = struct('doc_id', {}, 'path', {}, 'value_text', {}, 'value_num', {});
-            if any(isS)
-                sv = mksqlite(obj.dbid, ['SELECT doc_id, path, value_text, value_num ' ...
-                    'FROM queryable_scalar_elem WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
-                    'AND path IN (SELECT value FROM json_each(?))'], jsonencode(ids), ...
-                    jsonencode(paths(isS)));
-            end
-            av = struct('doc_id', {}, 'path', {}, 'elem_index', {}, 'value_text', {}, 'value_num', {});
-            if any(isA)
-                sql = ['SELECT doc_id, path, elem_index, value_text, value_num ' ...
-                    'FROM queryable_array_elem WHERE doc_id IN (SELECT value FROM json_each(?)) ' ...
-                    'AND path IN (SELECT value FROM json_each(?))'];
-                if ~opts.AllElements
-                    sql = [sql ' AND elem_index = 1'];
-                end
-                av = mksqlite(obj.dbid, sql, jsonencode(ids), jsonencode(paths(isA)));
-            end
+            % The sidecar rows come back keyed by POSITION, not by text: SQL
+            % joins each row to its document's index in IDS and its path's
+            % index (json_each keys) and orders them, so the rows are placed
+            % into a documents x paths cell by subscript, with no per-row
+            % lookup (NDI-matlab run 42325912635: the per-row map over ~25,000
+            % body dimension rows was most of ingestedArchives' 9.8 s).
             missing = cell(1, numel(paths));
             for j = 1:numel(paths)
-                if strcmp(kinds{j}, 'num'); missing{j} = []; else; missing{j} = ''; end
+                missing{j} = did2.database.sqlitedb.missingOf(kinds{j});
                 if isA(j) && opts.AllElements; missing{j} = {}; end
             end
-            byDoc = containers.Map('KeyType', 'char', 'ValueType', 'any');
-            for k = 1:numel(sv)
-                d = char(sv(k).doc_id);
-                if ~isKey(byDoc, d); byDoc(d) = missing; end
-                v = byDoc(d);
-                j = find(strcmp(paths, char(sv(k).path)), 1);
-                v{j} = did2.database.sqlitedb.sidecarValue(sv(k), kinds{j});
-                byDoc(d) = v;
+            V = repmat(missing, numel(ids), 1);
+            idsJ = jsonencode(ids);
+            if any(isS)
+                sv = mksqlite(obj.dbid, ['SELECT d.key AS di, p.key AS pj, 1 AS elem_index, ' ...
+                    'COALESCE(s.value_text, '''') AS value_text, ' ...
+                    'COALESCE(s.value_num, 0) AS value_num, (s.value_num IS NULL) AS num_null ' ...
+                    'FROM json_each(?) d JOIN queryable_scalar_elem s ON s.doc_id = d.value ' ...
+                    'JOIN json_each(?) p ON p.value = s.path'], idsJ, jsonencode(paths(isS)));
+                V = did2.database.sqlitedb.placeRows(V, sv, find(isS), kinds, false, {});
             end
-            maxIdx = containers.Map('KeyType', 'char', 'ValueType', 'double');
-            for k = 1:numel(av)
-                d = char(av(k).doc_id);
-                if ~isKey(byDoc, d); byDoc(d) = missing; end
-                v = byDoc(d);
-                j = find(strcmp(paths, char(av(k).path)), 1);
-                x = did2.database.sqlitedb.sidecarValue(av(k), kinds{j});
-                if opts.AllElements
-                    i = double(av(k).elem_index);
-                    list = v{j};
-                    list(numel(list)+1:i) = {did2.database.sqlitedb.missingOf(kinds{j})};
-                    list{i} = x;
-                    v{j} = list;
-                    key = [d '|' strtok(paths{j}, '[')];
-                    if ~isKey(maxIdx, key) || maxIdx(key) < i; maxIdx(key) = i; end
-                else
-                    v{j} = x;
+            if any(isA)
+                sql = ['SELECT d.key AS di, p.key AS pj, a.elem_index AS elem_index, ' ...
+                    'COALESCE(a.value_text, '''') AS value_text, ' ...
+                    'COALESCE(a.value_num, 0) AS value_num, (a.value_num IS NULL) AS num_null ' ...
+                    'FROM json_each(?) d JOIN queryable_array_elem a ON a.doc_id = d.value ' ...
+                    'JOIN json_each(?) p ON p.value = a.path'];
+                if ~opts.AllElements
+                    sql = [sql ' WHERE a.elem_index = 1'];
                 end
-                byDoc(d) = v;
+                av = mksqlite(obj.dbid, [sql ' ORDER BY d.key, p.key, a.elem_index'], ...
+                    idsJ, jsonencode(paths(isA)));
+                base = cellfun(@(x) strtok(x, '['), paths, 'UniformOutput', false);
+                base(~isA) = {''};
+                V = did2.database.sqlitedb.placeRows(V, av, find(isA), kinds, opts.AllElements, base);
             end
             for k = 1:numel(hits)
                 id = ids{k};
@@ -613,23 +598,11 @@ classdef sqlitedb < handle
                         continue;
                     end
                     v = obj.valuesOf(d, paths, kinds, opts.AllElements);
-                elseif isKey(byDoc, id)
-                    v = byDoc(id);
                 else
-                    v = missing;
+                    v = V(k, :);
                 end
                 if any(isC) && ~(ischar(stamp) && strcmp(stamp, 'did_v1'))
                     v(isC) = {char(hits(k).classname)};
-                end
-                if opts.AllElements
-                    % pad each array to the largest index among the paths of
-                    % the same array
-                    for j = find(isA)
-                        key = [id '|' strtok(paths{j}, '[')];
-                        if isKey(maxIdx, key) && iscell(v{j}) && numel(v{j}) < maxIdx(key)
-                            v{j}(numel(v{j})+1:maxIdx(key)) = {did2.database.sqlitedb.missingOf(kinds{j})};
-                        end
-                    end
                 end
                 rows(end+1) = struct('doc_id', id, 'values', {v}); %#ok<AGROW>
             end
@@ -2096,6 +2069,59 @@ classdef sqlitedb < handle
     end
 
     methods (Static, Access = private)
+        function V = placeRows(V, r, cols, kinds, allElements, base)
+            % searchValues: place sidecar rows R (fields di and pj, 0-based
+            % positions of the document and the path; elem_index;
+            % value_text; value_num; num_null) into the documents x paths
+            % cell V; COLS maps pj to V's column. With ALLELEMENTS a column
+            % gets, per document, a 1xM cell in element order, M the largest
+            % elem_index among that document's rows on paths of the same
+            % array (BASE{j}, the path before '['), '' / [] where an element
+            % has none; a document with no such row keeps V's value ({}).
+            if isempty(r)
+                return;
+            end
+            di = double([r.di]) + 1;
+            col = reshape(cols(double([r.pj]) + 1), 1, []);
+            texts = {r.value_text};
+            texts(~cellfun(@ischar, texts)) = {''};
+            nums = num2cell(double([r.value_num]));
+            nums(logical([r.num_null])) = {[]};
+            if ~allElements
+                for j = unique(col)
+                    on = col == j;
+                    if strcmp(kinds{j}, 'num'); vals = nums(on); else; vals = texts(on); end
+                    V(sub2ind(size(V), di(on), repmat(j, 1, nnz(on)))) = vals;
+                end
+                return;
+            end
+            ei = double([r.elem_index]);
+            [ub, ~, bi] = unique(base(col));
+            M = accumarray([di(:) bi(:)], ei(:), [size(V, 1) numel(ub)], @max, 0);
+            for j = unique(col)
+                on = col == j;
+                Mj = M(:, strcmp(ub, base{j}));
+                flat = repmat({did2.database.sqlitedb.missingOf(kinds{j})}, 1, sum(Mj));
+                offs = [0; cumsum(Mj(1:end-1))];
+                if strcmp(kinds{j}, 'num'); vals = nums(on); else; vals = texts(on); end
+                flat(reshape(offs(di(on)), 1, []) + ei(on)) = vals;
+                parts = mat2cell(flat, 1, Mj.');
+                has = Mj > 0;
+                V(has, j) = parts(has);
+            end
+            % the other paths of an array a document has rows on are padded
+            % to its M as well
+            for j = find(~cellfun(@isempty, base))
+                if any(col == j); continue; end
+                k = find(strcmp(ub, base{j}));
+                if isempty(k); continue; end
+                Mj = M(:, k);
+                for d = find(Mj > 0).'
+                    V{d, j} = repmat({did2.database.sqlitedb.missingOf(kinds{j})}, 1, Mj(d));
+                end
+            end
+        end
+
         function x = missingOf(kind)
             % searchValues' missing value: [] for a number, '' otherwise
             if strcmp(kind, 'num'); x = []; else; x = ''; end
