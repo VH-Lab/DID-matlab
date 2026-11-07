@@ -408,3 +408,20 @@ end
 db.testHookAlwaysRecheck(false);
 verifyError(testCase, @() db.searchJson(q, {'demoArray.axes[*].name'}), 'did2:sqlitedb:searchJsonPath');
 end
+
+% ---- sessionOfId: a document's existence and session, by key ----
+
+function testSessionOfIdAgreesWithGet(testCase)
+db = testCase.TestData.db;
+a = did2.document.blank('demoArray');
+a = a.set('base.session_id', 'sessK');
+a = a.set('base.name', 'k1');
+db.add({a});
+[found, sid] = db.sessionOfId(a.get('base.id'));
+verifyTrue(testCase, found);
+verifyEqual(testCase, sid, char(did2.schema.cache.sessionIdOf(db.get(a.get('base.id')).toStruct())));
+verifyEqual(testCase, sid, 'sessK');
+[found, sid] = db.sessionOfId('no-such-id');
+verifyFalse(testCase, found);
+verifyEqual(testCase, sid, '');
+end

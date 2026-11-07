@@ -682,6 +682,43 @@ classdef sqlitedb < handle
             end
         end
 
+        function [found, sid] = sessionOfId(obj, id)
+            % sessionOfId - is there a document with this id, and its session.
+            %
+            %   [FOUND, SID] = db.sessionOfId(ID): FOUND is true when the
+            %   database holds a document with base.id ID (what get(ID)
+            %   finds); SID is did2.schema.cache.sessionIdOf of that
+            %   document -- its base.session_id field when the body has one
+            %   (even blank), else the first non-empty `session_id` edge
+            %   (the depends_on sidecar holds only non-empty edges, in the
+            %   document's order), else ''. Read in one query, without
+            %   decoding the document: for a caller that only asks whether a
+            %   document of a session exists (NDI's ndi.element/id; NDI-matlab
+            %   run 42336070408: 612 such checks).
+            arguments
+                obj
+                id
+            end
+            sid = '';
+            rows = obj.verifiedRead(['SELECT documents.id AS doc_id, ' ...
+                'json_type(documents.body, ''$.base.session_id'') AS ftype, ' ...
+                'json_extract(documents.body, ''$.base.session_id'') AS field, ' ...
+                '(SELECT e.document_id FROM depends_on e WHERE e.doc_id = documents.id ' ...
+                'AND e.name = ''session_id'' ORDER BY e.rowid ASC LIMIT 1) AS edge ' ...
+                'FROM documents WHERE documents.id = ?'], {char(id)});
+            found = ~isempty(rows);
+            if ~found
+                return;
+            end
+            if ~isempty(rows(1).ftype) && ischar(rows(1).ftype)
+                % the body has the field (any JSON type, null included)
+                f = rows(1).field;
+                if ischar(f); sid = f; end
+                return;
+            end
+            if ischar(rows(1).edge); sid = rows(1).edge; end
+        end
+
         function ids = searchIds(obj, q)
             % searchIds - return the ids of documents matching a query.
             arguments
