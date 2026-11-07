@@ -207,6 +207,7 @@ queries = {did2.query('', 'isa', 'demoC'), ...                              % ex
     did2.query('demoC.value', 'exact_string', '5')};                          % exact; v1 doc rechecked out
 for k = 1:numel(queries)
     edgesMatchSearch(testCase, queries{k}, {'item1', 'item3'});
+    edgesMatchSearch(testCase, queries{k}, '*');   % every edge, whatever its name
 end
 end
 
@@ -224,7 +225,7 @@ for k = 1:numel(docs)
     for j = 1:numel(d)
         e = d(j);
         if isfield(e, 'document_id'); v = e.document_id; else; v = e.value; end
-        if any(strcmp(e.name, names)) && ~isempty(v)
+        if (isequal(names, '*') || any(strcmp(e.name, names))) && ~isempty(v)
             want(end+1) = struct('doc_id', char(s.base.id), 'name', char(e.name), ...
                 'document_id', char(v)); %#ok<AGROW>
         end

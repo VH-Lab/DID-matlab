@@ -408,7 +408,10 @@ classdef sqlitedb < handle
             %   its depends_on entries whose name is in NAMES (a cellstr), in
             %   the order the document lists them. A document with none of
             %   those edges contributes no row. An entry the sidecar does not
-            %   hold (an empty name or target) is not returned.
+            %   hold (an empty name or target) is not returned. NAMES '*'
+            %   returns every entry the sidecar holds, whatever its name (a
+            %   reader that needs edges whose names it cannot list, such as
+            %   NDI's numbered `time_reference_id_<n>`).
             %
             %   The bodies are not decoded when Q is EXACT (compileQuery):
             %   the SQL then matches exactly what search would return. A
@@ -422,6 +425,8 @@ classdef sqlitedb < handle
                 q (1,1) did2.query
                 names
             end
+            allNames = (ischar(names) || (isstring(names) && isscalar(names))) ...
+                && strcmp(char(names), '*');
             names = reshape(cellstr(names), 1, []);
             q = obj.resolveNested(q);
             [whereSQL, params, exact] = did2.database.compileQuery(q, ...
@@ -432,9 +437,9 @@ classdef sqlitedb < handle
                 'edge_out.document_id AS document_id, ' ...
                 'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp ' ...
                 'FROM documents JOIN depends_on edge_out ON edge_out.doc_id = documents.id ' ...
-                'WHERE (' whereSQL ') AND edge_out.name IN (SELECT value FROM json_each(?)) ' ...
+                'WHERE (' whereSQL ') AND (? OR edge_out.name IN (SELECT value FROM json_each(?))) ' ...
                 'ORDER BY documents.rowid ASC, edge_out.rowid ASC'];
-            rows = obj.verifiedRead(sql, [params, {jsonencode(names)}]);
+            rows = obj.verifiedRead(sql, [params, {double(allNames), jsonencode(names)}]);
             edges = struct('doc_id', {}, 'name', {}, 'document_id', {});
             if isempty(rows)
                 return;
