@@ -196,3 +196,41 @@ verifyEqual(testCase, check(testCase, q, false), {'a2'});
 q = did2.query('', 'isa', 'demoA') | did2.query('demoA.value', 'regexp', 'x');
 check(testCase, q, false);
 end
+
+% ---- searchEdges: the same edges search's documents carry ----
+
+function testSearchEdgesMatchesTheDocumentsOfSearch(testCase)
+ids = testCase.TestData.ids;
+queries = {did2.query('', 'isa', 'demoC'), ...                              % exact
+    did2.query('', 'depends_on', 'item2', {ids.a1, ids.a3}), ...              % exact, v1 doc among them
+    did2.query('demoC.value', 'contains_string', 'c'), ...                    % inexact
+    did2.query('demoC.value', 'exact_string', '5')};                          % exact; v1 doc rechecked out
+for k = 1:numel(queries)
+    edgesMatchSearch(testCase, queries{k}, {'item1', 'item3'});
+end
+end
+
+function edgesMatchSearch(testCase, q, names)
+db = testCase.TestData.db;
+got = db.searchEdges(q, names);
+want = struct('doc_id', {}, 'name', {}, 'document_id', {});
+db.testHookAlwaysRecheck(true);
+docs = db.search(q);
+db.testHookAlwaysRecheck(false);
+for k = 1:numel(docs)
+    s = docs{k}.toStruct();
+    if ~isfield(s, 'depends_on'); continue; end
+    d = s.depends_on;
+    for j = 1:numel(d)
+        e = d(j);
+        if isfield(e, 'document_id'); v = e.document_id; else; v = e.value; end
+        if any(strcmp(e.name, names)) && ~isempty(v)
+            want(end+1) = struct('doc_id', char(s.base.id), 'name', char(e.name), ...
+                'document_id', char(v)); %#ok<AGROW>
+        end
+    end
+end
+verifyEqual(testCase, {got.doc_id}, {want.doc_id}, 'searchEdges: documents or their order');
+verifyEqual(testCase, {got.name}, {want.name}, 'searchEdges: edge names');
+verifyEqual(testCase, {got.document_id}, {want.document_id}, 'searchEdges: targets');
+end
