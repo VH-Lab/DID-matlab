@@ -371,3 +371,36 @@ end
 verifyEqual(testCase, got{1}, got{2}, 'the sidecar and decoded routes agree');
 db.testHookAlwaysRecheck(false);
 end
+
+% ---- searchJson: parts of the stored body, decoded without rebuilding ----
+
+function testSearchJsonReadsTheStoredParts(testCase)
+db = testCase.TestData.db;
+a = did2.document.blank('demoArray');
+a = a.set('base.session_id', 'sessJ');
+a = a.set('base.name', 'j1');
+a = a.set('demoArray.axes', struct('name', {'x', 'y'}, 'unit', {'deg', 'um'}, 'size', {10, 20}));
+b = did2.document.blank('demoArray');
+b = b.set('base.session_id', 'sessJ');
+b = b.set('base.name', 'j2');
+db.add({a, b});
+q = did2.query('base.session_id', 'exact_string', 'sessJ');
+verifyTrue(testCase, db.testHookIsExact(q));
+paths = {'demoArray.axes', 'base.name', 'no_such_block.field'};
+for recheck = [false true]
+    db.testHookAlwaysRecheck(recheck);   % true: from the rebuilt documents
+    r = db.searchJson(q, paths);
+    verifyEqual(testCase, {r.doc_id}, {a.get('base.id'), b.get('base.id')});
+    ax = r(1).values{1};
+    if isstruct(ax); ax = num2cell(ax); end
+    verifyEqual(testCase, cellfun(@(e) e.name, ax, 'UniformOutput', false), {'x', 'y'}, ...
+        sprintf('axes names (rebuilt %d)', recheck));
+    verifyEqual(testCase, cellfun(@(e) double(e.size), ax), [10 20], ...
+        sprintf('axes sizes (rebuilt %d)', recheck));
+    verifyEqual(testCase, r(1).values{2}, 'j1');
+    verifyEmpty(testCase, r(1).values{3});
+    verifyEqual(testCase, r(2).values{2}, 'j2');
+end
+db.testHookAlwaysRecheck(false);
+verifyError(testCase, @() db.searchJson(q, {'demoArray.axes[*].name'}), 'did2:sqlitedb:searchJsonPath');
+end
