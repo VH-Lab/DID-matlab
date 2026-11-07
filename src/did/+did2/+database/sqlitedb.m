@@ -687,36 +687,75 @@ classdef sqlitedb < handle
             %
             %   [FOUND, SID] = db.sessionOfId(ID): FOUND is true when the
             %   database holds a document with base.id ID (what get(ID)
-            %   finds); SID is did2.schema.cache.sessionIdOf of that
-            %   document -- its base.session_id field when the body has one
-            %   (even blank), else the first non-empty `session_id` edge
-            %   (the depends_on sidecar holds only non-empty edges, in the
-            %   document's order), else ''. Read in one query, without
-            %   decoding the document: for a caller that only asks whether a
-            %   document of a session exists (NDI's ndi.element/id; NDI-matlab
-            %   run 42336070408: 612 such checks).
+            %   finds); SID is its documents.session_id column, which add
+            %   fills from did2.schema.cache.sessionIdOf (the column the
+            %   compiled `base.session_id` predicate reads). One query, no
+            %   decode: for a caller that only asks whether a document of a
+            %   session exists (NDI's ndi.element/id; NDI-matlab run
+            %   42336070408: 612 such checks, each a compiled search).
             arguments
                 obj
                 id
             end
             sid = '';
             rows = obj.verifiedRead(['SELECT documents.id AS doc_id, ' ...
-                'json_type(documents.body, ''$.base.session_id'') AS ftype, ' ...
-                'json_extract(documents.body, ''$.base.session_id'') AS field, ' ...
-                '(SELECT e.document_id FROM depends_on e WHERE e.doc_id = documents.id ' ...
-                'AND e.name = ''session_id'' ORDER BY e.rowid ASC LIMIT 1) AS edge ' ...
-                'FROM documents WHERE documents.id = ?'], {char(id)});
+                'documents.session_id AS sid FROM documents WHERE documents.id = ?'], {char(id)});
             found = ~isempty(rows);
-            if ~found
+            if found && ischar(rows(1).sid)
+                sid = rows(1).sid;
+            end
+        end
+
+        function rows = jsonById(obj, ids, paths)
+            % jsonById - documents by id, parts of each decoded but not rebuilt.
+            %
+            %   ROWS = db.jsonById(IDS, PATHS): one row per id in IDS that
+            %   the database holds, in IDS order (each id once), with fields
+            %   doc_id, session_id (the documents.session_id column) and
+            %   values, as searchJson gives them: the value at each plain
+            %   dot-path of PATHS as jsondecode reads it from the stored body,
+            %   not rebuilt. A did_v1 document's values are taken from the
+            %   rebuilt document. Read by key with one query and no query to
+            %   compile: NDI read element entities as an `or` of 200 base.id
+            %   tests (NDI-matlab run 42336070408: 1,275 query translations
+            %   in one getelements).
+            arguments
+                obj
+                ids
+                paths
+            end
+            ids = unique(reshape(cellstr(ids), 1, []), 'stable');
+            paths = reshape(cellstr(paths), 1, []);
+            if any(contains(paths, '['))
+                error('did2:sqlitedb:searchJsonPath', ...
+                    'jsonById takes plain dot-paths (no array index): %s', strjoin(paths, ', '));
+            end
+            rows = struct('doc_id', {}, 'session_id', {}, 'values', {});
+            if isempty(ids)
                 return;
             end
-            if ~isempty(rows(1).ftype) && ischar(rows(1).ftype)
-                % the body has the field (any JSON type, null included)
-                f = rows(1).field;
-                if ischar(f); sid = f; end
-                return;
+            sel = strjoin(cellfun(@(p) ['''$.' p ''''], paths, 'UniformOutput', false), ', ');
+            if ~isempty(sel); sel = [', ' sel]; end
+            hits = obj.verifiedRead(['SELECT documents.id AS doc_id, documents.session_id AS sid, ' ...
+                'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp, ' ...
+                'json_extract(documents.body, ''$.base.id''' sel ') AS vals ' ...
+                'FROM json_each(?) w JOIN documents ON documents.id = w.value ORDER BY w.key'], ...
+                {jsonencode(ids)});
+            for k = 1:numel(hits)
+                id = char(hits(k).doc_id);
+                stamp = hits(k).stamp;
+                sid = '';
+                if ischar(hits(k).sid); sid = hits(k).sid; end
+                if ischar(stamp) && strcmp(stamp, 'did_v1')
+                    v = did2.database.sqlitedb.structPaths(obj.get(id).toStruct(), paths);
+                elseif isempty(paths)
+                    v = cell(1, 0);
+                else
+                    v = jsondecode(char(hits(k).vals));
+                    v = reshape(v(2:end), 1, []);
+                end
+                rows(end+1) = struct('doc_id', id, 'session_id', sid, 'values', {v}); %#ok<AGROW>
             end
-            if ischar(rows(1).edge); sid = rows(1).edge; end
         end
 
         function ids = searchIds(obj, q)
