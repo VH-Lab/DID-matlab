@@ -98,6 +98,7 @@ classdef sqlitedb < handle
         queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
         alwaysRecheck (1,1) logical = false   % test hook: recheck even an exact query
         presentClassMap = []         % classname -> true for every class in a stored chain; [] = not read
+        derivedAny = true   % add: any derived row stored at the start of this add (none: no drop to run)
         queryableScalarMap = []      % path -> affinity, built once for compileQuery
         queryableArrayMap = []       % path -> affinity, built once for compileQuery
         queryableBootstrapOk (1,1) logical = false
@@ -211,6 +212,10 @@ classdef sqlitedb < handle
             % for a bulk insert (no partially-written set is left behind).
             mksqlite(obj.dbid, 'BEGIN');
             try
+                % with no derived row stored there is none to drop: skip the
+                % per-document drop (a migration writes ~39,000 documents)
+                any_ = mksqlite(obj.dbid, 'SELECT EXISTS(SELECT 1 FROM derived_rows) AS e');
+                obj.derivedAny = logical(any_.e);
                 for k = 1:numel(list)
                     how = obj.insertRows(list{k}, opts.Validate);
                     report.(how) = report.(how) + 1;
@@ -1993,7 +1998,9 @@ classdef sqlitedb < handle
             % caller's transaction
             targets = cellfun(@(e) char(e.document_id), deps, 'UniformOutput', false);
             names = cellfun(@(e) char(e.name), deps, 'UniformOutput', false);
-            obj.derivedInvalidate([{char(id)}, reshape(targets(~strcmp(names, 'session_id')), 1, [])]);
+            if obj.derivedAny
+                obj.derivedInvalidate([{char(id)}, reshape(targets(~strcmp(names, 'session_id')), 1, [])]);
+            end
 
             obj.insertScalarRowsFromStruct(id, s);
             obj.insertSidecarRowsFromStruct(id, s);
