@@ -28,7 +28,11 @@ function [blk, bad, absFitless, absFits] = tuningBlock(leaf, family)
 %     tuning_curve.control_mean_stddev, control_mean_stderr
 %                                 value.control.pooled.*
 %     significance.*              value.significance
-%     vector.* (oridir)           the calculation's circular_statistics
+%     vector.* (oridir)           the calculation's circular_statistics, and
+%                                 its interpolated_values ([oridir half-height
+%                                 values], Jess Haley, 2026-11-09): half_low,
+%                                 half_high, fwhh, bandwidth; a NaN fwhh or
+%                                 bandwidth is the Inf the writer wrote
 %     fitless.* (contrast, sf, tf) the calculation's interpolated_values: the
 %                                 structure, or in a list the entry with no
 %                                 response_transform ([interpolated values
@@ -112,6 +116,20 @@ if strcmp(family, 'oridir')
         'direction_preference', 'direction_preference'};
     [vec, b] = renamed(getIn(own, 'circular_statistics'), map, 'circular_statistics');
     bad = [bad, b];
+    hhMap = {'half_maximum_below', 'half_low'; 'half_maximum_above', 'half_high'; ...
+        'full_width_half_height', 'fwhh'; 'bandwidth', 'bandwidth'};
+    [hh, b] = renamed(getIn(own, 'interpolated_values'), hhMap, 'interpolated_values');
+    bad = [bad, b];
+    for f = {'fwhh', 'bandwidth'}
+        if isfield(hh, f{1}) && isnumeric(hh.(f{1})) && isscalar(hh.(f{1})) ...
+                && isnan(hh.(f{1}))
+            hh.(f{1}) = Inf;   % NaN in v2 where the writer wrote Inf (T14)
+        end
+    end
+    hhNames = fieldnames(hh);
+    for k = 1:numel(hhNames)
+        vec.(hhNames{k}) = hh.(hhNames{k});
+    end
     if ~isempty(fieldnames(vec)); blk.vector = vec; end
 else
     if strcmp(family, 'contrast')
