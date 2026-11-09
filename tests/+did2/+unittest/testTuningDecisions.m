@@ -369,7 +369,7 @@ verifyEqual(testCase, parameterCount(leaf, 'Direction selection'), 0, ...
 verifyFalse(testCase, any(endsWith(parameterNames(leaf), ' selection')), ...
     sprintf('no ''<V2 name> selection'' parameter; parameters: %s', ...
     strjoin(parameterNames(leaf), ', ')));
-verifyNotEmpty(testCase, parameterText(leaf, 'selection'), ...
+verifyNotEmpty(testCase, parameterText(leaf, 'selection criterion'), ...
     'the rule stays in the v1 `selection` setting');
 verifyEqual(testCase, leaf.statement.notes, tc.tuningcurve_calc.log, '[tuning log in notes]');
 n = out.summary.migration_notes.tuning_stimid_rebuild;
@@ -393,11 +393,11 @@ assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2');
 ix = find(cellfun(@(d) strcmp(char(d.base.id), char(mine{1}.base.id)), docs), 1);
 assertNotEmpty(testCase, ix);
 older = docs;
-older{ix} = withParameter(docs{ix}, 'selection', 'Direction selection', 'best');
+older{ix} = withParameter(docs{ix}, 'selection criterion', 'Direction selection', 'best');
 r = did2.convert.roundtrip.check(tc, older);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'an earlier migration''s rule', {});
 other = docs;
-other{ix} = withParameter(docs{ix}, 'selection', 'Contrast selection', 'best');
+other{ix} = withParameter(docs{ix}, 'selection criterion', 'Contrast selection', 'best');
 r = did2.convert.roundtrip.check(tc, other);
 verifyNotEmpty(testCase, r.unplaced, 'a rule naming another variable is not the setting''s');
 end
@@ -523,6 +523,34 @@ end
 end
 
 % ===================== [parameter names map by table] =====================
+
+function testTermPicksBatch3NodesAreWritten(testCase)
+% Decided by Jess Haley, 2026-11-09 [term picks batch 3] (did-schema
+% did_v2_go_forward_class_audit.md): independent_parameter -> NCIT:C191277
+% Independent Variable, best_algorithm -> NCIT:C16275 Algorithm, selection ->
+% OBI:0001755 selection criterion; the round trip gives each back its v1 name
+[tc, resp, pres] = bestCurveBatch();
+tc.tuningcurve_calc.input_parameters.independent_parameter = 'contrast';
+tc.tuningcurve_calc.input_parameters.best_algorithm = 'empirical_maximum';
+tc = jsondecode(jsonencode(tc));
+out = runRaw({tc, resp, pres});
+mine = outputsOf(out, tc.base.id);
+assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2');
+want = {'Independent Variable', 'NCIT:C191277'; 'Algorithm', 'NCIT:C16275'; ...
+    'selection criterion', 'OBI:0001755'};
+p = asCell(mine{1}.interaction.method.parameters);
+for k = 1:size(want, 1)
+    hit = p(cellfun(@(e) strcmp(char(e.variable.name), want{k, 1}), p));
+    assertNotEmpty(testCase, hit, want{k, 1});
+    verifyEqual(testCase, upper(char(hit{1}.variable.node)), upper(want{k, 2}), want{k, 1});
+end
+verifyEqual(testCase, parameterText(mine{1}, 'Algorithm'), 'empirical_maximum');
+r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'batch 3 settings', {});
+for f = {'independent_parameter', 'best_algorithm', 'selection'}
+    verifyTrue(testCase, any(startsWith(r.matched, ['tuningcurve_calc.input_parameters.' f{1}])), f{1});
+end
+end
 
 function testParameterNamesMapByTable(testCase)
 for name = {'independent_label', 'min_xi', 'prestimulus_time', 'selection.property', ...

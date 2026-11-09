@@ -5380,7 +5380,9 @@ verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_tc');
 % V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
 % is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2945');
-verifyEqual(testCase, paramTextJ(leaf, 'best algorithm'), 'empirical_maximum');
+% [term picks batch 3] (Jess Haley, 2026-11-09): best_algorithm is NCIT:C16275
+% Algorithm, its value text
+verifyEqual(testCase, paramTextJ(leaf, 'Algorithm'), 'empirical_maximum');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
 sw = entityByNameJ(out, 'ndi.calc.stimulus.tuningcurve');

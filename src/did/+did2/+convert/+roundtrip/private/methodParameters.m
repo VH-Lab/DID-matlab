@@ -1,4 +1,4 @@
-function [s, bad] = methodParameters(params, useTable)
+function [s, bad] = methodParameters(params, useTable, names)
 %METHODPARAMETERS A v1 `input_parameters` struct rebuilt from a method's
 %   parameter entries (the inverse of +migrators_j/private/jParameterList).
 %
@@ -20,9 +20,16 @@ function [s, bad] = methodParameters(params, useTable)
 %   the name table instead (did2.convert.tuningNames 'v1'; [parameter names
 %   map by table], Jess Haley, 2026-10-27): a name the table does not hold is
 %   listed in BAD.
+%
+%   [S, BAD] = methodParameters(PARAMS, false, NAMES): a name in NAMES (n x 2
+%   {v1 path, v2 name}, jCalculation's 'ParameterNames'; [term picks batch 3])
+%   is read back as its v1 path; every other name as above.
 
 if nargin < 2
     useTable = false;
+end
+if nargin < 3
+    names = {};
 end
 s = struct();
 bad = {};
@@ -61,6 +68,8 @@ for k = 1:numel(params)
             continue;
         end
         steps = strsplit(v1Name, '.');
+    elseif ~isempty(names) && any(strcmpi(names(:, 2), name))
+        steps = strsplit(names{find(strcmpi(names(:, 2), name), 1), 1}, '.');
     else
         steps = strsplit(strrep(name, ' ', '_'), '.');
     end

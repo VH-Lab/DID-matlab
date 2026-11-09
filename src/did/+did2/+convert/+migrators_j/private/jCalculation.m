@@ -205,6 +205,7 @@ arguments
     opts.Dropped = {}            % more dropped v1 field paths, reported verbatim
     opts.AccountForEveryField (1,1) logical = false   % see ACCOUNTED FOR below
     opts.OtherBlocks = {}        % more top-level blocks the CALLER accounts for
+    opts.ParameterNames = {}     % n x 2 {v1 path, v2 name}: settings named by a decided term
 end
 
 srcBlk = struct();
@@ -296,6 +297,11 @@ if useTable
         reasons{end+1} = sprintf(['[carry-056] input_parameters.%s (no v2 name in ' ...
             'the table: [parameter names map by table])'], unknownSettings{k}); %#ok<AGROW>
     end
+elseif ~isempty(opts.ParameterNames)
+    % settings with a decided term ([term picks batch 3]: hartley_calc's
+    % X_sample / Y_sample); every other setting is named as before
+    names = opts.ParameterNames;
+    params = jParameterList(calcInputParameters(preBody), '', @(n) namedSetting(n, names));
 else
     params = jParameterList(calcInputParameters(preBody));
 end
@@ -1115,4 +1121,16 @@ function t = DATA_ANALYSIS()
 %   EDAM:operation_2945 "Data analysis" ([data analysis is the general method],
 %   Jess Haley, 2026-10-30; registry row built in did-schema).
 t = did2.convert.registeredTerm('EDAM:operation_2945', 'Data analysis');
+end
+
+function [v2, found] = namedSetting(name, names)
+%NAMEDSETTING A setting's v2 name: its row of NAMES ({v1 path, v2 name}), else
+%   its v1 path with '_' as ' ' (jParameterList's default name).
+found = true;
+ix = find(strcmp(names(:, 1), name), 1);
+if isempty(ix)
+    v2 = strrep(name, '_', ' ');
+else
+    v2 = names{ix, 2};
+end
 end
