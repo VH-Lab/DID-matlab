@@ -147,8 +147,12 @@ for i = 1:numel(found)
     paired(end+1) = false; %#ok<AGROW>
 end
 % the wiring relations whose probe no statement names (A ROW WITH NO STATEMENT)
-named = cellfun(@(k) firstEdge(ctx.docs{k}, 'instrument_id'), num2cell(found), ...
-    'UniformOutput', false);
+% (a plain loop: an anonymous function capturing CTX made each call 0.25 s,
+% 1,855 s over B's 7,452 calls, MATLAB scratch run 42712175490)
+named = cell(1, numel(found));
+for i = 1:numel(found)
+    named{i} = firstEdge(ctx.docs{found(i)}, 'instrument_id');
+end
 wirings = unique(wirings);
 for i = 1:numel(wirings)
     w = ctx.docs{wirings(i)};
