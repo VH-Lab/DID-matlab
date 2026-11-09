@@ -515,7 +515,12 @@ out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = staLeaf(out);
 names = paramNames(leaf);
 verifyFalse(testCase, any(strcmp(names, 'T')), strjoin(names, ', '));
-verifyTrue(testCase, any(strcmp(names, 'X sample')), strjoin(names, ', '));
+% [term picks batch 3] (Jess Haley, 2026-11-09): X_sample and Y_sample are
+% NCIT:C69201 Horizontal Pixel Spacing and NCIT:C69210 Vertical Pixel Spacing
+verifyTrue(testCase, any(strcmp(names, 'Horizontal Pixel Spacing')), strjoin(names, ', '));
+verifyTrue(testCase, any(strcmp(names, 'Vertical Pixel Spacing')), strjoin(names, ', '));
+verifyFalse(testCase, any(strcmp(names, 'X sample')) || any(strcmp(names, 'Y sample')), ...
+    strjoin(names, ', '));
 verifyEqual(testCase, numel(jsondecode(paramText(leaf, 'stimulus sequence.frame times'))), 3360);
 
 v1 = hartleyCalcV1();

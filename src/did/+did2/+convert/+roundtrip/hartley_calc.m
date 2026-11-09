@@ -77,7 +77,8 @@ for k = find(~isBody)
         && strcmpi(variableName(bodies{k}), P_VALUE);
 end
 [v1, leaf, inputs, spec] = calcParts(bodies(~isBody & ~isPValue), 'receptive_field_calculation', ...
-    'hartley_calc', 'ndi.calc.vis.hartley');
+    'hartley_calc', 'ndi.calc.vis.hartley', ...
+    'ParameterNames', did2.convert.hartleyParameterNames());   % [term picks batch 3]
 if isempty(leaf)
     return;
 end
