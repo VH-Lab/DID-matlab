@@ -1,6 +1,6 @@
 %SCRATCH Ad-hoc MATLAB probe, run by .github/workflows/matlab-scratch.yml.
 %
-%   PROBE 13: WHERE THE TIME GOES IN testCorpusB ON DID-matlab #428. Its
+%   PROBE 13b: WHERE THE TIME GOES (after the plain loop, e312a890) IN testCorpusB ON DID-matlab #428. Its
 %   Test code run 42687589754 took 40 min for B (5 min on V2) and 100 min for
 %   Dab (12 min), with every source clean. This runs testCorpusB under the
 %   profiler and prints the 40 functions with the most total time and the 40
