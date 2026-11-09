@@ -113,6 +113,21 @@ verifyEqual(testCase, db.derivedGet('ns', 'sys1', 'k', 'v1'), '{"x":1}', ...
     'the add rolled back, and the drop with it');
 end
 
+function testManyRowsAtOnce(testCase)
+db = testCase.TestData.db; ids = testCase.TestData.ids;
+db.derivedPutMany('many', 'sc', {'k1', 'k2', 'k3'}, {'v1', 'v2', 'v3'}, 'v1', ...
+    {{ids.a1}, {ids.a2}, {}});
+r = db.derivedGetMany('many', 'sc', {'k3', 'nope', 'k1', 'k2'}, 'v1');
+verifyEqual(testCase, {r.key}, {'k3', 'k1', 'k2'}, 'in the order asked, missing keys left out');
+verifyEqual(testCase, {r.value}, {'v3', 'v1', 'v2'});
+verifyEmpty(testCase, db.derivedGetMany('many', 'sc', {'k1'}, 'v2'), 'another version reads as none');
+db.remove(ids.a2);   % drops k2 only
+r = db.derivedGetMany('many', 'sc', {'k1', 'k2', 'k3'}, 'v1');
+verifyEqual(testCase, {r.key}, {'k1', 'k3'});
+verifyError(testCase, @() db.derivedPutMany('many', 'sc', {'a', 'b'}, {'x'}, 'v1', {{}, {}}), ...
+    'did2:sqlitedb:derivedPutMany');
+end
+
 function testClearAndReopen(testCase)
 db = testCase.TestData.db;
 db.derivedPut('other', 's', 'k', 'v', 'v1', {});

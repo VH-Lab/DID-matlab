@@ -861,6 +861,79 @@ classdef sqlitedb < handle
             end
         end
 
+        function rows = derivedGetMany(obj, namespace, scope, keys, schemaVersion)
+            % derivedGetMany - several derived rows of one scope in one read.
+            %
+            %   ROWS = db.derivedGetMany(NAMESPACE, SCOPE, KEYS, SCHEMAVERSION)
+            %   is a struct array (key, value), one element per key of KEYS
+            %   (a cellstr) that has a stored row of SCHEMAVERSION, in KEYS
+            %   order. A key with no row, or a row of another version, is
+            %   left out (the caller recomputes it).
+            arguments
+                obj
+                namespace (1,:) char
+                scope (1,:) char
+                keys
+                schemaVersion (1,:) char
+            end
+            obj.ensureConnection();
+            keys = reshape(cellstr(keys), 1, []);
+            rows = struct('key', {}, 'value', {});
+            if isempty(keys)
+                return;
+            end
+            r = mksqlite(obj.dbid, ['SELECT r.key AS key, r.value AS value FROM json_each(?) k ' ...
+                'JOIN derived_rows r ON r.namespace = ? AND r.scope = ? AND r.key = k.value ' ...
+                'AND r.schema_version = ? ORDER BY k.key'], jsonencode(keys), namespace, scope, schemaVersion);
+            for i = 1:numel(r)
+                if ischar(r(i).value)
+                    rows(end+1) = struct('key', char(r(i).key), 'value', r(i).value); %#ok<AGROW>
+                end
+            end
+        end
+
+        function derivedPutMany(obj, namespace, scope, keys, values, schemaVersion, depIds)
+            % derivedPutMany - derivedPut for several rows of one scope, in one transaction.
+            %
+            %   db.derivedPutMany(NAMESPACE, SCOPE, KEYS, VALUES, SCHEMAVERSION, DEPIDS):
+            %   KEYS and VALUES cellstrs of one length, DEPIDS a cell of
+            %   cellstrs (each row's recorded ids).
+            arguments
+                obj
+                namespace (1,:) char
+                scope (1,:) char
+                keys
+                values
+                schemaVersion (1,:) char
+                depIds
+            end
+            obj.ensureConnection();
+            keys = reshape(cellstr(keys), 1, []);
+            values = reshape(cellstr(values), 1, []);
+            if numel(values) ~= numel(keys) || numel(depIds) ~= numel(keys)
+                error('did2:sqlitedb:derivedPutMany', 'KEYS, VALUES and DEPIDS must have one entry per row.');
+            end
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                for i = 1:numel(keys)
+                    obj.derivedDeleteRow(namespace, scope, keys{i});
+                    mksqlite(obj.dbid, ['INSERT INTO derived_rows(namespace, scope, key, value, schema_version) ' ...
+                        'VALUES(?, ?, ?, ?, ?)'], namespace, scope, keys{i}, values{i}, schemaVersion);
+                    rid = mksqlite(obj.dbid, 'SELECT last_insert_rowid() AS rid');
+                    d = unique(reshape(cellstr(depIds{i}), 1, []));
+                    d = d(~cellfun(@isempty, d));
+                    if ~isempty(d)
+                        mksqlite(obj.dbid, ['INSERT INTO derived_deps(rid, doc_id) ' ...
+                            'SELECT ?, value FROM json_each(?)'], rid.rid, jsonencode(d));
+                    end
+                end
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
+        end
+
         function ids = derivedDeps(obj, namespace, scope, key)
             % derivedDeps - the ids a stored derived row records (sorted); {} when none
             obj.ensureConnection();
@@ -927,8 +1000,8 @@ classdef sqlitedb < handle
     methods (Static)
         function tf = derivedRowsAvailable()
             % derivedRowsAvailable - true: this sqlitedb has the derived-row
-            % store (derivedPut / derivedGet / derivedDeps / derivedClear /
-            % derivedCount) and drops a row when a document it records, or a
+            % store (derivedPut / derivedGet / derivedPutMany / derivedGetMany /
+            % derivedDeps / derivedClear / derivedCount) and drops a row when a document it records, or a
             % document with an edge to one, is added or removed. A caller
             % (NDI-matlab) asks with ismethod first.
             tf = true;
