@@ -24,6 +24,9 @@ function [props, values, why] = tuningBestValues(inputParameters, logText)
 %   migration reads the value from the log once, and the stimid rebuild
 %   ([tuning stimids rebuild]) works from the conditions) a curve whose log
 %   does not state the chosen value is carried as before (carry-056)."
+%   Amended by [tuning selection rule stated once] (Jess Haley, 2026-11-09,
+%   "A"): the rule is no longer also written as a '<V2 name> selection' =
+%   'best' method parameter; it stays once, in the v1 `selection` setting.
 %
 %   THE WRITER (NDI-matlab locked `main` 441530d, +ndi/+calc/+stimulus/
 %   tuningcurve.m `calculate`): for each selection whose value is 'best' it

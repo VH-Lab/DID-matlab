@@ -50,10 +50,14 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %                 stim_property_list is the conditions, named back by the
 %                 table;
 %     [tuning best value is a condition] (2026-10-28)   the conditions of
-%                 the variables a '<V2 name> selection' = 'best' parameter
-%                 names are not stim_property_list: the log (the notes) and
-%                 the v1 `selection` setting already hold them; each must be
-%                 the value the log states (did2.convert.tuningBestValues);
+%                 the variables the v1 `selection` setting selects as `best`
+%                 are not stim_property_list: the log (the notes) and that
+%                 setting already hold them; each must be the value the log
+%                 states (did2.convert.tuningBestValues). Since [tuning
+%                 selection rule stated once] (2026-11-09) the migrator
+%                 writes no '<V2 name> selection' = 'best' parameter, so the
+%                 best variables are read from the setting; such a parameter
+%                 in a batch migrated before must name the same variables;
 %     [tuning stimids rebuild]   rawCurveBlock rebuilds stimid and
 %                 stimulus_presentation_number (did2.convert.tuningStimids).
 
@@ -218,17 +222,35 @@ function [own, bad] = curveOwnBlock(leaf, ownV1)
 %   scalar). OWNV1 is the calculator block calcParts rebuilt (its
 %   input_parameters).
 %   The conditions of a `best` selection ([tuning best value is a condition],
-%   Jess Haley, 2026-10-28: the variables a '<V2 name> selection' = 'best'
-%   method parameter names) are not in stim_property_list: each must be the
+%   Jess Haley, 2026-10-28) are not in stim_property_list: each must be the
 %   value the log states for that selection (did2.convert.tuningBestValues),
-%   and is otherwise listed in BAD.
+%   and is otherwise listed in BAD. Which variables are best-selected is read
+%   from the v1 `selection` setting ([tuning selection rule stated once],
+%   Jess Haley, 2026-11-09: the rule is stated once, there); a '<V2 name>
+%   selection' = 'best' method parameter (written before that decision) must
+%   name the same variables.
 own = struct();
 bad = {};
 notes = getIn(leaf, 'statement', 'notes');
 if (ischar(notes) || isstring(notes)) && ~isempty(char(notes))
     own.log = char(notes);
 end
-best = bestRuleVariables(leaf);
+logText = '';
+if isfield(own, 'log'); logText = own.log; end
+[props, stated, whyBest] = did2.convert.tuningBestValues(getIn(ownV1, 'input_parameters'), logText);
+best = cell(1, numel(props));
+for k = 1:numel(props)
+    [best{k}, found] = did2.convert.tuningNames('v2', props{k});
+    if ~found
+        bad{end+1} = sprintf('best selection of "%s": no v2 name in the table', props{k}); %#ok<AGROW>
+        best{k} = props{k};
+    end
+end
+rules = bestRuleVariables(leaf);
+if ~isempty(rules) && ~isequal(sort(lower(rules)), sort(lower(best)))
+    bad{end+1} = sprintf(['the method''s best-selection parameters (%s) are not the ' ...
+        'setting''s best selections (%s)'], strjoin(rules, ', '), strjoin(best, ', '));
+end
 bestSeen = nan(1, numel(best));
 conds = asCell(getIn(leaf, 'statement', 'conditions'));
 names = {};
@@ -258,34 +280,25 @@ end
 if isempty(best)
     return;
 end
-logText = '';
-if isfield(own, 'log'); logText = own.log; end
-[props, stated, why] = did2.convert.tuningBestValues(getIn(ownV1, 'input_parameters'), logText);
-if ~isempty(why)
-    bad{end+1} = sprintf('best selection: %s', why);
+if ~isempty(whyBest)
+    bad{end+1} = sprintf('best selection: %s', whyBest);
     return;
 end
 for k = 1:numel(best)
-    v1Name = did2.convert.tuningNames('v1', best{k});
-    ix = find(strcmp(props, v1Name), 1);
     if isnan(bestSeen(k))
-        bad{end+1} = sprintf('"%s selection" = best has no condition', best{k}); %#ok<AGROW>
-    elseif isempty(ix)
-        bad{end+1} = sprintf('"%s selection" = best is not a best selection of the settings', best{k}); %#ok<AGROW>
-    elseif stated(ix) ~= bestSeen(k)
+        bad{end+1} = sprintf('the best selection of "%s" has no condition', best{k}); %#ok<AGROW>
+    elseif stated(k) ~= bestSeen(k)
         bad{end+1} = sprintf('condition %s = %.17g is not the %.17g the log states', ...
-            best{k}, bestSeen(k), stated(ix)); %#ok<AGROW>
+            best{k}, bestSeen(k), stated(k)); %#ok<AGROW>
     end
-end
-if numel(props) ~= numel(best)
-    bad{end+1} = sprintf('%d best selections in the settings, %d rules in the method', ...
-        numel(props), numel(best));
 end
 end
 
 function best = bestRuleVariables(leaf)
 %BESTRULEVARIABLES The v2 variables a '<name> selection' = 'best' method
-%   parameter names ([tuning best value is a condition]).
+%   parameter names ([tuning best value is a condition]; no longer written
+%   since [tuning selection rule stated once], read for a batch migrated
+%   before).
 best = {};
 entries = asCell(getIn(leaf, 'interaction', 'method', 'parameters'));
 for k = 1:numel(entries)
