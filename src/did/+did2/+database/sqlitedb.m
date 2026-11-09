@@ -98,6 +98,7 @@ classdef sqlitedb < handle
         queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
         alwaysRecheck (1,1) logical = false   % test hook: recheck even an exact query
         presentClassMap = []         % classname -> true for every class in a stored chain; [] = not read
+        derivedAny = true   % add: any derived row stored at the start of this add (none: no drop to run)
         queryableScalarMap = []      % path -> affinity, built once for compileQuery
         queryableArrayMap = []       % path -> affinity, built once for compileQuery
         queryableBootstrapOk (1,1) logical = false
@@ -139,6 +140,7 @@ classdef sqlitedb < handle
                 obj.reconcileQueryableArrayPaths();
             end
             obj.ensureFilesTable();
+            obj.ensureDerivedTables();
         end
 
         function delete(obj)
@@ -210,6 +212,10 @@ classdef sqlitedb < handle
             % for a bulk insert (no partially-written set is left behind).
             mksqlite(obj.dbid, 'BEGIN');
             try
+                % with no derived row stored there is none to drop: skip the
+                % per-document drop (a migration writes ~39,000 documents)
+                any_ = mksqlite(obj.dbid, 'SELECT EXISTS(SELECT 1 FROM derived_rows) AS e');
+                obj.derivedAny = logical(any_.e);
                 for k = 1:numel(list)
                     how = obj.insertRows(list{k}, opts.Validate);
                     report.(how) = report.(how) + 1;
@@ -236,8 +242,23 @@ classdef sqlitedb < handle
             obj.ensureConnection();
             stored = mksqlite(obj.dbid, ...
                 'SELECT DISTINCT uid FROM files WHERE doc_id = ? AND ingested = 1', id);
+            % The derived rows recording this document or a document it points
+            % at (session_id excepted) are dropped in the same transaction as
+            % the document (see derivedPut).
             % ON DELETE CASCADE handles superclasses / depends_on / files rows.
-            mksqlite(obj.dbid, 'DELETE FROM documents WHERE id = ?', id);
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                e = mksqlite(obj.dbid, ['SELECT document_id FROM depends_on ' ...
+                    'WHERE doc_id = ? AND name <> ''session_id'''], id);
+                targets = {};
+                if ~isempty(e); targets = cellfun(@char, {e.document_id}, 'UniformOutput', false); end
+                obj.derivedInvalidate([{char(id)}, targets]);
+                mksqlite(obj.dbid, 'DELETE FROM documents WHERE id = ?', id);
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
             obj.presentClassMap = [];   % the stored chains changed
             % The bytes this document ingested go with it, unless another
             % document still records the same uid.
@@ -763,6 +784,205 @@ classdef sqlitedb < handle
             end
         end
 
+        % ---- derived rows (Jess Haley, 2026-11-09: "Build the derived index";
+        % [1 yes, 2 a, 3 yes]) ----
+        %
+        % A DERIVED-ROW STORE: rows a caller computes from the documents
+        % (never written by hand), kept in index tables beside the documents
+        % (derived_rows, derived_deps), never as documents and never in the
+        % schema. Each row is (namespace, scope, key) -> an opaque text value
+        % and a schema version, and records the ids of the documents it was
+        % derived from. Every add or remove of a document D drops, in the same
+        % transaction, every row whose recorded ids include D or any document
+        % D's edges point at (session_id edges excepted): the caller then
+        % recomputes it from the documents. The store holds no logic about
+        % what a row means; NDI-matlab computes the rows and is their only
+        % writer. derivedClear drops a namespace; dropping and recomputing
+        % gives the same rows, since they are computed from the documents.
+
+        function derivedPut(obj, namespace, scope, key, value, schemaVersion, depIds)
+            % derivedPut - store one derived row and the ids it was derived from.
+            %
+            %   db.derivedPut(NAMESPACE, SCOPE, KEY, VALUE, SCHEMAVERSION, DEPIDS)
+            %   replaces the row (NAMESPACE, SCOPE, KEY) with the text VALUE
+            %   and the char SCHEMAVERSION, recording the ids in DEPIDS (a
+            %   cellstr) as the documents it was derived from, in one
+            %   transaction. The caller computes VALUE from the documents; a
+            %   later add or remove of any of DEPIDS, or of a document with an
+            %   edge to one of them, drops the row.
+            arguments
+                obj
+                namespace (1,:) char
+                scope (1,:) char
+                key (1,:) char
+                value (1,:) char
+                schemaVersion (1,:) char
+                depIds
+            end
+            obj.ensureConnection();
+            depIds = unique(reshape(cellstr(depIds), 1, []));
+            depIds = depIds(~cellfun(@isempty, depIds));
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                obj.derivedDeleteRow(namespace, scope, key);
+                mksqlite(obj.dbid, ['INSERT INTO derived_rows(namespace, scope, key, value, schema_version) ' ...
+                    'VALUES(?, ?, ?, ?, ?)'], namespace, scope, key, value, schemaVersion);
+                rid = mksqlite(obj.dbid, 'SELECT last_insert_rowid() AS rid');
+                if ~isempty(depIds)
+                    mksqlite(obj.dbid, ['INSERT INTO derived_deps(rid, doc_id) ' ...
+                        'SELECT ?, value FROM json_each(?)'], rid.rid, jsonencode(depIds));
+                end
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
+        end
+
+        function value = derivedGet(obj, namespace, scope, key, schemaVersion)
+            % derivedGet - a derived row's value, or [] when there is none.
+            %
+            %   VALUE = db.derivedGet(NAMESPACE, SCOPE, KEY, SCHEMAVERSION) is
+            %   the stored text value, or [] when no such row is stored or it
+            %   was stored with another schema version (the caller recomputes).
+            arguments
+                obj
+                namespace (1,:) char
+                scope (1,:) char
+                key (1,:) char
+                schemaVersion (1,:) char
+            end
+            value = [];
+            obj.ensureConnection();
+            r = mksqlite(obj.dbid, ['SELECT value, schema_version FROM derived_rows ' ...
+                'WHERE namespace = ? AND scope = ? AND key = ?'], namespace, scope, key);
+            if ~isempty(r) && strcmp(char(r(1).schema_version), schemaVersion) && ischar(r(1).value)
+                value = r(1).value;
+            end
+        end
+
+        function rows = derivedGetMany(obj, namespace, scope, keys, schemaVersion)
+            % derivedGetMany - several derived rows of one scope in one read.
+            %
+            %   ROWS = db.derivedGetMany(NAMESPACE, SCOPE, KEYS, SCHEMAVERSION)
+            %   is a struct array (key, value), one element per key of KEYS
+            %   (a cellstr) that has a stored row of SCHEMAVERSION, in KEYS
+            %   order. A key with no row, or a row of another version, is
+            %   left out (the caller recomputes it).
+            arguments
+                obj
+                namespace (1,:) char
+                scope (1,:) char
+                keys
+                schemaVersion (1,:) char
+            end
+            obj.ensureConnection();
+            keys = reshape(cellstr(keys), 1, []);
+            rows = struct('key', {}, 'value', {});
+            if isempty(keys)
+                return;
+            end
+            r = mksqlite(obj.dbid, ['SELECT r.key AS key, r.value AS value FROM json_each(?) k ' ...
+                'JOIN derived_rows r ON r.namespace = ? AND r.scope = ? AND r.key = k.value ' ...
+                'AND r.schema_version = ? ORDER BY k.key'], jsonencode(keys), namespace, scope, schemaVersion);
+            for i = 1:numel(r)
+                if ischar(r(i).value)
+                    rows(end+1) = struct('key', char(r(i).key), 'value', r(i).value); %#ok<AGROW>
+                end
+            end
+        end
+
+        function derivedPutMany(obj, namespace, scope, keys, values, schemaVersion, depIds)
+            % derivedPutMany - derivedPut for several rows of one scope, in one transaction.
+            %
+            %   db.derivedPutMany(NAMESPACE, SCOPE, KEYS, VALUES, SCHEMAVERSION, DEPIDS):
+            %   KEYS and VALUES cellstrs of one length, DEPIDS a cell of
+            %   cellstrs (each row's recorded ids).
+            arguments
+                obj
+                namespace (1,:) char
+                scope (1,:) char
+                keys
+                values
+                schemaVersion (1,:) char
+                depIds
+            end
+            obj.ensureConnection();
+            keys = reshape(cellstr(keys), 1, []);
+            values = reshape(cellstr(values), 1, []);
+            if numel(values) ~= numel(keys) || numel(depIds) ~= numel(keys)
+                error('did2:sqlitedb:derivedPutMany', 'KEYS, VALUES and DEPIDS must have one entry per row.');
+            end
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                for i = 1:numel(keys)
+                    obj.derivedDeleteRow(namespace, scope, keys{i});
+                    mksqlite(obj.dbid, ['INSERT INTO derived_rows(namespace, scope, key, value, schema_version) ' ...
+                        'VALUES(?, ?, ?, ?, ?)'], namespace, scope, keys{i}, values{i}, schemaVersion);
+                    rid = mksqlite(obj.dbid, 'SELECT last_insert_rowid() AS rid');
+                    d = unique(reshape(cellstr(depIds{i}), 1, []));
+                    d = d(~cellfun(@isempty, d));
+                    if ~isempty(d)
+                        mksqlite(obj.dbid, ['INSERT INTO derived_deps(rid, doc_id) ' ...
+                            'SELECT ?, value FROM json_each(?)'], rid.rid, jsonencode(d));
+                    end
+                end
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
+        end
+
+        function ids = derivedDeps(obj, namespace, scope, key)
+            % derivedDeps - the ids a stored derived row records (sorted); {} when none
+            obj.ensureConnection();
+            r = mksqlite(obj.dbid, ['SELECT d.doc_id AS id FROM derived_deps d JOIN derived_rows r ' ...
+                'ON r.rid = d.rid WHERE r.namespace = ? AND r.scope = ? AND r.key = ? ORDER BY d.doc_id'], ...
+                namespace, scope, key);
+            ids = {};
+            if ~isempty(r); ids = {r.id}; end
+        end
+
+        function derivedClear(obj, namespace)
+            % derivedClear - drop every derived row of NAMESPACE (all when '')
+            arguments
+                obj
+                namespace (1,:) char = ''
+            end
+            obj.ensureConnection();
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                if isempty(namespace)
+                    mksqlite(obj.dbid, 'DELETE FROM derived_deps');
+                    mksqlite(obj.dbid, 'DELETE FROM derived_rows');
+                else
+                    mksqlite(obj.dbid, ['DELETE FROM derived_deps WHERE rid IN ' ...
+                        '(SELECT rid FROM derived_rows WHERE namespace = ?)'], namespace);
+                    mksqlite(obj.dbid, 'DELETE FROM derived_rows WHERE namespace = ?', namespace);
+                end
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
+        end
+
+        function n = derivedCount(obj, namespace)
+            % derivedCount - the number of derived rows stored (of NAMESPACE, or all)
+            arguments
+                obj
+                namespace (1,:) char = ''
+            end
+            obj.ensureConnection();
+            if isempty(namespace)
+                r = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM derived_rows');
+            else
+                r = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM derived_rows WHERE namespace = ?', namespace);
+            end
+            n = double(r.n);
+        end
+
         function ids = searchIds(obj, q)
             % searchIds - return the ids of documents matching a query.
             arguments
@@ -778,6 +998,15 @@ classdef sqlitedb < handle
     end
 
     methods (Static)
+        function tf = derivedRowsAvailable()
+            % derivedRowsAvailable - true: this sqlitedb has the derived-row
+            % store (derivedPut / derivedGet / derivedPutMany / derivedGetMany /
+            % derivedDeps / derivedClear / derivedCount) and drops a row when a document it records, or a
+            % document with an edge to one, is added or removed. A caller
+            % (NDI-matlab) asks with ismethod first.
+            tf = true;
+        end
+
         function tf = searchEdgesTakesAllNames()
             % searchEdgesTakesAllNames - true: searchEdges(Q, '*') returns
             % every edge. A caller that needs it (NDI-matlab) asks with
@@ -1837,8 +2066,53 @@ classdef sqlitedb < handle
             end
             obj.insertMany('INSERT OR IGNORE INTO depends_on(doc_id, name, document_id) VALUES', rows);
 
+            % the derived rows this document changes: those recording it or
+            % a document it points at (session_id excepted), dropped in the
+            % caller's transaction
+            targets = cellfun(@(e) char(e.document_id), deps, 'UniformOutput', false);
+            names = cellfun(@(e) char(e.name), deps, 'UniformOutput', false);
+            if obj.derivedAny
+                obj.derivedInvalidate([{char(id)}, reshape(targets(~strcmp(names, 'session_id')), 1, [])]);
+            end
+
             obj.insertScalarRowsFromStruct(id, s);
             obj.insertSidecarRowsFromStruct(id, s);
+        end
+
+        function ensureDerivedTables(obj)
+            % The derived-row store (see derivedPut). Created on open as well
+            % as on create, so a database written before it gains it.
+            mksqlite(obj.dbid, ['CREATE TABLE IF NOT EXISTS derived_rows (' ...
+                'rid INTEGER PRIMARY KEY, namespace TEXT NOT NULL, scope TEXT NOT NULL, ' ...
+                'key TEXT NOT NULL, value TEXT, schema_version TEXT, ' ...
+                'UNIQUE(namespace, scope, key))']);
+            mksqlite(obj.dbid, ['CREATE TABLE IF NOT EXISTS derived_deps (' ...
+                'rid INTEGER NOT NULL, doc_id TEXT NOT NULL)']);
+            mksqlite(obj.dbid, 'CREATE INDEX IF NOT EXISTS derived_deps_doc ON derived_deps(doc_id)');
+            mksqlite(obj.dbid, 'CREATE INDEX IF NOT EXISTS derived_deps_rid ON derived_deps(rid)');
+        end
+
+        function derivedDeleteRow(obj, namespace, scope, key)
+            % drop one derived row and its recorded ids (caller owns the transaction)
+            mksqlite(obj.dbid, ['DELETE FROM derived_deps WHERE rid IN (SELECT rid FROM derived_rows ' ...
+                'WHERE namespace = ? AND scope = ? AND key = ?)'], namespace, scope, key);
+            mksqlite(obj.dbid, 'DELETE FROM derived_rows WHERE namespace = ? AND scope = ? AND key = ?', ...
+                namespace, scope, key);
+        end
+
+        function derivedInvalidate(obj, ids)
+            % Drop every derived row recording any of IDS (the caller owns the
+            % transaction: add's, or remove's). IDS is a document's id and the
+            % targets of its edges other than session_id.
+            ids = ids(~cellfun(@isempty, ids));
+            if isempty(ids)
+                return;
+            end
+            j = jsonencode(unique(ids));
+            mksqlite(obj.dbid, ['DELETE FROM derived_rows WHERE rid IN (SELECT rid FROM derived_deps ' ...
+                'WHERE doc_id IN (SELECT value FROM json_each(?)))'], j);
+            mksqlite(obj.dbid, ['DELETE FROM derived_deps WHERE rid IN (SELECT rid FROM derived_deps ' ...
+                'WHERE doc_id IN (SELECT value FROM json_each(?)))'], j);
         end
 
         function ensureFilesTable(obj)
