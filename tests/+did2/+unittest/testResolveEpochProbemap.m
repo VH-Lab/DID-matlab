@@ -1318,6 +1318,9 @@ daq  = daqsystemBody('acqsys_w', 'sess_w', 'vis');
 ing  = ingestedWithDeviceRows('ing_w', 'sess_w', 't0w', { ...
     {'vis', '1', 'stimulator', 'vis:mk1', 'L'}, ...
     {'cortex', '1', 'n-trode', 'vis:ai1-4', 'L'}});
+% the manifest's files are read by the rig's navigator (the round trip keeps a
+% row only when its rig reads the manifest's files)
+ing.depends_on = struct('name', 'filenavigator_id', 'value', 'nav_acqsys_w');
 bodies = {sessionBody('sd_w', 'sess_w', 'ref'), subj, stim, rec, daq, ing};
 [out, rep] = decompose(bodies);
 assertEqual(testCase, rep.manipulations_emitted, 1);
