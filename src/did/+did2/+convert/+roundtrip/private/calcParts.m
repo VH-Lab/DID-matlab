@@ -53,7 +53,10 @@ function [v1, leaf, inputs, spec, absLeaf] = calcParts(bodies, leafClass, v1Clas
 %     - [tuning best value is a condition] (2026-10-28): a parameter
 %       '<V2 stimulus variable> selection' = 'best' is the rule of a
 %       tuningcurve_calc `best` selection, whose v1 form stays in the
-%       `selection` setting: not rebuilt here (tuningInverse reads it);
+%       `selection` setting: not rebuilt here (tuningInverse reads it).
+%       Since [tuning selection rule stated once] (Jess Haley, 2026-11-09)
+%       the migrator no longer writes it; skipped so a batch migrated
+%       before reads back the same;
 %     - [parameter names map by table]: the other parameters are named back
 %       through did2.convert.tuningNames (methodParameters(..., true)).
 

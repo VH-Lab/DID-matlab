@@ -162,11 +162,14 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         of tuningcurve_calc's input_parameters.selection: the value it chose,
 %         read once from the log (did2.convert.tuningBestValues), is a
 %         condition named by the v2 stimulus variable (e.g. orientation = 90),
-%         after the stim_property_list conditions, and the rule is the method
-%         parameter {'<V2 name> selection', text 'best'} after the v1
-%         settings; the stimid rebuild reads these conditions too. A curve
-%         whose log does not state the value (or names a property the table
-%         does not hold) is carried (carry-056).
+%         after the stim_property_list conditions; the stimid rebuild reads
+%         these conditions too. A curve whose log does not state the value
+%         (or names a property the table does not hold) is carried
+%         (carry-056). Amended by [tuning selection rule stated once] (Jess
+%         Haley, 2026-11-09, "A"): the rule is stated once, in the v1
+%         `selection` setting (a method parameter like any other setting);
+%         no per-parameter '<V2 name> selection' = 'best' parameter is
+%         written beside it.
 %     [varied properties are conditions by V2 name]  each property in
 %         tuningcurve_calc's `stim_property_list` is a condition, its variable
 %         the v2 stimulus method's (did2.convert.tuningNames), its value the
@@ -306,15 +309,6 @@ if useTable
     end
 else
     params = jParameterList(calcInputParameters(preBody));
-end
-% [tuning best value is a condition] (Jess Haley, 2026-10-28): the rule of each
-% `best` selection, after the v1 settings
-if ~isempty(curve.parameters)
-    if isempty(params)
-        params = curve.parameters;
-    else
-        params = did2.build.list(params, curve.parameters);
-    end
 end
 % [input names rebuild from the input class] (Jess Haley, 2026-10-27)
 reasons = [reasons, inputNameReasons(preBody, family)];
@@ -738,10 +732,8 @@ function curve = curveContext(preBody, sourceBlock, srcBlk)
 %   [varied properties are conditions by V2 name], [tuning stimids rebuild]).
 %   CURVE.reasons are tagged carry reasons; CURVE.rebuilt the raw-curve fields
 %   placed by the rebuild; CURVE.outcome the tuning_stimid_rebuild note.
-%   CURVE.parameters are the method parameters of its `best` selections
-%   ([tuning best value is a condition], Jess Haley, 2026-10-28).
 curve = struct('rebuilt', {{}}, 'notes', '', 'conditions', [], 'reasons', {{}}, ...
-    'outcome', 'none stated', 'parameters', []);
+    'outcome', 'none stated');
 cls = classNameOf(preBody);
 own = struct();
 if ~strcmp(cls, sourceBlock) && isfield(preBody, cls) && isstruct(preBody.(cls)) ...
@@ -781,9 +773,10 @@ if isfield(own, 'stim_property_list') && ~isEmptyValue(own.stim_property_list)
     end
 end
 % [tuning best value is a condition] (Jess Haley, 2026-10-28): the value each
-% `best` selection chose, read once from the log, is a condition too, and the
-% rule is the method parameter '<V2 name> selection' = 'best'; a curve whose
-% log does not state it is carried (carry-056)
+% `best` selection chose, read once from the log, is a condition too; a curve
+% whose log does not state it is carried (carry-056). [tuning selection rule
+% stated once] (Jess Haley, 2026-11-09): the rule stays only in the v1
+% `selection` setting, so no '<V2 name> selection' = 'best' parameter is written
 ip = struct();
 if isfield(own, 'input_parameters') && isstruct(own.input_parameters) ...
         && isscalar(own.input_parameters)
@@ -791,7 +784,6 @@ if isfield(own, 'input_parameters') && isstruct(own.input_parameters) ...
 end
 [bestNames, bestValues, why] = did2.convert.tuningBestValues(ip, fieldOr(own, 'log'));
 if ~isempty(bestNames)
-    rules = {};
     bestConds = {};
     for k = 1:numel(bestNames)
         if ~isempty(why); break; end
@@ -802,7 +794,6 @@ if ~isempty(bestNames)
             why = sprintf('"%s" is both a best selection and in stim_property_list', bestNames{k});
         else
             bestConds{end+1} = did2.build.condition(jLabel(v2), 'Value', bestValues(k)); %#ok<AGROW>
-            rules{end+1} = did2.build.parameter(jLabel([v2 ' selection']), 'Text', 'best'); %#ok<AGROW>
         end
     end
     if ~isempty(why)
@@ -812,7 +803,6 @@ if ~isempty(bestNames)
         conds = [conds, bestConds];
         condNames = [condNames, bestNames];
         condValues = [condValues, bestValues];
-        curve.parameters = did2.build.list(rules{:});
     end
 end
 if ~isempty(conds)

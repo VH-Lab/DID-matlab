@@ -1304,6 +1304,57 @@ verifyEqual(testCase, double(ch(1).matrix(:))', [1 2 3]);
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
 
+function testTheStimulatorRowRebuildsFromTheWiringAndTheElement(testCase)
+% [stimulator manipulation dropped] and [probe map rows compared as a set]
+% (Jess Haley, 2026-11-09, did-schema did_v2_standing_wiring_plan.md): the
+% round trip rebuilds a stimulator row from its wiring relation and its
+% element (name, reference, type, the rig's channels, the subject the element
+% observes), and compares the probe map's rows as an unordered set. The
+% stimulator is the FIRST v1 row; rebuilt from the wiring it comes back last.
+subj = subjectBody('spec_w', 'sess_w', 'L');
+stim = elementBody('stim_w', 'sess_w', 'vis', '1', 'stimulator', 1, 'spec_w');
+rec  = elementBody('rec_w', 'sess_w', 'cortex', '1', 'n-trode', 1, 'spec_w');
+daq  = daqsystemBody('acqsys_w', 'sess_w', 'vis');
+ing  = ingestedWithDeviceRows('ing_w', 'sess_w', 't0w', { ...
+    {'vis', '1', 'stimulator', 'vis:mk1', 'L'}, ...
+    {'cortex', '1', 'n-trode', 'vis:ai1-4', 'L'}});
+% the manifest's files are read by the rig's navigator (the round trip keeps a
+% row only when its rig reads the manifest's files)
+ing.depends_on = struct('name', 'filenavigator_id', 'value', 'nav_acqsys_w');
+bodies = {sessionBody('sd_w', 'sess_w', 'ref'), subj, stim, rec, daq, ing};
+[out, rep] = decompose(bodies);
+assertEqual(testCase, rep.manipulations_emitted, 1);
+assertEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
+% with the manipulation: the manifest round trips
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyFalse(testCase, failedSource(r, 'ing_w'), failureText(r, 'ing_w'));
+% without it: the stimulator row comes from the wiring and the element
+keep = true(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    b = out.migrated{k};
+    if isa(b, 'did2.document'); b = b.toStruct(); end
+    keep(k) = ~strcmp(char(b.document_class.class_name), 'manipulation');
+end
+assertEqual(testCase, sum(~keep), 1, 'one stimulator manipulation removed');
+out2 = out;
+out2.migrated = out.migrated(keep);
+r2 = did2.convert.roundtrip.wholeBatch(bodies, out2);
+verifyFalse(testCase, failedSource(r2, 'ing_w'), failureText(r2, 'ing_w'));
+verifyGreaterThan(testCase, r2.sources_compared, 0);
+end
+
+function tf = failedSource(r, id)
+tf = ~isempty(r.failures) && any(arrayfun(@(f) strcmp(f.source_id, id), r.failures));
+end
+
+function t = failureText(r, id)
+t = '';
+if isempty(r.failures); return; end
+f = r.failures(arrayfun(@(x) strcmp(x.source_id, id), r.failures));
+if isempty(f); return; end
+t = strjoin([f(1).lost_values, f(1).unplaced], ' | ');
+end
+
 function testSeveralRowsOnTwoSystemsAreOneWiringPerSystem(testCase)
 % Guard (2): one relation per acquisition system the rows name, each holding
 % that system's rows' channels in row order.

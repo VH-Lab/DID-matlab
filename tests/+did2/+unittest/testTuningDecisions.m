@@ -330,8 +330,10 @@ end
 function testTuningBestValueIsACondition(testCase)
 % Decided by Jess Haley, 2026-10-28 [tuning best value is a condition]: the
 % value an `angle ... best` selection chose (the log's "angle best value is
-% 90.") is a condition (orientation = 90), the rule the method parameter
-% "orientation selection" = best, and the stimid rebuild works from it.
+% 90.") is a condition (orientation = 90), and the stimid rebuild works from
+% it. Amended by [tuning selection rule stated once] (Jess Haley, 2026-11-09,
+% "A"): the rule is stated once, in the v1 `selection` setting; no
+% "<V2 name> selection" = best method parameter is written beside it.
 % The presentation shows each contrast at angle 90 (stimuli 1-6) and at angle
 % 0 (7-12); the writer kept angle 90, so v1 stimid is 1-6.
 [tc, resp, pres] = bestCurveBatch();
@@ -362,7 +364,13 @@ assertEqual(testCase, numel(c), 1);
 % angle runs 0-360, the direction of motion), not "orientation"
 verifyEqual(testCase, lower(char(c{1}.variable.name)), 'direction');
 verifyEqual(testCase, c{1}.quantity.value, 90);
-verifyEqual(testCase, lower(parameterText(leaf, 'Direction selection')), 'best');
+verifyEqual(testCase, parameterCount(leaf, 'Direction selection'), 0, ...
+    '[tuning selection rule stated once]: no per-parameter rule');
+verifyFalse(testCase, any(endsWith(parameterNames(leaf), ' selection')), ...
+    sprintf('no ''<V2 name> selection'' parameter; parameters: %s', ...
+    strjoin(parameterNames(leaf), ', ')));
+verifyNotEmpty(testCase, parameterText(leaf, 'selection'), ...
+    'the rule stays in the v1 `selection` setting');
 verifyEqual(testCase, leaf.statement.notes, tc.tuningcurve_calc.log, '[tuning log in notes]');
 n = out.summary.migration_notes.tuning_stimid_rebuild;
 verifyEqual(testCase, n.count, 1, 'one note per curve: the denominator');
@@ -370,6 +378,50 @@ verifyEqual(testCase, n.distinct_details, {'rebuilt exactly'});
 r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'best-selected tuning curve', {});
 verifyTrue(testCase, any(strcmp('stimulus_tuningcurve.stimid', r.matched)));
+end
+
+function testABestSelectionRuleFromAnEarlierMigrationStillRoundTrips(testCase)
+% [tuning selection rule stated once] (Jess Haley, 2026-11-09): a batch
+% migrated before it carries a 'Direction selection' = best parameter; the
+% round trip still reads it back when it names the setting's best selection,
+% and reports it unplaced when it names another variable
+[tc, resp, pres] = bestCurveBatch();
+out = runRaw({tc, resp, pres});
+docs = outputsExcept(out, {resp.base.id, pres.base.id});
+mine = outputsOf(out, tc.base.id);
+assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2');
+ix = find(cellfun(@(d) strcmp(char(d.base.id), char(mine{1}.base.id)), docs), 1);
+assertNotEmpty(testCase, ix);
+older = docs;
+older{ix} = withParameter(docs{ix}, 'selection', 'Direction selection', 'best');
+r = did2.convert.roundtrip.check(tc, older);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'an earlier migration''s rule', {});
+other = docs;
+other{ix} = withParameter(docs{ix}, 'selection', 'Contrast selection', 'best');
+r = did2.convert.roundtrip.check(tc, other);
+verifyNotEmpty(testCase, r.unplaced, 'a rule naming another variable is not the setting''s');
+end
+
+function leaf = withParameter(leaf, likeName, name, text)
+% LEAF with one more method parameter NAME = TEXT, shaped like its LIKENAME one
+p = asCell(leaf.interaction.method.parameters);
+k = find(cellfun(@(e) strcmp(char(e.variable.name), likeName), p), 1);
+e = p{k};
+e.variable.name = name;
+if isfield(e.variable, 'node'); e.variable.node = ''; end
+e.text = text;
+p{end+1} = e;
+leaf.interaction.method.parameters = p;
+end
+
+function n = parameterNames(leaf)
+n = {};
+if ~isfield(leaf, 'interaction') || ~isfield(leaf.interaction, 'method') ...
+        || ~isfield(leaf.interaction.method, 'parameters')
+    return;
+end
+n = cellfun(@(e) char(e.variable.name), asCell(leaf.interaction.method.parameters), ...
+    'UniformOutput', false);
 end
 
 function testTuningBestValueBesideADealtProperty(testCase)
