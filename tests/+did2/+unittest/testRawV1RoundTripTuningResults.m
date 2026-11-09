@@ -111,6 +111,80 @@ verifyTrue(testCase, any(strcmp({r.lost.path}, ...
     'orientation_direction_tuning.properties.response_type')));
 end
 
+% ===================== [oridir half-height values] =====================
+% Decided by Jess Haley, 2026-11-09 (did-schema did_v2_tuning_model_plan.md;
+% DID-matlab #423): the four values NDIcalc-vis-matlab's oridir calculator now
+% writes in `vector` go in `interpolated_values` on the calculation; a point
+% the calculator did not find is NaN with the reason in `notes` (T14), and
+% where the writer wrote Inf (fwhh, bandwidth) the value is NaN and the round
+% trip writes Inf back. Written only once the schema in use declares the
+% block (siblings first): both states are asserted, so the test says which
+% one this run measured.
+
+function testOridirHalfHeightValuesFromTheNewWriter(testCase)
+v1 = oridirHalfHeight();
+if ~schemaDeclaresHalfHeight()
+    verifyCarried(testCase, v1, 'orientation_direction_tuning.vector.half_low');
+    return;
+end
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+iv = halfHeightOf(out, v1.base.id);
+vec = v1.orientation_direction_tuning.vector;
+verifyEqual(testCase, iv.half_maximum_below, vec.half_low);
+verifyEqual(testCase, iv.half_maximum_above, vec.half_high);
+verifyEqual(testCase, iv.full_width_half_height, vec.fwhh);
+verifyEqual(testCase, iv.bandwidth, vec.bandwidth);
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'oridir with half-height values', {});
+for f = {'half_low', 'half_high', 'fwhh', 'bandwidth'}
+    verifyTrue(testCase, any(strcmp(r.matched, ['orientation_direction_tuning.vector.' f{1}])), f{1});
+end
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
+verifyEmpty(testCase, out.quarantine, 'the converted document validates');
+end
+
+function testOridirHalfHeightPointsNotFound(testCase)
+% the writer's not-found output (compute_fwhh / compute_bandwidth): half_low
+% and half_high NaN, fwhh and bandwidth Inf
+v1 = oridirHalfHeight();
+v1.orientation_direction_tuning.vector.half_low = NaN;
+v1.orientation_direction_tuning.vector.half_high = NaN;
+v1.orientation_direction_tuning.vector.fwhh = Inf;
+v1.orientation_direction_tuning.vector.bandwidth = Inf;
+if ~schemaDeclaresHalfHeight()
+    verifyCarried(testCase, v1, 'orientation_direction_tuning.vector.half_low');
+    return;
+end
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+[iv, leaf] = halfHeightOf(out, v1.base.id);
+for f = {'half_maximum_below', 'half_maximum_above', 'full_width_half_height', 'bandwidth'}
+    verifyTrue(testCase, isnan(iv.(f{1})), [f{1} ' is NaN']);
+    verifyTrue(testCase, contains(leaf.statement.notes, [f{1} ' is NaN']), ...
+        sprintf('T14: the reason is in notes: %s', leaf.statement.notes));
+end
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'oridir half-height points not found', {});
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
+verifyEmpty(testCase, out.quarantine, 'the converted document validates');
+end
+
+function testAnOridirHalfHeightValueWithNoReadingIsCarried(testCase)
+% -Inf, or NaN where the writer writes Inf, has no reading: carried (carry-056)
+if ~schemaDeclaresHalfHeight()
+    return;
+end
+v1 = oridirHalfHeight();
+v1.orientation_direction_tuning.vector.bandwidth = -Inf;
+verifyCarried(testCase, v1, 'orientation_direction_tuning.vector.bandwidth');
+v1 = oridirHalfHeight();
+v1.orientation_direction_tuning.vector.fwhh = NaN;
+verifyCarried(testCase, v1, 'orientation_direction_tuning.vector.fwhh');
+end
+
 % ===================== fixtures =========================================
 
 function f = fixtures()
@@ -160,6 +234,64 @@ d.app = struct('name', 'ndi_app_oridirtuning', 'version', m.app.version, ...
 d = did2.unittest.helpers.setDependency(d, 'element_id', depOf(m, 'element_id'));
 d = did2.unittest.helpers.setDependency(d, 'stimulus_tuningcurve_id', depOf(m, 'stimulus_tuningcurve_id'));
 d = jsondecode(jsonencode(d));
+end
+
+function d = oridirHalfHeight()
+% the same writer's document with the four `vector` fields NDIcalc-vis-matlab
+% 8d95413 writes (+vis/+oridir/+index/oridir_vectorindexes.m: compute_fwhh and
+% compute_bandwidth, 'Period' 360, on the stored direction and mean); the
+% values are the ones that writer gives this curve
+% (oridirtuning_calc.mock.1.halfheight.json, made by tools/scratch.m probe 12)
+d = oridir();
+m = mock('oridirtuning_calc.mock.1.halfheight.json');
+vec = m.orientation_direction_tuning.vector;
+for f = {'half_low', 'half_high', 'fwhh', 'bandwidth'}
+    d.orientation_direction_tuning.vector.(f{1}) = vec.(f{1});
+end
+end
+
+function tf = schemaDeclaresHalfHeight()
+tf = false;
+try
+    s = did2.schema.cache.shared().getClass('orientation_direction_tuning_calculation');
+catch
+    return;
+end
+path = {'interpolated_values', 'full_width_half_height'};
+f = s;
+for k = 1:numel(path)
+    if ~isfield(f, 'fields'); return; end
+    fs = f.fields;
+    if isstruct(fs); fs = num2cell(fs); end
+    hit = [];
+    for j = 1:numel(fs)
+        if strcmp(fs{j}.name, path{k}); hit = fs{j}; break; end
+    end
+    if isempty(hit); return; end
+    f = hit;
+end
+tf = true;
+end
+
+function [iv, leaf] = halfHeightOf(out, id)
+% the converted calculation's interpolated_values
+iv = struct();
+leaf = struct();
+for k = 1:numel(out.migrated)
+    s = out.migrated{k}.toStruct();
+    if strcmp(char(s.base.id), char(id)) && strcmp(char(s.document_class.class_name), ...
+            'orientation_direction_tuning_calculation')
+        leaf = s;
+    end
+end
+fns = fieldnames(leaf);
+for k = 1:numel(fns)
+    b = leaf.(fns{k});
+    if isstruct(b) && isscalar(b) && isfield(b, 'interpolated_values')
+        iv = b.interpolated_values;
+        return;
+    end
+end
 end
 
 function v = depOf(m, name)

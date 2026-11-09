@@ -259,8 +259,19 @@ elseif strcmp(family, 'rf')
     value = struct();
     valueAxes = [];
 else
+    % [oridir half-height values] (Jess Haley, 2026-11-09): placed only once
+    % the schema in use declares the block (siblings first; did-schema
+    % orientation_direction_tuning_calculation.interpolated_values); until
+    % then the four vector fields stay unplaced and carry the document
+    halfHeight = strcmp(family, 'oridir') && jSchemaHasPath(leafClass, ...
+        {'interpolated_values', 'full_width_half_height'});
     [value, valueAxes, leafFields, dropped, response, tuningExtra] = ...
-        jTuningCurve(srcBlk, family, 'Rebuilt', curve.rebuilt);
+        jTuningCurve(srcBlk, family, 'Rebuilt', curve.rebuilt, 'HalfHeight', halfHeight);
+    if isfield(tuningExtra, 'notes') && ~isempty(tuningExtra.notes)
+        % T14: the reason each half-height value is NaN (no other family
+        % writes notes here; a raw curve's are its log)
+        curve.notes = tuningExtra.notes;
+    end
 end
 % [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
 % 2026-10-25, did-schema V_eta_go_forward_class_audit.md): a v1 field the value

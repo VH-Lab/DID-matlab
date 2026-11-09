@@ -118,18 +118,35 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %   OPTS.Rebuilt (family 'stimulus'): raw-curve fields the caller rebuilds
 %   from other documents, so they are placed ([tuning stimids rebuild]:
 %   stimid, stimulus_presentation_number).
+%
+%   OPTS.HalfHeight (family 'oridir'; [oridir half-height values], Jess
+%   Haley, 2026-11-09, did-schema did_v2_tuning_model_plan.md): the four
+%   values NDIcalc-vis-matlab's oridir calculator writes in v1 `vector`
+%   (+vis/+oridir/+index/oridir_vectorindexes.m) go in LEAFFIELDS
+%   .interpolated_values: half_low -> half_maximum_below, half_high ->
+%   half_maximum_above, fwhh -> full_width_half_height, bandwidth ->
+%   bandwidth. A point the calculator did not find (NaN) stays NaN; where
+%   the writer wrote Inf (fwhh and bandwidth) the value is NaN. Each such
+%   value's reason is a sentence in EXTRA.notes (T14: attempted, not
+%   obtained), and the round trip writes Inf back for fwhh and bandwidth.
+%   Any other non-finite value (-Inf, a NaN fwhh or bandwidth) has no
+%   reading and stays unplaced. The caller sets it only when the schema in
+%   use declares the block (siblings first); otherwise the four stay
+%   unplaced and carry the document (carry-056), as before.
 
 arguments
     srcBlk
     family (1,:) char
     opts.Rebuilt = {}
+    opts.HalfHeight (1,1) logical = false
 end
 
 value = struct();
 valueAxes = [];
 leafFields = struct();
 dropped = {};
-extra = struct('abs', struct('present', false, 'value', struct(), 'leafFields', struct()));
+extra = struct('abs', struct('present', false, 'value', struct(), 'leafFields', struct()), ...
+    'notes', '');
 [v0, ~, o0] = jResponseVariable([]);   % no block: the source does not say
 response = struct('variable', v0, 'outcome', o0);
 if ~isstruct(srcBlk) || ~isscalar(srcBlk)
@@ -232,6 +249,11 @@ if ~isempty(fieldnames(vec))
         'direction_preference', {'direction_preference'}};
     [cs, usedV] = scalarMap(vec, map);
     if ~isempty(fieldnames(cs)); leafFields.circular_statistics = cs; end
+    if strcmp(family, 'oridir') && opts.HalfHeight
+        [hh, usedH, extra.notes] = halfHeightValues(vec);
+        if ~isempty(fieldnames(hh)); leafFields.interpolated_values = hh; end
+        usedV = [usedV, usedH];
+    end
     dropped = [dropped, prefixed('vector.', stated(vec, setdiff(fieldnames(vec), usedV)))];
 end
 
@@ -680,6 +702,51 @@ if isnumeric(y) && ~isempty(y) && ~isempty(xs) && all(cellfun(@numel, xs) == num
 end
 dropped = stated(s, setdiff(fieldnames(s), used));
 dropped = reshape(dropped, 1, []);
+end
+
+function [out, used, notes] = halfHeightValues(vec)
+%HALFHEIGHTVALUES The oridir calculator's half-height values ([oridir
+%   half-height values], Jess Haley, 2026-11-09): OUT the interpolated_values
+%   fields, USED the v1 `vector` names placed, NOTES one sentence per value
+%   that is NaN in v2 (T14). A value with no reading is left out of USED, so
+%   it stays unplaced.
+out = struct();
+used = {};
+sentences = {};
+rows = { ...
+    'half_maximum_below', 'half_low', false, ...
+        ['half_maximum_below is NaN: the calculator found no direction below ' ...
+        'the peak where the mean response falls to half its maximum ' ...
+        '(v1 vector.half_low NaN).']; ...
+    'half_maximum_above', 'half_high', false, ...
+        ['half_maximum_above is NaN: the calculator found no direction above ' ...
+        'the peak where the mean response falls to half its maximum ' ...
+        '(v1 vector.half_high NaN).']; ...
+    'full_width_half_height', 'fwhh', true, ...
+        ['full_width_half_height is NaN: the calculator wrote Inf, as it does ' ...
+        'when a half-height point is not found (v1 vector.fwhh Inf).']; ...
+    'bandwidth', 'bandwidth', true, ...
+        ['bandwidth is NaN: the calculator wrote Inf, as it does when a ' ...
+        'half-height point is not found or half_maximum_below is 0 degrees ' ...
+        '(v1 vector.bandwidth Inf).']};
+for k = 1:size(rows, 1)
+    [x, nm] = getfn(vec, rows(k, 2));
+    if ~(isnumeric(x) && isscalar(x))
+        continue;
+    end
+    x = double(x);
+    infIsNotFound = rows{k, 3};
+    if isfinite(x)
+        out.(rows{k, 1}) = x;
+    elseif (infIsNotFound && isequal(x, Inf)) || (~infIsNotFound && isnan(x))
+        out.(rows{k, 1}) = NaN;
+        sentences{end+1} = rows{k, 4}; %#ok<AGROW>
+    else
+        continue;   % -Inf, or NaN where the writer writes Inf: no reading
+    end
+    used{end+1} = nm; %#ok<AGROW>
+end
+notes = strjoin(sentences, ' ');
 end
 
 function [out, used] = scalarMap(s, map)
