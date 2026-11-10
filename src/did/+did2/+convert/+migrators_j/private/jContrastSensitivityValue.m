@@ -30,6 +30,14 @@ function [value, valueAxes, dropped] = jContrastSensitivityValue(block)
 %   A Naka-Rushton variant's v1 parameters are a parameters x SF matrix; each
 %   element is one coefficient entry named '<model> parameter k, spatial
 %   frequency j' -- every number kept, a CONSERVATIVE CHOICE recorded.
+%
+%   THE HALF-MAXIMUM POINT: Decided by Jess Haley, 2026-11-10 [one spelling
+%   for the half-maximum point] (did-schema did_v2_go_forward_class_audit.md):
+%   `value.interpolated_values.c50` and `value.model_fit.c50` become
+%   `half_maximum_below`, the spelling every other tuning class uses. DID-matlab
+%   follows first, so the name written is the one the LOADED schema declares
+%   (jSchemaHasPath): `half_maximum_below` once did-schema
+%   renames the two fields, `c50` until then. halfMaximumName below.
 
 arguments
     block struct
@@ -49,7 +57,9 @@ rt = getf(block, {'response_type'});
 if isstring(rt) && isscalar(rt); rt = char(rt); end
 if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
 c50 = getf(block, {'fitless_interpolated_c50'});
-if isnumeric(c50) && ~isempty(c50); value.interpolated_values = struct('c50', double(c50)); end
+if isnumeric(c50) && ~isempty(c50)
+    value.interpolated_values = struct(halfMaximumName('interpolated_values'), double(c50));
+end
 sig = struct();
 for nm = {'visual_response_p_bonferroni', 'response_varies_p_bonferroni'}
     v = getf(block, nm);
@@ -83,8 +93,19 @@ for i = 1:numel(names)
 end
 end
 
+function name = halfMaximumName(block)
+% the name the loaded schema declares for contrast_sensitivity.value.<BLOCK>'s
+% half-maximum point ([one spelling for the half-maximum point]):
+% `half_maximum_below` once did-schema renames it, else `c50`
+name = 'c50';
+if jSchemaHasPath('contrast_sensitivity', {'value', block, 'half_maximum_below'})
+    name = 'half_maximum_below';
+end
+end
+
 function fits = collectVariantFits(block)
 fits = {};
+fitC50 = halfMaximumName('model_fit');
 variants = {'rb', 'rbn', 'rbns'};
 metrics  = {'sensitivity', 'relative_max_gain', 'empirical_c50', 'saturation_index'};
 for i = 1:numel(variants)
@@ -109,8 +130,9 @@ for i = 1:numel(variants)
         mv = getf(block, {[metrics{m} '_' v]});
         if isnumeric(mv) && ~isempty(mv)
             % v1 empirical_c50_<variant> -> c50 (Jess Haley 2026-10-22
-            % [significance with results])
-            entry.(strrep(metrics{m}, 'empirical_c50', 'c50')) = double(mv);
+            % [significance with results]), half_maximum_below once the schema
+            % declares it ([one spelling for the half-maximum point])
+            entry.(strrep(metrics{m}, 'empirical_c50', fitC50)) = double(mv);
             present = true;
         end
     end

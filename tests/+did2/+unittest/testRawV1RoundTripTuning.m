@@ -148,6 +148,49 @@ for cls = {'oridirtuning_calc', 'contrastsensitivity_calc'}
 end
 end
 
+function testContrastSensitivityHalfMaximumFollowsTheSchema(testCase)
+% [one spelling for the half-maximum point] (Decided by Jess Haley,
+% 2026-11-10): the half-maximum point is written under the name the loaded
+% schema declares -- c50 while did-schema main says c50, half_maximum_below on
+% a copy that renames it (did2.unittest.helpers.halfMaximumSchema) -- and the
+% round trip rebuilds fitless_interpolated_c50 and empirical_c50_<V> from
+% either, losing nothing; both validate.
+v1 = writerOutput('contrastsensitivity_calc');
+for renamed = [false true]
+    if renamed
+        did2.unittest.helpers.halfMaximumSchema(testCase);
+    end
+    label = sprintf('contrast sensitivity, half_maximum_below declared = %d', renamed);
+    want = 'c50';
+    other = 'half_maximum_below';
+    if did2.unittest.helpers.schemaDeclares('contrast_sensitivity', ...
+            {'value', 'interpolated_values', 'half_maximum_below'})
+        [want, other] = deal(other, want);
+    end
+    out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
+    verifyEmpty(testCase, out.quarantine, [label ': quarantined']);
+    leaf = [];
+    for k = 1:numel(out.migrated)
+        s = out.migrated{k}.toStruct();
+        if isfield(s, 'contrast_sensitivity'); leaf = s; break; end
+    end
+    assertNotEmpty(testCase, leaf, [label ': no contrast_sensitivity leaf']);
+    val = leaf.contrast_sensitivity.value;
+    [iv, ~, nIv] = did2.unittest.helpers.interpolatedEntries(val.interpolated_values);
+    verifyEqual(testCase, nIv, 1, label);
+    verifyTrue(testCase, isfield(iv, want), [label ': interpolated_values has no ' want]);
+    verifyFalse(testCase, isfield(iv, other), [label ': interpolated_values has ' other]);
+    fits = val.model_fit;
+    if isstruct(fits); fits = num2cell(fits); end
+    verifyNotEmpty(testCase, fits, label);
+    for k = 1:numel(fits)
+        verifyTrue(testCase, isfield(fits{k}, want), sprintf('%s: model_fit %d has no %s', label, k, want));
+        verifyFalse(testCase, isfield(fits{k}, other), sprintf('%s: model_fit %d has %s', label, k, other));
+    end
+    roundTripCases(testCase, {label, v1, false});
+end
+end
+
 % ===================== every field accounted for =========================
 
 function testAFieldTheFoldDoesNotReadCarriesTheDocument(testCase)
