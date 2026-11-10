@@ -318,41 +318,26 @@ function [result, report] = epochMint(result, options)
 %   untested 1 -> N path would be this file's own recurring error -- machinery
 %   whose zero is a property of never having run.
 %
-%   AND FOR THE TWO daqreader ARMS THERE IS A SECOND, SEPARATE BLOCKER, which is
-%   a SCHEMA question and not this function's to answer. `jEpochDocId` reads the
-%   edge off the BODY, and unlike the metadata fold -- whose stamped body is
-%   immediately converted to `acquisition_metadata_file`, a class that DOES
-%   declare `epoch_id`, so the stamp never persists -- these two arms RETURN THE
-%   PRE-BODY in `bodies`. A stamped `epoch_id` would therefore PERSIST on a
-%   `daqreader_epochdata_ingested` document, and neither class declares the
-%   dependency:
-%
-%     DENOMINATOR: 247 JSON files under schemas/V_eta, 241 with a document_class
-%       (RE-DERIVED 2026-08-12; deps read by JSON path, not by grep)
-%       epoch_id DEPENDENCY declared by 4: acquisition_metadata_file (required),
-%         ingestion_manifest (required), directed_relation (optional),
-%         method_parameters (optional)
-%       daqreader_epochdata_ingested        depends_on: [daqreader_id]
-%       daqreader_image_epochdata_ingested  depends_on: [daqreader_id]
-%       stimulus_response_scalar            does NOT declare it either
-%
-%   So their armed branches are DEAD on real data today, reachable only by
-%   fixtures that hand-add the edge (testMigratorsJIngested.m's `withEpochEdge`,
-%   whose comment already calls it "the `epoch_id` edge #60's epoch pass will
-%   add"). Declaring it is a V_eta increment and, per the 2026-08-10 amendment to
-%   the #60 sign-off, an extension of what that signature names -- TEAM's call,
-%   not this pass's. If it is taken it must be OPTIONAL: this pass cannot always
-%   resolve an epoch (synthetic ids are skipped, and a pair may have no session
-%   document or an ambiguous one), and `RequiredDependencies` is ARMED, so a
-%   required edge that cannot be filled QUARANTINES rather than sitting empty.
-%
-%   THE ORDER HAS NOW REVERSED, and that is the only part of this block that
-%   changed on 2026-08-12. The rebuild machinery is no longer the blocker; the
-%   schema increment is the whole of what is left, for two of the three. The
-%   arming table below is the one place a fourth row would be added, and the
-%   `undeclared_edge` refusal is what stops a row being added before its class
-%   declares the edge -- it reads the schema, so it cannot go stale the way a
-%   list kept here would.
+%   THE TWO daqreader INGESTED-EPOCH CLASSES ARE NOT ARMED, BY DECISION. This
+%   block used to call their armed branches DEAD, waiting on a schema increment
+%   that would declare `epoch_id` on daqreader_epochdata_ingested and
+%   daqreader_image_epochdata_ingested so this pass could stamp it. That wait is
+%   over: Decided by Jess Haley, 2026-11-03 [handed-on are v1 as written]
+%   (did-schema did_v2_go_forward_class_audit.md; built by DID-matlab #372,
+%   5339621a, and #374, da487311; did-schema #105, which asked for the edge,
+%   closed as superseded on 2026-11-10) -- the two classes are HANDED ON
+%   unchanged as v1 (v1_to_v2's HAND_ON_CLASSES, stamped did_v1, never
+%   validated against v2), so no `epoch_id` is stamped on them, and
+%   defaultArmingMigrators has no row for either. No v1 source carries the
+%   edge (NDI's templates declare only `daqreader_id`; private/jEpochDocId's
+%   header), so their migrators hand every real document on as v1; their
+%   converting branches are reached only by test fixtures that add the edge
+%   (testMigratorsJIngested's `withEpochEdge`). A document handed on and not
+%   converted by a batch pass is stored as its v1 source at the end of the
+%   batch ([handed-on classes carried at the end]). The `undeclared_edge` refusal
+%   still stops a row from being added for a class that does not declare the
+%   edge: it reads the schema, so it cannot go stale the way a list kept here
+%   would.
 %
 %   `stimulus_response_scalar` is the one whose stamp would NOT persist --
 %   jCalculation.m:82-92 builds the leaf's `deps` by NAMING the edges it carries
@@ -2385,8 +2370,10 @@ function tbl = defaultArmingMigrators()
 %   the document keeps the passthrough it has today. The refusal is not being
 %   worked around; it is doing exactly its job on the arm where it applies.
 %
-%   Adding a row for either daqreader arm before its schema increment lands is
-%   still caught by that refusal, which reads the schema rather than this list.
+%   The two daqreader ingested-epoch classes have no row: they are handed on
+%   unchanged as v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03),
+%   so no `epoch_id` is stamped on them; a row added for either would still
+%   be caught by that refusal, which reads the schema rather than this list.
 tbl = struct( ...
     'daqmetadatareader_epochdata_ingested', ...
         @did2.convert.migrators_j.daqmetadatareader_epochdata_ingested, ...
