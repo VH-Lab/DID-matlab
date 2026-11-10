@@ -75,6 +75,39 @@ switch family
         responseId = '';
         if ~isempty(ins); responseId = ins{1}; end
         [blk, bad] = rawCurveBlock(leaf, own, responseId);
+        % [display label compared loosely] (Decided by Jess Haley,
+        % 2026-11-10, did-schema did_v2_go_forward_class_audit.md): the
+        % migration does not write v1 input_parameters.independent_label; it
+        % is rebuilt from the curve's registered variable name(s), the label
+        % rawCurveBlock rebuilds, unless the configuration (migrated before)
+        % still holds it as a parameter. Only a calculator's own block holds
+        % it (tuningcurve_calc); a bare stimulus_tuningcurve (the
+        % tuning_response app's) has no input_parameters
+        if ~strcmp(v1Class, resultBlock) ...
+                && ~(isfield(own, 'input_parameters') && isstruct(own.input_parameters) ...
+                && isfield(own.input_parameters, 'independent_label')) ...
+                && isfield(blk, 'independent_variable_label')
+            lbl = blk.independent_variable_label;
+            if iscell(lbl) && isscalar(lbl); lbl = lbl{1}; end
+            if ischar(lbl) && ~isempty(lbl)
+                if ~isfield(v1, v1Class) || ~isstruct(v1.(v1Class)); v1.(v1Class) = struct(); end
+                if ~isfield(v1.(v1Class), 'input_parameters') ...
+                        || ~isstruct(v1.(v1Class).input_parameters)
+                    v1.(v1Class).input_parameters = struct();
+                end
+                v1.(v1Class).input_parameters.independent_label = lbl;
+            end
+        end
+        whyLabel = ['a display label rebuilt from the registered variable name is ' ...
+            'the same when it differs from v1''s only in letter case or in ''_'' ' ...
+            'versus space, part by part at the '','' the writer splits at ' ...
+            '([display label compared loosely], Jess Haley, 2026-11-10)'];
+        if ~strcmp(v1Class, resultBlock)
+            spec.same(end+1) = struct('path', [v1Class '.input_parameters.independent_label'], ...
+                'fn', @sameDisplayLabel, 'why', whyLabel);
+        end
+        spec.same(end+1) = struct('path', [resultBlock '.independent_variable_label'], ...
+            'fn', @sameDisplayLabel, 'why', whyLabel);
     case 'csf'
         [blk, bad] = csfBlock(leaf);
     otherwise
@@ -312,4 +345,27 @@ for k = 1:numel(entries)
         best{end+1} = t{1}; %#ok<AGROW>
     end
 end
+end
+
+function tf = sameDisplayLabel(a, b)
+%SAMEDISPLAYLABEL True when two display labels differ only in letter case or
+%   in '_' versus space ([display label compared loosely], Decided by Jess
+%   Haley, 2026-11-10), part by part: each is text or a cell of text, split at
+%   ',' and each part trimmed, as NDI's tuningcurve calculator reads its
+%   independent_label (+ndi/+calc/+stimulus/tuningcurve.m: split, strtrim).
+pa = labelParts(a);
+pb = labelParts(b);
+tf = ~isempty(pa) && numel(pa) == numel(pb) && isequal(pa, pb);
+end
+
+function p = labelParts(x)
+p = {};
+if isstring(x); x = cellstr(x); end
+if iscell(x)
+    if ~all(cellfun(@ischar, x(:))); return; end
+    x = strjoin(reshape(x, 1, []), ',');
+end
+if ~ischar(x) || isempty(strtrim(x)); return; end
+p = strtrim(strsplit(x, ','));
+p = cellfun(@(c) lower(regexprep(c, '[_\s]+', ' ')), p, 'UniformOutput', false);
 end

@@ -54,9 +54,11 @@ function [out, found] = tuningNames(direction, name)
 %                            `selection` array, one text entry; a nested
 %                            `selection`'s three fields keep their names,
 %                            which the decision does not cover)
-%   `independent_label` keeps its row: the decision says it is not written
-%   and the round trip rebuilds it, which is not built yet (see the DID-matlab
-%   PR for [term picks batch 3]).
+%   `independent_label` keeps its row, for a document migrated before it
+%   stopped being written: [display label compared loosely] (Decided by Jess
+%   Haley, 2026-11-10) -- the tuningcurve_calc migration no longer writes it,
+%   and the round trip rebuilds it from the curve's registered variable name
+%   (+roundtrip/private/tuningInverse.m).
 %
 %   TWO ROWS NAME REGISTERED TERMS (Jess Haley, 2026-11-03, "Ok" to Claude's
 %   answers on docs/V2_PLAN.md G96; did-schema term registry rows):

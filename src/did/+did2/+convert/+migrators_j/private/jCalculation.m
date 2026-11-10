@@ -302,7 +302,19 @@ reasons = [reasons, curve.reasons];
 % [parameter names map by table] (Jess Haley, 2026-10-27): the tuning
 % families' settings are named through did2.convert.tuningNames
 if useTable
-    [params, unknownSettings] = jParameterList(calcInputParameters(preBody), '', ...
+    ip = calcInputParameters(preBody);
+    if strcmp(family, 'stimulus') && isstruct(ip) && isscalar(ip) ...
+            && isfield(ip, 'independent_label')
+        % [display label compared loosely] (Decided by Jess Haley, 2026-11-10,
+        % did-schema did_v2_go_forward_class_audit.md; answers the question
+        % [term picks batch 3] left): v1 `independent_label` (display text,
+        % "Orientation") is not written; the independent variable already
+        % carries its meaning, and the round trip rebuilds the text from the
+        % curve's registered variable name, letter case and '_' versus space
+        % compared loosely (+roundtrip/private/tuningInverse.m)
+        ip = rmfield(ip, 'independent_label');
+    end
+    [params, unknownSettings] = jParameterList(ip, '', ...
         @(n) did2.convert.tuningNames('v2', n));
     for k = 1:numel(unknownSettings)
         reasons{end+1} = sprintf(['[carry-056] input_parameters.%s (no v2 name in ' ...
