@@ -325,6 +325,11 @@ def main():
     ws_only = 0
     examples = collections.defaultdict(list)
     direct_den = collections.Counter()
+    gone_by_class = collections.Counter()
+    gone_named = collections.Counter()
+    gone_unread = collections.Counter()
+    gone_ex = collections.defaultdict(list)
+    attributed = set()
     direct_named = collections.Counter()
     direct_cls = collections.Counter()
     gone = 0
@@ -338,8 +343,21 @@ def main():
             carried += 1
             continue
         present = [final_cls[o] for o in outs if o in final_cls]
+        attributed.update(outs)
         if outs and not present:
             gone += 1
+            gc = row.get('class_name') or '<none>'
+            gone_by_class[gc] += 1
+            try:
+                gb = json.load(open(os.path.join(v1dir, v1files[int(row['input_index']) - 1]),
+                                   encoding='utf-8'))
+                gn = (gb.get('base') or {}).get('name')
+                if isinstance(gn, str) and gn != '':
+                    gone_named[gc] += 1
+                    if gn not in gone_ex[gc] and len(gone_ex[gc]) < 4:
+                        gone_ex[gc].append(gn)
+            except (OSError, ValueError, IndexError):
+                gone_unread[gc] += 1
         if not any('statement' in closure(c, parents) for c in present):
             continue
         becomes += 1
@@ -389,6 +407,17 @@ def main():
               % (c, n, direct_named[c]))
         for (c, d), n in sorted(direct_cls.items(), key=lambda x: -x[1]):
             P('COUNT2   v1 class %-30s -> class holding its v1 id: %-30s %7d' % (c, d, n))
+    for c, n in gone_by_class.most_common():
+        P('COUNT2   outputs gone from the final batch (a batch pass replaced them): v1 class %-30s %7d'
+          '  base.name non-empty %7d  unreadable %d  e.g. %s'
+          % (c, n, gone_named[c], gone_unread[c], json.dumps(gone_ex[c])[:200]))
+    unattr = collections.Counter(c for i, c in final_cls.items()
+                                 if i not in attributed and 'statement' in closure(c, parents))
+    P('COUNT2 final statements no v1 source became by id (minted by a batch pass; their v1 '
+      'base.name is not traced here): %d %s' % (sum(unattr.values()), dict(unattr)))
+    report['outputs_gone_by_class'] = dict(gone_by_class)
+    report['outputs_gone_named_by_class'] = dict(gone_named)
+    report['unattributed_statements'] = dict(unattr)
     report.update({'v1_sources': len(so), 'v1_become_statements': becomes,
                    'v1_bodies_unreadable': unread, 'outputs_gone': gone,
                    'carried_skipped': carried,
