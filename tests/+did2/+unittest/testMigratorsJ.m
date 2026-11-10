@@ -5259,7 +5259,10 @@ verifyEmpty(testCase, find(endsWith(models, ' rbn'), 1));
 assertNotEmpty(testCase, rbAt);
 rb = csv.model_fit(rbAt);
 verifyEqual(testCase, rb.sensitivity, [10 20 15 5]);       % metric rides INSIDE its fit
-verifyEqual(testCase, rb.c50, [0.2 0.3 0.4 0.5]);
+% [one spelling for the half-maximum point] (Jess Haley, 2026-11-10): the name
+% the loaded schema declares, half_maximum_below once did-schema renames c50
+hmFit = halfMaximumNameJ('model_fit');
+verifyEqual(testCase, rb.(hmFit), [0.2 0.3 0.4 0.5]);
 verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
 % [interpolated values are a list] (Decided by Jess Haley, 2026-10-30, did-schema
 % V_eta_go_forward_class_audit.md): one structure, or a list once the loaded
@@ -5267,7 +5270,7 @@ verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
 % entry (contrast_sensitivity_calc states none)
 [iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries(csv.interpolated_values);
 verifyEqual(testCase, nIv, 1);
-verifyEqual(testCase, iv.c50, [0.21 0.31 0.41 0.51]);
+verifyEqual(testCase, iv.(halfMaximumNameJ('interpolated_values')), [0.21 0.31 0.41 0.51]);
 verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
 verifyEqual(testCase, csv.significance.modulated_response, true);
@@ -7537,4 +7540,13 @@ function n = regName(name)
 %   given ([term labels stay as the ontology spells them]).
 t = did2.convert.registeredTerm('', name);
 n = t.name;
+end
+
+function name = halfMaximumNameJ(block)
+% contrast_sensitivity.value.<BLOCK>'s half-maximum field as the loaded schema
+% spells it ([one spelling for the half-maximum point], Jess Haley, 2026-11-10)
+name = 'c50';
+if did2.unittest.helpers.schemaDeclares('contrast_sensitivity', {'value', block, 'half_maximum_below'})
+    name = 'half_maximum_below';
+end
 end
