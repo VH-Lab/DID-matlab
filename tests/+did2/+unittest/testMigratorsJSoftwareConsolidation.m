@@ -300,6 +300,15 @@ verifyEqual(testCase, classNames(out), {'oridirtuning_calc'});
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
+function testCalculatorWithNoCurvePassesThroughWithSummariesInTheValue(testCase)
+% [tuning summaries in the value] (Decided by Jess Haley, 2026-11-10): on a
+% schema copy that declares circular_statistics in tuning_curve.value, the
+% calculator's `vector` (a summary, not a curve) does not count as a curve:
+% the no-curve calculator still passes through unchanged, as above.
+did2.unittest.helpers.tuningSummariesSchema(testCase);
+testCalculatorWithNoCurvePassesThrough(testCase);
+end
+
 
 function n = nameOf(out, id)
 n = '';
