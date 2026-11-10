@@ -562,7 +562,7 @@
 %   gate diffs this block against the generator and a hand edit fails it. To
 %   change an entry, change that migrator's H1 and re-run with --write.
 %
-%   95 migrator(s).
+%   96 migrator(s).
 %
 %     binaryseries_parameters
 %         Brainstorm-J migrator: did_v1 binaryseries_parameters -- CARRIED whole as
@@ -910,6 +910,10 @@
 %         Expression" binding belongs to the #70 reshape, which #88 does not carry),
 %         no session anchor. base.id is preserved so a Cells / Tiles / file_reference
 %         row's `spatial_gene_expression_pyramid_id` edge still resolves.
+%     spatial_gene_expression_roi
+%         Brainstorm-J migrator: did_v1 spatialGeneExpressionROI, PASSED THROUGH
+%         unchanged (an id-preserving 1:1 passthrough under its v1 class name), as the
+%         other spatial-transcriptomics classes are until their migrator is built.
 %     spatial_gene_expression_tiles
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionTiles -> V_eta
 %         spatial_gene_expression_tiles, an id-preserving 1:1 passthrough. The class
