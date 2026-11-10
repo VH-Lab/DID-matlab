@@ -45,7 +45,10 @@ function [node, handles] = vocabulary(kind, handle)
 %   before that registration lands) the handle answers '' and a culture is
 %   written and compared by name exactly as before. A node-less culture
 %   document still matches either way (did2.build.isVocabulary compares a
-%   term with no node by its name).
+%   term with no node by its name). [culture renamed cell culture] (Jess
+%   Haley, 2026-11-10): the type will be renamed "cell culture"; until the
+%   schema's row spells it, 'cell culture' is an alias of the handle
+%   (private/vocabularyAlias), so a node-less document named either matches.
 %
 %   See also did2.build.isVocabulary, did2.build.vocabularyHandle,
 %   did2.convert.channelType.
@@ -144,6 +147,13 @@ for k = 1:size(rows, 1)
         node = rows{k, 2};
         return;
     end
+end
+% an ALIAS (private/vocabularyAlias: 'cell culture' for culture, [culture
+% renamed cell culture]) the schema has no row for answers as its handle does
+alias = vocabularyAlias(kind, handle);
+if ~isempty(alias)
+    node = did2.build.vocabulary(kind, alias);
+    return;
 end
 % 2. the handle table, for a handle the schema's label no longer spells
 %    ('sample_of' once the row is "derives from part of", 'funding' once it

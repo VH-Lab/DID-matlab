@@ -230,13 +230,43 @@ verifyTrue(testCase, did2.build.isVocabulary(struct('node', '', 'name', 'culture
     'entity_type', 'culture'));
 ent = did2.build.document('entity', struct('type', did2.build.term('', 'culture'), ...
     'local_identifier', 'c1'), 'SessionId', testCase.TestData.sid, 'Validate', false);
-verifyEqual(testCase, char(ent.entity.type.node), '');
+verifyFalse(testCase, isfield(ent.entity.type, 'node') && ~isempty(ent.entity.type.node), ...
+    'no node is written while the schema binds none');
 verifyEqual(testCase, char(ent.entity.type.name), 'culture');
+% [culture renamed cell culture] (Jess Haley, 2026-11-10): a node-less
+% document named "cell culture" matches too, and answers the handle
+verifyTrue(testCase, did2.build.isVocabulary(struct('node', '', 'name', 'cell culture'), ...
+    'entity_type', 'culture'));
+verifyEqual(testCase, did2.build.vocabulary('entity_type', 'cell culture'), '');
+verifyEqual(testCase, did2.build.vocabularyHandle('entity_type', ...
+    struct('node', '', 'name', 'cell culture')), 'culture');
 end
 
-function bindCulture(testCase)
+function testCultureRenamedCellCultureByNode(testCase)
+% [culture renamed cell culture] (Decided by Jess Haley, 2026-11-10): on a
+% copy whose row is {OBI:0001876, "cell culture"}, a writer saying 'culture'
+% writes that node and the schema's name; documents named "culture" or
+% "cell culture", with or without the node, all match
+bindCulture(testCase, 'cell culture');
+verifyEqual(testCase, did2.build.vocabulary('entity_type', 'culture'), 'OBI:0001876');
+verifyEqual(testCase, did2.build.vocabulary('entity_type', 'cell culture'), 'OBI:0001876');
+for t = {struct('node', 'OBI:0001876', 'name', 'cell culture'), ...
+        struct('node', '', 'name', 'cell culture'), struct('node', '', 'name', 'culture'), ...
+        'culture', 'cell culture'}
+    verifyTrue(testCase, did2.build.isVocabulary(t{1}, 'entity_type', 'culture'));
+end
+verifyEqual(testCase, did2.build.vocabularyHandle('entity_type', ...
+    struct('node', '', 'name', 'cell culture')), 'culture');
+ent = did2.build.document('entity', struct('type', did2.build.term('', 'culture'), ...
+    'local_identifier', 'c1'), 'SessionId', testCase.TestData.sid, 'Validate', false);
+verifyEqual(testCase, ent.entity.type.node, 'OBI:0001876');
+verifyEqual(testCase, char(ent.entity.type.name), 'cell culture');
+end
+
+function bindCulture(testCase, name)
 % load a copy of the schema whose entity.type culture row is {OBI:0001876,
-% "culture"}; a schema that binds it already is used as it is
+% NAME} (default "culture"); a schema that binds it already is used as it is
+if nargin < 2; name = 'culture'; end
 src = testCase.TestData.schemaPath;
 tmp = tempname;
 mkdir(tmp);
@@ -244,7 +274,8 @@ did2.schema.cache.copySchemaSet(src, tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 f = fullfile(tmp, 'entity.json');
 txt = fileread(f);
-txt = regexprep(txt, '"node":\s*"",(\s*)"name":\s*"culture"', '"node": "OBI:0001876",$1"name": "culture"');
+txt = regexprep(txt, '"node":\s*"",(\s*)"name":\s*"culture"', ...
+    ['"node": "OBI:0001876",$1"name": "' name '"']);
 fid = fopen(f, 'w'); fwrite(fid, txt); fclose(fid);
 did2.schema.cache.setSchemaPath(tmp);
 testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));

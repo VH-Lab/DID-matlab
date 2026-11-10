@@ -45,7 +45,13 @@ h = name;
 if isempty(node) && ~isempty(name)
     node = did2.build.vocabulary(kind, name);
 end
-if isempty(node); return; end
+if isempty(node)
+    % a node-less alias answers its handle ('cell culture' -> 'culture',
+    % [culture renamed cell culture]; private/vocabularyAlias)
+    alias = vocabularyAlias(kind, name);
+    if ~isempty(alias); h = alias; end
+    return;
+end
 [~, handles] = did2.build.vocabulary(kind);
 hit = find(strcmpi(handles(:, 2), node), 1);
 if ~isempty(hit)
