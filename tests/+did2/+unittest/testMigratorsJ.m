@@ -4909,8 +4909,10 @@ function testSpikewavesDefersToSecondPass(testCase)
 % samples_per_spike. Neither field exists, so both defaulted to 0 and every
 % document described an extraction of ZERO spikes of ZERO samples -- a
 % fabricated measurement that validates cleanly and that neither Phase 1
-% counter can see. The real counts are in the .vsw header, and single-document
-% migrators carry files without reading their bytes.
+% counter can see. The real counts are in the .vsw header. Since 2026-11-10
+% ([spike waveforms built now]) the migrator reads the two files' bytes; this
+% fixture attaches none it can read, so the document is carried whole as v1
+% (testMigratorsJSpikewaves covers the conversion).
 out = did2.convert.migrators_j.spikewaves(spikewavesBody());
 verifyClass(testCase, out, 'cell');
 verifyEqual(testCase, numel(out), 1);
@@ -6947,7 +6949,9 @@ function testTheNeedsHomeClassesAreCarriedWholeAsV1(testCase)
 % carry path, citing a needs-home register row (carry-101..104), read raw so
 % the carry is
 % the untouched v1 source.
-fixtures = {simpleCalcDoc(), spikewavesBody(), spikeClustersBody(), binnedSpikeRateBody()};
+% spikewaves left this list on 2026-11-10 ([spike waveforms built now]): it
+% converts (testMigratorsJSpikewaves).
+fixtures = {simpleCalcDoc(), spikeClustersBody(), binnedSpikeRateBody()};
 for k = 1:numel(fixtures)
     v1 = jsondecode(jsonencode(fixtures{k}));
     cls = v1.document_class.class_name;
@@ -6959,7 +6963,7 @@ for k = 1:numel(fixtures)
     emitted.document_class = rmfield(emitted.document_class, 'schema_version');
     verifyTrue(testCase, isequaln(emitted, v1), [cls ': the carry is not the v1 source']);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    rowOf = struct('simple_calc', 'carry-104', 'spikewaves', 'carry-101', ...
+    rowOf = struct('simple_calc', 'carry-104', ...
         'spike_clusters', 'carry-102', 'binnedspikeratevm', 'carry-103');
     verifyTrue(testCase, startsWith(d, ['[' rowOf.(cls) '] ']), [cls ': ' d]);
     verifyTrue(testCase, contains(d, 'awaiting_home'), [cls ': ' d]);
