@@ -67,7 +67,7 @@ verifyEqual(testCase, double(tb.data.dimensions.n), 7);
 verifyEqual(testCase, char(tb.data.dimensions.term.node), 'GO:0001508');
 d = wb.data.dimensions;
 verifyEqual(testCase, double([d.n]), [7, f.nSamples, f.nChannels]);
-verifyEqual(testCase, arrayfun(@(x) char(x.term.node), d, 'UniformOutput', false)', ...
+verifyEqual(testCase, reshape(arrayfun(@(x) char(x.term.node), d, 'UniformOutput', false), 1, []), ...
     {'GO:0001508', 'om:Time', 'NCIT:C44170'});
 verifyEqual(testCase, char(wb.data.datum_order), 'C');
 verifyEqual(testCase, dep(wb, 'key_id'), {f.id});

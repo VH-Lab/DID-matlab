@@ -136,7 +136,8 @@ end
 if ~isempty(timesBody)
     timesInfo = renamed(getIn(timesBody, 'files', 'file_info'), 'spiketimes.bin');
 end
-v1.files = struct('file_list', {{'spikewaves.vsw', 'spiketimes.bin'}});
+% a column, as a stored document's JSON array reads back (jsondecode)
+v1.files = struct('file_list', {{'spikewaves.vsw'; 'spiketimes.bin'}});
 try
     v1.files.file_info = [vswInfo, timesInfo];
 catch
