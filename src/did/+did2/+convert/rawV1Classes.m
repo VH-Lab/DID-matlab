@@ -466,7 +466,9 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         trips: testRawV1RoundTripOpenminds.
 %     openminds_element   superclasses `base` + `openminds`, no `app` block, no
 %                         superclass migrator; one term assertion about the
-%                         element, as before, or carried (carry-128, carry-146).
+%                         element, its description in the notes and its
+%                         openminds_id not stored ([openMINDS element
+%                         description in notes]), or carried (carry-146).
 %                         What the migrator does not read carries the document
 %                         (private/jRawAccount, carry-100), an `openminds_<n>`
 %                         edge naming a child among it (the assertion keeps
