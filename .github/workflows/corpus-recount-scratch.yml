@@ -1,0 +1,60 @@
+name: Corpus recount (scratch)
+
+# Scratch, branch claude/corpus-counts-1110 only; never merged. Re-runs
+# tools/corpus_counts.py over the final-batch dumps a "Corpus counts
+# (scratch)" run uploaded (DUMP_RUN), with the v1 corpus re-downloaded for
+# count 2. No migration here: minutes, not hours.
+# Decided by Jess Haley 2026-11-10 [two corpus counts]: run and report only.
+
+on:
+  push:
+    branches: ['claude/corpus-counts-1110']
+    paths:
+      - '.github/workflows/corpus-recount-scratch.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  DUMP_RUN: "42867693565"
+
+jobs:
+  recount:
+    name: "recount: ${{ matrix.corpus }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        corpus: ["20211116", "B", "Dab", "JH", "PRED", "Soph"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out did-schema main
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: main
+          path: did-schema
+      - name: Count
+        env:
+          GH_TOKEN: ${{ github.token }}
+          C: ${{ matrix.corpus }}
+        run: |
+          set -euo pipefail
+          echo "did-schema checked out: $(git -C did-schema rev-parse HEAD); DID-matlab: $(git rev-parse HEAD); dump run: $DUMP_RUN"
+          mkdir -p "$RUNNER_TEMP/eta-schemas" "$RUNNER_TEMP/dump" "$RUNNER_TEMP/v1"
+          python3 tools/assemble_schema_set.py did-schema/schemas "$RUNNER_TEMP/eta-schemas"
+          gh run download "$DUMP_RUN" -R "$GITHUB_REPOSITORY" -n "counts-dump-$C" -D "$RUNNER_TEMP/dump"
+          curl -sSfL -o "$RUNNER_TEMP/v1/$C.zip" "https://ndi-programming-development.s3.us-east-1.amazonaws.com/$C.zip"
+          unzip -q "$RUNNER_TEMP/v1/$C.zip" -d "$RUNNER_TEMP/v1"
+          python3 -I tools/corpus_counts.py --corpus "$C" --dump "$RUNNER_TEMP/dump" \
+            --schemas "$RUNNER_TEMP/eta-schemas" \
+            --registry did-schema/schemas/registry/did_v2_term_registry.json \
+            --v1dir "$RUNNER_TEMP/v1/$C" --json "$RUNNER_TEMP/counts-$C.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recount-${{ matrix.corpus }}
+          path: ${{ runner.temp }}/counts-*.json
+          retention-days: 7

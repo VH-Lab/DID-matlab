@@ -61,7 +61,24 @@ def class_graph(schema_dir):
                 sup = [sup]
             parents[dc['class_name']] = [s.get('class_name') for s in sup
                                          if isinstance(s, dict)]
+            paths = []
+            collect_term_paths(d.get('fields') or [], '', paths)
+            TERM_PATHS[dc['class_name']] = paths
     return parents, n
+
+
+TERM_PATHS = {}
+
+
+def collect_term_paths(fields, prefix, out):
+    for f in fields:
+        if not isinstance(f, dict) or 'name' not in f:
+            continue
+        p = prefix + f['name']
+        if f.get('type') == 'ontology_term':
+            out.append(p)
+        if isinstance(f.get('fields'), list):
+            collect_term_paths(f['fields'], p + '.', out)
 
 
 def closure(cls, parents, doc=None):
@@ -73,7 +90,7 @@ def closure(cls, parents, doc=None):
             continue
         seen.add(c)
         stack.extend(parents.get(c, []))
-    if doc is not None and cls not in parents:
+    if doc is not None:
         sup = (doc.get('document_class') or {}).get('superclasses') or []
         if isinstance(sup, dict):
             sup = [sup]
@@ -103,32 +120,52 @@ def is_empty(v):
 
 def walk_terms(obj, path, out):
     if isinstance(obj, dict):
-        if 'node' in obj and 'name' in obj and all(
-                isinstance(obj[k], (str, type(None), list)) for k in ('node', 'name')):
+        if 'node' in obj:
             out.append((path, obj))
         for k, v in obj.items():
-            if k in ('node', 'name') and 'node' in obj and 'name' in obj:
-                continue
             walk_terms(v, path + ('.' if path else '') + k, out)
     elif isinstance(obj, list):
         for v in obj:
             walk_terms(v, path, out)
 
 
+def slot_values(obj, parts):
+    """Leaves at a dotted path, descending through lists."""
+    if isinstance(obj, list):
+        for v in obj:
+            yield from slot_values(v, parts)
+        return
+    if not parts:
+        yield obj
+        return
+    if isinstance(obj, dict) and parts[0] in obj:
+        yield from slot_values(obj[parts[0]], parts[1:])
+
+
+def schema_terms(doc, classes):
+    """(path, value) for every value at a schema-declared ontology_term slot
+    of a class in the document's closure; the class's fields live in the
+    document's block of that class's name."""
+    out = []
+    for c in sorted(classes):
+        block = doc.get(c)
+        if block is None:
+            continue
+        for p in TERM_PATHS.get(c, []):
+            for v in slot_values(block, p.split('.')):
+                out.append(('%s.%s' % (c, p), v))
+    return out
+
+
 def find_variable(doc):
-    """The statement's own `variable` slot: a top-level property block's
-    `variable` that is a {node, name}. Returns (path, term) or (None, None)."""
-    hits = []
-    for block, v in doc.items():
-        if isinstance(v, dict) and isinstance(v.get('variable'), dict) \
-                and 'node' in v['variable']:
-            hits.append((block + '.variable', v['variable']))
-    if not hits:
-        return None, None
-    for p, t in hits:
-        if p == 'statement.variable':
-            return p, t
-    return hits[0]
+    """statement.variable (statement declares `variable`, scalar ontology_term)."""
+    st = doc.get('statement')
+    if isinstance(st, dict) and 'variable' in st:
+        v = st['variable']
+        if isinstance(v, dict):
+            return 'statement.variable', v
+        return 'statement.variable', {'node': '', 'name': ''}
+    return None, None
 
 
 def main():
@@ -156,17 +193,40 @@ def main():
     report = {'corpus': C, 'documents_inspected': len(docs), 'unparseable': bad}
 
     # ---- COUNT 1a: empty-node ontology_term values
+    # A term value is (i) a dict at a slot the schema declares ontology_term,
+    # for a class in the document's closure, or (ii) any other dict with a
+    # `node` key (undeclared slot, e.g. a carried v1 body or an entry shape the
+    # schema does not spell out). "node empty" = the key absent, '' or [].
     tv = 0
     empty = collections.Counter()
     empty_both = collections.Counter()
     by_slot = collections.Counter()
+    not_struct = collections.Counter()   # declared slot holding a non-dict, non-empty value
+    blank_slot = collections.Counter()   # declared scalar slot holding '' / None
+    declared_n = 0
     for d in docs:
-        out = []
-        walk_terms(d, '', out)
         c = cname(d)
-        for path, t in out:
+        seen = set()
+        vals = []
+        for path, v in schema_terms(d, closure(c, parents, d)):
+            if isinstance(v, dict):
+                seen.add(id(v))
+                vals.append((path, v))
+                declared_n += 1
+            elif v is None or v == '':
+                blank_slot['%s:%s' % (c, path)] += 1
+            elif v == []:
+                pass
+            else:
+                not_struct['%s:%s' % (c, path)] += 1
+        extra = []
+        walk_terms(d, '', extra)
+        for path, t in extra:
+            if id(t) not in seen and 'node' in t:
+                vals.append(('%s (undeclared slot)' % path, t))
+        for path, t in vals:
             tv += 1
-            key = '%s.%s' % (c, path)
+            key = '%s:%s' % (c, path)
             by_slot[key] += 1
             if is_empty(t.get('node')):
                 empty[key] += 1
@@ -175,12 +235,23 @@ def main():
     if tv == 0:
         P('COUNT1a term values inspected: 0 -> NOT MEASURED')
     else:
-        P('COUNT1a term values inspected: %d; node empty: %d (of which name also empty: %d)'
-          % (tv, sum(empty.values()), sum(empty_both.values())))
+        P('COUNT1a term values inspected: %d (at schema-declared ontology_term slots: %d; '
+          'other {node,..} dicts: %d); node empty or absent: %d (of which name also empty: %d)'
+          % (tv, declared_n, tv - declared_n, sum(empty.values()), sum(empty_both.values())))
+        P('COUNT1a declared slots holding a blank scalar (\'\' or null, no struct): %d; '
+          'holding a non-struct value: %d' % (sum(blank_slot.values()), sum(not_struct.values())))
         for k, n in empty.most_common():
-            P('COUNT1a   %-70s empty-node %7d  (name also empty %7d) of %7d values'
+            P('COUNT1a   %-78s node-empty %7d  (name also empty %7d) of %7d values'
               % (k, n, empty_both[k], by_slot[k]))
+        for k, n in blank_slot.most_common(20):
+            P('COUNT1a   blank scalar at %-70s %7d' % (k, n))
+        for k, n in not_struct.most_common(20):
+            P('COUNT1a   non-struct at %-72s %7d' % (k, n))
     report['term_values_inspected'] = tv
+    report['term_values_declared'] = declared_n
+    report['values_by_slot'] = dict(by_slot)
+    report['blank_slot'] = dict(blank_slot)
+    report['not_struct'] = dict(not_struct)
     report['empty_node_by_slot'] = {k: {'empty_node': n, 'name_also_empty': empty_both[k],
                                         'values': by_slot[k]} for k, n in empty.items()}
 
