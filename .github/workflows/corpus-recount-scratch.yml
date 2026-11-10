@@ -5,7 +5,7 @@ name: Corpus recount (scratch)
 # (scratch)" run uploaded (DUMP_RUN), with the v1 corpus re-downloaded for
 # count 2. No migration here: minutes, not hours.
 # Decided by Jess Haley 2026-11-10 [two corpus counts]: run and report only;
-# counts 3-5 (#212, #150, #287) by her approvals of the same day.
+# counts 3-6 (#212, #150, #287, #234) by her approvals of the same day.
 
 on:
   push:

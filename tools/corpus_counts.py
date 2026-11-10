@@ -346,6 +346,8 @@ def count34(P, dump, so, v1files, v1dir, final_cls, report, final_v1):
     report['count3_ids_not_held'] = dict(lost)
 
 
+COUNT6_CLASSES = ('binnedspikeratevm', 'vmneuralresponseresiduals', 'vmspikesummary',
+                  'vmspikefilteringparameters', 'vmspikefit', 'fitcurve', 'hartley_calc')
 COUNT5_CLASSES = ('animalsubject', 'demoNDISeries', 'demoNDISeriesMixed', 'imageCollection',
                   'projectvar', 'stimulus_parameter_table', 'valid_interval')
 
@@ -359,6 +361,8 @@ def count5(P, v1files, v1dir, report):
     exact = collections.Counter()
     loose = collections.Counter()
     as_super = collections.Counter()
+    c6 = collections.Counter()
+    c6tot = collections.Counter()
     want = {c.lower(): c for c in COUNT5_CLASSES}
     for f in v1files:
         try:
@@ -370,6 +374,13 @@ def count5(P, v1files, v1dir, report):
         c = str(((b.get('document_class') or {}) if isinstance(b, dict) else {}).get('class_name', ''))
         if c in COUNT5_CLASSES:
             exact[c] += 1
+        if c in COUNT6_CLASSES:
+            deps = as_list(b.get('depends_on'))
+            have = sorted({str(d.get('name')) for d in deps if isinstance(d, dict)
+                           and d.get('name') in ('element_id', 'subject_id')
+                           and nonempty(d.get('value'))})
+            c6[(c, '+'.join(have) or 'neither')] += 1
+            c6tot[c] += 1
         if c.lower() in want:
             loose[want[c.lower()]] += 1
         sup = ((b.get('document_class') or {}) if isinstance(b, dict) else {}).get('superclasses') or []
@@ -379,11 +390,17 @@ def count5(P, v1files, v1dir, report):
                 as_super[c0] += 1
     if read == 0:
         P('COUNT5 v1 documents read: 0 (unreadable %d) -> NOT MEASURED' % unread)
+        P('COUNT6 v1 documents read: 0 (unreadable %d) -> NOT MEASURED' % unread)
         return
     P('COUNT5 v1 documents read: %d (unreadable %d)' % (read, unread))
+    P('COUNT6 v1 documents read: %d (unreadable %d) [same read as COUNT5]' % (read, unread))
     for c in COUNT5_CLASSES:
         P('COUNT5   v1 class %-26s %7d   (case-insensitive %d; documents naming it as a superclass %d)'
           % (c, exact[c], loose[c], as_super[c]))
+    for c in COUNT6_CLASSES:
+        P('COUNT6   v1 class %-28s %7d   depends_on element_id/subject_id (non-empty): %s'
+          % (c, c6tot[c], json.dumps({k[1]: v for k, v in c6.items() if k[0] == c})))
+    report['count6'] = {'%s|%s' % k: v for k, v in c6.items()}
     report['count5'] = {'v1_read': read, 'unreadable': unread, 'exact': dict(exact),
                         'case_insensitive': dict(loose), 'as_superclass': dict(as_super)}
 
