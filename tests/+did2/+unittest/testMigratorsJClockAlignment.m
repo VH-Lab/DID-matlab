@@ -551,8 +551,34 @@ verifyEqual(testCase, align.get('polynomial.value.degree'), numel(coeffs) - 1);
 verifyEqual(testCase, align.get('clock_alignment.cost'), 1);
 rel = align.get('clock_alignment.relation');
 verifyEqual(testCase, rel.name, 'temporally aligned with');
-verifyFalse(testCase, isfield(rel, 'node') && ~isempty(rel.node), ...
-    'no CURIE is invented for the relation');
+% The node is the one the LOADED schema's clock_alignment.relation binding
+% declares for "temporally aligned with": empty on did-schema main, EMPTY:0000440
+% once did-schema registers it (Jess Haley 2026-11-10 [culture and alignment
+% nodes], did-schema #314). Either way the migrator never invents a CURIE the
+% schema lacks.
+want = boundRelationNode(testCase, 'temporally aligned with');
+got = '';
+if isfield(rel, 'node'); got = char(rel.node); end
+verifyEqual(testCase, got, want, ...
+    'the relation node is the schema''s bound node (none invented)');
+end
+
+function node = boundRelationNode(testCase, name)
+% The node clock_alignment.relation's binding value list gives NAME in the
+% loaded schema ('' when the value carries no node).
+c = did2.schema.cache.shared();
+cls = c.getClass('clock_alignment');
+f = cls.fields;
+if isstruct(f); f = num2cell(f); end
+hit = f(cellfun(@(d) isstruct(d) && strcmp(char(d.name), 'relation'), f));
+verifyNotEmpty(testCase, hit, 'clock_alignment has no relation field');
+vals = hit{1}.constraints.binding.values;
+if isstruct(vals); vals = num2cell(vals); end
+row = vals(cellfun(@(v) strcmpi(char(v.name), name), vals));
+verifyNumElements(testCase, row, 1, ...
+    sprintf('the relation binding lists "%s" once', name));
+node = '';
+if ~isempty(row) && isfield(row{1}, 'node'); node = char(row{1}.node); end
 end
 
 

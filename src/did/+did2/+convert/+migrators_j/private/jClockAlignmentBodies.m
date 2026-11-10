@@ -40,12 +40,13 @@ function bodies = jClockAlignmentBodies(preBody, block, epochDocIdA, epochDocIdB
 %   interesting question about a clock mapping -- is expressible ONLY if degree
 %   is a field. This is the same test that kept `axis.n`.
 %
-%   `relation` is STAGED as {node: '', name: 'temporally aligned with'} under
-%   gate 2 of the cluster sign-off: "temporally aligned with" is a MAPPING
-%   predicate, not an OWL-Time interval relation, so it cannot borrow
-%   relative_reference's binding and needs an NDIC term (#67), harvested by the
-%   empty-node sweep (#70). A staged empty node is the established practice at
-%   34 existing +migrators_j sites (private/jOntologyTerm.m).
+%   `relation` is written by NAME, 'temporally aligned with', through jLabel:
+%   it takes the node the schema's term registry holds for that name and
+%   none otherwise. "temporally aligned with" is a MAPPING predicate, not an
+%   OWL-Time interval relation, so it cannot borrow relative_reference's
+%   binding; did-schema gives it EMPTY:0000440 (Jess Haley 2026-11-10 [culture
+%   and alignment nodes]), and a schema without that registration gets the
+%   staged empty node, as before. No CURIE is invented here.
 %
 %   ---------------------------------------------------------------------
 %   THE ENDPOINTS
