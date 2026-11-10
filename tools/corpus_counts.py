@@ -170,7 +170,11 @@ def find_variable(doc):
 
 
 CARRY_ROWS = ('carry-112', 'carry-114', 'carry-118')
-TUNING_HINT = ('tuning', 'contrastsensitivity_calc', 'hartley_calc')
+TUNING_CLASSES = ('tuningcurve_calc', 'oridirtuning_calc', 'contrasttuning_calc',
+                  'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc',
+                  'speed_tuning_calc', 'contrastsensitivity_calc', 'hartley_calc',
+                  'orientation_direction_tuning', 'contrast_tuning', 'spatial_frequency_tuning',
+                  'temporal_frequency_tuning', 'speed_tuning', 'stimulus_tuningcurve')
 
 
 def as_list(x):
@@ -220,7 +224,7 @@ def resolve(body, path):
 C056 = re.compile(r'\[carry-056\]\s*(?:unplaced:\s*)?([A-Za-z_][\w.]*(?:\s*,\s*[A-Za-z_][\w.]*)*)')
 
 
-def count34(P, dump, so, v1files, v1dir, final_cls, report):
+def count34(P, dump, so, v1files, v1dir, final_cls, report, final_v1):
     id_file = {}
     for row in so:
         try:
@@ -237,13 +241,34 @@ def count34(P, dump, so, v1files, v1dir, final_cls, report):
                 cache[i] = None
         return cache[i]
 
-    for tag in ('final', 'pass1'):
+    P('COUNT3 final batch: %d document(s) stamped did_v1 (carried whole as v1)' % len(final_v1))
+    nf = os.path.join(dump, 'migration_notes.json')
+    if os.path.isfile(nf):
+        cn = (json.load(open(nf, encoding='utf-8')) or {}).get('carried_as_v1') or {}
+        rr = as_list(cn.get('register_rows'))
+        rc = as_list(cn.get('register_row_counts'))
+        P('COUNT3 [run notes, exact] carried_as_v1 notes: %s; by register row: %s'
+          % (cn.get('count'), json.dumps(dict(zip(rr, rc)))))
+        report['count3_notes'] = {'count': cn.get('count'), 'rows': dict(zip(rr, rc))}
+    else:
+        P('COUNT3 [run notes] file absent -> NOT MEASURED')
+    # The pass-1 report holds each carry's rows and reason; an entry counts
+    # only while its document is still carried in the final batch (a batch pass
+    # may convert it later). The 'final' collect is read once the batch passes
+    # have run their own v1_to_v2 calls, so its carry rows are not reliable;
+    # it is printed for the record only.
+    for tag in ('pass1', 'final'):
         f = os.path.join(dump, 'migration_report_%s.json' % tag)
         if not os.path.isfile(f):
             P('COUNT3/4 migration report (%s): file absent -> NOT MEASURED' % tag)
             continue
         mr = json.load(open(f, encoding='utf-8'))
         carried = as_list(mr.get('carried_as_v1'))
+        if tag == 'pass1':
+            n0 = len(carried)
+            carried = [e for e in carried if e.get('document_id') in final_v1]
+            P('COUNT3 [pass1 report] %d carried entr(ies), %d of them still carried in the final batch'
+              % (n0, len(carried)))
         P('COUNT3 [%s report] carried_as_v1 entries inspected: %d (report counts.documents: %s)'
           % (tag, len(carried), (mr.get('counts') or {}).get('documents')))
         if not carried:
@@ -261,7 +286,7 @@ def count34(P, dump, so, v1files, v1dir, final_cls, report):
                 ' ' + json.dumps({c: n for (rr, c), n in rows.items() if rr == r})))
         report['count3_%s' % tag] = {'carried_inspected': len(carried),
                                      'by_row_class': {'%s|%s' % k: v for k, v in rows.items()}}
-        if tag != 'final':
+        if tag != 'pass1':
             continue
         # COUNT 4: carry-056 fields, cited in a carried document's reason
         insp = collections.Counter()
@@ -269,10 +294,16 @@ def count34(P, dump, so, v1files, v1dir, final_cls, report):
         full = collections.Counter()
         empt = collections.Counter()
         unres = collections.Counter()
-        tun = [e for e in carried if any(h in (e.get('class') or '') for h in TUNING_HINT)]
+        den = collections.Counter(r.get('class_name') for r in so
+                                  if r.get('class_name') in TUNING_CLASSES)
+        tun = [e for e in carried if (e.get('class') or '') in TUNING_CLASSES]
         c056 = [e for e in carried if 'carry-056' in '%s %s' % (e.get('carry') or '', e.get('reason') or '')]
-        P('COUNT4 carried documents of a tuning-family / contrastsensitivity / hartley class: %d; '
-          'carried documents citing carry-056: %d' % (len(tun), len(c056)))
+        if not den:
+            P('COUNT4 v1 documents of a tuning-family / contrastsensitivity / hartley class: 0 -> NOT MEASURED')
+        else:
+            P('COUNT4 v1 documents of a tuning-family / contrastsensitivity / hartley class: %d %s; '
+              'of them still carried as v1 in the final batch: %d; carried documents citing carry-056: %d'
+              % (sum(den.values()), json.dumps(dict(den)), len(tun), len(c056)))
         for e in c056:
             cls = e.get('class') or '<none>'
             insp[cls] += 1
@@ -292,8 +323,6 @@ def count34(P, dump, so, v1files, v1dir, final_cls, report):
                     full[(cls, fld)] += 1
                 else:
                     empt[(cls, fld)] += 1
-        if not c056:
-            P('COUNT4 0 carry-056 documents -> NOT MEASURED')
         for cls, n in insp.most_common():
             P('COUNT4   class %-36s carry-056 documents %7d' % (cls, n))
         for (cls, fld), n in sorted(cite.items(), key=lambda x: (x[0][0], -x[1])):
@@ -315,6 +344,48 @@ def count34(P, dump, so, v1files, v1dir, final_cls, report):
     P('COUNT3 [batch] converted (not carried) v1 sources inspected: %d; whose v1 id no final '
       'document holds: %d %s' % (srcs, sum(lost.values()), dict(lost)))
     report['count3_ids_not_held'] = dict(lost)
+
+
+COUNT5_CLASSES = ('animalsubject', 'demoNDISeries', 'demoNDISeriesMixed', 'imageCollection',
+                  'projectvar', 'stimulus_parameter_table', 'valid_interval')
+
+
+def count5(P, v1files, v1dir, report):
+    """did-schema #287 (Jess Haley, 2026-11-10): v1 documents of each listed
+    class, by document_class.class_name (exact; a case-insensitive match is
+    shown beside it), read from the v1 files themselves."""
+    read = 0
+    unread = 0
+    exact = collections.Counter()
+    loose = collections.Counter()
+    as_super = collections.Counter()
+    want = {c.lower(): c for c in COUNT5_CLASSES}
+    for f in v1files:
+        try:
+            b = json.load(open(os.path.join(v1dir, f), encoding='utf-8'))
+        except (OSError, ValueError):
+            unread += 1
+            continue
+        read += 1
+        c = str(((b.get('document_class') or {}) if isinstance(b, dict) else {}).get('class_name', ''))
+        if c in COUNT5_CLASSES:
+            exact[c] += 1
+        if c.lower() in want:
+            loose[want[c.lower()]] += 1
+        sup = ((b.get('document_class') or {}) if isinstance(b, dict) else {}).get('superclasses') or []
+        txt = json.dumps(sup).lower()
+        for lc, c0 in want.items():
+            if re.search(r'(?<![a-z0-9_])%s(?:\.json)?"' % re.escape(lc), txt):
+                as_super[c0] += 1
+    if read == 0:
+        P('COUNT5 v1 documents read: 0 (unreadable %d) -> NOT MEASURED' % unread)
+        return
+    P('COUNT5 v1 documents read: %d (unreadable %d)' % (read, unread))
+    for c in COUNT5_CLASSES:
+        P('COUNT5   v1 class %-26s %7d   (case-insensitive %d; documents naming it as a superclass %d)'
+          % (c, exact[c], loose[c], as_super[c]))
+    report['count5'] = {'v1_read': read, 'unreadable': unread, 'exact': dict(exact),
+                        'case_insensitive': dict(loose), 'as_superclass': dict(as_super)}
 
 
 def main():
@@ -575,7 +646,10 @@ def main():
                    'direct_statement_by_class': dict(direct_den),
                    'direct_named_by_class': dict(direct_named),
                    'id_holder_class': {'%s -> %s' % k: v for k, v in direct_cls.items()}})
-    count34(P, a.dump, so, v1files, v1dir, final_cls, report)
+    final_v1 = {doc_id(d) for d in docs
+                if str((d.get('document_class') or {}).get('schema_version', '')) == 'did_v1'}
+    count34(P, a.dump, so, v1files, v1dir, final_cls, report, final_v1)
+    count5(P, v1files, v1dir, report)
     if a.json:
         json.dump(report, open(a.json, 'w'), indent=1)
     return 0

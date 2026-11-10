@@ -4,7 +4,8 @@ name: Corpus recount (scratch)
 # tools/corpus_counts.py over the final-batch dumps a "Corpus counts
 # (scratch)" run uploaded (DUMP_RUN), with the v1 corpus re-downloaded for
 # count 2. No migration here: minutes, not hours.
-# Decided by Jess Haley 2026-11-10 [two corpus counts]: run and report only.
+# Decided by Jess Haley 2026-11-10 [two corpus counts]: run and report only;
+# counts 3-5 (#212, #150, #287) by her approvals of the same day.
 
 on:
   push:
@@ -18,7 +19,7 @@ permissions:
   contents: read
 
 env:
-  DUMP_RUN: "42867693565"
+  DUMP_RUN: "42874677863"
 
 jobs:
   recount:
@@ -48,7 +49,9 @@ jobs:
           gh run download "$DUMP_RUN" -R "$GITHUB_REPOSITORY" -n "counts-dump-$C" -D "$RUNNER_TEMP/dump"
           curl -sSfL -o "$RUNNER_TEMP/v1/$C.zip" "https://ndi-programming-development.s3.us-east-1.amazonaws.com/$C.zip"
           unzip -q "$RUNNER_TEMP/v1/$C.zip" -d "$RUNNER_TEMP/v1"
-          python3 -I tools/corpus_counts.py --corpus "$C" --dump "$RUNNER_TEMP/dump" \
+          d=$(dirname "$(find "$RUNNER_TEMP/dump" -name migrated.jsonl | head -1)")
+          echo "dump folder: $d"
+          python3 -I tools/corpus_counts.py --corpus "$C" --dump "$d" \
             --schemas "$RUNNER_TEMP/eta-schemas" \
             --registry did-schema/schemas/registry/did_v2_term_registry.json \
             --v1dir "$RUNNER_TEMP/v1/$C" --json "$RUNNER_TEMP/counts-$C.json"
