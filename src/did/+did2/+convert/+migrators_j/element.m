@@ -17,11 +17,9 @@ function v2Body = element(preBody)
 %     - `assertion`(s), value kind `term`: its kind, nothing dropped: `type` -> variable
 %                         "element type", unless the device kind alone
 %                         rebuilds it (THE DEVICE KIND, below);
-%                         `ndi_element_class` -> variable "ndi element class"
-%                         (the MATLAB reconstruction handle; kept so it is not
-%                         lost -- reshaping it into a typed kind is a needs-NDI
-%                         companion, the same disposition as the config-class
-%                         `ndi_*_class` fields).
+%                         `ndi_element_class` -> NOTHING where it is rebuilt
+%                         from what the element is (THE NDI ELEMENT CLASS,
+%                         below); else variable "ndi element class".
 %     - `assertion`+`term` a device's kind, variable NCIT:C178920 "Equipment
 %                         Type" (the binding registry's subject-defining
 %                         variable for a device's finer kind): every device
@@ -120,8 +118,9 @@ function v2Body = element(preBody)
 %                                 and the "element type" assertion where the
 %                                 kind alone does not rebuild the word (none
 %                                 for a sorted unit)
-%     element.ndi_element_class -> the entity type (elementEntityType) and one
-%                                 term assertion
+%     element.ndi_element_class -> the entity type (elementEntityType) and
+%                                 the type: rebuilt (THE NDI ELEMENT CLASS);
+%                                 one term assertion only where it is not
 %     element.direct           -> which lineage relation is written; for a
 %                                 sorted unit on its probe, not written:
 %                                 rebuilt as 0 (unitFollowsItsProbe)
@@ -184,9 +183,8 @@ function v2Body = element(preBody)
 %       observation and no mode, and an element's round trip reads no
 %       observation; and a bare `patch` or `sharp` has no mode term. ((iii)
 %       of [element type is a device kind term]: "until a type has its term,
-%       the migrator keeps writing the current statement".) Stopping it
-%       where a mode is written waits on where the word goes for an element
-%       with no recording observation (not decided);
+%       the migrator keeps writing the current statement".) The batch
+%       pass, which sees the recordings, stops it (below);
 %     - for an ensemble (no device kind), which
 %       did2.convert.resolveEpochProbemap keys its epochs on.
 %   It is NOT written for a sorted unit: [cell spellings are one meaning] and
@@ -196,8 +194,36 @@ function v2Body = element(preBody)
 %   unit becomes the entity type [sorted units are cells or groups] gives it,
 %   and the round trip and the readers (resolveEpochProbemap, NDI-matlab's
 %   ndi.vintage.elementTypeOf) read `spikes` back from that entity type.
-%   The "ndi element class" assertion is still written ([ndi element class
-%   not kept] waits on NDI-matlab's readers, its Build pending line).
+%   The batch pass did2.convert.resolveEpochProbemap drops the `element
+%   type` statement of a recorded probe of a shared kind where its kind and
+%   the modes of its recording observations rebuild the word exactly
+%   (mode_statements_dropped_recorded; [recording mode terms], its Build
+%   pending line: "the `element type` assertion stops for these types, but
+%   stays for v1 `sharp-I`" -- a `sharp-I` element is carried whole,
+%   [element types batch 4] (9)), and that of a probe that never recorded
+%   ([clamp mode of unrecorded probe dropped]).
+%
+%   THE NDI ELEMENT CLASS: Decided by Jess Haley, did-schema
+%   did_v2_go_forward_class_audit.md, [ndi element class not kept]
+%   (2026-10-27: "the 'ndi element class' assertion is not written; the
+%   round trip rebuilds `element.ndi_element_class` from the entity type and
+%   device kind (for a probe type, NDI's `probetype2object.json`), and an
+%   element whose class cannot be rebuilt that way is brought to the team"),
+%   [element recognised by its links], [ensemble has members] and [assertion
+%   wins while written] (2026-11-10), built on NDI-matlab's side by #1214
+%   (39d8603c). The class is did2.convert.elementClassOfKind of what the
+%   element is (elementClassKind): a device takes the class
+%   probetype2object.json names for its type; a sorted unit (cell, or a
+%   Group of type spikes) 'ndi.neuron'; an ensemble (a Group of type
+%   ensemble) 'ndi.element.ensemble'. Where that is the v1 class, no
+%   assertion is written. Where it is not (or is ''), the assertion is
+%   written as before -- it wins while written ([assertion wins while
+%   written] (1)) -- and the element is noted `element_class_not_rebuilt`,
+%   for the team. AN ENSEMBLE: NDI-matlab rebuilds its class from the
+%   `member_of` relations its second pass writes, so until that pass has run
+%   it reads as one multi-unit; its class and type are checked after that
+%   pass ([assertion wins while written] (1)), not by did2.convert.
+%   roundtrip.element, which runs before it.
 %
 %   AN N-TRODE'S NUMBER OF ELECTRODES (nTrodeElectrodeCount): Decided by Jess
 %   Haley, 2026-10-29 [n-trode count from the channel list], did-schema
@@ -399,8 +425,19 @@ if ~isempty(type) && ~isUnit ...
     bodies{end+1} = jStatement(preBody, 'assertion', elementId, ...
         jLabel('element type'), typeTerm, 'ValueKind', 'term');
 end
-if ~isempty(ndiClass)
+% [ndi element class not kept] (Decided by Jess Haley, 2026-10-27): the
+% "ndi element class" assertion is not written; the class is rebuilt from
+% what the element is (elementClassKind, did2.convert.elementClassOfKind).
+% An element whose v1 class does not rebuild keeps the assertion and is noted
+% `element_class_not_rebuilt`, to be brought to the team (THE NDI ELEMENT
+% CLASS, header).
+rebuiltClass = did2.convert.elementClassOfKind(elementClassKind(entityType, type), type);
+if ~isempty(ndiClass) && ~strcmp(rebuiltClass, strtrim(ndiClass))
     bodies{end+1} = kindAssertion(preBody, elementId, 'ndi element class', ndiClass);
+    did2.convert.reportNote('element_class_not_rebuilt', 'element', elementId, ...
+        sprintf(['ndi_element_class "%s" (type "%s", entity type %s) rebuilds as "%s": ' ...
+        'the "ndi element class" assertion is kept ([ndi element class not kept]: ' ...
+        'brought to the team)'], ndiClass, type, entityType, rebuiltClass));
 end
 if isDevice
     bodies{end+1} = jStatement(preBody, 'assertion', elementId, ...
@@ -573,6 +610,28 @@ switch ty
         % position, distance, neuron, cell and every other string
         why = sprintf(['[carry-063] needs_mapping: element type "%s" (class "%s") ' ...
             'is not on the element type list ([element types batch 4])'], ty, char(ndiClass));
+end
+end
+
+function kind = elementClassKind(entityType, elementType)
+%ELEMENTCLASSKIND What kind of element a converted element is, for its class
+%   (did2.convert.elementClassOfKind): 'probe' for a device, 'unit' for a
+%   sorted unit (a cell, or a Group of v1 type spikes: one multi-unit),
+%   'ensemble' for a Group of v1 type ensemble ([ensemble has members]: the
+%   Group its members' `member_of` relations point into, which NDI-matlab's
+%   second pass writes), '' otherwise.
+kind = '';
+switch entityType
+    case 'device'
+        kind = 'probe';
+    case 'cell'
+        kind = 'unit';
+    case 'Group'
+        if strcmp(strtrim(char(elementType)), 'ensemble')
+            kind = 'ensemble';
+        else
+            kind = 'unit';
+        end
 end
 end
 

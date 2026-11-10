@@ -637,7 +637,8 @@ POST_PASSES = [
         # [clamp mode of unrecorded probe dropped] (Jess Haley 2026-11-03)
         ("mode_statements_seen", "`element type` statements of a shared device kind (patch, sharp, microscope)"),
         ("mode_statements_dropped_unrecorded", "  DROPPED: the probe never recorded (ingested session, no probe-map row names it)"),
-        ("mode_statements_kept_named_in_probemap", "  kept: a probe-map row names the probe"),
+        ("mode_statements_dropped_recorded", "  DROPPED: a recorded probe whose kind and recording modes rebuild the word ([recording mode terms])"),
+        ("mode_statements_kept_named_in_probemap", "  kept: a probe-map row names the probe and its modes do not rebuild the word"),
         ("mode_statements_kept_session_not_ingested", "  kept: the session has no ingested epoch (NDI's second pass reads it)"),
         ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no wiring)"),
         ("channels_derived_read_mode", "  channel groups naming a derived read mode (dep, den, dimp, ...; not a channel type)"),

@@ -33,14 +33,19 @@ function [v1, spec] = element(bodies, ctx)
 %                                      one v1 type has that kind ([element
 %                                      type is a device kind term]: "the round
 %                                      trip rebuilds the v1 word from kind
-%                                      plus mode"; a kind several types share
-%                                      keeps the 'element type' assertion
-%                                      until its mode is written, so needs no
-%                                      mode here); a kind several types
-%                                      share with no 'element type'
-%                                      assertion (a probe that never
-%                                      recorded, [clamp mode of unrecorded
-%                                      probe dropped]) rebuilds its general
+%                                      plus mode"); a kind several types
+%                                      share, with no 'element type'
+%                                      assertion, the kind plus the mode
+%                                      terms of the recording observations
+%                                      in CTX whose instrument it is
+%                                      (did2.convert.elementTypeOfKindAndMode;
+%                                      resolveEpochProbemap drops the
+%                                      assertion of a recorded probe whose
+%                                      modes rebuild it, [recording mode
+%                                      terms]); with no mode of that kind (a
+%                                      probe that never recorded, [clamp
+%                                      mode of unrecorded probe dropped], or
+%                                      a bare patch or sharp) its general
 %                                      type, 'patch' or 'sharp', by
 %                                      did2.convert.elementGeneralTypeOfKind
 %                                      (Decided by Jess Haley, 2026-11-06,
@@ -55,7 +60,23 @@ function [v1, spec] = element(bodies, ctx)
 %                                      meaning: a v1 type that is one of them
 %                                      and a rebuilt type that is another are
 %                                      the same (spec.same, `equivalent`)
-%     element.ndi_element_class        the 'ndi element class' assertion's value
+%     element.ndi_element_class        the 'ndi element class' assertion's
+%                                      value while one is written ([assertion
+%                                      wins while written] (1)); with none,
+%                                      rebuilt from what the element is
+%                                      (rebuildClass, did2.convert.
+%                                      elementClassOfKind; [ndi element class
+%                                      not kept], [element recognised by its
+%                                      links], [ensemble has members]): a
+%                                      device the probetype2object.json
+%                                      class of its type, a cell
+%                                      'ndi.neuron', a Group with `member_of`
+%                                      relations in CTX 'ndi.element.ensemble'
+%                                      (and type 'ensemble'), a Group with
+%                                      none 'ndi.neuron' (and type 'spikes').
+%                                      An ensemble reads as the latter before
+%                                      NDI-matlab's second pass and is
+%                                      checked after it (rebuildClass)
 %     (a device's Equipment Type assertion states its device kind,
 %     did2.convert.elementDeviceKind; it is placed when its node is the kind
 %     decided for the rebuilt type, and reported unplaced otherwise)
@@ -216,8 +237,15 @@ end
 % no 'element type' assertion: the type is the one its device kind names
 if ~hasType && isscalar(kindNodes)
     type = did2.convert.elementTypeOfKind(kindNodes{1});
-    % a kind several types share, whose mode was not kept (a probe that never
-    % recorded): its general type, 'patch' or 'sharp' (Jess Haley,
+    % a kind several types share: the kind plus the mode of its recording
+    % observations in CTX ([recording mode terms]: resolveEpochProbemap drops
+    % the statement of a recorded probe whose modes rebuild it)
+    if isempty(type)
+        type = did2.convert.elementTypeOfKindAndMode(kindNodes{1}, ...
+            recordingModes(ctx, base.id));
+    end
+    % with no mode of that kind (a probe that never recorded, or a bare
+    % patch or sharp): its general type, 'patch' or 'sharp' (Jess Haley,
     % 2026-11-06, "Read back patch"); '' for a microscope
     if isempty(type)
         type = did2.convert.elementGeneralTypeOfKind(kindNodes{1});
@@ -228,6 +256,11 @@ end
 % amended]); 'spikes' is the spelling NDI's writers use
 if ~hasType && isempty(kindNodes) && isUnitEntity(entity)
     type = 'spikes';
+end
+% THE NDI ELEMENT CLASS, where no 'ndi element class' assertion states it
+% (while one is written it wins: [assertion wins while written] (1))
+if isempty(ndiClass)
+    [ndiClass, type, spec] = rebuildClass(entity, type, base.id, ctx, spec);
 end
 if any(strcmp(strtrim(type), UNIT_SPELLINGS()))
     spec.same(end+1) = struct('path', 'element.type', ...
@@ -249,6 +282,7 @@ want = did2.convert.elementDeviceKind(type);
 % that kind, so it is placed below; a microscope rebuilds '' and is placed here
 modeDropped = ~hasType && isscalar(kindNodes) && isempty(type) ...
     && ~isempty(kindNodes{1}) && isempty(did2.convert.elementTypeOfKind(kindNodes{1}));
+% (a microscope whose mode was not kept rebuilds no type, and so no class)
 for k = 1:numel(kindNodes)
     if modeDropped
         continue;
@@ -286,6 +320,99 @@ if ~isempty(direct)
     blk.direct = direct;
 end
 v1.element = blk;
+end
+
+function [ndiClass, type, spec] = rebuildClass(entity, type, id, ctx, spec)
+%REBUILDCLASS element.ndi_element_class from what the element is, and a
+%   Group's type from its members. Decided by Jess Haley (did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md): [ndi element class not
+%   kept] (2026-10-27), [element recognised by its links], [ensemble has
+%   members] and [assertion wins while written] (2026-11-10). The rule of
+%   NDI-matlab's ndi.vintage.elementFields (#1214, 39d8603c): a device takes
+%   the class probetype2object.json names for its type; a `cell` is one
+%   unit, 'ndi.neuron'; a `Group` that `member_of` relations in CTX point
+%   into is an ensemble ('ndi.element.ensemble', type 'ensemble'); a `Group`
+%   with none is one multi-unit ('ndi.neuron', type 'spikes').
+%
+%   AN ENSEMBLE BEFORE NDI'S SECOND PASS. That pass writes an ensemble's
+%   `member_of` relations; this round trip runs before it, so an ensemble
+%   (its 'element type' assertion, still written for resolveEpochProbemap,
+%   says 'ensemble') reads as a multi-unit here, as it does in NDI-matlab
+%   until the pass has run ([ensemble has members]: "an ensemble whose
+%   `member_of` relations the NDI second pass has not yet written reads as a
+%   multi-unit"). [assertion wins while written] (1): "ensembles are checked
+%   after NDI-matlab's second pass writes their `member_of` relations". So
+%   its v1 class and type are not compared here: spec.same takes v1
+%   'ndi.element.ensemble' / 'ensemble' as that multi-unit reading, with
+%   that decision as the reason, reported `equivalent`, and nothing else.
+ndiClass = '';
+if ~isstruct(entity) || ~isfield(entity, 'type')
+    return;
+end
+if did2.build.isVocabulary(entity.type, 'entity_type', 'device')
+    ndiClass = did2.convert.elementClassOfKind('probe', type);
+elseif did2.build.isVocabulary(entity.type, 'entity_type', 'cell')
+    ndiClass = did2.convert.elementClassOfKind('unit', type);
+elseif did2.build.isVocabulary(entity.type, 'entity_type', 'group')
+    statedEnsemble = strcmp(strtrim(type), 'ensemble');
+    if hasMembers(ctx, id)
+        type = 'ensemble';
+        ndiClass = did2.convert.elementClassOfKind('ensemble', type);
+    else
+        type = 'spikes';
+        ndiClass = did2.convert.elementClassOfKind('unit', type);
+        if statedEnsemble
+            why = ['an ensemble is checked after NDI-matlab''s second pass writes ' ...
+                'its member_of relations; before it, it reads as one multi-unit ' ...
+                '([assertion wins while written] (1), [ensemble has members], Jess ' ...
+                'Haley, 2026-11-10)'];
+            spec.same(end+1) = struct('path', 'element.ndi_element_class', ...
+                'fn', @(a, r) isText(a, 'ndi.element.ensemble') && isText(r, 'ndi.neuron'), ...
+                'why', why);
+            spec.same(end+1) = struct('path', 'element.type', ...
+                'fn', @(a, r) isText(a, 'ensemble') && isText(r, 'spikes'), 'why', why);
+        end
+    end
+end
+end
+
+function tf = isText(v, want)
+tf = (ischar(v) || (isstring(v) && isscalar(v))) && strcmp(strtrim(char(v)), want);
+end
+
+function tf = hasMembers(ctx, id)
+% a `member_of` directed_relation in CTX whose parent is ID
+tf = false;
+for k = ctxReferrers(ctx, id)
+    b = ctx.docs{k};
+    if ~strcmp(classNameOf(b), 'directed_relation') || ~isequal(edgeIds(b, 'parent_id'), {id})
+        continue;
+    end
+    if strcmp(did2.build.vocabularyHandle('relation', ...
+            getIn(b, 'directed_relation', 'relation')), 'member_of')
+        tf = true;
+        return;
+    end
+end
+end
+
+function modes = recordingModes(ctx, id)
+% the method term nodes of the observations in CTX whose instrument is ID
+% (resolveEpochProbemap writes the mode there, inline)
+modes = {};
+for k = ctxReferrers(ctx, id)
+    b = ctx.docs{k};
+    if ~strcmp(classNameOf(b), 'observation') || ~isequal(edgeIds(b, 'instrument_id'), {id})
+        continue;
+    end
+    m = getIn(b, 'interaction', 'method');
+    if isstruct(m) && isscalar(m) && isfield(m, 'term')
+        [node, ~] = termParts(m.term);
+        if ~isempty(node)
+            modes{end+1} = node; %#ok<AGROW>
+        end
+    end
+end
 end
 
 function s = UNIT_SPELLINGS()

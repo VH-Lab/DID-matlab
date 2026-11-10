@@ -1464,7 +1464,12 @@ function testTheModeOfAProbeThatNeverRecordedIsDropped(testCase)
 % Decided by Jess Haley, 2026-11-03 [clamp mode of unrecorded probe dropped]:
 % a patch element of an ingested session that no probe-map row names keeps
 % its device kind (EMPTY:0000411 patch electrode) and loses its `element
-% type` statement; a patch element a row names keeps it.
+% type` statement. INVERTED 2026-11-10 for the patch element a row names,
+% which kept it: [recording mode terms] (Jess Haley, 2026-11-01), its Build
+% pending line, "the `element type` assertion stops for these types": its
+% recording observation carries the mode (current clamp, OBI:0002185), and
+% kind plus mode rebuild `patch-Vm`, so the statement is dropped too
+% (mode_statements_dropped_recorded).
 subj = subjectBody('spec_c', 'sess_c', 'L');
 rec  = elementBody('el_crec', 'sess_c', 'pv', '1', 'patch-Vm', 1, 'spec_c');
 idle = elementBody('el_cidle', 'sess_c', 'pi', '1', 'patch-I', 1, 'spec_c');
@@ -1474,11 +1479,40 @@ ing  = ingestedWithDeviceRows('ing_c', 'sess_c', 't0c', { ...
 [out, rep] = decompose({sessionBody('sd_c', 'sess_c', 'ref'), subj, rec, idle, daq, ing});
 verifyEqual(testCase, rep.mode_statements_seen, 2, 'denominator');
 verifyEqual(testCase, rep.mode_statements_dropped_unrecorded, 1);
-verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 1);
+verifyEqual(testCase, rep.mode_statements_dropped_recorded, 1);
+verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 0);
 verifyEqual(testCase, rep.mode_statements_kept_session_not_ingested, 0);
 verifyEqual(testCase, assertionsAbout(out, 'el_cidle', 'element type'), {});
 verifyEqual(testCase, assertionsAbout(out, 'el_cidle', 'equipment type'), {'EMPTY:0000411'});
-verifyEqual(testCase, numel(assertionsAbout(out, 'el_crec', 'element type')), 1);
+verifyEqual(testCase, assertionsAbout(out, 'el_crec', 'element type'), {});
+verifyEqual(testCase, assertionsAbout(out, 'el_crec', 'equipment type'), {'EMPTY:0000411'});
+end
+
+function testTheModeIsKeptWhereTheRecordingsDoNotRebuildTheWord(testCase)
+% [recording mode terms]: the statement of a recorded probe is dropped only
+% where its kind and its observations' modes rebuild its word. A patch-I
+% element whose one row says patch-Vm (current clamp) would read back as
+% patch-Vm, so its statement is kept (mode_statements_kept_named_in_probemap);
+% a bare `patch` element recorded by a `patch` row (no mode) reads back as
+% its general type, `patch`, so its statement is dropped.
+subj = subjectBody('spec_k', 'sess_k', 'L');
+odd  = elementBody('el_kodd', 'sess_k', 'pk', '1', 'patch-I', 1, 'spec_k');
+bare = elementBody('el_kbare', 'sess_k', 'pb', '1', 'patch', 1, 'spec_k');
+daq  = daqsystemBody('acqsys_k', 'sess_k', 'intan1');
+ing  = ingestedWithDeviceRows('ing_k', 'sess_k', 't0k', { ...
+    {'pk', '1', 'patch-Vm', 'intan1:ai1', 'L'}, ...
+    {'pb', '1', 'patch', 'intan1:ai2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_k', 'sess_k', 'ref'), subj, odd, bare, daq, ing});
+verifyEqual(testCase, rep.mode_statements_seen, 2, 'denominator');
+verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 1);
+verifyEqual(testCase, rep.mode_statements_dropped_recorded, 1);
+verifyEqual(testCase, numel(assertionsAbout(out, 'el_kodd', 'element type')), 1);
+verifyEqual(testCase, assertionsAbout(out, 'el_kbare', 'element type'), {});
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000411', {'OBI:0002185'}), 'patch-Vm');
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000412', {'OBI:0002182'}), 'sharp-Im');
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000411', {'OBI:0002185', 'OBI:0002182'}), '');
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('OBI:0400169', {'', 'NCIT:C16856'}), 'one-photon-imaging');
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000411', {}), '');
 end
 
 function testTheModeIsKeptInASessionWithNoIngestedEpoch(testCase)

@@ -310,11 +310,17 @@ result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVer
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 assertEqual(testCase, rep.mode_statements_dropped_unrecorded, 1, 'premise');
+% [recording mode terms] (Jess Haley, 2026-11-01): the RECORDED patch-Vm
+% probe's statement is dropped too; its type rebuilds from its kind plus its
+% recording observation's mode (current clamp), so it is no accepted loss
+assertEqual(testCase, rep.mode_statements_dropped_recorded, 1, 'premise');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyEqual(testCase, r.accepted_losses_by_name.modeOfAProbeThatNeverRecorded, 1, describe(r));
 hits = r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_m_idle'));
 verifyEqual(testCase, numel(hits), 1);
 verifyEqual(testCase, hits(1).path, 'element.type');
+verifyEmpty(testCase, r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_m_rec')), ...
+    'the recorded probe''s type was taken as an accepted loss');
 for k = 1:numel(r.failures)
     if any(strcmp(r.failures(k).source_id, {'wb_m_idle', 'wb_m_rec'}))
         verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.type')), describe(r));
