@@ -25,15 +25,24 @@ function tf = sameProbemapSeveralRows(v1pm, rebuiltPm)
 %   channels joined in row order; every other row is its own text. TF is true
 %   only when
 %     - the headers are the same text,
-%     - at least one group of two or more rows was merged (for any other map
-%       the rebuilt text must equal the v1 text, which check.m tests first),
-%     - the rebuilt map has exactly the expected rows, in order: a row that
+%     - the rebuilt map has exactly the expected rows, in any order (ROWS
+%       ARE A SET below; until 2026-11-09 in order, and only when a group
+%       was merged): a row that
 %       was not merged is the same text; a merged row has the same name,
 %       reference, type, subjectstring and device name, and the SAME ORDERED
 %       channel list, each channel its v1 prefix and number ('mk1-3;e1' and
 %       'mk1;mk2;mk3;e1' are both mk1, mk2, mk3, e1).
 %   A probe whose rows disagree is never merged by the migration (its v1
 %   document is carried), so such a V1PM is never equivalent here.
+%
+%   ROWS ARE A SET. Decided by Jess Haley, 2026-11-09 [probe map rows
+%   compared as a set] (did-schema did_v2_standing_wiring_plan.md, answering
+%   the question [stimulator manipulation dropped] raised): the rows are
+%   compared as an unordered set, as NDI finds a probe's rows
+%   (ndi.probe.epochprobemapmatch: name, reference, type). So TF is also true
+%   when the rebuilt rows are the v1 rows (or the expected rows above) in
+%   another order, each matched once; a merge is then not required. Within a
+%   merged row the channels keep their row order.
 %
 %   See also did2.convert.roundtrip.epochfiles_ingested,
 %            did2.convert.resolveEpochProbemap.
@@ -55,7 +64,6 @@ probe = cellfun(@(c) [c{1} char(0) c{2}], cols, 'UniformOutput', false);
 dev = cellfun(@(c) deviceOf(c{4}), cols, 'UniformOutput', false);
 expected = struct('text', {}, 'cols', {}, 'channels', {});
 consumed = false(1, n);
-merged = false;
 for r = 1:n
     if consumed(r)
         continue;
@@ -81,7 +89,6 @@ for r = 1:n
         expected(end+1) = struct('text', rows1{r}, 'cols', {{}}, 'channels', {{}}); %#ok<AGROW>
         continue;
     end
-    merged = true;
     chans = {};
     for g = group
         [c, ok] = channelList(cols{g}{4});
@@ -92,32 +99,46 @@ for r = 1:n
     end
     expected(end+1) = struct('text', '', 'cols', {cols{r}}, 'channels', {chans}); %#ok<AGROW>
 end
-if ~merged || numel(expected) ~= numel(rows2)
+if numel(expected) ~= numel(rows2)
     return;
 end
+% each expected row matches one rebuilt row, in any order (ROWS ARE A SET)
+taken = false(1, numel(rows2));
 for i = 1:numel(expected)
-    e = expected(i);
-    if isempty(e.cols)
-        if ~strcmp(e.text, rows2{i})
-            return;
-        end
-        continue;
-    end
-    c = columns(rows2{i});
-    for f = [1 2 3 5]
-        if ~strcmp(c{f}, e.cols{f})
-            return;
+    hit = 0;
+    for j = find(~taken)
+        if rowMatches(expected(i), rows2{j})
+            hit = j;
+            break;
         end
     end
-    if ~strcmp(deviceOf(c{4}), deviceOf(e.cols{4}))
+    if hit == 0
         return;
     end
-    [chans, ok] = channelList(c{4});
-    if ~ok || ~isequal(chans, e.channels)
+    taken(hit) = true;
+end
+tf = true;
+end
+
+function tf = rowMatches(e, row)
+% the rebuilt ROW is the expected row E: the same text, or for a merged row
+% the same name, reference, type, subjectstring, device and ordered channels
+if isempty(e.cols)
+    tf = strcmp(e.text, row);
+    return;
+end
+tf = false;
+c = columns(row);
+for f = [1 2 3 5]
+    if ~strcmp(c{f}, e.cols{f})
         return;
     end
 end
-tf = true;
+if ~strcmp(deviceOf(c{4}), deviceOf(e.cols{4}))
+    return;
+end
+[chans, ok] = channelList(c{4});
+tf = ok && isequal(chans, e.channels);
 end
 
 function [header, rows] = splitMap(s)

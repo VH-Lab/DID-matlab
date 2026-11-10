@@ -51,6 +51,21 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %   v1 filenavigator_id). Rows are in batch order, which is the order the pass
 %   appended them in (the probe map's row order).
 %
+%   A ROW WITH NO STATEMENT ([stimulator manipulation dropped], Jess Haley,
+%   2026-11-09, did-schema did_v2_standing_wiring_plan.md): a wiring relation
+%   of the epoch (`connected to`, timed by its "during the epoch" anchor, its
+%   parent a rig that reads the manifest's files) whose probe is the
+%   instrument of no statement found here is a row too, rebuilt from the
+%   wiring and the element: name, reference and type from the element as
+%   above, devicestring from the rig and the relation's conditions, and
+%   subjectstring the local_identifier of the entity the element `observes`
+%   (or is `derived_from`, an element with no underlying element), the
+%   element's subject. These rows follow the statements' rows: the round trip
+%   compares a probe map's rows as an unordered set ([probe map rows compared
+%   as a set], Jess Haley, 2026-11-09; private/sameProbemapSeveralRows), the
+%   way NDI finds a probe's rows (ndi.probe.epochprobemapmatch: name,
+%   reference, type).
+%
 %   See also did2.convert.roundtrip.epochfiles_ingested,
 %            did2.convert.roundtrip.syncrule_mapping,
 %            did2.convert.resolveEpochProbemap.
@@ -85,8 +100,10 @@ for k = ctxReferrers(ctx, nav)
     end
 end
 
-% the statements anchored "during" the epoch through its rigs
+% the statements anchored "during" the epoch through its rigs, and the wiring
+% relations timed by those anchors (A ROW WITH NO STATEMENT)
 found = zeros(1, 0);
+wirings = zeros(1, 0);
 for a = ctxReferrers(ctx, epochId)
     anchor = ctx.docs{a};
     if ~strcmp(classNameOf(anchor), 'relative_time_reference') ...
@@ -95,6 +112,10 @@ for a = ctxReferrers(ctx, epochId)
     end
     for s = ctxReferrers(ctx, char(anchor.base.id))
         st = ctx.docs{s};
+        if isWiring(st, char(anchor.base.id), systems)
+            wirings(end+1) = s; %#ok<AGROW>
+            continue;
+        end
         if ~any(strcmp(classNameOf(st), {'observation', 'manipulation'})) ...
                 || ~any(strcmp(edgeIds(st, 'time_reference_id'), char(anchor.base.id)))
             continue;
@@ -125,6 +146,23 @@ for i = 1:numel(found)
     rowLines{end+1} = rowText; %#ok<AGROW>
     paired(end+1) = false; %#ok<AGROW>
 end
+% the wiring relations whose probe no statement names (A ROW WITH NO STATEMENT)
+% (a plain loop: an anonymous function capturing CTX made each call 0.25 s,
+% 1,855 s over B's 7,452 calls, MATLAB scratch run 42712175490)
+named = cell(1, numel(found));
+for i = 1:numel(found)
+    named{i} = firstEdge(ctx.docs{found(i)}, 'instrument_id');
+end
+wirings = unique(wirings);
+for i = 1:numel(wirings)
+    w = ctx.docs{wirings(i)};
+    if any(strcmp(firstEdge(w, 'child_id'), named))
+        continue;
+    end
+    [rowText, bad] = wiringRowOf(w, ctx, prefixes);
+    why = [why, bad]; %#ok<AGROW>
+    rowLines{end+1} = rowText; %#ok<AGROW>
+end
 tab = sprintf('\t');
 nl = newline;
 pm = [strjoin({'name', 'reference', 'type', 'devicestring', 'subjectstring'}, tab), nl];
@@ -137,6 +175,72 @@ end
 end
 
 % ===================== helpers =========================================
+
+function tf = isWiring(b, anchorId, systems)
+% a `connected to` (RO:0002170) directed_relation timed by ANCHORID whose
+% parent is one of SYSTEMS (the rigs that read the manifest's files)
+tf = false;
+if ~strcmp(classNameOf(b), 'directed_relation')
+    return;
+end
+[node, ~] = termParts(getIn(getIn(b, 'directed_relation'), 'relation'));
+tf = strcmp(curieKeyOf(node), curieKeyOf('RO:0002170')) ...
+    && any(strcmp(edgeIds(b, 'time_reference_id'), anchorId)) ...
+    && any(ismember(edgeIds(b, 'parent_id'), systems));
+end
+
+function [rowText, why] = wiringRowOf(w, ctx, prefixes)
+% the row of a wiring relation no statement names: the element (its child),
+% the rig (its parent) and its conditions, and the element's subject
+why = {};
+tab = sprintf('\t');
+instrumentId = firstEdge(w, 'child_id');
+% rowOf reads the instrument, rig and wiring through a statement's edges: a
+% stand-in statement with the wiring's own edges
+st = struct('base', struct('id', getIn(w, 'base', 'id')), ...
+    'depends_on', struct('name', {'instrument_id', 'acquisition_system_id', ...
+    'time_reference_id'}, 'value', {instrumentId, firstEdge(w, 'parent_id'), ...
+    firstEdge(w, 'time_reference_id')}));
+[rowText, why] = rowOf(st, ctx, prefixes);
+% rowOf found no entity_id: the subject is the element's
+why = why(~endsWith(why, 'its entity is not in the batch'));
+subject = '';
+subjectId = elementSubjectId(instrumentId, ctx);
+subj = ctxDoc(ctx, subjectId);
+if isempty(subj)
+    why{end+1} = sprintf('wiring %s: its element %s names no subject in the batch', ...
+        char(getIn(w, 'base', 'id')), instrumentId);
+else
+    subject = fieldText(getIn(subj, 'entity'), 'local_identifier');
+end
+cols = strsplit(rowText, tab, 'CollapseDelimiters', false);
+cols{5} = subject;
+rowText = strjoin(cols, tab);
+end
+
+function id = elementSubjectId(elementId, ctx)
+% the entity an element `observes`, else the one it is `derived_from` (the
+% lineage relation +migrators_j/element.m writes; +roundtrip/element.m reads it)
+id = '';
+derived = '';
+for k = ctxReferrers(ctx, elementId)
+    b = ctx.docs{k};
+    if ~strcmp(classNameOf(b), 'directed_relation') ...
+            || ~any(strcmp(edgeIds(b, 'child_id'), elementId))
+        continue;
+    end
+    parent = edgeIds(b, 'parent_id');
+    if ~isscalar(parent); continue; end
+    handle = did2.build.vocabularyHandle('relation', getIn(b, 'directed_relation', 'relation'));
+    if strcmp(handle, 'observes')
+        id = parent{1};
+        return;
+    elseif strcmp(handle, 'derived_from') && isempty(derived)
+        derived = parent{1};
+    end
+end
+id = derived;
+end
 
 function [rowText, why] = rowOf(st, ctx, prefixes)
 why = {};
