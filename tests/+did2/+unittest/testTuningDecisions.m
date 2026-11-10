@@ -552,6 +552,54 @@ for f = {'independent_parameter', 'best_algorithm', 'selection'}
 end
 end
 
+function testTheDisplayLabelIsRebuiltAndComparedLoosely(testCase)
+% Decided by Jess Haley, 2026-11-10 [display label compared loosely] (did-schema
+% did_v2_go_forward_class_audit.md; the question [term picks batch 3] left):
+% v1 input_parameters.independent_label is not written by the tuningcurve
+% migration; the round trip rebuilds it from the curve's registered variable
+% name, and a rebuilt label that differs from v1's only in letter case or in
+% '_' versus space is the same. Any other difference is reported lost.
+for c = {{'contrast', 'contrast'}, {'Contrast', 'Contrast'}, {'CONTRAST', 'contrast'}}
+    [tc, resp, pres] = tuningCurveBatch();
+    tc.tuningcurve_calc.input_parameters.independent_label = c{1}{1};
+    tc.stimulus_tuningcurve.independent_variable_label = {c{1}{2}};
+    tc = jsondecode(jsonencode(tc));
+    label = sprintf('label "%s", curve label "%s"', c{1}{:});
+    out = runRaw({tc, resp, pres});
+    mine = outputsOf(out, tc.base.id);
+    assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2', label);
+    names = parameterNames(mine{1});
+    verifyFalse(testCase, any(strcmpi(names, 'independent label')), ...
+        [label ': independent_label is not written']);
+    r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
+    p = 'tuningcurve_calc.input_parameters.independent_label';
+    verifyTrue(testCase, any(strcmp(p, [r.matched, r.equivalent])), [label ': ' p]);
+end
+% a label that is not the variable's name, beyond case and '_': lost
+[tc, resp, pres] = tuningCurveBatch();
+tc.tuningcurve_calc.input_parameters.independent_label = 'stimulus contrast';
+tc = jsondecode(jsonencode(tc));
+out = runRaw({tc, resp, pres});
+r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
+verifyTrue(testCase, any(strcmp({r.lost.path}, ...
+    'tuningcurve_calc.input_parameters.independent_label')), ...
+    'a label that names something else is reported lost');
+% a configuration migrated before still holds it as a parameter: read back exactly
+[tc, resp, pres] = tuningCurveBatch();
+tc.tuningcurve_calc.input_parameters.independent_label = 'Stimulus Contrast';
+tc = jsondecode(jsonencode(tc));
+out = runRaw({tc, resp, pres});
+docs = outputsExcept(out, {resp.base.id, pres.base.id});
+mine = outputsOf(out, tc.base.id);
+ix = find(cellfun(@(d) strcmp(char(d.base.id), char(mine{1}.base.id)), docs), 1);
+assertNotEmpty(testCase, ix);
+docs{ix} = withParameter(docs{ix}, 'Algorithm', 'independent label', 'Stimulus Contrast');
+r = did2.convert.roundtrip.check(tc, docs);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'a label migrated before', {});
+verifyTrue(testCase, any(strcmp(r.matched, 'tuningcurve_calc.input_parameters.independent_label')));
+end
+
 function testParameterNamesMapByTable(testCase)
 for name = {'independent_label', 'min_xi', 'prestimulus_time', 'selection.property', ...
         'depends_on.name'}   % (every corpus tuningcurve_calc states input_parameters.depends_on)
