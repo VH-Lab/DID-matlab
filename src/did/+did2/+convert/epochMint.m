@@ -22,7 +22,8 @@ function [result, report] = epochMint(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested,
-%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping, pyraview
+%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping, pyraview,
+%       spikewaves
 %   BATCH-PASS-EMITS: epochid -> document: epoch
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
@@ -44,6 +45,11 @@ function [result, report] = epochMint(result, options)
 %       fourth armed loop stamps `epoch_id` onto the passed-through pyraview
 %       and re-runs +migrators_j/pyraview, which mints the voltage observation,
 %       its bodies and the epoch-scoped relative_time_reference.
+%   BATCH-PASS-EMITS: spikewaves -> nothing: SAME REASON ([spike waveforms
+%       built now], Jess Haley, 2026-11-10, D3). resolveDeferredSpikewaves
+%       stamps `epoch_id` onto the deferred spikewaves and re-runs
+%       +migrators_j/spikewaves, which mints the two calculations, their
+%       bodies and the epoch anchor, credited to that migrator.
 %   BATCH-PASS-EMITS: syncrule_mapping -> nothing: SAME REASON, the third time.
 %       The third armed loop stamps `epoch_id_1` / `epoch_id_2` onto the
 %       passed-through mapping and re-runs +migrators_j/syncrule_mapping; the
@@ -56,7 +62,7 @@ function [result, report] = epochMint(result, options)
 %   2026-10-26). Read from this file's code, class by class.
 %   BATCH-PASS-READS: epochid, entity(session), entity(epoch),
 %       acquisition_epoch, daqmetadatareader_epochdata_ingested,
-%       stimulus_response_scalar, syncrule_mapping, pyraview,
+%       stimulus_response_scalar, syncrule_mapping, pyraview, spikewaves,
 %       epochfiles_ingested, method(method_parameters), acquisition_system,
 %       entity(element), directed_relation(element lineage),
 %       result.deferred_bath_anchors
@@ -65,10 +71,13 @@ function [result, report] = epochMint(result, options)
 %       calculation(harmonic_component),
 %       entity(software minted by a batch pass), observation(pyraview),
 %       sampled_body(pyraview level), method(pyraview), clock_alignment,
+%       calculation(spike times), calculation(spike waveforms),
+%       sampled_body(spike times), sampled_body(spike waveforms),
 %       result.epoch_mint
 %   BATCH-PASS-CHANGES: relative_time_reference(bath anchor),
 %       daqmetadatareader_epochdata_ingested(epoch_id edge stamped)
-%   BATCH-PASS-REMOVES: stimulus_response_scalar, syncrule_mapping, pyraview
+%   BATCH-PASS-REMOVES: stimulus_response_scalar, syncrule_mapping, pyraview,
+%       spikewaves
 %
 %   `acquisition_epoch` ADDED 2026-08-17, and it was a REAL OMISSION, not a
 %   tidy-up. The #60 OPTION A loop below reads `acquisition_epoch` bodies (see
@@ -380,6 +389,10 @@ function [result, report] = epochMint(result, options)
 %                    handle. [] means the production table (one row today).
 %                    Exists so the 1 -> N carry can be DRIVEN by a test; see
 %                    the arming block above.
+%     V1FileReader   ([] or function handle)      the reader of v1 attached
+%                    files the deferred spikewaves re-run hands v1_to_v2
+%                    (did2.convert.v1Files). [] uses the reader the last
+%                    v1_to_v2 set (did2.convert.v1Files('get')).
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveDatasetEntities,
 %   did2.convert.resolveDeferredBaths, did2.validate.sourceCensus,
@@ -391,6 +404,14 @@ arguments
     options.SchemaCache = []
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'did_v2'})} = 'did_v2'
     options.ArmingMigrators = []
+    options.V1FileReader = []
+end
+% The reader of v1 attached files the deferred spikewaves re-run needs
+% (did2.convert.v1Files; [spike waveforms built now], D4): the one given, else
+% the one the last did2.convert.v1_to_v2 set, read BEFORE this pass's own
+% re-runs reset it.
+if isempty(options.V1FileReader)
+    options.V1FileReader = did2.convert.v1Files('get');
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
@@ -538,6 +559,16 @@ report = struct( ...
     'pyraview_deferred_resolved',          0, ...
     'pyraview_deferred_unresolved',        0, ...
     'pyraview_deferred_epochs_minted',     0, ...
+    ... % [spike waveforms built now] (Jess Haley, 2026-11-10), D3: the
+    ... % spikewaves pass 1 deferred (did2:convert:needsEpochContext), re-run
+    ... % with their epoch (resolveDeferredSpikewaves). seen is the denominator:
+    ... % seen = resolved + unresolved + carried_dependent + quarantined.
+    'spikewaves_deferred_seen',            0, ...
+    'spikewaves_deferred_resolved',        0, ...
+    'spikewaves_deferred_unresolved',      0, ...
+    'spikewaves_deferred_quarantined',     0, ...
+    'spikewaves_deferred_carried_dependent', 0, ...
+    'spikewaves_deferred_epochs_minted',   0, ...
     ... % [one bath shape] (Jess Haley, 2026-10-27): the bath anchors
     ... % resolveDeferredBaths handed on, re-pointed at their epoch (see
     ... % resolveBathAnchors). handed_over is the denominator.
@@ -1799,6 +1830,7 @@ if isempty(minted) && isempty(changedIdx)
     report.arming_bodies_dropped = report.arming_bodies_offered;
     report.epoch_index_report = edgeIndex.report;
     [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
+    [result, report] = resolveDeferredSpikewaves(result, report, epochIdByKey, options);
     [result, report] = resolveBathAnchors(result, report, options);
     result.epoch_mint = report;
     return;
@@ -2028,6 +2060,7 @@ result.summary = recountSummary(result);
 % (the chain lookup threw) are different problems with different owners.
 report.epoch_index_report = edgeIndex.report;
 [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
+[result, report] = resolveDeferredSpikewaves(result, report, epochIdByKey, options);
 [result, report] = resolveBathAnchors(result, report, options);
 result.epoch_mint = report;
 end
@@ -2129,6 +2162,139 @@ for j = 1:numel(out.migrated)
 end
 result.migrated = [result.migrated, out.migrated];
 result.quarantine = [q(keep), out.quarantine];
+result.summary = recountSummary(result);
+end
+
+function [result, report] = resolveDeferredSpikewaves(result, report, epochIdByKey, options)
+%RESOLVEDEFERREDSPIKEWAVES The spikewaves pass 1 DEFERRED, migrated now.
+%   [spike waveforms built now] (Jess Haley, 2026-11-10, did-schema
+%   did_v2_go_forward_class_audit.md), D3: "add a `spikewaves` arming/deferral
+%   step to `epochMint.m`". +migrators_j/spikewaves defers a document whose
+%   epoch has no entity yet (did2:convert:needsEpochContext, the pyraview
+%   pattern above); here, once the epochs exist, the `epoch_id` edge is
+%   stamped onto the quarantined v1 body and it runs through v1_to_v2 again,
+%   with the run's v1 file reader (OPTIONS.V1FileReader), since the migrator
+%   reads its two files. An epoch no document of the batch names is minted, as
+%   for a pyraview, for a session the batch holds.
+%
+%   [dependents of a carried document carry] (carry-064): pass 1's
+%   carryDependents cannot see a deferred document, so it is checked here: a
+%   spikewaves whose element or extraction settings document is in the batch
+%   CARRIED as v1 is carried whole as v1 too (counted carried_dependent),
+%   never converted with an edge to a v1 document.
+if ~isfield(result, 'quarantine') || isempty(result.quarantine)
+    return;
+end
+q = result.quarantine;
+keep = true(1, numel(q));
+stamped = {};
+carriedV1 = {};
+% the ids the batch holds as CARRIED v1 documents (not the handed-on classes
+% v1_to_v2 carryDependents does not follow)
+handedOn = {'stimulus_presentation', 'daqmetadatareader_epochdata_ingested', ...
+    'control_stimulus_ids', 'openminds_stimulus'};
+carriedIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+sessionIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:numel(result.migrated)
+    try
+        b = result.migrated{k}.toStruct();
+        cn = classNameOf(b);
+        if strcmp(cn, 'session')
+            sessionIds(char(b.base.id)) = true;
+        end
+        if isfield(b.document_class, 'schema_version') ...
+                && strcmp(char(b.document_class.schema_version), 'did_v1') ...
+                && ~any(strcmp(cn, handedOn))
+            carriedIds(char(b.base.id)) = true;
+        end
+    catch
+    end
+end
+for k = 1:numel(q)
+    if ~isfield(q(k), 'class_name') || ~strcmp(q(k).class_name, 'spikewaves') ...
+            || ~isfield(q(k), 'identifier') ...
+            || ~strcmp(q(k).identifier, 'did2:convert:needsEpochContext')
+        continue;
+    end
+    report.spikewaves_deferred_seen = report.spikewaves_deferred_seen + 1;
+    try
+        v1 = jsondecode(q(k).original_body);
+    catch
+        report.spikewaves_deferred_unresolved = report.spikewaves_deferred_unresolved + 1;
+        continue;
+    end
+    deps = {};
+    if isfield(v1, 'depends_on') && ~isempty(v1.depends_on)
+        d = v1.depends_on;
+        if iscell(d); d = [d{:}]; end
+        for j = 1:numel(d)
+            if isfield(d, 'value') && ~isempty(d(j).value); deps{end+1} = char(d(j).value); end %#ok<AGROW>
+        end
+    end
+    if any(cellfun(@(x) isKey(carriedIds, x), deps))
+        c = v1;
+        c.document_class.schema_version = 'did_v1';
+        carriedV1{end+1} = did2.document(c); %#ok<AGROW>
+        report.spikewaves_deferred_carried_dependent = ...
+            report.spikewaves_deferred_carried_dependent + 1;
+        keep(k) = false;
+        continue;
+    end
+    es = '';
+    if isfield(v1, 'epochid') && isstruct(v1.epochid) && isfield(v1.epochid, 'epochid')
+        es = char(v1.epochid.epochid);
+    end
+    sid = '';
+    if isfield(v1, 'base') && isstruct(v1.base) && isfield(v1.base, 'session_id')
+        sid = char(v1.base.session_id);
+    end
+    key = pairKey(sid, es);
+    if ~isempty(es) && ~isKey(epochIdByKey, key) && ~isempty(sid) ...
+            && isKey(sessionIds, sid)
+        ds = '';
+        if isfield(v1.base, 'datestamp'); ds = char(v1.base.datestamp); end
+        e = mintEpoch(es, sid, sid, ds);
+        epochIdByKey(key) = e.base.id;
+        stamped{end+1} = e; %#ok<AGROW>
+        report.spikewaves_deferred_epochs_minted = ...
+            report.spikewaves_deferred_epochs_minted + 1;
+    end
+    if isempty(es) || ~isKey(epochIdByKey, key)
+        report.spikewaves_deferred_unresolved = report.spikewaves_deferred_unresolved + 1;
+        continue;
+    end
+    stamped{end+1} = setDep(v1, 'epoch_id', epochIdByKey(key)); %#ok<AGROW>
+    keep(k) = false;
+end
+if isempty(stamped) && isempty(carriedV1)
+    return;
+end
+out = struct('migrated', {{}}, 'quarantine', struct([]));
+nStampedSw = 0;
+for j = 1:numel(stamped)
+    if strcmp(classNameOf(stamped{j}), 'spikewaves'); nStampedSw = nStampedSw + 1; end
+end
+if ~isempty(stamped)
+    out = did2.convert.v1_to_v2(stamped, 'Validate', options.Validate, ...
+        'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion, ...
+        'V1FileReader', options.V1FileReader);
+end
+report.spikewaves_deferred_quarantined = numel(out.quarantine);
+report.spikewaves_deferred_resolved = nStampedSw - numel(out.quarantine);
+for j = 1:numel(out.migrated)
+    try
+        if strcmp(classNameOf(out.migrated{j}.toStruct()), 'epoch')
+            report.epochs_minted = report.epochs_minted + 1;
+        end
+    catch
+    end
+end
+result.migrated = [result.migrated, out.migrated, carriedV1];
+if isempty(out.quarantine)
+    result.quarantine = q(keep);
+else
+    result.quarantine = [q(keep), out.quarantine];
+end
 result.summary = recountSummary(result);
 end
 

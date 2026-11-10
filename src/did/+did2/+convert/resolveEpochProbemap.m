@@ -52,7 +52,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       daqmetadatareader_epochdata_ingested, sampled_body(pyraview level),
 %       entity(epoch), acquisition_system, directed_relation(element lineage),
 %       directed_relation(observes), entity(element),
-%       calculation(spike sorter), observation(session-scoped recording),
+%       calculation(spike sorter), calculation(spike times),
+%       calculation(spike waveforms), observation(session-scoped recording),
 %       observation(pyraview),
 %       relative_time_reference(session anchor of a recording observation),
 %       relative_reference(folded session anchor),
@@ -62,7 +63,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       opaque_body(spike train), opaque_body(ingested archive),
 %       relative_time_reference(epoch anchor), relative_reference(epoch anchor),
 %       ingestion_manifest, directed_relation(wiring)
-%   BATCH-PASS-CHANGES: sampled_body(pyraview level), calculation(spike sorter)
+%   BATCH-PASS-CHANGES: sampled_body(pyraview level), calculation(spike sorter),
+%       calculation(spike times), calculation(spike waveforms)
 %   BATCH-PASS-REMOVES: acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested,
 %       observation(session-scoped recording), observation(pyraview),
@@ -368,6 +370,15 @@ report = struct( ...
     'sorter_input_edges',             0, ...
     'sorter_input_fallback_entity',   0, ...
     'sorter_link_quarantined',        0, ...
+    ... % [spike waveforms built now] (Jess Haley, 2026-11-10), D1: the
+    ... % spikewaves calculations (spike times, spike waveforms) take the
+    ... % element's recording observation of their epoch as input. seen =
+    ... % linked + fallback.
+    'spike_calculations_seen',        0, ...
+    'spike_calculations_linked',      0, ...
+    'spike_calculation_input_edges',  0, ...
+    'spike_calculation_input_fallback', 0, ...
+    'spike_calculation_link_quarantined', 0, ...
     'ran',                            false);
 result.epoch_probemap_fold = report;
 
@@ -1145,6 +1156,17 @@ for k = 1:n
     end
 end
 report.sorter_calculations_seen = numel(sorterIdx);
+% [spike waveforms built now] D1: the two calculations +migrators_j/spikewaves
+% emits, about the element, variable GO:0001508 "action potential", value
+% kind `time` (the spike times) or `voltage` (the waveforms)
+spikeCalcIdx = [];
+for k = 1:n
+    if strcmp(classOf{k}, 'calculation') && any(strcmp(kindOf{k}, {'time', 'voltage'})) ...
+            && isSpikeVariable(bodies{k})
+        spikeCalcIdx(end+1) = k; %#ok<AGROW>
+    end
+end
+report.spike_calculations_seen = numel(spikeCalcIdx);
 
 renameBodies = renameBodyBySrcId.values;
 if isempty(newBodies) && isempty(renameBodies)
@@ -1155,6 +1177,7 @@ if isempty(newBodies) && isempty(renameBodies)
     report.metadata_archives_carried_for_ndi = report.metadata_archives_inspected;
     report.pyraview_kept_no_recording_observation = report.pyraview_observations_seen;
     report.sorter_input_fallback_entity = report.sorter_calculations_seen;
+    report.spike_calculation_input_fallback = report.spike_calculations_seen;
     result.epoch_probemap_fold = report;
     return;
 end
@@ -1230,6 +1253,14 @@ clockHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 
 emittedNewIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 recIdsByInstr = containers.Map('KeyType', 'char', 'ValueType', 'any');   % electrode -> its recording observations
+recIdsByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'any');   % electrode|epoch -> its recording observations
+epochOfAnchor = containers.Map('KeyType', 'char', 'ValueType', 'char');   % a recording row's epoch anchor -> its epoch
+aKeys = anchorByEpochId.keys;
+for a = 1:numel(aKeys)
+    if ~startsWith(aKeys{a}, 'element_epoch|')
+        epochOfAnchor(anchorByEpochId(aKeys{a})) = aKeys{a};
+    end
+end
 appended = {};
 for j = 1:numel(newBodies)
     id = newBodies{j}.base.id;
@@ -1265,6 +1296,14 @@ for j = 1:numel(newBodies)
                 recIdsByInstr(instr) = [recIdsByInstr(instr), {id}];
             else
                 recIdsByInstr(instr) = {id};
+            end
+            if isKey(epochOfAnchor, aid)
+                ek = [instr '|' epochOfAnchor(aid)];
+                if isKey(recIdsByInstrEpoch, ek)
+                    recIdsByInstrEpoch(ek) = [recIdsByInstrEpoch(ek), {id}];
+                else
+                    recIdsByInstrEpoch(ek) = {id};
+                end
             end
         end
     end
@@ -1731,6 +1770,49 @@ for i = 1:numel(sorterIdx)
     sorterReplace(docIds{sorterIdx(i)}) = res.migrated{1};
     report.sorter_inputs_linked = report.sorter_inputs_linked + 1;
     report.sorter_input_edges = report.sorter_input_edges + numel(ins);
+end
+
+% ---- [spike waveforms built now] D1: the element's recording observation of
+% the calculation's epoch is its input (as [sorter input], per epoch). The
+% epoch is the referent of the calculation's own anchor; no recording
+% observation of that element in that epoch (a derived element, an epoch not
+% ingested) leaves the calculation as it is, counted (input_id is typed to
+% statements, so there is no entity fallback edge).
+anchorReferent = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:n
+    if strcmp(classOf{k}, 'relative_time_reference') && ~isempty(docIds{k})
+        r = depValueOf(bodies{k}, 'referent_id');
+        if ~isempty(r); anchorReferent(docIds{k}) = r; end
+    end
+end
+for i = 1:numel(spikeCalcIdx)
+    sb = bodies{spikeCalcIdx(i)};
+    el = depValueOf(sb, 'entity_id');
+    tr = depValueOf(sb, 'time_reference_id');
+    ek = '';
+    if ~isempty(el) && ~isempty(tr) && isKey(anchorReferent, tr)
+        ek = [el '|' anchorReferent(tr)];
+    end
+    if isempty(ek) || ~isKey(recIdsByInstrEpoch, ek)
+        report.spike_calculation_input_fallback = report.spike_calculation_input_fallback + 1;
+        continue;
+    end
+    ins = recIdsByInstrEpoch(ek);
+    for m = 1:numel(ins)
+        sb = addEdge(sb, 'input_id', ins{m});
+    end
+    res = did2.convert.v1_to_v2({sb}, ...
+        'Validate',      options.Validate, ...
+        'SchemaCache',   options.SchemaCache, ...
+        'TargetVersion', options.TargetVersion);
+    if ~isempty(res.quarantine) || ~isscalar(res.migrated)
+        report.spike_calculation_link_quarantined = report.spike_calculation_link_quarantined + 1;
+        report.spike_calculation_input_fallback = report.spike_calculation_input_fallback + 1;
+        continue;
+    end
+    sorterReplace(docIds{spikeCalcIdx(i)}) = res.migrated{1};
+    report.spike_calculations_linked = report.spike_calculations_linked + 1;
+    report.spike_calculation_input_edges = report.spike_calculation_input_edges + numel(ins);
 end
 
 % --- rebuild the migrated set: drop retired obs + removable anchors, append -
@@ -3255,4 +3337,16 @@ for k = 1:numel(result.migrated)
     end
 end
 summary.by_class = byClass;
+end
+
+function tf = isSpikeVariable(b)
+% a statement whose variable is GO:0001508 "action potential" (by node), the
+% variable +migrators_j/spikewaves writes on both its calculations
+tf = false;
+if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
+        || ~isfield(b.statement, 'variable')
+    return;
+end
+v = b.statement.variable;
+tf = isstruct(v) && isfield(v, 'node') && strcmpi(char(v.node), 'GO:0001508');
 end

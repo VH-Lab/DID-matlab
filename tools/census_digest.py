@@ -519,6 +519,12 @@ POST_PASSES = [
         ("pyraview_deferred_resolved", "  deferred pyraview FOLDED (left the quarantine)"),
         ("pyraview_deferred_unresolved", "  deferred pyraview UNRESOLVED (stays quarantined)"),
         ("pyraview_deferred_epochs_minted", "  epochs minted for a deferred pyraview (it alone named them)"),
+        ("spikewaves_deferred_seen", "spikewaves DEFERRED from pass 1 (in the quarantine)"),
+        ("spikewaves_deferred_resolved", "  deferred spikewaves MIGRATED (left the quarantine)"),
+        ("spikewaves_deferred_unresolved", "  deferred spikewaves UNRESOLVED (stays quarantined)"),
+        ("spikewaves_deferred_quarantined", "  deferred spikewaves QUARANTINED by the re-run"),
+        ("spikewaves_deferred_carried_dependent", "  deferred spikewaves CARRIED: an edge to a carried document"),
+        ("spikewaves_deferred_epochs_minted", "  epochs minted for a deferred spikewaves (it alone named them)"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
         ("documents_inspected", "documents inspected"),
@@ -726,6 +732,11 @@ POST_PASSES = [
         ("sorter_input_edges", "    input_id edges added"),
         ("sorter_input_fallback_entity", "  FALLBACK: no recording observation, the electrode entity"),
         ("sorter_link_quarantined", "  link QUARANTINED (kept as it was)"),
+        ("spike_calculations_seen", "spikewaves calculations (spike times, waveforms)"),
+        ("spike_calculations_linked", "  linked to the element's recording observation of their epoch"),
+        ("spike_calculation_input_edges", "  input_id edges added"),
+        ("spike_calculation_input_fallback", "  FALLBACK: no recording observation of that element and epoch"),
+        ("spike_calculation_link_quarantined", "  link QUARANTINED (kept as it was)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # run knobs move inline onto the calculation whose value kind is

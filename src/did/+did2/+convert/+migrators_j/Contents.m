@@ -104,13 +104,15 @@
 %   intact for the NDI second pass, which can read file bytes and see the
 %   migrated-id graph. V_eta's tombstones declare the real did_v1 shape so the
 %   passthrough validates. See V_eta_migrator_vocabulary_audit.md.
-%   SINCE 2026-10-27 simple_calc, spike_clusters, spikewaves and
-%   binnedspikeratevm are CARRIED whole as v1 under a needs-home register row
-%   instead (Jess Haley, [simple_calc carries as needs home], [unbuilt spike
-%   classes carry as needs home]); the reasons below are why no home exists.
+%   SINCE 2026-10-27 simple_calc, spike_clusters and binnedspikeratevm are
+%   CARRIED whole as v1 under a needs-home register row instead (Jess Haley,
+%   [simple_calc carries as needs home], [unbuilt spike classes carry as needs
+%   home]); the reasons below are why no home exists. spikewaves was carried
+%   the same way until 2026-11-10, when it became two calculations ([spike
+%   waveforms are two calculations], [spike waveforms built now]); it reads
+%   its two files' bytes (did2.convert.v1Files 'readBytes').
 %     simple_calc              - no subject-bearing edge (only document_id).
 %     spike_clusters           - the spike count is inside spike_cluster.bin.
-%     spikewaves               - both counts are in the .vsw binary header.
 %     spike_interface_sorting_outputs
 %                              - declares NO dependencies at all, so there is no
 %                                subject; the unit count is inside the .zip.
@@ -946,8 +948,8 @@
 %         Brainstorm-J migrator: did_v1 spike_interface_sorting_outputs -- DEFERRED to
 %         the NDI second pass; the document is passed through UNCHANGED.
 %     spikewaves
-%         Brainstorm-J migrator: did_v1 spikewaves -- CARRIED whole as v1 under a
-%         needs-home register row (the document is returned UNCHANGED).
+%         Brainstorm-J migrator: did_v1 spikewaves -> TWO `calculation`s on the
+%         element, the spike times and the spike waveforms.
 %     stimulus_bath
 %         Deferred: stimulus_bath migrates to a formulation-valued manipulation in the
 %         NDI layer / the coarse resolveDeferredBaths pass.
