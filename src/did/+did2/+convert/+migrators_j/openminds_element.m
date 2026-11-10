@@ -26,8 +26,8 @@ function v2Body = openminds_element(preBody)
 %   element description in notes], below).
 %
 %   [openMINDS element description in notes] (Decided by Jess Haley,
-%   2026-11-10, did-schema did_v2_go_forward_class_audit.md; carry-128 is no
-%   longer cited): a v1 openminds_element's `fields.description` is written to
+%   2026-11-10, did-schema did_v2_go_forward_class_audit.md; no carry row
+%   covers it any more): a v1 openminds_element's `fields.description` is written to
 %   its term assertion's `notes`, and its `openminds_id` is not stored, because
 %   an openMINDS export rebuilds it. did2.convert.roundtrip.openminds_element
 %   rebuilds both. It replaces [openMINDS element leftovers carried] (Jess
