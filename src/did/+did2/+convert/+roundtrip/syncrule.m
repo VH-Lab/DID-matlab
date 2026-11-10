@@ -13,7 +13,9 @@ function [v1, spec] = syncrule(bodies, ctx)
 %   the `clock_alignment_configuration` and its `software` entity (a filematch
 %   rule in pass 1), plus, for the device-pair fold did2.convert.
 %   resolveClockAlignment makes, the two `acquisition_system`s its
-%   `from_acquisition_system_id` / `to_acquisition_system_id` edges name:
+%   `input_id` / `output_id` edges name (`from_acquisition_system_id` /
+%   `to_acquisition_system_id` before [sync configuration edges are input and
+%   output], Jess Haley, 2026-11-10; both are read):
 %     base.id, session_id, datestamp   the configuration's
 %     base.name                        '' (the writer sets none)
 %     syncrule.ndi_syncrule_class      the software entity's name
@@ -22,9 +24,13 @@ function [v1, spec] = syncrule(bodies, ctx)
 %       syncfilename                   EDAM:data_1050 'File name' ('sync file name'
 %                                      before 2026-11-03)
 %       minEmbeddedFileOverlap         'minimum embedded file overlap'
-%       daqsystem_ch1, daqsystem_ch2   'from trigger channel', 'to trigger
-%                                      channel' ([trigger channels named by
-%                                      their link], Jess Haley, 2026-10-30);
+%       daqsystem_ch1, daqsystem_ch2   'input trigger channel', 'output
+%                                      trigger channel' ([sync configuration
+%                                      edges are input and output], Jess
+%                                      Haley, 2026-11-10), 'from trigger
+%                                      channel', 'to trigger channel' before
+%                                      ([trigger channels named by their
+%                                      link], Jess Haley, 2026-10-30);
 %                                      a configuration migrated before
 %                                      holds them as 'daqsystem ch1' /
 %                                      'daqsystem ch2', read below as any
@@ -90,8 +96,22 @@ if ~isempty(cfg)
         spec.unplaced{end+1} = ['the configuration names acquisition_channels ' ...
             '(a migrated sync rule links its systems directly)'];
     end
-    for role = {'from_acquisition_system_id', 'to_acquisition_system_id'}
-        sysIds = edgeIds(cfg, role{1});
+    % [sync configuration edges are input and output] (Jess Haley,
+    % 2026-11-10): input_id / output_id, or the from / to names a
+    % configuration written before holds; both spellings of one role is
+    % reported, not chosen
+    for role = {{'input_id', 'from_acquisition_system_id'}, ...
+            {'output_id', 'to_acquisition_system_id'}}
+        newIds = edgeIds(cfg, role{1}{1});
+        oldIds = edgeIds(cfg, role{1}{2});
+        if ~isempty(newIds) && ~isempty(oldIds)
+            spec.unplaced{end+1} = sprintf('the configuration names its %s system twice (%s and %s)', ...
+                role{1}{1}, role{1}{1}, role{1}{2}); %#ok<AGROW>
+        end
+        sysIds = newIds;
+        if isempty(sysIds)
+            sysIds = oldIds;
+        end
         if isempty(sysIds)
             continue;
         end
@@ -107,7 +127,7 @@ if ~isempty(cfg)
             systemNames{end+1} = fieldText(getIn(sys, 'acquisition_system'), 'name'); %#ok<AGROW>
             continue;
         end
-        spec.unplaced{end+1} = sprintf('%s names no acquisition_system among the documents', role{1}); %#ok<AGROW>
+        spec.unplaced{end+1} = sprintf('%s names no acquisition_system among the documents', role{1}{1}); %#ok<AGROW>
     end
 end
 [doc, ~, swName, spec] = daqParts(bodies(~claimed), 'clock_alignment_configuration', spec, ctx);
@@ -155,7 +175,9 @@ function [s, bad] = ruleParameters(params)
 %   The trigger channels (Decided by Jess Haley, 2026-10-30, did-schema
 %   V_eta_go_forward_class_audit.md [trigger channels named by their link]):
 %   'from trigger channel' is v1 daqsystem_ch1 and 'to trigger channel'
-%   daqsystem_ch2. A configuration migrated before that decision holds them
+%   daqsystem_ch2; since [sync configuration edges are input and output]
+%   (Jess Haley, 2026-11-10) they are 'input trigger channel' / 'output
+%   trigger channel', read the same way. A configuration migrated before that decision holds them
 %   under the v1 names, 'daqsystem ch1' / 'daqsystem ch2', which the own-name
 %   path below reads back to the same two fields. A configuration holding a
 %   channel under both spellings is reported, not merged.
@@ -171,6 +193,8 @@ named = {'minimum matching file paths', 'number_fullpath_matches'; ...
     'File name', 'syncfilename'; ...   % EDAM:data_1050 (2026-11-03)
     'sync file name', 'syncfilename'; ...   % migrated before 2026-11-03
     'minimum embedded file overlap', 'minEmbeddedFileOverlap'; ...
+    'input trigger channel', 'daqsystem_ch1'; ...   % [sync configuration edges are input and output]
+    'output trigger channel', 'daqsystem_ch2'; ...
     'from trigger channel', 'daqsystem_ch1'; ...   % [trigger channels named by their link]
     'to trigger channel', 'daqsystem_ch2'; ...
     'error on failure', 'errorOnFailure'};   % EMPTY:0000435 [sync rule terms] (2026-11-06)

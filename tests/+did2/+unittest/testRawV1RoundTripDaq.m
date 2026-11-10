@@ -189,26 +189,70 @@ docs = foldDocs(out, rule.base.id);
 assertNotEmpty(testCase, docs);
 bodies = cellfun(@(d) d.toStruct(), docs, 'UniformOutput', false);
 names = parameterNames(bodies{1});
-verifyTrue(testCase, all(ismember({'from trigger channel', 'to trigger channel'}, names)), ...
+% the registry's labels of EMPTY:0000433 / EMPTY:0000434 ([sync configuration
+% edges are input and output] renames them 'input trigger channel' / 'output
+% trigger channel')
+[~, ~, inLabel, outLabel] = did2.unittest.helpers.syncEdgeNames();
+verifyTrue(testCase, all(ismember({inLabel, outLabel}, names)), ...
     strjoin(names, ', '));
 verifyFalse(testCase, any(ismember({'daqsystem ch1', 'daqsystem ch2'}, names)), ...
     strjoin(names, ', '));
-% the shape written before the decision
-old = bodies;
-old{1} = relabelParameter(old{1}, 'from trigger channel', 'daqsystem ch1');
-old{1} = relabelParameter(old{1}, 'to trigger channel', 'daqsystem ch2');
-r = did2.convert.roundtrip.check(rule, old);
-verifyFalse(testCase, r.carried);
-verifyRoundTrip(testCase, r, 'the channel rule under the v1 labels', {});
-for p = {'syncrule.parameters.daqsystem_ch1', 'syncrule.parameters.daqsystem_ch2'}
-    verifyTrue(testCase, any(strcmp(p{1}, r.matched)), sprintf('%s not matched', p{1}));
+% every label a configuration may hold: the v1 names (before [trigger channels
+% named by their link]), from / to (before [sync configuration edges are input
+% and output]) and input / output
+for lab = {{'daqsystem ch1', 'daqsystem ch2'}, {'from trigger channel', 'to trigger channel'}, ...
+        {'input trigger channel', 'output trigger channel'}}
+    old = bodies;
+    old{1} = relabelParameter(old{1}, inLabel, lab{1}{1});
+    old{1} = relabelParameter(old{1}, outLabel, lab{1}{2});
+    label = sprintf('the channel rule under "%s" / "%s"', lab{1}{:});
+    r = did2.convert.roundtrip.check(rule, old);
+    verifyFalse(testCase, r.carried, label);
+    verifyRoundTrip(testCase, r, label, {});
+    for p = {'syncrule.parameters.daqsystem_ch1', 'syncrule.parameters.daqsystem_ch2'}
+        verifyTrue(testCase, any(strcmp(p{1}, r.matched)), sprintf('%s: %s not matched', label, p{1}));
+    end
 end
 % one channel under both labels
 both = bodies;
-both{1} = duplicateParameter(both{1}, 'from trigger channel', 'daqsystem ch1');
+both{1} = duplicateParameter(both{1}, inLabel, 'daqsystem ch1');
 r = did2.convert.roundtrip.check(rule, both);
 verifyTrue(testCase, any(contains(r.unplaced, 'daqsystem_ch1 is stated twice')), ...
     strjoin(r.unplaced, '; '));
+end
+
+function testTheRigsRoundTripUnderEitherEdgeName(testCase)
+% [sync configuration edges are input and output] (Decided by Jess Haley,
+% 2026-11-10): the migrator writes the edges the loaded schema declares --
+% from / to on did-schema main, input_id / output_id on a copy that renames
+% them (did2.unittest.helpers.syncEdgeSchema) -- and the round trip rebuilds
+% the v1 rule's two system names, in order, from either
+for renamed = [false true]
+    if renamed
+        did2.unittest.helpers.syncEdgeSchema(testCase);
+    end
+    [inEdge, outEdge] = did2.unittest.helpers.syncEdgeNames();
+    label = sprintf('the channel rule, edges %s / %s', inEdge, outEdge);
+    rule = channelRule();
+    batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
+    out = did2.convert.resolveClockAlignment(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
+    cfg = docWithId(out, rule.base.id);
+    assertNotEmpty(testCase, cfg, label);
+    verifyNumElements(testCase, edgesOf(cfg, inEdge), 1, label);
+    verifyNumElements(testCase, edgesOf(cfg, outEdge), 1, label);
+    other = setdiff({'input_id', 'output_id', 'from_acquisition_system_id', ...
+        'to_acquisition_system_id'}, {inEdge, outEdge});
+    for o = other
+        verifyEmpty(testCase, edgesOf(cfg, o{1}), sprintf('%s: also wrote %s', label, o{1}));
+    end
+    docs = foldDocs(out, rule.base.id);
+    r = did2.convert.roundtrip.check(rule, docs);
+    verifyFalse(testCase, r.carried, label);
+    verifyRoundTrip(testCase, r, label, {});
+    for p = {'syncrule.parameters.daqsystem1_name', 'syncrule.parameters.daqsystem2_name'}
+        verifyTrue(testCase, any(strcmp(p{1}, r.matched)), sprintf('%s: %s not matched', label, p{1}));
+    end
+end
 end
 
 function testErrorOnFailureRoundTripsUnderEitherLabel(testCase)
@@ -646,7 +690,7 @@ docs = {cfg};
 for sw = edgesOf(cfg, 'software_id')
     docs{end+1} = docWithId(out, sw{1}); %#ok<AGROW>
 end
-for role = {'from_acquisition_system_id', 'to_acquisition_system_id'}
+for role = {'input_id', 'output_id', 'from_acquisition_system_id', 'to_acquisition_system_id'}
     for s = edgesOf(cfg, role{1})
         docs{end+1} = docWithId(out, s{1}); %#ok<AGROW>
     end
