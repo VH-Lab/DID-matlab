@@ -30,6 +30,19 @@ function bodies = syncrule(preBody)
 %   ndi.vintage.syncruleParameters reads both (NDI-matlab #1101), and
 %   did2.convert.roundtrip.syncrule reads both back to daqsystem_ch1 / _ch2.
 %
+%   INPUT AND OUTPUT (Decided by Jess Haley, 2026-11-10, did-schema
+%   did_v2_go_forward_class_audit.md [sync configuration edges are input and
+%   output]): the two edges become `input_id` (the rig whose clock is mapped,
+%   v1 daqsystem1) and `output_id` (the rig it is mapped onto, v1
+%   daqsystem2); the direction is unchanged. The trigger channels become
+%   'input trigger channel' / 'output trigger channel'. DID-matlab follows
+%   before did-schema renames, so the edges written are the ones the LOADED
+%   schema declares on clock_alignment_configuration (systemEdgeNames:
+%   `input_id` / `output_id` once declared, else the from / to names), and the
+%   channel labels are the term registry's names of their nodes, EMPTY:0000433
+%   and EMPTY:0000434 (did2.convert.registeredTerm), so they follow the
+%   registry. did2.convert.roundtrip.syncrule reads every spelling.
+%
 %   TEAM-SIGN-OFF [sync configuration], jess@walthamdatascience.com / 2026-08-08:
 %     "syncrule -> `clock_alignment_configuration` (parameters DECLARED not
 %      bagged, devices become `acquisition_channels_#` edges, EXACTLY 2 and
@@ -475,6 +488,10 @@ end
 % `to_acquisition_system_id`. Decided by Jess Haley, 2026-10-30, did-schema
 % V_eta_go_forward_class_audit.md [trigger channels named by their link]:
 % labels 'from trigger channel' / 'to trigger channel', not the v1 names.
+% [sync configuration edges are input and output] (Jess Haley, 2026-11-10)
+% renames them 'input trigger channel' / 'output trigger channel': the name
+% written is the registry's for the node (registeredTerm), so it follows the
+% registry; the label here is used only with no registry.
 for ch = {{'daqsystem_ch1', 'EMPTY:0000433', 'from trigger channel'}, ...
         {'daqsystem_ch2', 'EMPTY:0000434', 'to trigger channel'}}
     chText = channelText(params0(block), ch{1}{1});
@@ -516,11 +533,44 @@ end
 edges = struct();
 if ~isempty(swId); edges.software_id = swId; end
 if ~isempty(systemIds)
-    edges.from_acquisition_system_id = systemIds{1};
-    edges.to_acquisition_system_id   = systemIds{2};
+    % [sync configuration edges are input and output]: whichever pair the
+    % loaded schema declares (daqsystem1's system first)
+    [inName, outName] = systemEdgeNames();
+    edges.(inName)  = systemIds{1};
+    edges.(outName) = systemIds{2};
 end
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
 cfg = did2.build.document('clock_alignment_configuration', f, o{:});
+end
+
+function [inName, outName] = systemEdgeNames()
+%SYSTEMEDGENAMES The two edges naming the rule's rigs, as the loaded schema
+%   declares them on clock_alignment_configuration: `input_id` / `output_id`
+%   once did-schema renames them (Decided by Jess Haley, 2026-11-10 [sync
+%   configuration edges are input and output]), else
+%   `from_acquisition_system_id` / `to_acquisition_system_id`.
+inName = 'from_acquisition_system_id';
+outName = 'to_acquisition_system_id';
+try
+    s = did2.schema.cache.shared().getClass('clock_alignment_configuration');
+catch
+    return;
+end
+if ~isstruct(s) || ~isfield(s, 'depends_on') || isempty(s.depends_on)
+    return;
+end
+deps = s.depends_on;
+if isstruct(deps); deps = num2cell(reshape(deps, 1, [])); end
+names = {};
+for k = 1:numel(deps)
+    if isstruct(deps{k}) && isfield(deps{k}, 'name')
+        names{end+1} = char(deps{k}.name); %#ok<AGROW>
+    end
+end
+if all(ismember({'input_id', 'output_id'}, names))
+    inName = 'input_id';
+    outName = 'output_id';
+end
 end
 
 function ids = stampedSystemIds(preBody)
