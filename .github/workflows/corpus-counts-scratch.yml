@@ -3,7 +3,8 @@ name: Corpus counts (scratch)
 # Scratch, on branch claude/corpus-counts-1110 only; never merged.
 # Decided by Jess Haley 2026-11-10 [two corpus counts] (did-schema #89, #200):
 # Claude runs two counts over the corpora and reports; nothing is changed on
-# the strength of them. Each job runs the corpus exactly as test-corpus.yml
+# the strength of them. Counts 3 and 4 (#212, #150) added by Jess Haley's
+# approval of 2026-11-10, extending [two corpus counts]. Each job runs the corpus exactly as test-corpus.yml
 # does (runCorpusDiscovery), dumps the final batch, and counts it in Python.
 
 on:
@@ -100,5 +101,7 @@ jobs:
           name: counts-dump-${{ matrix.corpus }}
           path: |
             ${{ runner.temp }}/counts-dump/
+            corpus-reports/
+            tests/corpus-reports/
           retention-days: 7
           if-no-files-found: warn

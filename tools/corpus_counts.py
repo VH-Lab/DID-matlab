@@ -23,6 +23,7 @@ import argparse
 import collections
 import json
 import os
+import re
 import sys
 
 
@@ -166,6 +167,154 @@ def find_variable(doc):
             return 'statement.variable', v
         return 'statement.variable', {'node': '', 'name': ''}
     return None, None
+
+
+CARRY_ROWS = ('carry-112', 'carry-114', 'carry-118')
+TUNING_HINT = ('tuning', 'contrastsensitivity_calc', 'hartley_calc')
+
+
+def as_list(x):
+    if x is None:
+        return []
+    return x if isinstance(x, list) else [x]
+
+
+def nonempty(v):
+    if v is None or v == '' or v == [] or v == {}:
+        return False
+    if isinstance(v, str):
+        return bool(v.strip())
+    if isinstance(v, dict):
+        return any(nonempty(x) for x in v.values())
+    if isinstance(v, list):
+        return any(nonempty(x) for x in v)
+    return True
+
+
+def resolve(body, path):
+    """Value at a dotted path in a v1 body, from the root or under one of its
+    top-level blocks; descends lists (any element). (found, values)."""
+    def walk(o, parts):
+        if not parts:
+            return [o]
+        if isinstance(o, list):
+            out = []
+            for e in o:
+                out += walk(e, parts)
+            return out
+        if isinstance(o, dict) and parts[0] in o:
+            return walk(o[parts[0]], parts[1:])
+        return []
+    parts = [x for x in path.split('.') if x]
+    vals = walk(body, parts)
+    if vals:
+        return True, vals
+    for k, v in (body.items() if isinstance(body, dict) else []):
+        if isinstance(v, dict):
+            vals = walk(v, parts)
+            if vals:
+                return True, vals
+    return False, []
+
+
+C056 = re.compile(r'\[carry-056\]\s*(?:unplaced:\s*)?([A-Za-z_][\w.]*(?:\s*,\s*[A-Za-z_][\w.]*)*)')
+
+
+def count34(P, dump, so, v1files, v1dir, final_cls, report):
+    id_file = {}
+    for row in so:
+        try:
+            id_file[row.get('id')] = v1files[int(row['input_index']) - 1]
+        except (IndexError, KeyError, ValueError, TypeError):
+            pass
+    cache = {}
+
+    def body_of(i):
+        if i not in cache:
+            try:
+                cache[i] = json.load(open(os.path.join(v1dir, id_file[i]), encoding='utf-8'))
+            except (KeyError, OSError, ValueError):
+                cache[i] = None
+        return cache[i]
+
+    for tag in ('final', 'pass1'):
+        f = os.path.join(dump, 'migration_report_%s.json' % tag)
+        if not os.path.isfile(f):
+            P('COUNT3/4 migration report (%s): file absent -> NOT MEASURED' % tag)
+            continue
+        mr = json.load(open(f, encoding='utf-8'))
+        carried = as_list(mr.get('carried_as_v1'))
+        P('COUNT3 [%s report] carried_as_v1 entries inspected: %d (report counts.documents: %s)'
+          % (tag, len(carried), (mr.get('counts') or {}).get('documents')))
+        if not carried:
+            P('COUNT3 [%s report] 0 carried entries -> per-row counts NOT MEASURED' % tag)
+        rows = collections.Counter()
+        for e in carried:
+            cites = set(re.findall(r'carry-\d+', '%s %s' % (e.get('carry') or '', e.get('reason') or '')))
+            for r in CARRY_ROWS:
+                if r in cites:
+                    rows[(r, e.get('class') or '<none>')] += 1
+        for r in CARRY_ROWS:
+            tot = sum(n for (rr, _), n in rows.items() if rr == r)
+            P('COUNT3 [%s report] %s: %d v1 document(s)%s' % (
+                tag, r, tot, '' if not carried else
+                ' ' + json.dumps({c: n for (rr, c), n in rows.items() if rr == r})))
+        report['count3_%s' % tag] = {'carried_inspected': len(carried),
+                                     'by_row_class': {'%s|%s' % k: v for k, v in rows.items()}}
+        if tag != 'final':
+            continue
+        # COUNT 4: carry-056 fields, cited in a carried document's reason
+        insp = collections.Counter()
+        cite = collections.Counter()
+        full = collections.Counter()
+        empt = collections.Counter()
+        unres = collections.Counter()
+        tun = [e for e in carried if any(h in (e.get('class') or '') for h in TUNING_HINT)]
+        c056 = [e for e in carried if 'carry-056' in '%s %s' % (e.get('carry') or '', e.get('reason') or '')]
+        P('COUNT4 carried documents of a tuning-family / contrastsensitivity / hartley class: %d; '
+          'carried documents citing carry-056: %d' % (len(tun), len(c056)))
+        for e in c056:
+            cls = e.get('class') or '<none>'
+            insp[cls] += 1
+            body = body_of(e.get('document_id'))
+            fields = []
+            for m in C056.finditer(e.get('reason') or ''):
+                fields += [x.strip() for x in m.group(1).split(',') if x.strip()]
+            for fld in dict.fromkeys(fields):
+                cite[(cls, fld)] += 1
+                if body is None:
+                    unres[(cls, fld)] += 1
+                    continue
+                ok, vals = resolve(body, fld)
+                if not ok:
+                    unres[(cls, fld)] += 1
+                elif any(nonempty(v) for v in vals):
+                    full[(cls, fld)] += 1
+                else:
+                    empt[(cls, fld)] += 1
+        if not c056:
+            P('COUNT4 0 carry-056 documents -> NOT MEASURED')
+        for cls, n in insp.most_common():
+            P('COUNT4   class %-36s carry-056 documents %7d' % (cls, n))
+        for (cls, fld), n in sorted(cite.items(), key=lambda x: (x[0][0], -x[1])):
+            P('COUNT4     %-30s %-60s cited %6d  non-empty %6d  empty %6d  not found in v1 %6d'
+              % (cls, fld, n, full[(cls, fld)], empt[(cls, fld)], unres[(cls, fld)]))
+        report['count4'] = {'tuning_carried': len(tun), 'c056_docs': len(c056),
+                            'docs_by_class': dict(insp),
+                            'fields': {'%s|%s' % k: {'cited': v, 'nonempty': full[k], 'empty': empt[k],
+                                                      'not_found': unres[k]} for k, v in cite.items()}}
+    # carry-112's `when`, read from the batch: a v1 id no final document holds
+    lost = collections.Counter()
+    srcs = 0
+    for row in so:
+        if row.get('carried'):
+            continue
+        srcs += 1
+        if row.get('id') and row.get('id') not in final_cls:
+            lost[row.get('class_name') or '<none>'] += 1
+    P('COUNT3 [batch] converted (not carried) v1 sources inspected: %d; whose v1 id no final '
+      'document holds: %d %s' % (srcs, sum(lost.values()), dict(lost)))
+    report['count3_ids_not_held'] = dict(lost)
 
 
 def main():
@@ -426,6 +575,7 @@ def main():
                    'direct_statement_by_class': dict(direct_den),
                    'direct_named_by_class': dict(direct_named),
                    'id_holder_class': {'%s -> %s' % k: v for k, v in direct_cls.items()}})
+    count34(P, a.dump, so, v1files, v1dir, final_cls, report)
     if a.json:
         json.dump(report, open(a.json, 'w'), indent=1)
     return 0
