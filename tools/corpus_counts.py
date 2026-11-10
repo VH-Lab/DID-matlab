@@ -362,6 +362,7 @@ def count5(P, v1files, v1dir, report):
     loose = collections.Counter()
     as_super = collections.Counter()
     c6 = collections.Counter()
+    sp = 0
     c6tot = collections.Counter()
     want = {c.lower(): c for c in COUNT5_CLASSES}
     for f in v1files:
@@ -374,6 +375,8 @@ def count5(P, v1files, v1dir, report):
         c = str(((b.get('document_class') or {}) if isinstance(b, dict) else {}).get('class_name', ''))
         if c in COUNT5_CLASSES:
             exact[c] += 1
+        if c == 'stimulus_presentation':
+            sp += 1
         if c in COUNT6_CLASSES:
             deps = as_list(b.get('depends_on'))
             have = sorted({str(d.get('name')) for d in deps if isinstance(d, dict)
@@ -400,6 +403,13 @@ def count5(P, v1files, v1dir, report):
     for c in COUNT6_CLASSES:
         P('COUNT6   v1 class %-28s %7d   depends_on element_id/subject_id (non-empty): %s'
           % (c, c6tot[c], json.dumps({k[1]: v for k, v in c6.items() if k[0] == c})))
+    # COUNT 7 (did-schema #155): carry-080 is cited only by NDI-matlab
+    # ndi.migrate.internal.stimulusPresentationToItem (NDI's second pass); this
+    # DID-matlab run does not execute it, so the numerators are not measured.
+    P('COUNT7 v1 stimulus_presentation documents read: %d; carry-080 hits (standalone-item '
+      'Hartley generator keys, and any field): NOT MEASURED -- carry-080 is cited only by '
+      'NDI-matlab stimulusPresentationToItem.m, which this DID-matlab run does not execute' % sp)
+    report['count7'] = {'stimulus_presentation_read': sp, 'carry_080': 'not measured'}
     report['count6'] = {'%s|%s' % k: v for k, v in c6.items()}
     report['count5'] = {'v1_read': read, 'unreadable': unread, 'exact': dict(exact),
                         'case_insensitive': dict(loose), 'as_superclass': dict(as_super)}
