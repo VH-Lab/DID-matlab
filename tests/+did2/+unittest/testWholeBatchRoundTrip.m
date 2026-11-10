@@ -470,42 +470,31 @@ r = did2.convert.roundtrip.check(sex, out.migrated);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject (no id)', {});
 end
 
-function testAnOpenmindsElementWithAnIdAndADescriptionIsCarried(testCase)
-% INVERTED 2026-10-29 from testAnOpenmindsElementReportsWhatItDoesNotKeep,
-% which asserted the element was CONVERTED and its openminds_id and description
-% LOST. Decided by Jess Haley, 2026-10-29 [openMINDS element leftovers carried]
-% (did-schema V_eta_go_forward_class_audit.md): "a v1 `openminds_element`
-% holding an `openminds_id` or a `fields.description` is carried whole as v1"
-% (carry-128), so the round trip compares the carry and nothing is lost.
-% Dab's shape: a cell type with an openMINDS id and a description
+function testAnOpenmindsElementWithAnIdAndADescriptionConverts(testCase)
+% INVERTED 2026-11-10 from testAnOpenmindsElementWithAnIdAndADescriptionIsCarried
+% ([openMINDS element leftovers carried], carry-128). Decided by Jess Haley,
+% 2026-11-10 [openMINDS element description in notes] (did-schema
+% did_v2_go_forward_class_audit.md): the description is the term assertion's
+% notes and the openminds_id is not stored (an openMINDS export rebuilds it).
+% Dab's shape: a cell type with an openMINDS id and a description, and each
+% half alone
 ct = openmindsV1('wb_om_ct', 'openminds_element', 'element_id', 'CellType', ...
     'type III BNST neuron', 'EMPTY:0000073', '', '');
 ct.openminds.openminds_id = 'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d';
 ct.openminds.fields.description = 'A type of neuron.';
-% UPDATED 2026-10-30: openminds_element reads raw v1 ([migrators read raw v1],
-% Jess Haley, 2026-10-26; did2.convert.rawV1Classes), so pass 1 hands back the
-% untouched v1 source as the carry (it handed back the renamed body before), and
-% the pipeline stores that v1 source (ndi.migrate.internal.carryUnchangedAsV1).
-% Compare what is stored, as the table-row test does.
-out = did2.convert.v1_to_v2({ct}, 'Validate', false, 'TargetVersion', 'did_v2');
-verifyTrue(testCase, any(strcmp({out.passthrough.id}, 'wb_om_ct')), ...
-    'pass 1 records the element as carried through');
-r = did2.convert.roundtrip.wholeBatch({ct}, out);
-verifyEqual(testCase, r.sources_compared, 1);
-verifyEqual(testCase, r.sources_ok, 1, describe(r));
-verifyTrue(testCase, isfield(r.stored_as_v1_by_class, 'openminds_element'), ...
-    'the element is stored as its v1 source');
-% each half alone carries too
-for half = {'id', 'description'}
+for half = {'both', 'id', 'description'}
     one = ct;
     if strcmp(half{1}, 'id')
         one.openminds.fields.description = '';
-    else
+    elseif strcmp(half{1}, 'description')
         one.openminds.openminds_id = '';
     end
     out = did2.convert.v1_to_v2({one}, 'Validate', false, 'TargetVersion', 'did_v2');
-    verifyTrue(testCase, any(strcmp({out.passthrough.id}, 'wb_om_ct')), ...
-        ['carried for its ' half{1} ' alone']);
+    verifyFalse(testCase, any(strcmp({out.passthrough.id}, 'wb_om_ct')), ...
+        ['converted with ' half{1}]);
+    r = did2.convert.roundtrip.wholeBatch({one}, out);
+    verifyEqual(testCase, r.sources_compared, 1);
+    verifyEqual(testCase, r.sources_ok, 1, describe(r));
 end
 end
 

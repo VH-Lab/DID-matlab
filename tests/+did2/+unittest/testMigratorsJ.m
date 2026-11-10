@@ -5720,11 +5720,12 @@ verifyEqual(testCase, depValue(a, 'entity_id'), 'elem_9');
 verifyEqual(testCase, a.document_class.class_name, 'assertion');   % #88
 end
 
-function testAnOpenmindsElementWithAnIdOrADescriptionIsCarried(testCase)
-% [openMINDS element leftovers carried] (Decided by Jess Haley, 2026-10-29,
-% did-schema V_eta_go_forward_class_audit.md): "a v1 `openminds_element`
-% holding an `openminds_id` or a `fields.description` is carried whole as v1,
-% as for openMINDS subjects"; the register row is carry-128. Each alone carries.
+function testAnOpenmindsElementsDescriptionIsItsNotesAndItsIdIsNotStored(testCase)
+% INVERTED 2026-11-10 from testAnOpenmindsElementWithAnIdOrADescriptionIsCarried
+% ([openMINDS element leftovers carried], carry-128). Decided by Jess Haley,
+% 2026-11-10 [openMINDS element description in notes] (did-schema
+% did_v2_go_forward_class_audit.md): the description is the term assertion's
+% notes, and the openminds_id is not stored (an openMINDS export rebuilds it).
 body = struct();
 body.document_class = struct('class_name', 'openminds_element', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -5735,19 +5736,19 @@ body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Cell
     'matlab_type', 'openminds.controlledterms.CellType', ...
     'openminds_id', 'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d', ...
     'fields', struct('name', 'type III BNST neuron', ...
-        'preferredOntologyIdentifier', 'EMPTY:0000073', 'description', ''));
+        'preferredOntologyIdentifier', 'EMPTY:0000073', 'description', 'A type of neuron.'));
 out = runJ(body);
-verifyCarriedWholeAsV1(testCase, body, out);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-128] '), d);
-desc = body;
-desc.base.id = 'ome_3';
-desc.openminds.openminds_id = '';
-desc.openminds.fields.description = 'A type of neuron.';
-out = runJ(desc);
-verifyCarriedWholeAsV1(testCase, desc, out);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-128] '), d);
+assertNotEmpty(testCase, out.migrated);
+a = out.migrated{1}.toStruct();
+verifyEqual(testCase, a.document_class.class_name, 'assertion');
+verifyEqual(testCase, char(a.statement.notes), 'A type of neuron.');
+verifyFalse(testCase, contains(jsonencode(a), 'dc2f5dd6-5cea-477c-a035-ca2dd3e6649d'), ...
+    'the openminds_id is not stored');
+notes = struct();
+if isfield(out.summary, 'migration_notes'); notes = out.summary.migration_notes; end
+verifyFalse(testCase, isfield(notes, 'carried_as_v1') && ...
+    any(contains(cellstr(notes.carried_as_v1.distinct_details), '[carry-128]')), ...
+    'carry-128 is no longer cited');
 end
 
 function testOpenmindsStimulusPassesThroughForSecondPass(testCase)

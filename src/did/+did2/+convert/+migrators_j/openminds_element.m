@@ -20,9 +20,18 @@ function v2Body = openminds_element(preBody)
 %   the asserted `variable`; the ontology id + label are the term `value`. It is
 %   a timeless `assertion` (no interaction, no session anchor). 1 -> 1.
 %
-%   If no openMINDS block is present, or the block states an `openminds_id` or
-%   a `fields.description` (carry-128), the document is carried whole as v1
-%   with a `carried_as_v1` note.
+%   If no openMINDS block is present, the document is carried whole as v1 with
+%   a `carried_as_v1` note (carry-146). A `fields.description` is the
+%   assertion's `notes`, and an `openminds_id` is not stored ([openMINDS
+%   element description in notes], below).
+%
+%   [openMINDS element description in notes] (Decided by Jess Haley,
+%   2026-11-10, did-schema did_v2_go_forward_class_audit.md; carry-128 is no
+%   longer cited): a v1 openminds_element's `fields.description` is written to
+%   its term assertion's `notes`, and its `openminds_id` is not stored, because
+%   an openMINDS export rebuilds it. did2.convert.roundtrip.openminds_element
+%   rebuilds both. It replaces [openMINDS element leftovers carried] (Jess
+%   Haley, 2026-10-29), which carried such a document whole as v1.
 %
 %   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-30; Decided by Jess Haley,
 %   2026-10-26 [migrators read raw v1], did-schema
@@ -91,24 +100,13 @@ variable = variableForType(jGetChar(block, 'openminds_type'));
 flds = struct();
 if isfield(block, 'fields') && isstruct(block.fields); flds = block.fields; end
 
-% [openMINDS element leftovers carried] (Decided by Jess Haley, 2026-10-29,
-% did-schema V_eta_go_forward_class_audit.md): "a v1 `openminds_element`
-% holding an `openminds_id` or a `fields.description` is carried whole as v1,
-% as for openMINDS subjects ([openMINDS subject leftovers])". The term
-% assertion keeps neither, so a document stating either is carried
-% (register row carry-128).
-omId = strtrim(jGetChar(block, 'openminds_id'));
+% [openMINDS element description in notes] (Decided by Jess Haley, 2026-11-10;
+% see the header): the description is the assertion's notes, and the
+% openminds_id is not stored (an openMINDS export rebuilds it)
 omDescription = strtrim(jGetChar(flds, 'description'));
-if ~isempty(omId) || ~isempty(omDescription)
-    held = {};
-    if ~isempty(omId); held{end+1} = sprintf('openminds_id "%s"', omId); end
-    if ~isempty(omDescription); held{end+1} = 'fields.description'; end
-    % carry-register: carry-128
-    did2.convert.reportNote('carried_as_v1', 'openminds_element', sourceIdOf(preBody), ...
-        sprintf(['[carry-128] awaiting_home: %s (the term assertion keeps neither) ' ...
-        '([openMINDS element leftovers carried])'], strjoin(held, ' and ')));
-    v2Body = {src};   % a carry is the untouched v1 source
-    return;
+noteOpts = {};
+if ~isempty(omDescription)
+    noteOpts = {'Notes', omDescription};
 end
 node = firstNonEmpty( ...
     jGetChar(flds, 'preferredOntologyIdentifier'), ...
@@ -120,7 +118,7 @@ valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 % An `assertion` with value kind `term`: timeless (no method/interaction).
 % did-schema #88: an `assertion` (value kind `term`) built through did2.build, id preserved.
 body = jStatement(preBody, 'assertion', jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
-    variable, valueTerm, 'Id', char(preBody.base.id), 'ValueKind', 'term');
+    variable, valueTerm, 'Id', char(preBody.base.id), 'ValueKind', 'term', noteOpts{:});
 v2Body = {body};
 end
 
