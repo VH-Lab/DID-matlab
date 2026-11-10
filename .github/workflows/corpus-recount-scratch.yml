@@ -46,7 +46,11 @@ jobs:
           echo "did-schema checked out: $(git -C did-schema rev-parse HEAD); DID-matlab: $(git rev-parse HEAD); dump run: $DUMP_RUN"
           mkdir -p "$RUNNER_TEMP/eta-schemas" "$RUNNER_TEMP/dump" "$RUNNER_TEMP/v1"
           python3 tools/assemble_schema_set.py did-schema/schemas "$RUNNER_TEMP/eta-schemas"
-          gh run download "$DUMP_RUN" -R "$GITHUB_REPOSITORY" -n "counts-dump-$C" -D "$RUNNER_TEMP/dump"
+          aid=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DUMP_RUN/artifacts" --jq ".artifacts[]|select(.name==\"counts-dump-$C\")|.id")
+          if [ -z "$aid" ]; then echo "no artifact counts-dump-$C in run $DUMP_RUN: NOT MEASURED"; exit 1; fi
+          echo "artifact $aid"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$aid/zip" > "$RUNNER_TEMP/dump.zip"
+          unzip -q "$RUNNER_TEMP/dump.zip" -d "$RUNNER_TEMP/dump"
           curl -sSfL -o "$RUNNER_TEMP/v1/$C.zip" "https://ndi-programming-development.s3.us-east-1.amazonaws.com/$C.zip"
           unzip -q "$RUNNER_TEMP/v1/$C.zip" -d "$RUNNER_TEMP/v1"
           d=$(dirname "$(find "$RUNNER_TEMP/dump" -name migrated.jsonl | head -1)")
