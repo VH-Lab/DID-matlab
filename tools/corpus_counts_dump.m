@@ -1,4 +1,4 @@
-function corpus_counts_dump(corpusName, outDir)
+function corpus_counts_dump(tc, corpusName, outDir)
 %CORPUS_COUNTS_DUMP Scratch (branch claude/corpus-counts-1110 only; never for V2).
 %   Runs the corpus exactly as testCorpus<NAME> does
 %   (did2.unittest.helpers.runCorpusDiscovery: pass 1 and every batch pass),
@@ -10,7 +10,6 @@ function corpus_counts_dump(corpusName, outDir)
 %   Decided by Jess Haley 2026-11-10 [two corpus counts]: run and report only.
 if ~isfolder(outDir); mkdir(outDir); end
 url = sprintf('https://ndi-programming-development.s3.us-east-1.amazonaws.com/%s.zip', corpusName);
-tc = matlab.unittest.TestCase.forInteractiveUse;
 [corpusDir, result] = did2.unittest.helpers.runCorpusDiscovery(tc, corpusName, url, corpusName, ...
     'AssertNoOrphans', false);
 fprintf('COUNTS-DUMP corpus %s: corpusDir %s; migrated %d; quarantine %d; sources %d\n', ...

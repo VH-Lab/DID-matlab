@@ -76,12 +76,16 @@ jobs:
         uses: matlab-actions/run-command@v2
         env:
           DID_RUN_SOPH_TEST: "1"
+          COUNTS_CORPUS: ${{ matrix.corpus }}
         with:
           command: |
             addpath(genpath("src"));
             addpath(genpath("tests"));
             addpath(genpath("tools"));
-            corpus_counts_dump("${{ matrix.corpus }}", fullfile(getenv("RUNNER_TEMP"), "counts-dump"));
+            setenv("COUNTS_DUMP", fullfile(getenv("RUNNER_TEMP"), "counts-dump"));
+            runner = matlab.unittest.TestRunner.withTextOutput;
+            results = runner.run(matlab.unittest.TestSuite.fromFile(fullfile("tools","testCorpusCountsDump.m")));
+            disp(table(results));
       - name: "Count ${{ matrix.corpus }}"
         if: always()
         run: |
