@@ -26,19 +26,30 @@ function bodies = jModelFit(preBody, blk, inputEdges)
 
 bodies = {preBody};
 subjectId = jSubjectOf(preBody, {'element_id', 'subject_id'});
+reason = '';
+if isempty(subjectId)
+    % [a fit is about its input's subject] (Decided by Jess Haley, 2026-11-10):
+    % a fit with no element_id or subject_id of its own is about what its input
+    % is about. v1_to_v2 indexed the batch (did2.convert.fitInputSubjects),
+    % which follows INPUTEDGES to that document and takes its subject; never
+    % the session.
+    [subjectId, reason] = did2.convert.fitInputSubjects('get', preBody, inputEdges);
+end
 if isempty(subjectId)
     % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
     % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once
     % no v1 document passes through under it, so this document, refused on
     % purpose, is carried whole as v1 with a note ([passthrough stays v1], Jess
     % Haley, 2026-10-24) instead of passing through silently. Register rows
-    % carry-136 (fitcurve) and carry-137 (vmspikefit) cover it.
+    % carry-136 (fitcurve) and carry-137 (vmspikefit) cover it, narrowed by [a
+    % fit is about its input's subject] to a fit whose input chain names none.
     stamp = did2.convert.v1read.readStamp(preBody);
     tag = '[carry-136]';
     if strcmp(stamp.class_name, 'vmspikefit'); tag = '[carry-137]'; end
     % carry-register: carry-136 carry-137
     did2.convert.reportNote('carried_as_v1', stamp.class_name, jCarryId(preBody), ...
-        [tag ' awaiting_home: no element_id or subject_id, so no calculation subject ([passthrough stays v1])']);
+        [tag ' awaiting_home: no element_id or subject_id, so no calculation subject: ' ...
+        'its input names none (' reason ') ([a fit is about its input''s subject])']);
     return;
 end
 [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);

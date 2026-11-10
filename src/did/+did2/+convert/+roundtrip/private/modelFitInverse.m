@@ -1,4 +1,4 @@
-function [v1, spec] = modelFitInverse(bodies, v1Class, inputEdges, templateInputs, fitFields)
+function [v1, spec] = modelFitInverse(bodies, v1Class, inputEdges, templateInputs, fitFields, ctx, templateSubject)
 %MODELFITINVERSE The v1 curve fit (`fitcurve`, `vmspikefit`) that
 %   +migrators_j/<V1CLASS> converted through private/jModelFit.
 %
@@ -42,6 +42,18 @@ function [v1, spec] = modelFitInverse(bodies, v1Class, inputEdges, templateInput
 %   constraint with no name or a non-scalar value; names separated by commas
 %   (rebuilt with spaces); `epochid.epochid` (the calculation is anchored to
 %   the session, jSessionAnchor 'during'); text in a numeric field.
+%
+%   CTX (optional) is the whole final batch (batchContext). A fit that named
+%   no subject of its own is about what its input is about (Decided by Jess
+%   Haley, 2026-11-10 [a fit is about its input's subject]; jModelFit through
+%   did2.convert.fitInputSubjects). When CTX shows the calculation's entity is
+%   the subject its first input leads to (inputSubjectOf), the v1 subject edge
+%   is not rebuilt from it: it is rebuilt as the template has it
+%   (TEMPLATESUBJECT true: `element_id` with an empty value, vmspikefit; false:
+%   no subject edge, fitcurve), and a v1 `element_id` naming that same entity
+%   is RESTATED (spec.equivalents, under the same decision): the entity_id v2
+%   keeps already says it. With no CTX the subject is rebuilt as `element_id`
+%   from `entity_id`, as before.
 %
 %   See also did2.convert.roundtrip.fitcurve, did2.convert.roundtrip.vmspikefit,
 %            calcParts.
@@ -149,7 +161,32 @@ if isempty(about)
     spec.unplaced{end+1} = 'the calculation is about nothing';
     about = {''};
 end
-names{end+1} = 'element_id';
-ids{end+1} = about{1};
+if nargin < 6
+    ctx = [];
+end
+if nargin < 7
+    templateSubject = true;
+end
+fromInput = ~isempty(ctx) && ~isempty(inputs) && ~isempty(about{1}) ...
+    && strcmp(inputSubjectOf(ctx, inputs{1}), about{1});
+if fromInput
+    % [a fit is about its input's subject]: the v1 subject edge, if it was
+    % there at all, can only have been empty or this same entity
+    at = numel(names) + 1;
+    because = ['[a fit is about its input''s subject] (Jess Haley, 2026-11-10): ' ...
+        'the entity is the subject the fit''s input leads to, so a v1 ' ...
+        'element_id naming it restates entity_id'];
+    spec.equivalents(end+1) = struct('path', sprintf('depends_on(%d).name', at), ...
+        'values', {{'element_id'}}, 'why', because);
+    spec.equivalents(end+1) = struct('path', sprintf('depends_on(%d).value', at), ...
+        'values', {{about{1}}}, 'why', because);
+    if templateSubject
+        names{end+1} = 'element_id';
+        ids{end+1} = '';
+    end
+else
+    names{end+1} = 'element_id';
+    ids{end+1} = about{1};
+end
 v1.depends_on = struct('name', names, 'value', ids);
 end

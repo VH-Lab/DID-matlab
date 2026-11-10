@@ -437,13 +437,31 @@ dropped = [dropped, unreadFields(preBody), numbersUnplaced];
 % 2026-10-29, did-schema V_eta_go_forward_class_audit.md): a retire class's v2
 % file is deleted once no v1 document passes through under it, so it is carried
 % whole as v1 with a note here ([passthrough stays v1], Jess Haley, 2026-10-24)
-% instead of passing through silently. Register row carry-138 covers it.
+% instead of passing through silently. Register row carry-138 covers it,
+% narrowed by [a fit is about its input's subject] (Decided by Jess Haley,
+% 2026-11-10): a hartley_calc with no element_id or subject_id of its own is
+% about what its input is about, so v1_to_v2's index
+% (did2.convert.fitInputSubjects) follows its input edge,
+% `stimulus_presentation_id`, to that document and takes its subject; never the
+% session. A v1 stimulus_presentation names only its stimulator
+% (`stimulus_element_id`, NDI's template and writer, decoder.m), not a subject,
+% so on a writer-shaped presentation the chain names none and the document is
+% carried as before. The resolved subject is handed to jCalculation as the
+% calculation's `subject_id` edge on the copy it reads (calcBody), never on
+% the v1 source.
 if isempty(jSubjectOf(preBody, {'element_id', 'subject_id'}))
-    % carry-register: carry-138
-    did2.convert.reportNote('carried_as_v1', 'hartley_calc', sourceId(preBody), ...
-        '[carry-138] awaiting_home: no element_id or subject_id, so no calculation subject ([passthrough stays v1])');
-    bodies = {preBody};
-    return;
+    [inputSubject, reason] = did2.convert.fitInputSubjects('get', preBody, ...
+        {'stimulus_presentation_id'});
+    if isempty(inputSubject)
+        % carry-register: carry-138
+        did2.convert.reportNote('carried_as_v1', 'hartley_calc', sourceId(preBody), ...
+            ['[carry-138] awaiting_home: no element_id or subject_id, so no ' ...
+             'calculation subject: its input names none (' reason ') ([a fit is ' ...
+             'about its input''s subject])']);
+        bodies = {preBody};
+        return;
+    end
+    calcBody = withSubjectEdge(calcBody, inputSubject);
 end
 calcOpts = {'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
     'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
@@ -1055,4 +1073,26 @@ if isfield(preBody, 'base') && isstruct(preBody.base) ...
         && isfield(preBody.base, 'id') && ~isempty(preBody.base.id)
     id = char(preBody.base.id);
 end
+end
+
+function b = withSubjectEdge(b, subjectId)
+%WITHSUBJECTEDGE B with a `subject_id` edge naming SUBJECTID, for jCalculation
+%   to read as the calculation's subject ([a fit is about its input's
+%   subject]). Only the copy jCalculation reads gets it.
+entry = struct('name', 'subject_id', 'value', subjectId);
+if ~isfield(b, 'depends_on') || isempty(b.depends_on)
+    b.depends_on = entry;
+    return;
+end
+deps = b.depends_on;
+if ~isstruct(deps)
+    deps = [deps(:)', {entry}];
+    b.depends_on = deps;
+    return;
+end
+add = cell2struct(cell(numel(fieldnames(deps)), 1), fieldnames(deps), 1);
+add.name = 'subject_id';
+if isfield(add, 'value'); add.value = subjectId; end
+if isfield(add, 'document_id'); add.document_id = subjectId; end
+b.depends_on(end+1) = add;
 end

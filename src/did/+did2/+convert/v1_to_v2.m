@@ -260,6 +260,12 @@ did2.convert.unitQualityLabels('add', options.UnitQualityLabels);
 % from the probe], Jess Haley, 2026-10-27).
 did2.convert.elementSubjects('reset');
 did2.convert.elementSubjects('load', bodies);
+% Every v1 document of this batch, read by jModelFit and migrators_j.
+% hartley_calc for a fit that names no subject of its own: it is about what its
+% input is about (Decided by Jess Haley, 2026-11-10 [a fit is about its input's
+% subject]).
+did2.convert.fitInputSubjects('reset');
+did2.convert.fitInputSubjects('load', bodies);
 % The channel counts every n-trode's epochprobemap rows name, and its
 % geometry's site counts, read by migrators_j.element for the n-trode's
 % "number of electrodes" ([n-trode count from the channel list], Jess Haley,
