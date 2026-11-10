@@ -269,10 +269,11 @@ def count34(P, dump, so, v1files, v1dir, final_cls, report, final_v1):
             carried = [e for e in carried if e.get('document_id') in final_v1]
             P('COUNT3 [pass1 report] %d carried entr(ies), %d of them still carried in the final batch'
               % (n0, len(carried)))
-        P('COUNT3 [%s report] carried_as_v1 entries inspected: %d (report counts.documents: %s)'
-          % (tag, len(carried), (mr.get('counts') or {}).get('documents')))
-        if not carried:
-            P('COUNT3 [%s report] 0 carried entries -> per-row counts NOT MEASURED' % tag)
+        P('COUNT3 [%s report] v1 sources inspected: %d; carried_as_v1 entries among them: %d '
+          '(report counts.documents: %s)'
+          % (tag, len(so), len(carried), (mr.get('counts') or {}).get('documents')))
+        if not so:
+            P('COUNT3 [%s report] 0 v1 sources -> NOT MEASURED' % tag)
         rows = collections.Counter()
         for e in carried:
             cites = set(re.findall(r'carry-\d+', '%s %s' % (e.get('carry') or '', e.get('reason') or '')))
@@ -587,8 +588,9 @@ def main():
         if isinstance(outs, str):
             outs = [outs]
         if row.get('carried'):
+            # carried in pass 1; a batch pass may still have converted it
+            # (its id then names a v2 document), so it is not skipped
             carried += 1
-            continue
         present = [final_cls[o] for o in outs if o in final_cls]
         attributed.update(outs)
         if outs and not present:
@@ -640,7 +642,7 @@ def main():
         P('COUNT2 v1 documents that become statements: 0 -> NOT MEASURED')
     else:
         P('COUNT2 v1 documents that become statements: %d (v1 bodies unreadable: %d; '
-          'carried-as-v1 sources skipped: %d; sources whose outputs are all gone from the '
+          'sources carried as v1 by pass 1 (still examined): %d; sources whose outputs are all gone from the '
           'final batch: %d); base.name not empty: %d (whitespace-only: %d)'
           % (becomes, unread, carried, gone, sum(named.values()), ws_only))
         for c, n in den_by_class.most_common():
