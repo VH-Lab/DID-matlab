@@ -4781,9 +4781,9 @@ verifyEqual(testCase, s.distance_metadata.ontologyNode_A, 'animal_9');
 verifyEqual(testCase, s.distance_metadata.ontologyStringValues_B, 'uid_b1');
 verifyFalse(testCase, isfield(s.distance_metadata, 'endpoints'));
 verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    '[carry-147] awaiting_home: '), 'the note cites carry-147');
+    '[carry-147] needs_mapping: '), 'the note cites carry-147');
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'reshaped retire classes carried'), 'the note names the decision');
+    'distance and its metadata are one statement'), 'the note names the decision');
 % NOT a length_observation and no endpoint relation minted
 names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, 'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'observation+length')));
