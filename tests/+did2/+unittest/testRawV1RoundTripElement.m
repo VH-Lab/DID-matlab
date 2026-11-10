@@ -308,9 +308,11 @@ function testTheElementTypeAssertionIsKeptOnlyWhereTheKindDoesNotRebuildIt(testC
 % observation the batch pass mints and is not decided for every mode yet
 % ([element types batch 1], [element types batch 2]), so the word is kept.
 % A sorted unit (no device kind) does NOT keep it: [cell spellings are one
-% meaning], [cell spellings amended] (Jess Haley, 2026-10-27). The `ndi element class`
-% assertion is still written for every element ([ndi element class not
-% kept] waits on NDI-matlab's readers).
+% meaning], [cell spellings amended] (Jess Haley, 2026-10-27). INVERTED
+% 2026-11-10: the `ndi element class` assertion was asserted present for
+% every element; [ndi element class not kept] (Jess Haley, 2026-10-27), built
+% on NDI-matlab's side by #1214 ([element recognised by its links]), stops it
+% wherever the class rebuilds (testTheClassIsRebuiltFromWhatTheElementIs).
 dropped = {'n-trode', 'electrode-$', 'lick-spout', 'reward-well', 'intraoral-cannula', ...
     'optogenetic-fiber', 'ecg', 'eeg', 'accelerometer', 'thermometer', 'ppg', 'stimulator'};
 kept = {'patch', 'patch-Vm', 'patch-I', 'patch-attached', 'sharp', 'sharp-Vm', ...
@@ -320,12 +322,13 @@ types = [dropped, kept];
 for k = 1:numel(types)
     ty = types{k};
     id = sprintf('el_word_%d', k);
-    out = runRaw(probeDoc(id, 'p', 1, ty, 'ndi.probe.timeseries.mfdaq'));
+    % its probetype2object.json class, so the class rebuilds
+    out = runRaw(probeDoc(id, 'p', 1, ty, did2.convert.elementClassOfKind('probe', ty)));
     vars = cellfun(@(b) char(b.statement.variable.name), assertionsAbout(out, id, ''), ...
         'UniformOutput', false);
     verifyEqual(testCase, any(strcmp(vars, 'element type')), any(strcmp(ty, kept)), ...
         [ty ': element type assertion written or dropped wrongly']);
-    verifyTrue(testCase, any(strcmp(vars, 'ndi element class')), [ty ': ndi element class assertion']);
+    verifyFalse(testCase, any(strcmp(vars, 'ndi element class')), [ty ': ndi element class assertion written']);
     kind = did2.convert.elementDeviceKind(ty);
     expected = '';
     if any(strcmp(ty, dropped)); expected = ty; end
@@ -339,8 +342,107 @@ for label = {'single', 'multi'}
     vars = cellfun(@(b) char(b.statement.variable.name), assertionsAbout(out, id, ''), ...
         'UniformOutput', false);
     verifyFalse(testCase, any(strcmp(vars, 'element type')), ['spikes (' label{1} '): element type assertion written']);
-    verifyTrue(testCase, any(strcmp(vars, 'ndi element class')), ['spikes (' label{1} '): ndi element class assertion']);
+    verifyFalse(testCase, any(strcmp(vars, 'ndi element class')), ['spikes (' label{1} '): ndi element class assertion written']);
 end
+end
+
+function testTheClassIsRebuiltFromWhatTheElementIs(testCase)
+% [ndi element class not kept] (Decided by Jess Haley, 2026-10-27): "the
+% 'ndi element class' assertion is not written; the round trip rebuilds
+% `element.ndi_element_class` from the entity type and device kind (for a
+% probe type, NDI's `probetype2object.json`)"; [element recognised by its
+% links], [ensemble has members] (2026-11-10). A device takes its type's
+% probetype2object.json class; a cell or a multi-unit Group 'ndi.neuron'.
+units = {neuronDoc('ne_c1', 'el_c_s', 'single'), neuronDoc('ne_c2', 'el_c_m', 'multi'), unitProbe()};
+cases = { ...
+    'n-trode', probeDoc('el_c_nt', 'p', 1, 'n-trode', 'ndi.probe.timeseries.mfdaq'), 'ndi.probe.timeseries.mfdaq'; ...
+    'stimulator', probeDoc('el_c_st', 'p', 1, 'stimulator', 'ndi.probe.timeseries.stimulator'), 'ndi.probe.timeseries.stimulator'; ...
+    'two-photon', probeDoc('el_c_2p', 'p', 1, 'two-photon-imaging', 'ndi.probe.image'), 'ndi.probe.image'; ...
+    'single unit', unitDoc('el_c_s', 'u', 1), 'ndi.neuron'; ...
+    'multi unit', unitDoc('el_c_m', 'u', 2), 'ndi.neuron'};
+testCase.log(sprintf('DENOMINATOR: %d element(s)', size(cases, 1)));
+for k = 1:size(cases, 1)
+    [label, v1, want] = cases{k, :};
+    out = runRaw([{v1}, units]);
+    verifyEmpty(testCase, assertionsAbout(out, v1.base.id, 'ndi element class'), ...
+        [label ': ndi element class assertion written']);
+    docs = elementOutputs(out, v1.base.id);
+    rebuilt = did2.convert.roundtrip.element(docs);
+    verifyEqual(testCase, rebuilt.element.ndi_element_class, want, label);
+    r = did2.convert.roundtrip.check(v1, docs);
+    verifyTrue(testCase, any(strcmp(r.matched, 'element.ndi_element_class')), ...
+        sprintf('%s: class not matched: %s', label, describeLost(r)));
+end
+verifyEqual(testCase, did2.convert.elementClassOfKind('probe', 'patch-Vm'), 'ndi.probe.timeseries.mfdaq');
+verifyEqual(testCase, did2.convert.elementClassOfKind('probe', 'sharp-I'), '');
+verifyEqual(testCase, did2.convert.elementClassOfKind('unit', 'spikes'), 'ndi.neuron');
+verifyEqual(testCase, did2.convert.elementClassOfKind('ensemble', 'ensemble'), 'ndi.element.ensemble');
+verifyEqual(testCase, did2.convert.elementClassOfKind('', 'n-trode'), '');
+end
+
+function testAClassThatDoesNotRebuildKeepsItsAssertion(testCase)
+% [ndi element class not kept]: "an element whose class cannot be rebuilt
+% that way is brought to the team". Until then nothing is lost: it keeps the
+% assertion, which wins while written ([assertion wins while written] (1),
+% Jess Haley, 2026-11-10), and is noted `element_class_not_rebuilt`.
+v1 = probeDoc('el_c_odd', 'p', 1, 'n-trode', 'ndi.probe.timeseries');
+out = runRaw(v1);
+verifyEqual(testCase, numel(out.passthrough), 0, 'carried');
+cls = assertionsAbout(out, 'el_c_odd', 'ndi element class');
+verifyNumElements(testCase, cls, 1);
+verifyTrue(testCase, isfield(out.summary.migration_notes, 'element_class_not_rebuilt'), 'not noted');
+if isfield(out.summary.migration_notes, 'element_class_not_rebuilt')
+    verifyTrue(testCase, any(strcmp(out.summary.migration_notes.element_class_not_rebuilt.ids, 'el_c_odd')));
+end
+r = did2.convert.roundtrip.check(v1, elementOutputs(out, 'el_c_odd'));
+verifyEmpty(testCase, r.lost, describeLost(r));
+verifyEmpty(testCase, r.unplaced, strjoin(r.unplaced, '; '));
+end
+
+function testAnEnsembleIsCheckedAfterNdisSecondPass(testCase)
+% [ensemble has members] (Decided by Jess Haley, 2026-11-10): a Group that
+% `member_of` relations point into is an ensemble; one with none is a
+% multi-unit. [assertion wins while written] (1): "when DID-matlab stops
+% writing the assertion, ensembles are checked after NDI-matlab's second
+% pass writes their `member_of` relations" (this round trip runs before it).
+% So with no members its class and type read as one multi-unit, and the v1
+% ensemble's are reported `equivalent` under that decision, not lost; with
+% a member_of relation in the batch index they rebuild exactly.
+v1 = ndiElement('el_ens', 'ens', 1, 'ensemble', 'ndi.element.ensemble', false, ...
+    'el_uprobe', 'subj_1', {});
+out = runRaw({v1, unitProbe()});
+verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, 'el_ens'))), 0, 'carried');
+verifyEmpty(testCase, assertionsAbout(out, 'el_ens', 'ndi element class'), 'class assertion written');
+docs = elementOutputs(out, 'el_ens');
+verifyEqual(testCase, did2.unittest.helpers.classKey(docs{1}), 'group');
+[rebuilt, spec] = did2.convert.roundtrip.element(docs);
+verifyEqual(testCase, rebuilt.element.ndi_element_class, 'ndi.neuron', 'no members: a multi-unit');
+verifyEqual(testCase, rebuilt.element.type, 'spikes', 'no members: a multi-unit');
+verifyTrue(testCase, any(contains({spec.same.why}, '[assertion wins while written]')), ...
+    'the deferral is not stated');
+r = did2.convert.roundtrip.check(v1, docs);
+lost = {r.lost.path};
+verifyFalse(testCase, any(strcmp(lost, 'element.type')), describeLost(r));
+verifyFalse(testCase, any(strcmp(lost, 'element.ndi_element_class')), describeLost(r));
+verifyTrue(testCase, any(strcmp(r.equivalent, 'element.ndi_element_class')), 'class not reported equivalent');
+verifyTrue(testCase, any(strcmp(r.equivalent, 'element.type')), 'type not reported equivalent');
+% a multi-unit that is NOT an ensemble is not taken as one
+multi = v1;
+multi.element.type = 'spikes';
+multi.element.ndi_element_class = 'ndi.neuron';
+r = did2.convert.roundtrip.check(multi, docs);
+verifyFalse(testCase, any(strcmp(r.equivalent, 'element.ndi_element_class')));
+% with its members (NDI's second pass): rebuilt exactly
+rel = struct('document_class', struct('class_name', 'directed_relation'), ...
+    'base', struct('id', 'rel_member_1'), ...
+    'directed_relation', struct('relation', struct('node', 'RO:0002350', 'name', 'member of')), ...
+    'depends_on', struct('name', {'child_id', 'parent_id'}, 'value', {'el_unit_a', 'el_ens'}));
+ctx = struct('docs', {{rel}}, ...
+    'byId', containers.Map({'rel_member_1'}, {1}), ...
+    'referrers', containers.Map({'el_unit_a', 'el_ens'}, {1, 1}));
+rebuilt = did2.convert.roundtrip.element(docs, ctx);
+verifyEqual(testCase, rebuilt.element.ndi_element_class, 'ndi.element.ensemble');
+verifyEqual(testCase, rebuilt.element.type, 'ensemble');
 end
 
 function testAProbeThatNeverRecordedRebuildsItsGeneralType(testCase)

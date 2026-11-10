@@ -367,10 +367,22 @@ function tf = foldedIntoDataset(~, docs, ~)
 tf = isscalar(docs) && isEntityOfType(docs{1}, 'dataset');
 end
 
-function tf = unrecordedModeDropped(v1, docs, ~)
-% V1's element.type is a type of a shared device kind, and DOCS state that
-% kind and no `element type`
+function tf = unrecordedModeDropped(v1, docs, ctx)
+% V1's element.type is a type of a shared device kind, DOCS state that kind
+% and no `element type`, and no observation in CTX names the element as its
+% instrument: the probe never recorded. A RECORDED probe whose statement was
+% dropped ([recording mode terms]) rebuilds its word from its observations'
+% modes, so a difference there is a failure, not this accepted loss.
 tf = false;
+if ~isempty(ctx) && isfield(v1, 'base') && isstruct(v1.base) && isfield(v1.base, 'id')
+    id = char(v1.base.id);
+    for k = ctxReferrers(ctx, id)
+        b = ctx.docs{k};
+        if strcmp(classNameOf(b), 'observation') && any(strcmp(edgeIds(b, 'instrument_id'), id))
+            return;
+        end
+    end
+end
 if ~isstruct(v1) || ~isfield(v1, 'element') || ~isstruct(v1.element) ...
         || ~isfield(v1.element, 'type')
     return;

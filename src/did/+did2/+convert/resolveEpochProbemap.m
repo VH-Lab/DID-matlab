@@ -208,7 +208,11 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   ([recording mode terms], [imaging mode terms], 2026-11-01) the current
 %   clamp, voltage clamp, wide-field, two-photon and one-photon terms. A bare
 %   `patch` or `sharp` has no decided mode and writes none.
-%   `mode_methods_written` counts the observations built with one.
+%   `mode_methods_written` counts the observations built with one. The
+%   element's `element type` statement (+migrators_j/element.m) is then
+%   dropped where its device kind and those modes rebuild the word
+%   (mode_statements_dropped_recorded), or where the probe never recorded
+%   (mode_statements_dropped_unrecorded).
 %
 %   A PROBE IN SEVERAL ROWS IS ONE WIRING (Decided by Jess Haley, 2026-11-03,
 %   [probe in several rows is one wiring]). A probe listed in several rows of
@@ -360,6 +364,7 @@ report = struct( ...
     'pyraview_anchor_equal_epoch_dropped', 0, ...
     'mode_statements_seen',           0, ...
     'mode_statements_dropped_unrecorded', 0, ...
+    'mode_statements_dropped_recorded', 0, ...
     'mode_statements_kept_named_in_probemap', 0, ...
     'mode_statements_kept_session_not_ingested', 0, ...
     'pyraview_anchor_to_time_key',    0, ...
@@ -629,6 +634,7 @@ epochSpecs = struct('src', {}, 'obsIds', {}, 'sid', {}, 'datestamp', {}, ...
 % manipulations it minted -- the owners of that epoch's metadata archive.
 stimSpecs = struct('manipIds', {}, 'sid', {}, 'epochString', {}, 'navId', {});
 obsPairById = containers.Map('KeyType', 'char', 'ValueType', 'char');
+modeNodeByObsId = containers.Map('KeyType', 'char', 'ValueType', 'char');   % obs id -> its mode node ('' none)
 recByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'char');
 spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'double');  % obs id -> acquisition_epoch idx
 spikeAnchorByObs = containers.Map('KeyType', 'char', 'ValueType', 'char');  % obs id -> its own anchor id
@@ -913,6 +919,7 @@ for k = 1:n
             specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
             if ~isempty(instrumentId)
                 obsPairById(obs.base.id) = [char(instrumentId) '|' char(subjectId)];
+                modeNodeByObsId(obs.base.id) = modeNodeOf(modeMethod);
                 rk = recKey(instrumentId, epochDocId, entries(e).class, entries(e).mixin);
                 if ~isKey(recByInstrEpoch, rk); recByInstrEpoch(rk) = obs.base.id; end
             end
@@ -1658,14 +1665,15 @@ end
 % statement is DROPPED when its element has such a shared device kind, its
 % session is ingested (it has an epochfiles_ingested document, so its
 % recordings are the probe-map rows decomposed here) and NO probe-map row of
-% that session names the probe: the probe never recorded. It is KEPT when a
-% row names the probe (the recording observation carries the mode, and a row
-% that did not decompose keeps its v1 document) and when the session has no
-% ingested epoch (its recordings are minted later, by NDI's second pass, which
-% reads the mode from the statement). Counters mode_statements_*.
+% that session names the probe: the probe never recorded. When a row names
+% the probe it is dropped only where the probe's recording observations
+% rebuild the word ([recording mode terms], below), and kept otherwise; it is
+% KEPT when the session has no ingested epoch (its recordings are minted
+% later, by NDI's second pass, which reads the mode from the statement).
+% Counters mode_statements_*.
 modeRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 modeIdx = containers.Map('KeyType', 'char', 'ValueType', 'double');
-sharedKind = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+sharedKind = containers.Map('KeyType', 'char', 'ValueType', 'char');   % entity -> its shared kind node
 for k = 1:n
     if ~strcmp(classOf{k}, 'assertion'); continue; end
     b = bodies{k};
@@ -1676,7 +1684,35 @@ for k = 1:n
         modeIdx(ent) = k;
     elseif strcmpi(vName, 'equipment type') && ~isempty(valNode) ...
             && isempty(did2.convert.elementTypeOfKind(valNode))
-        sharedKind(ent) = true;
+        sharedKind(ent) = valNode;
+    end
+end
+% [recording mode terms] (Decided by Jess Haley, 2026-11-01), its Build
+% pending line: "`+roundtrip/element.m` rebuilds the v1 word from kind plus
+% mode; the `element type` assertion stops for these types, but stays for v1
+% `sharp-I`" ([element type is a device kind term]: "the round trip rebuilds
+% the v1 word from kind plus mode"). A probe a row names is a RECORDED probe:
+% its statement is DROPPED when its kind and the mode terms of its surviving
+% recording observations rebuild its word exactly -- the one type the kind
+% and the modes name (did2.convert.elementTypeOfKindAndMode), or, when the
+% observations carry no mode of that kind, its kind's general type
+% (did2.convert.elementGeneralTypeOfKind: a bare `patch` or `sharp`), the
+% rule did2.convert.roundtrip.element and NDI-matlab's
+% ndi.vintage.elementTypeOf read it back by. It is KEPT when they do not
+% (rows of another type, two modes, no surviving observation): nothing is
+% dropped that the round trip could not rebuild. (`sharp-I` never reaches
+% here: such an element is carried whole, [element types batch 4] (9).)
+modesByInstr = containers.Map('KeyType', 'char', 'ValueType', 'any');
+obsKeys = modeNodeByObsId.keys;
+for i = 1:numel(obsKeys)
+    if ~isKey(emittedNewIds, obsKeys{i}); continue; end
+    pair = obsPairById(obsKeys{i});
+    cut = strfind(pair, '|');
+    instr = pair(1:cut(1) - 1);
+    if isKey(modesByInstr, instr)
+        modesByInstr(instr) = [modesByInstr(instr), {modeNodeByObsId(obsKeys{i})}];
+    else
+        modesByInstr(instr) = {modeNodeByObsId(obsKeys{i})};
     end
 end
 modeEnts = modeIdx.keys;
@@ -1689,8 +1725,16 @@ for i = 1:numel(modeEnts)
         report.mode_statements_kept_session_not_ingested = ...
             report.mode_statements_kept_session_not_ingested + 1;
     elseif isKey(namedInstruments, ent)
-        report.mode_statements_kept_named_in_probemap = ...
-            report.mode_statements_kept_named_in_probemap + 1;
+        if ~isempty(docIds{k}) && isKey(modesByInstr, ent) ...
+                && strcmp(rebuiltWord(sharedKind(ent), modesByInstr(ent)), ...
+                    elementTypeOfAssertionExact(bodies{k}))
+            modeRetire(docIds{k}) = true;
+            report.mode_statements_dropped_recorded = ...
+                report.mode_statements_dropped_recorded + 1;
+        else
+            report.mode_statements_kept_named_in_probemap = ...
+                report.mode_statements_kept_named_in_probemap + 1;
+        end
     elseif ~isempty(docIds{k})
         modeRetire(docIds{k}) = true;
         report.mode_statements_dropped_unrecorded = ...
@@ -1902,51 +1946,43 @@ switch char(name)
 end
 end
 
+function node = modeNodeOf(modeMethod)
+% the node of a recording observation's mode term ('' when it has none)
+node = '';
+if isstruct(modeMethod) && isscalar(modeMethod) && isfield(modeMethod, 'node')
+    node = char(modeMethod.node);
+end
+end
+
+function w = rebuiltWord(kindNode, modeNodes)
+% the v1 word a shared device kind and its recording modes read back as: the
+% one type they name, else the kind's general type ('' for a microscope)
+w = did2.convert.elementTypeOfKindAndMode(kindNode, modeNodes);
+if isempty(w)
+    w = did2.convert.elementGeneralTypeOfKind(kindNode);
+end
+end
+
+function t = elementTypeOfAssertionExact(b)
+% the value name of an `element type` term assertion, exactly as written
+% (edge blanks aside); '' for any other document
+t = '';
+if ~isfield(b, 'term') || ~isstruct(b.term) || ~isscalar(b.term) || ~isfield(b.term, 'value')
+    return;
+end
+v = b.term.value;
+if isstruct(v) && isscalar(v) && isfield(v, 'name') && ~isempty(v.name)
+    t = strtrim(char(v.name));
+end
+end
+
 function t = recordingModeMethod(elementType)
 %RECORDINGMODEMETHOD The decided recording or imaging mode of a probe-map row's
 %   v1 type, as the method term of its recording observation; [] when no mode
-%   term is decided for the type.
-%   [element type is a device kind term] (Decided by Jess Haley, 2026-10-27,
-%   did-schema V_eta_go_forward_class_audit.md): "recording mode suffixes
-%   (-Vm, -I, -Im, -attached) go on the recording observation";
-%   [imaging mode is a method term] (2026-10-29): the imaging mode is "a
-%   method term on the recording observation". The decided terms:
-%     patch-attached       OBI:0002179 "cell-attached patch clamp assay"
-%                          ([element types batch 1], [cell-attached is OBI])
-%     brightfield-imaging  EMPTY:0000300 "brightfield imaging"
-%                          ([element types batch 2])
-%     patch-Vm, sharp-Vm   OBI:0002185 "current clamp assay"
-%     patch-I, sharp-I,    OBI:0002182 "voltage clamp assay"
-%     sharp-Im             ([recording mode terms], Jess Haley, 2026-11-01:
-%                          "OBI:0002185 'current clamp assay' (v1 `-Vm`) and
-%                          OBI:0002182 'voltage clamp assay' (v1 `-I`, `-Im`)")
-%     wide-field-imaging   OBI:0002437 "widefield microscopy assay"
-%     two-photon-imaging   FBbi:00000254 "two-photon laser scanning microscopy"
-%     one-photon-imaging   NCIT:C16856 "Fluorescence Microscopy"
-%                          ([imaging mode terms], Jess Haley, 2026-11-01;
-%                          term amended by [one-photon is NCIT fluorescence
-%                          microscopy], Jess Haley, 2026-11-03: the NCIT term
-%                          already registered and used for Haley, T19)
-%   A bare `patch` or `sharp` names no mode: nothing is written for it.
-%   Types are compared exactly, edge blanks aside, as NDI's probestruct2probe
-%   matches its keys.
-t = [];
-switch strtrim(char(elementType))
-    case 'patch-attached'
-        t = did2.convert.registeredTerm('OBI:0002179', 'cell-attached patch clamp assay');
-    case 'brightfield-imaging'
-        t = did2.convert.registeredTerm('EMPTY:0000300', 'brightfield imaging');
-    case {'patch-Vm', 'sharp-Vm'}
-        t = did2.convert.registeredTerm('OBI:0002185', 'current clamp assay');
-    case {'patch-I', 'sharp-I', 'sharp-Im'}
-        t = did2.convert.registeredTerm('OBI:0002182', 'voltage clamp assay');
-    case 'wide-field-imaging'
-        t = did2.convert.registeredTerm('OBI:0002437', 'widefield microscopy assay');
-    case 'two-photon-imaging'
-        t = did2.convert.registeredTerm('FBbi:00000254', 'two-photon laser scanning microscopy');
-    case 'one-photon-imaging'
-        t = did2.convert.registeredTerm('NCIT:C16856', 'Fluorescence Microscopy');
-end
+%   term is decided for the type. The table, with each term's decision, is
+%   did2.convert.elementRecordingMode (moved there so the round trip reads the
+%   same one: did2.convert.elementTypeOfKindAndMode).
+t = did2.convert.elementRecordingMode(elementType);
 end
 
 function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...

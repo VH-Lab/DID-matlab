@@ -38,7 +38,12 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %                      where the migrator wrote none, the type its device
 %                      kind names (its Equipment Type assertion,
 %                      did2.convert.elementTypeOfKind; [element type is a
-%                      device kind term])
+%                      device kind term]); for a kind several types share
+%                      whose statement resolveEpochProbemap dropped, the
+%                      kind plus the row statement's own mode term
+%                      (did2.convert.elementTypeOfKindAndMode; [recording
+%                      mode terms]), or the kind's general type when the row
+%                      carries no mode (a bare patch or sharp)
 %     devicestring     the acquisition system's name, ':', the wiring
 %                      relation's conditions ';'-joined (or the
 %                      acquisition_channels' groups), each the v1 prefix of its
@@ -325,6 +330,22 @@ for k = ctxReferrers(ctx, instrumentId)
 end
 if isscalar(kindNodes)
     elType = did2.convert.elementTypeOfKind(kindNodes{1});
+    if ~isempty(elType)
+        return;
+    end
+    % a kind several types share whose statement resolveEpochProbemap dropped
+    % ([recording mode terms]): the kind plus THIS row's mode, the method
+    % term the row's observation carries; with none, the kind's general type
+    % (a bare patch or sharp row)
+    mode = '';
+    m = getIn(st, 'interaction', 'method');
+    if isstruct(m) && isscalar(m) && isfield(m, 'term')
+        [mode, ~] = termParts(m.term);
+    end
+    elType = did2.convert.elementTypeOfKindAndMode(kindNodes{1}, mode);
+    if isempty(elType) && isempty(mode)
+        elType = did2.convert.elementGeneralTypeOfKind(kindNodes{1});
+    end
     if ~isempty(elType)
         return;
     end
