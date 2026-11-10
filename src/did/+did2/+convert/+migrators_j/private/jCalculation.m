@@ -263,8 +263,8 @@ else
     % the schema in use declares the block (siblings first; did-schema
     % orientation_direction_tuning_calculation.interpolated_values); until
     % then the four vector fields stay unplaced and carry the document
-    halfHeight = strcmp(family, 'oridir') && jSchemaHasPath(leafClass, ...
-        {'interpolated_values', 'full_width_half_height'});
+    halfHeight = strcmp(family, 'oridir') && summaryDeclares(leafClass, ...
+        'interpolated_values', 'full_width_half_height');
     [value, valueAxes, leafFields, dropped, response, tuningExtra] = ...
         jTuningCurve(srcBlk, family, 'Rebuilt', curve.rebuilt, 'HalfHeight', halfHeight);
     if isfield(tuningExtra, 'notes') && ~isempty(tuningExtra.notes)
@@ -416,7 +416,7 @@ hasMain = isfield(f, 'interpolated_values') && ~isempty(f.interpolated_values);
 hasAbs = isfield(absLeafFields, 'interpolated_values') ...
     && ~isempty(absLeafFields.interpolated_values);
 if (hasMain || hasAbs) ...
-        && jSchemaHasPath(leafClass, {'interpolated_values', 'response_transform'})
+        && summaryDeclares(leafClass, 'interpolated_values', 'response_transform')
     entries = {};
     if hasMain
         entries{end+1} = f.interpolated_values;
@@ -427,6 +427,20 @@ if (hasMain || hasAbs) ...
         entries{end+1} = e;
     end
     f.interpolated_values = did2.build.list(entries{:});
+end
+% [tuning summaries in the value] (Decided by Jess Haley, 2026-11-10, did-schema
+% did_v2_go_forward_class_audit.md): `circular_statistics` and
+% `interpolated_values` move from the calculator class's own block into
+% `tuning_curve.value`, beside model_fit and significance. Siblings first: each
+% goes where the LOADED schema declares it (summaryInValue), in the value once
+% tuning_curve.value declares it, on the calculator's block until then.
+if isFit
+    for nm = {'circular_statistics', 'interpolated_values'}
+        if isfield(f, nm{1}) && summaryInValue(nm{1})
+            value.(nm{1}) = f.(nm{1});
+            f = rmfield(f, nm{1});
+        end
+    end
 end
 if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
     % did-schema #88: the result composite's `value` is REQUIRED (tuning_curve,
@@ -515,7 +529,7 @@ for k = 1:numel(rest)
 end
 lf = absBlk.leafFields;
 if isfield(lf, 'interpolated_values') && ~isempty(lf.interpolated_values) ...
-        && ~jSchemaHasPath(leafClass, {'interpolated_values', 'response_transform'})
+        && ~summaryDeclares(leafClass, 'interpolated_values', 'response_transform')
     reasons{end+1} = sprintf(['[carry-056] %s.abs.fitless (the schema in use ' ...
         'declares interpolated_values one structure)'], sourceBlock);
 end
@@ -523,6 +537,25 @@ rest = setdiff(fieldnames(lf), {'interpolated_values'});
 for k = 1:numel(rest)
     reasons{end+1} = sprintf(['[carry-056] %s.abs (its %s: no home beside the ' ...
         'absolute-value fits)'], sourceBlock, rest{k}); %#ok<AGROW>
+end
+end
+
+function tf = summaryInValue(name)
+%SUMMARYINVALUE Does the loaded schema declare the tuning summary NAME
+%   ('circular_statistics', 'interpolated_values') in `tuning_curve.value`?
+%   ([tuning summaries in the value], Decided by Jess Haley, 2026-11-10;
+%   on the calculator classes' own blocks until did-schema moves them.)
+tf = jSchemaHasPath('tuning_curve', {'value', name});
+end
+
+function tf = summaryDeclares(leafClass, name, sub)
+%SUMMARYDECLARES Does the loaded schema declare field SUB of the tuning
+%   summary NAME where it declares NAME: in tuning_curve.value once it is
+%   there ([tuning summaries in the value]), else on LEAFCLASS's own block.
+if summaryInValue(name)
+    tf = jSchemaHasPath('tuning_curve', {'value', name, sub});
+else
+    tf = jSchemaHasPath(leafClass, {name, sub});
 end
 end
 

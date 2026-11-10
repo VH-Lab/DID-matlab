@@ -145,6 +145,24 @@ out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'the converted document validates');
 end
 
+function testOridirHalfHeightValuesInTheValue(testCase)
+% [tuning summaries in the value] (Decided by Jess Haley, 2026-11-10): on a
+% schema copy that declares interpolated_values in tuning_curve.value, the
+% half-height values are written there, validate and round trip, as above
+did2.unittest.helpers.tuningSummariesSchema(testCase);
+testOridirHalfHeightValuesFromTheNewWriter(testCase);
+v1 = oridirHalfHeight();
+out = runRaw(v1);
+[~, leaf] = halfHeightOf(out, v1.base.id);
+assertNotEmpty(testCase, fieldnames(leaf));
+verifyTrue(testCase, isfield(leaf.tuning_curve.value, 'interpolated_values'), ...
+    'the half-height values are in tuning_curve.value');
+verifyFalse(testCase, isfield(leaf, 'orientation_direction_tuning_calculation') ...
+    && isstruct(leaf.orientation_direction_tuning_calculation) ...
+    && isfield(leaf.orientation_direction_tuning_calculation, 'interpolated_values'), ...
+    'and not on the calculator');
+end
+
 function testOridirHalfHeightPointsNotFound(testCase)
 % the writer's not-found output (compute_fwhh / compute_bandwidth): half_low
 % and half_high NaN, fwhh and bandwidth Inf
@@ -252,12 +270,19 @@ end
 
 function tf = schemaDeclaresHalfHeight()
 tf = false;
+% [tuning summaries in the value] (Jess Haley, 2026-11-10): in
+% tuning_curve.value once did-schema moves it there
+cls = 'orientation_direction_tuning_calculation';
+path = {'interpolated_values', 'full_width_half_height'};
+if did2.unittest.helpers.schemaDeclares('tuning_curve', {'value', 'interpolated_values'})
+    cls = 'tuning_curve';
+    path = [{'value'}, path];
+end
 try
-    s = did2.schema.cache.shared().getClass('orientation_direction_tuning_calculation');
+    s = did2.schema.cache.shared().getClass(cls);
 catch
     return;
 end
-path = {'interpolated_values', 'full_width_half_height'};
 f = s;
 for k = 1:numel(path)
     if ~isfield(f, 'fields'); return; end
@@ -284,14 +309,13 @@ for k = 1:numel(out.migrated)
         leaf = s;
     end
 end
-fns = fieldnames(leaf);
-for k = 1:numel(fns)
-    b = leaf.(fns{k});
-    if isstruct(b) && isscalar(b) && isfield(b, 'interpolated_values')
-        iv = b.interpolated_values;
-        return;
-    end
+if isempty(fieldnames(leaf))
+    return;
 end
+% on the calculation or in tuning_curve.value ([tuning summaries in the
+% value]), one structure or a list's entry as stated
+[iv, ~, ~] = did2.unittest.helpers.interpolatedEntries( ...
+    did2.unittest.helpers.tuningSummary(leaf, 'interpolated_values'));
 end
 
 function v = depOf(m, name)

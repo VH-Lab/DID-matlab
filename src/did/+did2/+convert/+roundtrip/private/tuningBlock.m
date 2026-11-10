@@ -38,6 +38,12 @@ function [blk, bad, absFitless, absFits] = tuningBlock(leaf, family)
 %                                 response_transform ([interpolated values
 %                                 are a list], Jess Haley, 2026-10-30;
 %                                 interpolatedEntry reads both shapes)
+%   The two tuning summaries, `circular_statistics` and
+%   `interpolated_values`, are read from `tuning_curve.value` ([tuning
+%   summaries in the value], Decided by Jess Haley, 2026-11-10) or from the
+%   calculation's own block, where did-schema declared them before and where
+%   documents migrated before hold them; one stated in both places is
+%   reported, and the value's is read.
 %   ABSFITLESS is the list's 'absolute value' entry in v1's `fitless`
 %   spelling (v1 `abs.fitless`, SF / TF), struct() when there is none.
 %     fit / fit_<model>           value.model_fit (fitBlocks): the entries
@@ -106,6 +112,11 @@ if isfield(value, 'significance') && isstruct(value.significance)
 end
 
 own = calcBlock(leaf);
+[cstat, b] = summary(value, own, 'circular_statistics');
+bad = [bad, b];
+[iv, b] = summary(value, own, 'interpolated_values');
+bad = [bad, b];
+seen = [seen, {'circular_statistics', 'interpolated_values'}];
 if strcmp(family, 'oridir')
     map = {'circular_variance', 'circular_variance'; ...
         'direction_circular_variance', 'direction_circular_variance'; ...
@@ -114,11 +125,22 @@ if strcmp(family, 'oridir')
         'direction_dot_product_p', 'dot_direction_significance'; ...
         'orientation_preference', 'orientation_preference'; ...
         'direction_preference', 'direction_preference'};
-    [vec, b] = renamed(getIn(own, 'circular_statistics'), map, 'circular_statistics');
+    [vec, b] = renamed(cstat, map, 'circular_statistics');
     bad = [bad, b];
     hhMap = {'half_maximum_below', 'half_low'; 'half_maximum_above', 'half_high'; ...
         'full_width_half_height', 'fwhh'; 'bandwidth', 'bandwidth'};
-    [hh, b] = renamed(getIn(own, 'interpolated_values'), hhMap, 'interpolated_values');
+    % one structure, or in a list the entry with no response_transform (the
+    % one list tuning_curve.value declares for every calculator, [tuning
+    % summaries in the value])
+    [hhEntry, b] = interpolatedEntry(iv, '', 'interpolated_values');
+    bad = [bad, b];
+    [absEntry, b] = interpolatedEntry(iv, 'absolute value', 'interpolated_values');
+    bad = [bad, b];
+    if ~isempty(fieldnames(absEntry))
+        bad{end+1} = ['an absolute-value interpolated_values entry has no place ' ...
+            'in a oridir block'];
+    end
+    [hh, b] = renamed(hhEntry, hhMap, 'interpolated_values');
     bad = [bad, b];
     for f = {'fwhh', 'bandwidth'}
         if isfield(hh, f{1}) && isnumeric(hh.(f{1})) && isscalar(hh.(f{1})) ...
@@ -139,7 +161,9 @@ else
             'half_maximum_above', 'H50'; 'bandwidth', 'bandwidth'; ...
             'low_pass_index', 'low_pass_index'; 'high_pass_index', 'high_pass_index'};
     end
-    iv = getIn(own, 'interpolated_values');
+    if ~isempty(cstat)
+        bad{end+1} = sprintf('circular_statistics has no place in a %s block', family);
+    end
     [main, b] = interpolatedEntry(iv, '', 'interpolated_values');
     bad = [bad, b];
     [fl, b] = renamed(main, map, 'interpolated_values');
@@ -215,6 +239,26 @@ for k = 1:numel(c)
             bad{end+1} = sprintf('model_fit %d: response_transform "%s" has no place in v1', ...
                 k, t); %#ok<AGROW>
     end
+end
+end
+
+function [x, bad] = summary(value, own, name)
+%SUMMARY The tuning summary NAME from tuning_curve.value VALUE ([tuning
+%   summaries in the value], Decided by Jess Haley, 2026-11-10) or, as
+%   written before did-schema moved it, the calculation's own block OWN. []
+%   when neither states it; one stated in both is reported, the value's read.
+x = [];
+bad = {};
+inValue = isfield(value, name) && ~isempty(value.(name));
+inOwn = isstruct(own) && isfield(own, name) && ~isempty(own.(name));
+if inValue
+    x = value.(name);
+    if inOwn
+        bad{end+1} = sprintf(['%s is stated both in tuning_curve.value and on ' ...
+            'the calculation''s own block'], name);
+    end
+elseif inOwn
+    x = own.(name);
 end
 end
 

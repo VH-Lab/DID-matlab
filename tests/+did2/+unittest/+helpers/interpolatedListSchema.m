@@ -27,6 +27,10 @@ function varargout = interpolatedListSchema(testCase, declared)
 %                      the field one structure again (mustBeScalar true, blank
 %                      and default {}), the declaration before the decision.
 %
+%   Once the loaded schema declares interpolated_values in tuning_curve.value
+%   ([tuning summaries in the value], Decided by Jess Haley, 2026-11-10), the
+%   three calculators share that declaration, and it is the one rewritten.
+%
 %   It then points the schema cache at the copy (did2.schema.cache.
 %   setSchemaPath), asserts the probe the writer uses now reads DECLARED, and
 %   registers teardowns that point the cache back and delete the copy. It may
@@ -49,14 +53,23 @@ tmp = tempname;
 mkdir(tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
 did2.schema.cache.copySchemaSet(src, tmp);
+% [tuning summaries in the value] (Decided by Jess Haley, 2026-11-10): once
+% the loaded schema declares interpolated_values in tuning_curve.value, the
+% three calculators share that one declaration, which is the one rewritten
+files = {'spatial_frequency_tuning_calculation', ...
+    'temporal_frequency_tuning_calculation', 'contrast_tuning_calculation', ...
+    'contrast_sensitivity'};
+if did2.unittest.helpers.schemaDeclares('tuning_curve', {'value', 'interpolated_values'})
+    files = {'tuning_curve', 'contrast_sensitivity'};
+end
 classes = {'spatial_frequency_tuning_calculation', ...
     'temporal_frequency_tuning_calculation', 'contrast_tuning_calculation', ...
     'contrast_sensitivity'};
-for k = 1:numel(classes)
-    file = fullfile(tmp, [classes{k} '.json']);
-    assertTrue(testCase, isfile(file), [classes{k} '.json is not in the schema in use']);
+for k = 1:numel(files)
+    file = fullfile(tmp, [files{k} '.json']);
+    assertTrue(testCase, isfile(file), [files{k} '.json is not in the schema in use']);
     t = fileread(file);
-    t = rewrite(testCase, t, declared, classes{k});
+    t = rewrite(testCase, t, declared, files{k});
     fid = fopen(file, 'w', 'n', 'UTF-8');
     fwrite(fid, t, 'char');
     fclose(fid);
@@ -76,8 +89,14 @@ switch className
         cls = 'contrast_sensitivity';
         path = {'value', 'interpolated_values'};
     otherwise
-        cls = className;
-        path = {'interpolated_values'};
+        if did2.unittest.helpers.schemaDeclares('tuning_curve', {'value', 'interpolated_values'})
+            % [tuning summaries in the value]: the calculators' one home
+            cls = 'tuning_curve';
+            path = {'value', 'interpolated_values'};
+        else
+            cls = className;
+            path = {'interpolated_values'};
+        end
 end
 end
 
