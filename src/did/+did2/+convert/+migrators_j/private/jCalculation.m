@@ -446,15 +446,22 @@ end
 % `tuning_curve.value`, beside model_fit and significance. Siblings first: each
 % goes where the LOADED schema declares it (summaryInValue), in the value once
 % tuning_curve.value declares it, on the calculator's block until then.
+% The no-curve test below reads the value as the fold built it, BEFORE the
+% summaries move in: a summary is not a curve, so a calculator whose result
+% block states no curve passes through on either schema (did-schema main,
+% summaries on the calculator; and once they are in the value).
+noCurve = isempty(fieldnames(value));
 if isFit
     for nm = {'circular_statistics', 'interpolated_values'}
-        if isfield(f, nm{1}) && summaryInValue(nm{1})
+        if isfield(f, nm{1}) && isEmptySummary(f.(nm{1}))
+            f = rmfield(f, nm{1});   % an empty summary block is never written
+        elseif isfield(f, nm{1}) && summaryInValue(nm{1})
             value.(nm{1}) = f.(nm{1});
             f = rmfield(f, nm{1});
         end
     end
 end
-if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
+if noCurve && ~strcmp(family, 'rf')
     % did-schema #88: the result composite's `value` is REQUIRED (tuning_curve,
     % contrast_sensitivity). A calculator document with no curve has nothing to
     % state there, and inventing one is not allowed, so it passes through
@@ -549,6 +556,20 @@ rest = setdiff(fieldnames(lf), {'interpolated_values'});
 for k = 1:numel(rest)
     reasons{end+1} = sprintf(['[carry-056] %s.abs (its %s: no home beside the ' ...
         'absolute-value fits)'], sourceBlock, rest{k}); %#ok<AGROW>
+end
+end
+
+function tf = isEmptySummary(v)
+%ISEMPTYSUMMARY A tuning summary block that states nothing: empty, a struct
+%   with no fields, or a list whose every entry is one of those.
+if isempty(v)
+    tf = true;
+elseif isstruct(v)
+    tf = all(arrayfun(@(e) isempty(fieldnames(e)), v(:)));
+elseif iscell(v)
+    tf = all(cellfun(@isEmptySummary, v(:)));
+else
+    tf = false;
 end
 end
 
