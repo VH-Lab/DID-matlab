@@ -51,9 +51,13 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %     VALUE also carries `significance` and `model_fit[]` on a fitted curve
 %       (Jess Haley 2026-10-22 [significance with results], [one fit entry];
 %       on tuning_curve_calculation until then).
-%     LEAFFIELDS   the named calculation's blocks: `circular_statistics`
+%     LEAFFIELDS   the tuning summaries: `circular_statistics`
 %       (orientation/direction, v1 `vector`); `interpolated_values`
 %       (contrast, SF, TF, v1 `fitless`). Field names per the #73 naming pass.
+%       jCalculation places each where the loaded schema declares it: in
+%       `tuning_curve.value` once did-schema moves it there ([tuning summaries
+%       in the value], Decided by Jess Haley, 2026-11-10), else on the named
+%       calculation's own block.
 %     DROPPED   cellstr naming every v1 field this mapping has no home for
 %       (reported by the port, never silently): e.g. contrast fits'
 %       relative_max_gain / saturation_index / sensitivity, SF/TF's `abs`

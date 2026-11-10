@@ -218,7 +218,7 @@ for c = {{'writer spelling', w, 'Hotelling2Test'}, {'template spelling', t, 'hot
     [label, v1, field] = c{1}{:};
     out = runRaw({v1});
     leaf = firstOfClass(out, 'orientation_direction_tuning_calculation');
-    cs = leaf.orientation_direction_tuning_calculation.circular_statistics;
+    cs = did2.unittest.helpers.tuningSummary(leaf, 'circular_statistics');   % [tuning summaries in the value]
     verifyEqual(testCase, cs.hotelling_t2_p, v1.orientation_direction_tuning.vector.(field), label);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
@@ -703,11 +703,16 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     assertNumElements(testCase, mainK, 1, cls{1});
     r = did2.convert.roundtrip.check(v1, docs);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, [cls{1} ', list shape'], {});
-    iv = docs{mainK}.(leafClass).interpolated_values;
+    iv = did2.unittest.helpers.tuningSummary(docs{mainK}, 'interpolated_values');
     if iscell(iv); iv = [iv{:}]; end
     odd = iv(1);
     odd.response_transform = 'logarithm';
-    docs{mainK}.(leafClass).interpolated_values = [num2cell(iv), {odd}];
+    % where the document holds it ([tuning summaries in the value])
+    if isfield(docs{mainK}.tuning_curve.value, 'interpolated_values')
+        docs{mainK}.tuning_curve.value.interpolated_values = [num2cell(iv), {odd}];
+    else
+        docs{mainK}.(leafClass).interpolated_values = [num2cell(iv), {odd}];
+    end
     r = did2.convert.roundtrip.check(v1, docs);
     verifyNotEmpty(testCase, r.unplaced, [cls{1} ': an unknown transform is unplaced']);
 end
@@ -728,7 +733,7 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     verifyEmpty(testCase, out.passthrough, [cls{1} ': converts']);
     calcs = allOfClass(out, leafClass);
     assertEqual(testCase, numel(calcs), 1, [cls{1} ': one calculation']);
-    mainIv = calcs{1}.(leafClass).interpolated_values;
+    mainIv = did2.unittest.helpers.tuningSummary(calcs{1}, 'interpolated_values');   % [tuning summaries in the value]
     if iscell(mainIv); mainIv = [mainIv{:}]; end
     assertEqual(testCase, numel(mainIv), 2, [cls{1} ': as stated, then |response|']);
     verifyTrue(testCase, ~isfield(mainIv, 'response_transform') ...
@@ -773,7 +778,7 @@ for cls = {'spatial_frequency_tuning_calc', 'temporal_frequency_tuning_calc'}
     assertEqual(testCase, numel(calcs), 1, [cls{1} ': no second calculation']);
     verifyEqual(testCase, parameterText(calcs{1}, 'response transform'), '', cls{1});
     [asStated, absEntry, n] = did2.unittest.helpers.interpolatedEntries( ...
-        calcs{1}.(leafClass).interpolated_values);
+        did2.unittest.helpers.tuningSummary(calcs{1}, 'interpolated_values'));
     verifyEqual(testCase, n, 2, cls{1});
     verifyNotEmpty(testCase, fieldnames(asStated), cls{1});
     verifyNotEmpty(testCase, fieldnames(absEntry), cls{1});
@@ -804,7 +809,7 @@ for declared = [false true]
         if strcmp(leafClass, 'contrast_sensitivity_calculation')
             iv = leaf.contrast_sensitivity.value.interpolated_values;
         else
-            iv = leaf.(leafClass).interpolated_values;
+            iv = did2.unittest.helpers.tuningSummary(leaf, 'interpolated_values');   % [tuning summaries in the value]
         end
         [asStated, absEntry, n] = did2.unittest.helpers.interpolatedEntries(iv);
         verifyEqual(testCase, n, 1, label);

@@ -5097,7 +5097,7 @@ verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
     0.002, 'AbsTol', 1e-9);
-cs = leaf.orientation_direction_tuning_calculation.circular_statistics;
+cs = did2.unittest.helpers.tuningSummary(leaf, 'circular_statistics');   % [tuning summaries in the value]
 verifyEqual(testCase, cs.orientation_preference, 47.5, 'AbsTol', 1e-9);
 verifyEqual(testCase, cs.circular_variance, 0.3, 'AbsTol', 1e-9);
 mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
@@ -6355,7 +6355,7 @@ verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova
 % structure, or a list once the loaded schema declares it; this fixture has no
 % `abs` block, so either way the one entry as stated
 [iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
-    leaf.spatial_frequency_tuning_calculation.interpolated_values);
+    did2.unittest.helpers.tuningSummary(leaf, 'interpolated_values'));   % [tuning summaries in the value]
 verifyEqual(testCase, nIv, 1);
 verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, iv.preferred_value, 0.12, 'AbsTol', 1e-9);
@@ -6582,12 +6582,12 @@ verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova
 verifyEqual(testCase, leaf.tuning_curve.value.significance.across_stimuli_anova_p, ...
     0.031, 'AbsTol', 1e-12);
 [iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
-    leaf.temporal_frequency_tuning_calculation.interpolated_values);
+    did2.unittest.helpers.tuningSummary(leaf, 'interpolated_values'));   % [tuning summaries in the value]
 verifyEqual(testCase, iv.preferred_value, 4.2, 'AbsTol', 1e-12);
 % the values as stated first, then |response| (the fixture's abs.fitless is
 % the same struct as its fitless)
 verifyEqual(testCase, nIv, 2, 'as stated, then |response|');
-ivList = leaf.temporal_frequency_tuning_calculation.interpolated_values;
+ivList = did2.unittest.helpers.tuningSummary(leaf, 'interpolated_values');
 if iscell(ivList); ivList = [ivList{:}]; end
 verifyTrue(testCase, ~isfield(ivList, 'response_transform') ...
     || isempty(ivList(1).response_transform), 'the first entry is as stated');

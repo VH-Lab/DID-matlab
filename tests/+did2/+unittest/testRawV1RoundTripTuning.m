@@ -74,6 +74,52 @@ roundTripCases(testCase, { ...
     'tuningcurve writer output', writerOutput('tuningcurve_calc'), true});
 end
 
+function testTuningSummariesGoWhereTheSchemaDeclaresThem(testCase)
+% [tuning summaries in the value] (Decided by Jess Haley, 2026-11-10):
+% circular_statistics and interpolated_values are written where the loaded
+% schema declares them -- on the calculator class on did-schema main, in
+% tuning_curve.value on a copy that moves them
+% (did2.unittest.helpers.tuningSummariesSchema) -- never in both; each
+% validates, and the round trip loses nothing from either.
+cases = { ...
+    'oridir writer output', writerOutput('oridirtuning_calc'), ...
+        'orientation_direction_tuning_calculation', {'circular_statistics'}; ...
+    'SF tuning writer output', writerOutput('spatial_frequency_tuning_calc'), ...
+        'spatial_frequency_tuning_calculation', {'interpolated_values'}; ...
+    'TF tuning writer output', writerOutput('temporal_frequency_tuning_calc'), ...
+        'temporal_frequency_tuning_calculation', {'interpolated_values'}; ...
+    'contrast tuning, converted shape', convertedShape('contrasttuning_calc'), ...
+        'contrast_tuning_calculation', {'interpolated_values'}};
+for moved = [false true]
+    if moved
+        did2.unittest.helpers.tuningSummariesSchema(testCase);
+    end
+    inValue = did2.unittest.helpers.schemaDeclares('tuning_curve', ...
+        {'value', 'interpolated_values'});
+    for k = 1:size(cases, 1)
+        [label, v1, leafClass, names] = cases{k, :};
+        label = sprintf('%s, summaries in the value = %d', label, inValue);
+        out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
+        verifyEmpty(testCase, out.quarantine, [label ': quarantined']);
+        verifyEmpty(testCase, out.passthrough, [label ': carried']);
+        leaf = [];
+        for j = 1:numel(out.migrated)
+            d = out.migrated{j}.toStruct();
+            if strcmp(char(d.document_class.class_name), leafClass); leaf = d; break; end
+        end
+        assertNotEmpty(testCase, leaf, [label ': no ' leafClass]);
+        for n = names
+            inV = isfield(leaf.tuning_curve.value, n{1});
+            onCalc = isfield(leaf, leafClass) && isstruct(leaf.(leafClass)) ...
+                && isfield(leaf.(leafClass), n{1});
+            verifyEqual(testCase, inV, inValue, sprintf('%s: %s in the value?', label, n{1}));
+            verifyEqual(testCase, onCalc, ~inValue, sprintf('%s: %s on the calculator?', label, n{1}));
+        end
+        roundTripCases(testCase, {label, v1, false});
+    end
+end
+end
+
 function testConvertedShapesRoundTrip(testCase)
 % the writers' documents with exactly the fields that carry them removed:
 % each converts, and its inverse rebuilds everything that is left
