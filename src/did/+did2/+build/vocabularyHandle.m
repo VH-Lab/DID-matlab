@@ -8,8 +8,8 @@ function h = vocabularyHandle(kind, term)
 %   {NCIT:C67447, "Session"} answers 'session'. A term with no node (a
 %   document written before did-schema #88 gave the vocabulary nodes) is
 %   resolved through its name (did2.build.vocabulary accepts a handle or a
-%   label). A term whose node is in no handle row (culture; a relation the
-%   table does not list) answers its stored name unchanged.
+%   label). A term whose node is in no handle row (a relation the table does
+%   not list) answers its stored name unchanged.
 %
 %   Code that switches on an entity's kind or a relation's name calls this
 %   instead of reading the stored name: the stored name is the ontology label
