@@ -373,6 +373,20 @@ a(end+1) = struct('name', 'device with no links is not an element', ...
     'decision', '[unlinked device is not an element] (Jess Haley, 2026-11-11)', ...
     'classes', {{'element'}}, 'paths', {{'element.ndi_element_class'}}, ...
     'id', false, 'when', @unlinkedDevice);
+% [jrclust settings-file name dropped] (Decided by Jess Haley, 2026-11-11,
+% replacing [one-reading quick answers] Q5): the settings-file name a
+% `jrclust_clusters` holds -- base.name, which NDI-matlab's writer
+% (+ndi/+fun/+probe/+import/+jrclust/probe.m) sets from its `prmName` option,
+% and the Soph vintage's ndi_document.name ('jrclust.prm'), which
+% did2.convert.roundtrip.check compares as base.name ([ndi_document read as
+% base]) -- is not carried: the document migrates to its decided shape, and
+% the name is a recorded difference from v1, whatever its value
+% (did2.convert.jrclustSettingsNameDropped; roundtrip.jrclust_clusters does
+% not rebuild it)
+a(end+1) = struct('name', 'jrclust settings file name', ...
+    'decision', '[jrclust settings-file name dropped] (Jess Haley, 2026-11-11)', ...
+    'classes', {{'jrclust_clusters'}}, 'paths', {{'base.name'}}, ...
+    'id', false, 'when', []);
 end
 
 function tf = unlinkedDevice(v1, docs, ctx)

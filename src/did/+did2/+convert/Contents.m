@@ -32,6 +32,9 @@
 %     rawV1Classes       - the classes whose migrator reads the RAW v1
 %                          document (no universalRenames, no superclass
 %                          migrators); one family at a time.
+%     jrclustSettingsNameDropped - a raw v1 jrclust_clusters without its
+%                          ndi_document.name ([jrclust settings-file name
+%                          dropped]: the settings-file name is not carried).
 %     isOntologyLabelClass - true for a label document under either class
 %                          name (`ontologyLabel`, `ontology_label`); the one
 %                          place DID-matlab decides it.

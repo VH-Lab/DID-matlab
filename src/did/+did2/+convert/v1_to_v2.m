@@ -504,8 +504,17 @@ for k = 1:numel(bodies)
                 % state with different non-empty values, or a non-empty field
                 % outside base.json's four (`type`, `database_version`, ...) --
                 % is outside the template: carried whole, carry-100 ([fields
-                % outside the template are malformed]).
-                [readBody, legacyUnplaced] = readLegacyBlockAsBase(preBody);
+                % outside the template are malformed]). A `jrclust_clusters`'s
+                % settings-file name is not carried (Decided by Jess Haley,
+                % 2026-11-11 [jrclust settings-file name dropped]): its
+                % ndi_document.name is dropped from the reading copy first
+                % (did2.convert.jrclustSettingsNameDropped), so it neither
+                % conflicts with `base` nor carries the document.
+                readSource = preBody;
+                if strcmp(className, 'jrclust_clusters')
+                    readSource = did2.convert.jrclustSettingsNameDropped(preBody);
+                end
+                [readBody, legacyUnplaced] = readLegacyBlockAsBase(readSource);
                 if ~isempty(legacyUnplaced)
                     % carry-register: carry-100
                     did2.convert.reportNote('carried_as_v1', className, ...
@@ -681,8 +690,8 @@ for k = 1:numel(bodies)
             if ~carried && ~isempty(v2Bodies) ...
                     && ~(isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body))
                 v1Name = v1NameOf(preBody);
-                if isWriterDefaultName(className, v1Name)
-                    v1Name = '';   % notation, rebuilt by the round trip
+                if isNameNotCarried(className)
+                    v1Name = '';   % dropped by decision; an accepted loss
                 end
                 if ~isempty(v1Name) && replacementIsStatement(v2Bodies, sourceIdOf(preBody)) ...
                         && ~v1NameIsKept(v2Bodies, v1Name)
@@ -1215,16 +1224,18 @@ if isempty(strtrim(name))
 end
 end
 
-function tf = isWriterDefaultName(className, name)
-%ISWRITERDEFAULTNAME True when NAME is a writer's fixed default for the class,
-%   which the round trip rebuilds, so it is notation and does not carry the
-%   document: [jrclust default name is notation] (Decided by Jess Haley,
-%   2026-10-27, did-schema V_eta_go_forward_class_audit.md): "a
-%   `jrclust_clusters` named `jrclust.prm`, the JRCLUST writer's fixed default,
-%   is not carried under [v1 name goes to the class's own name field]: the name
-%   is notation, rebuilt by the round trip; any other name still carries"
-%   (did2.convert.roundtrip.jrclust_clusters restates it).
-tf = any(strcmp(className, {'jrclust_clusters'})) && strcmp(name, 'jrclust.prm');
+function tf = isNameNotCarried(className)
+%ISNAMENOTCARRIED True for a class whose v1 name is dropped by decision, so a
+%   non-empty one neither carries the document (carry-106) nor is counted as
+%   not kept: [jrclust settings-file name dropped] (Decided by Jess Haley,
+%   2026-11-11, did-schema did_v2_go_forward_class_audit.md): the
+%   settings-file name a `jrclust_clusters` holds (base.name, set by NDI's
+%   writer from its `prmName` option, or the Soph vintage's ndi_document.name)
+%   is not carried; the document migrates to its decided shape, and the round
+%   trip lists the name as an accepted loss (did2.convert.roundtrip.wholeBatch).
+%   It replaces [jrclust default name is notation] (2026-10-27), under which
+%   only the default 'jrclust.prm' was notation and any other name carried.
+tf = any(strcmp(className, {'jrclust_clusters'}));
 end
 
 function tf = v1NameIsKept(bodies, name)
