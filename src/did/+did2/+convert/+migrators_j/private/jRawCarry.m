@@ -74,7 +74,8 @@ if ~isempty(unplaced)
     % carry-register: carry-100; carry-016 carry-056 via jCalculation.m (its
     %   VALUEREASONS carry their tags); carry-120 via ../kilosort_clusters.m
     %   (and the other VALUEREASONS callers that tag it); carry-155 via
-    %   ../probe_geometry.m; none for an untagged VALUEREASONS item
+    %   ../probe_geometry.m; carry-106 carry-171 via ../spikewaves.m; none for
+    %   an untagged VALUEREASONS item
     did2.convert.reportNote('carried_as_v1', className, id, ...
         ['[carry-100] malformed: outside the NDI template, unplaced: ' ...
         strjoin(unplaced, ', ') rest]);
@@ -83,6 +84,7 @@ end
 % carry-register: carry-016 carry-056 carry-100 via jCalculation.m (its
 %   VALUEREASONS carry their tags: carry-100 for input edges whose names do
 %   not rebuild); carry-120 via ../kilosort_clusters.m (and other callers);
-%   carry-155 via ../probe_geometry.m; none for an untagged item (no row yet)
+%   carry-155 via ../probe_geometry.m; carry-106 carry-171 via
+%   ../spikewaves.m; none for an untagged item (no row yet)
 did2.convert.reportNote('carried_as_v1', className, id, rest);
 end

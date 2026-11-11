@@ -221,7 +221,7 @@ v1.files.file_info(1).locations.location = fullfile(testCase.TestData.dir, 'gone
 [carried, notes, out] = did2.unittest.helpers.carryNote({stamp(v1)});
 verifyEmpty(testCase, out.quarantine, quarantineText(out));
 verifyTrue(testCase, carried, 'not carried as the untouched v1 source');
-verifyTrue(testCase, contains(notes, 'files spikewaves.vsw'), notes);
+verifyTrue(testCase, contains(notes, '[carry-171] files spikewaves.vsw'), notes);
 end
 
 function testAHeaderTheWriterDoesNotWriteCarries(testCase)
@@ -230,6 +230,7 @@ f = writerSpikewaves(testCase, 'j', 2, 'Name', '41268b6f5c6a3d4e_5f0000000000099
 [carried, notes] = did2.unittest.helpers.carryNote({stamp(f.v1)});
 verifyTrue(testCase, carried);
 verifyTrue(testCase, contains(notes, 'not the one NDI''s writer makes'), notes);
+verifyTrue(testCase, contains(notes, '[carry-120] files spikewaves.vsw/spiketimes.bin'), notes);
 end
 
 function testCountsTheTwoFilesDisagreeOnCarry(testCase)
@@ -240,6 +241,7 @@ fclose(fid);
 [carried, notes] = did2.unittest.helpers.carryNote({stamp(f.v1)});
 verifyTrue(testCase, carried);
 verifyTrue(testCase, contains(notes, '4 times for 3 waveforms'), notes);
+verifyTrue(testCase, contains(notes, '[carry-120] files spikewaves.vsw/spiketimes.bin'), notes);
 end
 
 function testTheReaderIsReadAsBytes(testCase)

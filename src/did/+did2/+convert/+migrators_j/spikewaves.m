@@ -92,10 +92,10 @@ reasons = {};
 elementId = jDependency(preBody, 'element_id');
 methodId = jDependency(preBody, 'extraction_parameters_id');
 if isempty(elementId)
-    reasons{end+1} = 'depends_on element_id (empty: no element to state the spikes of)';
+    reasons{end+1} = '[carry-120] depends_on element_id (empty: no element to state the spikes of)';
 end
 if isempty(methodId)
-    reasons{end+1} = 'depends_on extraction_parameters_id (empty: no extraction settings to be the method)';
+    reasons{end+1} = '[carry-120] depends_on extraction_parameters_id (empty: no extraction settings to be the method)';
 end
 epochStr = getCharField(getBlock(preBody, 'epochid'), 'epochid');
 b = did2.convert.v1read.readBase(preBody);
@@ -104,7 +104,7 @@ if ischar(b.id); v1Id = b.id; end
 if isfield(b, 'name') && ~isempty(b.name)
     % v2 writes no base.name on a statement (#73 item 54); the writer leaves
     % it empty, so a name is not the writer's
-    reasons{end+1} = sprintf('base.name (''%s'': the writer writes none, v2 keeps none)', char(b.name));
+    reasons{end+1} = sprintf('[carry-106] base.name (''%s'': the writer writes none, v2 keeps none)', char(b.name));
 end
 
 parsed = [];
@@ -112,21 +112,21 @@ if isempty(reasons) && isempty(collision) && isempty(unplaced)
     [vsw, okW, whyW] = did2.convert.v1Files('readBytes', preBody, 'spikewaves.vsw');
     [st, okT, whyT] = did2.convert.v1Files('readBytes', preBody, 'spiketimes.bin');
     if ~okW
-        reasons{end+1} = sprintf('files spikewaves.vsw (%s)', whyW);
+        reasons{end+1} = sprintf('[carry-171] files spikewaves.vsw (%s)', whyW);
     end
     if ~okT
-        reasons{end+1} = sprintf('files spiketimes.bin (%s)', whyT);
+        reasons{end+1} = sprintf('[carry-171] files spiketimes.bin (%s)', whyT);
     end
     if okW && okT
         [parsed, problem] = parseFiles(vsw, st, v1Id, epochStr);
         if ~isempty(problem)
-            reasons{end+1} = sprintf('files spikewaves.vsw/spiketimes.bin (%s)', problem);
+            reasons{end+1} = sprintf('[carry-120] files spikewaves.vsw/spiketimes.bin (%s)', problem);
         end
     end
 end
-% carry-register: carry-100; none for the file and header reasons (no
-%   register row yet: a spikewaves whose files cannot be read in this run, or
-%   whose files are not the writer's shape)
+% carry-register: carry-100 carry-106 carry-120 carry-171
+%   (carry-171: a file that cannot be read in this run; carry-120: an empty
+%   edge, or files read but not the writer's shape; carry-106: a base.name)
 if jRawCarry('spikewaves', src, collision, unplaced, 'carry-100', reasons)
     bodies = {src};   % the carry of the untouched v1 source
     return;
