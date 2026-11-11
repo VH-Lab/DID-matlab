@@ -10,8 +10,10 @@ function corpus_counts_dump(tc, corpusName, outDir)
 %   Decided by Jess Haley 2026-11-10 [two corpus counts]: run and report only.
 if ~isfolder(outDir); mkdir(outDir); end
 url = sprintf('https://ndi-programming-development.s3.us-east-1.amazonaws.com/%s.zip', corpusName);
+% COUNTS_CORPUS_DIR: a local folder of v1 *.json (a shard of whole sessions,
+% tools/shard_corpus.py) instead of the download.
 [corpusDir, result] = did2.unittest.helpers.runCorpusDiscovery(tc, corpusName, url, corpusName, ...
-    'AssertNoOrphans', false);
+    'AssertNoOrphans', false, 'CorpusDir', getenv('COUNTS_CORPUS_DIR'));
 fprintf('COUNTS-DUMP corpus %s: corpusDir %s; migrated %d; quarantine %d; sources %d\n', ...
     corpusName, corpusDir, numel(result.migrated), numel(result.quarantine), ...
     numel(result.source_outputs));
