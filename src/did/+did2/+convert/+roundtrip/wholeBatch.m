@@ -359,6 +359,46 @@ a(end+1) = struct('name', 'mode of a probe that never recorded', ...
     'decision', '[clamp mode of unrecorded probe dropped] (Jess Haley, 2026-11-03)', ...
     'classes', {{'element'}}, 'paths', {{'element.type'}}, ...
     'id', false, 'when', @unrecordedModeDropped);
+% [unlinked device is not an element] (Decided by Jess Haley, 2026-11-11): a
+% migrated v1 probe whose device has no recording observation (`instrument_id`)
+% and no wiring (`connected to`, RO:0002170) in the final batch is not an
+% element ([element recognised by its links]); it keeps its device entity
+% (type, subject link), and no "ndi element class" assertion is kept for it,
+% so its v1 ndi_element_class is not rebuilt: a known difference from v1 (a
+% probe with no epochs reads back as a device, not an element). Accepted only
+% for such a device (unlinkedDevice). This batch is the one before
+% NDI-matlab's second pass, which mints the recordings of an epoch with no
+% ingested cache; a device that pass links is an element in NDI-matlab.
+a(end+1) = struct('name', 'device with no links is not an element', ...
+    'decision', '[unlinked device is not an element] (Jess Haley, 2026-11-11)', ...
+    'classes', {{'element'}}, 'paths', {{'element.ndi_element_class'}}, ...
+    'id', false, 'when', @unlinkedDevice);
+end
+
+function tf = unlinkedDevice(v1, docs, ctx)
+% DOCS' entity is a `device` (by node), CTX holds no recording observation
+% and no `connected to` wiring of it (deviceLinks), and its documents keep
+% no "ndi element class" assertion (one that is kept wins: [assertion wins
+% while written])
+tf = false;
+if isempty(ctx) || ~isstruct(v1) || ~isfield(v1, 'base') || ~isstruct(v1.base) ...
+        || ~isfield(v1.base, 'id')
+    return;
+end
+id = char(v1.base.id);
+isDevice = false;
+for k = 1:numel(docs)
+    b = docs{k};
+    if isEntityOfType(b, 'device') && strcmp(idOf(b), id)
+        isDevice = true;
+    elseif strcmp(classNameOf(b), 'assertion')
+        [~, variable] = termParts(getIn(b, 'statement', 'variable'));
+        if strcmpi(variable, 'ndi element class')
+            return;
+        end
+    end
+end
+tf = isDevice && isempty(deviceLinks(ctx, id));
 end
 
 function tf = foldedIntoDataset(~, docs, ~)
