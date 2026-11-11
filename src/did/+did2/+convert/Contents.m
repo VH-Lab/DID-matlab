@@ -73,7 +73,9 @@
 %     v1_to_v2), tuningNames (the one v1 <-> v2 name table for tuning
 %     properties and settings), tuningStimids (a tuning curve's stimids
 %     rebuilt), tuningBestValues (the value a tuning curve's `best`
-%     selection chose, read from its log), inputEdgeNames (input edge names
+%     selection chose, read from its log), tuningStatedValues (the number
+%     a tuning curve's exact_number selection fixes a property at),
+%     inputEdgeNames (input edge names
 %     rebuilt from their classes)
 %
 %   Batch post-passes (run over a migrated batch, after v1_to_v2; each

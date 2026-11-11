@@ -170,6 +170,15 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         `selection` setting (a method parameter like any other setting);
 %         no per-parameter '<V2 name> selection' = 'best' parameter is
 %         written beside it.
+%     [tuning stated value is a condition] (Jess Haley, 2026-11-11)  each
+%         selection of tuningcurve_calc's input_parameters.selection that
+%         fixes a property at a stated number ({property, 'exact_number',
+%         <number>}, did2.convert.tuningStatedValues) is a condition named
+%         by the v2 stimulus variable (e.g. temporal frequency = 4), after
+%         the `best` conditions; the stimid rebuild reads it, and the rule
+%         stays only in the v1 `selection` setting. A property stated at two
+%         numbers, one the table does not name, or one already a condition
+%         carries the curve (carry-056).
 %     [varied properties are conditions by V2 name]  each property in
 %         tuningcurve_calc's `stim_property_list` is a condition, its variable
 %         the v2 stimulus method's (did2.convert.tuningNames), its value the
@@ -875,6 +884,35 @@ if ~isempty(bestNames)
         conds = [conds, bestConds];
         condNames = [condNames, bestNames];
         condValues = [condValues, bestValues];
+    end
+end
+% [tuning stated value is a condition] (Jess Haley, 2026-11-11): a selection
+% fixing a property at a stated number ({property, 'exact_number', <number>},
+% e.g. tFrequency exact_number 4) is a condition too (temporal frequency = 4),
+% named by the v2 stimulus variable as the best value is; the rule stays only
+% in the v1 `selection` setting, and the stimid rebuild reads the condition
+[statedNames, statedValues, why] = did2.convert.tuningStatedValues(ip);
+if ~isempty(statedNames) || ~isempty(why)
+    statedConds = {};
+    for k = 1:numel(statedNames)
+        if ~isempty(why); break; end
+        [v2, found] = did2.convert.tuningNames('v2', statedNames{k});
+        if ~found
+            why = sprintf('no v2 name in the table for "%s"', statedNames{k});
+        elseif any(strcmp(statedNames{k}, condNames))
+            why = sprintf('"%s" is both an exact_number selection and a condition already', ...
+                statedNames{k});
+        else
+            statedConds{end+1} = did2.build.condition(jLabel(v2), 'Value', statedValues(k)); %#ok<AGROW>
+        end
+    end
+    if ~isempty(why)
+        curve.reasons{end+1} = sprintf(['[carry-056] %s.input_parameters.selection (%s: ' ...
+            '[tuning stated value is a condition])'], cls, why);
+    else
+        conds = [conds, statedConds];
+        condNames = [condNames, statedNames];
+        condValues = [condValues, statedValues];
     end
 end
 if ~isempty(conds)

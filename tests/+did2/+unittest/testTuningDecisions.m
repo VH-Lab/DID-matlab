@@ -8,6 +8,7 @@ function tests = testTuningDecisions
 %                                                testOneCalculationPerOutput
 %     [fit model stated once] (2026-10-29)       testFitsUseCurveFittingAndStateTheModelOnce
 %     [tuning best value is a condition] (2026-10-28)  testTuningBestValue*
+%     [tuning stated value is a condition] (2026-11-11)  testTuningStatedValue*
 %     [Priebe fits are one function]             testPriebeFitsAreOneFunction
 %     [Naka-Rushton function minted] (2026-10-30)  testNakaRushtonFitsAreOneModelToldApartByConstraints,
 %                                                testTheBareNakaRushtonLabelStillRoundTrips
@@ -482,6 +483,126 @@ verifyEmpty(testCase, why);
 end
 
 % ===================== [tuning log in notes] ==============================
+
+% ===================== [tuning stated value is a condition] ==============
+
+function testTuningStatedValueIsACondition(testCase)
+% Decided by Jess Haley, 2026-11-11 [tuning stated value is a condition]: a
+% curve whose writer chose its stimuli with a selection fixing a property at a
+% stated number (tFrequency exact_number 4, as Soph's 1622 angle curves) has
+% that property and value as a condition (temporal frequency = 4), and the
+% stimid rebuild works from it. The presentation shows each contrast at
+% tFrequency 4 (stimuli 1-6) and at tFrequency 8 (7-12); the writer kept 4, so
+% v1 stimid is 1-6. Such a curve was carried before (carry-056, "the
+% presentation and the response give other values").
+[tc, resp, pres] = statedCurveBatch();
+did2.convert.tuningBatchIndex('reset');
+did2.convert.tuningBatchIndex('load', {resp, pres});
+noCond = did2.convert.tuningStimids(tc.stimulus_tuningcurve.independent_variable_value, ...
+    {'contrast'}, {}, [], resp.base.id);
+verifyEqual(testCase, noCond, (7:12)', 'without the stated value the rebuild picks tFrequency 8');
+out = runRaw({tc, resp, pres});
+verifyEmpty(testCase, out.quarantine);
+mine = outputsOf(out, tc.base.id);
+notes = '';
+if isfield(out.summary.migration_notes, 'carried_as_v1')
+    notes = strjoin(out.summary.migration_notes.carried_as_v1.distinct_details, ' || ');
+end
+assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2', ...
+    ['the curve with a stated value converts; carried: ' notes]);
+leaf = mine{1};
+c = asCell(leaf.statement.conditions);
+assertEqual(testCase, numel(c), 1);
+verifyEqual(testCase, lower(char(c{1}.variable.name)), 'temporal frequency');
+verifyEqual(testCase, c{1}.quantity.value, 4);
+verifyFalse(testCase, any(endsWith(parameterNames(leaf), ' selection')), ...
+    sprintf('no ''<V2 name> selection'' parameter; parameters: %s', ...
+    strjoin(parameterNames(leaf), ', ')));
+verifyNotEmpty(testCase, parameterText(leaf, 'selection criterion'), ...
+    'the rule stays in the v1 `selection` setting');
+n = out.summary.migration_notes.tuning_stimid_rebuild;
+verifyEqual(testCase, n.count, 1, 'one note per curve: the denominator');
+verifyEqual(testCase, n.distinct_details, {'rebuilt exactly'});
+r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'tuning curve with a stated value', {});
+verifyTrue(testCase, any(strcmp('stimulus_tuningcurve.stimid', r.matched)));
+verifyTrue(testCase, any(strcmp('stimulus_tuningcurve.stimulus_presentation_number', r.matched)));
+verifyTrue(testCase, any(startsWith(r.matched, 'tuningcurve_calc.input_parameters.selection')), ...
+    'the v1 selection is written back unchanged');
+end
+
+function testTuningStatedValueBesideABestValue(testCase)
+% a `best` selection and a stated number on one curve: two conditions, each
+% read back to its own place (the best value to the log, the stated number to
+% the selection), and stim_property_list stays empty
+[tc, resp, pres] = statedCurveBatch();
+sel = asCell(tc.tuningcurve_calc.input_parameters.selection);
+sel{end+1} = struct('property', 'angle', 'operation', 'exact_number', 'value', 'best');
+tc.tuningcurve_calc.input_parameters.selection = sel;
+tc.tuningcurve_calc.log = 'angle best value is 90.';
+st = pres.stimulus_presentation.stimuli;
+if iscell(st); st = [st{:}]; end
+st = reshape(st, 1, []);
+at90 = st;
+at0 = st;
+for k = 1:numel(st)
+    at90(k).parameters.angle = 90;
+    at0(k).parameters.angle = 0;
+end
+pres.stimulus_presentation.stimuli = [at90, at0];
+tc = jsondecode(jsonencode(tc));
+pres = jsondecode(jsonencode(pres));
+out = runRaw({tc, resp, pres});
+mine = outputsOf(out, tc.base.id);
+notes = '';
+if isfield(out.summary.migration_notes, 'carried_as_v1')
+    notes = strjoin(out.summary.migration_notes.carried_as_v1.distinct_details, ' || ');
+end
+assertEqual(testCase, mine{1}.document_class.schema_version, 'did_v2', ...
+    ['carried: ' notes]);
+c = asCell(mine{1}.statement.conditions);
+got = sort(cellfun(@(x) lower(char(x.variable.name)), c, 'UniformOutput', false));
+verifyEqual(testCase, got, {'direction', 'temporal frequency'});
+r = did2.convert.roundtrip.check(tc, outputsExcept(out, {resp.base.id, pres.base.id}));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'a stated value beside a best value', {});
+end
+
+function testATuningStatedValueAtTwoNumbersIsCarried(testCase)
+% one property stated at two numbers: the writer keeps no stimulus; carried
+[tc, resp, pres] = statedCurveBatch();
+sel = asCell(tc.tuningcurve_calc.input_parameters.selection);
+sel{end+1} = struct('property', 'tFrequency', 'operation', 'exact_number', 'value', 8);
+tc.tuningcurve_calc.input_parameters.selection = sel;
+tc = jsondecode(jsonencode(tc));
+[carried, notes] = did2.unittest.helpers.carryNote({tc, resp, pres});
+verifyTrue(testCase, carried);
+verifyTrue(testCase, contains(notes, '[tuning stated value is a condition]'), notes);
+end
+
+function testTuningStatedValuesFunction(testCase)
+sel = struct('property', {'angle', 'tFrequency', 'angle', 'contrast', 'tFrequency'}, ...
+    'operation', {'hasfield', 'exact_number', 'exact_number', 'exact_number', 'exact_number'}, ...
+    'value', {'varies', 4, 'best', 1, 4});
+[p, v, why] = did2.convert.tuningStatedValues(struct('selection', sel));
+verifyEmpty(testCase, why);
+verifyEqual(testCase, p, {'tFrequency', 'contrast'}, 'best and varies are not stated numbers');
+verifyEqual(testCase, v, [4 1]);
+% as jsondecode reads a mixed selection (a cell of structs)
+ip = jsondecode(['{"selection":[{"property":"tFrequency","operation":"exact_number",' ...
+    '"value":4},{"property":"angle","operation":"hasfield","value":"varies"}]}']);
+[p, v] = did2.convert.tuningStatedValues(ip);
+verifyEqual(testCase, p, {'tFrequency'});
+verifyEqual(testCase, v, 4);
+[p, ~, why] = did2.convert.tuningStatedValues(struct('selection', struct( ...
+    'property', {'tFrequency', 'tFrequency'}, 'operation', 'exact_number', 'value', {4, 8})));
+verifyNotEmpty(testCase, why, 'one property at two numbers');
+verifyEqual(testCase, p, {'tFrequency'});
+[p, v, why] = did2.convert.tuningStatedValues(struct('selection', struct( ...
+    'property', 'angle', 'operation', 'hasfield', 'value', 'varies')));
+verifyEmpty(testCase, p);
+verifyEmpty(testCase, v);
+verifyEmpty(testCase, why);
+end
 
 function testTuningLogInNotes(testCase)
 v1 = convertedTuningCurve();
@@ -1108,6 +1229,31 @@ for k = 1:numel(st)
     at0(k).parameters.angle = 0;
 end
 pres.stimulus_presentation.stimuli = [at90, at0];
+tc = jsondecode(jsonencode(tc));
+pres = jsondecode(jsonencode(pres));
+end
+
+function [tc, resp, pres] = statedCurveBatch()
+% tuningCurveBatch with a selection fixing tFrequency at 4 (as Soph's angle
+% curves: {"property":"tFrequency","operation":"exact_number","value":4},
+% an empty log and stim_property_list): the presentation shows each contrast
+% at tFrequency 4 (stimuli 1-6) and again at tFrequency 8 (7-12); the writer
+% kept 4, so the curve's stimids stay 1-6
+[tc, resp, pres] = tuningCurveBatch();
+tc.tuningcurve_calc.input_parameters.selection = struct( ...
+    'property', {'contrast', 'tFrequency'}, 'operation', {'hasfield', 'exact_number'}, ...
+    'value', {'varies', 4});
+tc.tuningcurve_calc.log = '';
+st = pres.stimulus_presentation.stimuli;
+if iscell(st); st = [st{:}]; end
+st = reshape(st, 1, []);
+at4 = st;
+at8 = st;
+for k = 1:numel(st)
+    at4(k).parameters.tFrequency = 4;
+    at8(k).parameters.tFrequency = 8;
+end
+pres.stimulus_presentation.stimuli = [at4, at8];
 tc = jsondecode(jsonencode(tc));
 pres = jsondecode(jsonencode(pres));
 end

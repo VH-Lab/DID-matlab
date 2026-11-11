@@ -58,6 +58,11 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %                 writes no '<V2 name> selection' = 'best' parameter, so the
 %                 best variables are read from the setting; such a parameter
 %                 in a batch migrated before must name the same variables;
+%     [tuning stated value is a condition] (2026-11-11)   the conditions of
+%                 the properties the v1 `selection` setting fixes at a number
+%                 (exact_number) are not stim_property_list: that setting,
+%                 written back unchanged, holds them; each must be the number
+%                 it states (did2.convert.tuningStatedValues);
 %     [tuning stimids rebuild]   rawCurveBlock rebuilds stimid and
 %                 stimulus_presentation_number (did2.convert.tuningStimids).
 
@@ -261,7 +266,10 @@ function [own, bad] = curveOwnBlock(leaf, ownV1)
 %   from the v1 `selection` setting ([tuning selection rule stated once],
 %   Jess Haley, 2026-11-09: the rule is stated once, there); a '<V2 name>
 %   selection' = 'best' method parameter (written before that decision) must
-%   name the same variables.
+%   name the same variables. The conditions of an exact_number selection's
+%   property ([tuning stated value is a condition], Jess Haley, 2026-11-11)
+%   are not in stim_property_list either: each must be the number the
+%   `selection` setting states (did2.convert.tuningStatedValues).
 own = struct();
 bad = {};
 notes = getIn(leaf, 'statement', 'notes');
@@ -284,6 +292,22 @@ if ~isempty(rules) && ~isequal(sort(lower(rules)), sort(lower(best)))
     bad{end+1} = sprintf(['the method''s best-selection parameters (%s) are not the ' ...
         'setting''s best selections (%s)'], strjoin(rules, ', '), strjoin(best, ', '));
 end
+% [tuning stated value is a condition] (Jess Haley, 2026-11-11): the
+% conditions of the properties an exact_number selection fixes at a number are
+% not stim_property_list either; each must be the number the setting states
+[sprops, svalues, whyStated] = did2.convert.tuningStatedValues(getIn(ownV1, 'input_parameters'));
+stated2 = cell(1, numel(sprops));
+for k = 1:numel(sprops)
+    [stated2{k}, found] = did2.convert.tuningNames('v2', sprops{k});
+    if ~found
+        bad{end+1} = sprintf('exact_number selection of "%s": no v2 name in the table', sprops{k}); %#ok<AGROW>
+        stated2{k} = sprops{k};
+    end
+end
+if ~isempty(whyStated)
+    bad{end+1} = sprintf('exact_number selection: %s', whyStated);
+end
+statedSeen = nan(1, numel(stated2));
 bestSeen = nan(1, numel(best));
 conds = asCell(getIn(leaf, 'statement', 'conditions'));
 names = {};
@@ -304,11 +328,30 @@ for k = 1:numel(conds)
         bestSeen(ix) = q;
         continue;
     end
+    ix = find(strcmpi(v2, stated2), 1);
+    if ~isempty(ix)
+        if ~isnan(statedSeen(ix))
+            bad{end+1} = sprintf('two conditions of the exact_number-selected "%s"', v2); %#ok<AGROW>
+        end
+        statedSeen(ix) = q;
+        continue;
+    end
     names{end+1, 1} = v1Name; %#ok<AGROW>
     values(end+1, 1) = q; %#ok<AGROW>
 end
 if ~isempty(names)
     own.stim_property_list = struct('names', {names}, 'values', values);
+end
+if isempty(whyStated)
+    for k = 1:numel(stated2)
+        if isnan(statedSeen(k))
+            bad{end+1} = sprintf('the exact_number selection of "%s" has no condition', ...
+                stated2{k}); %#ok<AGROW>
+        elseif svalues(k) ~= statedSeen(k)
+            bad{end+1} = sprintf('condition %s = %.17g is not the %.17g the selection states', ...
+                stated2{k}, statedSeen(k), svalues(k)); %#ok<AGROW>
+        end
+    end
 end
 if isempty(best)
     return;
