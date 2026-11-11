@@ -6948,7 +6948,7 @@ function testTheNeedsHomeClassesAreCarriedWholeAsV1(testCase)
 % [simple_calc carries as needs home] and [unbuilt spike classes carry as needs
 % home] (Decided by Jess Haley, 2026-10-27, did-schema
 % V_eta_go_forward_class_audit.md): each is carried whole as v1 through the
-% carry path, citing a needs-home register row (carry-101..104), read raw so
+% carry path, citing a needs-home register row (carry-102..104), read raw so
 % the carry is
 % the untouched v1 source.
 % spikewaves left this list on 2026-11-10 ([spike waveforms built now]): it
