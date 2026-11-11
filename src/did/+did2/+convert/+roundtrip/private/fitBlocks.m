@@ -16,17 +16,28 @@ function [blocks, bad] = fitBlocks(modelFit, family)
 %     sf, tf    block `fit_<model>`; parameters, values (x), fit (y), Pref,
 %               L50, H50, R2, bandwidth
 %
-%   Coefficients are read back in order as a column (v1 stored an unnamed
-%   vector; jTuningCurve named entry k '<model> parameter k'). BAD lists what
-%   an entry holds that has no place in these layouts.
+%   Coefficients are read back in order as a column. An entry whose model is a
+%   term of did2.convert.tuningFitModels (Decided by Jess Haley, 2026-11-11,
+%   did-schema docs/plans/did_v2_go_forward_class_audit.md [tuning fit
+%   coefficients named by symbol]) is read BY NODE, and told apart from the
+%   other v1 fits of the same model by its constraints (named by symbol): its
+%   row gives the v1 stem (double_gaussian, naka_rushton_RB / _RBN / _RBNS,
+%   dog, movshon (C = 0), movshon_c (none), gausslog, spline), its coefficient
+%   names must be the row's symbols in stored order, and for the TF difference
+%   of Gaussians the writer's leading constant 0 is put back. An entry with no
+%   such term (the speed fits; a fit migrated before) keeps the label rule:
+%   its model label (spaces as '_') is the v1 prefix or block name. BAD lists
+%   what an entry holds that has no place in these layouts.
 %
 %   CONTRAST, ONE FUNCTION (Jess Haley, [Naka-Rushton is one function],
 %   built by [tuning fits use curve fitting now], 2026-10-27): an entry of
-%   model 'Naka-Rushton' is the RB, RBN or RBNS fit by its constraints
-%   (parameters 3 and 4 held at 1: RB; parameter 4 held at 1: RBN; none:
-%   RBNS), so its prefix is naka_rushton_RB_ / _RBN_ / _RBNS_. Its metrics
-%   relative_max_gain, saturation_index and sensitivity ([contrast metrics
-%   added]) are _relative_max_gain, _saturation_index, _sensitivity.
+%   the Naka-Rushton model is the RB, RBN or RBNS fit by its constraints
+%   (n and s held at 1: RB; s held at 1: RBN; none: RBNS), so its prefix is
+%   naka_rushton_RB_ / _RBN_ / _RBNS_. Its metrics relative_max_gain,
+%   saturation_index and sensitivity ([contrast metrics added]) are
+%   _relative_max_gain, _saturation_index, _sensitivity. The constraint
+%   names migrated before [tuning fit coefficients named by symbol],
+%   'Naka-Rushton parameter 3' (n) and '... 4' (s), are read too.
 %
 %   The model is read BY NODE: EMPTY:0000416 "Naka-Rushton function" (Decided
 %   by Jess Haley, 2026-10-30, did-schema V_eta_go_forward_class_audit.md
@@ -45,13 +56,19 @@ for k = 1:numel(modelFit)
     e = modelFit{k};
     [node, model] = termParts(getIn(e, 'model'));
     stem = strrep(strtrim(model), ' ', '_');
-    isNakaRushton = strcmp(family, 'contrast') && nakaRushtonModel(node, model);
-    if isNakaRushton
-        stem = nakaRushtonStem(e);
-        if isempty(stem)
-            bad{end+1} = sprintf('model_fit %d: Naka-Rushton constraints name none of RB, RBN, RBNS', k); %#ok<AGROW>
-            continue;
-        end
+    if strcmp(family, 'contrast') && isempty(node) && strcmp(strtrim(model), 'Naka-Rushton')
+        node = 'EMPTY:0000416';   % the bare label migrated before [Naka-Rushton function minted]
+    end
+    row = fitModelRow(node, family, e);
+    hasRow = isstruct(row) && isscalar(row);
+    familyRows = did2.convert.tuningFitModels(family);
+    if ~isempty(node) && ~hasRow && ~isempty(familyRows) ...
+            && any(strcmpi({familyRows.node}, strtrim(node)))
+        bad{end+1} = sprintf('model_fit %d: %s constraints name none of its v1 fits', k, model); %#ok<AGROW>
+        continue;
+    end
+    if hasRow
+        stem = row.stem;
     end
     if isempty(stem) || ~isvarname(['x' stem])
         bad{end+1} = sprintf('model_fit %d: model "%s" names no v1 fit', k, model); %#ok<AGROW>
@@ -87,7 +104,13 @@ for k = 1:numel(modelFit)
     if isfield(blocks, block)
         b = blocks.(block);
     end
-    if isfield(e, 'coefficients') && ~isempty(e.coefficients)
+    if hasRow
+        [p, b2] = fitRowCoefficients(e, row, where);
+        bad = [bad, b2]; %#ok<AGROW>
+        if ~isempty(p)
+            b.(names{1, 2}) = p;
+        end
+    elseif isfield(e, 'coefficients') && ~isempty(e.coefficients)
         c = e.coefficients;
         if iscell(c); c = [c{:}]; end
         b.(names{1, 2}) = reshape([c.value], [], 1);
@@ -126,48 +149,10 @@ for k = 1:numel(modelFit)
         bad = [bad, others(e.metrics, metrics(:, 1)', [where '.metrics'])]; %#ok<AGROW>
     end
     known = {'model', 'coefficients', 'goodness', 'sampled_fit', 'metrics'};
-    if isNakaRushton
-        known{end+1} = 'constraints';   % read by nakaRushtonStem
+    if hasRow
+        known = [known, {'constraints', 'equation'}]; %#ok<AGROW> % read by fitModelRow
     end
     bad = [bad, others(e, known, where)]; %#ok<AGROW>
     blocks.(block) = b;
-end
-end
-
-function tf = nakaRushtonModel(node, name)
-%NAKARUSHTONMODEL True for the Naka-Rushton model: by node, EMPTY:0000416
-%   ([Naka-Rushton function minted], Jess Haley, 2026-10-30); with no node, the
-%   bare label 'Naka-Rushton' an entry migrated before that decision holds.
-if ~isempty(node)
-    tf = strcmpi(strtrim(node), 'EMPTY:0000416');
-else
-    tf = strcmp(strtrim(name), 'Naka-Rushton');
-end
-end
-
-function stem = nakaRushtonStem(e)
-%NAKARUSHTONSTEM naka_rushton_RB / _RBN / _RBNS from a Naka-Rushton entry's
-%   constraints ('' when they name none of the three).
-held = zeros(0, 2);
-c = asCell(getIn(e, 'constraints'));
-for k = 1:numel(c)
-    [~, name] = termParts(getIn(c{k}, 'variable'));
-    t = regexp(name, '^Naka-Rushton parameter (\d+)$', 'tokens', 'once');
-    v = numberOf(getIn(c{k}, 'value'));
-    if isempty(t) || isempty(v)
-        stem = '';
-        return;
-    end
-    held(end+1, :) = [str2double(t{1}), v]; %#ok<AGROW>
-end
-held = sortrows(held);
-if isequal(held, [3 1; 4 1])
-    stem = 'naka_rushton_RB';
-elseif isequal(held, [4 1])
-    stem = 'naka_rushton_RBN';
-elseif isempty(held)
-    stem = 'naka_rushton_RBNS';
-else
-    stem = '';
 end
 end

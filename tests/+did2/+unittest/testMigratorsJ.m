@@ -5215,8 +5215,9 @@ function testContrastSensitivityCalcUndefersToLeaf(testCase)
 % The aggregate ndi.calc.vis.contrast_sensitivity output folds 1 -> 1,
 % id-preserved, into contrast_sensitivity_calculation. UPDATED for #88: the
 % spatial frequencies are the statement's key (data.keys), each RB/RBN/RBNS
-% Naka-Rushton variant is one value.model_fit entry whose coefficients are a
-% {variable, value} list, input_parameters -> method.parameters, the consumed
+% Naka-Rushton variant is one value.model_fit entry per spatial frequency
+% (since 2026-11-11, [tuning fit coefficients named by symbol]; one per
+% variant before) whose coefficients are a {variable, value} list, input_parameters -> method.parameters, the consumed
 % responses -> input_id. INVERTED 2026-10-23 (Jess Haley [contrast sensitivity
 % lossless]): the stimulus_presentation_id is an input too (after the
 % responses), and `is_modulated_response` 1 -> significance.modulated_response
@@ -5235,8 +5236,9 @@ body.app = struct('name', 'ndi.calc.vis.contrast_sensitivity', 'version', '1.0',
     'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
     'sensitivity_rb', [10 20 15 5], 'empirical_c50_rb', [0.2 0.3 0.4 0.5], ...
-    'parameters_rb', [12 0.25 2], ...
-    'sensitivity_rbns', [9 18 14 4], 'parameters_rbns', [11 0.27 2.1], ...
+    'parameters_rb', [12 13 14 15; 0.25 0.26 0.27 0.28], ...
+    'sensitivity_rbns', [9 18 14 4], ...
+    'parameters_rbns', [11 12 13 14; 0.27 0.28 0.29 0.3; 2.1 2.2 2.3 2.4; 1 1.1 1.2 1.3], ...
     'fitless_interpolated_c50', [0.21 0.31 0.41 0.51], ...
     'visual_response_p_bonferroni', [0.01 0.02 0.03 0.04], ...
     'is_modulated_response', 1, 'response_type', 'mean', ...
@@ -5255,19 +5257,36 @@ verifyNotEqual(testCase, lower(char(leaf.interaction.method.term.name)), 'ndi.ca
 verifyEqual(testCase, paramValueJ(leaf, 'threshold'), 1);
 verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0.5 1 2 4]);
 csv = leaf.contrast_sensitivity.value;
-verifyEqual(testCase, numel(csv.model_fit), 2);            % rb and rbns, not rbn
-models = arrayfun(@(e) lower(char(e.model.name)), csv.model_fit, 'UniformOutput', false);
-rbAt = find(endsWith(models, ' rb'), 1);
-verifyNotEmpty(testCase, find(endsWith(models, ' rbns'), 1));
-verifyEmpty(testCase, find(endsWith(models, ' rbn'), 1));
-assertNotEmpty(testCase, rbAt);
-rb = csv.model_fit(rbAt);
-verifyEqual(testCase, rb.sensitivity, [10 20 15 5]);       % metric rides INSIDE its fit
-% [one spelling for the half-maximum point] (Jess Haley, 2026-11-10): the name
-% the loaded schema declares, half_maximum_below once did-schema renames c50
+% UPDATED 2026-11-11 ([tuning fit coefficients named by symbol], Decided by
+% Jess Haley, did-schema docs/plans/did_v2_go_forward_class_audit.md): one
+% Naka-Rushton fit (EMPTY:0000416) per variant and spatial frequency, the
+% variant told by its constraints (RB: n = 1, s = 1; RBNS: none), the
+% coefficients named by symbol, the per-SF values on the fit of their
+% spatial frequency (the j-th fit of a variant is spatial frequency j)
+mfc = csv.model_fit;
+if isstruct(mfc); mfc = num2cell(mfc); end
+verifyEqual(testCase, numel(mfc), 8);            % rb and rbns at 4 SFs, not rbn
+verifyTrue(testCase, all(cellfun(@(e) strcmp(char(e.model.node), 'EMPTY:0000416'), mfc)));
+held = cellfun(@(e) constraintTextJ(e), mfc, 'UniformOutput', false);
+rbFits = mfc(strcmp(held, 'n=1;s=1'));
+verifyEqual(testCase, numel(rbFits), 4);
+verifyEqual(testCase, nnz(strcmp(held, '')), 4);   % rbns
+verifyEqual(testCase, nnz(strcmp(held, 's=1')), 0);   % no rbn
 hmFit = halfMaximumNameJ('model_fit');
-verifyEqual(testCase, rb.(hmFit), [0.2 0.3 0.4 0.5]);
-verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
+sens = [10 20 15 5];
+c50s = [0.2 0.3 0.4 0.5];
+P = [12 13 14 15; 0.25 0.26 0.27 0.28];
+for j = 1:4
+    rb = rbFits{j};
+    verifyEqual(testCase, rb.sensitivity, sens(j));       % metric rides INSIDE its fit
+    % [one spelling for the half-maximum point] (Jess Haley, 2026-11-10): the name
+    % the loaded schema declares, half_maximum_below once did-schema renames c50
+    verifyEqual(testCase, rb.(hmFit), c50s(j));
+    co = rb.coefficients;
+    if iscell(co); co = [co{:}]; end
+    verifyEqual(testCase, arrayfun(@(x) char(x.variable.name), co, 'UniformOutput', false), {'Rm', 'c50'});
+    verifyEqual(testCase, [co.value], P(:, j)');
+end
 % [interpolated values are a list] (Decided by Jess Haley, 2026-10-30, did-schema
 % V_eta_go_forward_class_audit.md): one structure, or a list once the loaded
 % schema declares it; either way the one entry as stated, and no |response|
@@ -5308,7 +5327,7 @@ body.app = struct('name', 'ndi.calc.vis.contrast_sensitivity', 'version', '1.0',
     'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
     'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
-    'sensitivity_rb', [10 20 15 5], 'parameters_rb', [12 0.25 2], ...
+    'sensitivity_rb', [10 20 15 5], 'parameters_rb', [12 13 14 15; 0.25 0.26 0.27 0.28], ...
     'visual_response_p_bonferroni', [0.01 0.02 0.03 0.04], ...
     'is_modulated_response', 0, 'response_type', 'mean', ...
     'input_parameters', struct('threshold', 1));
@@ -6351,7 +6370,7 @@ verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_2');
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
 mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
 verifyEqual(testCase, numel(mf), 1);
-verifyEqual(testCase, lower(char(mf(1).model.name)), 'dog');
+verifyEqual(testCase, char(mf(1).model.node), 'EMPTY:0000442');   % [tuning fit coefficients named by symbol]
 verifyEqual(testCase, mf(1).goodness.r2, 0.95, 'AbsTol', 1e-9);
 verifyEqual(testCase, mf(1).metrics.preferred_value, 0.13, 'AbsTol', 1e-9);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
@@ -6607,27 +6626,51 @@ transforms = arrayfun(@(e) fitTransformJ(e), mfAll, 'UniformOutput', false);
 verifyEqual(testCase, transforms, [repmat({''}, 1, 5), {'absolute value'}]);
 absFit = mfAll(strcmp(transforms, 'absolute value'));
 assertEqual(testCase, numel(absFit), 1, 'one absolute-value fit entry (fit_dog)');
-verifyEqual(testCase, lower(char(absFit.model.name)), 'dog');
+verifyEqual(testCase, char(absFit.model.node), 'EMPTY:0000442');   % [tuning fit coefficients named by symbol]
 verifyEqual(testCase, absFit.metrics.bandwidth, 2.65, 'AbsTol', 1e-12);
 mf = mfAll(strcmp(transforms, ''));
 assertEqual(testCase, numel(mf), 5, ...
     ['the TF family carries five co-existing fits (dog, movshon, movshon_c, ' ...
      'spline, gausslog); a single model_fit means the array collapsed']);
-gotModels = sort(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false));
-verifyEqual(testCase, gotModels, {'dog', 'gausslog', 'movshon', 'movshon c', 'spline'});
-mv = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'movshon'));
+% UPDATED 2026-11-11 ([tuning fit coefficients named by symbol], Jess Haley):
+% each model is a term found by node; movshon and movshon c are one model
+% (EMPTY:0000443), movshon with the constraint C = 0
+gotModels = sort(arrayfun(@(e) char(e.model.node), mf, 'UniformOutput', false));
+verifyEqual(testCase, gotModels, {'EMPTY:0000442', 'EMPTY:0000443', 'EMPTY:0000443', ...
+    'EMPTY:0000444', 'EMPTY:0000445'});
+byNode = @(node, held) mf(arrayfun(@(e) strcmp(char(e.model.node), node) ...
+    && strcmp(constraintTextJ(e), held), mf));
+mv = byNode('EMPTY:0000443', 'C=0');
 assertEqual(testCase, numel(mv), 1, 'expected exactly one movshon entry');
 verifyEqual(testCase, mv.goodness.r2, 0.83, 'AbsTol', 1e-12);
 verifyEqual(testCase, mv.metrics.preferred_value, 4.0, 'AbsTol', 1e-12);
-dg = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'dog'));
+verifyEqual(testCase, nCoeffJ(mv), 4);   % [k fc fh B]
+mvc = byNode('EMPTY:0000443', '');
+assertEqual(testCase, numel(mvc), 1, 'expected exactly one movshon c entry');
+verifyEqual(testCase, nCoeffJ(mvc), 5);   % [k fc fh B C]
+dg = byNode('EMPTY:0000442', '');
 assertEqual(testCase, numel(dg), 1, 'expected exactly one dog entry');
-verifyEqual(testCase, nCoeffJ(dg), 5);   % [0 a1 b1 a2 b2]
+% the writer's leading constant 0 is not a coefficient: [a1 b1 a2 b2]
+verifyEqual(testCase, nCoeffJ(dg), 4);
 verifyEqual(testCase, dg.metrics.bandwidth, 2.65, 'AbsTol', 1e-12);
-sp = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'spline'));
+sp = byNode('EMPTY:0000445', '');
 assertEqual(testCase, numel(sp), 1, 'expected exactly one spline entry');
 verifyEqual(testCase, nCoeffJ(sp), 0, ...
     'the spline fit has no parameters block in the writer; coefficients here would be invented');
 verifyFalse(testCase, any(strcmp(gotModels, 'abs')));
+end
+
+function s = constraintTextJ(e)
+% a model_fit entry's constraints as sorted 'symbol=value' text ('' when none)
+s = '';
+if ~isfield(e, 'constraints') || isempty(e.constraints)
+    return;
+end
+c = e.constraints;
+if isstruct(c); c = num2cell(c); end
+parts = cellfun(@(x) sprintf('%s=%g', char(x.variable.name), x.value), c, ...
+    'UniformOutput', false);
+s = strjoin(sort(parts), ';');
 end
 
 function t = fitTransformJ(e)
