@@ -31,7 +31,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: main
+          # Pinned to the did-schema main that run 42874677863 measured the
+          # other five corpora against: main moved since (92e0306, f507b39
+          # move tuning fields this DID-matlab base does not follow yet, and
+          # shard run 42930799742 quarantined those calculators).
+          ref: 35c3da5392b659879c17de15cae34011b4b8ddf0
           path: did-schema
       - name: Print did-schema sha
         run: |
