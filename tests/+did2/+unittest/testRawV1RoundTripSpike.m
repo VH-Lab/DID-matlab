@@ -45,15 +45,18 @@ function tests = testRawV1RoundTripSpike
 %                    and both lose nothing. On the renamed path it passed through
 %                    unconverted: universalRenames never mapped the writer's
 %                    spelling to the migrator.
-%     jrclust_clusters  converts and loses nothing: the writer's base.name,
-%                    'jrclust.prm', is its fixed default, notation the round
-%                    trip restates ([jrclust default name is notation], Jess
-%                    Haley, 2026-10-27; it was a known finding); any other
-%                    name carries ([v1 name goes to the class's own name
-%                    field], testAnotherJrclustNameCarries); the Soph vintage whose name is in
-%                    ndi_document.name converts too: the block is read as
-%                    `base` ([ndi_document read as base], Jess Haley,
-%                    2026-10-31).
+%     jrclust_clusters  converts and loses only its settings-file name:
+%                    base.name, which the writer sets from `prmName`
+%                    ('jrclust.prm'), and the Soph vintage's
+%                    ndi_document.name, compared as base.name ([ndi_document
+%                    read as base], Jess Haley, 2026-10-31), are not carried,
+%                    whatever their value (Decided by Jess Haley, 2026-11-11
+%                    [jrclust settings-file name dropped], replacing
+%                    [jrclust default name is notation] and [one-reading
+%                    quick answers] Q5). The per-class check lists base.name
+%                    as lost; the whole-batch round trip lists it as that
+%                    decision's accepted loss
+%                    (testTheJrclustSettingsFileNameIsAnAcceptedLoss).
 %     neuron_extracellular  converts and loses nothing (Decided by Jess Haley,
 %                    2026-10-27): base.id is the waveform calculation's id
 %                    ([every v1 id survives]; it was a known finding), and
@@ -81,9 +84,9 @@ cases = { ...
     'hartley without its presentation', {hartley()}, true, {}; ...
     'speed writer output', {speed()}, false, {}; ...
     'speed, converted shape', {speedOneFit()}, false, {}; ...
-    'jrclust writer output', {jrclust()}, false, {}; ...
+    'jrclust writer output', {jrclust()}, false, {'base.name'}; ...
     'jrclust with no name', {jrclustNoName()}, false, {}; ...
-    'jrclust Soph vintage (ndi_document.name)', {jrclustNdiDocument()}, false, {}; ...
+    'jrclust Soph vintage (ndi_document.name)', {jrclustNdiDocument()}, false, {'base.name'}; ...
     'neuron writer output', {neuron()}, false, {}; ...
     'neuron corpus vintage (no sorting output)', {neuronCorpusVintage()}, false, {}; ...
     'neuron with no waveform (kilosort)', {neuronNoWaveform()}, false, {}; ...
@@ -132,13 +135,9 @@ fourFits = speed();
 fourFits.speed_tuning.fit_other = fourFits.speed_tuning.fit;
 verifyCarriedFor(testCase, {fourFits}, '[carry-056] speed_tuning.fit');
 % [ndi_document read as base] (Decided by Jess Haley, 2026-10-31): the Soph
-% vintage converts (its block is read as `base`, and its name 'jrclust.prm' is
-% notation, [jrclust default name is notation]); a block stating a field
-% `base` cannot hold carries the document under carry-100
-conflicting = jrclustNdiDocument();
-conflicting.base.name = 'other.prm';
-verifyCarriedFor(testCase, {conflicting}, ...
-    '[carry-100] malformed: outside the NDI template, unplaced: ndi_document.name');
+% vintage converts (its block is read as `base`, and its name is not carried,
+% [jrclust settings-file name dropped]); a block stating any other field
+% `base` cannot hold still carries the document under carry-100
 typed = jrclustNdiDocument();
 typed.ndi_document.type = 'jrclust_clusters';
 verifyCarriedFor(testCase, {typed}, ...
@@ -158,13 +157,70 @@ verifyCarriedFor(testCase, {v1, presentationOf(hartley())}, ...
     'no element_id or subject_id, so no calculation subject');
 end
 
-function testAnotherJrclustNameCarries(testCase)
-% [jrclust default name is notation] (Decided by Jess Haley, 2026-10-27): only
-% the writer's default 'jrclust.prm' is notation; any other name on the
-% calculation carries the document (carry-106)
-v1 = jrclust();
-v1.base.name = 'my_sort.prm';
-verifyCarriedFor(testCase, {v1}, '[carry-106] awaiting_home: base.name "my_sort.prm"');
+function testAnyJrclustSettingsFileNameConverts(testCase)
+% [jrclust settings-file name dropped] (Decided by Jess Haley, 2026-11-11,
+% replacing [jrclust default name is notation] and [one-reading quick answers]
+% Q5): the settings-file name is not carried, whatever its value. A name other
+% than the writer's default no longer carries the document (it did, carry-106),
+% nor does a Soph-vintage ndi_document.name that differs from base.name (it
+% did, carry-100); each converts, and its only loss is base.name.
+other = jrclust();
+other.base.name = 'my_sort.prm';
+conflicting = jrclustNdiDocument();
+conflicting.base.name = 'other.prm';
+cases = {'another name', other; 'ndi_document.name differs from base.name', conflicting};
+for k = 1:size(cases, 1)
+    [label, v1] = cases{k, :};
+    out = runRaw({v1});
+    verifyEmpty(testCase, out.quarantine, [label ': quarantined']);
+    verifyFalse(testCase, isCarried(out, []), [label ': carried']);
+    notes = out.summary.migration_notes;
+    verifyFalse(testCase, isfield(notes, 'carried_as_v1'), [label ': a carried_as_v1 note']);
+    verifyFalse(testCase, isfield(notes, 'v1_name_statement_carried'), ...
+        [label ': counted as a named statement carried']);
+    r = did2.convert.roundtrip.check(v1, own(out.migrated));
+    verifyFalse(testCase, r.carried, [label ': carried?']);
+    verifyEqual(testCase, lostPaths(r), {'base.name'}, sprintf('%s: lost %s', label, describeLost(r)));
+    verifyEmpty(testCase, r.invented, [label ': invented']);
+    verifyEmpty(testCase, r.unplaced, [label ': unplaced']);
+end
+% the migrator, called alone on the raw Soph vintage, converts it too
+out = did2.convert.migrators_j.jrclust_clusters(conflicting);
+verifyGreaterThan(testCase, numel(out), 1, 'the migrator carried the Soph vintage');
+end
+
+function testTheJrclustSettingsFileNameIsAnAcceptedLoss(testCase)
+% [jrclust settings-file name dropped] (Jess Haley, 2026-11-11): the whole-batch
+% round trip lists the name as an accepted loss, named and counted, not a
+% failure: base.name, and the Soph vintage's ndi_document.name (compared as
+% base.name). A document with no name lists nothing.
+named = jrclust();
+soph = jrclustNdiDocument();
+soph.base.id = 'jc_2';
+unnamed = jrclustNoName();
+unnamed.base.id = 'jc_3';
+bodies = {named, soph, unnamed};
+out = runRaw(bodies);
+verifyEmpty(testCase, out.quarantine, quarantineText(out));
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyTrue(testCase, isfield(r.accepted_losses_by_name, 'jrclustSettingsFileName'), ...
+    'the name is not listed as an accepted loss');
+if isfield(r.accepted_losses_by_name, 'jrclustSettingsFileName')
+    verifyEqual(testCase, r.accepted_losses_by_name.jrclustSettingsFileName, 2);
+end
+hits = r.accepted_losses(strcmp({r.accepted_losses.name}, 'jrclust settings file name'));
+verifyEqual(testCase, sort({hits.source_id}), {'jc_1', 'jc_2'});
+for k = 1:numel(hits)
+    verifyEqual(testCase, hits(k).path, 'base.name');
+    verifyEqual(testCase, hits(k).class_name, 'jrclust_clusters');
+    verifyTrue(testCase, contains(hits(k).decision, '[jrclust settings-file name dropped]'));
+end
+for k = 1:numel(r.failures)
+    if any(strcmp(r.failures(k).source_id, {'jc_1', 'jc_2', 'jc_3'}))
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'base.name')), ...
+            sprintf('%s lost base.name as a failure', r.failures(k).source_id));
+    end
+end
 end
 
 % ===================== the switch ======================================
@@ -475,8 +531,8 @@ d = jsondecode(jsonencode(d));
 end
 
 function d = jrclustNoName()
-% the writer's document with base.name empty (the writer names it
-% 'jrclust.prm', its fixed default: [jrclust default name is notation])
+% the writer's document with base.name empty (the writer names it from its
+% `prmName` option, 'jrclust.prm' by default)
 d = jrclust();
 d.base.name = '';
 end

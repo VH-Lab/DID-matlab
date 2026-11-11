@@ -81,19 +81,25 @@ end
 % `app`; the old +migrators/jrclust_clusters.m, a rename of
 % res_mat_MD5_checksum, was never reached and is deleted). The checksum is read
 % in either spelling; identity through jRawBody; the `app` block in either
-% spelling (jSoftwareFromApp, checked by did2.convert.v1read.readApp). What
-% universalRenames would have discarded (an `ndi_document` beside `base`, e.g.
-% the Soph vintage's ndi_document.name 'jrclust.prm'; a depends_on version)
-% carries the document as the renamed path did (carry-100; [one-reading quick
-% answers] Q5, Jess Haley, 2026-10-26). Every other v1 field is accounted for
-% (unreadFields): one this fold reads nowhere carries the document whole as
-% v1. base.name, which the writer sets to the parameter file's name, is not
-% written (#73 item 54), as before the switch: the round trip lists it
-% (testRawV1RoundTripSpike, a known finding; open). A carry is the untouched
-% v1 source. Inverse: did2.convert.roundtrip.jrclust_clusters.
+% spelling (jSoftwareFromApp, checked by did2.convert.v1read.readApp).
+% THE SETTINGS-FILE NAME IS NOT CARRIED (Decided by Jess Haley, 2026-11-11
+% [jrclust settings-file name dropped], replacing [one-reading quick answers]
+% Q5): the name the writer sets from its `prmName` option -- base.name, or the
+% Soph vintage's ndi_document.name 'jrclust.prm' -- is dropped before the
+% checks below (did2.convert.jrclustSettingsNameDropped), so a document whose
+% only extra is that name migrates to its decided shape. base.name is not
+% written (#73 item 54). It is a recorded difference from v1: the round trip
+% lists it as an accepted loss (did2.convert.roundtrip.wholeBatch). What else
+% universalRenames would have discarded (another `ndi_document` field beside
+% `base`, or one it states differently from `base`; a depends_on version)
+% still carries the document as the renamed path did (carry-100). Every other
+% v1 field is accounted for (unreadFields): one this fold reads nowhere
+% carries the document whole as v1. A carry is the untouched v1 source.
+% Inverse: did2.convert.roundtrip.jrclust_clusters.
 raw = preBody;
-preBody = jRawBody(raw, 'jrclust_clusters');
-collision = jResponseRenameCollisions(raw, cell(0, 3));
+reading = did2.convert.jrclustSettingsNameDropped(raw);
+preBody = jRawBody(reading, 'jrclust_clusters');
+collision = jResponseRenameCollisions(reading, cell(0, 3));
 if ~isempty(collision)
     % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'jrclust_clusters', char(preBody.base.id), ...
