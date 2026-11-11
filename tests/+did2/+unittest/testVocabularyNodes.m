@@ -35,9 +35,11 @@ verifyEqual(testCase, did2.build.vocabulary('relation', 'derived_from'), want);
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'epoch'), 'EMPTY:0000383');    % L3
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'Data Set'), 'NCIT:C47824');
 % culture ([culture and alignment nodes]): the loaded schema's row decides --
-% '' while it binds culture with no node, OBI:0001876 once it registers it
-verifyEqual(testCase, did2.build.vocabulary('entity_type', 'culture'), ...
-    boundNodeNamed(did2.schema.cache.shared(), 'entity', 'type', 'culture'));
+% '' while it binds culture with no node, OBI:0001876 once it registers it,
+% under either name ([culture renamed cell culture]: the row is
+% {OBI:0001876, "cell culture"} from did-schema #320)
+want = cultureRowNode(did2.schema.cache.shared());
+verifyEqual(testCase, did2.build.vocabulary('entity_type', 'culture'), want);
 % the retired relations have no node ([vocabulary nodes] K5, A1, G5)
 for r = {'recorded_by', 'measured_distance_to', 'aliquot_of', 'passage_of'}
     verifyEqual(testCase, did2.build.vocabulary('relation', r{1}), '', r{1});
@@ -200,7 +202,7 @@ function testCultureComparesByNodeOnceTheSchemaBindsIt(testCase)
 verifyEqual(testCase, h(strcmp(h(:, 1), 'culture'), 2), {'OBI:0001876'});
 bindCulture(testCase);
 c = did2.schema.cache.shared();
-verifyEqual(testCase, boundNodeNamed(c, 'entity', 'type', 'culture'), 'OBI:0001876', ...
+verifyEqual(testCase, cultureRowNode(c), 'OBI:0001876', ...
     'the copy must bind culture to OBI:0001876, or this test proves nothing');
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'culture'), 'OBI:0001876');
 verifyTrue(testCase, did2.build.isVocabulary(struct('node', 'OBI:0001876', 'name', 'cell culture'), ...
@@ -222,7 +224,7 @@ function testCultureHasNoNodeWhileTheSchemaBindsNone(testCase)
 % and that row wins over the table, so nothing writes a node the schema does
 % not bind and a culture is matched by its name as before
 c = did2.schema.cache.shared();
-if ~isempty(boundNodeNamed(c, 'entity', 'type', 'culture'))
+if ~isempty(cultureRowNode(c))
     assumeFail(testCase, 'the loaded schema binds culture to a node already');
 end
 verifyEqual(testCase, did2.build.vocabulary('entity_type', 'culture'), '');
@@ -261,6 +263,15 @@ ent = did2.build.document('entity', struct('type', did2.build.term('', 'culture'
     'local_identifier', 'c1'), 'SessionId', testCase.TestData.sid, 'Validate', false);
 verifyEqual(testCase, ent.entity.type.node, 'OBI:0001876');
 verifyEqual(testCase, char(ent.entity.type.name), 'cell culture');
+end
+
+function n = cultureRowNode(c)
+% the node of the schema's culture row, named "culture" (before did-schema
+% #320) or "cell culture" (after, [culture renamed cell culture])
+n = boundNodeNamed(c, 'entity', 'type', 'culture');
+if isempty(n)
+    n = boundNodeNamed(c, 'entity', 'type', 'cell culture');
+end
 end
 
 function bindCulture(testCase, name)
