@@ -445,6 +445,54 @@ verifyEqual(testCase, rebuilt.element.ndi_element_class, 'ndi.element.ensemble')
 verifyEqual(testCase, rebuilt.element.type, 'ensemble');
 end
 
+function testADeviceWithNoLinksInTheBatchIsNotAnElement(testCase)
+% [unlinked device is not an element] (Decided by Jess Haley, 2026-11-11,
+% did-schema docs/plans/did_v2_go_forward_class_audit.md), the link test of
+% NDI-matlab's ndi.vintage.linkedElements ([element recognised by its
+% links]): in the whole batch (CTX), a device is an element only through a
+% recording observation naming it as `instrument_id` or a `connected to`
+% (RO:0002170) relation naming it as child. With neither it rebuilds no
+% class, and its v1 class is lost here (wholeBatch lists it as the decided
+% difference); with either, its probetype2object.json class. Without CTX
+% (a per-class round trip) the links are not readable and the class is
+% rebuilt from the type.
+v1 = probeDoc('el_lk', 'rayostim', 1, 'stimulator', 'ndi.probe.timeseries.stimulator');
+docs = elementOutputs(runRaw(v1), 'el_lk');
+verifyEqual(testCase, did2.unittest.helpers.classKey(docs{1}), 'device');
+other = struct('document_class', struct('class_name', 'directed_relation'), ...
+    'base', struct('id', 'rel_other'), ...
+    'directed_relation', struct('relation', struct('node', 'RO:0002350', 'name', 'member of')), ...
+    'depends_on', struct('name', {'child_id', 'parent_id'}, 'value', {'el_lk', 'grp_x'}));
+obs = struct('document_class', struct('class_name', 'observation'), ...
+    'base', struct('id', 'obs_lk'), ...
+    'depends_on', struct('name', {'entity_id', 'instrument_id'}, 'value', {'subj_1', 'el_lk'}));
+wire = struct('document_class', struct('class_name', 'directed_relation'), ...
+    'base', struct('id', 'rel_wire'), ...
+    'directed_relation', struct('relation', struct('node', 'RO:0002170', 'name', 'connected to')), ...
+    'depends_on', struct('name', {'child_id', 'parent_id'}, 'value', {'el_lk', 'daq_x'}));
+cases = { ...
+    'no links (a relation that is not wiring)', {other}, ''; ...
+    'a recording observation', {obs}, 'ndi.probe.timeseries.stimulator'; ...
+    'a connected to wiring', {wire}, 'ndi.probe.timeseries.stimulator'};
+testCase.log(sprintf('DENOMINATOR: %d batch index(es)', size(cases, 1)));
+for k = 1:size(cases, 1)
+    [label, ctxDocs, want] = cases{k, :};
+    ctx = struct('docs', {ctxDocs}, ...
+        'byId', containers.Map({char(ctxDocs{1}.base.id)}, {1}), ...
+        'referrers', containers.Map({'el_lk'}, {1}));
+    rebuilt = did2.convert.roundtrip.element(docs, ctx);
+    verifyEqual(testCase, rebuilt.element.ndi_element_class, want, label);
+    r = did2.convert.roundtrip.check(v1, docs, ctx);
+    verifyEqual(testCase, any(strcmp({r.lost.path}, 'element.ndi_element_class')), isempty(want), ...
+        sprintf('%s: %s', label, describeLost(r)));
+    verifyFalse(testCase, any(strcmp(r.equivalent, 'element.ndi_element_class')), ...
+        [label ': reported as an equivalent element']);
+end
+% no batch index: the class is rebuilt from the type
+rebuilt = did2.convert.roundtrip.element(docs);
+verifyEqual(testCase, rebuilt.element.ndi_element_class, 'ndi.probe.timeseries.stimulator');
+end
+
 function testAProbeThatNeverRecordedRebuildsItsGeneralType(testCase)
 % [clamp mode of unrecorded probe dropped] (Jess Haley, 2026-11-03): a patch,
 % sharp or imaging probe that never recorded keeps its device kind and no

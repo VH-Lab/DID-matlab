@@ -316,15 +316,86 @@ assertEqual(testCase, rep.mode_statements_dropped_unrecorded, 1, 'premise');
 assertEqual(testCase, rep.mode_statements_dropped_recorded, 1, 'premise');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyEqual(testCase, r.accepted_losses_by_name.modeOfAProbeThatNeverRecorded, 1, describe(r));
-hits = r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_m_idle'));
+isMode = strcmp({r.accepted_losses.name}, 'mode of a probe that never recorded');
+hits = r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_m_idle') & isMode);
 verifyEqual(testCase, numel(hits), 1);
 verifyEqual(testCase, hits(1).path, 'element.type');
 verifyEmpty(testCase, r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_m_rec')), ...
     'the recorded probe''s type was taken as an accepted loss');
+% the idle probe has no recording and no wiring either, so its class is the
+% other accepted loss, [unlinked device is not an element] (Jess Haley, 2026-11-11)
+unlinked = r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_m_idle') & ~isMode);
+verifyEqual(testCase, numel(unlinked), 1, describe(r));
+if isscalar(unlinked)
+    verifyEqual(testCase, unlinked.path, 'element.ndi_element_class');
+end
 for k = 1:numel(r.failures)
     if any(strcmp(r.failures(k).source_id, {'wb_m_idle', 'wb_m_rec'}))
         verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.type')), describe(r));
         verifyEmpty(testCase, r.failures(k).unplaced, describe(r));
+    end
+end
+end
+
+function testADeviceWithNoLinksIsNotAnElement(testCase)
+% [unlinked device is not an element] (Decided by Jess Haley, 2026-11-11,
+% did-schema docs/plans/did_v2_go_forward_class_audit.md): a migrated v1 probe
+% whose device has no recording observation (`instrument_id`) and no wiring
+% (`connected to`, RO:0002170) is not an element ([element recognised by its
+% links]), as NDI-matlab's ndi.vintage.linkedElements reads it. It keeps its
+% device entity; its v1 ndi_element_class is not rebuilt, and the round trip
+% lists that as the decided difference, named and counted, not a failure and
+% not an equivalent element. A probe the probe map names (recorded, wired)
+% rebuilds its class and is not listed. (PRED's `rayostim`, a stimulator with
+% no epochs, is the case found: its corpus zip has no epoch files, NDI-matlab
+% #785.)
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = '41268b6f5c6a3d4e_00000000000000c4';
+bodies = {sessionV1('wb_u_sess', sid), subjectV1('wb_u_spec', sid, 'L'), ...
+    elementV1('wb_u_rec', sid, 'p', 1, 'n-trode', 'wb_u_spec'), ...
+    elementV1('wb_u_idle', sid, 'rayostim', 1, 'stimulator', 'wb_u_spec'), ...
+    daqsystemV1('wb_u_daq', sid, 'intan1', 'wb_u_nav'), ...
+    manifestV1('wb_u_efi', sid, 't0001', 'wb_u_nav', ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'p\t1\tn-trode\tintan1:ai1-2\tL\n']))};
+bodies{4}.element.ndi_element_class = 'ndi.probe.timeseries.stimulator';
+% the probes' edges as ndi.element/newdocument writes them
+for k = 3:4
+    bodies{k}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+        'value', {'', 'wb_u_spec'});
+end
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'did_v2');
+% premise: the idle stimulator is still a device entity under its v1 id
+finalBodies = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
+ix = find(cellfun(@(b) strcmp(char(b.base.id), 'wb_u_idle'), finalBodies), 1);
+assertNotEmpty(testCase, ix, 'premise: the stimulator''s entity is in the batch');
+verifyEqual(testCase, did2.unittest.helpers.classKey(finalBodies{ix}), 'device', ...
+    'the unlinked stimulator keeps its device entity');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyTrue(testCase, isfield(r.accepted_losses_by_name, 'deviceWithNoLinksIsNotAnElement'), describe(r));
+if isfield(r.accepted_losses_by_name, 'deviceWithNoLinksIsNotAnElement')
+    verifyEqual(testCase, r.accepted_losses_by_name.deviceWithNoLinksIsNotAnElement, 1, describe(r));
+end
+isUnlinked = strcmp({r.accepted_losses.name}, 'device with no links is not an element');
+hits = r.accepted_losses(isUnlinked);
+verifyEqual(testCase, numel(hits), 1, describe(r));
+if isscalar(hits)
+    verifyEqual(testCase, hits.source_id, 'wb_u_idle');
+    verifyEqual(testCase, hits.class_name, 'element');
+    verifyEqual(testCase, hits.path, 'element.ndi_element_class');
+    verifyTrue(testCase, contains(hits.decision, '[unlinked device is not an element]'));
+end
+verifyEmpty(testCase, r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'wb_u_rec')), ...
+    'the recorded, wired probe was taken as an accepted loss');
+for k = 1:numel(r.failures)
+    if any(strcmp(r.failures(k).source_id, {'wb_u_idle', 'wb_u_rec'}))
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.ndi_element_class')), describe(r));
     end
 end
 end

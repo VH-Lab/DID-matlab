@@ -74,6 +74,12 @@ function [v1, spec] = element(bodies, ctx)
 %                                      relations in CTX 'ndi.element.ensemble'
 %                                      (and type 'ensemble'), a Group with
 %                                      none 'ndi.neuron' (and type 'spikes').
+%                                      In the whole batch (CTX), a device
+%                                      with no recording observation and no
+%                                      `connected to` wiring is not an
+%                                      element and rebuilds '' ([unlinked
+%                                      device is not an element], Jess Haley,
+%                                      2026-11-11; wholeBatch reports it).
 %                                      An ensemble reads as the latter before
 %                                      NDI-matlab's second pass and is
 %                                      checked after it (rebuildClass)
@@ -350,6 +356,16 @@ if ~isstruct(entity) || ~isfield(entity, 'type')
     return;
 end
 if did2.build.isVocabulary(entity.type, 'entity_type', 'device')
+    % [unlinked device is not an element] (Decided by Jess Haley, 2026-11-11):
+    % in the whole batch (CTX), a device with no recording observation
+    % (`instrument_id`) and no wiring (`connected to`, RO:0002170) is not an
+    % element, as NDI-matlab's ndi.vintage.linkedElements reads it: it
+    % rebuilds no class, and did2.convert.roundtrip.wholeBatch reports its v1
+    % class as that decided difference. With no CTX (a per-class round trip)
+    % the links are not readable, so the class is rebuilt from the type.
+    if ~isempty(ctx) && isempty(deviceLinks(ctx, id))
+        return;
+    end
     ndiClass = did2.convert.elementClassOfKind('probe', type);
 elseif did2.build.isVocabulary(entity.type, 'entity_type', 'cell')
     ndiClass = did2.convert.elementClassOfKind('unit', type);
