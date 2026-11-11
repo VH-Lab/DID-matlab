@@ -407,7 +407,8 @@ elseif strcmp(family, 'csf')
     % V_eta_go_forward_class_audit.md): the method term names the general
     % procedure, not the calculator class. A contrast sensitivity result is
     % Naka-Rushton fits (jContrastSensitivityValue: one model_fit entry per
-    % RB / RBN / RBNS variant), so its term is OBI:0200072 "curve fitting
+    % RB / RBN / RBNS variant and spatial frequency, [tuning fit coefficients
+    % named by symbol]), so its term is OBI:0200072 "curve fitting
     % data transformation"; the calculator (METHODNAME) is the `software`
     % entity on software_id. The parameters are the v1 settings, as before.
     f.method = jMethod(did2.convert.registeredTerm('OBI:0200072', ...

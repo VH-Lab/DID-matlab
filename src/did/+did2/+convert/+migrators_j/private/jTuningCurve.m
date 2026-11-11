@@ -75,25 +75,37 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %     does not say ([unstated response variable], 2026-10-23); OUTCOME names
 %     the case for the report.
 %
-%   Fit coefficients are a vector in v1 with no names; each becomes a
-%   `{variable, value}` entry named '<model> parameter k' (a label) -- a
-%   CONSERVATIVE CHOICE, recorded.
+%   NAMED BY SYMBOL (Decided by Jess Haley, 2026-11-11, did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md [tuning fit coefficients
+%   named by symbol]): v1 stores a fit's coefficients as an unnamed vector.
+%   Each becomes a `{variable, value}` entry whose variable is the label of
+%   its SYMBOL in the writer's equation, in stored order; the model is one
+%   registered term and `equation` the writer's formula in those symbols. The
+%   table is did2.convert.tuningFitModels (read by the round trip too):
+%   Naka-Rushton (EMPTY:0000416) [Rm c50 n s]; double Gaussian direction
+%   tuning (EMPTY:0000441) [Rsp Rp Op sig Rn]; difference of Gaussians
+%   (EMPTY:0000442) [a1 b1 a2 b2]; Movshon 2005 (EMPTY:0000443) [k fc fh B C];
+%   log-Gaussian (EMPTY:0000444) [a b c d]; cubic spline interpolation
+%   (EMPTY:0000445), no coefficients. The TF difference of Gaussians' leading
+%   constant 0 (temporal_frequency_analysis.m `dog_par = [0 dog_par]`) is not
+%   written; a TF DoG vector that does not start with 0, or any vector with
+%   more values than its model has symbols, stays unplaced and carries the
+%   document (carry-056). `movshon` and `movshon c` are one model, the first
+%   with the constraint C = 0.
 %
 %   ONE FUNCTION, TOLD APART BY ITS CONSTRAINTS (Jess Haley, 2026-10-27, did-schema
 %   V_eta_go_forward_class_audit.md):
 %     contrast  [Naka-Rushton is one function] (2026-10-26), built by [tuning
 %               fits use curve fitting now]: the writer's naka_rushton_RB_,
-%               _RBN_ and _RBNS_ fits are ONE model, 'Naka-Rushton'
-%               (R(c) = Rm c^n / (c^(n s) + c50^(n s)); NDIcalc-vis-matlab
-%               00e3e0f ndi.calc.vis.contrast_tuning writes the parameters as
-%               [Rm c50], [Rm c50 n], [Rm c50 n s]), RB written as the
-%               constraints n = 1 and s = 1, RBN as s = 1, in the fit entry's
-%               `constraints`: {variable 'Naka-Rushton parameter 3' (n), value
-%               1} and {'Naka-Rushton parameter 4' (s), 1}. The model is the
-%               term EMPTY:0000416 "Naka-Rushton function" (Decided by Jess
-%               Haley, 2026-10-30 [Naka-Rushton function minted]), not the
-%               bare label 'Naka-Rushton' written before; the coefficients
-%               keep their names, 'Naka-Rushton parameter k'.
+%               _RBN_ and _RBNS_ fits are ONE model, EMPTY:0000416
+%               "Naka-Rushton function" ([Naka-Rushton function minted],
+%               2026-10-30; NDIcalc-vis-matlab 00e3e0f
+%               ndi.calc.vis.contrast_tuning writes the parameters as [Rm c50],
+%               [Rm c50 n], [Rm c50 n s]), RB written as the constraints n = 1
+%               and s = 1, RBN as s = 1, in the fit entry's `constraints`:
+%               {variable 'n', value 1} and {'s', 1} ([tuning fit coefficients
+%               named by symbol]; 'Naka-Rushton parameter 3' and '... 4'
+%               before).
 %     speed     [Priebe fits are one function]: the writer's `fit`,
 %               `fit_no_speed` and `fit_fullspeed` are one equation
 %               (NDIcalc-vis-matlab 00e3e0f: vis.speed.fit, fit_nospeed and
@@ -575,77 +587,99 @@ for g = 1:numel(prefixes)
         model = blockName;
         if startsWith(model, 'fit_'); model = model(5:end); end
     end
-    [model, constraints, modelTerm] = oneFunction(model, blockName, family);
-    [e, d] = oneFit(grp, model, constraints, family, modelTerm);
+    [model, constraints, spec] = oneFunction(model, blockName, family);
+    [e, d] = oneFit(grp, model, constraints, family, spec);
     entries{end+1} = e; %#ok<AGROW>
     dropped = [dropped, prefixed([blockName '.' P], d)]; %#ok<AGROW>
 end
 dropped = [dropped, prefixed([blockName '.'], stated(blk, fn(~claimed)))];
 end
 
-function [model, constraints, modelTerm] = oneFunction(model, blockName, family)
-%ONEFUNCTION The one model a fit is, and the constraints that tell it apart
-%   ({coefficient number, value} rows): see ONE FUNCTION in the header.
-%   MODELTERM is the model's term when it has one ([] otherwise: oneFit
-%   writes the label of MODEL); MODEL stays the stem of the coefficient names.
+function [model, constraints, spec] = oneFunction(model, blockName, family)
+%ONEFUNCTION The one model a fit is, and the constraints that tell it apart:
+%   see ONE FUNCTION and NAMED BY SYMBOL in the header. SPEC is the fit's row
+%   of did2.convert.tuningFitModels (its term, symbols, equation and
+%   constraints) when it has one, else [] and CONSTRAINTS are {coefficient
+%   number, value} rows (the speed fits); MODEL stays the label of a fit with
+%   no row.
 constraints = zeros(0, 2);
-modelTerm = [];
-switch family
-    case 'contrast'
-        t = regexp(model, '^naka_rushton_(RB|RBN|RBNS)$', 'tokens', 'once', 'ignorecase');
-        if ~isempty(t)
-            model = 'Naka-Rushton';
-            % Decided by Jess Haley, 2026-10-30, did-schema
-            % V_eta_go_forward_class_audit.md [Naka-Rushton function minted]:
-            % the model is EMPTY:0000416 "Naka-Rushton function" (empty-ontology
-            % #32), not a bare label. Written by its node even where the term
-            % registry in use does not hold the row yet (did-schema #242); a
-            % migration runs with the TermRegistry check off.
-            modelTerm = did2.convert.registeredTerm('EMPTY:0000416', 'Naka-Rushton function');
-            switch upper(t{1})
-                case 'RB'
-                    constraints = [3 1; 4 1];   % n = 1, s = 1
-                case 'RBN'
-                    constraints = [4 1];        % s = 1
-            end
-        end
-    case 'speed'
-        if strcmpi(model, 'Priebe_fit')
-            switch blockName
-                case 'fit_no_speed'
-                    constraints = [3 0];        % xi = 0
-                case 'fit_fullspeed'
-                    constraints = [3 1];        % xi = 1
-            end
-        end
+spec = [];
+if any(strcmp(family, {'oridir', 'contrast', 'sf', 'tf'}))
+    row = did2.convert.tuningFitModels(family, model);
+    if isscalar(row)
+        spec = row;
+        return;
+    end
+end
+if strcmp(family, 'speed') && strcmpi(model, 'Priebe_fit')
+    % [Priebe fits are one function]; not covered by [tuning fit coefficients
+    % named by symbol] (no model term yet): named by position, as before
+    switch blockName
+        case 'fit_no_speed'
+            constraints = [3 0];        % xi = 0
+        case 'fit_fullspeed'
+            constraints = [3 1];        % xi = 1
+    end
 end
 end
 
-function [e, dropped] = oneFit(s, model, constraints, family, modelTerm)
+function [e, dropped] = oneFit(s, model, constraints, family, spec)
 label = strrep(model, '_', ' ');
-if nargin >= 5 && ~isempty(modelTerm)
-    e = struct('model', modelTerm);   % [Naka-Rushton function minted]
+used = {};
+dropped = {};
+p = getf(s, {'parameters'});
+if nargin >= 5 && isstruct(spec) && isscalar(spec)
+    % [tuning fit coefficients named by symbol] (Decided by Jess Haley,
+    % 2026-11-11): the model term, the writer's formula, and each coefficient
+    % and constraint named by its symbol, in stored order
+    e = struct('model', did2.convert.registeredTerm(spec.node, spec.name));
+    if ~isempty(spec.equation)
+        e.equation = spec.equation;
+    end
+    [p, ok] = storedCoefficients(s, p, spec);
+    if ok
+        used{end+1} = 'parameters';
+        if ~isempty(p)
+            c = cell(1, numel(p));
+            for k = 1:numel(p)
+                c{k} = struct('variable', symbolLabel(spec.symbols{k}), 'value', double(p(k)));
+            end
+            e.coefficients = did2.build.list(c{:});
+        end
+    else
+        % more values than the model has symbols, or a TF difference of
+        % Gaussians whose leading value is not the writer's constant 0: the
+        % vector has no faithful naming, so it stays unplaced and the document
+        % is carried (carry-056)
+        dropped{end+1} = 'parameters';
+    end
+    if ~isempty(spec.constraints)
+        c = cell(1, size(spec.constraints, 1));
+        for k = 1:size(spec.constraints, 1)
+            c{k} = struct('variable', symbolLabel(spec.constraints{k, 1}), ...
+                'value', spec.constraints{k, 2});
+        end
+        e.constraints = did2.build.list(c{:});
+    end
 else
     e = struct('model', jLabel(label));
-end
-used = {};
-p = getf(s, {'parameters'});
-if isnumeric(p) && ~isempty(p)
-    c = cell(1, numel(p));
-    for k = 1:numel(p)
-        c{k} = struct('variable', jLabel(sprintf('%s parameter %d', ...
-            label, k)), 'value', double(p(k)));
+    if isnumeric(p) && ~isempty(p)
+        c = cell(1, numel(p));
+        for k = 1:numel(p)
+            c{k} = struct('variable', jLabel(sprintf('%s parameter %d', ...
+                label, k)), 'value', double(p(k)));
+        end
+        e.coefficients = did2.build.list(c{:});
+        used{end+1} = 'parameters';
     end
-    e.coefficients = did2.build.list(c{:});
-    used{end+1} = 'parameters';
-end
-if ~isempty(constraints)
-    c = cell(1, size(constraints, 1));
-    for k = 1:size(constraints, 1)
-        c{k} = struct('variable', jLabel(sprintf('%s parameter %d', label, ...
-            constraints(k, 1))), 'value', constraints(k, 2));
+    if ~isempty(constraints)
+        c = cell(1, size(constraints, 1));
+        for k = 1:size(constraints, 1)
+            c{k} = struct('variable', jLabel(sprintf('%s parameter %d', label, ...
+                constraints(k, 1))), 'value', constraints(k, 2));
+        end
+        e.constraints = did2.build.list(c{:});
     end
-    e.constraints = did2.build.list(c{:});
 end
 gd = struct();
 for f = {{'r2', {'r2', 'r_squared'}}, {'sse', {'sse'}}, {'sse_per_point', {'sse_per_point', 'sse_perpoint'}}}
@@ -704,8 +738,41 @@ if isnumeric(y) && ~isempty(y) && ~isempty(xs) && all(cellfun(@numel, xs) == num
     e.sampled_fit = struct('independent_values', [xs{:}], 'response', double(y(:)));
     used{end+1} = yn;
 end
-dropped = stated(s, setdiff(fieldnames(s), used));
-dropped = reshape(dropped, 1, []);
+dropped = [dropped, reshape(stated(s, setdiff(fieldnames(s), [used, dropped])), 1, [])];
+end
+
+function [p, ok] = storedCoefficients(s, p, spec)
+%STOREDCOEFFICIENTS The coefficient values of a fit with a model row, in stored
+%   order. OK is false when the v1 vector cannot be named by the row's
+%   symbols: more values than symbols, or (SPEC.leadingZero, the TF difference
+%   of Gaussians) a vector that is absent, empty or does not start with the
+%   writer's constant 0, which the round trip would restore. A fit with no
+%   `parameters` (the spline) is OK with no values.
+ok = true;
+[~, nm] = getfn(s, {'parameters'});
+if spec.leadingZero
+    if ~(isnumeric(p) && ~isempty(p) && double(p(1)) == 0)
+        ok = false;
+        p = [];
+        return;
+    end
+    p = p(2:end);
+elseif isempty(nm) || ~isnumeric(p)
+    p = [];
+    ok = isempty(nm) || isempty(s.(nm));
+    return;
+end
+p = double(p(:));
+if numel(p) > numel(spec.symbols)
+    ok = false;
+    p = [];
+end
+end
+
+function t = symbolLabel(symbol)
+% a coefficient's symbol as a label ({node '', name}): never looked up in the
+% term registry, where a one-letter symbol could match a registered name
+t = struct('node', '', 'name', symbol);
 end
 
 function [out, used, notes] = halfHeightValues(vec)

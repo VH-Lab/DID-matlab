@@ -12,6 +12,9 @@ function tests = testTuningDecisions
 %     [Priebe fits are one function]             testPriebeFitsAreOneFunction
 %     [Naka-Rushton function minted] (2026-10-30)  testNakaRushtonFitsAreOneModelToldApartByConstraints,
 %                                                testTheBareNakaRushtonLabelStillRoundTrips
+%     [tuning fit coefficients named by symbol] (2026-11-11)  testFitsAreNamedBySymbol*,
+%                                                testATemporalFrequencyDoGWithNoLeadingZeroIsCarried,
+%                                                testContrastSensitivityIsOneFitPerSpatialFrequency
 %     [hotelling spellings are one field]        testHotellingSpellingsAreOneField
 %     [input names rebuild from the input class] testInputNames*
 %     [tuning stimids rebuild]                   testTuningStimids*
@@ -55,7 +58,7 @@ function testFitsUseCurveFittingAndStateTheModelOnce(testCase)
 % rebuilds v1 from those entries. The method keeps its term OBI:0200072.
 cases = { ...
     'oridir', writerOutput('oridirtuning_calc'), 'orientation_direction_tuning_calculation', ...
-        'double gaussian'; ...
+        'double Gaussian direction tuning function'; ...   % [tuning fit coefficients named by symbol]
     'contrast', convertedContrast(), 'contrast_tuning_calculation', 'Naka-Rushton function'; ...   % [Naka-Rushton function minted]
     'speed', writerOutput('speedtuning_calc'), 'speed_tuning_calculation', 'Priebe fit'; ...
     'SF', writerOutput('spatial_frequency_tuning_calc'), ...
@@ -146,8 +149,10 @@ for k = 1:3
     verifyEqual(testCase, char(mf{k}.model.name), 'Naka-Rushton function');
     held{k} = constraintText(mf{k});
 end
-verifyEqual(testCase, sort(held), sort({'Naka-Rushton parameter 3=1;Naka-Rushton parameter 4=1', ...
-    'Naka-Rushton parameter 4=1', ''}));
+% UPDATED 2026-11-11 ([tuning fit coefficients named by symbol], Jess Haley):
+% the constraints name the symbols n and s ('Naka-Rushton parameter 3' and
+% '... 4' before)
+verifyEqual(testCase, sort(held), sort({'n=1;s=1', 's=1', ''}));
 end
 
 function testTheBareNakaRushtonLabelStillRoundTrips(testCase)
@@ -181,6 +186,208 @@ end
 verifyEqual(testCase, changed, 3, 'the three Naka-Rushton fits were relabelled');
 r = did2.convert.roundtrip.check(v1, bodies);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'contrast, bare Naka-Rushton label', {});
+end
+
+% ============== [tuning fit coefficients named by symbol] =================
+% Decided by Jess Haley, 2026-11-11 (did-schema
+% docs/plans/did_v2_go_forward_class_audit.md): a migrated tuning fit names
+% each coefficient and constraint by its symbol in the writer's equation, its
+% model by one registered term (EMPTY:0000416, EMPTY:0000441-0000445), and
+% fills `equation` with the writer's formula; the round trip gives v1 back.
+
+function testFitsAreNamedBySymbolDoubleGaussian(testCase)
+v1 = writerOutput('oridirtuning_calc');
+mf = fitsOf(testCase, v1, 'orientation_direction_tuning_calculation');
+assertEqual(testCase, numel(mf), 1);
+verifyNamedFit(testCase, mf{1}, 'EMPTY:0000441', {'Rsp', 'Rp', 'Op', 'sig', 'Rn'}, ...
+    v1.orientation_direction_tuning.fit.double_gaussian_parameters, '', true);
+verifySymbolsInEquation(testCase, mf{1});
+verifyRoundTripOf(testCase, v1, 'oridir');
+end
+
+function testFitsAreNamedBySymbolNakaRushton(testCase)
+v1 = convertedContrast();
+mf = fitsOf(testCase, v1, 'contrast_tuning_calculation');
+assertEqual(testCase, numel(mf), 3);
+fit = v1.contrast_tuning.fit;
+want = struct('RB', {{'Rm', 'c50'}}, 'RBN', {{'Rm', 'c50', 'n'}}, ...
+    'RBNS', {{'Rm', 'c50', 'n', 's'}});
+held = struct('RB', 'n=1;s=1', 'RBN', 's=1', 'RBNS', '');
+for V = {'RB', 'RBN', 'RBNS'}
+    e = mf(cellfun(@(x) strcmp(constraintText(x), held.(V{1})), mf));
+    assertEqual(testCase, numel(e), 1, V{1});
+    verifyNamedFit(testCase, e{1}, 'EMPTY:0000416', want.(V{1}), ...
+        fit.(['naka_rushton_' V{1} '_parameters']), held.(V{1}), true);
+    verifySymbolsInEquation(testCase, e{1});
+end
+verifyRoundTripOf(testCase, v1, 'contrast');
+end
+
+function testFitsAreNamedBySymbolFrequencyModels(testCase)
+% SF and TF: difference of Gaussians, Movshon 2005 (movshon with C = 0,
+% movshon c with none), log-Gaussian and the cubic spline, as stated and in
+% the abs block. The TF difference of Gaussians' leading constant 0 is not a
+% coefficient (temporal_frequency_analysis.m `dog_par = [0 dog_par]`) and the
+% round trip restores it.
+did2.unittest.helpers.interpolatedListSchema(testCase, true);
+cases = {'spatial_frequency_tuning_calc', 'spatial_frequency_tuning', ...
+        'spatial_frequency_tuning_calculation', false; ...
+    'temporal_frequency_tuning_calc', 'temporal_frequency_tuning', ...
+        'temporal_frequency_tuning_calculation', true};
+for k = 1:size(cases, 1)
+    [cls, blockName, leafClass, leadingZero] = cases{k, :};
+    v1 = writerOutput(cls);
+    mfAll = fitsOf(testCase, v1, leafClass);
+    assertEqual(testCase, numel(mfAll), 10, [cls ': five fits as stated, five of |response|']);
+    transforms = cellfun(@fitTransform, mfAll, 'UniformOutput', false);
+    for t = {'', 'absolute value'}
+        mf = mfAll(strcmp(transforms, t{1}));
+        src = v1.(blockName);
+        if ~isempty(t{1}); src = src.abs; end
+        label = sprintf('%s (%s)', cls, t{1});
+        nodes = cellfun(@(e) char(e.model.node), mf, 'UniformOutput', false);
+        verifyEqual(testCase, sort(nodes), sort({'EMPTY:0000442', 'EMPTY:0000443', ...
+            'EMPTY:0000443', 'EMPTY:0000444', 'EMPTY:0000445'}), label);
+        dog = src.fit_dog.parameters;
+        if leadingZero
+            verifyEqual(testCase, double(dog(1)), 0, [label ': the writer''s leading 0']);
+            dog = dog(2:end);
+        end
+        verifyNamedFit(testCase, onlyFit(testCase, mf, 'EMPTY:0000442', ''), 'EMPTY:0000442', ...
+            {'a1', 'b1', 'a2', 'b2'}, dog, '', true);
+        verifyNamedFit(testCase, onlyFit(testCase, mf, 'EMPTY:0000443', 'C=0'), 'EMPTY:0000443', ...
+            {'k', 'fc', 'fh', 'B'}, src.fit_movshon.parameters, 'C=0', true);
+        verifyNamedFit(testCase, onlyFit(testCase, mf, 'EMPTY:0000443', ''), 'EMPTY:0000443', ...
+            {'k', 'fc', 'fh', 'B', 'C'}, src.fit_movshon_c.parameters, '', true);
+        verifyNamedFit(testCase, onlyFit(testCase, mf, 'EMPTY:0000444', ''), 'EMPTY:0000444', ...
+            {'a', 'b', 'c', 'd'}, src.fit_gausslog.parameters, '', true);
+        sp = onlyFit(testCase, mf, 'EMPTY:0000445', '');
+        verifyNamedFit(testCase, sp, 'EMPTY:0000445', {}, [], '', false);
+        verifyFalse(testCase, isfield(sp, 'equation') && ~isempty(sp.equation), ...
+            [label ': an interpolation has no equation']);
+        for e = mf
+            if ~strcmp(char(e{1}.model.node), 'EMPTY:0000445')
+                verifySymbolsInEquation(testCase, e{1});
+            end
+        end
+    end
+    % the round trip gives back fit_movshon and fit_movshon_c by the
+    % constraint, and (TF) the DoG's leading 0
+    verifyRoundTripOf(testCase, v1, cls);
+end
+end
+
+function testATemporalFrequencyDoGWithNoLeadingZeroIsCarried(testCase)
+% [tuning fit coefficients named by symbol] (1): a TF difference of Gaussians
+% whose leading value is not the writer's constant 0 has no faithful naming;
+% it stays unplaced and the document is carried (carry-056)
+did2.unittest.helpers.interpolatedListSchema(testCase, true);
+v1 = writerOutput('temporal_frequency_tuning_calc');
+v1.temporal_frequency_tuning.fit_dog.parameters(1) = 0.5;
+[carried, notes] = did2.unittest.helpers.carryNote({v1});
+verifyTrue(testCase, carried, 'carried whole as v1');
+verifyEqual(testCase, did2.unittest.helpers.carryRowFor(notes, ...
+    'temporal_frequency_tuning.fit_dog.parameters'), 'carry-056', notes);
+% the same vector with its leading 0 converts
+v1 = writerOutput('temporal_frequency_tuning_calc');
+[carried, notes] = did2.unittest.helpers.carryNote({v1});
+verifyFalse(testCase, carried, notes);
+end
+
+function testContrastSensitivityIsOneFitPerSpatialFrequency(testCase)
+% [tuning fit coefficients named by symbol] (3): the Naka-Rushton term and
+% symbols, one fit per spatial frequency and variant, the fixed values as
+% constraints; the fit's spatial frequency is its position along the value's
+% one spatial-frequency dimension; the round trip gives v1 back
+v1 = writerOutput('contrastsensitivity_calc');
+out = runRaw({v1});
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'the contrast sensitivity writer output converts');
+leaf = firstOfClass(out, 'contrast_sensitivity_calculation');
+assertNotEmpty(testCase, leaf);
+mf = asCell(leaf.contrast_sensitivity.value.model_fit);
+blk = v1.contrastsensitivity_calc;
+nSF = numel(blk.spatial_frequencies);
+assertEqual(testCase, numel(mf), 3 * nSF, 'one fit per variant and spatial frequency');
+want = struct('RB', {{'Rm', 'c50'}}, 'RBN', {{'Rm', 'c50', 'n'}}, ...
+    'RBNS', {{'Rm', 'c50', 'n', 's'}});
+held = struct('RB', 'n=1;s=1', 'RBN', 's=1', 'RBNS', '');
+for V = {'RB', 'RBN', 'RBNS'}
+    e = mf(cellfun(@(x) strcmp(constraintText(x), held.(V{1})), mf));
+    assertEqual(testCase, numel(e), nSF, V{1});
+    P = blk.(['parameters_' V{1}]);
+    S = blk.(['sensitivity_' V{1}]);
+    G = blk.(['relative_max_gain_' V{1}]);
+    for j = 1:nSF
+        verifyNamedFit(testCase, e{j}, 'EMPTY:0000416', want.(V{1}), P(:, j), held.(V{1}), true);
+        verifyEqual(testCase, e{j}.sensitivity(:), S(:, j), sprintf('%s fit %d', V{1}, j));
+        verifyEqual(testCase, e{j}.relative_max_gain, G(j), sprintf('%s fit %d', V{1}, j));
+    end
+end
+r = did2.convert.roundtrip.check(v1, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'contrast sensitivity', {});
+end
+
+function mf = fitsOf(testCase, v1, leafClass)
+% the model_fit entries of V1's one calculation of LEAFCLASS (converted)
+out = runRaw({v1});
+verifyEmpty(testCase, out.quarantine, leafClass);
+verifyEmpty(testCase, out.passthrough, [leafClass ': converts']);
+leaf = firstOfClass(out, leafClass);
+assertNotEmpty(testCase, leaf, leafClass);
+mf = asCell(leaf.tuning_curve.value.model_fit);
+end
+
+function e = onlyFit(testCase, mf, node, held)
+% the one entry of MF whose model is NODE and whose constraints read HELD
+hit = cellfun(@(x) strcmp(char(x.model.node), node) && strcmp(constraintText(x), held), mf);
+assertEqual(testCase, nnz(hit), 1, sprintf('one %s fit with constraints "%s"', node, held));
+e = mf{hit};
+end
+
+function verifyNamedFit(testCase, e, node, symbols, values, held, hasEquation)
+% E's model is NODE, its coefficients are SYMBOLS (in order) with VALUES, its
+% constraints read HELD, and it has an equation when HASEQUATION
+label = sprintf('%s [%s]', node, strjoin(symbols, ' '));
+verifyEqual(testCase, char(e.model.node), node, label);
+verifyNotEmpty(testCase, char(e.model.name), label);
+c = asCell(getFieldOr(e, 'coefficients'));
+names = reshape(cellfun(@(x) char(x.variable.name), c, 'UniformOutput', false), 1, []);
+verifyEqual(testCase, names, reshape(symbols, 1, []), [label ': coefficient symbols']);
+verifyTrue(testCase, all(cellfun(@(x) isempty(getFieldOr(x.variable, 'node')), c)), ...
+    [label ': a symbol is a label, not a term']);
+if ~isempty(c)
+    verifyEqual(testCase, cellfun(@(x) double(x.value), c), reshape(double(values), 1, []), ...
+        [label ': the v1 vector, in stored order']);
+end
+verifyEqual(testCase, constraintText(e), held, [label ': constraints']);
+if hasEquation
+    verifyTrue(testCase, isfield(e, 'equation') && ~isempty(e.equation), [label ': equation']);
+end
+end
+
+function verifySymbolsInEquation(testCase, e)
+% every coefficient and constraint symbol of E appears in its equation
+eq = char(e.equation);
+c = [asCell(getFieldOr(e, 'coefficients')), asCell(getFieldOr(e, 'constraints'))];
+for k = 1:numel(c)
+    sym = char(c{k}.variable.name);
+    verifyTrue(testCase, ~isempty(regexp(eq, ['(?<![A-Za-z0-9])' sym '(?![A-Za-z0-9])'], 'once')), ...
+        sprintf('symbol %s is in "%s"', sym, eq));
+end
+end
+
+function verifyRoundTripOf(testCase, v1, label)
+out = runRaw({v1});
+r = did2.convert.roundtrip.check(v1, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, label, {});
+end
+
+function v = getFieldOr(s, name)
+v = [];
+if isstruct(s) && isfield(s, name)
+    v = s.(name);
+end
 end
 
 % ===================== [Priebe fits are one function] =====================
