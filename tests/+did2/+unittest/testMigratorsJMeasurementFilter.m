@@ -301,6 +301,14 @@ verifyEqual(testCase, v.node, 'NCIT:C25150');
 verifyEqual(testCase, obs.get('time.value.source_value'), 30);
 verifyFalse(testCase, isfield(obs.get('time.value'), 'source_unit') ...
     && ~isempty(obs.get('time.value').source_unit), 'no unit is stated, so none is written');
+% ... so its canonical `seconds` is not computed, and the run's migration
+% report lists it ([canonical absent only as needs info], Decided by Jess
+% Haley, 2026-10-30: a quantity's canonical "may be absent only when" named)
+verifyFalse(testCase, isfield(obs.get('time.value'), 'seconds') ...
+    && ~isempty(obs.get('time.value').seconds), 'no unit: no canonical');
+g = did2.convert.migrationReport('gaps', 'sm_1');
+verifyEqual(testCase, reshape({g.field}, 1, []), {'time.value.seconds'}, ...
+    'the missing canonical is one gap in the migration report');
 
 % the observation points at the instant document, not at a session anchor
 verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_id'), ...

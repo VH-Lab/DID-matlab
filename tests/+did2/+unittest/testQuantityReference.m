@@ -19,14 +19,15 @@ function tests = testQuantityReference
 %   so did-schema can drop the copies after this lands (CLAUDE.md sec. 3).
 %
 %   THE CANONICAL (Decided by Jess Haley, 2026-10-30 [canonical absent only
-%   as needs info]): a cell of a one-canonical class stating a unit and a
-%   finite source_value but no canonical fails unless the run's migration
-%   report lists it as a gap (testA*Canonical*; [gap accepted when the report
-%   lists it], Jess Haley, 2026-11-01). NOT TESTED, BECAUSE NOT BUILT:
-%   a cell with no unit, and a cell with several canonicals (concentration:
-%   "exactly one", G38): DID-matlab's own writers (neuron_extracellular,
-%   jMeasurementFold, resolveDeferredBaths, virus_injection's dilution)
-%   write those with no canonical today (did2.schema.cache
+%   as needs info]): a cell of a one-canonical class stating a source_value
+%   (with a unit or without one, finite or not) but no canonical fails
+%   unless the run's migration report lists it as a gap (testA*Canonical*,
+%   testANumberWithNoUnit*, testANonFiniteNumber*; [gap accepted when the
+%   report lists it], Jess Haley, 2026-11-01); a value array is one gap
+%   ([waveform unit gap once], Jess Haley, 2026-11-03). NOT TESTED, BECAUSE
+%   NOT BUILT: a cell with several canonicals (concentration): whether
+%   resolveDeferredBaths' mM concentrations and osmolarity are carried or
+%   listed as gaps is a team question (did2.schema.cache
 %   validateQuantityCells' header).
 %
 %   Each test points the shared schema cache at a throwaway directory (the
@@ -268,18 +269,60 @@ verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
     'did2:validation:badGap', 'the cell is given: listing it is refused');
 end
 
-function testWhatTheCanonicalCheckLeavesAlone(testCase) %#ok<INUSD>
-% no unit, a non-finite number, or a class of several canonicals: not
-% checked here (the writers of today; validateQuantityCells' header)
-doc = lengthDoc();
-doc.length.value = struct('source_value', 100);
+function testANumberWithNoUnitAndNoCanonicalFails(testCase)
+doc = measuredDoc();
+doc.measured.reading = struct('source_value', 100);
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'no unit, not listed: refused');
+did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
+    'measured.reading.meters', 'unit not stated');
 did2.schema.cache.shared().validateDocument(doc);
-doc.length.value = struct('source_value', NaN, ...
+end
+
+function testANonFiniteNumberWithNoCanonicalFails(testCase)
+doc = measuredDoc();
+doc.measured.reading = struct('source_value', NaN, ...
     'source_unit', struct('node', 'om:millimetre', 'name', 'millimetre'));
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'NaN, not listed: refused');
+did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
+    'measured.reading.meters', 'the source states no finite number');
 did2.schema.cache.shared().validateDocument(doc);
+end
+
+function testAValueArrayWithNoUnitIsOneGap(testCase)
+% [waveform unit gap once] (Jess Haley, 2026-11-03): one gap, with no index,
+% for a value of many cells; an indexed gap excuses its own cell only
+doc = measuredDoc();
+doc.measured.reading = struct('source_value', {1, 2, 3});
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'not listed: refused');
+did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
+    'measured.reading(2).meters', 'unit not stated');
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'one cell listed: the others refused');
+did2.convert.migrationReport('begin');
+did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
+    'measured.reading.meters', 'unit not stated: 3 numbers');
+did2.schema.cache.shared().validateDocument(doc);
+end
+
+function testWhatTheCanonicalCheckLeavesAlone(testCase) %#ok<INUSD>
+% a class of several canonicals: not checked here (validateQuantityCells'
+% header: the bath question); nor a cell with no number at all
 doc = mixtureDoc();
 doc.mixture.value.strength = struct('source_value', 1, ...
     'source_unit', struct('node', '', 'name', 'dilution'));
+did2.schema.cache.shared().validateDocument(doc);
+doc = lengthDoc();
+doc.length.value = struct('source_unit', ...
+    struct('node', 'om:millimetre', 'name', 'millimetre'));
 did2.schema.cache.shared().validateDocument(doc);
 end
 
@@ -309,6 +352,11 @@ end
 
 function doc = lengthDoc()
 doc = did2.schema.cache.shared().buildBlankDocument('length');
+end
+
+function doc = measuredDoc()
+doc = did2.schema.cache.shared().buildBlankDocument('measured');
+doc.base.id = 'measured_1';
 end
 
 function d = subDef(raw, name)

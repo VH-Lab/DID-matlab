@@ -1,4 +1,4 @@
-function cells = jQuantity(kind, sourceValues, sourceUnit, varargin)
+function [cells, gaps] = jQuantity(kind, sourceValues, sourceUnit, varargin)
 %JQUANTITY The `value` cells of a quantity value kind, from what the v1
 %   source wrote.
 %
@@ -14,6 +14,20 @@ function cells = jQuantity(kind, sourceValues, sourceUnit, varargin)
 %
 %   Built with did2.build.composite, not valueCell, because the canonical is
 %   optional in the schema and valueCell requires it.
+%
+%   GAPS, a struct array {field, reason} for did2.build's 'Gaps' option, names
+%   each canonical left out because the source gave NO unit or a number that
+%   is not finite: "every quantity holds exactly one canonical value; it may
+%   be absent only when the document's `needs_info` names it" ([canonical
+%   absent only as needs info], Decided by Jess Haley, 2026-10-30; the run's
+%   migration report since [gap accepted when the report lists it]). The
+%   path is <KIND>.value.<canonical slot> ('.canonical' for a kind with no one
+%   slot, the convention kept by [formulation amount needs info]); a value
+%   whose every cell lacks it is ONE gap with no index ([waveform unit gap
+%   once], Jess Haley, 2026-11-03), otherwise one per cell, indexed (k) when
+%   there are several. A STATED unit jSourceUnit does not know for KIND gives
+%   no gap: an unrecognised spelling is carried for mapping, not written
+%   without a canonical (carry-155), and the validator refuses it.
 
 if nargin < 3; sourceUnit = ''; end
 [term, factor, unitKind, slot] = jSourceUnit(sourceUnit);
@@ -42,6 +56,40 @@ for k = 1:n
     c{k} = s;
 end
 cells = did2.build.composite(kind, 'value', c);
+gaps = struct('field', {}, 'reason', {});
+noUnit = isempty(term);
+% a stated unit jSourceUnit does not know for KIND (CANON empty): no gap
+missing = noUnit | (~isempty(canon) & ~isfinite(vals));
+if ~any(missing)
+    return;
+end
+slot = canon;
+if isempty(slot) && ~strcmp(kind, 'concentration')
+    slot = canonicalField(kind);   % concentration has no one slot
+end
+if isempty(slot); slot = 'canonical'; end
+base = [kind '.value'];
+if all(missing)
+    if noUnit && n > 1
+        why = sprintf(['unit not stated: the source gives %d numbers with ' ...
+            'no unit, so no canonical %s is computed'], n, slot);
+    elseif noUnit
+        why = sprintf(['unit not stated: the source gives the number %s ' ...
+            'with no unit, so no canonical %s is computed'], ...
+            num2str(vals(1), 17), slot);
+    else
+        why = sprintf(['the source gives no finite number (%s), so no ' ...
+            'canonical %s is computed'], mat2str(vals), slot);
+    end
+    gaps(1).field = [base '.' slot];
+    gaps(1).reason = why;
+    return;
+end
+for k = find(missing)
+    gaps(end+1).field = sprintf('%s(%d).%s', base, k, slot); %#ok<AGROW>
+    gaps(end).reason = sprintf(['the source''s number is %s, not a finite ' ...
+        'number, so no canonical %s is computed'], num2str(vals(k)), slot);
+end
 end
 
 function f = canonicalField(kind)
