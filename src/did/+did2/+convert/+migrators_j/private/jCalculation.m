@@ -508,6 +508,18 @@ leaf = jStatement(preBody, leafClass, subjectId, ...
     'Notes', curve.notes, ...
     'Id', char(preBody.base.id));   % id preserved -> inbound references resolve
 
+% [known v1 defects] (Jess Haley, 2026-11-12, "A"): a contrast sensitivity
+% result whose spatial frequencies are all one value is migrated as v1 wrote
+% it, and the run's migration report lists the repeated fits as a known v1
+% defect of the document (jRepeatedSpatialFrequency)
+if strcmp(family, 'csf')
+    defect = jRepeatedSpatialFrequency(srcBlk);
+    fitPath = 'contrast_sensitivity.value.model_fit';
+    if ~isempty(defect) && did2.schema.givesField(leaf, fitPath)
+        did2.convert.migrationReport('defect', leaf, fitPath, defect);
+    end
+end
+
 bodies = [{leaf}, {anchor}, software, runDocs];
 
 % (a field the value mapping had no home for carried the document as v1 above:

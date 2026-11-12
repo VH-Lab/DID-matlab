@@ -17,7 +17,8 @@ function [records, report] = migrationRecord(docs, options)
 %                 did2.database.sqlitedb).
 %
 %   REPORT is did2.convert.migrationReport('collect', DOCS): `gaps`,
-%   `carried_as_v1` and `counts`, with options.Counts added to `counts`.
+%   `carried_as_v1`, `known_v1_defects` ([known v1 defects], Jess Haley,
+%   2026-11-12) and `counts`, with options.Counts added to `counts`.
 %
 %   Decided by Jess Haley, 2026-11-01 (did-schema
 %   docs/plans/did_v2_go_forward_class_audit.md):
@@ -28,7 +29,9 @@ function [records, report] = migrationRecord(docs, options)
 %     [migration report is an attached file]  the report is a JSON file
 %                          attached as an opaque_body (owner_id the migration,
 %                          format JSON) holding gaps, carried_as_v1 and
-%                          counts, not fields on the migration document;
+%                          counts (and, since [known v1 defects], 2026-11-12,
+%                          known_v1_defects), not fields on the migration
+%                          document;
 %     [migration record points at the dataset]  the record's required edge
 %                          names the dataset the run migrated when there is
 %                          one, and otherwise the session;
