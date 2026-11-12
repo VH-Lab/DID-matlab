@@ -537,13 +537,11 @@ for k = 1:n
         dropIsspike = true;
     end
     if dropIsspike
+        % (when isspike was its only stated setting the method states no
+        % parameter: method.parameters may be empty, and isspike is rebuilt
+        % from the inputs)
         [params, copied, emptied, defined] = knobsOf(pBlk, ...
             KNOBS(~strcmp(KNOBS, 'isspike')));
-        if copied == 0
-            % isspike was its only setting: the method would state nothing
-            report.refused_no_fields = report.refused_no_fields + 1;
-            continue;
-        end
     end
 
     sid = depValue(bodies{k}, 'session_id');

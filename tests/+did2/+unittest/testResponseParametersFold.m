@@ -218,10 +218,14 @@ end
 
 function testAnyOtherEmptyKnobIsCountedNotStated(testCase)
 % An empty knob NDI gives no meaning for (here spiketrain_dt []) has no value
-% to write: it is left out and COUNTED in knobs_empty_not_stated.
+% to write: it is left out and COUNTED in knobs_empty_not_stated. Since
+% [response computed from the spike times] (Jess Haley, 2026-11-12) isspike is
+% not written either, so this method states no parameter at all (allowed:
+% method.parameters may be empty) and is still minted.
 p = parametersFixture();
 p.stimulus_response_scalar_parameters_basic.spiketrain_dt = [];
 [out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
+verifyEqual(testCase, rep.methods_minted, 1);
 verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
     'bin width'));
 verifyEqual(testCase, rep.knobs_empty_not_stated, 1);
