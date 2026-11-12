@@ -163,6 +163,156 @@ for c = {{'ACSF (both)', acsf(), 2}, ...
 end
 end
 
+% ============ [bath concentration prefixes convert to molar] ===============
+% Decided by Jess Haley, 2026-11-12 (did-schema did_v2_go_forward_class_audit.md)
+% [bath concentration prefixes convert to molar]: an ingredient's concentration
+% in a molar unit with a known SI prefix gets its canonical `molar` (arithmetic
+% only); a unit that cannot be read so carries the bath for mapping
+% (carry-155); an osmolarity in osmoles per litre with a known prefix gets its
+% `osmolar`, any other osmolarity unit is a gap in the run's migration report.
+
+function testAPrefixedMolarUnitGetsItsMolar(testCase)
+% {unitName, number, molar}
+rows = { ...
+    'Molar',      0.002,  0.002; ...
+    'M',          0.002,  0.002; ...
+    'mM',         125,    0.125; ...
+    'millimolar', 2.5,    0.0025; ...
+    'uM',         10,     1e-5; ...
+    [char(181) 'M'], 10,  1e-5; ...
+    'micromolar', 3,      3e-6; ...
+    'nM',         200,    2e-7; ...
+    'pM',         5,      5e-12; ...
+    'mmol/L',     1,      1e-3};
+v1 = dabBath(tableOf(rows));
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+[mine, out] = bathOutputs(v1);
+verifyEmpty(testCase, quarantinedBaths(out), 'left quarantined');
+verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 0, 'carried');
+f = formulationOf(mine);
+ing = ingredientsOf(f);
+assertEqual(testCase, numel(ing), size(rows, 1), 'one ingredient per row');
+for k = 1:size(rows, 1)
+    c = ing{k}.concentration;
+    label = sprintf('row %d (%s)', k, rows{k, 1});
+    verifyEqual(testCase, c.source_value, rows{k, 2}, [label ': the number as written']);
+    verifyEqual(testCase, c.source_unit.name, rows{k, 1}, [label ': the unit as written']);
+    assertTrue(testCase, isfield(c, 'molar') && ~isempty(c.molar), [label ': no molar']);
+    verifyEqual(testCase, c.molar, rows{k, 3}, 'RelTol', 1e-12, label);
+end
+verifyEmpty(testCase, did2.convert.migrationReport('gaps', f.base.id), 'no gap');
+r = did2.convert.roundtrip.check(v1, mine);
+verifyFalse(testCase, r.carried);
+verifyFalse(testCase, any(strcmp(lostPaths(r), 'stimulus_bath.mixture_table')), describeLost(r));
+end
+
+function testAnUnreadableConcentrationUnitCarriesTheBath(testCase)
+% a unit that is not molar with a known prefix (a mass per volume, a case
+% that makes another unit: MM, a prefix not known: xM) is carried, carry-155
+for u = {'mg/mL', 'MM', 'xM', 'percent'}
+    label = u{1};
+    v1 = dabBath(tableOf({'Molar', 0.1, 0.1; u{1}, 2, []}));
+    [mine, out] = bathOutputs(v1);
+    verifyEmpty(testCase, quarantinedBaths(out), [label ': left quarantined']);
+    verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 1, label);
+    verifyEqual(testCase, out.deferred_bath_resolution.baths_resolved, 0, label);
+    assertEqual(testCase, numel(mine), 1, [label ': not one document, the carry']);
+    verifyEqual(testCase, char(mine{1}.get('document_class.schema_version')), 'did_v1', label);
+    n = out.summary.migration_notes.carried_as_v1;
+    verifyTrue(testCase, any(strcmp(n.register_rows, 'carry-155')), [label ': no carry-155 note']);
+    ix = find(strcmp(n.ids, v1.base.id), 1);
+    assertNotEmpty(testCase, ix, [label ': no note for the bath']);
+    verifyTrue(testCase, contains(n.details{ix}, u{1}), [label ': the note does not name the unit']);
+end
+end
+
+function testANumberWithNoUnitIsAGap(testCase)
+v1 = dabBath(tableOf({'Molar', 0.1, 0.1; '', 3, []}));
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+[mine, out] = bathOutputs(v1);
+verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 0, 'carried');
+f = formulationOf(mine);
+ing = ingredientsOf(f);
+verifyEqual(testCase, ing{2}.concentration.source_value, 3);
+verifyFalse(testCase, isfield(ing{2}.concentration, 'molar') ...
+    && ~isempty(ing{2}.concentration.molar), 'a molar for a number with no unit');
+g = did2.convert.migrationReport('gaps', f.base.id);
+verifyEqual(testCase, {g.field}, {'formulation.value.ingredients(2).concentration.canonical'});
+end
+
+function testAnOsmolarityInOsmolesPerLitreGetsItsOsmolar(testCase)
+for c = {{'mOsm/L', 290, 0.29}, {'Osm/L', 0.3, 0.3}, {'mOsM', 300, 0.3}, ...
+        {'milliosmolar', 280, 0.28}}
+    [u, value, expected] = c{1}{:};
+    v1 = dabBath([tableOf({'Molar', 0.1, 0.1}) ...
+        sprintf('NCIm:C0439186,"osmolarity",%s,,%s\n', num2str(value, 17), u)]);
+    did2.convert.migrationReport('begin');
+    [mine, out] = bathOutputs(v1);
+    verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 0, [u ': carried']);
+    f = formulationOf(mine);
+    o = f.formulation.value.osmolarity;
+    verifyEqual(testCase, o.source_value, value, u);
+    assertTrue(testCase, isfield(o, 'osmolar') && ~isempty(o.osmolar), [u ': no osmolar']);
+    verifyEqual(testCase, o.osmolar, expected, 'RelTol', 1e-12, u);
+    verifyEmpty(testCase, did2.convert.migrationReport('gaps', f.base.id), [u ': a gap']);
+    did2.convert.migrationReport('end');
+end
+end
+
+function testAnOsmolarityInAnotherUnitIsAGap(testCase)
+% a bare mOsm says neither per litre nor per kg ([Dab bath units are
+% Dabrowska's] says so of "osm", which unreadUnitRows carries); mOsm/kg is an
+% osmolality; no unit at all: each is a gap naming the canonical `osmolar`
+for u = {'mOsm', 'mOsm/kg', ''}
+    v1 = dabBath([tableOf({'Molar', 0.1, 0.1}) ...
+        sprintf('NCIm:C0439186,"osmolarity",290,,%s\n', u{1})]);
+    did2.convert.migrationReport('begin');
+    [mine, out] = bathOutputs(v1);
+    label = ['"' u{1} '"'];
+    verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 0, [label ': carried']);
+    f = formulationOf(mine);
+    o = f.formulation.value.osmolarity;
+    verifyEqual(testCase, o.source_value, 290, label);
+    verifyFalse(testCase, isfield(o, 'osmolar') && ~isempty(o.osmolar), [label ': an osmolar']);
+    g = did2.convert.migrationReport('gaps', f.base.id);
+    verifyEqual(testCase, {g.field}, {'formulation.value.osmolarity.osmolar'}, label);
+    did2.convert.migrationReport('end');
+end
+end
+
+function t = tableOf(rows)
+% a mixture_table of one chemical per row {unitName, number, ~}
+t = sprintf('ontologyName,name,value,ontologyUnit,unitName\n');
+for k = 1:size(rows, 1)
+    node = 'OM:MolarVolumeUnit';
+    if isempty(rows{k, 1}); node = ''; end
+    t = [t sprintf('NCIm:C00%05d,"chemical %d",%s,%s,%s\n', k, k, ...
+        num2str(rows{k, 2}, 17), node, rows{k, 1})]; %#ok<AGROW>
+end
+end
+
+function f = formulationOf(docs)
+f = [];
+for k = 1:numel(docs)
+    if strcmp(docs{k}.className(), 'formulation')
+        f = docs{k}.toStruct();
+    end
+end
+if isempty(f)
+    error('testRawV1RoundTripBath:noFormulation', 'No formulation among the bath''s documents.');
+end
+end
+
+function c = ingredientsOf(f)
+c = f.formulation.value.ingredients;
+if isstruct(c)
+    c = num2cell(c);
+end
+c = reshape(c, 1, []);
+end
+
 function e = epochEntity(v1)
 % the epoch epochMint holds for (session, the bath's epoch string)
 epochType = did2.convert.registeredTerm( ...
