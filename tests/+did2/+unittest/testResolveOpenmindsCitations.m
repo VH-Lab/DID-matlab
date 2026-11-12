@@ -508,6 +508,51 @@ verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
     'Validate', false, 'TargetVersion', 'did_v2');
 end
 
+function testADatasetVersionWithNoIdGetsIdsFromItsContent(testCase)
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): a
+% DatasetVersion stating no id keys the ids minted for its component on its
+% content: two runs on the same input give the same ids, and another such
+% DatasetVersion mints others. (Its Dataset, which names it by id, is left
+% out: with no id there is nothing to name. Its session id stays: a document
+% with no session is refused by did2.build, so datasetIdOf's own content
+% fallback is not reached here.)
+bodies = idlessGraph('A Real Dataset');
+[out1, rep1] = runPass(testCase, bodies);
+[out2, ~] = runPass(testCase, bodies);
+verifyEqual(testCase, rep1.datasets_emitted, 1, 'DENOMINATOR: the dataset');
+ids1 = allIds(out1);
+ids2 = allIds(out2);
+verifyNotEmpty(testCase, ids1);
+verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a document with no id');
+verifyEqual(testCase, sort(ids1), sort(ids2), 'two runs on the same input');
+% another DatasetVersion with no id: another dataset id
+[out3, ~] = runPass(testCase, idlessGraph('Another Dataset'));
+verifyNotEmpty(testCase, setdiff(allIds(out3), ids1), ...
+    'two different id-less DatasetVersions mint the same ids');
+end
+
+function bodies = idlessGraph(fullName)
+bodies = citationGraph();
+keep = true(1, numel(bodies));
+for k = 1:numel(bodies)
+    switch char(bodies{k}.base.id)
+        case 'om_dataset'
+            keep(k) = false;
+        case 'om_dsv'
+            bodies{k}.base.id = '';
+            bodies{k}.openminds.fields.fullName = fullName;
+    end
+end
+bodies = bodies(keep);
+end
+
+function ids = allIds(out)
+ids = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    ids{k} = char(out.migrated{k}.get('base.id'));
+end
+end
+
 function r = emptyResult()
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));

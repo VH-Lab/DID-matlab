@@ -166,7 +166,12 @@ end
 blk = getBlock(preBody, 'pyraview');
 subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
     dependencyValue(preBody, 'subject_id'));
-obsId     = baseField(preBody, 'id', did.ido.unique_id());
+obsId     = baseField(preBody, 'id', '');
+if isempty(obsId)
+    % no v1 id: derived from the document's content ([ids from content when
+    % v1 states none], Jess Haley, 2026-11-12)
+    obsId = did2.convert.contentId('pyraview observation', preBody);
+end
 
 label    = charOf(fieldByNormalisedName(blk, 'label'));
 dataType = charOf(fieldByNormalisedName(blk, 'datatype'));

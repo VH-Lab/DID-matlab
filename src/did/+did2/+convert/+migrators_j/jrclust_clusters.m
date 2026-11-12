@@ -122,7 +122,12 @@ blk = getBlock(preBody, 'jrclust_clusters');
 subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
     dependencyValue(preBody, 'subject_id'));
 sessionId = baseField(preBody, 'session_id', '');
-obsId     = baseField(preBody, 'id', did.ido.unique_id());
+obsId     = baseField(preBody, 'id', '');
+if isempty(obsId)
+    % no v1 id: derived from the document's content ([ids from content when
+    % v1 states none], Jess Haley, 2026-11-12)
+    obsId = did2.convert.contentId('jrclust_clusters observation', preBody);
+end
 
 % did-schema #88: built through did2.build. The cluster assignment is a
 % `count` observation of the recording element; its value is the JRCLUST
