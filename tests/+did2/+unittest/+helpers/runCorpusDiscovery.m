@@ -774,6 +774,7 @@ fprintf('\n=== Corpus %s discovery summary (target %s) ===\n', ...
 fprintf('total:            %d\n', result.summary.total);
 fprintf('migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('quarantine_count: %d\n', result.summary.quarantine_count);
+printMigrationReportCounts(result);
 fprintf('report:           %s\n', reportPath);
 printUnconvertedCensus(result);
 printFragmentCensus(result);
@@ -1796,5 +1797,33 @@ end
 for k = 1:numel(t)
     fprintf('        %-16s %4d distinct  %6d doc(s)\n', ...
         t(k).prefix, t(k).n_distinct, t(k).n_docs);
+end
+end
+
+function printMigrationReportCounts(result)
+% the counts of v1_to_v2's migration report (did2.convert.migrationReport
+% 'collect' over the documents pass 1 wrote), denominator first; a list the
+% report does not hold reads "not measured", never 0
+if ~isfield(result, 'migration_report') || ~isfield(result.migration_report, 'counts')
+    fprintf('migration report: not measured (v1_to_v2 returned none)\n');
+    return;
+end
+c = result.migration_report.counts;
+fprintf('migration report: %d document(s) (pass 1); %s gap(s); %s carried as v1; %s known v1 defect(s)\n', ...
+    c.documents, countOr(c, 'gaps'), countOr(c, 'carried_as_v1'), countOr(c, 'known_v1_defects'));
+if isfield(result.migration_report, 'known_v1_defects') && ~isempty(result.migration_report.known_v1_defects)
+    d = result.migration_report.known_v1_defects;
+    [u, ~, j] = unique({d.class});
+    for k = 1:numel(u)
+        fprintf('  known v1 defects of %s: %d\n', u{k}, nnz(j == k));
+    end
+end
+end
+
+function t = countOr(c, name)
+if isfield(c, name)
+    t = sprintf('%d', c.(name));
+else
+    t = 'not measured';
 end
 end
