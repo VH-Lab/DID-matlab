@@ -822,6 +822,13 @@ POST_PASSES = [
         ("isspike_rebuilt_from_inputs", "methods with isspike NOT written (rebuilt from inputs)"),
         ("isspike_written_no_converted_user", "  methods still stating isspike (no converted user)"),
         ("refused_isspike_disagrees", "  REFUSED: isspike disagrees with the inputs (kept v1)"),
+        # Jess Haley 2026-11-12 [orphaned response settings are an accepted
+        # loss]: a parameters document nothing refers to, with an identical
+        # used twin in its session, is not migrated (listed in the report's
+        # known_v1_defects); one with no such twin is converted as before.
+        ("orphans_seen", "parameters documents nothing refers to (orphans)"),
+        ("orphans_dropped_identical_twin", "  NOT MIGRATED: identical used twin (accepted loss, listed)"),
+        ("orphans_kept_no_identical_twin", "  no identical used twin: converted as before"),
     ]),
     # TEAM DECISION 2026-08-11: generic_file -> opaque_body + a statement whose
     # `variable` comes from the sibling ontologyLabel.
@@ -4916,7 +4923,12 @@ def _render_response_parameters_reading(rep, p):
                 # absent from older reports, 0 there
                 _int_or_none(rep.get("refused_isspike_disagrees")) or 0)
         quar = _int_or_none(rep.get("fold_quarantined"))
-        if seen_p and minted == 0 and doc_refused == 0 and not quar:
+        # [orphaned response settings are an accepted loss] (2026-11-12): a
+        # dropped orphan is neither minted nor refused; absent from older
+        # reports, 0 there
+        dropped = _int_or_none(rep.get("orphans_dropped_identical_twin")) or 0
+        if seen_p and minted == 0 and doc_refused == 0 and not quar \
+                and not dropped:
             p("          *** %d parameters document(s) seen and NOTHING minted or"
               % seen_p)
             p("          *** refused. That is a")
@@ -4924,7 +4936,7 @@ def _render_response_parameters_reading(rep, p):
             p("          *** parameters document either becomes a method or is")
             p("          *** refused with a reason.")
         if None not in (seen_p, minted, doc_refused, quar):
-            residual = seen_p - minted - doc_refused - quar
+            residual = seen_p - minted - doc_refused - quar - dropped
             if residual:
                 p("          *** %d parameters document(s) neither minted,"
                   % residual)

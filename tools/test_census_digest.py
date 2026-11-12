@@ -2407,6 +2407,30 @@ class TestResponseParametersRendering(ThreePassCase):
         text, _ = self.run_digest()
         self.assertIn("parameters_documents_deleted is 3 and MUST be 0", text)
 
+    def test_dropped_orphans_are_accounted_not_a_residual(self):
+        # [orphaned response settings are an accepted loss] (Jess Haley,
+        # 2026-11-12): a dropped orphan is neither minted nor refused, and is
+        # not "an id that did not come back"
+        self._corpus("A", response_parameters_fold=self._rp(
+            leaves_seen=5, leaves_with_edge=5, parameters_documents_seen=10,
+            methods_minted=7, orphans_seen=3,
+            orphans_dropped_identical_twin=3, orphans_kept_no_identical_twin=0,
+            parameters_documents_referenced_after=7,
+            parameters_documents_unreferenced_after=3))
+        text, _ = self.run_digest()
+        self.assertIn("NOT MIGRATED: identical used twin", text)
+        self.assertNotIn("neither minted,", text)
+
+    def test_an_undropped_orphan_still_leaves_a_residual(self):
+        self._corpus("A", response_parameters_fold=self._rp(
+            leaves_seen=5, leaves_with_edge=5, parameters_documents_seen=10,
+            methods_minted=7, orphans_seen=3,
+            orphans_dropped_identical_twin=2, orphans_kept_no_identical_twin=1,
+            parameters_documents_referenced_after=7,
+            parameters_documents_unreferenced_after=3))
+        text, _ = self.run_digest()
+        self.assertIn("1 parameters document(s) neither minted,", text)
+
     def test_a_broken_gate_partition_is_named(self):
         self._corpus("A", response_parameters_fold=self._rp(
             parameters_documents_referenced_after=1))

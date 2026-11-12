@@ -115,10 +115,33 @@ function [result, report] = resolveResponseParameters(result, options)
 %   (`refused_isspike_disagrees`). A parameters document NO converted
 %   response uses has no input to rebuild `isspike` from; it is written as
 %   before (`isspike_written_no_converted_user`): the decision does not say
-%   what such a document becomes, so that is a question for the team, not a
-%   rule made here. `spiketrain_dt` stays ("bin width", EMPTY:0000308). The
+%   what such a document becomes. One that NOTHING refers to and that has an
+%   identical used twin is not migrated at all (ORPHANED SETTINGS, below). `spiketrain_dt` stays ("bin width", EMPTY:0000308). The
 %   method keeps the parameters document's id, so method ids stay what they
 %   were and every response's `method_id` still names its shared method.
+%
+%   ---------------------------------------------------------------------
+%   ORPHANED SETTINGS (Jess Haley, 2026-11-12)
+%   ---------------------------------------------------------------------
+%   [orphaned response settings are an accepted loss]: a parameters document
+%   referred to by no document (no edge of any document in the batch names
+%   it: the walk `referencedIds`) for which a USED parameters document (one
+%   some document's edge names) of the same session has identical values in
+%   all six fields (temporalfreqfunc, freq_response, prestimulus_time,
+%   prestimulus_normalization, isspike, spiketrain_dt; a field one states and
+%   the other does not is not identical) is NOT migrated: it is removed from
+%   the batch, listed in the run's migration report `known_v1_defects`
+%   (did2.convert.migrationReport 'notMigrated': id, class and the reason
+%   "orphaned settings, identical to a used one, nothing refers to it"),
+%   recorded in RESULT.not_migrated ({id, class_name, reason, decision,
+%   twin_id}), and counted (`orphans_dropped_identical_twin`);
+%   did2.convert.roundtrip.wholeBatch counts its id as an ACCEPTED LOSS.
+%   An unreferenced parameters document with NO identical used twin is not
+%   covered by the decision: it is converted as before (a method, isspike
+%   written) and counted apart (`orphans_kept_no_identical_twin`).
+%   `orphans_seen` is their denominator (= the two together). The
+%   `parameters_documents_*` sharing counters are read before the drop, over
+%   every parameters document seen.
 %
 %   ---------------------------------------------------------------------
 %   THE SIGNED MODEL, AND WHICH LINE OF IT THIS FILE IS
@@ -334,6 +357,10 @@ report = struct( ...
     'isspike_rebuilt_from_inputs',             0, ...
     'isspike_written_no_converted_user',       0, ...
     'refused_isspike_disagrees',               0, ...
+    ... % [orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12)
+    'orphans_seen',                            0, ...
+    'orphans_dropped_identical_twin',          0, ...
+    'orphans_kept_no_identical_twin',          0, ...
     'ran',                                     false);
 result.response_parameters_fold = report;
 
@@ -458,6 +485,16 @@ for k = 1:n
     end
 end
 
+% --- who points at each parameters document --------------------------------
+% Measured over every edge of every document, not inferred.
+referenced = referencedIds(bodies);
+
+% --- [orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12)
+% an unreferenced parameters document with an identical used twin in its
+% session is not migrated (dropped below, after the conversion)
+[dropMask, twinOf, report] = orphansWithTwin(bodies, classes, docIds, ...
+    referenced, PARAMS, report);
+
 % --- one `method` document per parameters document, id PRESERVED ------------
 changedIdx = [];
 rebuilt = {};
@@ -470,6 +507,7 @@ droppedPer = false(1, 0);
 keptIsspikePer = false(1, 0);
 for k = 1:n
     if ~strcmp(classes{k}, PARAMS); continue; end
+    if dropMask(k); continue; end   % an orphan with an identical used twin
     pid = docIds{k};
     pBlk = blockOf(bodies{k}, PARAMS);
     users = [];
@@ -624,22 +662,11 @@ if ~isempty(changedIdx)
 end
 
 % --- who still points at each parameters document --------------------------
-% Measured over every edge of every document, not inferred. Every parameters
-% document is CONVERTED IN PLACE (id preserved), never deleted, so these are
-% evidence about sharing, not a deletion gate: `referenced_after` counts the
-% parameters documents some response (or anything else) uses.
-referenced = containers.Map('KeyType', 'char', 'ValueType', 'logical');
-for k = 1:n
-    b = bodies{k};
-    if ~isstruct(b) || ~isfield(b, 'depends_on') || ~isstruct(b.depends_on)
-        continue;
-    end
-    deps = b.depends_on;
-    for d = 1:numel(deps)
-        v = depEntryValue(deps(d));
-        if ~isempty(v); referenced(v) = true; end
-    end
-end
+% (the walk above.) A used parameters document is CONVERTED IN PLACE (id
+% preserved), never deleted, so these are evidence about sharing:
+% `referenced_after` counts the parameters documents some response (or
+% anything else) uses; `unreferenced_after` the rest, the orphans dropped
+% below among them (orphans_seen).
 for k = 1:n
     if ~strcmp(classes{k}, PARAMS); continue; end
     if ~isempty(docIds{k}) && isKey(referenced, docIds{k})
@@ -651,7 +678,126 @@ for k = 1:n
     end
 end
 
+% --- the orphans with an identical used twin: not migrated, listed ----------
+if any(dropMask)
+    REASON = 'orphaned settings, identical to a used one, nothing refers to it';
+    DECISION = '[orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12)';
+    rows = struct('id', {}, 'class_name', {}, 'reason', {}, 'decision', {}, 'twin_id', {});
+    for k = find(dropMask)
+        % listed after the pass's own v1_to_v2 calls, so none of them begins
+        % a run that forgets it
+        did2.convert.migrationReport('notMigrated', docIds{k}, PARAMS, REASON);
+        rows(end+1) = struct('id', docIds{k}, 'class_name', PARAMS, ...
+            'reason', REASON, 'decision', DECISION, 'twin_id', twinOf{k}); %#ok<AGROW>
+    end
+    if isfield(result, 'not_migrated') && ~isempty(result.not_migrated)
+        result.not_migrated = [reshape(result.not_migrated, 1, []), rows];
+    else
+        result.not_migrated = rows;
+    end
+    result.migrated = docs(~dropMask);
+    result.summary = recountSummary(result);
+end
+
 result.response_parameters_fold = report;
+end
+
+% ===================== orphaned settings ===================================
+
+function referenced = referencedIds(bodies)
+%REFERENCEDIDS Every id some edge (depends_on, any of its spellings) of some
+%   body in BODIES names.
+referenced = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if ~isstruct(b) || ~isfield(b, 'depends_on') || ~isstruct(b.depends_on)
+        continue;
+    end
+    deps = b.depends_on;
+    for d = 1:numel(deps)
+        v = depEntryValue(deps(d));
+        if ~isempty(v); referenced(v) = true; end
+    end
+end
+end
+
+function [dropMask, twinOf, report] = orphansWithTwin(bodies, classes, docIds, ...
+        referenced, PARAMS, report)
+%ORPHANSWITHTWIN [orphaned response settings are an accepted loss] (Jess
+%   Haley, 2026-11-12): DROPMASK(k) is true for a parameters document no edge
+%   names (an orphan) when a parameters document some edge does name (used),
+%   in the same session, has identical values in all six v1 fields; TWINOF{k}
+%   is that used document's id. Counts orphans_seen,
+%   orphans_dropped_identical_twin and orphans_kept_no_identical_twin.
+n = numel(bodies);
+dropMask = false(1, n);
+twinOf = repmat({''}, 1, n);
+used = containers.Map('KeyType', 'char', 'ValueType', 'any');   % session -> {id, settings}
+orphans = [];
+for k = 1:n
+    if ~strcmp(classes{k}, PARAMS) || isempty(docIds{k})
+        continue;
+    end
+    if isKey(referenced, docIds{k})
+        sid = sessionOf(bodies{k});
+        if isempty(sid); continue; end
+        e = {docIds{k}, sixSettings(blockOf(bodies{k}, PARAMS))};
+        if isKey(used, sid)
+            used(sid) = [used(sid); e];
+        else
+            used(sid) = e;
+        end
+    else
+        orphans(end+1) = k; %#ok<AGROW>
+    end
+end
+report.orphans_seen = numel(orphans);
+for k = orphans
+    sid = sessionOf(bodies{k});
+    twin = '';
+    if ~isempty(sid) && isKey(used, sid)
+        mine = sixSettings(blockOf(bodies{k}, PARAMS));
+        cands = used(sid);
+        for c = 1:size(cands, 1)
+            if isequaln(cands{c, 2}, mine)
+                twin = cands{c, 1};
+                break;
+            end
+        end
+    end
+    if isempty(twin)
+        report.orphans_kept_no_identical_twin = report.orphans_kept_no_identical_twin + 1;
+    else
+        dropMask(k) = true;
+        twinOf{k} = twin;
+        report.orphans_dropped_identical_twin = report.orphans_dropped_identical_twin + 1;
+    end
+end
+end
+
+function s = sixSettings(pBlk)
+%SIXSETTINGS The six v1 settings of a parameters block, each {stated, value}
+%   (snake_case, then camelCase): a field one document states and another
+%   does not is not identical.
+SIX = {'temporalfreqfunc', 'freq_response', 'prestimulus_time', ...
+    'prestimulus_normalization', 'isspike', 'spiketrain_dt'};
+s = cell(2, numel(SIX));
+for k = 1:numel(SIX)
+    name = SIX{k};
+    camel = toCamel(name);
+    if isstruct(pBlk) && isfield(pBlk, name)
+        s(:, k) = {true; pBlk.(name)};
+    elseif isstruct(pBlk) && isfield(pBlk, camel)
+        s(:, k) = {true; pBlk.(camel)};
+    else
+        s(:, k) = {false; []};
+    end
+end
+end
+
+function sid = sessionOf(b)
+sid = depValue(b, 'session_id');
+if isempty(sid); sid = baseField(b, 'session_id'); end
 end
 
 % ===================== the spike-times input ===============================

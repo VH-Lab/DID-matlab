@@ -117,6 +117,20 @@ function report = wholeBatch(v1Bodies, result)
 %                              accepted loss covers (counted apart from
 %                              ids_lost and ids_released, and in
 %                              accepted_losses)
+%       NOT MIGRATED BY A DECISION. A source a batch pass did not migrate by
+%                              a decision is in RESULT.not_migrated ({id,
+%                              class_name, reason, decision, ...}; today
+%                              did2.convert.resolveResponseParameters, an
+%                              orphaned parameters document with an
+%                              identical used twin, [orphaned response
+%                              settings are an accepted loss], Jess Haley,
+%                              2026-11-12). An accepted loss marked LISTED
+%                              covers only such a source: its id is counted
+%                              in ids_accepted_lost (after the id check
+%                              below) and the source is not compared, as
+%                              there is no document of it to compare: the
+%                              whole document is the accepted loss. One
+%                              whose id is referenced is counted lost.
 %       accepted_id_check      the check an accepted id loss needs first
 %                              ([v1 session document id not kept]: "the
 %                              build first checks that no v1 document in the
@@ -202,6 +216,7 @@ for k = 1:numel(final)
     finalIds{k} = idOf(finalBodies{k});
 end
 ctx = batchContext(finalBodies);
+notMigrated = notMigratedIds(result);
 passBody = passthroughBodies(result);
 passOutputs = batchPassOutputs(result);
 
@@ -228,7 +243,7 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
     'failures', struct('source_id', {}, 'class_name', {}, 'lost', {}, ...
         'lost_values', {}, 'invented', {}, 'unplaced', {}, 'deferred', {}), 'ok', false);
 accepted = ACCEPTED_LOSSES();
-[report.accepted_id_check, idReferenced] = acceptedIdCheck(bodies, rows, accepted, ctx);
+[report.accepted_id_check, idReferenced] = acceptedIdCheck(bodies, rows, accepted, ctx, notMigrated);
 sampled = struct();
 uidIndex = [];   % bodyUidIndex, built on first use (uidIndexBuilt)
 uidIndexBuilt = false;
@@ -268,6 +283,7 @@ for r = 1:numel(rows)
     end
     % [every v1 id survives]
     released = false;
+    listed = ~isempty(row.id) && isKey(notMigrated, row.id);
     if isempty(row.id)
         report.sources_without_id = report.sources_without_id + 1;
     elseif any(strcmp(finalIds, row.id))
@@ -276,11 +292,14 @@ for r = 1:numel(rows)
         report.ids_released = report.ids_released + 1;
         report.ids_released_by_class = bump(report.ids_released_by_class, cls);
         released = true;
-    elseif ~isempty(acceptedIdLoss(accepted, cls)) && ~isKey(idReferenced, row.id)
-        a = acceptedIdLoss(accepted, cls);
+    elseif ~isempty(acceptedIdLoss(accepted, cls, listed)) && ~isKey(idReferenced, row.id)
+        a = acceptedIdLoss(accepted, cls, listed);
         report.ids_accepted_lost = report.ids_accepted_lost + 1;
         report.ids_accepted_lost_by_class = bump(report.ids_accepted_lost_by_class, cls);
         report = noteAccepted(report, a, row.id, cls, '(the v1 id)');
+        if a.listed
+            continue;   % NOT MIGRATED BY A DECISION: nothing of it to compare
+        end
     else
         report.ids_lost = report.ids_lost + 1;
         report.ids_lost_by_class = bump(report.ids_lost_by_class, cls);
@@ -344,7 +363,7 @@ for r = 1:numel(rows)
         rethrow(err);
     end
     % an ACCEPTED LOSS is listed and counted, and is not a failure
-    [c, report] = takeAcceptedLosses(c, report, accepted, row.id, cls, v1, docs, ctx, idReferenced);
+    [c, report] = takeAcceptedLosses(c, report, accepted, row.id, cls, v1, docs, ctx, idReferenced, listed);
     if released && ~isempty(c.lost)
         % a RELEASED id ([a rebuilt document may lose its id]) is counted in
         % ids_released; the rebuilt document cannot hold it, and that is the
@@ -535,7 +554,9 @@ function a = ACCEPTED_LOSSES()
 %   (the round-trip paths it covers; '(the v1 id)' for the source's own id in
 %   the id check), ID (true when the source's v1 id itself may be gone: the id
 %   is first checked, acceptedIdCheck) and WHEN (@(v1, docs, ctx) -> true when
-%   the loss applies to this source; [] for always).
+%   the loss applies to this source; [] for always). LISTED (true: only for a
+%   source RESULT.not_migrated lists, NOT MIGRATED BY A DECISION) is set
+%   false on every entry but those that say otherwise, at the end.
 a = struct('name', {}, 'decision', {}, 'classes', {}, 'paths', {}, 'id', {}, 'when', {});
 % [v1 session document id not kept] (Decided by Jess Haley, 2026-11-03): the
 % own base.id of a v1 `session` and of a v1 `dataset_remote` document is not
@@ -592,6 +613,32 @@ a(end+1) = struct('name', 'jrclust settings file name', ...
     'decision', '[jrclust settings-file name dropped] (Jess Haley, 2026-11-11)', ...
     'classes', {{'jrclust_clusters'}}, 'paths', {{'base.name'}}, ...
     'id', false, 'when', []);
+[a.listed] = deal(false);
+% [orphaned response settings are an accepted loss] (Decided by Jess Haley,
+% 2026-11-12): an orphaned stimulus_response_scalar_parameters_basic (referred
+% to by no document) with an identical used twin in its session is not
+% migrated; it is listed in known_v1_defects and its loss is accepted here.
+% LISTED: only a source did2.convert.resolveResponseParameters recorded in
+% RESULT.not_migrated; any other parameters document whose id is gone is lost
+a(end+1) = struct('name', 'orphaned response settings', ...
+    'decision', '[orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12)', ...
+    'classes', {{'stimulus_response_scalar_parameters_basic'}}, 'paths', {{'base.id'}}, ...
+    'id', true, 'when', [], 'listed', true);
+end
+
+function m = notMigratedIds(result)
+% v1 id -> true for each source RESULT.not_migrated lists (NOT MIGRATED BY A
+% DECISION)
+m = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if ~isfield(result, 'not_migrated') || ~isstruct(result.not_migrated)
+    return;
+end
+for k = 1:numel(result.not_migrated)
+    id = result.not_migrated(k).id;
+    if ischar(id) || (isstring(id) && isscalar(id))
+        if ~isempty(char(id)); m(char(id)) = true; end
+    end
+end
 end
 
 function tf = unlinkedDevice(v1, docs, ctx)
@@ -671,10 +718,14 @@ end
 tf = hasKind;
 end
 
-function a = acceptedIdLoss(accepted, cls)
-% the accepted loss that lets a source of class CLS lose its own v1 id ([] if none)
+function a = acceptedIdLoss(accepted, cls, listed)
+% the accepted loss that lets a source of class CLS lose its own v1 id ([] if
+% none); one marked LISTED only when the source is (LISTED true)
 a = [];
 for k = 1:numel(accepted)
+    if accepted(k).listed && ~listed
+        continue;
+    end
     if accepted(k).id && any(strcmp(accepted(k).classes, cls))
         a = accepted(k);
         return;
@@ -689,7 +740,7 @@ report.accepted_losses(end+1) = struct('name', a.name, 'decision', a.decision, .
     'source_id', sourceId, 'class_name', cls, 'path', path);
 end
 
-function [c, report] = takeAcceptedLosses(c, report, accepted, sourceId, cls, v1, docs, ctx, idReferenced)
+function [c, report] = takeAcceptedLosses(c, report, accepted, sourceId, cls, v1, docs, ctx, idReferenced, listed)
 % move the lost fields an accepted loss covers out of C.lost into the report's
 % accepted list, and recompute C.ok
 if isempty(c.lost)
@@ -698,7 +749,7 @@ end
 keep = true(1, numel(c.lost));
 for k = 1:numel(accepted)
     a = accepted(k);
-    if ~any(strcmp(a.classes, cls))
+    if ~any(strcmp(a.classes, cls)) || (a.listed && ~listed)
         continue;
     end
     if a.id && isKey(idReferenced, sourceId)
@@ -723,7 +774,7 @@ c.lost = c.lost(keep);
 c.ok = isempty(c.lost) && isempty(c.invented) && isempty(c.unplaced);
 end
 
-function [check, referenced] = acceptedIdCheck(bodies, rows, accepted, ctx)
+function [check, referenced] = acceptedIdCheck(bodies, rows, accepted, ctx, notMigrated)
 %ACCEPTEDIDCHECK Before an accepted loss lets a v1 id go, check that nothing
 %   points at it: no other v1 document names it, by a depends_on value or as
 %   any value anywhere in the document (its JSON text holds the id), and no
@@ -744,7 +795,7 @@ for r = 1:numel(rows)
     cls = row.class_name;
     if isempty(cls); cls = v1ClassName(v1); end
     id = v1Id(v1);
-    if isempty(id) || isempty(acceptedIdLoss(accepted, cls))
+    if isempty(id) || isempty(acceptedIdLoss(accepted, cls, isKey(notMigrated, id)))
         continue;
     end
     ids{end+1} = id; %#ok<AGROW>

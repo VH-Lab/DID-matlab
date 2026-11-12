@@ -333,6 +333,108 @@ verifyTrue(testCase, any(cellfun(@(e) strcmp(char(e.variable.name), 'isspike'), 
     asCellOf(m.method.parameters))));
 end
 
+% ===================== [orphaned response settings are an accepted loss] ===
+% Jess Haley, 2026-11-12: a parameters document referred to by no document,
+% with a USED parameters document of the same session identical in all six
+% fields, is not migrated: listed in the run report's known_v1_defects and
+% counted an accepted loss by the whole-batch round trip. One with no such
+% twin keeps today's behaviour and is counted apart.
+
+function testAnOrphanWithAnIdenticalUsedTwinIsNotMigrated(testCase)
+did2.convert.migrationReport('begin');   % the run writer's run
+endRun = onCleanup(@() did2.convert.migrationReport('end')); %#ok<NASGU>
+bodies = {convertibleResponse('resp_t', 'F1', '', 'par_t'), ...
+    writerParameters('par_t', 1, 0), writerParameters('par_o', 1, 0)};
+out = runFold(testCase, bodies);
+rep = out.response_parameters_fold;
+verifyEqual(testCase, rep.orphans_seen, 1);
+verifyEqual(testCase, rep.orphans_dropped_identical_twin, 1);
+verifyEqual(testCase, rep.orphans_kept_no_identical_twin, 0);
+verifyEqual(testCase, rep.parameters_documents_seen, 2);
+verifyEqual(testCase, rep.parameters_documents_deleted, 0, 'not a converted document');
+ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(ids, 'par_o')), 'the orphan is not migrated');
+verifyEqual(testCase, out.summary.migrated_count, numel(out.migrated));
+% the used document is unaffected: its method, isspike rebuilt, not written
+m = bodyWithId(out, 'par_t');
+verifyEqual(testCase, classNameOfBody(m), 'method');
+verifyEqual(testCase, rep.methods_minted, 1);
+verifyFalse(testCase, any(cellfun(@(e) strcmp(char(e.variable.name), 'isspike'), ...
+    asCellOf(m.method.parameters))), 'isspike is not written');
+verifyEqual(testCase, rep.isspike_written_no_converted_user, 0);
+% recorded on the result ...
+verifyEqual(testCase, numel(out.not_migrated), 1);
+verifyEqual(testCase, out.not_migrated(1).id, 'par_o');
+verifyEqual(testCase, out.not_migrated(1).twin_id, 'par_t');
+% ... and listed in the run report's known_v1_defects
+R = did2.convert.migrationReport('collect', out.migrated);
+hit = R.known_v1_defects(strcmp({R.known_v1_defects.document_id}, 'par_o'));
+verifyNumElements(testCase, hit, 1);
+verifyEqual(testCase, hit.class, 'stimulus_response_scalar_parameters_basic');
+verifyEqual(testCase, hit.reason, ...
+    'orphaned settings, identical to a used one, nothing refers to it');
+verifyEqual(testCase, R.counts.known_v1_defects, numel(R.known_v1_defects));
+% the whole-batch round trip counts it an accepted loss, never silently
+wb = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyEqual(testCase, wb.ids_accepted_lost, 1, describeBatch(wb));
+verifyEqual(testCase, wb.ids_accepted_lost_by_class.stimulus_response_scalar_parameters_basic, 1);
+verifyEqual(testCase, wb.ids_lost, 0, describeBatch(wb));
+verifyEqual(testCase, wb.accepted_losses_by_name.(matlab.lang.makeValidName( ...
+    'orphaned response settings')), 1);
+verifyEqual(testCase, wb.accepted_losses(end).source_id, 'par_o');
+verifyEqual(testCase, wb.sources_changed_by_batch_pass, 0, describeBatch(wb));
+verifyEqual(testCase, wb.sources_compared, 2, 'the response and the used method');
+verifyTrue(testCase, wb.ok, describeBatch(wb));
+end
+
+function testAnOrphanWithNoIdenticalUsedTwinIsConvertedAndCounted(testCase)
+% not covered by the decision: converted as before (a method stating
+% isspike), counted apart, not listed, and its id kept. Two cases: another
+% value (freq_response 2), and identical values in another session.
+other = writerParameters('par_s', 1, 0);
+other.base.session_id = '41268b6f5c6a3d4e_00000000000000b2';
+cases = {'another value', writerParameters('par_n', 2, 0), 'par_n'; ...
+    'another session', other, 'par_s'};
+for c = 1:size(cases, 1)
+    [label, orphan, oid] = cases{c, :};
+    did2.convert.migrationReport('begin');
+    bodies = {convertibleResponse('resp_t', 'F1', '', 'par_t'), ...
+        writerParameters('par_t', 1, 0), orphan};
+    out = runFold(testCase, bodies);
+    rep = out.response_parameters_fold;
+    verifyEqual(testCase, rep.orphans_seen, 1, label);
+    verifyEqual(testCase, rep.orphans_dropped_identical_twin, 0, label);
+    verifyEqual(testCase, rep.orphans_kept_no_identical_twin, 1, label);
+    verifyFalse(testCase, isfield(out, 'not_migrated'), label);
+    m = bodyWithId(out, oid);
+    verifyEqual(testCase, classNameOfBody(m), 'method', label);
+    verifyTrue(testCase, any(cellfun(@(e) strcmp(char(e.variable.name), 'isspike'), ...
+        asCellOf(m.method.parameters))), [label ': isspike written as before']);
+    verifyEqual(testCase, rep.isspike_written_no_converted_user, 1, label);
+    verifyEqual(testCase, classNameOfBody(bodyWithId(out, 'par_t')), 'method', label);
+    R = did2.convert.migrationReport('collect', out.migrated);
+    verifyFalse(testCase, any(strcmp({R.known_v1_defects.document_id}, oid)), label);
+    wb = did2.convert.roundtrip.wholeBatch(bodies, out);
+    verifyEqual(testCase, wb.ids_accepted_lost, 0, label);
+    verifyEqual(testCase, wb.ids_lost, 0, label);
+    did2.convert.migrationReport('end');
+end
+end
+
+function s = describeBatch(wb)
+s = sprintf(['kept %d lost %d accepted %d; compared %d ok %d; changed %d; ' ...
+    'no inverse %d; failures %d'], wb.ids_kept, wb.ids_lost, wb.ids_accepted_lost, ...
+    wb.sources_compared, wb.sources_ok, wb.sources_changed_by_batch_pass, ...
+    wb.sources_no_inverse, wb.failures_total);
+for k = 1:numel(wb.failures)
+    try
+        s = [s '; ' char(jsonencode(wb.failures(k)))]; %#ok<AGROW>
+    catch
+        s = [s '; ' char(wb.failures(k).source_id)]; %#ok<AGROW>
+    end
+end
+end
+
 function testANamedParametersDocumentKeepsItsNameOnTheMethod(testCase)
 % [v1 name goes to the class's own name field] (Decided by Jess Haley,
 % 2026-10-27, did-schema V_eta_go_forward_class_audit.md): a non-empty v1
