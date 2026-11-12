@@ -429,81 +429,8 @@ end
 
 bodies = v1Fixtures();
 
-% the full V_eta corpus pipeline, validation ON
-result = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveDeferredBaths(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-% TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
-% graph into the entity tier. BEFORE resolveDatasetEntities, and that order is
-% load-bearing -- the `dataset` entity minted here is keyed on the same dataset
-% id as the `dataset_remote` / `session_in_a_dataset` stubs, and the dedup below
-% keeps the RICHEST per id. Run after, and the stub would already have won.
-% Called BARE here on purpose: this file writes no report, so a raw stack trace
-% is strictly more useful than a captured message (runBatchPass.m states the
-% rule).
-result = did2.convert.resolveOpenmindsCitations(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveDatasetEntities(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-% #60: mint the `epoch` entities (one per (session, epoch-id) PAIR). Same
-% post-pass set as runCorpusDiscovery and testCorpusPRED; this is the fast gate,
-% so it is where a broken mint should be caught first.
-result = did2.convert.epochMint(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-% #65: fold session_relative_reference + session_bounded_reference into
-% `relative_reference`, base.id PRESERVED, anchored to the session DOCUMENT.
-% Same post-pass set and the SAME ORDER as runCorpusDiscovery, testCorpusPRED
-% and ndi.migrate.local -- a pass wired into three of four call sites is a trap:
-% the corpus goes green while production does something else.
-%
-% CALLED BARE HERE, unlike the two report-writing call sites, and the asymmetry
-% is deliberate rather than an oversight. The guard
-% (did2.unittest.helpers.runBatchPass) exists to stop an exception destroying a
-% corpus report that cost an hour to produce. THIS test writes no report and
-% runs in ~2 minutes, so there is nothing to protect and a raw stack trace is
-% strictly more informative than a captured message. This is the fast gate: a
-% broken post-pass should die here, loudly, before any corpus job starts.
-result = did2.convert.resolveSessionAnchors(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-% #66 INCREMENT 1: decompose an ingested epoch's `epochprobemap` into
-% epoch-scoped `<modality>_observation`s, retiring #30's coarse session-scoped
-% observation per probe. Same post-pass set and the SAME ORDER as
-% runCorpusDiscovery and testCorpusPRED. CALLED BARE, like the passes above and
-% for the identical reason: this test writes no report, so there is nothing for
-% the guard to protect and a raw stack trace is strictly more informative.
-result = did2.convert.resolveEpochProbemap(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-% #61: inline the stimulus-response run knobs onto the
-% `harmonic_component_calculation` leaf and drop `method_parameters_id`. Same
-% post-pass set and the SAME ORDER as runCorpusDiscovery and testCorpusPRED.
-% CALLED BARE, like the pass above and for the identical reason: this test
-% writes no report, so there is nothing for the guard to protect and a raw stack
-% trace is strictly more informative than a captured message.
-result = did2.convert.resolveResponseParameters(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-% TEAM DECISION 2026-08-11: `generic_file` -> an `opaque_body` + a statement
-% whose `variable` comes from the sibling ontologyLabel. Same post-pass set and
-% the SAME ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE, like
-% the passes above and for the identical reason: this test writes no report, so
-% there is nothing for the guard to protect and a raw stack trace is strictly
-% more informative than a captured message.
-result = did2.convert.foldGenericFiles(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-% DORMANT BY TEAM DECISION 2026-08-12: the target is ONE statement holding an
-% ARRAY of booleans on a TIME AXIS, and we wait for `axes[]` rather than ship
-% the 1->N decomposition. Called with the DEFAULT (`Decompose` false), so this
-% runs as a census and appends nothing; it stays in the chain, in the SAME
-% ORDER as runCorpusDiscovery and testCorpusPRED, so re-arming it later needs
-% no reordering. CALLED BARE, like the passes above and for the identical
-% reason.
-result = did2.convert.resolveValidIntervals(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
-
-% #57 syncgraph half: un-gate syncgraph -> clock_alignment_policy. In the SAME
-% ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE like the passes
-% above, for the identical reason.
-result = did2.convert.resolveClockAlignment(result, ...
-    'Validate', true, 'TargetVersion', 'did_v2');
+% the full V_eta corpus pipeline, validation ON (fixturePipeline)
+result = fixturePipeline(bodies, true);
 
 % GATE 1: nothing quarantined. Each one is NAMED first (class, error id,
 % message), so a red gate is readable from the log rather than as a count.
@@ -617,6 +544,62 @@ if isscalar(bodyIdx)
     verifyEqual(testCase, char(fmt), 'EMPTY:0000253');
     verifyEqual(testCase, char(ob.get('data_body.filename')), ...
         'plasmids/pXY-12.gb');
+end
+end
+
+function testTheFixturePipelineMintsTheSameIdsTwice(testCase)
+% Practice (b) of [migration reliability practices] (Decided by Jess Haley,
+% 2026-10-26, did-schema docs/plans/did_v2_go_forward_class_audit.md):
+% "deterministic ids: a document the migration mints gets an id derived from
+% its v1 source id and its role, so two runs on the same input are identical
+% and can be diffed". The whole fixture pipeline (v1_to_v2 and every batch
+% pass) runs twice on the same v1 fixtures, and the two runs' documents must
+% hold the same ids. Every id that differs is printed with its class, so a red
+% run names the writer that still mints at random.
+%
+% Every fixture states its v1 id, so no id here falls back to random by rule
+% (did.ido.unique_id() is left only where a source states no id at all).
+if isempty(getenv('DID_SCHEMA_PATH'))
+    assumeFail(testCase, ...
+        'DID_SCHEMA_PATH not set; run under test-fixtures.yml (assembled V_eta schema).');
+end
+bodies = v1Fixtures();
+r1 = fixturePipeline(bodies, false);
+r2 = fixturePipeline(bodies, false);
+[ids1, cls1] = idsAndClasses(r1.migrated);
+[ids2, ~] = idsAndClasses(r2.migrated);
+fprintf('testTheFixturePipelineMintsTheSameIdsTwice: %d documents in run 1, %d in run 2\n', ...
+    numel(ids1), numel(ids2));
+verifyNotEmpty(testCase, ids1, 'the pipeline migrated nothing: no denominator');
+onlyFirst = setdiff(ids1, ids2);
+for k = 1:min(numel(onlyFirst), 40)
+    fprintf('  id of run 1 only: %s (%s)\n', onlyFirst{k}, ...
+        cls1{find(strcmp(ids1, onlyFirst{k}), 1)});
+end
+verifyEmpty(testCase, onlyFirst, sprintf( ...
+    '%d of %d ids differ between two runs on the same input', ...
+    numel(onlyFirst), numel(ids1)));
+verifyEqual(testCase, sort(ids1), sort(ids2));
+end
+
+function [ids, classes] = idsAndClasses(migrated)
+% the base.id (or a carried v1 document's legacy id) and class of each document
+ids = cell(1, numel(migrated));
+classes = cell(1, numel(migrated));
+for k = 1:numel(migrated)
+    d = migrated{k};
+    if isa(d, 'did2.document'); d = d.toStruct(); end
+    ids{k} = '';
+    classes{k} = '';
+    if isstruct(d) && isfield(d, 'base') && isstruct(d.base) && isfield(d.base, 'id')
+        ids{k} = char(d.base.id);
+    elseif isstruct(d) && isfield(d, 'ndi_document') && isstruct(d.ndi_document) ...
+            && isfield(d.ndi_document, 'id')
+        ids{k} = char(d.ndi_document.id);
+    end
+    if isstruct(d) && isfield(d, 'document_class') && isfield(d.document_class, 'class_name')
+        classes{k} = char(d.document_class.class_name);
+    end
 end
 end
 
@@ -1658,4 +1641,85 @@ b.depends_on = struct('name', {}, 'value', {});
 b.base = struct('id', ['sd_' sessionId], 'session_id', sessionId, 'name', '', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 b.session = struct('reference', ['fixture ' sessionId]);
+end
+
+function result = fixturePipeline(bodies, validate)
+%FIXTUREPIPELINE The full V_eta corpus pipeline over BODIES, in the order of
+%   runCorpusDiscovery and testCorpusPRED, with validation VALIDATE. One copy,
+%   for testFixturesMigrateCleanUnderValidation and
+%   testTheFixturePipelineMintsTheSameIdsTwice.
+result = did2.convert.v1_to_v2(bodies, 'Validate', validate, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveDeferredBaths(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+% TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
+% graph into the entity tier. BEFORE resolveDatasetEntities, and that order is
+% load-bearing -- the `dataset` entity minted here is keyed on the same dataset
+% id as the `dataset_remote` / `session_in_a_dataset` stubs, and the dedup below
+% keeps the RICHEST per id. Run after, and the stub would already have won.
+% Called BARE here on purpose: this file writes no report, so a raw stack trace
+% is strictly more useful than a captured message (runBatchPass.m states the
+% rule).
+result = did2.convert.resolveOpenmindsCitations(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveDatasetEntities(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+% #60: mint the `epoch` entities (one per (session, epoch-id) PAIR). Same
+% post-pass set as runCorpusDiscovery and testCorpusPRED; this is the fast gate,
+% so it is where a broken mint should be caught first.
+result = did2.convert.epochMint(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+% #65: fold session_relative_reference + session_bounded_reference into
+% `relative_reference`, base.id PRESERVED, anchored to the session DOCUMENT.
+% Same post-pass set and the SAME ORDER as runCorpusDiscovery, testCorpusPRED
+% and ndi.migrate.local -- a pass wired into three of four call sites is a trap:
+% the corpus goes green while production does something else.
+%
+% CALLED BARE HERE, unlike the two report-writing call sites, and the asymmetry
+% is deliberate rather than an oversight. The guard
+% (did2.unittest.helpers.runBatchPass) exists to stop an exception destroying a
+% corpus report that cost an hour to produce. THIS test writes no report and
+% runs in ~2 minutes, so there is nothing to protect and a raw stack trace is
+% strictly more informative than a captured message. This is the fast gate: a
+% broken post-pass should die here, loudly, before any corpus job starts.
+result = did2.convert.resolveSessionAnchors(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+% #66 INCREMENT 1: decompose an ingested epoch's `epochprobemap` into
+% epoch-scoped `<modality>_observation`s, retiring #30's coarse session-scoped
+% observation per probe. Same post-pass set and the SAME ORDER as
+% runCorpusDiscovery and testCorpusPRED. CALLED BARE, like the passes above and
+% for the identical reason: this test writes no report, so there is nothing for
+% the guard to protect and a raw stack trace is strictly more informative.
+result = did2.convert.resolveEpochProbemap(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+% #61: inline the stimulus-response run knobs onto the
+% `harmonic_component_calculation` leaf and drop `method_parameters_id`. Same
+% post-pass set and the SAME ORDER as runCorpusDiscovery and testCorpusPRED.
+% CALLED BARE, like the pass above and for the identical reason: this test
+% writes no report, so there is nothing for the guard to protect and a raw stack
+% trace is strictly more informative than a captured message.
+result = did2.convert.resolveResponseParameters(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+% TEAM DECISION 2026-08-11: `generic_file` -> an `opaque_body` + a statement
+% whose `variable` comes from the sibling ontologyLabel. Same post-pass set and
+% the SAME ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE, like
+% the passes above and for the identical reason: this test writes no report, so
+% there is nothing for the guard to protect and a raw stack trace is strictly
+% more informative than a captured message.
+result = did2.convert.foldGenericFiles(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+% DORMANT BY TEAM DECISION 2026-08-12: the target is ONE statement holding an
+% ARRAY of booleans on a TIME AXIS, and we wait for `axes[]` rather than ship
+% the 1->N decomposition. Called with the DEFAULT (`Decompose` false), so this
+% runs as a census and appends nothing; it stays in the chain, in the SAME
+% ORDER as runCorpusDiscovery and testCorpusPRED, so re-arming it later needs
+% no reordering. CALLED BARE, like the passes above and for the identical
+% reason.
+result = did2.convert.resolveValidIntervals(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+
+% #57 syncgraph half: un-gate syncgraph -> clock_alignment_policy. In the SAME
+% ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE like the passes
+% above, for the identical reason.
+result = did2.convert.resolveClockAlignment(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
 end

@@ -644,6 +644,12 @@ ingestedSessions = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 namedInstruments = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
+    % the ids minted for this source derive from its id (did2.convert.mintId;
+    % practice (b) of [migration reliability practices], Jess Haley,
+    % 2026-10-26), keyed apart from the ids v1_to_v2 minted for the same
+    % source, whose ordinals this context does not continue
+    did2.convert.mintId('-popto', mintDepth + 1);
+    did2.convert.mintId('-push', ['resolveEpochProbemap|' char(docIds{k})]);
     report.epochfiles_ingested_seen = report.epochfiles_ingested_seen + 1;
     b = bodies{k};
     sid = sessionIds{k};
@@ -981,6 +987,7 @@ for k = 1:n
             mkIngestionManifest(b, fnId, epochDocId, sid, datestamp);
     end
 end
+did2.convert.mintId('-popto', mintDepth + 1);   % back to the run's context
 
 % ---- the element_epoch dissolution (F1, D2) -----------------------------
 % Decided by Jess Haley, 2026-10-22 [epoch dissolution before merge] (F1,
@@ -1032,6 +1039,12 @@ end
 for i = 1:numel(acqEpochIdx)
     k = acqEpochIdx(i);
     b = bodies{k};
+    % the ids minted for this source derive from its id (did2.convert.mintId;
+    % practice (b) of [migration reliability practices], Jess Haley,
+    % 2026-10-26), keyed apart from the ids v1_to_v2 minted for the same
+    % source, whose ordinals this context does not continue
+    did2.convert.mintId('-popto', mintDepth + 1);
+    did2.convert.mintId('-push', ['resolveEpochProbemap|' char(docIds{k})]);
     report.acquisition_epoch_seen = report.acquisition_epoch_seen + 1;
     if isKey(extentCarried, docIds{k})
         report.acquisition_epoch_kept_extent_carried = ...
@@ -1139,6 +1152,7 @@ for i = 1:numel(acqEpochIdx)
         report.spike_instrument_resolved = report.spike_instrument_resolved + 1;
     end
 end
+did2.convert.mintId('-popto', mintDepth + 1);   % back to the run's context
 
 report.archive_docs_inspected = numel(archiveIdxAll);
 report.metadata_archives_inspected = numel(metaArchiveIdxAll);
@@ -2652,6 +2666,7 @@ for L = 1:numel(list)
         'Notes', sprintf(['The ingested recording of epoch %s: v1 attached ' ...
             'file series %s, carried as attached (%d member(s)).'], ...
             sp.epochString, slot, numel(idx)), ...
+        'Id', did2.convert.mintId(['ingested recording body ' slot], baseField(archive, 'id')), ...
         'SessionId', sp.sid, 'CreationTimestamp', sp.datestamp, 'Validate', false);
     fi = struct('name', {}, 'locations', {});
     for m = 1:numel(idx)
@@ -2685,6 +2700,7 @@ for f = 1:numel(files)
         'Notes', sprintf(['A raw recording file of epoch %s, recorded by ' ...
             'location where the source keeps it (named by the v1 ' ...
             'epochfiles_ingested cache; not ingested, never copied).'], sp.epochString), ...
+        'Id', did2.convert.mintId('recording file body', baseField(src, 'id')), ...
         'SessionId', sp.sid, 'CreationTimestamp', sp.datestamp, 'Validate', false);
     body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
         'delete_original', 0, 'uid', did2.convert.mintId('file_uid', baseField(src, 'id')), 'location', path, ...
@@ -2884,6 +2900,7 @@ for i = 1:numel(ks)
             'the v1 element_epoch file epoch_binary_data.vhsb, carried as attached.'], ...
             archiveEpochOf(b)), ...
         'SessionId', char(sessionIds{k}), 'CreationTimestamp', datestamp, ...
+        'Id', did2.convert.mintId('element_epoch opaque_body', baseField(b, 'id')), ...
         'Validate', false);
     loc = struct();
     if isfield(fi, 'locations'); loc = fi.locations; end
