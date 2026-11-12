@@ -142,8 +142,11 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     gap is listed in the run's report, not in the document).
 %                     DETAIL is the gap's field path
 %                     ('coordinate_system.reference_point'). Written by
-%                     probe_geometry (two per converted document), image_stack,
-%                     virus_injection and the dose and formulation writers.
+%                     probe_geometry (two per converted document, and one per
+%                     site observation with no unit), image_stack,
+%                     virus_injection, neuron_extracellular, the measurement
+%                     fold and treatment (a number with no unit or not finite,
+%                     jQuantity), and the dose and formulation writers.
 %                     Called `needs_info` until 2026-11-01.
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
 %                     location, so whether it was an immersion or a dose cannot
