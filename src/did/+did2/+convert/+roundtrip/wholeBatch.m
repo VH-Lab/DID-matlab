@@ -135,6 +135,26 @@ function report = wholeBatch(v1Bodies, result)
 %     sources_stored_as_v1, stored_as_v1_by_class   of the compared, the
 %                              passthroughs still unchanged at the end, so
 %                              stored as their v1 source (see above)
+%     DEFERRED TO THE SECOND PASS  a v1 value this batch cannot hold because
+%                              NDI-matlab's second pass writes it, as the
+%                              class's inverse declares it (spec.deferred,
+%                              did2.convert.roundtrip.check): listed by field
+%                              and counted, never silently, and never lost.
+%                              First case: an ingested archive's
+%                              sample_analog_segment and
+%                              sample_digital_segment ([archive segment
+%                              lengths measured after the second pass], Jess
+%                              Haley, 2026-11-12). A source whose only
+%                              difference is such a value is clean at the DID
+%                              stage: it counts in sources_ok, and in
+%                              deferred_to_second_pass.sources_ok.
+%       deferred_to_second_pass  struct, its denominator first:
+%                              sources_compared (as above), sources (of those,
+%                              with at least one deferred value), sources_ok
+%                              (of those, clean at the DID stage), values
+%                              (deferred values in all), fields (struct array
+%                              {class_name, path, sources, decision}, one per
+%                              class and field)
 %     sources_compared_after_batch_pass, compared_after_batch_pass_by_class
 %                              of the compared, those some (or, for a class
 %                              locatedAfterPass finds, all) of whose documents
@@ -147,7 +167,8 @@ function report = wholeBatch(v1Bodies, result)
 %     failures_total, failures_by_class   compared sources that are not
 %                              clean, counted exactly
 %     failures                 struct array {source_id, class_name, lost,
-%                              lost_values, invented, unplaced}: in batch
+%                              lost_values, invented, unplaced, deferred
+%                              (the paths deferred to the second pass)}: in batch
 %                              order, at most CLASS_CAP (5) per class and
 %                              FAILURE_CAP (200) in all (a sample of every
 %                              failing class; the counts above are exact).
@@ -196,13 +217,16 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
         'class_name', {}, 'path', {}), ...
     'accepted_id_check', struct(), 'sources_without_id', 0, ...
     'sources_compared', 0, 'sources_ok', 0, ...
+    'deferred_to_second_pass', struct('sources_compared', 0, 'sources', 0, ...
+        'sources_ok', 0, 'values', 0, 'fields', struct('class_name', {}, ...
+        'path', {}, 'sources', {}, 'decision', {})), ...
     'sources_stored_as_v1', 0, 'stored_as_v1_by_class', struct(), ...
     'sources_compared_after_batch_pass', 0, 'compared_after_batch_pass_by_class', struct(), ...
     'sources_changed_by_batch_pass', 0, 'changed_by_class', struct(), ...
     'sources_no_inverse', 0, 'no_inverse_by_class', struct(), ...
     'unattributed_documents', 0, 'failures_total', 0, 'failures_by_class', struct(), ...
     'failures', struct('source_id', {}, 'class_name', {}, 'lost', {}, ...
-        'lost_values', {}, 'invented', {}, 'unplaced', {}), 'ok', false);
+        'lost_values', {}, 'invented', {}, 'unplaced', {}, 'deferred', {}), 'ok', false);
 accepted = ACCEPTED_LOSSES();
 [report.accepted_id_check, idReferenced] = acceptedIdCheck(bodies, rows, accepted, ctx);
 sampled = struct();
@@ -329,6 +353,7 @@ for r = 1:numel(rows)
         c.ok = isempty(c.lost) && isempty(c.invented) && isempty(c.unplaced);
     end
     report.sources_compared = report.sources_compared + 1;
+    report.deferred_to_second_pass = noteDeferred(report.deferred_to_second_pass, c, cls);
     if afterPass
         report.sources_compared_after_batch_pass = report.sources_compared_after_batch_pass + 1;
         report.compared_after_batch_pass_by_class = bump(report.compared_after_batch_pass_by_class, cls);
@@ -339,6 +364,10 @@ for r = 1:numel(rows)
     end
     if c.ok
         report.sources_ok = report.sources_ok + 1;
+        if isfield(c, 'deferred') && ~isempty(c.deferred)
+            report.deferred_to_second_pass.sources_ok = ...
+                report.deferred_to_second_pass.sources_ok + 1;
+        end
     else
         report.failures_total = report.failures_total + 1;
         report.failures_by_class = bump(report.failures_by_class, cls);
@@ -351,11 +380,13 @@ for r = 1:numel(rows)
             if ~isempty(c.lost); lostPaths = {c.lost.path}; end
             report.failures(end+1) = struct('source_id', row.id, 'class_name', cls, ...
                 'lost', {lostPaths}, 'lost_values', {lostValues(c.lost, 5)}, ...
-                'invented', {c.invented}, 'unplaced', {c.unplaced});
+                'invented', {c.invented}, 'unplaced', {c.unplaced}, ...
+                'deferred', {deferredPaths(c)});
         end
     end
 end
 report.unattributed_documents = nnz(~attributed);
+report.deferred_to_second_pass.sources_compared = report.sources_compared;
 report.ok = report.sources_ok == report.sources_compared && report.ids_lost == 0 ...
     && report.sources_changed_by_batch_pass == 0 && report.sources_no_inverse == 0;
 end
@@ -466,6 +497,33 @@ for i = 1:numel(infos)
             uids{end+1} = char(locs{j}.uid); %#ok<AGROW>
         end
     end
+end
+end
+
+function d = noteDeferred(d, c, cls)
+% count C's values deferred to the second pass (DEFERRED TO THE SECOND PASS)
+if ~isfield(c, 'deferred') || isempty(c.deferred)
+    return;
+end
+d.sources = d.sources + 1;
+d.values = d.values + numel(c.deferred);
+for k = 1:numel(c.deferred)
+    p = c.deferred(k).path;
+    j = find(strcmp({d.fields.class_name}, cls) & strcmp({d.fields.path}, p), 1);
+    if isempty(j)
+        d.fields(end+1) = struct('class_name', cls, 'path', p, 'sources', 1, ...
+            'decision', c.deferred(k).why);
+    else
+        d.fields(j).sources = d.fields(j).sources + 1;
+    end
+end
+end
+
+function p = deferredPaths(c)
+% the paths C deferred to the second pass (cellstr)
+p = {};
+if isfield(c, 'deferred') && ~isempty(c.deferred)
+    p = {c.deferred.path};
 end
 end
 

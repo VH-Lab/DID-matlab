@@ -67,7 +67,12 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %                               ndi.document writes into every such document:
 %                               the writer's fixed list, as
 %                               roundtrip.spikewaves writes spikewaves'):
-%                               the bodies carry only the slots that held files
+%                               the bodies carry only the slots that held files.
+%                               Compared AS A SET ([archive file list compared
+%                               as a set], Jess Haley, 2026-11-12): the v1
+%                               list in another order is the same list; a
+%                               duplicate, a missing or an extra name is lost
+%                               (sameFileSet)
 %     files.file_info           one entry per body member: body_data_<m-1> of a
 %                               body for slot `<stem>#` is v1's `<stem><m>`
 %                               (mfdaq attaches segments 1..N that way;
@@ -87,7 +92,13 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %                               second pass fills from the v1 document
 %                               (ndi.migrate.internal.ingestedArchiveBodies);
 %                               this batch is the one before that pass, so the
-%                               round trip reports them lost
+%                               round trip reports them DEFERRED to the second
+%                               pass (spec.deferred, pass 'second_pass'), not
+%                               lost ([archive segment lengths measured after
+%                               the second pass], Jess Haley, 2026-11-12), and
+%                               wholeBatch counts them in
+%                               deferred_to_second_pass. Only these two
+%                               fields: any other parameter is still lost
 %
 %   A body that is not an opaque_body, or names no file slot, is unplaced.
 %
@@ -279,6 +290,45 @@ for e = 1:numel(entries)
     fi(end+1) = struct('name', entries(e).name, 'locations', {entries(e).locations}); %#ok<AGROW>
 end
 v1.files = struct('file_list', {TEMPLATE_FILE_LIST()}, 'file_info', {fi});
+
+% [archive file list compared as a set] (Jess Haley, 2026-11-12)
+spec.same(end+1) = struct('path', 'files.file_list', 'fn', @sameFileSet, ...
+    'why', '[archive file list compared as a set] (Jess Haley, 2026-11-12)');
+% [archive segment lengths measured after the second pass] (Jess Haley,
+% 2026-11-12): NDI-matlab's second pass writes them on a sampled_body's time
+% chunk ([segment length is the time chunk]); this batch is before it
+why = '[archive segment lengths measured after the second pass] (Jess Haley, 2026-11-12)';
+spec.deferred = struct('path', { ...
+    [CLASS '.parameters.sample_analog_segment'], ...
+    [CLASS '.parameters.sample_digital_segment']}, ...
+    'pass', 'second_pass', 'why', why);
+end
+
+function tf = sameFileSet(v1List, rebuiltList)
+% the two file lists hold the same names, each as many times, in any order
+% ([archive file list compared as a set]): order is ignored, a duplicate or a
+% different membership is not
+tf = false;
+a = textList(v1List);
+b = textList(rebuiltList);
+if isempty(a) || isempty(b) || numel(a) ~= numel(b)
+    return;
+end
+tf = isequal(sort(a), sort(b));
+end
+
+function c = textList(v)
+% V as a column cellstr ({} when it is not a list of text)
+c = {};
+if ischar(v) && (isrow(v) || isempty(v))
+    v = {v};
+elseif isstring(v)
+    v = cellstr(v);
+end
+if ~iscell(v) || ~all(cellfun(@(x) ischar(x) || (isstring(x) && isscalar(x)), v(:)))
+    return;
+end
+c = cellfun(@(x) reshape(char(x), 1, []), v(:), 'UniformOutput', false);
 end
 
 function r = writerRank(name)
