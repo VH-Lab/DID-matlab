@@ -630,6 +630,10 @@ for i = 1:numel(mixture)
     if any(strcmpi(chem.name, {'osm', 'osmolarity'})) && isfinite(a.source_value)
         props.osmolarity = struct('source_value', a.source_value, ...
             'source_unit', unitTerm, 'approximate', false);
+        if isempty(a.source_unit.node) && isempty(a.source_unit.name)
+            % no unit stated: none written (as an ingredient's concentration)
+            props.osmolarity = rmfield(props.osmolarity, 'source_unit');
+        end
         % [bath concentration prefixes convert to molar] (Jess Haley,
         % 2026-11-12): a unit that is osmolar with a known SI prefix gets the
         % canonical `osmolar` (osmoles per litre, arithmetic only); any other
