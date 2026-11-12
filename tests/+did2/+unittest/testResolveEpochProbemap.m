@@ -486,6 +486,50 @@ end
 
 % ===================== spike trains (2026-10-21) ========================
 
+function testIdsFromContentWhenV1StatesNone(testCase)
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): a
+% jrclust_clusters and a pyraview that state no v1 id get ids derived from
+% their content (pass 1: jrclust_clusters.m, pyraview.m), and this pass mints
+% from them, so two runs on the same input give the same ids, and a different
+% id-less pyraview gets other ids. (did-schema #453's determinism covered
+% every source with a v1 id.) NOT COVERED: an epochfiles_ingested stating no
+% id. This pass finds what it renames, replaces and retires by source id, and
+% skips a source with none, so such an epoch is kept unchanged as v1;
+% mkIngestionManifest's content-derived id is not reached.
+[ids1, ~, rep1] = idlessRun('high');
+[ids2, ~, ~] = idlessRun('high');
+verifyEqual(testCase, rep1.epochfiles_ingested_seen, 1, 'DENOMINATOR: the ingested epoch');
+verifyEqual(testCase, rep1.sorter_calculations_seen, 1, 'DENOMINATOR: the sorter');
+verifyEqual(testCase, rep1.pyraview_observations_seen, 1, 'DENOMINATOR: the pyraview');
+verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a document with no id');
+verifyEqual(testCase, numel(unique(ids1)), numel(ids1), 'two documents share an id');
+verifyEqual(testCase, sort(ids1), sort(ids2), 'two runs on the same input');
+% another pyraview with no id (another label): other ids
+ids3 = idlessRun('low');
+verifyNotEmpty(testCase, setdiff(ids3, ids1), ...
+    'two different id-less pyraviews mint the same ids');
+end
+
+function [ids, out, rep] = idlessRun(label)
+subj = subjectBody('spec_n', 'sess_n', 'L');
+el   = elementBody('el_n', 'sess_n', 'p', '1', 'n-trode', 1, 'spec_n');
+daq  = daqsystemBody('acqsys_n', 'sess_n', 'intan1');
+ing  = ingestedWithDeviceRows('ing_n', 'sess_n', 't0n1', { ...
+    {'p', '1', 'n-trode', 'intan1:ai1-2', 'L'}});
+jc = jrclustV1('jc_n', 'sess_n', 'el_n');
+jc.base.id = '';
+pv = pyraviewV1('pv_n', 'sess_n', 'el_n', 't0n1');
+pv.base.id = '';
+pv.pyraview.label = label;
+[out, rep] = decompose({sessionBody('sd_n', 'sess_n', 'ref'), subj, el, daq, ing, jc, pv});
+ids = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    s = out.migrated{k}.toStruct();
+    ids{k} = '';
+    if isfield(s, 'base') && isfield(s.base, 'id'); ids{k} = char(s.base.id); end
+end
+end
+
 function v1 = elementEpochBody(docId, sessionId, elementId, epochId, withFile)
 %ELEMENTEPOCHBODY A did_v1 element_epoch, as NDI's writer makes it
 %   (+ndi/element.m:367-378: newdocument('element_epoch', 'element_epoch.

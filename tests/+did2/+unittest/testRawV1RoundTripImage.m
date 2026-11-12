@@ -741,6 +741,31 @@ end
 
 % ===================== helpers =========================================
 
+function testAStackWithNoIdGetsAnIdFromItsContent(testCase)
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): a stack
+% stating no v1 id gets an id derived from its content (image_stack.m), so
+% two runs give the same ids; another stack with no id gets other ids
+v1 = babuStack('is_n', 'video');
+v1.base.id = '';
+ids1 = idsOf(runRaw(v1));
+ids2 = idsOf(runRaw(v1));
+assertNotEmpty(testCase, ids1, 'DENOMINATOR: nothing migrated');
+verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a document with no id');
+verifyEqual(testCase, ids1, ids2, 'two runs on the same input');
+other = babuStack('is_n', 'image');
+other.base.id = '';
+verifyEmpty(testCase, intersect(idsOf(runRaw(other)), ids1), ...
+    'two different stacks with no id share an id');
+end
+
+function ids = idsOf(out)
+ids = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    ids{k} = char(out.migrated{k}.get('base.id'));
+end
+ids = sort(ids);
+end
+
 function out = runRaw(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end

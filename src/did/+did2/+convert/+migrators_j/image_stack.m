@@ -402,7 +402,12 @@ src = preBody;
 if isRaw
     src = jRawBody(preBody, srcClass);
 end
-stackId   = baseField(src, 'id', did.ido.unique_id());
+stackId   = baseField(src, 'id', '');
+if isempty(stackId)
+    % no v1 id: derived from the document's content ([ids from content when
+    % v1 states none], Jess Haley, 2026-11-12)
+    stackId = did2.convert.contentId('image_stack', src);
+end
 dataType = getCharField(params, 'data_type');
 % [no invented values] (Jess Haley, 2026-10-25): a dimension order or data type
 % the source does not state is not assumed. No order means no honest key, so
