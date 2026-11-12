@@ -297,19 +297,20 @@ end
 function testAValueArrayWithNoUnitIsOneGap(testCase)
 % [waveform unit gap once] (Jess Haley, 2026-11-03): one gap, with no index,
 % for a value of many cells; an indexed gap excuses its own cell only
-doc = measuredDoc();
-doc.measured.reading = struct('source_value', {1, 2, 3});
+doc = did2.schema.cache.shared().buildBlankDocument('measured_series');
+doc.base.id = 'measured_series_1';
+doc.measured_series.readings = struct('source_value', {1, 2, 3});
 did2.convert.migrationReport('begin');
 testCase.addTeardown(@() did2.convert.migrationReport('end'));
 verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
     'did2:validation:quantityShape', 'not listed: refused');
-did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
-    'measured.reading(2).meters', 'unit not stated');
+did2.convert.migrationReport('gap', doc.base.id, 'measured_series', ...
+    'measured_series.readings(2).meters', 'unit not stated');
 verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
     'did2:validation:quantityShape', 'one cell listed: the others refused');
 did2.convert.migrationReport('begin');
-did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
-    'measured.reading.meters', 'unit not stated: 3 numbers');
+did2.convert.migrationReport('gap', doc.base.id, 'measured_series', ...
+    'measured_series.readings.meters', 'unit not stated: 3 numbers');
 did2.schema.cache.shared().validateDocument(doc);
 end
 
@@ -439,6 +440,11 @@ writeClass(dirPath, 'oddities', {}, {leaf('reading', 'voltage'), leaf('other', '
 % class, for the canonical check
 writeClass(dirPath, 'base', {}, {leaf('id', 'char')});
 writeClass(dirPath, 'measured', {'base'}, {leaf('reading', 'length')});
+% ... and an array of them (a value of several cells: one gap, [waveform unit
+% gap once])
+readings = leaf('readings', 'length');
+readings.mustBeScalar = false;
+writeClass(dirPath, 'measured_series', {'base'}, {readings});
 did2.schema.cache.setSchemaPath(dirPath);
 end
 
