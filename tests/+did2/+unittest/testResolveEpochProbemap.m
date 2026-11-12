@@ -486,6 +486,52 @@ end
 
 % ===================== spike trains (2026-10-21) ========================
 
+function testIdsFromContentWhenV1StatesNone(testCase)
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): an ingested
+% epoch, a jrclust_clusters and a pyraview that state no v1 id get ids derived
+% from their content (the ingestion_manifest the epoch becomes, the sorter's
+% calculation, the ids this pass mints for them), so two runs on the same
+% input give the same ids, and two different such epochs never share one.
+% (did-schema #453's determinism covered every source with a v1 id.)
+[ids1, out1, rep1] = idlessRun('t0n1');
+[ids2, ~, ~] = idlessRun('t0n1');
+verifyEqual(testCase, rep1.epochfiles_ingested_seen, 1, 'DENOMINATOR: the ingested epoch');
+verifyEqual(testCase, rep1.sorter_calculations_seen, 1, 'DENOMINATOR: the sorter');
+verifyEqual(testCase, rep1.pyraview_observations_seen, 1, 'DENOMINATOR: the pyraview');
+m1 = bodiesOfClass(out1, 'ingestion_manifest');
+assertEqual(testCase, numel(m1), 1, 'the id-less epoch is renamed to its manifest');
+verifyNotEmpty(testCase, char(m1{1}.base.id), 'the manifest has an id');
+verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a document with no id');
+verifyEqual(testCase, numel(unique(ids1)), numel(ids1), 'two documents share an id');
+verifyEqual(testCase, sort(ids1), sort(ids2), 'two runs on the same input');
+% another epoch with no id: its manifest gets another id
+[~, out3, ~] = idlessRun('t0n2');
+m3 = bodiesOfClass(out3, 'ingestion_manifest');
+assertEqual(testCase, numel(m3), 1);
+verifyNotEqual(testCase, char(m3{1}.base.id), char(m1{1}.base.id), ...
+    'two different epochs with no id share a manifest id');
+end
+
+function [ids, out, rep] = idlessRun(epochId)
+subj = subjectBody('spec_n', 'sess_n', 'L');
+el   = elementBody('el_n', 'sess_n', 'p', '1', 'n-trode', 1, 'spec_n');
+daq  = daqsystemBody('acqsys_n', 'sess_n', 'intan1');
+ing  = ingestedWithDeviceRows('ing_n', 'sess_n', epochId, { ...
+    {'p', '1', 'n-trode', 'intan1:ai1-2', 'L'}});
+ing.base.id = '';
+jc = jrclustV1('jc_n', 'sess_n', 'el_n');
+jc.base.id = '';
+pv = pyraviewV1('pv_n', 'sess_n', 'el_n', epochId);
+pv.base.id = '';
+[out, rep] = decompose({sessionBody('sd_n', 'sess_n', 'ref'), subj, el, daq, ing, jc, pv});
+ids = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    s = out.migrated{k}.toStruct();
+    ids{k} = '';
+    if isfield(s, 'base') && isfield(s.base, 'id'); ids{k} = char(s.base.id); end
+end
+end
+
 function v1 = elementEpochBody(docId, sessionId, elementId, epochId, withFile)
 %ELEMENTEPOCHBODY A did_v1 element_epoch, as NDI's writer makes it
 %   (+ndi/element.m:367-378: newdocument('element_epoch', 'element_epoch.

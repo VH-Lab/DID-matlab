@@ -508,6 +508,49 @@ verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
     'Validate', false, 'TargetVersion', 'did_v2');
 end
 
+function testADatasetVersionWithNoIdGetsIdsFromItsContent(testCase)
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): a
+% DatasetVersion stating no id and no session id gets a dataset id, and the
+% documents minted for its component get ids, derived from its content: two
+% runs on the same input give the same ids. (Its Dataset, which names it by id,
+% is left out: with no id there is nothing to name.)
+bodies = idlessGraph('A Real Dataset');
+[out1, rep1] = runPass(testCase, bodies);
+[out2, ~] = runPass(testCase, bodies);
+verifyEqual(testCase, rep1.datasets_emitted, 1, 'DENOMINATOR: the dataset');
+ids1 = allIds(out1);
+ids2 = allIds(out2);
+verifyNotEmpty(testCase, ids1);
+verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a document with no id');
+verifyEqual(testCase, sort(ids1), sort(ids2), 'two runs on the same input');
+% another DatasetVersion with no id: another dataset id
+[out3, ~] = runPass(testCase, idlessGraph('Another Dataset'));
+verifyNotEqual(testCase, idsOfClass(out3, 'dataset'), idsOfClass(out1, 'dataset'));
+end
+
+function bodies = idlessGraph(fullName)
+bodies = citationGraph();
+keep = true(1, numel(bodies));
+for k = 1:numel(bodies)
+    switch char(bodies{k}.base.id)
+        case 'om_dataset'
+            keep(k) = false;
+        case 'om_dsv'
+            bodies{k}.base.id = '';
+            bodies{k}.base.session_id = '';
+            bodies{k}.openminds.fields.fullName = fullName;
+    end
+end
+bodies = bodies(keep);
+end
+
+function ids = allIds(out)
+ids = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    ids{k} = char(out.migrated{k}.get('base.id'));
+end
+end
+
 function r = emptyResult()
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));

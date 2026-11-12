@@ -649,7 +649,7 @@ for k = 1:n
     % 2026-10-26), keyed apart from the ids v1_to_v2 minted for the same
     % source, whose ordinals this context does not continue
     did2.convert.mintId('-popto', mintDepth + 1);
-    did2.convert.mintId('-push', ['resolveEpochProbemap|' char(docIds{k})]);
+    did2.convert.mintId('-push', ['resolveEpochProbemap|' sourceKey(docIds{k}, bodies{k})]);
     report.epochfiles_ingested_seen = report.epochfiles_ingested_seen + 1;
     b = bodies{k};
     sid = sessionIds{k};
@@ -1044,7 +1044,7 @@ for i = 1:numel(acqEpochIdx)
     % 2026-10-26), keyed apart from the ids v1_to_v2 minted for the same
     % source, whose ordinals this context does not continue
     did2.convert.mintId('-popto', mintDepth + 1);
-    did2.convert.mintId('-push', ['resolveEpochProbemap|' char(docIds{k})]);
+    did2.convert.mintId('-push', ['resolveEpochProbemap|' sourceKey(docIds{k}, bodies{k})]);
     report.acquisition_epoch_seen = report.acquisition_epoch_seen + 1;
     if isKey(extentCarried, docIds{k})
         report.acquisition_epoch_kept_extent_carried = ...
@@ -2220,6 +2220,17 @@ function t = mkOntologyTerm(node, name)
 t = struct('node', char(node), 'name', char(name));
 end
 
+function key = sourceKey(docId, body)
+%SOURCEKEY The key this pass mints a source's ids from: its id, or, for a
+%   source stating none, 'content|' and did2.convert.mintKey's content key
+%   ([ids from content when v1 states none], Jess Haley, 2026-11-12), so two
+%   sources with no id never mint the same ids.
+key = char(docId);
+if isempty(key)
+    key = ['content|' did2.convert.mintKey(body)];
+end
+end
+
 function m = mkIngestionManifest(srcBody, filenavigatorId, epochDocId, ...
         sessionId, datestamp)
 % did-schema #88: ingestion_manifest {files} with the epoch_file_pattern_id
@@ -2227,7 +2238,11 @@ function m = mkIngestionManifest(srcBody, filenavigatorId, epochDocId, ...
 % epoch_id edge. No serialized epochprobemap (#73 review item 39): the caller
 % only renames when every row has decomposed.
 srcId = baseField(srcBody, 'id');
-if isempty(srcId); srcId = did.ido.unique_id(); end
+if isempty(srcId)
+    % no id stated: derived from the document's content ([ids from content
+    % when v1 states none], Jess Haley, 2026-11-12)
+    srcId = did2.convert.contentId('ingestion_manifest', srcBody);
+end
 m = did2.build.document('ingestion_manifest', ...
     struct('files', {ingestedFilesOf(srcBody)}), ...
     'Edges', struct('epoch_file_pattern_id', char(filenavigatorId), ...

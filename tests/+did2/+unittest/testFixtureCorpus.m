@@ -557,13 +557,16 @@ function testTheFixturePipelineMintsTheSameIdsTwice(testCase)
 % hold the same ids. Every id that differs is printed with its class, so a red
 % run names the writer that still mints at random.
 %
-% Every fixture states its v1 id, so no id here falls back to random by rule
-% (did.ido.unique_id() is left only where a source states no id at all).
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): the
+% fixtures also hold copies that state NO v1 id (idlessFixtures: a
+% dataset_remote and a metadata_editor with no id and no session id, which
+% jDatasetId reads, a jrclust_clusters and an image), whose ids are derived
+% from their content; they must be the same in both runs too, and present.
 if isempty(getenv('DID_SCHEMA_PATH'))
     assumeFail(testCase, ...
         'DID_SCHEMA_PATH not set; run under test-fixtures.yml (assembled V_eta schema).');
 end
-bodies = v1Fixtures();
+bodies = [v1Fixtures(), idlessFixtures()];
 r1 = fixturePipeline(bodies, false);
 r2 = fixturePipeline(bodies, false);
 [ids1, cls1] = idsAndClasses(r1.migrated);
@@ -571,6 +574,11 @@ r2 = fixturePipeline(bodies, false);
 fprintf('testTheFixturePipelineMintsTheSameIdsTwice: %d documents in run 1, %d in run 2\n', ...
     numel(ids1), numel(ids2));
 verifyNotEmpty(testCase, ids1, 'the pipeline migrated nothing: no denominator');
+verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a migrated document has no id');
+base = fixturePipeline(v1Fixtures(), false);
+fprintf('  %d documents without the id-less copies\n', numel(base.migrated));
+verifyGreaterThanOrEqual(testCase, numel(ids1) - numel(base.migrated), ...
+    numel(idlessFixtures()), 'DENOMINATOR: each id-less copy migrates to a document');
 onlyFirst = setdiff(ids1, ids2);
 for k = 1:min(numel(onlyFirst), 40)
     fprintf('  id of run 1 only: %s (%s)\n', onlyFirst{k}, ...
@@ -580,6 +588,27 @@ verifyEmpty(testCase, onlyFirst, sprintf( ...
     '%d of %d ids differ between two runs on the same input', ...
     numel(onlyFirst), numel(ids1)));
 verifyEqual(testCase, sort(ids1), sort(ids2));
+end
+
+function bodies = idlessFixtures()
+%IDLESSFIXTURES Copies of four fixtures that state no v1 id ([ids from content
+%   when v1 states none], Jess Haley, 2026-11-12). The dataset-level two also
+%   state no session id, so jDatasetId has nothing to read but the content.
+%   Each copy's content differs from its original (the id), so nothing here
+%   is the same document as a fixture.
+dr = fx_dataset_remote();
+me = metadataEditorDoc();
+jc = fx_jrclust_clusters();
+im = fx_image();
+bodies = {noId(dr{end}, true), noId(me, true), noId(jc{end}, false), ...
+    noId(im{end}, false)};
+end
+
+function b = noId(b, alsoSession)
+b.base.id = '';
+if alsoSession
+    b.base.session_id = '';
+end
 end
 
 function [ids, classes] = idsAndClasses(migrated)

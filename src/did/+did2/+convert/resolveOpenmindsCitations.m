@@ -631,6 +631,10 @@ componentDepth = did2.convert.mintId('-depth');
 dvId = char(baseField(dv, 'id', ''));
 if ~isempty(dvId)
     dvId = ['resolveOpenmindsCitations|' dvId];   % apart from v1_to_v2's mints
+else
+    % a DatasetVersion stating no id: keyed on its content ([ids from content
+    % when v1 states none], Jess Haley, 2026-11-12; did2.convert.contentId)
+    dvId = ['resolveOpenmindsCitations|content|' did2.convert.mintKey(dv)];
 end
 did2.convert.mintId('-push', dvId);
 restoreComponent = onCleanup(@() did2.convert.mintId('-popto', componentDepth)); %#ok<NASGU>
@@ -1048,7 +1052,11 @@ if isstruct(s) && isfield(s, 'base') && isstruct(s.base)
         id = char(s.base.id);
     end
 end
-if isempty(id); id = did.ido.unique_id(); end
+if isempty(id)
+    % no id stated: derived from the document's content ([ids from content
+    % when v1 states none], Jess Haley, 2026-11-12)
+    id = did2.convert.contentId('dataset id', s);
+end
 end
 
 % ===================== struct accessors ================================
