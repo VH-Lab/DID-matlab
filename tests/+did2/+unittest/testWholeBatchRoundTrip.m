@@ -458,6 +458,84 @@ assert(rep.manifests_renamed == 1 && rep.wiring_several_rows_merged == 1, ...
     'premise: the five rows merged and the manifest was renamed');
 end
 
+function testARetiredIngestedArchiveIsComparedOnTheBodiesItBecame(testCase)
+% resolveEpochProbemap RETIRES a v1 daqreader_mfdaq_epochdata_ingested once its
+% files and its clock have new owners ([segment length is the time chunk],
+% Jess Haley, 2026-10-29), so none of its own documents remains. The round
+% trip finds the opaque_body documents that carry its files (their file_info
+% holds its location uids) and rebuilds the archive from them and the batch:
+% it is compared, not counted CHANGED BY A BATCH PASS (Test code run
+% 43077600408: B 1,242, Dab 2,846). Its id is released, not lost, and the
+% rebuilt document's missing base.id is not a second loss. What this batch
+% does not hold is reported, exactly: the two segment lengths, which [segment
+% length is the time chunk] puts on a sampled_body's time `chunk` in
+% NDI-matlab's second pass, after this batch.
+[bodies, result, rep] = archiveBatch(testCase, 'wb_arc', 'b6');
+assertEqual(testCase, rep.archive_docs_retired, 1, 'premise: the archive retired');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+cls = 'daqreader_mfdaq_epochdata_ingested';
+verifyFalse(testCase, isfield(r.changed_by_class, cls), describe(r));
+verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, cls), describe(r));
+verifyTrue(testCase, isfield(r.ids_released_by_class, cls), describe(r));
+verifyFalse(testCase, isfield(r.ids_lost_by_class, cls), describe(r));
+f = archiveFailure(r, 'wb_arc_arc');
+assertNotEmpty(testCase, f, ['the segment lengths are not in this batch: ' describe(r)]);
+verifyEqual(testCase, sort(f.lost), sort({ ...
+    'daqreader_mfdaq_epochdata_ingested.parameters.sample_analog_segment', ...
+    'daqreader_mfdaq_epochdata_ingested.parameters.sample_digital_segment'}), ...
+    ['everything else round trips: ' strjoin(f.lost_values, ' | ')]);
+verifyEmpty(testCase, f.invented, describe(r));
+verifyEmpty(testCase, f.unplaced, describe(r));
+end
+
+function testARetiredArchiveWhoseValueTheBatchDoesNotHoldIsLost(testCase)
+% the same archive, its v1 epoch and its second segment's place changed after
+% the migration: the rebuilt document states what the batch holds, so both
+% differences are reported lost (a check that cannot fail proves nothing)
+[bodies, result] = archiveBatch(testCase, 'wb_arcx', 'b7');
+k = find(cellfun(@(b) strcmp(b.document_class.class_name, ...
+    'daqreader_mfdaq_epochdata_ingested'), bodies));
+bodies{k}.epochid.epochid = 't9999';
+bodies{k}.files.file_info(3).locations.location = 'ndic://ds/elsewhere';
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+f = archiveFailure(r, 'wb_arcx_arc');
+assertNotEmpty(testCase, f, describe(r));
+verifyTrue(testCase, any(strcmp(f.lost, 'epochid.epochid')), describe(r));
+verifyTrue(testCase, any(strcmp(f.lost, 'files.file_info(3).locations.location')), describe(r));
+end
+
+function f = archiveFailure(r, id)
+f = [];
+for k = 1:numel(r.failures)
+    if strcmp(r.failures(k).source_id, id)
+        f = r.failures(k);
+    end
+end
+end
+
+function [bodies, result, rep] = archiveBatch(testCase, stem, tail)
+% an ingested epoch as B and Dab hold it: the epochfiles_ingested manifest,
+% and the v1 archive mfdaq.m ingest_epochfiles wrote for the same epoch and
+% reader (NDI-matlab 73f46d1): the template's file_list, channel_list.bin and
+% the segments attached in the writer's order, one clock
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = ['41268b6f5c6a3d4e_00000000000000' tail];
+bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), ...
+    elementV1([stem '_probe'], sid, 'p', 1, 'n-trode', [stem '_spec']), ...
+    daqsystemV1([stem '_daq'], sid, 'intan1', [stem '_nav']), ...
+    manifestV1([stem '_efi'], sid, 't0001', [stem '_nav'], ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'p\t1\tn-trode\tintan1:ai1-2\tL\n'])), ...
+    archiveV1([stem '_arc'], sid, 't0001', ['rdr_' stem '_daq'])};
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'did_v2');
+end
+
 function testAProbeWhoseObservesRelationWasRetiredIsComparedAfterThePass(testCase)
 % resolveEpochProbemap retires the probe's `observes` relation once a recording
 % observation carries the same (instrument, specimen) pair; the element's
@@ -610,6 +688,96 @@ end
 
 % ===================== fixtures =========================================
 
+function testADeferredPyraviewIsComparedOnEveryDocumentItsReRunMade(testCase)
+% pass 1 defers a pyraview that names an epoch (did2:convert:needsEpochContext);
+% did2.convert.epochMint (resolveDeferredPyraviews) re-runs it through
+% v1_to_v2 once the epoch exists, and records what the re-run made of it
+% (result.batch_pass_outputs). The whole-batch round trip compares the source
+% on all of those documents and the epoch its anchor names. Before the record
+% it was handed only the observation that holds the v1 id, and PRED's one
+% pyraview read "no level body was emitted" (DID-matlab Test code run
+% 43169466173, PR #450) while its level bodies were in the batch.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+pv = pyraviewV1('high');
+sid = pv.base.session_id;
+bodies = {jsondecode(jsonencode(sessionV1('wb_pv_sess', sid))), pv};
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+assertEqual(testCase, numel(result.quarantine), 1, 'pass 1 defers the pyraview');
+verifyEqual(testCase, result.quarantine(1).identifier, 'did2:convert:needsEpochContext');
+[result, rep] = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+assertEqual(testCase, rep.pyraview_deferred_resolved, 1, 'epochMint folds it');
+assertTrue(testCase, isfield(result, 'batch_pass_outputs'));
+k = find(strcmp({result.batch_pass_outputs.id}, pv.base.id));
+assertNumElements(testCase, k, 1, 'the pass records what the pyraview became');
+rec = result.batch_pass_outputs(k);
+verifyGreaterThan(testCase, numel(rec.output_ids), 1, 'more than the observation');
+verifyTrue(testCase, any(strcmp(rec.output_ids, pv.base.id)), 'the observation keeps the v1 id');
+verifyNumElements(testCase, rec.context_ids, 1, 'the epoch its anchor names');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyTrue(testCase, isfield(r.resolved_by_batch_pass_by_class, 'pyraview'), describe(r));
+verifyFalse(testCase, isfield(r.changed_by_class, 'pyraview'), describe(r));
+verifyFalse(testCase, isfield(r.failures_by_class, 'pyraview'), describe(r));
+verifyEqual(testCase, r.sources_still_quarantined, 0);
+% without the record: the reading of run 43169466173 (the check can fail)
+r = did2.convert.roundtrip.wholeBatch(bodies, rmfield(result, 'batch_pass_outputs'));
+assertTrue(testCase, isfield(r.failures_by_class, 'pyraview'), describe(r));
+f = r.failures(strcmp({r.failures.class_name}, 'pyraview'));
+verifyTrue(testCase, any(strcmp(f(1).unplaced, 'no level body was emitted')), describe(r));
+% one of its level bodies removed by a later step: changed, not compared
+lv = '';
+for j = 1:numel(result.migrated)
+    s = result.migrated{j}.toStruct();
+    if strcmp(char(s.document_class.class_name), 'sampled_body') ...
+            && any(strcmp(rec.output_ids, char(s.base.id)))
+        lv = char(s.base.id);
+        break;
+    end
+end
+assertNotEmpty(testCase, lv, 'a level body is among what it became');
+keep = true(1, numel(result.migrated));
+for j = 1:numel(result.migrated)
+    keep(j) = ~strcmp(char(result.migrated{j}.get('base.id')), lv);
+end
+result.migrated = result.migrated(keep);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyTrue(testCase, isfield(r.changed_by_class, 'pyraview'), describe(r));
+verifyFalse(testCase, isfield(r.failures_by_class, 'pyraview'), describe(r));
+end
+
+function d = pyraviewV1(band)
+% makePyraviewDoc(probe, 'EST_VISUAL_PREDROGA', BAND) on corpus PRED's probe,
+% as testRawV1RoundTripPyraview builds it (NDI-matlab main
+% +ndi/+gui/+app/+pyraview/makePyraviewDoc.m, its filter from filterData.m)
+sr = 20000;
+t0 = 0;
+t1 = 28.12495;
+steps = [100 10 10 10 10 10 10];
+d = did2.unittest.helpers.ndiDocument('pyraview', ...
+    'Id', '41269628e2d51bf1_40a0cb9f87794ccb', ...
+    'SessionId', '41269628e23756b9_c0d504560ca6769c', ...
+    'Datestamp', '2026-05-14T14:37:57.977Z');
+d.epochid = struct('epochid', 'EST_VISUAL_PREDROGA');
+d.pyraview = struct('label', band, 'nativeRate', sr, 'nativeStartTime', t0, ...
+    'channels', 16, 'dataType', 'double', 'decimationLevels', steps, ...
+    'decimationSamplingRates', sr ./ cumprod(steps), ...
+    'decimationStartTimes', t0 * ones(numel(steps), 1));
+d.filter = struct('label', band, 'type', band, 'algorithm', 'chebyshev_1', ...
+    'parameters', struct('sampleFrequency', sr, 'order', 4, ...
+    'filterFrequency', 300, 'passBandRipple', 0.8, 'stopbandAttentuation', NaN));
+d.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', [t0; t1]);
+d = did2.unittest.helpers.setDependency(d, 'element_id', '41269628e2a03088_c085f412b5d8c08d');
+info = struct('name', {}, 'locations', {});
+for i = 1:numel(steps)
+    info(i) = struct('name', sprintf('level%d.bin', i), 'locations', struct( ...
+        'delete_original', 1, 'uid', sprintf('41269628e2d51ffe_40dc0fd6725017e%d', i), ...
+        'location', sprintf('/tmp/tp88ff8093/pyraview_tpd8415b93_L%d.bin', i), ...
+        'parameters', '', 'location_type', 'file', 'ingest', 1));
+end
+d.files.file_info = info;
+d = jsondecode(jsonencode(d, 'ConvertInfAndNaN', false));
+end
+
 function [bodies, result] = cleanBatch()
 % three subjects as ndi.subject.newdocument writes them: two convert, one with
 % no local identifier is carried whole as v1 (carry-033)
@@ -712,6 +880,41 @@ v1.base = struct('id', id, 'session_id', sid, 'name', '', ...
     'datestamp', '2024-03-23T13:47:40.237Z');
 v1.epochfiles_ingested = struct('epoch_id', epochId, ...
     'files', {{['epochid://' epochId]; ['/data/' epochId '/a.rhd']}}, 'epochprobemap', pm);
+end
+
+function v1 = archiveV1(id, sid, epochId, readerId)
+% a v1 daqreader_mfdaq_epochdata_ingested as NDI-matlab's mfdaq.m
+% ingest_epochfiles writes it (73f46d1): its template's file_list
+% (tests/+did2/fixtures/ndi_templates), the channel list and each segment
+% attached in plan order, the segment lengths it sets
+thisDir = fileparts(mfilename('fullpath'));
+tmpl = jsondecode(fileread(fullfile(fileparts(thisDir), 'fixtures', 'ndi_templates', ...
+    'daqreader_mfdaq_epochdata_ingested.json')));
+v1 = struct();
+v1.document_class = struct( ...
+    'definition', '$NDIDOCUMENTPATH/ingestion/daqreader_mfdaq_epochdata_ingested.json', ...
+    'validation', '$NDISCHEMAPATH/ingestion/daqreader_mfdaq_epochdata_ingested_schema.json', ...
+    'class_name', 'daqreader_mfdaq_epochdata_ingested', ...
+    'property_list_name', 'daqreader_mfdaq_epochdata_ingested', 'class_version', 1, ...
+    'superclasses', struct('definition', {'$NDIDOCUMENTPATH/base.json', ...
+        '$NDIDOCUMENTPATH/epochid.json', ...
+        '$NDIDOCUMENTPATH/ingestion/daqreader_epochdata_ingested.json'}));
+v1.base = struct('id', id, 'session_id', sid, 'name', '', ...
+    'datestamp', '2024-03-20T13:48:13.459Z');
+v1.depends_on = struct('name', 'daqreader_id', 'value', readerId);
+v1.epochid = struct('epochid', epochId);
+v1.daqreader_epochdata_ingested = struct('epochtable', ...
+    struct('epochclock', {{'dev_local_time'}}, 't0_t1', [0; 348.66121599999997]));
+v1.daqreader_mfdaq_epochdata_ingested = struct('parameters', ...
+    struct('sample_analog_segment', 1e6, 'sample_digital_segment', 1e7));
+loc = @(u) struct('delete_original', 0, 'uid', [id '_' u], ...
+    'location', ['ndic://ds/' id '_' u], 'parameters', '', ...
+    'location_type', 'ndicloud', 'ingest', 0);
+v1.files = struct('file_list', {tmpl.files.file_list}, ...
+    'file_info', struct('name', {'channel_list.bin', 'ai_group1_seg.nbf_1', ...
+        'ai_group1_seg.nbf_2', 'ti_group1_seg.nbf_1', 'ti_group1_seg.nbf_2', ...
+        'evmktx_group1_seg.nbf_1'}, ...
+    'locations', {loc('c'), loc('a1'), loc('a2'), loc('t1'), loc('t2'), loc('e1')}));
 end
 
 function s = describe(r)

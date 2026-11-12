@@ -2776,32 +2776,36 @@ classdef cache < handle
             %   exactly one canonical value; it may be absent only when the
             %   document's `needs_info` names it"; since [gap accepted when the
             %   report lists it], 2026-11-01, the run's migration report lists
-            %   it instead). Built here for the part
-            %   no document DID-matlab's migrators write today would fail
-            %   (missingCanonical): a cell of a value class with a
-            %   `source_unit` and ONE canonical slot (quantity_list_meta.json
-            %   `canonicals`: the slots other than source_unit, source_value,
-            %   approximate and tolerance) that states a unit and a finite
-            %   source_value but no canonical is refused, unless EXCUSED (the
-            %   paths the migration report lists as gaps) names a field
-            %   under the cell (its canonical). An entry naming the cell
-            %   itself never gets here: the cell is given, and
+            %   it instead). A cell of a value class with a `source_unit`
+            %   and ONE canonical slot (the slots other than source_unit,
+            %   source_value, approximate and tolerance) that states a
+            %   source_value (a number, finite or not) but no canonical is
+            %   refused, unless EXCUSED (the paths the migration report lists
+            %   as gaps) names a field under the cell (its canonical:
+            %   'length.value.meters'), or, for an element of a value array,
+            %   a field under the array's own path with no index ([waveform
+            %   unit gap once], Jess Haley, 2026-11-03: "a value with no
+            %   stated unit is one gap in the migration report, however many
+            %   samples it holds"). This covers a cell stating a unit and a
+            %   finite number, a cell with NO unit (neuron_extracellular's
+            %   mean waveform, jMeasurementFold, a probe_geometry with no
+            %   unit: jQuantity names the gap) and a cell whose number is NOT
+            %   FINITE (T14: missing is not a value). An entry naming the
+            %   cell itself never gets here: the cell is given, and
             %   did2.schema.reportedGaps refuses a gap for a field the
-            %   document gives (badGap, [missing facts are needs
-            %   info]). A canonical holding NaN is present here.
-            %   NOT CHECKED HERE, each because a writer of today would fail:
-            %     - a cell with NO unit (a source number with no unit; the
-            %       decision wants a gap, but neuron_extracellular's
-            %       mean waveform, jMeasurementFold and a probe_geometry
-            %       with no unit write source_value alone);
-            %     - a cell of several canonicals (concentration, score):
+            %   document gives (badGap, [missing facts are needs info]). A
+            %   canonical holding NaN is present here.
+            %   NOT CHECKED HERE:
+            %     - a cell of SEVERAL canonical slots (concentration, score):
             %       resolveDeferredBaths writes a bath's osmolarity, and a
-            %       concentration in a unit other than Molar, with no
-            %       canonical; virus_injection's 'dilution' too (a team
-            %       question, jTreatmentBodies); and "exactly one" of
-            %       several is G38's;
-            %     - a non-finite source_value (jQuantity writes no
-            %       canonical for NaN; T14 says missing is not a value).
+            %       concentration in a unit other than Molar (mM), with no
+            %       canonical and no gap. Whether such a bath is carried
+            %       (carry-155: "a unit spelling the migrator does not
+            %       recognise is carried for mapping") or written with a gap
+            %       ("a unit with no conversion", the value classes'
+            %       documentation) is a question for the team, and carrying
+            %       it changes NDI-matlab's Dab slice counts;
+            %     - a cell stating a unit and no number at all.
             %   Nor which units a cell admits ([allowed units are closed
             %   source_unit lists]): that is the binding check's.
             if nargin < 6
@@ -2897,12 +2901,13 @@ classdef cache < handle
 
         function missingCanonical(~, el, names, elPath, typeName, excused)
             % missingCanonical - raise did2:validation:quantityShape when the
-            %   value cell EL (of a class whose fields are NAMES) states a
-            %   unit and a finite source_value but leaves its one canonical
-            %   slot empty, and the migration report's gaps (EXCUSED) name
-            %   neither the cell nor a field under it ([canonical absent only
-            %   as needs info], Decided by Jess Haley, 2026-10-30; the scope
-            %   is in validateQuantityCells' header).
+            %   value cell EL (of the class TYPENAME, whose fields are NAMES)
+            %   states a source_value but leaves its one canonical slot empty,
+            %   and the migration report's gaps (EXCUSED) name neither a field
+            %   under the cell nor, for an element of a value array, a field
+            %   under the array ([canonical absent only as needs info],
+            %   Decided by Jess Haley, 2026-10-30; the scope is in
+            %   validateQuantityCells' header).
             if ~any(strcmp(names, 'source_unit'))
                 return;
             end
@@ -2911,25 +2916,10 @@ classdef cache < handle
             if numel(canon) ~= 1
                 return;   % several canonicals: not checked here (header)
             end
-            u = [];
-            if isfield(el, 'source_unit'); u = el.source_unit; end
-            stated = false;
-            if isstruct(u) && isscalar(u)
-                for f = {'node', 'name'}
-                    if isfield(u, f{1}) && ~isempty(strtrim(char(string(u.(f{1})))))
-                        stated = true;
-                    end
-                end
-            elseif ischar(u) || (isstring(u) && isscalar(u))
-                stated = ~isempty(strtrim(char(u)));
-            end
-            if ~stated
-                return;   % no unit: not checked here (header)
-            end
             sv = [];
             if isfield(el, 'source_value'); sv = el.source_value; end
-            if ~(isnumeric(sv) && isscalar(sv) && isfinite(sv))
-                return;   % no finite number: not checked here (header)
+            if ~(isnumeric(sv) && ~isempty(sv))
+                return;   % no number stated: not checked here (header)
             end
             if isfield(el, canon{1}) && ~isempty(el.(canon{1}))
                 return;   % the canonical is there (NaN included)
@@ -2938,19 +2928,21 @@ classdef cache < handle
             % one element; this path does not, so (1) is read as no index
             norm = @(p) regexprep(char(p), '\(1\)', '');
             here = norm(elPath);
+            % an element of a value array: one gap for the whole value
+            whole = regexprep(char(elPath), '\(\d+\)$', '');
             for k = 1:numel(excused)
                 e = norm(excused{k});
-                if strcmp(e, here) || startsWith(e, [here '.'])
+                if strcmp(e, here) || startsWith(e, [here '.']) ...
+                        || startsWith(char(excused{k}), [whole '.'])
                     return;
                 end
             end
             error('did2:validation:quantityShape', ...
-                ['"%s" is a %s value cell stating a source_value and a ' ...
-                 'source_unit but no canonical "%s". A quantity''s ' ...
-                 'canonical may be absent only when the run''s ' ...
-                 'migration report lists it ([canonical absent only as needs ' ...
-                 'info], Jess Haley, 2026-10-30).'], ...
-                elPath, typeName, canon{1});
+                ['"%s" is a %s value cell stating a source_value but no ' ...
+                 'canonical "%s". A quantity''s canonical may be absent ' ...
+                 'only when the run''s migration report lists it ' ...
+                 '([canonical absent only as needs info], Jess Haley, ' ...
+                 '2026-10-30).'], elPath, typeName, canon{1});
         end
 
         function tf = holdsValueCell(obj, defs)

@@ -623,6 +623,17 @@ dv = bodies{root};
 f  = openmindsFields(dv);
 datasetId = datasetIdOf(dv);
 newBodies = {};
+% the documents this component mints with no id of their own (the entities'
+% statements, the relations) take ids derived from the DatasetVersion's id
+% (did2.convert.mintId; practice (b) of [migration reliability practices],
+% Jess Haley, 2026-10-26)
+componentDepth = did2.convert.mintId('-depth');
+dvId = char(baseField(dv, 'id', ''));
+if ~isempty(dvId)
+    dvId = ['resolveOpenmindsCitations|' dvId];   % apart from v1_to_v2's mints
+end
+did2.convert.mintId('-push', dvId);
+restoreComponent = onCleanup(@() did2.convert.mintId('-popto', componentDepth)); %#ok<NASGU>
 
 % --- the dataset entity (keyed on the dataset id, not this document's id) ---
 fullName = firstNonEmpty(charField(f, {'fullName', 'full_name'}), ...

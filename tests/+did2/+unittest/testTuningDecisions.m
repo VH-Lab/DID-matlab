@@ -15,6 +15,8 @@ function tests = testTuningDecisions
 %     [tuning fit coefficients named by symbol] (2026-11-11)  testFitsAreNamedBySymbol*,
 %                                                testATemporalFrequencyDoGWithNoLeadingZeroIsCarried,
 %                                                testContrastSensitivityIsOneFitPerSpatialFrequency
+%     [contrast sensitivity repeated fit is a known v1 defect] (2026-11-12),
+%     [known v1 defects list] (2026-11-12)  testARepeatedSpatialFrequencyIsAKnownV1Defect
 %     [hotelling spellings are one field]        testHotellingSpellingsAreOneField
 %     [input names rebuild from the input class] testInputNames*
 %     [tuning stimids rebuild]                   testTuningStimids*
@@ -326,6 +328,49 @@ for V = {'RB', 'RBN', 'RBNS'}
 end
 r = did2.convert.roundtrip.check(v1, out.migrated);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'contrast sensitivity', {});
+end
+
+function testARepeatedSpatialFrequencyIsAKnownV1Defect(testCase)
+% [contrast sensitivity repeated fit is a known v1 defect] and
+% [known v1 defects list] (Jess Haley, 2026-11-12): a contrast sensitivity
+% result whose spatial frequencies are more than one and all one value (Soph:
+% the input tuning curves were all made at the first spatial frequency,
+% NDI-matlab 49a875c94) is migrated unchanged, and the run's migration report
+% lists ONE known v1 defect for it, of contrast_sensitivity.value.model_fit,
+% and no gap; a result with distinct frequencies gets none
+normal = writerOutput('contrastsensitivity_calc');
+assertGreaterThan(testCase, numel(unique(normal.contrastsensitivity_calc.spatial_frequencies)), 1, ...
+    'the writer output has distinct spatial frequencies');
+out = runRaw({normal});
+verifyEmpty(testCase, out.migration_report.known_v1_defects, 'distinct frequencies: no defect');
+verifyEqual(testCase, out.migration_report.counts.known_v1_defects, 0);
+
+repeated = normal;
+blk = repeated.contrastsensitivity_calc;
+sf = blk.spatial_frequencies;
+blk.spatial_frequencies = repmat(sf(1), size(sf));
+repeated.contrastsensitivity_calc = blk;
+out = runRaw({repeated});
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'the document still converts');
+leaf = firstOfClass(out, 'contrast_sensitivity_calculation');
+assertNotEmpty(testCase, leaf);
+d = out.migration_report.known_v1_defects;
+assertEqual(testCase, numel(d), 1, 'one entry per affected document');
+verifyEqual(testCase, d(1).document_id, char(repeated.base.id));
+verifyEqual(testCase, d(1).class, 'contrast_sensitivity_calculation');
+verifyEqual(testCase, d(1).field, 'contrast_sensitivity.value.model_fit');
+verifyTrue(testCase, contains(d(1).reason, '49a875c94') ...
+    && contains(d(1).reason, 'tuningcurve.m'), d(1).reason);
+verifyEqual(testCase, out.migration_report.counts.known_v1_defects, 1);
+verifyEmpty(testCase, out.migration_report.gaps, 'a defect is not a gap');
+verifyEmpty(testCase, did2.convert.migrationReport('gaps', char(repeated.base.id)));
+% the document is the same as with distinct frequencies but for the
+% frequencies themselves: the fits are written as v1 wrote them
+mf = asCell(leaf.contrast_sensitivity.value.model_fit);
+verifyEqual(testCase, numel(mf), 3 * numel(sf));
+r = did2.convert.roundtrip.check(repeated, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'contrast sensitivity, repeated frequency', {});
 end
 
 function mf = fitsOf(testCase, v1, leafClass)
