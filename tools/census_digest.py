@@ -4911,7 +4911,10 @@ def _render_response_parameters_reading(rep, p):
             # refused_unknown_setting (2026-10-27) is absent from older
             # reports, which could not refuse for it: 0 there
             doc_refused = sum(parts) + (
-                _int_or_none(rep.get("refused_unknown_setting")) or 0)
+                _int_or_none(rep.get("refused_unknown_setting")) or 0) + (
+                # [response computed from the spike times] (2026-11-12):
+                # absent from older reports, 0 there
+                _int_or_none(rep.get("refused_isspike_disagrees")) or 0)
         quar = _int_or_none(rep.get("fold_quarantined"))
         if seen_p and minted == 0 and doc_refused == 0 and not quar:
             p("          *** %d parameters document(s) seen and NOTHING minted or"
