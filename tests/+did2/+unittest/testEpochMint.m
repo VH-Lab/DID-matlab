@@ -271,17 +271,73 @@ verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, 'the DENOMINATOR');
 verifyEqual(testCase, rep.epoch_extent_refused_no_system, 1);
 verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 1);
 verifyEmpty(testCase, rep.epoch_extent_carried_source_ids);
+% [agreeing untied sources count as one] leaves the one-source case as it was
+verifyEqual(testCase, rep.epoch_extent_untied_epochs, 1, 'the untied DENOMINATOR');
+verifyEqual(testCase, rep.epoch_extent_untied_several_sources_anchored, 0);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs_carried, 0);
 end
 
-function testUntiedExtentsFromSeveralSourcesAreCarried(testCase)
-% [untied epochs keep the session anchor]: "Extents that come from several
-% sources, or disagree, still carry it." Two untied sources of one epoch: no
-% reference, both sources carried.
+function testSeveralAgreeingUntiedSourcesKeepTheSessionAnchor(testCase)
+% INVERTS testUntiedExtentsFromSeveralSourcesAreCarried. [agreeing untied
+% sources count as one] (Jess Haley, 2026-11-12, amending [untied epochs keep
+% the session anchor]): an untied epoch with SEVERAL sources keeps the
+% session-anchored time reference when all its sources state the same clock
+% list in the same order and identical t0/t1. Three such sources: one
+% reference, nothing carried.
 a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
 b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+c = elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3');
+[out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b, c});
+verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1, 'one epoch');
+refs = ofClass(out, 'relative_time_reference');
+assertEqual(testCase, numel(refs), 1, 'ONE session-anchored reference, not three');
+ep = ofClass(out, 'epoch');
+verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), depValueOf(ep{1}, 'session_id'), ...
+    'anchored on the session the epoch belongs to');
+verifyEqual(testCase, rep.epoch_extent_sources_seen, 3, 'the DENOMINATOR');
+verifyEqual(testCase, rep.epoch_extent_refused_no_system, 3);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs, 1);
+verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 1);
+verifyEqual(testCase, rep.epoch_extent_untied_several_sources_anchored, 1);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs_carried, 0);
+verifyEmpty(testCase, rep.epoch_extent_carried_source_ids, 'none carried');
+verifyEqual(testCase, rep.epoch_extent_carried_sources, 0);
+end
+
+function testUntiedSourcesDifferingInT1AreAllCarried(testCase)
+% [agreeing untied sources count as one]: "any difference still carries all of
+% them". The third source states a different t1: no reference, all three
+% sources carried.
+a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+c = elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3');
+c.element_epoch.t0_t1 = [0, 452.709857];
+[out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b, c});
+verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
+verifyEqual(testCase, rep.epoch_extent_untied_epochs, 1);
+verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 0);
+verifyEqual(testCase, rep.epoch_extent_untied_several_sources_anchored, 0);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs_carried, 1);
+verifyEqual(testCase, sort(rep.epoch_extent_carried_source_ids), {'ee_1', 'ee_2', 'ee_3'});
+verifyEqual(testCase, rep.epoch_extent_carried_sources, 3);
+end
+
+function testUntiedSourcesDifferingInClockOrderAreAllCarried(testCase)
+% [agreeing untied sources count as one]: the same clock list IN THE SAME
+% ORDER. Two sources state the same two clocks with the same times per clock,
+% in opposite order: that is a difference, so both are carried.
+a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+a.element_epoch.epoch_clock = 'dev_local_time,utc';
+a.element_epoch.t0_t1 = [0, 10; 100, 110];   % 2-by-N: columns are clocks
+b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+b.element_epoch.epoch_clock = 'utc,dev_local_time';
+b.element_epoch.t0_t1 = [10, 0; 110, 100];
 [out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b});
+verifyEqual(testCase, rep.epoch_extent_clocks_read, 4, ...
+    'both sources were read, two clocks each');
 verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
 verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 0);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs_carried, 1);
 verifyEqual(testCase, sort(rep.epoch_extent_carried_source_ids), {'ee_1', 'ee_2'});
 end
 

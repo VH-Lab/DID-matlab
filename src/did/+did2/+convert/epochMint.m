@@ -509,7 +509,17 @@ report = struct( ...
     'epoch_extent_duplicate_clock',        0, ...
     'epoch_extent_conflicting_clock',      0, ...
     'epoch_extent_refused_no_system',      0, ...
+    ... % [agreeing untied sources count as one] (Jess Haley, 2026-11-12):
+    ... % `..._untied_epochs` is the DENOMINATOR of the untied decision (distinct
+    ... % (session, epoch) pairs holding at least one untied source); every one
+    ... % is either anchored or carried, so anchored + epochs_carried equals it.
+    ... % `..._several_sources_anchored` is the part of `..._session_anchored`
+    ... % whose epoch had MORE THAN ONE untied source, all stating the same
+    ... % clocks in the same order with identical t0/t1.
+    'epoch_extent_untied_epochs',          0, ...
     'epoch_extent_untied_session_anchored', 0, ...
+    'epoch_extent_untied_several_sources_anchored', 0, ...
+    'epoch_extent_untied_epochs_carried',  0, ...
     'epoch_extent_carried_sources',        0, ...
     'epoch_extent_carried_source_ids',     {{}}, ...
     'epoch_extent_vacuous',             true, ...
@@ -910,6 +920,10 @@ end
 % session-anchored time reference, using only the times the epoch states.
 % Extents that come from several sources, or disagree, still carry it." So
 % an untied source is held aside (untiedByKey) and decided after the loop.
+% [agreeing untied sources count as one] (Jess Haley, 2026-11-12) amends it:
+% SEVERAL untied sources of one epoch keep the session anchor too when they
+% all state the same clock list in the same order with identical t0/t1
+% (exact, isequaln); any difference still carries all of them.
 sysIdx = deviceClockIndex(bodies, rows, n);
 carriedSources = {};
 clocksByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
@@ -957,14 +971,19 @@ for k = 1:n
         clocksByKey(key) = entries;
     end
 end
-% [untied epochs keep the session anchor]: an epoch whose extents ALL come
-% from ONE untied source (no tied extent for it either) and agree keeps them,
-% anchored on the session document; otherwise every untied source is carried.
+% [untied epochs keep the session anchor], as amended by [agreeing untied
+% sources count as one] (Jess Haley, 2026-11-12): an epoch whose extents ALL
+% come from untied sources (no tied extent for it either), each agreeing with
+% itself and, when there are several, all stating the same clocks in the same
+% order with identical t0/t1, keeps them, anchored on the session document;
+% otherwise every untied source is carried. The sources state one extent, so
+% the FIRST source's entries are kept and its id is the one the reference
+% derives from; the others restate it and are neither kept nor carried.
 untiedKeys = untiedByKey.keys();
+report.epoch_extent_untied_epochs = numel(untiedKeys);
 for u = 1:numel(untiedKeys)
     held = untiedByKey(untiedKeys{u});
-    if isscalar(held) && ~isKey(clocksByKey, untiedKeys{u}) ...
-            && untiedEntriesAgree(held{1}.entries)
+    if ~isKey(clocksByKey, untiedKeys{u}) && untiedSourcesAgree(held)
         entries = held{1}.entries;
         for i = 1:numel(entries)
             entries{i}.system = SESSION_ANCHOR;
@@ -973,7 +992,13 @@ for u = 1:numel(untiedKeys)
         clocksByKey(untiedKeys{u}) = entries;
         report.epoch_extent_untied_session_anchored = ...
             report.epoch_extent_untied_session_anchored + 1;
+        if ~isscalar(held)
+            report.epoch_extent_untied_several_sources_anchored = ...
+                report.epoch_extent_untied_several_sources_anchored + 1;
+        end
     else
+        report.epoch_extent_untied_epochs_carried = ...
+            report.epoch_extent_untied_epochs_carried + 1;
         for h = 1:numel(held)
             carriedSources{end+1} = held{h}.source; %#ok<AGROW>
         end
@@ -3899,6 +3924,31 @@ sid = did2.schema.cache.sessionIdOf(b);
 if ~isempty(sid)
     b.base.session_id = sid;
 end
+end
+
+function tf = untiedSourcesAgree(held)
+%UNTIEDSOURCESAGREE True when every untied source of one epoch agrees with
+%   itself (untiedEntriesAgree) and every source states the same clock list,
+%   in the same order, with identical t0/t1 as the first ([agreeing untied
+%   sources count as one], Jess Haley, 2026-11-12: exact, isequaln; any
+%   difference carries all of them). One source reduces to
+%   untiedEntriesAgree, which is [untied epochs keep the session anchor].
+tf = false;
+if isempty(held); return; end
+ref = held{1}.entries;
+for h = 1:numel(held)
+    e = held{h}.entries;
+    if ~untiedEntriesAgree(e); return; end
+    if h == 1; continue; end
+    if numel(e) ~= numel(ref); return; end
+    for i = 1:numel(e)
+        if ~strcmp(e{i}.name, ref{i}.name) ...
+                || ~isequaln([e{i}.t0 e{i}.t1], [ref{i}.t0 ref{i}.t1])
+            return;
+        end
+    end
+end
+tf = true;
 end
 
 function tf = untiedEntriesAgree(entries)

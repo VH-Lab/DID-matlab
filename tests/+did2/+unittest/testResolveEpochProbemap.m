@@ -744,21 +744,45 @@ verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
 verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 0);
 end
 
-function testUntiedExtentsFromTwoSourcesKeepTheirAcquisitionEpochs(testCase)
-% [untied epochs keep the session anchor]: "Extents that come from several
-% sources ... still carry it." Two untied acquisition_epochs of one epoch are
-% both carried and kept whole: no spike train is built from either.
+function testTwoAgreeingUntiedSourcesDissolveAndEmitSpikeTrains(testCase)
+% INVERTS testUntiedExtentsFromTwoSourcesKeepTheirAcquisitionEpochs. [agreeing
+% untied sources count as one] (Jess Haley, 2026-11-12, amending [untied epochs
+% keep the session anchor]): two untied acquisition_epochs of one epoch that
+% state the same clocks in the same order with identical t0/t1 keep the
+% session anchor, so neither is carried: both dissolve and each spike epoch
+% gets its spike train (the spike-train step skips only carried epochs).
+[out, rep] = decompose(twoUntiedSources([0 10]));
+verifyEqual(testCase, out.epoch_mint.epoch_extent_untied_several_sources_anchored, 1);
+verifyEmpty(testCase, out.epoch_mint.epoch_extent_carried_source_ids);
+verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 0);
+verifyEqual(testCase, rep.spike_trains_emitted, 2);
+verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+end
+
+function testUntiedSourcesThatDisagreeKeepTheirAcquisitionEpochs(testCase)
+% [agreeing untied sources count as one]: "any difference still carries all of
+% them." The second source states a different t1: both acquisition_epochs are
+% carried and kept whole; no spike train is built from either.
+[out, rep] = decompose(twoUntiedSources([0 10.5]));
+verifyEqual(testCase, out.epoch_mint.epoch_extent_untied_epochs_carried, 1);
+verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 2);
+verifyEqual(testCase, rep.spike_trains_emitted, 0);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+end
+
+function batch = twoUntiedSources(secondT0T1)
+%TWOUNTIEDSOURCES Two untied spike acquisition_epochs of one epoch; the second
+%   states SECONDT0T1 (the first states [0 10]).
 subj = subjectBody('specimen_su', 'sess_su', 'L');
 elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
 elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u', 'specimen_su');
 elN2 = derivedElementBody('el_neuron_u2', 'sess_su', 'n2', 'spikes', 'el_probe_u', 'specimen_su');
 ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
 ee2  = elementEpochBody('ee_u2', 'sess_su', 'el_neuron_u2', 't00su', true);
-[out, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, elN2, ee, ee2});
-verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
-verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 2);
-verifyEqual(testCase, rep.spike_trains_emitted, 0);
-verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+ee2.element_epoch.t0_t1 = secondT0T1;
+batch = {sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, elN2, ee, ee2};
 end
 
 function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)
