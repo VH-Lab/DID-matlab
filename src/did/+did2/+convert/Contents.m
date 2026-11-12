@@ -79,7 +79,9 @@
 %     selection chose, read from its log), tuningStatedValues (the number
 %     a tuning curve's exact_number selection fixes a property at),
 %     inputEdgeNames (input edge names
-%     rebuilt from their classes)
+%     rebuilt from their classes), isSpikeTimesObservation (a unit's
+%     per-epoch spike-times observation, the input a stimulus response is
+%     computed from)
 %
 %   Batch post-passes (run over a migrated batch, after v1_to_v2; each
 %   carries a BATCH-PASS declaration read by tools/batch_pass_declarations.py)

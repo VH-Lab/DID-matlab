@@ -69,6 +69,11 @@ function [out, found] = tuningNames(direction, name)
 %                    are binned into a train
 %   The names resolve to their nodes through the registry
 %   (did2.convert.registeredTerm by name).
+%   `isspike` keeps its row, for a method no converted response uses: since
+%   [response computed from the spike times] (Jess Haley, 2026-11-12) it is
+%   not written when the responses using the method are converted, and the
+%   round trip rebuilds it from their spike-times input
+%   (did2.convert.resolveResponseParameters).
 %
 %   See also did2.convert.tuningStimids, did2.convert.resolveResponseParameters.
 

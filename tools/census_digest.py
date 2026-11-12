@@ -808,6 +808,20 @@ POST_PASSES = [
         # into a method document (id preserved), so nothing is removed. Printed
         # anyway: a non-zero would mean documents vanished from the batch.
         ("parameters_documents_deleted", "parameters documents DELETED (0 by construction: converted in place)"),
+        # Jess Haley 2026-11-12 [response computed from the spike times]: each
+        # response lists its unit's spike-times observation for its epoch as
+        # an input; one with none is listed in the migration report. isspike
+        # is then not written (rebuilt from the input); one that disagrees
+        # keeps the parameters document v1.
+        ("spike_observations_seen", "spike-times observations in the batch"),
+        ("spike_input_linked", "responses GIVEN their spike-times input"),
+        ("spike_input_already_linked", "  already had it (a re-run)"),
+        ("spike_input_not_found", "  NO matching spike-times observation (listed in the report)"),
+        ("spike_input_ambiguous", "  two or more matching (not guessed; listed)"),
+        ("spike_input_link_quarantined", "  link did not validate (kept without it)"),
+        ("isspike_rebuilt_from_inputs", "methods with isspike NOT written (rebuilt from inputs)"),
+        ("isspike_written_no_converted_user", "  methods still stating isspike (no converted user)"),
+        ("refused_isspike_disagrees", "  REFUSED: isspike disagrees with the inputs (kept v1)"),
     ]),
     # TEAM DECISION 2026-08-11: generic_file -> opaque_body + a statement whose
     # `variable` comes from the sibling ontologyLabel.

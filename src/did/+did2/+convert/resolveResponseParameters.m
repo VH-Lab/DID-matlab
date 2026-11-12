@@ -22,7 +22,8 @@ function [result, report] = resolveResponseParameters(result, options)
 %   pass order from these; [migration reliability practices] (c), Jess Haley,
 %   2026-10-26). Read from this file's code, class by class.
 %   BATCH-PASS-READS: stimulus_response_scalar_parameters_basic,
-%       calculation(harmonic_component)
+%       calculation(harmonic_component), observation(recording per epoch),
+%       relative_time_reference(epoch anchor)
 %   BATCH-PASS-ADDS: method(response parameters)
 %   BATCH-PASS-CHANGES: calculation(harmonic_component)
 %   BATCH-PASS-REMOVES: stimulus_response_scalar_parameters_basic
@@ -84,6 +85,40 @@ function [result, report] = resolveResponseParameters(result, options)
 %                     `parameters_documents_deleted` is 0 by construction
 %   The prose below is the history of the inline design and is superseded
 %   wherever it says "inline", "drop the edge" or "delete".
+%
+%   ---------------------------------------------------------------------
+%   THE SPIKE-TIMES INPUT, AND `isspike` (Jess Haley, 2026-11-12)
+%   ---------------------------------------------------------------------
+%   [response computed from the spike times]: a migrated stimulus response
+%   (the harmonic_component calculation) also lists, as an `input_id`, the
+%   spike-times observation of its unit for the MATCHING EPOCH: the
+%   `observation` whose value kind is `time` and whose variable is GO:0001508
+%   "action potential" (did2.convert.isSpikeTimesObservation), about the same
+%   entity (`entity_id`), whose time anchor names the same epoch entity as the
+%   response's own anchor. Those observations are minted from the unit's
+%   element_epoch by did2.convert.resolveEpochProbemap, after the migrator, so
+%   the edge is added here (the declared READS above put this pass after it).
+%   The response's epoch is the referent of its anchor (the epoch entity
+%   epochMint mints from `element_epochid`; the stimulator's epoch equals it,
+%   [response links: epoch rebuilt, control as input]). A response with no
+%   matching observation (its anchor names no epoch, or no spike-times
+%   observation of its unit is on that epoch) is listed in the run's migration
+%   report, `inputs_not_found` (input 'spike times'), and counted
+%   (`spike_input_not_found`); two or more matching observations are listed
+%   the same way and counted apart (`spike_input_ambiguous`): never guessed.
+%   Then (the same decision, 2) v1 `isspike` is NOT written as a method
+%   parameter: the round trip rebuilds it, 1 when the responses using the
+%   method have the spike-times input and 0 when they do not
+%   (did2.convert.roundtrip.stimulus_response_scalar_parameters_basic). A
+%   parameters document whose `isspike` disagrees with those inputs (or states
+%   none, or not 0 or 1) is not converted: it stays v1, carried, and counted
+%   (`refused_isspike_disagrees`). A parameters document NO converted
+%   response uses has no input to rebuild `isspike` from; it is written as
+%   before (`isspike_written_no_converted_user`): the decision does not say
+%   what such a document becomes, so that is a question for the team, not a
+%   rule made here. `spiketrain_dt` stays ("bin width", EMPTY:0000308). The
+%   method keeps the parameters document's id, so method ids stay what they
+%   were and every response's `method_id` still names its shared method.
 %
 %   ---------------------------------------------------------------------
 %   THE SIGNED MODEL, AND WHICH LINE OF IT THIS FILE IS
@@ -289,6 +324,16 @@ report = struct( ...
     'parameters_documents_referenced_after',   0, ...
     'parameters_documents_unreferenced_after', 0, ...
     'parameters_documents_deleted',            0, ...   % never: converted in place
+    ... % [response computed from the spike times] (Jess Haley, 2026-11-12)
+    'spike_observations_seen',                 0, ...
+    'spike_input_linked',                      0, ...
+    'spike_input_already_linked',              0, ...
+    'spike_input_not_found',                   0, ...
+    'spike_input_ambiguous',                   0, ...
+    'spike_input_link_quarantined',            0, ...
+    'isspike_rebuilt_from_inputs',             0, ...
+    'isspike_written_no_converted_user',       0, ...
+    'refused_isspike_disagrees',               0, ...
     'ran',                                     false);
 result.response_parameters_fold = report;
 
@@ -362,6 +407,17 @@ for k = 1:n
     end
 end
 
+% --- [response computed from the spike times] (Jess Haley, 2026-11-12) ------
+% Each response's spike-times input: the spike-times observation of its unit
+% (same entity_id) whose anchor names the epoch the response's anchor names.
+hasSpike = false(1, n);
+[docs, bodies, hasSpike, report] = linkSpikeInputs(docs, bodies, classes, ...
+    docIds, isLeaf, hasSpike, report, options);
+if report.spike_input_linked > 0
+    result.migrated = docs;
+    result.summary = recountSummary(result);
+end
+
 % --- which responses point at which parameters document --------------------
 % The responses are NOT changed by this pass (Jess Haley, 2026-10-21, "b"):
 % each keeps its `method_id`, no inline method. This walk only finds, per
@@ -410,6 +466,8 @@ rebuilt = {};
 copiedPer = [];
 emptyPer = [];
 definedPer = [];
+droppedPer = false(1, 0);
+keptIsspikePer = false(1, 0);
 for k = 1:n
     if ~strcmp(classes{k}, PARAMS); continue; end
     pid = docIds{k};
@@ -462,6 +520,32 @@ for k = 1:n
         continue;
     end
 
+    % [response computed from the spike times] (2): `isspike` is not written
+    % when it is what the responses' inputs rebuild; one that disagrees stays
+    % v1. With no converted user there is nothing to rebuild it from.
+    dropIsspike = false;
+    if ~isempty(users)
+        [agrees, why] = isspikeAgrees(pBlk, hasSpike(users));
+        if ~agrees
+            report.refused_isspike_disagrees = report.refused_isspike_disagrees + 1;
+            % carry-register: none (a reason the team has not registered yet)
+            did2.convert.reportNote('carried_as_v1', PARAMS, pid, ['unplaced: ' why ...
+                ' ([response computed from the spike times]: isspike is rebuilt ' ...
+                'from the inputs of the responses that use the method)']);
+            continue;
+        end
+        dropIsspike = true;
+    end
+    if dropIsspike
+        [params, copied, emptied, defined] = knobsOf(pBlk, ...
+            KNOBS(~strcmp(KNOBS, 'isspike')));
+        if copied == 0
+            % isspike was its only setting: the method would state nothing
+            report.refused_no_fields = report.refused_no_fields + 1;
+            continue;
+        end
+    end
+
     sid = depValue(bodies{k}, 'session_id');
     if isempty(sid); sid = baseField(bodies{k}, 'session_id'); end
     ts = baseField(bodies{k}, 'creation_timestamp');
@@ -477,6 +561,8 @@ for k = 1:n
 
     rebuilt{end+1} = mdoc;       %#ok<AGROW>
     changedIdx(end+1) = k;       %#ok<AGROW>
+    droppedPer(end+1) = dropIsspike; %#ok<AGROW>
+    keptIsspikePer(end+1) = ~dropIsspike && hasKnob(pBlk, 'isspike'); %#ok<AGROW>
     copiedPer(end+1) = copied;   %#ok<AGROW>
     emptyPer(end+1) = emptied;   %#ok<AGROW>
     definedPer(end+1) = defined; %#ok<AGROW>
@@ -488,7 +574,8 @@ report.refused_total = report.refused_not_in_batch ...
     + report.refused_no_fields ...
     + report.refused_inline_present ...
     + report.refused_harmonic_mismatch ...
-    + report.refused_unknown_setting;
+    + report.refused_unknown_setting ...
+    + report.refused_isspike_disagrees;
 
 if ~isempty(changedIdx)
     % --- validate through the same door every other pass uses --------------
@@ -527,6 +614,10 @@ if ~isempty(changedIdx)
                 report.knobs_empty_not_stated + emptyPer(j);
             report.knobs_empty_ndi_defined = ...
                 report.knobs_empty_ndi_defined + definedPer(j);
+            report.isspike_rebuilt_from_inputs = ...
+                report.isspike_rebuilt_from_inputs + droppedPer(j);
+            report.isspike_written_no_converted_user = ...
+                report.isspike_written_no_converted_user + keptIsspikePer(j);
         end
     end
 
@@ -563,6 +654,187 @@ for k = 1:n
 end
 
 result.response_parameters_fold = report;
+end
+
+% ===================== the spike-times input ===============================
+
+function [docs, bodies, hasSpike, report] = linkSpikeInputs(docs, bodies, ...
+        classes, docIds, isLeaf, hasSpike, report, options)
+%LINKSPIKEINPUTS [response computed from the spike times] (Jess Haley,
+%   2026-11-12): add to each response (a LEAF) its unit's spike-times
+%   observation for its epoch as an `input_id`; list a response with none (or
+%   with more than one) in the migration report. HASSPIKE(k) is true for a
+%   response that has the input afterwards.
+n = numel(bodies);
+SPIKE_INPUT = 'spike times';
+% anchor id -> the document it names (the epoch entity, for an epoch anchor)
+anchorReferent = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:n
+    if strcmp(classes{k}, 'relative_time_reference') && ~isempty(docIds{k})
+        r = depValue(bodies{k}, 'referent_id');
+        if ~isempty(r); anchorReferent(docIds{k}) = r; end
+    end
+end
+% entity|epoch -> the spike-times observations of that unit on that epoch
+byUnitEpoch = containers.Map('KeyType', 'char', 'ValueType', 'any');
+spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:n
+    if isempty(docIds{k}) || ~did2.convert.isSpikeTimesObservation(bodies{k})
+        continue;
+    end
+    report.spike_observations_seen = report.spike_observations_seen + 1;
+    spikeObsIds(docIds{k}) = true;
+    ent = depValue(bodies{k}, 'entity_id');
+    tr = depValue(bodies{k}, 'time_reference_id');
+    if isempty(ent) || isempty(tr) || ~isKey(anchorReferent, tr)
+        continue;
+    end
+    key = [ent '|' anchorReferent(tr)];
+    if isKey(byUnitEpoch, key)
+        byUnitEpoch(key) = [byUnitEpoch(key), docIds(k)];
+    else
+        byUnitEpoch(key) = docIds(k);
+    end
+end
+
+linkIdx = [];
+linked = {};
+for k = find(isLeaf)
+    b = bodies{k};
+    ins = depValues(b, 'input_id');
+    if any(cellfun(@(x) isKey(spikeObsIds, x), ins))
+        hasSpike(k) = true;   % a re-run: already linked
+        report.spike_input_already_linked = report.spike_input_already_linked + 1;
+        continue;
+    end
+    ent = depValue(b, 'entity_id');
+    tr = depValue(b, 'time_reference_id');
+    epoch = '';
+    if ~isempty(tr) && isKey(anchorReferent, tr); epoch = anchorReferent(tr); end
+    hits = {};
+    if ~isempty(ent) && ~isempty(epoch) && isKey(byUnitEpoch, [ent '|' epoch])
+        hits = byUnitEpoch([ent '|' epoch]);
+    end
+    if numel(hits) == 1
+        linkIdx(end+1) = k; %#ok<AGROW>
+        linked{end+1} = addEdge(b, 'input_id', hits{1}); %#ok<AGROW>
+        continue;
+    end
+    if isempty(hits)
+        report.spike_input_not_found = report.spike_input_not_found + 1;
+        if isempty(epoch)
+            why = 'its time anchor names no epoch, so no epoch''s spike times can match it';
+        else
+            why = sprintf(['no spike-times observation (observation, value kind time, ' ...
+                'GO:0001508 "action potential") of its unit %s is on its epoch %s'], ent, epoch);
+        end
+    else
+        report.spike_input_ambiguous = report.spike_input_ambiguous + 1;
+        why = sprintf(['%d spike-times observations of its unit %s are on its epoch %s ' ...
+            '(%s): not guessed'], numel(hits), ent, epoch, strjoin(hits, ', '));
+    end
+    did2.convert.migrationReport('inputNotFound', docIds{k}, classes{k}, SPIKE_INPUT, ...
+        [why ' ([response computed from the spike times])']);
+end
+if isempty(linkIdx)
+    return;
+end
+% validated through the same door as every other rebuilt body; one that does
+% not validate is kept as it was, counted
+out = did2.convert.v1_to_v2(linked, ...
+    'Validate',      options.Validate, ...
+    'SchemaCache',   options.SchemaCache, ...
+    'TargetVersion', options.TargetVersion);
+producedById = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for j = 1:numel(out.migrated)
+    try
+        producedById(char(out.migrated{j}.get('base.id'))) = j;
+    catch
+    end
+end
+for j = 1:numel(linkIdx)
+    k = linkIdx(j);
+    if isKey(producedById, docIds{k})
+        docs{k} = out.migrated{producedById(docIds{k})};
+        bodies{k} = docs{k}.toStruct();
+        hasSpike(k) = true;
+        report.spike_input_linked = report.spike_input_linked + 1;
+    else
+        report.spike_input_link_quarantined = report.spike_input_link_quarantined + 1;
+        did2.convert.migrationReport('inputNotFound', docIds{k}, classes{k}, SPIKE_INPUT, ...
+            ['its spike-times input was found but the response did not validate ' ...
+            'with it, so it is kept without it ([response computed from the spike times])']);
+    end
+end
+end
+
+function [agrees, why] = isspikeAgrees(pBlk, usersHaveSpike)
+%ISSPIKEAGREES Does the parameters document's `isspike` say what the inputs
+%   of the responses using it rebuild ([response computed from the spike
+%   times] (2), Jess Haley, 2026-11-12): 1 when each has the spike-times
+%   input, 0 when none has? WHY says how it disagrees.
+agrees = false;
+why = '';
+v = numField(pBlk, {'isspike', 'isSpike'});
+if ~hasKnob(pBlk, 'isspike')
+    why = 'it states no isspike';
+    return;
+end
+if ~(isnumeric(v) || islogical(v)) || ~isscalar(v) || ~any(double(v) == [0 1])
+    why = sprintf('isspike %s is not 0 or 1', jsonText(v));
+    return;
+end
+nWith = nnz(usersHaveSpike);
+nAll = numel(usersHaveSpike);
+if double(v) == 1 && nWith == nAll
+    agrees = true;
+elseif double(v) == 0 && nWith == 0
+    agrees = true;
+else
+    why = sprintf(['isspike %d, but %d of the %d responses using it have the ' ...
+        'spike-times input'], double(v), nWith, nAll);
+end
+end
+
+function tf = hasKnob(pBlk, name)
+tf = isstruct(pBlk) && (isfield(pBlk, name) || isfield(pBlk, toCamel(name)));
+end
+
+function t = jsonText(v)
+try
+    t = char(jsonencode(v));
+catch
+    t = class(v);
+end
+end
+
+function ids = depValues(b, name)
+%DEPVALUES Every target of edge NAME (an edge may repeat), in order.
+ids = {};
+if ~isstruct(b) || ~isfield(b, 'depends_on') || ~isstruct(b.depends_on)
+    return;
+end
+deps = b.depends_on;
+for k = 1:numel(deps)
+    if isfield(deps(k), 'name') && strcmp(char(deps(k).name), name)
+        v = depEntryValue(deps(k));
+        if ~isempty(v); ids{end+1} = v; end %#ok<AGROW>
+    end
+end
+end
+
+function b = addEdge(b, name, id)
+%ADDEDGE B with one more NAME edge to ID, spelled as B's own edges are spelled
+%   (resolveEpochProbemap's).
+deps = b.depends_on;
+if iscell(deps); deps = [deps{:}]; end
+d = deps(1);
+fn = fieldnames(d);
+for f = 1:numel(fn); d.(fn{f}) = ''; end
+d.name = name;
+if isfield(d, 'value'); d.value = char(id); end
+if isfield(d, 'document_id'); d.document_id = char(id); end
+b.depends_on = [deps(:)', d];
 end
 
 % ===================== the two comparisons =================================

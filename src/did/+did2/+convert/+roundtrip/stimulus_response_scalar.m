@@ -27,6 +27,16 @@ function [v1, spec] = stimulus_response_scalar(bodies, ctx)
 %                                        names rebuild from the input class];
 %                                        '' when absent
 %       stimulus_response_scalar_parameters_id  method_id
+%     (the spike-times input)            NOT a v1 edge: the input_id the batch
+%                                        pass adds ([response computed from
+%                                        the spike times], Jess Haley,
+%                                        2026-11-12), the spike-times
+%                                        observation of the unit for the
+%                                        epoch (did2.convert.
+%                                        isSpikeTimesObservation), read from
+%                                        BODIES or CTX and rebuilt as no edge;
+%                                        it is what the parameters' isspike is
+%                                        rebuilt from
 %     stimulus_response.element_epochid  the epoch entity's local_identifier
 %                                        when the anchor names it; '' when the
 %                                        anchor is the session; NOT REBUILT
@@ -142,12 +152,28 @@ else
         end
     end
 end
+inputs = edgeIds(calc, 'input_id');
+% [response computed from the spike times] (Jess Haley, 2026-11-12): the
+% spike-times input has no v1 edge; it is set apart before the others are
+% named back (inputEdgeNames names by position where the class gives no name)
+isSpikeIn = false(1, numel(inputs));
+for k = 1:numel(inputs)
+    hit = find(strcmp(cellfun(@idOf, bodies, 'UniformOutput', false), inputs{k}), 1);
+    if ~isempty(hit)
+        isSpikeIn(k) = did2.convert.isSpikeTimesObservation(bodies{hit});
+        if isSpikeIn(k)
+            used(hit) = true;   % read for the response, placed by its own source
+        end
+    else
+        isSpikeIn(k) = did2.convert.isSpikeTimesObservation(ctxDoc(ctx, inputs{k}));
+    end
+end
+inputs = inputs(~isSpikeIn);
 for k = find(~used)
     spec.unplaced{end+1} = sprintf('emitted document %d (%s) has no role in a stimulus response', ...
         k, classNameOf(bodies{k}));
 end
 
-inputs = edgeIds(calc, 'input_id');
 inputNames = did2.convert.inputEdgeNames(inputs, ...
     {'stimulus_presentation_id', 'stimulus_control_id'});
 inputOf = @(nm) firstId(inputs(strcmp(inputNames, nm)));
