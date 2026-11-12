@@ -156,13 +156,18 @@ p = m.method.parameters;
 % written (the round trip writes them back); `spiketrain_dt` is EMPTY:0000308
 % "bin width" (2026-11-03, Jess Haley: "Ok on those other 2 from the first batch").
 verifyEmpty(testCase, knob(p, 'temporalfreqfunc'));
-verifyEqual(testCase, knob(p, 'isspike').quantity.value, 1);
+% INVERTED 2026-11-12 ([response computed from the spike times] (2), Jess
+% Haley): `isspike` is not written; the round trip rebuilds it from the
+% response's spike-times input (runFold puts the unit's spike train in the
+% batch, as resolveEpochProbemap makes it)
+verifyEmpty(testCase, knob(p, 'isspike'));
+verifyEqual(testCase, rep.isspike_rebuilt_from_inputs, 1);
 verifyEqual(testCase, knob(p, 'bin width').quantity.value, 0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, knob(p, 'bin width').quantity.source_value, '0.001');
 verifyEmpty(testCase, knob(p, 'prestimulus time'));
 verifyEmpty(testCase, knob(p, 'prestimulus normalization'));
-verifyEqual(testCase, numel(p), 2);
-verifyEqual(testCase, rep.fields_copied, 2);
+verifyEqual(testCase, numel(p), 1);
+verifyEqual(testCase, rep.fields_copied, 1);
 verifyEqual(testCase, rep.knobs_empty_ndi_defined, 3);
 verifyEqual(testCase, rep.knobs_empty_not_stated, 0);
 verifyEqual(testCase, rep.methods_minted, 1);
@@ -213,12 +218,17 @@ end
 
 function testAnyOtherEmptyKnobIsCountedNotStated(testCase)
 % An empty knob NDI gives no meaning for (here spiketrain_dt []) has no value
-% to write: it is left out and COUNTED in knobs_empty_not_stated.
+% to write: it is left out and COUNTED in knobs_empty_not_stated. Since
+% [response computed from the spike times] (Jess Haley, 2026-11-12) isspike is
+% not written either, so this method states no parameter at all (allowed:
+% method.parameters may be empty) and is still minted.
 p = parametersFixture();
 p.stimulus_response_scalar_parameters_basic.spiketrain_dt = [];
 [out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
-verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
-    'bin width'));
+verifyEqual(testCase, rep.methods_minted, 1);
+m = bodyOfClass(testCase, out, 'method');
+% no parameter stated: the builder writes no `parameters` (its blank is [])
+verifyTrue(testCase, ~isfield(m.method, 'parameters') || isempty(m.method.parameters));
 verifyEqual(testCase, rep.knobs_empty_not_stated, 1);
 verifyEqual(testCase, rep.knobs_empty_ndi_defined, 3);
 end
@@ -249,14 +259,15 @@ end
 
 function testTheOtherFourEdgesAreUntouched(testCase)
 % This pass removes exactly ONE edge. The four the migrator RECOVERED --
-% instrument_id (the stimulator, T7) and the input (the presentation ONLY,
-% since [control as covariate], Jess Haley 2026-10-22: the control record
-% becomes no document), plus subject_id -- must survive it, or the resolver
-% has undone the repair the migrator exists for.
+% instrument_id (the stimulator, T7) and the input (the presentation; this
+% fixture's control edge is empty), plus subject_id -- must survive it, or the
+% resolver has undone the repair the migrator exists for. UPDATED 2026-11-12
+% ([response computed from the spike times], Jess Haley): the pass ADDS one
+% input, the unit's spike times for the response's epoch.
 [~, leaf] = foldPair(testCase, 'F1');
 verifyEqual(testCase, depValue(leaf, 'entity_id'),      'elem_9c027e');
 verifyEqual(testCase, depValue(leaf, 'instrument_id'),  'stim_5daa03');
-verifyEqual(testCase, inputSet(leaf), {'pres_b671ff'});
+verifyEqual(testCase, inputSet(leaf), sort({'pres_b671ff', SPIKES_ID()}));
 verifyNotEmpty(testCase, depValue(leaf, 'time_reference_id'));
 end
 
@@ -289,6 +300,171 @@ verifyEqual(testCase, rep.parameters_documents_deleted, 0);
 m = bodyOfClass(testCase, out, 'method');
 src = bodyOfClass(testCase, out, 'stimulus_response_scalar');
 verifyEqual(testCase, depValue(src, 'stimulus_response_scalar_parameters_id'), m.base.id);
+end
+
+% ===================== [response computed from the spike times] ============
+% Jess Haley, 2026-11-12: (1) a migrated response also lists, as an input, the
+% spike-times observation of its unit for the matching epoch; one with no
+% matching observation is listed in the migration report, not guessed. (2)
+% v1 `isspike` is not written as a method parameter: the round trip rebuilds
+% it from the input (1 for spike times, 0 for a continuous input); a source
+% whose isspike disagrees with its input carries as v1.
+
+function testTheResponseListsItsUnitsSpikeTimesForItsEpoch(testCase)
+% the match: same unit, same epoch. Two that do not match are in the batch
+% too: the same unit on another epoch, another unit on the same epoch.
+[out, rep] = runFold(testCase, ...
+    {withEpochEdge(responseFixture('F1')), parametersFixture()}, ...
+    {{'elem_9c027e', 'epochdoc_5f21b0', SPIKES_ID()}, ...
+     {'elem_9c027e', 'epochdoc_other1', 'spikes_other_epoch'}, ...
+     {'elem_other99', 'epochdoc_5f21b0', 'spikes_other_unit'}});
+leaf = findHarmonicCalc(testCase, out).toStruct();
+verifyEqual(testCase, inputSet(leaf), sort({'pres_b671ff', SPIKES_ID()}));
+verifyEqual(testCase, rep.spike_observations_seen, 3);
+verifyEqual(testCase, rep.spike_input_linked, 1);
+verifyEqual(testCase, rep.spike_input_not_found, 0);
+verifyEqual(testCase, rep.spike_input_ambiguous, 0);
+% a second run finds the input already there and adds nothing
+[out2, rep2] = did2.convert.resolveResponseParameters(out, ...
+    'Validate', false, 'TargetVersion', 'did_v2');
+verifyEqual(testCase, rep2.spike_input_already_linked, 1);
+verifyEqual(testCase, rep2.spike_input_linked, 0);
+verifyEqual(testCase, inputSet(findHarmonicCalc(testCase, out2).toStruct()), ...
+    sort({'pres_b671ff', SPIKES_ID()}));
+end
+
+function testAResponseWithNoSpikeTimesIsListedInTheMigrationReport(testCase)
+% no spike train of the unit on its epoch (here: only the same unit on another
+% epoch): no input is guessed; the response is a named, counted entry of the
+% run's migration report (`inputs_not_found`); its parameters (isspike 1)
+% disagree with its inputs, so they stay v1
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+[out, rep] = runFold(testCase, ...
+    {withEpochEdge(responseFixture('F1')), parametersFixture()}, ...
+    {{'elem_9c027e', 'epochdoc_other1', 'spikes_other_epoch'}});
+leaf = findHarmonicCalc(testCase, out).toStruct();
+verifyEqual(testCase, inputSet(leaf), {'pres_b671ff'});
+verifyEqual(testCase, rep.spike_input_not_found, 1);
+verifyEqual(testCase, rep.spike_input_linked, 0);
+r = did2.convert.migrationReport('collect', out.migrated);
+verifyEqual(testCase, r.counts.inputs_not_found, 1);
+assertEqual(testCase, numel(r.inputs_not_found), 1);
+verifyEqual(testCase, r.inputs_not_found(1).document_id, 'resp_412fa1');
+verifyEqual(testCase, r.inputs_not_found(1).class, 'calculation');
+verifyEqual(testCase, r.inputs_not_found(1).input, 'spike times');
+verifyTrue(testCase, contains(r.inputs_not_found(1).reason, 'epochdoc_5f21b0'), ...
+    r.inputs_not_found(1).reason);
+% isspike 1 beside no spike-times input: the parameters document stays v1
+verifyEqual(testCase, rep.refused_isspike_disagrees, 1);
+verifyEqual(testCase, rep.methods_minted, 0);
+verifyTrue(testCase, anyClass(out, 'stimulus_response_scalar_parameters_basic'));
+verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
+end
+
+function testTwoMatchingSpikeTrainsAreNotGuessed(testCase)
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+[out, rep] = runFold(testCase, ...
+    {withEpochEdge(responseFixture('F1')), parametersFixture()}, ...
+    {{'elem_9c027e', 'epochdoc_5f21b0', 'spikes_a'}, ...
+     {'elem_9c027e', 'epochdoc_5f21b0', 'spikes_b'}});
+verifyEqual(testCase, inputSet(findHarmonicCalc(testCase, out).toStruct()), {'pres_b671ff'});
+verifyEqual(testCase, rep.spike_input_ambiguous, 1);
+r = did2.convert.migrationReport('collect', out.migrated);
+assertEqual(testCase, numel(r.inputs_not_found), 1);
+verifyTrue(testCase, contains(r.inputs_not_found(1).reason, 'not guessed'), ...
+    r.inputs_not_found(1).reason);
+end
+
+function testAResponseOnTheSessionAnchorHasNoSpikeInput(testCase)
+% no epoch string: the anchor is the session, so no epoch's spike times match;
+% listed, and a parameters document with isspike 0 (a continuous input)
+% agrees: it becomes the method, with no isspike written
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+v1 = responseFixture('F1');
+v1.stimulus_response.element_epochid = '';
+v1.stimulus_response.stimulator_epochid = '';
+p = parametersFixture();
+p.stimulus_response_scalar_parameters_basic.isspike = 0;
+[out, rep] = runFold(testCase, {v1, p});
+verifyEqual(testCase, rep.spike_input_not_found, 1);
+verifyEqual(testCase, rep.methods_minted, 1);
+verifyEqual(testCase, rep.isspike_rebuilt_from_inputs, 1);
+verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, 'isspike'));
+r = did2.convert.migrationReport('collect', out.migrated);
+verifyEqual(testCase, r.counts.inputs_not_found, 1);
+end
+
+function testIsspikeZeroBesideASpikeTimesInputStaysV1(testCase)
+% a source whose isspike disagrees with its input carries as v1: isspike 0,
+% but the response is computed from its unit's spike times
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+p = parametersFixture();
+p.stimulus_response_scalar_parameters_basic.isspike = 0;
+[out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
+verifyEqual(testCase, rep.spike_input_linked, 1);
+verifyEqual(testCase, rep.refused_isspike_disagrees, 1);
+verifyEqual(testCase, rep.methods_minted, 0);
+src = bodyOfClass(testCase, out, 'stimulus_response_scalar_parameters_basic');
+verifyEqual(testCase, src.stimulus_response_scalar_parameters_basic.isspike, 0);
+r = did2.convert.migrationReport('collect', out.migrated);
+hit = strcmp({r.carried_as_v1.document_id}, 'param_77c19b');
+assertEqual(testCase, nnz(hit), 1);
+verifyTrue(testCase, contains(r.carried_as_v1(hit).reason, 'isspike 0'), ...
+    r.carried_as_v1(hit).reason);
+end
+
+function testASharedMethodKeepsItsIdAndIsspikeSplitsNothing(testCase)
+% two responses share one parameters document (the writer's dedup): one method,
+% the parameters document's id, named by both. Two parameters documents that
+% differ only in isspike stay two methods, each its own id, although their
+% written parameters are now the same: the id is preserved, never derived from
+% the content, so no response's method_id changes.
+r1 = withEpochEdge(responseFixture('F1'));
+r2 = withEpochEdge(responseFixture('F1'));
+r2.base.id = 'resp_second42';
+r3 = responseFixture('F1');
+r3.base.id = 'resp_third77';
+r3.stimulus_response.element_epochid = '';
+r3.stimulus_response.stimulator_epochid = '';
+r3.depends_on(1).value = 'param_cont01';
+p0 = parametersFixture();
+p0.base.id = 'param_cont01';
+p0.stimulus_response_scalar_parameters_basic.isspike = 0;
+[out, rep] = runFold(testCase, {r1, r2, parametersFixture(), r3, p0});
+verifyEqual(testCase, rep.methods_minted, 2);
+verifyEqual(testCase, rep.isspike_rebuilt_from_inputs, 2);
+verifyEqual(testCase, rep.spike_input_linked, 2);
+methods = {};
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if strcmp(b.document_class.class_name, 'method')
+        methods{end+1} = b; %#ok<AGROW>
+    end
+end
+assertEqual(testCase, numel(methods), 2);
+verifyEqual(testCase, sort(cellfun(@(m) m.base.id, methods, 'UniformOutput', false)), ...
+    sort({'param_77c19b', 'param_cont01'}));
+verifyEqual(testCase, methods{1}.method.parameters, methods{2}.method.parameters, ...
+    'the same written parameters');
+uses = {};
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if isHarmonicCalc(out.migrated{k})
+        uses(end+1, :) = {b.base.id, depValue(b, 'method_id')}; %#ok<AGROW>
+    end
+end
+uses = sortrows(uses, 1);
+verifyEqual(testCase, uses, {'resp_412fa1', 'param_77c19b'; ...
+    'resp_second42', 'param_77c19b'; 'resp_third77', 'param_cont01'});
+% the same batch twice gives the same documents (ids deterministic)
+[again, ~] = runFold(testCase, {r1, r2, parametersFixture(), r3, p0});
+ids1 = sort(cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false));
+ids2 = sort(cellfun(@(d) char(d.get('base.id')), again.migrated, 'UniformOutput', false));
+verifyEqual(testCase, ids2, ids1);
 end
 
 % ===================== what it refuses =====================================
@@ -452,8 +628,10 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('pass 1 quarantined %s: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
+out = withSpikeTrain(out, 'elem_9c027e', 'epochdoc_5f21b0', SPIKES_ID());
 [out, rep] = did2.convert.resolveResponseParameters(out, ...
     'Validate', true, 'TargetVersion', 'did_v2');
+verifyEqual(testCase, rep.spike_input_linked, 1, 'the response took its spike-times input');
 verifyEqual(testCase, rep.methods_minted, 1);
 verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
@@ -471,15 +649,56 @@ end
 
 % ===================== helpers =============================================
 
-function [out, rep] = runFold(testCase, bodies)
+function [out, rep] = runFold(testCase, bodies, spikeTrains)
 %RUNFOLD Pass 1 (validation OFF -- these tests assert the TRANSFORM) then the
 %   resolver. Pass-1 quarantine is asserted empty here rather than left to the
 %   individual tests: a resolver test that silently ran on an empty batch would
 %   pass every assertion about counts being 0.
+%   SPIKETRAINS (default: the fixture unit's one spike train on the fixture
+%   epoch) is a cell of {entity id, epoch id, observation id}: the spike-times
+%   observations resolveEpochProbemap would have made, put in the batch before
+%   the resolver ([response computed from the spike times], Jess Haley,
+%   2026-11-12). {} puts none.
+if nargin < 3
+    spikeTrains = {{'elem_9c027e', 'epochdoc_5f21b0', SPIKES_ID()}};
+end
 out = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
+for k = 1:numel(spikeTrains)
+    out = withSpikeTrain(out, spikeTrains{k}{:});
+end
 [out, rep] = did2.convert.resolveResponseParameters(out, ...
     'Validate', false, 'TargetVersion', 'did_v2');
+end
+
+function id = SPIKES_ID()
+id = 'spikes_obs_7e10aa';
+end
+
+function out = withSpikeTrain(out, entityId, epochId, obsId)
+%WITHSPIKETRAIN Append a unit's spike-times observation on one epoch, as
+%   did2.convert.resolveEpochProbemap makes it from the unit's element_epoch:
+%   an `observation`, value kind `time`, variable GO:0001508 "action
+%   potential", `data_body` true, about the unit, with its own anchor onto the
+%   epoch entity.
+sid = 'sess_0001';
+ts = '2024-06-01T12:00:00.000Z';
+sec = struct('node', 'om:second-Time', 'name', 'second');
+anchor = did2.build.relativeTimeReference(epochId, 'Clock', 'dev_local_time', ...
+    'Start', 0, 'StartSourceValue', 0, 'StartSourceUnit', sec, ...
+    'StartApproximate', false, ...
+    'End', 12, 'EndSourceValue', 12, 'EndSourceUnit', sec, ...
+    'EndApproximate', false, ...
+    'SessionId', sid, 'CreationTimestamp', ts, 'Id', [obsId '_anchor'], ...
+    'Validate', false);
+obs = did2.build.statement('observation', entityId, ...
+    did2.convert.registeredTerm('GO:0001508', 'action potential'), [], ...
+    'ValueKind', 'time', 'DataBody', true, 'TimeReferenceIds', {anchor.base.id}, ...
+    'SessionId', sid, 'CreationTimestamp', ts, 'Id', obsId, 'Validate', false);
+extra = did2.convert.v1_to_v2({obs, anchor}, 'Validate', false, 'TargetVersion', 'did_v2');
+assert(isempty(extra.quarantine) && numel(extra.migrated) == 2, ...
+    'the spike train fixture did not build');
+out.migrated = [out.migrated, extra.migrated];
 end
 
 function [out, leaf, rep] = foldPair(testCase, responseType)

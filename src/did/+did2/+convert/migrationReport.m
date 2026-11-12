@@ -30,6 +30,16 @@ function out = migrationReport(action, varargin)
 %                          use: a contrastsensitivity_calc whose spatial
 %                          frequencies are all one value
 %                          (jRepeatedSpatialFrequency).
+%     [response computed from the spike times]  (Jess Haley, 2026-11-12) "a
+%                          response with no matching observation: list it in
+%                          the migration report (a named, counted entry), not
+%                          guessed": a fourth list, `inputs_not_found`
+%                          (document_id, class, input, reason), one entry per
+%                          migrated document an input it is computed from could
+%                          not be found for, with its count in `counts`. First
+%                          use: a stimulus response with no spike-times
+%                          observation of its unit for its epoch
+%                          (did2.convert.resolveResponseParameters).
 %
 %   This function holds the report of the run in progress. The validator
 %   (did2.schema.reportedGaps) reads the gaps of a document from it, so a
@@ -78,6 +88,15 @@ function out = migrationReport(action, varargin)
 %   D = did2.convert.migrationReport('defects', DOCID)
 %       the known v1 defects listed for DOCID, a struct array {field, reason}
 %       (0x0 when none, or when no run is held).
+%   did2.convert.migrationReport('inputNotFound', DOCID, CLASSNAME, INPUT, REASON)
+%       list one input of the migrated document DOCID (of class CLASSNAME)
+%       that the migration looked for and did not find: INPUT names it
+%       ('spike times'), REASON says why ([response computed from the spike
+%       times]). Listed once per document and input (the latest). With no
+%       run held it begins one first, as 'gap' does.
+%   N = did2.convert.migrationReport('inputsNotFound', DOCID)
+%       the inputs not found listed for DOCID, a struct array {input, reason}
+%       (0x0 when none, or when no run is held).
 %   did2.convert.migrationReport('carried', DOCID, CLASSNAME, CARRY, REASON)
 %       a document carried whole as v1: CARRY the carry register row(s) it
 %       cites ('carry-064', '' when none), REASON what could not be placed.
@@ -100,6 +119,9 @@ function out = migrationReport(action, varargin)
 %                           reason}, in the order of DOCS: only defects of a
 %                           document in DOCS that still gives the field (a
 %                           document carried as v1 in the end does not)
+%         R.inputs_not_found  struct array {document_id, class, input,
+%                           reason}, in the order of DOCS: only entries of a
+%                           document in DOCS that is a v2 document in the end
 %         R.counts          documents (numel(DOCS), the denominator of what
 %                           follows), gaps, documents_with_gaps,
 %                           gaps_by_class {class, count}, carried_as_v1 (the
@@ -110,9 +132,11 @@ function out = migrationReport(action, varargin)
 %                           (practice (d) of [migration reliability
 %                           practices], Jess Haley, 2026-10-26: carry counts by
 %                           register row, with the denominator),
-%                           known_v1_defects (entries listed).
+%                           known_v1_defects (entries listed),
+%                           inputs_not_found (entries listed).
 %   did2.convert.migrationReport('load', R)
-%       begin a run holding R's gaps, carries and known v1 defects (R a
+%       begin a run holding R's gaps, carries, known v1 defects and inputs
+%       not found (R a
 %       'collect' result, or
 %       the attached file's JSON decoded), so documents migrated by that run
 %       can be validated again.
@@ -200,6 +224,41 @@ switch char(action)
         else
             m(id) = e; %#ok<NASGU> handle
         end
+    case 'inputNotFound'
+        if ~st.active
+            st = emptyState(true);
+        end
+        [docId, cls, input, reason] = deal(text(varargin{1}), text(varargin{2}), ...
+            text(varargin{3}), text(varargin{4}));
+        if isempty(docId) || isempty(input) || isempty(reason)
+            error('did2:convert:badInputNotFound', ...
+                'An input not found needs a document id, an input and a reason (got "%s", "%s", "%s").', ...
+                docId, input, reason);
+        end
+        e = struct('class', cls, 'input', input, 'reason', reason);
+        m = st.inputs;
+        if isKey(m, docId)
+            prev = m(docId);
+            hit = find(strcmp({prev.input}, input), 1);
+            if isempty(hit)
+                m(docId) = [prev, e]; %#ok<NASGU> handle
+            else
+                prev(hit) = e;   % listed once per document and input: the latest
+                m(docId) = prev; %#ok<NASGU> handle
+            end
+        else
+            m(docId) = e; %#ok<NASGU> handle
+        end
+    case 'inputsNotFound'
+        out = struct('input', {}, 'reason', {});
+        if ~st.active || st.inputs.Count == 0
+            return;
+        end
+        docId = text(varargin{1});
+        if ~isempty(docId) && isKey(st.inputs, docId)
+            g = st.inputs(docId);
+            out = struct('input', {g.input}, 'reason', {g.reason});
+        end
     case 'defects'
         out = struct('field', {}, 'reason', {});
         if ~st.active || st.defects.Count == 0
@@ -268,6 +327,12 @@ switch char(action)
                 migrationReportAdd(st, 'defect', d(k));
             end
         end
+        if isfield(r, 'inputs_not_found')
+            d = asStructs(r.inputs_not_found);
+            for k = 1:numel(d)
+                migrationReportAdd(st, 'input', d(k));
+            end
+        end
     otherwise
         error('did2:convert:badArgument', ...
             'migrationReport: unknown action "%s".', char(action));
@@ -280,7 +345,8 @@ function st = emptyState(active)
 st = struct('active', active, 'own', false, 'depth', 0, ...
     'gaps', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
     'carried', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
-    'defects', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+    'defects', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'inputs', containers.Map('KeyType', 'char', 'ValueType', 'any'));
 end
 
 function migrationReportAdd(st, kind, e)
@@ -306,6 +372,15 @@ switch kind
         else
             m(docId) = x; %#ok<NASGU> handle
         end
+    case 'input'
+        x = struct('class', text(fieldOr(e, 'class')), 'input', ...
+            text(fieldOr(e, 'input')), 'reason', text(fieldOr(e, 'reason')));
+        m = st.inputs;
+        if isKey(m, docId)
+            m(docId) = [m(docId), x]; %#ok<NASGU> handle
+        else
+            m(docId) = x; %#ok<NASGU> handle
+        end
     case 'carried'
         m = st.carried;
         m(docId) = struct('class', text(fieldOr(e, 'class')), 'carry', ...
@@ -320,6 +395,7 @@ end
 gaps = struct('document_id', {}, 'class', {}, 'field', {}, 'reason', {});
 carried = struct('document_id', {}, 'class', {}, 'carry', {}, 'reason', {});
 defects = struct('document_id', {}, 'class', {}, 'field', {}, 'reason', {});
+inputs = struct('document_id', {}, 'class', {}, 'input', {}, 'reason', {});
 withGaps = 0;
 for k = 1:numel(docs)
     s = docs{k};
@@ -355,6 +431,15 @@ for k = 1:numel(docs)
     end
     stamp = did2.schema.stampOf(s);
     if did2.schema.isV2Stamp(stamp)
+        if st.inputs.Count > 0 && isKey(st.inputs, id)
+            g = st.inputs(id);
+            for j = 1:numel(g)
+                c = g(j).class;
+                if isempty(c); c = cls; end
+                inputs(end+1) = struct('document_id', id, 'class', c, ...
+                    'input', g(j).input, 'reason', g(j).reason); %#ok<AGROW>
+            end
+        end
         continue;   % converted in the end: not a carry
     end
     if st.carried.Count > 0 && isKey(st.carried, id)
@@ -373,10 +458,11 @@ r = struct();
 r.gaps = gaps;
 r.carried_as_v1 = carried;
 r.known_v1_defects = defects;
-r.counts = counts(numel(docs), gaps, withGaps, carried, defects);
+r.inputs_not_found = inputs;
+r.counts = counts(numel(docs), gaps, withGaps, carried, defects, inputs);
 end
 
-function c = counts(nDocs, gaps, withGaps, carried, defects)
+function c = counts(nDocs, gaps, withGaps, carried, defects, inputs)
 c = struct();
 c.documents = nDocs;
 c.gaps = numel(gaps);
@@ -397,6 +483,7 @@ c.carried_by_register_row = tally(rows, 'row');
 c.carried_citing_a_row = citing;
 c.carried_citing_no_row = numel(carried) - citing;
 c.known_v1_defects = numel(defects);
+c.inputs_not_found = numel(inputs);
 end
 
 function t = tally(names, label)

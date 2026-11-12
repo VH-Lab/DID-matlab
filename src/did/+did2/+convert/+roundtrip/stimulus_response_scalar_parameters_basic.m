@@ -45,6 +45,19 @@ function [v1, spec] = stimulus_response_scalar_parameters_basic(bodies, ctx)
 %                                        prestimulus normalization is zero]:
 %                                        "count `[]` and `0` as the same value
 %                                        for this one setting")
+%     isspike                            not written when the responses that
+%                                        use the method are converted
+%                                        ([response computed from the spike
+%                                        times], Jess Haley, 2026-11-12):
+%                                        rebuilt 1 when they list their unit's
+%                                        spike-times observation as an input
+%                                        (did2.convert.isSpikeTimesObservation;
+%                                        value kind `time`), 0 when they do
+%                                        not (the input is continuous); not
+%                                        rebuilt when they disagree, or when
+%                                        no response using it is in BODIES or
+%                                        CTX. A method no converted response
+%                                        uses still states it as a parameter
 %     freq_response                      NOT a parameter: the batch pass checks
 %                                        it against the harmonic of the
 %                                        responses that use the method. Rebuilt
@@ -92,8 +105,11 @@ if isempty(m)
 end
 [base, ~] = rebuildBase(m);
 
-% the responses that use this method: their harmonic is the v1 freq_response
+% the responses that use this method: their harmonic is the v1 freq_response,
+% and whether they list a spike-times input is the v1 isspike
 harmonics = [];
+spiking = false(1, 0);
+userIdx = [];
 for k = 1:numel(bodies)
     if used(k); continue; end
     b = bodies{k};
@@ -104,7 +120,12 @@ for k = 1:numel(bodies)
             harmonics(end+1) = h; %#ok<AGROW>
         end
         used(k) = true;
+        userIdx(end+1) = k; %#ok<AGROW>
     end
+end
+for k = userIdx
+    [spiking(end+1), obsAt] = hasSpikeInput(bodies{k}, bodies, ctx); %#ok<AGROW>
+    used(obsAt) = true;   % the spike-times observation read for it
 end
 % ... and, in the whole batch, the responses of other sources (CTX)
 for k = ctxReferrers(ctx, base.id)
@@ -115,6 +136,7 @@ for k = ctxReferrers(ctx, base.id)
         if ~isempty(h)
             harmonics(end+1) = h; %#ok<AGROW>
         end
+        spiking(end+1) = hasSpikeInput(b, {}, ctx); %#ok<AGROW>
     end
 end
 for k = find(~used)
@@ -156,6 +178,18 @@ end
 if ~isfield(blk, 'prestimulus_normalization')
     blk.prestimulus_normalization = [];
 end
+% [response computed from the spike times] (Jess Haley, 2026-11-12): isspike,
+% when the method does not state it, is rebuilt from its responses' inputs
+if ~isfield(blk, 'isspike') && ~isempty(spiking)
+    if all(spiking)
+        blk.isspike = 1;
+    elseif ~any(spiking)
+        blk.isspike = 0;
+    else
+        spec.unplaced{end+1} = sprintf(['%d of the %d responses using this method ' ...
+            'list a spike-times input: isspike cannot be rebuilt'], nnz(spiking), numel(spiking));
+    end
+end
 if ~isempty(harmonics)
     if all(harmonics == harmonics(1))
         blk.freq_response = harmonics(1);
@@ -184,6 +218,30 @@ spec.same(end+1) = struct('path', [CLASS '.prestimulus_normalization'], ...
 end
 
 % ===================== helpers =========================================
+
+function [tf, at] = hasSpikeInput(calc, bodies, ctx)
+%HASSPIKEINPUT Does the response CALC list a spike-times observation
+%   (did2.convert.isSpikeTimesObservation) as an input? AT are the positions
+%   in BODIES of the ones found there (read from CTX otherwise).
+tf = false;
+at = [];
+for id = edgeIds(calc, 'input_id')
+    found = false;
+    for k = 1:numel(bodies)
+        if strcmp(fieldText(getIn(bodies{k}, 'base'), 'id'), id{1})
+            found = true;
+            if did2.convert.isSpikeTimesObservation(bodies{k})
+                tf = true;
+                at(end+1) = k; %#ok<AGROW>
+            end
+            break;
+        end
+    end
+    if ~found && did2.convert.isSpikeTimesObservation(ctxDoc(ctx, id{1}))
+        tf = true;
+    end
+end
+end
 
 function v1 = passedThrough(body)
 %PASSEDTHROUGH A passed-through v1 document as v1 stated it (v1_to_v2's

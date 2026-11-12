@@ -818,6 +818,20 @@ POST_PASSES = [
         # into a method document (id preserved), so nothing is removed. Printed
         # anyway: a non-zero would mean documents vanished from the batch.
         ("parameters_documents_deleted", "parameters documents DELETED (0 by construction: converted in place)"),
+        # Jess Haley 2026-11-12 [response computed from the spike times]: each
+        # response lists its unit's spike-times observation for its epoch as
+        # an input; one with none is listed in the migration report. isspike
+        # is then not written (rebuilt from the input); one that disagrees
+        # keeps the parameters document v1.
+        ("spike_observations_seen", "spike-times observations in the batch"),
+        ("spike_input_linked", "responses GIVEN their spike-times input"),
+        ("spike_input_already_linked", "  already had it (a re-run)"),
+        ("spike_input_not_found", "  NO matching spike-times observation (listed in the report)"),
+        ("spike_input_ambiguous", "  two or more matching (not guessed; listed)"),
+        ("spike_input_link_quarantined", "  link did not validate (kept without it)"),
+        ("isspike_rebuilt_from_inputs", "methods with isspike NOT written (rebuilt from inputs)"),
+        ("isspike_written_no_converted_user", "  methods still stating isspike (no converted user)"),
+        ("refused_isspike_disagrees", "  REFUSED: isspike disagrees with the inputs (kept v1)"),
     ]),
     # TEAM DECISION 2026-08-11: generic_file -> opaque_body + a statement whose
     # `variable` comes from the sibling ontologyLabel.
@@ -4907,7 +4921,10 @@ def _render_response_parameters_reading(rep, p):
             # refused_unknown_setting (2026-10-27) is absent from older
             # reports, which could not refuse for it: 0 there
             doc_refused = sum(parts) + (
-                _int_or_none(rep.get("refused_unknown_setting")) or 0)
+                _int_or_none(rep.get("refused_unknown_setting")) or 0) + (
+                # [response computed from the spike times] (2026-11-12):
+                # absent from older reports, 0 there
+                _int_or_none(rep.get("refused_isspike_disagrees")) or 0)
         quar = _int_or_none(rep.get("fold_quarantined"))
         if seen_p and minted == 0 and doc_refused == 0 and not quar:
             p("          *** %d parameters document(s) seen and NOTHING minted or"
