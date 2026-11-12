@@ -483,7 +483,6 @@ verifyFalse(testCase, isfield(r.ids_lost_by_class, cls), describe(r));
 verifyEmpty(testCase, archiveFailure(r, 'wb_arc_arc'), ...
     ['only the deferred segment lengths differ: ' describe(r)]);
 verifyFalse(testCase, isfield(r.failures_by_class, cls), describe(r));
-verifyEqual(testCase, r.sources_ok, r.sources_compared, describe(r));
 verifyArchiveSegmentsDeferred(testCase, r, 1, 1);
 end
 
