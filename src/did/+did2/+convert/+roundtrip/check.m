@@ -47,6 +47,19 @@ function report = check(v1Body, v2Docs, ctx)
 %                           writes the value under every spelling; a spelling
 %                           the v1 document does not hold is not INVENTED
 %                           when it holds another of them
+%         spec.deferred     struct array {path, pass, why} (optional): a v1
+%                           field the batch being checked cannot hold because
+%                           a LATER pass, PASS, writes it. Today PASS is only
+%                           'second_pass' (NDI-matlab's second pass,
+%                           ndi.migrate.local, which runs after the DID stage);
+%                           any other is an error
+%                           (did2:convert:roundtrip:unknownPass). A deferred
+%                           field the rebuilt document does not hold is
+%                           DEFERRED, not lost; one the rebuilt document holds
+%                           with another value is still lost. First case:
+%                           an ingested archive's two segment lengths
+%                           ([archive segment lengths measured after the
+%                           second pass], Jess Haley, 2026-11-12)
 %         spec.unplaced     cellstr: emitted content the inverse could not
 %                           place (an unexpected document, a wrong type)
 %         spec.spellings    struct array {paths, why} (optional): a v1 field
@@ -67,6 +80,9 @@ function report = check(v1Body, v2Docs, ctx)
 %     restated    the v1 value is one of spec.equivalents' values for the path
 %     equivalent  spec.same's FN for the path says the rebuilt value states the
 %                 same thing in another notation
+%     deferred    the path is in spec.deferred and the rebuilt document does
+%                 not hold it: a later pass writes it (not a loss at this
+%                 stage, and not a match: listed apart, with its pass)
 %     exempt      `document_class.*` except `class_name`, on a CONVERTED
 %                 document only: the v1 stamp (template paths, class_version,
 %                 superclasses), which v2 replaces with its own and
@@ -80,10 +96,13 @@ function report = check(v1Body, v2Docs, ctx)
 %     fields_inspected  the number of leaf fields of V1BODY
 %     class_name, source_id, carried
 %     matched, not_set, restated, equivalent, exempt   cellstr of paths
+%     deferred   struct array {path, pass, why}: the DEFERRED leaves
 %     lost       struct array {path, v1, rebuilt}
 %     invented   cellstr of paths
 %     unplaced   cellstr (from the inverse)
-%     ok         true when lost, invented and unplaced are all empty
+%     ok         true when lost, invented and unplaced are all empty (a
+%                deferred leaf does not make it false; it is listed in
+%                `deferred`, and wholeBatch counts it)
 %
 %   See also did2.convert.rawV1Classes, did2.convert.roundtrip.subject,
 %            did2.convert.roundtrip.subject_group.
@@ -100,6 +119,7 @@ base = did2.convert.v1read.readBase(v1Body);
 report = struct('fields_inspected', 0, 'class_name', stamp.class_name, ...
     'source_id', base.id, 'carried', false, 'matched', {{}}, ...
     'not_set', {{}}, 'restated', {{}}, 'equivalent', {{}}, 'exempt', {{}}, ...
+    'deferred', struct('path', {}, 'pass', {}, 'why', {}), ...
     'lost', struct('path', {}, 'v1', {}, 'rebuilt', {}), ...
     'invented', {{}}, 'unplaced', {{}}, 'ok', false);
 
@@ -141,6 +161,17 @@ if ~report.carried && isfield(spec, 'spellings')
     rebuilt = respell(rebuilt, v1Body, spec.spellings);
 end
 report.unplaced = spec.unplaced;
+deferred = struct('path', {}, 'pass', {}, 'why', {});
+if isfield(spec, 'deferred')
+    deferred = spec.deferred;
+end
+for k = 1:numel(deferred)
+    if ~strcmp(deferred(k).pass, 'second_pass')
+        error('did2:convert:roundtrip:unknownPass', ...
+            'Inverse for "%s" defers %s to an unknown pass "%s".', ...
+            stamp.class_name, deferred(k).path, deferred(k).pass);
+    end
+end
 
 % [ndi_document read as base] (Decided by Jess Haley, 2026-10-31, did-schema
 % did_v2_go_forward_class_audit.md): a CONVERTED document's legacy
@@ -181,6 +212,10 @@ for k = 1:numel(origLeaves)
         report.restated{end+1} = lf.path;
     elseif found && isSame(same, lf.path, lf.value, rv)
         report.equivalent{end+1} = lf.path;
+    elseif ~found && any(strcmp(lf.path, {deferred.path}))
+        d = deferred(strcmp(lf.path, {deferred.path}));
+        report.deferred(end+1) = struct('path', lf.path, 'pass', d(1).pass, ...
+            'why', d(1).why);
     else
         if ~found
             rv = '<absent>';

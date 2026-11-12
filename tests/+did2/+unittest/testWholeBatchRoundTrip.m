@@ -466,10 +466,12 @@ function testARetiredIngestedArchiveIsComparedOnTheBodiesItBecame(testCase)
 % holds its location uids) and rebuilds the archive from them and the batch:
 % it is compared, not counted CHANGED BY A BATCH PASS (Test code run
 % 43077600408: B 1,242, Dab 2,846). Its id is released, not lost, and the
-% rebuilt document's missing base.id is not a second loss. What this batch
-% does not hold is reported, exactly: the two segment lengths, which [segment
-% length is the time chunk] puts on a sampled_body's time `chunk` in
-% NDI-matlab's second pass, after this batch.
+% rebuilt document's missing base.id is not a second loss. The two segment
+% lengths, which [segment length is the time chunk] puts on a sampled_body's
+% time `chunk` in NDI-matlab's second pass, after this batch, are DEFERRED to
+% that pass, not lost ([archive segment lengths measured after the second
+% pass], Jess Haley, 2026-11-12): counted by field, and the archive is clean
+% at the DID stage.
 [bodies, result, rep] = archiveBatch(testCase, 'wb_arc', 'b6');
 assertEqual(testCase, rep.archive_docs_retired, 1, 'premise: the archive retired');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
@@ -478,14 +480,103 @@ verifyFalse(testCase, isfield(r.changed_by_class, cls), describe(r));
 verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, cls), describe(r));
 verifyTrue(testCase, isfield(r.ids_released_by_class, cls), describe(r));
 verifyFalse(testCase, isfield(r.ids_lost_by_class, cls), describe(r));
-f = archiveFailure(r, 'wb_arc_arc');
-assertNotEmpty(testCase, f, ['the segment lengths are not in this batch: ' describe(r)]);
-verifyEqual(testCase, sort(f.lost), sort({ ...
-    'daqreader_mfdaq_epochdata_ingested.parameters.sample_analog_segment', ...
-    'daqreader_mfdaq_epochdata_ingested.parameters.sample_digital_segment'}), ...
-    ['everything else round trips: ' strjoin(f.lost_values, ' | ')]);
-verifyEmpty(testCase, f.invented, describe(r));
-verifyEmpty(testCase, f.unplaced, describe(r));
+verifyEmpty(testCase, archiveFailure(r, 'wb_arc_arc'), ...
+    ['only the deferred segment lengths differ: ' describe(r)]);
+verifyFalse(testCase, isfield(r.failures_by_class, cls), describe(r));
+verifyArchiveSegmentsDeferred(testCase, r, 1, 1);
+end
+
+function testAnArchiveFileListInAnotherOrderRoundTrips(testCase)
+% [archive file list compared as a set] (Jess Haley, 2026-11-12): the v1
+% archive's files.file_list in another order than the template's is the same
+% list (B and Dab: every retired archive differed only so)
+[bodies, result, rep] = archiveBatch(testCase, 'wb_arco', 'b8', @reverseFileList);
+assertEqual(testCase, rep.archive_docs_retired, 1, 'premise: the archive retired');
+k = archiveIndex(bodies);
+tmpl = archiveTemplateFileList();
+assertFalse(testCase, isequal(bodies{k}.files.file_list, tmpl), ...
+    'premise: the v1 list is not in the template order');
+assertEqual(testCase, sort(bodies{k}.files.file_list), sort(tmpl), ...
+    'premise: the v1 list holds the template names');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEmpty(testCase, archiveFailure(r, 'wb_arco_arc'), describe(r));
+verifyArchiveSegmentsDeferred(testCase, r, 1, 1);
+end
+
+function testAnArchiveFileListWithOtherMembersIsLost(testCase)
+% the set comparison is not a pass for anything: a name missing, a name the
+% template does not hold, or a duplicate in place of another name, each is
+% files.file_list LOST (a check that cannot fail proves nothing)
+[bodies0, result] = archiveBatch(testCase, 'wb_arcm', 'b9');
+k = archiveIndex(bodies0);
+fl = bodies0{k}.files.file_list;
+cases = { ...
+    'a name missing', fl(1:end-1); ...
+    'a name the template does not hold', [fl(1:end-1); {'xx_group1_seg.nbf_#'}]; ...
+    'a duplicate in place of another name', [fl(1:end-1); fl(1)]; ...
+    'a duplicate added', [fl; fl(2)]};
+for c = 1:size(cases, 1)
+    bodies = bodies0;
+    bodies{k}.files.file_list = cases{c, 2};
+    r = did2.convert.roundtrip.wholeBatch(bodies, result);
+    f = archiveFailure(r, 'wb_arcm_arc');
+    assertNotEmpty(testCase, f, [cases{c, 1} ': ' describe(r)]);
+    verifyEqual(testCase, f.lost, {'files.file_list'}, [cases{c, 1} ': ' describe(r)]);
+    % the deferral is still reported, on a source that is not clean
+    verifyArchiveSegmentsDeferred(testCase, r, 1, 0);
+end
+end
+
+function testAnArchiveFieldOtherThanTheSegmentLengthsIsStillLost(testCase)
+% only the two segment lengths are deferred: another parameter the batch does
+% not hold is lost, and the deferral is still reported beside it
+[bodies, result] = archiveBatch(testCase, 'wb_arcp', 'ba');
+k = archiveIndex(bodies);
+cls = 'daqreader_mfdaq_epochdata_ingested';
+bodies{k}.(cls).parameters.sample_other_segment = 5;
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+f = archiveFailure(r, 'wb_arcp_arc');
+assertNotEmpty(testCase, f, describe(r));
+verifyEqual(testCase, f.lost, {[cls '.parameters.sample_other_segment']}, describe(r));
+verifyEqual(testCase, sort(f.deferred), sort({ ...
+    [cls '.parameters.sample_analog_segment'], ...
+    [cls '.parameters.sample_digital_segment']}), describe(r));
+verifyArchiveSegmentsDeferred(testCase, r, 1, 0);
+end
+
+function verifyArchiveSegmentsDeferred(testCase, r, nSources, nOk)
+% the report's DEFERRED TO THE SECOND PASS block: its denominator, the
+% archive's two segment-length fields, each counted on NSOURCES sources, NOK
+% of them clean at the DID stage
+cls = 'daqreader_mfdaq_epochdata_ingested';
+d = r.deferred_to_second_pass;
+verifyEqual(testCase, d.sources_compared, r.sources_compared, 'the denominator');
+verifyEqual(testCase, d.sources, nSources, describe(r));
+verifyEqual(testCase, d.sources_ok, nOk, describe(r));
+verifyEqual(testCase, d.values, 2 * nSources, describe(r));
+verifyEqual(testCase, sort({d.fields.path}), sort({ ...
+    [cls '.parameters.sample_analog_segment'], ...
+    [cls '.parameters.sample_digital_segment']}), describe(r));
+verifyEqual(testCase, unique({d.fields.class_name}), {cls});
+verifyEqual(testCase, [d.fields.sources], [nSources nSources]);
+verifyTrue(testCase, all(contains({d.fields.decision}, ...
+    'archive segment lengths measured after the second pass')));
+end
+
+function v1 = reverseFileList(v1)
+v1.files.file_list = flipud(v1.files.file_list(:));
+end
+
+function k = archiveIndex(bodies)
+k = find(cellfun(@(b) strcmp(b.document_class.class_name, ...
+    'daqreader_mfdaq_epochdata_ingested'), bodies));
+end
+
+function c = archiveTemplateFileList()
+thisDir = fileparts(mfilename('fullpath'));
+tmpl = jsondecode(fileread(fullfile(fileparts(thisDir), 'fixtures', 'ndi_templates', ...
+    'daqreader_mfdaq_epochdata_ingested.json')));
+c = tmpl.files.file_list;
 end
 
 function testARetiredArchiveWhoseValueTheBatchDoesNotHoldIsLost(testCase)
@@ -513,11 +604,18 @@ for k = 1:numel(r.failures)
 end
 end
 
-function [bodies, result, rep] = archiveBatch(testCase, stem, tail)
+function [bodies, result, rep] = archiveBatch(testCase, stem, tail, editArchive)
 % an ingested epoch as B and Dab hold it: the epochfiles_ingested manifest,
 % and the v1 archive mfdaq.m ingest_epochfiles wrote for the same epoch and
 % reader (NDI-matlab 73f46d1): the template's file_list, channel_list.bin and
-% the segments attached in the writer's order, one clock
+% the segments attached in the writer's order, one clock. EDITARCHIVE
+% (optional) changes the v1 archive before the migration.
+arguments
+    testCase
+    stem
+    tail
+    editArchive = []
+end
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
 sid = ['41268b6f5c6a3d4e_00000000000000' tail];
@@ -528,6 +626,9 @@ bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), .
         sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
         'p\t1\tn-trode\tintan1:ai1-2\tL\n'])), ...
     archiveV1([stem '_arc'], sid, 't0001', ['rdr_' stem '_daq'])};
+if ~isempty(editArchive)
+    bodies{end} = editArchive(bodies{end});
+end
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');

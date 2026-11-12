@@ -447,6 +447,17 @@ try
         wb.sources_stored_as_v1, ...
         wb.failures_total, wb.sources_changed_by_batch_pass, ...
         wb.sources_no_inverse, wb.unattributed_documents);
+    % DEFERRED TO THE SECOND PASS: values NDI-matlab's second pass writes,
+    % not lost at this stage ([archive segment lengths measured after the
+    % second pass], Jess Haley, 2026-11-12), by class and field
+    dp = wb.deferred_to_second_pass;
+    fprintf(['[%s] DEFERRED TO THE SECOND PASS: of %d compared source(s), %d ' ...
+        'with deferred value(s) (%d of them clean at the DID stage); %d value(s)\n'], ...
+        corpusName, dp.sources_compared, dp.sources, dp.sources_ok, dp.values);
+    for k = 1:numel(dp.fields)
+        fprintf('[%s]   deferred %s %s: %d source(s)\n', corpusName, ...
+            dp.fields(k).class_name, dp.fields(k).path, dp.fields(k).sources);
+    end
     % ACCEPTED LOSSES: recorded exceptions to the lossless rule, by name, and
     % the check an accepted id loss needs first (did2.convert.roundtrip.wholeBatch)
     ic = wb.accepted_id_check;
