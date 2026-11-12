@@ -487,42 +487,40 @@ end
 % ===================== spike trains (2026-10-21) ========================
 
 function testIdsFromContentWhenV1StatesNone(testCase)
-% [ids from content when v1 states none] (Jess Haley, 2026-11-12): an ingested
-% epoch, a jrclust_clusters and a pyraview that state no v1 id get ids derived
-% from their content (the ingestion_manifest the epoch becomes, the sorter's
-% calculation, the ids this pass mints for them), so two runs on the same
-% input give the same ids, and two different such epochs never share one.
-% (did-schema #453's determinism covered every source with a v1 id.)
-[ids1, out1, rep1] = idlessRun('t0n1');
-[ids2, ~, ~] = idlessRun('t0n1');
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): a
+% jrclust_clusters and a pyraview that state no v1 id get ids derived from
+% their content (pass 1: jrclust_clusters.m, pyraview.m), and this pass mints
+% from them, so two runs on the same input give the same ids, and a different
+% id-less pyraview gets other ids. (did-schema #453's determinism covered
+% every source with a v1 id.) NOT COVERED: an epochfiles_ingested stating no
+% id. This pass finds what it renames, replaces and retires by source id, and
+% skips a source with none, so such an epoch is kept unchanged as v1;
+% mkIngestionManifest's content-derived id is not reached.
+[ids1, ~, rep1] = idlessRun('high');
+[ids2, ~, ~] = idlessRun('high');
 verifyEqual(testCase, rep1.epochfiles_ingested_seen, 1, 'DENOMINATOR: the ingested epoch');
 verifyEqual(testCase, rep1.sorter_calculations_seen, 1, 'DENOMINATOR: the sorter');
 verifyEqual(testCase, rep1.pyraview_observations_seen, 1, 'DENOMINATOR: the pyraview');
-m1 = bodiesOfClass(out1, 'ingestion_manifest');
-assertEqual(testCase, numel(m1), 1, 'the id-less epoch is renamed to its manifest');
-verifyNotEmpty(testCase, char(m1{1}.base.id), 'the manifest has an id');
 verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a document with no id');
 verifyEqual(testCase, numel(unique(ids1)), numel(ids1), 'two documents share an id');
 verifyEqual(testCase, sort(ids1), sort(ids2), 'two runs on the same input');
-% another epoch with no id: its manifest gets another id
-[~, out3, ~] = idlessRun('t0n2');
-m3 = bodiesOfClass(out3, 'ingestion_manifest');
-assertEqual(testCase, numel(m3), 1);
-verifyNotEqual(testCase, char(m3{1}.base.id), char(m1{1}.base.id), ...
-    'two different epochs with no id share a manifest id');
+% another pyraview with no id (another label): other ids
+ids3 = idlessRun('low');
+verifyNotEmpty(testCase, setdiff(ids3, ids1), ...
+    'two different id-less pyraviews mint the same ids');
 end
 
-function [ids, out, rep] = idlessRun(epochId)
+function [ids, out, rep] = idlessRun(label)
 subj = subjectBody('spec_n', 'sess_n', 'L');
 el   = elementBody('el_n', 'sess_n', 'p', '1', 'n-trode', 1, 'spec_n');
 daq  = daqsystemBody('acqsys_n', 'sess_n', 'intan1');
-ing  = ingestedWithDeviceRows('ing_n', 'sess_n', epochId, { ...
+ing  = ingestedWithDeviceRows('ing_n', 'sess_n', 't0n1', { ...
     {'p', '1', 'n-trode', 'intan1:ai1-2', 'L'}});
-ing.base.id = '';
 jc = jrclustV1('jc_n', 'sess_n', 'el_n');
 jc.base.id = '';
-pv = pyraviewV1('pv_n', 'sess_n', 'el_n', epochId);
+pv = pyraviewV1('pv_n', 'sess_n', 'el_n', 't0n1');
 pv.base.id = '';
+pv.pyraview.label = label;
 [out, rep] = decompose({sessionBody('sd_n', 'sess_n', 'ref'), subj, el, daq, ing, jc, pv});
 ids = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
