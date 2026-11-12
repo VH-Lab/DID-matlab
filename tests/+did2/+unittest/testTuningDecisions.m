@@ -15,7 +15,8 @@ function tests = testTuningDecisions
 %     [tuning fit coefficients named by symbol] (2026-11-11)  testFitsAreNamedBySymbol*,
 %                                                testATemporalFrequencyDoGWithNoLeadingZeroIsCarried,
 %                                                testContrastSensitivityIsOneFitPerSpatialFrequency
-%     [known v1 defects] (2026-11-12)           testARepeatedSpatialFrequencyIsAKnownV1Defect
+%     [contrast sensitivity repeated fit is a known v1 defect] (2026-11-12),
+%     [known v1 defects list] (2026-11-12)  testARepeatedSpatialFrequencyIsAKnownV1Defect
 %     [hotelling spellings are one field]        testHotellingSpellingsAreOneField
 %     [input names rebuild from the input class] testInputNames*
 %     [tuning stimids rebuild]                   testTuningStimids*
@@ -330,7 +331,8 @@ did2.unittest.helpers.verifyRoundTrip(testCase, r, 'contrast sensitivity', {});
 end
 
 function testARepeatedSpatialFrequencyIsAKnownV1Defect(testCase)
-% [known v1 defects] (Jess Haley, 2026-11-12, "A"): a contrast sensitivity
+% [contrast sensitivity repeated fit is a known v1 defect] and
+% [known v1 defects list] (Jess Haley, 2026-11-12): a contrast sensitivity
 % result whose spatial frequencies are more than one and all one value (Soph:
 % the input tuning curves were all made at the first spatial frequency,
 % NDI-matlab 49a875c94) is migrated unchanged, and the run's migration report

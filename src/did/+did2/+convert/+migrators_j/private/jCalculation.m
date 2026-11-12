@@ -508,7 +508,7 @@ leaf = jStatement(preBody, leafClass, subjectId, ...
     'Notes', curve.notes, ...
     'Id', char(preBody.base.id));   % id preserved -> inbound references resolve
 
-% [known v1 defects] (Jess Haley, 2026-11-12, "A"): a contrast sensitivity
+% [contrast sensitivity repeated fit is a known v1 defect] and [known v1 defects list] (Jess Haley, 2026-11-12): a contrast sensitivity
 % result whose spatial frequencies are all one value is migrated as v1 wrote
 % it, and the run's migration report lists the repeated fits as a known v1
 % defect of the document (jRepeatedSpatialFrequency)

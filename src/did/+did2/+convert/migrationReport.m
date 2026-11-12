@@ -17,7 +17,7 @@ function out = migrationReport(action, varargin)
 %                          holding `gaps` (document_id, class, field, reason),
 %                          `carried_as_v1` (document_id, class, carry, reason)
 %                          and `counts`; each gap's reason is text.
-%     [known v1 defects]   (Jess Haley, 2026-11-12, "A") a third list,
+%     [known v1 defects list]  (Jess Haley, 2026-11-12) a third list,
 %                          `known_v1_defects` (document_id, class, field,
 %                          reason), one entry per migrated document that
 %                          carries a known defect of its v1 source, with its

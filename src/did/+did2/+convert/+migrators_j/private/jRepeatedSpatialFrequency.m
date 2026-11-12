@@ -9,7 +9,9 @@ function reason = jRepeatedSpatialFrequency(block)
 %   (any dataset, any frequency). The document is migrated unchanged; the
 %   caller lists REASON in the run's migration report as a known v1 defect of
 %   `contrast_sensitivity.value.model_fit` (did2.convert.migrationReport
-%   'defect'; [known v1 defects], Jess Haley, 2026-11-12, "A").
+%   'defect'; [contrast sensitivity repeated fit is a known v1 defect] and
+%   [known v1 defects list], Jess Haley, 2026-11-12, did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md).
 %
 %   Why it happens: NDI-matlab +ndi/+calc/+stimulus/tuningcurve.m, with
 %   exactly one dealt property, used index 1 on every pass, so every input

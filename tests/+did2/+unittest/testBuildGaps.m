@@ -218,7 +218,7 @@ did2.convert.reportNote('reset');
 end
 
 % ===================== known v1 defects ====================================
-% [known v1 defects] (Jess Haley, 2026-11-12, "A"): a third list of the
+% [known v1 defects list] (Jess Haley, 2026-11-12): a third list of the
 % report, `known_v1_defects` {document_id, class, field, reason}, with its
 % count; a defect names a field the document GIVES (the opposite of a gap),
 % and it is never read as a gap
