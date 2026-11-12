@@ -2777,9 +2777,11 @@ classdef cache < handle
             %   document's `needs_info` names it"; since [gap accepted when the
             %   report lists it], 2026-11-01, the run's migration report lists
             %   it instead). A cell of a value class with a `source_unit`
-            %   and ONE canonical slot (the slots other than source_unit,
-            %   source_value, approximate and tolerance) that states a
-            %   source_value (a number, finite or not) but no canonical is
+            %   and one or more canonical slots (the slots other than
+            %   source_unit, source_value, approximate and tolerance; a
+            %   concentration has several: molar, grams_per_liter, ...,
+            %   osmolar) that states a source_value (a number, finite or
+            %   not) but no canonical (none of its canonical slots) is
             %   refused, unless EXCUSED (the paths the migration report lists
             %   as gaps) names a field under the cell (its canonical:
             %   'length.value.meters'), or, for an element of a value array,
@@ -2795,16 +2797,17 @@ classdef cache < handle
             %   did2.schema.reportedGaps refuses a gap for a field the
             %   document gives (badGap, [missing facts are needs info]). A
             %   canonical holding NaN is present here.
+            %   A cell of SEVERAL canonical slots is checked the same way
+            %   since [bath concentration prefixes convert to molar] (Jess
+            %   Haley, 2026-11-12): resolveDeferredBaths writes a bath
+            %   concentration in a prefixed molar unit (mM) with its `molar`,
+            %   carries one whose unit it cannot read (carry-155), and writes
+            %   an osmolarity with its `osmolar` or lists the gap. A gap for
+            %   such a cell names '<cell>.canonical' (jDoseBodies: nothing
+            %   says which slot) or the slot itself; either is a field under
+            %   the cell. Whether a cell fills MORE than one slot is not
+            %   checked here.
             %   NOT CHECKED HERE:
-            %     - a cell of SEVERAL canonical slots (concentration, score):
-            %       resolveDeferredBaths writes a bath's osmolarity, and a
-            %       concentration in a unit other than Molar (mM), with no
-            %       canonical and no gap. Whether such a bath is carried
-            %       (carry-155: "a unit spelling the migrator does not
-            %       recognise is carried for mapping") or written with a gap
-            %       ("a unit with no conversion", the value classes'
-            %       documentation) is a question for the team, and carrying
-            %       it changes NDI-matlab's Dab slice counts;
             %     - a cell stating a unit and no number at all.
             %   Nor which units a cell admits ([allowed units are closed
             %   source_unit lists]): that is the binding check's.
@@ -2902,7 +2905,8 @@ classdef cache < handle
         function missingCanonical(~, el, names, elPath, typeName, excused)
             % missingCanonical - raise did2:validation:quantityShape when the
             %   value cell EL (of the class TYPENAME, whose fields are NAMES)
-            %   states a source_value but leaves its one canonical slot empty,
+            %   states a source_value but leaves its canonical slot empty (or,
+            %   for a class of several canonical slots, every one of them),
             %   and the migration report's gaps (EXCUSED) name neither a field
             %   under the cell nor, for an element of a value array, a field
             %   under the array ([canonical absent only as needs info],
@@ -2913,16 +2917,18 @@ classdef cache < handle
             end
             canon = setdiff(names, {'source_unit', 'source_value', ...
                 'approximate', 'tolerance'}, 'stable');
-            if numel(canon) ~= 1
-                return;   % several canonicals: not checked here (header)
+            if isempty(canon)
+                return;
             end
             sv = [];
             if isfield(el, 'source_value'); sv = el.source_value; end
             if ~(isnumeric(sv) && ~isempty(sv))
                 return;   % no number stated: not checked here (header)
             end
-            if isfield(el, canon{1}) && ~isempty(el.(canon{1}))
-                return;   % the canonical is there (NaN included)
+            for c = 1:numel(canon)
+                if isfield(el, canon{c}) && ~isempty(el.(canon{c}))
+                    return;   % a canonical is there (NaN included)
+                end
             end
             % gap paths write (k) after a struct-array field even for
             % one element; this path does not, so (1) is read as no index
@@ -2942,7 +2948,7 @@ classdef cache < handle
                  'canonical "%s". A quantity''s canonical may be absent ' ...
                  'only when the run''s migration report lists it ' ...
                  '([canonical absent only as needs info], Jess Haley, ' ...
-                 '2026-10-30).'], elPath, typeName, canon{1});
+                 '2026-10-30).'], elPath, typeName, strjoin(canon, '" or "'));
         end
 
         function tf = holdsValueCell(obj, defs)

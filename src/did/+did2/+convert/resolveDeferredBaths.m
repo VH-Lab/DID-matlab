@@ -315,6 +315,16 @@ for k = 1:numel(q)
     % and osmolarity are formulation fields] still places a row NAMED osm or
     % osmolarity whose unit is read (makeBathVEta).
     unread = unreadUnitRows(v1Body);
+    % Decided by Jess Haley, 2026-11-12 [bath concentration prefixes convert to
+    % molar]: an ingredient's concentration in a molar unit with a known SI
+    % prefix (M, mM, uM, nM, pM ...) gets its canonical in molar; a unit
+    % spelling that cannot be read so is carried for mapping (carry-155,
+    % [canonical absent only as needs info]), as jTreatmentBodies carries a
+    % treatment's concentration unit it does not know.
+    unparsed = unparsedConcentrationRows(v1Body);
+    if ~isempty(unparsed)
+        unread = [unread, unparsed];
+    end
     if ~isempty(unread)
         if isfield(v1Body, 'document_class') && isstruct(v1Body.document_class)
             v1Body.document_class.schema_version = 'did_v1';
@@ -323,7 +333,8 @@ for k = 1:numel(q)
         % carry-register: carry-155
         carriedNotes{end+1} = sprintf(['[carry-155] needs_mapping: mixture ' ...
             'row(s) in a unit the generic stage does not read: %s ([Dab bath ' ...
-            'units are Dabrowska''s])'], strjoin(unread, '; ')); %#ok<AGROW>
+            'units are Dabrowska''s]; [bath concentration prefixes convert to ' ...
+            'molar])'], strjoin(unread, '; ')); %#ok<AGROW>
         report.baths_carried_unread_unit = report.baths_carried_unread_unit + 1;
         keep(k) = false;   % carried -> drop the original deferral
         continue;
@@ -600,6 +611,7 @@ bodies = {anchorBody};
 ids = {};
 entries = {};
 props = struct();
+gaps = struct('field', {}, 'reason', {});
 for i = 1:numel(mixture)
     chem = mixture(i).chemical;
     if isempty(chem.node) && isempty(chem.name)
@@ -618,6 +630,22 @@ for i = 1:numel(mixture)
     if any(strcmpi(chem.name, {'osm', 'osmolarity'})) && isfinite(a.source_value)
         props.osmolarity = struct('source_value', a.source_value, ...
             'source_unit', unitTerm, 'approximate', false);
+        % [bath concentration prefixes convert to molar] (Jess Haley,
+        % 2026-11-12): a unit that is osmolar with a known SI prefix gets the
+        % canonical `osmolar` (osmoles per litre, arithmetic only); any other
+        % unit (a bare "mOsm" says neither per litre nor per kg, as [Dab bath
+        % units are Dabrowska's] says of "osm"; "mOsm/kg" is osmolality) or
+        % none is a gap in the run's migration report
+        [osm, osmOk] = prefixedValue(a.source_value, a.source_unit.name, 'osmolar');
+        if osmOk
+            props.osmolarity.osmolar = osm;
+        else
+            gaps(end+1) = struct('field', 'formulation.value.osmolarity.osmolar', ...
+                'reason', sprintf(['the source states the osmolarity %s in the ' ...
+                'unit "%s", which is not osmoles per litre with a known prefix, ' ...
+                'so no canonical value is computed'], ...
+                num2str(a.source_value, 17), strtrim(char(a.source_unit.name)))); %#ok<AGROW>
+        end
         continue;
     end
     sub = did2.convert.registeredTerm(chem.node, chem.name);
@@ -630,8 +658,21 @@ for i = 1:numel(mixture)
         if ~isempty(a.source_unit.node) || ~isempty(a.source_unit.name)
             conc.source_unit = unitTerm;
         end
-        if strcmpi(a.source_unit.name, 'Molar')
-            conc.molar = a.source_value;      % the canonical slot, unit computable
+        % the canonical slot: a molar unit with a known SI prefix, the number
+        % converted to molar ([bath concentration prefixes convert to molar],
+        % Jess Haley, 2026-11-12; a unit that cannot be read so carried the
+        % bath before it got here: unparsedConcentrationRows)
+        [m, ok] = prefixedValue(a.source_value, a.source_unit.name, 'molar');
+        if ok
+            conc.molar = m;
+        elseif isempty(strtrim(char(a.source_unit.name)))
+            % a number with no unit (jDoseBodies' rule, [canonical absent
+            % only as needs info]): no canonical, and a gap
+            gaps(end+1) = struct('field', sprintf( ...
+                'formulation.value.ingredients(%d).concentration.canonical', ...
+                numel(entries) + 1), 'reason', sprintf(['the source states the ' ...
+                'number %s with no unit, so no canonical value is computed'], ...
+                num2str(a.source_value, 17))); %#ok<AGROW>
         end
         e.concentration = conc;
     end
@@ -639,8 +680,12 @@ for i = 1:numel(mixture)
 end
 fv = props;
 fv.ingredients = entries;
+gapOpt = {};
+if ~isempty(gaps)
+    gapOpt = {'Gaps', gaps};
+end
 f = did2.build.document('formulation', struct('value', fv), ...
-    o{:}, 'Edges', struct('ingredient_id', {ids}));
+    o{:}, 'Edges', struct('ingredient_id', {ids}), gapOpt{:});
 bodies{end+1} = f;
 % Not a joined class name: did2.build reads the statement as the direction
 % `manipulation` with the value kind `formulation`. Its own `value` stays empty;
@@ -886,6 +931,99 @@ for i = 1:numel(mixture)
             num2str(mixture(i).amount.source_value, 17), u); %#ok<AGROW>
     end
 end
+end
+
+function rows = unparsedConcentrationRows(body)
+%UNPARSEDCONCENTRATIONROWS The ingredient rows (not a pH, osm or osmolarity
+%   row, which are the formulation's own fields) that state a finite number
+%   and a unit that prefixedValue cannot read as molar ([bath concentration
+%   prefixes convert to molar], Jess Haley, 2026-11-12). A row whose unit
+%   unreadUnitRows already names ("osm", "saturation") is left to it. Each as
+%   'name: value unit'; {} when none.
+rows = {};
+mixture = parseMixture(body);
+for i = 1:numel(mixture)
+    chem = mixture(i).chemical;
+    a = mixture(i).amount;
+    if isempty(chem.node) && isempty(chem.name)
+        continue;
+    end
+    if any(strcmpi(strtrim(chem.name), {'pH', 'osm', 'osmolarity'}))
+        continue;
+    end
+    u = strtrim(char(a.source_unit.name));
+    if ~isfinite(a.source_value) || isempty(u) || any(strcmp(u, {'osm', 'saturation'}))
+        continue;
+    end
+    [~, ok] = prefixedValue(a.source_value, u, 'molar');
+    if ~ok
+        rows{end+1} = sprintf('%s: %s %s', chem.name, ...
+            num2str(a.source_value, 17), u); %#ok<AGROW>
+    end
+end
+end
+
+function [v, ok] = prefixedValue(value, spelling, base)
+%PREFIXEDVALUE VALUE in SPELLING, converted to the unit BASE ('molar': moles
+%   per litre; 'osmolar': osmoles per litre) when SPELLING is BASE with a known
+%   SI prefix ([bath concentration prefixes convert to molar], Decided by Jess
+%   Haley, 2026-11-12: arithmetic only). OK is false, and V [], for any other
+%   spelling. A symbol is read case-sensitively (mM is millimolar; MM is
+%   not), a word ignoring case:
+%     molar    M, mol/L, mol/l, molar, Molar; with a prefix: mM, uM (or the
+%              micro sign or mu), nM,
+%              pM, fM, kM, mmol/L, millimolar, micromolar, ...
+%     osmolar  Osm/L, Osm/l, osmol/L, osmol/l, OsM, osmolar; with a prefix:
+%              mOsm/L, mOsM, milliosmolar, ... (a bare Osm or mOsm states no
+%              volume, and is not read)
+%   The number is divided by 10^n for a prefix below one (mM: /1e3), so the
+%   result is the double nearest the exact quotient.
+v = [];
+ok = false;
+s = strtrim(char(string(spelling)));
+if isempty(s) || ~isnumeric(value) || ~isscalar(value)
+    return;
+end
+% symbol prefix, word prefix, power of ten
+P = { ...
+    '',             '',       0; ...
+    'k',            'kilo',   3; ...
+    'm',            'milli', -3; ...
+    'u',            'micro', -6; ...
+    char(181),      '',      -6; ...   % micro sign
+    char(956),      '',      -6; ...   % Greek small mu
+    'n',            'nano',  -9; ...
+    'p',            'pico', -12; ...
+    'f',            'femto', -15; ...
+    'a',            'atto', -18};
+switch base
+    case 'molar'
+        symbols = {'M', 'mol/L', 'mol/l'};
+        word = 'molar';
+    case 'osmolar'
+        symbols = {'Osm/L', 'Osm/l', 'osmol/L', 'osmol/l', 'OsM'};
+        word = 'osmolar';
+    otherwise
+        return;
+end
+e = [];
+for k = 1:size(P, 1)
+    if any(strcmp(s, strcat(P{k, 1}, symbols))) ...
+            || ((k == 1 || ~isempty(P{k, 2})) && strcmpi(s, [P{k, 2} word]))
+        e = P{k, 3};
+        break;
+    end
+end
+if isempty(e)
+    return;
+end
+value = double(value);
+if e < 0
+    v = value / 10^(-e);
+else
+    v = value * 10^e;
+end
+ok = true;
 end
 
 function t = unquote(t)
