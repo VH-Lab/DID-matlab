@@ -38,7 +38,18 @@ function report = wholeBatch(v1Bodies, result)
 %   did2.convert.resolveEpochProbemap retires once a recording observation
 %   carries the same pair (did2.convert.roundtrip.element reads it there).
 %   Test code run 41322059537 counted element CHANGED BY A BATCH PASS in B
-%   (143) and Dab (547).
+%   (143) and Dab (547). And `daqreader_mfdaq_epochdata_ingested`, the v1
+%   ingested archive did2.convert.resolveEpochProbemap RETIRES once its files
+%   and clocks have new owners ([segment length is the time chunk], Jess
+%   Haley, 2026-10-29): NONE of its documents remains, so it is compared on
+%   the documents that pass made of it, found here (LOCATED AFTER A BATCH
+%   PASS: the `opaque_body` documents whose file_info holds a location uid of
+%   the archive's, which resolveEpochProbemap carries verbatim), and
+%   roundtrip.daqreader_mfdaq_epochdata_ingested reads the rest from CTX. Its
+%   id is released ([a rebuilt document may lose its id]), so the rebuilt
+%   document's base.id, which nothing could rebuild, is not counted against
+%   it: it is in ids_released already. Test code run 43077600408 (DID-matlab
+%   299fa0f2) counted it CHANGED BY A BATCH PASS in B (1,242) and Dab (2,846).
 %
 %   STORED AS ITS v1 SOURCE. A source pass 1 passed through unchanged is in
 %   RESULT.passthrough with the body pass 1 emitted for it. When the final
@@ -112,7 +123,8 @@ function report = wholeBatch(v1Bodies, result)
 %                              passthroughs still unchanged at the end, so
 %                              stored as their v1 source (see above)
 %     sources_compared_after_batch_pass, compared_after_batch_pass_by_class
-%                              of the compared, those some of whose documents
+%                              of the compared, those some (or, for a class
+%                              locatedAfterPass finds, all) of whose documents
 %                              a batch pass removed, read by an inverse for
 %                              that pass (BATCH_PASS_INVERSES)
 %     sources_changed_by_batch_pass, changed_by_class
@@ -180,6 +192,8 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
 accepted = ACCEPTED_LOSSES();
 [report.accepted_id_check, idReferenced] = acceptedIdCheck(bodies, rows, accepted, ctx);
 sampled = struct();
+uidIndex = [];   % bodyUidIndex, built on first use (uidIndexBuilt)
+uidIndexBuilt = false;
 attributed = false(1, numel(final));
 for r = 1:numel(rows)
     row = rows(r);
@@ -207,6 +221,7 @@ for r = 1:numel(rows)
         row.output_ids = {row.id};
     end
     % [every v1 id survives]
+    released = false;
     if isempty(row.id)
         report.sources_without_id = report.sources_without_id + 1;
     elseif any(strcmp(finalIds, row.id))
@@ -214,6 +229,7 @@ for r = 1:numel(rows)
     elseif any(strcmp(cls, RELEASED_ID_CLASSES())) && isempty(ctxReferrers(ctx, row.id))
         report.ids_released = report.ids_released + 1;
         report.ids_released_by_class = bump(report.ids_released_by_class, cls);
+        released = true;
     elseif ~isempty(acceptedIdLoss(accepted, cls)) && ~isKey(idReferenced, row.id)
         a = acceptedIdLoss(accepted, cls);
         report.ids_accepted_lost = report.ids_accepted_lost + 1;
@@ -229,8 +245,17 @@ for r = 1:numel(rows)
     [present, where] = ismember(outs, finalIds);
     attributed(where(present)) = true;
     afterPass = false;
+    located = [];
     if ~all(present)
-        if ~any(strcmp(cls, BATCH_PASS_INVERSES())) || ~any(present)
+        if any(strcmp(cls, BATCH_PASS_INVERSES())) && ~any(present)
+            % none remains: what the pass made of it (LOCATED AFTER A BATCH PASS)
+            if ~uidIndexBuilt
+                uidIndex = bodyUidIndex(finalBodies);
+                uidIndexBuilt = true;
+            end
+            located = locatedAfterPass(cls, v1, uidIndex);
+        end
+        if ~any(strcmp(cls, BATCH_PASS_INVERSES())) || (~any(present) && isempty(located))
             report.sources_changed_by_batch_pass = report.sources_changed_by_batch_pass + 1;
             report.changed_by_class = bump(report.changed_by_class, cls);
             continue;
@@ -241,8 +266,11 @@ for r = 1:numel(rows)
         continue;   % a source that became nothing (its migrator wrote none)
     end
     docs = finalBodies(where(present));
+    if ~isempty(located)
+        docs = finalBodies(located);
+    end
     storedAsV1 = false;
-    if isscalar(outs) && isKey(passBody, outs{1})
+    if isempty(located) && isscalar(outs) && isKey(passBody, outs{1})
         rec = passBody(outs{1});
         if rec.input_index == row.input_index && isequaln(docs{1}, rec.body)
             % the pipeline stores the v1 source in its place (see HOW)
@@ -264,6 +292,13 @@ for r = 1:numel(rows)
     end
     % an ACCEPTED LOSS is listed and counted, and is not a failure
     [c, report] = takeAcceptedLosses(c, report, accepted, row.id, cls, v1, docs, ctx, idReferenced);
+    if released && ~isempty(c.lost)
+        % a RELEASED id ([a rebuilt document may lose its id]) is counted in
+        % ids_released; the rebuilt document cannot hold it, and that is the
+        % same fact, not a second loss
+        c.lost = c.lost(~strcmp({c.lost.path}, 'base.id'));
+        c.ok = isempty(c.lost) && isempty(c.invented) && isempty(c.unplaced);
+    end
     report.sources_compared = report.sources_compared + 1;
     if afterPass
         report.sources_compared_after_batch_pass = report.sources_compared_after_batch_pass + 1;
@@ -319,7 +354,70 @@ end
 function c = BATCH_PASS_INVERSES()
 % the classes whose inverse reads, from the whole batch, what a batch pass did
 % to their documents (AN INVERSE FOR A BATCH PASS, above)
-c = {'element'};   % resolveEpochProbemap retires `observes`; roundtrip.element
+c = {'element', ...   % resolveEpochProbemap retires `observes`; roundtrip.element
+    'daqreader_mfdaq_epochdata_ingested'};   % resolveEpochProbemap retires the archive
+end
+
+function idx = locatedAfterPass(cls, v1, uidIndex)
+%LOCATEDAFTERPASS The positions, in batch order, of the final documents a
+%   batch pass made of a source NONE of whose own documents remains ([] when
+%   none, or when the class has no such lookup). A
+%   `daqreader_mfdaq_epochdata_ingested`: the opaque_body documents
+%   resolveEpochProbemap built from its attached files, which hold its
+%   location uids verbatim (UIDINDEX, bodyUidIndex).
+idx = [];
+if ~strcmp(cls, 'daqreader_mfdaq_epochdata_ingested') || ~isstruct(v1) ...
+        || ~isfield(v1, 'files') || ~isstruct(v1.files) || ~isfield(v1.files, 'file_info')
+    return;
+end
+for u = fileUids(v1.files.file_info)
+    if isKey(uidIndex, u{1})
+        idx = [idx, uidIndex(u{1})]; %#ok<AGROW>
+    end
+end
+idx = unique(idx);
+end
+
+function m = bodyUidIndex(finalBodies)
+% location uid -> the positions of every final opaque_body whose file_info
+% holds it
+m = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:numel(finalBodies)
+    b = finalBodies{k};
+    if ~strcmp(classNameOf(b), 'opaque_body') || ~isfield(b, 'files') ...
+            || ~isstruct(b.files) || ~isfield(b.files, 'file_info')
+        continue;
+    end
+    for u = fileUids(b.files.file_info)
+        if isKey(m, u{1})
+            m(u{1}) = [m(u{1}), k];
+        else
+            m(u{1}) = k;
+        end
+    end
+end
+end
+
+function uids = fileUids(fileInfo)
+% every location uid a files.file_info list holds, in order (1xN cellstr)
+uids = {};
+infos = fileInfo;
+if isstruct(infos); infos = num2cell(reshape(infos, 1, [])); end
+if ~iscell(infos); return; end
+for i = 1:numel(infos)
+    if ~isstruct(infos{i}) || ~isscalar(infos{i}) || ~isfield(infos{i}, 'locations')
+        continue;
+    end
+    locs = infos{i}.locations;
+    if isstruct(locs); locs = num2cell(reshape(locs, 1, [])); end
+    if ~iscell(locs); continue; end
+    for j = 1:numel(locs)
+        if isstruct(locs{j}) && isscalar(locs{j}) && isfield(locs{j}, 'uid') ...
+                && ~isempty(locs{j}.uid) && (ischar(locs{j}.uid) || isstring(locs{j}.uid))
+            uids{end+1} = char(locs{j}.uid); %#ok<AGROW>
+        end
+    end
+end
 end
 
 function a = ACCEPTED_LOSSES()
