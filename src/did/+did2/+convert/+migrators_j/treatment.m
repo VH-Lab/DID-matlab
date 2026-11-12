@@ -143,12 +143,20 @@ hasNumber = ~isempty(numValue) && isnumeric(numValue);
 [kind, unit] = termNumberKind(node, label);
 if ~isempty(kind)
     v = [];
+    gaps = struct('field', {}, 'reason', {});
     if hasNumber
-        v = jQuantity(kind, double(numValue(1)), unit);
+        % a number that is not finite has no canonical: a gap in the
+        % migration report ([canonical absent only as needs info], Jess
+        % Haley, 2026-10-30)
+        [v, gaps] = jQuantity(kind, double(numValue(1)), unit);
     end
     manip = {jStatement(preBody, 'manipulation', jSubjectOf(preBody), variable, ...
         v, 'TimeReferenceIds', {anchor.base.id}, 'Notes', notesText, ...
-        'Id', char(preBody.base.id), 'ValueKind', kind)};
+        'Id', char(preBody.base.id), 'ValueKind', kind, 'Gaps', gaps)};
+    for g = 1:numel(gaps)
+        did2.convert.reportNote('gap', 'treatment', char(preBody.base.id), ...
+            gaps(g).field);
+    end
     v2Body = [manip, {anchor}];
     return;
 end

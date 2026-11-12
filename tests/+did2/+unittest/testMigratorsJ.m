@@ -6158,6 +6158,45 @@ anchor = out{end};
 verifyEmpty(testCase, depValue(anchor, 'coordinate_system_id'));
 end
 
+function testProbeGeometryWithNoUnitListsEachCanonicalAsAGap(testCase)
+% [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30,
+% did-schema did_v2_go_forward_class_audit.md): "every quantity holds exactly
+% one canonical value; it may be absent only when ... named", and the
+% validator now checks a number with no unit too. A probe_geometry whose
+% `unit` is blank writes each site value with its source_value alone, and
+% each observation's canonical `meters` is ONE gap in the run's migration
+% report ([waveform unit gap once], Jess Haley, 2026-11-03), so each
+% observation validates.
+v1 = struct();
+v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_8'});
+v1.base = struct('id', 'pg_8', 'session_id', 'sess_09', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.probe_geometry = struct( ...
+    'site_locations_leftright', [0 20], ...
+    'site_locations_frontback', [5 5], ...
+    'site_locations_depth', [], ...
+    'ndim', 2, 'unit', '', 'probe_model', '');
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+out = did2.convert.migrators_j.probe_geometry(v1);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
+isObs = find(strcmp(names, 'observation+length'));
+verifyEqual(testCase, numel(isObs), 2, 'two populated axes');
+for k = isObs
+    obs = out{k};
+    if isa(obs, 'did2.document'); obs = obs.toStruct(); end
+    verifyFalse(testCase, isfield(obs.length.value, 'meters') ...
+        && any(~cellfun(@isempty, {obs.length.value.meters})), ...
+        'no unit: no canonical is computed');
+    fields = gapFieldsJ(obs);
+    verifyEqual(testCase, fields, {'length.value.meters'}, ...
+        'one gap for the value, not one per site');
+    did2.schema.cache.shared().validateDocument(obs);
+end
+end
+
 function testProbeGeometryWithContactGeometryIsCarriedAsV1(testCase)
 % [probe contact geometry carried] (Jess Haley, 2026-10-26): `shank_id`, the
 % contact shape and its width / height / radius, `manufacturer`,
