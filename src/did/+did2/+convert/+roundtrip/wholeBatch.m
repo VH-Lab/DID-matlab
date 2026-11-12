@@ -77,7 +77,20 @@ function report = wholeBatch(v1Bodies, result)
 %                              like any other. Until 2026-11-01 these were
 %                              skipped, so on Test code run 41322059537 Dab's
 %                              1,605 deferred baths were neither id-checked
-%                              nor compared.
+%                              nor compared. A pass that re-migrates
+%                              a deferred source through v1_to_v2 records
+%                              every document the re-run made of it in
+%                              RESULT.batch_pass_outputs ({id, pass,
+%                              output_ids, context_ids}; today
+%                              did2.convert.epochMint for a deferred
+%                              pyraview), and the source is compared on
+%                              all of them plus its context_ids (the epoch
+%                              its anchor names). Without that record it
+%                              was compared on the one document holding
+%                              its id: PRED's pyraview, on Test code run
+%                              43169466173, read "no level body was
+%                              emitted" while its level bodies were
+%                              in the batch.
 %       sources_still_quarantined  no final document holds its id
 %     ids_kept / ids_lost      sources whose v1 id some final document holds,
 %                              or does not ([every v1 id survives]);
@@ -169,6 +182,7 @@ for k = 1:numel(final)
 end
 ctx = batchContext(finalBodies);
 passBody = passthroughBodies(result);
+passOutputs = batchPassOutputs(result);
 
 report = struct('sources_inspected', numel(bodies), 'final_documents', numel(final), ...
     'sources_quarantined', 0, 'sources_resolved_by_batch_pass', 0, ...
@@ -201,6 +215,7 @@ for r = 1:numel(rows)
         continue;
     end
     v1 = bodies{row.input_index};
+    contextIds = {};
     cls = row.class_name;
     if isempty(cls); cls = v1ClassName(v1); end
     if isempty(row.id)
@@ -219,6 +234,13 @@ for r = 1:numel(rows)
         report.sources_resolved_by_batch_pass = report.sources_resolved_by_batch_pass + 1;
         report.resolved_by_batch_pass_by_class = bump(report.resolved_by_batch_pass_by_class, cls);
         row.output_ids = {row.id};
+        if isKey(passOutputs, row.id)
+            % the pass recorded every document its re-run made of the source
+            % (RESULT.batch_pass_outputs; see sources_resolved_by_batch_pass)
+            rec = passOutputs(row.id);
+            row.output_ids = rec.output_ids;
+            contextIds = rec.context_ids;
+        end
     end
     % [every v1 id survives]
     released = false;
@@ -268,6 +290,13 @@ for r = 1:numel(rows)
     docs = finalBodies(where(present));
     if ~isempty(located)
         docs = finalBodies(located);
+    end
+    if ~isempty(contextIds)
+        % documents the inverse reads that the source did not become (the
+        % epoch a deferred pyraview names); one gone is not supplied, and the
+        % inverse says what it could not rebuild
+        [cPresent, cWhere] = ismember(contextIds, finalIds);
+        docs = [docs, finalBodies(cWhere(cPresent))];
     end
     storedAsV1 = false;
     if isempty(located) && isscalar(outs) && isKey(passBody, outs{1})
@@ -332,6 +361,26 @@ report.ok = report.sources_ok == report.sources_compared && report.ids_lost == 0
 end
 
 % ===================== helpers =========================================
+
+function m = batchPassOutputs(result)
+% v1 id -> {output_ids, context_ids} of each source a batch pass re-migrated
+% (RESULT.batch_pass_outputs; did2.convert.epochMint's
+% resolveDeferredPyraviews). A source recorded twice keeps its last record.
+m = containers.Map('KeyType', 'char', 'ValueType', 'any');
+if ~isfield(result, 'batch_pass_outputs') || ~isstruct(result.batch_pass_outputs)
+    return;
+end
+for k = 1:numel(result.batch_pass_outputs)
+    r = result.batch_pass_outputs(k);
+    if isempty(r.id); continue; end
+    o = r.output_ids;
+    if ischar(o); o = {o}; end
+    c = r.context_ids;
+    if ischar(c); c = {c}; end
+    m(char(r.id)) = struct('output_ids', {reshape(o, 1, [])}, ...
+        'context_ids', {reshape(c, 1, [])});
+end
+end
 
 function id = v1Id(v1)
 % the base.id a v1 body states ('' when none)

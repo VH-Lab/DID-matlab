@@ -688,6 +688,96 @@ end
 
 % ===================== fixtures =========================================
 
+function testADeferredPyraviewIsComparedOnEveryDocumentItsReRunMade(testCase)
+% pass 1 defers a pyraview that names an epoch (did2:convert:needsEpochContext);
+% did2.convert.epochMint (resolveDeferredPyraviews) re-runs it through
+% v1_to_v2 once the epoch exists, and records what the re-run made of it
+% (result.batch_pass_outputs). The whole-batch round trip compares the source
+% on all of those documents and the epoch its anchor names. Before the record
+% it was handed only the observation that holds the v1 id, and PRED's one
+% pyraview read "no level body was emitted" (DID-matlab Test code run
+% 43169466173, PR #450) while its level bodies were in the batch.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+pv = pyraviewV1('high');
+sid = pv.base.session_id;
+bodies = {jsondecode(jsonencode(sessionV1('wb_pv_sess', sid))), pv};
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+assertEqual(testCase, numel(result.quarantine), 1, 'pass 1 defers the pyraview');
+verifyEqual(testCase, result.quarantine(1).identifier, 'did2:convert:needsEpochContext');
+[result, rep] = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+assertEqual(testCase, rep.pyraview_deferred_resolved, 1, 'epochMint folds it');
+assertTrue(testCase, isfield(result, 'batch_pass_outputs'));
+k = find(strcmp({result.batch_pass_outputs.id}, pv.base.id));
+assertNumElements(testCase, k, 1, 'the pass records what the pyraview became');
+rec = result.batch_pass_outputs(k);
+verifyGreaterThan(testCase, numel(rec.output_ids), 1, 'more than the observation');
+verifyTrue(testCase, any(strcmp(rec.output_ids, pv.base.id)), 'the observation keeps the v1 id');
+verifyNumElements(testCase, rec.context_ids, 1, 'the epoch its anchor names');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyTrue(testCase, isfield(r.resolved_by_batch_pass_by_class, 'pyraview'), describe(r));
+verifyFalse(testCase, isfield(r.changed_by_class, 'pyraview'), describe(r));
+verifyFalse(testCase, isfield(r.failures_by_class, 'pyraview'), describe(r));
+verifyEqual(testCase, r.sources_still_quarantined, 0);
+% without the record: the reading of run 43169466173 (the check can fail)
+r = did2.convert.roundtrip.wholeBatch(bodies, rmfield(result, 'batch_pass_outputs'));
+assertTrue(testCase, isfield(r.failures_by_class, 'pyraview'), describe(r));
+f = r.failures(strcmp({r.failures.class_name}, 'pyraview'));
+verifyTrue(testCase, any(strcmp(f(1).unplaced, 'no level body was emitted')), describe(r));
+% one of its level bodies removed by a later step: changed, not compared
+lv = '';
+for j = 1:numel(result.migrated)
+    s = result.migrated{j}.toStruct();
+    if strcmp(char(s.document_class.class_name), 'sampled_body') ...
+            && any(strcmp(rec.output_ids, char(s.base.id)))
+        lv = char(s.base.id);
+        break;
+    end
+end
+assertNotEmpty(testCase, lv, 'a level body is among what it became');
+keep = true(1, numel(result.migrated));
+for j = 1:numel(result.migrated)
+    keep(j) = ~strcmp(char(result.migrated{j}.get('base.id')), lv);
+end
+result.migrated = result.migrated(keep);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyTrue(testCase, isfield(r.changed_by_class, 'pyraview'), describe(r));
+verifyFalse(testCase, isfield(r.failures_by_class, 'pyraview'), describe(r));
+end
+
+function d = pyraviewV1(band)
+% makePyraviewDoc(probe, 'EST_VISUAL_PREDROGA', BAND) on corpus PRED's probe,
+% as testRawV1RoundTripPyraview builds it (NDI-matlab main
+% +ndi/+gui/+app/+pyraview/makePyraviewDoc.m, its filter from filterData.m)
+sr = 20000;
+t0 = 0;
+t1 = 28.12495;
+steps = [100 10 10 10 10 10 10];
+d = did2.unittest.helpers.ndiDocument('pyraview', ...
+    'Id', '41269628e2d51bf1_40a0cb9f87794ccb', ...
+    'SessionId', '41269628e23756b9_c0d504560ca6769c', ...
+    'Datestamp', '2026-05-14T14:37:57.977Z');
+d.epochid = struct('epochid', 'EST_VISUAL_PREDROGA');
+d.pyraview = struct('label', band, 'nativeRate', sr, 'nativeStartTime', t0, ...
+    'channels', 16, 'dataType', 'double', 'decimationLevels', steps, ...
+    'decimationSamplingRates', sr ./ cumprod(steps), ...
+    'decimationStartTimes', t0 * ones(numel(steps), 1));
+d.filter = struct('label', band, 'type', band, 'algorithm', 'chebyshev_1', ...
+    'parameters', struct('sampleFrequency', sr, 'order', 4, ...
+    'filterFrequency', 300, 'passBandRipple', 0.8, 'stopbandAttentuation', NaN));
+d.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', [t0; t1]);
+d = did2.unittest.helpers.setDependency(d, 'element_id', '41269628e2a03088_c085f412b5d8c08d');
+info = struct('name', {}, 'locations', {});
+for i = 1:numel(steps)
+    info(i) = struct('name', sprintf('level%d.bin', i), 'locations', struct( ...
+        'delete_original', 1, 'uid', sprintf('41269628e2d51ffe_40dc0fd6725017e%d', i), ...
+        'location', sprintf('/tmp/tp88ff8093/pyraview_tpd8415b93_L%d.bin', i), ...
+        'parameters', '', 'location_type', 'file', 'ingest', 1));
+end
+d.files.file_info = info;
+d = jsondecode(jsonencode(d, 'ConvertInfAndNaN', false));
+end
+
 function [bodies, result] = cleanBatch()
 % three subjects as ndi.subject.newdocument writes them: two convert, one with
 % no local identifier is carried whole as v1 (carry-033)
