@@ -217,6 +217,56 @@ verifyEqual(testCase, r.counts.carried_citing_no_row, 1);
 did2.convert.reportNote('reset');
 end
 
+% ===================== known v1 defects ====================================
+% [known v1 defects list] (Jess Haley, 2026-11-12): a third list of the
+% report, `known_v1_defects` {document_id, class, field, reason}, with its
+% count; a defect names a field the document GIVES (the opposite of a gap),
+% and it is never read as a gap
+
+function testAKnownDefectIsListedApartFromTheGaps(testCase)
+doc = buildCS(testCase, csFields(), []);
+why = 'the source wrote this value wrongly';
+did2.convert.migrationReport('defect', doc, 'coordinate_system.reference_point', why);
+verifyEmpty(testCase, did2.convert.migrationReport('gaps', doc.base.id), ...
+    'a defect is not a gap');
+d = did2.convert.migrationReport('defects', doc.base.id);
+verifyEqual(testCase, {d.field}, {'coordinate_system.reference_point'});
+% the validator reads only the gaps: a gap for this field would be badGap
+did2.schema.cache.shared().validateDocument(doc);
+r = did2.convert.migrationReport('collect', {doc});
+verifyTrue(testCase, all(isfield(r, {'gaps', 'carried_as_v1', 'known_v1_defects', 'counts'})));
+verifyEmpty(testCase, r.gaps);
+verifyEqual(testCase, numel(r.known_v1_defects), 1);
+verifyEqual(testCase, r.known_v1_defects(1).document_id, doc.base.id);
+verifyEqual(testCase, r.known_v1_defects(1).class, 'coordinate_system');
+verifyEqual(testCase, r.known_v1_defects(1).field, 'coordinate_system.reference_point');
+verifyEqual(testCase, r.known_v1_defects(1).reason, why);
+verifyEqual(testCase, r.counts.known_v1_defects, 1);
+verifyEqual(testCase, r.counts.gaps, 0);
+% loaded again from the attached file's JSON, it is still a defect
+did2.convert.migrationReport('load', jsondecode(jsonencode(r)));
+verifyEmpty(testCase, did2.convert.migrationReport('gaps', doc.base.id));
+r2 = did2.convert.migrationReport('collect', {doc});
+verifyEqual(testCase, r2.counts.known_v1_defects, 1);
+end
+
+function testAKnownDefectMustNameAFieldTheDocumentGives(testCase)
+g = struct('field', 'coordinate_system.reference_point', 'reason', 'unstated');
+doc = buildCS(testCase, rmfield(csFields(), 'reference_point'), g);
+verifyError(testCase, @() did2.convert.migrationReport('defect', doc, ...
+    'coordinate_system.reference_point', 'wrong'), 'did2:convert:badKnownDefect');
+verifyError(testCase, @() did2.convert.migrationReport('defect', doc, ...
+    'coordinate_system.axes', ''), 'did2:convert:badKnownDefect', 'a reason is needed');
+end
+
+function testTheReportHasNoDefectsWhenNoneIsListed(testCase)
+doc = buildCS(testCase, csFields(), []);
+r = did2.convert.migrationReport('collect', {doc});
+verifyTrue(testCase, isfield(r, 'known_v1_defects'));
+verifyEmpty(testCase, r.known_v1_defects);
+verifyEqual(testCase, r.counts.known_v1_defects, 0);
+end
+
 % ===================== helpers =============================================
 
 function doc = buildObs(testCase, conditions, gaps)
