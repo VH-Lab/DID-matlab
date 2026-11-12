@@ -226,8 +226,9 @@ p = parametersFixture();
 p.stimulus_response_scalar_parameters_basic.spiketrain_dt = [];
 [out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
 verifyEqual(testCase, rep.methods_minted, 1);
-verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
-    'bin width'));
+m = bodyOfClass(testCase, out, 'method');
+% no parameter stated: the builder writes no `parameters` (its blank is [])
+verifyTrue(testCase, ~isfield(m.method, 'parameters') || isempty(m.method.parameters));
 verifyEqual(testCase, rep.knobs_empty_not_stated, 1);
 verifyEqual(testCase, rep.knobs_empty_ndi_defined, 3);
 end
