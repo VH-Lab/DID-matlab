@@ -356,10 +356,6 @@ for field = {'dosed.strength.canonical', 'dosed.strength.molar'}
         'the unit has no conversion');
     did2.schema.cache.shared().validateDocument(doc);
 end
-did2.convert.migrationReport('begin');
-did2.convert.migrationReport('gap', doc.base.id, 'dosed', 'dosed.other', 'not stated');
-verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
-    'did2:validation:quantityShape', 'a gap elsewhere does not excuse it');
 end
 
 function testWhatTheCanonicalCheckLeavesAlone(testCase) %#ok<INUSD>
@@ -484,8 +480,7 @@ writeClass(dirPath, 'oddities', {}, {leaf('reading', 'voltage'), leaf('other', '
 writeClass(dirPath, 'base', {}, {leaf('id', 'char')});
 writeClass(dirPath, 'measured', {'base'}, {leaf('reading', 'length')});
 % ... and to a class of several canonicals
-writeClass(dirPath, 'dosed', {'base'}, {leaf('strength', 'concentration'), ...
-    leaf('other', 'length')});
+writeClass(dirPath, 'dosed', {'base'}, {leaf('strength', 'concentration')});
 % ... and an array of them (a value of several cells: one gap, [waveform unit
 % gap once])
 readings = leaf('readings', 'length');

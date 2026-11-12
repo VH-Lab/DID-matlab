@@ -907,6 +907,13 @@ for i = 1:numel(lines)
     if isempty(line); continue; end
     cols = regexp(line, '("([^"]|"")*"|[^,]*)(,|$)', 'tokens');
     cols = cellfun(@(c) unquote(c{1}), cols, 'UniformOutput', false);
+    if numel(cols) == 4 && endsWith(line, ',')
+        % an empty last column (no unitName): the pattern does not match the
+        % empty field at the end, and the row was dropped unseen; it is a row
+        % with no unit (a number with no unit is a gap, [bath concentration
+        % prefixes convert to molar])
+        cols{5} = '';
+    end
     if numel(cols) < 5 || isempty(cols{1}); continue; end
     if strcmpi(cols{1}, 'ontologyName'); continue; end      % the header row
     chemical = struct('node', cols{1}, 'name', cols{2});
