@@ -73,7 +73,7 @@ function [result, report] = epochMint(result, options)
 %       sampled_body(pyraview level), method(pyraview), clock_alignment,
 %       calculation(spike times), calculation(spike waveforms),
 %       sampled_body(spike times), sampled_body(spike waveforms),
-%       result.epoch_mint
+%       result.epoch_mint, result.batch_pass_outputs
 %   BATCH-PASS-CHANGES: relative_time_reference(bath anchor),
 %       daqmetadatareader_epochdata_ingested(epoch_id edge stamped)
 %   BATCH-PASS-REMOVES: stimulus_response_scalar, syncrule_mapping, pyraview,
@@ -2088,6 +2088,8 @@ end
 q = result.quarantine;
 keep = true(1, numel(q));
 stamped = {};
+deferredIds = {};        % the v1 id of each pyraview stamped (in order)
+deferredEpochIds = {};   % and the epoch its epoch_id edge names
 nDeferredFolded = 0;
 % The sessions the batch holds: a #88 session entity's base.id IS its session id.
 sessionIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
@@ -2141,6 +2143,10 @@ for k = 1:numel(q)
         continue;
     end
     stamped{end+1} = setDep(v1, 'epoch_id', epochIdByKey(key)); %#ok<AGROW>
+    vid = '';
+    if isfield(v1.base, 'id'); vid = char(v1.base.id); end
+    deferredIds{end+1} = vid; %#ok<AGROW>
+    deferredEpochIds{end+1} = epochIdByKey(key); %#ok<AGROW>
     nDeferredFolded = nDeferredFolded + 1;
     keep(k) = false;
 end
@@ -2150,6 +2156,8 @@ end
 out = did2.convert.v1_to_v2(stamped, 'Validate', options.Validate, ...
     'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion);
 report.pyraview_deferred_resolved = nDeferredFolded - numel(out.quarantine);
+result = recordBatchPassOutputs(result, out, deferredIds, deferredEpochIds, ...
+    'did2.convert.epochMint (resolveDeferredPyraviews)');
 % The epochs minted here ARE this pass's mints, so they count in epochs_minted
 % (the census digest checks that figure against the epochs in the batch).
 for j = 1:numel(out.migrated)
@@ -2163,6 +2171,49 @@ end
 result.migrated = [result.migrated, out.migrated];
 result.quarantine = [q(keep), out.quarantine];
 result.summary = recountSummary(result);
+end
+
+function result = recordBatchPassOutputs(result, out, sourceIds, contextIds, passName)
+%RECORDBATCHPASSOUTPUTS What each source a batch pass re-migrated became.
+%   [whole-batch round trip] (Jess Haley, 2026-10-27): the round trip takes
+%   each source's FINAL documents back to v1, found by the ids it became
+%   (RESULT.source_outputs, written by pass 1). Pass 1 records nothing for a
+%   source it DEFERRED, so a deferred pyraview, which this pass re-runs
+%   through v1_to_v2, became documents no record named: the round trip saw
+%   only the one that holds its v1 id (the observation) and reported "no level
+%   body was emitted" (PRED, DID-matlab Test code run 43169466173). This
+%   appends, per re-migrated source, the ids its re-run made (OUT.
+%   source_outputs, matched by v1 id) to RESULT.batch_pass_outputs, a struct
+%   array {id, pass, output_ids, context_ids}. CONTEXT_IDS are documents the
+%   source's inverse reads that the source did not become -- the epoch entity
+%   its epoch_id edge names, whose local_identifier is the v1 epochid
+%   (did2.convert.roundtrip.pyraview) -- and none for a source the re-run
+%   carried whole as v1 (it is its own document).
+if ~isfield(result, 'batch_pass_outputs') || isempty(result.batch_pass_outputs)
+    result.batch_pass_outputs = struct('id', {}, 'pass', {}, 'output_ids', {}, ...
+        'context_ids', {});
+end
+if ~isfield(out, 'source_outputs') || isempty(out.source_outputs)
+    return;
+end
+rows = out.source_outputs;
+for j = 1:numel(sourceIds)
+    if isempty(sourceIds{j})
+        continue;   % a source stating no v1 id: the round trip cannot find it by id
+    end
+    hit = find(strcmp({rows.id}, sourceIds{j}) & [rows.done], 1);
+    if isempty(hit)
+        continue;   % the re-run quarantined it: still quarantined, nothing to name
+    end
+    outIds = rows(hit).output_ids;
+    if ischar(outIds); outIds = {outIds}; end
+    ctxIds = {contextIds{j}};
+    if rows(hit).carried
+        ctxIds = {};
+    end
+    result.batch_pass_outputs(end+1) = struct('id', sourceIds{j}, 'pass', passName, ...
+        'output_ids', {reshape(outIds, 1, [])}, 'context_ids', {ctxIds});
+end
 end
 
 function [result, report] = resolveDeferredSpikewaves(result, report, epochIdByKey, options)
