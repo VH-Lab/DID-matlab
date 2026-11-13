@@ -523,6 +523,8 @@ for c = 1:nComp
     % customUsageClause, a holder that is not a Person or a named
     % Organization, several Copyright documents) is withheld the same way.
     if tally.copyright_unplaced > 0
+        % counted here: a withheld component's tally is not summed below
+        report.copyright_unplaced = report.copyright_unplaced + tally.copyright_unplaced;
         report.components_withheld = report.components_withheld + 1;
         report.components_withheld_unplaced = report.components_withheld_unplaced + 1;
         report.withheld_reasons{end+1} = sprintf(['component %d: %d openMINDS ' ...
