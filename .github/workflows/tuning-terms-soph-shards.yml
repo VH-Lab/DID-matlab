@@ -1,0 +1,130 @@
+name: Tuning terms counts, Soph shards (scratch)
+
+# Soph does not migrate inside one 6-hour job (run 42874677863 hit the time
+# limit), so it runs here as 6 shards of whole sessions (tools/shard_corpus.py).
+# Scratch, on branch claude/tuning-axis-terms-soph only; never merged.
+# Measures DID-matlab claude/tuning-axis-terms (PR #464): tuning axis terms,
+# response type terms, depends on.name, spike unit terms (Jess Haley,
+# 2026-11-12). Copied from claude/corpus-counts-orphans' scratch workflow.
+# Measures DID-matlab branch claude/response-spike-input ([response computed
+# from the spike times] and [orphaned response settings are an accepted loss],
+# Jess Haley, 2026-11-12): methods, method documents carrying isspike, the
+# orphans not migrated, and their known_v1_defects entries.
+# Decided by Jess Haley 2026-11-10 [two corpus counts] (did-schema #89, #200):
+# Claude runs two counts over the corpora and reports; nothing is changed on
+# the strength of them. Counts 3 and 4 (#212, #150) added by Jess Haley's
+# approval of 2026-11-10, extending [two corpus counts]. Each job runs the corpus exactly as test-corpus.yml
+# does (runCorpusDiscovery), dumps the final batch, and counts it in Python.
+
+on:
+  push:
+    branches: ['claude/tuning-axis-terms-soph']
+    paths:
+      - '.github/workflows/tuning-terms-soph-shards.yml'
+  workflow_dispatch:
+
+jobs:
+  counts:
+    name: "counts: Soph shard ${{ matrix.shard }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out did-schema main
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          # Pinned to did-schema main as read at dispatch, 2026-11-13.
+          ref: 59b0ce1790753c951f1a2bf48c1a01ac991da097
+          path: did-schema
+      - name: Print did-schema sha
+        run: |
+          echo "did-schema checked out: $(git -C did-schema rev-parse HEAD); DID-matlab: $(git rev-parse HEAD)"
+      - name: Assemble schema set
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          python3 tools/assemble_schema_set.py did-schema/schemas "${GITHUB_WORKSPACE}/eta-schemas"
+      - name: Check out NDI-matlab's v1 templates at the locked main
+        continue-on-error: true
+        run: |
+          lock=did-schema/tools/sibling_lock.json
+          if [ ! -f "$lock" ]; then echo "NO LOCK"; exit 0; fi
+          sha=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['siblings']['NDI-matlab']['main'])" "$lock")
+          echo "NDI-matlab locked main: $sha"
+          dir="${GITHUB_WORKSPACE}/NDI-templates"
+          git init -q "$dir"
+          git -C "$dir" remote add origin https://github.com/VH-Lab/NDI-matlab.git
+          git -C "$dir" sparse-checkout set src/ndi/ndi_common/database_documents
+          git -C "$dir" fetch -q --depth 1 --filter=blob:none origin "$sha"
+          git -C "$dir" checkout -q FETCH_HEAD
+          echo "DID_NDI_TEMPLATE_PATH=$dir/src/ndi/ndi_common/database_documents" >> "$GITHUB_ENV"
+      - name: Export DID_SCHEMA_PATH
+        run: |
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" >> "$GITHUB_ENV"
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+          products: Statistics_and_Machine_Learning_Toolbox
+      - name: Install MatBox
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: ehennestad/matbox-actions/install-matbox@v1
+      - name: Install repo dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+      - name: "Shard Soph (whole sessions, 6 shards)"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/src"
+          curl -sSfL -o "$RUNNER_TEMP/src/Soph.zip" "https://ndi-programming-development.s3.us-east-1.amazonaws.com/Soph.zip"
+          unzip -q "$RUNNER_TEMP/src/Soph.zip" -d "$RUNNER_TEMP/src"
+          python3 -I tools/shard_corpus.py --src "$RUNNER_TEMP/src/Soph" --out "$RUNNER_TEMP/shard/Soph" \
+            --shards 6 --index ${{ matrix.shard }}
+          echo "COUNTS_CORPUS_DIR=$RUNNER_TEMP/shard/Soph" >> "$GITHUB_ENV"
+      - name: "Migrate Soph and dump the final batch"
+        uses: matlab-actions/run-command@v2
+        env:
+          DID_RUN_SOPH_TEST: "1"
+          COUNTS_CORPUS: Soph
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            addpath(genpath("tools"));
+            setenv("COUNTS_DUMP", fullfile(getenv("RUNNER_TEMP"), "counts-dump"));
+            runner = matlab.unittest.TestRunner.withTextOutput;
+            results = runner.run(matlab.unittest.TestSuite.fromFile(fullfile("tools","testCorpusCountsDump.m")));
+            disp(table(results));
+      - name: "Count Soph"
+        if: always()
+        run: |
+          python3 -I tools/corpus_counts.py --corpus "Soph-shard${{ matrix.shard }}" \
+            --dump "$RUNNER_TEMP/counts-dump" --schemas "$GITHUB_WORKSPACE/eta-schemas" \
+            --registry did-schema/schemas/registry/did_v2_term_registry.json \
+            --json "$RUNNER_TEMP/counts-dump/counts.json"
+      - name: "Count tuning terms"
+        if: always()
+        run: |
+          python3 -I tools/tuning_terms_counts.py "$RUNNER_TEMP/counts-dump"
+      - name: Upload dump
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: counts-dump-Soph-shard${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/counts-dump/
+            corpus-reports/
+            tests/corpus-reports/
+          retention-days: 7
+          if-no-files-found: warn
