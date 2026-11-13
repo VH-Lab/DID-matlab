@@ -674,6 +674,43 @@ for k = 1:numel(r.failures)
 end
 end
 
+function testAStimulatorWhoseObservesRetiredOnAManipulationRoundTrips(testCase)
+% [observes retires on a matching manipulation] (Decided by Jess Haley,
+% 2026-11-12, did-schema did_v2_go_forward_class_audit.md): a stimulator's
+% `observes` relation retires once its manipulation carries the same
+% (instrument, subject) pair; the element's inverse reads the subject from
+% that manipulation, so the stimulator is compared after the pass and its
+% subject_id and direct are not lost
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = '41268b6f5c6a3d4e_00000000000000b4';
+bodies = {sessionV1('wb_sess_doc_m', sid), subjectV1('wb_spec_m', sid, 'L'), ...
+    elementV1('wb_stim_m', sid, 'stim', 1, 'stimulator', 'wb_spec_m'), ...
+    daqsystemV1('wb_daq_m', sid, 'intan1', 'wb_nav_m'), ...
+    manifestV1('wb_efi_m', sid, 't0001', 'wb_nav_m', ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'stim\t1\tstimulator\tintan1:mk1\tL\n']))};
+bodies{3}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+    'value', {'', 'wb_spec_m'});
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'did_v2');
+assertEqual(testCase, rep.observes_retired_on_manipulation, 1, ...
+    'premise: the pass retired the stimulator''s observes relation on its manipulation');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyFalse(testCase, isfield(r.changed_by_class, 'element'), describe(r));
+verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, 'element'), describe(r));
+for k = 1:numel(r.failures)
+    if strcmp(r.failures(k).source_id, 'wb_stim_m')
+        verifyFalse(testCase, any(startsWith(r.failures(k).lost, 'depends_on')), describe(r));
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.direct')), describe(r));
+    end
+end
+end
+
 function testAnOpenmindsSubjectRoundTripsWithTheSpeciesTextAccepted(testCase)
 % INVERTED 2026-10-29 from testAnOpenmindsSubjectRoundTrips, which asserted the
 % species' definition and synonym were LOST. Decided by Jess Haley, 2026-10-29

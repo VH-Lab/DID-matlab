@@ -1240,6 +1240,57 @@ function testStimNoObservationBody(testCase)
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
 end
 
+% [observes retires on a matching manipulation] (Decided by Jess Haley,
+% 2026-11-12, did-schema did_v2_go_forward_class_audit.md): "the loose v1
+% `observes` relation retires where a manipulation with the same instrument
+% and subject is present, as it already retires where a matching observation
+% is present". The stimulator stim_1 observes spec_s (pass 1, element.m); its
+% row makes a manipulation of spec_s with stim_1 as instrument, so the
+% relation goes, counted on its own counter, with its denominator.
+function testStimObservesRetiresOnItsManipulation(testCase)
+[out, rep, manips] = stimDecompose();
+verifyEqual(testCase, rep.observes_seen, 1, 'DENOMINATOR: one observes relation');
+assertEqual(testCase, numel(manips), 1, 'premise: the stimulator manipulation');
+verifyEqual(testCase, rep.observes_retired_on_manipulation, 1);
+verifyEqual(testCase, rep.observes_retired_on_observation, 0);
+verifyEqual(testCase, rep.observes_retired, 1);
+verifyEqual(testCase, rep.observes_kept_several_specimens, 0);
+verifyEqual(testCase, numel(observesRelations(out)), 0, ...
+    'the observes relation is still in the batch');
+end
+
+% The guard: a stimulator whose manipulations name two specimens keeps its
+% relation (the round trip could not tell which one was the v1 element's
+% subject), counted.
+function testStimWhoseManipulationsNameTwoSpecimensKeepsObserves(testCase)
+subjL = subjectBody('spec_2l', 'sess_2s', 'L');
+subjM = subjectBody('spec_2m', 'sess_2s', 'M');
+stim = elementBody('stim_2', 'sess_2s', 'stim', '1', 'stimulator', 1, 'spec_2l');
+ing1 = ingestedWithRows('ing_2s1', 'sess_2s', 't02s1', {{'stim', '1', 'stimulator', 'L'}});
+ing2 = ingestedWithRows('ing_2s2', 'sess_2s', 't02s2', {{'stim', '1', 'stimulator', 'M'}});
+[out, rep] = decompose({sessionBody('sd_2s', 'sess_2s', 'ref'), subjL, subjM, ...
+    stim, ing1, ing2});
+verifyEqual(testCase, rep.observes_seen, 1, 'DENOMINATOR: one observes relation');
+assertEqual(testCase, rep.manipulations_emitted, 2, ...
+    'premise: one manipulation per specimen');
+verifyEqual(testCase, rep.observes_retired_on_manipulation, 0);
+verifyEqual(testCase, rep.observes_kept_several_specimens, 1);
+verifyEqual(testCase, numel(observesRelations(out)), 1);
+end
+
+function rels = observesRelations(result)
+% the `observes` directed_relations left in the batch
+rels = {};
+for k = 1:numel(result.migrated)
+    b = result.migrated{k};
+    if isa(b, 'did2.document'); b = b.toStruct(); end
+    if ~strcmp(b.document_class.class_name, 'directed_relation'); continue; end
+    if did2.build.isVocabulary(b.directed_relation.relation, 'relation', 'observes')
+        rels{end+1} = b; %#ok<AGROW>
+    end
+end
+end
+
 function testStimNotQuarantined(testCase)
 [~, rep, ~] = stimDecompose();
 verifyEqual(testCase, rep.fold_quarantined, 0);

@@ -69,6 +69,12 @@ function v2Body = element(preBody)
 %   Guard A could not resolve) the relation is KEPT, because dropping a link with
 %   nothing standing in its place is data loss, not a retirement. Same shape as
 %   the guarded passthroughs in fitcurve.m / openminds_stimulus.m.
+%   Since 2026-10-21 this migrator emits no observation and always keeps the
+%   relation; did2.convert.resolveEpochProbemap retires it where its
+%   replacement is present: an observation with the same instrument and
+%   specimen, or, for a stimulator, a manipulation with the same instrument
+%   and subject ([observes retires on a matching manipulation], Decided by
+%   Jess Haley, 2026-11-12, did-schema did_v2_go_forward_class_audit.md).
 %
 %   NOTE FOR WHOEVER RUNS THE TEST SUITE NEXT:
 %   tests/+did2/+unittest/testMigratorsJ.m carries
@@ -381,7 +387,10 @@ end
 % 2026-10-26) and the lossless rule; the element is carried whole as v1 and
 % the dataset map decides (did-schema docs/V2_PLAN.md G94,
 % did2.convert.probemapSubjects). A stimulator's rows make manipulations,
-% which keep `observes`, so it is not carried for this.
+% and resolveEpochProbemap keeps the `observes` relation of a stimulator
+% whose manipulations name several subjects ([observes retires on a matching
+% manipulation] retires it only where they name one), so it is not carried
+% for this.
 if ~strcmp(strtrim(type), 'stimulator')
     rowSubjects = did2.convert.probemapSubjects('get', elementId);
     if numel(rowSubjects) > 1
@@ -516,6 +525,9 @@ end
 if ~isempty(underlyingId)
     bodies{end+1} = lineageRelation(preBody, elementId, underlyingId, 'derived_from');
 elseif isDirect && ~isempty(specimenId)
+    % kept here; resolveEpochProbemap retires it where a recording observation
+    % or (a stimulator) a manipulation with this instrument and specimen is
+    % present ([observes retires on a matching manipulation], 2026-11-12)
     if ~retireObserves
         bodies{end+1} = lineageRelation(preBody, elementId, specimenId, 'observes');
     end

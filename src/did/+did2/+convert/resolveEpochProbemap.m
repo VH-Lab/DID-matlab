@@ -32,7 +32,9 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   element-entity +migrators_j/element.m kept under the element's own id,
 %   found by the probe-map row's name and reference, and the element's
 %   `observes` relation is retired here once that observation carries the
-%   instrument_id edge. The same documents are also listed under
+%   instrument_id edge, or once a manipulation with the same instrument and
+%   subject is present ([observes retires on a matching manipulation], Jess
+%   Haley, 2026-11-12: a stimulator's). The same documents are also listed under
 %   epochfiles_ingested, whose probe-map rows and files they are built from.
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview, element
@@ -51,7 +53,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   BATCH-PASS-READS: acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested, sampled_body(pyraview level),
 %       entity(epoch), acquisition_system, directed_relation(element lineage),
-%       directed_relation(observes), entity(element),
+%       directed_relation(observes), entity(element), manipulation(bath),
 %       calculation(spike sorter), calculation(spike times),
 %       calculation(spike waveforms), observation(session-scoped recording),
 %       observation(pyraview),
@@ -108,7 +110,14 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   its probe's `connected to` wiring relation (below). And the
 %   loose `probe observes specimen` relation that +migrators_j/element.m keeps
 %   is RETIRED here for every (probe, specimen) pair that now has a surviving
-%   observation carrying the `instrument_id` edge (`observes_retired`).
+%   observation carrying the `instrument_id` edge
+%   (`observes_retired_on_observation`), and for every (stimulator, specimen)
+%   pair a manipulation present carries as its `instrument_id` / `entity_id`
+%   edges (`observes_retired_on_manipulation`; [observes retires on a
+%   matching manipulation], Jess Haley, 2026-11-12), unless the instrument's
+%   observations and manipulations name several specimens, when the round
+%   trip could not rebuild the one v1 subject (`observes_kept_several_specimens`).
+%   `observes_retired` is the sum; `observes_seen` is the denominator.
 %
 %   NOT HERE: epochs with no epochfiles_ingested cache (PRED, 20211116: their
 %   files are found by the file navigator, so the NDI second pass mints them).
@@ -318,7 +327,11 @@ report = struct( ...
     'bodies_quarantined',             0, ...
     'body_build_refused',             0, ...
     'body_build_first_error',         '', ...
+    'observes_seen',                  0, ...
     'observes_retired',               0, ...
+    'observes_retired_on_observation',0, ...
+    'observes_retired_on_manipulation',0, ...
+    'observes_kept_several_specimens',0, ...
     'spike_epochs_seen',              0, ...
     'spike_trains_emitted',           0, ...
     'spike_refused_no_epoch',         0, ...
@@ -451,6 +464,12 @@ obs30ByTriple = containers.Map('KeyType', 'char', 'ValueType', 'any');
 readerIdByNavId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 archiveIdxByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
 observesIdxByPair = containers.Map('KeyType', 'char', 'ValueType', 'any');
+% [observes retires on a matching manipulation] (Decided by Jess Haley,
+% 2026-11-12, did-schema did_v2_go_forward_class_audit.md): the
+% (instrument, subject) pairs of the manipulations present, and per
+% instrument the specimens its observations and manipulations name.
+manipPairsPresent = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+specimensByInstr = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % element entity id -> its v1 element `type` (the `element type` assertion of
 % +migrators_j/element.m). The element_epoch dissolution keys on it. A device
 % whose kind alone rebuilds its type has no `element type` assertion ([element
@@ -549,6 +568,7 @@ for k = 1:n
                 end
             end
             if did2.build.isVocabulary(relationOf(b), 'relation', 'observes')   % a pass-1 handle with no node
+                report.observes_seen = report.observes_seen + 1;
                 pk = [depValueOf(b, 'child_id') '|' depValueOf(b, 'parent_id')];
                 if isKey(observesIdxByPair, pk)
                     observesIdxByPair(pk) = [observesIdxByPair(pk), k];
@@ -578,6 +598,20 @@ for k = 1:n
                     if ~isKey(subjectIdByKey, key); subjectIdByKey(key) = docIds{k}; end
                 end
             end
+    end
+    % [observes retires on a matching manipulation]: the (instrument, subject)
+    % pair of every manipulation already in the batch (a bath's stimulator,
+    % did2.convert.resolveDeferredBaths), and the specimens each instrument's
+    % observations and manipulations name (the retirement's lossless guard)
+    if any(strcmp(classOf{k}, {'manipulation', 'observation'}))
+        mInstr = depValueOf(b, 'instrument_id');
+        mSubj = depValueOf(b, 'entity_id');
+        if ~isempty(mInstr) && ~isempty(mSubj)
+            if strcmp(classOf{k}, 'manipulation')
+                manipPairsPresent([mInstr '|' mSubj]) = true;
+            end
+            specimensByInstr = addSpecimen(specimensByInstr, mInstr, mSubj);
+        end
     end
     if isRecording30Observation(b)
         subj  = depValueOf(b, 'entity_id');
@@ -634,6 +668,7 @@ epochSpecs = struct('src', {}, 'obsIds', {}, 'sid', {}, 'datestamp', {}, ...
 % manipulations it minted -- the owners of that epoch's metadata archive.
 stimSpecs = struct('manipIds', {}, 'sid', {}, 'epochString', {}, 'navId', {});
 obsPairById = containers.Map('KeyType', 'char', 'ValueType', 'char');
+manipPairById = containers.Map('KeyType', 'char', 'ValueType', 'char');   % stimulator manipulation id -> 'instrument|subject'
 modeNodeByObsId = containers.Map('KeyType', 'char', 'ValueType', 'char');   % obs id -> its mode node ('' none)
 recByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'char');
 spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'double');  % obs id -> acquisition_epoch idx
@@ -906,6 +941,9 @@ for k = 1:n
             newGroupAc{end+1} = acId;              %#ok<AGROW>
             newGroupClock{end+1} = {};             %#ok<AGROW>
             specManipIds{end+1} = manip.base.id;   %#ok<AGROW>
+            if ~isempty(instrumentId)
+                manipPairById(manip.base.id) = [char(instrumentId) '|' char(subjectId)];
+            end
             if isempty(instrumentId)
                 report.instrument_omitted = report.instrument_omitted + 1;
             else
@@ -1653,6 +1691,18 @@ end
 observesRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 emittedKeys = emittedNewIds.keys;
 for i = 1:numel(emittedKeys)
+    if isKey(obsPairById, emittedKeys{i})
+        pk = obsPairById(emittedKeys{i});
+        cut = strfind(pk, '|');
+        specimensByInstr = addSpecimen(specimensByInstr, pk(1:cut(1) - 1), pk(cut(1) + 1:end));
+    elseif isKey(manipPairById, emittedKeys{i})
+        pk = manipPairById(emittedKeys{i});
+        manipPairsPresent(pk) = true;
+        cut = strfind(pk, '|');
+        specimensByInstr = addSpecimen(specimensByInstr, pk(1:cut(1) - 1), pk(cut(1) + 1:end));
+    end
+end
+for i = 1:numel(emittedKeys)
     if ~isKey(obsPairById, emittedKeys{i}); continue; end
     pk = obsPairById(emittedKeys{i});
     if ~isKey(observesIdxByPair, pk); continue; end
@@ -1662,7 +1712,42 @@ for i = 1:numel(emittedKeys)
         if ~isempty(rid) && ~isKey(observesRetire, rid)
             observesRetire(rid) = true;
             report.observes_retired = report.observes_retired + 1;
+            report.observes_retired_on_observation = ...
+                report.observes_retired_on_observation + 1;
         end
+    end
+end
+% [observes retires on a matching manipulation] (Decided by Jess Haley,
+% 2026-11-12, did-schema did_v2_go_forward_class_audit.md): "the loose v1
+% `observes` relation retires where a manipulation with the same instrument
+% and subject is present, as it already retires where a matching observation
+% is present" (a stimulator, the instrument of manipulations of exactly the
+% organism the relation names: all 32 surviving on Soph). The manipulations
+% present are those already in the batch (a bath's, resolveDeferredBaths) and
+% the stimulator manipulations that survived here. The round trip rebuilds the
+% relation from them (did2.convert.roundtrip.element), which it can only do
+% when the instrument's observations and manipulations name ONE specimen: one
+% that names several keeps its relation, counted
+% (observes_kept_several_specimens), as nothing would stand in its place.
+pairKeys = manipPairsPresent.keys;
+for i = 1:numel(pairKeys)
+    pk = pairKeys{i};
+    if ~isKey(observesIdxByPair, pk); continue; end
+    cut = strfind(pk, '|');
+    instr = pk(1:cut(1) - 1);
+    idxs = observesIdxByPair(pk);
+    for j = 1:numel(idxs)
+        rid = docIds{idxs(j)};
+        if isempty(rid) || isKey(observesRetire, rid); continue; end
+        if isKey(specimensByInstr, instr) && numel(specimensByInstr(instr)) > 1
+            report.observes_kept_several_specimens = ...
+                report.observes_kept_several_specimens + 1;
+            continue;
+        end
+        observesRetire(rid) = true;
+        report.observes_retired = report.observes_retired + 1;
+        report.observes_retired_on_manipulation = ...
+            report.observes_retired_on_manipulation + 1;
     end
 end
 
@@ -3417,4 +3502,14 @@ if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
 end
 v = b.statement.variable;
 tf = isstruct(v) && isfield(v, 'node') && strcmpi(char(v.node), 'GO:0001508');
+end
+
+function m = addSpecimen(m, instr, subj)
+% record SUBJ among the specimens INSTR's observations and manipulations name
+if isKey(m, instr)
+    v = m(instr);
+    if ~any(strcmp(v, subj)); m(instr) = [v, {subj}]; end
+else
+    m(instr) = {subj};
+end
 end
