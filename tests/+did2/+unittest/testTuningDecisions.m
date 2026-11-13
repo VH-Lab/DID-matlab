@@ -1092,7 +1092,9 @@ verifyFalse(testCase, any(strcmp(names, 'depends on.name')), 'the name is not wr
 verifyTrue(testCase, any(strcmp(names, 'depends on.value')), 'the value still is');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'depends_on named by the edge', {});
-verifyTrue(testCase, any(strcmp(r.matched, 'tuningcurve_calc.input_parameters.depends_on.name')));
+verifyTrue(testCase, any(~cellfun(@isempty, regexp(r.matched, ...
+    '^tuningcurve_calc\.input_parameters\.depends_on(\(1\))?\.name$', 'once'))), ...
+    strjoin(r.matched(contains(r.matched, 'depends_on')), ', '));
 % a name other than the curve's edge: carried
 for other = {'element_id', 'stimulus_tuningcurve_id'}
     v1 = convertedTuningCurve();
@@ -1121,7 +1123,7 @@ for k = 1:size(want, 1)
     out = runRaw({v1});
     leaf = firstOfClass(out, 'contrast_tuning_calculation');
     assertNotEmpty(testCase, leaf, want{k, 1});
-    verifyEqual(testCase, upper(char(leaf.tuning_curve.value.response_type.node)), ...
+    verifyEqual(testCase, termNode(leaf.tuning_curve.value.response_type), ...
         want{k, 2}, ['contrast tuning ' want{k, 1}]);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, ['contrast tuning ' want{k, 1}], {});
@@ -1131,11 +1133,17 @@ for k = 1:size(want, 1)
     out = runRaw({v1});
     leaf = firstOfClass(out, 'contrast_sensitivity_calculation');
     assertNotEmpty(testCase, leaf, want{k, 1});
-    verifyEqual(testCase, upper(char(leaf.contrast_sensitivity.value.response_type.node)), ...
+    verifyEqual(testCase, termNode(leaf.contrast_sensitivity.value.response_type), ...
         want{k, 2}, ['contrast sensitivity ' want{k, 1}]);
     r = did2.convert.roundtrip.check(v1, out.migrated);
     did2.unittest.helpers.verifyRoundTrip(testCase, r, ['contrast sensitivity ' want{k, 1}], {});
 end
+end
+
+function n = termNode(t)
+% a term's node, upper case ('' when it has none: a label)
+n = '';
+if isstruct(t) && isfield(t, 'node') && ~isempty(t.node); n = upper(char(t.node)); end
 end
 
 function testParameterNamesMapByTable(testCase)
