@@ -13,10 +13,11 @@ function out = mintId(action, arg2)
 %       what the document is) minted for the SOURCE of the innermost open
 %       context (its key). The n-th id of one ROLE for one source in one
 %       context is a pure function of (source, ROLE, n). With no context open,
-%       or a context whose key is empty, there is no source: a caller outside
-%       the migration (an NDI v2 writer calling did2.build.document) gets
-%       did.ido.unique_id() -- random, exactly as before -- but a call made
-%       while a did2.convert function is on the call stack is an error,
+%       or a context whose key is empty, there is no source. With no context
+%       open (a caller outside a migration run: an NDI v2 writer calling
+%       did2.build.document, a migrator called on its own) the id is
+%       did.ido.unique_id() -- random, exactly as before. In a context opened
+%       with an empty key, a call from the migration's own code is an error,
 %       did2:convert:mintId:noSource (NO RANDOM ID INSIDE THE MIGRATION, below).
 %   ID = did2.convert.mintId(ROLE, SOURCEID)
 %       the same, for a named SOURCEID (the v1 or migrated document the new
@@ -50,12 +51,17 @@ function out = mintId(action, arg2)
 %   "two runs on the same input are identical"). The two ways this function
 %   had to a random id are errors when the migration reaches them, so the
 %   claim holds by construction rather than by a census:
-%     did2:convert:mintId:noSource  a ROLE-only call with no source key (no
-%         context, or a context opened with '') while a function of the
-%         did2.convert package other than this one is on the call stack.
-%         A migration mint names its source: mintId(ROLE, SOURCEID), a context
-%         keyed on it, or did2.convert.contentId for a source that states no
-%         id (DID-matlab #453, #457).
+%     did2:convert:mintId:noSource  a ROLE-only call in a context opened with
+%         an empty key (a batch pass's run-wide context, or contentId's for a
+%         body with no mint key) while a function of the did2.convert package
+%         other than this one is on the call stack. A migration mint names its
+%         source: mintId(ROLE, SOURCEID), a context keyed on it, or
+%         did2.convert.contentId for a source that states no id (DID-matlab
+%         #453, #457). v1_to_v2 opens a context keyed on every source body
+%         (did2.convert.mintKey), and the batch passes that open none
+%         (resolveClockAlignment, resolveDatasetEntities,
+%         resolveResponseParameters, resolveSessionAnchors on V2 8a0d4708)
+%         mint no document without an 'Id'.
 %     did2:convert:mintId:noHash    no SHA-256 (no Java), so no id can be
 %         derived. It was a random id and a warning.
 %
@@ -106,7 +112,7 @@ switch char(action)
             src = stack(end).key;
         end
         if isempty(src)
-            if calledFromTheMigration()
+            if ~isempty(stack) && calledFromTheMigration()
                 error('did2:convert:mintId:noSource', ...
                     ['did2.convert.mintId("%s") was called by the migration with no ' ...
                      'source to derive the id from (no context, or a context opened ' ...
