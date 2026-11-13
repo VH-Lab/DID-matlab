@@ -122,11 +122,14 @@ function [v1, spec] = element(bodies, ctx)
 %   `observes` relation once a recording observation carries the same
 %   (instrument, specimen) pair as its `instrument_id` / `entity_id` edges
 %   (`observes_retired`; [epoch files as data bodies], Jess Haley,
-%   2026-10-21). When BODIES holds no lineage relation, the observations in
-%   CTX (the index of the final batch) whose `instrument_id` is this entity
-%   are read: one specimen among them is `subject_id`, with `direct` true, as
-%   the retired relation stated. Several specimens are reported, not chosen.
-%   They are read, never placed.
+%   2026-10-21), and a stimulator's once a manipulation carries the same
+%   (instrument, subject) pair ([observes retires on a matching
+%   manipulation], Jess Haley, 2026-11-12). When BODIES holds no lineage
+%   relation, the observations and manipulations in CTX (the index of the
+%   final batch) whose `instrument_id` is this entity are read: one specimen
+%   among them is `subject_id`, with `direct` true, as the retired relation
+%   stated. Several specimens are reported, not chosen. They are read, never
+%   placed.
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.element.
 
@@ -222,12 +225,14 @@ for k = find(~used)
         k, classNameOf(bodies{k}));
 end
 % the `observes` relation resolveEpochProbemap retired: read from the
-% observations that carry its pair (see THE `observes` RELATION above)
+% observations and manipulations that carry its pair (see THE `observes`
+% RELATION above)
 if isempty(subject) && isempty(underlying) && isempty(direct) && ~isempty(ctx)
     specimens = {};
     for k = ctxReferrers(ctx, base.id)
         b = ctx.docs{k};
-        if strcmp(classNameOf(b), 'observation') && isequal(edgeIds(b, 'instrument_id'), {base.id})
+        if any(strcmp(classNameOf(b), {'observation', 'manipulation'})) ...
+                && isequal(edgeIds(b, 'instrument_id'), {base.id})
             specimens = [specimens, edgeIds(b, 'entity_id')]; %#ok<AGROW>
         end
     end
@@ -236,8 +241,9 @@ if isempty(subject) && isempty(underlying) && isempty(direct) && ~isempty(ctx)
         subject = specimens{1};
         direct = true;
     elseif numel(specimens) > 1
-        spec.unplaced{end+1} = sprintf(['the observations this element is the ' ...
-            'instrument of name %d specimens (a v1 element has one subject)'], numel(specimens));
+        spec.unplaced{end+1} = sprintf(['the observations and manipulations this ' ...
+            'element is the instrument of name %d specimens (a v1 element has one ' ...
+            'subject)'], numel(specimens));
     end
 end
 % no 'element type' assertion: the type is the one its device kind names
