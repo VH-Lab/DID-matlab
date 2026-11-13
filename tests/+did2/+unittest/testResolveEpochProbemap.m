@@ -1251,8 +1251,8 @@ function testStimObservesRetiresOnItsManipulation(testCase)
 [out, rep, manips] = stimDecompose();
 verifyEqual(testCase, rep.observes_seen, 1, 'DENOMINATOR: one observes relation');
 assertEqual(testCase, numel(manips), 1, 'premise: the stimulator manipulation');
-verifyEqual(testCase, rep.observes_retired_on_manipulation, 1);
-verifyEqual(testCase, rep.observes_retired_on_observation, 0);
+verifyEqual(testCase, rep.observes_retired_manipulation_present, 1);
+verifyEqual(testCase, rep.observes_retired_observation_present, 0);
 verifyEqual(testCase, rep.observes_retired, 1);
 verifyEqual(testCase, rep.observes_kept_several_specimens, 0);
 verifyEqual(testCase, numel(observesRelations(out)), 0, ...
@@ -1273,7 +1273,7 @@ ing2 = ingestedWithRows('ing_2s2', 'sess_2s', 't02s2', {{'stim', '1', 'stimulato
 verifyEqual(testCase, rep.observes_seen, 1, 'DENOMINATOR: one observes relation');
 assertEqual(testCase, rep.manipulations_emitted, 2, ...
     'premise: one manipulation per specimen');
-verifyEqual(testCase, rep.observes_retired_on_manipulation, 0);
+verifyEqual(testCase, rep.observes_retired_manipulation_present, 0);
 verifyEqual(testCase, rep.observes_kept_several_specimens, 1);
 verifyEqual(testCase, numel(observesRelations(out)), 1);
 end
@@ -1569,6 +1569,19 @@ end
 assertEqual(testCase, sum(~keep), 1, 'one stimulator manipulation removed');
 out2 = out;
 out2.migrated = out.migrated(keep);
+% a pass that writes no stimulator manipulation keeps the stimulator's
+% `observes` relation ([observes retires on a matching manipulation], Jess
+% Haley, 2026-11-12: it retires only where a matching manipulation is
+% present), so the batch without the manipulation holds pass 1's relation
+p1 = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+rel = observesRelations(p1);
+assertEqual(testCase, numel(rel), 2, 'premise: pass 1 writes the two elements'' observes');
+assertEmpty(testCase, observesRelations(out2), 'premise: the pass retired both');
+for k = 1:numel(rel)
+    if strcmp(depVal(rel{k}, 'child_id'), 'stim_w')
+        out2.migrated{end+1} = did2.document(rel{k});
+    end
+end
 r2 = did2.convert.roundtrip.wholeBatch(bodies, out2);
 verifyFalse(testCase, failedSource(r2, 'ing_w'), failureText(r2, 'ing_w'));
 verifyGreaterThan(testCase, r2.sources_compared, 0);

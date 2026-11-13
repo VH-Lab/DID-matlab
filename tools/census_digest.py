@@ -673,8 +673,8 @@ POST_PASSES = [
         ("observes_seen", "`observes` relations seen  <- OBSERVES DENOMINATOR"),
         ("observes_retired", "`observes` relations retired (replaced by instrument_id)"),
         # [observes retires on a matching manipulation] (Jess Haley 2026-11-12)
-        ("observes_retired_on_observation", "  on a recording observation with the same instrument and specimen"),
-        ("observes_retired_on_manipulation", "  on a manipulation with the same instrument and subject (a stimulator)"),
+        ("observes_retired_observation_present", "  on a recording observation with the same instrument and specimen"),
+        ("observes_retired_manipulation_present", "  on a manipulation with the same instrument and subject (a stimulator)"),
         ("observes_kept_several_specimens", "  kept: a manipulation matches, but the instrument names several specimens"),
         # 2026-10-21 (Jess Haley, "a"): a spike-sorted neuron's per-epoch
         # observation (time, data_body, its element_epoch .vhsb as the body).
