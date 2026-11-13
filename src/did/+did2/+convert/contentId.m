@@ -21,8 +21,9 @@ function id = contentId(role, body)
 %   counts). Two documents with the same content are the same document and
 %   get the same id.
 %
-%   Only a body jsonencode cannot encode has no key; the id is then random
-%   (did.ido.unique_id), as mintId's is with no key.
+%   Only a body jsonencode cannot encode has no key; that is an error
+%   (did2:convert:mintId:noSource), never a random id: no migration source
+%   decoded from JSON is such a body.
 %
 %   See also did2.convert.mintKey, did2.convert.mintId.
 
