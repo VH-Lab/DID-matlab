@@ -242,6 +242,10 @@ POST_PASSES = [
         # rows around it are document counts and nothing else says so.
         ("experimental_approach_terms_emitted", "experimental_approach TERMS (not documents)"),
         ("relations_emitted", "directed_relation documents emitted"),
+        # [copyright from another tool is emitted] (Jess Haley 2026-11-12)
+        ("copyright_years_emitted", "copyright year date assertions emitted (schema:copyrightYear)"),
+        ("copyright_holders_emitted", "  copyrightHolder relations emitted"),
+        ("copyright_unplaced", "Copyright documents with content that has no place (component carried as v1)"),
         # THE LOSSES, WITH NUMBERS ON THEM. Consumed because leaving them would
         # dangle an `openminds_#` edge; not emitted because the entity tier has
         # nowhere to put them. Counted rather than shrugged at, per the brief.

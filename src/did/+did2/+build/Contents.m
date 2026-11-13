@@ -22,6 +22,8 @@
 %     relativeTimeReference  a time offset from another document, on a clock
 %     absoluteTimeReference  a wall-clock (UTC) instant or interval
 %     directedRelation       child <relation> parent
+%     pipelineMembership     a pipeline's programs `member of` it, ordered
+%                            from 0 ([pipeline steps use member of])
 %     method                 a named, shared method: {term, parameters} with an
 %                            id of its own (`method_parameters` before #88)
 %     undirectedRelation     a symmetric relation between two ends (relata):
@@ -63,6 +65,9 @@
 %     checkMethodSharedAndOwn  an inline method beside method_id shares no
 %                            parameter variable with the shared method (rule
 %                            method_shared_and_own)
+%     checkPipelineMembers   a software parent's `member of` members are
+%                            software, ordered 0..N-1 ([pipeline order
+%                            counts from 0])
 %
 %   Checks beyond per-field types (the list lives in private/checkRules.m):
 %     the schema's own `rules` (data_type_when_bytes, clock_with_start,
