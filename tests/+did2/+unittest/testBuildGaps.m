@@ -267,6 +267,39 @@ verifyEmpty(testCase, r.known_v1_defects);
 verifyEqual(testCase, r.counts.known_v1_defects, 0);
 end
 
+function testADocumentNotMigratedIsListedAsAKnownDefect(testCase)
+% [orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12):
+% a v1 document a decision does not migrate is listed in known_v1_defects
+% with its id, class and reason (field ''), though no written document holds
+% it; it survives the attached file's JSON and 'load'
+doc = buildCS(testCase, csFields(), []);
+why = 'orphaned settings, identical to a used one, nothing refers to it';
+did2.convert.migrationReport('notMigrated', 'gone_1', ...
+    'stimulus_response_scalar_parameters_basic', why);
+r = did2.convert.migrationReport('collect', {doc});
+verifyEqual(testCase, numel(r.known_v1_defects), 1);
+verifyEqual(testCase, r.known_v1_defects(1).document_id, 'gone_1');
+verifyEqual(testCase, r.known_v1_defects(1).class, 'stimulus_response_scalar_parameters_basic');
+verifyEqual(testCase, r.known_v1_defects(1).field, '');
+verifyEqual(testCase, r.known_v1_defects(1).reason, why);
+verifyEqual(testCase, r.counts.known_v1_defects, 1);
+verifyEmpty(testCase, r.gaps);
+verifyEmpty(testCase, r.carried_as_v1);
+d = did2.convert.migrationReport('defects', 'gone_1');
+verifyEqual(testCase, {d.field}, {''});
+did2.convert.migrationReport('load', jsondecode(jsonencode(r)));
+r2 = did2.convert.migrationReport('collect', {doc});
+verifyEqual(testCase, r2.counts.known_v1_defects, 1, 'kept through load');
+verifyEqual(testCase, r2.known_v1_defects(1).document_id, 'gone_1');
+% a document of that id that IS written after all is not listed
+did2.convert.migrationReport('notMigrated', char(doc.base.id), 'coordinate_system', why);
+r3 = did2.convert.migrationReport('collect', {doc});
+verifyEqual(testCase, {r3.known_v1_defects.document_id}, {'gone_1'});
+verifyError(testCase, @() did2.convert.migrationReport('notMigrated', 'gone_2', ...
+    'stimulus_response_scalar_parameters_basic', ''), 'did2:convert:badKnownDefect', ...
+    'a reason is needed');
+end
+
 % ===================== helpers =============================================
 
 function doc = buildObs(testCase, conditions, gaps)

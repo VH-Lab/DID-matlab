@@ -230,14 +230,209 @@ r = did2.convert.roundtrip.check(v1, {m});
 verifyRoundTrip(testCase, r, 'parameters as a method, no converted user', ...
     findingsFor('parameters as a method, no converted user'));
 
-% with a converted response using it, freq_response is its harmonic
-out = runFold(testCase, {convertibleResponse('resp_c3', 'F1', '', 'par_1'), v1});
+% with a converted response using it, freq_response is its harmonic. UPDATED
+% 2026-11-12 ([response computed from the spike times], Jess Haley): the
+% response is on its epoch and computed from its unit's spike times there, so
+% isspike 1 is not written and is rebuilt from that input
+[stamped, epoch] = onEpoch(convertibleResponse('resp_c3', 'F1', 't00003', 'par_1'));
+out = runFold(testCase, {stamped, v1}, {spikeTrain('el_unit_1', epoch.base.id, 'spk_c3')});
 m = bodyWithId(out, 'par_1');
+assertEqual(testCase, classNameOfBody(m), 'method');
+verifyFalse(testCase, any(cellfun(@(e) strcmp(char(e.variable.name), 'isspike'), ...
+    asCellOf(m.method.parameters))), 'isspike is not written');
 calc = bodyWithId(out, 'resp_c3');
-r = did2.convert.roundtrip.check(v1, {m, calc});
+obs = bodyWithId(out, 'spk_c3');
+r = did2.convert.roundtrip.check(v1, {m, calc, obs});
 verifyRoundTrip(testCase, r, 'parameters as a method, with its response', {});
 verifyTrue(testCase, any(strcmp([ ...
     'stimulus_response_scalar_parameters_basic.freq_response'], r.matched)));
+verifyTrue(testCase, any(strcmp([ ...
+    'stimulus_response_scalar_parameters_basic.isspike'], r.matched)), 'isspike 1 rebuilt');
+end
+
+% ===================== [response computed from the spike times] ===========
+% Jess Haley, 2026-11-12: the response lists its unit's spike-times
+% observation for its epoch as an input; isspike is not written and the round
+% trip rebuilds it from the input (1 for spike times, 0 for a continuous one);
+% a source whose isspike disagrees with its input carries as v1.
+
+function testTheResponseWithItsSpikeInputRoundTrips(testCase)
+% the v1 response has no edge for the spike-times input: rebuilt as none, and
+% its five edges as v1 wrote them
+v1 = convertibleResponse('resp_s1', 'F1', 't00003', 'par_s1');
+[stamped, epoch] = onEpoch(v1);
+out = runFold(testCase, {stamped, writerParameters('par_s1', 1)}, ...
+    {spikeTrain('el_unit_1', epoch.base.id, 'spk_s1')});
+calc = bodyWithId(out, 'resp_s1');
+verifyTrue(testCase, any(strcmp(edgeIds(calc, 'input_id'), 'spk_s1')), 'the spike input');
+emitted = {};
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    % the response's own documents, and the spike train it reads (its anchor
+    % is the spike train's source's, and the method is the parameters')
+    if ~any(strcmp(char(b.base.id), {'par_s1', 'spk_s1_anchor'}))
+        emitted{end+1} = b; %#ok<AGROW>
+    end
+end
+r = did2.convert.roundtrip.check(v1, [emitted, {epoch}]);
+verifyRoundTrip(testCase, r, 'response with its spike-times input', {});
+end
+
+function testAContinuousInputRebuildsIsspikeZero(testCase)
+% no spike-times input (the session anchor here): isspike 0 agrees, is not
+% written, and is rebuilt 0
+v1 = writerParameters('par_z', 1, 0);
+out = runFold(testCase, {convertibleResponse('resp_z', 'F1', '', 'par_z'), v1}, {});
+m = bodyWithId(out, 'par_z');
+assertEqual(testCase, classNameOfBody(m), 'method');
+r = did2.convert.roundtrip.check(v1, {m, bodyWithId(out, 'resp_z')});
+verifyRoundTrip(testCase, r, 'parameters, continuous input', {});
+verifyTrue(testCase, any(strcmp('stimulus_response_scalar_parameters_basic.isspike', ...
+    r.matched)), 'isspike 0 rebuilt');
+end
+
+function testIsspikeDisagreeingWithItsInputIsCarriedAndRoundTrips(testCase)
+% isspike 0 beside a spike-times input, and isspike 1 beside none: the
+% parameters document stays v1, and round trips as the v1 document it is
+cases = {'isspike 0, spike input', 0, true; 'isspike 1, no spike input', 1, false};
+for c = 1:size(cases, 1)
+    [label, isspike, withSpikes] = cases{c, :};
+    pid = sprintf('par_d%d', c);
+    v1 = writerParameters(pid, 1, isspike);
+    [stamped, epoch] = onEpoch(convertibleResponse(sprintf('resp_d%d', c), 'F1', 't00003', pid));
+    trains = {};
+    if withSpikes
+        trains = {spikeTrain('el_unit_1', epoch.base.id, sprintf('spk_d%d', c))};
+    end
+    out = runFold(testCase, {stamped, v1}, trains);
+    verifyEqual(testCase, out.response_parameters_fold.refused_isspike_disagrees, 1, label);
+    p = bodyWithId(out, pid);
+    verifyEqual(testCase, classNameOfBody(p), 'stimulus_response_scalar_parameters_basic', label);
+    m = {};
+    for k = 1:numel(out.migrated)
+        if strcmp(char(out.migrated{k}.get('base.id')), pid)
+            m = {out.migrated{k}};
+        end
+    end
+    r = did2.convert.roundtrip.check(v1, m);
+    verifyTrue(testCase, r.carried, label);
+    verifyRoundTrip(testCase, r, label, {});
+end
+end
+
+function testAMethodWithNoConvertedUserStillStatesIsspike(testCase)
+% no converted response uses it (the writer's response waits for its epoch):
+% nothing to rebuild isspike from, so it is written as before (a question for
+% the team, not decided by [response computed from the spike times])
+v1 = writerParameters('par_u', 1);
+out = runFold(testCase, {writerResponse('resp_u', 'F1', 6, 'par_u'), v1}, {});
+m = bodyWithId(out, 'par_u');
+assertEqual(testCase, classNameOfBody(m), 'method');
+verifyEqual(testCase, out.response_parameters_fold.isspike_written_no_converted_user, 1);
+verifyTrue(testCase, any(cellfun(@(e) strcmp(char(e.variable.name), 'isspike'), ...
+    asCellOf(m.method.parameters))));
+end
+
+% ===================== [orphaned response settings are an accepted loss] ===
+% Jess Haley, 2026-11-12: a parameters document referred to by no document,
+% with a USED parameters document of the same session identical in all six
+% fields, is not migrated: listed in the run report's known_v1_defects and
+% counted an accepted loss by the whole-batch round trip. One with no such
+% twin keeps today's behaviour and is counted apart.
+
+function testAnOrphanWithAnIdenticalUsedTwinIsNotMigrated(testCase)
+did2.convert.migrationReport('begin');   % the run writer's run
+endRun = onCleanup(@() did2.convert.migrationReport('end')); %#ok<NASGU>
+bodies = {convertibleResponse('resp_t', 'F1', '', 'par_t'), ...
+    writerParameters('par_t', 1, 0), writerParameters('par_o', 1, 0)};
+out = runFold(testCase, bodies);
+rep = out.response_parameters_fold;
+verifyEqual(testCase, rep.orphans_seen, 1);
+verifyEqual(testCase, rep.orphans_dropped_identical_twin, 1);
+verifyEqual(testCase, rep.orphans_kept_no_identical_twin, 0);
+verifyEqual(testCase, rep.parameters_documents_seen, 2);
+verifyEqual(testCase, rep.parameters_documents_deleted, 0, 'not a converted document');
+ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(ids, 'par_o')), 'the orphan is not migrated');
+verifyEqual(testCase, out.summary.migrated_count, numel(out.migrated));
+% the used document is unaffected: its method, isspike rebuilt, not written
+m = bodyWithId(out, 'par_t');
+verifyEqual(testCase, classNameOfBody(m), 'method');
+verifyEqual(testCase, rep.methods_minted, 1);
+verifyFalse(testCase, any(cellfun(@(e) strcmp(char(e.variable.name), 'isspike'), ...
+    asCellOf(m.method.parameters))), 'isspike is not written');
+verifyEqual(testCase, rep.isspike_written_no_converted_user, 0);
+% recorded on the result ...
+verifyEqual(testCase, numel(out.not_migrated), 1);
+verifyEqual(testCase, out.not_migrated(1).id, 'par_o');
+verifyEqual(testCase, out.not_migrated(1).twin_id, 'par_t');
+% ... and listed in the run report's known_v1_defects
+R = did2.convert.migrationReport('collect', out.migrated);
+hit = R.known_v1_defects(strcmp({R.known_v1_defects.document_id}, 'par_o'));
+verifyNumElements(testCase, hit, 1);
+verifyEqual(testCase, hit.class, 'stimulus_response_scalar_parameters_basic');
+verifyEqual(testCase, hit.reason, ...
+    'orphaned settings, identical to a used one, nothing refers to it');
+verifyEqual(testCase, R.counts.known_v1_defects, numel(R.known_v1_defects));
+% the whole-batch round trip counts it an accepted loss, never silently
+wb = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyEqual(testCase, wb.ids_accepted_lost, 1, describeBatch(wb));
+verifyEqual(testCase, wb.ids_accepted_lost_by_class.stimulus_response_scalar_parameters_basic, 1);
+verifyEqual(testCase, wb.ids_lost, 0, describeBatch(wb));
+verifyEqual(testCase, wb.accepted_losses_by_name.(matlab.lang.makeValidName( ...
+    'orphaned response settings')), 1);
+verifyEqual(testCase, wb.accepted_losses(end).source_id, 'par_o');
+verifyEqual(testCase, wb.sources_changed_by_batch_pass, 0, describeBatch(wb));
+verifyEqual(testCase, wb.sources_compared, 2, 'the response and the used method');
+verifyTrue(testCase, wb.ok, describeBatch(wb));
+end
+
+function testAnOrphanWithNoIdenticalUsedTwinIsConvertedAndCounted(testCase)
+% not covered by the decision: converted as before (a method stating
+% isspike), counted apart, not listed, and its id kept. Two cases: another
+% value (freq_response 2), and identical values in another session.
+other = writerParameters('par_s', 1, 0);
+other.base.session_id = '41268b6f5c6a3d4e_00000000000000b2';
+cases = {'another value', writerParameters('par_n', 2, 0), 'par_n'; ...
+    'another session', other, 'par_s'};
+for c = 1:size(cases, 1)
+    [label, orphan, oid] = cases{c, :};
+    did2.convert.migrationReport('begin');
+    bodies = {convertibleResponse('resp_t', 'F1', '', 'par_t'), ...
+        writerParameters('par_t', 1, 0), orphan};
+    out = runFold(testCase, bodies);
+    rep = out.response_parameters_fold;
+    verifyEqual(testCase, rep.orphans_seen, 1, label);
+    verifyEqual(testCase, rep.orphans_dropped_identical_twin, 0, label);
+    verifyEqual(testCase, rep.orphans_kept_no_identical_twin, 1, label);
+    verifyFalse(testCase, isfield(out, 'not_migrated'), label);
+    m = bodyWithId(out, oid);
+    verifyEqual(testCase, classNameOfBody(m), 'method', label);
+    verifyTrue(testCase, any(cellfun(@(e) strcmp(char(e.variable.name), 'isspike'), ...
+        asCellOf(m.method.parameters))), [label ': isspike written as before']);
+    verifyEqual(testCase, rep.isspike_written_no_converted_user, 1, label);
+    verifyEqual(testCase, classNameOfBody(bodyWithId(out, 'par_t')), 'method', label);
+    R = did2.convert.migrationReport('collect', out.migrated);
+    verifyFalse(testCase, any(strcmp({R.known_v1_defects.document_id}, oid)), label);
+    wb = did2.convert.roundtrip.wholeBatch(bodies, out);
+    verifyEqual(testCase, wb.ids_accepted_lost, 0, label);
+    verifyEqual(testCase, wb.ids_lost, 0, label);
+    did2.convert.migrationReport('end');
+end
+end
+
+function s = describeBatch(wb)
+s = sprintf(['kept %d lost %d accepted %d; compared %d ok %d; changed %d; ' ...
+    'no inverse %d; failures %d'], wb.ids_kept, wb.ids_lost, wb.ids_accepted_lost, ...
+    wb.sources_compared, wb.sources_ok, wb.sources_changed_by_batch_pass, ...
+    wb.sources_no_inverse, wb.failures_total);
+for k = 1:numel(wb.failures)
+    try
+        s = [s '; ' char(jsonencode(wb.failures(k)))]; %#ok<AGROW>
+    catch
+        s = [s '; ' char(wb.failures(k).source_id)]; %#ok<AGROW>
+    end
+end
 end
 
 function testANamedParametersDocumentKeepsItsNameOnTheMethod(testCase)
@@ -245,7 +440,7 @@ function testANamedParametersDocumentKeepsItsNameOnTheMethod(testCase)
 % 2026-10-27, did-schema V_eta_go_forward_class_audit.md): a non-empty v1
 % base.name is written to `method.name`, and the round trip rebuilds base.name
 % from it (the writer sets none; this is a hand-named document)
-v1 = writerParameters('par_n', 1);
+v1 = writerParameters('par_n', 1, 0);   % a continuous input: isspike 0
 v1.base.name = 'my response settings';
 out = runFold(testCase, {convertibleResponse('resp_cn', 'F1', '', 'par_n'), v1});
 m = bodyWithId(out, 'par_n');
@@ -369,10 +564,72 @@ function out = runRaw(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2');
 end
 
-function out = runFold(testCase, bodies)
+function out = runFold(testCase, bodies, extra)
+% pass 1, then EXTRA (documents a batch pass before this one would have made:
+% spike trains, as resolveEpochProbemap makes them), then the response pass
+if nargin < 3; extra = {}; end
 out = runRaw(bodies);
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
+for k = 1:numel(extra)
+    more = did2.convert.v1_to_v2(extra{k}, 'Validate', false, 'TargetVersion', 'did_v2');
+    assert(isempty(more.quarantine), 'a batch-pass fixture did not build');
+    out.migrated = [out.migrated, more.migrated];
+end
 out = did2.convert.resolveResponseParameters(out, 'Validate', false, 'TargetVersion', 'did_v2');
+end
+
+function [stamped, epoch] = onEpoch(v1)
+% the response with the `epoch_id` edge epochMint stamps, and that epoch
+% entity (an entity of type epoch whose local_identifier is the string)
+stamped = v1;
+eid = ['epochdoc_' char(v1.base.id)];
+stamped.depends_on(end+1) = struct('name', 'epoch_id', 'value', eid);
+epoch = did2.build.document('entity', ...
+    struct('type', did2.convert.registeredTerm( ...
+        did2.build.vocabulary('entity_type', 'epoch'), 'recording epoch'), ...
+        'local_identifier', char(v1.stimulus_response.element_epochid)), ...
+    'Id', eid, 'SessionId', v1.base.session_id, ...
+    'CreationTimestamp', v1.base.datestamp, 'Validate', false);
+end
+
+function docs = spikeTrain(unitId, epochId, obsId)
+% the unit's spike-times observation on one epoch, with its own anchor onto
+% the epoch entity, as did2.convert.resolveEpochProbemap makes it
+sid = '41268b6f5c6a3d4e_00000000000000a1';
+ts = '2024-06-01T12:00:00.000Z';
+sec = struct('node', 'om:second-Time', 'name', 'second');
+anchor = did2.build.relativeTimeReference(epochId, 'Clock', 'dev_local_time', ...
+    'Start', 0, 'StartSourceValue', 0, 'StartSourceUnit', sec, ...
+    'StartApproximate', false, ...
+    'End', 12, 'EndSourceValue', 12, 'EndSourceUnit', sec, ...
+    'EndApproximate', false, ...
+    'SessionId', sid, 'CreationTimestamp', ts, 'Id', [obsId '_anchor'], ...
+    'Validate', false);
+obs = did2.build.statement('observation', unitId, ...
+    did2.convert.registeredTerm('GO:0001508', 'action potential'), [], ...
+    'ValueKind', 'time', 'DataBody', true, 'TimeReferenceIds', {anchor.base.id}, ...
+    'SessionId', sid, 'CreationTimestamp', ts, 'Id', obsId, 'Validate', false);
+docs = {obs, anchor};
+end
+
+function ids = edgeIds(b, name)
+ids = {};
+if ~isfield(b, 'depends_on'); return; end
+d = b.depends_on;
+if isstruct(d); d = num2cell(d); end
+for k = 1:numel(d)
+    if ~strcmp(char(d{k}.name), name); continue; end
+    for key = {'document_id', 'value', 'id'}
+        if isfield(d{k}, key{1}) && ~isempty(d{k}.(key{1}))
+            ids{end+1} = char(d{k}.(key{1})); %#ok<AGROW>
+            break;
+        end
+    end
+end
+end
+
+function c = asCellOf(x)
+if isstruct(x); c = num2cell(x); elseif iscell(x); c = x; else; c = {}; end
 end
 
 function b = bodyWithId(out, id)
@@ -493,8 +750,10 @@ v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_control_id')).value = '';
 v1 = jsondecode(jsonencode(v1));
 end
 
-function v1 = writerParameters(id, freqResponse)
+function v1 = writerParameters(id, freqResponse, isspike)
 % tuning_response.m: var2struct of the six knobs, a spike train's isspike 1
+% (0 for a continuous element)
+if nargin < 3; isspike = 1; end
 tpl = loadTemplate('stimulus_response_scalar_parameters_basic');
 parentTpl = loadTemplate('stimulus_response_scalar_parameters');
 baseTpl = loadTemplate('base');
@@ -508,7 +767,7 @@ v1.stimulus_response_scalar_parameters = parentTpl.stimulus_response_scalar_para
 v1.stimulus_response_scalar_parameters_basic = struct( ...
     'temporalfreqfunc', 'ndi.fun.stimulustemporalfrequency', ...
     'freq_response', freqResponse, 'prestimulus_time', [], ...
-    'prestimulus_normalization', [], 'isspike', 1, 'spiketrain_dt', 0.001);
+    'prestimulus_normalization', [], 'isspike', isspike, 'spiketrain_dt', 0.001);
 v1 = jsondecode(jsonencode(v1));
 end
 

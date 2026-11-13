@@ -18,7 +18,9 @@ function [records, report] = migrationRecord(docs, options)
 %
 %   REPORT is did2.convert.migrationReport('collect', DOCS): `gaps`,
 %   `carried_as_v1`, `known_v1_defects` ([known v1 defects list], Jess Haley,
-%   2026-11-12) and `counts`, with options.Counts added to `counts`.
+%   2026-11-12), `inputs_not_found` ([response computed from the spike
+%   times], Jess Haley, 2026-11-12) and `counts`, with options.Counts added to
+%   `counts`.
 %
 %   Decided by Jess Haley, 2026-11-01 (did-schema
 %   docs/plans/did_v2_go_forward_class_audit.md):
