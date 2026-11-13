@@ -350,6 +350,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
+            %   - 'OnDeletedId' - followed by 'error' (default) or 'restore'.
+            %       Whether a retired id (one removed from every branch)
+            %       is refused or un-retired and added. See
+            %       DID.DATABASE/ADD_DOCS.
             %   - 'customFileHandler' - a function handle called as
             %       HANDLER(DESTPATH, SOURCEPATH) or, when the handler
             %       declares three or more inputs (or takes varargin),
@@ -364,6 +368,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 document_obj
                 branch_id
                 options.OnDuplicate {mustBeMember(options.OnDuplicate,{'ignore','warn','error'})} = 'error'
+                options.OnDeletedId {mustBeMember(options.OnDeletedId,{'error','restore'})} = 'error'
                 options.customFileHandler = []
             end
 
@@ -387,11 +392,26 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % ever supplied. Reclaiming those rows on removal fixes that, and
             % retiring the id as well means the case cannot come back through a
             % database written before the reclamation existed.
+            %
+            % The exception is OnDeletedId='restore': the caller says this is
+            % the same document coming back (NDI re-downloading a document
+            % from the cloud that was deleted locally, NDI-matlab #1238).
+            % That is safe now that removal reclaims every row: the docs row
+            % went with the last branch reference, so the lookup below finds
+            % nothing and the document is written fresh, inheriting nothing.
+            % The un-retirement is inside this document's transaction, so a
+            % failure further down leaves the id retired as it was.
             if this_obj.is_deleted_doc_id(doc_id)
-                error('DID:SQLITEDB:DELETED_DOC', ...
-                    ['Cannot add document %s - a document with this id was ' ...
-                     'previously removed from every branch. Document ids are ' ...
-                     'never re-used; generate a new id for a new document.'], doc_id);
+                if strcmpi(options.OnDeletedId,'restore')
+                    this_obj.run_sql_noOpen('DELETE FROM deleted_docs WHERE doc_id=?', doc_id);
+                else
+                    error('DID:SQLITEDB:DELETED_DOC', ...
+                        ['Cannot add document %s - a document with this id was ' ...
+                         'previously removed from every branch. Document ids are ' ...
+                         'never re-used; generate a new id for a new document, or ' ...
+                         'pass ''OnDeletedId'',''restore'' if this is the same ' ...
+                         'document being restored.'], doc_id);
+                end
             end
 
             % If the document was not already defined (for any branch)
