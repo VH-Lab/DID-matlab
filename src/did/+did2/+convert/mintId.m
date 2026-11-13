@@ -13,11 +13,10 @@ function out = mintId(action, arg2)
 %       what the document is) minted for the SOURCE of the innermost open
 %       context (its key). The n-th id of one ROLE for one source in one
 %       context is a pure function of (source, ROLE, n). With no context open,
-%       or a context whose key is empty, there is no source. With no context
-%       open (a caller outside a migration run: an NDI v2 writer calling
-%       did2.build.document, a migrator called on its own) the id is
-%       did.ido.unique_id() -- random, exactly as before. In a context opened
-%       with an empty key, a call from the migration's own code is an error,
+%       or a context whose key is empty, there is no source. A caller outside
+%       a migration run (an NDI v2 writer calling did2.build.document, a
+%       migrator called on its own) gets did.ido.unique_id() -- random,
+%       exactly as before. From the migration it is an error,
 %       did2:convert:mintId:noSource (NO RANDOM ID INSIDE THE MIGRATION, below).
 %   ID = did2.convert.mintId(ROLE, SOURCEID)
 %       the same, for a named SOURCEID (the v1 or migrated document the new
@@ -51,17 +50,17 @@ function out = mintId(action, arg2)
 %   "two runs on the same input are identical"). The two ways this function
 %   had to a random id are errors when the migration reaches them, so the
 %   claim holds by construction rather than by a census:
-%     did2:convert:mintId:noSource  a ROLE-only call in a context opened with
-%         an empty key (a batch pass's run-wide context, or contentId's for a
-%         body with no mint key) while a function of the did2.convert package
-%         other than this one is on the call stack. A migration mint names its
-%         source: mintId(ROLE, SOURCEID), a context keyed on it, or
+%     did2:convert:mintId:noSource  a ROLE-only call with no source key,
+%         either in a context opened with an empty key (a batch pass's
+%         run-wide context, or contentId's for a body with no mint key) while
+%         a did2.convert function other than this one is on the call stack,
+%         or with no context open while a batch pass (a did2.convert function
+%         whose header declares BATCH-PASS-) is on it. A migration mint names
+%         its source: mintId(ROLE, SOURCEID), a context keyed on it (v1_to_v2
+%         keys one on every source, did2.convert.mintKey; resolveClockAlignment
+%         and epochMint key one on each source whose migrator they call), or
 %         did2.convert.contentId for a source that states no id (DID-matlab
-%         #453, #457). v1_to_v2 opens a context keyed on every source body
-%         (did2.convert.mintKey), and the batch passes that open none
-%         (resolveClockAlignment, resolveDatasetEntities,
-%         resolveResponseParameters, resolveSessionAnchors on V2 8a0d4708)
-%         mint no document without an 'Id'.
+%         #453, #457).
 %     did2:convert:mintId:noHash    no SHA-256 (no Java), so no id can be
 %         derived. It was a random id and a warning.
 %
@@ -112,7 +111,7 @@ switch char(action)
             src = stack(end).key;
         end
         if isempty(src)
-            if ~isempty(stack) && calledFromTheMigration()
+            if calledFromTheMigration(~isempty(stack))
                 error('did2:convert:mintId:noSource', ...
                     ['did2.convert.mintId("%s") was called by the migration with no ' ...
                      'source to derive the id from (no context, or a context opened ' ...
@@ -136,18 +135,46 @@ switch char(action)
 end
 end
 
-function tf = calledFromTheMigration()
-% a function of the did2.convert package other than this one is on the call
-% stack: the migration is minting
+function tf = calledFromTheMigration(contextOpen)
+% CONTEXTOPEN (a context opened with an empty key): a function of the
+% did2.convert package other than this one is on the call stack. No context:
+% a batch pass (a function at the top of the did2.convert package whose
+% header declares BATCH-PASS-) is on the call stack. A migrator called on its
+% own, or an NDI v2 writer, is neither.
 tf = false;
 st = dbstack('-completenames');
 for k = 1:numel(st)
     f = strrep(st(k).file, '\', '/');
-    if contains(f, '/+did2/+convert/') && ~endsWith(f, '/+did2/+convert/mintId.m')
+    if ~contains(f, '/+did2/+convert/') || endsWith(f, '/+did2/+convert/mintId.m')
+        continue;
+    end
+    if contextOpen || isBatchPass(f)
         tf = true;
         return;
     end
 end
+end
+
+function tf = isBatchPass(file)
+% FILE is directly in the did2.convert package and declares BATCH-PASS-
+persistent memo
+if isempty(memo)
+    memo = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+end
+if isKey(memo, file)
+    tf = memo(file);
+    return;
+end
+[folder, ~] = fileparts(file);
+tf = endsWith(strrep(folder, '\', '/'), '/+did2/+convert');
+if tf
+    try
+        tf = contains(fileread(file), 'BATCH-PASS-');
+    catch
+        tf = false;
+    end
+end
+memo(file) = tf;
 end
 
 function id = derive(key, role, noHash)
