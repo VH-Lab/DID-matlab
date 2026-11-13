@@ -610,7 +610,11 @@ POST_PASSES = [
         ("rows_stimulator", "  rows whose type is a stimulator (the other direction)"),
         ("observations_emitted", "OBSERVATIONS emitted (>= rows: patch/sharp yield 2)"),
         ("mode_methods_written", "  observations built with a decided mode method term (resolveEpochProbemap recordingModeMethod)"),
-        ("manipulations_emitted", "MANIPULATIONS emitted (one term_manipulation per stimulator row)"),
+        ("manipulations_emitted", "MANIPULATIONS emitted (stimulator rows that carry something the wiring and element do not)"),
+        ("stimulator_manipulations_not_written", "  stimulator rows held by their wiring and element: no manipulation written"),
+        ("stimulator_manipulations_kept_no_wiring", "  manipulation kept: the row has no wiring relation"),
+        ("stimulator_manipulations_kept_other_subject", "  manipulation kept: the row names another subject than its element's"),
+        ("stimulator_manipulations_kept_other_type", "  manipulation kept: the row's type is not its element's"),
         ("instrument_resolved", "  with an instrument_id edge (probe resolved)"),
         ("instrument_omitted", "  instrument_id OMITTED (probe unresolved; edge optional)"),
         # device half (increment 2): the devicestring -> acq system + channels.
