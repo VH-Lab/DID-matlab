@@ -1235,6 +1235,14 @@ end
 function testStimManipulationsEmittedOne(testCase)
 [~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.manipulations_emitted, 1);
 end
+function testStimRowWithNoWiringKeepsItsManipulation(testCase)
+% [stimulator manipulation dropped] (Jess Haley, 2026-11-09): a row with no
+% devicestring has no wiring relation to be read back from, so it is one of
+% the rows that carry something the wiring and the element do not
+[~, rep, ~] = stimDecompose();
+verifyEqual(testCase, rep.stimulator_manipulations_kept_no_wiring, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_not_written, 0);
+end
 function testStimNoObservationBody(testCase)
 [out, ~, ~] = stimDecompose();
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
@@ -1456,8 +1464,11 @@ verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 verifyEmpty(testCase, bodiesOfClass(out, 'epochfiles_ingested'));
 end
 
-function testAStimulatorOncePerMarkerChannelIsOneManipulationAndOneWiring(testCase)
+function testAStimulatorOncePerMarkerChannelIsOneWiringAndNoManipulation(testCase)
 % B and Dab: a stimulator listed once per channel (mk1, mk2, mk3, e1, md1).
+% [stimulator manipulation dropped] (Jess Haley, 2026-11-09): its rows are one
+% wiring relation and write no manipulation; the wiring and its epoch anchor
+% are kept for them, and the source is renamed (every row has its home)
 subj = subjectBody('spec_k', 'sess_k', 'L');
 stim = elementBody('stim_k', 'sess_k', 'vis', '1', 'stimulator', 1, 'spec_k');
 daq  = daqsystemBody('acqsys_k', 'sess_k', 'vis');
@@ -1471,26 +1482,53 @@ ing  = ingestedWithDeviceRows('ing_k', 'sess_k', 't0k', { ...
 verifyEqual(testCase, rep.probe_rows_total, 5, 'denominator');
 verifyEqual(testCase, rep.wiring_several_rows_merged, 1);
 verifyEqual(testCase, rep.wiring_several_rows_folded, 4);
-verifyEqual(testCase, rep.manipulations_emitted, 1);
-m = bodiesNamed(out, 'migrated_probemap_manipulation');
-verifyEqual(testCase, numel(m), 1);
-verifyEqual(testCase, depVal(m{1}, 'acquisition_system_id'), 'acqsys_k');
-w = wiringOf(out, m{1});
-verifyNotEmpty(testCase, w);
-ch = w.directed_relation.conditions;
+verifyEqual(testCase, rep.rows_stimulator, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_not_written, 1);
+verifyEqual(testCase, rep.manipulations_emitted, 0);
+verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_manipulation'));
+w = wiringsOfChild(out, 'stim_k');
+assertEqual(testCase, numel(w), 1, 'the stimulator''s one wiring relation is kept');
+verifyEqual(testCase, depVal(w{1}, 'parent_id'), 'acqsys_k');
+anchor = docById(out, depVal(w{1}, 'time_reference_id'));
+verifyNotEmpty(testCase, anchor, 'the wiring''s epoch anchor is kept');
+ch = w{1}.directed_relation.conditions;
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.node), ch, 'UniformOutput', false), ...
     {'EMPTY:0000377', 'EMPTY:0000376', 'NCIT:C52095'});   % mk, e, md
 verifyEqual(testCase, double(ch(1).matrix(:))', [1 2 3]);
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
 
+function testAStimulatorRowNamingAnotherSubjectKeepsItsManipulation(testCase)
+% [stimulator manipulation dropped]: "except for a row that carries something
+% the wiring and the element do not, such as the 12 Dab epochs whose bath rows
+% name another subject". The element's subject is spec_m1; the row names
+% spec_m2, which only the manipulation says.
+subjA = subjectBody('spec_m1', 'sess_m', 'L');
+subjB = subjectBody('spec_m2', 'sess_m', 'R');
+stim = elementBody('stim_m', 'sess_m', 'vis', '1', 'stimulator', 1, 'spec_m1');
+daq  = daqsystemBody('acqsys_m', 'sess_m', 'vis');
+ing  = ingestedWithDeviceRows('ing_m', 'sess_m', 't0m', { ...
+    {'vis', '1', 'stimulator', 'vis:mk1', 'R'}});
+[out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subjA, subjB, stim, daq, ing});
+verifyEqual(testCase, rep.rows_stimulator, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_kept_other_subject, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_not_written, 0);
+verifyEqual(testCase, rep.manipulations_emitted, 1);
+m = bodiesNamed(out, 'migrated_probemap_manipulation');
+assertEqual(testCase, numel(m), 1);
+verifyEqual(testCase, depVal(m{1}, 'entity_id'), 'spec_m2');
+verifyEqual(testCase, depVal(m{1}, 'instrument_id'), 'stim_m');
+verifyNotEmpty(testCase, wiringOf(out, m{1}));
+end
+
 function testTheStimulatorRowRebuildsFromTheWiringAndTheElement(testCase)
 % [stimulator manipulation dropped] and [probe map rows compared as a set]
 % (Jess Haley, 2026-11-09, did-schema did_v2_standing_wiring_plan.md): the
-% round trip rebuilds a stimulator row from its wiring relation and its
-% element (name, reference, type, the rig's channels, the subject the element
-% observes), and compares the probe map's rows as an unordered set. The
-% stimulator is the FIRST v1 row; rebuilt from the wiring it comes back last.
+% pass writes no manipulation for a stimulator row its wiring relation and
+% element hold, and the round trip rebuilds the row from them (name,
+% reference, type, the rig's channels, the subject the element observes),
+% comparing the probe map's rows as an unordered set. The stimulator is the
+% FIRST v1 row; rebuilt from the wiring it comes back last.
 subj = subjectBody('spec_w', 'sess_w', 'L');
 stim = elementBody('stim_w', 'sess_w', 'vis', '1', 'stimulator', 1, 'spec_w');
 rec  = elementBody('rec_w', 'sess_w', 'cortex', '1', 'n-trode', 1, 'spec_w');
@@ -1503,24 +1541,35 @@ ing  = ingestedWithDeviceRows('ing_w', 'sess_w', 't0w', { ...
 ing.depends_on = struct('name', 'filenavigator_id', 'value', 'nav_acqsys_w');
 bodies = {sessionBody('sd_w', 'sess_w', 'ref'), subj, stim, rec, daq, ing};
 [out, rep] = decompose(bodies);
-assertEqual(testCase, rep.manipulations_emitted, 1);
+assertEqual(testCase, rep.stimulator_manipulations_not_written, 1);
+assertEqual(testCase, rep.manipulations_emitted, 0);
 assertEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
-% with the manipulation: the manifest round trips
-r = did2.convert.roundtrip.wholeBatch(bodies, out);
-verifyFalse(testCase, failedSource(r, 'ing_w'), failureText(r, 'ing_w'));
-% without it: the stimulator row comes from the wiring and the element
-keep = true(1, numel(out.migrated));
+nManip = 0;
 for k = 1:numel(out.migrated)
     b = out.migrated{k};
     if isa(b, 'did2.document'); b = b.toStruct(); end
-    keep(k) = ~strcmp(char(b.document_class.class_name), 'manipulation');
+    nManip = nManip + strcmp(char(b.document_class.class_name), 'manipulation');
 end
-assertEqual(testCase, sum(~keep), 1, 'one stimulator manipulation removed');
-out2 = out;
-out2.migrated = out.migrated(keep);
-r2 = did2.convert.roundtrip.wholeBatch(bodies, out2);
-verifyFalse(testCase, failedSource(r2, 'ing_w'), failureText(r2, 'ing_w'));
-verifyGreaterThan(testCase, r2.sources_compared, 0);
+assertEqual(testCase, nManip, 0, 'no manipulation is written');
+assertEqual(testCase, numel(wiringsOfChild(out, 'stim_w')), 1, ...
+    'the stimulator''s wiring relation is kept');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyFalse(testCase, failedSource(r, 'ing_w'), failureText(r, 'ing_w'));
+verifyGreaterThan(testCase, r.sources_compared, 0);
+end
+
+function w = wiringsOfChild(result, childId)
+% every `connected to` relation whose child is CHILDID
+w = {};
+for k = 1:numel(result.migrated)
+    d = result.migrated{k}.toStruct();
+    if ~strcmp(char(d.document_class.class_name), 'directed_relation'); continue; end
+    rel = d.directed_relation.relation;
+    if ~isstruct(rel) || ~isfield(rel, 'node') || ~strcmp(char(rel.node), 'RO:0002170'); continue; end
+    if strcmp(depVal(d, 'child_id'), childId)
+        w{end+1} = d; %#ok<AGROW>
+    end
+end
 end
 
 function tf = failedSource(r, id)
