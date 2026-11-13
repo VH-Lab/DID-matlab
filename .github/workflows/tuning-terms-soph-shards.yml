@@ -2,7 +2,7 @@ name: Tuning terms counts, Soph shards (scratch)
 
 # Soph does not migrate inside one 6-hour job (run 42874677863 hit the time
 # limit), so it runs here as 6 shards of whole sessions (tools/shard_corpus.py).
-# Scratch, on branch claude/tuning-axis-terms-soph only; never merged.
+# Scratch, on branch claude/tuning-axis-terms-soph only; never merged. (run 2: PR #464 at ad5553ef)
 # Measures DID-matlab claude/tuning-axis-terms (PR #464): tuning axis terms,
 # response type terms, depends on.name, spike unit terms (Jess Haley,
 # 2026-11-12). Copied from claude/corpus-counts-orphans' scratch workflow.
