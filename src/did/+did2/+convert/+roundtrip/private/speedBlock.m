@@ -45,7 +45,7 @@ if isfield(value, 'response_unit')
     props.response_units = responseUnitsBack(leaf, value);
 end
 if isfield(value, 'response_type')
-    [~, props.response_type] = termParts(value.response_type);
+    props.response_type = responseTypeBack(value.response_type);   % [response type harmonics are integers]
 end
 if ~isempty(fieldnames(props))
     blk.properties = props;

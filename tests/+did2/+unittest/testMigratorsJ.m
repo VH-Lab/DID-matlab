@@ -5297,7 +5297,11 @@ verifyEqual(testCase, iv.(halfMaximumNameJ('interpolated_values')), [0.21 0.31 0
 verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
 verifyEqual(testCase, csv.significance.modulated_response, true);
-verifyEqual(testCase, lower(csv.response_type.name), 'mean');
+% INVERTED 2026-11-13: [response type harmonics are integers] (Decided by Jess
+% Haley, 2026-11-12, did-schema did_v2_go_forward_class_audit.md): v1 `mean`
+% is NCIT:C53319 Arithmetic Mean ('mean', no node, until then)
+verifyEqual(testCase, char(csv.response_type.node), 'NCIT:C53319');
+verifyEqual(testCase, char(csv.response_type.name), 'Arithmetic Mean');
 % contrast_sensitivity_calc carries no response_units, so what the response
 % measured is not stated: INVERTED 2026-10-23 (Jess Haley [unstated response
 % variable]) -- the variable is the general term EMPTY:0000398 "neural

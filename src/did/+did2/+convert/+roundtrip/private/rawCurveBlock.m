@@ -60,6 +60,13 @@ function [blk, bad] = rawCurveBlock(leaf, own, responseId)
 %   '_'), the label is rebuilt from it; otherwise from the term labels, lower
 %   case (Test code run 41339468679: 20211116's 42 Orientation curves lost
 %   only "Orientation" rebuilt "orientation").
+%
+%   THE LABEL IN THE NOTES ([tuning axes named from the varied property],
+%   Decided by Jess Haley, 2026-11-12): the axis is named from the v1
+%   `independent_parameter`, and a label the axis terms do not restate is
+%   kept as the last line of the curve's notes
+%   (did2.convert.tuningLabelNote). When the notes hold it, it is the label,
+%   exactly as v1 wrote it; otherwise the label is rebuilt as above.
 
 if nargin < 2; own = struct(); end
 if nargin < 3; responseId = ''; end
@@ -103,6 +110,10 @@ if isfield(value, 'control') && isstruct(value.control)
 end
 bad = [bad, others(value, {'mean', 'stddev', 'stderr', 'individual', 'control', ...
     'response_unit'}, 'tuning_curve.value')];
+[~, noted, hasLabel] = did2.convert.tuningLabelNote('read', getIn(leaf, 'statement', 'notes'));
+if hasLabel
+    blk.independent_variable_label = noted;
+end
 
 % [tuning stimids rebuild]
 if isfield(blk, 'independent_variable_value')

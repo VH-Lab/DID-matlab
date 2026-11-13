@@ -23,9 +23,9 @@ function [v1, spec] = neuron_extracellular(bodies)
 %     cluster_index                    the AFO:AFR_0003339 "cluster identifier"
 %                                      label, read by its node ([afo prefix
 %                                      registered], Jess Haley, 2026-10-27)
-%     quality_label                    the 'spike sort quality' label
-%     quality_number                   the 'spike sort quality' score
-%     mean_waveform                    the 'mean spike waveform' voltage values,
+%     quality_label                    the 'unit isolation quality' label
+%     quality_number                   the 'unit isolation quality' score
+%     mean_waveform                    the 'spike waveform' voltage values,
 %                                      column-major over (time, channel)
 %     waveform_sample_times            the time covariate: its values, or
 %                                      origin + spacing * (0:n-1), equal to the
@@ -59,6 +59,12 @@ for k = 1:n
     [node, var] = termParts(getIn(b, 'statement', 'variable'));
     if sameCurie(node, 'AFO:AFR_0003339')
         var = 'cluster identifier';   % by node, whatever the registry's label
+    elseif sameCurie(node, 'EMPTY:0000446') || strcmp(var, 'spike sort quality')
+        % [spike unit quality and mean waveform terms] (Jess Haley,
+        % 2026-11-12); 'spike sort quality' in a batch migrated before
+        var = 'unit isolation quality';
+    elseif sameCurie(node, 'EMPTY:0000447') || strcmp(var, 'mean spike waveform')
+        var = 'spike waveform';
     end
     kind = '';
     for kk = {'label', 'score', 'voltage'}
@@ -111,12 +117,13 @@ for c = 1:numel(calcs)
     switch [calcs(c).kind '|' calcs(c).variable]
         case 'label|cluster identifier'
             ne.cluster_index = str2double(char(getIn(b, 'label', 'value', 'name')));
-        case 'label|spike sort quality'
+        case 'label|unit isolation quality'
             ne.quality_label = char(getIn(b, 'label', 'value', 'name'));
-        case 'score|spike sort quality'
+        case 'score|unit isolation quality'
             ne.quality_number = numberOf(getIn(b, 'score', 'value', 'score'));
-        case 'voltage|mean spike waveform'
+        case 'voltage|spike waveform'
             [w, t, bad] = waveform(b);
+            spec.unplaced = [spec.unplaced, meanMethod(b)];
             spec.unplaced = [spec.unplaced, bad];
             ne.number_of_samples_per_channel = size(w, 1);
             ne.number_of_channels = size(w, 2);
@@ -142,6 +149,30 @@ spec.same(end+1) = struct('path', 'neuron_extracellular.waveform_sample_times', 
     'fn', @(a, b) withinOneRoundingStep(a, b), 'why', ['start + step equals ' ...
     'the v1 times within eight rounding steps ([sample times within eight ' ...
     'rounding steps], Jess Haley, 2026-10-27)']);
+end
+
+function bad = meanMethod(b)
+%MEANMETHOD The waveform calculation's method: v1 `mean_waveform` is an
+%   average, written as the method NCIT:C53319 Arithmetic Mean ([spike unit
+%   quality and mean waveform terms], Jess Haley, 2026-11-12). A batch
+%   migrated before wrote no method (the variable said 'mean'); any other
+%   method has no v1 field.
+bad = {};
+[m, has] = getIn(b, 'interaction', 'method');
+if ~has || isempty(m)
+    return;
+end
+[node, name] = termParts(getIn(m, 'term'));
+if isempty(node) && isempty(name)
+    return;
+end
+if ~sameCurie(node, 'NCIT:C53319')
+    bad{end+1} = sprintf('the waveform''s method "%s" (%s) is not Arithmetic Mean', name, node);
+end
+params = getIn(m, 'parameters');
+if ~isempty(params)
+    bad{end+1} = 'the waveform''s method has parameters, which have no v1 field';
+end
 end
 
 function tf = withinOneRoundingStep(a, b)

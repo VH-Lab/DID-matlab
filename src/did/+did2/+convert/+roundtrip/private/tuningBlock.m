@@ -14,7 +14,8 @@ function [blk, bad, absFitless, absFits] = tuningBlock(leaf, family)
 %                                 name for a spelling jTuningCurve recognised
 %                                 (compared through its registry `synonyms`,
 %                                 [spelling is notation]), else the unit's label
-%     properties.response_type    value.response_type (its label)
+%     properties.response_type    value.response_type (its label; `mean` and
+%                                 `peak` by node, responseTypeBack)
 %     properties.coordinates      value.coordinates
 %     tuning_curve.<variable>     the covariate along the one dimension: its
 %                                 term's label, lower case, ' ' as '_'
@@ -69,7 +70,7 @@ if isfield(value, 'response_unit')
     props.response_units = responseUnitsBack(leaf, value);
 end
 if isfield(value, 'response_type')
-    [~, props.response_type] = termParts(value.response_type);
+    props.response_type = responseTypeBack(value.response_type);   % [response type harmonics are integers]
 end
 if isfield(value, 'coordinates')
     props.coordinates = char(value.coordinates);
