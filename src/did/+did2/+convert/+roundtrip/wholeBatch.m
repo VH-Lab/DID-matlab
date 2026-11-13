@@ -51,6 +51,18 @@ function report = wholeBatch(v1Bodies, result)
 %   it: it is in ids_released already. Test code run 43077600408 (DID-matlab
 %   299fa0f2) counted it CHANGED BY A BATCH PASS in B (1,242) and Dab (2,846).
 %
+%   AN ID A BATCH PASS MOVED. A source whose v1 id a batch pass gave to the
+%   document that replaces it is compared on that document like any other,
+%   and its inverse reads the rest from CTX. `element_epoch`: its pass-1
+%   acquisition_epoch is dissolved by did2.convert.resolveEpochProbemap into
+%   an observation that keeps the element_epoch's id, its own time reference
+%   onto the epoch, and the .vhsb as the observation's data body ([epoch
+%   dissolution before merge]); roundtrip.element_epoch rebuilds the v1
+%   document from the four, for a tied and an untied (session-anchored)
+%   epoch alike. Before that inverse, DID-matlab PR #459 (which dissolves
+%   20211116's 252 untied element_epochs) read 252 element_epoch failures
+%   there, each "no acquisition_epoch was emitted".
+%
 %   STORED AS ITS v1 SOURCE. A source pass 1 passed through unchanged is in
 %   RESULT.passthrough with the body pass 1 emitted for it. When the final
 %   document of its id is still IDENTICAL to that body (isequaln of the two

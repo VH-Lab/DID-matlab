@@ -9,7 +9,9 @@ function tests = testRawV1RoundTripElementEpoch
 %   document carry] (the epoch of a carried element is carried, carry-064).
 %   The carrier's dissolution ([device clocks on one epoch], [untied epochs
 %   keep the session anchor]) is the batch passes' (testEpochMint,
-%   testResolveEpochProbemap) and is not this round trip.
+%   testResolveEpochProbemap); the round trip of a DISSOLVED element_epoch,
+%   from the final batch, is testResolveEpochProbemap's
+%   testADissolved*ElementEpoch* tests.
 %
 %   THE v1 DOCUMENTS are built from NDI's element_epoch.json / epochid.json /
 %   base.json templates at the locked NDI-matlab `main` (3cb19a8) as

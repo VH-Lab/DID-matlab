@@ -744,21 +744,157 @@ verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
 verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 0);
 end
 
-function testUntiedExtentsFromTwoSourcesKeepTheirAcquisitionEpochs(testCase)
-% [untied epochs keep the session anchor]: "Extents that come from several
-% sources ... still carry it." Two untied acquisition_epochs of one epoch are
-% both carried and kept whole: no spike train is built from either.
+function testTwoAgreeingUntiedSourcesDissolveAndEmitSpikeTrains(testCase)
+% INVERTS testUntiedExtentsFromTwoSourcesKeepTheirAcquisitionEpochs. [agreeing
+% untied sources count as one] (Jess Haley, 2026-11-12, amending [untied epochs
+% keep the session anchor]): two untied acquisition_epochs of one epoch that
+% state the same clocks in the same order with identical t0/t1 keep the
+% session anchor, so neither is carried: both dissolve and each spike epoch
+% gets its spike train (the spike-train step skips only carried epochs).
+[out, rep] = decompose(twoUntiedSources([0 10]));
+verifyEqual(testCase, out.epoch_mint.epoch_extent_untied_several_sources_anchored, 1);
+verifyEmpty(testCase, out.epoch_mint.epoch_extent_carried_source_ids);
+verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 0);
+verifyEqual(testCase, rep.spike_trains_emitted, 2);
+verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+end
+
+function testUntiedSourcesThatDisagreeKeepTheirAcquisitionEpochs(testCase)
+% [agreeing untied sources count as one]: "any difference still carries all of
+% them." The second source states a different t1: both acquisition_epochs are
+% carried and kept whole; no spike train is built from either.
+[out, rep] = decompose(twoUntiedSources([0 10.5]));
+verifyEqual(testCase, out.epoch_mint.epoch_extent_untied_epochs_carried, 1);
+verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 2);
+verifyEqual(testCase, rep.spike_trains_emitted, 0);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+end
+
+function batch = twoUntiedSources(secondT0T1)
+%TWOUNTIEDSOURCES Two untied spike acquisition_epochs of one epoch; the second
+%   states SECONDT0T1 (the first states [0 10]).
 subj = subjectBody('specimen_su', 'sess_su', 'L');
 elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
 elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u', 'specimen_su');
 elN2 = derivedElementBody('el_neuron_u2', 'sess_su', 'n2', 'spikes', 'el_probe_u', 'specimen_su');
 ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
 ee2  = elementEpochBody('ee_u2', 'sess_su', 'el_neuron_u2', 't00su', true);
-[out, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, elN2, ee, ee2});
-verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
-verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 2);
-verifyEqual(testCase, rep.spike_trains_emitted, 0);
-verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+ee2.element_epoch.t0_t1 = secondT0T1;
+batch = {sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, elN2, ee, ee2};
+end
+
+% ===================== the dissolution round trips ======================
+% [lossless means round trip] and [whole-batch round trip] (Jess Haley,
+% 2026-10-26 and 2026-10-27, did-schema did_v2_go_forward_class_audit.md):
+% lossless is measured on the FINAL batch, so a dissolved element_epoch is
+% rebuilt from what replaced it -- its observation (which keeps its id), its
+% time reference onto the epoch, the epoch entity and its data body
+% (did2.convert.roundtrip.element_epoch, AFTER THE DISSOLUTION).
+
+function testADissolvedTiedElementEpochRoundTrips(testCase)
+% the epoch is tied to its acquisition system (an ingested epoch and its rig)
+[bodies, out, rep] = dissolvedBatch('tied');
+verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+
+function testADissolvedUntiedElementEpochRoundTrips(testCase)
+% the epoch is untied: epochMint anchors it on the session ([untied epochs
+% keep the session anchor])
+[bodies, out, rep] = dissolvedBatch('untied');
+verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+
+function testAChangedValueOfADissolvedElementEpochFails(testCase)
+% every v1 value the dissolution moved is compared: a v1 document that states
+% another value than the batch holds fails on that field, tied and untied
+edits = { ...
+    'element_epoch.t0_t1', @(v) setfield(v, 'element_epoch', ...
+        struct('epoch_clock', 'dev_local_time', 't0_t1', [0 11])); ...
+    'element_epoch.epoch_clock', @(v) setfield(v, 'element_epoch', ...
+        struct('epoch_clock', 'utc', 't0_t1', [0 10])); ...
+    'epochid.epochid', @(v) setfield(v, 'epochid', struct('epochid', 't00other')); ...
+    'depends_on(1).value', @(v) setfield(v, 'depends_on', ...
+        struct('name', 'element_id', 'value', 'el_other')); ...
+    'files.file_info.locations.location', @changedLocation; ...
+    'files.file_list', @(v) setfield(v, 'files', setfield(v.files, 'file_list', ...
+        {'other.vhsb'}))};
+for how = {'tied', 'untied'}
+    [bodies, out] = dissolvedBatch(how{1});
+    k = find(cellfun(@(b) strcmp(b.base.id, 'ee_rt'), bodies));
+    for e = 1:size(edits, 1)
+        [path, edit] = edits{e, :};
+        changed = bodies;
+        changed{k} = edit(bodies{k});
+        r = did2.convert.roundtrip.wholeBatch(changed, out);
+        label = sprintf('%s, %s', how{1}, path);
+        verifyTrue(testCase, isfield(r.failures_by_class, 'element_epoch'), label);
+        f = r.failures(arrayfun(@(x) strcmp(x.source_id, 'ee_rt'), r.failures));
+        if ~isempty(f)
+            verifyTrue(testCase, any(strcmp(f(1).lost, path)), ...
+                sprintf('%s: lost %s', label, strjoin(f(1).lost, ', ')));
+        else
+            verifyFail(testCase, [label ': the element_epoch is not among the failures']);
+        end
+    end
+end
+end
+
+function testADissolvedElementEpochWithoutItsBodyLosesItsFiles(testCase)
+% the batch holds no data body for the observation: its files are not
+% rebuilt, and are named lost (the inverse says why), never matched
+[bodies, out] = dissolvedBatch('untied');
+keep = true(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    b = out.migrated{k};
+    if isa(b, 'did2.document'); b = b.toStruct(); end
+    keep(k) = ~(strcmp(char(b.document_class.class_name), 'opaque_body') ...
+        && any(strcmp(depVals(b, 'owner_id'), 'ee_rt')));
+end
+assertEqual(testCase, sum(~keep), 1, 'one spike-train body removed');
+out.migrated = out.migrated(keep);
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+f = r.failures(arrayfun(@(x) strcmp(x.source_id, 'ee_rt'), r.failures));
+assertNotEmpty(testCase, f, 'the element_epoch did not fail');
+verifyTrue(testCase, any(strcmp(f(1).lost, 'files.file_list')), strjoin(f(1).lost, ', '));
+verifyTrue(testCase, any(contains(f(1).unplaced, 'data bodies')), strjoin(f(1).unplaced, '; '));
+end
+
+function v = changedLocation(v)
+v.files.file_info.locations.location = '/data/elsewhere.vhsb';
+end
+
+function [bodies, out, rep] = dissolvedBatch(how)
+%DISSOLVEDBATCH A spike-sorted neuron's one element_epoch, dissolved: HOW
+%   'tied' (its epoch's ingested manifest and rig are in the batch) or
+%   'untied' (only the element_epoch states the epoch).
+subj = subjectBody('specimen_rt', 'sess_rt', 'L');
+elP  = elementBody('el_probe_rt', 'sess_rt', 'tet', '1', 'n-trode', 1, 'specimen_rt');
+elN  = derivedElementBody('el_neuron', 'sess_rt', 'n1', 'spikes', 'el_probe_rt', 'specimen_rt');
+ee   = elementEpochBody('ee_rt', 'sess_rt', 'el_neuron', 't00rt', true);
+ee.element_epoch.t0_t1 = [2; 579.85];
+ee = jsondecode(jsonencode(ee));   % through JSON, as a corpus holds it
+bodies = {sessionBody('sd_rt', 'sess_rt', 'ref'), subj, elP, elN, ee};
+if strcmp(how, 'tied')
+    bodies = [bodies, {ingestedWithRows('ing_rt', 'sess_rt', 't00rt', {{'tet', '1', 'n-trode', 'L'}}), ...
+        daqsystemBody('daq_rt', 'sess_rt', 'vhspike2')}];
+end
+[out, rep] = decompose(bodies);
+end
+
+function verifyDissolvedRoundTrip(testCase, bodies, out, rep, id)
+assertEqual(testCase, rep.acquisition_epoch_dissolved, 1, 'the element_epoch did not dissolve');
+assertEqual(testCase, rep.spike_trains_emitted, 1);
+assertEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+o = docById(out, id);
+assertNotEmpty(testCase, o, 'the observation keeps the element_epoch id');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyFalse(testCase, failedSource(r, id), failureText(r, id));
+verifyFalse(testCase, isfield(r.failures_by_class, 'element_epoch'), failureText(r, id));
+verifyFalse(testCase, isfield(r.changed_by_class, 'element_epoch'));
+verifyFalse(testCase, isfield(r.no_inverse_by_class, 'element_epoch'));
+verifyFalse(testCase, any(strcmp(r.ids_lost_ids, id)), 'the element_epoch id is lost');
 end
 
 function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)

@@ -480,8 +480,18 @@ POST_PASSES = [
         # epoch whose extents all come from ONE untied source and agree keeps
         # a session-anchored reference; several sources or disagreeing ones
         # are carried (counted in epoch_extent_carried_sources below).
+        # [agreeing untied sources count as one] (Jess Haley, 2026-11-12):
+        # several untied sources stating the same clocks in the same order
+        # with identical t0/t1 are anchored too. untied_epochs is the
+        # denominator: anchored + epochs_carried equals it.
+        ("epoch_extent_untied_epochs",
+         "  epochs holding an untied source (denominator of the two below)"),
         ("epoch_extent_untied_session_anchored",
-         "  of those, epochs kept on the SESSION anchor (one source, agreeing)"),
+         "  of those, epochs kept on the SESSION anchor (sources agreeing)"),
+        ("epoch_extent_untied_several_sources_anchored",
+         "    of those, from SEVERAL agreeing sources"),
+        ("epoch_extent_untied_epochs_carried",
+         "  of those, epochs whose untied sources are CARRIED"),
         ("epoch_extent_carried_sources",
          "  acquisition_epoch sources CARRIED (untied or conflicting)"),
         ("arming_edge_declaration_unchecked",
