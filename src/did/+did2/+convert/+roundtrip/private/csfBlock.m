@@ -4,7 +4,8 @@ function [blk, bad] = csfBlock(leaf)
 %   writer's spelling (ndi.calc.vis.contrast_sensitivity, NDIcalc-vis-matlab):
 %
 %     spatial_frequencies            the covariate along the one dimension
-%     response_type                  value.response_type's label
+%     response_type                  value.response_type's label (`mean` and
+%                                    `peak` by node, responseTypeBack)
 %     fitless_interpolated_c50       value.interpolated_values.half_maximum_below
 %                                    or .c50 (the
 %                                    structure, or in a list the entry with
@@ -54,7 +55,7 @@ elseif numel(covs) > 1
     bad{end+1} = sprintf('%d covariates: one spatial frequency axis is rebuilt', numel(covs));
 end
 if isfield(value, 'response_type')
-    [~, blk.response_type] = termParts(value.response_type);
+    blk.response_type = responseTypeBack(value.response_type);   % [response type harmonics are integers]
 end
 if isfield(value, 'interpolated_values') && ~isempty(value.interpolated_values)
     [iv, b] = interpolatedEntry(value.interpolated_values, '', 'value.interpolated_values');

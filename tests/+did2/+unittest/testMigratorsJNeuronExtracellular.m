@@ -338,7 +338,35 @@ w = pick(out, 'calculation+voltage');
 verifyFalse(testCase, isfield(w.value, 'data_body') && logical(w.value.data_body));
 verifyEqual(testCase, w.value.data_type, 'float64');
 verifyEqual(testCase, w.value.source_data_type, 'double');
-verifyEqual(testCase, w.statement.variable.name, 'mean spike waveform');
+% INVERTED 2026-11-13: [spike unit quality and mean waveform terms] (Decided
+% by Jess Haley, 2026-11-12, did-schema did_v2_go_forward_class_audit.md):
+% the variable is EMPTY:0000447 "spike waveform" ('mean spike waveform', no
+% node, until then)
+verifyEqual(testCase, char(w.statement.variable.node), 'EMPTY:0000447');
+verifyEqual(testCase, char(w.statement.variable.name), 'spike waveform');
+end
+
+
+function testTheSpikeUnitTermsAndTheMeanAsMethod(testCase)
+% [spike unit quality and mean waveform terms] (Decided by Jess Haley,
+% 2026-11-12, did-schema did_v2_go_forward_class_audit.md): the sort quality
+% (label and number) is EMPTY:0000446 "unit isolation quality"; the mean
+% waveform is EMPTY:0000447 "spike waveform" with the method NCIT:C53319
+% Arithmetic Mean, and no other calculation gets that method.
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+w = pick(out, 'calculation+voltage');
+verifyEqual(testCase, char(w.interaction.method.term.node), 'NCIT:C53319');
+verifyFalse(testCase, isfield(w.interaction.method, 'parameters') ...
+    && ~isempty(w.interaction.method.parameters), 'the mean has no settings');
+q = labelCalc(out, 'unit isolation quality');
+verifyEqual(testCase, char(q.statement.variable.node), 'EMPTY:0000446');
+s = pick(out, 'calculation+score');
+verifyEqual(testCase, char(s.statement.variable.node), 'EMPTY:0000446');
+verifyEqual(testCase, char(s.statement.variable.name), 'unit isolation quality');
+verifyFalse(testCase, isfield(s, 'interaction') && isfield(s.interaction, 'method') ...
+    && isfield(s.interaction.method, 'term') ...
+    && strcmp(char(s.interaction.method.term.node), 'NCIT:C53319'), ...
+    'the quality is not an average');
 end
 
 
@@ -468,7 +496,7 @@ function testTheQualityLabelIsALabelCalculationNotDropped(testCase)
 % `quality_label` ('multi' / 'single' in the corpus) was dropped before item
 % 48; it is now a label calculation about the unit.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-q = labelCalc(out, 'spike sort quality');
+q = labelCalc(out, 'unit isolation quality');   % 'spike sort quality' until 2026-11-12
 verifyEqual(testCase, q.label.value.name, 'multi');
 verifyEqual(testCase, depValueOf(q, 'entity_id'), 'rec_sub_1');
 end

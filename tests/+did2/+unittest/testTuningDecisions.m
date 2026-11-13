@@ -973,6 +973,171 @@ did2.unittest.helpers.verifyRoundTrip(testCase, r, 'a label migrated before', {}
 verifyTrue(testCase, any(strcmp(r.matched, 'tuningcurve_calc.input_parameters.independent_label')));
 end
 
+% ===================== [tuning axes named from the varied property] =====
+
+function testTuningAxesAreNamedFromTheVariedProperty(testCase)
+% Decided by Jess Haley, 2026-11-12 [tuning axes named from the varied
+% property] (did-schema did_v2_go_forward_class_audit.md): the axis
+% (dimension term and covariate variable) is named from v1
+% `independent_parameter` through the registered terms, not from
+% `independent_variable_label`; an `angle` whose values span less than 180
+% degrees is an orientation (NCIT:C165680). The label text is kept in notes
+% (the last line, did2.convert.tuningLabelNote) when the axis terms do not
+% restate it, and the round trip gives it back exactly.
+cases = { ...
+    % parameter, values, v1 label, axis node, axis name, label in notes
+    'angle', [0 60 120 180 240 300], 'Directio (4 Hz)', 'NCIT:C42677', 'Direction', true; ...
+    'angle', [0 30 60 90 120 150], 'Orientation', 'NCIT:C165680', 'Orientation', false; ...
+    'angle', [0 30 60 90 120 150], 'Direction', 'NCIT:C165680', 'Orientation', true; ...
+    'sFrequency', [0.05 0.1 0.2 0.4 0.8 1.6], 'Spatial Frequency (loops)', 'NCIT:C75389', 'Spatial Frequency', true; ...
+    'tFrequency', [0.5 1 2 4 8 16], 'Temporal Frequency (loops)', 'NCIT:C25515', 'Temporal Frequency', true; ...
+    'sFrequency', [0.05 0.1 0.2 0.4 0.8 1.6], 'spatial_frequency', 'NCIT:C75389', 'Spatial Frequency', false};
+for k = 1:size(cases, 1)
+    [param, vals, label, node, name, noted] = cases{k, :};
+    for withLog = [false true]
+        v1 = convertedTuningCurve();
+        v1.tuningcurve_calc.input_parameters.independent_parameter = param;
+        v1.tuningcurve_calc.input_parameters.independent_label = label;
+        v1.tuningcurve_calc.input_parameters.selection.property = param;
+        v1.stimulus_tuningcurve.independent_variable_label = {label};
+        v1.stimulus_tuningcurve.independent_variable_value = vals(:);
+        if withLog
+            v1.tuningcurve_calc.log = 'a line of the log';
+        end
+        v1 = jsondecode(jsonencode(v1));
+        what = sprintf('%s over %g..%g labelled "%s" (log %d)', param, min(vals), ...
+            max(vals), label, withLog);
+        out = runRaw({v1});
+        leaf = firstOfClass(out, 'tuning_curve_calculation');
+        assertNotEmpty(testCase, leaf, [what ': converted']);
+        ax = did2.unittest.helpers.axesOf(leaf);
+        assertEqual(testCase, numel(ax), 1, what);
+        verifyEqual(testCase, upper(char(ax(1).term.node)), node, [what ': dimension term']);
+        verifyEqual(testCase, char(ax(1).term.name), name, [what ': dimension term']);
+        verifyEqual(testCase, upper(char(ax(1).cov.variable.node)), node, [what ': covariate']);
+        notes = '';
+        if isfield(leaf.statement, 'notes'); notes = char(leaf.statement.notes); end
+        [logBack, labelBack, has] = did2.convert.tuningLabelNote('read', notes);
+        verifyEqual(testCase, has, noted, [what ': the label is in the notes when not restated']);
+        if noted
+            verifyEqual(testCase, labelBack, {label}, what);
+        end
+        if withLog
+            verifyEqual(testCase, logBack, 'a line of the log', [what ': the log stays first']);
+        end
+        r = did2.convert.roundtrip.check(v1, out.migrated);
+        did2.unittest.helpers.verifyRoundTrip(testCase, r, what, {});
+        for f = {'stimulus_tuningcurve.independent_variable_label', ...
+                'tuningcurve_calc.input_parameters.independent_label'}
+            verifyTrue(testCase, any(strcmp(f{1}, [r.matched, r.equivalent])), [what ': ' f{1}]);
+        end
+    end
+end
+end
+
+function testATuningCurveWithNoVariedParameterIsNamedFromItsLabel(testCase)
+% a parameter the name table does not hold (or none, the bare curve): the
+% axis is named from the label, as before, and nothing is noted
+v1 = convertedTuningCurve();
+v1.tuningcurve_calc.input_parameters.independent_parameter = 'notAStimulusParameter';
+v1.tuningcurve_calc.input_parameters.selection.property = 'notAStimulusParameter';
+v1 = jsondecode(jsonencode(v1));
+out = runRaw({v1});
+leaf = firstOfClass(out, 'tuning_curve_calculation');
+assertNotEmpty(testCase, leaf);
+ax = did2.unittest.helpers.axesOf(leaf);
+verifyEqual(testCase, lower(char(ax(1).term.name)), 'contrast');
+notes = '';
+if isfield(leaf.statement, 'notes'); notes = char(leaf.statement.notes); end
+[~, ~, has] = did2.convert.tuningLabelNote('read', notes);
+verifyFalse(testCase, has);
+end
+
+function testTuningLabelNoteFunction(testCase)
+verifyEqual(testCase, did2.convert.tuningLabelNote('write', 'log', []), 'log');
+n = did2.convert.tuningLabelNote('write', 'line 1', {'Directio (4 Hz)'});
+[lg, lbl, has] = did2.convert.tuningLabelNote('read', n);
+verifyEqual(testCase, lg, 'line 1');
+verifyEqual(testCase, lbl, {'Directio (4 Hz)'});
+verifyTrue(testCase, has);
+n = did2.convert.tuningLabelNote('write', '', 'say "x", y');
+[lg, lbl, has] = did2.convert.tuningLabelNote('read', n);
+verifyEqual(testCase, lg, '');
+verifyEqual(testCase, lbl, 'say "x", y');
+verifyTrue(testCase, has);
+[lg, lbl, has] = did2.convert.tuningLabelNote('read', sprintf('a log\nof two lines'));
+verifyEqual(testCase, lg, sprintf('a log\nof two lines'));
+verifyEmpty(testCase, lbl);
+verifyFalse(testCase, has);
+end
+
+% ===================== [depends on name not written when it equals the edge]
+
+function testDependsOnNameIsNotWrittenWhenItEqualsTheEdge(testCase)
+% Decided by Jess Haley, 2026-11-12 [depends on name not written when it
+% equals the edge] (did-schema did_v2_go_forward_class_audit.md): a tuning
+% curve's `depends on.name` method parameter is not written when it names the
+% curve's own stimulus_response_scalar_id edge; the round trip rebuilds it
+% from the edge; a curve whose value names anything else is carried as v1.
+v1 = convertedTuningCurve();
+edge = v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_response_scalar_id')).value;
+v1.tuningcurve_calc.input_parameters.depends_on = struct( ...
+    'name', 'stimulus_response_scalar_id', 'value', edge);
+v1 = jsondecode(jsonencode(v1));
+out = runRaw({v1});
+leaf = firstOfClass(out, 'tuning_curve_calculation');
+assertNotEmpty(testCase, leaf, 'converted');
+names = parameterNames(leaf);
+verifyFalse(testCase, any(strcmp(names, 'depends on.name')), 'the name is not written');
+verifyTrue(testCase, any(strcmp(names, 'depends on.value')), 'the value still is');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'depends_on named by the edge', {});
+verifyTrue(testCase, any(strcmp(r.matched, 'tuningcurve_calc.input_parameters.depends_on.name')));
+% a name other than the curve's edge: carried
+for other = {'element_id', 'stimulus_tuningcurve_id'}
+    v1 = convertedTuningCurve();
+    v1.tuningcurve_calc.input_parameters.depends_on = struct('name', other{1}, 'value', edge);
+    v1 = jsondecode(jsonencode(v1));
+    [carried, notes] = did2.unittest.helpers.carryNote({v1});
+    verifyTrue(testCase, carried, other{1});
+    verifyTrue(testCase, contains(notes, ...
+        '[carry-016] tuningcurve_calc.input_parameters.depends_on.name'), notes);
+end
+end
+
+% ===================== [response type harmonics are integers] =============
+
+function testResponseTypeMeanAndPeakAreTerms(testCase)
+% Decided by Jess Haley, 2026-11-12 [response type harmonics are integers]
+% (did-schema did_v2_go_forward_class_audit.md): a tuning or
+% contrast-sensitivity `response_type` of `mean` is NCIT:C53319 Arithmetic
+% Mean and `peak` STATO:0000151 maximum observed value; the round trip gives
+% the v1 text back. F1 / F2 are not built here (where the integer harmonic
+% is written on these values is not decided): they stay labels.
+want = {'mean', 'NCIT:C53319'; 'peak', 'STATO:0000151'; 'F1', ''};
+for k = 1:size(want, 1)
+    v1 = convertedContrast();
+    v1.contrast_tuning.properties.response_type = want{k, 1};
+    out = runRaw({v1});
+    leaf = firstOfClass(out, 'contrast_tuning_calculation');
+    assertNotEmpty(testCase, leaf, want{k, 1});
+    verifyEqual(testCase, upper(char(leaf.tuning_curve.value.response_type.node)), ...
+        want{k, 2}, ['contrast tuning ' want{k, 1}]);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, ['contrast tuning ' want{k, 1}], {});
+
+    v1 = writerOutput('contrastsensitivity_calc');
+    v1.contrastsensitivity_calc.response_type = want{k, 1};
+    out = runRaw({v1});
+    leaf = firstOfClass(out, 'contrast_sensitivity_calculation');
+    assertNotEmpty(testCase, leaf, want{k, 1});
+    verifyEqual(testCase, upper(char(leaf.contrast_sensitivity.value.response_type.node)), ...
+        want{k, 2}, ['contrast sensitivity ' want{k, 1}]);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, ['contrast sensitivity ' want{k, 1}], {});
+end
+end
+
 function testParameterNamesMapByTable(testCase)
 for name = {'independent_label', 'min_xi', 'prestimulus_time', 'selection.property', ...
         'depends_on.name'}   % (every corpus tuningcurve_calc states input_parameters.depends_on)
