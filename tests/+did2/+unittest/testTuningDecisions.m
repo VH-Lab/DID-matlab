@@ -1079,22 +1079,31 @@ function testDependsOnNameIsNotWrittenWhenItEqualsTheEdge(testCase)
 % curve's `depends on.name` method parameter is not written when it names the
 % curve's own stimulus_response_scalar_id edge; the round trip rebuilds it
 % from the edge; a curve whose value names anything else is carried as v1.
+% The corpora's copies state the name and an empty value (Soph shard run
+% 43465005782: 5,976 of 5,976 curves wrote 'depends on.name', none 'depends
+% on.value'); both shapes are checked.
 v1 = convertedTuningCurve();
 edge = v1.depends_on(strcmp({v1.depends_on.name}, 'stimulus_response_scalar_id')).value;
-v1.tuningcurve_calc.input_parameters.depends_on = struct( ...
-    'name', 'stimulus_response_scalar_id', 'value', edge);
-v1 = jsondecode(jsonencode(v1));
-out = runRaw({v1});
-leaf = firstOfClass(out, 'tuning_curve_calculation');
-assertNotEmpty(testCase, leaf, 'converted');
-names = parameterNames(leaf);
-verifyFalse(testCase, any(strcmp(names, 'depends on.name')), 'the name is not written');
-verifyTrue(testCase, any(strcmp(names, 'depends on.value')), 'the value still is');
-r = did2.convert.roundtrip.check(v1, out.migrated);
-did2.unittest.helpers.verifyRoundTrip(testCase, r, 'depends_on named by the edge', {});
-verifyTrue(testCase, any(~cellfun(@isempty, regexp(r.matched, ...
-    '^tuningcurve_calc\.input_parameters\.depends_on(\(1\))?\.name$', 'once'))), ...
-    strjoin(r.matched(contains(r.matched, 'depends_on')), ', '));
+for value = {edge, ''}
+    v1 = convertedTuningCurve();
+    v1.tuningcurve_calc.input_parameters.depends_on = struct( ...
+        'name', 'stimulus_response_scalar_id', 'value', value{1});
+    v1 = jsondecode(jsonencode(v1));
+    what = sprintf('depends_on value "%s"', value{1});
+    out = runRaw({v1});
+    leaf = firstOfClass(out, 'tuning_curve_calculation');
+    assertNotEmpty(testCase, leaf, [what ': converted']);
+    names = parameterNames(leaf);
+    verifyFalse(testCase, any(strcmp(names, 'depends on.name')), [what ': the name is not written']);
+    verifyEqual(testCase, any(strcmp(names, 'depends on.value')), ~isempty(value{1}), ...
+        [what ': the value is written when stated']);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, what, {});
+    hit = [r.matched, r.equivalent, r.restated];   % restated by the edge
+    verifyTrue(testCase, any(~cellfun(@isempty, regexp(hit, ...
+        '^tuningcurve_calc\.input_parameters\.depends_on(\(1\))?\.name$', 'once'))), ...
+        [what ': ' strjoin(hit(contains(hit, 'depends_on')), ', ')]);
+end
 % a name other than the curve's edge: carried
 for other = {'element_id', 'stimulus_tuningcurve_id'}
     v1 = convertedTuningCurve();

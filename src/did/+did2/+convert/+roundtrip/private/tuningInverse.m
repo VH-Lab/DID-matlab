@@ -81,10 +81,20 @@ switch family
         if ~isempty(ins); responseId = ins{1}; end
         [blk, bad] = rawCurveBlock(leaf, own, responseId);
         % [depends on name not written when it equals the edge] (Decided by
-        % Jess Haley, 2026-11-12): input_parameters.depends_on stated with
-        % its value alone had the name of the curve's own response edge
-        [v1, why] = dependsOnName(v1, v1Class, inputs);
-        bad = [bad, why];
+        % Jess Haley, 2026-11-12): input_parameters.depends_on.name is left
+        % out when it names the curve's own response edge, so it is the
+        % same as that edge's name ([restated values checked], as the
+        % calculator block's inner depends_on copy below)
+        if ~strcmp(v1Class, resultBlock) && ischar(inputs) ...
+                && strcmp(inputs, 'stimulus_response_scalar_id') && ~isempty(ins)
+            whyName = ['input_parameters.depends_on.name restates the curve''s ' ...
+                'stimulus_response_scalar_id edge ([depends on name not written when ' ...
+                'it equals the edge], Jess Haley, 2026-11-12)'];
+            for pth = {'.input_parameters.depends_on.name', '.input_parameters.depends_on(1).name'}
+                spec.equivalents(end+1) = struct('path', [v1Class pth{1}], ...
+                    'values', {{'stimulus_response_scalar_id'}}, 'why', whyName);
+            end
+        end
         % [display label compared loosely] (Decided by Jess Haley,
         % 2026-11-10, did-schema did_v2_go_forward_class_audit.md): the
         % migration does not write v1 input_parameters.independent_label; it
@@ -398,31 +408,6 @@ for k = 1:numel(entries)
         best{end+1} = t{1}; %#ok<AGROW>
     end
 end
-end
-
-function [v1, bad] = dependsOnName(v1, v1Class, inputs)
-%DEPENDSONNAME The name of tuningcurve_calc's input_parameters.depends_on,
-%   rebuilt from the curve's edge ([depends on name not written when it
-%   equals the edge], Decided by Jess Haley, 2026-11-12): the migration
-%   leaves it out only when it is 'stimulus_response_scalar_id', the edge the
-%   curve's response input has (INPUTS), and the setting's value is stated.
-%   So a depends_on setting with a value and no name gets that name back, in
-%   the writer's order {name, value}; any other shape is left as it is.
-bad = {};
-d = getIn(v1, v1Class, 'input_parameters', 'depends_on');
-if ~isstruct(d) || ~isscalar(d) || isfield(d, 'name') || ~isfield(d, 'value')
-    return;
-end
-if ~(ischar(inputs) && strcmp(inputs, 'stimulus_response_scalar_id'))
-    bad{end+1} = sprintf(['%s.input_parameters.depends_on has no name, and the ' ...
-        'curve''s input is not a stimulus_response_scalar_id edge'], v1Class);
-    return;
-end
-rebuilt = struct('name', 'stimulus_response_scalar_id');
-for f = reshape(fieldnames(d), 1, [])
-    rebuilt.(f{1}) = d.(f{1});
-end
-v1.(v1Class).input_parameters.depends_on = rebuilt;
 end
 
 function tf = sameDisplayLabel(a, b)

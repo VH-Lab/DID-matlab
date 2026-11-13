@@ -167,10 +167,9 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %     [depends on name not written when it equals the edge] (Jess Haley,
 %         2026-11-12)  tuningcurve_calc's input_parameters.depends_on.name
 %         is not written when it is 'stimulus_response_scalar_id' and the
-%         curve has that edge (and the setting's `value` is stated, so the
-%         round trip knows the setting was there and rebuilds the name);
-%         a depends_on setting whose name is anything else is carried
-%         (carry-016).
+%         curve has that edge (the round trip reads it as restated by the
+%         edge); a depends_on setting whose name is anything else is
+%         carried (carry-016).
 %     [tuning best value is a condition] (2026-10-28)  each `best` selection
 %         of tuningcurve_calc's input_parameters.selection: the value it chose,
 %         read once from the log (did2.convert.tuningBestValues), is a
@@ -1027,29 +1026,21 @@ function [ip, why] = dependsOnNameRestated(ip, preBody)
 %   `depends on.name` method parameter is not written when it names the
 %   curve's own `stimulus_response_scalar_id` edge; the round-trip inverse
 %   rebuilds it from the edge; a curve whose value names anything else is
-%   carried as v1." The name is left out only when the setting's `value` is
-%   stated too: the round trip rebuilds the name where it finds the value
-%   alone (+roundtrip/private/tuningInverse.m), so a setting with no value
-%   keeps its name, as before. WHY is a carry reason (carry-016, the
-%   register row of a depends_on copy that differs from the top-level edge)
-%   when the name is anything but 'stimulus_response_scalar_id', or the curve
-%   has no such edge; '' otherwise. A depends_on that is not one structure
-%   (written as one text entry by jParameterList) is not read here.
+%   carried as v1." The round trip reads the left-out name as restated by
+%   the edge, as it reads the calculator block's inner depends_on copy
+%   ([restated values checked]; +roundtrip/private/tuningInverse.m). WHY is a
+%   carry reason (carry-016, the register row of a depends_on copy that
+%   differs from the top-level edge) when the name is stated and is anything
+%   but 'stimulus_response_scalar_id', or the curve has no such edge; ''
+%   otherwise. A depends_on that is not one structure (written as one text
+%   entry by jParameterList), or that states no name, is left as it was.
 why = '';
 if ~isstruct(ip) || ~isscalar(ip) || ~isfield(ip, 'depends_on') ...
-        || ~isstruct(ip.depends_on) || ~isscalar(ip.depends_on)
+        || ~isstruct(ip.depends_on) || ~isscalar(ip.depends_on) ...
+        || ~isfield(ip.depends_on, 'name') || isEmptyValue(ip.depends_on.name)
     return;
 end
-d = ip.depends_on;
-if ~isfield(d, 'name') || isEmptyValue(d.name)
-    if isfield(d, 'value') && ~isEmptyValue(d.value)
-        why = sprintf(['[carry-016] %s.input_parameters.depends_on (a value with ' ...
-            'no name: [depends on name not written when it equals the edge])'], ...
-            classNameOf(preBody));
-    end
-    return;
-end
-nm = d.name;
+nm = ip.depends_on.name;
 if isstring(nm) && isscalar(nm); nm = char(nm); end
 edge = jDependency(preBody, 'stimulus_response_scalar_id');
 if ~(ischar(nm) && strcmp(nm, 'stimulus_response_scalar_id') && ~isempty(edge))
@@ -1058,9 +1049,7 @@ if ~(ischar(nm) && strcmp(nm, 'stimulus_response_scalar_id') && ~isempty(edge))
         '[depends on name not written when it equals the edge])'], classNameOf(preBody));
     return;
 end
-if isfield(d, 'value') && ~isEmptyValue(d.value)
-    ip.depends_on = rmfield(d, 'name');
-end
+ip.depends_on = rmfield(ip.depends_on, 'name');
 end
 
 function p = independentParameters(own, srcBlk)
