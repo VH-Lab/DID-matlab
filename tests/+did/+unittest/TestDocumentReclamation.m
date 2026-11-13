@@ -316,5 +316,33 @@ classdef TestDocumentReclamation < matlab.unittest.TestCase
             testCase.verifyNumElements(ids, 1, ...
                 'branch a_a should hold the document again after re-adding it');
         end
+
+        function testRemovedDocumentCanBeRestoredOnRequest(testCase)
+            % NDI-matlab issue #1238: a document deleted locally and fetched
+            % back from a remote copy is the same document, and
+            % OnDeletedId='restore' must let it in -- with its own field
+            % values and nothing left over from before.
+            doc = did.document('demoA','demoA.value',1);
+            testCase.db.add_docs(doc);
+            testCase.db.remove_docs(doc.id());
+
+            testCase.verifyWarningFree(@() ...
+                testCase.db.add_docs(doc,'a','OnDeletedId','restore'));
+            ids = testCase.db.search(did.query('base.id','exact_string',doc.id()),'a');
+            testCase.verifyNumElements(ids, 1, ...
+                'the restored document should be in branch a again');
+            testCase.verifyEmpty(testCase.queryRows(['SELECT doc_id FROM deleted_docs ' ...
+                'WHERE doc_id="' doc.id() '"']), ...
+                'restoring the document must un-retire its id');
+            ids = testCase.db.search(did.query('demoA.value','exact_number',1),'a');
+            testCase.verifyNumElements(ids, 1, ...
+                'the restored document must be searchable on its own fields');
+
+            % Removing it again retires it again, and the default still refuses
+            testCase.db.remove_docs(doc.id());
+            testCase.verifyError(@() testCase.db.add_docs(doc), ...
+                'DID:SQLITEDB:DELETED_DOC', ...
+                'without OnDeletedId=''restore'' a retired id must still be refused');
+        end
     end
 end

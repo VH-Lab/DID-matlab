@@ -443,6 +443,14 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
             %   - 'Validate' - followed by false or true (default)
+            %   - 'OnDeletedId' - followed by 'error' (default) or 'restore'.
+            %       What to do with a document whose id was previously
+            %       removed from every branch and so was retired (issue #55).
+            %       'error' refuses it, as always. 'restore' un-retires the
+            %       id and adds the document; use it only when the document
+            %       is the SAME document coming back -- re-fetched from a
+            %       remote copy, say (NDI-matlab issue #1238) -- never to
+            %       give an old id to a new document.
             %   - 'customFileHandler' - a function handle used to retrieve a
             %       file whose location is not a local path (e.g. 'ndicloud').
             %       It is called as HANDLER(DESTPATH, SOURCEPATH) and must
@@ -466,6 +474,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 branch_id = ''
                 options.OnDuplicate {mustBeMember(options.OnDuplicate,{'ignore','warn','error'})} = 'error'
                 options.Validate {mustBeNumericOrLogical} = true
+                options.OnDeletedId {mustBeMember(options.OnDeletedId,{'error','restore'})} = 'error'
                 options.customFileHandler = []
             end
 
@@ -522,6 +531,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
             downstream_options.OnDuplicate = options.OnDuplicate;
             downstream_options.customFileHandler = options.customFileHandler;
+            % Passed on only when it asks for something other than the
+            % default, so a do_add_doc written before the option existed
+            % (any did.database subclass outside this package) keeps
+            % working for every caller that does not use it.
+            if ~strcmpi(options.OnDeletedId,'error')
+                downstream_options.OnDeletedId = options.OnDeletedId;
+            end
             varargin_to_pass = namedargs2cell(downstream_options);
 
             % Call the database's addition method separately for each doc
