@@ -625,6 +625,16 @@ a(end+1) = struct('name', 'jrclust settings file name', ...
     'decision', '[jrclust settings-file name dropped] (Jess Haley, 2026-11-11)', ...
     'classes', {{'jrclust_clusters'}}, 'paths', {{'base.name'}}, ...
     'id', false, 'when', []);
+% [copyright round-trip losses] (Decided by Jess Haley, 2026-11-17) (1): a
+% migrated v1 openMINDS `Copyright` ([copyright from another tool is
+% emitted]) does not keep its openMINDS instance id; "its openMINDS instance
+% id is an accepted loss". Accepted only for a Copyright that was emitted
+% (its documents are the one schema:copyrightYear assertion that keeps its id,
+% copyrightEmitted); any other openminds document's instance id is lost
+a(end+1) = struct('name', 'openMINDS Copyright instance id', ...
+    'decision', '[copyright round-trip losses] (Jess Haley, 2026-11-17)', ...
+    'classes', {{'openminds'}}, 'paths', {{'openminds.openminds_id'}}, ...
+    'id', false, 'when', @copyrightEmitted);
 [a.listed] = deal(false);
 % [orphaned response settings are an accepted loss] (Decided by Jess Haley,
 % 2026-11-12): an orphaned stimulus_response_scalar_parameters_basic (referred
@@ -636,6 +646,17 @@ a(end+1) = struct('name', 'orphaned response settings', ...
     'decision', '[orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12)', ...
     'classes', {{'stimulus_response_scalar_parameters_basic'}}, 'paths', {{'base.id'}}, ...
     'id', true, 'when', [], 'listed', true);
+end
+
+function tf = copyrightEmitted(~, docs, ~)
+% DOCS is the one schema:copyrightYear assertion
+% did2.convert.resolveOpenmindsCitations writes for a Copyright
+tf = false;
+if ~isscalar(docs) || ~strcmp(classNameOf(docs{1}), 'assertion')
+    return;
+end
+[node, ~] = termParts(getIn(docs{1}, 'statement', 'variable'));
+tf = sameCurie(node, 'schema:copyrightYear');
 end
 
 function m = notMigratedIds(result)
