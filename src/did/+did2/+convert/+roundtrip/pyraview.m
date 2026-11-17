@@ -325,13 +325,25 @@ for k = 1:numel(covs)
         bad{end+1} = 'a level body has a covariate along a dimension other than time'; %#ok<AGROW>
         continue;
     end
-    o = num(getIn(c, 'origin'));
-    s = num(getIn(c, 'spacing'));
+    o = regularNumber(c, 'origin');
+    s = regularNumber(c, 'spacing');
     if ~isempty(o); start = o; end
     if ~isempty(s) && s > 0; rate = 1 / s; end
 end
 if isnan(rate) || isnan(start)
     bad{end+1} = 'a level body has no time origin and spacing';
+end
+end
+
+function v = regularNumber(c, which)
+% a covariate's origin or spacing (else what the source wrote) as a number:
+% the old {value, source_value} block or the new flat origin / spacing and
+% source_origin / source_spacing (itemRegular; [one shape for measured
+% numbers], Jess Haley, 2026-11-17)
+[x, src] = itemRegular(c, which);
+v = numberOf(x);
+if isempty(v)
+    v = num(struct('source_value', {src}));
 end
 end
 
@@ -395,9 +407,9 @@ for k = 1:numel(entries)
                 bad{end+1} = sprintf('the filter band "%s" has no v1 type', bnode); %#ok<AGROW>
             end
         case 'passband low edge'
-            edges.low = numberOf(getIn(e, 'quantity', 'value'));
+            edges.low = numberOf(itemNumbers(e));
         case 'passband high edge'
-            edges.high = numberOf(getIn(e, 'quantity', 'value'));
+            edges.high = numberOf(itemNumbers(e));
         case 'filter order'
             params.order = numberOf(getIn(e, 'count'));
         case 'passband ripple'
@@ -405,7 +417,7 @@ for k = 1:numel(entries)
         case 'stopband attenuation'
             params.stopbandAttentuation = quantityOf(e);
         case 'sample frequency'
-            sampleFrequency = numberOf(getIn(e, 'quantity', 'value'));
+            sampleFrequency = numberOf(itemNumbers(e));
             params.sampleFrequency = sampleFrequency;
         otherwise
             bad{end+1} = sprintf('the method parameter "%s" has no v1 place', vname); %#ok<AGROW>
@@ -439,7 +451,7 @@ end
 
 function v = quantityOf(e)
 % a parameter's quantity value; a NaN the source stated stays NaN
-v = getIn(e, 'quantity', 'value');
+v = itemNumbers(e);
 if iscell(v); v = v{1}; end
 if ~(isnumeric(v) && isscalar(v))
     v = NaN;

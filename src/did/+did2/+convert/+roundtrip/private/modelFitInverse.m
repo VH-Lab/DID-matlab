@@ -87,7 +87,7 @@ coef = asCell(getIn(value, 'coefficients'));
 vals = zeros(numel(coef), 1);
 names = cell(1, numel(coef));
 for k = 1:numel(coef)
-    x = numberOf(getIn(coef{k}, 'value'));
+    x = numberOf(coefValue(coef{k}));
     if isempty(x)
         spec.unplaced{end+1} = sprintf('coefficient %d has no number', k); %#ok<AGROW>
         x = NaN;
@@ -130,7 +130,7 @@ if any(strcmp(fitFields, 'fit_constraints'))
     for k = 1:numel(cons)
         [~, cn] = termParts(getIn(cons{k}, 'variable'));
         c(end+1) = struct('fit_constraint_name', cn, ...
-            'fit_constraint_value', numberOf(getIn(cons{k}, 'value'))); %#ok<AGROW>
+            'fit_constraint_value', numberOf(coefValue(cons{k}))); %#ok<AGROW>
     end
     blk.fit_constraints = c;
 end

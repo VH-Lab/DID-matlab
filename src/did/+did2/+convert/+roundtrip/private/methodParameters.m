@@ -46,8 +46,9 @@ for k = 1:numel(params)
         bad{end+1} = sprintf('method parameter %d has no name', k); %#ok<AGROW>
         continue;
     end
-    if isfield(e, 'quantity') && isstruct(e.quantity) && isfield(e.quantity, 'value')
-        v = e.quantity.value;
+    [q, hasQ] = itemNumbers(e);   % quantity.value, or the new shape's numeric
+    if hasQ
+        v = q;
     elseif isfield(e, 'text')
         v = char(e.text);
         if ~isempty(v) && any(v(1) == '[{')

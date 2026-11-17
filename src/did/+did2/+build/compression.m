@@ -225,7 +225,13 @@ for k = 1:numel(names)
     elseif isnumeric(v) && isscalar(v) && isreal(v) && isfinite(v) && v == round(v)
         e.count = double(v);
     elseif isnumeric(v) && isscalar(v) && isreal(v)
-        e.quantity = struct('value', double(v));
+        if strcmp(did2.build.numericShape(), 'new')
+            % [one shape for measured numbers] (did-schema
+            % did_v2_numeric_shape_plan.md): the flat number
+            e.numeric = double(v);
+        else
+            e.quantity = struct('value', double(v));
+        end
     else
         error('did2:build:typeMismatch', ...
             'Codec setting "%s" is a %s; a setting is one text, logical or number.', ...

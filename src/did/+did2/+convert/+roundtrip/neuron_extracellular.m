@@ -199,13 +199,8 @@ if numel(dims) ~= 2
 end
 nT = numberOf(getIn(dims{1}, 'n'));
 nC = numberOf(getIn(dims{2}, 'n'));
-vals = asCell(getIn(b, 'voltage', 'value'));
-x = zeros(numel(vals), 1);
-for k = 1:numel(vals)
-    v = numberOf(getIn(vals{k}, 'source_value'));
-    if isempty(v); v = NaN; end
-    x(k) = v;
-end
+% one reading per cell (old numeric shape) or one cell of readings (new)
+x = cellReadings(getIn(b, 'voltage', 'value'));
 if numel(x) ~= nT * nC
     bad{end+1} = sprintf('%d waveform values for %d x %d', numel(x), nT, nC);
     return;
@@ -215,12 +210,14 @@ covs = asCell(getIn(b, 'data', 'covariates'));
 for k = 1:numel(covs)
     c = covs{k};
     if numberOf(getIn(c, 'along')) ~= 0; continue; end
-    [q, hasQ] = getIn(c, 'quantity', 'value');
+    [q, hasQ] = itemNumbers(c);
     if hasQ && ~isempty(q)
         t = column(q);
     else
-        o = numberOf(getIn(c, 'origin', 'source_value'));
-        s = numberOf(getIn(c, 'spacing', 'source_value'));
+        [~, o] = itemRegular(c, 'origin');
+        [~, s] = itemRegular(c, 'spacing');
+        o = numberOf(o);
+        s = numberOf(s);
         if ~isempty(o) && ~isempty(s)
             t = o + s * (0:(nT - 1))';
         end

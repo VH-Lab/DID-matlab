@@ -35,7 +35,7 @@ held = cell(0, 2);
 c = asCell(getIn(e, 'constraints'));
 for k = 1:numel(c)
     [~, name] = termParts(getIn(c{k}, 'variable'));
-    v = numberOf(getIn(c{k}, 'value'));
+    v = numberOf(coefValue(c{k}));
     name = strtrim(name);
     legacy = regexp(name, '^Naka-Rushton parameter ([34])$', 'tokens', 'once');
     if ~isempty(legacy)

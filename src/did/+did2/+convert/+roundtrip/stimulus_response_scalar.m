@@ -237,7 +237,7 @@ for k = 1:numel(covs)
     % NCIT:C41210 "Stimulus" since 2026-11-03 (the label 'stimulus' before)
     if (strcmpi(name, 'stimulus') || strcmpi(node, 'NCIT:C41210')) ...
             && isnumeric(along) && isequal(double(along), 0)
-        v = getIn(c, 'quantity', 'value');
+        v = itemNumbers(c);
         return;
     end
 end

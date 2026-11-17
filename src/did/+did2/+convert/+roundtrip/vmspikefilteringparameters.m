@@ -98,12 +98,12 @@ function [x, ok] = boundValue(e)
 %BOUNDVALUE A bound parameter's v1 value: the text v1 wrote (`source_value`)
 %   when it is not just the number's own spelling (the migrator writes
 %   sprintf('%.15g') for a number), else the number.
-x = numberOf(getIn(e, 'quantity', 'value'));
+x = numberOf(itemNumbers(e));
 ok = ~isempty(x);
 if ~ok
     return;
 end
-src = getIn(e, 'quantity', 'source_value');
+src = itemSource(e);
 if (ischar(src) || (isstring(src) && isscalar(src))) && ~isempty(strtrim(char(src))) ...
         && ~strcmp(char(src), sprintf('%.15g', x))
     x = char(src);

@@ -62,7 +62,7 @@ if numel(values) ~= 1
     spec.unplaced{end+1} = sprintf('the observation holds %d voltage values (the offset is one)', ...
         numel(values));
 else
-    offset = numberOf(getIn(values{1}, 'source_value'));
+    offset = numberOf(cellSource(values{1}));
     [unode, uname] = termParts(getIn(values{1}, 'source_unit'));
     if ~(sameCurie(unode, 'om:volt') || strcmp(uname, 'volt'))
         spec.unplaced{end+1} = sprintf('the voltage''s source unit is "%s", not the volt the migrator writes', ...
@@ -75,7 +75,7 @@ conds = asCell(getIn(obs, 'statement', 'conditions'));
 for k = 1:numel(conds)
     [~, cname] = termParts(getIn(conds{k}, 'variable'));
     if strcmpi(cname, 'temperature') && isempty(temperature)
-        temperature = numberOf(getIn(conds{k}, 'quantity', 'value'));
+        temperature = numberOf(itemNumbers(conds{k}));
     else
         spec.unplaced{end+1} = sprintf('condition %d ("%s") has no place in an electrode offset voltage', ...
             k, cname);

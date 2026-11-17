@@ -45,6 +45,20 @@ function cells = valueCell(typeName, canonical, options)
 %                    (e.g. struct('precision','day') for a date,
 %                    struct('scale', did2.build.term(...), 'scale_min', 0, ...)
 %                    for a score).
+%     'Shape'        'old' or 'new' (default did2.build.numericShape(); 'old'
+%                    until step 2 of did-schema did_v2_numeric_shape_plan.md
+%                    [one shape for measured numbers], Jess Haley,
+%                    2026-11-17). For a numeric value class (one declaring a
+%                    numeric source_value and a source_unit: voltage, mass,
+%                    concentration, ...) 'new' writes ONE cell whose
+%                    canonical field is an array of all the readings, with
+%                    'SourceValue' as `source_numeric` (plan sections 2 and 8,
+%                    answer 4); 'SourceUnit', 'Approximate', 'Tolerance' and
+%                    'Fields' are then one for the series (did2:build:sizeMismatch
+%                    when they differ per reading). Other types (count, date,
+%                    ...) are written as before in either shape. For `logical`
+%                    'new' writes the block {logical: CANONICAL} (plan section
+%                    3); the old shape has no cell for it (notACell).
 %     'SchemaCache'  a did2.schema.cache; default the shared one.
 %   An option the type does not declare (e.g. 'SourceUnit' for count) is an
 %   error, as is any required cell field left unfilled (date.precision).
@@ -64,12 +78,30 @@ arguments
     options.Approximate = []
     options.Tolerance = []
     options.Fields = struct([])
+    options.Shape (1,:) char = ''
     options.SchemaCache = []
 end
+shape = options.Shape;
+if isempty(shape)
+    shape = did2.build.numericShape();
+end
+if ~any(strcmp(shape, {'old', 'new'}))
+    error('did2:build:badOption', '''Shape'' is ''old'' or ''new''; got ''%s''.', shape);
+end
+isNew = strcmp(shape, 'new');
 
 cache = schemaCache(options.SchemaCache);
 def = fieldDef(cache, typeName, 'value');
 subDefs = asDefs(getSub(def));
+if isempty(subDefs) && isNew && strcmp(char(def.type), 'boolean')
+    % logical.value.logical ([one shape for measured numbers], section 3)
+    v = canonical;
+    if ~(islogical(v) || (isnumeric(v) && all(v(:) == 0 | v(:) == 1)))
+        error('did2:build:typeMismatch', 'valueCell: a logical value is true/false.');
+    end
+    cells = fillField(def, struct('logical', logical(reshape(v, 1, []))), [typeName '.value']);
+    return;
+end
 if isempty(subDefs)
     error('did2:build:notACell', ...
         '"%s.value" declares no cell fields; build it with did2.build.composite.', typeName);
@@ -119,6 +151,13 @@ if ~isempty(tol)
     end
 end
 
+[~, cellKind] = did2.schema.numericShapeFields(subDefs, 'value');
+if isNew && strcmp(cellKind, 'cell')
+    cells = fillField(def, seriesCell(canonName, canon, source, unit, approx, tol, extra), ...
+        [typeName '.value']);
+    return;
+end
+
 elems = cell(1, n);
 for k = 1:n
     s = struct();
@@ -144,6 +183,64 @@ cells = fillField(def, elems, [typeName '.value']);
 end
 
 % -------------------------------------------------------------------------
+
+function s = seriesCell(canonName, canon, source, unit, approx, tol, extra)
+% ONE cell of arrays: the new shape's series (did-schema
+% did_v2_numeric_shape_plan.md, section 8, answer 4: "one value block whose
+% canonical field is an array, one source_unit and one approximate for the
+% series").
+s = struct();
+if ~isempty(extra)
+    if ~isscalar(extra)
+        error('did2:build:sizeMismatch', ...
+            'valueCell: in the new shape a series is one cell, so ''Fields'' is one struct.');
+    end
+    fn = fieldnames(extra);
+    for f = 1:numel(fn)
+        s.(fn{f}) = extra.(fn{f});
+    end
+end
+if ~all(cellfun(@(x) (isnumeric(x) || islogical(x)) && isscalar(x), canon))
+    error('did2:build:typeMismatch', 'valueCell: a numeric series is numbers.');
+end
+s.(canonName) = double([canon{:}]);
+if ~isempty(source)
+    if ~all(cellfun(@(x) isnumeric(x) && isscalar(x), source))
+        error('did2:build:typeMismatch', 'valueCell: ''SourceValue'' of a numeric series is numbers.');
+    end
+    src = double([source{:}]);
+    if numel(src) == 1 && numel(canon) > 1
+        src = repmat(src, 1, numel(canon));
+    end
+    s.source_numeric = src;
+end
+if ~isempty(unit)
+    s.source_unit = one(unit, 'SourceUnit');
+end
+a = [];
+if ~isempty(approx)
+    a = one(approx, 'Approximate');
+end
+if ~isempty(tol)
+    if size(tol, 1) > 1 && any(any(tol ~= tol(1, :)))
+        error('did2:build:sizeMismatch', ...
+            'valueCell: in the new shape a series has one ''Tolerance''.');
+    end
+    [s, a] = toleranceCell(s, tol(1, :), a, 'Tolerance');
+end
+if ~isempty(a); s.approximate = a; end
+end
+
+function v = one(c, optName)
+v = c{1};
+for k = 2:numel(c)
+    if ~isequal(c{k}, v)
+        error('did2:build:sizeMismatch', ...
+            'valueCell: in the new shape a series has one ''%s''; got %d that differ.', ...
+            optName, numel(c));
+    end
+end
+end
 
 function c = asList(v)
 if isempty(v)

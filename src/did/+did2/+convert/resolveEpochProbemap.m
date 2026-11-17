@@ -3063,9 +3063,11 @@ for k = 1:numel(cs)
     v = cs(k).variable;
     nm = '';
     if isstruct(v) && isfield(v, 'name'); nm = char(v.name); end
-    if strcmpi(nm, 'time') && isfield(cs(k), 'origin') && isstruct(cs(k).origin) ...
-            && isfield(cs(k).origin, 'value') && ~isempty(cs(k).origin.value)
-        o = double(cs(k).origin.value);
+    % the old {value, source_value} origin or the new flat one
+    % (did2.read.numeric; [one shape for measured numbers], Jess Haley, 2026-11-17)
+    r = did2.read.numeric(cs(k));
+    if strcmpi(nm, 'time') && strcmp(r.form, 'origin') && ~isempty(r.origin)
+        o = double(r.origin);
         return;
     end
 end

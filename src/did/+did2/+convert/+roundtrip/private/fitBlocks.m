@@ -113,7 +113,8 @@ for k = 1:numel(modelFit)
     elseif isfield(e, 'coefficients') && ~isempty(e.coefficients)
         c = e.coefficients;
         if iscell(c); c = [c{:}]; end
-        b.(names{1, 2}) = reshape([c.value], [], 1);
+        vals = arrayfun(@(x) {coefValue(x)}, c);   % `value`, or the new shape's `numeric`
+        b.(names{1, 2}) = reshape([vals{:}], [], 1);
     end
     if isfield(e, 'goodness') && isstruct(e.goodness)
         if isfield(e.goodness, 'r2')
