@@ -177,7 +177,7 @@ for c = 1:numel(covs)
         continue;
     end
     k = along + 1;
-    sp = numberOf(getIn(covs{c}, 'spacing', 'value'));
+    sp = numberOf(itemRegular(covs{c}, 'spacing'));
     if isempty(sp)
         spec.unplaced{end+1} = sprintf('covariate %d states no spacing', c);
         continue;
@@ -292,6 +292,9 @@ for k = 1:numel(conds)
     [n, ~] = termParts(getIn(conds{k}, 'variable'));
     if strcmp(n, node)
         m = getIn(conds{k}, 'matrix');
+        if isempty(m)
+            m = itemNumbers(conds{k});   % the new numeric shape's `numeric`
+        end
         if iscell(m); m = cell2mat(m); end
         m = double(m);
         return;
@@ -335,7 +338,7 @@ conds = asCell(conds);
 for k = 1:numel(conds)
     [node, name] = termParts(getIn(conds{k}, 'variable'));
     if sameCurie(node, 'AFO:AFR_0001158') && isempty(ts)
-        ts = str2double(fieldText(getIn(conds{k}, 'quantity'), 'source_value'));
+        ts = str2double(sourceText(conds{k}));
         if ~isfinite(ts)
             ts = [];
             extra{end+1} = 'the acquisition time condition holds no datenum'; %#ok<AGROW>
@@ -353,7 +356,7 @@ for k = 1:numel(conds)
         extra{end+1} = sprintf('observation condition "%s" has no role in an imageStack', name); %#ok<AGROW>
         continue;
     end
-    ts = numberOf(getIn(conds{k}, 'quantity', 'value'));
+    ts = numberOf(itemNumbers(conds{k}));
     clk = tok{1};
     if strcmp(clk, 'unspecified clock')
         clk = '';   % the migrator's words for a stack that names no clock

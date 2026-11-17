@@ -82,7 +82,7 @@ if iscell(covs); covs = [covs{:}]; end
 if isscalar(covs)
     [~, label] = termParts(covs.variable);
     blk.independent_variable_label = {writerLabel(own, {lower(strrep(strtrim(label), ' ', '_'))})};
-    blk.independent_variable_value = column(getIn(covs, 'quantity', 'value'));
+    blk.independent_variable_value = column(itemNumbers(covs));
 elseif numel(covs) > 1
     [labels, points, order, why] = gridPoints(covs);
     if isempty(why)
@@ -152,7 +152,7 @@ conds = asCell(getIn(leaf, 'statement', 'conditions'));
 for k = 1:numel(conds)
     [~, v2] = termParts(getIn(conds{k}, 'variable'));
     [v1Name, found] = did2.convert.tuningNames('v1', v2);
-    q = numberOf(getIn(conds{k}, 'quantity', 'value'));
+    q = numberOf(itemNumbers(conds{k}));
     if found && ~isempty(q)
         names{end+1} = v1Name; %#ok<AGROW>
         values(end+1) = q; %#ok<AGROW>
@@ -182,7 +182,7 @@ function levels = gridLevels(covs)
 % each covariate's values, in the order of the dimension it lies along
 levels = cell(1, numel(covs));
 for d = 1:numel(covs)
-    levels{d} = column(getIn(covs(d), 'quantity', 'value'));
+    levels{d} = column(itemNumbers(covs(d)));
 end
 end
 
@@ -206,7 +206,7 @@ for d = 1:k
     end
     [~, label] = termParts(covs(d).variable);
     labels{d} = lower(strrep(strtrim(label), ' ', '_'));
-    levels{d} = column(getIn(covs(d), 'quantity', 'value'));
+    levels{d} = column(itemNumbers(covs(d)));
     if isempty(levels{d}) || ~isnumeric(levels{d})
         why = sprintf('covariate %d holds no numbers', d);
         return;

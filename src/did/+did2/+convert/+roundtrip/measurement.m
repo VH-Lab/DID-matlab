@@ -60,7 +60,7 @@ elseif ~isempty(kind)
     if numel(cells) ~= 1
         spec.unplaced{end+1} = sprintf('the %s value holds %d entries (one number)', kind, numel(cells));
     else
-        blk.numeric_value = numberOf(getIn(cells{1}, 'source_value'));
+        blk.numeric_value = numberOf(cellSource(cells{1}));
     end
 else
     spec.unplaced{end+1} = 'the observation states no value';

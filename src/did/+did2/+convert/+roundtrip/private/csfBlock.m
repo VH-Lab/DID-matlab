@@ -50,7 +50,7 @@ end
 covs = getIn(leaf, 'data', 'covariates');
 if iscell(covs); covs = [covs{:}]; end
 if isscalar(covs)
-    blk.spatial_frequencies = column(getIn(covs, 'quantity', 'value'));
+    blk.spatial_frequencies = column(itemNumbers(covs));
 elseif numel(covs) > 1
     bad{end+1} = sprintf('%d covariates: one spatial frequency axis is rebuilt', numel(covs));
 end

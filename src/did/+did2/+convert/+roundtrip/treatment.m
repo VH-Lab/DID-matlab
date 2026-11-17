@@ -50,7 +50,7 @@ numeric = [];
 if any(strcmp(p.kind, {'dose', 'formulation'}))
     numeric = conditionNumber(getIn(p.manip, 'statement', 'conditions'));
 elseif ~isempty(p.kind)
-    numeric = numberOf(getIn(p.manip, p.kind, 'value', 'source_value'));
+    numeric = numberOf(cellSource(getIn(p.manip, p.kind, 'value')));
 end
 
 stringValue = '';
@@ -89,7 +89,7 @@ v = [];
 for c = asCell(conds)
     [~, name] = termParts(getIn(c{1}, 'variable'));
     if strcmpi(name, 'numeric value')
-        v = numberOf(getIn(c{1}, 'quantity', 'value'));
+        v = numberOf(itemNumbers(c{1}));
         return;
     end
 end

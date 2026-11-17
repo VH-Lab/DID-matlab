@@ -13,9 +13,12 @@ function r = canonical(x, options)
 %                     readings of an old-shape series fill different ones
 %                     (a concentration). '' when none was found.
 %     numbers         the reading(s), a row: old -- one per cell of the value
-%                     array; new -- the canonical field of the one cell
+%                     array; new -- the canonical field of the one cell.
+%                     [] when no cell states one; in an old-shape series, NaN
+%                     for a cell that states none while others do.
 %     source_numbers  what the source wrote, a row: old source_value per
-%                     cell; new source_numeric. [] when none.
+%                     cell (NaN for a cell that states none while others do);
+%                     new source_numeric. [] when none.
 %     source_unit     the source's unit: one term, or (old shape, when the
 %                     cells differ) a struct array with one per reading
 %     approximate     true/false: one, or one per reading when the cells differ
@@ -115,9 +118,21 @@ for k = 1:nCells
         r.tolerance = e.tolerance;
     end
 end
+anyNum = any(~cellfun(@isempty, nums));
+numericSrc = all(cellfun(@(s) isnumeric(s) || islogical(s), srcs));
+anySrc = any(~cellfun(@isempty, srcs));
+if numericSrc && nCells > 1
+    % the old shape: one reading per cell, so a cell that states no canonical
+    % (a gap) or no source number reads NaN there, keeping the two aligned
+    for k = 1:nCells
+        m = max([numel(nums{k}), numel(srcs{k}), 1]);
+        if anyNum && isempty(nums{k}); nums{k} = NaN(1, m); end
+        if anySrc && isempty(srcs{k}); srcs{k} = NaN(1, m); end
+    end
+end
 r.numbers = [nums{:}];
-r.n = numel(r.numbers);
-if all(cellfun(@(s) isnumeric(s) || islogical(s), srcs))
+r.n = max(numel(r.numbers), numel([srcs{:}]) * numericSrc);
+if numericSrc
     r.source_numbers = [srcs{:}];
 else
     r.source_numbers = srcs;   % text a source wrote (not a numeric class)

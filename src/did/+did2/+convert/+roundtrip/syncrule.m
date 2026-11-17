@@ -236,7 +236,7 @@ if ~isempty(c)
     v = c;
     return;
 end
-q = getIn(e, 'quantity', 'value');
+q = itemNumbers(e);
 if ~isempty(q)
     v = q;
     return;

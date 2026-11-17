@@ -296,7 +296,7 @@ if numel(covs) ~= 1 || numel(dims) > 1
 end
 [~, label] = termParts(covs.variable);
 name = lower(strrep(strtrim(label), ' ', '_'));
-values = column(getIn(covs, 'quantity', 'value'));
+values = column(itemNumbers(covs));
 if isempty(name) || ~isvarname(name)
     bad{end+1} = sprintf('the stimulus variable "%s" is not a v1 field name', label);
     name = '';

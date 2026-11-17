@@ -335,7 +335,7 @@ values = [];
 for k = 1:numel(conds)
     [~, v2] = termParts(getIn(conds{k}, 'variable'));
     [v1Name, found] = did2.convert.tuningNames('v1', v2);
-    q = numberOf(getIn(conds{k}, 'quantity', 'value'));
+    q = numberOf(itemNumbers(conds{k}));
     if ~found || isempty(q)
         bad{end+1} = sprintf('condition "%s" is not a tuning property', v2); %#ok<AGROW>
         continue;

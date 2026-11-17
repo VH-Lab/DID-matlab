@@ -410,6 +410,9 @@ for g = 1:numel(conds)
     if isstruct(c) && isfield(c, 'matrix')
         nums = c.matrix;
     end
+    if isempty(nums) && isstruct(c) && isfield(c, 'numeric')
+        nums = c.numeric;   % the new numeric shape ([one shape for measured numbers])
+    end
     groups{g} = struct('type', {getIn(c, 'variable')}, 'numbers', {nums});
 end
 [text, why2] = channelText(struct('channels', {groups}), prefixes);
