@@ -71,7 +71,8 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %                    NCIT:C44170, by node; digital_out is written `di`, as the
 %                    writer does), the group from its `filename` when it has
 %                    one, else from its channel numbers by the writer's rule,
-%                    and m the member's position (body_data_<m-1>). A body
+%                    and m the member's position (body_data_<m-1>; a member
+%                    still named by NDI keeps its name). A body
 %                    whose name cannot be rebuilt is listed in R.members with
 %                    the reason, and gets no names.
 %     channel_list.bin
@@ -104,11 +105,15 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %       as NDI's base mfdaq reader gives them (0, 1, NaN) and listed in
 %       R.no_home, so a reader that gives other values makes the comparison
 %       fail and the file stays (the decision's own guard).
-%       A time row (a `t<n>` channel): one per distinct finite time-channel
-%       value the converted groups point at, number and time_channel that
-%       value, sample rate that of the groups pointing at it; the decisions
-%       give the time row's number no home of its own, so these rows are
-%       listed in R.no_home too.
+%       A time row (a `t<n>` channel) is NOT rebuilt: its number,
+%       time_channel, offset and scale have no v2 home once the evenly spaced
+%       time body is removed, so a v1 list holding one (Intan's `t1`) does
+%       not rebuild exactly and stays (NDI-matlab's rule,
+%       ndi.vintage.ingestedChannelList, VH-Lab/NDI-matlab#1251, writes none
+%       either). Each time channel the groups point at is listed in
+%       R.no_home (row NaN). The rows here follow that rule: the sample rate
+%       rounded to a whole number when within 1e-9 of one, NaN read back as
+%       JSON null accepted.
 %     evmktx_group<g>_seg.nbf_1
 %                    one entry per group of unpacked event channels (group by
 %                    the writer's rule), the channels in row order. Each
@@ -151,7 +156,8 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %     documents_inspected  bodies given + batch documents indexed
 %     bodies_given, group_bodies (sampled channel groups), event_observations
 %     shape            'pass 1' (every body an opaque_body), 'second pass'
-%     members          struct array {body_id, class_name, slot, names, why}
+%     members          struct array {body_id, class_name, slot, names,
+%                      file_index (each name's entry in files.file_info), why}
 %     owners           struct array {body_id, owner_ids} (per body: the owner
 %                      sets may differ, [non-specimen channel groups get their
 %                      own owner])
@@ -186,7 +192,8 @@ if iscell(batch); ctx = indexOf(batch); end
 R = struct('documents_inspected', numel(bodies) + numel(ctx.docs), ...
     'bodies_given', numel(bodies), 'group_bodies', 0, 'event_observations', 0, ...
     'shape', 'pass 1', ...
-    'members', struct('body_id', {}, 'class_name', {}, 'slot', {}, 'names', {}, 'why', {}), ...
+    'members', struct('body_id', {}, 'class_name', {}, 'slot', {}, 'names', {}, ...
+        'file_index', {}, 'why', {}), ...
     'owners', struct('body_id', {}, 'owner_ids', {}), ...
     'channel_list_state', 'not rebuilt', 'channel_list_why', '', ...
     'channel_list', emptyRows(), ...
@@ -217,8 +224,9 @@ for k = 1:numel(bodies)
     if ~isempty(regexp(slot, '^ti_group\d+_seg\.nbf_#$', 'once')); hasTimeBody = true; end
     if strcmp(cn, 'sampled_body'); R.shape = 'second pass'; end
     [names, why, info] = memberNames(b, cn, slot);
+    [~, ~, fidx] = memberCount(b);
     R.members(end+1) = struct('body_id', id, 'class_name', cn, 'slot', slot, ...
-        'names', {names}, 'why', why);
+        'names', {names}, 'file_index', fidx(1:numel(names)), 'why', why);
     if strcmp(cn, 'sampled_body') && ~isempty(info) && ~strcmp(info.prefix, 't')
         R.group_bodies = R.group_bodies + 1;
         [grows, g, nh] = groupRows(b, info);
@@ -269,7 +277,7 @@ if hasChannelList
 elseif strcmp(R.shape, 'pass 1')
     R.channel_list_why = 'no channel_list.bin body, and no converted channel group or unpacked channel';
 else
-    all_ = [rows, tRows];
+    all_ = rows;
     nhOffset = numel(all_);
     order = writerOrder(all_);
     remap = zeros(1, numel(all_));
@@ -279,11 +287,10 @@ else
     end
     all_ = all_(order);
     for t = 1:numel(tRows)
-        p = numel(rows) + t;
-        R.no_home(end+1) = struct('row', remap(p), 'field', 'number, time_channel', ...
-            'value', tRows(t).number, 'why', ['the time channel''s own row: its number is ' ...
-            'read from the time-channel covariates that point at it (no decision gives it ' ...
-            'a home of its own)']);
+        R.no_home(end+1) = struct('row', NaN, 'field', 'time row', ...
+            'value', tRows(t).number, 'why', ['a time channel the groups point at: its own ' ...
+            'row (number, time_channel, offset, scale) has no v2 home, so it is not ' ...
+            'rebuilt (as ndi.vintage.ingestedChannelList); a v1 list that has one is kept']); %#ok<AGROW>
     end
     evOrder = eventOrder(evRows);
     evRows = evRows(evOrder);
@@ -341,7 +348,7 @@ function [names, why, info] = memberNames(b, cn, slot)
 names = {};
 why = '';
 info = [];
-n = memberCount(b);
+[n, ndiNames] = memberCount(b);
 switch cn
     case 'opaque_body'
         if isempty(slot)
@@ -359,7 +366,11 @@ switch cn
         [info, why] = groupInfo(b, slot);
         if isempty(info); return; end
         for m = 1:n
-            names{end+1} = sprintf('%s_group%d_seg.nbf_%d', info.filePrefix, info.group, m); %#ok<AGROW>
+            if ~isempty(ndiNames{m})
+                names{end+1} = ndiNames{m}; %#ok<AGROW>   % a member still named by NDI
+            else
+                names{end+1} = sprintf('%s_group%d_seg.nbf_%d', info.filePrefix, info.group, m); %#ok<AGROW>
+            end
         end
     otherwise
         why = sprintf('a %s carries no archive file', cn);
@@ -463,6 +474,9 @@ for cv = asCellOf(blockField(b, 'covariates'))
         if isstruct(sp); sp = getPath(sp, 'value'); end
         if isnumeric(sp) && isscalar(sp) && sp > 0
             sr = 1 / double(sp);
+            % as ndi.vintage.ingestedChannelList: a rate within 1e-9 of a
+            % whole number is that number
+            if abs(sr - round(sr)) <= 1e-9 * abs(sr); sr = round(sr); end
         end
         break;
     end
@@ -493,8 +507,16 @@ for cv = asCellOf(blockField(b, 'covariates'))
     end
     cands = [cands, {getPath(q, 'value'), getPath(s, 'numeric'), getPath(s, 'count')}]; %#ok<AGROW>
     for c = 1:numel(cands)
-        if isnumeric(cands{c}) && ~isempty(cands{c})
-            v = double(reshape(cands{c}, 1, []));
+        x = cands{c};
+        if iscell(x) && ~isempty(x)
+            y = NaN(1, numel(x));
+            for i = 1:numel(x)
+                if isnumeric(x{i}) && isscalar(x{i}); y(i) = double(x{i}); end
+            end
+            x = y;
+        end
+        if isnumeric(x) && ~isempty(x)
+            v = double(reshape(x, 1, []));
             return;
         end
     end
@@ -844,13 +866,27 @@ x = NaN;
 if numel(v) >= r; x = v(r); end
 end
 
-function n = memberCount(b)
-n = 0;
-for f = asCellOf(getPath(getPath(b, 'files'), 'file_info'))
-    if ~isempty(regexp(textOf(getPath(f{1}, 'name')), '^body_data_\d+$', 'once'))
-        n = n + 1;
+function [n, ndiNames, fileIndex] = memberCount(b)
+% the members in segment order: body_data_<k> is segment k+1; a member still
+% named by NDI (`<p>_group<g>_seg.nbf_<n>`, which NDI-matlab's readers also
+% read) is segment n and keeps its name (NDINAMES, '' for body_data_<k>);
+% FILEINDEX, each one's position in files.file_info
+infos = asCellOf(getPath(getPath(b, 'files'), 'file_info'));
+pos = []; nm = {}; idx = [];
+for i = 1:numel(infos)
+    f = textOf(getPath(infos{i}, 'name'));
+    k = regexp(f, '^body_data_(\d+)$', 'tokens', 'once');
+    t = regexp(f, '^[a-z]+_group\d+_seg\.nbf_(\d+)$', 'tokens', 'once');
+    if ~isempty(k)
+        pos(end+1) = str2double(k{1}) + 1; nm{end+1} = ''; idx(end+1) = i; %#ok<AGROW>
+    elseif ~isempty(t)
+        pos(end+1) = str2double(t{1}); nm{end+1} = f; idx(end+1) = i; %#ok<AGROW>
     end
 end
+[~, o] = sort(pos);
+ndiNames = nm(o);
+fileIndex = idx(o);
+n = numel(o);
 end
 
 function v = blockField(b, name)

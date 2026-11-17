@@ -12,7 +12,10 @@ function C = compareIngestedArchiveFiles(R, original, varargin)
 %     evmktx            struct array {name, and either data and
 %                       data_description (what ndi.compress.read_ndibinary
 %                       reads from the file) or channeltype, channel, T, D
-%                       (what ndi.compress.expand_eventmarktext returns)}
+%                       (what ndi.compress.expand_eventmarktext returns), or
+%                       path, the v1 file, decoded here with
+%                       ndi.compress.expand_eventmarktext when NDI-compress
+%                       is on the path ('not measured' otherwise)}
 %                       (optional)
 %   C = ...(R, ORIGINAL, 'TimeTolerance', TOL) compares event times within
 %   TOL seconds (default 0: exactly). The times are stored relative to the
@@ -167,6 +170,19 @@ if ~strcmp(e.state, 'rebuilt')
 end
 f.why = ['content, not bytes: the file is ndi.compress.compress_eventmarktext''s ' ...
     'output (NDI-compress), which DID-matlab does not depend on'];
+if isfield(orig, 'path') && ~isempty(orig.path) && ~isfield(orig, 'data') && ~isfield(orig, 'T')
+    % the v1 file itself: decoded with NDI-compress's expander when it is on
+    % the path (as NDI-matlab's reader does: a copy named .nbf.tgz)
+    if isempty(which('ndi.compress.expand_eventmarktext'))
+        f.why = ['the v1 file is given but ndi.compress.expand_eventmarktext (NDI-compress, ' ...
+            'not a DID-matlab requirement) is not on the path'];
+        return;
+    end
+    stem = tempname();
+    copyfile(char(orig.path), [stem '.nbf.tgz']);
+    c = onCleanup(@() deleteIfThere([stem '.nbf.tgz'])); %#ok<NASGU>
+    [orig.channeltype, orig.channel, orig.T, orig.D] = ndi.compress.expand_eventmarktext(stem);
+end
 d = {};
 if isfield(orig, 'data') && isfield(orig, 'data_description')
     f.compared = 'content';

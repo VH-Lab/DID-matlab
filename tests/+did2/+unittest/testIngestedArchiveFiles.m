@@ -39,10 +39,42 @@ verifyEqual(testCase, R.group_bodies, 2);
 verifyEqual(testCase, R.event_observations, 2);
 verifyEqual(testCase, R.channel_list_state, 'rebuilt');
 verifyTrue(testCase, isequaln(R.channel_list, ex.rows), describeRows(R.channel_list));
-% the fields no decision homes are listed, never silently filled: the time
-% row's number, and each event row's offset, scale and time channel
-verifyEqual(testCase, sort([R.no_home.row]), [4 5 6]);
+% the fields no decision homes are listed, never silently filled: each event
+% row's offset, scale and time channel, and the time channel the groups point
+% at, whose own row is not rebuilt
+rowsListed = [R.no_home.row];
+verifyEqual(testCase, sort(rowsListed(~isnan(rowsListed))), [4 5]);
 verifyTrue(testCase, any(contains({R.no_home.field}, 'offset, scale, time_channel')));
+verifyEqual(testCase, R.no_home(strcmp({R.no_home.field}, 'time row')).value, 1);
+end
+
+function testTheRowsFollowNdisRuleAfterAJsonRoundTrip(testCase)
+% NDI-matlab's rule (ndi.vintage.ingestedChannelList, VH-Lab/NDI-matlab#1251):
+% a NaN time channel read back from JSON as null is still NaN; a rate within
+% 1e-9 of a whole number is that number
+[docs, bodies, ex] = secondPassEpoch(testCase);
+ai = bodies{1};
+ai.data.covariates{5}.quantity.value = [1 NaN];
+ai.data.covariates{1}.spacing.value = 1 / 30000 * (1 + 1e-12);
+j = jsondecode(jsonencode(ai));
+docs{5} = j;
+R = did2.convert.roundtrip.ingestedArchiveFiles({j, bodies{2}}, docs);
+want = ex.rows;
+want(2).time_channel = NaN;
+verifyTrue(testCase, isequaln(R.channel_list, want), describeRows(R.channel_list));
+end
+
+function testAMemberStillNamedByNdiKeepsItsName(testCase)
+% [migrated body members renamed]: "a name that does not fit NDI's pattern is
+% not renamed"; one still named by NDI is read as that segment (as NDI-matlab's
+% readers read it)
+[docs, bodies] = secondPassEpoch(testCase);
+ai = bodies{1};
+ai.files.file_info(2).name = 'ai_group1_seg.nbf_2';
+ai.files.file_info = ai.files.file_info([2 1]);
+R = did2.convert.roundtrip.ingestedArchiveFiles({ai}, docs);
+verifyEqual(testCase, R.members(1).names, {'ai_group1_seg.nbf_1', 'ai_group1_seg.nbf_2'});
+verifyEqual(testCase, R.members(1).file_index, [2 1]);
 end
 
 function testMemberNamesComeFromTypeGroupAndSegment(testCase)
@@ -262,11 +294,11 @@ docs = {ep, ref, rec, dig, ai, di, mk, tv, mkb, tvb, ev, evb};
 bodies = {ai, di};
 r = @(n, ty, tc, sr, o, s, num, g, dc) struct('name', n, 'type', ty, 'time_channel', tc, ...
     'sample_rate', sr, 'offset', o, 'scale', s, 'number', num, 'group', g, 'dataclass', dc);
-% the rows as ndi.file.type.mfdaq_epoch_channel/create_properties orders them
+% the rows as ndi.file.type.mfdaq_epoch_channel/create_properties orders them;
+% no time row: it has no home (ndi.vintage.ingestedChannelList writes none)
 ex.rows = [r('ai1', 'analog_in', 1, 30000, 32768, 0.195, 1, 1, 'ephys'), ...
     r('myname', 'analog_in', 1, 30000, 32768, 0.195, 2, 1, 'ephys'), ...
     r('do1', 'digital_out', 1, 30000, 0, 1, 1, 1, 'digital'), ...
-    r('t1', 'time', 1, 30000, 0, 1, 1, 1, 'time'), ...
     r('e1', 'event', NaN, NaN, 0, 1, 1, 1, 'eventmarktext'), ...
     r('mk1', 'marker', NaN, NaN, 0, 1, 1, 1, 'eventmarktext')];
 ex.channeltype = {'event', 'marker'};

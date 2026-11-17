@@ -233,11 +233,7 @@ for k = 1:numel(R.members)
         if ~any(strcmp(owners, o{1})); owners{end+1} = o{1}; end %#ok<AGROW>
     end
     members = asCell(getIn(b, 'files', 'file_info'));
-    members = members(cellfun(@(f) isstruct(f) && isfield(f, 'name') ...
-        && ~isempty(regexp(char(f.name), '^body_data_\d+$', 'once')), members));
-    pos = cellfun(@(f) sscanf(char(f.name), 'body_data_%d'), members);
-    [~, order] = sort(pos);
-    members = members(order);
+    members = members(mem.file_index);   % in segment order (ingestedArchiveFiles)
     for m = 1:min(numel(members), numel(mem.names))
         loc = [];
         if isfield(members{m}, 'locations'); loc = members{m}.locations; end
