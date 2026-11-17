@@ -77,7 +77,14 @@ rt = getf(block, {'response_type'});
 if isstring(rt) && isscalar(rt); rt = char(rt); end
 % [response type harmonics are integers] (Decided by Jess Haley, 2026-11-12):
 % `mean` is NCIT:C53319 Arithmetic Mean, `peak` STATO:0000151 (jResponseType)
-if ischar(rt) && ~isempty(rt); value.response_type = jResponseType(rt); end
+if ischar(rt) && ~isempty(rt)
+    % [harmonic is a field beside the response type] (Jess Haley, 2026-11-17):
+    % F1 / F2 are Fourier Analysis with `harmonic` 1 / 2, once the schema in
+    % use declares contrast_sensitivity.value.harmonic (siblings first)
+    [value.response_type, h] = jResponseType(rt, ...
+        jSchemaHasPath('contrast_sensitivity', {'value', 'harmonic'}));
+    if ~isempty(h); value.harmonic = h; end
+end
 c50 = getf(block, {'fitless_interpolated_c50'});
 if isnumeric(c50) && ~isempty(c50)
     value.interpolated_values = struct(halfMaximumName('interpolated_values'), double(c50));

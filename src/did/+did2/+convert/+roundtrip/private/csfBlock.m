@@ -55,7 +55,7 @@ elseif numel(covs) > 1
     bad{end+1} = sprintf('%d covariates: one spatial frequency axis is rebuilt', numel(covs));
 end
 if isfield(value, 'response_type')
-    blk.response_type = responseTypeBack(value.response_type);   % [response type harmonics are integers]
+    blk.response_type = responseTypeBack(value.response_type, harmonicOf(value));   % [harmonic is a field beside the response type]
 end
 if isfield(value, 'interpolated_values') && ~isempty(value.interpolated_values)
     [iv, b] = interpolatedEntry(value.interpolated_values, '', 'value.interpolated_values');
@@ -136,7 +136,7 @@ if isfield(value, 'model_fit') && ~isempty(value.model_fit)
         end
     end
 end
-bad = [bad, others(value, {'response_type', 'interpolated_values', 'significance', ...
+bad = [bad, others(value, {'response_type', 'harmonic', 'interpolated_values', 'significance', ...
     'model_fit'}, 'contrast_sensitivity.value')];
 end
 
