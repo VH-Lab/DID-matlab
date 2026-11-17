@@ -37,9 +37,9 @@ NON_CLASS_NAMES = ("index", "topics", "ndi_reserved_keys")
 NON_CLASS_PREFIXES = ("did_v2_", "V_eta_")
 
 
-PROBE_DROPPED = ("acquisition_epoch", "app", "calculator", "daqreader",
-                 "daqreader_epochdata_ingested", "daqreader_image_epochdata_ingested",
-                 "epochid", "filenavigator", "stimulus_presentation",
+PROBE_DROPPED = ("app", "calculator", "daqreader",
+                 "daqreader_image_epochdata_ingested",
+                 "filenavigator", "stimulus_presentation",
                  "stimulus_response", "stimulus_response_scalar_parameters")
 
 
