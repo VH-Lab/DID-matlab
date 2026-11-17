@@ -45,7 +45,7 @@ if isfield(value, 'response_unit')
     props.response_units = responseUnitsBack(leaf, value);
 end
 if isfield(value, 'response_type')
-    props.response_type = responseTypeBack(value.response_type);   % [response type harmonics are integers]
+    props.response_type = responseTypeBack(value.response_type, harmonicOf(value));   % [harmonic is a field beside the response type]
 end
 if ~isempty(fieldnames(props))
     blk.properties = props;
@@ -124,7 +124,7 @@ if isfield(value, 'model_fit')
         end
     end
 end
-bad = [bad, others(value, {'response_unit', 'response_type', 'mean', 'stddev', ...
+bad = [bad, others(value, {'response_unit', 'response_type', 'harmonic', 'mean', 'stddev', ...
     'stderr', 'individual', 'raw_individual', 'control', 'significance', 'model_fit'}, ...
     'tuning_curve.value')];
 end
