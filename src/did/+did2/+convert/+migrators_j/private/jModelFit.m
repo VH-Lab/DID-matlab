@@ -67,7 +67,7 @@ if ~isempty(p)
     for k = 1:numel(p)
         label = sprintf('parameter %d', k);
         if k <= numel(names); label = names{k}; end
-        c{k} = struct('variable', jLabel(label), 'value', p(k));
+        c{k} = coefficient(jLabel(label), p(k));
     end
     v.coefficients = did2.build.list(c{:});
 end
@@ -86,7 +86,7 @@ if isfield(blk, 'fit_constraints') && isstruct(blk.fit_constraints)
         cn = charOf(blk.fit_constraints(k), 'fit_constraint_name');
         cv = numOf(blk.fit_constraints(k), 'fit_constraint_value');
         if ~isempty(cn) && isscalar(cv)
-            cons{end+1} = struct('variable', jLabel(cn), 'value', cv); %#ok<AGROW>
+            cons{end+1} = coefficient(jLabel(cn), cv); %#ok<AGROW>
         end
     end
 end
@@ -128,6 +128,18 @@ calc = jStatement(preBody, 'calculation', subjectId, ...
     'SoftwareId', swId, 'OperatingSystemId', osId, 'InterpreterId', interpreterId, ...
     'Id', char(preBody.base.id), 'ValueKind', 'model_fit');
 bodies = [{calc, anchor}, software, runDocs];
+end
+
+function c = coefficient(variable, x)
+% a coefficient or constraint: in the new numeric shape the list item
+% {variable, numeric} ([one shape for measured numbers], plan section 8,
+% answer 5: "unit optional, empty for migrated fits since v1 states none"),
+% as did2.build.fitEntry writes it; in the old shape {variable, value}
+if strcmp(did2.build.numericShape(), 'new')
+    c = struct('variable', variable, 'numeric', x);
+else
+    c = struct('variable', variable, 'value', x);
+end
 end
 
 function s = jFirst(a, b)

@@ -5,8 +5,8 @@ function tests = testBuildNumericShape
 %   docs/plans/did_v2_numeric_shape_plan.md [one shape for measured numbers].
 %   Its section 9, step 1: DID-matlab's validator and did2.build read BOTH the
 %   old numeric shape and the new one, with no change for today's documents;
-%   the builders can write the new shape (off by default, did2.build.numericShape)
-%   so that step 2 is a switch; and one reader (did2.read.numeric for a list
+%   the builders can write the new shape (did2.build.numericShape; the default
+%   since step 2, which switched it); and one reader (did2.read.numeric for a list
 %   item, did2.read.canonical for a value) returns the same answer for both.
 %
 %   For each kind -- covariates (a number, a matrix, origin + spacing),
@@ -20,7 +20,8 @@ function tests = testBuildNumericShape
 %   did2.schema.numericShapeFields, and it is those code paths that validate
 %   the new-shape documents here.
 %
-%   Also pinned: the default is the old shape, byte for byte the documents the
+%   Also pinned: the default is the new shape since step 2 (DID-matlab
+%   numeric-shape writers PR); 'old' is byte for byte the documents the
 %   builders wrote before; a mix of the two shapes in one item or one value is
 %   refused; and the new shape's numbers keep their orientation through
 %   did2's JSON writer and reader.
@@ -54,11 +55,15 @@ end
 
 % ===================== the switch ===========================================
 
-function testTheDefaultIsTheOldShape(testCase)
+function testTheDefaultIsTheNewShape(testCase)
+% step 2 of the plan's section 9 switched the default from 'old' to 'new'
 prev = did2.build.numericShape('');
 testCase.addTeardown(@() did2.build.numericShape(prev));
 if isempty(getenv('DID_NUMERIC_SHAPE'))
-    verifyEqual(testCase, did2.build.numericShape(), 'old');
+    verifyEqual(testCase, did2.build.numericShape(), 'new');
+    c = did2.build.covariate('depth', 0, 'Value', [1 2 3], 'Unit', 'meter');
+    verifyTrue(testCase, isfield(c, 'numeric') && ~isfield(c, 'quantity'), ...
+        'a builder given no ''Shape'' writes the new shape');
 end
 did2.build.numericShape('new');
 verifyEqual(testCase, did2.build.numericShape(), 'new');

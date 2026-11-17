@@ -139,9 +139,10 @@ temperature = finiteScalar(blk, 'temperature');
 if ~isempty(temperature)
     % the offset was measured AT this temperature -- a qualifier on the same
     % statement, not a separate observation. Unit deliberately left unstated;
-    % the number is kept as the source wrote it, as text.
+    % the number is kept as the source wrote it: a number ([numeric shape
+    % details] (1), Jess Haley, 2026-11-17).
     conditions = did2.build.condition(jLabel('temperature'), ...
-        'Value', temperature, 'SourceValue', mat2str(temperature), 'Approximate', false);
+        'Value', temperature, 'SourceValue', temperature, 'Approximate', false);
 end
 obs = jStatement(preBody, 'observation', ...
     jSubjectOf(preBody, {'probe_id', 'element_id', 'subject_id'}), ...

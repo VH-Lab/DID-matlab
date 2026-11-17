@@ -39,8 +39,8 @@ function p = parameter(variable, options)
 %                    writer and reader. Needs a schema that declares
 %                    `matrix` (did-schema #88; did2:build:unknownField before)
 %     'Tolerance'    [minus plus] in 'Unit', on a number (new shape only)
-%     'Shape'        'old' or 'new' (default did2.build.numericShape(); 'old'
-%                    until step 2 of did-schema did_v2_numeric_shape_plan.md
+%     'Shape'        'old' or 'new' (default did2.build.numericShape(), 'new'
+%                    since step 2 of did-schema did_v2_numeric_shape_plan.md
 %                    [one shape for measured numbers]). 'new' writes the flat
 %                    entry: numeric, unit, source_numeric, source_unit,
 %                    tolerance (private/oneValueEntry).

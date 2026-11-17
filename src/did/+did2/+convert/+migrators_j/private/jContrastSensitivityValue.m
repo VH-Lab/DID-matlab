@@ -194,16 +194,16 @@ for i = 1:numel(variants)
             p = coeffCols{j};
             c = cell(1, numel(p));
             for k = 1:numel(p)
-                c{k} = struct('variable', struct('node', '', 'name', row.symbols{k}), ...
-                    'value', double(p(k)));
+                c{k} = coefficient(struct('node', '', 'name', row.symbols{k}), ...
+                    double(p(k)));
             end
             entry.coefficients = did2.build.list(c{:});
         end
         if ~isempty(row.constraints)
             c = cell(1, size(row.constraints, 1));
             for k = 1:size(row.constraints, 1)
-                c{k} = struct('variable', struct('node', '', 'name', row.constraints{k, 1}), ...
-                    'value', row.constraints{k, 2});
+                c{k} = coefficient(struct('node', '', 'name', row.constraints{k, 1}), ...
+                    row.constraints{k, 2});
             end
             entry.constraints = did2.build.list(c{:});
         end
@@ -247,5 +247,16 @@ fn = fieldnames(s);
 for i = 1:numel(names)
     hit = find(strcmpi(fn, names{i}), 1);
     if ~isempty(hit); nm = fn{hit}; v = s.(nm); return; end
+end
+end
+
+function c = coefficient(variable, x)
+% a fit's coefficient or constraint: in the new numeric shape the list item
+% {variable, numeric} ([one shape for measured numbers], plan section 8,
+% answer 5), as did2.build.fitEntry writes it; in the old shape {variable, value}
+if strcmp(did2.build.numericShape(), 'new')
+    c = struct('variable', variable, 'numeric', x);
+else
+    c = struct('variable', variable, 'value', x);
 end
 end

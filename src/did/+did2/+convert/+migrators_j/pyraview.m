@@ -398,7 +398,7 @@ end
 end
 
 function c = durationComposite(seconds)
-c = struct('source_unit', 's', 'source_value', double(seconds), 'approximate', false);
+c = struct('source_unit', 's', did2.build.sourceNumericField(), double(seconds), 'approximate', false);
 end
 
 function c = withSeconds(seconds)

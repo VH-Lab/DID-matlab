@@ -65,7 +65,10 @@ for k = 1:numel(axes)
     end
     if has(a, 'cyclic'); c.cyclic = a.cyclic; end
     if positioned && ~jIndexOnly(c, a.n)
-        covList{end+1} = did2.build.composite('data', 'covariates', c); %#ok<AGROW>
+        % the spec is in the old numeric shape; written in the new one
+        % ([one shape for measured numbers], did2.build.numericItem)
+        covList{end+1} = did2.build.composite('data', 'covariates', ...
+            did2.build.numericItem(c)); %#ok<AGROW>
     end
 end
 dims = did2.build.list(dimList{:});

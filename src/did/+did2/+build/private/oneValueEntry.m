@@ -35,12 +35,15 @@ function s = oneValueEntry(variable, forms, opts, ruleName)
 %   Fields that are not given are left out. The result is not yet checked
 %   against the schema; the caller passes it to did2.build.composite.
 %
-%   THE NEW SHAPE (OPTS.Shape 'new'; default did2.build.numericShape(), 'old'
-%   until step 2 of did-schema did_v2_numeric_shape_plan.md [one shape for
+%   THE NEW SHAPE (OPTS.Shape 'new'; default did2.build.numericShape(), 'new'
+%   since step 2 of did-schema did_v2_numeric_shape_plan.md [one shape for
 %   measured numbers], Jess Haley, 2026-11-17): the number is flat -- 'Value'
 %   / 'Quantity' and 'Matrix' write `numeric`, SourceValue writes
-%   `source_numeric` (the same text the old shape keeps; see the PR's open
-%   question), OPTS.Tolerance [minus plus] writes `tolerance`; `unit` and
+%   `source_numeric` in the source's own type -- a number given as a number,
+%   text given as text ([numeric shape details] (1), Jess Haley, 2026-11-17:
+%   "a number where v1 stored a number, text where v1 stored text (e.g. a
+%   method parameter's "0.030")"; the old shape stores both as text),
+%   OPTS.Tolerance [minus plus] writes `tolerance`; `unit` and
 %   `source_unit` go only with a number (a count has no unit, plan section 4).
 
 arguments
@@ -106,6 +109,7 @@ if ~isOne
         ruleName, form, numel(one));
 end
 numeric = any(strcmp(form, {'Value', 'Quantity'}));
+sourceGiven = opts.SourceValue;   % as given: the new shape keeps its type
 if ~isAbsent(opts.SourceValue)
     if ~numeric
         error('did2:build:ruleViolated', ...
@@ -156,7 +160,13 @@ if isNew
         otherwise   % Value, Quantity, Matrix: the number, flat
             s.numeric = double(one);
             if ~isAbsent(opts.Unit); s.unit = opts.Unit; end
-            if ~isAbsent(opts.SourceValue); s.source_numeric = char(opts.SourceValue); end
+            if ~isAbsent(sourceGiven)
+                if isnumeric(sourceGiven) || islogical(sourceGiven)
+                    s.source_numeric = double(sourceGiven);
+                else
+                    s.source_numeric = char(sourceGiven);
+                end
+            end
             if ~isAbsent(opts.SourceUnit); s.source_unit = opts.SourceUnit; end
             if ~isAbsent(tol)
                 s.tolerance = struct('minus', double(tol(1)), 'plus', double(tol(2)));

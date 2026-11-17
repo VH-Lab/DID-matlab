@@ -1081,7 +1081,13 @@ body.subject_observation = struct();
 % around nothing -- and the composites that DO nest are the ones carrying
 % provenance (canonical + source_unit + source_value, or count's semantic
 % unit), which a truth value has none of.
-body.logical = struct('value', logical(isValid));
+% [one shape for measured numbers] (Jess Haley, 2026-11-17, plan section 3):
+% the new numeric shape makes it the block logical.value.logical
+if strcmp(did2.build.numericShape(), 'new')
+    body.logical = struct('value', struct('logical', logical(isValid)));
+else
+    body.logical = struct('value', logical(isValid));
+end
 end
 
 function name = curationMethodName()
@@ -1171,9 +1177,11 @@ function c = durationCell(seconds)
 %   and `source_unit` is 's'. `approximate` is FALSE, and that is a claim about
 %   the NUMBER: the t0/t1 the writer stored are exact as recorded. Whatever slop
 %   the clock has is on the TIMELINE and is carried by `clock_tolerance`.
+% source_numeric in the new numeric shape ([numeric shape details] (2),
+% did2.build.sourceNumericField)
 c = struct('seconds', double(seconds), ...
     'source_unit', 's', ...
-    'source_value', double(seconds), ...
+    did2.build.sourceNumericField(), double(seconds), ...
     'approximate', false);
 end
 

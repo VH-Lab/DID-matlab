@@ -58,11 +58,16 @@
 %     relatumIds             read an undirected_relation's ends, its
 %                            `relatum_id` edges ([undirected ends are
 %                            relata], 2026-11-01)
-%     numericShape           which numeric shape the builders write: 'old'
-%                            (default) or 'new' ([one shape for measured
+%     numericShape           which numeric shape the builders write: 'new'
+%                            (default) or 'old' ([one shape for measured
 %                            numbers], Jess Haley, 2026-11-17, did-schema
 %                            did_v2_numeric_shape_plan.md); every builder and
 %                            the validator read both (step 1 of its section 9)
+%     numericItem            a list item a caller assembled by hand in the
+%                            old numeric shape (quantity, matrix,
+%                            origin/spacing blocks), in that shape
+%     sourceNumericField     a value cell's source field: source_numeric
+%                            (new shape) or source_value (old)
 
 %   Checks across documents
 %     checkDoseIngredients   a dose's ingredient_id edges are among its

@@ -63,7 +63,7 @@ function c = covariate(variable, along, options)
 %                      'Matrix' (new shape only; the old shape has no item
 %                      tolerance).
 %     'Shape'          'old' or 'new' (default did2.build.numericShape(),
-%                      'old' until step 2 of did-schema
+%                      'new' since step 2 of did-schema
 %                      did_v2_numeric_shape_plan.md [one shape for measured
 %                      numbers], Jess Haley, 2026-11-17). 'new' writes the flat
 %                      item: 'Value' and 'Matrix' -> numeric (+ source_numeric,

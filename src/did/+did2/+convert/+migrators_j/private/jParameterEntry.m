@@ -29,9 +29,13 @@ function e = jParameterEntry(variableName, canonicalValue, sourceUnit, sourceVal
 %   WHAT THE SOURCE WROTE, and across all four v1 spike-parameter templates the
 %   source writes no unit at all, so callers in this family pass ''.
 %
-%   canonicalValue is a double; sourceValue is the source's own spelling kept
-%   verbatim (v1 writes vmspikefilteringparameters.threshold as the STRING
-%   "0.030", and that string survives whatever the registry later says).
+%   canonicalValue is a double; sourceValue is what the source wrote, kept in
+%   its own type: its spelling verbatim where v1 stored text (v1 writes
+%   vmspikefilteringparameters.threshold as the STRING "0.030", and that
+%   string survives whatever the registry later says), the number where v1
+%   stored a number ([numeric shape details] (1), Jess Haley, 2026-11-17).
+%   In the new numeric shape the entry is flat (numeric, source_numeric; see
+%   did2.build.parameter); the field list above is the old shape's.
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) method_parameters fold.
 arguments
@@ -43,7 +47,7 @@ arguments
     variableName char
     canonicalValue (1,1) double
     sourceUnit char = ''
-    sourceValue char = ''
+    sourceValue = ''   % char, or a number ([numeric shape details] (1))
 end
 
 % did-schema #88: one entry {variable, unit, source_unit, approximate,
