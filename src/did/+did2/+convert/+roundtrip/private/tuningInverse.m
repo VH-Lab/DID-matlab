@@ -80,6 +80,21 @@ switch family
         responseId = '';
         if ~isempty(ins); responseId = ins{1}; end
         [blk, bad] = rawCurveBlock(leaf, own, responseId);
+        % [depends on name not written when it equals the edge] (Decided by
+        % Jess Haley, 2026-11-12): input_parameters.depends_on.name is left
+        % out when it names the curve's own response edge, so it is the
+        % same as that edge's name ([restated values checked], as the
+        % calculator block's inner depends_on copy below)
+        if ~strcmp(v1Class, resultBlock) && ischar(inputs) ...
+                && strcmp(inputs, 'stimulus_response_scalar_id') && ~isempty(ins)
+            whyName = ['input_parameters.depends_on.name restates the curve''s ' ...
+                'stimulus_response_scalar_id edge ([depends on name not written when ' ...
+                'it equals the edge], Jess Haley, 2026-11-12)'];
+            for pth = {'.input_parameters.depends_on.name', '.input_parameters.depends_on(1).name'}
+                spec.equivalents(end+1) = struct('path', [v1Class pth{1}], ...
+                    'values', {{'stimulus_response_scalar_id'}}, 'why', whyName);
+            end
+        end
         % [display label compared loosely] (Decided by Jess Haley,
         % 2026-11-10, did-schema did_v2_go_forward_class_audit.md): the
         % migration does not write v1 input_parameters.independent_label; it
@@ -273,6 +288,11 @@ function [own, bad] = curveOwnBlock(leaf, ownV1)
 own = struct();
 bad = {};
 notes = getIn(leaf, 'statement', 'notes');
+if ischar(notes) || isstring(notes)
+    % the v1 label's line, when the notes end with one, is not the log
+    % ([tuning axes named from the varied property], did2.convert.tuningLabelNote)
+    notes = did2.convert.tuningLabelNote('read', notes);
+end
 if (ischar(notes) || isstring(notes)) && ~isempty(char(notes))
     own.log = char(notes);
 end
@@ -315,7 +335,7 @@ values = [];
 for k = 1:numel(conds)
     [~, v2] = termParts(getIn(conds{k}, 'variable'));
     [v1Name, found] = did2.convert.tuningNames('v1', v2);
-    q = numberOf(getIn(conds{k}, 'quantity', 'value'));
+    q = numberOf(itemNumbers(conds{k}));
     if ~found || isempty(q)
         bad{end+1} = sprintf('condition "%s" is not a tuning property', v2); %#ok<AGROW>
         continue;

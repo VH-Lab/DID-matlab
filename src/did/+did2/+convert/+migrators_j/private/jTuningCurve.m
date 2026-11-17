@@ -135,6 +135,30 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %   from other documents, so they are placed ([tuning stimids rebuild]:
 %   stimid, stimulus_presentation_number).
 %
+%   OPTS.VariedParameters (family 'stimulus'): the curve's varied stimulus
+%   parameters, tuningcurve_calc's v1 input_parameters.independent_parameter
+%   split at ',' (jCalculation). [tuning axes named from the varied property]
+%   (Decided by Jess Haley, 2026-11-12, did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md): the axis (dimension term and
+%   covariate variable) is named from them through the registered terms
+%   (did2.convert.tuningNames: angle -> Direction NCIT:C42677, sFrequency ->
+%   Spatial Frequency NCIT:C75389, tFrequency -> Temporal Frequency
+%   NCIT:C25515, ...), not from `independent_variable_label`; an `angle` axis
+%   whose values span less than 180 degrees is an orientation, Orientation
+%   NCIT:C165680. The label text is kept in notes: EXTRA.labelNote is the v1
+%   label when the axis terms do not already restate it (letter case and '_'
+%   versus space aside, [display label compared loosely]), else [];
+%   jCalculation writes it with did2.convert.tuningLabelNote. With no varied
+%   parameters (the tuning_response app's bare curve has no settings), one
+%   per column that the name table does not hold, or a count that is not the
+%   number of columns, the axis is named from the label, as before.
+%
+%   RESPONSE TYPE ([response type harmonics are integers], Decided by Jess
+%   Haley, 2026-11-12): `properties.response_type` `mean` is NCIT:C53319
+%   Arithmetic Mean and `peak` STATO:0000151 maximum observed value
+%   (jResponseType); F1 and F2 stay labels until where their integer
+%   harmonic is written is decided.
+%
 %   OPTS.HalfHeight (family 'oridir'; [oridir half-height values], Jess
 %   Haley, 2026-11-09, did-schema did_v2_tuning_model_plan.md): the four
 %   values NDIcalc-vis-matlab's oridir calculator writes in v1 `vector`
@@ -155,6 +179,7 @@ arguments
     family (1,:) char
     opts.Rebuilt = {}
     opts.HalfHeight (1,1) logical = false
+    opts.VariedParameters = {}
 end
 
 value = struct();
@@ -162,7 +187,7 @@ valueAxes = [];
 leafFields = struct();
 dropped = {};
 extra = struct('abs', struct('present', false, 'value', struct(), 'leafFields', struct()), ...
-    'notes', '');
+    'notes', '', 'labelNote', []);
 [v0, ~, o0] = jResponseVariable([]);   % no block: the source does not say
 response = struct('variable', v0, 'outcome', o0);
 if ~isstruct(srcBlk) || ~isscalar(srcBlk)
@@ -170,7 +195,8 @@ if ~isstruct(srcBlk) || ~isscalar(srcBlk)
 end
 
 if strcmp(family, 'stimulus')
-    [value, valueAxes, dropped, response] = rawCurve(srcBlk, opts.Rebuilt);
+    [value, valueAxes, dropped, response, extra.labelNote] = rawCurve(srcBlk, ...
+        opts.Rebuilt, opts.VariedParameters);
     return;
 end
 
@@ -181,7 +207,8 @@ props = sub(srcBlk, 'properties');
 % is notation]); the spellings are that term's registry `synonyms`
 [value, response] = putUnit(value, getf(props, {'response_units', 'responseUnits'}));
 rt = getf(props, {'response_type', 'responseType'});
-if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
+if isstring(rt) && isscalar(rt); rt = char(rt); end
+if ischar(rt) && ~isempty(rt); value.response_type = jResponseType(rt); end
 co = getf(props, {'coordinates'});
 if ischar(co) && ~isempty(co); value.coordinates = co; end
 % every other `properties` field was read by nothing and listed nowhere: it is
@@ -209,7 +236,7 @@ for k = 1:numel(axesNames)
         used{end+1} = nm; %#ok<AGROW>
     end
 end
-valueAxes = makeAxes(present, cols);
+valueAxes = makeAxes(labelTerms(present), cols);
 [value, used] = takeArr(value, used, 'mean', tc, {'mean'}, false);
 [value, used] = takeArr(value, used, 'stddev', tc, {'stddev'}, false);
 [value, used] = takeArr(value, used, 'stderr', tc, {'stderr'}, false);
@@ -342,11 +369,14 @@ end
 
 % =============================================================================
 
-function [value, valueAxes, dropped, response] = rawCurve(st, rebuilt)
+function [value, valueAxes, dropped, response, labelNote] = rawCurve(st, rebuilt, varied)
 % v1 `stimulus_tuningcurve` (tuningcurve_calc, and the raw pre-calculator curve).
 % REBUILT: fields the caller rebuilds from other documents (placed here).
+% VARIED: the varied stimulus parameters (OPTS.VariedParameters); LABELNOTE
+% the v1 label for the notes, or [] (see the header).
 value = struct();
-labels = getf(st, {'independent_variable_label'});
+rawLabel = getf(st, {'independent_variable_label'});
+labels = rawLabel;
 if ischar(labels); labels = {labels}; end
 if isstring(labels); labels = cellstr(labels); end
 if ~iscell(labels); labels = {}; end
@@ -366,7 +396,8 @@ if numel(names) < numel(cols)
         names{d} = sprintf('independent variable %d', d);
     end
 end
-valueAxes = makeAxes(names(1:numel(cols)), cols);
+[terms, labelNote] = axisTerms(names(1:numel(cols)), cols, varied, rawLabel);
+valueAxes = makeAxes(terms, cols);
 used = {};   % the field names AS SPELLED in the document (snake or camelCase)
 [~, nm] = getfn(st, {'independent_variable_label'}); used{end+1} = nm;
 [~, nm] = getfn(st, {'independent_variable_value'}); used{end+1} = nm;
@@ -419,8 +450,73 @@ tf = isstruct(response) && isfield(response, 'outcome') ...
     && any(strcmp(response.outcome, {'neural firing rate', 'dF/F'}));
 end
 
-function valueAxes = makeAxes(names, cols)
-%MAKEAXES The value's stimulus dimension(s) and the covariates along them.
+function terms = labelTerms(names)
+% each axis named from its label (snake_case '_' as ' '), the registered term
+% when the registry holds the name (jLabel)
+terms = cellfun(@(nm) jLabel(strrep(nm, '_', ' ')), reshape(names, 1, []), ...
+    'UniformOutput', false);
+end
+
+function [terms, labelNote] = axisTerms(names, cols, varied, rawLabel)
+%AXISTERMS The axis terms of a raw curve, and the label for its notes
+%   ([tuning axes named from the varied property], Jess Haley, 2026-11-12;
+%   see OPTS.VariedParameters in the header). NAMES are the label's parts,
+%   one per column; RAWLABEL is v1 independent_variable_label as read.
+terms = labelTerms(names);
+labelNote = [];
+if ischar(varied) || isstring(varied); varied = cellstr(varied); end
+if ~iscell(varied) || isempty(varied) || numel(varied) ~= numel(cols)
+    return;
+end
+byParameter = cell(1, numel(cols));
+for d = 1:numel(cols)
+    [v2, found] = did2.convert.tuningNames('v2', char(varied{d}));
+    if ~found
+        return;   % a parameter the table does not hold: named from the label
+    end
+    c = double(cols{d}(:));
+    c = c(isfinite(c));
+    if strcmp(varied{d}, 'angle') && ~isempty(c) && max(c) - min(c) < 180
+        % an orientation, not a 0-360 direction
+        byParameter{d} = did2.convert.registeredTerm('NCIT:C165680', 'Orientation');
+    else
+        byParameter{d} = jLabel(v2);
+    end
+end
+terms = byParameter;
+if ~isempty(rawLabel) && ~labelRestated(rawLabel, terms)
+    labelNote = rawLabel;
+end
+end
+
+function tf = labelRestated(rawLabel, terms)
+%LABELRESTATED True when the v1 label is what the round trip rebuilds from
+%   the axis terms (+roundtrip/private/rawCurveBlock.m: each term's name,
+%   lower case, ' ' as '_', joined by ','), compared as [display label
+%   compared loosely] (Jess Haley, 2026-11-10) compares: part by part at ',',
+%   each trimmed, letter case and '_' versus space aside.
+names = cellfun(@(t) lower(strrep(strtrim(char(t.name)), ' ', '_')), terms, ...
+    'UniformOutput', false);
+a = looseParts(rawLabel);
+b = looseParts(strjoin(names, ','));
+tf = ~isempty(a) && isequal(a, b);
+end
+
+function p = looseParts(x)
+p = {};
+if isstring(x); x = cellstr(x); end
+if iscell(x)
+    if ~all(cellfun(@ischar, x(:))); return; end
+    x = strjoin(reshape(x, 1, []), ',');
+end
+if ~ischar(x) || isempty(strtrim(x)); return; end
+p = strtrim(strsplit(x, ','));
+p = cellfun(@(c) lower(regexprep(c, '[_\s]+', ' ')), p, 'UniformOutput', false);
+end
+
+function valueAxes = makeAxes(terms, cols)
+%MAKEAXES The value's stimulus dimension(s) and the covariates along them,
+%   TERMS{d} naming column d (labelTerms, axisTerms).
 %   One column: dimension term = the variable, one quantity covariate.
 %   Several columns of one length n (Jess Haley 2026-10-22 [tuning grid]):
 %     a FULL GRID -> one dimension per variable (n_d = its distinct values),
@@ -437,10 +533,9 @@ n = numel(cols{1});
 if any(cellfun(@numel, cols) ~= n)
     return;   % ragged: no honest dimension; the values stay, without one
 end
-labels = cellfun(@(nm) strrep(nm, '_', ' '), names, 'UniformOutput', false);
 if isscalar(cols)
-    valueAxes = struct('dimensions', did2.build.dimension(jLabel(labels{1}), n), ...
-        'covariates', did2.build.covariate(jLabel(labels{1}), 0, ...
+    valueAxes = struct('dimensions', did2.build.dimension(terms{1}, n), ...
+        'covariates', did2.build.covariate(terms{1}, 0, ...
             'Value', reshape(cols{1}, 1, [])));
     return;
 end
@@ -450,8 +545,8 @@ if isGrid
     dims = cell(1, k);
     covs = cell(1, k);
     for d = 1:k
-        dims{d} = did2.build.dimension(jLabel(labels{d}), numel(levels{d}));
-        covs{d} = did2.build.covariate(jLabel(labels{d}), d - 1, ...
+        dims{d} = did2.build.dimension(terms{d}, numel(levels{d}));
+        covs{d} = did2.build.covariate(terms{d}, d - 1, ...
             'Value', reshape(levels{d}, 1, []));
     end
     valueAxes = struct('dimensions', did2.build.list(dims{:}), ...
@@ -464,7 +559,7 @@ end
 % did-schema V_eta_data_body_model_plan.md, answer "A").
 covs = cell(1, k);
 for d = 1:k
-    covs{d} = did2.build.covariate(jLabel(labels{d}), 0, 'Value', reshape(cols{d}, 1, []));
+    covs{d} = did2.build.covariate(terms{d}, 0, 'Value', reshape(cols{d}, 1, []));
 end
 valueAxes = struct('dimensions', did2.build.dimension( ...
     struct('node', 'XCO:0000000', 'name', 'experimental condition'), n), ...

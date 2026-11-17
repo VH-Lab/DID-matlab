@@ -495,6 +495,235 @@ verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
 end
 
 
+% ===================== a Copyright from another tool ======================
+%
+% Decided by Jess Haley, 2026-11-12 [copyright from another tool is emitted]
+% (did-schema did_v2_go_forward_class_audit.md): "a v1 openMINDS `Copyright`
+% document written by another tool is emitted, not consumed silently: its
+% year as the dataset's `schema:copyrightYear` date assertion (precision
+% `year`) and each holder as a `schema:copyrightHolder` relation from the
+% dataset to the holder's `Person` or `organization` entity, minted when the
+% dataset holds none." No corpus holds one, so these are fixtures. NDI's own
+% writer writes no Copyright; the shape is openMINDSobj2ndi_document's (omDoc).
+
+function testACopyrightYearIsADateAssertionOfPrecisionYear(testCase)
+[out, rep] = runPass(testCase, copyrightGraph(copyrightFields( ...
+    {'ndi://om_person', 'ndi://om_holder_org'}, 2021)));
+verifyEqual(testCase, rep.openminds_documents_seen, 14, 'DENOMINATOR');
+verifyEqual(testCase, rep.components_consumed, 1);
+verifyEqual(testCase, rep.documents_consumed, 14);
+verifyEqual(testCase, rep.copyright_years_emitted, 1);
+verifyEqual(testCase, rep.copyright_unplaced, 0);
+a = docWithIdIn(out, 'om_copyright');
+assertNotEmpty(testCase, a, 'no document keeps the Copyright''s id');
+verifyEqual(testCase, a.document_class.class_name, 'assertion');
+verifyEqual(testCase, char(a.statement.variable.node), 'schema:copyrightYear');
+verifyEqual(testCase, depOf(a, 'entity_id'), 'ds_01', 'about the dataset entity');
+verifyEqual(testCase, char(a.date.value.instant), '2021');
+verifyEqual(testCase, char(a.date.value.precision), 'year');
+end
+
+function testEachCopyrightHolderIsARelationFromTheDataset(testCase)
+% the author is a holder too: its person is not minted twice; the
+% organization holder is minted (it is no one's affiliation)
+[out, rep] = runPass(testCase, copyrightGraph(copyrightFields( ...
+    {'ndi://om_person', 'ndi://om_holder_org'}, 2021)));
+verifyEqual(testCase, rep.copyright_holders_emitted, 2);
+verifyEqual(testCase, rep.persons_emitted, 1, 'the author is not minted again');
+verifyEqual(testCase, rep.organizations_emitted, 3);
+verifyEqual(testCase, numel(idsOfClass(out, 'person')), 1);
+verifyTrue(testCase, any(strcmp(idsOfClass(out, 'organization'), 'om_holder_org')));
+verifyEqual(testCase, sort(copyrightHolderParents(out, 'ds_01')), ...
+    sort({'om_holder_org', 'om_person'}));
+end
+
+function testACopyrightHolderTheDatasetHoldsNoneOfIsMinted(testCase)
+[out, rep] = runPass(testCase, copyrightGraph(copyrightFields( ...
+    {'ndi://om_holder_person'}, 2020)));
+verifyEqual(testCase, rep.components_consumed, 1);
+verifyEqual(testCase, rep.persons_emitted, 2, 'the author and the holder');
+verifyEqual(testCase, sort(idsOfClass(out, 'person')), {'om_holder_person', 'om_person'});
+verifyEqual(testCase, copyrightHolderParents(out, 'ds_01'), {'om_holder_person'});
+end
+
+function testACopyrightWithAUsageClauseIsWithheldAndCarried(testCase)
+% customUsageClause has no v2 home (did-schema did_v2_openminds_crosswalk.json,
+% DatasetVersion.copyright.parts: "needs a decision"), so nothing of the
+% component is consumed ([partly placed is carried as v1])
+f = copyrightFields({'ndi://om_person'}, 2021);
+f.customUsageClause = {'ndi://om_holder_org'};
+[out, rep] = runPass(testCase, copyrightGraph(f));
+verifyEqual(testCase, rep.components_planned, 1, 'DENOMINATOR');
+verifyEqual(testCase, rep.components_consumed, 0);
+verifyEqual(testCase, rep.components_withheld_unplaced, 1);
+verifyEqual(testCase, rep.copyright_unplaced, 1);
+verifyEqual(testCase, rep.copyright_years_emitted, 0);
+verifyEqual(testCase, numel(classesOf(out, 'openminds')), 14, ...
+    'every openminds document is still in the batch');
+end
+
+function testACopyrightWithNoYearIsWithheldAndCarried(testCase)
+f = copyrightFields({'ndi://om_person'}, []);
+[out, rep] = runPass(testCase, copyrightGraph(f));
+verifyEqual(testCase, rep.components_planned, 1, 'DENOMINATOR');
+verifyEqual(testCase, rep.components_consumed, 0);
+verifyEqual(testCase, rep.copyright_unplaced, 1);
+verifyEqual(testCase, numel(classesOf(out, 'openminds')), 14);
+end
+
+function testTheCopyrightRoundTripsFromItsYearAndHolders(testCase)
+% did2.convert.roundtrip.openminds rebuilds the Copyright from the assertion
+% that keeps its id and the dataset's copyright_holder relations. NOT REBUILT:
+% the openMINDS instance id (no v2 document of the citation graph keeps one)
+bodies = copyrightGraph(copyrightFields({'ndi://om_person', 'ndi://om_holder_org'}, 2021));
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+[out, rep] = runPass(testCase, bodies);
+assertEqual(testCase, rep.copyright_years_emitted, 1, 'premise');
+v1 = [];
+for k = 1:numel(bodies)
+    if strcmp(bodies{k}.base.id, 'om_copyright'); v1 = bodies{k}; end
+end
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+a = docWithIdIn(out, 'om_copyright');
+r = did2.convert.roundtrip.check(v1, {a}, contextOf(docs));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds Copyright', ...
+    {'openminds.openminds_id'});
+verifyTrue(testCase, any(strcmp(r.matched, 'openminds.fields.year')), ...
+    'the year is not rebuilt');
+end
+
+function testTheCopyrightDocumentsValidateAgainstTheRealVEtaSchema(testCase)
+if isempty(getenv('DID_SCHEMA_PATH'))
+    assumeFail(testCase, ...
+        'DID_SCHEMA_PATH not set; run under the quick gate (assembled V_eta schema).');
+end
+bodies = copyrightGraph(copyrightFields({'ndi://om_person', 'ndi://om_holder_org'}, 2021));
+out = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'did_v2');
+verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
+[out, rep] = did2.convert.resolveOpenmindsCitations(out, ...
+    'Validate', true, 'TargetVersion', 'did_v2');
+verifyEqual(testCase, rep.components_reverted_on_validation, 0, ...
+    'a component reverted: an emitted body does not validate');
+verifyEqual(testCase, rep.bodies_quarantined, 0);
+verifyEqual(testCase, rep.components_consumed, 1);
+verifyEqual(testCase, rep.copyright_years_emitted, 1);
+verifyEqual(testCase, rep.copyright_holders_emitted, 2);
+refRep = did2.validate.references(out.migrated, ...
+    'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
+verifyGreaterThan(testCase, refRep.edges_examined, 0);
+verifyEqual(testCase, refRep.orphan_count, 0);
+end
+
+function f = copyrightFields(holderRefs, year)
+f = struct();
+f.holder = holderRefs;
+f.year = year;
+end
+
+function bodies = copyrightGraph(cf)
+%COPYRIGHTGRAPH citationGraph plus a Copyright the DatasetVersion names, an
+%   Organization and a Person that may hold it.
+bodies = citationGraph();
+refs = {};
+for r = [ndiRefsOf(cf.holder), ndiRefsOf(getOr(cf, 'customUsageClause'))]
+    refs{end+1} = r{1}; %#ok<AGROW>
+end
+for k = 1:numel(bodies)
+    if strcmp(bodies{k}.base.id, 'om_dsv')
+        bodies{k}.openminds.fields.copyright = {'ndi://om_copyright'};
+        bodies{k}.depends_on(end+1) = struct('name', ...
+            sprintf('openminds_%d', numel(bodies{k}.depends_on) + 1), 'value', 'om_copyright');
+    end
+end
+cp = omDoc('om_copyright', 'openminds.core.data.Copyright', ...
+    'https://openminds.om-i.org/types/Copyright', cf, refs);
+cp.base.name = '';   % as ndi.document leaves it (NDI base.json)
+bodies = [bodies, {cp, ...
+    omDoc('om_holder_org', 'openminds.core.actors.Organization', ...
+        'https://openminds.om-i.org/types/Organization', ...
+        struct('fullName', 'A Copyright Holding Institute'), {})}];
+if any(strcmp(refs, 'om_holder_person'))
+    bodies{end+1} = omDoc('om_holder_person', 'openminds.core.actors.Person', ...
+        'https://openminds.om-i.org/types/Person', ...
+        struct('givenName', 'Grace', 'familyName', 'Hopper'), {});
+end
+end
+
+function ids = ndiRefsOf(v)
+ids = {};
+if ischar(v); v = {v}; end
+if ~iscell(v); return; end
+for k = 1:numel(v)
+    if ischar(v{k}) && startsWith(v{k}, 'ndi://'); ids{end+1} = v{k}(7:end); end %#ok<AGROW>
+end
+end
+
+function v = getOr(s, name)
+v = [];
+if isfield(s, name); v = s.(name); end
+end
+
+function b = docWithIdIn(out, id)
+b = [];
+for k = 1:numel(out.migrated)
+    if strcmp(char(out.migrated{k}.get('base.id')), id)
+        b = out.migrated{k}.toStruct();
+        return;
+    end
+end
+end
+
+function v = depOf(b, name)
+v = '';
+for j = 1:numel(b.depends_on)
+    if strcmp(b.depends_on(j).name, name); v = char(b.depends_on(j).document_id); end
+end
+end
+
+function p = copyrightHolderParents(out, datasetId)
+% the parents of the copyright_holder relations from DATASETID
+p = {};
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if ~strcmp(b.document_class.class_name, 'directed_relation'); continue; end
+    if ~strcmp(did2.build.vocabularyHandle('relation', b.directed_relation.relation), ...
+            'copyright_holder')
+        continue;
+    end
+    if strcmp(depOf(b, 'child_id'), datasetId)
+        p{end+1} = depOf(b, 'parent_id'); %#ok<AGROW>
+    end
+end
+end
+
+function ctx = contextOf(docs)
+% the shape of did2.convert.roundtrip's private batchContext
+ctx = struct('docs', {docs}, ...
+    'byId', containers.Map('KeyType', 'char', 'ValueType', 'double'), ...
+    'referrers', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+for k = 1:numel(docs)
+    id = char(docs{k}.base.id);
+    if ~isempty(id) && ~isKey(ctx.byId, id); ctx.byId(id) = k; end
+    if ~isfield(docs{k}, 'depends_on'); continue; end
+    dd = docs{k}.depends_on;
+    for j = 1:numel(dd)
+        if strcmp(dd(j).name, 'session_id'); continue; end
+        t = '';
+        if isfield(dd(j), 'document_id') && ~isempty(dd(j).document_id)
+            t = char(dd(j).document_id);
+        elseif isfield(dd(j), 'value') && ~isempty(dd(j).value)
+            t = char(dd(j).value);
+        end
+        if isempty(t); continue; end
+        if isKey(ctx.referrers, t)
+            ctx.referrers(t) = [ctx.referrers(t), k];
+        else
+            ctx.referrers(t) = k;
+        end
+    end
+end
+end
+
 % ===================== helpers ============================================
 
 function [out, rep] = runPass(testCase, v1Bodies)

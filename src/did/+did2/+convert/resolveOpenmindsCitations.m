@@ -29,7 +29,8 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %   ... -- are left out of the walk, routeIsSubjectSide below.)
 %   BATCH-PASS-READS: openminds(dataset citation)
 %   BATCH-PASS-ADDS: entity(dataset), entity(person), entity(organization),
-%       funding, publication, web_resource, directed_relation(openMINDS role)
+%       funding, publication, web_resource, directed_relation(openMINDS role),
+%       assertion(dataset copyright year)
 %   BATCH-PASS-CHANGES: NONE -- it appends the assembled documents and
 %       removes the sources
 %   BATCH-PASS-REMOVES: openminds(dataset citation)
@@ -224,6 +225,17 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %     technique                          likewise, and the type set is
 %                                        open-ended by construction.
 %
+%   A `Copyright` (holder, year), which NDI's own writer never writes but
+%   another tool may, IS emitted ([copyright from another tool is emitted],
+%   Jess Haley, 2026-11-12): the year as the dataset's schema:copyrightYear
+%   date assertion (precision `year`, under the Copyright's own id) and each
+%   holder as a `copyright_holder` (schema:copyrightHolder) relation from the
+%   dataset to its person or organization entity, minted when not already
+%   emitted. A Copyright with no year, a customUsageClause, several Copyright
+%   documents, or a holder that is not a Person or a named Organization has no
+%   place, so its component is withheld (copyright_unplaced,
+%   components_withheld_unplaced).
+%
 %   `experimental_approach` IS populated here, and that is not a new decision:
 %   metadata_editor.m:50-52 states the field exists for exactly this path
 %   ("only openMINDS IMPORT populates it -- a DatasetVersion states it
@@ -311,6 +323,9 @@ report = struct( ...
     'web_resources_from_doi',               0, ...
     'experimental_approach_terms_emitted',  0, ...
     'relations_emitted',                    0, ...
+    'copyright_years_emitted',              0, ...
+    'copyright_holders_emitted',            0, ...
+    'copyright_unplaced',                   0, ...
     ... % --- consumed with nowhere to put it (a loss with a number on it)
     'affiliations_beyond_first_dropped',    0, ...
     'contribution_documents_consumed_without_a_home', 0, ...
@@ -503,6 +518,21 @@ for c = 1:nComp
         continue;
     end
 
+    % [copyright from another tool is emitted] (Jess Haley, 2026-11-12): a
+    % Copyright whose content has no place in the build (no year, a
+    % customUsageClause, a holder that is not a Person or a named
+    % Organization, several Copyright documents) is withheld the same way.
+    if tally.copyright_unplaced > 0
+        % counted here: a withheld component's tally is not summed below
+        report.copyright_unplaced = report.copyright_unplaced + tally.copyright_unplaced;
+        report.components_withheld = report.components_withheld + 1;
+        report.components_withheld_unplaced = report.components_withheld_unplaced + 1;
+        report.withheld_reasons{end+1} = sprintf(['component %d: %d openMINDS ' ...
+            'Copyright document(s) with content that has no place -- carried as v1'], ...
+            c, tally.copyright_unplaced);
+        continue;
+    end
+
     % --- (5) VALIDATION IS ALSO ALL-OR-NONE --------------------------------
     [survived, quarantined] = validateBodies(newBodies, options);
     if ~isempty(quarantined)
@@ -615,6 +645,8 @@ tally = struct('datasets_emitted', 0, 'persons_emitted', 0, ...
     'web_resources_emitted', 0, 'web_resources_from_iri', 0, ...
     'web_resources_from_doi', 0, 'experimental_approach_terms_emitted', 0, ...
     'relations_emitted', 0, 'affiliations_beyond_first_dropped', 0, ...
+    'copyright_years_emitted', 0, 'copyright_holders_emitted', 0, ...
+    'copyright_unplaced', 0, ...
     'contribution_documents_consumed_without_a_home', 0, ...
     'data_type_documents_consumed_without_a_home', 0, ...
     'technique_documents_consumed_without_a_home', 0);
@@ -664,64 +696,27 @@ if ~isempty(approaches)
     datasetBlock.experimental_approach = approaches;
     tally.experimental_approach_terms_emitted = numel(approaches);
 end
-% how_to_cite / accessibility / ethics_assessment / copyright_year are NOT in
-% the graph. Omitted rather than written blank: a blank is a vacuous field.
+% how_to_cite / accessibility / ethics_assessment are NOT in the graph.
+% Omitted rather than written blank: a blank is a vacuous field. The copyright
+% year is (a Copyright document another tool wrote): see COPYRIGHT below.
 newBodies = [newBodies, entityDoc(dv, 'dataset', datasetId, datasetBlock, ...
     emptyGids(), false)];
 tally.datasets_emitted = 1;
 
 % --- authors -> person + has_author / affiliated_with -----------------------
+personsEmitted = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 authorRefs = refsOf(f, {'author'});
 for i = 1:numel(authorRefs)
     if ~isKey(byId, authorRefs{i}); continue; end
-    pIdx = byId(authorRefs{i});
-    p    = bodies{pIdx};
-    pf   = openmindsFields(p);
+    p = bodies{byId(authorRefs{i})};
     personId = baseField(p, 'id', '');
     if isempty(personId); continue; end   % an id-preserving fold needs the id
-
-    orcid = stripPrefix(charField(followFields(pf, ...
-        {'digitalIdentifier', 'digital_identifier'}, byId, bodies), ...
-        {'identifier'}), 'https://orcid.org/');
-    email = charField(followFields(pf, ...
-        {'contactInformation', 'contact_information'}, byId, bodies), {'email'});
-
-    personBlock = struct( ...
-        'given_name',  charField(pf, {'givenName', 'given_name'}), ...
-        'family_name', charField(pf, {'familyName', 'family_name'}), ...
-        'email',       email);
-    newBodies = [newBodies, entityDoc(p, 'person', personId, personBlock, ...
-        buildGids({'ORCID', orcid}), true)]; %#ok<AGROW>
-    tally.persons_emitted = tally.persons_emitted + 1;
-    tally.persons_id_preserved = tally.persons_id_preserved + 1;
+    [personDocs, affDocs, tally] = personBodies(p, personId, byId, bodies, orgIds, tally);
+    newBodies = [newBodies, personDocs]; %#ok<AGROW>
+    personsEmitted(personId) = true;
     newBodies{end+1} = relationDoc(dv, datasetId, personId, 'has_author', i - 1); %#ok<AGROW> order from 0 ([author order from 0], Jess Haley 2026-10-21)
     tally.relations_emitted = tally.relations_emitted + 1;
-
-    % Affiliations. The FIRST only -- see the header: emitting one edge per
-    % affiliation would be making a team call that is explicitly open.
-    affRefs = refsOf(pf, {'affiliation'});
-    if numel(affRefs) > 1
-        tally.affiliations_beyond_first_dropped = ...
-            tally.affiliations_beyond_first_dropped + (numel(affRefs) - 1);
-    end
-    if isempty(affRefs) || ~isKey(byId, affRefs{1}); continue; end
-    aff = bodies{byId(affRefs{1})};
-    orgBodyIdx = followFieldsIdx(openmindsFields(aff), ...
-        {'memberOf', 'member_of'}, byId);
-    if isempty(orgBodyIdx); continue; end
-    org = bodies{orgBodyIdx};
-    orgName = charField(openmindsFields(org), {'fullName', 'full_name'});
-    if isempty(orgName); continue; end
-    [orgId, orgBody] = orgFor(org, orgName, orgIds, baseField(org, 'id', ''));
-    if ~isempty(orgBody)
-        newBodies = [newBodies, orgBody]; %#ok<AGROW>
-        tally.organizations_emitted = tally.organizations_emitted + 1;
-        if strcmp(orgId, baseField(org, 'id', ''))
-            tally.organizations_id_preserved = tally.organizations_id_preserved + 1;
-        end
-    end
-    newBodies{end+1} = relationDoc(p, personId, orgId, 'affiliated_with', []); %#ok<AGROW>
-    tally.relations_emitted = tally.relations_emitted + 1;
+    newBodies = [newBodies, affDocs]; %#ok<AGROW>
 end
 
 % --- funding -> funding + funded_by / issued_by -----------------------------
@@ -819,6 +814,69 @@ for i = 1:numel(docRefs)
     tally.relations_emitted = tally.relations_emitted + 1;
 end
 
+% --- COPYRIGHT -> copyrightYear date assertion + copyrightHolder relations ---
+% Decided by Jess Haley, 2026-11-12 [copyright from another tool is emitted]
+% (did-schema did_v2_go_forward_class_audit.md): "a v1 openMINDS `Copyright`
+% document written by another tool is emitted, not consumed silently: its
+% year as the dataset's `schema:copyrightYear` date assertion (precision
+% `year`) and each holder as a `schema:copyrightHolder` relation from the
+% dataset to the holder's `Person` or `organization` entity, minted when the
+% dataset holds none." (NDI's own writer writes no Copyright.) The assertion
+% is written as NDI-matlab's ndi.setup.V2.entityDocuments writes a dataset's
+% `copyright_year` ([copyright year is a date assertion], #1228), and keeps
+% the Copyright document's id, which it most directly replaces ([every v1 id
+% survives]); did2.convert.roundtrip.openminds rebuilds the Copyright from it
+% and the holder relations. A Copyright with content that has no place is
+% counted in copyright_unplaced and its component withheld (above).
+copyRefs = refsOf(f, {'copyright'});
+copyRefs = copyRefs(cellfun(@(r) isKey(byId, r), copyRefs));
+if numel(copyRefs) > 1
+    tally.copyright_unplaced = tally.copyright_unplaced + numel(copyRefs);
+elseif isscalar(copyRefs)
+    cp = bodies{byId(copyRefs{1})};
+    [ok, year, holders] = copyrightParts(cp, byId, bodies);
+    if ~ok
+        tally.copyright_unplaced = tally.copyright_unplaced + 1;
+    else
+        cb = did2.convert.entities.freshBase(cp, '');
+        % the Copyright's own creation time (the outbound rename moved it to
+        % base.creation_timestamp, which freshBase does not read)
+        if ~isempty(creationTime(cp)); cb.datestamp = char(creationTime(cp)); end
+        idOpt = {};
+        if ~isempty(baseField(cp, 'id', '')); idOpt = {'Id', char(baseField(cp, 'id', ''))}; end
+        newBodies{end+1} = did2.build.statement('assertion', datasetId, ...
+            did2.convert.registeredTerm('schema:copyrightYear', 'copyright year'), ...
+            did2.build.valueCell('date', {year}, 'Fields', struct('precision', 'year')), ...
+            'SessionId', cb.session_id, 'CreationTimestamp', cb.datestamp, ...
+            'Validate', false, 'ValueKind', 'date', idOpt{:}); %#ok<AGROW>
+        tally.copyright_years_emitted = tally.copyright_years_emitted + 1;
+        for i = 1:numel(holders)
+            h = bodies{holders(i)};
+            hId = baseField(h, 'id', '');
+            if isOpenmindsType(h, 'Person')
+                if ~isKey(personsEmitted, hId)
+                    [personDocs, affDocs, tally] = personBodies(h, hId, byId, bodies, orgIds, tally);
+                    newBodies = [newBodies, personDocs, affDocs]; %#ok<AGROW>
+                    personsEmitted(hId) = true;
+                end
+            else
+                [hId, orgBody] = orgFor(h, charField(openmindsFields(h), ...
+                    {'fullName', 'full_name'}), orgIds, hId);
+                if ~isempty(orgBody)
+                    newBodies = [newBodies, orgBody]; %#ok<AGROW>
+                    tally.organizations_emitted = tally.organizations_emitted + 1;
+                    if strcmp(hId, baseField(h, 'id', ''))
+                        tally.organizations_id_preserved = tally.organizations_id_preserved + 1;
+                    end
+                end
+            end
+            newBodies{end+1} = relationDoc(cp, datasetId, hId, 'copyright_holder', []); %#ok<AGROW>
+            tally.relations_emitted = tally.relations_emitted + 1;
+            tally.copyright_holders_emitted = tally.copyright_holders_emitted + 1;
+        end
+    end
+end
+
 % --- consumed with no home. Counted, never summed into anything else. -------
 tally.contribution_documents_consumed_without_a_home = ...
     numel(refsOf(f, {'otherContribution', 'other_contribution'}));
@@ -826,6 +884,94 @@ tally.data_type_documents_consumed_without_a_home = ...
     numel(refsOf(f, {'dataType', 'data_type'}));
 tally.technique_documents_consumed_without_a_home = ...
     numel(refsOf(f, {'technique'}));
+end
+
+function [personDocs, affDocs, tally] = personBodies(p, personId, byId, bodies, orgIds, tally)
+%PERSONBODIES An openMINDS Person as a `person` entity (id preserved), and its
+%   FIRST affiliation as an `organization` + `affiliated_with` (see the header:
+%   the rest are counted in affiliations_beyond_first_dropped, which withholds
+%   the component). An author and a copyright holder are built the same way.
+import did2.convert.entities.entityDoc
+import did2.convert.entities.relationDoc
+import did2.convert.entities.orgFor
+import did2.convert.entities.buildGids
+pf = openmindsFields(p);
+orcid = stripPrefix(charField(followFields(pf, ...
+    {'digitalIdentifier', 'digital_identifier'}, byId, bodies), ...
+    {'identifier'}), 'https://orcid.org/');
+email = charField(followFields(pf, ...
+    {'contactInformation', 'contact_information'}, byId, bodies), {'email'});
+personBlock = struct( ...
+    'given_name',  charField(pf, {'givenName', 'given_name'}), ...
+    'family_name', charField(pf, {'familyName', 'family_name'}), ...
+    'email',       email);
+personDocs = entityDoc(p, 'person', personId, personBlock, ...
+    buildGids({'ORCID', orcid}), true);
+tally.persons_emitted = tally.persons_emitted + 1;
+tally.persons_id_preserved = tally.persons_id_preserved + 1;
+affDocs = {};
+% Affiliations. The FIRST only -- see the header: emitting one edge per
+% affiliation would be making a team call that is explicitly open.
+affRefs = refsOf(pf, {'affiliation'});
+if numel(affRefs) > 1
+    tally.affiliations_beyond_first_dropped = ...
+        tally.affiliations_beyond_first_dropped + (numel(affRefs) - 1);
+end
+if isempty(affRefs) || ~isKey(byId, affRefs{1}); return; end
+aff = bodies{byId(affRefs{1})};
+orgBodyIdx = followFieldsIdx(openmindsFields(aff), ...
+    {'memberOf', 'member_of'}, byId);
+if isempty(orgBodyIdx); return; end
+org = bodies{orgBodyIdx};
+orgName = charField(openmindsFields(org), {'fullName', 'full_name'});
+if isempty(orgName); return; end
+[orgId, orgBody] = orgFor(org, orgName, orgIds, baseField(org, 'id', ''));
+if ~isempty(orgBody)
+    affDocs = [affDocs, orgBody];
+    tally.organizations_emitted = tally.organizations_emitted + 1;
+    if strcmp(orgId, baseField(org, 'id', ''))
+        tally.organizations_id_preserved = tally.organizations_id_preserved + 1;
+    end
+end
+affDocs{end+1} = relationDoc(p, personId, orgId, 'affiliated_with', []);
+tally.relations_emitted = tally.relations_emitted + 1;
+end
+
+function [ok, year, holders] = copyrightParts(cp, byId, bodies)
+%COPYRIGHTPARTS An openMINDS Copyright{holder, year, customUsageClause}: OK
+%   when every part has a place ([copyright from another tool is emitted]):
+%   a year (one number), each holder a Person or an Organization with a
+%   full name in the batch, and no customUsageClause (the crosswalk's
+%   DatasetVersion.copyright.parts: "needs a decision", no v2 home). YEAR is
+%   its text, HOLDERS the holders' batch indices, in order.
+ok = false;
+holders = [];
+cf = openmindsFields(cp);
+year = getAny(cf, {'year'});
+if isnumeric(year) && isscalar(year) && isfinite(year) && year == round(year)
+    year = sprintf('%d', year);
+elseif isstring(year) || ischar(year)
+    year = strtrim(char(year));
+else
+    year = '';
+end
+if isempty(regexp(year, '^\d{1,4}$', 'once')); return; end
+clause = getAny(cf, {'customUsageClause', 'custom_usage_clause'});
+if ~isempty(clause) && ~(iscell(clause) && all(cellfun(@isempty, clause))); return; end
+refs = refsOf(cf, {'holder'});
+if isempty(refs); return; end
+for k = 1:numel(refs)
+    if ~isKey(byId, refs{k}); return; end
+    h = bodies{byId(refs{k})};
+    if isempty(baseField(h, 'id', '')); return; end
+    if isOpenmindsType(h, 'Organization')
+        if isempty(charField(openmindsFields(h), {'fullName', 'full_name'})); return; end
+    elseif ~isOpenmindsType(h, 'Person')
+        return;
+    end
+    holders(end+1) = byId(refs{k}); %#ok<AGROW>
+end
+ok = true;
 end
 
 % ===================== openMINDS accessors =============================

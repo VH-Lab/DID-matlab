@@ -1190,15 +1190,19 @@ arguments
 end
 
 f = 1;
+% the old {value, source_value} pair or the new flat origin / spacing and
+% source_origin / source_spacing (did2.read.numeric; [one shape for measured
+% numbers], Jess Haley, 2026-11-17)
+r = did2.read.numeric(P);
+if ~strcmp(r.form, 'origin')
+    return;
+end
 for name = {'spacing', 'origin'}
-    if isfield(P, name{1}) && isstruct(P.(name{1})) ...
-            && isfield(P.(name{1}), 'source_value')
-        sv = double(P.(name{1}).source_value);
-        v = double(P.(name{1}).value);
-        if ~isempty(sv) && sv ~= 0
-            f = v / sv;
-            return;
-        end
+    sv = double(r.(['source_' name{1}]));
+    v = double(r.(name{1}));
+    if ~isempty(sv) && sv ~= 0
+        f = v / sv;
+        return;
     end
 end
 end

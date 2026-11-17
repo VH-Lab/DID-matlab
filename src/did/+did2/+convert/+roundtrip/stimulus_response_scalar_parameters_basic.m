@@ -158,7 +158,7 @@ for k = 1:numel(entries)
         spec.unplaced{end+1} = sprintf('method parameter "%s" is not in the name table', name);
         continue;
     end
-    [q, hasQ] = getIn(e, 'quantity', 'value');
+    [q, hasQ] = itemNumbers(e);
     [t, hasT] = getIn(e, 'text');
     if hasT && ~isempty(t)
         blk.(field) = char(t);

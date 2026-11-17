@@ -26,7 +26,7 @@ for k = 1:numel(entries)
         rest{end+1} = e; %#ok<AGROW>
         continue;
     end
-    x = numberOf(getIn(e, 'quantity', 'value'));
+    x = numberOf(itemNumbers(e));
     if isempty(x)
         bad{end+1} = sprintf('parameter "%s" states no number', name); %#ok<AGROW>
         continue;

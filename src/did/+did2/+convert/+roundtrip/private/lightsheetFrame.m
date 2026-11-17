@@ -53,8 +53,12 @@ for k = 1:n
         f.channel_names = strjoin(names, ',');
         continue;
     end
-    [o, so] = pairOf(getIn(cov, 'origin'));
-    [s, ss] = pairOf(getIn(cov, 'spacing'));
+    % the old {value, source_value} blocks or the new flat origin, spacing,
+    % source_origin, source_spacing ([one shape for measured numbers])
+    [o, so] = itemRegular(cov, 'origin');
+    [s, ss] = itemRegular(cov, 'spacing');
+    o = numberOf(o); so = numberOf(so);
+    s = numberOf(s); ss = numberOf(ss);
     if ~isempty(ss); s = ss; end
     if ~isempty(so); o = so; end
     if ~isempty(s); f.scale(k) = s; end
@@ -81,18 +85,6 @@ for i = 1:numel(covs)
         c = covs{i};
         return;
     end
-end
-end
-
-function [v, source] = pairOf(p)
-v = [];
-source = [];
-p = firstOf(p);
-if isstruct(p) && isscalar(p)
-    if isfield(p, 'value'); v = numberOf(p.value); end
-    if isfield(p, 'source_value'); source = numberOf(p.source_value); end
-elseif isnumeric(p)
-    v = numberOf(p);
 end
 end
 

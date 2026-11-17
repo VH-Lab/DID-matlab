@@ -78,7 +78,8 @@
 %     rebuilt), tuningBestValues (the value a tuning curve's `best`
 %     selection chose, read from its log), tuningStatedValues (the number
 %     a tuning curve's exact_number selection fixes a property at),
-%     inputEdgeNames (input edge names
+%     tuningLabelNote (a tuning curve's v1 display label, kept as the
+%     last line of its notes), inputEdgeNames (input edge names
 %     rebuilt from their classes), isSpikeTimesObservation (a unit's
 %     per-epoch spike-times observation, the input a stimulus response is
 %     computed from)

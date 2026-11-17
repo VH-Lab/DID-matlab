@@ -44,7 +44,7 @@ function [out, rep] = decompose(v1)
 % [sorted units are cells or groups] (Jess Haley, 2026-10-26); an unlabelled
 % one is carried ([unlabelled units need a map])
 labels = {'el_neuron', 'single', 'el_neuron_x', 'single', 'el_neuron_u', 'single', ...
-    'el_neuron_u2', 'single', 'el_neuron_q', 'single'};
+    'el_neuron_u2', 'single', 'el_neuron_q', 'single', 'el_neuron2', 'single'};
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', labels);
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
@@ -861,21 +861,116 @@ verifyTrue(testCase, any(strcmp(f(1).lost, 'files.file_list')), strjoin(f(1).los
 verifyTrue(testCase, any(contains(f(1).unplaced, 'data bodies')), strjoin(f(1).unplaced, '; '));
 end
 
+% ---- several clocks: [device clocks on one epoch] (Jess Haley, 2026-10-26) --
+% A JH-style element_epoch states two clocks (dev_local_time,exp_global_time).
+% The observation's reference states dev_local_time; the other clock is the
+% epoch's own extent (did2.convert.epochMint, #60 option A), so the inverse
+% rebuilds epoch_clock and t0_t1 from both, in the source's order.
+
+function testADissolvedTwoClockTiedElementEpochRoundTrips(testCase)
+[bodies, out, rep] = dissolvedBatch('tied', TWO_CLOCKS(), TWO_CLOCK_T0T1());
+verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+
+function testADissolvedTwoClockUntiedElementEpochRoundTrips(testCase)
+[bodies, out, rep] = dissolvedBatch('untied', TWO_CLOCKS(), TWO_CLOCK_T0T1());
+verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+
+function testADissolvedElementEpochKeepsItsClockOrder(testCase)
+% the source lists exp_global_time first: rebuilt in that order, tied and untied
+for how = {'tied', 'untied'}
+    [bodies, out, rep] = dissolvedBatch(how{1}, 'exp_global_time,dev_local_time', ...
+        fliplr(TWO_CLOCK_T0T1()));
+    verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+end
+
+function testTwoAgreeingUntiedTwoClockSourcesBothRoundTrip(testCase)
+% [agreeing untied sources count as one] (Jess Haley, 2026-11-12): the
+% session-anchored extents derive from the first source and are every agreeing
+% source's, so the second rebuilds whole too
+[bodies, out, rep] = dissolvedBatch('untied', TWO_CLOCKS(), TWO_CLOCK_T0T1(), 2);
+assertEqual(testCase, rep.acquisition_epoch_dissolved, 2, 'both element_epochs dissolve');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+for id = {'ee_rt', 'ee_rt2'}
+    verifyFalse(testCase, failedSource(r, id{1}), [id{1} ': ' failureText(r, id{1})]);
+end
+verifyFalse(testCase, isfield(r.failures_by_class, 'element_epoch'));
+end
+
+function testASecondTiedSourceRestatingTheFirstIsNotMatched(testCase)
+% Two tied sources on one system state the same two clocks: epochMint keeps
+% one reference per (clock, system), derived from the first. The references
+% do not record which clocks the second stated, so its epoch_clock and t0_t1
+% are reported lost, never matched (the inverse's THE CLOCKS); the first
+% rebuilds whole.
+[bodies, out, rep] = dissolvedBatch('tied', TWO_CLOCKS(), TWO_CLOCK_T0T1(), 2);
+assertEqual(testCase, rep.acquisition_epoch_dissolved, 2, 'both element_epochs dissolve');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyFalse(testCase, failedSource(r, 'ee_rt'), failureText(r, 'ee_rt'));
+f = r.failures(arrayfun(@(x) strcmp(x.source_id, 'ee_rt2'), r.failures));
+assertNotEmpty(testCase, f, 'the second element_epoch did not fail');
+verifyEqual(testCase, sort(f(1).lost(:))', {'element_epoch.epoch_clock', 'element_epoch.t0_t1'});
+end
+
+function testAChangedSecondClockT1FailsOnT0T1(testCase)
+% the v1 document states another t1 for exp_global_time than the epoch holds:
+% it fails on element_epoch.t0_t1 and nothing else, tied and untied
+for how = {'tied', 'untied'}
+    [bodies, out] = dissolvedBatch(how{1}, TWO_CLOCKS(), TWO_CLOCK_T0T1());
+    k = find(cellfun(@(b) strcmp(b.base.id, 'ee_rt'), bodies));
+    changed = bodies;
+    changed{k}.element_epoch.t0_t1(2, 2) = changed{k}.element_epoch.t0_t1(2, 2) + 1;
+    r = did2.convert.roundtrip.wholeBatch(changed, out);
+    f = r.failures(arrayfun(@(x) strcmp(x.source_id, 'ee_rt'), r.failures));
+    assertNotEmpty(testCase, f, [how{1} ': the element_epoch did not fail']);
+    verifyEqual(testCase, f(1).lost(:)', {'element_epoch.t0_t1'}, how{1});
+    verifyEmpty(testCase, f(1).unplaced, how{1});
+end
+end
+
+function c = TWO_CLOCKS()
+c = 'dev_local_time,exp_global_time';
+end
+
+function t = TWO_CLOCK_T0T1()
+% [t0; t1] per clock, as JH's element_epochs state them
+t = [2 739081.594; 579.85 739081.636];
+end
+
 function v = changedLocation(v)
 v.files.file_info.locations.location = '/data/elsewhere.vhsb';
 end
 
-function [bodies, out, rep] = dissolvedBatch(how)
+function [bodies, out, rep] = dissolvedBatch(how, clocks, t0t1, nSources)
 %DISSOLVEDBATCH A spike-sorted neuron's one element_epoch, dissolved: HOW
 %   'tied' (its epoch's ingested manifest and rig are in the batch) or
-%   'untied' (only the element_epoch states the epoch).
+%   'untied' (only the element_epoch states the epoch). CLOCKS and T0T1 (the
+%   v1 epoch_clock and t0_t1; default the one dev_local_time clock) and
+%   NSOURCES (default 1: ee_rt; 2 adds a second neuron on the same probe whose
+%   element_epoch ee_rt2 states the same clocks and times, for the same epoch).
+if nargin < 2; clocks = 'dev_local_time'; end
+if nargin < 3; t0t1 = [2; 579.85]; end
+if nargin < 4; nSources = 1; end
 subj = subjectBody('specimen_rt', 'sess_rt', 'L');
 elP  = elementBody('el_probe_rt', 'sess_rt', 'tet', '1', 'n-trode', 1, 'specimen_rt');
-elN  = derivedElementBody('el_neuron', 'sess_rt', 'n1', 'spikes', 'el_probe_rt', 'specimen_rt');
-ee   = elementEpochBody('ee_rt', 'sess_rt', 'el_neuron', 't00rt', true);
-ee.element_epoch.t0_t1 = [2; 579.85];
-ee = jsondecode(jsonencode(ee));   % through JSON, as a corpus holds it
-bodies = {sessionBody('sd_rt', 'sess_rt', 'ref'), subj, elP, elN, ee};
+bodies = {sessionBody('sd_rt', 'sess_rt', 'ref'), subj, elP};
+ids = {'ee_rt', 'ee_rt2'};
+for s = 1:nSources
+    elName = sprintf('el_neuron%d', s);
+    if s == 1; elName = 'el_neuron'; end
+    elN = derivedElementBody(elName, 'sess_rt', sprintf('n%d', s), 'spikes', ...
+        'el_probe_rt', 'specimen_rt');
+    ee  = elementEpochBody(ids{s}, 'sess_rt', elName, 't00rt', true);
+    ee.element_epoch = struct('epoch_clock', clocks, 't0_t1', t0t1);
+    if s > 1   % its own file
+        ee.files.file_info.locations.uid = sprintf('vhsb_%d', s);
+        ee.files.file_info.locations.location = sprintf('/data/t00sp/neuron%d.vhsb', s);
+    end
+    ee = jsondecode(jsonencode(ee));   % through JSON, as a corpus holds it
+    bodies = [bodies, {elN, ee}]; %#ok<AGROW>
+end
 if strcmp(how, 'tied')
     bodies = [bodies, {ingestedWithRows('ing_rt', 'sess_rt', 't00rt', {{'tet', '1', 'n-trode', 'L'}}), ...
         daqsystemBody('daq_rt', 'sess_rt', 'vhspike2')}];

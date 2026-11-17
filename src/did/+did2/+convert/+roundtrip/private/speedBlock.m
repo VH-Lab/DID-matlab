@@ -45,7 +45,7 @@ if isfield(value, 'response_unit')
     props.response_units = responseUnitsBack(leaf, value);
 end
 if isfield(value, 'response_type')
-    [~, props.response_type] = termParts(value.response_type);
+    props.response_type = responseTypeBack(value.response_type);   % [response type harmonics are integers]
 end
 if ~isempty(fieldnames(props))
     blk.properties = props;
@@ -62,7 +62,7 @@ end
 for k = 1:numel(covs)
     a = numberOf(getIn(covs{k}, 'along'));
     if ~isempty(a) && a >= 0 && a < numel(dims)
-        levels{a + 1} = column(getIn(covs{k}, 'quantity', 'value'));
+        levels{a + 1} = column(itemNumbers(covs{k}));
     end
 end
 if ~isequal(lower(labels), {'spatial frequency', 'temporal frequency'}) ...
@@ -153,7 +153,7 @@ c = asCell(getIn(e, 'constraints'));
 for k = 1:numel(c)
     [~, name] = termParts(getIn(c{k}, 'variable'));
     t = regexp(name, '^Priebe fit parameter (\d+)$', 'tokens', 'once');
-    v = getIn(c{k}, 'value');
+    v = coefValue(c{k});
     if isempty(t) || ~isnumeric(v) || ~isscalar(v)
         bad{end+1} = sprintf('Priebe fit constraint "%s" is not a parameter held at a value', name); %#ok<AGROW>
         return;
@@ -173,7 +173,7 @@ end
 P = 'Priebe_fit_';
 if isfield(e, 'coefficients') && ~isempty(e.coefficients)
     c = asCell(e.coefficients);
-    b.([P 'parameters']) = cellfun(@(x) numberOf(x.value), c(:));
+    b.([P 'parameters']) = cellfun(@(x) numberOf(coefValue(x)), c(:));
 end
 if isfield(e, 'sampled_fit') && isstruct(e.sampled_fit)
     x = e.sampled_fit.independent_values;

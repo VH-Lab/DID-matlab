@@ -22,8 +22,9 @@ function key = mintKey(body)
 %                                        canonical JSON (jsonencode of the
 %                                        decoded body), so the same input gives
 %                                        the same key on every run
-%   Only 3 can be '' (a body jsonencode cannot encode), and then mintId falls
-%   back to random ids, as before.
+%   Only 3 can be '' (a body jsonencode cannot encode). mintId then has no
+%   source: inside the migration that is an error (did2:convert:mintId:noSource),
+%   not a random id.
 %
 %   Before this function the key was `base.id` alone, so a document with no
 %   `base` block minted RANDOM ids on every run.

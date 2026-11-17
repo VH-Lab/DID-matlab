@@ -39,11 +39,31 @@ function out = fillField(def, value, path)
 %   (strictMode 'BindingConformance'). An ontology_term IS checked against the
 %   term registry (checkTerm; strictMode 'TermRegistry', tenet T19).
 
+% [one shape for measured numbers] (Jess Haley, 2026-11-17, did-schema
+% did_v2_numeric_shape_plan.md), step 1: both shapes are read. A field the new
+% shape writes as a flat number where the old one has a block (a covariate's
+% `origin`, `spacing`), or as a number where the old one has text (a
+% condition's `source_numeric`), carries its new form as `alt_leaf`
+% (did2.schema.numericShapeFields); a number given there is checked as that.
+if isfield(def, 'alt_leaf') && (isnumeric(value) || islogical(value))
+    def = def.alt_leaf;
+end
 subDefs = asDefs(getOr(def, 'fields', []));
 fieldType = char(getOr(def, 'type', ''));
 isArray = ~logical(getOr(def, 'mustBeScalar', true));
 if strcmp(char(getOr(def, 'name', '')), 'source_unit')
     value = sourceUnitValue(value, fieldType, path);
+end
+if isempty(subDefs) && strcmp(fieldType, 'boolean') ...
+        && strcmp(char(getOr(def, 'name', '')), 'value') && isstruct(value)
+    % logical's `value`: the old bare true/false, or the new block
+    % {logical: true/false} (plan section 3, logical.value.logical)
+    if ~isscalar(value) || ~isequal(fieldnames(value), {'logical'})
+        error('did2:build:typeMismatch', ...
+            '"%s" is true/false, or the block {logical: true/false}.', path);
+    end
+    out = struct('logical', fillLeaf(def, value.logical, fieldType, isArray, [path '.logical']));
+    return;
 end
 
 if isempty(subDefs)
@@ -63,6 +83,7 @@ if ~isArray && numel(elems) ~= 1
     error('did2:build:notScalar', ...
         '"%s" is a single %s, but %d were given.', path, fieldType, numel(elems));
 end
+[subDefs, shapeKind] = did2.schema.numericShapeFields(subDefs, char(getOr(def, 'name', '')));
 names = cell(1, numel(subDefs));
 for j = 1:numel(subDefs)
     names{j} = char(subDefs{j}.name);
@@ -79,10 +100,53 @@ for k = 1:numel(elems)
         checkTerm(def, elems{k}, elemPath);
     end
 end
+if strcmp(shapeKind, 'cell')
+    seriesShape(subDefs, elems, path);
+end
 if isArray
     out = mergeRagged(elems, names);
 else
     out = elems{1};
+end
+end
+
+% -------------------------------------------------------------------------
+
+function seriesShape(subDefs, elems, path)
+%SERIESSHAPE A value cell's series in one shape, not a mix of the two
+%   ([one shape for measured numbers], plan section 8, answer 4): the old
+%   shape is an array of cells of one number each; the new one is ONE cell
+%   whose canonical field (and source_numeric) is an array. And a cell states
+%   what the source wrote once: source_value (old) or source_numeric (new).
+series = {};
+for j = 1:numel(subDefs)
+    if isfield(subDefs{j}, 'series') && subDefs{j}.series
+        series{end+1} = char(subDefs{j}.name); %#ok<AGROW>
+    end
+end
+for k = 1:numel(elems)
+    e = elems{k};
+    if isfield(e, 'source_value') && isfield(e, 'source_numeric')
+        error('did2:build:ruleViolated', ...
+            ['"%s" gives both source_value (old shape) and source_numeric (new ' ...
+             'shape); the source''s number has one place.'], path);
+    end
+    for j = 1:numel(series)
+        if ~isfield(e, series{j}) || isscalar(e.(series{j}))
+            continue;
+        end
+        if numel(elems) > 1
+            error('did2:build:notScalar', ...
+                ['"%s(%d).%s" holds %d numbers in a series of %d cells: a series is ' ...
+                 'one cell of arrays (new shape) or cells of one number each (old ' ...
+                 'shape), not both.'], path, k, series{j}, numel(e.(series{j})), numel(elems));
+        end
+        if isfield(e, 'source_value')
+            error('did2:build:ruleViolated', ...
+                ['"%s.%s" is a series (new shape), so what the source wrote is ' ...
+                 'source_numeric, not source_value.'], path, series{j});
+        end
+    end
 end
 end
 

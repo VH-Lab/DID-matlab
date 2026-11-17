@@ -35,10 +35,22 @@ function bodies = neuron_extracellular(preBody)
 %       (directed_relation NO LONGER EMITTED, 2026-10-27: see above)
 %       calculation+label  `cluster_index` (a nominal label, not a count).
 %       calculation+label  `quality_label` ('multi' / 'single'), variable
-%                          'spike sort quality'.
+%                          EMPTY:0000446 'unit isolation quality'.
 %       calculation+voltage  the mean spike waveform, INLINE over a time key
-%                          and a channel key. Only when the source has one.
-%       calculation+score  `quality_number`, variable 'spike sort quality'.
+%                          and a channel key, variable EMPTY:0000447 'spike
+%                          waveform', method NCIT:C53319 Arithmetic Mean.
+%                          Only when the source has one.
+%       calculation+score  `quality_number`, variable EMPTY:0000446 'unit
+%                          isolation quality'.
+%   THE TERMS (Decided by Jess Haley, 2026-11-12 [spike unit quality and mean
+%   waveform terms], did-schema docs/plans/did_v2_go_forward_class_audit.md):
+%   "the two Soph `neuron_extracellular` statements get variable terms
+%   T19-first: an existing term if the search finds one, else EMPTY 'unit
+%   isolation quality' and 'spike waveform'; the average waveform's method is
+%   NCIT:C53319 Arithmetic Mean". The OLS search found none, so both are EMPTY
+%   terms (empty-ontology #48; did-schema term registry rows). They were
+%   'spike sort quality' and 'mean spike waveform', with no node, until then;
+%   the round trip reads both spellings.
 %       relative_time_reference  (pass-1 session handle, folded later) the
 %                          'during' anchor every calculation shares.
 %       entity (software)  the `app` block (+ its version assertion), with the
@@ -277,7 +289,10 @@ function bodies = neuron_extracellular(preBody)
 %   name `<computed: name>`. Caught by running the tool; the count was 61 before
 %   this paragraph was reworded. Name the helper in prose, never spell the call.)
 %
-%       'mean spike waveform'         the statement's `variable`
+%       'mean spike waveform'         the statement's `variable` (since
+%                                     2026-11-12 EMPTY:0000447 "spike
+%                                     waveform", [spike unit quality and
+%                                     mean waveform terms])
 %       'time'                        the time axis's `variable` (ONE call site;
 %                                     the term is built above the regular/
 %                                     irregular branch so it is not staged twice)
@@ -486,7 +501,7 @@ end
 qualityLabel = getField(blk, 'quality_label');
 if (ischar(qualityLabel) || isstring(qualityLabel)) && ~isempty(strtrim(char(qualityLabel)))
     bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
-        jLabel('spike sort quality'), ...
+        unitIsolationQuality(), ...
         struct('name', strtrim(char(qualityLabel))), ...
         calcOpt{:}, idOpt{:}, 'ValueKind', 'label');
     nCalc = nCalc + 1;
@@ -498,7 +513,7 @@ if isnumeric(quality) && isscalar(quality)
     qv = did2.build.composite('score', 'value', ...
         struct('score', double(quality), 'approximate', false));
     bodies{end+1} = jStatement(preBody, 'calculation', neuronId, ...
-        jLabel('spike sort quality'), qv, calcOpt{:}, idOpt{:}, 'ValueKind', 'score');
+        unitIsolationQuality(), qv, calcOpt{:}, idOpt{:}, 'ValueKind', 'score');
     nCalc = nCalc + 1;
 end
 
@@ -605,14 +620,24 @@ channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels);
 gap = struct('field', 'voltage.value.volts', 'reason', sprintf( ...
     'unit not stated: the mean waveform''s %d samples (%d x %d) carry no unit in v1', ...
     numel(w), nTime, nChannels));
+% [spike unit quality and mean waveform terms] (Decided by Jess Haley,
+% 2026-11-12): the variable is EMPTY:0000447 "spike waveform" and the
+% average is the method, NCIT:C53319 Arithmetic Mean
 obs = jStatement(preBody, 'calculation', neuronId, ...
-    jLabel('mean spike waveform'), ...
+    did2.convert.registeredTerm('EMPTY:0000447', 'spike waveform'), ...
     jQuantity('voltage', double(w(:))', '', 'approximate', false), ...
+    'Method', did2.convert.registeredTerm('NCIT:C53319', 'Arithmetic Mean'), ...
     'Dimensions', dims, 'Covariates', covs, ...
     'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
     calcOpt{:}, 'ValueKind', 'voltage', 'Gaps', gap);
 did2.convert.reportNote('gap', 'neuron_extracellular', ...
     char(baseField(preBody, 'id', '')), gap.field);
+end
+
+function t = unitIsolationQuality()
+% [spike unit quality and mean waveform terms] (Decided by Jess Haley,
+% 2026-11-12): the sort quality's variable, label and number alike
+t = did2.convert.registeredTerm('EMPTY:0000446', 'unit isolation quality');
 end
 
 function why = writerDefaultCount(blk, name)

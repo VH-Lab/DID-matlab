@@ -145,10 +145,11 @@ end
 function rows = propertyRow(rows, q, name)
 % A whole-mixture property the pass put on the formulation (`ph`,
 % `osmolarity`) as the row it was read from, with no node (v2 keeps none)
-if ~isstruct(q) || ~isscalar(q) || ~isfield(q, 'source_value')
+[sv, hasSource] = cellSource(q);   % source_value, or the new shape's source_numeric
+if ~isstruct(q) || ~isscalar(q) || ~hasSource
     return;
 end
 [unode, uname] = termParts(getIn(q, 'source_unit'));
-rows(end+1) = struct('node', '', 'name', name, 'value', numberOf(q.source_value), ...
+rows(end+1) = struct('node', '', 'name', name, 'value', numberOf(sv), ...
     'unode', unode, 'uname', uname);
 end

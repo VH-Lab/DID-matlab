@@ -75,7 +75,9 @@ if isnumeric(sf) && ~isempty(sf)
 end
 rt = getf(block, {'response_type'});
 if isstring(rt) && isscalar(rt); rt = char(rt); end
-if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
+% [response type harmonics are integers] (Decided by Jess Haley, 2026-11-12):
+% `mean` is NCIT:C53319 Arithmetic Mean, `peak` STATO:0000151 (jResponseType)
+if ischar(rt) && ~isempty(rt); value.response_type = jResponseType(rt); end
 c50 = getf(block, {'fitless_interpolated_c50'});
 if isnumeric(c50) && ~isempty(c50)
     value.interpolated_values = struct(halfMaximumName('interpolated_values'), double(c50));

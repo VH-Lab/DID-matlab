@@ -2193,6 +2193,10 @@ classdef cache < handle
             % matrixPathsIn - the `matrix` fields among FIELDDEFS, recursively,
             %   each as PREFIX followed by its field names.
             paths = {};
+            % a list item's new-shape `numeric` (and a covariate's
+            % `source_numeric`) is a `matrix` too ([one shape for measured
+            % numbers], did2.schema.numericShapeFields)
+            fieldDefs = did2.schema.numericShapeFields(fieldDefs);
             for i = 1:numel(fieldDefs)
                 fdef = fieldDefs{i};
                 if ~isstruct(fdef) || ~isfield(fdef, 'name') || ~isfield(fdef, 'type')
@@ -2830,6 +2834,16 @@ classdef cache < handle
             if ~strict && ~obj.holdsValueCell(subs)
                 return;   % nothing below this structure is a value cell
             end
+            % [one shape for measured numbers] (Jess Haley, 2026-11-17,
+            % did-schema did_v2_numeric_shape_plan.md), step 1: a value cell
+            % is read in either shape -- `source_value` or `source_numeric`;
+            % a series as cells of one number each, or as ONE cell whose
+            % canonical field and source_numeric are arrays. The new fields are
+            % declared by did2.schema.numericShapeFields, not by the schema
+            % JSON (which still describes the old shape until step 3).
+            parentName = '';
+            if isfield(fieldDef, 'name'); parentName = char(fieldDef.name); end
+            [subs, shapeKind] = did2.schema.numericShapeFields(subs, parentName);
             if isstruct(value)
                 elems = num2cell(reshape(value, 1, []));
             elseif iscell(value)
@@ -2899,6 +2913,50 @@ classdef cache < handle
                              'cell), got %d.'], subPath, typeName, numel(v));
                     end
                 end
+                if strict && strcmp(shapeKind, 'cell')
+                    obj.seriesShape(el, subs, elPath, typeName, numel(elems));
+                end
+            end
+        end
+
+        function seriesShape(~, el, subs, elPath, typeName, nCells)
+            % seriesShape - raise did2:validation:quantityShape when the value
+            %   cell EL mixes the two numeric shapes ([one shape for measured
+            %   numbers], Jess Haley, 2026-11-17, plan section 8, answer 4):
+            %   the old shape is an array of cells of one number each, the new
+            %   one is ONE cell whose canonical field (and source_numeric) is
+            %   an array (NCELLS is how many cells the value holds); and a cell
+            %   states what the source wrote once, as source_value (old) or
+            %   source_numeric (new). Which fields are a series is
+            %   did2.schema.numericShapeFields' `series` mark.
+            if isfield(el, 'source_value') && isfield(el, 'source_numeric')
+                error('did2:validation:quantityShape', ...
+                    ['"%s" is a %s value cell giving both source_value (old ' ...
+                     'shape) and source_numeric (new shape); the source''s ' ...
+                     'number has one place.'], elPath, typeName);
+            end
+            for j = 1:numel(subs)
+                d = subs{j};
+                if ~isfield(d, 'series') || ~d.series
+                    continue;
+                end
+                name = char(d.name);
+                if ~isfield(el, name) || isscalar(el.(name)) || isempty(el.(name))
+                    continue;
+                end
+                if nCells > 1
+                    error('did2:validation:quantityShape', ...
+                        ['"%s.%s" holds %d numbers in a %s value of %d cells: a ' ...
+                         'series is one cell of arrays (new shape) or cells of ' ...
+                         'one number each (old shape), not both.'], ...
+                        elPath, name, numel(el.(name)), typeName, nCells);
+                end
+                if isfield(el, 'source_value') && ~isempty(el.source_value)
+                    error('did2:validation:quantityShape', ...
+                        ['"%s.%s" is a series (new shape), so what the source ' ...
+                         'wrote is source_numeric, not source_value (in a %s ' ...
+                         'value cell).'], elPath, name, typeName);
+                end
             end
         end
 
@@ -2916,12 +2974,14 @@ classdef cache < handle
                 return;
             end
             canon = setdiff(names, {'source_unit', 'source_value', ...
-                'approximate', 'tolerance'}, 'stable');
+                'source_numeric', 'approximate', 'tolerance'}, 'stable');
             if isempty(canon)
                 return;
             end
             sv = [];
             if isfield(el, 'source_value'); sv = el.source_value; end
+            % the new shape's name for it ([one shape for measured numbers])
+            if isempty(sv) && isfield(el, 'source_numeric'); sv = el.source_numeric; end
             if ~(isnumeric(sv) && ~isempty(sv))
                 return;   % no number stated: not checked here (header)
             end
@@ -3229,6 +3289,19 @@ classdef cache < handle
             value = block.(fieldName);
             fieldType = char(fieldDef.type);
             qualifiedName = sprintf('%s.%s', blockClass, fieldName);
+            if strcmp(fieldType, 'boolean') && strcmp(fieldName, 'value') && isstruct(value)
+                % logical's `value`: the old bare true/false, or the new
+                % block {logical: true/false} ([one shape for measured
+                % numbers], Jess Haley, 2026-11-17, plan section 3), whose
+                % one field is checked as the bare value was
+                if ~isscalar(value) || ~isequal(fieldnames(value), {'logical'})
+                    error('did2:validation:typeMismatch', ...
+                        'Field "%s" must be boolean, or the block {logical: boolean}.', ...
+                        qualifiedName);
+                end
+                value = value.logical;
+                qualifiedName = [qualifiedName '.logical'];
+            end
             obj.validateTypeShape(value, fieldType, qualifiedName);
 
             mustBeScalar   = logical(fieldDef.mustBeScalar);

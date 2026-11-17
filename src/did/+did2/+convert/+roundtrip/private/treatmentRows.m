@@ -59,7 +59,7 @@ unit = [];
 for s = 1:numel(slots)
     [q, ok] = getIn(entry, slots{s});
     if ~ok || ~isstruct(q); continue; end
-    [sv, okv] = getIn(q, 'source_value');
+    [sv, okv] = cellSource(q);   % source_value, or the new shape's source_numeric
     [su, oku] = getIn(q, 'source_unit');
     if okv
         value = numberOf(sv);

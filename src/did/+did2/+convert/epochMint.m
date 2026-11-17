@@ -1298,7 +1298,13 @@ for k = 1:n
     % split migrator -- and not as one body that happens to be wrapped.
     migrator = armingMigratorFor(armingMigrators, ...
         'daqmetadatareader_epochdata_ingested');
+    % the arming migrator mints in a context keyed on its source, as v1_to_v2
+    % keys one on every source ([migration reliability practices] (b))
+    mk = did2.convert.mintKey(b);
+    if ~isempty(mk); mk = ['epochMint|' mk]; end
+    did2.convert.mintId('-push', mk);
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    did2.convert.mintId('-popto', mintDepth + 1);
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1467,7 +1473,13 @@ for k = 1:n
     report.response_scalar_edges_stamped = ...
         report.response_scalar_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'stimulus_response_scalar');
+    % the arming migrator mints in a context keyed on its source, as v1_to_v2
+    % keys one on every source ([migration reliability practices] (b))
+    mk = did2.convert.mintKey(b);
+    if ~isempty(mk); mk = ['epochMint|' mk]; end
+    did2.convert.mintId('-push', mk);
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    did2.convert.mintId('-popto', mintDepth + 1);
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1650,7 +1662,13 @@ for k = 1:n
     b = setDep(b, 'time_reference_id_2', refB);
     report.syncrule_edges_stamped = report.syncrule_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'syncrule_mapping');
+    % the arming migrator mints in a context keyed on its source, as v1_to_v2
+    % keys one on every source ([migration reliability practices] (b))
+    mk = did2.convert.mintKey(b);
+    if ~isempty(mk); mk = ['epochMint|' mk]; end
+    did2.convert.mintId('-push', mk);
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    did2.convert.mintId('-popto', mintDepth + 1);
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1770,7 +1788,13 @@ for k = 1:n
     end
     b = setDep(bodies{k}, 'epoch_id', epochIdByKey(key));
     migrator = armingMigratorFor(armingMigrators, 'pyraview');
+    % the arming migrator mints in a context keyed on its source, as v1_to_v2
+    % keys one on every source ([migration reliability practices] (b))
+    mk = did2.convert.mintKey(b);
+    if ~isempty(mk); mk = ['epochMint|' mk]; end
+    did2.convert.mintId('-push', mk);
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    did2.convert.mintId('-popto', mintDepth + 1);
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;

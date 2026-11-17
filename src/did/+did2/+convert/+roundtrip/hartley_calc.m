@@ -216,7 +216,7 @@ end
 if ~isempty(spike)
     c = asCell(getIn(spike, 'data', 'covariates'));
     if isscalar(c)
-        hrc.spiketimes = column(getIn(c{1}, 'quantity', 'value'));
+        hrc.spiketimes = column(itemNumbers(c{1}));
     else
         spec.unplaced{end+1} = 'the spike-time body has no single time covariate';
     end
@@ -236,7 +236,7 @@ if ~isempty(numbers)
             spec.unplaced{end+1} = sprintf('hartley numbers covariate "%s" has no v1 field', label);
             continue;
         end
-        hn.(cols{ix, 1}) = column(getIn(covs{k}, 'quantity', 'value'));
+        hn.(cols{ix, 1}) = column(itemNumbers(covs{k}));
     end
     hrc.hartley_numbers = hn;
 end
@@ -304,7 +304,7 @@ for k = 1:numel(covs)
         bad{end+1} = sprintf('covariate %d is along no dimension', k); %#ok<AGROW>
         continue;
     end
-    vals{a + 1} = column(getIn(covs{k}, 'quantity', 'value'));
+    vals{a + 1} = column(itemNumbers(covs{k}));
 end
 for k = 1:numel(dims)
     if isempty(vals{k})

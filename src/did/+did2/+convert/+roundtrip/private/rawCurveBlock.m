@@ -60,6 +60,13 @@ function [blk, bad] = rawCurveBlock(leaf, own, responseId)
 %   '_'), the label is rebuilt from it; otherwise from the term labels, lower
 %   case (Test code run 41339468679: 20211116's 42 Orientation curves lost
 %   only "Orientation" rebuilt "orientation").
+%
+%   THE LABEL IN THE NOTES ([tuning axes named from the varied property],
+%   Decided by Jess Haley, 2026-11-12): the axis is named from the v1
+%   `independent_parameter`, and a label the axis terms do not restate is
+%   kept as the last line of the curve's notes
+%   (did2.convert.tuningLabelNote). When the notes hold it, it is the label,
+%   exactly as v1 wrote it; otherwise the label is rebuilt as above.
 
 if nargin < 2; own = struct(); end
 if nargin < 3; responseId = ''; end
@@ -75,7 +82,7 @@ if iscell(covs); covs = [covs{:}]; end
 if isscalar(covs)
     [~, label] = termParts(covs.variable);
     blk.independent_variable_label = {writerLabel(own, {lower(strrep(strtrim(label), ' ', '_'))})};
-    blk.independent_variable_value = column(getIn(covs, 'quantity', 'value'));
+    blk.independent_variable_value = column(itemNumbers(covs));
 elseif numel(covs) > 1
     [labels, points, order, why] = gridPoints(covs);
     if isempty(why)
@@ -103,6 +110,10 @@ if isfield(value, 'control') && isstruct(value.control)
 end
 bad = [bad, others(value, {'mean', 'stddev', 'stderr', 'individual', 'control', ...
     'response_unit'}, 'tuning_curve.value')];
+[~, noted, hasLabel] = did2.convert.tuningLabelNote('read', getIn(leaf, 'statement', 'notes'));
+if hasLabel
+    blk.independent_variable_label = noted;
+end
 
 % [tuning stimids rebuild]
 if isfield(blk, 'independent_variable_value')
@@ -141,7 +152,7 @@ conds = asCell(getIn(leaf, 'statement', 'conditions'));
 for k = 1:numel(conds)
     [~, v2] = termParts(getIn(conds{k}, 'variable'));
     [v1Name, found] = did2.convert.tuningNames('v1', v2);
-    q = numberOf(getIn(conds{k}, 'quantity', 'value'));
+    q = numberOf(itemNumbers(conds{k}));
     if found && ~isempty(q)
         names{end+1} = v1Name; %#ok<AGROW>
         values(end+1) = q; %#ok<AGROW>
@@ -171,7 +182,7 @@ function levels = gridLevels(covs)
 % each covariate's values, in the order of the dimension it lies along
 levels = cell(1, numel(covs));
 for d = 1:numel(covs)
-    levels{d} = column(getIn(covs(d), 'quantity', 'value'));
+    levels{d} = column(itemNumbers(covs(d)));
 end
 end
 
@@ -195,7 +206,7 @@ for d = 1:k
     end
     [~, label] = termParts(covs(d).variable);
     labels{d} = lower(strrep(strtrim(label), ' ', '_'));
-    levels{d} = column(getIn(covs(d), 'quantity', 'value'));
+    levels{d} = column(itemNumbers(covs(d)));
     if isempty(levels{d}) || ~isnumeric(levels{d})
         why = sprintf('covariate %d holds no numbers', d);
         return;

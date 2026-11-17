@@ -39,12 +39,16 @@ function [v1, spec] = element_epoch(bodies, ctx)
 %                                      addepoch leaves it empty)
 %     depends_on(1) element_id         the observation's `entity_id` edge (the
 %                                      observation is about the element)
-%     element_epoch.epoch_clock        the clock of the observation's one time
-%                                      reference (`time_reference_id`), read
-%                                      back to the v1 string (clockText)
-%     element_epoch.t0_t1              [start; end] of that reference, as the
-%                                      v1 values it was read from
-%                                      (source_value, else seconds)
+%     element_epoch.epoch_clock        every clock this source stated, in
+%                                      its order, read back to the v1 string
+%                                      (clockText): see THE CLOCKS below
+%     element_epoch.t0_t1              [t0; t1] per clock, one column each:
+%                                      dev_local_time from the observation's
+%                                      one time reference (source_value,
+%                                      else seconds, of its start and end);
+%                                      each other clock from the epoch's own
+%                                      extent for it, [start; start +
+%                                      duration]
 %     epochid.epochid                  the local_identifier of the `epoch`
 %                                      entity that reference is relative to
 %                                      (`referent_id`), the same for a tied
@@ -57,12 +61,40 @@ function [v1, spec] = element_epoch(bodies, ctx)
 %                                      which resolveEpochProbemap carries
 %                                      verbatim
 %
-%   Only the clock resolveEpochProbemap dissolves on (dev_local_time, the one
-%   clock addepoch writes) is on the reference. A v1 element_epoch stating
-%   any other clock as well is not rebuilt whole: its epoch_clock and t0_t1
-%   are then reported LOST by the comparison, never matched. Anything the
-%   batch does not hold (no time reference, no epoch, no body, two of either)
-%   is named in spec.unplaced, and the fields it would have given are lost.
+%   THE CLOCKS. resolveEpochProbemap dissolves on dev_local_time only (the
+%   offset "from the epoch"), so the observation's one time reference states
+%   that clock. Every other clock the element_epoch states (JH's
+%   exp_global_time) is not an offset from the epoch: the epoch carries it as
+%   its own extent ([device clocks on one epoch], Jess Haley, 2026-10-26;
+%   did2.convert.epochMint, #60 option A), one relative_time_reference per
+%   (clock, referent) on the epoch's `time_reference_id` edges, onto the
+%   acquisition system it is tied to, or onto the session document when it is
+%   untied ([untied epochs keep the session anchor]). The source's clocks are
+%   read from those references:
+%     - the references epochMint minted FROM THIS SOURCE: their ids derive from
+%       the source's id and the role 'epoch clock <clock> on <referent>'
+%       (did2.convert.mintId; practice (b) of [migration reliability
+%       practices], Jess Haley, 2026-10-26), and the observation keeps the
+%       source's id, so each is recognised by re-deriving its id;
+%     - else, when the epoch holds session-anchored references, those: they
+%       exist only when every source of the epoch was untied and all of them
+%       stated the same clocks in the same order with identical t0/t1
+%       ([agreeing untied sources count as one], Jess Haley, 2026-11-12), so
+%       they are every such source's clocks, not only the first's.
+%   THE ORDER is the order of the epoch's `time_reference_id` edges, which
+%   epochMint adds in the order the source lists its clocks. The source's
+%   dev_local_time must be among those references (its position is the
+%   order); its values are the observation's. When it is not (another source
+%   on the same system stated it first, so the reference derives from that
+%   source), the position of dev_local_time among the source's clocks is not
+%   recorded anywhere and the clocks are not guessed: only the observation's
+%   clock is rebuilt, and a source that stated any other clock has its
+%   epoch_clock and t0_t1 reported LOST by the comparison, never matched. The
+%   same holds for a TIED source none of whose clocks the epoch's references
+%   derive from (a second source on one system that restates the first): the
+%   references do not record which of them it stated. Anything the batch
+%   does not hold (no time reference, no epoch, no body, two of either) is
+%   named in spec.unplaced, and the fields it would have given are lost.
 %
 %   See also did2.convert.roundtrip.check, did2.convert.roundtrip.wholeBatch,
 %            did2.convert.migrators_j.element_epoch,
@@ -197,10 +229,78 @@ if isEntityOfType(ep, 'epoch')
     v1.epochid = struct('epochid', fieldText(ep.entity, 'local_identifier'));
 else
     spec.unplaced{end+1} = 'the time reference is not relative to an epoch entity in the batch';
+    ep = [];
 end
-v1.element_epoch = struct( ...
-    'epoch_clock', clockText(getIn(ref, 'relative_time_reference', 'value', 'clock')), ...
-    't0_t1', [readValue(ref, 'start'); readValue(ref, 'end')]);
+[names, t0t1] = sourceClocks(ref, ep, base.id, ctx);
+v1.element_epoch = struct('epoch_clock', strjoin(names, ','), 't0_t1', t0t1);
+end
+
+function [names, t0t1] = sourceClocks(ref, ep, sourceId, ctx)
+% every clock the source stated, in its order (THE CLOCKS, above): the
+% observation's dev_local_time reference REF, with the epoch EP's own extents
+% from this source around it; REF's clock alone when they are not recorded
+devName = clockText(getIn(ref, 'relative_time_reference', 'value', 'clock'));
+devT = [readValue(ref, 'start'); readValue(ref, 'end')];
+names = {devName};
+t0t1 = devT;
+if isempty(ep)
+    return;
+end
+refs = {};
+for id = edgeIds(ep, 'time_reference_id')
+    d = ctxDoc(ctx, id{1});
+    if strcmp(classNameOf(d), 'relative_time_reference')
+        refs{end+1} = d; %#ok<AGROW>
+    end
+end
+if isempty(refs)
+    return;
+end
+clocks = cellfun(@(r) clockText(getIn(r, 'relative_time_reference', 'value', 'clock')), ...
+    refs, 'UniformOutput', false);
+referents = cellfun(@(r) firstId(edgeIds(r, 'referent_id')), refs, 'UniformOutput', false);
+own = false(1, numel(refs));
+depth = did2.convert.mintId('-depth');
+did2.convert.mintId('-push', '');   % a fresh context: each (source, role) is its first
+restore = onCleanup(@() did2.convert.mintId('-popto', depth));
+for r = 1:numel(refs)
+    if isempty(clocks{r}) || isempty(referents{r}); continue; end
+    own(r) = strcmp(char(refs{r}.base.id), did2.convert.mintId( ...
+        ['epoch clock ' clocks{r} ' on ' referents{r}], char(sourceId)));
+end
+clear restore
+if ~any(own)
+    % [agreeing untied sources count as one]: the session-anchored extents
+    % are every agreeing untied source's
+    sessionDoc = edgeIds(ep, 'session_id');
+    if isscalar(sessionDoc)
+        own = strcmp(referents, sessionDoc{1});
+    end
+end
+if ~any(own)
+    return;
+end
+clocks = clocks(own);
+refs = refs(own);
+if nnz(strcmp(clocks, devName)) ~= 1
+    return;   % the position of dev_local_time is not recorded
+end
+names = clocks;
+t0t1 = zeros(2, numel(refs));
+for r = 1:numel(refs)
+    if strcmp(clocks{r}, devName)
+        t0t1(:, r) = devT;
+    else
+        t0 = readValue(refs{r}, 'start');
+        t0t1(:, r) = [t0; t0 + readValue(refs{r}, 'duration')];
+    end
+end
+end
+
+function s = firstId(c)
+% the first id of cellstr C ('' when empty)
+s = '';
+if ~isempty(c); s = c{1}; end
 end
 
 function loc = bodyLocations(body)
@@ -220,7 +320,7 @@ end
 end
 
 function t = readValue(ref, name)
-% a relative_time_reference's START or END as the v1 value it was read from
+% a relative_time_reference's START, END or DURATION as the v1 value it was read from
 % (source_value; seconds when it states none); NaN when it has neither
 t = NaN;
 [v, ok] = getIn(ref, 'relative_time_reference', 'value', name, 'source_value');
