@@ -5259,6 +5259,63 @@ class TestTuningResponseVariable(unittest.TestCase):
         self.assertIn("    render_tuning_response_variable(r, out)\n", src)
 
 
+
+class TestTuningAxisNaming(unittest.TestCase):
+    """[tuning label choices confirmed] (Jess Haley, 2026-11-17): the raw
+    tuning curves named from their v1 label are counted and reported,
+    denominator first."""
+
+    def test_absent_is_not_measured(self):
+        out = []
+        census_digest.render_tuning_axis_naming({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_a_report_that_says_not_measured_is_not_measured(self):
+        out = []
+        census_digest.render_tuning_axis_naming({"tuning_axis_naming": {
+            "not_measured": "no raw tuning curve was folded"}}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+        self.assertIn("no raw tuning curve was folded", out[0])
+
+    def test_denominator_first_then_varied_and_label(self):
+        out = []
+        census_digest.render_tuning_axis_naming({"tuning_axis_naming": {
+            "curves_folded": 10, "named_from_varied_parameter": 6,
+            "named_from_label": 4, "label_no_independent_parameter": 1,
+            "label_not_in_name_table": 3, "label_count_mismatch": 0,
+            "no_detail": 0, "unread": 0,
+            "not_in_name_table": ["notAStimulusParameter"],
+            "not_in_name_table_counts": 3,
+            "by_class": {"tuningcurve_calc": 10}}}, out)
+        self.assertIn("10 folded raw tuning curve(s)", out[0])
+        self.assertIn("named from independent_parameter", out[1])
+        self.assertIn("6", out[1])
+        self.assertIn("named from the v1 label", out[2])
+        self.assertIn("no independent_parameter 1", out[2])
+        self.assertIn("not in the name table 3", out[2])
+        self.assertFalse(any("do not add up" in x for x in out))
+        self.assertTrue(any("notAStimulusParameter" in x and "3" in x for x in out))
+        self.assertIn("tuningcurve_calc", out[-1])
+
+    def test_a_bad_sum_is_flagged_and_a_missing_count_is_unknown(self):
+        out = []
+        census_digest.render_tuning_axis_naming({"tuning_axis_naming": {
+            "curves_folded": 10, "named_from_varied_parameter": 6,
+            "named_from_label": 2, "no_detail": 0, "unread": 0}}, out)
+        self.assertTrue(any("do not add up" in x for x in out))
+        out = []
+        census_digest.render_tuning_axis_naming({"tuning_axis_naming": {
+            "curves_folded": 3}}, out)
+        self.assertIn("?", out[1])
+        self.assertIn("?", out[2])
+
+    def test_it_reaches_the_per_corpus_digest(self):
+        import inspect
+        src = inspect.getsource(census_digest)
+        self.assertIn("    render_tuning_axis_naming(r, out)\n", src)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
