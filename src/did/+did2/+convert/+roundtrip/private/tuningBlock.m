@@ -70,12 +70,12 @@ if isfield(value, 'response_unit')
     props.response_units = responseUnitsBack(leaf, value);
 end
 if isfield(value, 'response_type')
-    props.response_type = responseTypeBack(value.response_type);   % [response type harmonics are integers]
+    props.response_type = responseTypeBack(value.response_type, harmonicOf(value));   % [harmonic is a field beside the response type]
 end
 if isfield(value, 'coordinates')
     props.coordinates = char(value.coordinates);
 end
-seen = [seen, {'response_unit', 'response_type', 'coordinates'}];
+seen = [seen, {'response_unit', 'response_type', 'harmonic', 'coordinates'}];
 if ~isempty(fieldnames(props))
     blk.properties = props;
 end

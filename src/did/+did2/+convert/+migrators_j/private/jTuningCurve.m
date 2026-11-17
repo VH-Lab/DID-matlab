@@ -156,8 +156,10 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %   RESPONSE TYPE ([response type harmonics are integers], Decided by Jess
 %   Haley, 2026-11-12): `properties.response_type` `mean` is NCIT:C53319
 %   Arithmetic Mean and `peak` STATO:0000151 maximum observed value
-%   (jResponseType); F1 and F2 stay labels until where their integer
-%   harmonic is written is decided.
+%   (jResponseType). [harmonic is a field beside the response type] (Jess
+%   Haley, 2026-11-17): F1 and F2 are NCIT:C94900 Fourier Analysis with
+%   `value.harmonic` 1 and 2, once the loaded schema declares
+%   tuning_curve.value.harmonic; until then they stay labels, as before.
 %
 %   OPTS.HalfHeight (family 'oridir'; [oridir half-height values], Jess
 %   Haley, 2026-11-09, did-schema did_v2_tuning_model_plan.md): the four
@@ -208,7 +210,14 @@ props = sub(srcBlk, 'properties');
 [value, response] = putUnit(value, getf(props, {'response_units', 'responseUnits'}));
 rt = getf(props, {'response_type', 'responseType'});
 if isstring(rt) && isscalar(rt); rt = char(rt); end
-if ischar(rt) && ~isempty(rt); value.response_type = jResponseType(rt); end
+if ischar(rt) && ~isempty(rt)
+    % [harmonic is a field beside the response type] (Jess Haley, 2026-11-17):
+    % F1 / F2 are Fourier Analysis with `harmonic` 1 / 2, once the schema in
+    % use declares tuning_curve.value.harmonic (siblings first)
+    [value.response_type, h] = jResponseType(rt, ...
+        jSchemaHasPath('tuning_curve', {'value', 'harmonic'}));
+    if ~isempty(h); value.harmonic = h; end
+end
 co = getf(props, {'coordinates'});
 if ischar(co) && ~isempty(co); value.coordinates = co; end
 % every other `properties` field was read by nothing and listed nowhere: it is
