@@ -152,6 +152,10 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %   parameters (the tuning_response app's bare curve has no settings), one
 %   per column that the name table does not hold, or a count that is not the
 %   number of columns, the axis is named from the label, as before.
+%   EXTRA.axisNaming says which: 'varied parameter', or 'label: <why>'
+%   ('' outside family 'stimulus'); jCalculation leaves it as one
+%   'tuning_axis_naming' note per folded raw curve, the count [tuning label
+%   choices confirmed] (Decided by Jess Haley, 2026-11-17) asks for.
 %
 %   RESPONSE TYPE ([response type harmonics are integers], Decided by Jess
 %   Haley, 2026-11-12): `properties.response_type` `mean` is NCIT:C53319
@@ -189,7 +193,7 @@ valueAxes = [];
 leafFields = struct();
 dropped = {};
 extra = struct('abs', struct('present', false, 'value', struct(), 'leafFields', struct()), ...
-    'notes', '', 'labelNote', []);
+    'notes', '', 'labelNote', [], 'axisNaming', '');
 [v0, ~, o0] = jResponseVariable([]);   % no block: the source does not say
 response = struct('variable', v0, 'outcome', o0);
 if ~isstruct(srcBlk) || ~isscalar(srcBlk)
@@ -197,8 +201,8 @@ if ~isstruct(srcBlk) || ~isscalar(srcBlk)
 end
 
 if strcmp(family, 'stimulus')
-    [value, valueAxes, dropped, response, extra.labelNote] = rawCurve(srcBlk, ...
-        opts.Rebuilt, opts.VariedParameters);
+    [value, valueAxes, dropped, response, extra.labelNote, extra.axisNaming] = ...
+        rawCurve(srcBlk, opts.Rebuilt, opts.VariedParameters);
     return;
 end
 
@@ -378,11 +382,12 @@ end
 
 % =============================================================================
 
-function [value, valueAxes, dropped, response, labelNote] = rawCurve(st, rebuilt, varied)
+function [value, valueAxes, dropped, response, labelNote, naming] = rawCurve(st, rebuilt, varied)
 % v1 `stimulus_tuningcurve` (tuningcurve_calc, and the raw pre-calculator curve).
 % REBUILT: fields the caller rebuilds from other documents (placed here).
 % VARIED: the varied stimulus parameters (OPTS.VariedParameters); LABELNOTE
-% the v1 label for the notes, or [] (see the header).
+% the v1 label for the notes, or [] (see the header); NAMING what the axis
+% was named from (axisTerms).
 value = struct();
 rawLabel = getf(st, {'independent_variable_label'});
 labels = rawLabel;
@@ -405,7 +410,7 @@ if numel(names) < numel(cols)
         names{d} = sprintf('independent variable %d', d);
     end
 end
-[terms, labelNote] = axisTerms(names(1:numel(cols)), cols, varied, rawLabel);
+[terms, labelNote, naming] = axisTerms(names(1:numel(cols)), cols, varied, rawLabel);
 valueAxes = makeAxes(terms, cols);
 used = {};   % the field names AS SPELLED in the document (snake or camelCase)
 [~, nm] = getfn(st, {'independent_variable_label'}); used{end+1} = nm;
@@ -466,22 +471,37 @@ terms = cellfun(@(nm) jLabel(strrep(nm, '_', ' ')), reshape(names, 1, []), ...
     'UniformOutput', false);
 end
 
-function [terms, labelNote] = axisTerms(names, cols, varied, rawLabel)
+function [terms, labelNote, naming] = axisTerms(names, cols, varied, rawLabel)
 %AXISTERMS The axis terms of a raw curve, and the label for its notes
 %   ([tuning axes named from the varied property], Jess Haley, 2026-11-12;
 %   see OPTS.VariedParameters in the header). NAMES are the label's parts,
 %   one per column; RAWLABEL is v1 independent_variable_label as read.
+%   NAMING says what the axis was named from, for the count [tuning label
+%   choices confirmed] (Decided by Jess Haley, 2026-11-17, did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md) asks for: 'varied
+%   parameter', or 'label: ' and why (no independent_parameter; one the name
+%   table does not hold; a count that is not the number of columns).
 terms = labelTerms(names);
 labelNote = [];
+naming = 'varied parameter';
 if ischar(varied) || isstring(varied); varied = cellstr(varied); end
-if ~iscell(varied) || isempty(varied) || numel(varied) ~= numel(cols)
+if ~iscell(varied) || isempty(varied)
+    naming = 'label: no independent_parameter';
+    return;
+end
+if numel(varied) ~= numel(cols)
+    naming = sprintf('label: %d independent_parameter(s) for %d column(s)', ...
+        numel(varied), numel(cols));
     return;
 end
 byParameter = cell(1, numel(cols));
 for d = 1:numel(cols)
     [v2, found] = did2.convert.tuningNames('v2', char(varied{d}));
     if ~found
-        return;   % a parameter the table does not hold: named from the label
+        % a parameter the table does not hold: named from the label
+        naming = sprintf('label: independent_parameter not in the name table: %s', ...
+            char(varied{d}));
+        return;
     end
     c = double(cols{d}(:));
     c = c(isfinite(c));

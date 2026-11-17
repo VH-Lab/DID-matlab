@@ -21,6 +21,8 @@ function tests = testTuningDecisions
 %     [input names rebuild from the input class] testInputNames*
 %     [tuning stimids rebuild]                   testTuningStimids*
 %     [tuning log in notes]                      testTuningLogInNotes
+%     [tuning label choices confirmed] (2026-11-17)  testTuningCurvesNamedFromTheirLabelAreCounted,
+%                                                testTuningAxisNamingCountsFunction
 %     [response type harmonics are integers] (2026-11-12)  testResponseTypeMeanAndPeakAreTerms
 %     [harmonic is a field beside the response type] (2026-11-17)  testResponseTypeHarmonicIsAField
 %     [varied properties are conditions by V2 name]  testVariedProperties*
@@ -1053,6 +1055,83 @@ notes = '';
 if isfield(leaf.statement, 'notes'); notes = char(leaf.statement.notes); end
 [~, ~, has] = did2.convert.tuningLabelNote('read', notes);
 verifyFalse(testCase, has);
+end
+
+function testTuningCurvesNamedFromTheirLabelAreCounted(testCase)
+% Decided by Jess Haley, 2026-11-17 [tuning label choices confirmed] (did-schema
+% docs/plans/did_v2_go_forward_class_audit.md): a curve with no
+% `independent_parameter`, or one the name table does not hold, is still
+% named from its label, and such curves are counted and reported: one
+% 'tuning_axis_naming' note per folded raw curve (the denominator), its DETAIL
+% what the axis was named from.
+named = convertedTuningCurve();            % independent_parameter 'contrast'
+notInTable = convertedTuningCurve();
+notInTable.tuningcurve_calc.input_parameters.independent_parameter = 'notAStimulusParameter';
+notInTable.tuningcurve_calc.input_parameters.selection.property = 'notAStimulusParameter';
+m = writerOutput('tuningcurve_calc');      % the tuning_response app's bare curve
+bare = did2.unittest.helpers.ndiDocument('stimulus_tuningcurve', 'Id', m.base.id, ...
+    'SessionId', m.base.session_id, 'Datestamp', m.base.datestamp);
+bare.stimulus_tuningcurve = m.stimulus_tuningcurve;
+bare.stimulus_tuningcurve.stimid = [];
+bare.stimulus_tuningcurve.stimulus_presentation_number = [];
+for e = {'stimulus_response_scalar_id', 'element_id'}
+    v = '';
+    for k = 1:numel(m.depends_on)
+        if strcmp(m.depends_on(k).name, e{1}); v = m.depends_on(k).value; end
+    end
+    bare = did2.unittest.helpers.setDependency(bare, e{1}, v);
+end
+cases = { ...
+    'named from independent_parameter', named, 'tuningcurve_calc', 'varied parameter'; ...
+    'a parameter the name table does not hold', notInTable, 'tuningcurve_calc', ...
+        'label: independent_parameter not in the name table: notAStimulusParameter'; ...
+    'the bare curve (no independent_parameter)', bare, 'stimulus_tuningcurve', ...
+        'label: no independent_parameter'};
+for k = 1:size(cases, 1)
+    [what, v1, cls, detail] = cases{k, :};
+    out = runRaw({jsondecode(jsonencode(v1))});
+    assertNotEmpty(testCase, firstOfClass(out, 'tuning_curve_calculation'), [what ': converted']);
+    notes = out.summary.migration_notes;
+    assertTrue(testCase, isfield(notes, 'tuning_axis_naming'), [what ': no note']);
+    n = notes.tuning_axis_naming;
+    verifyEqual(testCase, n.count, 1, [what ': one note per folded raw curve']);
+    verifyEqual(testCase, reshape(cellstr(n.distinct_details), 1, []), {detail}, what);
+    verifyEqual(testCase, n.by_class.(cls), 1, what);
+    c = did2.convert.tuningAxisNamingCounts(n);
+    verifyEqual(testCase, c.curves_folded, 1, what);
+    verifyEqual(testCase, c.named_from_varied_parameter, double(k == 1), what);
+    verifyEqual(testCase, c.named_from_label, double(k > 1), what);
+    verifyEqual(testCase, c.label_not_in_name_table, double(k == 2), what);
+    verifyEqual(testCase, c.label_no_independent_parameter, double(k == 3), what);
+end
+% a fitted family's curve is not a raw curve: no note
+out = runRaw({jsondecode(jsonencode(writerOutput('contrasttuning_calc')))});
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'tuning_axis_naming'), ...
+    'a fitted family leaves no tuning_axis_naming note');
+end
+
+function testTuningAxisNamingCountsFunction(testCase)
+% the count reads every DETAIL the migration writes; the parts sum to the
+% denominator, and a DETAIL it does not know is counted and named, not thrown
+n = struct('count', 12, 'by_class', struct('tuningcurve_calc', 12), ...
+    'distinct_details', {{'varied parameter', 'label: no independent_parameter', ...
+    'label: independent_parameter not in the name table: foo', ...
+    'label: 2 independent_parameter(s) for 1 column(s)', 'something else'}}, ...
+    'distinct_detail_counts', [5 2 2 1 1]);
+c = did2.convert.tuningAxisNamingCounts(n);
+verifyEqual(testCase, c.curves_folded, 12);
+verifyEqual(testCase, c.named_from_varied_parameter, 5);
+verifyEqual(testCase, c.label_no_independent_parameter, 2);
+verifyEqual(testCase, c.label_not_in_name_table, 2);
+verifyEqual(testCase, c.label_count_mismatch, 1);
+verifyEqual(testCase, c.named_from_label, 5);
+verifyEqual(testCase, c.unread, 1);
+verifyEqual(testCase, c.unread_details, {'something else'});
+verifyEqual(testCase, c.no_detail, 1);
+verifyEqual(testCase, c.not_in_name_table, {'foo'});
+verifyEqual(testCase, c.not_in_name_table_counts, 2);
+verifyEqual(testCase, c.named_from_varied_parameter + c.named_from_label + ...
+    c.unread + c.no_detail, c.curves_folded);
 end
 
 function testTuningLabelNoteFunction(testCase)

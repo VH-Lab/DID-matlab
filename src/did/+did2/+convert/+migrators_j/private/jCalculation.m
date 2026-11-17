@@ -164,6 +164,12 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         terms (jTuningCurve 'VariedParameters'); the v1 label text, when
 %         the axis terms do not restate it, is one last line of the notes,
 %         after the log (did2.convert.tuningLabelNote).
+%     [tuning label choices confirmed] (Jess Haley, 2026-11-17)  a raw
+%         curve still named from its label (no independent_parameter, or
+%         one the name table does not hold) is counted: every folded raw
+%         curve leaves ONE did2.convert.reportNote('tuning_axis_naming',
+%         <v1 class>, <id>, <what it was named from>); the count is the
+%         denominator.
 %     [depends on name not written when it equals the edge] (Jess Haley,
 %         2026-11-12)  tuningcurve_calc's input_parameters.depends_on.name
 %         is not written when it is 'stimulus_response_scalar_id' and the
@@ -556,6 +562,16 @@ className = classNameOf(preBody);
 if isstruct(response)
     did2.convert.reportNote('tuning_response_variable', className, ...
         char(preBody.base.id), response.outcome);
+end
+% [tuning label choices confirmed] (Decided by Jess Haley, 2026-11-17,
+% did-schema docs/plans/did_v2_go_forward_class_audit.md): a raw curve whose
+% axis is named from its v1 display label (no independent_parameter, or one
+% the name table does not hold) is counted and reported: one note per folded
+% raw curve, the denominator, its DETAIL what the axis was named from
+if strcmp(family, 'stimulus') && isfield(tuningExtra, 'axisNaming') ...
+        && ~isempty(tuningExtra.axisNaming)
+    did2.convert.reportNote('tuning_axis_naming', className, ...
+        char(preBody.base.id), tuningExtra.axisNaming);
 end
 end
 

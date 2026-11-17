@@ -247,6 +247,23 @@ if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
         'unrecognised_spellings', {det(unrec)}, ...
         'by_class', n.by_class);
 end
+% [tuning label choices confirmed] (Decided by Jess Haley, 2026-11-17,
+% did-schema docs/plans/did_v2_go_forward_class_audit.md): the folded raw
+% tuning curves (the denominator) and how many had their axis named from v1
+% independent_parameter or from the v1 display label, by why
+% (did2.convert.tuningAxisNamingCounts). Absent when no raw curve was folded:
+% "not measured". Best-effort: a count must not cost the run its report.
+if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'tuning_axis_naming')
+    try
+        report.tuning_axis_naming = did2.convert.tuningAxisNamingCounts( ...
+            result.summary.migration_notes.tuning_axis_naming);
+    catch namingErr
+        report.tuning_axis_naming = struct('count_failed', namingErr.message);
+    end
+else
+    report.tuning_axis_naming = struct('not_measured', 'no raw tuning curve was folded');
+end
 
 % The v1 SOURCE census: three pre-build measurements that exist nowhere else
 % (epoch-id shape and its grouping hazard, session-document presence,
