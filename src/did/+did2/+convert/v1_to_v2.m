@@ -1935,6 +1935,7 @@ printEmittedNothing(result);
 printDimensionTerms(result);
 printStimulusControlEdges(result);
 printTuningResponseVariable(result);
+printTuningAxisNaming(result);
 printMigrationNotes(result);
 printLegacyNdiDocument(result);
 printSilentLoss(result);
@@ -2046,6 +2047,34 @@ fprintf(['  tuning response variable: %d folded tuning document(s); set from ' .
     '"neural response": %d (source empty %d, spelling unrecognised %d)\n'], ...
     total, counts(1) + counts(2), counts(1), counts(2), counts(3) + other, ...
     counts(3), other);
+end
+
+function printTuningAxisNaming(result)
+%PRINTTUNINGAXISNAMING [tuning label choices confirmed] (Decided by Jess Haley,
+%   2026-11-17, did-schema docs/plans/did_v2_go_forward_class_audit.md): the
+%   folded raw tuning curves (jCalculation, one 'tuning_axis_naming' note
+%   each), DENOMINATOR FIRST, then how many had their axis named from v1
+%   independent_parameter and how many from the v1 display label, by why.
+%   No note at all (no raw curve folded, or a run before the count) reads
+%   "not measured", never 0.
+if ~isfield(result.summary, 'migration_notes') ...
+        || ~isfield(result.summary.migration_notes, 'tuning_axis_naming')
+    fprintf('  tuning axis naming: not measured (no raw tuning curve folded)\n');
+    return;
+end
+n = result.summary.migration_notes.tuning_axis_naming;
+c = did2.convert.tuningAxisNamingCounts(n);
+fprintf(['  tuning axis naming: %d folded raw tuning curve(s); named from ' ...
+    'independent_parameter: %d; named from the v1 label: %d (no ' ...
+    'independent_parameter %d, not in the name table %d, count not the ' ...
+    'columns %d); no reason recorded: %d; unread reason: %d\n'], c.curves_folded, ...
+    c.named_from_varied_parameter, c.named_from_label, ...
+    c.label_no_independent_parameter, c.label_not_in_name_table, ...
+    c.label_count_mismatch, c.no_detail, c.unread);
+for k = 1:numel(c.not_in_name_table)
+    fprintf('    not in the name table: %s (%d)\n', c.not_in_name_table{k}, ...
+        c.not_in_name_table_counts(k));
+end
 end
 
 function printMigrationNotes(result)
