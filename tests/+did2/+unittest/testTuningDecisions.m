@@ -402,7 +402,8 @@ verifyEqual(testCase, names, reshape(symbols, 1, []), [label ': coefficient symb
 verifyTrue(testCase, all(cellfun(@(x) isempty(getFieldOr(x.variable, 'node')), c)), ...
     [label ': a symbol is a label, not a term']);
 if ~isempty(c)
-    verifyEqual(testCase, cellfun(@(x) double(x.value), c), reshape(double(values), 1, []), ...
+    % the new numeric shape: a coefficient is {variable, numeric} (plan section 8, answer 5)
+    verifyEqual(testCase, cellfun(@(x) double(x.numeric), c), reshape(double(values), 1, []), ...
         [label ': the v1 vector, in stored order']);
 end
 verifyEqual(testCase, constraintText(e), held, [label ': constraints']);
@@ -1833,7 +1834,7 @@ if ~isfield(e, 'constraints') || isempty(e.constraints)
     return;
 end
 c = asCell(e.constraints);
-parts = cellfun(@(x) sprintf('%s=%g', char(x.variable.name), x.value), c, ...
+parts = cellfun(@(x) sprintf('%s=%g', char(x.variable.name), x.numeric), c, ...   % the new numeric shape
     'UniformOutput', false);
 s = strjoin(sort(parts), ';');
 end

@@ -1436,8 +1436,14 @@ rel = did2.build.relativeTimeReference(newId(), 'Clock', 'dev_local_time', ...
 s = rel.relative_time_reference.value.start;
 verifyEqual(testCase, s.tolerance, struct('minus', 60, 'plus', 60));
 verifyFalse(testCase, s.approximate, 'an explicit Approximate is kept');
-c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1]);
+% one row per cell is the old numeric shape; the new shape's series has one
+% tolerance ([one shape for measured numbers], plan section 8, answer 4)
+c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1], 'Shape', 'old');
 verifyEqual(testCase, c(2).tolerance, struct('minus', 0, 'plus', 0.1), 'one row per cell');
+verifyError(testCase, @() did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1]), ...
+    'did2:build:sizeMismatch');
+c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05]);
+verifyEqual(testCase, c.tolerance, struct('minus', 0.05, 'plus', 0.05), 'one for the series');
 verifyFalse(testCase, isfield(rel.relative_time_reference.value, 'duration'));
 verifyError(testCase, @() did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', ...
     'Tolerance', [-1 0], 'SessionId', sid), 'did2:build:badTolerance');
