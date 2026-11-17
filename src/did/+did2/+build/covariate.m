@@ -59,6 +59,17 @@ function c = covariate(variable, along, options)
 %                      covariate along exactly one dimension (Jess Haley
 %                      2026-10-22 [covariate details], 5.1a: not 'Count' or
 %                      'Matrix').
+%     'Tolerance'      [minus plus] in 'Unit': the bound on a 'Value' or a
+%                      'Matrix' (new shape only; the old shape has no item
+%                      tolerance).
+%     'Shape'          'old' or 'new' (default did2.build.numericShape(),
+%                      'old' until step 2 of did-schema
+%                      did_v2_numeric_shape_plan.md [one shape for measured
+%                      numbers], Jess Haley, 2026-11-17). 'new' writes the flat
+%                      item: 'Value' and 'Matrix' -> numeric (+ source_numeric,
+%                      tolerance); 'Origin'/'Spacing' -> flat origin, spacing,
+%                      source_origin, source_spacing; 'Unit'/'SourceUnit' only
+%                      with a number (a count has no unit).
 %     'SchemaCache'    a did2.schema.cache; default the shared one.
 %
 %   Join several with did2.build.list. A condition's variable appears once
@@ -96,8 +107,18 @@ arguments
     options.SourceUnit = ''
     options.Approximate = []
     options.Cyclic = []
+    options.Tolerance = []
+    options.Shape (1,:) char = ''
     options.SchemaCache = []
 end
+shape = options.Shape;
+if isempty(shape)
+    shape = did2.build.numericShape();
+end
+if ~any(strcmp(shape, {'old', 'new'}))
+    error('did2:build:badOption', '''Shape'' is ''old'' or ''new''; got ''%s''.', shape);
+end
+isNew = strcmp(shape, 'new');
 
 if iscell(variable) || (isstruct(variable) && ~isscalar(variable)) ...
         || (isstring(variable) && ~isscalar(variable))
@@ -161,6 +182,21 @@ if (~isAbsent(options.Unit) || ~isAbsent(options.SourceUnit)) && ~(numeric || st
     error('did2:build:ruleViolated', ...
         '''Unit''/''SourceUnit'' apply only to a number, a count or a matrix.');
 end
+if isNew && strcmp(form, 'Count') && (~isAbsent(options.Unit) || ~isAbsent(options.SourceUnit))
+    % [one shape for measured numbers], plan section 4: count is whole
+    % numbers, no unit; unit goes with numeric or origin
+    error('did2:build:ruleViolated', ...
+        '''Unit''/''SourceUnit'' apply only to a number or origin+spacing in the new shape; a count has no unit.');
+end
+if ~isAbsent(options.Tolerance)
+    if ~isNew
+        error('did2:build:ruleViolated', ...
+            '''Tolerance'' is written only in the new shape (''Shape'', ''new''); the old item has none.');
+    end
+    if ~any(strcmp(form, {'Value', 'Matrix'}))
+        error('did2:build:ruleViolated', '''Tolerance'' goes only with a number (''Value'' or ''Matrix'').');
+    end
+end
 if ~isAbsent(options.Cyclic) && isTrue(options.Cyclic) ...
         && ~(any(strcmp(form, {'Origin+Spacing', 'Value'})) && numel(along) == 1)
     error('did2:build:ruleViolated', ...
@@ -170,6 +206,11 @@ if ~isAbsent(options.Cyclic) && isTrue(options.Cyclic) ...
 end
 
 % ---- the entry -----------------------------------------------------------
+if isNew
+    s = newEntry(variable, along, form, options);
+    c = did2.build.composite('data', 'covariates', s, 'SchemaCache', options.SchemaCache);
+    return;
+end
 s = struct('variable', {variable});
 if ~isAbsent(options.Unit);        s.unit = options.Unit;               end
 if ~isAbsent(options.SourceUnit);  s.source_unit = options.SourceUnit;  end
@@ -245,6 +286,106 @@ end
 if ~isAbsent(options.Cyclic);  s.cyclic = options.Cyclic;  end
 
 c = did2.build.composite('data', 'covariates', s, 'SchemaCache', options.SchemaCache);
+end
+
+function s = newEntry(variable, along, form, options)
+% The flat item of the new shape (did-schema did_v2_numeric_shape_plan.md,
+% section 4). The forms other than numbers are as in the old shape.
+s = struct('variable', {variable});
+s.along = along;
+if ~isAbsent(options.Approximate); s.approximate = options.Approximate; end
+switch form
+    case 'Origin+Spacing'
+        s.origin = flatNumber(options.Origin, 'Origin');
+        s.spacing = flatNumber(options.Spacing, 'Spacing');
+        if ~isAbsent(options.Unit);          s.unit = options.Unit; end
+        if ~isAbsent(options.SourceOrigin);  s.source_origin = flatNumber(options.SourceOrigin, 'SourceOrigin'); end
+        if ~isAbsent(options.SourceSpacing); s.source_spacing = flatNumber(options.SourceSpacing, 'SourceSpacing'); end
+        if ~isAbsent(options.SourceUnit);    s.source_unit = options.SourceUnit; end
+    case {'Value', 'Matrix'}
+        if strcmp(form, 'Value')
+            mustBeNumbers(options.Value, 'Value');
+            s.numeric = double(positions(options.Value, along));
+        else
+            v = options.Matrix;
+            if ~((isnumeric(v) || islogical(v)) && isreal(v))
+                error('did2:build:typeMismatch', '''Matrix'' is a real numeric array.');
+            end
+            s.numeric = double(v);
+        end
+        if ~isAbsent(options.Unit); s.unit = options.Unit; end
+        if ~isAbsent(options.SourceValue)
+            mustBeNumbers(options.SourceValue, 'SourceValue');
+            src = double(positions(options.SourceValue, along));
+            if ~isequal(size(src), size(s.numeric))
+                error('did2:build:ruleViolated', ...
+                    'covariate_shape: ''SourceValue'' has %d values, ''Value'' %d.', ...
+                    numel(src), numel(s.numeric));
+            end
+            s.source_numeric = src;
+        end
+        if ~isAbsent(options.SourceUnit); s.source_unit = options.SourceUnit; end
+        if ~isAbsent(options.Tolerance)
+            t = options.Tolerance;
+            if ~(isnumeric(t) && numel(t) == 2 && all(isfinite(t(:))) && all(t(:) >= 0))
+                error('did2:build:badTolerance', ...
+                    '''Tolerance'' is [minus plus], two non-negative finite numbers in ''Unit''.');
+            end
+            s.tolerance = struct('minus', double(t(1)), 'plus', double(t(2)));
+        end
+    case 'Count'
+        mustBeNumbers(options.Count, 'Count');
+        s.count = positions(options.Count, along);
+    case 'Term'
+        t = options.Term;
+        if ischar(t) || isstring(t) || iscellstr(t)
+            t = did2.build.label(cellstr(t));
+        end
+        if ~isstruct(t)
+            error('did2:build:typeMismatch', ...
+                '''Term'' is a struct array of terms or a cellstr of names.');
+        end
+        s.term = positions(t, along);
+    case 'Text'
+        t = options.Text;
+        if ischar(t)
+            t = {t};
+        end
+        if ~(iscellstr(t) || isstring(t))
+            error('did2:build:typeMismatch', '''Text'' is a cellstr (one string per position).');
+        end
+        s.text = positions(cellstr(t), along);
+    case 'Logical'
+        v = options.Logical;
+        if ~(islogical(v) || (isnumeric(v) && all(v(:) == 0 | v(:) == 1)))
+            error('did2:build:typeMismatch', '''Logical'' is true/false (or 0/1) per position.');
+        end
+        s.logical = positions(logical(v), along);
+    case 'Key'
+        v = options.Key;
+        if ~(isnumeric(v) && isscalar(v) && v >= 0 && v == round(v))
+            error('did2:build:typeMismatch', ...
+                '''Key'' is ONE 0-based index among the document''s `key_id` entries.');
+        end
+        s.key = double(v);
+        if ~isAbsent(options.Index)
+            ix = options.Index;
+            if ~(isnumeric(ix) && isreal(ix) && isvector(ix) ...
+                    && all(isfinite(ix)) && all(ix >= 0) && all(ix == round(ix)))
+                error('did2:build:typeMismatch', ...
+                    '''Index'' is a vector of 0-based entry numbers (integers >= 0), one per position.');
+            end
+            s.index = double(reshape(ix, 1, []));
+        end
+end
+if ~isAbsent(options.Cyclic);  s.cyclic = options.Cyclic;  end
+end
+
+function v = flatNumber(v, name)
+if ~(isnumeric(v) && isscalar(v))
+    error('did2:build:typeMismatch', '''%s'' is a number.', name);
+end
+v = double(v);
 end
 
 function p = pair(value, source)

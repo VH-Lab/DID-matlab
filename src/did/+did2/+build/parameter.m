@@ -38,6 +38,12 @@ function p = parameter(variable, options)
 %                    'SourceValue'. Its shape is kept through did2's JSON
 %                    writer and reader. Needs a schema that declares
 %                    `matrix` (did-schema #88; did2:build:unknownField before)
+%     'Tolerance'    [minus plus] in 'Unit', on a number (new shape only)
+%     'Shape'        'old' or 'new' (default did2.build.numericShape(); 'old'
+%                    until step 2 of did-schema did_v2_numeric_shape_plan.md
+%                    [one shape for measured numbers]). 'new' writes the flat
+%                    entry: numeric, unit, source_numeric, source_unit,
+%                    tolerance (private/oneValueEntry).
 %     'SchemaCache'  a did2.schema.cache; default the shared one.
 %
 %   Join several with did2.build.list. Knob variables must be distinct within
@@ -59,6 +65,8 @@ arguments
     options.Text = ''
     options.Matrix = []
     options.Logical = []
+    options.Tolerance = []
+    options.Shape (1,:) char = ''
     options.SchemaCache = []
 end
 
