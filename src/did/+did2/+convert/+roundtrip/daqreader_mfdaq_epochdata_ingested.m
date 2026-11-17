@@ -100,7 +100,30 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %                               deferred_to_second_pass. Only these two
 %                               fields: any other parameter is still lost
 %
-%   A body that is not an opaque_body, or names no file slot, is unplaced.
+%   A body that is not an opaque_body or a sampled_body, or whose v1 names
+%   cannot be rebuilt, is unplaced.
+%
+%   AFTER NDI'S SECOND PASS. The same rebuild reads the shape NDI-matlab's
+%   second pass leaves (ndi.migrate.internal.ingestedArchiveBodies), through
+%   did2.convert.roundtrip.ingestedArchiveFiles, which says how each name is
+%   rebuilt (Decided by Jess Haley, 2026-11-17, did-schema
+%   did_v2_go_forward_class_audit.md):
+%     a converted channel group is a sampled_body; its members are named
+%       body_data_0.. ([migrated body members renamed]) and NDI's names are
+%       rebuilt from its channel type, group and segment ("The round trip
+%       rebuilds NDI's names from the body's channel type, group and segment
+%       number"); its owner may be another document than the recording
+%       observation ([non-specimen channel groups get their own owner]): the
+%       owners of every body are read
+%     channel_list.bin, evmktx_group<g>_seg.nbf_1 and an evenly spaced time
+%       group's segments may have been removed ([channel list rows get v2
+%       homes], [unpacked events file is removed], [evenly spaced time is a
+%       covariate]): their file_info entries are rebuilt BY NAME, in the
+%       writer's place. Their v1 LOCATIONS are not: the file stays in NDI's
+%       store, unreferenced, and no v2 document names its uid, so those
+%       leaves read lost. The file itself is compared by its content
+%       (did2.convert.roundtrip.compareIngestedArchiveFiles), which needs
+%       the bytes, so not here.
 %
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested,
@@ -167,8 +190,9 @@ end
 % ===================== after the batch pass ================================
 
 function [v1, spec] = fromBatch(bodies, ctx, CLASS, PARENT)
-% the retired archive, rebuilt from the opaque_body documents carrying its
-% files and from the batch (AFTER THE BATCH PASS, above)
+% the retired archive, rebuilt from the data bodies carrying its files (pass
+% 1's opaque_body documents, or the sampled_body documents NDI's second pass
+% makes of them) and from the batch (AFTER THE BATCH PASS, above)
 spec = emptySpec();
 v1 = struct();
 v1.document_class = struct('class_name', CLASS);
@@ -177,17 +201,29 @@ owners = {};
 sessionId = '';
 for k = 1:numel(bodies)
     b = bodies{k};
-    if ~strcmp(classNameOf(b), 'opaque_body')
-        spec.unplaced{end+1} = sprintf('document %d (%s) is not an opaque_body', ...
+    if ~any(strcmp(classNameOf(b), {'opaque_body', 'sampled_body'}))
+        spec.unplaced{end+1} = sprintf('document %d (%s) is not an opaque_body or a sampled_body', ...
             k, classNameOf(b));
-        continue;
+        bodies{k} = [];
     end
-    slot = fieldText(getIn(b, 'data_body'), 'filename');
-    if isempty(slot)
-        slot = fieldText(getIn(b, 'opaque_body'), 'filename');
+end
+bodies = bodies(~cellfun(@isempty, bodies));
+% the v1 names of every member, in either shape (did2.convert.roundtrip.
+% ingestedArchiveFiles: pass 1's slot names, or NDI's names rebuilt from a
+% sampled_body's channel type, group and segment, [migrated body members
+% renamed]), and the files NDI's second pass unpacked and removed
+R = did2.convert.roundtrip.ingestedArchiveFiles(bodies, ctx);
+for k = 1:numel(R.members)
+    mem = R.members(k);
+    b = ctxDoc(ctx, mem.body_id);
+    if isempty(b)
+        i = find(cellfun(@(x) strcmp(char(getIn(x, 'base', 'id')), mem.body_id), bodies), 1);
+        if ~isempty(i); b = bodies{i}; end
     end
-    if isempty(slot)
-        spec.unplaced{end+1} = sprintf('opaque_body %s names no file slot', char(getIn(b, 'base', 'id')));
+    if isempty(mem.names)
+        if ~isempty(mem.why)
+            spec.unplaced{end+1} = sprintf('%s %s: %s', mem.class_name, mem.body_id, mem.why);
+        end
         continue;
     end
     if isempty(sessionId)
@@ -197,18 +233,32 @@ for k = 1:numel(bodies)
         if ~any(strcmp(owners, o{1})); owners{end+1} = o{1}; end %#ok<AGROW>
     end
     members = asCell(getIn(b, 'files', 'file_info'));
-    for m = 1:numel(members)
-        name = slot;
-        if endsWith(slot, '#')
-            name = sprintf('%s%d', slot(1:end-1), m);
-        end
+    members = members(cellfun(@(f) isstruct(f) && isfield(f, 'name') ...
+        && ~isempty(regexp(char(f.name), '^body_data_\d+$', 'once')), members));
+    pos = cellfun(@(f) sscanf(char(f.name), 'body_data_%d'), members);
+    [~, order] = sort(pos);
+    members = members(order);
+    for m = 1:min(numel(members), numel(mem.names))
         loc = [];
-        if isstruct(members{m}) && isfield(members{m}, 'locations')
-            loc = members{m}.locations;
-        end
-        entries(end+1) = struct('name', name, 'locations', {loc}, ...
-            'rank', {writerRank(name)}); %#ok<AGROW>
+        if isfield(members{m}, 'locations'); loc = members{m}.locations; end
+        entries(end+1) = struct('name', mem.names{m}, 'locations', {loc}, ...
+            'rank', {writerRank(mem.names{m})}); %#ok<AGROW>
     end
+end
+% the files the second pass unpacked and removed ([unpacked events file is
+% removed], [channel list rows get v2 homes]) and the evenly spaced time it
+% removed ([evenly spaced time is a covariate]): their names are rebuilt; the
+% file is rebuilt by its content (did2.convert.roundtrip.
+% compareIngestedArchiveFiles), and no document holds its v1 location, so its
+% locations are not rebuilt
+removed = R.time_segments;
+if strcmp(R.channel_list_state, 'rebuilt'); removed{end+1} = 'channel_list.bin'; end
+for e = 1:numel(R.evmktx)
+    if ~R.evmktx(e).carried; removed{end+1} = R.evmktx(e).name; end %#ok<AGROW>
+end
+for r = 1:numel(removed)
+    entries(end+1) = struct('name', removed{r}, 'locations', {[]}, ...
+        'rank', {writerRank(removed{r})}); %#ok<AGROW>
 end
 
 % the owners' time references: the epoch's clock references, in the order

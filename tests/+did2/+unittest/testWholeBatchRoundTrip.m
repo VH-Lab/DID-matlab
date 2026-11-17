@@ -595,6 +595,148 @@ verifyTrue(testCase, any(strcmp(f.lost, 'epochid.epochid')), describe(r));
 verifyTrue(testCase, any(strcmp(f.lost, 'files.file_info(3).locations.location')), describe(r));
 end
 
+function testAnArchiveAfterTheSecondPassIsRebuiltByName(testCase)
+% NDI-matlab's second pass converts the channel group to a sampled_body whose
+% members are body_data_<k> ([migrated body members renamed]), removes the
+% evenly spaced time, channel_list.bin ([channel list rows get v2 homes]) and
+% the events file ([unpacked events file is removed]) and writes each event
+% channel as an observation (Jess Haley, 2026-11-17). The archive is still
+% found (its sampled_body holds its location uids) and rebuilt: every v1 file
+% NAME comes back in the writer's place, and only the v1 LOCATIONS of the
+% removed files are lost (no v2 document names their uid; the file stays in
+% NDI's store, unreferenced)
+[bodies, result] = archiveBatch(testCase, 'wb_arc2', 'bb');
+result2 = secondPassOf(result, false);
+r = did2.convert.roundtrip.wholeBatch(bodies, result2);
+cls = 'daqreader_mfdaq_epochdata_ingested';
+verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, cls), describe(r));
+f = archiveFailure(r, 'wb_arc2_arc');
+assertNotEmpty(testCase, f, describe(r));
+verifyEmpty(testCase, f.unplaced, describe(r));
+verifyEmpty(testCase, f.invented, describe(r));
+removedOnly = startsWith(f.lost, {'files.file_info(1).locations', ...
+    'files.file_info(4).locations', 'files.file_info(5).locations', ...
+    'files.file_info(6).locations'});
+verifyTrue(testCase, all(removedOnly), ['only the removed files'' locations: ' describe(r)]);
+for k = [1 4 5 6]
+    verifyTrue(testCase, any(strcmp(f.lost, sprintf('files.file_info(%d).locations.uid', k))), ...
+        sprintf('entry %d: %s', k, describe(r)));
+end
+verifyArchiveSegmentsDeferred(testCase, r, 1, 0);
+end
+
+function testAnArchiveWhoseGroupHasItsOwnOwnerIsRebuiltTheSame(testCase)
+% [non-specimen channel groups get their own owner]: a group owned by another
+% observation of the same epoch and system reads back the same epoch, clock
+% and reader
+[bodies, result] = archiveBatch(testCase, 'wb_arc3', 'bc');
+r0 = did2.convert.roundtrip.wholeBatch(bodies, secondPassOf(result, false));
+r1 = did2.convert.roundtrip.wholeBatch(bodies, secondPassOf(result, true));
+f0 = archiveFailure(r0, 'wb_arc3_arc');
+f1 = archiveFailure(r1, 'wb_arc3_arc');
+assertNotEmpty(testCase, f1, describe(r1));
+verifyEqual(testCase, sort(f1.lost), sort(f0.lost), describe(r1));
+verifyFalse(testCase, any(contains(f1.lost, 'depends_on')), describe(r1));
+verifyFalse(testCase, any(strcmp(f1.lost, 'epochid.epochid')), describe(r1));
+end
+
+function testASecondPassBodyWhoseNamesCannotBeRebuiltIsUnplaced(testCase)
+% the group's channel type removed: its names cannot be rebuilt, which is
+% reported (a check that cannot fail proves nothing)
+[bodies, result] = archiveBatch(testCase, 'wb_arc4', 'bd');
+result2 = secondPassOf(result, false);
+for k = 1:numel(result2.migrated)
+    b = result2.migrated{k};
+    if strcmp(b.document_class.class_name, 'sampled_body')
+        for blk = {'data_body', 'opaque_body'}
+            if isfield(b, blk{1}) && isfield(b.(blk{1}), 'filename')
+                b.(blk{1}) = rmfield(b.(blk{1}), 'filename');
+            end
+        end
+        b.data_body = rmfield(b.data_body, 'conditions');
+        result2.migrated{k} = b;
+    end
+end
+r = did2.convert.roundtrip.wholeBatch(bodies, result2);
+f = archiveFailure(r, 'wb_arc4_arc');
+assertNotEmpty(testCase, f, describe(r));
+verifyNotEmpty(testCase, f.unplaced, describe(r));
+verifyTrue(testCase, any(contains(f.lost, 'files.file_info(2).name')), describe(r));
+end
+
+function result = secondPassOf(result, ownOwner)
+% the archive's pass-1 bodies as NDI-matlab's second pass leaves them under
+% the 2026-11-17 decisions (see testIngestedArchiveFiles for the shape): the
+% analog group a sampled_body (members body_data_<k>, 2 segments of 1e6
+% samples), the evenly spaced time, channel_list.bin and the events file
+% removed, the marker channel an observation of the epoch. OWNOWNER: the
+% group is owned by a new observation of the same epoch and system
+final = cellfun(@(d) asStruct(d), result.migrated, 'UniformOutput', false);
+T = @(node, name) struct('node', node, 'name', name);
+keep = true(1, numel(final));
+added = {};
+for k = 1:numel(final)
+    b = final{k};
+    if ~strcmp(b.document_class.class_name, 'opaque_body'); continue; end
+    slot = slotOf(b);
+    switch slot
+        case {'channel_list.bin', 'ti_group1_seg.nbf_#', 'evmktx_group1_seg.nbf_#'}
+            keep(k) = false;
+        case 'ai_group1_seg.nbf_#'
+            owners = {b.depends_on(strcmp({b.depends_on.name}, 'owner_id')).document_id};
+            rec = final{find(cellfun(@(x) strcmp(x.base.id, owners{1}), final), 1)};
+            tref = {rec.depends_on(strcmp({rec.depends_on.name}, 'time_reference_id')).document_id};
+            b.document_class.class_name = 'sampled_body';
+            cov = @(v, f, x) setfield(struct('variable', v, 'along', 1), f, x); %#ok<SFLD>
+            b.data = struct('dimensions', {{struct('term', T('om:Time', 'time'), 'n', 1500000, ...
+                'chunk', 1e6), struct('term', T('NCIT:C44170', 'Channel'), 'n', 2)}}, ...
+                'covariates', {{struct('variable', T('om:Time', 'time'), 'along', 0, ...
+                'origin', struct('value', 0), 'spacing', struct('value', 1/30000)), ...
+                cov(T('EMPTY:0000370', 'analog input channel'), 'count', [1 2]), ...
+                cov(T('AFO:AFQ_0000202', 'signal offset configuration'), 'quantity', struct('value', [0 0])), ...
+                cov(T('NCIT:C70774', 'Unit Conversion Factor'), 'quantity', struct('value', [1 1])), ...
+                cov(T('EMPTY:0000374', 'time channel'), 'quantity', struct('value', [1 1]))}});
+            b.data_body.conditions = struct('variable', T('NCIT:C44170', 'Channel'), ...
+                'term', T('EMPTY:0000370', 'analog input channel'));
+            if ownOwner
+                acq = {rec.depends_on(strcmp({rec.depends_on.name}, 'acquisition_system_id')).document_id};
+                o = struct('document_class', struct('class_name', 'observation'), ...
+                    'base', struct('id', 'own_owner', 'session_id', rec.base.session_id), ...
+                    'depends_on', struct('name', [repmat({'time_reference_id'}, 1, numel(tref)), ...
+                        repmat({'acquisition_system_id'}, 1, numel(acq))], 'document_id', [tref, acq]));
+                added{end+1} = o; %#ok<AGROW>
+                i = find(strcmp({b.depends_on.name}, 'owner_id'));
+                b.depends_on(i(1)).document_id = 'own_owner';
+                b.depends_on(i(2:end)) = [];
+            end
+            final{k} = b;
+            mk = struct('document_class', struct('class_name', 'observation'), ...
+                'base', struct('id', 'mk_obs', 'session_id', rec.base.session_id), ...
+                'observation', struct('conditions', struct('variable', ...
+                    T('EMPTY:0000377', 'marker channel'), 'count', 1)), ...
+                'depends_on', struct('name', 'time_reference_id', 'document_id', tref(1)));
+            added{end+1} = mk; %#ok<AGROW>
+    end
+end
+result.migrated = [final(keep), added];
+end
+
+function s = slotOf(b)
+s = '';
+for blk = {'data_body', 'opaque_body'}
+    if isfield(b, blk{1}) && isstruct(b.(blk{1})) && isfield(b.(blk{1}), 'filename') ...
+            && ~isempty(b.(blk{1}).filename)
+        s = char(b.(blk{1}).filename);
+        return;
+    end
+end
+end
+
+function b = asStruct(d)
+b = d;
+if isa(d, 'did2.document'); b = d.toStruct(); end
+end
+
 function f = archiveFailure(r, id)
 f = [];
 for k = 1:numel(r.failures)
