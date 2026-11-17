@@ -475,7 +475,8 @@ function idx = locatedAfterPass(cls, v1, uidIndex)
 %   none, or when the class has no such lookup). A
 %   `daqreader_mfdaq_epochdata_ingested`: the opaque_body documents
 %   resolveEpochProbemap built from its attached files, which hold its
-%   location uids verbatim (UIDINDEX, bodyUidIndex).
+%   location uids verbatim (UIDINDEX, bodyUidIndex), or the sampled_body
+%   documents NDI-matlab's second pass made of them.
 idx = [];
 if ~strcmp(cls, 'daqreader_mfdaq_epochdata_ingested') || ~isstruct(v1) ...
         || ~isfield(v1, 'files') || ~isstruct(v1.files) || ~isfield(v1.files, 'file_info')
@@ -490,12 +491,13 @@ idx = unique(idx);
 end
 
 function m = bodyUidIndex(finalBodies)
-% location uid -> the positions of every final opaque_body whose file_info
-% holds it
+% location uid -> the positions of every final opaque_body or sampled_body
+% whose file_info holds it (NDI-matlab's second pass turns pass 1's
+% opaque_body documents into sampled_body documents, the files unchanged)
 m = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:numel(finalBodies)
     b = finalBodies{k};
-    if ~strcmp(classNameOf(b), 'opaque_body') || ~isfield(b, 'files') ...
+    if ~any(strcmp(classNameOf(b), {'opaque_body', 'sampled_body'})) || ~isfield(b, 'files') ...
             || ~isstruct(b.files) || ~isfield(b.files, 'file_info')
         continue;
     end
