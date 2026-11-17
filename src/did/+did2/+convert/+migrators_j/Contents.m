@@ -899,9 +899,8 @@
 %         data types, ...) and the depends_on edges
 %         (spatial_gene_expression_pyramid_id, subject_id, source_file_id) carry
 %         through as-is -- universalRenames has already snake_cased both the block key
-%         and its immediate fields. base.id is preserved so a
-%         dependent labeling row's cells_document_id edge (mustBeNonEmpty: true) still
-%         resolves.
+%         and its immediate fields. base.id is preserved so a dependent labeling row's
+%         cells_document_id edge (mustBeNonEmpty: true) still resolves.
 %     spatial_gene_expression_pyramid
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionPyramid -> V_eta
 %         spatial_gene_expression_pyramid, PASSED THROUGH. did-schema #88 restates the
