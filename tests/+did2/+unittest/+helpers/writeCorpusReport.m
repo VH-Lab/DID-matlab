@@ -163,13 +163,6 @@ end
 if isfield(result, 'summary') && isfield(result.summary, 'legacy_ndi_document')
     report.legacy_ndi_document = result.summary.legacy_ndi_document;
 end
-% CLASS-BLOCK PADDING ([early migration pieces fixed] (2), Jess Haley,
-% 2026-10-26): the converted bodies did2.convert.ensureClassBlocks changed, by
-% v1 class, with its denominator. Those migrators do not yet produce a complete
-% document; the padding goes once this reads 0. Absent is not zero.
-if isfield(result, 'summary') && isfield(result.summary, 'class_blocks_padding')
-    report.class_blocks_padding = result.summary.class_blocks_padding;
-end
 % HANDED ON AS v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03):
 % pass 1's count, by class, of the documents it handed on to a batch pass
 % exactly as v1 wrote them (did2.convert.v1_to_v2 HAND_ON_CLASSES). Absent is

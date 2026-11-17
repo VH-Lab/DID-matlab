@@ -57,8 +57,8 @@ function bodies = stimulus_parameter(preBody)
 %
 %   WHAT DOES VALIDATE IS ABSENCE. cache.m:1212-1225 (validateField): an ABSENT
 %   field that is not `mustBeNonEmpty` returns early, before any type check. And
-%   v1_to_v2.ensureClassBlocks pads missing BLOCKS only (v1_to_v2.m:473-478), so
-%   it will not put the placeholder back as a 0.
+%   nothing in v1_to_v2 pads the body afterwards ([early migration pieces
+%   fixed] (2)), so nothing puts the placeholder back as a 0.
 %
 %   THEREFORE the empty char is DROPPED, not coerced. "Unset" is exactly what ''
 %   means here, and absence is how V_eta spells unset. `ontology_name` and

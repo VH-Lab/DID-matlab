@@ -1025,7 +1025,7 @@ classdef cache < handle
             %   INFO.fieldsByBlock is a containers.Map, a handle: the same
             %   map is handed to every caller, so callers must read it and
             %   never modify it. None does (checked 2026-10-06: cache.m,
-            %   v1_to_v2.m ensureClassBlocks, did2.build.document).
+            %   did2.build.document).
             arguments
                 obj
                 className (1,:) char

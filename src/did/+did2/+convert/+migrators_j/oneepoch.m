@@ -37,8 +37,8 @@ function v2Body = oneepoch(preBody)
 %       class_name       oneepoch                (no rename -- nothing renames it)
 %       top-level keys   document_class, depends_on, base, epochid,
 %                        element_epoch, oneepoch
-%       chain            element_epoch, base, epochid   (unrebuilt: ensureClassBlocks
-%                                                        no-ops on an unknown class)
+%       chain            element_epoch, base, epochid   (unrebuilt: the padding
+%                                                        no-oped on an unknown class)
 %       element_epoch    { clocks }              <- ALREADY NORMALISED, see below
 %       oneepoch         { epoch_ids }
 %       with Validate=true:  quarantine, "No schema file for class "oneepoch""

@@ -34,9 +34,8 @@ function v2Body = jDemoFold(preBody, isMock, sourceClass)
 %   (ndi.document.readblankdefinition, step 3, `+ndi/document.m:1063-1100`), so a
 %   did_v1 `demoNDIMock` body carries THREE of them: `demoNDIMock` (empty -- the
 %   class declares no fields), `mock` (`ismock`) and `demoNDI` (`value`).
-%   `ensureClassBlocks` drops only EMPTY non-contributing blocks, so the two
-%   populated ones must be consumed here or the strict top-level check rejects
-%   the document (`did2:validation:undeclaredBlock`).
+%   Nothing drops a block after this migrator, so all three must be consumed
+%   here or the strict top-level check rejects the document (`did2:validation:undeclaredBlock`).
 %
 %   ---------------------------------------------------------------------
 %   `value` IS TYPED FROM THE WRITER, AND AN UNMAPPABLE ONE IS REFUSED
@@ -150,8 +149,7 @@ v2Body.document_class.class_name = 'demo';
 v2Body.document_class.superclasses = did2.build.superclasses('demo');
 v2Body.demo = demoBlock;
 % `demo_ndi_mock` is the concrete block of the mock class and carries no fields;
-% it is listed so the removal does not depend on ensureClassBlocks' empty-block
-% sweep, which is a silent no-op when the schema cache cannot resolve the class.
+% it is listed so it is removed here; nothing after this migrator removes it.
 consumed = {'demo_ndi', 'demo_ndi_mock', 'demoNDI', 'demoNDIMock', 'mock'};
 for k = 1:numel(consumed)
     if isfield(v2Body, consumed{k})
