@@ -19,7 +19,9 @@ function [t, harmonic] = jResponseType(rt, withHarmonic)
 %   harmonic (HARMONIC []). Siblings first: the caller passes WITHHARMONIC
 %   true only when the loaded schema declares the value's `harmonic`
 %   (jSchemaHasPath); with false, F1 and F2 stay the labels they were, as
-%   before. Any other text is the label it was.
+%   before (a schema older than did-schema ce262d0, #336, which declares
+%   `harmonic` on both values and registers NCIT:C94900). Any other text is
+%   the label it was.
 arguments
     rt
     withHarmonic (1,1) logical = false
