@@ -293,7 +293,7 @@ for k = 1:numel(conds)
     if strcmp(n, node)
         m = getIn(conds{k}, 'matrix');
         if isempty(m)
-            m = itemNumbers(conds{k});   % the new numeric shape's `numeric`
+            m = getIn(conds{k}, 'numeric');   % the new numeric shape's array
         end
         if iscell(m); m = cell2mat(m); end
         m = double(m);

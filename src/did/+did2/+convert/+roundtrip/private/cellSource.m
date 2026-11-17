@@ -12,11 +12,13 @@ c = firstOf(c);
 if ~isstruct(c) || ~isscalar(c)
     return;
 end
-if isfield(c, 'source_numeric')
+if isfield(c, 'source_numeric') && ~isempty(c.source_numeric)
     v = c.source_numeric;
     found = true;
 elseif isfield(c, 'source_value')
     v = c.source_value;
+    found = true;
+elseif isfield(c, 'source_numeric')
     found = true;
 end
 end
