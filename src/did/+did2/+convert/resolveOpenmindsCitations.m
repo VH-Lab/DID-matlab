@@ -1302,7 +1302,7 @@ end
 function [survived, quarantined] = validateBodies(newBodies, options)
 %VALIDATEBODIES Push bodies through v1_to_v2 and return what survived, by id.
 %   The bodies carry schema_version == TargetVersion, so v1_to_v2 short-circuits
-%   them (isAlreadyTarget) to ensureClassBlocks + validate.
+%   them (isAlreadyTarget) to validate.
 survived = containers.Map('KeyType', 'char', 'ValueType', 'any');
 quarantined = struct('original_body', {}, 'class_name', {}, 'identifier', {}, ...
     'reason', {}, 'failed_at', {});

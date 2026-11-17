@@ -600,7 +600,7 @@ end
 
 % --- validate through the same door every other pass uses ------------------
 % The bodies are tagged schema_version == TargetVersion, so v1_to_v2
-% short-circuits them (isAlreadyTarget) to ensureClassBlocks + validate. A body
+% short-circuits them (isAlreadyTarget) to validate. A body
 % that cannot validate lands in `quarantine` and the ORIGINAL is kept, so a bad
 % fold degrades to "not folded" rather than to a lost document.
 out = did2.convert.v1_to_v2(rebuilt, ...

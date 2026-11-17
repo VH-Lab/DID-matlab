@@ -6,8 +6,7 @@ function bodies = spatial_gene_expression_tiles(preBody)
 %   depends_on edges (spatial_gene_expression_pyramid_id required;
 %   subject_id optional -- the pyramid dep carries it; source_file_id
 %   optional) carry through as-is. universalRenames has snake_cased the
-%   block key and its immediate fields; ensureClassBlocks rebuilds the
-%   superclass chain. base.id is preserved.
+%   block key and its immediate fields. base.id is preserved.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
