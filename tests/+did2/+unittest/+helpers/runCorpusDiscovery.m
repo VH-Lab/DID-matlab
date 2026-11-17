@@ -650,7 +650,6 @@ result.reference_integrity = ...
     did2.unittest.helpers.referenceIntegrityBlock(refRep, refErrMsg);
 
 printUnregisteredTerms(corpusName);
-printClassBlocksPadding(corpusName, result);
 printV1NameCheck(corpusName, result);
 
 % ENTITY-TYPE `requires` CENSUS -- REPORT-ONLY (Jess Haley, 2026-10-21, "b").
@@ -824,26 +823,6 @@ for k = 1:min(numel(reasons), 15)
 end
 end
 
-
-function printClassBlocksPadding(corpusName, result)
-% [early migration pieces fixed] (2) (Jess Haley, 2026-10-26): the converted
-% bodies did2.convert.ensureClassBlocks changed, by v1 class, denominator
-% first. Printed unconditionally; "not measured" when pass 1 did not report it.
-fprintf('\n--- CLASS-BLOCK PADDING (%s) ---\n', corpusName);
-if ~isfield(result, 'summary') || ~isfield(result.summary, 'class_blocks_padding')
-    fprintf('  not measured (pass 1 wrote no class_blocks_padding)\n');
-    return;
-end
-P = result.summary.class_blocks_padding;
-fprintf('  %d converted body(ies) padded; %d changed by the padding\n', ...
-    P.bodies_inspected, P.bodies_changed);
-t = P.changed_by_class;
-if isstruct(t)
-    for f = fieldnames(t)'
-        fprintf('  %7d  %s\n', t.(f{1}), f{1});
-    end
-end
-end
 
 function printV1NameCheck(corpusName, result)
 % [v1 name goes to the class's own name field] (Jess Haley, 2026-10-27): of the
@@ -1420,6 +1399,15 @@ for k = 1:size(expected, 1)
                 numGet(rep, 'instrument_omitted'), ...
                 numGet(rep, 'epoch_anchors_minted'), ...
                 numGet(rep, 'fold_quarantined'));
+            % [stimulator manipulation dropped]: rows_stimulator is the
+            % denominator of these four
+            fprintf(['      stimulator rows: %d with no manipulation (wiring and ' ...
+                     'element hold them); manipulation kept for %d with no wiring, ' ...
+                     '%d naming another subject, %d of another type\n'], ...
+                numGet(rep, 'stimulator_manipulations_not_written'), ...
+                numGet(rep, 'stimulator_manipulations_kept_no_wiring'), ...
+                numGet(rep, 'stimulator_manipulations_kept_other_subject'), ...
+                numGet(rep, 'stimulator_manipulations_kept_other_type'));
             % THE #30 REPLACEMENT, on its own line. A retirement happens only
             % where EXACTLY ONE #30 obs names the probe AND a replacement
             % survived validation; `retire_skipped_ambiguous` is the patch/sharp

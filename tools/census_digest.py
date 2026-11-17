@@ -614,7 +614,11 @@ POST_PASSES = [
         ("rows_stimulator", "  rows whose type is a stimulator (the other direction)"),
         ("observations_emitted", "OBSERVATIONS emitted (>= rows: patch/sharp yield 2)"),
         ("mode_methods_written", "  observations built with a decided mode method term (resolveEpochProbemap recordingModeMethod)"),
-        ("manipulations_emitted", "MANIPULATIONS emitted (one term_manipulation per stimulator row)"),
+        ("manipulations_emitted", "MANIPULATIONS emitted (stimulator rows that carry something the wiring and element do not)"),
+        ("stimulator_manipulations_not_written", "  stimulator rows held by their wiring and element: no manipulation written"),
+        ("stimulator_manipulations_kept_no_wiring", "  manipulation kept: the row has no wiring relation"),
+        ("stimulator_manipulations_kept_other_subject", "  manipulation kept: the row names another subject than its element's"),
+        ("stimulator_manipulations_kept_other_type", "  manipulation kept: the row's type is not its element's"),
         ("instrument_resolved", "  with an instrument_id edge (probe resolved)"),
         ("instrument_omitted", "  instrument_id OMITTED (probe unresolved; edge optional)"),
         # device half (increment 2): the devicestring -> acq system + channels.
@@ -2551,6 +2555,65 @@ def render_carry_register_rows(r, out):
         return
     for row, c in zip(rows, counts):
         p("      %-40s %6s" % (row, c))
+
+
+def render_tuning_axis_naming(r, out):
+    """[tuning label choices confirmed] (Decided by Jess Haley, 2026-11-17,
+    did-schema docs/plans/did_v2_go_forward_class_audit.md): of the raw
+    tuning curves folded (the denominator, first), how many had their axis
+    named from v1 `independent_parameter` and how many from the v1 display
+    label (no `independent_parameter`, one the name table does not hold, or
+    a count that is not the number of columns). Absent, or a report that
+    says not measured, is NOT MEASURED, never 0 of 0."""
+    p = out.append if isinstance(out, list) else out
+    e = r.get("tuning_axis_naming")
+    if not isinstance(e, dict) or "not_measured" in e or "count_failed" in e:
+        why = "this report carries no tuning_axis_naming block"
+        if isinstance(e, dict):
+            why = str(e.get("not_measured") or
+                      ("the count failed: %s" % e.get("count_failed")))
+        p("    tuning axis naming: NOT MEASURED -- %s" % why)
+        return
+
+    def n(key):
+        v = e.get(key)
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    def s(v):
+        return "?" if v is None else str(v)
+
+    total = n("curves_folded")
+    varied, label = n("named_from_varied_parameter"), n("named_from_label")
+    none_, table, count = (n("label_no_independent_parameter"),
+                           n("label_not_in_name_table"), n("label_count_mismatch"))
+    nodet, unread = n("no_detail"), n("unread")
+    p("    tuning axis naming: %s folded raw tuning curve(s)" % s(total))
+    p("      named from independent_parameter:  %6s" % s(varied))
+    p("      named from the v1 label:           %6s  (no independent_parameter %s, "
+      "not in the name table %s, count not the columns %s)"
+      % (s(label), s(none_), s(table), s(count)))
+    if nodet or unread:
+        p("      no reason recorded %s; unread reason %s" % (s(nodet), s(unread)))
+    parts = (varied, label, nodet or 0, unread or 0)
+    if None not in (total,) + parts and sum(parts) != total:
+        p("      *** the parts (%d) do not add up to the denominator (%d)"
+          % (sum(parts), total))
+    names = e.get("not_in_name_table") or []
+    if isinstance(names, str):
+        names = [names]
+    counts = e.get("not_in_name_table_counts")
+    if not isinstance(counts, list):
+        counts = [] if counts is None else [counts]
+    for k, name in enumerate(names):
+        c = counts[k] if k < len(counts) else "?"
+        if isinstance(c, float) and c.is_integer():
+            c = int(c)
+        p("      not in the name table: %-30s %6s" % (name, c))
+    rows = e.get("by_class") or {}
+    for cls in sorted(rows):
+        p("      %-40s %6s folded" % (cls, rows[cls]))
 
 
 def render_tuning_response_variable(r, out):
@@ -6033,6 +6096,7 @@ def render_report(r, out):
     render_stimulus_control_edges(r, out)
     render_carry_register_rows(r, out)
     render_tuning_response_variable(r, out)
+    render_tuning_axis_naming(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the

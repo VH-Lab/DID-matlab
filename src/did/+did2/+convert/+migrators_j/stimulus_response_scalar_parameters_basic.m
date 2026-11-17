@@ -129,10 +129,9 @@ function bodies = stimulus_response_scalar_parameters_basic(preBody)
 %   as v1 wrote it (NDI stimulus_response_scalar_parameters_basic.json +
 %   stimulus_response_scalar_parameters.json + base.json at the locked
 %   NDI-matlab `main`, 3cb19a8, as tuning_response.m writes it) and pass 1
-%   still hands it back UNCHANGED: a passthrough, which v1_to_v2 pads and
-%   stamps as before (ensureClassBlocks reads a v1 superclass by its
-%   `definition`). did2.convert.resolveResponseParameters then reads the
-%   six knobs off it as before; it reads `base`, the block, and the session
+%   still hands it back UNCHANGED: a passthrough, which v1_to_v2 hands on
+%   as v1 wrote it ([handed-on are v1 as written]).
+%   did2.convert.resolveResponseParameters then reads the six knobs off it as before; it reads `base`, the block, and the session
 %   edge v1_to_v2 makes, none of which universalRenames changed for this
 %   class. What universalRenames would have discarded (a depends_on `version`
 %   or second id, an `ndi_document` beside `base`, an `app` name conflict, a

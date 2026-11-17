@@ -45,8 +45,6 @@
 %                          ([migration reliability practices] (a)): check
 %                          rebuilds the v1 document from the emitted v2
 %                          documents with the class's inverse and compares.
-%     ensureClassBlocks  - give a body exactly the class blocks its schema
-%                          chain hosts.
 %     isAlreadyTarget    - true when a body is already stamped did_v2 (a
 %                          stamp check), so a re-run skips it.
 %     schemaVersionRank  - where a schema version sits in the did_v1 ->
@@ -79,7 +77,8 @@
 %     selection chose, read from its log), tuningStatedValues (the number
 %     a tuning curve's exact_number selection fixes a property at),
 %     tuningLabelNote (a tuning curve's v1 display label, kept as the
-%     last line of its notes), inputEdgeNames (input edge names
+%     last line of its notes), tuningAxisNamingCounts (the run's count of
+%     raw tuning curves named from their v1 label), inputEdgeNames (input edge names
 %     rebuilt from their classes), isSpikeTimesObservation (a unit's
 %     per-epoch spike-times observation, the input a stimulus response is
 %     computed from)

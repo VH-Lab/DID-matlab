@@ -592,6 +592,100 @@ verifyTrue(testCase, any(strcmp(r.matched, 'openminds.fields.year')), ...
     'the year is not rebuilt');
 end
 
+function testCopyrightHoldersKeepTheirOrder(testCase)
+% [copyright round-trip losses] (Decided by Jess Haley, 2026-11-17, did-schema
+% did_v2_go_forward_class_audit.md) (3): "copyrightHolder becomes an ordered
+% relation, so several holders keep their order": each copyright_holder
+% relation states its holder's position (from 0), and the round trip rebuilds
+% the holders in that order whatever order the batch holds them in
+for holders = {{'ndi://om_person', 'ndi://om_holder_org'}, {'ndi://om_holder_org', 'ndi://om_person'}}
+    h = holders{1};
+    bodies = copyrightGraph(copyrightFields(h, 2021));
+    bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+    [out, rep] = runPass(testCase, bodies);
+    assertEqual(testCase, rep.copyright_holders_emitted, 2, 'premise');
+    want = cellfun(@(r) r(numel('ndi://') + 1:end), h, 'UniformOutput', false);
+    for k = 1:numel(out.migrated)
+        b = out.migrated{k}.toStruct();
+        if ~strcmp(b.document_class.class_name, 'directed_relation') || ...
+                ~strcmp(did2.build.vocabularyHandle('relation', b.directed_relation.relation), ...
+                'copyright_holder')
+            continue;
+        end
+        verifyEqual(testCase, double(b.directed_relation.order), ...
+            find(strcmp(want, depOf(b, 'parent_id'))) - 1, ...
+            'the holder relation states its position in the Copyright, from 0');
+    end
+    v1 = [];
+    for k = 1:numel(bodies)
+        if strcmp(bodies{k}.base.id, 'om_copyright'); v1 = bodies{k}; end
+    end
+    docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+    a = docWithIdIn(out, 'om_copyright');
+    for flip = [false true]
+        d = docs;
+        if flip; d = fliplr(d); end   % the batch order is not the holder order
+        r = did2.convert.roundtrip.check(v1, {a}, contextOf(d));
+        did2.unittest.helpers.verifyRoundTrip(testCase, r, ...
+            sprintf('Copyright holders %s (batch reversed %d)', strjoin(h, ', '), flip), ...
+            {'openminds.openminds_id'});
+    end
+end
+end
+
+function testAnotherOpenmindsTypeSpellingIsNotation(testCase)
+% [copyright round-trip losses] (2): "a different openMINDS type spelling is
+% notation" ([spelling is notation]): the other IRI vintage and the other
+% MATLAB namespace compare equivalent; a type that is not the Copyright's is
+% still lost
+bodies = copyrightGraph(copyrightFields({'ndi://om_person'}, 2021));
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+for k = 1:numel(bodies)
+    if strcmp(bodies{k}.base.id, 'om_copyright')
+        bodies{k}.openminds.openminds_type = 'https://openminds.ebrains.eu/core/Copyright';
+        bodies{k}.openminds.matlab_type = 'openminds.core.Copyright';
+        v1 = bodies{k};
+    end
+end
+[out, rep] = runPass(testCase, bodies);
+assertEqual(testCase, rep.copyright_years_emitted, 1, 'premise: the vintage is read');
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+a = docWithIdIn(out, 'om_copyright');
+r = did2.convert.roundtrip.check(v1, {a}, contextOf(docs));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'Copyright, other type spellings', ...
+    {'openminds.openminds_id'});
+verifyTrue(testCase, any(strcmp(r.equivalent, 'openminds.openminds_type')), ...
+    'the IRI vintage is not equivalent');
+verifyTrue(testCase, any(strcmp(r.equivalent, 'openminds.matlab_type')), ...
+    'the MATLAB namespace is not equivalent');
+bad = v1;
+bad.openminds.matlab_type = 'openminds.core.License';
+r = did2.convert.roundtrip.check(bad, {a}, contextOf(docs));
+verifyTrue(testCase, any(strcmp({r.lost.path}, 'openminds.matlab_type')), ...
+    'another type is not a spelling of the Copyright''s');
+end
+
+function testTheCopyrightInstanceIdIsAnAcceptedLoss(testCase)
+% [copyright round-trip losses] (1): "its openMINDS instance id is an accepted
+% loss": the whole-batch round trip lists it by name and counts it, and the
+% Copyright round trips clean
+bodies = copyrightGraph(copyrightFields({'ndi://om_person', 'ndi://om_holder_org'}, 2021));
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+[out, rep] = runPass(testCase, bodies);
+assertEqual(testCase, rep.copyright_years_emitted, 1, 'premise');
+wb = did2.convert.roundtrip.wholeBatch(bodies, out);
+hits = wb.accepted_losses(strcmp({wb.accepted_losses.name}, 'openMINDS Copyright instance id'));
+verifyEqual(testCase, numel(hits), 1, 'the instance id is not listed as an accepted loss');
+if ~isempty(hits)
+    verifyEqual(testCase, hits(1).source_id, 'om_copyright');
+    verifyEqual(testCase, hits(1).path, 'openminds.openminds_id');
+    verifyEqual(testCase, hits(1).class_name, 'openminds');
+end
+% only the Copyright's: no other openminds source's instance id is accepted
+verifyFalse(testCase, any(strcmp({wb.accepted_losses.name}, 'openMINDS Copyright instance id') ...
+    & ~strcmp({wb.accepted_losses.source_id}, 'om_copyright')));
+end
+
 function testTheCopyrightDocumentsValidateAgainstTheRealVEtaSchema(testCase)
 if isempty(getenv('DID_SCHEMA_PATH'))
     assumeFail(testCase, ...

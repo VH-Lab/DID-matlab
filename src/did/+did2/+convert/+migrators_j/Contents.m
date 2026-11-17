@@ -650,8 +650,8 @@
 %         onto the generic daqreader: ndr_reader_string -> daqreader.reader_string,
 %         and ndi_daqreader_ndr_class dropped (redundant). `file_extension` is NOT
 %         carried -- see the block at the copy site below for why, and do not restore
-%         it from this line. The daqreader superclass chain is rebuilt by
-%         ensureClassBlocks after this.
+%         it from this line. The daqreader migrator it hands on to writes the
+%         acquisition_reader document.
 %     daqsystem
 %         Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
 %         (configuration off `base`) + a `software` entity for its own implementation
@@ -899,10 +899,8 @@
 %         data types, ...) and the depends_on edges
 %         (spatial_gene_expression_pyramid_id, subject_id, source_file_id) carry
 %         through as-is -- universalRenames has already snake_cased both the block key
-%         and its immediate fields, and ensureClassBlocks rebuilds
-%         document_class.superclasses from the V_eta chain. base.id is preserved so a
-%         dependent labeling row's cells_document_id edge (mustBeNonEmpty: true) still
-%         resolves.
+%         and its immediate fields. base.id is preserved so a dependent labeling row's
+%         cells_document_id edge (mustBeNonEmpty: true) still resolves.
 %     spatial_gene_expression_pyramid
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionPyramid -> V_eta
 %         spatial_gene_expression_pyramid, PASSED THROUGH. did-schema #88 restates the
@@ -923,8 +921,7 @@
 %         geometry) and the depends_on edges (spatial_gene_expression_pyramid_id
 %         required; subject_id optional -- the pyramid dep carries it; source_file_id
 %         optional) carry through as-is. universalRenames has snake_cased the block
-%         key and its immediate fields; ensureClassBlocks rebuilds the superclass
-%         chain. base.id is preserved.
+%         key and its immediate fields. base.id is preserved.
 %     speed_tuning
 %         Brainstorm-J migrator -> speed_tuning_calculation (did-schema #88).
 %         Brainstorm-J migrator: did_v1 speed_tuning (raw NDIcalc-vis result class) ->

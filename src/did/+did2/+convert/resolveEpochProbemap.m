@@ -194,6 +194,14 @@ function [result, report] = resolveEpochProbemap(result, options)
 %     modality is imaging (image, not emittable)  -> rows_image_deferred
 %     modality is 'unresolved'                   -> rows_unresolved_modality
 %
+%   A stimulator row writes its per-epoch Stimulator manipulation only when it
+%   carries something its wiring relation and its element do not: no wiring
+%   relation, another subject than the element's, or another type
+%   (stimulator_manipulations_kept_*). Otherwise it writes none and its wiring
+%   relation and epoch anchor are kept for it
+%   (stimulator_manipulations_not_written; [stimulator manipulation dropped],
+%   Jess Haley, 2026-11-09, did-schema did_v2_standing_wiring_plan.md).
+%
 %   `subject_id` is the ONE required edge on the observation chain, and an empty
 %   required edge validates clean because +did2/+validate/references.m:90 skips
 %   empty edges -- the invented-empty-edge pattern, 7,233 documents and counting.
@@ -279,6 +287,10 @@ report = struct( ...
     'observations_emitted',           0, ...
     'mode_methods_written',           0, ...
     'manipulations_emitted',          0, ...
+    'stimulator_manipulations_not_written',     0, ...
+    'stimulator_manipulations_kept_no_wiring',  0, ...
+    'stimulator_manipulations_kept_other_subject', 0, ...
+    'stimulator_manipulations_kept_other_type', 0, ...
     'instrument_resolved',            0, ...
     'instrument_omitted',             0, ...
     'device_strings_seen',            0, ...
@@ -610,6 +622,10 @@ renameBodyBySrcId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 acIdByKey   = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acBodyById  = containers.Map('KeyType', 'char', 'ValueType', 'any');
 newGroupAc = {};     % wiring relation base.id each new body depends on ('' = none)
+% [stimulator manipulation dropped]: a stimulator row whose wiring relation and
+% element hold all it says writes no manipulation; its wiring relation and
+% epoch anchor are kept for it, {wiring id, anchor id} per row
+wiringOnlyRows = cell(0, 2);
 % [clock only on the time reference] (Decided by Jess Haley, 2026-11-01,
 % did-schema did_v2_go_forward_class_audit.md): "the recording observation's
 % time references say when the epoch starts on each clock". An ingested
@@ -899,6 +915,41 @@ for k = 1:n
         end
 
         if strcmp(disposition, 'stimulator')
+            if isempty(instrumentId)
+                report.instrument_omitted = report.instrument_omitted + 1;
+            else
+                report.instrument_resolved = report.instrument_resolved + 1;
+            end
+            % [stimulator manipulation dropped] (Jess Haley, 2026-11-09,
+            % did-schema did_v2_standing_wiring_plan.md): the
+            % body-less per-epoch Stimulator manipulation is no longer
+            % written, "except for a row that carries something the wiring
+            % and the element do not". The row is read back from its wiring
+            % relation (rig, channels) and its element (name, reference,
+            % type, and the subject it `observes`, or is `derived_from`)
+            % ([probe map rows compared as a set]; NDI-matlab
+            % ndi.vintage.ingestedEpochs, +roundtrip/private/manifestProbemap).
+            % So the manipulation is still written for a row with no wiring
+            % relation, a row whose subject is not its element's (12 Dab
+            % epochs' bath rows), and a row whose type is not its element's.
+            if isempty(acId)
+                report.stimulator_manipulations_kept_no_wiring = ...
+                    report.stimulator_manipulations_kept_no_wiring + 1;
+            elseif ~(isKey(observesIdxByPair, [char(instrumentId) '|' char(subjectId)]) ...
+                    || (isKey(derivedParent, instrumentId) ...
+                    && strcmp(derivedParent(instrumentId), subjectId)))
+                report.stimulator_manipulations_kept_other_subject = ...
+                    report.stimulator_manipulations_kept_other_subject + 1;
+            elseif ~strcmp(strtrim(char(row.type)), stimulatorElementType( ...
+                    instrumentId, elementTypeById, kindTypeById))
+                report.stimulator_manipulations_kept_other_type = ...
+                    report.stimulator_manipulations_kept_other_type + 1;
+            else
+                report.stimulator_manipulations_not_written = ...
+                    report.stimulator_manipulations_not_written + 1;
+                wiringOnlyRows(end+1, :) = {acId, anchorId}; %#ok<AGROW>
+                continue;
+            end
             manip = mkManipulation(row.type, subjectId, instrumentId, ...
                 anchorId, sid, datestamp, acqSystemId);
             newBodies{end+1} = manip;              %#ok<AGROW>
@@ -906,11 +957,6 @@ for k = 1:n
             newGroupAc{end+1} = acId;              %#ok<AGROW>
             newGroupClock{end+1} = {};             %#ok<AGROW>
             specManipIds{end+1} = manip.base.id;   %#ok<AGROW>
-            if isempty(instrumentId)
-                report.instrument_omitted = report.instrument_omitted + 1;
-            else
-                report.instrument_resolved = report.instrument_resolved + 1;
-            end
             continue;
         end
 
@@ -1190,7 +1236,7 @@ end
 report.spike_calculations_seen = numel(spikeCalcIdx);
 
 renameBodies = renameBodyBySrcId.values;
-if isempty(newBodies) && isempty(renameBodies)
+if isempty(newBodies) && isempty(wiringOnlyRows) && isempty(renameBodies)
     % nothing emitted: no archive file has a new owner, and no pyraview has a
     % recording observation to move to -- both kept, and counted as such
     report.archive_docs_kept_unowned_files = report.archive_docs_inspected;
@@ -1211,7 +1257,7 @@ end
 % not resolve references (that is the corpus orphan gate), so this is fine.
 % A quarantined observation is a defect and propagates to the 0-quarantine gate.
 producedById = containers.Map('KeyType', 'char', 'ValueType', 'any');
-if ~isempty(newBodies)
+if ~isempty(newBodies) || ~isempty(wiringOnlyRows)
     anchorBodies = anchorBodyById.values;
     acBodies = acBodyById.values;
     clockBodies = clockBodyById.values;
@@ -1331,6 +1377,15 @@ for j = 1:numel(newBodies)
     emittedNewIds(id) = true;
     anchorHasSurvivor(aid) = true;
     if ~isempty(acId); acHasSurvivor(acId) = true; end
+end
+% a stimulator row that writes no manipulation ([stimulator manipulation
+% dropped]) keeps its wiring relation and its epoch anchor, which hold it
+for j = 1:size(wiringOnlyRows, 1)
+    [acId, aid] = wiringOnlyRows{j, :};
+    if anchorAlive(aid) && isKey(producedById, acId)
+        anchorHasSurvivor(aid) = true;
+        acHasSurvivor(acId) = true;
+    end
 end
 acKeys = acHasSurvivor.keys;
 for a = 1:numel(acKeys)
@@ -2012,6 +2067,18 @@ m = did2.build.statement('manipulation', char(subjectId), typeTerm, typeTerm, ..
     'AcquisitionSystemId', char(acqSystemId), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false, 'ValueKind', 'term');
+end
+
+function t = stimulatorElementType(instrumentId, elementTypeById, kindTypeById)
+% the element's v1 type, as the round trip reads it (+roundtrip/private/
+% manifestProbemap rowTypeOf): its `element type` assertion, else the type its
+% device kind names ('' when neither)
+t = '';
+if isKey(elementTypeById, instrumentId)
+    t = strtrim(char(elementTypeById(instrumentId)));
+elseif isKey(kindTypeById, instrumentId)
+    t = strtrim(char(kindTypeById(instrumentId)));
+end
 end
 
 function et = archiveEpochTable(b)

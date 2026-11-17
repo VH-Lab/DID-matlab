@@ -5,8 +5,8 @@ function v2Body = daqreader_ndr(preBody)
 %   onto the generic daqreader: ndr_reader_string -> daqreader.reader_string,
 %   and ndi_daqreader_ndr_class dropped (redundant). `file_extension` is NOT
 %   carried -- see the block at the copy site below for why, and do not restore
-%   it from this line. The daqreader superclass chain is rebuilt by
-%   ensureClassBlocks after this.
+%   it from this line. The daqreader migrator it hands on to writes the
+%   acquisition_reader document.
 %
 %   CORRECTED 2026-08-12. This sentence read "file_extension carried" while the
 %   code twenty lines down said "NO `file_extension`" and dated its deletion to
