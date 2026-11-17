@@ -163,6 +163,22 @@ end
 if isfield(result, 'summary') && isfield(result.summary, 'legacy_ndi_document')
     report.legacy_ndi_document = result.summary.legacy_ndi_document;
 end
+% THE v1 NAME CHECK ([v1 name goes to the class's own name field], Jess Haley,
+% 2026-10-27): the converted sources pass 1's name check read (the
+% denominator), those with a non-empty v1 name, those carried as statements
+% (carry-106), and those whose name no emitted document keeps
+% (`v1_name_not_kept`), by class, with the distinct names not kept. Absent is
+% "not measured", not zero.
+if isfield(result, 'summary') && isfield(result.summary, 'v1_name')
+    report.v1_name = result.summary.v1_name;
+    report.v1_name.not_kept_distinct_names = {};
+    if isfield(result.summary, 'migration_notes') ...
+            && isfield(result.summary.migration_notes, 'v1_name_not_kept') ...
+            && isfield(result.summary.migration_notes.v1_name_not_kept, 'distinct_details')
+        report.v1_name.not_kept_distinct_names = ...
+            result.summary.migration_notes.v1_name_not_kept.distinct_details;
+    end
+end
 % HANDED ON AS v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03):
 % pass 1's count, by class, of the documents it handed on to a batch pass
 % exactly as v1 wrote them (did2.convert.v1_to_v2 HAND_ON_CLASSES). Absent is

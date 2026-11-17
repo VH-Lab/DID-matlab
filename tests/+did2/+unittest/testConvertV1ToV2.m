@@ -340,6 +340,10 @@ d = notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-106] awaiting_home: base.name "a named treatment"'), d);
 verifyEqual(testCase, notes.v1_name_statement_carried.count, 1, 'the count');
 verifyEqual(testCase, notes.v1_name_statement_carried.by_class.treatment, 1);
+verifyEqual(testCase, result.summary.v1_name.sources_inspected, 1, 'the denominator');
+verifyEqual(testCase, result.summary.v1_name.with_v1_name, 1);
+verifyEqual(testCase, result.summary.v1_name.statement_carried, 1);
+verifyEqual(testCase, result.summary.v1_name.not_kept, 0);
 % the same treatment with no name converts, and counts nothing
 v1.base.name = '';
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
@@ -361,6 +365,8 @@ verifyEqual(testCase, char(result.migrated{1}.get('entity.name')), 'mouse_42@lab
 verifyFalse(testCase, isfield(result.summary, 'migration_notes') ...
     && isfield(result.summary.migration_notes, 'v1_name_not_kept'), ...
     'a name the entity holds is not counted as not kept');
+verifyEqual(testCase, result.summary.v1_name.with_v1_name, 1);
+verifyEqual(testCase, result.summary.v1_name.not_kept, 0);
 end
 
 function testTheRoutesReachTheBatchSummaryAndPartitionIt(testCase)
