@@ -105,12 +105,15 @@ function [cells, gaps] = seriesCell(kind, vals, term, factor, canon, extra)
 % The new numeric shape ([one shape for measured numbers], Jess Haley,
 % 2026-11-17, did-schema did_v2_numeric_shape_plan.md, section 8 answer 4):
 % ONE cell whose canonical field and source_numeric are arrays, one
-% source_unit for the series. A reading the source wrote as a non-finite
-% number keeps it in the canonical array too (NaN * factor is NaN), so the
-% canonical is left out -- and named as a gap, once -- only when the source
-% states no unit.
+% source_unit for the series. The gaps are the old shape's: no unit stated,
+% or no finite number, leaves the canonical out, ONE gap for the value. A
+% series in which only SOME readings are not finite cannot leave part of one
+% array out: its canonical array holds those readings as computed (NaN *
+% factor is NaN), and each is listed as a gap by its index in the array.
+n = numel(vals);
+missing = isempty(term) | (~isempty(canon) & ~isfinite(vals));
 s = struct();
-if ~isempty(canon)
+if ~isempty(canon) && ~all(missing)
     s.(canon) = reshape(vals * factor, 1, []);
 end
 s.source_numeric = reshape(vals, 1, []);
@@ -122,25 +125,36 @@ for j = 1:2:numel(extra)
 end
 cells = did2.build.composite(kind, 'value', {s});
 gaps = struct('field', {}, 'reason', {});
-if ~isempty(term)
+if ~any(missing)
     return;   % a stated unit: the canonical is written, or (unknown for KIND) carried
 end
-slot = '';
-if ~strcmp(kind, 'concentration')
+slot = canon;
+if isempty(slot) && ~strcmp(kind, 'concentration')
     slot = canonicalField(kind);   % concentration has no one slot
 end
 if isempty(slot); slot = 'canonical'; end
-n = numel(vals);
-if n > 1
-    why = sprintf(['unit not stated: the source gives %d numbers with ' ...
-        'no unit, so no canonical %s is computed'], n, slot);
-else
-    why = sprintf(['unit not stated: the source gives the number %s ' ...
-        'with no unit, so no canonical %s is computed'], ...
-        num2str(vals(1), 17), slot);
+base = [kind '.value.' slot];
+if all(missing)
+    if isempty(term) && n > 1
+        why = sprintf(['unit not stated: the source gives %d numbers with ' ...
+            'no unit, so no canonical %s is computed'], n, slot);
+    elseif isempty(term)
+        why = sprintf(['unit not stated: the source gives the number %s ' ...
+            'with no unit, so no canonical %s is computed'], ...
+            num2str(vals(1), 17), slot);
+    else
+        why = sprintf(['the source gives no finite number (%s), so no ' ...
+            'canonical %s is computed'], mat2str(vals), slot);
+    end
+    gaps(1).field = base;
+    gaps(1).reason = why;
+    return;
 end
-gaps(1).field = [kind '.value.' slot];
-gaps(1).reason = why;
+for k = find(missing)
+    gaps(end+1).field = sprintf('%s(%d)', base, k); %#ok<AGROW>
+    gaps(end).reason = sprintf(['the source''s number is %s, not a finite ' ...
+        'number, so no canonical %s is computed'], num2str(vals(k)), slot);
+end
 end
 
 function f = canonicalField(kind)
