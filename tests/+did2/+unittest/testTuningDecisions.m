@@ -21,6 +21,8 @@ function tests = testTuningDecisions
 %     [input names rebuild from the input class] testInputNames*
 %     [tuning stimids rebuild]                   testTuningStimids*
 %     [tuning log in notes]                      testTuningLogInNotes
+%     [response type harmonics are integers] (2026-11-12)  testResponseTypeMeanAndPeakAreTerms
+%     [harmonic is a field beside the response type] (2026-11-17)  testResponseTypeHarmonicIsAField
 %     [varied properties are conditions by V2 name]  testVariedProperties*
 %     [parameter names map by table]             testParameterNames*
 %     [absolute-value fits are fit entries] (2026-10-28; supersedes
@@ -1123,30 +1125,77 @@ function testResponseTypeMeanAndPeakAreTerms(testCase)
 % (did-schema did_v2_go_forward_class_audit.md): a tuning or
 % contrast-sensitivity `response_type` of `mean` is NCIT:C53319 Arithmetic
 % Mean and `peak` STATO:0000151 maximum observed value; the round trip gives
-% the v1 text back. F1 / F2 are not built here (where the integer harmonic
-% is written on these values is not decided): they stay labels.
+% the v1 text back. On a schema that does not declare the value's `harmonic`
+% (helpers.harmonicSchema false: did-schema before [harmonic is a field
+% beside the response type]) F1 stays a label, as before, and reads back.
+did2.unittest.helpers.harmonicSchema(testCase, false);
 want = {'mean', 'NCIT:C53319'; 'peak', 'STATO:0000151'; 'F1', ''};
 for k = 1:size(want, 1)
-    v1 = convertedContrast();
-    v1.contrast_tuning.properties.response_type = want{k, 1};
-    out = runRaw({v1});
-    leaf = firstOfClass(out, 'contrast_tuning_calculation');
-    assertNotEmpty(testCase, leaf, want{k, 1});
-    verifyEqual(testCase, termNode(leaf.tuning_curve.value.response_type), ...
+    [leafT, rT, leafC, rC] = responseTypeRun(want{k, 1});
+    assertNotEmpty(testCase, leafT, want{k, 1});
+    verifyEqual(testCase, termNode(leafT.tuning_curve.value.response_type), ...
         want{k, 2}, ['contrast tuning ' want{k, 1}]);
-    r = did2.convert.roundtrip.check(v1, out.migrated);
-    did2.unittest.helpers.verifyRoundTrip(testCase, r, ['contrast tuning ' want{k, 1}], {});
-
-    v1 = writerOutput('contrastsensitivity_calc');
-    v1.contrastsensitivity_calc.response_type = want{k, 1};
-    out = runRaw({v1});
-    leaf = firstOfClass(out, 'contrast_sensitivity_calculation');
-    assertNotEmpty(testCase, leaf, want{k, 1});
-    verifyEqual(testCase, termNode(leaf.contrast_sensitivity.value.response_type), ...
+    did2.unittest.helpers.verifyRoundTrip(testCase, rT, ['contrast tuning ' want{k, 1}], {});
+    assertNotEmpty(testCase, leafC, want{k, 1});
+    verifyEqual(testCase, termNode(leafC.contrast_sensitivity.value.response_type), ...
         want{k, 2}, ['contrast sensitivity ' want{k, 1}]);
-    r = did2.convert.roundtrip.check(v1, out.migrated);
-    did2.unittest.helpers.verifyRoundTrip(testCase, r, ['contrast sensitivity ' want{k, 1}], {});
+    did2.unittest.helpers.verifyRoundTrip(testCase, rC, ['contrast sensitivity ' want{k, 1}], {});
 end
+end
+
+function testResponseTypeHarmonicIsAField(testCase)
+% Decided by Jess Haley, 2026-11-17 [harmonic is a field beside the response
+% type] (did-schema did_v2_go_forward_class_audit.md): `F1` is NCIT:C94900
+% Fourier Analysis with `value.harmonic` 1, `F2` Fourier Analysis with
+% harmonic 2; `mean` and `peak` have no harmonic; the round trip rebuilds the
+% v1 text. Written once the schema declares the field (helpers.harmonicSchema
+% true: siblings first).
+did2.unittest.helpers.harmonicSchema(testCase, true);
+want = {'mean', 'NCIT:C53319', []; 'peak', 'STATO:0000151', []; ...
+    'F1', 'NCIT:C94900', 1; 'F2', 'NCIT:C94900', 2};
+for k = 1:size(want, 1)
+    [rt, node, h] = want{k, :};
+    [leafT, rT, leafC, rC] = responseTypeRun(rt);
+    for side = {'contrast tuning', 'contrast sensitivity'}
+        if strcmp(side{1}, 'contrast tuning')
+            assertNotEmpty(testCase, leafT, rt);
+            value = leafT.tuning_curve.value;
+            r = rT;
+        else
+            assertNotEmpty(testCase, leafC, rt);
+            value = leafC.contrast_sensitivity.value;
+            r = rC;
+        end
+        what = [side{1} ' ' rt];
+        verifyEqual(testCase, termNode(value.response_type), node, [what ': response type']);
+        if strcmp(node, 'NCIT:C94900')
+            verifyEqual(testCase, char(value.response_type.name), 'Fourier Analysis', what);
+        end
+        got = [];
+        if isfield(value, 'harmonic'); got = value.harmonic; end
+        if isempty(h)
+            verifyEmpty(testCase, got, [what ': no harmonic']);
+        else
+            verifyEqual(testCase, double(got), h, [what ': harmonic']);
+        end
+        did2.unittest.helpers.verifyRoundTrip(testCase, r, what, {});
+    end
+end
+end
+
+function [leafT, rT, leafC, rC] = responseTypeRun(rt)
+% contrast tuning and contrast sensitivity, each with v1 response_type RT:
+% the emitted leaf (struct) and the round-trip report
+v1 = convertedContrast();
+v1.contrast_tuning.properties.response_type = rt;
+out = runRaw({v1});
+leafT = firstOfClass(out, 'contrast_tuning_calculation');
+rT = did2.convert.roundtrip.check(v1, out.migrated);
+v1 = writerOutput('contrastsensitivity_calc');
+v1.contrastsensitivity_calc.response_type = rt;
+out = runRaw({v1});
+leafC = firstOfClass(out, 'contrast_sensitivity_calculation');
+rC = did2.convert.roundtrip.check(v1, out.migrated);
 end
 
 function n = termNode(t)

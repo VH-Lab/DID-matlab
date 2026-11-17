@@ -870,7 +870,15 @@ elseif isscalar(copyRefs)
                     end
                 end
             end
-            newBodies{end+1} = relationDoc(cp, datasetId, hId, 'copyright_holder', []); %#ok<AGROW>
+            % [copyright round-trip losses] (Decided by Jess Haley, 2026-11-17,
+            % did-schema did_v2_go_forward_class_audit.md) (3): "copyrightHolder
+            % becomes an ordered relation, so several holders keep their order":
+            % each holder's position in the Copyright, counted from 0. Written
+            % now: did-schema's directed_relation.order is an optional field on
+            % every relation (-1 the blank), and neither did2.build nor the
+            % validator refuses an order on a binding row with ordered false;
+            % did-schema makes the copyrightHolder row ordered next.
+            newBodies{end+1} = relationDoc(cp, datasetId, hId, 'copyright_holder', i - 1); %#ok<AGROW>
             tally.relations_emitted = tally.relations_emitted + 1;
             tally.copyright_holders_emitted = tally.copyright_holders_emitted + 1;
         end
