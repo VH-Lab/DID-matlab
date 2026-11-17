@@ -298,7 +298,7 @@ names = cellfun(@(e) char(e.variable.name), c, 'UniformOutput', false);
 ix = find(strcmp(names, 'error on failure'));
 assertNumElements(testCase, ix, 1, strjoin(names, ', '));
 verifyEqual(testCase, char(c{ix}.variable.node), 'EMPTY:0000435');
-verifyEqual(testCase, c{ix}.quantity.value, 1);
+verifyEqual(testCase, c{ix}.numeric, 1);   % the new numeric shape
 r = did2.convert.roundtrip.check(rule, docs);
 verifyFalse(testCase, r.carried);
 verifyRoundTrip(testCase, r, 'the channel rule with a numeric errorOnFailure', {});

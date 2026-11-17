@@ -365,8 +365,10 @@ function testTheBuiltPathStillReadsARealTimestamp(testCase)
 [obs, anchor] = builtStack(testCase, 739038.5, 'exp_global_time');
 c = obs.get('statement.conditions');
 verifyEqual(testCase, char(c.variable.node), 'AFO:AFR_0001158');
-verifyEqual(testCase, str2double(c.quantity.source_value), 739038.5);
-verifyFalse(testCase, isfield(c.quantity, 'value'), ...
+% the new numeric shape: the datenum is source_numeric, a number as v1 stored
+% it ([numeric shape details] (1), Jess Haley, 2026-11-17)
+verifyEqual(testCase, c.source_numeric, 739038.5);
+verifyFalse(testCase, isfield(c, 'numeric') && ~isempty(c.numeric), ...
     'a datenum on a clock that is not UTC has no canonical');
 verifyEqual(testCase, char(c.source_unit.name), 'day');
 s = obs.toStruct();
@@ -374,7 +376,7 @@ verifyFalse(testCase, isfield(s.base, 'needs_info'));
 g = did2.convert.migrationReport('gaps', char(s.base.id));
 verifyEqual(testCase, numel(g), 1);
 if isempty(g); return; end
-verifyEqual(testCase, g(1).field, 'statement.conditions(1).quantity.value');
+verifyEqual(testCase, g(1).field, 'statement.conditions(1).numeric');
 verifyTrue(testCase, contains(g(1).reason, '''exp_global_time'''));
 did2.unittest.helpers.verifyClock(testCase, anchor.get('relative_time_reference.value.clock'), ...
     'exp_global_time');   % by node [clock terms get nodes]

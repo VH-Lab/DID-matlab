@@ -213,12 +213,14 @@ function testTheTimeAxisIsRegularWithTheMeasuredOriginAndSpacing(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyNotEmpty(testCase, ax(1).cov.origin, 'regular: origin + spacing (AMENDMENT 6 removed `regular`)');
-verifyEqual(testCase, ax(1).cov.origin.value,         -0.00025, 'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).cov.origin.source_value,  -0.00025, 'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).cov.spacing.value,         5e-05,   'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).cov.spacing.source_value,  5e-05,   'AbsTol', 1e-18);
+% the new numeric shape: flat origin and spacing beside source_origin and
+% source_spacing ([one shape for measured numbers], plan section 4)
+verifyEqual(testCase, ax(1).cov.origin,          -0.00025, 'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.source_origin,   -0.00025, 'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.spacing,          5e-05,   'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.source_spacing,   5e-05,   'AbsTol', 1e-18);
 verifyEqual(testCase, ax(1).cov.source_unit.name, 'second');
-verifyFalse(testCase, isfield(ax(1).cov, 'quantity') && ~isempty(ax(1).cov.quantity), ...
+verifyFalse(testCase, isfield(ax(1).cov, 'numeric') && ~isempty(ax(1).cov.numeric), ...
     'a regular covariate stores no coordinates -- origin+spacing generate them');
 end
 
@@ -293,12 +295,15 @@ end
 function testAllSixHundredAndSeventyTwoValuesReachTheDocumentInColumnMajorOrder(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 value = pick(out, 'calculation+voltage').voltage.value;
-verifyEqual(testCase, numel(value), 672, ...
+% the new numeric shape: the series is ONE cell whose source_numeric is the
+% array (plan section 8, answer 4)
+verifyEqual(testCase, numel(value), 1, 'one value cell');
+verifyEqual(testCase, numel(value.source_numeric), 672, ...
     'DENOMINATOR: 21 time samples x 32 channels; a short array is a silent drop');
-verifyEqual(testCase, [value.source_value], 1:672, ...
+verifyEqual(testCase, value.source_numeric, 1:672, ...
     'column-major -- reshape(values,[21 32]) must invert w(:)');
 ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
-verifyEqual(testCase, prod([ax.n]), numel(value));
+verifyEqual(testCase, prod([ax.n]), numel(value.source_numeric));
 end
 
 

@@ -307,7 +307,7 @@ end
 verifyEqual(testCase, sort(fmts), sort({'EDAM:format_2333', 'EDAM:format_2330'}));
 ch1 = channelsOf(out, obs{1}); ch2 = channelsOf(out, obs{2});
 verifyNotEmpty(testCase, ch1); verifyNotEmpty(testCase, ch2);
-verifyNotEqual(testCase, double(ch1(1).matrix(:))', double(ch2(1).matrix(:))');
+verifyNotEqual(testCase, double(ch1(1).numeric(:))', double(ch2(1).numeric(:))');
 end
 
 function testAnIngestedEpochTakesItsArchiveAsAttached(testCase)
@@ -1126,7 +1126,7 @@ for i = 1:numel(levels)
     k = did2.unittest.helpers.axesOf(levels{i});
     names = arrayfun(@(a) char(a.term.name), k, 'UniformOutput', false);
     t = k(strcmp(names, 'time'));
-    verifyEqual(testCase, double(t.cov.origin.value), 2, 'the start offset is the time covariate''s origin');
+    verifyEqual(testCase, double(t.cov.origin), 2, 'the start offset is the time covariate''s origin');
 end
 end
 
@@ -1506,9 +1506,9 @@ verifyEqual(testCase, depVal(w, 'time_reference_id'), depVal(obs{1}, 'time_refer
 ch = w.directed_relation.conditions;
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai ([channel types])
-verifyEqual(testCase, double(ch(1).matrix(:))', [27 28 45]);
+verifyEqual(testCase, double(ch(1).numeric(:))', [27 28 45]);
 verifyEqual(testCase, char(ch(2).variable.node), 'EMPTY:0000372');   % di
-verifyEqual(testCase, double(ch(2).matrix(:))', [0 1 2]);
+verifyEqual(testCase, double(ch(2).numeric(:))', [0 1 2]);
 % every row decomposed, so the source is renamed to the manifest
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
@@ -1543,9 +1543,9 @@ verifyEqual(testCase, depVal(w, 'parent_id'), 'acqsys_m');
 ch = w.directed_relation.conditions;
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai
-verifyEqual(testCase, double(ch(1).matrix(:))', [2 1], 'row order, never sorted');
+verifyEqual(testCase, double(ch(1).numeric(:))', [2 1], 'row order, never sorted');
 verifyEqual(testCase, char(ch(2).variable.node), 'EMPTY:0000372');   % di
-verifyEqual(testCase, double(ch(2).matrix(:))', 4);
+verifyEqual(testCase, double(ch(2).numeric(:))', 4);
 % every row has its home, so the source is renamed to the manifest
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 verifyEmpty(testCase, bodiesOfClass(out, 'epochfiles_ingested'));
@@ -1575,7 +1575,7 @@ verifyNotEmpty(testCase, w);
 ch = w.directed_relation.conditions;
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.node), ch, 'UniformOutput', false), ...
     {'EMPTY:0000377', 'EMPTY:0000376', 'NCIT:C52095'});   % mk, e, md
-verifyEqual(testCase, double(ch(1).matrix(:))', [1 2 3]);
+verifyEqual(testCase, double(ch(1).numeric(:))', [1 2 3]);
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
 
@@ -1661,9 +1661,9 @@ for i = 1:numel(obs)
     end
     verifyEqual(testCase, numel(rels), 1);
     if strcmp(sys{i}, 'acqsys_ta')
-        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).matrix(:))', [3 2]);
+        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).numeric(:))', [3 2]);
     else
-        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).matrix(:))', 1);
+        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).numeric(:))', 1);
     end
 end
 end

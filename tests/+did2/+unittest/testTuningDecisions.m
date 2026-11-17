@@ -616,7 +616,7 @@ assertEqual(testCase, numel(c), 1);
 % `angle` is NCIT:C42677 "Direction" (Jess Haley, 2026-11-03, "Ok": a tuning
 % angle runs 0-360, the direction of motion), not "orientation"
 verifyEqual(testCase, lower(char(c{1}.variable.name)), 'direction');
-verifyEqual(testCase, c{1}.quantity.value, 90);
+verifyEqual(testCase, c{1}.numeric, 90);   % the new numeric shape
 verifyEqual(testCase, parameterCount(leaf, 'Direction selection'), 0, ...
     '[tuning selection rule stated once]: no per-parameter rule');
 verifyFalse(testCase, any(endsWith(parameterNames(leaf), ' selection')), ...
@@ -766,7 +766,7 @@ leaf = mine{1};
 c = asCell(leaf.statement.conditions);
 assertEqual(testCase, numel(c), 1);
 verifyEqual(testCase, lower(char(c{1}.variable.name)), 'temporal frequency');
-verifyEqual(testCase, c{1}.quantity.value, 4);
+verifyEqual(testCase, c{1}.numeric, 4);   % the new numeric shape
 verifyFalse(testCase, any(endsWith(parameterNames(leaf), ' selection')), ...
     sprintf('no ''<V2 name> selection'' parameter; parameters: %s', ...
     strjoin(parameterNames(leaf), ', ')));
@@ -878,7 +878,7 @@ leaf = firstOfClass(out, 'tuning_curve_calculation');
 c = asCell(leaf.statement.conditions);
 verifyEqual(testCase, numel(c), 2);
 verifyEqual(testCase, lower(char(c{1}.variable.name)), 'spatial frequency');
-verifyEqual(testCase, c{1}.quantity.value, 0.5);
+verifyEqual(testCase, c{1}.numeric, 0.5);   % the new numeric shape
 verifyEqual(testCase, lower(char(c{2}.variable.name)), 'temporal frequency');
 r = did2.convert.roundtrip.check(v1, out.migrated);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'tuning curve with two conditions', {});

@@ -170,7 +170,7 @@ for k = 1:size(cases, 1)
     assertNotEmpty(testCase, manip, [label ': no manipulation']);
     assertNotEmpty(testCase, age, [label ': no age observation']);
     verifyEqual(testCase, char(age.statement.variable.node), 'NCIT:C25150', label);
-    verifyEqual(testCase, age.time.value(1).source_value, days, label);
+    verifyEqual(testCase, age.time.value(1).source_numeric, days, label);   % the new numeric shape
     verifyEqual(testCase, age.time.value(1).seconds, days * 86400, label);
     verifyEqual(testCase, char(age.time.value(1).source_unit.name), 'day', label);
     verifyEqual(testCase, edgeOf(age, 'entity_id'), edgeOf(manip, 'entity_id'), label);
@@ -203,7 +203,7 @@ end
 assertNotEmpty(testCase, age, 'the missing age is still an Age observation');
 verifyEqual(testCase, char(age.statement.variable.node), 'NCIT:C25150');
 verifyTrue(testCase, ~isfield(age.time, 'value') || isempty(age.time.value) || ...
-    (isstruct(age.time.value) && ~any(isfield(age.time.value, {'seconds', 'source_value'}))), ...
+    (isstruct(age.time.value) && ~any(isfield(age.time.value, {'seconds', 'source_value', 'source_numeric'}))), ...
     'no age is stated');
 verifyTrue(testCase, any(strcmp('time.value', did2.schema.reportedGaps(age))), ...
     'the migration report lists the missing age');
@@ -263,7 +263,9 @@ v = anchorValue(testCase, out);
 verifyEqual(testCase, char(v.start.source_value), '2024-05-30T00:00:00');
 verifyEqual(testCase, char(v.end.source_value), '2024-06-01T00:00:00');
 verifyFalse(testCase, isfield(v.end, 'utc'), 'a local time is not normalised');
-verifyEqual(testCase, double(v.duration.source_value), 2);
+% a duration is a `time` value: source_numeric ([numeric shape details] (2));
+% the start's and end's text keep source_value
+verifyEqual(testCase, double(v.duration.source_numeric), 2);
 verifyEqual(testCase, double(v.duration.seconds), 2 * 86400);
 verifyEqual(testCase, char(v.duration.source_unit.name), 'day');
 % no registered term holds the day (V_eta_source_unit_plan.md item 4): the

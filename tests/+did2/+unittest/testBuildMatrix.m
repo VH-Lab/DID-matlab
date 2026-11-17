@@ -54,6 +54,14 @@ if ~hasMatrix(cache)
         cache.schemaPath));
 end
 testCase.TestData.sid = did.ido.unique_id();
+% `matrix` is the OLD numeric shape's form. Since step 2 of did-schema
+% docs/plans/did_v2_numeric_shape_plan.md ([one shape for measured numbers],
+% Jess Haley, 2026-11-17) the builders write the new shape by default, where
+% 'Matrix' writes `numeric` (testBuildNumericShape, testBuildNumericShapeWriters);
+% the old shape is still written on request and read until step 4, so this
+% file pins it there.
+prevShape = did2.build.numericShape('old');
+testCase.addTeardown(@() did2.build.numericShape(prevShape));
 end
 
 function teardownOnce(testCase)
