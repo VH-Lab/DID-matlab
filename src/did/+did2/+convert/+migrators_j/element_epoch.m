@@ -1,5 +1,30 @@
 function v2Body = element_epoch(preBody)
-%ELEMENT_EPOCH Brainstorm-J migrator: element_epoch -> acquisition_epoch.
+%ELEMENT_EPOCH Hand a v1 element_epoch on, exactly as v1 wrote it, to the batch
+%   passes that dissolve it.
+%
+%   HANDED ON AS v1, SINCE [retired classes leave V2] (Decided by Jess Haley,
+%   2026-10-25, step (1), did-schema did_v2_go_forward_class_audit.md: "the
+%   generic migration stops writing retired classes as V2 documents (at the
+%   locked DID head the generated targets show `element_epoch` ->
+%   `acquisition_epoch`, ...): each is carried as v1 until it has a V2 home
+%   ([generic stage is lossless])"). This migrator renamed the document to the
+%   retired V2 class `acquisition_epoch` (its clocks as {name, t0, t1}
+%   records) for the batch passes to read. It now checks the document as
+%   before -- a depends_on entry with a `version` or another field carries it
+%   (carry-100); a clock list or t0_t1 that cannot be read carries it
+%   (carry-038, carry-009, did2.convert.v1read.elementEpochClocks) -- and
+%   returns it unchanged; did2.convert.v1_to_v2 lists the class in
+%   HAND_ON_CLASSES, so it is stamped did_v1 and never validated against v2.
+%   Its V2 home is the dissolution below, built by the batch passes, which
+%   read the v1 document's clocks through did2.convert.elementEpochClockRecords
+%   (the same reader this migrator used); a source they do not dissolve is
+%   still this v1 document at the end of the batch and is stored as its v1
+%   source ([handed-on classes carried at the end], Jess Haley, 2026-11-02).
+%   A pass-1 CARRIED element_epoch (result.source_outputs `carried`) is not
+%   read by those passes, as before (it was never renamed).
+%
+%   THE TEXT BELOW IS KEPT AS IT WAS WRITTEN; where it says this migrator
+%   renames to acquisition_epoch, read "the batch passes read it as".
 %
 %   PASS-1 CARRIER ONLY, SINCE 2026-10-22. Decided by Jess Haley, 2026-10-22
 %   [epoch dissolution before merge] (F1): the signed dissolution is BUILT, in
@@ -160,7 +185,7 @@ arguments
 end
 
 body = jRawBody(preBody, 'element_epoch');
-[deps, collision] = renamedDependsOn(body);
+[~, collision] = renamedDependsOn(body);
 if ~isempty(collision)
     % carry-register: carry-100 (a rename-era clash: [rename clashes are malformed])
     did2.convert.reportNote('carried_as_v1', 'element_epoch', char(body.base.id), ...
@@ -168,39 +193,19 @@ if ~isempty(collision)
     v2Body = {preBody};
     return;
 end
-v2Body = convertElementEpoch(body);
-if isscalar(v2Body) && iscell(v2Body)
+if isCarried(body)
     v2Body = {preBody};   % carried: the untouched v1 source
     return;
 end
-if isfield(v2Body, 'depends_on')
-    v2Body.depends_on = deps;
-end
-% the superclass list of acquisition_epoch, from the schema
-% (did2.build.superclasses), so the document is complete as emitted
-% ([early migration pieces fixed] (2), Jess Haley, 2026-10-26: "the builder
-% produces a complete document"; before, v1_to_v2's ensureClassBlocks added
-% the class versions to v1's {base, epochid})
-v2Body.document_class.superclasses = did2.build.superclasses('acquisition_epoch');
+% handed on unchanged: v1_to_v2 stamps it did_v1 (HAND_ON_CLASSES)
+v2Body = preBody;
 end
 
-function v2Body = convertElementEpoch(preBody)
-% Reuse the base clocks-block transform (parses epoch_clock / t0_t1).
-v2Body = did2.convert.v1read.elementEpochClocks(preBody);
-if isequaln(v2Body, preBody)
-    % the base migrator converted nothing: its t0_t1 does not match its clocks,
-    % and it left a `carried_as_v1` note ([small unread settings] (4), Jess
-    % Haley, 2026-10-26). Carried whole as v1, not renamed.
-    v2Body = {preBody};
-    return;
-end
-
-% Rename the class and its property block: element_epoch -> acquisition_epoch.
-v2Body.document_class.class_name = 'acquisition_epoch';
-if isfield(v2Body, 'element_epoch')
-    v2Body.acquisition_epoch = v2Body.element_epoch;
-    v2Body = rmfield(v2Body, 'element_epoch');
-end
+function tf = isCarried(preBody)
+% True when the clocks cannot be read: did2.convert.v1read.elementEpochClocks
+% then returns the body unchanged and leaves a `carried_as_v1` note (carry-038,
+% carry-009; [small unread settings] (4), Jess Haley, 2026-10-26)
+tf = isequaln(did2.convert.v1read.elementEpochClocks(preBody), preBody);
 end
 
 function [deps, collision] = renamedDependsOn(body)

@@ -603,8 +603,12 @@ function testAnArchiveAfterTheSecondPassIsRebuiltByName(testCase)
 % channel as an observation (Jess Haley, 2026-11-17). The archive is still
 % found (its sampled_body holds its location uids) and rebuilt: every v1 file
 % NAME comes back in the writer's place, and only the v1 LOCATIONS of the
-% removed files are lost (no v2 document names their uid; the file stays in
-% NDI's store, unreferenced)
+% removed files are not rebuilt (no v2 document names their uid; the file
+% stays in NDI's store, unreferenced). Those of channel_list.bin (entry 1)
+% and the events file (entry 6) are an accepted loss ([removed file
+% locations are an accepted loss], Jess Haley, 2026-11-18), listed and
+% counted; those of the evenly spaced time segments (entries 4 and 5), which
+% that decision does not name, are still lost
 [bodies, result] = archiveBatch(testCase, 'wb_arc2', 'bb');
 result2 = secondPassOf(result, false);
 r = did2.convert.roundtrip.wholeBatch(bodies, result2);
@@ -614,15 +618,53 @@ f = archiveFailure(r, 'wb_arc2_arc');
 assertNotEmpty(testCase, f, describe(r));
 verifyEmpty(testCase, f.unplaced, describe(r));
 verifyEmpty(testCase, f.invented, describe(r));
-removedOnly = startsWith(f.lost, {'files.file_info(1).locations', ...
-    'files.file_info(4).locations', 'files.file_info(5).locations', ...
-    'files.file_info(6).locations'});
-verifyTrue(testCase, all(removedOnly), ['only the removed files'' locations: ' describe(r)]);
-for k = [1 4 5 6]
+removedOnly = startsWith(f.lost, {'files.file_info(4).locations', ...
+    'files.file_info(5).locations'});
+verifyTrue(testCase, all(removedOnly), ['only the removed time segments'' locations: ' describe(r)]);
+for k = [4 5]
     verifyTrue(testCase, any(strcmp(f.lost, sprintf('files.file_info(%d).locations.uid', k))), ...
         sprintf('entry %d: %s', k, describe(r)));
 end
+name = 'removed archive file location';
+acc = r.accepted_losses(strcmp({r.accepted_losses.name}, name));
+assertNotEmpty(testCase, acc, describe(r));
+verifyEqual(testCase, r.accepted_losses_by_name.(matlab.lang.makeValidName(name)), numel(acc));
+verifyTrue(testCase, all(contains({acc.decision}, 'removed file locations are an accepted loss')));
+verifyTrue(testCase, all(strcmp({acc.source_id}, 'wb_arc2_arc')));
+verifyTrue(testCase, all(startsWith({acc.path}, {'files.file_info(1).locations', ...
+    'files.file_info(6).locations'})), strjoin({acc.path}, ', '));
+for k = [1 6]
+    verifyTrue(testCase, any(strcmp({acc.path}, sprintf('files.file_info(%d).locations.uid', k))), ...
+        sprintf('entry %d accepted: %s', k, strjoin({acc.path}, ', ')));
+    verifyTrue(testCase, any(strcmp({acc.path}, sprintf('files.file_info(%d).locations.location', k))), ...
+        sprintf('entry %d accepted: %s', k, strjoin({acc.path}, ', ')));
+end
+verifyEqual(testCase, r.accepted_losses_total, numel(r.accepted_losses));
 verifyArchiveSegmentsDeferred(testCase, r, 1, 0);
+end
+
+function testRemovedFileLocationsAreAcceptedOnlyWhenRemoved(testCase)
+% [removed file locations are an accepted loss] covers a file the second pass
+% removed, never one still carried: the same archive with channel_list.bin
+% kept (its body still there, so its location is rebuilt from the body) has
+% no accepted location loss for it, and a v1 location of that kept file that
+% the body does not hold is still lost (a check that cannot fail proves
+% nothing)
+[bodies, result] = archiveBatch(testCase, 'wb_arc5', 'be');
+result2 = secondPassOf(result, false, {'channel_list.bin'});
+assertNotEmpty(testCase, find(cellfun(@(d) strcmp(slotOf(asStruct(d)), 'channel_list.bin'), ...
+    result2.migrated), 1), 'the channel_list.bin body is kept');
+k = find(cellfun(@(b) strcmp(b.document_class.class_name, ...
+    'daqreader_mfdaq_epochdata_ingested'), bodies));
+bodies{k}.files.file_info(1).locations.location = 'ndic://ds/elsewhere';
+r = did2.convert.roundtrip.wholeBatch(bodies, result2);
+f = archiveFailure(r, 'wb_arc5_arc');
+assertNotEmpty(testCase, f, describe(r));
+verifyTrue(testCase, any(strcmp(f.lost, 'files.file_info(1).locations.location')), describe(r));
+acc = r.accepted_losses(strcmp({r.accepted_losses.name}, 'removed archive file location'));
+verifyFalse(testCase, any(startsWith({acc.path}, 'files.file_info(1).')), strjoin({acc.path}, ', '));
+verifyTrue(testCase, any(strcmp({acc.path}, 'files.file_info(6).locations.uid')), ...
+    strjoin({acc.path}, ', '));
 end
 
 function testAnArchiveWhoseGroupHasItsOwnOwnerIsRebuiltTheSame(testCase)
@@ -664,13 +706,16 @@ verifyNotEmpty(testCase, f.unplaced, describe(r));
 verifyTrue(testCase, any(contains(f.lost, 'files.file_info(2).name')), describe(r));
 end
 
-function result = secondPassOf(result, ownOwner)
+function result = secondPassOf(result, ownOwner, kept)
 % the archive's pass-1 bodies as NDI-matlab's second pass leaves them under
 % the 2026-11-17 decisions (see testIngestedArchiveFiles for the shape): the
 % analog group a sampled_body (members body_data_<k>, 2 segments of 1e6
 % samples), the evenly spaced time, channel_list.bin and the events file
 % removed, the marker channel an observation of the epoch. OWNOWNER: the
-% group is owned by a new observation of the same epoch and system
+% group is owned by a new observation of the same epoch and system. KEPT
+% (optional): slots whose body the pass keeps (as it keeps a channel list it
+% cannot rebuild exactly)
+if nargin < 3; kept = {}; end
 final = cellfun(@(d) asStruct(d), result.migrated, 'UniformOutput', false);
 T = @(node, name) struct('node', node, 'name', name);
 keep = true(1, numel(final));
@@ -681,7 +726,7 @@ for k = 1:numel(final)
     slot = slotOf(b);
     switch slot
         case {'channel_list.bin', 'ti_group1_seg.nbf_#', 'evmktx_group1_seg.nbf_#'}
-            keep(k) = false;
+            keep(k) = any(strcmp(slot, kept));
         case 'ai_group1_seg.nbf_#'
             owners = {b.depends_on(strcmp({b.depends_on.name}, 'owner_id')).document_id};
             rec = final{find(cellfun(@(x) strcmp(x.base.id, owners{1}), final), 1)};

@@ -641,8 +641,8 @@
 %         epoch clock extents; the image fold is BLOCKED and the document is
 %         preserved.
 %     daqreader_mfdaq_epochdata_ingested
-%         Chunk-b/c de-encode: the mfdaq ingested cache dissolves into the generic
-%         daqreader_epochdata_ingested.
+%         Hand a v1 ingested mfdaq epoch archive on, exactly as v1 wrote it, to the
+%         batch pass that converts it.
 %     daqreader_ndr
 %         Chunk-c de-encode: daqreader_ndr folds into an acquisition_reader. The
 %         reader subtype ('ndr') was encoded in the CLASS NAME, but it is already
@@ -707,7 +707,8 @@
 %         `underlying_element_id` / `stimulator_id`) keep resolving -- now to an
 %         entity.
 %     element_epoch
-%         Brainstorm-J migrator: element_epoch -> acquisition_epoch.
+%         Hand a v1 element_epoch on, exactly as v1 wrote it, to the batch passes that
+%         dissolve it.
 %     epochfiles_ingested
 %         Brainstorm-J migrator: DELIBERATE GUARDED PASSTHROUGH.
 %     file_reference
