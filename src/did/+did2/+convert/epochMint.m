@@ -22,9 +22,10 @@ function [result, report] = epochMint(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested,
-%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping, pyraview,
-%       spikewaves
+%       element_epoch, acquisition_epoch, stimulus_response_scalar,
+%       syncrule_mapping, pyraview, spikewaves
 %   BATCH-PASS-EMITS: epochid -> document: epoch
+%   BATCH-PASS-EMITS: element_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
 %       only STAMPS the `epoch_id` edge onto the body and re-runs the ARMED
@@ -61,7 +62,7 @@ function [result, report] = epochMint(result, options)
 %   pass order from these; [migration reliability practices] (c), Jess Haley,
 %   2026-10-26). Read from this file's code, class by class.
 %   BATCH-PASS-READS: epochid, entity(session), entity(epoch),
-%       acquisition_epoch, daqmetadatareader_epochdata_ingested,
+%       element_epoch, acquisition_epoch, daqmetadatareader_epochdata_ingested,
 %       stimulus_response_scalar, syncrule_mapping, pyraview, spikewaves,
 %       epochfiles_ingested, method(method_parameters), acquisition_system,
 %       entity(element), directed_relation(element lineage),
@@ -925,12 +926,21 @@ end
 % all state the same clock list in the same order with identical t0/t1
 % (exact, isequaln); any difference still carries all of them.
 sysIdx = deviceClockIndex(bodies, rows, n);
+% THE SOURCES READ. An element's slice of an epoch is a v1 `element_epoch`
+% handed on by pass 1 ([retired classes leave V2], Decided by Jess Haley,
+% 2026-10-25, step (1): v1_to_v2 HAND_ON_CLASSES), or, in a batch written
+% before, the `acquisition_epoch` pass 1 renamed it to. A v1 element_epoch
+% pass 1 CARRIED (result.source_outputs `carried`: [dependents of a carried
+% document carry], carry-064; a clock list it cannot read, carry-038 /
+% carry-009) is not read: the stamp alone cannot tell it from one handed on,
+% as in did2.convert.foldGenericFiles, and it was never read before.
+passOneCarried = passOneCarriedIds(result);
 carriedSources = {};
 clocksByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
 untiedByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
 SESSION_ANCHOR = char([0 'session']);   % referent placeholder: the session document
 for k = 1:n
-    if ~strcmp(rows(k).class_name, 'acquisition_epoch'); continue; end
+    if ~isElementEpochSlice(rows(k).class_name, rows(k).doc_id, passOneCarried); continue; end
     report.epoch_extent_sources_seen = report.epoch_extent_sources_seen + 1;
     % The `epochid` MIXIN string specifically -- acquisition_epoch's chain is
     % {base, epochid}, the same shape the metadata fold reads. Taking
@@ -1893,9 +1903,9 @@ if isempty(minted) && isempty(changedIdx)
     return;
 end
 
-% --- pad + validate, through the same door every other pass uses ----------
+% --- validate, through the same door every other pass uses ----------
 % The bodies are tagged schema_version == TargetVersion, so v1_to_v2
-% short-circuits them (isAlreadyTarget) to ensureClassBlocks + validate. A body
+% short-circuits them (isAlreadyTarget) to validate. A body
 % that cannot validate lands in `quarantine` and is NOT emitted -- loudly, on a
 % 0-quarantine gate, which is the correct volume for a builder that produced an
 % invalid document.
@@ -3661,13 +3671,12 @@ function entries = acquisitionEpochClocks(body)
 %   block, so universalRenames has already normalised it. The camelCase fallback
 %   rule applies one level down, which is why did2.convert.epochClockReferences needs it for
 %   `epochtable.epochclock` and this does not.
+%
+%   EITHER SHAPE ([retired classes leave V2]): the records are read by
+%   did2.convert.elementEpochClockRecords, from a v1 element_epoch's
+%   epoch_clock / t0_t1 or from an acquisition_epoch's `clocks`.
 entries = {};
-if ~isstruct(body) || ~isfield(body, 'acquisition_epoch') ...
-        || ~isstruct(body.acquisition_epoch) ...
-        || ~isfield(body.acquisition_epoch, 'clocks')
-    return;
-end
-c = body.acquisition_epoch.clocks;
+c = did2.convert.elementEpochClockRecords(body);
 if ~isstruct(c); return; end
 for k = 1:numel(c)
     e = struct('name', '', 't0', NaN, 't1', NaN);
@@ -3993,4 +4002,28 @@ for k = 1:numel(entries)
         seen(e.name) = [e.t0 e.t1];
     end
 end
+end
+
+function m = passOneCarriedIds(result)
+% the v1 ids of the sources pass 1 carried as v1 (result.source_outputs,
+% `carried`); empty when the result holds no such record
+m = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if ~isfield(result, 'source_outputs') || ~isstruct(result.source_outputs) ...
+        || ~isfield(result.source_outputs, 'carried')
+    return;
+end
+for k = 1:numel(result.source_outputs)
+    so = result.source_outputs(k);
+    if so.carried && ~isempty(so.id)
+        m(char(so.id)) = true;
+    end
+end
+end
+
+function tf = isElementEpochSlice(className, docId, passOneCarried)
+% an element's slice of an epoch this pass reads: an acquisition_epoch (a batch
+% written before [retired classes leave V2]), or a v1 element_epoch pass 1
+% handed on, not one it carried
+tf = strcmp(className, 'acquisition_epoch') || (strcmp(className, 'element_epoch') ...
+    && ~(~isempty(docId) && isKey(passOneCarried, char(docId))));
 end

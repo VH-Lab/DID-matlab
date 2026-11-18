@@ -99,6 +99,14 @@ function [v1, spec] = element_epoch(bodies, ctx)
 %   See also did2.convert.roundtrip.check, did2.convert.roundtrip.wholeBatch,
 %            did2.convert.migrators_j.element_epoch,
 %            did2.convert.resolveEpochProbemap.
+%
+%   PASS 1 NO LONGER WRITES AN acquisition_epoch. Since [retired classes leave
+%   V2] (Decided by Jess Haley, 2026-10-25, step (1)) it hands the v1
+%   element_epoch on unchanged, stamped did_v1 (did2.convert.v1_to_v2
+%   HAND_ON_CLASSES); did2.convert.roundtrip.check compares that as a carried
+%   document without calling this inverse, and a source the batch passes
+%   dissolve is rebuilt from its observation (AFTER THE DISSOLUTION). The
+%   acquisition_epoch reading is kept for a batch written before.
 
 arguments
     bodies cell

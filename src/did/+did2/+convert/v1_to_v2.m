@@ -43,16 +43,17 @@ function result = v1_to_v2(v1Bodies, options)
 %        2026-10-26: "a class with no migrator is a recorded decision, not
 %        an identity fallback").
 %
-%   Each converted (not carried) body then goes through ensureClassBlocks
-%   (pad empty `struct()` property blocks for every class in the V_eta
-%   inheritance chain) and is validated.
+%   Each converted (not carried) body is then validated as its migrator
+%   emitted it: nothing pads class blocks or rewrites the superclass list
+%   ([early migration pieces fixed] (2), Jess Haley, 2026-10-26: "the builder
+%   produces a complete document").
 %
 %   Bodies that are already converted (document_class.schema_version is a
 %   v2 stamp, 'did_v2' -- a stamp check, not a rank against 'V_eta', [early
 %   migration pieces fixed] (4), Jess Haley, 2026-10-26 -- AND no v1-only
 %   underscore-prefixed top-level markers; did2.convert.isAlreadyTarget)
 %   skip the routing and
-%   go straight to ensureClassBlocks + validate. Makes the converter
+%   go straight to validate. Makes the converter
 %   safely re-runnable so a partial normalisation or migration run can
 %   resume after an interruption
 %   without corrupting already-converted docs.
@@ -199,9 +200,18 @@ PARENT_ONLY_CLASSES = {'app', 'calculator', 'epochid', 'stimulus_response', ...
 % 1"; ndi.migrate.internal.carryUnchangedAsV1, and
 % did2.convert.roundtrip.wholeBatch for the corpus harness). Their retire
 % class files are then read by nothing on this path.
+% `daqreader_mfdaq_epochdata_ingested` (resolveEpochProbemap: the ingested
+% archive) is handed on the same way: its migrator wrote it as the retired V2
+% class `daqreader_epochdata_ingested` until Decided by Jess Haley, 2026-10-25
+% [retired classes leave V2] (1): "the generic migration stops writing retired
+% classes as V2 documents ... each is carried as v1 until it has a V2 home".
+% `element_epoch` (epochMint, resolveEpochProbemap: one element's slice of an
+% epoch, dissolved into its observation) likewise: its migrator renamed it to
+% the retired `acquisition_epoch` until the same decision.
 HAND_ON_CLASSES = {'syncrule', 'epochfiles_ingested', 'stimulus_response_scalar', ...
     'stimulus_response_scalar_parameters_basic', 'openminds', ...
-    'daqreader_epochdata_ingested', 'daqreader_image_epochdata_ingested'};
+    'daqreader_epochdata_ingested', 'daqreader_image_epochdata_ingested', ...
+    'daqreader_mfdaq_epochdata_ingested', 'element_epoch'};
 
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
@@ -330,14 +340,6 @@ v1NoSchemaValues = [];
 % refused (a tombstone that does not describe the v1 shape): counted, by class.
 carriedUnvalNames = {};
 carriedUnvalValues = [];
-% CLASS-BLOCK PADDING, MEASURED ([early migration pieces fixed] (2), Jess
-% Haley, 2026-10-26: "`ensureClassBlocks` padding goes: the builder produces a
-% complete document"). Before the padding is removed, each converted body it
-% CHANGES (a block added, an empty block dropped, or the superclass list
-% rewritten) is counted by its v1 class: those are the migrators that do not
-% yet produce a complete document. Denominator: the converted bodies padded.
-paddedInspected = 0;
-paddedNames = {};
 % the documents handed on as v1 to a later batch pass (HAND_ON_CLASSES), by
 % class; and of the bodies already stamped did_v2 (isAlreadyTarget), those of a
 % HAND_ON_CLASSES class, handed on as the v1 document they are (below)
@@ -345,7 +347,16 @@ handOnNames = {};
 handOnValues = [];
 handOnTargetNames = {};
 handOnTargetValues = [];
-paddedValues = [];
+% THE v1 NAME CHECK, MEASURED ([v1 name goes to the class's own name field],
+% Jess Haley, 2026-10-27): of the converted sources the check below reads (the
+% denominator), how many hold a non-empty v1 name, how many of those were
+% carried as statements (carry-106), and how many no emitted document keeps
+% (`v1_name_not_kept`), by class. Zero is a measurement, not an absent field.
+v1NameInspected = 0;
+v1NameWithName = 0;
+v1NameStatementCarried = 0;
+v1NameNotKeptNames = {};
+v1NameNotKeptValues = [];
 % DIMENSION TERMS WITH NO NODE (Jess Haley 2026-10-22 [covariate details],
 % answer "B" to 5.4): a dimension's term is bound `preferred` for now, and
 % each corpus report counts the dimensions whose term has no node, so the move
@@ -451,11 +462,11 @@ for k = 1:numel(bodies)
         if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already stamped
             % did_v2 (a stamp check), so skip the routing and the per-class migrators.
-            % ensureClassBlocks still runs (it rebuilds the target's
-            % superclass chain — required) and validate still runs
-            % (gate against drift). Keeps the database normalisation
-            % and migration commands safely re-runnable after an
-            % interruption.
+            % Validate still runs (gate against drift); the body is not
+            % padded or re-chained, so one whose superclass list has
+            % drifted from its schema fails validation. Keeps the database
+            % normalisation and migration commands safely re-runnable
+            % after an interruption.
             v2Body = preBody;
             if isfield(v2Body, 'document_class') ...
                     && isstruct(v2Body.document_class) ...
@@ -693,11 +704,16 @@ for k = 1:numel(bodies)
                 if isNameNotCarried(className)
                     v1Name = '';   % dropped by decision; an accepted loss
                 end
+                v1NameInspected = v1NameInspected + 1;
+                if ~isempty(v1Name)
+                    v1NameWithName = v1NameWithName + 1;
+                end
                 if ~isempty(v1Name) && replacementIsStatement(v2Bodies, sourceIdOf(preBody)) ...
                         && ~v1NameIsKept(v2Bodies, v1Name)
                     what = 'a statement has no name field';
                     did2.convert.reportNote('v1_name_statement_carried', className, ...
                         sourceIdOf(preBody), v1Name);
+                    v1NameStatementCarried = v1NameStatementCarried + 1;
                     % carry-register: carry-106
                     did2.convert.reportNote('carried_as_v1', className, sourceIdOf(preBody), ...
                         sprintf(['[carry-106] awaiting_home: base.name "%s" (%s; [v1 name ' ...
@@ -712,6 +728,8 @@ for k = 1:numel(bodies)
                     % document holds -- counted, not carried
                     did2.convert.reportNote('v1_name_not_kept', className, ...
                         sourceIdOf(preBody), v1Name);
+                    [v1NameNotKeptNames, v1NameNotKeptValues] = bumpClassCounter( ...
+                        v1NameNotKeptNames, v1NameNotKeptValues, className);
                 end
             end
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
@@ -759,10 +777,10 @@ for k = 1:numel(bodies)
                 fragIds{end+1} = sourceIdOf(preBody); %#ok<AGROW>
             end
         end
-        % Collect every produced body. Each is padded, optionally
-        % validated, and counted independently so a 1 -> N split lands
-        % N documents in `migrated` (or quarantines the whole source
-        % body on the first failure, as before).
+        % Collect every produced body. Each is optionally validated and
+        % counted independently so a 1 -> N split lands N documents in
+        % `migrated` (or quarantines the whole source body on the first
+        % failure, as before).
         for bi = 1:numel(v2Bodies)
             if carried || laterStep
                 % A CARRIED DOCUMENT IS v1 END TO END ([generic stage is
@@ -788,14 +806,12 @@ for k = 1:numel(bodies)
                     outBody.document_class.schema_version = 'did_v1';
                 end
             else
+                % NO PADDING ([early migration pieces fixed] (2), Jess Haley,
+                % 2026-10-26: "`ensureClassBlocks` padding goes: the builder
+                % produces a complete document"; [handed-on classes carried at
+                % the end] (2)): each migrator emits its complete document, and
+                % one that does not fails validation below.
                 outBody = v2Bodies{bi};
-                beforePadding = outBody;
-                outBody = did2.convert.ensureClassBlocks(outBody, options.SchemaCache);
-                paddedInspected = paddedInspected + 1;
-                if ~isequaln(outBody, beforePadding)
-                    [paddedNames, paddedValues] = bumpClassCounter( ...
-                        paddedNames, paddedValues, className);
-                end
                 outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
                 if isfield(outBody, 'document_class') ...
                         && isstruct(outBody.document_class)
@@ -1010,9 +1026,11 @@ result.summary = struct( ...
         'by_class', buildByClassTable(handOnNames, handOnValues), ...
         'already_target_handed_on', sum(handOnTargetValues), ...
         'already_target_by_class', buildByClassTable(handOnTargetNames, handOnTargetValues)), ...
-    'class_blocks_padding', struct('bodies_inspected', paddedInspected, ...
-        'bodies_changed', sum(paddedValues), ...
-        'changed_by_class', buildByClassTable(paddedNames, paddedValues)), ...
+    'v1_name', struct('sources_inspected', v1NameInspected, ...
+        'with_v1_name', v1NameWithName, ...
+        'statement_carried', v1NameStatementCarried, ...
+        'not_kept', sum(v1NameNotKeptValues), ...
+        'not_kept_by_class', buildByClassTable(v1NameNotKeptNames, v1NameNotKeptValues)), ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...
     'migration_notes', did2.convert.reportNote('collect'));
@@ -1441,8 +1459,7 @@ function body = renameOutboundBaseFields(body, targetVersion, sessionEdge)
 %RENAMEOUTBOUNDBASEFIELDS did_v1 `base` field names -> their V_eta spellings.
 %
 %   ONE PLACE, ON THE WAY OUT, FOR EVERY BODY. This runs on each emitted body
-%   immediately after ensureClassBlocks and before validation, which is the
-%   only point in the pipeline that ALL documents pass through -- the ones a
+%   immediately before validation, which is the only point in the pipeline that ALL documents pass through -- the ones a
 %   migrator constructed, the ones a 1->N split produced, and the passthroughs
 %   that no migrator touched at all.
 %
@@ -1952,7 +1969,6 @@ printTuningResponseVariable(result);
 printTuningAxisNaming(result);
 printMigrationNotes(result);
 printLegacyNdiDocument(result);
-printClassBlocksPadding(result);
 printSilentLoss(result);
 printQuarantine(result);
 end
@@ -2166,23 +2182,6 @@ fprintf('      %8d  no migrator and no recorded decision: QUARANTINED\n', ...
 fprintf('      %8d  failed before routing\n', L.bodies_unreached);
 fprintf('      %8d  held an `ndi_document` block beside `base` (read as `base`)\n', ...
     L.ndi_document_block_seen);
-end
-
-function printClassBlocksPadding(result)
-%PRINTCLASSBLOCKSPADDING The converted bodies ensureClassBlocks changed, by v1
-%   class, denominator first ([early migration pieces fixed] (2)). Printed
-%   unconditionally: a zero is a measurement, an absent line is not.
-if ~isfield(result.summary, 'class_blocks_padding'); return; end
-P = result.summary.class_blocks_padding;
-fprintf(['  class-block padding: %d converted body(ies) padded; %d changed by ' ...
-    'it (a migrator that does not yet build a complete document)\n'], ...
-    P.bodies_inspected, P.bodies_changed);
-t = P.changed_by_class;
-if isstruct(t)
-    for f = fieldnames(t)'
-        fprintf('      %8d  %s\n', t.(f{1}), f{1});
-    end
-end
 end
 
 function printQuarantine(result)

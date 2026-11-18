@@ -35,8 +35,9 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   instrument_id edge. The same documents are also listed under
 %   epochfiles_ingested, whose probe-map rows and files they are built from.
 %
-%   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview, element
+%   BATCH-PASS-CONSUMES: epochfiles_ingested, element_epoch, acquisition_epoch, pyraview, element
 %   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity, directed_relation
+%   BATCH-PASS-EMITS: element_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
 %       +migrators_j/pyraview through epochMint) are RE-POINTED to the epoch's
@@ -48,7 +49,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
 %   pass order from these; [migration reliability practices] (c), Jess Haley,
 %   2026-10-26). Read from this file's code, class by class.
-%   BATCH-PASS-READS: acquisition_epoch, epochfiles_ingested,
+%   BATCH-PASS-READS: element_epoch, acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested, sampled_body(pyraview level),
 %       entity(epoch), acquisition_system, directed_relation(element lineage),
 %       directed_relation(observes), entity(element),
@@ -65,7 +66,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       ingestion_manifest, directed_relation(wiring)
 %   BATCH-PASS-CHANGES: sampled_body(pyraview level), calculation(spike sorter),
 %       calculation(spike times), calculation(spike waveforms)
-%   BATCH-PASS-REMOVES: acquisition_epoch, epochfiles_ingested,
+%   BATCH-PASS-REMOVES: element_epoch, acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested,
 %       observation(session-scoped recording), observation(pyraview),
 %       directed_relation(observes), assertion(element type)
@@ -478,6 +479,15 @@ elementTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 kindTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 unitTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
+% An element's slice of an epoch is a v1 `element_epoch` pass 1 handed on
+% ([retired classes leave V2], Decided by Jess Haley, 2026-10-25, step (1):
+% v1_to_v2 HAND_ON_CLASSES), or, in a batch written before, the
+% `acquisition_epoch` pass 1 renamed it to; both are read the same way below
+% (isElementEpochSlice; clocks through did2.convert.elementEpochClockRecords).
+% A v1 element_epoch pass 1 CARRIED (result.source_outputs `carried`) is not
+% read: it was never renamed, so it was never read before, and the stamp alone
+% cannot tell it from one handed on (as in did2.convert.foldGenericFiles).
+passOneCarried = passOneCarriedIds(result);
 acqEpochIdx = [];
 sampledIdx = [];
 archiveIdxAll = [];
@@ -492,7 +502,7 @@ metaArchiveIdxAll = [];
 for k = 1:n
     if isempty(bodies{k}); continue; end
     b = bodies{k};
-    if strcmp(classOf{k}, 'acquisition_epoch'); acqEpochIdx(end+1) = k; end %#ok<AGROW>
+    if isElementEpochSlice(classOf{k}, docIds{k}, passOneCarried); acqEpochIdx(end+1) = k; end %#ok<AGROW>
     if strcmp(classOf{k}, 'sampled_body'); sampledIdx(end+1) = k; end %#ok<AGROW>
     if isArchiveClass(classOf{k}); archiveIdxAll(end+1) = k; end %#ok<AGROW>
     if strcmp(classOf{k}, 'daqmetadatareader_epochdata_ingested')
@@ -1940,7 +1950,7 @@ for k = 1:n
             || isKey(pyraviewRetire, id) || isKey(modeRetire, id))
         continue;
     end
-    if ~isempty(id) && isKey(acqEpochRetire, id) && strcmp(classOf{k}, 'acquisition_epoch')
+    if ~isempty(id) && isKey(acqEpochRetire, id) && isElementEpochSlice(classOf{k}, id, passOneCarried)
         continue;   % dissolved: its observation (same id) is in `appended`
     end
     if ~isempty(id) && isKey(levelReplace, id)
@@ -2861,10 +2871,11 @@ function [clk, t0, t1] = epochLocalClock(b)
 % t1}); '' when there is none or it is malformed. Other clocks (JH's
 % exp_global_time) are not offsets from the epoch; the epoch carries them as
 % its own extents (did2.convert.epochMint, #60 option A).
+% Either shape: a v1 element_epoch's epoch_clock / t0_t1, or an
+% acquisition_epoch's `clocks` (did2.convert.elementEpochClockRecords).
 clk = ''; t0 = []; t1 = [];
-if ~isfield(b, 'acquisition_epoch') || ~isstruct(b.acquisition_epoch) ...
-        || ~isfield(b.acquisition_epoch, 'clocks'); return; end
-c = b.acquisition_epoch.clocks;
+c = did2.convert.elementEpochClockRecords(b);
+if isempty(c); return; end
 if isstruct(c); c = num2cell(c); end
 if ~iscell(c); return; end
 hit = {};
@@ -3486,4 +3497,28 @@ if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
 end
 v = b.statement.variable;
 tf = isstruct(v) && isfield(v, 'node') && strcmpi(char(v.node), 'GO:0001508');
+end
+
+function m = passOneCarriedIds(result)
+% the v1 ids of the sources pass 1 carried as v1 (result.source_outputs,
+% `carried`); empty when the result holds no such record
+m = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if ~isfield(result, 'source_outputs') || ~isstruct(result.source_outputs) ...
+        || ~isfield(result.source_outputs, 'carried')
+    return;
+end
+for k = 1:numel(result.source_outputs)
+    so = result.source_outputs(k);
+    if so.carried && ~isempty(so.id)
+        m(char(so.id)) = true;
+    end
+end
+end
+
+function tf = isElementEpochSlice(className, docId, passOneCarried)
+% an element's slice of an epoch this pass dissolves: an acquisition_epoch (a
+% batch written before [retired classes leave V2]), or a v1 element_epoch pass
+% 1 handed on, not one it carried
+tf = strcmp(className, 'acquisition_epoch') || (strcmp(className, 'element_epoch') ...
+    && ~(~isempty(docId) && isKey(passOneCarried, char(docId))));
 end

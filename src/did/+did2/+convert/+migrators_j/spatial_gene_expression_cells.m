@@ -5,9 +5,7 @@ function bodies = spatial_gene_expression_cells(preBody)
 %   fields (segmentation_method, contour geometry, data types, ...) and the
 %   depends_on edges (spatial_gene_expression_pyramid_id, subject_id,
 %   source_file_id) carry through as-is -- universalRenames has already
-%   snake_cased both the block key and its immediate fields, and
-%   ensureClassBlocks rebuilds document_class.superclasses from the V_eta
-%   chain. base.id is preserved so a dependent labeling row's
+%   snake_cased both the block key and its immediate fields. base.id is preserved so a dependent labeling row's
 %   cells_document_id edge (mustBeNonEmpty: true) still resolves.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.

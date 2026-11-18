@@ -650,7 +650,7 @@ result.reference_integrity = ...
     did2.unittest.helpers.referenceIntegrityBlock(refRep, refErrMsg);
 
 printUnregisteredTerms(corpusName);
-printClassBlocksPadding(corpusName, result);
+printV1NameCheck(corpusName, result);
 
 % ENTITY-TYPE `requires` CENSUS -- REPORT-ONLY (Jess Haley, 2026-10-21, "b").
 % Per entity type and required field (binding_registry_meta.json
@@ -824,22 +824,35 @@ end
 end
 
 
-function printClassBlocksPadding(corpusName, result)
-% [early migration pieces fixed] (2) (Jess Haley, 2026-10-26): the converted
-% bodies did2.convert.ensureClassBlocks changed, by v1 class, denominator
-% first. Printed unconditionally; "not measured" when pass 1 did not report it.
-fprintf('\n--- CLASS-BLOCK PADDING (%s) ---\n', corpusName);
-if ~isfield(result, 'summary') || ~isfield(result.summary, 'class_blocks_padding')
-    fprintf('  not measured (pass 1 wrote no class_blocks_padding)\n');
+function printV1NameCheck(corpusName, result)
+% [v1 name goes to the class's own name field] (Jess Haley, 2026-10-27): of the
+% converted sources pass 1's name check read (the denominator), those with a
+% non-empty v1 name, those carried as statements (carry-106), and those whose
+% name no emitted document keeps (`v1_name_not_kept`), by class. Printed
+% unconditionally; "not measured" when pass 1 did not report it.
+fprintf('\n--- v1 NAME CHECK (%s) ---\n', corpusName);
+if ~isfield(result, 'summary') || ~isfield(result.summary, 'v1_name')
+    fprintf('  not measured (pass 1 wrote no v1_name summary)\n');
     return;
 end
-P = result.summary.class_blocks_padding;
-fprintf('  %d converted body(ies) padded; %d changed by the padding\n', ...
-    P.bodies_inspected, P.bodies_changed);
-t = P.changed_by_class;
+V = result.summary.v1_name;
+fprintf(['  %d converted source(s) checked; %d with a non-empty v1 name; ' ...
+    '%d carried as a statement (carry-106); %d v1_name_not_kept\n'], ...
+    V.sources_inspected, V.with_v1_name, V.statement_carried, V.not_kept);
+t = V.not_kept_by_class;
 if isstruct(t)
     for f = fieldnames(t)'
         fprintf('  %7d  %s\n', t.(f{1}), f{1});
+    end
+end
+if isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'v1_name_not_kept') ...
+        && isfield(result.summary.migration_notes.v1_name_not_kept, 'distinct_details')
+    n = result.summary.migration_notes.v1_name_not_kept;
+    fprintf('  %d distinct name(s) not kept; the first %d:\n', ...
+        numel(n.distinct_details), min(20, numel(n.distinct_details)));
+    for k = 1:min(20, numel(n.distinct_details))
+        fprintf('      %6d  %s\n', n.distinct_detail_counts(k), n.distinct_details{k});
     end
 end
 end

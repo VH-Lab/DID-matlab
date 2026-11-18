@@ -694,7 +694,7 @@ end
 
 % --- validate through the same door every other pass uses -------------------
 % The bodies are tagged schema_version == TargetVersion, so v1_to_v2
-% short-circuits them (isAlreadyTarget) to ensureClassBlocks + validate. A pair
+% short-circuits them (isAlreadyTarget) to validate. A pair
 % is accepted ONLY IF BOTH HALVES SURVIVE: a statement without its bytes, or
 % bytes with no statement to hang off, is worse than an unfolded document.
 out = did2.convert.v1_to_v2(rebuilt, ...

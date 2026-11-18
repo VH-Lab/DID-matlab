@@ -8,6 +8,13 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %   + epochid.json + base.json at the locked NDI-matlab `main`, 3cb19a8, as
 %   +ndi/+daq/+reader/mfdaq.m ingest_epochfiles writes it). BODIES holds:
 %
+%   PASS 1 NO LONGER WRITES THIS SHAPE. Since [retired classes leave V2]
+%   (Decided by Jess Haley, 2026-10-25, step (1)) pass 1 hands the v1 document
+%   on unchanged, stamped did_v1 (did2.convert.v1_to_v2 HAND_ON_CLASSES), and
+%   did2.convert.roundtrip.check compares it as a carried document without
+%   calling this inverse. The reading below is kept for a batch written
+%   before that, whose cache is the retired V2 shape:
+%
 %   the de-encoded cache, one `daqreader_epochdata_ingested` document as
 %   v1_to_v2 padded and stamped it:
 %     base.*                          the document's (the session edge read
@@ -120,10 +127,16 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %       homes], [unpacked events file is removed], [evenly spaced time is a
 %       covariate]): their file_info entries are rebuilt BY NAME, in the
 %       writer's place. Their v1 LOCATIONS are not: the file stays in NDI's
-%       store, unreferenced, and no v2 document names its uid, so those
-%       leaves read lost. The file itself is compared by its content
-%       (did2.convert.roundtrip.compareIngestedArchiveFiles), which needs
-%       the bytes, so not here.
+%       store, unreferenced, and no v2 document names its uid. For
+%       channel_list.bin and an evmktx file that is an ACCEPTED LOSS
+%       (Decided by Jess Haley, 2026-11-18 [removed file locations are an
+%       accepted loss]: "the removed file's v1 storage record is an accepted
+%       loss"), listed and counted by did2.convert.roundtrip.wholeBatch
+%       (ACCEPTED_LOSSES, 'removed archive file location'); the removed
+%       evenly spaced time segments are not covered by that decision, so
+%       their location leaves still read lost. The file itself is compared
+%       by its content (did2.convert.roundtrip.compareIngestedArchiveFiles),
+%       which needs the bytes, so not here.
 %
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested,

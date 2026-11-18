@@ -20,6 +20,10 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %   VARIABLENAME the statement's variable (a label) when the source does
 %               not say what was measured; METHODNAME the calculator, the
 %               inline `method.term` (a label).
+%   OPTS.VariableTerm  a {node, name} term (did2.convert.registeredTerm):
+%               the variable, in place of jLabel(VARIABLENAME), when the
+%               decided variable has a node (the hartley planes, [hartley
+%               plane terms], Jess Haley, 2026-11-18).
 %
 %   THE RESPONSE VARIABLE (tuning families and 'csf'; Jess Haley 2026-10-22
 %   [response variable], [dF/F as variable], [response variable nodes],
@@ -233,6 +237,7 @@ arguments
     opts.AccountForEveryField (1,1) logical = false   % see ACCOUNTED FOR below
     opts.OtherBlocks = {}        % more top-level blocks the CALLER accounts for
     opts.ParameterNames = {}     % n x 2 {v1 path, v2 name}: settings named by a decided term
+    opts.VariableTerm = []       % a {node, name} term: the variable, in place of jLabel(VARIABLENAME)
 end
 
 srcBlk = struct();
@@ -414,6 +419,9 @@ if jRawCarry(classNameOf(preBody), preBody, {}, outside, 'carry-100', reasons)
     return;
 end
 variable = jLabel(variableName);
+if isstruct(opts.VariableTerm)
+    variable = opts.VariableTerm;   % a decided term with its node (hartley_calc's planes)
+end
 if isstruct(response) && isstruct(response.variable)
     variable = response.variable;   % [response variable]: what was measured
 end

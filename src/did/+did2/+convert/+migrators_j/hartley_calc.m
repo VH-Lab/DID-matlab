@@ -104,8 +104,9 @@ function bodies = hartley_calc(preBody)
 %   the null cumulative probability (a new id, did2.convert.mintId), each the
 %   owner of its plane body, with no "represented quantity" condition (the
 %   second is built by the same fold and shares the first's edges). Their
-%   variables are plain labels until the team approves the terms
-%   (docs/v2_working/UNREGISTERED_TERMS_PROPOSAL.md group D #5, #6).
+%   variables are the terms of [hartley plane terms] (Decided by Jess Haley,
+%   2026-11-18): wikidata:Q7577165 "spike-triggered average" and EMPTY:0000448
+%   "null cumulative probability" (planeVariables; plain labels until then).
 %
 %   THE HARTLEY NUMBERS ARE DATA ([hartley numbers stored, copies not], Decided
 %   by Jess Haley, 2026-11-03): S, KXV, KYV, ORDER as covariates of one body,
@@ -469,17 +470,18 @@ calcOpts = {'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, .
     'ParameterNames', did2.convert.hartleyParameterNames(), ...
     'OtherBlocks', {'files', 'hartley_reverse_correlation', 'ngrid', ...
     'reverse_correlation'}};
+planeVars = planeVariables();
 bodies = jCalculation(calcBody, 'receptive_field_calculation', 'rf', ...
-    'hartley_calc', 'spike-triggered average', 'ndi.calc.vis.hartley', calcOpts{:});
+    'hartley_calc', planeVars(1).name, 'ndi.calc.vis.hartley', calcOpts{:}, ...
+    'VariableTerm', planeVars(1));
 leaf = bodies{1};
 if isscalar(bodies) && strcmp(leaf.document_class.class_name, 'hartley_calc')
     bodies = {preBody};
     return;     % carried (or passed through): the untouched v1 source, no bodies
 end
 % the second statement: the same calculation, its value the null cumulative
-% probability plane. Its variable, like the first's, is a plain label until the
-% team approves the terms (docs/v2_working/UNREGISTERED_TERMS_PROPOSAL.md group
-% D #5, #6).
+% probability plane. Its variable is EMPTY:0000448 ([hartley plane terms],
+% planeVariables).
 % It is BUILT (the same fold, its own id and variable), not copied, so its
 % variable goes through did2.build's term check like every other term (the
 % registry check, the unregistered-term census). Its edges are then the
@@ -488,7 +490,8 @@ end
 pBody = calcBody;
 pBody.base.id = pValueId;
 pOut = jCalculation(pBody, 'receptive_field_calculation', 'rf', ...
-    'hartley_calc', 'null cumulative probability', 'ndi.calc.vis.hartley', calcOpts{:});
+    'hartley_calc', planeVars(2).name, 'ndi.calc.vis.hartley', calcOpts{:}, ...
+    'VariableTerm', planeVars(2));
 pValue = pOut{1};
 pValue.depends_on = leaf.depends_on;
 bodies{end+1} = pValue;
@@ -503,6 +506,17 @@ spikeBody = spikeTimesBody(preBody, hrc, leaf);
 if ~isempty(spikeBody)
     bodies{end+1} = spikeBody;
 end
+end
+
+function t = planeVariables()
+%PLANEVARIABLES The two planes' variables, in plane order ([hartley plane
+%   terms], Decided by Jess Haley, 2026-11-18): the spike-triggered average is
+%   the existing Wikidata term Q7577165; the significance plane is the EMPTY
+%   term minted for it (empty-ontology #49). Each is written as the schema's
+%   term registry names it (did2.convert.registeredTerm), and with its node
+%   where the registry does not hold it yet.
+t = [did2.convert.registeredTerm('wikidata:Q7577165', 'spike-triggered average'), ...
+    did2.convert.registeredTerm('EMPTY:0000448', 'null cumulative probability')];
 end
 
 function [planeDim, axisCoords, axisLabels] = planeAxes(preBody, hrc)
@@ -640,7 +654,8 @@ function [planeBodies, datumType, sourceDatumType] = planeSampledBodies( ...
 %   by STATEMENTIDS{k} (the spike-triggered average; the null cumulative
 %   probability) and carries no "represented quantity" condition.
 nPlanes = 2;
-planeNames = {'spike-triggered average', 'null cumulative probability'};
+planeVars = planeVariables();
+planeNames = {planeVars.name};
 planeBodies = cell(1, nPlanes);
 datumType = '';
 sourceDatumType = '';

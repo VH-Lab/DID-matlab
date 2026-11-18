@@ -351,19 +351,24 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'epochfiles_ingested');
 end
 
-% ===================== element_epoch: the rename, still =================
+% ===================== element_epoch: handed on as v1 ====================
 
-function testElementEpochStillRenamesToAcquisitionEpoch(testCase)
-% #60 DISSOLVES this class, and the dissolution is NOT built: three of its four
-% targets are unsigned or unbuilt (relative_reference migration, sampled_body
-% #45, the raw-recording observation #30). Dissolving into targets that do not
-% exist strands the payload, so the rename stands and this pins it.
-out = runJ(elementEpochBody('ee_1', 'sess_A', 't00069', 'elem_1'));
+function testElementEpochIsHandedOnAsV1(testCase)
+% The rename to `acquisition_epoch` this test pinned is gone: [retired classes
+% leave V2] (Decided by Jess Haley, 2026-10-25, step (1)) has pass 1 hand the
+% v1 document on unchanged, stamped did_v1 (v1_to_v2 HAND_ON_CLASSES), and the
+% batch passes dissolve it (epochMint, resolveEpochProbemap), reading its
+% clocks through did2.convert.elementEpochClockRecords.
+v1 = elementEpochBody('ee_1', 'sess_A', 't00069', 'elem_1');
+out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, classNames(out), {'acquisition_epoch'});
+verifyEqual(testCase, classNames(out), {'element_epoch'});
+verifyEqual(testCase, numel(out.passthrough), 1, 'recorded as a pass-1 passthrough');
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), 'handed on, not carried');
 s = out.migrated{1}.toStruct();
-verifyFalse(testCase, isfield(s, 'element_epoch'), ...
-    'the v1 block must be renamed in lockstep with the class');
+verifyEqual(testCase, s.document_class.schema_version, 'did_v1');
+verifyTrue(testCase, isfield(s, 'element_epoch'), 'the v1 block is kept as v1 wrote it');
+verifyFalse(testCase, isfield(s, 'acquisition_epoch'), 'no retired V2 block is written');
 end
 
 function testAnElementEpochWhoseT0T1DoesNotMatchItsClocksIsCarriedAsV1(testCase)
@@ -392,7 +397,9 @@ function testElementEpochKeepsItsClockElementAndEpochString(testCase)
 %                   it loses the epoch association outright (the plan's own
 %                   ordering constraint).
 d = runJ(elementEpochBody('ee_2', 'sess_A', 't00069', 'elem_1')).migrated{1};
-clocks = d.get('acquisition_epoch.clocks');
+% the v1 document is handed on; its clocks are read as the batch passes read
+% them ([retired classes leave V2])
+clocks = did2.convert.elementEpochClockRecords(d.toStruct());
 verifyEqual(testCase, numel(clocks), 1);
 verifyEqual(testCase, clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, clocks(1).t0, 0);
@@ -416,7 +423,7 @@ verifyEqual(testCase, numel(out.migrated), 2);
 verifyEqual(testCase, depValue(out.migrated{1}.toStruct(), 'element_id'), 'elem_1');
 verifyEqual(testCase, depValue(out.migrated{2}.toStruct(), 'element_id'), 'elem_2');
 verifyFalse(testCase, any(strcmp(classNames(out), 'epoch')), ...
-    'renaming element_epoch is not minting an epoch');
+    'handing element_epoch on is not minting an epoch');
 end
 
 % `verifySubstring` is the built-in function-based-test qualification
