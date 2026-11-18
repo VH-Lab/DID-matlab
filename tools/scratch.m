@@ -49,9 +49,8 @@ fprintf('TRUTH: epochs %d; lanes %d; probe-epoch wirings %d; distinct facts (pro
     truth.nEpochs, truth.nLanes, numel(truth.wEpoch), numel(truth.runProbe), truth.nProbes);
 sampleK = unique(round(linspace(1, truth.nEpochs, NSAMPLE)));
 fprintf('SAMPLE: %d epochs, evenly spaced 1..%d\n', numel(sampleK), truth.nEpochs);
-
-res = struct();
-for shape = 1:2
+R = struct();
+for shape = 1:3
     t0 = tic;
     [docs, ids] = buildShape(truth, shape);
     tBuild = toc(t0);
@@ -78,42 +77,46 @@ for shape = 1:2
     fprintf('by kind: %s\n', ids.census);
     fprintf('build %.2f s; add %.2f s (validation %d); add per doc %.3f ms; file %.1f MB\n', ...
         tBuild, tAdd, validated, 1000 * tAdd / numel(docs), d.bytes / 1e6);
-    res(shape).tAdd = tAdd; res(shape).tBuild = tBuild; res(shape).n = numel(docs);
     if shape == 2
-        printPaths(db);
+        setenv('DID_SCRATCH_NO_CAST', '0');
+        R.s2cast = timeReads(db, truth, ids, 2, sampleK, sz, 'CAST (as on V2)');
+        setenv('DID_SCRATCH_NO_CAST', '1');
+        R.s2nocast = timeReads(db, truth, ids, 2, sampleK, sz, 'NO CAST (scratch patch)');
+        setenv('DID_SCRATCH_NO_CAST', '0');
+    elseif shape == 1
+        R.s1 = timeReads(db, truth, ids, 1, sampleK, sz, 'today');
+    else
+        R.s3 = timeReads(db, truth, ids, 3, sampleK, sz, 'P1 epoch_id edges');
     end
-    res(shape).reads = timeReads(db, truth, ids, shape, sampleK, sz);
     db.close();
     delete(f);
 end
 fprintf('\n=== %s SUMMARY (seconds) ===\n', sz.name);
-fprintf('write: shape1 build %.2f add %.2f (%d docs); shape2 build %.2f add %.2f (%d docs)\n', ...
-    res(1).tBuild, res(1).tAdd, res(1).n, res(2).tBuild, res(2).tAdd, res(2).n);
-r1 = res(1).reads; r2 = res(2).reads;
-names = fieldnames(r2);
-for i = 1:numel(names)
-    x = r2.(names{i});
-    fprintf('shape2 %-28s median %.4f p90 %.4f max %.4f total %.3f over %d\n', names{i}, ...
-        median(x), prctile(x, 90), max(x), sum(x), numel(x));
+labels = {'s1', 's2cast', 's2nocast', 's3'};
+for j = 1:numel(labels)
+    r = R.(labels{j});
+    names = fieldnames(r);
+    for i = 1:numel(names)
+        x = r.(names{i});
+        fprintf('%-9s %-28s median %.4f p90 %.4f max %.4f total %.3f over %d\n', labels{j}, names{i}, ...
+            median(x), prctile(x, 90), max(x), sum(x), numel(x));
+    end
 end
-names = fieldnames(r1);
-for i = 1:numel(names)
-    x = r1.(names{i});
-    fprintf('shape1 %-28s median %.4f p90 %.4f max %.4f total %.3f over %d\n', names{i}, ...
-        median(x), prctile(x, 90), max(x), sum(x), numel(x));
+margin(sz.name, 'epoch wiring sample, standing overlap CAST', R.s1.epoch_sample, R.s2cast.epoch_overlap_nested);
+margin(sz.name, 'epoch wiring sample, standing overlap NO CAST', R.s1.epoch_sample, R.s2nocast.epoch_overlap_nested);
+margin(sz.name, 'epoch wiring sample, P1 epoch_id', R.s1.epoch_sample, R.s3.epoch_sample);
+if isfield(R.s1, 'epoch_all')
+    margin(sz.name, 'epoch wiring ALL, standing overlap CAST', R.s1.epoch_all, R.s2cast.epoch_all_overlap);
+    margin(sz.name, 'epoch wiring ALL, standing overlap NO CAST', R.s1.epoch_all, R.s2nocast.epoch_all_overlap);
+    margin(sz.name, 'epoch wiring ALL, P1 epoch_id', R.s1.epoch_all, R.s3.epoch_all);
 end
-margin(sz.name, 'epoch wiring (sample)', r1.epoch_sample, r2.epoch_overlap_nested);
-margin(sz.name, 'epoch wiring two-step (sample)', r1.epoch_sample, r2.epoch_overlap_twostep);
-margin(sz.name, 'epoch wiring fallback warm (sample)', r1.epoch_sample, r2.epoch_fallback_warm);
-if isfield(r1, 'epoch_all') && isfield(r2, 'epoch_all_overlap')
-    margin(sz.name, 'epoch wiring ALL epochs', r1.epoch_all, r2.epoch_all_overlap);
-end
-margin(sz.name, 'all probes', r1.allprobes, r2.allprobes);
+margin(sz.name, 'all probes, standing', R.s1.allprobes, R.s2nocast.allprobes);
+margin(sz.name, 'all probes, P1', R.s1.allprobes, R.s3.allprobes);
 end
 
 function margin(name, what, a, b)
 A = sum(a); B = sum(b);
-fprintf('MARGIN %s %s: shape1 total %.3f s, shape2 total %.3f s, ratio %.2f; shape2 <= 1.10*shape1 + 1 s: %d (shape1 is TODAY''S v2, not v1)\n', ...
+fprintf('MARGIN %s %s: today total %.3f s, candidate total %.3f s, ratio %.2f; candidate <= 1.10*today + 1 s: %d (today is the v2 per-epoch shape, not v1)\n', ...
     name, what, A, B, B / A, B <= 1.10 * A + 1);
 end
 
@@ -200,7 +203,30 @@ end
 aiTerm = did2.build.term('EMPTY:0000370', 'analog input channel');
 connected = did2.convert.registeredTerm('RO:0002170', 'connected to');
 nRel = 0; nTR = 0; nOther = 0;
-if shape == 1
+if shape == 3
+    acq = did2.build.document('acquisition_system', struct('name', 'synthetic_rig'), ...
+        'Edges', struct('reader_id', 'synthetic_reader_0001', ...
+        'epoch_file_pattern_id', 'synthetic_pattern_0001'), ...
+        'SessionId', S, 'Validate', false, 'CreationTimestamp', ts);
+    n = n + 1; docs{n} = did2.document(acq);
+    nOther = 1;
+    for r = 1:numel(T.runProbe)
+        cond = did2.build.condition(aiTerm, 'Matrix', T.runLane(r));
+        rel = did2.build.directedRelation(ids.probe{T.runProbe(r)}, acq.base.id, connected, ...
+            'Fields', struct('conditions', {did2.build.list(cond)}), ...
+            'SessionId', S, 'CreationTimestamp', ts, 'Validate', false);
+        % P1: one epoch_id edge per epoch the wiring holds in (the plan's
+        % `epoch_id_#`; here the repeated `epoch_id` of a multiple edge)
+        dep = rel.depends_on(:)';
+        for k = T.runFirst(r):T.runLast(r)
+            e = dep(1); e.name = 'epoch_id'; e.document_id = ids.epoch{k};
+            dep(end+1) = e; %#ok<AGROW>
+        end
+        rel.depends_on = dep;
+        n = n + 1; docs{n} = did2.document(rel);
+        nRel = nRel + 1;
+    end
+elseif shape == 1
     acq = did2.build.document('acquisition_system', struct('name', 'synthetic_rig'), ...
         'Edges', struct('reader_id', 'synthetic_reader_0001', ...
         'epoch_file_pattern_id', 'synthetic_pattern_0001'), ...
@@ -300,7 +326,7 @@ for i = 1:numel(anchors)
 end
 end
 
-function R = timeReads(db, T, ids, shape, sampleK, sz)
+function R = timeReads(db, T, ids, shape, sampleK, sz, label)
 S = ids.session;
 startPath = 'relative_time_reference.value.start.seconds';
 endPath = 'relative_time_reference.value.end.seconds';
@@ -308,7 +334,7 @@ relQ = did2.query('', 'isa', 'directed_relation') & ...
     did2.query('directed_relation.relation.node', 'exact_string', 'RO:0002170') & sess(S);
 truthOf = @(k) unique(ids.probe(T.wProbe(T.wEpoch == k)));
 R = struct();
-fprintf('\n=== %s SHAPE %d READS ===\n', sz.name, shape);
+fprintf('\n=== %s SHAPE %d READS [%s] ===\n', sz.name, shape, label);
 if shape == 1
     perEpoch = @(k) shape1Epoch(db, S, ids.epoch{k});
     for w = 1:3; perEpoch(sampleK(w)); end  % warm-up
@@ -320,6 +346,17 @@ if shape == 1
     aIds = cellfun(@(a) a.get('base.id'), anchors, 'UniformOutput', false);
     explain(db, 'shape1 relations of one epoch', did2.query('', 'isa', 'directed_relation') & ...
         did2.query('', 'depends_on', 'time_reference_id', aIds) & sess(S));
+    if sz.fullRead
+        [R.epoch_all, bad] = timeEach(perEpoch, 1:T.nEpochs, truthOf);
+        fprintf('epoch wiring ALL %d epochs: %.3f s total, %d mismatching truth\n', T.nEpochs, sum(R.epoch_all), bad);
+    end
+elseif shape == 3
+    perEpoch = @(k) shape3Epoch(db, S, ids.epoch{k});
+    for w = 1:3; perEpoch(sampleK(w)); end  % warm-up
+    [R.epoch_sample, bad] = timeEach(perEpoch, sampleK, truthOf);
+    fprintf('epoch wiring (relations by epoch_id edge): %d sampled, %d mismatching truth\n', numel(sampleK), bad);
+    explain(db, 'P1 relations of one epoch', did2.query('', 'isa', 'directed_relation') & ...
+        did2.query('', 'depends_on', 'epoch_id', ids.epoch{sampleK(round(end/2))}) & sess(S));
     if sz.fullRead
         [R.epoch_all, bad] = timeEach(perEpoch, 1:T.nEpochs, truthOf);
         fprintf('epoch wiring ALL %d epochs: %.3f s total, %d mismatching truth\n', T.nEpochs, sum(R.epoch_all), bad);
@@ -493,4 +530,10 @@ x = '';
 for f = {'document_id', 'value', 'id'}
     if isfield(e, f{1}) && ~isempty(e.(f{1})); x = char(e.(f{1})); return; end
 end
+end
+
+function probes = shape3Epoch(db, S, epochId)
+rels = db.search(did2.query('', 'isa', 'directed_relation') & ...
+    did2.query('', 'depends_on', 'epoch_id', epochId) & sess(S));
+probes = wiredProbes(rels);
 end

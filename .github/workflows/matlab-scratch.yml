@@ -88,6 +88,22 @@ jobs:
           # On today's tiered did-schema it copies what `cp stable/ draft/` copied.
           python3 tools/assemble_schema_set.py did-schema/schemas "${GITHUB_WORKSPACE}/eta-schemas"
 
+      - name: MEASUREMENT ONLY - declare directed_relation.epoch_id multiple (P1 of the standing wiring plan)
+        run: |
+          python3 - <<'PY'
+          import json, glob, os
+          hits = [f for f in glob.glob(os.environ['GITHUB_WORKSPACE'] + '/eta-schemas/**/directed_relation*.json', recursive=True)]
+          print('candidates', hits)
+          for f in hits:
+              d = json.load(open(f))
+              if 'depends_on' not in d: continue
+              for e in d['depends_on']:
+                  if e.get('name') == 'epoch_id':
+                      e['multiple'] = True; e['min_count'] = 0; e['ordered'] = False
+                      print('patched', f, e)
+              json.dump(d, open(f, 'w'), indent=4)
+          PY
+
       - name: Export DID_SCHEMA_PATH
         run: |
           echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" \

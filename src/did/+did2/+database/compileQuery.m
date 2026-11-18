@@ -1105,8 +1105,15 @@ switch affinity
 end
 inner = ['(SELECT qse.doc_id FROM queryable_scalar_elem qse ' ...
     'WHERE qse.path = ? AND @PRED@)'];
+% MEASUREMENT ONLY (branch claude/measure-standing-wiring): with
+% DID_SCRATCH_NO_CAST=1, a REAL/INTEGER path compares the bare value_num
+% column, so the (path, value_num) index can serve a range.
+noCast = strcmp(getenv('DID_SCRATCH_NO_CAST'), '1') && any(strcmp(affinity, {'INTEGER', 'REAL'}));
 if ~isNeg
     [predicate, params] = scalarPredicate(op, valueExpr, target);
+    if noCast
+        predicate = strrep(predicate, 'CAST(qse.value_num AS REAL)', 'qse.value_num');
+    end
     sql = ['documents.id IN ' strrep(inner, '@PRED@', predicate)];
     params = [{dotPath}, params];
     return;
@@ -1115,6 +1122,9 @@ end
 % (see scalarPredicate), else the conservative 1=1.
 [~, ~, exactPred, exactParams] = scalarPredicate(op, valueExpr, target, ...
     affinityTypeToken(affinity));
+if noCast
+    exactPred = strrep(exactPred, 'CAST(qse.value_num AS REAL)', 'qse.value_num');
+end
 [sql, params] = negateExact(['(documents.id NOT IN ' inner ')'], exactPred, exactParams);
 if ~strcmp(sql, '1=1')
     params = [{dotPath}, params];
