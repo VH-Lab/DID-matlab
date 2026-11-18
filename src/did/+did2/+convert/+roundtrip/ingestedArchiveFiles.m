@@ -49,7 +49,16 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %       from the body's channel type, group and segment number";
 %     [non-specimen channel groups get their own owner] a digital,
 %       auxiliary or analog-output group may be owned by another document
-%       than the recording observation, so owners are read per body.
+%       than the recording observation, so owners are read per body;
+%     [channel name is an identifier] "a channel's v1 name is a covariate
+%       along the channel dimension of its channel group's body, variable
+%       NCIT:C25364 "Identifier", one text value per channel";
+%   and by Jess Haley, 2026-11-18:
+%     [event row defaults are notation] "an event or marker channel-list
+%       row's offset, scale, time channel and sample rate, when they are
+%       NDI's defaults, are notation ([spelling is notation]): not stored,
+%       rebuilt by the round trip; a channel list whose event or marker rows
+%       differ from the defaults ... is kept whole as v1".
 %   This function is that round trip's rebuild; the comparison with the v1
 %   files is did2.convert.roundtrip.compareIngestedArchiveFiles. The document
 %   inverse (did2.convert.roundtrip.daqreader_mfdaq_epochdata_ingested) reads
@@ -81,9 +90,16 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %                    'rebuilt' from the converted channel groups and the
 %                    unpacked event channels, or 'not rebuilt' (why in
 %                    R.channel_list_why). Per row:
-%         name         the body's name covariate entry (a `text` covariate
-%                      along the channel dimension) when it is not empty,
-%                      else `<abbrev><number>`
+%         name         the body's name covariate entry ([channel name is an
+%                      identifier]: the `text` covariate along the channel
+%                      dimension whose variable is NCIT:C25364 "Identifier",
+%                      found by node) when it is not empty, else
+%                      `<abbrev><number>`, the name NDI's readers give a
+%                      channel (ndi.file.type.mfdaq_epoch_channel/
+%                      create_properties keeps the reader's name and reads
+%                      the number from it, ndi.fun.channelname2prefixnumber);
+%                      NDI-matlab's second pass writes the covariate only on
+%                      a group where some v1 name is not that form
 %         type         the channel type (condition), as NDI spells it
 %         time_channel the "time channel" covariate (EMPTY:0000374); NaN
 %                      when the body has none (today's shape)
@@ -99,12 +115,16 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %                      label "channel number" written before)
 %         group, dataclass   the writer's rule above
 %       An event, marker or text row: type and number from the observation's
-%       channel-type condition; sample_rate NaN (the writer never asks an
-%       event channel for one); name `<abbrev><number>`. Its offset, scale
-%       and time_channel have NO v2 home in the decisions: they are written
-%       as NDI's base mfdaq reader gives them (0, 1, NaN) and listed in
-%       R.no_home, so a reader that gives other values makes the comparison
-%       fail and the file stays (the decision's own guard).
+%       channel-type condition; name `<abbrev><number>`. Its sample_rate,
+%       offset, scale and time_channel are NOTATION ([event row defaults are
+%       notation]): not stored, rebuilt as NDI's writer fills them
+%       (ndi.daq.reader.mfdaq/ingest_epochfiles asks no event channel for a
+%       sample rate, so NaN; underlying_datatype gives the polynomial [0 1],
+%       so offset 0 and scale 1; time_channel NaN, as
+%       ndi.vintage.ingestedChannelList rebuilds it) and listed in
+%       R.notation. A list whose event or marker rows differ (CED Spike2
+%       sets an event's time channel to its own number) does not compare
+%       exactly, and NDI-matlab's second pass keeps it whole as v1.
 %       A time row (a `t<n>` channel) is NOT rebuilt: its number,
 %       time_channel, offset and scale have no v2 home once the evenly spaced
 %       time body is removed, so a v1 list holding one (Intan's `t1`) does
@@ -163,7 +183,11 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %                      own owner])
 %     channel_list_state, channel_list_why, channel_list (struct array of v1
 %                      rows, NDI's field order)
-%     no_home          struct array {row, field, value, why}
+%     no_home          struct array {row, field, value, why}: fields no
+%                      decision gives a v2 home
+%     notation         struct array {row, field, value, why}: the event,
+%                      marker and text rows' fields rebuilt as NDI's
+%                      defaults ([event row defaults are notation])
 %     evmktx           struct array {name, group, carried (its opaque_body
 %                      is still among BODIES), state ('rebuilt' | 'not read'
 %                      | 'not rebuilt'), why, channeltype, channel, T, D,
@@ -198,6 +222,7 @@ R = struct('documents_inspected', numel(bodies) + numel(ctx.docs), ...
     'channel_list_state', 'not rebuilt', 'channel_list_why', '', ...
     'channel_list', emptyRows(), ...
     'no_home', struct('row', {}, 'field', {}, 'value', {}, 'why', {}), ...
+    'notation', struct('row', {}, 'field', {}, 'value', {}, 'why', {}), ...
     'evmktx', emptyEvmktx(), 'time_segments', {{}}, 't0', NaN);
 
 % the time-value bodies an uneven group is keyed to belong to the archive too
@@ -296,10 +321,10 @@ else
     evRows = evRows(evOrder);
     chans = chans(evOrder);
     for e = 1:numel(evRows)
-        R.no_home(end+1) = struct('row', nhOffset + e, 'field', 'offset, scale, time_channel', ...
-            'value', [0 1 NaN], 'why', ['an event, marker or text row''s offset, scale and ' ...
-            'time channel have no v2 home ([channel list rows get v2 homes] homes its type ' ...
-            'and number); written as NDI''s base mfdaq reader gives them']);
+        R.notation(end+1) = struct('row', nhOffset + e, ...
+            'field', 'sample_rate, offset, scale, time_channel', 'value', [NaN 0 1 NaN], ...
+            'why', ['[event row defaults are notation] (Jess Haley, 2026-11-18): NDI''s ' ...
+            'defaults for an event, marker or text row, rebuilt, not stored']);
     end
     R.channel_list = [all_, evRows];
     R.channel_list_state = 'rebuilt';
@@ -524,10 +549,13 @@ end
 end
 
 function t = covariateText(b)
-% the name covariate: a `text` covariate along the channel dimension (1)
+% the name covariate ([channel name is an identifier]): the `text` covariate
+% along the channel dimension (1) whose variable is NCIT:C25364 "Identifier",
+% by node
 t = {};
 for cv = asCellOf(blockField(b, 'covariates'))
     s = cv{1};
+    if ~strcmp(varNode(s), 'NCIT:C25364'); continue; end
     x = getPath(s, 'text');
     if ~isempty(x) && isequal(double(getPath(s, 'along')), 1)
         if ischar(x); x = {x}; end

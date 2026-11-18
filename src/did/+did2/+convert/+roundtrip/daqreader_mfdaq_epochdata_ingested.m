@@ -127,10 +127,16 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %       homes], [unpacked events file is removed], [evenly spaced time is a
 %       covariate]): their file_info entries are rebuilt BY NAME, in the
 %       writer's place. Their v1 LOCATIONS are not: the file stays in NDI's
-%       store, unreferenced, and no v2 document names its uid, so those
-%       leaves read lost. The file itself is compared by its content
-%       (did2.convert.roundtrip.compareIngestedArchiveFiles), which needs
-%       the bytes, so not here.
+%       store, unreferenced, and no v2 document names its uid. For
+%       channel_list.bin and an evmktx file that is an ACCEPTED LOSS
+%       (Decided by Jess Haley, 2026-11-18 [removed file locations are an
+%       accepted loss]: "the removed file's v1 storage record is an accepted
+%       loss"), listed and counted by did2.convert.roundtrip.wholeBatch
+%       (ACCEPTED_LOSSES, 'removed archive file location'); the removed
+%       evenly spaced time segments are not covered by that decision, so
+%       their location leaves still read lost. The file itself is compared
+%       by its content (did2.convert.roundtrip.compareIngestedArchiveFiles),
+%       which needs the bytes, so not here.
 %
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested,

@@ -9,8 +9,10 @@ function tests = testIngestedArchiveFiles
 %   time-valued observations] and its follow-ups ([several marker numbers are
 %   a second dimension], [unpacked event bodies are uncompressed], [unpacked
 %   events file is removed]), [channel list rows get v2 homes], [time channel
-%   is a per-channel covariate], [migrated body members renamed] and
-%   [non-specimen channel groups get their own owner].
+%   is a per-channel covariate], [migrated body members renamed],
+%   [non-specimen channel groups get their own owner] and [channel name is
+%   an identifier]; and by Jess Haley, 2026-11-18, [event row defaults are
+%   notation].
 %
 %   THE SECOND-PASS SHAPE here (secondPassEpoch) is built by hand from those
 %   decisions and from what NDI-matlab's second pass writes today
@@ -20,8 +22,8 @@ function tests = testIngestedArchiveFiles
 %   the v1 scale as source_value), its condition Channel = the channel type,
 %   its `filename` kept). What the decisions add and NDI-matlab does not
 %   write yet: the "time channel" covariate (EMPTY:0000374), the name
-%   covariate (a text covariate along the channel dimension; its variable
-%   term is not registered yet, so it is found by its form), the members
+%   covariate (a text covariate along the channel dimension, variable
+%   NCIT:C25364 "Identifier", [channel name is an identifier]), the members
 %   renamed body_data_<k>, and the unpacked event and marker channels (an
 %   observation each, its channel type and number as a condition, its times
 %   in a sampled_body of little-endian float64; the marker's codes event x
@@ -39,13 +41,45 @@ verifyEqual(testCase, R.group_bodies, 2);
 verifyEqual(testCase, R.event_observations, 2);
 verifyEqual(testCase, R.channel_list_state, 'rebuilt');
 verifyTrue(testCase, isequaln(R.channel_list, ex.rows), describeRows(R.channel_list));
-% the fields no decision homes are listed, never silently filled: each event
-% row's offset, scale and time channel, and the time channel the groups point
-% at, whose own row is not rebuilt
-rowsListed = [R.no_home.row];
-verifyEqual(testCase, sort(rowsListed(~isnan(rowsListed))), [4 5]);
-verifyTrue(testCase, any(contains({R.no_home.field}, 'offset, scale, time_channel')));
-verifyEqual(testCase, R.no_home(strcmp({R.no_home.field}, 'time row')).value, 1);
+% the fields no decision homes are listed, never silently filled: the time
+% channel the groups point at, whose own row is not rebuilt
+verifyEqual(testCase, {R.no_home.field}, {'time row'});
+verifyEqual(testCase, R.no_home.value, 1);
+% [event row defaults are notation] (Jess Haley, 2026-11-18): each event and
+% marker row's sample rate, offset, scale and time channel are NDI's
+% defaults, rebuilt and listed as notation, not as a field without a home
+verifyEqual(testCase, [R.notation.row], [4 5]);
+verifyEqual(testCase, unique({R.notation.field}), {'sample_rate, offset, scale, time_channel'});
+for e = 4:5
+    verifyTrue(testCase, isequaln([R.channel_list(e).sample_rate, R.channel_list(e).offset, ...
+        R.channel_list(e).scale, R.channel_list(e).time_channel], [NaN 0 1 NaN]), ...
+        describeRows(R.channel_list(e)));
+end
+end
+
+function testTheNameIsReadFromTheIdentifierCovariateOnly(testCase)
+% [channel name is an identifier] (Jess Haley, 2026-11-17): the name is the
+% text covariate whose variable is NCIT:C25364 "Identifier", by node; a text
+% covariate along the channels with another variable is not a name (a check
+% that cannot fail proves nothing)
+[docs, bodies, ex] = secondPassEpoch(testCase);
+ai = bodies{1};
+i = find(cellfun(@(c) isfield(c, 'text'), ai.data.covariates));
+assertNumElements(testCase, i, 1);
+verifyEqual(testCase, ai.data.covariates{i}.variable.node, 'NCIT:C25364');
+ai.data.covariates{i}.variable = struct('node', 'NCIT:C42614', 'name', 'Name');
+docs{5} = ai;
+R = did2.convert.roundtrip.ingestedArchiveFiles({ai, bodies{2}}, docs);
+want = ex.rows;
+want(2).name = 'ai2';
+verifyTrue(testCase, isequaln(R.channel_list, want), describeRows(R.channel_list));
+% every channel named, one text value per channel, after a JSON round trip
+ai = bodies{1};
+ai.data.covariates{i}.text = {'chanA', 'chanB'};
+j = jsondecode(jsonencode(ai));
+docs{5} = j;
+R = did2.convert.roundtrip.ingestedArchiveFiles({j, bodies{2}}, docs);
+verifyEqual(testCase, {R.channel_list(1:2).name}, {'chanA', 'chanB'});
 end
 
 function testTheRowsFollowNdisRuleAfterAJsonRoundTrip(testCase)
@@ -333,7 +367,7 @@ covs = {struct('variable', T('om:Time', 'time'), 'along', 0, 'origin', struct('v
     cov(T('NCIT:C70774', 'Unit Conversion Factor'), 'quantity', scale), ...
     cov(T('EMPTY:0000374', 'time channel'), 'quantity', struct('value', ones(size(nums))))};
 if ~isempty(names)
-    covs{end+1} = cov(T('', 'channel name'), 'text', names);
+    covs{end+1} = cov(T('NCIT:C25364', 'Identifier'), 'text', names);
 end
 db = struct('conditions', struct('variable', T('NCIT:C44170', 'Channel'), 'term', typeTerm));
 if ~isempty(o.Filename); db.filename = o.Filename; end

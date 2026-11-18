@@ -570,7 +570,10 @@ function a = ACCEPTED_LOSSES()
 %   is first checked, acceptedIdCheck) and WHEN (@(v1, docs, ctx) -> true when
 %   the loss applies to this source; [] for always). LISTED (true: only for a
 %   source RESULT.not_migrated lists, NOT MIGRATED BY A DECISION) is set
-%   false on every entry but those that say otherwise, at the end.
+%   false on every entry but those that say otherwise, at the end. PATHSOF
+%   (@(v1, docs, ctx) -> cellstr: more paths the loss covers for this
+%   source, where they depend on the source, such as an entry of a list) is
+%   [] on every entry but those that say otherwise.
 a = struct('name', {}, 'decision', {}, 'classes', {}, 'paths', {}, 'id', {}, 'when', {});
 % [v1 session document id not kept] (Decided by Jess Haley, 2026-11-03): the
 % own base.id of a v1 `session` and of a v1 `dataset_remote` document is not
@@ -638,6 +641,21 @@ a(end+1) = struct('name', 'openMINDS Copyright instance id', ...
     'classes', {{'openminds'}}, 'paths', {{'openminds.openminds_id'}}, ...
     'id', false, 'when', @copyrightEmitted);
 [a.listed] = deal(false);
+[a.pathsOf] = deal([]);
+% [removed file locations are an accepted loss] (Decided by Jess Haley,
+% 2026-11-18): "when NDI's second pass rebuilds `channel_list.bin` or an
+% `evmktx` events file exactly from v2 documents and removes it, the v1 epoch
+% document's record of that file, its uid and its location in NDI's file
+% store ... the removed file's v1 storage record is an accepted loss".
+% Accepted only for the file_info entry of a file the rebuild says the second
+% pass removed (removedFileLocations): channel_list.bin when the channel list
+% is rebuilt from the documents, an evmktx file whose body is gone. The
+% evenly spaced time segments the second pass also removes are NOT covered
+% (the decision names only these two files): their locations are still lost
+a(end+1) = struct('name', 'removed archive file location', ...
+    'decision', '[removed file locations are an accepted loss] (Jess Haley, 2026-11-18)', ...
+    'classes', {{'daqreader_mfdaq_epochdata_ingested'}}, 'paths', {{}}, ...
+    'id', false, 'when', [], 'listed', false, 'pathsOf', @removedFileLocations);
 % [orphaned response settings are an accepted loss] (Decided by Jess Haley,
 % 2026-11-12): an orphaned stimulus_response_scalar_parameters_basic (referred
 % to by no document) with an identical used twin in its session is not
@@ -647,7 +665,49 @@ a(end+1) = struct('name', 'openMINDS Copyright instance id', ...
 a(end+1) = struct('name', 'orphaned response settings', ...
     'decision', '[orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12)', ...
     'classes', {{'stimulus_response_scalar_parameters_basic'}}, 'paths', {{'base.id'}}, ...
-    'id', true, 'when', [], 'listed', true);
+    'id', true, 'when', [], 'listed', true, 'pathsOf', []);
+end
+
+function paths = removedFileLocations(v1, docs, ctx)
+% the leaf paths of V1's files.file_info entries ([removed file locations are
+% an accepted loss]) whose file NDI-matlab's second pass removed after
+% rebuilding it from the v2 documents: `channel_list.bin` when
+% did2.convert.roundtrip.ingestedArchiveFiles rebuilds the channel list
+% (state 'rebuilt': no body of it remains, and the converted groups and
+% unpacked channels give its rows), an `evmktx_group<g>_seg.nbf_<m>` whose
+% events are rebuilt from the unpacked channels and whose body is gone
+% (carried false). Only the entry's `locations` (uid, location, ...); its
+% name is still compared
+paths = {};
+if isempty(ctx) || ~isstruct(v1) || ~isfield(v1, 'files') || ~isstruct(v1.files) ...
+        || ~isfield(v1.files, 'file_info') || ~isstruct(v1.files.file_info)
+    return;
+end
+R = did2.convert.roundtrip.ingestedArchiveFiles(docs, ctx);
+removed = {};
+if strcmp(R.channel_list_state, 'rebuilt'); removed{end+1} = 'channel_list.bin'; end
+for e = 1:numel(R.evmktx)
+    if ~R.evmktx(e).carried; removed{end+1} = R.evmktx(e).name; end %#ok<AGROW>
+end
+if isempty(removed); return; end
+fi = v1.files.file_info;
+leaves = flattenLeaves(struct('files', struct('file_info', fi)));
+for k = 1:numel(fi)
+    if ~isfield(fi(k), 'name') || ~any(strcmp(char(fi(k).name), removed))
+        continue;
+    end
+    if isscalar(fi)
+        stem = 'files.file_info.locations';
+    else
+        stem = sprintf('files.file_info(%d).locations', k);
+    end
+    for j = 1:numel(leaves)
+        p = leaves(j).path;
+        if strcmp(p, stem) || startsWith(p, [stem '.']) || startsWith(p, [stem '('])
+            paths{end+1} = p; %#ok<AGROW>
+        end
+    end
+end
 end
 
 function tf = copyrightEmitted(~, docs, ~)
@@ -793,8 +853,12 @@ for k = 1:numel(accepted)
     if ~isempty(a.when) && ~a.when(v1, docs, ctx)
         continue;
     end
+    covered = a.paths;
+    if ~isempty(a.pathsOf)
+        covered = [covered, a.pathsOf(v1, docs, ctx)]; %#ok<AGROW>
+    end
     for j = find(keep)
-        if any(strcmp(c.lost(j).path, a.paths))
+        if any(strcmp(c.lost(j).path, covered))
             keep(j) = false;
             if a.id && strcmp(c.lost(j).path, 'base.id') && ~isempty(report.accepted_losses) ...
                     && strcmp(report.accepted_losses(end).source_id, sourceId) ...
