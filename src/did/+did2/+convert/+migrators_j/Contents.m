@@ -707,7 +707,8 @@
 %         `underlying_element_id` / `stimulator_id`) keep resolving -- now to an
 %         entity.
 %     element_epoch
-%         Brainstorm-J migrator: element_epoch -> acquisition_epoch.
+%         Hand a v1 element_epoch on, exactly as v1 wrote it, to the batch passes that
+%         dissolve it.
 %     epochfiles_ingested
 %         Brainstorm-J migrator: DELIBERATE GUARDED PASSTHROUGH.
 %     file_reference

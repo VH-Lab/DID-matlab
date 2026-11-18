@@ -205,10 +205,13 @@ PARENT_ONLY_CLASSES = {'app', 'calculator', 'epochid', 'stimulus_response', ...
 % class `daqreader_epochdata_ingested` until Decided by Jess Haley, 2026-10-25
 % [retired classes leave V2] (1): "the generic migration stops writing retired
 % classes as V2 documents ... each is carried as v1 until it has a V2 home".
+% `element_epoch` (epochMint, resolveEpochProbemap: one element's slice of an
+% epoch, dissolved into its observation) likewise: its migrator renamed it to
+% the retired `acquisition_epoch` until the same decision.
 HAND_ON_CLASSES = {'syncrule', 'epochfiles_ingested', 'stimulus_response_scalar', ...
     'stimulus_response_scalar_parameters_basic', 'openminds', ...
     'daqreader_epochdata_ingested', 'daqreader_image_epochdata_ingested', ...
-    'daqreader_mfdaq_epochdata_ingested'};
+    'daqreader_mfdaq_epochdata_ingested', 'element_epoch'};
 
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check

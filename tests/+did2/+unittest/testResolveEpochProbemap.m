@@ -598,7 +598,7 @@ verifyEqual(testCase, char(b{1}.files.file_info(1).locations.location), '/data/t
 % F1 (Jess Haley, 2026-10-22 [epoch dissolution before merge]): the observation
 % IS the v1 element_epoch, id preserved, and the acquisition_epoch is gone
 verifyEqual(testCase, char(o.base.id), 'ee_1', 'the element_epoch id is preserved on its observation');
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'), 'the acquisition_epoch dissolved');
+verifyEmpty(testCase, sliceBodies(out), 'the acquisition_epoch dissolved');
 verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
 verifyEqual(testCase, rep.acquisition_epoch_dissolved, 1);
 end
@@ -631,7 +631,7 @@ verifyEqual(testCase, char(ep.entity.local_identifier), 't00sx');
 did2.unittest.helpers.verifyClock(testCase, ref.relative_time_reference.value.clock, 'dev_local_time');   % by node [clock terms get nodes]
 verifyEqual(testCase, ref.relative_time_reference.value.start.seconds, 2, 'AbsTol', 1e-12);
 verifyEqual(testCase, ref.relative_time_reference.value.end.seconds, 579.85, 'AbsTol', 1e-9);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+verifyEmpty(testCase, sliceBodies(out));
 verifyEmpty(testCase, out.quarantine);
 end
 
@@ -649,7 +649,7 @@ ing  = ingestedWithRows('ing_sp2', 'sess_sp2', 't00sp2', {{'cam', '1', 'camera',
 daq  = daqsystemBody('daq_sp2', 'sess_sp2', 'vhspike2');
 [out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.acquisition_epoch_seen, 0);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+verifyEmpty(testCase, sliceBodies(out));
 carried = carriedIds(out);
 for id = {'el_probe_p', 'el_lfp', 'ee_p'}
     verifyTrue(testCase, any(strcmp(carried, id{1})), [id{1} ' is not carried']);
@@ -716,7 +716,7 @@ patch = subjectBody('patch_1', sid, 'patch 1');
 [els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1');
 [out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch}, els, ees, {dm}]);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 0);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+verifyEmpty(testCase, sliceBodies(out));
 carried = carriedIds(out);
 for b = [els, ees, {dm}]
     verifyTrue(testCase, any(strcmp(carried, b{1}.base.id)), [b{1}.base.id ' is not carried']);
@@ -757,7 +757,7 @@ verifyEmpty(testCase, out.epoch_mint.epoch_extent_carried_source_ids);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
 verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 0);
 verifyEqual(testCase, rep.spike_trains_emitted, 2);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+verifyEmpty(testCase, sliceBodies(out));
 end
 
 function testUntiedSourcesThatDisagreeKeepTheirAcquisitionEpochs(testCase)
@@ -769,7 +769,7 @@ verifyEqual(testCase, out.epoch_mint.epoch_extent_untied_epochs_carried, 1);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
 verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 2);
 verifyEqual(testCase, rep.spike_trains_emitted, 0);
-verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+verifyEqual(testCase, numel(sliceBodies(out)), 2);
 end
 
 function batch = twoUntiedSources(secondT0T1)
@@ -981,7 +981,7 @@ end
 function verifyDissolvedRoundTrip(testCase, bodies, out, rep, id)
 assertEqual(testCase, rep.acquisition_epoch_dissolved, 1, 'the element_epoch did not dissolve');
 assertEqual(testCase, rep.spike_trains_emitted, 1);
-assertEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+assertEmpty(testCase, sliceBodies(out));
 o = docById(out, id);
 assertNotEmpty(testCase, o, 'the observation keeps the element_epoch id');
 r = did2.convert.roundtrip.wholeBatch(bodies, out);
@@ -2106,6 +2106,15 @@ for k = 1:numel(result.migrated)
         ids{end+1} = char(b.base.id); %#ok<AGROW>
     end
 end
+end
+
+function out = sliceBodies(result)
+%SLICEBODIES The element-epoch slices left in the batch: v1 element_epoch
+%   documents pass 1 handed on ([retired classes leave V2], Decided by Jess
+%   Haley, 2026-10-25, step (1)) and, from a batch written before,
+%   acquisition_epoch documents. Both are counted, so a dissolution test cannot
+%   pass because the class it looked for is no longer written.
+out = [bodiesOfClass(result, 'element_epoch'), bodiesOfClass(result, 'acquisition_epoch')];
 end
 
 function out = bodiesOfClass(result, className)

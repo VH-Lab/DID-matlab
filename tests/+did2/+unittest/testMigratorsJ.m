@@ -4720,10 +4720,12 @@ verifyTrue(testCase, isfield(out, 'epochid'), ...
 verifyEqual(testCase, out.epochid.epochid, 't00001');
 end
 
-function testElementEpochRenamedToAcquisitionEpoch(testCase)
-% Chunk e: element is retired, so element_epoch is renamed to acquisition_epoch.
-% The V_eta migrator reuses the base clocks-block transform (epoch_clock/t0_t1 ->
-% clocks array-of-records) and then renames the class and its property block.
+function testElementEpochIsHandedOnUnchanged(testCase)
+% Chunk e renamed element_epoch to the retired acquisition_epoch (its clocks as
+% records). Since [retired classes leave V2] (Decided by Jess Haley,
+% 2026-10-25, step (1)) the migrator returns the v1 document unchanged, handed
+% on as v1 (v1_to_v2 HAND_ON_CLASSES); the clocks are read by the batch passes
+% (did2.convert.elementEpochClockRecords), as the migrator read them.
 body = struct();
 body.document_class = struct('class_name', 'element_epoch', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'base',    'class_version', '1.0.0'), ...
@@ -4734,13 +4736,12 @@ body.base = struct('id', 'ee_1', 'session_id', 'sess_09', ...
 body.epochid = struct('epochid', 't00001');
 body.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0; 930.35]);
 out = did2.convert.migrators_j.element_epoch(body);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'acquisition_epoch');
-% the property block is renamed too, and the base clocks transform ran
-verifyTrue(testCase, isfield(out, 'acquisition_epoch'));
-verifyFalse(testCase, isfield(out, 'element_epoch'));
-verifyEqual(testCase, out.acquisition_epoch.clocks(1).name, 'dev_local_time');
-verifyEqual(testCase, out.acquisition_epoch.clocks(1).t0, 0);
-verifyEqual(testCase, out.acquisition_epoch.clocks(1).t1, 930.35);
+verifyTrue(testCase, isequaln(out, body), 'handed on unchanged');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'element_epoch');
+clocks = did2.convert.elementEpochClockRecords(out);
+verifyEqual(testCase, clocks(1).name, 'dev_local_time');
+verifyEqual(testCase, clocks(1).t0, 0);
+verifyEqual(testCase, clocks(1).t1, 930.35);
 end
 
 function testDistanceMetadataIsCarriedWholeAsV1(testCase)
