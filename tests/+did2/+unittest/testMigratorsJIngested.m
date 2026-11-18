@@ -7,7 +7,7 @@ function tests = testMigratorsJIngested
 %     daqmetadatareader_epochdata_ingested -> acquisition_metadata_file
 %     daqreader_epochdata_ingested         -> + N relative_reference (source kept)
 %     daqreader_image_epochdata_ingested   -> + N relative_reference (source kept)
-%     daqreader_mfdaq_epochdata_ingested   -> de-encode, then the same lift
+%     daqreader_mfdaq_epochdata_ingested   -> handed on as v1 ([retired classes leave V2])
 %
 %   ---------------------------------------------------------------------
 %   WHAT THE FIXTURES ARE BUILT FROM, AND WHY IT MATTERS
@@ -535,36 +535,41 @@ end
 
 % ===================== daqreader_mfdaq_epochdata_ingested ==================
 
-function testMfdaqIngestedStillReturnsAStructWhileGuarded(testCase)
-% The migrator function is called DIRECTLY by an existing test in
-% testMigratorsJ.m, which reads out.document_class.class_name off a struct. The
-% delegation must not change that on the guarded path.
+function testMfdaqIngestedIsHandedOnUnchanged(testCase)
+% [retired classes leave V2] (Decided by Jess Haley, 2026-10-25), step (1):
+% the migrator no longer renames the cache to the retired V2 class
+% `daqreader_epochdata_ingested` (moving its parameters onto it); it returns
+% the v1 document unchanged, and v1_to_v2 hands it on stamped did_v1
+% (HAND_ON_CLASSES) to resolveEpochProbemap. This test asserted the rename
+% until then.
 body = mfdaqIngestedV1();
 out = did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested(body);
 verifyTrue(testCase, isstruct(out));
 verifyTrue(testCase, isscalar(out));
-verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'daqreader_epochdata_ingested');
-verifyEqual(testCase, out.daqreader_epochdata_ingested.parameters.sample_analog_segment, ...
-    1000000);
-verifyEqual(testCase, out.epochid.epochid, 't00001');
+verifyTrue(testCase, isequaln(out, body), 'the handed-on document is not the v1 source');
+res = runJ(body);
+verifyEqual(testCase, numel(res.migrated), 1);
+verifyEqual(testCase, numel(res.passthrough), 1);
+doc = res.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'daqreader_mfdaq_epochdata_ingested');
+verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, ...
+    doc.get('daqreader_mfdaq_epochdata_ingested.parameters.sample_analog_segment'), 1000000);
+verifyEqual(testCase, char(doc.get('epochid.epochid')), 't00001');
 end
 
-function testMfdaqIngestedDelegatesTheEpochLift(testCase)
-% Without the delegation the mfdaq documents -- the ONLY ones carrying the real
-% .nbf.tgz recording archives -- would be the one member of the family whose
-% epochtable never became references, because v1_to_v2 looks the concrete
-% migrator up once, on the class the document ARRIVED with.
-out = runJ(withEpochEdge(mfdaqIngestedV1(), 'epoch_doc_1'));
-verifyEqual(testCase, numel(out.migrated), 2);
-verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
-refs = docsOfClass(out, 'relative_time_reference');
-verifyEqual(testCase, numel(refs), 1);
-did2.unittest.helpers.verifyClock(testCase, refs{1}.get('relative_time_reference.value.clock'), 'dev_local_time');   % by node [clock terms get nodes]
-% the de-encode still happened
-src = docsOfClass(out, 'daqreader_epochdata_ingested');
-verifyEqual(testCase, ...
-    src{1}.get('daqreader_epochdata_ingested.parameters.sample_analog_segment'), ...
-    1000000);
+function testMfdaqIngestedWithAnEpochEdgeIsHandedOnUnchanged(testCase)
+% The delegated epoch lift is gone with the rename: with an `epoch_id` edge
+% (no v1 document has one) the cache is still handed on unchanged, and no
+% reference is written here; resolveEpochProbemap writes the epoch's clocks
+% from the archive's epochtable.
+body = withEpochEdge(mfdaqIngestedV1(), 'epoch_doc_1');
+out = runJ(body);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEmpty(testCase, docsOfClass(out, 'relative_time_reference'));
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
+    'daqreader_mfdaq_epochdata_ingested');
 end
 
 function v1 = mfdaqIngestedV1()

@@ -8,6 +8,13 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %   + epochid.json + base.json at the locked NDI-matlab `main`, 3cb19a8, as
 %   +ndi/+daq/+reader/mfdaq.m ingest_epochfiles writes it). BODIES holds:
 %
+%   PASS 1 NO LONGER WRITES THIS SHAPE. Since [retired classes leave V2]
+%   (Decided by Jess Haley, 2026-10-25, step (1)) pass 1 hands the v1 document
+%   on unchanged, stamped did_v1 (did2.convert.v1_to_v2 HAND_ON_CLASSES), and
+%   did2.convert.roundtrip.check compares it as a carried document without
+%   calling this inverse. The reading below is kept for a batch written
+%   before that, whose cache is the retired V2 shape:
+%
 %   the de-encoded cache, one `daqreader_epochdata_ingested` document as
 %   v1_to_v2 padded and stamped it:
 %     base.*                          the document's (the session edge read
