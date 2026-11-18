@@ -119,6 +119,16 @@ def main(argv=None):
     for name, src in sorted(chosen.items()):
         shutil.copyfile(src, os.path.join(dest, name))
     print("copied %d file(s) into %s (schema set %s)" % (len(chosen), dest, sd))
+    # SCRATCH PROBE (not for merge): V2 base.name deleted, as did-schema
+    # 6d1a4d6 did, to list the converted bodies that still carry it
+    import json
+    bp = os.path.join(dest, "base.json")
+    with open(bp) as fh:
+        base = json.load(fh)
+    base["fields"] = [f for f in base.get("fields", []) if f.get("name") != "name"]
+    with open(bp, "w") as fh:
+        json.dump(base, fh, indent=4)
+    print("SCRATCH PROBE: base.name removed from %s" % bp)
     return 0
 
 
