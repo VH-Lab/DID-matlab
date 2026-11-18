@@ -283,7 +283,7 @@ for i = 1:numel(rels)
     s = rels{i}.toStruct();
     dep = s.depends_on;
     if iscell(dep); dep = [dep{:}]; end
-    probes{i} = char(dep(strcmp({dep.name}, 'child_id')).value);
+    probes{i} = edgeTarget(dep(strcmp({dep.name}, 'child_id')));
 end
 probes = unique(probes);
 end
@@ -448,9 +448,9 @@ for i = 1:numel(rels)
     dep = s.depends_on;
     if iscell(dep); dep = [dep{:}]; end
     names = {dep.name};
-    relsAll.child{i} = char(dep(strcmp(names, 'child_id')).value);
+    relsAll.child{i} = edgeTarget(dep(strcmp(names, 'child_id')));
     t = dep(startsWith(names, 'time_reference_id'));
-    if isempty(t); relsAll.tr{i} = ''; else; relsAll.tr{i} = char(t(1).value); end
+    if isempty(t); relsAll.tr{i} = ''; else; relsAll.tr{i} = edgeTarget(t(1)); end
 end
 trs = db.search(did2.query('', 'isa', 'relative_time_reference') & ...
     did2.query('', 'depends_on', 'referent_id', S) & sess(S));
@@ -485,4 +485,12 @@ function x = secs(c)
 % a time cell's canonical seconds (a bare number if stored that way)
 if isstruct(c) && isfield(c, 'seconds'); x = c.seconds; else; x = c; end
 x = double(x);
+end
+
+function x = edgeTarget(e)
+% a depends_on entry's target: document_id (v2), else value or id
+x = '';
+for f = {'document_id', 'value', 'id'}
+    if isfield(e, f{1}) && ~isempty(e.(f{1})); x = char(e.(f{1})); return; end
+end
 end
