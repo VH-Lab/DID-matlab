@@ -2,9 +2,10 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %DAQREADER_EPOCHDATA_INGESTED Brainstorm-J migrator: lift the epoch's clock
 %   extents out of `epochtable` into `relative_time_reference` documents.
 %
-%   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta', and
-%   also called directly by the sibling migrator
-%   daqreader_mfdaq_epochdata_ingested.m after it de-encodes the mfdaq subtype.
+%   Routed from did2.convert.v1_to_v2. The sibling migrator
+%   daqreader_mfdaq_epochdata_ingested.m called it after de-encoding the mfdaq
+%   subtype until it began handing its v1 document on unchanged ([retired
+%   classes leave V2], Jess Haley, 2026-10-25).
 %
 %   1 -> 1 + N. The source document is PRESERVED and N `relative_reference`
 %   documents are added, one per (clock, interval) pair in `epochtable`:
@@ -110,9 +111,10 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %   malformed], carry-100). did2.convert.roundtrip.daqreader_epochdata_ingested rebuilds the v1
 %   document; testRawV1RoundTripIngestedEpochs compares the two.
 %
-%   DELEGATED (the second argument, true): daqreader_mfdaq_epochdata_ingested
-%   hands its de-encoded body here after accounting for every raw field itself;
-%   the raw read is skipped for it.
+%   DELEGATED (the second argument, true): the raw read is skipped, for a
+%   caller that accounted for every raw field itself. No migrator delegates
+%   since daqreader_mfdaq_epochdata_ingested hands its v1 document on
+%   unchanged ([retired classes leave V2], Jess Haley, 2026-10-25).
 arguments
     preBody (1,1) struct
     delegated (1,1) logical = false
