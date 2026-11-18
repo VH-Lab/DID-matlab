@@ -649,7 +649,9 @@ ing  = ingestedWithRows('ing_sp2', 'sess_sp2', 't00sp2', {{'cam', '1', 'camera',
 daq  = daqsystemBody('daq_sp2', 'sess_sp2', 'vhspike2');
 [out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.acquisition_epoch_seen, 0);
-verifyEmpty(testCase, sliceBodies(out));
+% [retired classes leave V2]: the carried element_epoch stays in the batch as
+% its v1 source; no slice that pass 1 did NOT carry is left
+verifyEmpty(testCase, uncarriedSlices(out));
 carried = carriedIds(out);
 for id = {'el_probe_p', 'el_lfp', 'ee_p'}
     verifyTrue(testCase, any(strcmp(carried, id{1})), [id{1} ' is not carried']);
@@ -716,7 +718,9 @@ patch = subjectBody('patch_1', sid, 'patch 1');
 [els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1');
 [out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch}, els, ees, {dm}]);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 0);
-verifyEmpty(testCase, sliceBodies(out));
+% [retired classes leave V2]: the carried element_epoch stays in the batch as
+% its v1 source; no slice that pass 1 did NOT carry is left
+verifyEmpty(testCase, uncarriedSlices(out));
 carried = carriedIds(out);
 for b = [els, ees, {dm}]
     verifyTrue(testCase, any(strcmp(carried, b{1}.base.id)), [b{1}.base.id ' is not carried']);
@@ -2104,6 +2108,22 @@ for k = 1:numel(result.migrated)
     if isfield(b, 'document_class') && isfield(b.document_class, 'schema_version') ...
             && strcmp(char(b.document_class.schema_version), 'did_v1')
         ids{end+1} = char(b.base.id); %#ok<AGROW>
+    end
+end
+end
+
+function out = uncarriedSlices(result)
+%UNCARRIEDSLICES The element-epoch slices left in the batch (sliceBodies) whose
+%   source pass 1 did not carry as v1 (result.source_outputs `carried`).
+carried = {};
+if isfield(result, 'source_outputs') && isfield(result.source_outputs, 'carried')
+    so = result.source_outputs([result.source_outputs.carried]);
+    carried = {so.id};
+end
+out = {};
+for b = sliceBodies(result)
+    if ~any(strcmp(carried, char(b{1}.base.id)))
+        out{end+1} = b{1}; %#ok<AGROW>
     end
 end
 end
