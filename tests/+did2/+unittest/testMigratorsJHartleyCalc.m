@@ -226,8 +226,10 @@ function testTheMethodIsTheCalculatorAndEachPlaneIsItsOwnStatement(testCase)
 % calculator. INVERTED 2026-11-03 ([hartley planes are two statements],
 % Decided by Jess Haley): each plane is the value of its own statement, the
 % spike-triggered average (the source id) and the null cumulative
-% probability, and no body carries a "represented quantity" condition. The
-% two variables are plain labels until the terms are approved.
+% probability, and no body carries a "represented quantity" condition.
+% INVERTED 2026-11-18 ([hartley plane terms], Decided by Jess Haley): the two
+% variables were plain labels; they are now wikidata:Q7577165 and
+% EMPTY:0000448, each with its node.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = staLeaf(out);
 % INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
@@ -238,6 +240,9 @@ leaves = allOf(out, 'receptive_field_calculation');
 verifyEqual(testCase, numel(leaves), 2, 'one statement per plane');
 verifyEqual(testCase, cellfun(@(b) char(b.statement.variable.name), leaves, ...
     'UniformOutput', false), {'spike-triggered average', 'null cumulative probability'});
+verifyEqual(testCase, cellfun(@(b) char(b.statement.variable.node), leaves, ...
+    'UniformOutput', false), {'wikidata:Q7577165', 'EMPTY:0000448'}, ...
+    '[hartley plane terms]: each plane''s variable carries its node');
 verifyEqual(testCase, leaves{1}.base.id, 'hc_1', 'the source id is the spike-triggered average''s');
 verifyNotEqual(testCase, leaves{2}.base.id, 'hc_1');
 verifyEqual(testCase, depValueOf(leaves{2}, 'entity_id'), depValueOf(leaves{1}, 'entity_id'));
@@ -251,6 +256,29 @@ for k = 1:numel(sb)
     verifyFalse(testCase, isfield(sb{k}.data_body, 'conditions') ...
         && ~isempty(sb{k}.data_body.conditions), 'no body carries a condition');
 end
+end
+
+function testTheRoundTripFindsThePlanesByNodeAndOlderLabelsByName(testCase)
+% [hartley plane terms] (Jess Haley, 2026-11-18): the round trip tells the two
+% statements apart by the variable's node (code compares by node first); a
+% statement migrated before the terms were decided has a plain label and no
+% node, and is still found by its name. A wrong node is not read as a plane.
+out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
+[~, spec] = did2.convert.roundtrip.hartley_calc(out);
+labelled = out;
+wrong = out;
+for k = 1:numel(out)
+    if strcmp(did2.unittest.helpers.classKey(out{k}), 'receptive_field_calculation')
+        labelled{k}.statement.variable.node = '';
+        wrong{k}.statement.variable.node = 'EMPTY:0000001';
+    end
+end
+[~, specLabelled] = did2.convert.roundtrip.hartley_calc(labelled);
+verifyEqual(testCase, specLabelled.unplaced, spec.unplaced, ...
+    'a plain-label variable (no node) is read by its name, as before');
+[~, specWrong] = did2.convert.roundtrip.hartley_calc(wrong);
+verifyGreaterThan(testCase, numel(specWrong.unplaced), numel(spec.unplaced), ...
+    'a variable with another node is not read as a plane');
 end
 
 function testTheValueIsInItsBodiesAndCarriesTheEncoding(testCase)
@@ -899,7 +927,7 @@ function b = staLeaf(bodies)
 hits = {};
 leaves = allOf(bodies, 'receptive_field_calculation');
 for k = 1:numel(leaves)
-    if strcmp(char(leaves{k}.statement.variable.name), 'spike-triggered average')
+    if strcmp(char(leaves{k}.statement.variable.node), 'wikidata:Q7577165')
         hits{end+1} = leaves{k}; %#ok<AGROW>
     end
 end

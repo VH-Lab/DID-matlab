@@ -74,7 +74,7 @@ isBody = cellfun(@(b) strcmp(classNameOf(b), 'sampled_body'), bodies);
 isPValue = false(1, n);
 for k = find(~isBody)
     isPValue(k) = strcmp(classNameOf(bodies{k}), 'receptive_field_calculation') ...
-        && strcmpi(variableName(bodies{k}), P_VALUE);
+        && isVariable(bodies{k}, P_VALUE);
 end
 [v1, leaf, inputs, spec] = calcParts(bodies(~isBody & ~isPValue), 'receptive_field_calculation', ...
     'hartley_calc', 'ndi.calc.vis.hartley', ...
@@ -83,9 +83,10 @@ if isempty(leaf)
     return;
 end
 leafId = char(getIn(leaf, 'base', 'id'));
-if ~strcmpi(variableName(leaf), STA)
-    spec.unplaced{end+1} = sprintf('the calculation''s variable is "%s", not "%s"', ...
-        variableName(leaf), STA);
+if ~isVariable(leaf, STA)
+    staTerm = STA;
+    spec.unplaced{end+1} = sprintf('the calculation''s variable is "%s", not %s "%s"', ...
+        variableName(leaf), staTerm.node, staTerm.name);
 end
 pLeafId = '';
 pIdx = find(isPValue);
@@ -333,6 +334,18 @@ function name = variableName(b)
 [~, name] = termParts(getIn(b, 'statement', 'variable'));
 end
 
+function tf = isVariable(b, term)
+% [hartley plane terms] (Jess Haley, 2026-11-18): a plane's statement is found
+% by its variable's NODE; by its name only when the variable has no node (a
+% document migrated before the terms were decided, when it was a plain label)
+[node, name] = termParts(getIn(b, 'statement', 'variable'));
+if ~isempty(strtrim(char(node)))
+    tf = strcmpi(strtrim(char(node)), term.node);
+else
+    tf = strcmpi(strtrim(char(name)), term.name);
+end
+end
+
 function c = hartleyNumberColumns()
 % v1 field -> covariate label (did2.convert.migrators_j.hartley_calc's table)
 c = {'S', 'hartley S'; 'KXV', 'hartley KXV'; 'KYV', 'hartley KYV'; ...
@@ -340,11 +353,13 @@ c = {'S', 'hartley S'; 'KXV', 'hartley KXV'; 'KYV', 'hartley KYV'; ...
 end
 
 function s = STA()
-s = 'spike-triggered average';
+% [hartley plane terms] (Jess Haley, 2026-11-18)
+s = struct('node', 'wikidata:Q7577165', 'name', 'spike-triggered average');
 end
 
 function s = P_VALUE()
-s = 'null cumulative probability';
+% [hartley plane terms] (Jess Haley, 2026-11-18); minted in empty-ontology #49
+s = struct('node', 'EMPTY:0000448', 'name', 'null cumulative probability');
 end
 
 function n = bytesOf(dataType)
