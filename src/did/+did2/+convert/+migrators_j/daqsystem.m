@@ -1,7 +1,8 @@
 function bodies = daqsystem(preBody)
 %DAQSYSTEM Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
 %   (configuration off `base`) + a `software` entity for its own
-%   implementation class. 1 -> 2, or 1 -> 1 when there is no class name.
+%   implementation class + the rig's `device` entity. 1 -> 3 (1 -> 2 when
+%   there is no class name; no device when the rig has no name).
 %   base.id AND base.name PRESERVED on the acquisition_system.
 %
 %   CURRENT SHAPE (did-schema #88; the signed 2026-08-08 text further down
@@ -12,6 +13,14 @@ function bodies = daqsystem(preBody)
 %                      reader_id        REQUIRED  -> acquisition_reader
 %                      epoch_file_pattern_id REQUIRED -> epoch_file_pattern
 %                      epoch_parameter_reader_id (multiple) -> epoch_parameter_reader
+%                      device_id                  -> entity, type device (the rig)
+%       entity (type device)  name = local_identifier = the v1 rig name
+%   (Jess Haley 2026-11-19 [acquisition system is a device entity],
+%   [migration mints the device by name], [one device per session],
+%   did-schema docs/plans/did_v2_standing_wiring_plan.md; see "THE RIG'S
+%   DEVICE" at the end of the migrator body.) A probe's `connected to` wiring and the
+%   rig's clocks name the device (did2.convert.resolveEpochProbemap,
+%   did2.convert.epochMint, did2.convert.resolveClockAlignment).
 %   A v1 daqsystem without its daqreader or filenavigator is quarantined (the
 %   v1 template requires both too). The quoted text below keeps the 2026-08
 %   names (`<- entity`, `acquisition_metadata_reader_#`) as the record.
@@ -366,9 +375,38 @@ if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
     srcName = jGetChar(preBody.base, 'name');
 end
 if ~isempty(srcName); f.name = srcName; end
+% THE RIG'S DEVICE. Decided by Jess Haley, 2026-11-19, did-schema
+% docs/plans/did_v2_standing_wiring_plan.md: [acquisition system is a device
+% entity] (the digitizer is an `entity` of type device; this document is the
+% configuration that points at it by `device_id`), [migration mints the
+% device by name] (named by the v1 rig name, `daqsystem` base.name, only)
+% and [one device per session] (one device per rig per session: a rig of one
+% name in two sessions is two devices, T18). One v1 daqsystem document is one
+% rig of one session, so it mints one device. The `device` entity type
+% requires `local_identifier` (did-schema binding_registry_meta.json
+% entity_type_bindings); the v1 rig name is the only identifier v1 records
+% for the rig, and what NDI joins a rig by (+ndi/+daq/system.m getprobes,
+% `strcmpi(devicename, obj.name)`), so it is the local_identifier too. A
+% rig name is unique within a session (ndi.session/daqsystem_add refuses a
+% second system of one name), so the handle is unique among the session's
+% rigs; a probe's handle ('<name> | <reference>', [element local identifier
+% is name and reference]) is told apart by its reference. Two sessions that
+% each have a rig of one name hold two devices with one local_identifier, as
+% two sessions' probes of one name do. Its id is derived from this v1
+% daqsystem (did2.convert.mintId role 'rig device', [migration reliability
+% practices] (b)). A rig with no name mints no device and the configuration
+% keeps no `device_id` edge (a name no NDI writer leaves empty:
+% +ndi/+daq/system.m newdocument writes base.name).
+device = {};
+if ~isempty(srcName)
+    device = {jEntity(preBody, 'device', ...
+        struct('name', srcName, 'local_identifier', srcName), ...
+        'Id', did2.convert.mintId('rig device'))};
+    edges.device_id = device{1}.base.id;
+end
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
 out = did2.build.document('acquisition_system', f, o{:});
-bodies = [{out}, software];
+bodies = [{out}, software, device];
 end
 
 function ids = dependencyFamily(bodyStruct, baseName)

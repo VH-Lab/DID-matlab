@@ -480,6 +480,12 @@ POST_PASSES = [
         # sources (resolveEpochProbemap keeps those acquisition_epochs).
         ("epoch_extent_refused_no_system",
          "  not tied to exactly one acquisition system (sources)"),
+        # [a rig's clock belongs to its device] (Jess Haley 2026-11-19): a tied
+        # extent's referent is the rig's device entity (clocks, not references)
+        ("epoch_extent_referent_device",
+         "  tied clocks whose referent is the rig's DEVICE entity"),
+        ("epoch_extent_referent_acquisition_system",
+         "  tied clocks whose referent is the acquisition_system (no device)"),
         # [untied epochs keep the session anchor] (Jess Haley, 2026-10-26): an
         # epoch whose extents all come from ONE untied source and agree keeps
         # a session-anchored reference; several sources or disagreeing ones
@@ -644,6 +650,12 @@ POST_PASSES = [
         # directed_relation per (probe, rig, epoch, channels); replaces #73 item
         # 56's shared acquisition_channels document.
         ("wiring_relations_minted", "probe wiring relations minted (connected to, RO:0002170)"),
+        # [acquisition system is a device entity] (Jess Haley 2026-11-19,
+        # did-schema did_v2_standing_wiring_plan.md): the wiring's parent is
+        # the rig's device entity; the two rows below sum to the one above.
+        ("wiring_parent_device", "  of which wired to the rig's DEVICE entity"),
+        ("wiring_parent_acquisition_system", "  of which wired to the acquisition_system (the rig has no device)"),
+        ("rig_devices_indexed", "rig device entities indexed (acquisition_system.device_id)"),
         ("rows_unwirable", "  rows with channels but no probe or no rig to wire (v1 document kept)"),
         ("wiring_types_interleaved", "  rows whose channel types interleave (v1 document kept)"),
         # [probe in several rows is one wiring] (Jess Haley 2026-11-03): a
@@ -1044,6 +1056,10 @@ POST_PASSES = [
         ("syncrule_refused_migrator_declined", "device-pair refused: migrator declined after the stamp"),
         ("syncrule_refused_total", "  device-pair refused TOTAL"),
         ("syncrule_configurations_folded", "clock_alignment_configuration FOLDED (device pair)"),
+        # [a rig's clock belongs to its device] (Jess Haley 2026-11-19): each
+        # resolved end names the rig's device entity, else the system
+        ("syncrule_ends_named_device", "  resolved ends naming the rig's DEVICE entity"),
+        ("syncrule_ends_named_acquisition_system", "  resolved ends naming the acquisition_system (no device)"),
         ("syncrule_software_emitted", "  software entities appended"),
         ("syncrule_fold_quarantined", "QUARANTINED device-pair folds (rule kept)"),
     ]),

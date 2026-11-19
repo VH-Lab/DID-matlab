@@ -81,7 +81,6 @@ if isscalar(bodies) && strcmp(classNameOf(bodies{1}), CLASS)
 end
 % the systems the from / to edges name are claimed first; daqParts places
 % the configuration and its software, and finds no role for anything else
-ids = cellfun(@(b) char(getIn(b, 'base', 'id')), bodies, 'UniformOutput', false);
 cfg = [];
 for k = 1:numel(bodies)
     if strcmp(classNameOf(bodies{k}), 'clock_alignment_configuration')
@@ -115,15 +114,15 @@ if ~isempty(cfg)
         if isempty(sysIds)
             continue;
         end
-        s = find(strcmp(ids, sysIds{1}), 1);
-        if ~isempty(s) && strcmp(classNameOf(bodies{s}), 'acquisition_system')
-            claimed(s) = true;
-            systemNames{end+1} = fieldText(getIn(bodies{s}, 'acquisition_system'), 'name'); %#ok<AGROW>
-            continue;
-        end
-        % another source's system, read from the whole batch (CTX)
-        sys = ctxDoc(ctx, sysIds{1});
-        if isempty(s) && ~isempty(sys) && strcmp(classNameOf(sys), 'acquisition_system')
+        % the edge names the rig's device entity (Jess Haley 2026-11-19 [a
+        % rig's clock belongs to its device], did-schema
+        % docs/plans/did_v2_standing_wiring_plan.md) or, in a batch migrated
+        % before, the acquisition_system; the rig's name is the system's
+        % (rigSystem), from these documents or the whole batch (CTX)
+        [sys, ~, s, sDev] = rigSystem(sysIds{1}, bodies, ctx);
+        if ~isempty(sys)
+            if s > 0; claimed(s) = true; end
+            if sDev > 0; claimed(sDev) = true; end
             systemNames{end+1} = fieldText(getIn(sys, 'acquisition_system'), 'name'); %#ok<AGROW>
             continue;
         end

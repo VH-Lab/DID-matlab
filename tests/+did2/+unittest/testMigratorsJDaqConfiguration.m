@@ -484,7 +484,9 @@ function testDaqsystemClassNameNowFoldsToASoftwareEntity(testCase)
 % class(obj) into ndi_daqsystem_class on every daqsystem NDI creates, so this
 % test -- not the empty-class-name one below -- is the corpus path.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
-verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
+% + the rig's device entity, Jess Haley 2026-11-19 [acquisition system is a
+% device entity] (testDaqsystemMintsTheRigsDevice)
+verifyEqual(testCase, classNames(out), {'acquisition_system', 'software', 'device'});
 verifyEqual(testCase, out.summary.unconverted_count, 0);
 
 sys = firstOfClass(out, 'acquisition_system');
@@ -502,6 +504,52 @@ verifyEqual(testCase, depValue(sys, 'software_id'), sw.get('base.id'));
 % for the reason spelled out in testDaqreaderDissolvesIntoSoftware.
 % #88: a version is a text_assertion about the software; none is minted here
 verifyFalse(testCase, any(strcmp(classNames(out), 'assertion+text')));
+end
+
+function testDaqsystemMintsTheRigsDevice(testCase)
+% Decided by Jess Haley, 2026-11-19 (did-schema
+% docs/plans/did_v2_standing_wiring_plan.md): [acquisition system is a device
+% entity] -- the rig is an `entity` of type device and the acquisition_system
+% is the configuration that points at it by `device_id`; [migration mints the
+% device by name] -- named by the v1 rig name (`daqsystem` base.name) only;
+% [one device per session]. The device type requires `local_identifier`; the
+% rig name is the only identifier v1 has, so it is that too.
+out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
+sys = firstOfClass(out, 'acquisition_system');
+dev = firstOfClass(out, 'device');
+verifyNotEmpty(testCase, dev, 'the daqsystem mints no device entity');
+verifyEqual(testCase, dev.get('entity.name'), 'intan1');
+verifyEqual(testCase, dev.get('entity.local_identifier'), 'intan1');
+verifyEqual(testCase, depValue(sys, 'device_id'), dev.get('base.id'));
+verifyEqual(testCase, did2.schema.cache.sessionIdOf(dev.toStruct()), 'session_id_1');
+% a fresh id: neither the rig's own (kept by the acquisition_system) nor its software's
+sw = firstOfClass(out, 'software');
+verifyNotEqual(testCase, dev.get('base.id'), 'system_id_1');
+verifyNotEqual(testCase, dev.get('base.id'), sw.get('base.id'));
+% derived, not random ([migration reliability practices] (b)): two runs agree
+again = firstOfClass(runJ(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'})), 'device');
+verifyEqual(testCase, again.get('base.id'), dev.get('base.id'));
+end
+
+function testTwoSessionsRigsOfOneNameAreTwoDevices(testCase)
+% [one device per session] (Jess Haley, 2026-11-19): v1 records no serial
+% number, so two sessions' rigs of one name are not known to be one board
+% (T18); each session's daqsystem mints its own device.
+a = daqsystemV1('ndi.daq.system.mfdaq', {});
+b = a;
+b.base.id = 'system_id_2';
+b.base.session_id = 'session_id_2';
+out = runJ({a, b});
+devs = {};
+for k = 1:numel(out.migrated)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), 'device')
+        devs{end+1} = out.migrated{k}; %#ok<AGROW>
+    end
+end
+verifyNumElements(testCase, devs, 2);
+verifyNotEqual(testCase, devs{1}.get('base.id'), devs{2}.get('base.id'));
+verifyEqual(testCase, sort(cellfun(@(d) char(did2.schema.cache.sessionIdOf(d.toStruct())), ...
+    devs, 'UniformOutput', false)), {'session_id_1', 'session_id_2'});
 end
 
 function testDaqsystemSoftwareIdIsDistinctFromReaderId(testCase)
@@ -554,7 +602,7 @@ function testDaqsystemFoldsTheThreeEdges(testCase)
 % software beside it, which is what makes software_id's optionality real rather
 % than theoretical.
 out = runJ(daqsystemV1('', {'md_id_1', 'md_id_2'}));
-verifyEqual(testCase, classNames(out), {'acquisition_system'});
+verifyEqual(testCase, classNames(out), {'acquisition_system', 'device'});
 sys = out.migrated{1};
 verifyFalse(testCase, hasDependency(sys, 'software_id'));
 verifyEqual(testCase, depValue(sys, 'reader_id'), 'reader_id_1');
@@ -641,7 +689,7 @@ function testDaqsystemFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqsystemV1('', {'md_id_1', 'md_id_2'}));
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
-verifyEqual(testCase, classNames(out), {'acquisition_system'});
+verifyEqual(testCase, classNames(out), {'acquisition_system', 'device'});
 end
 
 function testDaqsystemClassNameFoldValidatesUnderVEta(testCase)
@@ -659,7 +707,7 @@ function testDaqsystemClassNameFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
-verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
+verifyEqual(testCase, classNames(out), {'acquisition_system', 'software', 'device'});
 end
 
 function testTheResidualDaqsystemIsCarriedWholeAsV1(testCase)
