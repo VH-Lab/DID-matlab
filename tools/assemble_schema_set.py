@@ -6,20 +6,26 @@
 The CI workflows load the schema set from one flat folder (did2.schema.cache
 reads DID_SCHEMA_PATH). did-schema is changing its layout (Decided by Jess
 Haley, 2026-10-30 [schema folders by family], did-schema
-`V_eta_go_forward_class_audit.md`): `schemas/did_v2/` holds class files only,
+`did_v2_go_forward_class_audit.md`): `schemas/did_v2/` holds class files only,
 in family subfolders (`value/`, `calculation/`, `data_body/`,
-`time_reference/`, `retiring/`, core classes at the top); the non-class JSON
-moves to `schemas/registry/` (authored) and `schemas/generated/` (written by
-tools). Siblings first: this reads BOTH layouts.
+`time_reference/`, `relation/`, `acquisition/`, `retiring/`, core classes at
+the top); the non-class JSON is in `schemas/registry/` (authored) and
+`schemas/generated/` (written by tools). This is did-schema main's layout
+since did-schema 13b3409, and the only one read.
 
   CLASS FILES   every *.json under the set folder (`schemas/did_v2`, else
                 `schemas/V_eta`), at any depth, except folders named
                 `registry` or `generated`, hidden folders, and non-class names
-                (is_class_name). The old tiers (stable/, draft/, deprecated/)
-                are just subfolders here.
+                (is_class_name).
   REGISTRY      every `*_meta.json` and `ndi_reserved_keys.json` anywhere under
-                `schemas/` (today: did_v2/stable/; next: registry/ and
-                generated/), and every *.json under `schemas/registry/`.
+                `schemas/` (registry/ and generated/), and every *.json under
+                `schemas/registry/`.
+
+NO TIERS. There is no `stable/`, `draft/` or `deprecated/` tier any more
+([one folder, final classes only], Jess Haley, 2026-10-29), and the workflows
+stop copying `deprecated/*.json` ([retired classes leave V2] step 2, Jess
+Haley, 2026-10-25). A tier folder directly under the set folder is an error,
+not a subfolder to copy: a checkout that has one is not did-schema main.
 
 Everything is copied FLAT into <dest>. Two files with one basename are an
 error: class names are unique across the tree, and a registry is read by its
@@ -33,6 +39,7 @@ import shutil
 import sys
 
 EXCLUDED_DIRS = ("registry", "generated")
+TIER_DIRS = ("stable", "draft", "deprecated")
 NON_CLASS_NAMES = ("index", "topics", "ndi_reserved_keys")
 NON_CLASS_PREFIXES = ("did_v2_", "V_eta_")
 
@@ -81,8 +88,24 @@ def registry_files(schemas):
     return sorted(out)
 
 
+def tier_dirs(schemas):
+    """The tier folders (stable/, draft/, deprecated/) directly under the set."""
+    sd = set_dir(schemas)
+    if sd is None:
+        return []
+    return [t for t in TIER_DIRS if os.path.isdir(os.path.join(sd, t))]
+
+
 def plan(schemas):
-    """(set_dir, {basename: source}) or raise ValueError on a duplicate."""
+    """(set_dir, {basename: source}) or raise ValueError on a duplicate or a
+    tier folder."""
+    tiers = tier_dirs(schemas)
+    if tiers:
+        raise ValueError("tier folder(s) %s under %s: did-schema has no stable/ "
+                         "draft/ deprecated/ tiers ([one folder, final classes "
+                         "only]; [retired classes leave V2] step 2), so this is "
+                         "not did-schema main's layout" % (", ".join(
+                             t + "/" for t in tiers), set_dir(schemas)))
     sd, classes = class_files(schemas)
     regs = registry_files(schemas)
     chosen = {}

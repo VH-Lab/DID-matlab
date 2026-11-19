@@ -15,8 +15,10 @@ function checkRetired(cache, className)
 %
 %   Not checked:
 %     - a schema with no class_disposition_meta.json (nothing is retired);
-%     - while strictMode('RetiredClasses') is off, as did2.convert sets it for
-%       the generic migration and its batch passes.
+%     - while strictMode('RetiredClasses') is off (DID_ENFORCE_RETIRED_CLASSES=0).
+%       did2.convert no longer turns it off: the generic migration's exception
+%       is removed by [retired classes leave V2] step (4) (Jess Haley,
+%       2026-10-25).
 
 arguments
     cache (1,1) did2.schema.cache

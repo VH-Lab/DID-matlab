@@ -1634,7 +1634,9 @@ classdef cache < handle
             %                           as retired, raising
             %                           did2:build:retiredClass. ARMED;
             %                           DID_ENFORCE_RETIRED_CLASSES=0
-            %                           disarms. did2.convert turns it off.
+            %                           disarms. did2.convert leaves it
+            %                           as set ([retired classes leave V2]
+            %                           step 4).
             %
             %   BOTH ARE NOW ARMED (2026-08-10, team's call) -- and they were
             %   armed on OPPOSITE evidence, which must not be flattened out.
@@ -1830,8 +1832,9 @@ classdef cache < handle
                     ... where one is recorded; reading v1 and the generic
                     ... migration are not affected." ARMED BY DEFAULT, like
                     ... TermRegistry. Only did2.build reads it; did2.convert
-                    ... turns it off while it migrates (the generic migration
-                    ... is not affected). A schema with no
+                    ... leaves it as set (the generic migration's exception
+                    ... was removed by [retired classes leave V2] step 4,
+                    ... Jess Haley, 2026-10-25). A schema with no
                     ... class_disposition_meta.json refuses nothing.
                     ... DID_ENFORCE_RETIRED_CLASSES=0 turns it off.
                     'RetiredClasses', ...
