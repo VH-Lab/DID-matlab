@@ -58,9 +58,8 @@ def test_the_orders_the_source_comments_state_are_derived():
     stated = [
         # resolveOpenmindsCitations.m: "THIS RUNS BEFORE resolveDatasetEntities"
         (c + "resolveOpenmindsCitations", c + "resolveDatasetEntities"),
-        # resolveEpochProbemap.m: "AFTER epochMint ... AND AFTER resolveSessionAnchors"
+        # resolveEpochProbemap.m: "AFTER epochMint"
         (c + "epochMint", c + "resolveEpochProbemap"),
-        (c + "resolveSessionAnchors", c + "resolveEpochProbemap"),
         # resolveValidIntervals.m: "It reads the `epoch` documents epochMint
         # appends, so it MUST run after epochMint"
         (c + "epochMint", c + "resolveValidIntervals"),

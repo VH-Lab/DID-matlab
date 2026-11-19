@@ -241,7 +241,6 @@ bodies = {sessionV1('wb_sess_doc', sid), subjectV1('wb_spec', sid, 'L'), ...
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.manifests_renamed, 1, 'the manifest is renamed');
@@ -306,7 +305,6 @@ end
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 assertEqual(testCase, rep.mode_statements_dropped_unrecorded, 1, 'premise');
@@ -368,7 +366,6 @@ end
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 result = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 % premise: the idle stimulator is still a device entity under its v1 id
@@ -451,7 +448,6 @@ bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), .
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 assert(rep.manifests_renamed == 1 && rep.wiring_several_rows_merged == 1, ...
@@ -846,7 +842,6 @@ end
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 end
@@ -872,7 +867,6 @@ bodies{3}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, .
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
@@ -917,7 +911,6 @@ bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false)
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', {'wb_unit_u', 'single'});
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...

@@ -13,8 +13,8 @@ function tests = testIngestedArchiveFiles
 %   [non-specimen channel groups get their own owner] and [channel name is
 %   an identifier]; by Jess Haley, 2026-11-18, [event row defaults are
 %   notation]; and by Jess Haley, 2026-11-19 (did_v2_standing_wiring_plan.md),
-%   [time channel row is notation] and [text channel entries are a JSON
-%   array].
+%   [time channel row is notation], [text channel entries are a JSON
+%   array] and [time group with several time channels split].
 %
 %   THE SECOND-PASS SHAPE here (secondPassEpoch) is built by hand from those
 %   decisions and from what NDI-matlab's second pass writes today
@@ -339,6 +339,103 @@ verifyEqual(testCase, R.channel_list(end).dataclass, 'eventmarktext');
 verifyEqual(testCase, e.T(1:2), ex.T);
 end
 
+function testASplitTimeGroupIsRebuiltAsOneFile(testCase)
+% [time group with several time channels split] (Jess Haley, 2026-11-19,
+% did_v2_standing_wiring_plan.md): "when an ingested archive's one uneven
+% time group file holds several time channels, each time channel becomes
+% its own keyed `time` value, and each channel group keys to the time value
+% of the time channel its rows' v1 `time_channel` names". The v1 file
+% ti_group1_seg.nbf_<m> held t1 and t2 side by side; the round trip
+% rebuilds its names once and its segments from the two values' bodies,
+% the columns in time-channel order whatever order the bodies come in,
+% the epoch's start (5 s) added back
+[docs, bodies, ex] = splitTimeEpoch(testCase);
+R = did2.convert.roundtrip.ingestedArchiveFiles(bodies, docs, 'ReadBody', ...
+    @(b) did2.convert.roundtrip.ingestedArchiveFiles('readFloat64', b));
+assertNumElements(testCase, R.split_time, 1);
+st = R.split_time;
+verifyEqual(testCase, st.state, 'rebuilt', st.why);
+verifyEqual(testCase, st.name, 'ti_group1_seg.nbf_#');
+verifyEqual(testCase, st.group, 1);
+verifyEqual(testCase, st.channels, [1 2]);
+verifyEqual(testCase, st.body_ids, {'b_t1', 'b_t2'});
+verifyEqual(testCase, st.value_ids, {'tv1', 'tv2'});
+verifyEqual(testCase, st.t0, 5);
+verifyEqual(testCase, st.segments, {'ti_group1_seg.nbf_1', 'ti_group1_seg.nbf_2'});
+verifyEqual(testCase, R.time_segments, st.segments, 'the names once, not once per body');
+verifyEqual(testCase, st.data, ex.segments);
+% no split body has member names of its own
+own = R.members(ismember({R.members.body_id}, {'b_t1', 'b_t2'}));
+verifyEqual(testCase, numel(own), 2);
+verifyTrue(testCase, all(cellfun(@isempty, {own.names})));
+verifyTrue(testCase, all(cellfun(@isempty, {own.why})));
+% the time rows: t1 and t2, both group 1, no rate (the groups are keyed)
+tr = R.channel_list(strcmp({R.channel_list.type}, 'time'));
+verifyEqual(testCase, {tr.name}, {'t1', 't2'});
+verifyEqual(testCase, [tr.group], [1 1]);
+verifyTrue(testCase, all(isnan([tr.sample_rate])));
+% compared with the v1 file's content and the v1 names
+orig = struct('member_names', {ex.names}, 'time_segments', ...
+    struct('name', ex.segmentNames, 'data', ex.segments));
+C = did2.convert.roundtrip.compareIngestedArchiveFiles(R, orig);
+verifyEqual(testCase, C.files_compared, 3, 'the denominator');
+verifyTrue(testCase, C.exact, describeComparison(C));
+verifyEqual(testCase, {C.files.compared}, {'names', 'content', 'content'});
+% each difference is found (a check that cannot fail proves nothing)
+bad = orig; bad.time_segments(2).data(3, 2) = bad.time_segments(2).data(3, 2) + 1e-9;
+C = did2.convert.roundtrip.compareIngestedArchiveFiles(R, bad);
+verifyFalse(testCase, C.files(3).exact);
+verifySubstring(testCase, strjoin(C.files(3).differences, ' '), 'time channel t2');
+C = did2.convert.roundtrip.compareIngestedArchiveFiles(R, bad, 'TimeTolerance', 1e-6);
+verifyTrue(testCase, C.files(3).exact, 'within the tolerance the caller gives');
+bad = orig; bad.time_segments(1).data = bad.time_segments(1).data(:, 1);
+C = did2.convert.roundtrip.compareIngestedArchiveFiles(R, bad);
+verifyFalse(testCase, C.files(2).exact, 'one column is not the file');
+bad = orig; bad.member_names(strcmp(bad.member_names, 'ti_group1_seg.nbf_2')) = [];
+C = did2.convert.roundtrip.compareIngestedArchiveFiles(R, bad);
+verifyFalse(testCase, C.files(1).exact);
+end
+
+function testWithoutAReaderASplitTimeGroupIsNotRead(testCase)
+% no reader: the columns and names come from the documents; the content is
+% 'not read', and the comparison says 'not measured', never exact
+[docs, bodies, ex] = splitTimeEpoch(testCase);
+R = did2.convert.roundtrip.ingestedArchiveFiles(bodies, docs);
+verifyEqual(testCase, R.split_time.state, 'not read');
+verifyEqual(testCase, R.split_time.channels, [1 2]);
+verifyEqual(testCase, R.time_segments, ex.segmentNames);
+C = did2.convert.roundtrip.compareIngestedArchiveFiles(R, struct('time_segments', ...
+    struct('name', ex.segmentNames, 'data', ex.segments)));
+verifyEqual(testCase, {C.files.compared}, {'not measured', 'not measured'});
+verifyFalse(testCase, C.exact, 'not measured is not exact');
+end
+
+function testASplitTimeGroupWhoseColumnsDifferIsNotRebuilt(testCase)
+% the columns of one v1 file have the same segments; bodies that do not are
+% not rebuilt, and say why
+[docs, bodies] = splitTimeEpoch(testCase);
+i = find(cellfun(@(d) strcmp(d.base.id, 'b_t2'), docs));
+docs{i}.files.file_info = docs{i}.files.file_info(1);
+R = did2.convert.roundtrip.ingestedArchiveFiles(bodies, docs, 'ReadBody', ...
+    @(b) did2.convert.roundtrip.ingestedArchiveFiles('readFloat64', b));
+verifyEqual(testCase, R.split_time.state, 'not rebuilt');
+verifySubstring(testCase, R.split_time.why, 'side by side');
+end
+
+function testAKeyedTimeBodyOfOneChannelIsNotASplitGroup(testCase)
+% the control: a time group of one time channel ([uneven time is a keyed
+% time value]) names no time channel; its body keeps its own member names,
+% as before
+[docs, bodies] = splitTimeEpoch(testCase);
+i = find(cellfun(@(d) strcmp(d.base.id, 'b_t1'), docs));
+docs{i}.data_body = rmfield(docs{i}.data_body, 'conditions');
+j = find(cellfun(@(d) strcmp(d.base.id, 'b_ax'), docs));
+R = did2.convert.roundtrip.ingestedArchiveFiles(bodies(2), docs([1:j-1, j+1:end]));   % the analog group alone
+verifyEmpty(testCase, R.split_time);
+verifyEqual(testCase, R.members(strcmp({R.members.body_id}, 'b_t1')).names, ...
+    {'ti_group1_seg.nbf_1', 'ti_group1_seg.nbf_2'});
+end
+
 % =========================================================================
 % fixtures
 % =========================================================================
@@ -412,6 +509,63 @@ ex.D = {ones(2, 1), codes};
 ex.names = {'channel_list.bin', 'ai_group1_seg.nbf_1', 'ai_group1_seg.nbf_2', ...
     'ti_group1_seg.nbf_1', 'ti_group1_seg.nbf_2', 'di_group1_seg.nbf_1', ...
     'evmktx_group1_seg.nbf_1'};
+end
+
+function [docs, bodies, ex] = splitTimeEpoch(testCase)
+% one ingested epoch whose v1 time group ti_group1 held t1 and t2, after
+% NDI's second pass split it ([time group with several time channels
+% split]): an analog group keyed to t1's time value, an auxiliary group
+% keyed to t2's; each time value's sampled_body names its time channel
+% (condition "time channel", EMPTY:0000374, count) and holds its column,
+% 1500 samples in members of 1000 (seconds from the epoch's start, float64
+% here: the round trip is given its reader); the epoch starts at 5 s
+d = tempname();
+mkdir(d);
+testCase.addTeardown(@() rmdir(d, 's'));
+sid = 'sess1';
+T = @(node, name) struct('node', node, 'name', name);
+loc = @(u) struct('uid', u, 'location', fullfile(d, u), 'location_type', 'file');
+ep = doc('entity', 'ep1', sid, struct('entity', struct('type', T('', 'epoch'), ...
+    'local_identifier', 't0001')), {});
+ref = doc('relative_time_reference', 'ref1', sid, struct('relative_time_reference', ...
+    struct('value', struct('clock', 'dev_local_time', 'start', struct('seconds', 5), ...
+    'duration', struct('seconds', 100)))), {'referent_id', 'ep1'});
+rec = doc('observation', 'obs_rec', sid, struct(), ...
+    {'time_reference_id', 'ref1', 'acquisition_system_id', 'acq1'});
+keyedTime = struct('variable', T('om:Time', 'time'), 'along', 0, 'key', 0);
+ai = groupBody('b_ai', 'obs_rec', T('EMPTY:0000370', 'analog input channel'), [1 2], {}, ...
+    'N', 1500, 'Chunk', 1000);
+ai.data.covariates{1} = keyedTime;
+ai.depends_on(end+1) = struct('name', 'key_id', 'value', 'tv1');
+ax = groupBody('b_ax', 'obs_rec', T('EMPTY:0000375', 'auxiliary input channel'), [1 2], {}, ...
+    'Filename', 'ax_group1_seg.nbf_#', 'N', 1500, 'Chunk', 1000);
+ax.data.covariates{1} = keyedTime;
+ax.data.covariates{5}.numeric = [2 2];
+ax.depends_on(end+1) = struct('name', 'key_id', 'value', 'tv2');
+t = (0:1499)' / 30000;
+cols = [t + 1e-6 * sin(1:1500)', t + 2e-6 * cos(1:1500)'];
+tv = {doc('time', 'tv1', sid, struct(), {}), doc('time', 'tv2', sid, struct(), {})};
+tb = cell(1, 2);
+for c = 1:2
+    tb{c} = doc('sampled_body', sprintf('b_t%d', c), sid, struct( ...
+        'data', struct('dimensions', {{struct('term', T('om:Time', 'time'), 'n', 1500, ...
+            'chunk', 1000)}}), ...
+        'data_body', struct('filename', 'ti_group1_seg.nbf_#', 'conditions', ...
+            struct('variable', T('EMPTY:0000374', 'time channel'), 'count', c))), ...
+        {'owner_id', sprintf('tv%d', c)});
+    u = {sprintf('t%d_1', c), sprintf('t%d_2', c)};
+    tb{c}.files.file_info = struct('name', {'body_data_0', 'body_data_1'}, ...
+        'locations', {loc(u{1}), loc(u{2})});
+    writeFloat(fullfile(d, u{1}), cols(1:1000, c));
+    writeFloat(fullfile(d, u{2}), cols(1001:1500, c));
+end
+% the bodies in the batch out of time-channel order (t2 first)
+docs = {ep, ref, rec, ax, ai, tv{2}, tb{2}, tv{1}, tb{1}};
+bodies = {ax, ai};
+ex.segmentNames = {'ti_group1_seg.nbf_1', 'ti_group1_seg.nbf_2'};
+ex.segments = {cols(1:1000, :) + 5, cols(1001:1500, :) + 5};
+ex.names = {'ax_group1_seg.nbf_1', 'ai_group1_seg.nbf_1', 'channel_list.bin', ...
+    'ti_group1_seg.nbf_1', 'ti_group1_seg.nbf_2'};
 end
 
 function b = groupBody(id, owner, typeTerm, nums, names, varargin)

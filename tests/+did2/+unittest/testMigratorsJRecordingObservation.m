@@ -216,8 +216,8 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(char(d.get('document_class.class_name')), 'directed_relation') ...
             && strcmp(depValue(d, 'child_id'), depValue(obs, 'instrument_id')) ...
-            && strcmp(depValue(d, 'parent_id'), 'acqsys_09')
-        w = d;
+            && strcmp(depValue(d, 'parent_id'), depValue(docById(out, 'acqsys_09'), 'device_id'))
+        w = d;   % the rig's device ([acquisition system is a device entity], Jess Haley 2026-11-19)
     end
 end
 verifyNotEmpty(testCase, w, 'the probe is wired to no system');
@@ -756,7 +756,6 @@ daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
     'id', {'nav_acqsys_09', 'rdr_acqsys_09'});
 out = did2.convert.v1_to_v2({sess, subj, el, daq, ing}, 'Validate', false, 'TargetVersion', 'did_v2');
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
-out = did2.convert.resolveSessionAnchors(out, 'Validate', validate, 'TargetVersion', 'did_v2');
 out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'did_v2');
 end
 

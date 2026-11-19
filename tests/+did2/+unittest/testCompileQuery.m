@@ -290,6 +290,41 @@ verifySubstring(testCase, sql, 'sc.classname = ?');
 verifyEqual(testCase, params, {'demoA'});
 end
 
+function testIsaLeadsOnlyWhenItsClassIsSmall(testCase)
+% with the class and session counts (did2.database.sqlitedb gives them) an
+% isa with nothing else to start from leads when its class holds at most 1/8
+% of the session: the uncorrelated IN, and the session test written with a
+% unary +; otherwise, without the counts, negated, or beside a term that
+% leads, the SQL is what it was
+counts = containers.Map({'small', 'big'}, {10, 500});
+opts = {'ClassCount', @(c) counts(c), 'SessionCount', @(s) 1000};
+sess = did2.query('base.session_id', 'exact_string', 'sid1');
+small = did2.query('', 'isa', 'small');
+big = did2.query('', 'isa', 'big');
+[sql, params] = did2.database.compileQuery(small & sess, opts{:});
+verifySubstring(testCase, sql, 'documents.id IN (SELECT sc.doc_id FROM superclasses sc WHERE sc.classname = ?)');
+verifySubstring(testCase, sql, '(+documents.session_id = ?)');
+verifyEqual(testCase, params, {'small', 'sid1'});
+sql = did2.database.compileQuery((small | small) & sess, opts{:});
+verifyEqual(testCase, numel(strfind(sql, 'IN (SELECT sc.doc_id')), 2);
+verifySubstring(testCase, sql, '(+documents.session_id = ?)');
+% only the cheaper of two leads
+sql = did2.database.compileQuery(big & small & sess, opts{:});
+verifyEqual(testCase, numel(strfind(sql, 'IN (SELECT sc.doc_id')), 1);
+verifySubstring(testCase, sql, 'EXISTS (SELECT 1 FROM superclasses sc');
+for q = {big & sess, (small | big) & sess, did2.query('', '~isa', 'small') & sess, ...
+        small & did2.query('', 'depends_on', 'parent', 'id-1') & sess}
+    sql = did2.database.compileQuery(q{1}, opts{:});
+    verifyFalse(testCase, contains(sql, 'IN (SELECT sc.doc_id'), sql);
+end
+sql = did2.database.compileQuery(big & sess, opts{:});
+verifyFalse(testCase, contains(sql, '+documents.session_id'), sql);
+% without the counts: unchanged
+sql = did2.database.compileQuery(small & sess);
+verifyFalse(testCase, contains(sql, 'IN (SELECT sc.doc_id'), sql);
+verifyFalse(testCase, contains(sql, '+documents.session_id'), sql);
+end
+
 function testIsaNegated(testCase)
 q = did2.query('', '~isa', 'demoA');
 [sql, ~] = did2.database.compileQuery(q);
@@ -449,6 +484,28 @@ q = did2.query('demoA.value', 'exact_string', 'a1');
 [sql, ~] = did2.database.compileQuery(q, ...
     'QueryablePaths', {'base.name'});
 verifySubstring(testCase, sql, 'json_extract(body, ''$.demoA.value'')');
+end
+
+function testAnEmptyTextTargetOnAQueryablePathReadsTheBody(testCase)
+% An empty value is not found in queryable_scalar_elem (DID-matlab #413), so
+% a text operator an empty value satisfies reads the body; a non-empty
+% target, and a wildcard (which matches no empty value), still use the index.
+paths = struct('path', {'demoA.value'}, 'affinity', {'TEXT'});
+targets = {{'exact_string', ''}, {'~exact_string', ''}, {'exact_string_anycase', ''}, ...
+    {'~exact_string_anycase', ''}};
+for k = 1:numel(targets)
+    q = did2.query('demoA.value', targets{k}{1}, targets{k}{2});
+    sql = did2.database.compileQuery(q, 'QueryablePaths', paths);
+    verifySubstring(testCase, sql, 'json_extract(body, ''$.demoA.value'')');
+    testCase.verifyFalse(contains(sql, 'queryable_scalar_elem'), ...
+        sprintf('%s ''%s'' read the scalar sidecar', targets{k}{1}, targets{k}{2}));
+end
+sql = did2.database.compileQuery(did2.query('demoA.value', 'exact_string', 'a'), ...
+    'QueryablePaths', paths);
+verifySubstring(testCase, sql, 'queryable_scalar_elem');
+sql = did2.database.compileQuery(did2.query('demoA.value', 'wildcard', '*'), ...
+    'QueryablePaths', paths);
+verifySubstring(testCase, sql, 'queryable_scalar_elem');
 end
 
 function testNegationOfAQueryableScalarIsNotIn(testCase)

@@ -100,13 +100,18 @@ else
     epochString = fieldText(epoch.entity, 'local_identifier');
 end
 
-% the acquisition systems that read the manifest's files
+% the acquisition systems that read the manifest's files, and what their
+% wiring names as its parent: the system, or its device entity (`device_id`;
+% Jess Haley 2026-11-19 [acquisition system is a device entity], did-schema
+% docs/plans/did_v2_standing_wiring_plan.md). Both shapes are read.
 systems = {};
+wiredTo = {};
 for k = ctxReferrers(ctx, nav)
     b = ctx.docs{k};
     if strcmp(classNameOf(b), 'acquisition_system') ...
             && any(strcmp(edgeIds(b, 'epoch_file_pattern_id'), nav))
         systems{end+1} = char(b.base.id); %#ok<AGROW>
+        wiredTo = [wiredTo, {char(b.base.id)}, edgeIds(b, 'device_id')]; %#ok<AGROW>
     end
 end
 
@@ -122,7 +127,7 @@ for a = ctxReferrers(ctx, epochId)
     end
     for s = ctxReferrers(ctx, char(anchor.base.id))
         st = ctx.docs{s};
-        if isWiring(st, char(anchor.base.id), systems)
+        if isWiring(st, char(anchor.base.id), wiredTo)
             wirings(end+1) = s; %#ok<AGROW>
             continue;
         end
@@ -188,7 +193,8 @@ end
 
 function tf = isWiring(b, anchorId, systems)
 % a `connected to` (RO:0002170) directed_relation timed by ANCHORID whose
-% parent is one of SYSTEMS (the rigs that read the manifest's files)
+% parent is one of SYSTEMS (the rigs that read the manifest's files, and
+% their devices)
 tf = false;
 if ~strcmp(classNameOf(b), 'directed_relation')
     return;
@@ -207,9 +213,13 @@ tab = sprintf('\t');
 instrumentId = firstEdge(w, 'child_id');
 % rowOf reads the instrument, rig and wiring through a statement's edges: a
 % stand-in statement with the wiring's own edges
+% (the rig: the parent, or the acquisition_system whose device the parent is)
+sysId = firstEdge(w, 'parent_id');
+sys = rigSystem(sysId, {}, ctx);
+if ~isempty(sys); sysId = char(sys.base.id); end
 st = struct('base', struct('id', getIn(w, 'base', 'id')), ...
     'depends_on', struct('name', {'instrument_id', 'acquisition_system_id', ...
-    'time_reference_id'}, 'value', {instrumentId, firstEdge(w, 'parent_id'), ...
+    'time_reference_id'}, 'value', {instrumentId, sysId, ...
     firstEdge(w, 'time_reference_id')}));
 [rowText, why] = rowOf(st, ctx, prefixes);
 % rowOf found no entity_id: the subject is the element's
@@ -303,7 +313,7 @@ else
     if ~isempty(ac)
         [groups, bad] = channelText(getIn(ac, 'acquisition_channels'), prefixes);
     else
-        [groups, bad] = wiringText(st, ctx, char(sys.base.id), prefixes);
+        [groups, bad] = wiringText(st, ctx, [{char(sys.base.id)}, edgeIds(sys, 'device_id')], prefixes);
     end
     why = [why, bad];
     if ~isempty(groups)
@@ -381,7 +391,9 @@ end
 function [text, why] = wiringText(st, ctx, sysId, prefixes)
 % 'ai11-14;di1' from the conditions of the probe's wiring relation: the
 % directed_relation `connected to` (RO:0002170) whose child is the statement's
-% instrument, whose parent is SYSID and whose time is the statement's anchor.
+% instrument, whose parent is one of SYSID (the rig's acquisition_system and
+% its device entity, [acquisition system is a device entity]) and whose time
+% is the statement's anchor.
 % None: the row had no channels ('' and no complaint).
 text = '';
 why = {};
@@ -398,7 +410,7 @@ for k = ctxReferrers(ctx, anchorId)
     [node, ~] = termParts(getIn(blk, 'relation'));
     if ~strcmp(curieKeyOf(node), curieKeyOf('RO:0002170')); continue; end
     if ~any(strcmp(edgeIds(b, 'child_id'), instrumentId)) ...
-            || ~any(strcmp(edgeIds(b, 'parent_id'), sysId)) ...
+            || ~any(ismember(edgeIds(b, 'parent_id'), sysId)) ...
             || ~any(strcmp(edgeIds(b, 'time_reference_id'), anchorId))
         continue;
     end

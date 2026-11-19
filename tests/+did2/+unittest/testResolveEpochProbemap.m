@@ -26,10 +26,9 @@ function tests = testResolveEpochProbemap
 %   recording-observation and epoch-mint tests already drive. Shapes are copied
 %   from testEpochProbemapMeasurement.m so the two cannot drift.
 %
-%   THE CHAIN IS THE REAL ONE: v1_to_v2 -> epochMint -> resolveSessionAnchors ->
-%   resolveEpochProbemap, in the order the corpus harness composes it. epochMint
-%   mints the `epoch` documents this pass anchors to; resolveSessionAnchors folds
-%   the #30 observations' session anchors first, exactly as in production.
+%   THE CHAIN IS THE REAL ONE: v1_to_v2 -> epochMint -> resolveEpochProbemap,
+%   in the order the corpus harness composes it. epochMint mints the `epoch`
+%   documents this pass anchors to, exactly as in production.
 
 tests = functiontests(localfunctions);
 end
@@ -38,7 +37,7 @@ end
 
 function [out, rep] = decompose(v1)
 %DECOMPOSE Pass 1, then the batch chain up to and including this pass. Validation
-%   is ON from resolveSessionAnchors onward so the minted observations and
+%   is ON for this pass so the minted observations and
 %   anchors are checked against the real V_eta schema.
 % the sorted units below are labelled single units by their sorting run:
 % [sorted units are cells or groups] (Jess Haley, 2026-10-26); an unlabelled
@@ -48,8 +47,6 @@ labels = {'el_neuron', 'single', 'el_neuron_x', 'single', 'el_neuron_u', 'single
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', labels);
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
-out = did2.convert.resolveSessionAnchors(out, 'Validate', true, ...
-    'TargetVersion', 'did_v2');
 [out, rep] = did2.convert.resolveEpochProbemap(out, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 end
@@ -1513,7 +1510,16 @@ verifyNotEmpty(testCase, w, 'the probe has no wiring relation');
 verifyEqual(testCase, char(w.directed_relation.relation.node), 'RO:0002170');
 verifyEqual(testCase, char(w.directed_relation.relation.name), 'connected to');
 verifyEqual(testCase, depVal(w, 'child_id'), depVal(obs{1}, 'instrument_id'));
-verifyEqual(testCase, depVal(w, 'parent_id'), 'acqsys_d');
+% the parent is the rig's device entity, not the configuration (Jess Haley
+% 2026-11-19 [acquisition system is a device entity])
+verifyEqual(testCase, depVal(w, 'parent_id'), rigDeviceOf(out, 'acqsys_d'));
+dev = docById(out, rigDeviceOf(out, 'acqsys_d'));
+verifyEqual(testCase, did2.unittest.helpers.classKey(dev), 'device');
+verifyEqual(testCase, char(dev.entity.name), 'intan1');
+verifyEqual(testCase, char(dev.entity.local_identifier), 'intan1');
+verifyEqual(testCase, rep.wiring_parent_device, 1);
+verifyEqual(testCase, rep.wiring_parent_acquisition_system, 0);
+verifyEqual(testCase, rep.rig_devices_indexed, 1, 'denominator: the rigs with a device');
 verifyEqual(testCase, depVal(w, 'time_reference_id'), depVal(obs{1}, 'time_reference_id'));
 ch = w.directed_relation.conditions;
 verifyEqual(testCase, numel(ch), 2);
@@ -1551,7 +1557,7 @@ obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 1, 'the rows'' alike statements are one');
 w = wiringOf(out, obs{1});
 verifyNotEmpty(testCase, w);
-verifyEqual(testCase, depVal(w, 'parent_id'), 'acqsys_m');
+verifyEqual(testCase, depVal(w, 'parent_id'), rigDeviceOf(out, 'acqsys_m'));
 ch = w.directed_relation.conditions;
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai
@@ -1587,7 +1593,7 @@ verifyEqual(testCase, rep.manipulations_emitted, 0);
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_manipulation'));
 w = wiringsOfChild(out, 'stim_k');
 assertEqual(testCase, numel(w), 1, 'the stimulator''s one wiring relation is kept');
-verifyEqual(testCase, depVal(w{1}, 'parent_id'), 'acqsys_k');
+verifyEqual(testCase, depVal(w{1}, 'parent_id'), rigDeviceOf(out, 'acqsys_k'));
 anchor = docById(out, depVal(w{1}, 'time_reference_id'));
 verifyNotEmpty(testCase, anchor, 'the wiring''s epoch anchor is kept');
 ch = w{1}.directed_relation.conditions;
@@ -1778,7 +1784,7 @@ for i = 1:numel(obs)
     for k = 1:numel(out.migrated)
         d = out.migrated{k}.toStruct();
         if strcmp(char(d.document_class.class_name), 'directed_relation') ...
-                && strcmp(depVal(d, 'parent_id'), sys{i}) ...
+                && strcmp(depVal(d, 'parent_id'), rigDeviceOf(out, sys{i})) ...
                 && strcmp(depVal(d, 'child_id'), depVal(obs{i}, 'instrument_id'))
             rels{end+1} = d; %#ok<AGROW>
         end
@@ -2287,6 +2293,14 @@ for k = 1:numel(result.migrated)
 end
 end
 
+
+function id = rigDeviceOf(result, sysId)
+% the device entity the acquisition_system SYSID names by `device_id` (the
+% rig's device, +migrators_j/daqsystem.m); '' when none
+id = '';
+d = docById(result, sysId);
+if ~isempty(d); id = depVal(d, 'device_id'); end
+end
 
 function d = docById(result, id)
 d = [];
