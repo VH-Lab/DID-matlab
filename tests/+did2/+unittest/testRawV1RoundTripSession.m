@@ -400,10 +400,9 @@ out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion
 end
 
 function ids = entityIds(b)
-ids = {};
-if ~isfield(b, 'depends_on') || ~isstruct(b.depends_on); return; end
-d = b.depends_on;
-ids = {d(strcmp({d.name}, 'entity_id')).value};
+% the ids b's entity_id edge names (either edge spelling, as the inverse reads it)
+deps = did2.convert.v1read.readDependsOn(b, 'Name', '^entity_id$');
+ids = arrayfun(@(d) char(d.document_id), deps, 'UniformOutput', false);
 end
 
 function s = describeFailure(r, id)
