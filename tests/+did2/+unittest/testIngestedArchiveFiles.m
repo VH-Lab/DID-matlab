@@ -21,7 +21,7 @@ function tests = testIngestedArchiveFiles
 %   (ndi.migrate.internal.ingestedArchiveBodies at e040dfe4: a converted
 %   channel group is a sampled_body, dimensions time x channel, covariates
 %   time (origin 0, spacing 1/rate), channel number, offset, scale (volts,
-%   the v1 scale as source_value), its condition Channel = the channel type,
+%   the v1 scale as source_numeric), its condition Channel = the channel type,
 %   its `filename` kept). What the decisions add and NDI-matlab does not
 %   write yet: the "time channel" covariate (EMPTY:0000374), the name
 %   covariate (a text covariate along the channel dimension, variable
@@ -91,8 +91,8 @@ function testTheRowsFollowNdisRuleAfterAJsonRoundTrip(testCase)
 % 1e-9 of a whole number is that number
 [docs, bodies, ex] = secondPassEpoch(testCase);
 ai = bodies{1};
-ai.data.covariates{5}.quantity.value = [1 NaN];
-ai.data.covariates{1}.spacing.value = 1 / 30000 * (1 + 1e-12);
+ai.data.covariates{5}.numeric = [1 NaN];
+ai.data.covariates{1}.spacing = 1 / 30000 * (1 + 1e-12);
 j = jsondecode(jsonencode(ai));
 docs{5} = j;
 R = did2.convert.roundtrip.ingestedArchiveFiles({j, bodies{2}}, docs);
@@ -282,7 +282,7 @@ function testADanglingTimeChannelIsRebuiltToo(testCase)
 % gives none of them a rate
 [docs, bodies, ex] = secondPassEpoch(testCase);
 ai = bodies{1};
-ai.data.covariates{5}.quantity.value = [1 2];
+ai.data.covariates{5}.numeric = [1 2];
 docs{5} = ai;
 R = did2.convert.roundtrip.ingestedArchiveFiles({ai, bodies{2}}, docs);
 names = {R.channel_list.name};
