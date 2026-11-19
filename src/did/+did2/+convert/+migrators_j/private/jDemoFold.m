@@ -13,7 +13,14 @@ function v2Body = jDemoFold(preBody, isMock, sourceClass)
 %   SOURCECLASS is the did_v1 class name, used only in error messages so a
 %   quarantine reason names the document that produced it.
 %
-%   1 -> 1 WITH `base` UNTOUCHED, so `base.id` is preserved. Every fold in this
+%   THE v1 NAME IS THE DEMO'S OWN (Decided by Jess Haley, 2026-11-19 [demo
+%   keeps its name], did-schema did_v2_go_forward_class_audit.md, under [v1
+%   name goes to the class's own name field]): a non-empty v1 `base.name` is
+%   written to `demo.name`, and `base.name` is not written on the demo (an
+%   empty one is dropped; did2.convert.roundtrip.demoNDI rebuilds it from
+%   `demo.name`, '' when there is none).
+%
+%   1 -> 1 WITH `base.id` UNTOUCHED, so `base.id` is preserved. Every fold in this
 %   project that changed a document id created dangling references; the calculator
 %   dissolution cost 11,448 orphans on the Soph corpus.
 %
@@ -141,7 +148,15 @@ if isMock
 end
 
 % ---- the rename, and the consumed blocks ----
+nm = jBaseName(preBody);
+if ~isempty(nm)
+    demoBlock.name = nm;   % [demo keeps its name]
+end
+
 v2Body = preBody;
+if isfield(v2Body, 'base') && isstruct(v2Body.base) && isfield(v2Body.base, 'name')
+    v2Body.base = rmfield(v2Body.base, 'name');   % held by demo.name
+end
 v2Body.document_class.class_name = 'demo';
 % the superclass list of `demo`, from the schema (did2.build.superclasses), so
 % the document is complete as emitted ([early migration pieces fixed] (2),

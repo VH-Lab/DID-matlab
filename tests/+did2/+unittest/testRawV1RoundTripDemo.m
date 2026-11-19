@@ -52,6 +52,26 @@ end
 verifyEqual(testCase, n, 2, 'DENOMINATOR: the two demo fixtures');
 end
 
+function testANamedDemoKeepsItsNameAndRoundTrips(testCase)
+% [demo keeps its name] (Jess Haley, 2026-11-19, did-schema
+% did_v2_go_forward_class_audit.md): a non-empty v1 base.name is written to
+% demo.name (not base.name), the v1 name check counts it kept, and the round
+% trip rebuilds base.name from it
+for v1 = {demo(), demoMock()}
+    d = v1{1};
+    d.base.name = 'demo run 3';
+    out = runRaw(d);
+    verifyEmpty(testCase, out.quarantine, d.document_class.class_name);
+    s = out.migrated{1}.toStruct();
+    verifyEqual(testCase, s.demo.name, 'demo run 3');
+    verifyFalse(testCase, isfield(s.base, 'name'));
+    verifyEqual(testCase, out.summary.v1_name.with_v1_name, 1);
+    verifyEqual(testCase, out.summary.v1_name.not_kept, 0);
+    r = did2.convert.roundtrip.check(d, out.migrated);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, [d.document_class.class_name ' named'], {});
+end
+end
+
 function testBinaryseriesParametersIsCarriedAndRoundTrips(testCase)
 % INVERTED 2026-10-29 from the binaryseries_parameters row of
 % testFixturesRoundTrip (which asserted it was NOT carried). [binaryseries

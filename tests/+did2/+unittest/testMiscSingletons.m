@@ -270,7 +270,10 @@ end
 % builds a V_eta body DIRECTLY and hands it to the validator, so it never
 % passes through did2.convert.v1_to_v2 and never gets the outbound rename --
 % which is exactly why it failed loudly rather than silently.
-body.base = struct('id', id, 'session_id', sessionId, 'name', '', ...
+% No `name`: a v2 document built today writes no base.name (it is did_v1's,
+% kept in the v2 base only until the retire classes leave, [base.name kept
+% until retire classes leave]), so the fixture does not depend on it.
+body.base = struct('id', id, 'session_id', sessionId, ...
     'creation_timestamp', '2024-06-01T12:00:00.000Z');
 if did2.schema.cache.shared().sessionIdIsEdge()
     % the same reason, one change later: `base.session_id` is the `session_id`
