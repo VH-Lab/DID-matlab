@@ -17,8 +17,13 @@ function C = compareIngestedArchiveFiles(R, original, varargin)
 %                       ndi.compress.expand_eventmarktext when NDI-compress
 %                       is on the path ('not measured' otherwise)}
 %                       (optional)
-%   C = ...(R, ORIGINAL, 'TimeTolerance', TOL) compares event times within
-%   TOL seconds (default 0: exactly). The times are stored relative to the
+%     time_segments     struct array {name (`ti_group<g>_seg.nbf_<m>`), data
+%                       (what ndi.compress.expand_time reads from the v1
+%                       file: rows x time channels)}: the segments of a time
+%                       group NDI-matlab's second pass split one time value
+%                       per time channel (optional)
+%   C = ...(R, ORIGINAL, 'TimeTolerance', TOL) compares event times, and a
+%   split time group's times, within TOL seconds (default 0: exactly). The times are stored relative to the
 %   epoch's start and the start is added back, so the rounding of that sum is
 %   what a non-zero TOL would accept; no decision sets one.
 %
@@ -44,6 +49,14 @@ function C = compareIngestedArchiveFiles(R, original, varargin)
 %                       exactly (the encoded vector the file holds); else the
 %                       decoded channels (channeltype, channel, T, D).
 %     member names      as a set of names, each as many times.
+%     ti_group<g>_seg.nbf_<m> of a split time group ([time group with several
+%                       time channels split], Jess Haley, 2026-11-19)
+%                       CONTENT, never bytes: the file is
+%                       ndi.compress.compress_time's output (NDI-compress);
+%                       the rebuilt segment (R.split_time: the time values'
+%                       columns side by side, plus the epoch's start) against
+%                       ORIGINAL's data, same size, each value within TOL;
+%                       'not measured' when R read no body.
 %
 %   C, the denominator first (Operating Rule 5):
 %     files_compared   the number of entries in C.files
@@ -89,6 +102,12 @@ end
 if isfield(original, 'evmktx')
     for k = 1:numel(original.evmktx)
         files(end+1) = evmktxComparison(R, original.evmktx(k), opts.TimeTolerance); %#ok<AGROW>
+    end
+end
+
+if isfield(original, 'time_segments')
+    for k = 1:numel(original.time_segments)
+        files(end+1) = splitTimeComparison(R, original.time_segments(k), opts.TimeTolerance); %#ok<AGROW>
     end
 end
 
@@ -221,6 +240,49 @@ else
 end
 f.differences = d;
 f.exact = isempty(d);
+end
+
+function f = splitTimeComparison(R, orig, tol)
+% one segment of a split time group: the rebuilt columns against the v1 file's
+name = char(orig.name);
+f = struct('name', name, 'compared', 'content', 'exact', false, 'differences', {{}}, 'why', '');
+st = [];
+m = 0;
+if isfield(R, 'split_time')
+    for k = 1:numel(R.split_time)
+        m = find(strcmp(R.split_time(k).segments, name), 1);
+        if ~isempty(m); st = R.split_time(k); break; end
+    end
+end
+if isempty(st)
+    f.differences = {'no split time group of the v2 documents holds this segment'};
+    return;
+end
+if strcmp(st.state, 'not read')
+    f.compared = 'not measured';
+    f.exact = [];
+    f.why = st.why;
+    return;
+end
+if ~strcmp(st.state, 'rebuilt')
+    f.differences = {sprintf('not rebuilt: %s', st.why)};
+    return;
+end
+x = double(st.data{m});
+y = double(orig.data);
+if ~isequal(size(x), size(y))
+    f.differences = {sprintf('rebuilt %s, v1 %s (rows x time channels)', mat2str(size(x)), ...
+        mat2str(size(y)))};
+    return;
+end
+bad = ~((isnan(x) & isnan(y)) | abs(x - y) <= tol);
+if any(bad(:))
+    [r, c] = find(bad, 1);
+    f.differences = {sprintf('%d value(s) differ; first row %d, time channel t%d: %s vs %s', ...
+        nnz(bad), r, st.channels(c), show(x(r, c)), show(y(r, c)))};
+    return;
+end
+f.exact = true;
 end
 
 function tf = valuesAgree(x, y, isT, tol)
