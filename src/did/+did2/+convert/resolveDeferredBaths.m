@@ -29,7 +29,8 @@ function [result, report] = resolveDeferredBaths(result, options)
 %
 %   BATCH-PASS-CONSUMES: stimulus_bath
 %   BATCH-PASS-EMITS: stimulus_bath -> document: relative_time_reference,
-%       manipulation+formulation, formulation, chemical, observation+term
+%       manipulation+formulation, formulation, chemical, observation+term,
+%       entity, assertion+term, directed_relation
 %
 %   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
 %   pass order from these; [migration reliability practices] (c), Jess Haley,
@@ -39,6 +40,7 @@ function [result, report] = resolveDeferredBaths(result, options)
 %       result.passthrough
 %   BATCH-PASS-ADDS: relative_time_reference(bath anchor),
 %       manipulation(bath), formulation, chemical, observation(bath),
+%       entity(tissue part), assertion(tissue kind), directed_relation(part_of),
 %       result.deferred_bath_anchors
 %   BATCH-PASS-CHANGES: NONE -- it only appends; the deferred stimulus_bath
 %       entries leave the quarantine, not the batch
@@ -58,12 +60,20 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   statement about an anatomical region of a subject -- manipulation or
 %   observation -- targets that region's part entity ... A statement about the
 %   whole subject (a whole-prep or whole-slice bath, i.e. the generic 'bath'
-%   location NCIm:C0179246) targets the subject." So the location observation
-%   is emitted, co-anchored with the bath, only for an anatomical location (a
-%   Marder compartment); the NDI second pass (ndi.migrate.internal.
-%   pathSPromotion) turns it into the region's part and moves the bath onto
-%   it. The generic bath gets none -- it is no site on the subject, the same
-%   call +migrators_j/private/jTreatmentRoute makes for a treatment.
+%   location NCIm:C0179246) targets the subject." So a bath at an anatomical
+%   location (a Marder compartment) is written about that location's region
+%   part, in its final shape (did2.convert.regionPart: the tissue entity, its
+%   anatomical-structure assertion and its `part_of` relation), the part's ids
+%   computed from (subject, region) ([site scaffolding not a loss] (2), Jess
+%   Haley, 2026-10-26; [region part ids computed], 2026-11-19), so several
+%   documents naming one region of one subject yield one part, whose copies
+%   did2.convert.resolveRegionParts merges. A location that is a side
+%   (did2.convert.lateralityOf) names no region of its own: it stays the
+%   location observation, co-anchored with the bath, which resolveRegionParts
+%   attaches ([part re-keyed when its side arrives]) and the NDI second pass
+%   (ndi.migrate.internal.pathSPromotion) reads otherwise. The generic bath
+%   gets neither -- it is no site on the subject, the same call
+%   +migrators_j/private/jTreatmentRoute makes for a treatment.
 %   ---------------------------------------------------------------------
 %
 %   ONE BATH SHAPE (Decided by Jess Haley, 2026-10-27 [one bath shape],
@@ -695,8 +705,28 @@ bodies{end+1} = f;
 % Not a joined class name: did2.build reads the statement as the direction
 % `manipulation` with the value kind `formulation`. Its own `value` stays empty;
 % the formulation document holds it.
+% WHERE THE BATH IS: a bath at an anatomical location is about that
+% location's region part, written in its final shape with ids computed from
+% (subject, region) ([region parts]; [site scaffolding not a loss] (2) and
+% [region part ids computed], Jess Haley, 2026-10-26 / 2026-11-19); the generic
+% bath is about the subject; a location that is a side names no region of its
+% own, so it stays the site observation did2.convert.resolveRegionParts
+% attaches ([part re-keyed when its side arrives])
+loc = locationTerm(v1Body);
+located = (~isempty(loc.node) || ~isempty(loc.name)) && ~isGenericBath(loc);
+partBodies = {};
+bathEntity = char(subjectId);
+if located && ~isempty(bathEntity)
+    [~, isSide] = did2.convert.lateralityOf(loc);
+    if ~isSide
+        [partBodies, partIds] = did2.convert.regionPart(bathEntity, ...
+            did2.convert.registeredTerm(loc.node, loc.name), [], ...
+            'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp));
+        bathEntity = partIds.part;
+    end
+end
 % [one bath shape]: the stimulator is the instrument, as NDI's vetaBath writes
-bath = did2.build.statement('manipulation', char(subjectId), variable, [], ...
+bath = did2.build.statement('manipulation', bathEntity, variable, [], ...
     'TimeReferenceIds', {anchorId}, 'ValueId', f.base.id, ...
     'InstrumentId', char(stimulatorId), ...
     'Id', char(bathId), o{:}, 'ValueKind', 'formulation');
@@ -711,8 +741,9 @@ anchorInfo = struct('bath_id', char(bathId), 'anchor_id', anchorId, ...
     'session_id', char(sessionId), 'epoch_string', epochString, ...
     'epoch_clock', epochClock, 'clock_source', clockSource);
 bodies = [{bath}, bodies];
-loc = locationTerm(v1Body);
-if (~isempty(loc.node) || ~isempty(loc.name)) && ~isGenericBath(loc)
+if ~isempty(partBodies)
+    bodies = [bodies, partBodies];
+elseif located
     bodies{end+1} = makeLocationObs(v1Body, subjectId, anchorId, loc);
 end
 end

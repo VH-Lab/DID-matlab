@@ -86,14 +86,17 @@
 %     raw tuning curves named from their v1 label), inputEdgeNames (input edge names
 %     rebuilt from their classes), isSpikeTimesObservation (a unit's
 %     per-epoch spike-times observation, the input a stimulus response is
-%     computed from)
+%     computed from), regionPart, regionPartIds (a region part's documents,
+%     their ids computed from (subject, region, side); NDI-matlab's
+%     pathSPromotion takes its part ids from regionPartIds too),
+%     lateralityOf (is a location term a side, read from its node)
 %
 %   Batch post-passes (run over a migrated batch, after v1_to_v2; each
 %   carries a BATCH-PASS declaration read by tools/batch_pass_declarations.py)
 %     epochMint, foldGenericFiles, resolveClockAlignment, resolveDatasetEntities,
 %     resolveDeferredBaths, resolveEpochProbemap, resolveOpenmindsCitations,
-%     resolveResponseParameters, resolveSessionAnchors, resolveValidIntervals
-%     (census only)
+%     resolveRegionParts, resolveResponseParameters, resolveSessionAnchors,
+%     resolveValidIntervals (census only)
 %
 %   Subpackages
 %     +migrators_j     - the did_v1 -> V_eta per-document migrators, one file
