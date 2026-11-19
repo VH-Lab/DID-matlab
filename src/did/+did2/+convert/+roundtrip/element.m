@@ -127,6 +127,14 @@ function [v1, spec] = element(bodies, ctx)
 %   are read: one specimen among them is `subject_id`, with `direct` true, as
 %   the retired relation stated. Several specimens are reported, not chosen.
 %   They are read, never placed.
+%   A SPIKE TRAIN IS NOT THE PROBE'S RECORDING. resolveEpochProbemap also mints,
+%   per epoch, an observation of each unit sorted from the probe, with the
+%   probe as its instrument and the unit as its entity ([spike trains as epoch
+%   bodies], Jess Haley, 2026-10-21). Its (probe, unit) pair matches no
+%   `observes` relation, so it retired none; the units -- the entities that
+%   are `derived_from` this element in CTX -- are not read as its specimen.
+%   (Soph corpus run 44473899940: 61 probes rebuilt no subject_id, each
+%   reporting 1 specimen plus its sorted units.)
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.element.
 
@@ -231,7 +239,9 @@ if isempty(subject) && isempty(underlying) && isempty(direct) && ~isempty(ctx)
             specimens = [specimens, edgeIds(b, 'entity_id')]; %#ok<AGROW>
         end
     end
-    specimens = unique(specimens);
+    % a unit sorted from this element is the entity of its spike trains, not
+    % the specimen this element observes (see A SPIKE TRAIN above)
+    specimens = setdiff(unique(specimens), derivedChildren(ctx, base.id));
     if isscalar(specimens)
         subject = specimens{1};
         direct = true;
@@ -408,6 +418,22 @@ for k = ctxReferrers(ctx, id)
             getIn(b, 'directed_relation', 'relation')), 'member_of')
         tf = true;
         return;
+    end
+end
+end
+
+function ids = derivedChildren(ctx, id)
+% the child ids of every `derived_from` directed_relation in CTX whose parent
+% is ID (the units sorted from a probe), by node ([vocabulary nodes] L1)
+ids = {};
+for k = ctxReferrers(ctx, id)
+    b = ctx.docs{k};
+    if ~strcmp(classNameOf(b), 'directed_relation') || ~isequal(edgeIds(b, 'parent_id'), {id})
+        continue;
+    end
+    if strcmp(did2.build.vocabularyHandle('relation', ...
+            getIn(b, 'directed_relation', 'relation')), 'derived_from')
+        ids = [ids, edgeIds(b, 'child_id')]; %#ok<AGROW>
     end
 end
 end
