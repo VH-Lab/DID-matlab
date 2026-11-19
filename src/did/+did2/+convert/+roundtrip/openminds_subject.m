@@ -39,6 +39,9 @@ arguments
 end
 
 [v1, spec] = openmindsInverse(bodies, 'openminds_subject', 'subject_id');
+if isfield(v1, 'openminds') && endsWith(v1.openminds.openminds_type, '/Strain')
+    [v1, spec] = strainForTheSecondPass(v1, spec);
+end
 if isfield(v1, 'openminds')
     spec.same(end+1) = struct('path', 'openminds.matlab_type', ...
         'fn', @(a, b) sameTypeName(a, b), 'why', ['`matlab_type` is notation ' ...
@@ -117,6 +120,53 @@ end
 function tf = isEmptyText(v)
 % the v1 value is empty text: the document names no node of its own
 tf = (ischar(v) || (isstring(v) && isscalar(v))) && isempty(strtrim(char(v)));
+end
+
+function [v1, spec] = strainForTheSecondPass(v1, spec)
+%STRAINFORTHESECONDPASS A Strain's child edges and the fields NDI's second
+%   pass builds from the v1 input, DEFERRED to that pass, not lost.
+%
+%   Decided by Jess Haley, 2026-11-19 ("4. 1") [strain fields checked after
+%   the second pass] (did-schema did_v2_go_forward_class_audit.md;
+%   Waltham-Data-Science/did-schema#212), as [archive segment lengths measured
+%   after the second pass] defers an archive's segment lengths: the
+%   assertion pass 1 writes holds the strain's term only; NDI-matlab's second
+%   pass (ndi.migrate.internal.subjectStrainAssembly, strainLeftovers) reads
+%   from the v1 document the `openminds_<n>` edges to the strain's openMINDS
+%   children and `fields.geneticStrainType`, `species`, `backgroundStrain`
+%   (their `ndi://` references) and `fields.description`, and builds the
+%   strain entity, its assertions and its derived_from relations from them.
+%   So the inverse writes none of them (the `subject_id` edge only) and lists
+%   them in spec.deferred, pass 'second_pass': a value v1 states there is
+%   DEFERRED (did2.convert.roundtrip.check; wholeBatch counts it in
+%   deferred_to_second_pass). A childless strain's empty `openminds` edge (the
+%   writer's placeholder, depends_on(2) = {'openminds', ''}) is restated. Any
+%   other Strain field is compared as before.
+why = ['a Strain''s child edges and the fields NDI''s second pass builds ' ...
+    '([strain fields checked after the second pass], Jess Haley, 2026-11-19)'];
+if isfield(v1, 'depends_on') && ~isempty(v1.depends_on)
+    v1.depends_on = v1.depends_on(1);
+end
+f = v1.openminds.fields;
+FIELDS = {'geneticStrainType', 'species', 'backgroundStrain', 'description'};
+for k = 1:numel(FIELDS)
+    if isfield(f, FIELDS{k}); f = rmfield(f, FIELDS{k}); end
+end
+v1.openminds.fields = f;
+paths = strcat('openminds.fields.', FIELDS);
+for e = 2:MAX_STRAIN_EDGES
+    paths = [paths, {sprintf('depends_on(%d).name', e), sprintf('depends_on(%d).value', e)}]; %#ok<AGROW>
+end
+spec.deferred = struct('path', paths, 'pass', 'second_pass', 'why', why);
+spec.equivalents(end+1) = struct('path', 'depends_on(2).name', 'values', {{'openminds'}}, ...
+    'why', ['the writer''s empty `openminds` edge of a childless object ' ...
+    '(ndi.database.fun.openMINDSobj2ndi_document)']);
+end
+
+function n = MAX_STRAIN_EDGES()
+% depends_on positions a Strain's openminds_<n> edges may take: subject_id is
+% the first, and the writer adds one edge per ndi:// child (Dab: 3, JH: 2)
+n = 16;
 end
 
 function tf = isText(v)

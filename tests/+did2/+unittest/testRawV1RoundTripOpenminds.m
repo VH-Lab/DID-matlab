@@ -251,6 +251,48 @@ verifyEmpty(testCase, out.passthrough, 'a Strain with a node and a minted id con
 verifyNumElements(testCase, out.migrated, 1, 'one assertion: no strain entity per id');
 end
 
+function testAStrainsChildEdgesAndFieldsAreDeferredToTheSecondPass(testCase)
+% Decided by Jess Haley, 2026-11-19 [strain fields checked after the second
+% pass]: a converted Strain's `openminds_<n>` child edges and its
+% geneticStrainType / species / backgroundStrain references and description,
+% which NDI's second pass builds the strain entity from, are DEFERRED to that
+% pass, not lost. Dab's SD (4126945ae99e2b5f_c0b0e6cd434852aa: two children)
+% and JH's described strains. CONTROL: another Strain field the inverse does
+% not rebuild (laboratoryCode) is still lost.
+v1 = labStrain('41268b6f5c6a3d4e_0e00000000000065', 'SD', ...
+    'Strain/7bfb413d-eab9-482e-8c44-b4d61c070dc5');
+v1.openminds.fields.ontologyIdentifier = 'RRID:RGD_70508';
+v1.openminds.fields.description = 'Genotype: wild isolate.';
+v1.openminds.fields.geneticStrainType = {'ndi://41268b6f5c6a3d4e_0e00000000000066'};
+v1.openminds.fields.species = {'ndi://41268b6f5c6a3d4e_0e00000000000067'};
+v1.depends_on = struct('name', {'subject_id', 'openminds_1', 'openminds_2'}, ...
+    'value', {'41268b6f5c6a3d4e_0e000000000000a1', '41268b6f5c6a3d4e_0e00000000000066', ...
+    '41268b6f5c6a3d4e_0e00000000000067'});
+v1 = jsondecode(jsonencode(v1));
+out = runRaw(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEmpty(testCase, out.passthrough, 'converted');
+r = did2.convert.roundtrip.check(v1, out.migrated);
+verifyEqual(testCase, {r.lost.path}, {'openminds.openminds_id'}, ...
+    'only the minted id (an accepted loss in the whole batch)');
+verifyEmpty(testCase, r.invented);
+verifyEmpty(testCase, r.unplaced);
+deferred = {r.deferred.path};
+for p = {'depends_on(2).name', 'depends_on(2).value', 'depends_on(3).name', ...
+        'depends_on(3).value', 'openminds.fields.geneticStrainType', ...
+        'openminds.fields.species', 'openminds.fields.description'}
+    verifyTrue(testCase, any(strcmp(deferred, p{1})), [p{1} ' is not deferred']);
+end
+verifyTrue(testCase, all(strcmp({r.deferred.pass}, 'second_pass')));
+w = did2.convert.roundtrip.wholeBatch({v1}, out);
+verifyEqual(testCase, w.failures_total, 0, 'clean at the DID stage');
+other = v1;
+other.openminds.fields.laboratoryCode = 'LAB-1';
+r2 = did2.convert.roundtrip.check(other, out.migrated);
+verifyTrue(testCase, any(strcmp({r2.lost.path}, 'openminds.fields.laboratoryCode')), ...
+    'a field the second pass is not said to build is still lost');
+end
+
 function testAnIdThatIsNotMintedForItsTypeIsStillCarried(testCase)
 % CONTROLS for [openMINDS minted ids are an accepted loss]: a `<Type>/<uuid>`
 % whose type is another than the document's, and a `<Type>/<name>` that is not
