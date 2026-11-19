@@ -237,6 +237,27 @@ verifyEqual(testCase, r.parts_rekeyed, 0);
 verifyEqual(testCase, nSideObservations(out.migrated), 2);
 end
 
+function testAProbesHemisphereIsNotASideDocument(testCase)
+% a probe_location's hemisphere (vhlab-contrast-matlab
+% sophie_add_treatment_info.m; corpus 20211116) is a site observation about
+% the probe with no manipulation: no side of a subject's part, left for NDI's
+% pathSPromotion 'located' mode, and counted apart
+a = drugAt('td_a', '2024-06-01T12:00:00.000Z', 'UBERON:0002436', 'primary visual cortex');
+pl = struct();
+pl.document_class = struct('class_name', 'probe_location', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+pl.depends_on = struct('name', {'probe_id'}, 'value', {'probe_42'});
+pl.base = struct('id', 'pl_01', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+pl.probe_location = struct('ontology_name', 'UBERON:0002812', 'name', 'left cerebral hemisphere');
+out = merged({a, pl});
+r = out.region_part_resolution;
+verifyEqual(testCase, r.side_observations_seen, 0);
+verifyEqual(testCase, r.side_observations_not_co_anchored, 1);
+verifyEqual(testCase, r.sides_attached + r.sides_not_attached_no_part, 0);
+verifyEqual(testCase, nSideObservations(out.migrated), 1, 'the probe''s location stays');
+end
+
 function testAnEmptyBatchReportsItsDenominator(testCase)
 out = did2.convert.resolveRegionParts(struct('migrated', {{}}), ...
     'Validate', false, 'TargetVersion', 'did_v2');

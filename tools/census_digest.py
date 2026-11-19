@@ -175,6 +175,7 @@ POST_PASSES = [
         ("duplicate_copies_dropped", "  copies dropped (the earliest source's kept)"),
         ("duplicate_copies_differing", "  copies that STILL DIFFER (kept the first)"),
         ("side_observations_seen", "side observations (a side another document gives)"),
+        ("side_observations_not_co_anchored", "  side site observations with no manipulation (a probe's; left)"),
         ("sides_attached", "  sides ATTACHED"),
         ("sides_not_attached_no_part", "  not attached: the subject has no no-side part"),
         ("sides_not_attached_several_parts", "  not attached: several no-side parts"),

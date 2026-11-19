@@ -93,7 +93,10 @@ function [result, report] = resolveRegionParts(result, options)
 %     kind and laterality assertions and part_of relations), parts_seen (part
 %     entities), duplicate_ids (ids held by more than one copy),
 %     duplicate_copies_dropped, duplicate_copies_differing (+
-%     duplicate_ids_differing, at most 50), side_observations_seen,
+%     duplicate_ids_differing, at most 50), side_observations_seen (a side
+%     site observation co-anchored with a manipulation about its entity;
+%     side_observations_not_co_anchored, e.g. a probe_location's hemisphere,
+%     are not side documents and are left as they are),
 %     sides_attached, sides_not_attached_no_part,
 %     sides_not_attached_several_parts, sides_not_attached_several_sides,
 %     parts_rekeyed, parts_rekeyed_onto_existing_part, edges_renamed,
@@ -128,6 +131,7 @@ report = struct( ...
     'duplicate_copies_differing',        0, ...
     'duplicate_ids_differing',           {{}}, ...
     'side_observations_seen',            0, ...
+    'side_observations_not_co_anchored', 0, ...
     'sides_attached',                    0, ...
     'sides_not_attached_no_part',        0, ...
     'sides_not_attached_several_parts',  0, ...
@@ -180,6 +184,25 @@ for k = 1:n
     role{k} = r;
     S{k} = s;
     ids{k} = baseId(s);
+end
+% a side observation is a treatment's (or a bath's) only when a manipulation
+% about the same entity shares its anchor (one source document wrote both,
+% as NDI's pathSPromotion reads them); one about a probe (a probe_location's
+% hemisphere) is no side of a subject's part, and is left for NDI's
+% pathSPromotion 'located' mode, counted
+anchored = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = find(strcmp(role, 'manip'))
+    a = firstAnchor(S{k});
+    if ~isempty(a); anchored([edgeValue(S{k}, 'entity_id') '|' a]) = true; end
+end
+for k = find(strcmp(role, 'side'))
+    if ~isKey(anchored, [edgeValue(S{k}, 'entity_id') '|' firstAnchor(S{k})])
+        role{k} = '';
+        S{k} = [];
+        ids{k} = '';
+        report.side_observations_not_co_anchored = ...
+            report.side_observations_not_co_anchored + 1;
+    end
 end
 isPartDoc = ismember(role, {'part', 'kind', 'laterality', 'part_of'});
 report.region_part_documents_seen = nnz(isPartDoc);
