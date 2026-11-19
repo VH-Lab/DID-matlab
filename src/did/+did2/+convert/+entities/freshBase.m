@@ -3,7 +3,10 @@ function base = freshBase(preBody, name)
 %
 %   BASE = did2.convert.entities.freshBase(PREBODY, NAME) mints a fresh
 %   `base.id`, inherits `session_id` and `datestamp` from PREBODY when they are
-%   present, and stamps NAME as the base.name sentinel.
+%   present. NAME seeds the minted id only: V2 `base` has no `name`, so the
+%   block carries none ([v1 name goes to the class's own name field],
+%   [base.name kept until retire classes leave], Jess Haley, did-schema
+%   did_v2_go_forward_class_audit.md).
 %
 %   A source body that carries no datestamp gets the time the migration ran
 %   (did2.convert.migrationTime; [no invented values], Jess Haley, 2026-10-25).
@@ -32,5 +35,5 @@ end
 % derived from the source id and NAME (practice (b) of [migration reliability
 % practices], Jess Haley, 2026-10-26); random when the source has no id
 base = struct('id', did2.convert.mintId(name, srcId), 'session_id', sessionId, ...
-    'name', name, 'datestamp', ds);
+    'datestamp', ds);
 end
