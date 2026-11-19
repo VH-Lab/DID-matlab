@@ -420,17 +420,6 @@ elseif isstring(v) && isscalar(v)
 end
 end
 
-function t = shortestText(x)
-% The shortest decimal text that reads back as exactly X (private/jParameterList's
-% rule for a number's source value).
-for p = 1:17
-    t = sprintf('%.*g', p, x);
-    if str2double(t) == x
-        return;
-    end
-end
-end
-
 function name = consumedNumber(params, names)
 % the field readNumber reads for NAMES ({} when none)
 name = {};
@@ -501,8 +490,8 @@ for ch = {{'daqsystem_ch1', 'EMPTY:0000433', 'from trigger channel'}, ...
     end
 end
 % errorOnFailure (EMPTY:0000435 'error on failure'): a logical as `logical`, a
-% finite number as `quantity` (its source text kept, as jParameterList writes
-% a number), so the round trip rebuilds the type; see failureValue
+% finite number as a number (`numeric`, the source's number kept as `source_numeric`,
+% as jParameterList writes a number), so the round trip rebuilds the type; see failureValue
 failVal = failureValue(params0(block));
 if islogical(failVal)
     entries{end+1} = did2.build.parameter( ...
@@ -510,7 +499,7 @@ if islogical(failVal)
 elseif ~isempty(failVal)
     entries{end+1} = did2.build.parameter( ...
         did2.convert.registeredTerm('EMPTY:0000435', 'error on failure'), ...
-        'Value', double(failVal), 'SourceValue', shortestText(double(failVal)));
+        'Value', double(failVal), 'SourceValue', double(failVal));   % a number, as v1 stored it
 end
 % the parameters read nowhere above, written as method parameters too
 % ([small unread settings] (3), Jess Haley, 2026-10-26)

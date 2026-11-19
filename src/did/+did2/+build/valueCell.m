@@ -45,8 +45,8 @@ function cells = valueCell(typeName, canonical, options)
 %                    (e.g. struct('precision','day') for a date,
 %                    struct('scale', did2.build.term(...), 'scale_min', 0, ...)
 %                    for a score).
-%     'Shape'        'old' or 'new' (default did2.build.numericShape(); 'old'
-%                    until step 2 of did-schema did_v2_numeric_shape_plan.md
+%     'Shape'        'old' or 'new' (default did2.build.numericShape(), 'new'
+%                    since step 2 of did-schema did_v2_numeric_shape_plan.md
 %                    [one shape for measured numbers], Jess Haley,
 %                    2026-11-17). For a numeric value class (one declaring a
 %                    numeric source_value and a source_unit: voltage, mass,

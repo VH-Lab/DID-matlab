@@ -298,7 +298,7 @@ verifyEqual(testCase, v.node, 'NCIT:C25150');
 % `duration.` and were the ONE thing the class-name sweep missed -- `get` on a
 % block that does not exist THROWS, so the test errored rather than failing an
 % assertion, and the runner reported it as Failed AND Incomplete.
-verifyEqual(testCase, obs.get('time.value.source_value'), 30);
+verifyEqual(testCase, obs.get('time.value.source_numeric'), 30);
 verifyFalse(testCase, isfield(obs.get('time.value'), 'source_unit') ...
     && ~isempty(obs.get('time.value').source_unit), 'no unit is stated, so none is written');
 % ... so its canonical `seconds` is not computed, and the run's migration
@@ -517,7 +517,7 @@ v1.measurement = struct('ontologyName', 'PATO:0000128', 'name', 'body weight', .
     'numeric_value', 22.5, 'string_value', '');
 out = runJ(v1);
 obs = docOfClass(testCase, out, 'observation+mass');
-verifyEqual(testCase, obs.get('mass.value.source_value'), 22.5);
+verifyEqual(testCase, obs.get('mass.value.source_numeric'), 22.5);
 verifyFalse(testCase, isfield(obs.get('mass.value'), 'source_unit') ...
     && ~isempty(obs.get('mass.value').source_unit));
 verifyEqual(testCase, obs.get('statement.variable.node'), 'PATO:0000128');
@@ -646,19 +646,19 @@ verifyEqual(testCase, band.term.node, 'wikidata:Q262754');
 verifyEqual(testCase, band.term.name, 'high-pass filter');
 low = p(strcmp(vars, 'passband low edge'));
 verifyEqual(testCase, low.variable.node, 'EMPTY:0000390');
-verifyEqual(testCase, low.quantity.value, 300);
+verifyEqual(testCase, low.numeric, 300);
 verifyEqual(testCase, lower(char(low.unit.name)), 'hertz');
 verifyFalse(testCase, any(strcmp(vars, 'passband high edge')), 'a high-pass is open above');
 verifyEqual(testCase, p(strcmp(vars, 'filter order')).count, 4);
 verifyEqual(testCase, p(strcmp(vars, 'filter order')).variable.node, 'EMPTY:0000394');
-verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).quantity.value, 0.8);
+verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).numeric, 0.8);
 verifyEqual(testCase, p(strcmp(vars, 'passband ripple')).variable.node, 'EMPTY:0000395');
 verifyFalse(testCase, any(strcmp(vars, 'stopband attenuation')), 'NaN is absent');
 % the design's sample frequency, a parameter in hertz ([small unread settings]
 % (2), Jess Haley, 2026-10-26)
 sf = p(strcmp(vars, 'sample frequency'));
 assertNumElements(testCase, sf, 1);
-verifyEqual(testCase, sf.quantity.value, 20000);
+verifyEqual(testCase, sf.numeric, 20000);
 verifyEqual(testCase, sf.unit.node, 'om:hertz');
 bodies = out.migrated(strcmp(names, 'sampled_body'));
 verifyEqual(testCase, numel(bodies), 2);
@@ -866,7 +866,7 @@ verifyEqual(testCase, ord.count, 4);
 % BAND EDGES, NOT A CUTOFF: a high-pass has a low edge and no high edge
 low = p(strcmp(vars, 'passband low edge'));
 assertNumElements(testCase, low, 1);
-verifyEqual(testCase, low.quantity.value, 300);
+verifyEqual(testCase, low.numeric, 300);
 verifyEqual(testCase, low.unit.node, 'om:hertz');
 verifyEqual(testCase, low.source_unit.node, 'om:hertz');
 verifyEqual(testCase, low.source_unit.name, 'hertz');
@@ -874,7 +874,7 @@ verifyFalse(testCase, any(strcmp(vars, 'passband high edge')));
 % the ripple, in decibels
 rip = p(strcmp(vars, 'passband ripple'));
 assertNumElements(testCase, rip, 1);
-verifyEqual(testCase, rip.quantity.value, 0.8);
+verifyEqual(testCase, rip.numeric, 0.8);
 verifyEqual(testCase, rip.unit.node, 'om:decibel');
 verifyEqual(testCase, rip.source_unit.node, 'om:decibel');
 verifyEqual(testCase, rip.source_unit.name, 'decibel');
@@ -919,7 +919,7 @@ verifyEqual(testCase, m.method.term.name, 'Chebyshev type II filter');
 [p, vars] = methodParams(m);
 att = p(strcmp(vars, 'stopband attenuation'));
 assertNumElements(testCase, att, 1);
-verifyEqual(testCase, att.quantity.value, 40);
+verifyEqual(testCase, att.numeric, 40);
 verifyEqual(testCase, att.unit.node, 'om:decibel');
 verifyEqual(testCase, att.source_unit.node, 'om:decibel');
 verifyEqual(testCase, att.source_unit.name, 'decibel');
@@ -963,8 +963,8 @@ blk.label = 'bandpass';
 blk.parameters.filterFrequency = [300 3000];
 [p, vars] = methodParams(methodOf(testCase, runJ(pyraviewBody(blk))));
 verifyEqual(testCase, p(strcmp(vars, 'filter band')).term.name, 'band-pass filter');
-verifyEqual(testCase, p(strcmp(vars, 'passband low edge')).quantity.value, 300);
-verifyEqual(testCase, p(strcmp(vars, 'passband high edge')).quantity.value, 3000);
+verifyEqual(testCase, p(strcmp(vars, 'passband low edge')).numeric, 300);
+verifyEqual(testCase, p(strcmp(vars, 'passband high edge')).numeric, 3000);
 
 blk.parameters.filterFrequency = 300;
 [~, vars] = methodParams(methodOf(testCase, runJ(pyraviewBody(blk))));
@@ -980,7 +980,7 @@ blk.type = 'low';
 blk.label = 'low';
 [p, vars] = methodParams(methodOf(testCase, runJ(pyraviewBody(blk))));
 verifyEqual(testCase, p(strcmp(vars, 'filter band')).term.name, 'low-pass filter');
-verifyEqual(testCase, p(strcmp(vars, 'passband high edge')).quantity.value, 300);
+verifyEqual(testCase, p(strcmp(vars, 'passband high edge')).numeric, 300);
 verifyFalse(testCase, any(strcmp(vars, 'passband low edge')));
 end
 

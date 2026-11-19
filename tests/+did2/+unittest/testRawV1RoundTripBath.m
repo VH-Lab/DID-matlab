@@ -196,7 +196,7 @@ assertEqual(testCase, numel(ing), size(rows, 1), 'one ingredient per row');
 for k = 1:size(rows, 1)
     c = ing{k}.concentration;
     label = sprintf('row %d (%s)', k, rows{k, 1});
-    verifyEqual(testCase, c.source_value, rows{k, 2}, [label ': the number as written']);
+    verifyEqual(testCase, c.source_numeric, rows{k, 2}, [label ': the number as written']);   % the new numeric shape
     verifyEqual(testCase, c.source_unit.name, rows{k, 1}, [label ': the unit as written']);
     assertTrue(testCase, isfield(c, 'molar') && ~isempty(c.molar), [label ': no molar']);
     verifyEqual(testCase, c.molar, rows{k, 3}, 'RelTol', 1e-12, label);
@@ -235,7 +235,7 @@ testCase.addTeardown(@() did2.convert.migrationReport('end'));
 verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 0, 'carried');
 f = formulationOf(mine);
 ing = ingredientsOf(f);
-verifyEqual(testCase, ing{2}.concentration.source_value, 3);
+verifyEqual(testCase, ing{2}.concentration.source_numeric, 3);
 verifyFalse(testCase, isfield(ing{2}.concentration, 'molar') ...
     && ~isempty(ing{2}.concentration.molar), 'a molar for a number with no unit');
 g = did2.convert.migrationReport('gaps', f.base.id);
@@ -253,7 +253,7 @@ for c = {{'mOsm/L', 290, 0.29}, {'Osm/L', 0.3, 0.3}, {'mOsM', 300, 0.3}, ...
     verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 0, [u ': carried']);
     f = formulationOf(mine);
     o = f.formulation.value.osmolarity;
-    verifyEqual(testCase, o.source_value, value, u);
+    verifyEqual(testCase, o.source_numeric, value, u);
     assertTrue(testCase, isfield(o, 'osmolar') && ~isempty(o.osmolar), [u ': no osmolar']);
     verifyEqual(testCase, o.osmolar, expected, 'RelTol', 1e-12, u);
     verifyEmpty(testCase, did2.convert.migrationReport('gaps', f.base.id), [u ': a gap']);
@@ -274,7 +274,7 @@ for u = {'mOsm', 'mOsm/kg', ''}
     verifyEqual(testCase, out.deferred_bath_resolution.baths_carried_unread_unit, 0, [label ': carried']);
     f = formulationOf(mine);
     o = f.formulation.value.osmolarity;
-    verifyEqual(testCase, o.source_value, 290, label);
+    verifyEqual(testCase, o.source_numeric, 290, label);
     verifyFalse(testCase, isfield(o, 'osmolar') && ~isempty(o.osmolar), [label ': an osmolar']);
     g = did2.convert.migrationReport('gaps', f.base.id);
     verifyEqual(testCase, {g.field}, {'formulation.value.osmolarity.osmolar'}, label);
@@ -431,10 +431,11 @@ docs = structs(bathOutputs(v1));
 for k = 1:numel(docs)
     if strcmp(docs{k}.document_class.class_name, 'formulation')
         ing = docs{k}.formulation.value.ingredients;
+        % the new numeric shape: what the source wrote is source_numeric
         if iscell(ing)
-            ing{1}.concentration.source_value = 1e-6;
+            ing{1}.concentration.source_numeric = 1e-6;
         else
-            ing(1).concentration.source_value = 1e-6;
+            ing(1).concentration.source_numeric = 1e-6;
         end
         docs{k}.formulation.value.ingredients = ing;
     end

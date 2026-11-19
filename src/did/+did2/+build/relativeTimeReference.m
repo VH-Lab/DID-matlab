@@ -114,7 +114,9 @@ end
 function c = timeCell(seconds, sourceValue, sourceUnit, approximate, tol, optName)
 c = struct('seconds', seconds);
 if ~isempty(sourceUnit);  c.source_unit = sourceUnit;   end
-if ~isempty(sourceValue); c.source_value = sourceValue; end
+% start, end, duration and clock_tolerance are `time` values: source_numeric
+% in the new numeric shape ([numeric shape details] (2), Jess Haley, 2026-11-17)
+if ~isempty(sourceValue); c.(did2.build.sourceNumericField()) = sourceValue; end
 [c, approximate] = toleranceCell(c, tol, approximate, optName);
 if ~isempty(approximate); c.approximate = approximate;  end
 end

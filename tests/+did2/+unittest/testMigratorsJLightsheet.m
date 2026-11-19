@@ -364,7 +364,8 @@ verifyEqual(testCase, z.unit.name, 'metre', 'OM''s label, not the NGFF spelling'
 verifyEqual(testCase, rep.pyramid_key_units_name_only, 0);
 c = keys{strcmp(names, 'channel')};
 verifyEqual(testCase, labelNames(c.term), {'GCaMP6s', 'tdTomato'});
-verifyFalse(testCase, isfield(c, 'quantity') && ~isempty(c.quantity), ...
+verifyFalse(testCase, (isfield(c, 'quantity') && ~isempty(c.quantity)) ...
+    || (isfield(c, 'numeric') && ~isempty(c.numeric)), ...
     'named positions replace the index positions');
 obs = pickById(out, 'pyr_ls_1');
 verifyTrue(testCase, isempty(blockField(obs, 'dimensions')), 'the carried dimensions are removed');

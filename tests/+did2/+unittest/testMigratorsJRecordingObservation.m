@@ -222,7 +222,7 @@ verifyNotEmpty(testCase, w, 'the probe is wired to no system');
 verifyEqual(testCase, char(w.get('directed_relation.relation.node')), 'RO:0002170');
 ch = w.get('directed_relation.conditions');
 verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai
-verifyEqual(testCase, double(ch(1).matrix(:))', [11 12 13 14]);
+verifyEqual(testCase, double(ch(1).numeric(:))', [11 12 13 14]);   % the new numeric shape
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 end
 

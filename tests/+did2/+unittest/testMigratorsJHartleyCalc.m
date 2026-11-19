@@ -326,7 +326,7 @@ function testTheLagAxisCarriesItsValuesRatherThanASpacing(testCase)
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
 verifyEqual(testCase, [ax.nCov], [0 0 1], 'only the lag has a covariate');
-verifyEqual(testCase, ax(3).cov.quantity.value(:), realLagVector());
+verifyEqual(testCase, ax(3).cov.numeric(:), realLagVector());
 end
 
 function testTheAxesAreRowsColumnsAndDelay(testCase)
@@ -359,7 +359,7 @@ v1.ngrid.coordinates = [realLagVector(); (2:201)'; (1:200)'];
 out = did2.convert.migrators_j.hartley_calc(v1);
 ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
 verifyEqual(testCase, [ax.nCov], [0 1 1], 'Y is 1..200 (bare); X carries 2..201');
-verifyEqual(testCase, ax(2).cov.quantity.value(:), (2:201)');
+verifyEqual(testCase, ax(2).cov.numeric(:), (2:201)');
 end
 
 function testBothPlanesNameTheSourceFileAndSayWhichPlaneTheyAre(testCase)
@@ -422,7 +422,7 @@ if iscell(covs); covs = [covs{:}]; end
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
     {'hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'});
 v1 = hartleyCalcV1();
-verifyEqual(testCase, covs(2).quantity.value(:), v1.hartley_reverse_correlation.hartley_numbers.KXV);
+verifyEqual(testCase, covs(2).numeric(:), v1.hartley_reverse_correlation.hartley_numbers.KXV);
 names = paramNames(staLeaf(out));
 verifyFalse(testCase, any(contains(names, 'hartley numbers')), strjoin(names, ', '));
 end
@@ -451,7 +451,7 @@ verifyEqual(testCase, char(ax.term.name), 'time');
 verifyEqual(testCase, char(ax.cov.variable.name), 'time');
 verifyTrue(testCase, ~isfield(ax.cov, 'origin') || isempty(ax.cov.origin));
 verifyEqual(testCase, ax.n, 5);
-verifyEqual(testCase, ax.cov.quantity.value(:), [0.106; 0.31; 0.55; 0.9; 1.4]);
+verifyEqual(testCase, ax.cov.numeric(:), [0.106; 0.31; 0.55; 0.9; 1.4]);
 % FINDING, 2026-10-21, NOT FIXED HERE: the spike train has no bytes -- the
 % times ARE the time covariate's positions -- yet did2.build.sampledBody declares its
 % default file series member `body_data_0` on every body (bodyFiles.m), so

@@ -31,7 +31,7 @@ function f = fitEntry(model, options)
 %         'Coefficients', {'amplitude', 12.1; 'preferred direction', 90}, ...
 %         'Goodness', struct('r2', 0.91));
 %
-%   'Shape' 'old' or 'new' (default did2.build.numericShape(), 'old' until
+%   'Shape' 'old' or 'new' (default did2.build.numericShape(), 'new' since
 %   step 2 of did-schema did_v2_numeric_shape_plan.md [one shape for measured
 %   numbers]): 'new' writes each coefficient {variable, value} as the list
 %   item {variable, numeric}; a coefficient given in either shape is accepted.

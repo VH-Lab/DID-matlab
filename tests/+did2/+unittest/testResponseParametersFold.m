@@ -162,8 +162,10 @@ verifyEmpty(testCase, knob(p, 'temporalfreqfunc'));
 % batch, as resolveEpochProbemap makes it)
 verifyEmpty(testCase, knob(p, 'isspike'));
 verifyEqual(testCase, rep.isspike_rebuilt_from_inputs, 1);
-verifyEqual(testCase, knob(p, 'bin width').quantity.value, 0.001, 'AbsTol', 1e-12);
-verifyEqual(testCase, knob(p, 'bin width').quantity.source_value, '0.001');
+verifyEqual(testCase, knob(p, 'bin width').numeric, 0.001, 'AbsTol', 1e-12);
+% the source's number, as a number ([numeric shape details] (1), Jess Haley,
+% 2026-11-17; the old shape spelled it '0.001')
+verifyEqual(testCase, knob(p, 'bin width').source_numeric, 0.001);
 verifyEmpty(testCase, knob(p, 'prestimulus time'));
 verifyEmpty(testCase, knob(p, 'prestimulus normalization'));
 verifyEqual(testCase, numel(p), 1);
@@ -211,8 +213,8 @@ p.stimulus_response_scalar_parameters_basic.prestimulus_time = 0.5;
 p.stimulus_response_scalar_parameters_basic.prestimulus_normalization = 2;
 [out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
 params = bodyOfClass(testCase, out, 'method').method.parameters;
-verifyEqual(testCase, knob(params, 'prestimulus time').quantity.value, 0.5);
-verifyEqual(testCase, knob(params, 'prestimulus normalization').quantity.value, 2);
+verifyEqual(testCase, knob(params, 'prestimulus time').numeric, 0.5);
+verifyEqual(testCase, knob(params, 'prestimulus normalization').numeric, 2);
 verifyEqual(testCase, rep.knobs_empty_ndi_defined, 1, 'the default temporalfreqfunc');
 end
 
@@ -639,7 +641,7 @@ leaf = findHarmonicCalc(testCase, out).toStruct();
 verifyFalse(testCase, isfield(leaf.interaction, 'method'));   % "b": never inline
 verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
 verifyEqual(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
-    'bin width').quantity.value, ...
+    'bin width').numeric, ...
     0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 2);
 % The id is untouched, so every inbound `stimulus_response_scalar_id` reference
