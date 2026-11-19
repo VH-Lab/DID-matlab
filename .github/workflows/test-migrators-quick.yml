@@ -289,6 +289,7 @@ jobs:
         # runs here; affected_corpora says which corpora a change must re-run.
         run: |
           python3 tools/test_sample_corpus.py
+          python3 tools/test_shard_corpus.py
           python3 tools/test_extract_failure_fixtures.py
           python3 tools/test_affected_corpora.py
           python3 tools/test_corpus_matrix.py

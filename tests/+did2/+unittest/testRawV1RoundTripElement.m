@@ -719,6 +719,85 @@ end
 
 % ===================== the switch changes nothing else ==================
 
+% ===================== the subject carried in the migration report ======
+
+function testASubjectCarriedInTheReportRebuildsSubjectAndDirect(testCase)
+% [stimulator subject carried as needing information], [one-field carry in
+% the migration report], [recording probe subject carried the same way]
+% (Decided by Jess Haley, 2026-11-19, did-schema
+% docs/plans/did_v2_standing_wiring_plan.md): NDI-matlab's second pass
+% removes the `observes` of a stimulator no statement names (and of a
+% recording probe with no recording observation) and holds its v1 subject
+% in the run's migration report as a carried field (carry-172,
+% did2.convert.carryElementSubject). With no lineage relation and no
+% observation naming it as instrument, the round trip reads the subject
+% from there: subject_id and direct come back exactly. Without the entry
+% (the control) both are reported lost.
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+cases = { ...
+    'stimulator', probeDoc('el_cstim', 'vhvis_spike2', 1, 'stimulator', 'ndi.probe.timeseries.stimulator'); ...
+    'recording probe', probeDoc('el_cprobe', 'leftcortex', 2, 'n-trode', 'ndi.probe.timeseries.mfdaq')};
+testCase.log(sprintf('DENOMINATOR: %d element(s), each with and without the entry', size(cases, 1)));
+for k = 1:size(cases, 1)
+    [label, v1] = cases{k, :};
+    id = char(v1.base.id);
+    % with the entry
+    out = runRaw(v1);
+    docs = elementOutputs(out, id);
+    isObserves = cellfun(@(b) isObservesOf(b, id), docs);
+    assertEqual(testCase, nnz(isObserves), 1, [label ': premise, pass 1 writes one observes']);
+    docs = docs(~isObserves);   % what NDI's second pass leaves
+    did2.convert.carryElementSubject(id, 'subj_1', ...
+        'no statement names the v1 subject');
+    [rebuilt, spec] = did2.convert.roundtrip.element(docs);
+    verifyEqual(testCase, rebuilt.depends_on(strcmp({rebuilt.depends_on.name}, 'subject_id')).value, ...
+        'subj_1', label);
+    verifyEqual(testCase, rebuilt.element.direct, true, label);
+    verifyEmpty(testCase, spec.unplaced, [label ': unplaced: ' strjoin(spec.unplaced, '; ')]);
+    r = did2.convert.roundtrip.check(v1, docs);
+    verifyFalse(testCase, r.carried, label);
+    verifyGreaterThan(testCase, r.fields_inspected, 0);
+    verifyEmpty(testCase, r.lost, sprintf('%s: lost: %s', label, describeLost(r)));
+    verifyEmpty(testCase, r.unplaced, sprintf('%s: unplaced: %s', label, strjoin(r.unplaced, '; ')));
+    % without it (the control): a fresh run, no carried field
+    out = runRaw(v1);
+    docs = elementOutputs(out, id);
+    docs = docs(~cellfun(@(b) isObservesOf(b, id), docs));
+    assertEmpty(testCase, did2.convert.migrationReport('carriedFields', id), ...
+        [label ': premise, the fresh run holds no entry']);
+    r = did2.convert.roundtrip.check(v1, docs);
+    lost = {r.lost.path};
+    verifyTrue(testCase, any(strcmp(lost, 'element.direct')), ...
+        sprintf('%s control: direct not reported lost: %s', label, describeLost(r)));
+    verifyTrue(testCase, any(strcmp(lost, 'depends_on(2).value')), ...
+        sprintf('%s control: subject_id not reported lost: %s', label, describeLost(r)));
+end
+end
+
+function testACarriedSubjectDoesNotOverrideTheObservesRelation(testCase)
+% a DID-only run keeps `observes` (pass 1 unchanged, [one-field carry in the
+% migration report]: "a DID-only run, with no second pass, keeps
+% `observes`"); where both are present, the relation is read
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+v1 = probeDoc('el_cboth', 'vhvis_spike2', 1, 'stimulator', 'ndi.probe.timeseries.stimulator');
+out = runRaw(v1);
+docs = elementOutputs(out, 'el_cboth');
+assertEqual(testCase, nnz(cellfun(@(b) isObservesOf(b, 'el_cboth'), docs)), 1, ...
+    'pass 1 writes observes for a stimulator');
+verifyEmpty(testCase, did2.convert.migrationReport('carriedFields', 'el_cboth'), ...
+    'pass 1 carries no field');
+did2.convert.carryElementSubject('el_cboth', 'subj_other', 'a stale entry');
+rebuilt = did2.convert.roundtrip.element(docs);
+verifyEqual(testCase, rebuilt.depends_on(strcmp({rebuilt.depends_on.name}, 'subject_id')).value, ...
+    'subj_1');
+end
+
+function tf = isObservesOf(b, id)
+tf = strcmp(char(b.document_class.class_name), 'directed_relation') ...
+    && strcmp(edgeOf(b, 'child_id'), id) ...
+    && strcmp(did2.build.vocabularyHandle('relation', b.directed_relation.relation), 'observes');
+end
+
 % ===================== helpers =========================================
 
 function out = runRaw(v1)

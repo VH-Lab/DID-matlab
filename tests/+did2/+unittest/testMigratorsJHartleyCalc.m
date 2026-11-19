@@ -406,8 +406,8 @@ end
 function testTheHartleyNumbersAreDataOneRowPerFrame(testCase)
 % [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03): S,
 % KXV, KYV, ORDER are data, one row per frame (dimension EMPTY:0000260
-% "frame"), not method parameters. Their four variables are not decided:
-% plain labels.
+% "frame"), not method parameters. Their four variables are the nodes of
+% [hartley column terms] (Decided by Jess Haley, 2026-11-19).
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 nb = numbersBody(out);
 assertNotEmpty(testCase, nb);
@@ -419,12 +419,54 @@ verifyEqual(testCase, char(dims.term.node), 'EMPTY:0000260');
 verifyEqual(testCase, dims.n, 3360);
 covs = nb.data.covariates;
 if iscell(covs); covs = [covs{:}]; end
-verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
-    {'hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'});
+verifyEqual(testCase, arrayfun(@(c) char(c.variable.node), covs, 'UniformOutput', false), ...
+    {'EMPTY:0000449', 'EMPTY:0000450', 'EMPTY:0000451', 'NCIT:C25390'});
 v1 = hartleyCalcV1();
 verifyEqual(testCase, covs(2).numeric(:), v1.hartley_reverse_correlation.hartley_numbers.KXV);
 names = paramNames(staLeaf(out));
 verifyFalse(testCase, any(contains(names, 'hartley numbers')), strjoin(names, ', '));
+end
+
+function testTheRoundTripReadsTheHartleyColumnsByNodeAndOldLabels(testCase)
+% [hartley column terms] (Jess Haley, 2026-11-19): the round trip reads each
+% covariate by its variable's node; a body migrated before the terms were
+% decided names them by plain label ('hartley S', no node), and reads back the
+% same. Each rebuilds the four v1 columns exactly.
+v1 = hartleyCalcV1();
+out = did2.convert.migrators_j.hartley_calc(v1);
+[rebuilt, spec] = did2.convert.roundtrip.hartley_calc(out);
+verifyHartleyNumbers(testCase, rebuilt, v1, 'nodes');
+OLD = {'hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'};
+labelled = out;
+for k = 1:numel(out)
+    if strcmp(did2.unittest.helpers.classKey(out{k}), 'sampled_body') ...
+            && isequal(out{k}.base.id, numbersBody(out).base.id)
+        covs = labelled{k}.data.covariates;
+        wasCell = iscell(covs);
+        if wasCell; covs = [covs{:}]; end
+        for c = 1:numel(covs)
+            covs(c).variable = struct('node', '', 'name', OLD{c});
+        end
+        if wasCell; covs = num2cell(covs); end
+        labelled{k}.data.covariates = covs;
+    end
+end
+[rebuiltOld, specOld] = did2.convert.roundtrip.hartley_calc(labelled);
+verifyHartleyNumbers(testCase, rebuiltOld, v1, 'old labels');
+verifyEqual(testCase, specOld.unplaced, spec.unplaced, ...
+    'the old plain labels are read as the nodes are');
+end
+
+function verifyHartleyNumbers(testCase, rebuilt, v1, label)
+want = v1.hartley_reverse_correlation.hartley_numbers;
+got = rebuilt.hartley_reverse_correlation.hartley_numbers;
+for f = {'S', 'KXV', 'KYV', 'ORDER'}
+    verifyTrue(testCase, isfield(got, f{1}), sprintf('%s: %s not rebuilt', label, f{1}));
+    if isfield(got, f{1})
+        verifyEqual(testCase, double(got.(f{1})(:)), double(want.(f{1})(:)), ...
+            sprintf('%s: %s', label, f{1}));
+    end
+end
 end
 
 function testRaggedHartleyNumbersAreCarriedAsV1(testCase)
