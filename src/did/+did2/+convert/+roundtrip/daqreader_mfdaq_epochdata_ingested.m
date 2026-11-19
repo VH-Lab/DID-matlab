@@ -132,9 +132,10 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %       (Decided by Jess Haley, 2026-11-18 [removed file locations are an
 %       accepted loss]: "the removed file's v1 storage record is an accepted
 %       loss"), listed and counted by did2.convert.roundtrip.wholeBatch
-%       (ACCEPTED_LOSSES, 'removed archive file location'); the removed
-%       evenly spaced time segments are not covered by that decision, so
-%       their location leaves still read lost. The file itself is compared
+%       (ACCEPTED_LOSSES, 'removed archive file location'); so is it for
+%       a removed evenly spaced time segment (Decided by Jess Haley,
+%       2026-11-19 [removed time segment locations are an accepted loss]:
+%       "yes, accept the loss for the time segments too"). The file itself is compared
 %       by its content (did2.convert.roundtrip.compareIngestedArchiveFiles),
 %       which needs the bytes, so not here.
 %
