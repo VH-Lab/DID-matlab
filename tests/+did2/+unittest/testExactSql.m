@@ -432,3 +432,149 @@ verifyTrue(testCase, isstruct(r.values{2}));
 verifyFalse(testCase, found);
 verifyEqual(testCase, sid, '');
 end
+
+% ---- exact_string '' on a queryable scalar path (DID-matlab #413) ----
+
+function testExactStringEmptyFindsTheEmptyValues(testCase)
+% demoA.value is a queryable TEXT path. a3 holds '' and a4 the blank
+% default ''; the evaluator matches both, and so must the search (the
+% recheck cannot add back what the SQL drops). The controls: a1, a2 and b1
+% hold a non-empty value, and c1..c3 and the v1 document have no demoA
+% block at all -- an absent value is not an empty one, and none of them
+% match.
+verifyEqual(testCase, check(testCase, did2.query('demoA.value', 'exact_string', ''), false), ...
+    sort({'a3', 'a4'}));
+verifyEqual(testCase, check(testCase, did2.query('demoA.value', '~exact_string', ''), false), ...
+    sort({'a1', 'a2', 'b1', 'c1', 'c2', 'c3', 'v1'}));
+check(testCase, did2.query('demoA.value', 'exact_string_anycase', ''), false);
+check(testCase, did2.query('demoA.value', '~exact_string_anycase', ''), false);
+check(testCase, did2.query('demoA.value', 'wildcard', ''), false);
+check(testCase, did2.query('demoA.value', 'wildcard', '*'), false);
+check(testCase, did2.query('demoA.value', '~wildcard', '*'), false);
+% the non-empty target is unchanged, still answered exactly from the index
+verifyEqual(testCase, check(testCase, did2.query('demoA.value', 'exact_string', 'alpha'), true), ...
+    sort({'a1', 'b1'}));
+end
+
+% ---- numeric comparisons on a value held as text (DID-matlab #493) ----
+
+function testNumericComparisonsOnTextReadFromTheBody(testCase)
+% A block no class declares is read with json_extract. It holds a number,
+% a negative number and a non-numeric text; every other document has no
+% such block. CAST('abc' AS REAL) is 0, while the evaluator never compares
+% a text with a number, so under a negation the text must still match.
+db = testCase.TestData.db;
+vals = {5, -3, 'abc'};
+names = {'num5', 'numNeg', 'numText'};
+for k = 1:numel(vals)
+    d = did2.document.blank('demoA');
+    d = d.set('base.session_id', 'sessN');
+    d = d.set('base.name', names{k});
+    s = d.toStruct();
+    s.oldnum = struct('n', vals{k});
+    db.add({did2.document(s)}, 'Validate', false);
+    testCase.TestData.docs{end+1} = did2.document(s);
+end
+checkNumericOperators(testCase, 'oldnum.n');
+end
+
+function testNumericComparisonsOnTextInTheArraySidecar(testCase)
+% demoArray.axes[*].size is an INTEGER path of queryable_array_elem; one
+% document, stored without validation, holds non-numeric text there.
+db = testCase.TestData.db;
+num = did2.document.blank('demoArray');
+num = num.set('base.session_id', 'sessN');
+num = num.set('base.name', 'sizeNum');
+num = num.set('demoArray.axes', struct('name', {'x', 'y'}, 'unit', {'deg', 'um'}, 'size', {10, -20}));
+txt = did2.document.blank('demoArray');
+txt = txt.set('base.session_id', 'sessN');
+txt = txt.set('base.name', 'sizeText');
+s = txt.toStruct();
+s.demoArray.axes = struct('name', {'x', 'y'}, 'unit', {'deg', 'um'}, 'size', {'abc', 'def'});
+txt = did2.document(s);
+db.add({num});
+db.add({txt}, 'Validate', false);
+testCase.TestData.docs(end+1:end+2) = {num, txt};
+checkNumericOperators(testCase, 'demoArray.axes[*].size');
+end
+
+function testNumericComparisonsOnTextInTheScalarSidecar(testCase)
+% A queryable scalar path of REAL affinity, as did2.database.sqlitedb writes
+% it into queryable_scalar_elem: a number as a number, and anything else as
+% given (jsonExtractValue) -- so a non-numeric text, or the JSON of an
+% array, lands in value_num as TEXT (a REAL column keeps a text that does
+% not look like a number). No fixture class declares a numeric queryable
+% scalar, so the table is built here, with the columns sqlitedb creates,
+% and the compiled SQL is run against it. The SQL must find at least every
+% document the evaluator matches: the recheck removes the rest, but cannot
+% add back what the SQL drops.
+f = [tempname() '.sqlite'];
+dbid = mksqlite(0, 'open', f);
+cleanup = onCleanup(@() closeAndDelete(dbid, f)); %#ok<NASGU>
+mksqlite(dbid, 'CREATE TABLE documents (id TEXT PRIMARY KEY, body TEXT)');
+mksqlite(dbid, ['CREATE TABLE queryable_scalar_elem (' ...
+    'doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,' ...
+    'path TEXT NOT NULL,' ...
+    'value_text TEXT,' ...
+    'value_num REAL,' ...
+    'value_raw)']);
+p = 'numblock.x';
+ids = {'n5', 'nNeg', 'nText', 'nArray', 'nNone'};
+values = {5, -3, 'abc', [1 2], []};       % what the body holds
+stored = {5, -3, 'abc', '[1,2]', []};     % what the sidecar holds ([] = no row)
+bodies = cell(1, numel(ids));
+for k = 1:numel(ids)
+    if strcmp(ids{k}, 'nNone')
+        bodies{k} = struct('numblock', struct('y', 1));
+    else
+        bodies{k} = struct('numblock', struct('x', values{k}));
+    end
+    mksqlite(dbid, 'INSERT INTO documents (id, body) VALUES (?, ?)', ids{k}, jsonencode(bodies{k}));
+    if ~isempty(stored{k})
+        mksqlite(dbid, ['INSERT INTO queryable_scalar_elem (doc_id, path, value_num) ' ...
+            'VALUES (?, ?, ?)'], ids{k}, p, stored{k});
+    end
+end
+paths = struct('path', {p}, 'affinity', {'REAL'});
+ops = {'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq', 'exact_number'};
+for o = 1:numel(ops)
+    for neg = {'', '~'}
+        for t = [-1 0 1]
+            q = did2.query(p, [neg{1} ops{o}], t);
+            [sql, params] = did2.database.compileQuery(q, 'QueryablePaths', paths);
+            rows = mksqlite(dbid, ['SELECT id FROM documents WHERE ' sql], params{:});
+            got = {};
+            if ~isempty(rows)
+                got = {rows.id};
+            end
+            expected = ids(cellfun(@(b) q.matches(b), bodies));
+            verifyEmpty(testCase, setdiff(expected, got), ...
+                sprintf('%s%s %g: the SQL dropped a document the evaluator matches (%s)', ...
+                    neg{1}, ops{o}, t, sql));
+        end
+    end
+end
+end
+
+function checkNumericOperators(testCase, p)
+% every numeric operator, plain and negated, either side of 0 (what CAST
+% makes of a text): the search agrees with the evaluator
+ops = {'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq', 'exact_number'};
+for o = 1:numel(ops)
+    for neg = {'', '~'}
+        for t = [-1 0 1]
+            check(testCase, did2.query(p, [neg{1} ops{o}], t), false);
+        end
+    end
+end
+end
+
+function closeAndDelete(dbid, f)
+try
+    mksqlite(dbid, 'close');
+catch
+end
+if isfile(f)
+    delete(f);
+end
+end
