@@ -76,6 +76,15 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %   way NDI finds a probe's rows (ndi.probe.epochprobemapmatch: name,
 %   reference, type).
 %
+%   NOT A ROW: A CHANNEL GROUP'S OWNER ([non-specimen channel groups get
+%   their own owner], Jess Haley, 2026-11-17). resolveEpochProbemap gives a
+%   digital, auxiliary or analog output channel group of an ingested archive
+%   its own statement, timed by the same anchor and naming the same rig; its
+%   variable is the group's channel-type term ("digital input channel", ...),
+%   which no probe-map row's statement carries (a row's is its modality or
+%   its stimulator type). Such a statement is no row and is skipped
+%   (isChannelGroupOwner).
+%
 %   See also did2.convert.roundtrip.epochfiles_ingested,
 %            did2.convert.roundtrip.syncrule_mapping,
 %            did2.convert.resolveEpochProbemap.
@@ -115,6 +124,7 @@ for k = ctxReferrers(ctx, nav)
     end
 end
 
+prefixes = prefixTable();
 % the statements anchored "during" the epoch through its rigs, and the wiring
 % relations timed by those anchors (A ROW WITH NO STATEMENT)
 found = zeros(1, 0);
@@ -138,12 +148,14 @@ for a = ctxReferrers(ctx, epochId)
         if ~any(strcmp(systemIdOf(st, ctx), systems))
             continue;
         end
+        if isChannelGroupOwner(st, prefixes)
+            continue;   % NOT A ROW: a channel group's owner
+        end
         found(end+1) = s; %#ok<AGROW>
     end
 end
 found = unique(found);   % sorted: batch order
 
-prefixes = prefixTable();
 rowLines = {};
 paired = false(1, 0);
 for i = 1:numel(found)
@@ -190,6 +202,12 @@ end
 end
 
 % ===================== helpers =========================================
+
+function tf = isChannelGroupOwner(st, prefixes)
+% a statement whose variable is a channel-type term (NOT A ROW, above)
+[node, ~] = termParts(getIn(st, 'statement', 'variable'));
+tf = ~isempty(prefixOf(prefixes, node));
+end
 
 function tf = isWiring(b, anchorId, systems)
 % a `connected to` (RO:0002170) directed_relation timed by ANCHORID whose
