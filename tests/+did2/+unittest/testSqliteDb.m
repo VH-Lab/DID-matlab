@@ -532,6 +532,92 @@ verifyTrue(testCase, any(contains(details, 'documents_session_id')), ...
     sprintf('plan: %s', strjoin(details, ' | ')));
 end
 
+function testASmallClassLeadsItsSearch(testCase)
+% An `isa` with nothing else to start from walked every document of the
+% session, testing the class of each (about 0.1 s for each of 13
+% daqsystem_load searches in one Dab getprobes on migrated v2, NDI-matlab run
+% 44598017953). When its class holds at most 1/8 of the session's documents
+% it compiles to start from the class index instead (compileQuery, "AN `isa`
+% CAN LEAD"). Jess Haley, 2026-11-06 ([read speed margin]): "Speed can't be
+% slower than v1." The answers, and their order, are the in-memory
+% evaluator's, whichever plan runs.
+db = testCase.TestData.db;
+inS = @(d) d.set('base.session_id', 'S1');
+for k = 1:40
+    db.add(inS(makeDemoA(sprintf('a%02d', k), 'x')));
+end
+db.add(inS(makeDemoB('b1', 'x', 'p')));
+db.add(makeDemoB('b2', 'x', 'q'));   % another session
+db.add(inS(makeDemoB('b3', 'y', 'r')));
+db.add(inS(makeDemoC('c1', 'S1', {'item1', 'id-1'; 'item2', 'id-2'})), 'Validate', false);
+sess = did2.query('base.session_id', 'exact_string', 'S1');
+isB = did2.query('', 'isa', 'demoB');
+isC = did2.query('', 'isa', 'demoC');
+names = @(q) cellfun(@(h) char(h.get('base.name')), db.search(q), 'UniformOutput', false);
+all_ = db.search(did2.query());
+expect = @(q) cellfun(@(h) char(h.get('base.name')), all_(cellfun(@(h) q.matches(h), all_)), ...
+    'UniformOutput', false);
+cases = {isB & sess, (isB | isC) & sess, isB, isB & did2.query('base.name', 'exact_string', 'b1') & sess, ...
+    (isB & did2.query('demoB.value_b', 'exact_string', 'r')) | isC, ...
+    did2.query('', 'isa', 'demoA') & sess, did2.query('', '~isa', 'demoA') & sess, ...
+    isB & did2.query('', 'depends_on', 'item1', 'id-1')};
+for k = 1:numel(cases)
+    verifyEqual(testCase, names(cases{k}), expect(cases{k}), sprintf('case %d', k));
+end
+verifyEqual(testCase, names(isB & sess), {'b1', 'b3'});
+verifyEqual(testCase, names((isB | isC) & sess), {'b1', 'b3', 'c1'});
+% the small class leads: from superclasses_classname, not the session index
+for q = {isB & sess, (isB | isC) & sess, isB}
+    r = db.testHookExplain(q{1});
+    details = {r.plan.detail};
+    verifySubstring(testCase, r.sql, 'documents.id IN (SELECT sc.doc_id FROM superclasses sc');
+    verifyTrue(testCase, any(contains(details, 'superclasses_classname')), ...
+        sprintf('plan: %s', strjoin(details, ' | ')));
+    verifyFalse(testCase, any(contains(details, 'documents_session_id')), ...
+        sprintf('the session index led: %s', strjoin(details, ' | ')));
+end
+% a class with most of the session, a negated isa, and an isa beside a term
+% that leads keep the correlated EXISTS
+for q = {did2.query('', 'isa', 'demoA') & sess, did2.query('', '~isa', 'demoA') & sess, ...
+        isB & did2.query('', 'depends_on', 'item1', 'id-1') & sess}
+    r = db.testHookExplain(q{1});
+    verifyFalse(testCase, contains(r.sql, 'IN (SELECT sc.doc_id'), r.sql);
+end
+details = planDetails(db, did2.query('', 'isa', 'demoA') & sess);
+verifyTrue(testCase, any(contains(details, 'documents_session_id')), ...
+    sprintf('plan: %s', strjoin(details, ' | ')));
+end
+
+function testTheClassCountsFollowTheWrites(testCase)
+% the counts that pick the plan are read again once enough documents were
+% added: a class that grew past 1/8 of its session stops leading
+db = testCase.TestData.db;
+inS = @(d) d.set('base.session_id', 'S1');
+for k = 1:16
+    db.add(inS(makeDemoA(sprintf('a%02d', k), 'x')));
+end
+db.add(inS(makeDemoB('b0', 'x', 'p')));
+q = did2.query('', 'isa', 'demoB') & did2.query('base.session_id', 'exact_string', 'S1');
+r = db.testHookExplain(q);
+verifySubstring(testCase, r.sql, 'IN (SELECT sc.doc_id');
+list = cell(1, 120);
+for k = 1:120
+    list{k} = inS(makeDemoB(sprintf('b%03d', k), 'x', 'p'));
+end
+db.add(list);
+r = db.testHookExplain(q);
+verifyFalse(testCase, contains(r.sql, 'IN (SELECT sc.doc_id'), r.sql);
+verifyEqual(testCase, numel(db.search(q)), 121);
+end
+
+function doc = makeDemoC(name, sess, edges)
+doc = did2.document.blank('demoC');
+doc = doc.set('base.session_id', sess);
+doc = doc.set('base.name', name);
+doc = doc.set('demoC.value', name);
+doc = doc.set('depends_on', struct('name', edges(:, 1)', 'document_id', edges(:, 2)'));
+end
+
 function testGetReadsTheSessionIdFromTheEdge(testCase)
 doc = withSessionEdge(makeDemoA('edge', 'e'));
 verifyFalse(testCase, isfield(doc.toStruct().base, 'session_id'));
