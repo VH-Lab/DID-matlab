@@ -361,6 +361,64 @@ class TestRollup(DigestCase):
         self.assertIn("EDGE-FAMILY CARDINALITY VIOLATIONS: 0 document(s)", text)
         self.assertIn("(none)", text)
 
+    def _card(self, name, docs, fams, checks, violations=0):
+        self.write(name, {
+            "corpus": name, "total": docs, "migrated_count": docs,
+            "quarantine_count": 0, "fragment_count": 0,
+            "silent_loss": {"total_docs": docs, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0,
+                            "family_violation_count": violations,
+                            "cardinality_denominator": {
+                                "docs_checked": docs,
+                                "families_declared": fams,
+                                "family_checks": checks}}})
+
+    def test_the_cardinality_table_prints_its_denominator(self):
+        # DID-matlab #399: EDGE-FAMILY CARDINALITY VIOLATIONS printed a count
+        # with no denominator, so its zero could not be told from "nothing in
+        # reach was checked". The rollup now sums what each report checked.
+        self._card("A", 10, 2, 15)
+        self._card("B", 4, 1, 4)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        head = text.index("EDGE-FAMILY CARDINALITY VIOLATIONS: 0 document(s)")
+        rest = text[head:text.index("EDGE-FAMILY UNIQUENESS VIOLATIONS")]
+        self.assertIn("2 of 2 silent-loss report(s) carried a cardinality "
+                      "denominator", rest)
+        self.assertIn("14 document(s) declaring a numbered family checked; "
+                      "19 (document, family) check(s); 3 (class, family) "
+                      "pair(s), summed over corpora", rest)
+        self.assertNotIn("'untested'", rest)
+
+    def test_a_cardinality_zero_with_nothing_checked_is_untested(self):
+        self._card("A", 3, 0, 0)
+        text, _ = self.run_digest()
+        head = text.index("EDGE-FAMILY CARDINALITY VIOLATIONS")
+        rest = text[head:text.index("EDGE-FAMILY UNIQUENESS VIOLATIONS")]
+        self.assertIn("the zero is 'untested', not 'clean'", rest)
+        # and the per-corpus block says the same
+        self.assertIn("0 (document, family) check(s)", text)
+        self.assertIn("COULD NOT FIRE", text)
+
+    def test_a_report_without_the_cardinality_denominator_is_not_measured(self):
+        # A report written before silentLoss emitted the block: printed as
+        # NOT REPORTED, never as a zero.
+        self.write("Old", {
+            "corpus": "Old", "total": 3, "migrated_count": 3,
+            "quarantine_count": 0, "fragment_count": 0,
+            "silent_loss": {"total_docs": 3, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0,
+                            "family_violation_count": 0}})
+        text, _ = self.run_digest()
+        self.assertIn("DENOMINATOR: NOT REPORTED", text)
+        head = text.index("EDGE-FAMILY CARDINALITY VIOLATIONS")
+        rest = text[head:text.index("EDGE-FAMILY UNIQUENESS VIOLATIONS")]
+        self.assertIn("0 of 1 silent-loss report(s) carried a cardinality "
+                      "denominator", rest)
+        self.assertIn("their part of the zero is 'not measured'", rest)
+
     def test_a_broken_rollup_does_not_destroy_the_per_corpus_output(self):
         # Run #256's lesson, applied to the new code: an exception in the
         # aggregate must not take the six individual reports with it.
