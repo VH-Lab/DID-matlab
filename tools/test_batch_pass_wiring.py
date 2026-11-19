@@ -577,41 +577,6 @@ def test_every_counter_a_rendered_pass_declares_reaches_the_digest():
     )
 
 
-def test_the_session_anchor_extent_counters_are_rendered():
-    """The bounded-extent group, named rather than left to the sweep above.
-
-    The generic test passes just as well if these counters are DELETED -- a
-    scan over what exists cannot notice something that stopped existing, which
-    is the same reason test_the_response_parameters_fold_is_wired exists. They
-    are the instrument for a defect that discarded 20,411 encounter windows
-    while every other counter in that report read clean, so removing them is a
-    decision that should have to argue with a test.
-    """
-    rendered = _digest_rows()
-    assert "session_anchor_fold" in rendered, (
-        "session_anchor_fold has no POST_PASSES entry at all"
-    )
-    required = {
-        "bounded_extents_examined": "THE DENOMINATOR -- without it every "
-                                    "extent counter's 0 is unreadable",
-        "bounded_with_start_field": "was a window there to lose",
-        "bounded_with_end_field": "was a window there to lose",
-        "bounded_window_carried": "did it survive",
-        "bounded_start_only_carried": "the half-window, kept apart from a "
-                                      "window that was never there",
-        "bounded_no_window_stated": "nothing to lose -- NOT a loss",
-        "refused_unreadable_extent_unit": "the unit the fold will not guess",
-        "refused_malformed_extent": "a shape it does not recognise",
-        "refused_extent_without_start": "an end it cannot anchor",
-    }
-    gone = sorted(k for k in required if k not in rendered["session_anchor_fold"])
-    print("\n--- session_anchor_fold extent rows: %d required, %d missing ---"
-          % (len(required), len(gone)))
-    assert not gone, "\n  ".join(
-        ["bounded-extent row(s) missing from census_digest.POST_PASSES:"]
-        + ["%s -- %s" % (k, required[k]) for k in gone])
-
-
 def test_the_response_parameters_fold_is_wired():
     """#61's resolver, named explicitly rather than left to the sweep above.
 

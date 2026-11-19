@@ -7,8 +7,8 @@ function tests = testRetiredNamesInCode
 %     session_relative_reference, session_bounded_reference
 %         the pre-#73 session anchors. jSessionAnchor writes a
 %         `relative_time_reference` to the session entity, and nothing mints
-%         the old classes (DID-matlab #397). Only resolveSessionAnchors, the
-%         pass that folds them, reads the names.
+%         the old classes; the pass that folded them is deleted
+%         (DID-matlab #397). No code line reads the names.
 %     'method_parameters' as a CLASS
 %         the standalone class is `method` since did-schema #88; epochMint's
 %         epoch_id stamping loop compares on 'method' (DID-matlab #398).
@@ -100,10 +100,6 @@ end
 function tf = isAllowed(rel, name)
 % {file (relative to src/did/+did2), name, reason}
 allow = {
-    '+convert/resolveSessionAnchors.m', 'session_relative_reference', ...
-        'the fold of the pre-#73 anchor: its selector (DID-matlab #397)'
-    '+convert/resolveSessionAnchors.m', 'session_bounded_reference', ...
-        'the fold of the pre-#73 anchor: its selector (DID-matlab #397)'
     '+convert/schemaVersionRank.m', 'V_epsilon', ...
         'ranks a legacy schema_version stamp on an old body (DID-matlab #402)'
     '+convert/schemaVersionRank.m', 'V_zeta', ...

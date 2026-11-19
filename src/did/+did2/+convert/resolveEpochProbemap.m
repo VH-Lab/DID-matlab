@@ -57,7 +57,6 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       calculation(spike waveforms), observation(session-scoped recording),
 %       observation(pyraview),
 %       relative_time_reference(session anchor of a recording observation),
-%       relative_reference(folded session anchor),
 %       relative_time_reference(epoch anchor), result.epoch_mint
 %   BATCH-PASS-ADDS: observation(recording per epoch),
 %       manipulation(stimulator per epoch), opaque_body(epoch file by location),
@@ -163,11 +162,9 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   the same wall as epochMint, resolveSessionAnchors and jEpochDocId.
 %
 %   ---------------------------------------------------------------------
-%   ORDER: AFTER epochMint (it needs the `epoch` documents to anchor to) AND
-%   AFTER resolveSessionAnchors (so the #30 observations it retires have already
-%   had their session anchors folded to `relative_reference`, and so this pass
-%   mints its OWN 'during' anchor as a final `relative_reference` directly rather
-%   than a pass-1 handle needing a later fold).
+%   ORDER: AFTER epochMint (it needs the `epoch` documents to anchor to). It
+%   mints its OWN 'during' anchor as a final reference directly rather than a
+%   pass-1 handle needing a later fold.
 %   ---------------------------------------------------------------------
 %
 %   ---------------------------------------------------------------------
@@ -244,7 +241,6 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   Options mirror the sibling passes (Validate / SchemaCache / TargetVersion).
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
-%   did2.convert.resolveSessionAnchors,
 %   did2.convert.migrators_j (element, epochfiles_ingested).
 
 arguments
