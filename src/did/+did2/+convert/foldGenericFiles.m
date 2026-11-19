@@ -423,7 +423,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   carried dimensions and covariates go, after the level completion has read
 %   them, as on every other carrier.
 %
-%   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
+%   See also: did2.convert.v1_to_v2,
 %   did2.unittest.testFoldGenericFiles, did2.unittest.testBatchPassWiring.
 
 arguments

@@ -493,7 +493,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %                    axis), not a boolean.
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
-%   did2.convert.resolveSessionAnchors, did2.convert.resolveResponseParameters.
+%   did2.convert.resolveResponseParameters.
 
 arguments
     result (1,1) struct
