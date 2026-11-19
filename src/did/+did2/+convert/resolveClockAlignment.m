@@ -100,7 +100,7 @@ function [result, report] = resolveClockAlignment(result, options)
 %   THIS FILE HAS BEEN EXECUTED. test-migrators-quick.yml and the V_eta e2e are
 %   the first things with an opinion.
 %
-%   See also: did2.convert.resolveSessionAnchors, did2.convert.epochMint,
+%   See also: did2.convert.epochMint,
 %   did2.convert.migrators_j.syncgraph.
 
 arguments

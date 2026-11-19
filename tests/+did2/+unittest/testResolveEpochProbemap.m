@@ -26,10 +26,9 @@ function tests = testResolveEpochProbemap
 %   recording-observation and epoch-mint tests already drive. Shapes are copied
 %   from testEpochProbemapMeasurement.m so the two cannot drift.
 %
-%   THE CHAIN IS THE REAL ONE: v1_to_v2 -> epochMint -> resolveSessionAnchors ->
-%   resolveEpochProbemap, in the order the corpus harness composes it. epochMint
-%   mints the `epoch` documents this pass anchors to; resolveSessionAnchors folds
-%   the #30 observations' session anchors first, exactly as in production.
+%   THE CHAIN IS THE REAL ONE: v1_to_v2 -> epochMint -> resolveEpochProbemap,
+%   in the order the corpus harness composes it. epochMint mints the `epoch`
+%   documents this pass anchors to, exactly as in production.
 
 tests = functiontests(localfunctions);
 end
@@ -38,7 +37,7 @@ end
 
 function [out, rep] = decompose(v1)
 %DECOMPOSE Pass 1, then the batch chain up to and including this pass. Validation
-%   is ON from resolveSessionAnchors onward so the minted observations and
+%   is ON for this pass so the minted observations and
 %   anchors are checked against the real V_eta schema.
 % the sorted units below are labelled single units by their sorting run:
 % [sorted units are cells or groups] (Jess Haley, 2026-10-26); an unlabelled
@@ -48,8 +47,6 @@ labels = {'el_neuron', 'single', 'el_neuron_x', 'single', 'el_neuron_u', 'single
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', labels);
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
-out = did2.convert.resolveSessionAnchors(out, 'Validate', true, ...
-    'TargetVersion', 'did_v2');
 [out, rep] = did2.convert.resolveEpochProbemap(out, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 end
