@@ -231,8 +231,16 @@ if ~isempty(numbers)
     hn = struct();
     covs = asCell(getIn(numbers, 'data', 'covariates'));
     for k = 1:numel(covs)
-        [~, label] = termParts(getIn(covs{k}, 'variable'));
-        ix = find(strcmpi(cols(:, 2), label), 1);
+        % [hartley column terms] (Jess Haley, 2026-11-19): by the variable's
+        % node first; a covariate migrated before the terms were decided has
+        % no node and its plain label ('hartley S'), read by name
+        [node, label] = termParts(getIn(covs{k}, 'variable'));
+        node = strtrim(char(node));
+        if ~isempty(node)
+            ix = find(strcmpi(cols(:, 2), node), 1);
+        else
+            ix = find(strcmpi(cols(:, 3), label) | strcmpi(cols(:, 4), label), 1);
+        end
         if isempty(ix) || isfield(hn, cols{ix, 1})
             spec.unplaced{end+1} = sprintf('hartley numbers covariate "%s" has no v1 field', label);
             continue;
@@ -347,9 +355,13 @@ end
 end
 
 function c = hartleyNumberColumns()
-% v1 field -> covariate label (did2.convert.migrators_j.hartley_calc's table)
-c = {'S', 'hartley S'; 'KXV', 'hartley KXV'; 'KYV', 'hartley KYV'; ...
-    'ORDER', 'hartley ORDER'};
+% v1 field -> covariate node, its name, and the plain label written before
+% [hartley column terms] (did2.convert.migrators_j.hartley_calc's table)
+c = { ...
+    'S',     'EMPTY:0000449', 'contrast polarity',                      'hartley S'; ...
+    'KXV',   'EMPTY:0000450', 'horizontal spatial frequency component', 'hartley KXV'; ...
+    'KYV',   'EMPTY:0000451', 'vertical spatial frequency component',   'hartley KYV'; ...
+    'ORDER', 'NCIT:C25390',   'Index',                                  'hartley ORDER'};
 end
 
 function s = STA()

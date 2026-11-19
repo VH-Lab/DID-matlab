@@ -232,6 +232,14 @@ if isfield(result, 'summary') && isfield(result.summary, 'migration_notes')
         else
             report.carried_as_v1.notes_citing_no_row = n.count;
         end
+        % WHAT each carry names (report-only): every distinct DETAIL and how
+        % many notes carry it (EXACT, did2.convert.reportNote 'collect'), so a
+        % row's count can be read back as the fields behind it without a
+        % re-run. count - sum(distinct_detail_counts) notes had no DETAIL.
+        if isfield(n, 'distinct_details') && isfield(n, 'distinct_detail_counts')
+            report.carried_as_v1.distinct_details = cellstr(n.distinct_details);
+            report.carried_as_v1.distinct_detail_counts = n.distinct_detail_counts;
+        end
     end
 end
 % THE TUNING RESPONSE VARIABLE ([response variable], [dF/F as variable],
