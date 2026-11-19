@@ -19,7 +19,10 @@ function rep = unregisteredTermsInFinal(docs, rows)
 %   REP fields:
 %     docs_walked    the final documents read (THE DENOMINATOR)
 %     docs_unread    documents that could not be read as a struct
-%     terms_read     {node, name} structs met in the walk
+%     terms_read     structs with a text `name` met in the walk (a term
+%                    whose node is empty may be stored with no `node`
+%                    field, so `node` is not required; a row matches only
+%                    at its own field)
 %     rows           ROWS with `final_docs` (final documents holding the
 %                    term at the field) and `final_count` (occurrences)
 %     rows_in_final  how many ROWS have final_docs > 0
@@ -88,11 +91,15 @@ function [hits, nTerms] = walk(x, path, hits, nTerms, want)
         return;
     end
     f = fieldnames(x);
-    isTerm = any(strcmp(f, 'node')) && any(strcmp(f, 'name'));
+    % a term with no node may be stored without the field, so a struct with
+    % a `name` is read as a term; only one at a row's field can match it
+    isTerm = any(strcmp(f, 'name'));
+    hasNode = any(strcmp(f, 'node'));
     for e = 1:numel(x)
         if isTerm
             nm = x(e).name;
-            nd = x(e).node;
+            nd = '';
+            if hasNode; nd = x(e).node; end
             if (ischar(nm) || isstring(nm)) && (ischar(nd) || isstring(nd) || isempty(nd))
                 nTerms = nTerms + 1;
                 if isempty(nd); nd = ''; end

@@ -37,6 +37,16 @@ verifyEqual(testCase, rep.rows.final_docs, 0);
 verifyEqual(testCase, rep.rows_in_final, 0);
 end
 
+function testATermStoredWithNoNodeFieldIsCounted(testCase)
+% a term whose node is empty may be stored with no `node` field at all
+rows = struct('name', 'isspike', 'node', '', 'field', 'method.parameters[].variable', ...
+    'reason', 'r', 'count', 273);
+m = struct('method', struct('parameters', struct('variable', struct('name', 'isspike'))));
+rep = did2.unittest.helpers.unregisteredTermsInFinal({m}, rows);
+verifyEqual(testCase, rep.rows.final_docs, 1);
+verifyEqual(testCase, rep.rows_in_final, 1);
+end
+
 function testNoRowsStillWalksAndCounts(testCase)
 rows = struct('name', {}, 'node', {}, 'field', {}, 'reason', {}, 'count', {});
 b = struct('statement', struct('variable', struct('node', 'NCIT:C178920', 'name', 'Equipment Type')));
