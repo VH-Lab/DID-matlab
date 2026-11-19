@@ -15,9 +15,18 @@ at the start of the note when every reason in it is that row's
 ('[carry-022] needs_mapping: ...'), before each item when a note lists reasons
 of different rows ('unplaced: [carry-014] ..., [carry-015] ...').
 
+A FIELD CARRY ([one-field carry in the migration report], Jess Haley,
+2026-11-19, did-schema docs/plans/did_v2_standing_wiring_plan.md) is
+`did2.convert.migrationReport('carriedField', ID, CLASS, FIELD, VALUE, CARRY,
+REASON)`: one v1 field of a document that converts, held in the report's
+`carried_fields`, citing a register row whose `scope` is "field" (carry-172,
+did2.convert.carryElementSubject). It is a carry site too, under the same
+marker rule, and two more rules (R6).
+
 Notes are built at run time, often from parts made in another file, so this
-reads the SOURCE: every carry site (a `reportNote('carried_as_v1'` call, or a
-call of treatment.m's `carryAsV1`) carries, in the comment lines directly above
+reads the SOURCE: every carry site (a `reportNote('carried_as_v1'` call, a
+call of treatment.m's `carryAsV1`, or a `migrationReport('carriedField'`
+call) carries, in the comment lines directly above
 it, a marker saying which rows its note can cite:
 
     % carry-register: carry-001
@@ -35,14 +44,20 @@ FAILS (exit 1) on any of:
       file, nor in a file the marker names with `via` (the marker claims a
       citation the code does not make), or a `via` file that does not exist;
   R5  the register cannot be read, or holds no rows, or no carry site is found
-      (a check that inspected nothing is not a pass).
+      (a check that inspected nothing is not a pass);
+  R6  a field carry site whose marker names no row (a field carry cites its
+      row: `none` or `forwarded` alone is not enough), or names a row whose
+      `scope` is not "field"; or a whole-document carry site whose marker names
+      a row whose `scope` is "field" (a field-scoped row covers one field of a
+      document that converts, never a document carried whole).
 REPORTS, and fails only with --strict:
   a marker saying `none`: a carry reason with NO register row yet. The rule is
   not to invent a row here; the team adds it to the register, and the marker
   then names it. These are listed, with the note text that follows the marker.
 
-It prints its denominator first: the register and its row count, the files
-scanned and the carry sites found.
+It prints its denominator first: the register and its row count (and how many
+are field-scoped), the files scanned and the carry sites found (and how many
+are field carries).
 
 Where the register is read from (the did-schema checkout the tests already
 use): --did-schema DIR, else $DID_SCHEMA_ROOT, else ./did-schema (the CI
@@ -68,7 +83,9 @@ REGISTER_REL, REGISTER_REL_OLD = schema_rels(REGISTER_BASE)
 REGISTER_NAMES = "%s (or %s)" % (REGISTER_REL, REGISTER_REL_OLD)
 
 ROW_TOKEN = re.compile(r"carry-\d{3}")
-SITE = re.compile(r"reportNote\(\s*'carried_as_v1'|\bcarryAsV1\(")
+FIELD_SITE = re.compile(r"migrationReport\(\s*'carriedField'")
+SITE = re.compile(r"reportNote\(\s*'carried_as_v1'|\bcarryAsV1\(|"
+                  + FIELD_SITE.pattern)
 MARKER = re.compile(r"^\s*%\s*carry-register:(.*)$")
 VIA = re.compile(r"\bvia\s+(\S+?\.m)\b")
 MARKER_REACH = 8   # comment lines above a site searched for its marker
@@ -90,11 +107,19 @@ def find_did_schema(explicit=None):
     return None
 
 
-def register_ids(path):
+def register_rows(path):
     with open(path) as f:
         reg = json.load(f)
     rows = reg.get("rows", []) if isinstance(reg, dict) else []
-    return [r.get("id") for r in rows if isinstance(r, dict)]
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def register_ids(path):
+    return [r.get("id") for r in register_rows(path)]
+
+
+def is_field_scoped(row):
+    return isinstance(row, dict) and row.get("scope") == "field"
 
 
 def m_files(src):
@@ -161,12 +186,14 @@ def check(did_schema, src=SRC, strict=False, out=sys.stdout):
         failures.append("R5 register not found")
         return 1, res
     try:
-        ids = register_ids(reg_path)
+        rows_read = register_rows(reg_path)
     except (OSError, ValueError) as err:
         p("FAIL R5 the register cannot be read: %s" % err)
         failures.append("R5 unreadable")
         return 1, res
-    known = set(i for i in ids if i)
+    known = set(r.get("id") for r in rows_read if r.get("id"))
+    field_rows = set(r.get("id") for r in rows_read
+                     if r.get("id") and is_field_scoped(r))
     files = m_files(src)
 
     all_sites = []
@@ -178,9 +205,12 @@ def check(did_schema, src=SRC, strict=False, out=sys.stdout):
         for i in sites_in(lines):
             all_sites.append((path, i))
 
-    p("DENOMINATOR: register %s (%d row(s)); %d .m file(s) under %s; "
-      "%d carry site(s)" % (reg_path, len(known), len(files),
-                            os.path.relpath(src, REPO), len(all_sites)))
+    n_field_sites = sum(1 for path, i in all_sites
+                        if FIELD_SITE.search(texts[path][i]))
+    p("DENOMINATOR: register %s (%d row(s), %d field-scoped); %d .m file(s) "
+      "under %s; %d carry site(s) (%d field carry site(s))" % (
+          reg_path, len(known), len(field_rows), len(files),
+          os.path.relpath(src, REPO), len(all_sites), n_field_sites))
     if not known:
         failures.append("R5 the register holds no rows")
     if not all_sites:
@@ -200,7 +230,9 @@ def check(did_schema, src=SRC, strict=False, out=sys.stdout):
     for path, i in all_sites:
         where = "%s:%d" % (rel(path), i + 1)
         marker = marker_for(texts[path], i)
-        site = {"where": where, "marker": marker, "rows": [], "none": False}
+        is_field = bool(FIELD_SITE.search(texts[path][i]))
+        site = {"where": where, "marker": marker, "rows": [], "none": False,
+                "field": is_field}
         res["sites"].append(site)
         if marker is None:
             failures.append("R2 %s: carry site with no '%% carry-register:' marker "
@@ -213,6 +245,22 @@ def check(did_schema, src=SRC, strict=False, out=sys.stdout):
         if not rows and not site["none"] and not forwarded:
             failures.append("R3 %s: the marker names no row and says neither 'none' "
                             "nor 'forwarded': %s" % (where, marker))
+        # R6: a field carry cites a field-scoped row; a whole-document carry
+        # never does
+        if is_field:
+            if not rows:
+                failures.append("R6 %s: a field carry site names no register row "
+                                "(a field carry cites its field-scoped row): %s"
+                                % (where, marker))
+            for row in rows:
+                if row in known and row not in field_rows:
+                    failures.append("R6 %s: a field carry site names %s, whose "
+                                    "scope is not \"field\"" % (where, row))
+        else:
+            for row in rows:
+                if row in field_rows:
+                    failures.append("R6 %s: a whole-document carry site names %s, "
+                                    "a field-scoped row" % (where, row))
         searched = ["\n".join(texts[path])]
         for via in VIA.findall(marker):
             vpath = os.path.normpath(os.path.join(os.path.dirname(path), via))

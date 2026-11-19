@@ -51,6 +51,25 @@ function out = migrationReport(action, varargin)
 %                          use: a stimulus response with no spike-times
 %                          observation of its unit for its epoch
 %                          (did2.convert.resolveResponseParameters).
+%     [one-field carry in the migration report]  (Jess Haley, 2026-11-19,
+%                          did-schema docs/plans/did_v2_standing_wiring_plan.md)
+%                          a fifth list, `carried_fields` (document_id, class,
+%                          field, value, carry, reason): one v1 field of a
+%                          document that CONVERTS, held here because the v2
+%                          document has no home for it yet, its VALUE kept as
+%                          the value itself (any JSON value, not text), CARRY
+%                          the field-scoped carry register row(s) it cites
+%                          (kind needs_mapping), with its count in `counts`.
+%                          Unlike a `carried_as_v1` entry it is collected for
+%                          a document that is a v2 document in the end. First
+%                          use: the v1 subject of a migrated stimulator no
+%                          statement names ([stimulator subject carried as
+%                          needing information]) or of a recording probe
+%                          with no recording observation ([recording probe
+%                          subject carried the same way]), carry-172, written
+%                          by NDI-matlab's second pass through
+%                          did2.convert.carryElementSubject and read back by
+%                          did2.convert.carriedElementSubject.
 %
 %   This function holds the report of the run in progress. The validator
 %   (did2.schema.reportedGaps) reads the gaps of a document from it, so a
@@ -117,6 +136,21 @@ function out = migrationReport(action, varargin)
 %   N = did2.convert.migrationReport('inputsNotFound', DOCID)
 %       the inputs not found listed for DOCID, a struct array {input, reason}
 %       (0x0 when none, or when no run is held).
+%   did2.convert.migrationReport('carriedField', DOCID, CLASSNAME, FIELD, VALUE, CARRY, REASON)
+%       list one carried field ([one-field carry in the migration report]):
+%       the document DOCID converts, and its v1 source's FIELD (as the carry
+%       register row names it: 'depends_on subject_id'), of the v1 class
+%       CLASSNAME, had VALUE, which the v2 document does not hold. VALUE is
+%       kept as given (a char, a number, a struct: whatever jsonencode
+%       writes), never turned into text. CARRY is text citing the carry
+%       register row(s) that cover it ('carry-172' or '[carry-172]'), stored
+%       as the distinct rows, sorted, ', '-joined; REASON says why the field
+%       has no v2 home. DOCID, FIELD, REASON and a row in CARRY are required,
+%       else did2:convert:badCarriedField. Listed once per document and field
+%       (the latest). With no run held it begins one first, as 'gap' does.
+%   F = did2.convert.migrationReport('carriedFields', DOCID)
+%       the carried fields listed for DOCID, a struct array {field, value,
+%       carry, reason} (0x0 when none, or when no run is held).
 %   did2.convert.migrationReport('carried', DOCID, CLASSNAME, CARRY, REASON)
 %       a document carried whole as v1: CARRY the carry register row(s) it
 %       cites ('carry-064', '' when none), REASON what could not be placed.
@@ -144,8 +178,16 @@ function out = migrationReport(action, varargin)
 %         R.inputs_not_found  struct array {document_id, class, input,
 %                           reason}, in the order of DOCS: only entries of a
 %                           document in DOCS that is a v2 document in the end
+%         R.carried_fields  struct array {document_id, class, field, value,
+%                           carry, reason}, in the order of DOCS: only
+%                           entries of a document in DOCS that is a v2
+%                           document in the end (a document carried whole as
+%                           v1 holds the field itself)
 %         R.counts          documents (numel(DOCS), the denominator of what
-%                           follows), gaps, documents_with_gaps,
+%                           follows), documents_converted (the documents of
+%                           DOCS that are v2 documents: the denominator of
+%                           inputs_not_found and carried_fields), gaps,
+%                           documents_with_gaps,
 %                           gaps_by_class {class, count}, carried_as_v1 (the
 %                           denominator of the two lines after it),
 %                           carried_by_register_row {row, count} (a carry
@@ -155,16 +197,20 @@ function out = migrationReport(action, varargin)
 %                           practices], Jess Haley, 2026-10-26: carry counts by
 %                           register row, with the denominator),
 %                           known_v1_defects (entries listed),
-%                           inputs_not_found (entries listed).
+%                           inputs_not_found (entries listed),
+%                           carried_fields (entries listed),
+%                           documents_with_carried_fields,
+%                           carried_fields_by_register_row {row, count}.
 %   did2.convert.migrationReport('load', R)
-%       begin a run holding R's gaps, carries, known v1 defects and inputs
-%       not found (R a
+%       begin a run holding R's gaps, carries, known v1 defects, inputs
+%       not found and carried fields (R a
 %       'collect' result, or
 %       the attached file's JSON decoded), so documents migrated by that run
 %       can be validated again.
 %
 %   See also did2.convert.migrationRecord, did2.schema.reportedGaps,
-%            did2.build.document, did2.convert.reportNote.
+%            did2.build.document, did2.convert.reportNote,
+%            did2.convert.carryElementSubject, did2.convert.carriedElementSubject.
 
 persistent st
 if isempty(st)
@@ -284,6 +330,49 @@ switch char(action)
         else
             m(docId) = e; %#ok<NASGU> handle
         end
+    case 'carriedField'
+        if ~st.active
+            st = emptyState(true);
+        end
+        if numel(varargin) < 6
+            error('did2:convert:badCarriedField', ...
+                ['A carried field needs a document id, a class, a field, a value, ' ...
+                 'a carry register row and a reason (got %d argument(s)).'], numel(varargin));
+        end
+        [docId, cls, field, carry, reason] = deal(text(varargin{1}), text(varargin{2}), ...
+            text(varargin{3}), joinRows('', text(varargin{5})), text(varargin{6}));
+        if isempty(docId) || isempty(field) || isempty(carry) || isempty(reason)
+            error('did2:convert:badCarriedField', ...
+                ['A carried field needs a document id, a field, a carry register row ' ...
+                 'and a reason (got "%s", "%s", "%s", "%s").'], ...
+                docId, field, text(varargin{5}), reason);
+        end
+        e = struct('class', cls, 'field', field, 'value', {varargin{4}}, ...
+            'carry', carry, 'reason', reason);
+        m = st.carriedFields;
+        if isKey(m, docId)
+            prev = m(docId);
+            hit = find(strcmp({prev.field}, field), 1);
+            if isempty(hit)
+                m(docId) = [prev, e]; %#ok<NASGU> handle
+            else
+                prev(hit) = e;   % listed once per document and field: the latest
+                m(docId) = prev; %#ok<NASGU> handle
+            end
+        else
+            m(docId) = e; %#ok<NASGU> handle
+        end
+    case 'carriedFields'
+        out = struct('field', {}, 'value', {}, 'carry', {}, 'reason', {});
+        if ~st.active || st.carriedFields.Count == 0
+            return;
+        end
+        docId = text(varargin{1});
+        if ~isempty(docId) && isKey(st.carriedFields, docId)
+            g = st.carriedFields(docId);
+            out = struct('field', {g.field}, 'value', {g.value}, ...
+                'carry', {g.carry}, 'reason', {g.reason});
+        end
     case 'inputsNotFound'
         out = struct('input', {}, 'reason', {});
         if ~st.active || st.inputs.Count == 0
@@ -372,6 +461,12 @@ switch char(action)
                 migrationReportAdd(st, 'input', d(k));
             end
         end
+        if isfield(r, 'carried_fields')
+            d = asStructs(r.carried_fields);
+            for k = 1:numel(d)
+                migrationReportAdd(st, 'carriedField', d(k));
+            end
+        end
     otherwise
         error('did2:convert:badArgument', ...
             'migrationReport: unknown action "%s".', char(action));
@@ -386,7 +481,8 @@ st = struct('active', active, 'own', false, 'depth', 0, ...
     'carried', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
     'defects', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
     'notMigrated', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
-    'inputs', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+    'inputs', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'carriedFields', containers.Map('KeyType', 'char', 'ValueType', 'any'));
 end
 
 function migrationReportAdd(st, kind, e)
@@ -428,6 +524,17 @@ switch kind
         else
             m(docId) = x; %#ok<NASGU> handle
         end
+    case 'carriedField'
+        x = struct('class', text(fieldOr(e, 'class')), 'field', ...
+            text(fieldOr(e, 'field')), 'value', {fieldOr(e, 'value')}, ...
+            'carry', joinRows('', text(fieldOr(e, 'carry'))), ...
+            'reason', text(fieldOr(e, 'reason')));
+        m = st.carriedFields;
+        if isKey(m, docId)
+            m(docId) = [m(docId), x]; %#ok<NASGU> handle
+        else
+            m(docId) = x; %#ok<NASGU> handle
+        end
     case 'carried'
         m = st.carried;
         m(docId) = struct('class', text(fieldOr(e, 'class')), 'carry', ...
@@ -443,7 +550,11 @@ gaps = struct('document_id', {}, 'class', {}, 'field', {}, 'reason', {});
 carried = struct('document_id', {}, 'class', {}, 'carry', {}, 'reason', {});
 defects = struct('document_id', {}, 'class', {}, 'field', {}, 'reason', {});
 inputs = struct('document_id', {}, 'class', {}, 'input', {}, 'reason', {});
+cfields = struct('document_id', {}, 'class', {}, 'field', {}, 'value', {}, ...
+    'carry', {}, 'reason', {});
 withGaps = 0;
+withFields = 0;
+nConverted = 0;
 held = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:numel(docs)
     s = docs{k};
@@ -480,6 +591,21 @@ for k = 1:numel(docs)
     end
     stamp = did2.schema.stampOf(s);
     if did2.schema.isV2Stamp(stamp)
+        nConverted = nConverted + 1;
+        % [one-field carry in the migration report]: a carried field is of a
+        % document that converts, so it is kept here (not dropped as a
+        % whole-document carry of a converted document is, below)
+        if st.carriedFields.Count > 0 && isKey(st.carriedFields, id)
+            g = st.carriedFields(id);
+            withFields = withFields + 1;
+            for j = 1:numel(g)
+                c = g(j).class;
+                if isempty(c); c = cls; end
+                cfields(end+1) = struct('document_id', id, 'class', c, ...
+                    'field', g(j).field, 'value', {g(j).value}, ...
+                    'carry', g(j).carry, 'reason', g(j).reason); %#ok<AGROW>
+            end
+        end
         if st.inputs.Count > 0 && isKey(st.inputs, id)
             g = st.inputs(id);
             for j = 1:numel(g)
@@ -521,7 +647,16 @@ r.gaps = gaps;
 r.carried_as_v1 = carried;
 r.known_v1_defects = defects;
 r.inputs_not_found = inputs;
+r.carried_fields = cfields;
 r.counts = counts(numel(docs), gaps, withGaps, carried, defects, inputs);
+r.counts.documents_converted = nConverted;
+r.counts.carried_fields = numel(cfields);
+r.counts.documents_with_carried_fields = withFields;
+fieldRows = {};
+for k = 1:numel(cfields)
+    fieldRows = [fieldRows, unique(regexp(cfields(k).carry, 'carry-\d{3}', 'match'), 'stable')]; %#ok<AGROW>
+end
+r.counts.carried_fields_by_register_row = tally(fieldRows, 'row');
 end
 
 function c = counts(nDocs, gaps, withGaps, carried, defects, inputs)

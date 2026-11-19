@@ -18,7 +18,10 @@ cannot pass these:
   5. `none` passes, is listed, and FAILS under --strict;
   6. a comment that mentions a carry call is not a site;
   7. the register is read by its new name (`did_v2_carry_register.json`) or
-     its old one (`V_eta_carry_register.json`), the new name first.
+     its old one (`V_eta_carry_register.json`), the new name first;
+  8. a field carry (`migrationReport('carriedField'`, [one-field carry in the
+     migration report], Jess Haley, 2026-11-19) is a site, cites a
+     field-scoped row (R6), and a whole-document carry never cites one (R6).
 
 Run: python3 tools/test_check_carry_citations.py     (or: python3 -m pytest)
 """
@@ -46,7 +49,7 @@ class Tree:
     """A temp did-schema checkout (register) and a temp migrator source tree."""
 
     def __init__(self, ids=("carry-001", "carry-002"), files=None,
-                 register_rel=None):
+                 register_rel=None, field_ids=()):
         self.root = tempfile.mkdtemp(prefix="carrycite-")
         self.schema = os.path.join(self.root, "did-schema")
         self.src = os.path.join(self.root, "src")
@@ -55,7 +58,10 @@ class Tree:
         if ids is not None:
             with open(os.path.join(self.schema,
                                    register_rel or gate.REGISTER_REL), "w") as f:
-                json.dump({"rows": [{"id": i} for i in ids]}, f)
+                rows = [dict({"id": i}, **({"scope": "field"}
+                                           if i in field_ids else {}))
+                        for i in ids]
+                json.dump({"rows": rows}, f)
         for name, text in (files or {"good.m": GOOD_SITE}).items():
             with open(os.path.join(self.src, name), "w") as f:
                 f.write(text)
@@ -208,6 +214,56 @@ def test_the_new_name_wins_when_both_are_present():
     code, _res = t.run()
     assert code == 0, t.output
     assert "did_v2_carry_register.json" in t.output, t.output
+
+
+# ------------------------------------------------- 8. field carries
+
+FIELD_SITE = """function carry(id, v)
+% carry-register: carry-003
+did2.convert.migrationReport('carriedField', id, 'element', ...
+    'depends_on subject_id', v, '[carry-003]', 'no statement names it');
+end
+"""
+
+FIELD_IDS = ("carry-001", "carry-002", "carry-003")
+
+
+def test_a_field_carry_citing_a_field_scoped_row_passes():
+    t = Tree(ids=FIELD_IDS, field_ids=("carry-003",),
+             files={"good.m": GOOD_SITE, "carry.m": FIELD_SITE})
+    code, res = t.run()
+    assert code == 0, t.output
+    assert "1 field-scoped" in t.output, t.output
+    assert "1 field carry site(s)" in t.output, t.output
+    fields = [s for s in res["sites"] if s["field"]]
+    assert len(fields) == 1 and fields[0]["rows"] == ["carry-003"], res["sites"]
+
+
+def test_a_field_carry_is_a_site_needing_a_marker():
+    text = FIELD_SITE.replace("% carry-register: carry-003\n", "")
+    fails_with(Tree(ids=FIELD_IDS, field_ids=("carry-003",),
+                    files={"good.m": GOOD_SITE, "carry.m": text}), "R2")
+
+
+def test_a_field_carry_citing_a_whole_document_row_fails():
+    fails_with(Tree(ids=FIELD_IDS, field_ids=(),
+                    files={"good.m": GOOD_SITE, "carry.m": FIELD_SITE}), "R6")
+
+
+def test_a_field_carry_citing_no_row_fails():
+    text = FIELD_SITE.replace("% carry-register: carry-003", "% carry-register: none")
+    fails_with(Tree(ids=FIELD_IDS, field_ids=("carry-003",),
+                    files={"good.m": GOOD_SITE, "carry.m": text}), "R6")
+
+
+def test_a_whole_document_carry_citing_a_field_scoped_row_fails():
+    fails_with(Tree(ids=FIELD_IDS, field_ids=("carry-001",),
+                    files={"good.m": GOOD_SITE}), "R6")
+
+
+def test_a_field_carry_citing_a_row_not_in_the_register_fails():
+    fails_with(Tree(ids=("carry-001", "carry-002"),
+                    files={"good.m": GOOD_SITE, "carry.m": FIELD_SITE}), "R1")
 
 
 # ------------------------------------------------- the real tree
