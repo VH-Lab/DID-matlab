@@ -62,10 +62,13 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %      first") and leaves it open. Retiring the source therefore drops it
 %      silently, and a passthrough keeps it losslessly.
 %
-%   3. #30 IS NOT BUILT. The raw-recording observation model
-%      (`V_eta_recording_observation_plan.md`) is what says whose observation a
-%      camera epoch is and what its `instrument_id` points at; the ingested-
-%      payload plan gates this half on it explicitly.
+%   3. #30 (HISTORICAL-BUILD-CLAIM: this blocker is withdrawn, see 3' below;
+%      #30 is built). It said the raw-recording observation model (did-schema
+%      `did_v2_recording_observation_plan.md`, TEAM-SIGN-OFF [raw recording
+%      observation], amended by [Guard A amended], Jess Haley, 2026-10-27;
+%      did-schema #104 closed 2026-10-29), which says whose observation a
+%      camera epoch is and what its `instrument_id` points at, had not landed;
+%      the ingested-payload plan gates this half on it explicitly.
 %
 %   Blocker 1 alone would justify a guarded passthrough in the fitcurve /
 %   image_stack shape. What makes a passthrough SAFE here is that the V_eta

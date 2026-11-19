@@ -35,25 +35,28 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %   #65 and #30 land -- it decomposes into `relative_reference` documents AND a
 %   `sampled_body` on an observation".
 %
-%   That gate is load-bearing here, because the document is TWO TIERS FUSED and
-%   only one of them has a target today:
+%   The document is TWO TIERS FUSED, and each now has a target:
 %
-%     epochtable                     -> relative_reference     BUILT BELOW
-%     the attached recording archives -> sampled_body on a
-%                                        <modality>_observation  #30, NOT BUILT
+%     epochtable                      -> relative_reference     BUILT BELOW
+%     the attached recording archives -> opaque_body data bodies of the
+%                                        epoch's recording observations,
+%                                        BUILT by did2.convert.resolveEpochProbemap
 %
-%   "#30, NOT BUILT" IS TOO BROAD AND IS CORRECTED HERE, 2026-08-15. #30 is
-%   SIGNED (2026-08-10 and 2026-08-13) and its assembler is LIVE:
-%   `private/jRecordingObservation.m`, called from `element.m:118`, covered by
-%   `tests/+did2/+unittest/testMigratorsJRecordingObservation.m`. What is not
-%   built is the NARROWER thing this line is really about -- RE-POINTING THESE
-%   ARCHIVES onto such an observation -- and the reason is in the assembler's
-%   own signature: the subject is an INPUT it is handed, not something it
-%   resolves, so an ingested payload needs the epoch<->element join first, i.e.
-%   the second pass. `daqreader_image_epochdata_ingested.m` already carries this
-%   correction in its own header; `jRecordingObservation.m:118` QUOTES the stale
-%   line above as evidence, which is how a wrong claim in one file becomes a
-%   citation in another.
+%   (Until 2026-11-19 this table marked the archive tier as still to be built
+%   under did-schema OPEN_WORK #30; HISTORICAL-BUILD-CLAIM, corrected here.)
+%   What #30 became is in did-schema `did_v2_recording_observation_plan.md`:
+%   TEAM-SIGN-OFF [raw recording observation] (2026-08-10, 2026-08-13), amended
+%   by "Decided by Jess Haley, 2026-10-27 [Guard A amended]" (did-schema #104,
+%   closed 2026-10-29), and, for these archives, [epoch files as data bodies],
+%   [ingested epochs use the archive] and [ingested epoch documents retired]
+%   (Jess Haley, 2026-10-21). All of it is built: an element's recording
+%   observation is assembled by `private/jRecordingObservation.m` (called from
+%   `element.m`, covered by testMigratorsJRecordingObservation); the per-epoch
+%   observations, with this document's archive segments as their
+%   `opaque_body` data bodies, are minted by the batch post-pass
+%   did2.convert.resolveEpochProbemap (covered by testResolveEpochProbemap and
+%   testIngestedArchiveFiles), which does the epoch<->element join a
+%   per-document migrator cannot.
 %
 %   And for an INGESTED session those archives are the only copy of the
 %   recording. From the writer, attached under runtime-computed names the
@@ -64,12 +67,14 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %       916  d = d.add_file([fileprefix '_group' int2str(groups(g)) '_seg.nbf_' ...
 %       955  d = d.add_file(['evmktx_group' ...], [filename_here '.nbf.tgz']);
 %
-%   Retiring the document before #30 exists would drop those bytes on the floor.
-%   So this migrator is ADDITIVE and TRANSITIONAL: it lifts the half that has a
-%   home, changes nothing about the half that does not, and leaves the source
-%   class to be deleted by whoever builds #30 and can prove the bytes landed.
-%   Nothing is duplicated at the byte level -- only `epochtable`, which is cheap
-%   and which the retiring commit removes.
+%   So THIS migrator never retires the document: it lifts `epochtable` and
+%   preserves the source. The retirement is resolveEpochProbemap's, and it
+%   retires a `daqreader_*_epochdata_ingested` document only when every file it
+%   holds is carried by a surviving per-epoch data body and every clock it
+%   states with times is on an emitted time reference ([ingested epoch
+%   documents retired], [clock only on the time reference]); a document with an
+%   unowned file is kept and counted. Nothing is duplicated at the byte level --
+%   only `epochtable`, which is cheap.
 %
 %   ---------------------------------------------------------------------
 %   THE GUARD: NO EPOCH DOCUMENT => NO REFERENCE. Pass the document through.
