@@ -91,7 +91,9 @@ function tests = testMigratorsJRecordingObservation
 %      never a class or a field. Both are DID-schema changes, out of this
 %      change's scope. So the unresolved path emits no fabricated dimensioned
 %      observation and instead records the flag as a term_assertion on the
-%      element-subject (variable 'modality unresolved', value = the type), and
+%      element-subject (variable 'modality unresolved', value = the type; since
+%      [variable terms batch 1], 2026-11-19, a `modality_unresolved` report
+%      note instead), and
 %      KEEPS the `observes` relation so nothing is lost. Tested as built, below,
 %      and flagged in the build report. THESE TESTS WILL NEED UPDATING when the
 %      schema half lands -- that is the intended signal, not a defect.
@@ -449,14 +451,17 @@ function testUnmappedTypeIsFlaggedQueryablyAndKeepsObserves(testCase)
 % the file header.
 out = runJ(elementDoc('spout', 'lick-spout', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
 
-flag = assertionWithVariable(out, 'modality unresolved');
-verifyNotEmpty(testCase, flag, 'an unmapped element type produced no queryable flag');
-% the v1 type string finds its registered device kind: did-schema registers
-% EMPTY:0000414 "lick spout" ([device kinds minted]) and a name is found
-% ignoring hyphens ([term names match ignoring spacing], DID-matlab #294); the
-% channel's modality is still unresolved, so the flag and no observation stay
-verifyEqual(testCase, flag.get('term.value').name, 'lick spout');
-verifyEqual(testCase, depValue(flag, 'entity_id'), 'el_1');
+% [variable terms batch 1] (Decided by Jess Haley, 2026-11-19, did-schema
+% did_v2_go_forward_class_audit.md): the flag is a migration-report note,
+% `modality_unresolved` (DETAIL the element type), not an assertion
+verifyEmpty(testCase, assertionWithVariable(out, 'modality unresolved'), ...
+    'the flag is a report note, not an assertion');
+n = out.summary.migration_notes;
+assertTrue(testCase, isfield(n, 'modality_unresolved'), ...
+    'an unmapped element type produced no modality_unresolved note');
+verifyEqual(testCase, n.modality_unresolved.count, 1);
+verifyEqual(testCase, n.modality_unresolved.ids, {'el_1'});
+verifyEqual(testCase, n.modality_unresolved.details, {'lick-spout'});
 % nothing was invented, and nothing was lost
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
@@ -468,6 +473,7 @@ function testAMappedTypeIsNotFlaggedUnresolved(testCase)
 % worklist query returns every element and says nothing.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
 verifyEmpty(testCase, assertionWithVariable(out, 'modality unresolved'));
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'modality_unresolved'));
 end
 
 function testBannedClassNamesAreNeverMinted(testCase)

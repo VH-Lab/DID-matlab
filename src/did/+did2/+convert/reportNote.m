@@ -148,6 +148,12 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     fold and treatment (a number with no unit or not finite,
 %                     jQuantity), and the dose and formulation writers.
 %                     Called `needs_info` until 2026-11-01.
+%     modality_unresolved  ONE note per element whose recording modality
+%                     jRecordingObservation cannot resolve (Guard A's
+%                     worklist); DETAIL is the label (the element type or the
+%                     best-known label). [variable terms batch 1] (Jess Haley,
+%                     2026-11-19): a note, not the 'modality unresolved'
+%                     assertion the element migrator wrote before.
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
 %                     location, so whether it was an immersion or a dose cannot
 %                     be read from it; it migrates as a dose with a NaN amount

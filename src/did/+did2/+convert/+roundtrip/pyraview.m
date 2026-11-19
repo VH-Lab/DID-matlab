@@ -16,7 +16,9 @@ function [v1, spec] = pyraview(bodies)
 %     epochid.epochid                    the epoch entity's local_identifier
 %     epochclocktimes.clocktype          the anchor's clock
 %     epochclocktimes.t0_t1              [start; start + duration] of the anchor
-%     pyraview.label                     the observation's variable
+%     pyraview.label                     the observation's notes (its
+%                                        variable's name before [variable
+%                                        terms batch 1])
 %     pyraview.dataType                  value.source_data_type, else
 %                                        value.data_type
 %     pyraview.channels                  the level bodies' channel dimension
@@ -258,11 +260,23 @@ end
 v1.files = files;
 
 pv = struct();
-[~, label] = termParts(getIn(obs, 'statement', 'variable'));
-pv.label = label;
-if strcmp(label, 'signal')
-    spec.equivalents(end+1) = struct('path', 'pyraview.label', 'values', {{''}}, ...
-        'why', 'an empty label: the migrator names the signal ''signal''');
+% [variable terms batch 1] (Jess Haley, 2026-11-19): the variable is
+% AFO:AFR_0001916 "voltage" and the label is the observation's notes ('' when
+% it has none); an observation migrated before that decision has no node and
+% the label as its variable's name ('signal' for an empty label)
+[vnode, label] = termParts(getIn(obs, 'statement', 'variable'));
+if ~isempty(strtrim(char(vnode)))
+    if ~strcmpi(strtrim(char(vnode)), 'AFO:AFR_0001916')
+        spec.unplaced{end+1} = sprintf('the observation''s variable is %s "%s", not voltage', ...
+            vnode, label);
+    end
+    pv.label = fieldText(getIn(obs, 'statement'), 'notes');
+else
+    pv.label = label;
+    if strcmp(label, 'signal')
+        spec.equivalents(end+1) = struct('path', 'pyraview.label', 'values', {{''}}, ...
+            'why', 'an empty label: the migrator named the signal ''signal''');
+    end
 end
 dt = fieldText(getIn(obs, 'value'), 'source_data_type');
 if isempty(dt)
