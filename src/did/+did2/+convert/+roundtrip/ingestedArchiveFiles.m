@@ -17,7 +17,7 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %   `sampled_body` (a numeric array shaped by its dimensions, or for a text
 %   body a cellstr). Without it, R.evmktx is built from the documents only
 %   (types, numbers, order) and its times and codes are 'not read'. The
-%   default reader did2.convert.roundtrip.ingestedArchiveFiles('readFloat64', ...)
+%   default reader did2.convert.roundtrip.ingestedArchiveFiles('readBody', ...)
 %   is not given here: the caller says where the bytes are (see READING
 %   BODIES).
 %
@@ -58,7 +58,18 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %       row's offset, scale, time channel and sample rate, when they are
 %       NDI's defaults, are notation ([spelling is notation]): not stored,
 %       rebuilt by the round trip; a channel list whose event or marker rows
-%       differ from the defaults ... is kept whole as v1".
+%       differ from the defaults ... is kept whole as v1";
+%   and by Jess Haley, 2026-11-19 (did-schema
+%   docs/plans/did_v2_standing_wiring_plan.md):
+%     [time channel row is notation] "a time channel's own `channel_list.bin`
+%       row is rebuilt from its time group: number the time group's, sample
+%       rate the group's, offset 0, scale 1, name the standard prefix and
+%       number; the file is removed only when the rebuild matches exactly,
+%       else it is kept whole as v1 and counted";
+%     [text channel entries are a JSON array] "an unpacked text channel's
+%       times are an uncompressed array of 64-bit floats ...; its entries are
+%       one uncompressed UTF-8 JSON array of strings in the same order,
+%       format EDAM format_3464 "JSON"".
 %   This function is that round trip's rebuild; the comparison with the v1
 %   files is did2.convert.roundtrip.compareIngestedArchiveFiles. The document
 %   inverse (did2.convert.roundtrip.daqreader_mfdaq_epochdata_ingested) reads
@@ -125,15 +136,21 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %       R.notation. A list whose event or marker rows differ (CED Spike2
 %       sets an event's time channel to its own number) does not compare
 %       exactly, and NDI-matlab's second pass keeps it whole as v1.
-%       A time row (a `t<n>` channel) is NOT rebuilt: its number,
-%       time_channel, offset and scale have no v2 home once the evenly spaced
-%       time body is removed, so a v1 list holding one (Intan's `t1`) does
-%       not rebuild exactly and stays (NDI-matlab's rule,
-%       ndi.vintage.ingestedChannelList, VH-Lab/NDI-matlab#1251, writes none
-%       either). Each time channel the groups point at is listed in
-%       R.no_home (row NaN). The rows here follow that rule: the sample rate
-%       rounded to a whole number when within 1e-9 of one, NaN read back as
-%       JSON null accepted.
+%       A time row ([time channel row is notation]): one per whole number
+%       T >= 0 that some group's "time channel" covariate names, as
+%       NDI-matlab's readers rebuild it (ndi.vintage.ingestedChannelList):
+%       name `t<T>`, type time, time_channel T (the decision names none;
+%       every NDI reader that writes a time row points it at itself: Intan
+%       `t1` 1, CED Spike2 `t<n>` n), sample rate that of the groups whose
+%       every channel names T when they agree on one (else NaN: an unevenly
+%       spaced group's time is keyed, so it has none), offset 0, scale 1,
+%       number T, group and dataclass by the writer's rule; its
+%       time_channel, offset and scale are listed in R.notation. A time
+%       channel a group names that the v1 list does not hold (Intan's
+%       auxiliary t2, VH-Lab/NDI-matlab#1249) is rebuilt too, so that list
+%       does not compare exactly; NDI-matlab's second pass keeps it. The
+%       rows here follow that rule: the sample rate rounded to a whole
+%       number when within 1e-9 of one, NaN read back as JSON null accepted.
 %     evmktx_group<g>_seg.nbf_1
 %                    one entry per group of unpacked event channels (group by
 %                    the writer's rule), the channels in row order. Each
@@ -166,11 +183,15 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %
 %   READING BODIES. [unpacked event bodies are uncompressed]: times and codes
 %   are little-endian 64-bit floats. FN = @(b) did2.convert.roundtrip.
-%   ingestedArchiveFiles('readFloat64', b, LOCATE) reads one: its members
+%   ingestedArchiveFiles('readBody', b, LOCATE) reads one: its members
 %   body_data_0.. in order, each at LOCATE(file_info entry) (a local path, ''
 %   when not here), concatenated and shaped by the dimensions (datum_order
-%   'F' or empty: first dimension fastest; 'C': last). A text body's encoding
-%   is not decided, so the default reader does not read one.
+%   'F' or empty: first dimension fastest; 'C': last); a body whose format
+%   is EDAM:format_3464 "JSON" (a text channel's entries, [text channel
+%   entries are a JSON array]) is read as one UTF-8 JSON array of strings,
+%   a 1xN cell of character rows as NDI-compress's expander gives a text
+%   channel's entries. 'readFloat64' reads the float64 bodies only (as
+%   before).
 %
 %   R, the denominators first (Operating Rule 5):
 %     documents_inspected  bodies given + batch documents indexed
@@ -200,6 +221,10 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 
 if ischar(bodies) && strcmp(bodies, 'readFloat64')
     R = readFloat64(batch, varargin{:});
+    return;
+end
+if ischar(bodies) && strcmp(bodies, 'readBody')
+    R = readBody(batch, varargin{:});
     return;
 end
 opts = struct('ReadBody', []);
@@ -277,21 +302,26 @@ for c = 1:numel(chans)
         'eventmarktext'); %#ok<AGROW>
 end
 
-% ---- the time rows (no home of their own: R.no_home) ----------------------
+% ---- the time rows ([time channel row is notation]) -----------------------
 tRows = emptyRows();
 tcs = [];
 for g = 1:numel(groups)
     v = groups(g).tc(isfinite(groups(g).tc));
     tcs = unique([tcs, v(:)']);
 end
+tcs = tcs(tcs >= 0 & tcs == round(tcs));
 for t = tcs
-    sr = NaN;
+    % [time channel row is notation]: the rate of the groups whose every
+    % channel names T, when they agree (ndi.vintage.ingestedChannelList)
+    rates = [];
     for g = 1:numel(groups)
-        if all(groups(g).tc == t) && isfinite(groups(g).sr)
-            sr = groups(g).sr;
-            break;
+        if ~isempty(groups(g).tc) && all(groups(g).tc == t) && isfinite(groups(g).sr)
+            rates(end+1) = groups(g).sr; %#ok<AGROW>
         end
     end
+    rates = unique(rates);
+    sr = NaN;
+    if isscalar(rates); sr = rates; end
     tRows(end+1) = row(sprintf('t%d', t), 'time', t, sr, 0, 1, t, writerGroup('t', t), 'time'); %#ok<AGROW>
 end
 
@@ -302,7 +332,7 @@ if hasChannelList
 elseif strcmp(R.shape, 'pass 1')
     R.channel_list_why = 'no channel_list.bin body, and no converted channel group or unpacked channel';
 else
-    all_ = rows;
+    all_ = [rows, tRows];
     nhOffset = numel(all_);
     order = writerOrder(all_);
     remap = zeros(1, numel(all_));
@@ -311,11 +341,11 @@ else
         R.no_home(h).row = remap(R.no_home(h).row);
     end
     all_ = all_(order);
-    for t = 1:numel(tRows)
-        R.no_home(end+1) = struct('row', NaN, 'field', 'time row', ...
-            'value', tRows(t).number, 'why', ['a time channel the groups point at: its own ' ...
-            'row (number, time_channel, offset, scale) has no v2 home, so it is not ' ...
-            'rebuilt (as ndi.vintage.ingestedChannelList); a v1 list that has one is kept']); %#ok<AGROW>
+    for r = find(strcmp({all_.type}, 'time'))
+        R.notation(end+1) = struct('row', r, 'field', 'time_channel, offset, scale', ...
+            'value', [all_(r).time_channel 0 1], ...
+            'why', ['[time channel row is notation] (Jess Haley, 2026-11-19): a time ' ...
+            'channel''s own row, rebuilt from the groups that name it, not stored']); %#ok<AGROW>
     end
     evOrder = eventOrder(evRows);
     evRows = evRows(evOrder);
@@ -691,8 +721,12 @@ for c = 1:numel(chans)
                 if strcmp(chans(c).type, 'marker')
                     d = double(d);
                     if isvector(d); d = d(:); end
-                elseif ischar(d)
-                    d = {d};
+                else
+                    % a text channel's entries, as NDI-compress's expander
+                    % gives them: a 1xN cell of character rows
+                    if ischar(d); d = {d}; end
+                    d = cellfun(@(x) reshape(char(x), 1, []), reshape(d, 1, []), ...
+                        'UniformOutput', false);
                 end
                 e.D{c} = d;
         end
@@ -857,6 +891,36 @@ if numel(dims) >= 2 && prod(dims) == numel(v)
         v = reshape(v, dims);
     end
 end
+end
+
+function v = readBody(b, locate)
+% a JSON body (a text channel's entries) as a 1xN cell of character rows;
+% any other, readFloat64
+if nargin < 2 || isempty(locate); locate = @defaultLocate; end
+fmt = getPath(blockField(b, 'format'), 'node');
+if ~strcmp(textOf(fmt), 'EDAM:format_3464')
+    v = readFloat64(b, locate);
+    return;
+end
+infos = asCellOf(getPath(getPath(b, 'files'), 'file_info'));
+names = cellfun(@(f) textOf(getPath(f, 'name')), infos, 'UniformOutput', false);
+i = find(strcmp(names, 'body_data_0'), 1);
+if isempty(i)
+    error('did2:convert:roundtrip:noMember', 'The body has no member body_data_0.');
+end
+p = locate(infos{i});
+if isempty(p)
+    error('did2:convert:roundtrip:notHere', 'Member body_data_0 is not on this computer.');
+end
+fid = fopen(p, 'r');
+bytes = fread(fid, Inf, 'uint8=>uint8');
+fclose(fid);
+x = jsondecode(native2unicode(reshape(bytes, 1, []), 'UTF-8'));
+if ischar(x); x = {x}; elseif isempty(x) && ~iscell(x); x = {}; end
+if ~iscell(x) || ~all(cellfun(@ischar, x))
+    error('did2:convert:roundtrip:notText', 'The body does not hold a JSON array of strings.');
+end
+v = cellfun(@(e) reshape(e, 1, []), reshape(x, 1, []), 'UniformOutput', false);
 end
 
 function p = defaultLocate(fi)
