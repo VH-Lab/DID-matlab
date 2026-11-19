@@ -473,6 +473,38 @@ verifyFalse(testCase, r.ok);
 verifyTrue(testCase, any(startsWith({r.lost.path}, 'depends_on(5)')), describeLost(r));
 end
 
+function testTheRigsDeviceRoundTripsAndIsChecked(testCase)
+% Jess Haley 2026-11-19 [acquisition system is a device entity], [migration
+% mints the device by name] (did-schema docs/plans/did_v2_standing_wiring_plan.md):
+% the daqsystem becomes the acquisition_system, its software and the rig's
+% device entity, named (name and local_identifier) by the v1 rig name. The
+% device holds nothing v1 does not, so the round trip rebuilds the daqsystem
+% exactly; a device renamed, holding more, or missing is reported.
+v1 = writerDaqsystem('vhvis_spike2', {'mdr_1'});
+docs = cellfun(@(d) d.toStruct(), runRaw(v1).migrated, 'UniformOutput', false);
+classes = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), docs, 'UniformOutput', false);
+verifyEqual(testCase, classes, {'acquisition_system', 'software', 'device'});
+dev = docs{strcmp(classes, 'device')};
+verifyEqual(testCase, char(dev.entity.name), 'vhvis_spike2');
+verifyEqual(testCase, char(dev.entity.local_identifier), 'vhvis_spike2');
+r = did2.convert.roundtrip.check(v1, docs);
+verifyRoundTrip(testCase, r, 'daqsystem with its device', {});
+verifyEmpty(testCase, r.unplaced);
+renamed = docs;
+renamed{strcmp(classes, 'device')}.entity.name = 'another rig';
+r = did2.convert.roundtrip.check(v1, renamed);
+verifyFalse(testCase, r.ok);
+verifyTrue(testCase, any(contains(r.unplaced, 'not named by the rig name')), strjoin(r.unplaced, ' | '));
+more = docs;
+more{strcmp(classes, 'device')}.entity.notes = 'a note v1 never wrote';
+r = did2.convert.roundtrip.check(v1, more);
+verifyFalse(testCase, r.ok);
+verifyTrue(testCase, any(contains(r.unplaced, 'entity.notes')), strjoin(r.unplaced, ' | '));
+r = did2.convert.roundtrip.check(v1, docs(~strcmp(classes, 'device')));
+verifyFalse(testCase, r.ok);
+verifyTrue(testCase, any(contains(r.unplaced, 'was not emitted')), strjoin(r.unplaced, ' | '));
+end
+
 function testAMissingOrExtraDocumentIsUnplaced(testCase)
 f = writerFixtures();
 for label = {'daqsystem, one metadata reader', 'syncgraph, two rules', 'probe_location, Dabrowska'}
@@ -692,7 +724,21 @@ for sw = edgesOf(cfg, 'software_id')
 end
 for role = {'input_id', 'output_id', 'from_acquisition_system_id', 'to_acquisition_system_id'}
     for s = edgesOf(cfg, role{1})
-        docs{end+1} = docWithId(out, s{1}); %#ok<AGROW>
+        d = docWithId(out, s{1});
+        docs{end+1} = d; %#ok<AGROW>
+        if isempty(d) || strcmp(char(did2.unittest.helpers.classKey(d)), 'acquisition_system')
+            continue;
+        end
+        % the end names the rig's device entity ([a rig's clock belongs to its
+        % device], Jess Haley 2026-11-19): the system is the acquisition_system
+        % naming it by `device_id`
+        for k = 1:numel(out.migrated)
+            c = out.migrated{k};
+            if strcmp(char(did2.unittest.helpers.classKey(c)), 'acquisition_system') ...
+                    && any(strcmp(edgesOf(c, 'device_id'), s{1}))
+                docs{end+1} = c; %#ok<AGROW>
+            end
+        end
     end
 end
 end
