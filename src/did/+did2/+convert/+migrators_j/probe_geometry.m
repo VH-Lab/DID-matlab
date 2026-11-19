@@ -268,8 +268,13 @@ bodies{end+1} = frame;
 if ~isempty(probeModel)
     % Optional probe-model assertion: a timeless `assertion` (no
     % interaction), a secondary sibling body so it mints a fresh base id.
+    % Its variable is NCIT:C99285 "Model Number", looked up by node:
+    % [variable terms batch 1] (Decided by Jess Haley, 2026-11-19, did-schema
+    % did_v2_go_forward_class_audit.md). Written 'probe model', no node,
+    % before that decision; the round trip reads both.
     assertion = jStatement(preBody, 'assertion', jSubjectOf(preBody, subjectSrc), ...
-        jLabel('probe model'), jLabel(probeModel), 'ValueKind', 'term');
+        did2.convert.registeredTerm('NCIT:C99285', 'Model Number'), jLabel(probeModel), ...
+        'ValueKind', 'term');
     bodies{end+1} = assertion;
 end
 bodies{end+1} = anchor;
