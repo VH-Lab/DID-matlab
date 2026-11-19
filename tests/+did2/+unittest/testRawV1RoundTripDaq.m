@@ -477,16 +477,20 @@ function testTheRigsDeviceRoundTripsAndIsChecked(testCase)
 % Jess Haley 2026-11-19 [acquisition system is a device entity], [migration
 % mints the device by name] (did-schema docs/plans/did_v2_standing_wiring_plan.md):
 % the daqsystem becomes the acquisition_system, its software and the rig's
-% device entity, named (name and local_identifier) by the v1 rig name. The
+% device entity, named by the v1 rig name in `name` only, with no
+% local_identifier ([local identifier required only where looked up], Jess
+% Haley, 2026-11-19, did-schema did_v2_go_forward_class_audit.md). The
 % device holds nothing v1 does not, so the round trip rebuilds the daqsystem
-% exactly; a device renamed, holding more, or missing is reported.
+% exactly; a device renamed, holding more (a local_identifier included), or
+% missing is reported.
 v1 = writerDaqsystem('vhvis_spike2', {'mdr_1'});
 docs = cellfun(@(d) d.toStruct(), runRaw(v1).migrated, 'UniformOutput', false);
 classes = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), docs, 'UniformOutput', false);
 verifyEqual(testCase, classes, {'acquisition_system', 'software', 'device'});
 dev = docs{strcmp(classes, 'device')};
 verifyEqual(testCase, char(dev.entity.name), 'vhvis_spike2');
-verifyEqual(testCase, char(dev.entity.local_identifier), 'vhvis_spike2');
+verifyTrue(testCase, ~isfield(dev.entity, 'local_identifier') || isempty(dev.entity.local_identifier), ...
+    'the rig''s device writes name only');
 r = did2.convert.roundtrip.check(v1, docs);
 verifyRoundTrip(testCase, r, 'daqsystem with its device', {});
 verifyEmpty(testCase, r.unplaced);
@@ -500,6 +504,13 @@ more{strcmp(classes, 'device')}.entity.notes = 'a note v1 never wrote';
 r = did2.convert.roundtrip.check(v1, more);
 verifyFalse(testCase, r.ok);
 verifyTrue(testCase, any(contains(r.unplaced, 'entity.notes')), strjoin(r.unplaced, ' | '));
+% the device's shape before [local identifier required only where looked up]:
+% a local_identifier, even the rig name, is more than the migration writes
+lid = docs;
+lid{strcmp(classes, 'device')}.entity.local_identifier = 'vhvis_spike2';
+r = did2.convert.roundtrip.check(v1, lid);
+verifyFalse(testCase, r.ok);
+verifyTrue(testCase, any(contains(r.unplaced, 'entity.local_identifier')), strjoin(r.unplaced, ' | '));
 r = did2.convert.roundtrip.check(v1, docs(~strcmp(classes, 'device')));
 verifyFalse(testCase, r.ok);
 verifyTrue(testCase, any(contains(r.unplaced, 'was not emitted')), strjoin(r.unplaced, ' | '));
