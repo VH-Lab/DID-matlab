@@ -32,7 +32,14 @@ function [defs, kind] = numericShapeFields(defs, parentName)
 %                             of the old `quantity.source_value` (`matrix` on a
 %                             covariate, text on a condition or parameter, where
 %                             a number is also accepted: see the PR's open
-%                             question on the source's spelling)
+%                             question on the source's spelling). Once the
+%                             schema declares it, as type `number_or_text`
+%                             ([source numeric is number or text], Jess
+%                             Haley, 2026-11-19), the declaration is used as
+%                             it is: that type admits the number and the
+%                             text itself, so no alternate form is needed;
+%                             `numeric` and `tolerance` are still added
+%                             while the schema does not declare them.
 %             tolerance       {minus, plus}, in `unit`
 %           and, where the list declares `origin` (covariates):
 %             origin, spacing either the old {value, source_value} block or a
