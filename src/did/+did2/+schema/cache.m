@@ -253,7 +253,8 @@ classdef cache < handle
             end
             tf = false;
             primitive = {'did_uid', 'char', 'string', 'integer', 'double', ...
-                'matrix', 'timestamp', 'boolean', 'structure', 'ontology_term'};
+                'matrix', 'timestamp', 'boolean', 'structure', 'ontology_term', ...
+                'number_or_text'};
             if ~isempty(typeName) && ~any(strcmp(typeName, primitive)) ...
                     && ~strcmp(typeName, 'value') && obj.hasClass(typeName)
                 tf = any(strcmp(obj.superclasses(typeName), 'value'));
@@ -2693,6 +2694,8 @@ classdef cache < handle
                     aff = 'INTEGER';
                 case {'double', 'matrix'}
                     aff = 'REAL';
+                case 'number_or_text'
+                    aff = '';  % none: a number stays a number and text stays text
                 otherwise
                     aff = '';  % no declared affinity for unknown types
             end
@@ -2909,7 +2912,8 @@ classdef cache < handle
                             '%s (in a %s value cell)', err.message, typeName);
                     end
                     if isfield(subDef, 'mustBeScalar') && logical(subDef.mustBeScalar) ...
-                            && any(strcmp(subType, {'double', 'integer', 'boolean'})) ...
+                            && (any(strcmp(subType, {'double', 'integer', 'boolean'})) ...
+                                || (strcmp(subType, 'number_or_text') && isnumeric(v))) ...
                             && ~isscalar(v)
                         error('did2:validation:quantityShape', ...
                             ['"%s" must be a single value (in a %s value ' ...
@@ -3498,6 +3502,11 @@ classdef cache < handle
                 case {'char', 'string', 'did_uid', 'timestamp', 'date'}
                     tf = (ischar(value) && (isempty(value) || size(value,1) <= 1)) ...
                         || (isstring(value) && isscalar(value));
+                case 'number_or_text'
+                    % one row of text is one value, as for char; a number is one number
+                    tf = (ischar(value) && (isempty(value) || size(value,1) <= 1)) ...
+                        || (isstring(value) && isscalar(value)) ...
+                        || (isnumeric(value) && isscalar(value));
                 otherwise
                     tf = isscalar(value);
             end
@@ -3549,6 +3558,19 @@ classdef cache < handle
                     if ~isnumeric(value)
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be numeric.', qualifiedName);
+                    end
+                case 'number_or_text'
+                    % [source numeric is number or text] (Jess Haley,
+                    % 2026-11-19, did-schema did_v2_numeric_shape_plan.md
+                    % [numeric step 3 leftovers] (1)): what the source wrote,
+                    % in its own type -- a real number, or one row of text.
+                    % Not true/false, a struct or a cell.
+                    isText = (ischar(value) && (isempty(value) || isrow(value))) ...
+                        || (isstring(value) && isscalar(value));
+                    if ~(isText || (isnumeric(value) && isreal(value)))
+                        error('did2:validation:typeMismatch', ...
+                            'Field "%s" must be a number or text (type number_or_text).', ...
+                            qualifiedName);
                     end
                 case 'structure'
                     if ~isstruct(value)

@@ -11,8 +11,10 @@ function tests = testIngestedArchiveFiles
 %   events file is removed]), [channel list rows get v2 homes], [time channel
 %   is a per-channel covariate], [migrated body members renamed],
 %   [non-specimen channel groups get their own owner] and [channel name is
-%   an identifier]; and by Jess Haley, 2026-11-18, [event row defaults are
-%   notation].
+%   an identifier]; by Jess Haley, 2026-11-18, [event row defaults are
+%   notation]; and by Jess Haley, 2026-11-19 (did_v2_standing_wiring_plan.md),
+%   [time channel row is notation] and [text channel entries are a JSON
+%   array].
 %
 %   THE SECOND-PASS SHAPE here (secondPassEpoch) is built by hand from those
 %   decisions and from what NDI-matlab's second pass writes today
@@ -41,16 +43,17 @@ verifyEqual(testCase, R.group_bodies, 2);
 verifyEqual(testCase, R.event_observations, 2);
 verifyEqual(testCase, R.channel_list_state, 'rebuilt');
 verifyTrue(testCase, isequaln(R.channel_list, ex.rows), describeRows(R.channel_list));
-% the fields no decision homes are listed, never silently filled: the time
-% channel the groups point at, whose own row is not rebuilt
-verifyEqual(testCase, {R.no_home.field}, {'time row'});
-verifyEqual(testCase, R.no_home.value, 1);
-% [event row defaults are notation] (Jess Haley, 2026-11-18): each event and
-% marker row's sample rate, offset, scale and time channel are NDI's
-% defaults, rebuilt and listed as notation, not as a field without a home
-verifyEqual(testCase, [R.notation.row], [4 5]);
-verifyEqual(testCase, unique({R.notation.field}), {'sample_rate, offset, scale, time_channel'});
-for e = 4:5
+% every field has a home: the time channel the groups point at is rebuilt
+% ([time channel row is notation], Jess Haley, 2026-11-19)
+verifyEmpty(testCase, R.no_home);
+% the time row's time channel, offset and scale, and each event and marker
+% row's sample rate, offset, scale and time channel ([event row defaults are
+% notation], Jess Haley, 2026-11-18) are rebuilt and listed as notation
+verifyEqual(testCase, [R.notation.row], [4 5 6]);
+verifyEqual(testCase, R.notation(1).field, 'time_channel, offset, scale');
+verifyEqual(testCase, R.notation(1).value, [1 0 1]);
+verifyEqual(testCase, unique({R.notation(2:3).field}), {'sample_rate, offset, scale, time_channel'});
+for e = 5:6
     verifyTrue(testCase, isequaln([R.channel_list(e).sample_rate, R.channel_list(e).offset, ...
         R.channel_list(e).scale, R.channel_list(e).time_channel], [NaN 0 1 NaN]), ...
         describeRows(R.channel_list(e)));
@@ -271,6 +274,71 @@ verifyEmpty(testCase, R.evmktx);
 verifyEmpty(testCase, R.time_segments);
 end
 
+function testADanglingTimeChannelIsRebuiltToo(testCase)
+% [time channel row is notation]: a time channel a group names is rebuilt
+% even when the v1 list does not hold it (Intan's auxiliary inputs name t2,
+% VH-Lab/NDI-matlab#1249), so that list does not compare exactly (NDI-matlab's
+% second pass keeps it); a group whose channels name several time channels
+% gives none of them a rate
+[docs, bodies, ex] = secondPassEpoch(testCase);
+ai = bodies{1};
+ai.data.covariates{5}.quantity.value = [1 2];
+docs{5} = ai;
+R = did2.convert.roundtrip.ingestedArchiveFiles({ai, bodies{2}}, docs);
+names = {R.channel_list.name};
+verifyEqual(testCase, names, {'ai1', 'myname', 'do1', 't1', 't2', 'e1', 'mk1'});
+t2 = R.channel_list(5);
+verifyTrue(testCase, isequaln([t2.time_channel t2.sample_rate t2.offset t2.scale t2.number t2.group], ...
+    [2 NaN 0 1 2 1]), describeRows(t2));
+verifyEqual(testCase, R.channel_list(4).sample_rate, 30000, 't1: the digital group is all t1');
+C = did2.convert.roundtrip.compareIngestedArchiveFiles(R, struct('channel_list', ex.rows));
+verifyFalse(testCase, C.exact, 'the v1 list has no t2');
+end
+
+function testATextChannelIsRebuiltFromItsJsonArray(testCase)
+% [text channel entries are a JSON array] (Jess Haley, 2026-11-19): a text
+% channel's times are float64, its entries one UTF-8 JSON array of strings
+% (format EDAM:format_3464), keyed to the time value of its times; the round
+% trip gives the entries back as NDI-compress's expander gives them
+[docs, bodies, ex] = secondPassEpoch(testCase);
+d = fileparts(docs{9}.files.file_info.locations.location);
+T = @(node, name) struct('node', node, 'name', name);
+loc = @(u) struct('uid', u, 'location', fullfile(d, u), 'location_type', 'file');
+tx = doc('observation', 'obs_tx3', 'sess1', struct('observation', struct('conditions', ...
+    struct('variable', T('EMPTY:0000410', 'text channel'), 'count', 3))), ...
+    {'time_reference_id', 'ref1'});
+tv = doc('time', 'tv_tx3', 'sess1', struct(), {});
+entries = {'start', ['caf' char(233)], ''};
+txb = doc('sampled_body', 'b_tx3', 'sess1', struct('data', struct('dimensions', {{ ...
+    struct('term', T('om:Time', 'time'), 'n', 3)}}), 'data_body', struct('format', ...
+    T('EDAM:format_3464', 'JSON'))), {'owner_id', 'obs_tx3', 'key_id', 'tv_tx3'});
+txb.files.file_info = struct('name', 'body_data_0', 'locations', loc('tx'));
+fid = fopen(fullfile(d, 'tx'), 'w');
+fwrite(fid, unicode2native(jsonencode(entries), 'UTF-8'), 'uint8');
+fclose(fid);
+tvb = doc('sampled_body', 'b_tv_tx3', 'sess1', struct('data', struct('dimensions', {{ ...
+    struct('term', T('om:Time', 'time'), 'n', 3)}})), {'owner_id', 'tv_tx3'});
+tvb.files.file_info = struct('name', 'body_data_0', 'locations', loc('txt'));
+writeFloat(fullfile(d, 'txt'), [0.4; 0.5; 0.6]);
+docs = [docs, {tx, tv, txb, tvb}];
+R = did2.convert.roundtrip.ingestedArchiveFiles(bodies, docs, 'ReadBody', ...
+    @(b) did2.convert.roundtrip.ingestedArchiveFiles('readBody', b));
+e = R.evmktx;
+verifyEqual(testCase, e.state, 'rebuilt', e.why);
+verifyEqual(testCase, e.channeltype, [ex.channeltype, {'text'}]);
+verifyEqual(testCase, e.channel, [ex.channel, 3]);
+verifyEqual(testCase, e.T{3}, [5.4; 5.5; 5.6], 'AbsTol', 1e-12);
+verifyEqual(testCase, e.D{3}, {'start', ['caf' char(233)], char(zeros(1, 0))});
+% the vector NDI-compress writes: per text entry its length, then its codes
+verifyEqual(testCase, e.data_description(3, :), [3 3 3 3]);
+verifyEqual(testCase, e.data(end-11:end), [5, double('start'), 4, double(['caf' char(233)]), 0]');
+% the text row
+verifyEqual(testCase, R.channel_list(end).name, 'tx3');
+verifyEqual(testCase, R.channel_list(end).dataclass, 'eventmarktext');
+% the float64 bodies still read the same through 'readBody'
+verifyEqual(testCase, e.T(1:2), ex.T);
+end
+
 % =========================================================================
 % fixtures
 % =========================================================================
@@ -329,10 +397,12 @@ bodies = {ai, di};
 r = @(n, ty, tc, sr, o, s, num, g, dc) struct('name', n, 'type', ty, 'time_channel', tc, ...
     'sample_rate', sr, 'offset', o, 'scale', s, 'number', num, 'group', g, 'dataclass', dc);
 % the rows as ndi.file.type.mfdaq_epoch_channel/create_properties orders them;
-% no time row: it has no home (ndi.vintage.ingestedChannelList writes none)
+% the time row t1 rebuilt from the groups that name it ([time channel row is
+% notation])
 ex.rows = [r('ai1', 'analog_in', 1, 30000, 32768, 0.195, 1, 1, 'ephys'), ...
     r('myname', 'analog_in', 1, 30000, 32768, 0.195, 2, 1, 'ephys'), ...
     r('do1', 'digital_out', 1, 30000, 0, 1, 1, 1, 'digital'), ...
+    r('t1', 'time', 1, 30000, 0, 1, 1, 1, 'time'), ...
     r('e1', 'event', NaN, NaN, 0, 1, 1, 1, 'eventmarktext'), ...
     r('mk1', 'marker', NaN, NaN, 0, 1, 1, 1, 'eventmarktext')];
 ex.channeltype = {'event', 'marker'};
