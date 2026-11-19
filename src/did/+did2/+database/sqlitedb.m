@@ -1139,10 +1139,30 @@ classdef sqlitedb < handle
             vsql = regexprep(sql, '^SELECT ', ['SELECT (SELECT file FROM pragma_database_list ' ...
                 'WHERE name = ''main'') AS conn_file_check__, '], 'once');
             ok = true;
+            logT = ~isempty(getenv('DID2_LOG_SQL'));
+            if logT; t0 = tic; end
             try
                 rows = mksqlite(obj.dbid, vsql, params{:});
             catch
                 ok = false;
+            end
+            if logT
+                el = toc(t0) * 1000;
+                if el >= 5
+                    st = dbstack(1);
+                    callers = strjoin(cellfun(@(n) regexprep(n, '^.*>', ''), ...
+                        {st(1:min(9, numel(st))).name}, 'UniformOutput', false), ' < ');
+                    ps = cellfun(@(x) logParam(x), params, 'UniformOutput', false);
+                    fprintf('[SQL %8.1f ms %6d rows] %s\n    callers: %s\n    params: %s\n', el, numel(rows), ...
+                        sql(1:min(numel(sql), 700)), callers, strjoin(ps, ' ; '));
+                    if el >= 15
+                        try
+                            pl = mksqlite(obj.dbid, ['EXPLAIN QUERY PLAN ' sql], params{:});
+                            fprintf('    plan: %s\n', strjoin(cellfun(@char, {pl.detail}, 'UniformOutput', false), ' | '));
+                        catch
+                        end
+                    end
+                end
             end
             if ok && ~isempty(rows) && strcmp(char(rows(1).conn_file_check__), obj.connFile)
                 rows = rmfield(rows, 'conn_file_check__');
@@ -2708,4 +2728,16 @@ classdef sqlitedb < handle
             end
         end
     end
+end
+
+function s = logParam(x)
+% read-speed probe only: a short text for a bound parameter
+if ischar(x) || isstring(x)
+    s = char(x);
+elseif isnumeric(x) || islogical(x)
+    s = mat2str(double(x));
+else
+    s = class(x);
+end
+if numel(s) > 120; s = [s(1:120) '...']; end
 end
