@@ -188,8 +188,15 @@ for k = 1:numel(bodies)
             if ~isequal(edgeIds(b, 'entity_id'), {base.id})
                 continue;
             end
-            [~, variable] = termParts(getIn(b, 'statement', 'variable'));
+            [vnode, variable] = termParts(getIn(b, 'statement', 'variable'));
             [~, value] = termParts(getIn(b, 'term', 'value'));
+            % [variable terms batch 1] (Jess Haley, 2026-11-19): the class
+            % variable is EMPTY:0000401 "software class", by node; an
+            % element migrated before that decision has no node and the
+            % label 'ndi element class'
+            if sameCurie(strtrim(char(vnode)), 'EMPTY:0000401')
+                variable = 'ndi element class';
+            end
             switch lower(variable)
                 case 'element type'
                     type = value;

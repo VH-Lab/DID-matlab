@@ -761,8 +761,12 @@ for k = 1:numel(docs)
     if isEntityOfType(b, 'device') && strcmp(idOf(b), id)
         isDevice = true;
     elseif strcmp(classNameOf(b), 'assertion')
-        [~, variable] = termParts(getIn(b, 'statement', 'variable'));
-        if strcmpi(variable, 'ndi element class')
+        % the class variable by node, EMPTY:0000401 "software class"
+        % ([variable terms batch 1], Jess Haley, 2026-11-19), or, migrated
+        % before that decision, by the label 'ndi element class'
+        [vnode, variable] = termParts(getIn(b, 'statement', 'variable'));
+        if strcmpi(strtrim(char(vnode)), 'EMPTY:0000401') || ...
+                (isempty(strtrim(char(vnode))) && strcmpi(variable, 'ndi element class'))
             return;
         end
     end
