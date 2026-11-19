@@ -78,7 +78,13 @@ value = struct('start', start);
 if ~isempty(options.Duration)
     d = struct('seconds', options.Duration);
     if ~isempty(options.DurationSourceUnit);  d.source_unit = options.DurationSourceUnit;   end
-    if ~isempty(options.DurationSourceValue); d.source_value = options.DurationSourceValue; end
+    if ~isempty(options.DurationSourceValue)
+        % the duration is a `time` value, not a timestamp: source_numeric in
+        % the new numeric shape ([numeric shape details] (2), Jess Haley,
+        % 2026-11-17: "only true timestamps ... keep source_value"); the
+        % start's and end's source_value is the timestamp's text and stays
+        d.(did2.build.sourceNumericField()) = options.DurationSourceValue;
+    end
     [d, options.DurationApproximate] = toleranceCell(d, options.DurationTolerance, ...
         options.DurationApproximate, 'DurationTolerance');
     if ~isempty(options.DurationApproximate); d.approximate = options.DurationApproximate; end

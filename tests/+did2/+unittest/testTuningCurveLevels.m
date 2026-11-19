@@ -846,9 +846,9 @@ verifyEqual(testCase, {ax(1).term.name, ax(2).term.name}, ...
     {'Spatial Frequency', 'Temporal Frequency'}, 'each dimension''s term is its variable');
 verifyEqual(testCase, [ax.n], [2 3]);
 verifyEqual(testCase, ax(1).cov.variable.name, 'Spatial Frequency');
-verifyEqual(testCase, reshape(ax(1).cov.quantity.value, 1, []), [0.1 0.2], 'AbsTol', 1e-12);
+verifyEqual(testCase, reshape(ax(1).cov.numeric, 1, []), [0.1 0.2], 'AbsTol', 1e-12);
 verifyEqual(testCase, ax(2).cov.variable.name, 'Temporal Frequency');
-verifyEqual(testCase, reshape(ax(2).cov.quantity.value, 1, []), [1 2 4], 'AbsTol', 1e-12);
+verifyEqual(testCase, reshape(ax(2).cov.numeric, 1, []), [1 2 4], 'AbsTol', 1e-12);
 verifyEqual(testCase, [ax.nCov], [1 1], 'one covariate along each, nothing else');
 verifyEqual(testCase, numel(leaf.data.covariates), 2);
 verifyEqual(testCase, leaf.data.datum_order, 'F', 'the grid states its order');
@@ -885,8 +885,8 @@ verifyEqual(testCase, ax(1).nCov, 2, 'one covariate per variable along the one d
 covs = leaf.data.covariates;
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
     {'Spatial Frequency', 'Temporal Frequency'});
-verifyEqual(testCase, reshape(covs(1).quantity.value, 1, []), reshape(sf, 1, []), 'AbsTol', 1e-12);
-verifyEqual(testCase, reshape(covs(2).quantity.value, 1, []), reshape(tf, 1, []), 'AbsTol', 1e-12);
+verifyEqual(testCase, reshape(covs(1).numeric, 1, []), reshape(sf, 1, []), 'AbsTol', 1e-12);
+verifyEqual(testCase, reshape(covs(2).numeric, 1, []), reshape(tf, 1, []), 'AbsTol', 1e-12);
 verifyTrue(testCase, ~isfield(leaf.data, 'datum_order') || isempty(leaf.data.datum_order), ...
     'one dimension: no order to state');
 v = leaf.tuning_curve.value;
@@ -1133,8 +1133,8 @@ x = [];
 ax = did2.unittest.helpers.axesOf(leaf);
 if isempty(ax) || isempty(ax(1).cov); return; end
 k1 = ax(1).cov;
-if isfield(k1, 'quantity') && isfield(k1.quantity, 'value')
-    x = reshape(k1.quantity.value, 1, []);
+if isfield(k1, 'numeric') && ~isempty(k1.numeric)   % the new numeric shape
+    x = reshape(k1.numeric, 1, []);
 end
 end
 

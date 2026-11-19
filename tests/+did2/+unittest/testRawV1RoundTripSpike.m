@@ -345,10 +345,12 @@ docs = structs(runRaw({v1}).migrated);
 for k = 1:numel(docs)
     if isfield(docs{k}, 'voltage')
         v = docs{k}.voltage.value;
+        % the new numeric shape: the waveform is ONE cell whose source_numeric
+        % is the array (plan section 8, answer 4); sample 3 changed
         if iscell(v)
-            v{3}.source_value = v{3}.source_value + 1;
+            v{1}.source_numeric(3) = v{1}.source_numeric(3) + 1;
         else
-            v(3).source_value = v(3).source_value + 1;
+            v(1).source_numeric(3) = v(1).source_numeric(3) + 1;
         end
         docs{k}.voltage.value = v;
     end

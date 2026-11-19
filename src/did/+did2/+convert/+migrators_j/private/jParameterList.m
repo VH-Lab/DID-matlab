@@ -56,7 +56,9 @@ for k = 1:numel(fn)
         var = jLabel(v2);
     end
     if (isnumeric(v) || islogical(v)) && isscalar(v)
-        e = did2.build.parameter(var, 'Value', double(v), 'SourceValue', shortestText(double(v)));
+        % the source's number, as a number ([numeric shape details] (1),
+        % Jess Haley, 2026-11-17: "a number where v1 stored a number")
+        e = did2.build.parameter(var, 'Value', double(v), 'SourceValue', double(v));
     elseif ischar(v) && (isrow(v) || isempty(v))
         e = did2.build.parameter(var, 'Text', v);
     elseif isstring(v) && isscalar(v)
@@ -68,16 +70,5 @@ for k = 1:numel(fn)
 end
 if ~isempty(entries)
     params = did2.build.list(entries{:});
-end
-end
-
-function t = shortestText(x)
-% The shortest decimal text that reads back as exactly X ('0.1', not
-% '0.10000000000000001'), so the source value is lossless and readable.
-for p = 1:17
-    t = sprintf('%.*g', p, x);
-    if str2double(t) == x
-        return;
-    end
 end
 end

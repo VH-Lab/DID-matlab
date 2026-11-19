@@ -127,7 +127,8 @@ if ~isempty(hits) || ~isempty(ingredientRows)
         if ~isempty(factor)
             q.(canon) = sv * factor;
         end
-        q.source_value = sv;
+        % source_numeric in the new numeric shape (did2.build.sourceNumericField)
+        q.(did2.build.sourceNumericField()) = sv;
         q.source_unit = unitTerm(c.source_unit);
         chemicals(k).source_value = [];
         chemicals(k).source_unit = [];
@@ -164,11 +165,11 @@ if ~isempty(hits) || ~isempty(ingredientRows)
         if isfield(first, canon) && isfield(q, canon)
             agree = abs(first.(canon) - q.(canon)) <= 1e-12 * max(1, abs(first.(canon)));
         else
-            agree = first.source_value == sv && strcmp(firstSpelled.(slot), spelled);
+            agree = first.(did2.build.sourceNumericField()) == sv && strcmp(firstSpelled.(slot), spelled);
         end
         if ~agree
             conflicts{end+1} = sprintf('%s: kept %s %s, not %s %s', slot, ...
-                num2str(first.source_value, 17), firstSpelled.(slot), ...
+                num2str(first.(did2.build.sourceNumericField()), 17), firstSpelled.(slot), ...
                 num2str(sv, 17), spelled); %#ok<AGROW>
         end
     end

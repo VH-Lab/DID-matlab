@@ -76,7 +76,8 @@ for k = 1:numel(chemicals)
     path = sprintf('formulation.value.ingredients(%d).concentration', k);
     if isfield(c, 'source_value') && ~isempty(c.source_value) ...
             && isnumeric(c.source_value) && isfinite(c.source_value(1))
-        conc = struct('source_value', double(c.source_value(1)));
+        % source_numeric in the new numeric shape (did2.build.sourceNumericField)
+        conc = struct(did2.build.sourceNumericField(), double(c.source_value(1)));
         if isfield(c, 'source_unit') && isstruct(c.source_unit) && ~isempty(c.source_unit)
             conc.source_unit = c.source_unit;          % already a term (jMixtureTable)
             conc = withCanonical(conc, c.source_unit);
@@ -131,6 +132,6 @@ end
 if strcmp(kind, 'concentration') && ~isempty(factor) && ~isempty(slot)
     % the slot the unit table names: molar, or liters_per_liter for percent
     % volume per volume ([percent volume per volume converted], 2026-11-01)
-    conc.(slot) = conc.source_value * factor;
+    conc.(slot) = conc.(did2.build.sourceNumericField()) * factor;
 end
 end

@@ -747,6 +747,18 @@ if strcmp(family, 'speed') && strcmpi(model, 'Priebe_fit')
 end
 end
 
+function c = coefficient(variable, x)
+% a fit's coefficient or constraint: in the new numeric shape the list item
+% {variable, numeric} ([one shape for measured numbers], plan section 8,
+% answer 5: "unit optional, empty for migrated fits since v1 states none"),
+% as did2.build.fitEntry writes it; in the old shape {variable, value}
+if strcmp(did2.build.numericShape(), 'new')
+    c = struct('variable', variable, 'numeric', x);
+else
+    c = struct('variable', variable, 'value', x);
+end
+end
+
 function [e, dropped] = oneFit(s, model, constraints, family, spec)
 label = strrep(model, '_', ' ');
 used = {};
@@ -766,7 +778,7 @@ if nargin >= 5 && isstruct(spec) && isscalar(spec)
         if ~isempty(p)
             c = cell(1, numel(p));
             for k = 1:numel(p)
-                c{k} = struct('variable', symbolLabel(spec.symbols{k}), 'value', double(p(k)));
+                c{k} = coefficient(symbolLabel(spec.symbols{k}), double(p(k)));
             end
             e.coefficients = did2.build.list(c{:});
         end
@@ -780,8 +792,8 @@ if nargin >= 5 && isstruct(spec) && isscalar(spec)
     if ~isempty(spec.constraints)
         c = cell(1, size(spec.constraints, 1));
         for k = 1:size(spec.constraints, 1)
-            c{k} = struct('variable', symbolLabel(spec.constraints{k, 1}), ...
-                'value', spec.constraints{k, 2});
+            c{k} = coefficient(symbolLabel(spec.constraints{k, 1}), ...
+                spec.constraints{k, 2});
         end
         e.constraints = did2.build.list(c{:});
     end
@@ -790,8 +802,8 @@ else
     if isnumeric(p) && ~isempty(p)
         c = cell(1, numel(p));
         for k = 1:numel(p)
-            c{k} = struct('variable', jLabel(sprintf('%s parameter %d', ...
-                label, k)), 'value', double(p(k)));
+            c{k} = coefficient(jLabel(sprintf('%s parameter %d', ...
+                label, k)), double(p(k)));
         end
         e.coefficients = did2.build.list(c{:});
         used{end+1} = 'parameters';
@@ -799,8 +811,8 @@ else
     if ~isempty(constraints)
         c = cell(1, size(constraints, 1));
         for k = 1:size(constraints, 1)
-            c{k} = struct('variable', jLabel(sprintf('%s parameter %d', label, ...
-                constraints(k, 1))), 'value', constraints(k, 2));
+            c{k} = coefficient(jLabel(sprintf('%s parameter %d', label, ...
+                constraints(k, 1))), constraints(k, 2));
         end
         e.constraints = did2.build.list(c{:});
     end

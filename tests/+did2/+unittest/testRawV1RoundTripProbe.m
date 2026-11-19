@@ -201,10 +201,11 @@ docs = structs(runRaw(v1).migrated);
 for k = 1:numel(docs)
     if strcmp(docs{k}.document_class.class_name, 'observation')
         val = docs{k}.voltage.value;
+        % the new numeric shape: what the source wrote is source_numeric
         if iscell(val)
-            val{1}.source_value = 0.5;
+            val{1}.source_numeric = 0.5;
         else
-            val(1).source_value = 0.5;
+            val(1).source_numeric = 0.5;
         end
         docs{k}.voltage.value = val;
     end

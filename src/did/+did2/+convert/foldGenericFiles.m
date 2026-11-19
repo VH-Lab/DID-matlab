@@ -1120,6 +1120,15 @@ for i = 1:numel(la)
                             'source_value', L.origin.value);
                         L.spacing = struct('value', L.spacing.value * factor, ...
                             'source_value', L.spacing.value);
+                    elseif isfield(L, 'origin') && isnumeric(L.origin) && ~isempty(L.origin) ...
+                            && isfield(L, 'spacing') && isnumeric(L.spacing) && ~isempty(L.spacing)
+                        % the new numeric shape ([one shape for measured
+                        % numbers], Jess Haley, 2026-11-17): flat origin and
+                        % spacing beside source_origin and source_spacing
+                        L.source_origin = L.origin;
+                        L.source_spacing = L.spacing;
+                        L.origin = L.origin * factor;
+                        L.spacing = L.spacing * factor;
                     end
                 end
                 lc{la{i}.covIdx} = L;
@@ -1130,6 +1139,9 @@ for i = 1:numel(la)
                     && (~isfield(L, 'term') || isempty(L.term)) ...
                     && numel(labelList(P.term)) == double(la{i}.n)
                 if isfield(L, 'quantity'); L.quantity = []; end
+                % ... or the new numeric shape's number ([one shape for measured numbers])
+                if isfield(L, 'numeric'); L.numeric = []; end
+                if isfield(L, 'source_numeric'); L.source_numeric = []; end
                 L.term = P.term;
                 lc{la{i}.covIdx} = L;
                 changed = true;

@@ -858,7 +858,7 @@ end
 p = m.toStruct();
 cnd = p.statement.conditions;
 verifyEqual(testCase, cnd.variable.name, regName('numeric value'));
-verifyEqual(testCase, cnd.quantity.value, 2.5, 'AbsTol', 1e-12);
+verifyEqual(testCase, cnd.numeric, 2.5, 'AbsTol', 1e-12);   % the new numeric shape
 verifyFalse(testCase, isfield(cnd, 'unit'), 'an unlabelled number has no unit');
 n = out.summary.migration_notes.treatment_number_unlabelled;
 verifyEqual(testCase, n.ids, {'tr_01'});
@@ -894,7 +894,7 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+time');
 verifyEqual(testCase, m.get('base.id'), 'tr_01');
 verifyEqual(testCase, m.get('statement.variable').node, 'EMPTY:0000199');
 t = m.get('time.value');
-verifyEqual(testCase, t(1).source_value, 6.5);
+verifyEqual(testCase, t(1).source_numeric, 6.5);   % the new numeric shape
 verifyEqual(testCase, t(1).seconds, 6.5 * 3600, 'AbsTol', 1e-9);
 verifyEqual(testCase, t(1).source_unit.name, 'hour');
 notes = out.summary.migration_notes;
@@ -1013,7 +1013,7 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 % the amount) -> ingredient_id -> chemical (the substance)
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
-verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 5);
+verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_numeric, 5);
 % [canonical absent only as needs info] (Jess Haley, 2026-10-30): a number with
 % no unit keeps its source_value, has no canonical, and the canonical is
 % listed as a gap in the migration report
@@ -1053,9 +1053,10 @@ fs = f.toStruct();
 ing = fs.formulation.value.ingredients;
 assertEqual(testCase, numel(ing), 2, 'both ingredients are listed');
 verifyEqual(testCase, numel(dependencyIds(fs, 'ingredient_id')), 2);
-verifyEqual(testCase, ing(1).concentration.source_value, 5);
+verifyEqual(testCase, ing(1).concentration.source_numeric, 5);
 verifyTrue(testCase, ~isfield(ing, 'concentration') || isempty(ing(2).concentration) ...
-    || (isstruct(ing(2).concentration) && ~isfield(ing(2).concentration, 'source_value')), ...
+    || (isstruct(ing(2).concentration) && ~isfield(ing(2).concentration, 'source_numeric') ...
+        && ~isfield(ing(2).concentration, 'source_value')), ...
     'the unstated amount is left out, not NaN');
 [fields, reasons] = gapFieldsJ(fs);
 verifyEqual(testCase, sort(fields), sort({ ...
@@ -1174,7 +1175,7 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'pAAV-hSyn-hChR2(H134R)-EYFP');
 conc = f.get('formulation.value').ingredients(1).concentration;
-verifyEqual(testCase, conc.source_value, 1000);
+verifyEqual(testCase, conc.source_numeric, 1000);
 % [virus dilution needs info] (Decided by Jess Haley, 2026-10-31, did-schema
 % did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G71): a dilution is a
 % source number with no unit, so no unit is written (the migrator's own label
@@ -1233,7 +1234,7 @@ verifyNotEmpty(testCase, form);
 if ~isempty(form)
     verifyEqual(testCase, form.get('document_class.class_name'), 'formulation');
     conc = form.get('formulation.value').ingredients(1).concentration;
-    verifyEqual(testCase, conc.source_value, 1e-5, 'AbsTol', 1e-12);
+    verifyEqual(testCase, conc.source_numeric, 1e-5, 'AbsTol', 1e-12);
     verifyEqual(testCase, conc.source_unit.name, 'Molar');
     % [canonical absent only as needs info] (Jess Haley, 2026-10-30): the
     % unit table knows Molar (om:molar), so the canonical is filled; the
@@ -1273,7 +1274,7 @@ for c = 1:size(cases, 1)
         form = firstOfClassJ(out.migrated, 'formulation');
         assertNotEmpty(testCase, form, label);
         conc = form.get('formulation.value').ingredients(1).concentration;
-        verifyEqual(testCase, conc.source_value, 2.5e-6, 'AbsTol', 1e-15, label);
+        verifyEqual(testCase, conc.source_numeric, 2.5e-6, 'AbsTol', 1e-15, label);
         verifyTrue(testCase, isfield(conc, 'molar'), [label ': molar filled']);
         if isfield(conc, 'molar')
             verifyEqual(testCase, conc.molar, 2.5e-6, 'AbsTol', 1e-15, label);
@@ -1309,7 +1310,7 @@ for L = 1:size(locs, 1)
     form = firstOfClassJ(out.migrated, 'formulation');
     assertNotEmpty(testCase, form, label);
     conc = form.get('formulation.value').ingredients(1).concentration;
-    verifyEqual(testCase, conc.source_value, 10, label);
+    verifyEqual(testCase, conc.source_numeric, 10, label);
     verifyTrue(testCase, isfield(conc, 'liters_per_liter'), [label ': liters_per_liter filled']);
     if isfield(conc, 'liters_per_liter')
         verifyEqual(testCase, conc.liters_per_liter, 0.1, 'AbsTol', 1e-15, label);
@@ -1388,7 +1389,7 @@ dv = d.get('dose.value');
 verifyDoseVolumeGapJ(testCase, d, dv);   % the solution's volume is unrecorded
 assertEqual(testCase, numel(dv.ingredients), 1, 'one per-ingredient amount');
 a = dv.ingredients(1).amount_per_body_mass;
-verifyEqual(testCase, a.source_value, 0.25);
+verifyEqual(testCase, a.source_numeric, 0.25);
 verifyEqual(testCase, a.grams_per_gram, 0.25e-6, 'AbsTol', 1e-15);
 verifyEqual(testCase, a.source_unit.node, 'SNOMED:396163008');
 [f, c] = doseChainJ(out.migrated, d);
@@ -1450,9 +1451,9 @@ verifyFalse(testCase, isfield(v, 'mass') && isstruct(v.mass) && ~isempty(v.mass)
     'a mass row naming a chemical is not the top-level mass');
 assertEqual(testCase, numel(v.ingredients), 1);
 verifyEqual(testCase, v.ingredients(1).mass.grams, 2e-3, 'AbsTol', 1e-15);
-verifyEqual(testCase, v.ingredients(1).mass.source_value, 2);
+verifyEqual(testCase, v.ingredients(1).mass.source_numeric, 2);
 verifyEqual(testCase, v.volume.liters, 0.5e-3, 'AbsTol', 1e-15);
-verifyEqual(testCase, v.volume.source_value, 0.5);
+verifyEqual(testCase, v.volume.source_numeric, 0.5);
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
     'the entry is paired with the alprazolam chemical');
@@ -1479,7 +1480,7 @@ verifyEmpty(testCase, out.quarantine);
 v = out.migrated{1}.get('dose.value');
 assertEqual(testCase, numel(v.ingredients), 1);
 verifyEqual(testCase, v.ingredients(1).substance_amount.moles, 3e-3, 'AbsTol', 1e-15);
-verifyEqual(testCase, v.ingredients(1).substance_amount.source_value, 3);
+verifyEqual(testCase, v.ingredients(1).substance_amount.source_numeric, 3);
 verifyDoseVolumeGapJ(testCase, out.migrated{1}, v);   % the whole formulation's amount is unrecorded
 end
 
@@ -1560,7 +1561,7 @@ v1 = treatmentDrugDoc('td_same_vols', sprintf(['ontologyName,name,value,ontology
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 v = out.migrated{1}.get('dose.value');
-verifyEqual(testCase, v.volume.source_value, 1);
+verifyEqual(testCase, v.volume.source_numeric, 1);
 verifyFalse(testCase, isfield(out.summary.migration_notes, 'dose_amount_conflict'));
 end
 
@@ -2078,7 +2079,7 @@ assertNotEmpty(testCase, b, 'another range folds too');
 c = b.toStruct().data_body.conditions;
 if iscell(c); c = c{1}; end
 verifyEqual(testCase, char(c(1).variable.node), 'EMPTY:0000402');
-verifyEqual(testCase, double(c(1).matrix(:)'), [10 200]);
+verifyEqual(testCase, double(c(1).numeric(:)'), [10 200]);   % the new numeric shape
 end
 
 function testACarriedImageStackIsTheV1SourceNotTheSuperclassReshape(testCase)
@@ -2287,11 +2288,11 @@ verifyEqual(testCase, did2.convert.axisKey(keys(1).term), 'y');
 verifyEqual(testCase, keys(1).term.name, did2.convert.axisTerm('y').name);   % Y-Coordinate where registered
 verifyEqual(testCase, keys(1).n, 512);
 verifyTrue(testCase, ~isempty(keys(1).cov.origin));
-verifyEqual(testCase, keys(1).cov.spacing.value, 0.5);
-verifyEqual(testCase, keys(1).cov.origin.value, 0);
+verifyEqual(testCase, keys(1).cov.spacing, 0.5);   % the new numeric shape: flat
+verifyEqual(testCase, keys(1).cov.origin, 0);
 % C/Z/T carry a recorded scale of 1, so they are calibrated, not index axes
-verifyEqual(testCase, keys(3).cov.spacing.value, 1);
-verifyEqual(testCase, keys(3).cov.origin.value, 0);
+verifyEqual(testCase, keys(3).cov.spacing, 1);
+verifyEqual(testCase, keys(3).cov.origin, 0);
 verifyEqual(testCase, did2.convert.axisKey(keys(5).term), 'time');   % 't' is time (om:Time) where registered
 verifyEqual(testCase, keys(5).term.name, did2.convert.axisTerm('t').name);
 verifyEqual(testCase, keys(5).n, 10);
@@ -2456,8 +2457,8 @@ verifyEqual(testCase, keys(3).term.name, did2.convert.axisTerm('t').name);
 verifyEqual(testCase, keys(1).cov.source_unit.name, 'micrometre');
 verifyEqual(testCase, keys(2).cov.source_unit.name, 'micrometre');
 verifyEqual(testCase, keys(3).cov.source_unit.name, 'second');
-verifyEqual(testCase, keys(1).cov.spacing.value, 1.5);
-verifyEqual(testCase, keys(3).cov.spacing.value, 0.2);
+verifyEqual(testCase, keys(1).cov.spacing, 1.5);   % the new numeric shape: flat
+verifyEqual(testCase, keys(3).cov.spacing, 0.2);
 end
 
 
@@ -3216,7 +3217,7 @@ if ~isempty(form)
         if strcmp(out.migrated{k}.get('base.id'), chemId); chem = out.migrated{k}; end
     end
     % the mixture row's amount rides on the formulation's ingredient entry
-    verifyEqual(testCase, form.get('formulation.value').ingredients(1).concentration.source_value, 5);
+    verifyEqual(testCase, form.get('formulation.value').ingredients(1).concentration.source_numeric, 5);
 end
 verifyNotEmpty(testCase, chem, 'the formulation must name its chemical');
 if ~isempty(chem)
@@ -4880,7 +4881,7 @@ end
 % by the retired sample_time.dt -- that block is no longer written here (step 5
 % of the signed build order), and writing the cadence into both would store one
 % fact twice.
-dts = sort(arrayfun(@(k) sbods{k}.data.covariates(1).spacing.source_value, ...
+dts = sort(arrayfun(@(k) sbods{k}.data.covariates(1).source_spacing, ...   % the new numeric shape
     1:numel(sbods)));
 verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
 % and by extent: 10 s at 1000 Hz and at 500 Hz. `n` was hardcoded 0 on every
@@ -5059,7 +5060,7 @@ leaf = calcLeafJ(testCase, out, 'contrast_tuning_calculation', 'ct_1', 'sub_8');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [2 5 9 12]);
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0 0.25 0.5 1]);
 verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'contrast');
 end
 
@@ -5098,7 +5099,7 @@ verifyFalse(testCase, any(strcmp(names, 'observation+angle')));
 leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'odt_1', 'neuron_1');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0 90 180 270]);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
     0.002, 'AbsTol', 1e-9);
@@ -5155,7 +5156,7 @@ os = entityByNameJ(out, 'Linux');
 verifyEqual(testCase, depValue(leaf, 'operating_system_id'), os.base.id);
 it = entityByNameJ(out, 'MATLAB');
 verifyEqual(testCase, depValue(leaf, 'interpreter_id'), it.base.id);
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0 90 180 270]);
 end
 
 
@@ -5256,7 +5257,7 @@ verifyEqual(testCase, depValuesJ(leaf, 'input_id'), {'resp_cs', 'pres_cs'});
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');
 verifyNotEqual(testCase, lower(char(leaf.interaction.method.term.name)), 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, paramValueJ(leaf, 'threshold'), 1);
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0.5 1 2 4]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0.5 1 2 4]);
 csv = leaf.contrast_sensitivity.value;
 % UPDATED 2026-11-11 ([tuning fit coefficients named by symbol], Decided by
 % Jess Haley, did-schema docs/plans/did_v2_go_forward_class_audit.md): one
@@ -5286,7 +5287,7 @@ for j = 1:4
     co = rb.coefficients;
     if iscell(co); co = [co{:}]; end
     verifyEqual(testCase, arrayfun(@(x) char(x.variable.name), co, 'UniformOutput', false), {'Rm', 'c50'});
-    verifyEqual(testCase, [co.value], P(:, j)');
+    verifyEqual(testCase, [co.numeric], P(:, j)');   % the new numeric shape: {variable, numeric}
 end
 % [interpolated values are a list] (Decided by Jess Haley, 2026-10-30, did-schema
 % V_eta_go_forward_class_audit.md): one structure, or a list once the loaded
@@ -5415,7 +5416,7 @@ verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2
 % Algorithm, its value text
 verifyEqual(testCase, paramTextJ(leaf, 'Algorithm'), 'empirical_maximum');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0 0.25 0.5 1]);
 sw = entityByNameJ(out, 'ndi.calc.stimulus.tuningcurve');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 os = entityByNameJ(out, 'Linux');
@@ -5513,8 +5514,8 @@ verifyEqual(testCase, numel(covs), 2);
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
     {regName('spatial frequency'), regName('temporal frequency')});
 verifyEqual(testCase, [covs.along], [0 0]);
-verifyEqual(testCase, covs(1).quantity.value, [0.5 0.5 1]);
-verifyEqual(testCase, covs(2).quantity.value, [2 4 4]);
+verifyEqual(testCase, covs(1).numeric, [0.5 0.5 1]);   % the new numeric shape
+verifyEqual(testCase, covs(2).numeric, [2 4 4]);
 end
 
 
@@ -5676,7 +5677,7 @@ verifyEqual(testCase, depValue(o, 'entity_id'), 'probe_7');
 % a single reading, expressed as a length-1 array
 vals = o.voltage.value;
 verifyEqual(testCase, numel(vals), 1);
-verifyEqual(testCase, vals(1).source_value, 0.5, 'AbsTol', 1e-9);
+verifyEqual(testCase, vals(1).source_numeric, 0.5, 'AbsTol', 1e-9);   % the new numeric shape
 % #88: a bound term; 'V' is the registry's om:volt 'volt' (jSourceUnit)
 verifyEqual(testCase, vals(1).source_unit.node, 'om:volt');
 verifyEqual(testCase, vals(1).source_unit.name, 'volt');
@@ -5684,9 +5685,10 @@ verifyEqual(testCase, vals(1).volts, 0.5, 'AbsTol', 1e-9);
 % temperature qualifies the SAME statement rather than becoming its own doc
 c = o.statement.conditions;   % #88: conditions live on `statement`
 verifyEqual(testCase, c.variable.name, regName('temperature'));
-verifyEqual(testCase, c.quantity.value, 11, 'AbsTol', 1e-9);
-verifyEqual(testCase, c.quantity.source_value, '11', ...
-    'a condition''s source_value is text');
+verifyEqual(testCase, c.numeric, 11, 'AbsTol', 1e-9);
+% [numeric shape details] (1), Jess Haley, 2026-11-17: v1 stored a number
+verifyEqual(testCase, c.source_numeric, 11, ...
+    'a condition''s source_numeric is the source''s number, as a number');
 % no unit is asserted for temperature -- the source states no scale
 verifyFalse(testCase, isfield(c, 'source_unit') && ~isempty(c.source_unit));
 verifyFalse(testCase, isfield(c, 'unit'));
@@ -5706,7 +5708,7 @@ v1.electrode_offset_voltage = struct('offset', -0.3, 'temperature', NaN);
 
 out = did2.convert.migrators_j.electrode_offset_voltage(v1);
 o = out{1};
-verifyEqual(testCase, o.voltage.value(1).source_value, -0.3, 'AbsTol', 1e-9);
+verifyEqual(testCase, o.voltage.value(1).source_numeric, -0.3, 'AbsTol', 1e-9);
 verifyFalse(testCase, isfield(o.statement, 'conditions'));
 end
 
@@ -6074,10 +6076,12 @@ verifyFalse(testCase, any(strcmp(vars, 'NCIT:C44479')), 'Z-Coordinate (depth): n
 
 lr = out{find(strcmp(names, 'observation+length'), 1)};
 verifyEqual(testCase, depValue(lr, 'entity_id'), 'probe_5');
-verifyEqual(testCase, numel(lr.length.value), 2);
-verifyEqual(testCase, lr.length.value(2).source_value, 20, 'AbsTol', 1e-9);
-verifyEqual(testCase, lr.length.value(1).source_unit.name, 'micrometre');   % registry label for 'um'
-verifyEqual(testCase, lr.length.value(2).meters, 2e-5, 'AbsTol', 1e-12);
+% the new numeric shape: the series is ONE cell of arrays (plan section 8, answer 4)
+verifyEqual(testCase, numel(lr.length.value), 1);
+verifyEqual(testCase, numel(lr.length.value.source_numeric), 2);
+verifyEqual(testCase, lr.length.value.source_numeric(2), 20, 'AbsTol', 1e-9);
+verifyEqual(testCase, lr.length.value.source_unit.name, 'micrometre');   % registry label for 'um'
+verifyEqual(testCase, lr.length.value.meters(2), 2e-5, 'AbsTol', 1e-12);
 
 % probe_model, not the invented probe_type
 assertion = out{find(strcmp(names, 'assertion+term'), 1)};
@@ -6637,7 +6641,7 @@ verifyEqual(testCase, nParamsJ(leaf), 0, ...
     'a bare temporal_frequency_tuning document carries no input_parameters, and its five models write no function list');
 verifyEqual(testCase, paramTextJ(leaf, 'function'), '');
 
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [1 2 4 8]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [1 2 4 8]);
 verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'temporal frequency');
 v = leaf.tuning_curve.value;
 verifyEqual(testCase, v.mean, [1; 5; 9; 3]);
@@ -6712,7 +6716,7 @@ if ~isfield(e, 'constraints') || isempty(e.constraints)
 end
 c = e.constraints;
 if isstruct(c); c = num2cell(c); end
-parts = cellfun(@(x) sprintf('%s=%g', char(x.variable.name), x.value), c, ...
+parts = cellfun(@(x) sprintf('%s=%g', char(x.variable.name), x.numeric), c, ...   % the new numeric shape
     'UniformOutput', false);
 s = strjoin(sort(parts), ';');
 end
@@ -7470,7 +7474,7 @@ end
 function v = paramValueJ(leaf, varName)
 e = paramEntryJ(leaf, varName);
 v = [];
-if ~isempty(e); v = e.quantity.value; end
+if ~isempty(e); v = e.numeric; end   % the new numeric shape
 end
 
 
@@ -7491,7 +7495,7 @@ if ~isfield(fit, 'coefficients') || ~isstruct(fit.coefficients); return; end
 c = fit.coefficients;
 for k = 1:numel(c)
     if isfield(c(k), 'variable') && isstruct(c(k).variable) && isfield(c(k).variable, 'name') ...
-            && ~isempty(c(k).variable.name) && ~isempty(c(k).value)
+            && ~isempty(c(k).variable.name) && ~isempty(c(k).numeric)   % the new numeric shape
         n = n + 1;
     end
 end

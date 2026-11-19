@@ -822,8 +822,15 @@ if isfield(x, 'seconds') && isnumeric(x.seconds) && isscalar(x.seconds) ...
     return;
 end
 % No canonical value. Derive one ONLY from a source pair that names seconds.
-if ~isfield(x, 'source_value') || ~isnumeric(x.source_value) ...
-        || ~isscalar(x.source_value) || ~isfinite(x.source_value)
+% What the source wrote is source_value (old numeric shape) or source_numeric
+% (new; [numeric shape details] (2), Jess Haley, 2026-11-17).
+src = [];
+if isfield(x, 'source_numeric') && ~isempty(x.source_numeric)
+    src = x.source_numeric;
+elseif isfield(x, 'source_value')
+    src = x.source_value;
+end
+if ~isnumeric(src) || ~isscalar(src) || ~isfinite(src)
     status = 'blank';
     return;
 end
@@ -831,7 +838,7 @@ if ~isSecondsUnit(fieldOr(x, 'source_unit', ''))
     status = 'unreadable_unit';
     return;
 end
-x.seconds = double(x.source_value);
+x.seconds = double(src);
 c = x;
 status = 'ok';
 end

@@ -279,7 +279,7 @@ ix = find(strcmp(names, 'error on failure'));
 verifyNumElements(testCase, ix, 1, strjoin(names, ', '));
 if isscalar(ix)
     verifyEqual(testCase, p(ix).variable.node, 'EMPTY:0000435');
-    verifyEqual(testCase, p(ix).quantity.value, 1);
+    verifyEqual(testCase, p(ix).numeric, 1);   % the new numeric shape
     verifyFalse(testCase, isfield(p(ix), 'logical') && ~isempty(p(ix).logical));
 end
 verifyFalse(testCase, any(strcmp(names, 'errorOnFailure')), strjoin(names, ', '));

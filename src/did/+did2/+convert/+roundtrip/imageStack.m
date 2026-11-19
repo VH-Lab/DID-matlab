@@ -319,7 +319,9 @@ ts = [];
 clk = '';
 extra = {};
 [aclk, atol] = anchorClock(anchor);
-start = numberOf(getIn(anchor, 'relative_time_reference', 'value', 'start', 'source_value'));
+% source_value, or the new numeric shape's source_numeric ([numeric shape
+% details] (2), Jess Haley, 2026-11-17)
+start = numberOf(cellSource(getIn(anchor, 'relative_time_reference', 'value', 'start')));
 if ~isempty(start) && strcmp(aclk, 'utc')
     ts = start;
     clk = withApprox(aclk, atol);

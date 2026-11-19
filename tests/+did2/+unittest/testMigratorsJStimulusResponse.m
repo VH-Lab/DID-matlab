@@ -340,7 +340,7 @@ verifyEqual(testCase, k.term.node, 'NCIT:C41210');
 verifyEqual(testCase, k.n, 6);
 verifyEqual(testCase, numel(s.harmonic_component.value.real), 6);
 verifyEqual(testCase, k.cov.variable.name, 'Stimulus');
-verifyEqual(testCase, k.cov.quantity.value(:)', [1 2 3 1 2 3]);
+verifyEqual(testCase, k.cov.numeric(:)', [1 2 3 1 2 3]);   % the new numeric shape
 verifyFalse(testCase, isfield(s.data, 'conditions') && ~isempty(s.data.conditions));
 % the presentation is still the first input
 verifyTrue(testCase, ismember('pres_b671ff', inputSet(s)));

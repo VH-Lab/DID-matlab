@@ -1076,8 +1076,9 @@ for k = 1:numel(knobs)
         continue;
     end
     if (isnumeric(v) || islogical(v)) && isscalar(v)
+        % the source's number, as a number ([numeric shape details] (1))
         e = did2.build.parameter(var, 'Value', double(v), ...
-            'SourceValue', shortestText(double(v)));
+            'SourceValue', double(v));
     elseif ischar(v) && isrow(v)
         e = did2.build.parameter(var, 'Text', v);
     elseif isstring(v) && isscalar(v)
@@ -1123,16 +1124,6 @@ end
 
 function found = nthOutput2(name)
 [~, found] = did2.convert.tuningNames('v2', name);
-end
-
-function t = shortestText(x)
-% The shortest decimal text that reads back as exactly X (jParameterList's).
-for p = 1:17
-    t = sprintf('%.*g', p, x);
-    if str2double(t) == x
-        return;
-    end
-end
 end
 
 function out = toCamel(name)
