@@ -1675,6 +1675,12 @@ for withEntry = [true false]
     cleanup = onCleanup(@() did2.convert.migrationReport('end'));
     subj = subjectBody('spec_c', 'sess_c', 'L');
     stim = elementBody('stim_c', 'sess_c', 'vis', '1', 'stimulator', 1, 'spec_c');
+    % the stimulator is compared field by field here, so it has the shape
+    % ndi.element/newdocument writes (element.json at the locked NDI-matlab
+    % `main`): underlying_element_id then subject_id, a numeric reference
+    stim.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+        'value', {'', 'spec_c'});
+    stim.element.reference = 1;
     rec  = elementBody('rec_c', 'sess_c', 'cortex', '1', 'n-trode', 1, 'spec_c');
     daq  = daqsystemBody('acqsys_c', 'sess_c', 'vis');
     ing  = ingestedWithDeviceRows('ing_c', 'sess_c', 't0c', { ...
