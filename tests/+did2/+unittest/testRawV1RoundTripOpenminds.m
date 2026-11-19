@@ -216,6 +216,62 @@ r = did2.convert.roundtrip.check(stated, out.migrated);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'wildtype stated by its node', {});
 end
 
+function testAMintedOpenmindsIdConvertsAndIsAnAcceptedLoss(testCase)
+% Decided by Jess Haley, 2026-11-19 [openMINDS minted ids are an accepted
+% loss] (Waltham-Data-Science/did-schema#212): carry-116's group B, the
+% per-document minted ids `<Type>/<uuid>` (Dab 4126945ae99e7be1_408d648e85c6f86d:
+% BiologicalSex male, PATO:0000384, BiologicalSex/5e44d246-...; Species
+% Rattus norvegicus; Strain SD, RRID:RGD_70508), convert to their term
+% assertion; the id is not kept, and the whole-batch round trip lists it as
+% the accepted loss, not a failure. No global_identifier is written for it.
+cases = {'BiologicalSex', 'male', 'PATO:0000384', 'BiologicalSex/5e44d246-e095-4c78-a284-67c6249e93fe'; ...
+    'Species', 'Rattus norvegicus', 'NCBITaxon:10116', 'Species/e1ca41a9-755a-4361-8226-31ff6564849a'};
+for k = 1:size(cases, 1)
+    [type, name, node, omId] = cases{k, :};
+    v1 = subjectTerm(sprintf('41268b6f5c6a3d4e_0e0000000000006%d', k), type, name, node, '', '');
+    v1.openminds.openminds_id = omId;
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, type);
+    verifyEmpty(testCase, out.passthrough, [type ': converted, not carried']);
+    verifyNumElements(testCase, out.migrated, 1, type);
+    a = out.migrated{1};
+    verifyEqual(testCase, char(a.get('term.value').node), node, type);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyEqual(testCase, {r.lost.path}, {'openminds.openminds_id'}, ...
+        [type ': the minted id is the one value not kept']);
+    w = did2.convert.roundtrip.wholeBatch({v1}, out);
+    verifyEqual(testCase, w.failures_total, 0, type);
+    verifyEqual(testCase, w.accepted_losses_by_name.openMINDSMintedId, 1, type);
+    verifyEqual(testCase, w.accepted_losses(1).path, 'openminds.openminds_id', type);
+end
+s = labStrain('41268b6f5c6a3d4e_0e00000000000063', 'SD', 'Strain/7bfb413d-eab9-482e-8c44-b4d61c070dc5');
+s.openminds.fields.ontologyIdentifier = 'RRID:RGD_70508';
+out = runRaw(s);
+verifyEmpty(testCase, out.passthrough, 'a Strain with a node and a minted id converts');
+verifyNumElements(testCase, out.migrated, 1, 'one assertion: no strain entity per id');
+end
+
+function testAnIdThatIsNotMintedForItsTypeIsStillCarried(testCase)
+% CONTROLS for [openMINDS minted ids are an accepted loss]: a `<Type>/<uuid>`
+% whose type is another than the document's, and a `<Type>/<name>` that is not
+% a UUID, are not minted ids: carry-116 as before
+v1 = subjectTerm('41268b6f5c6a3d4e_0e00000000000064', 'BiologicalSex', 'male', ...
+    'PATO:0000384', '', '');
+v1.openminds.openminds_id = 'Species/5e44d246-e095-4c78-a284-67c6249e93fe';
+verifyCarried(testCase, v1, '[carry-116]');
+v1.openminds.openminds_id = 'BiologicalSex/male';
+verifyCarried(testCase, v1, '[carry-116]');
+verifyTrue(testCase, did2.convert.openmindsMintedId( ...
+    'BiologicalSex/5e44d246-e095-4c78-a284-67c6249e93fe', ...
+    'https://openminds.om-i.org/types/BiologicalSex'));
+verifyFalse(testCase, did2.convert.openmindsMintedId( ...
+    'BiologicalSex/5e44d246-e095-4c78-a284-67c6249e93f', ...
+    'https://openminds.om-i.org/types/BiologicalSex'), 'not a UUID');
+verifyFalse(testCase, did2.convert.openmindsMintedId( ...
+    'https://openminds.om-i.org/instances/biologicalSex/male', ...
+    'https://openminds.om-i.org/types/BiologicalSex'), 'an instance IRI');
+end
+
 function testAFieldOutsideTheSubjectTemplateCarriesIt(testCase)
 f = subjectFixtures();
 v1 = f{1, 2};
