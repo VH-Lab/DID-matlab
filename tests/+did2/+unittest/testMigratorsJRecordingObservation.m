@@ -756,7 +756,6 @@ daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
     'id', {'nav_acqsys_09', 'rdr_acqsys_09'});
 out = did2.convert.v1_to_v2({sess, subj, el, daq, ing}, 'Validate', false, 'TargetVersion', 'did_v2');
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
-out = did2.convert.resolveSessionAnchors(out, 'Validate', validate, 'TargetVersion', 'did_v2');
 out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'did_v2');
 end
 

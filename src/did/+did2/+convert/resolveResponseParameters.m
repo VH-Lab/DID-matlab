@@ -293,7 +293,7 @@ function [result, report] = resolveResponseParameters(result, options)
 %     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
 %     TargetVersion  (1,:) char, default 'V_eta'  the only target accepted
 %
-%   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
+%   See also: did2.convert.v1_to_v2,
 %   did2.convert.epochMint, did2.convert.resolveDeferredBaths,
 %   did2.convert.migrators_j.stimulus_response_scalar,
 %   did2.convert.migrators_j.stimulus_response_scalar_parameters_basic.
