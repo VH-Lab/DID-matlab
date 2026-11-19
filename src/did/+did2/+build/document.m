@@ -90,7 +90,7 @@ function doc = document(className, fields, options)
 %   Errors, all raised BEFORE any document is returned:
 %     did2:build:retiredClass     CLASSNAME is listed retired by the schema's
 %                                 class_disposition_meta.json (strictMode
-%                                 'RetiredClasses', armed; off in did2.convert)
+%                                 'RetiredClasses', armed, in did2.convert too)
 %     did2:build:abstractClass    CLASSNAME is abstract
 %     did2:build:missingValueKind a direction that takes a value kind, given none
 %     did2:build:unknownField     a name no block declares (also nested)
