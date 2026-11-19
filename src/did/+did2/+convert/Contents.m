@@ -62,6 +62,11 @@
 %     migrationReport    - the run's report: every gap (a required field
 %                          the source never stated) and carry, by document;
 %                          the validator reads the gaps there.
+%     carryElementSubject, carriedElementSubject
+%                        - a migrated element's v1 subject held in the
+%                          report's carried fields (carry-172), written by
+%                          NDI-matlab's second pass and read back by the
+%                          round trip.
 %     migrationRecord    - the run's `migration` document and its report,
 %                          a JSON file attached as an opaque_body.
 %
