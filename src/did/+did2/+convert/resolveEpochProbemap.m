@@ -468,7 +468,7 @@ for k = 1:n
         end
     end
 end
-report.rig_devices_indexed = rigDeviceIds.Count;
+report.rig_devices_indexed = double(rigDeviceIds.Count);
 % (d) #30 observations keyed by the (subject_id, instrument_id, class_name)
 %     TRIPLE -- NOT instrument_id alone. jRecordingObservation stamps
 %     base.name = 'migrated_recording_observation'; but a single probe (instrument)

@@ -724,7 +724,21 @@ for sw = edgesOf(cfg, 'software_id')
 end
 for role = {'input_id', 'output_id', 'from_acquisition_system_id', 'to_acquisition_system_id'}
     for s = edgesOf(cfg, role{1})
-        docs{end+1} = docWithId(out, s{1}); %#ok<AGROW>
+        d = docWithId(out, s{1});
+        docs{end+1} = d; %#ok<AGROW>
+        if isempty(d) || strcmp(char(did2.unittest.helpers.classKey(d)), 'acquisition_system')
+            continue;
+        end
+        % the end names the rig's device entity ([a rig's clock belongs to its
+        % device], Jess Haley 2026-11-19): the system is the acquisition_system
+        % naming it by `device_id`
+        for k = 1:numel(out.migrated)
+            c = out.migrated{k};
+            if strcmp(char(did2.unittest.helpers.classKey(c)), 'acquisition_system') ...
+                    && any(strcmp(edgesOf(c, 'device_id'), s{1}))
+                docs{end+1} = c; %#ok<AGROW>
+            end
+        end
     end
 end
 end

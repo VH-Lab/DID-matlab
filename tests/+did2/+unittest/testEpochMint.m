@@ -150,8 +150,14 @@ verifyEqual(testCase, depValueOf(epochs{1}, 'time_reference_id'), ...   % #88 ed
 % INVERTED 2026-10-26 (it read: anchored to the SESSION). Decided by Jess
 % Haley, 2026-10-26 [device clocks on one epoch]: the extent's referent is THAT
 % ACQUISITION SYSTEM (the v1 daqsystem's id, preserved), not the session.
-verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), 'daq_rig1', ...
-    'the reference is anchored to its acquisition system');
+% Since [a rig's clock belongs to its device] (Jess Haley, 2026-11-19,
+% did-schema docs/plans/did_v2_standing_wiring_plan.md) the referent is the
+% rig's DEVICE entity, the one the acquisition system names by `device_id`.
+verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), rigDeviceOf(out, 'daq_rig1'), ...
+    'the reference is anchored to its rig''s device');
+verifyNotEmpty(testCase, rigDeviceOf(out, 'daq_rig1'), 'the rig names no device');
+verifyEqual(testCase, rep.epoch_extent_referent_device, 1);
+verifyEqual(testCase, rep.epoch_extent_referent_acquisition_system, 0);
 verifyNotEqual(testCase, depValueOf(refs{1}, 'referent_id'), ...
     did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'sess_1'));
 verifyNotEqual(testCase, depValueOf(refs{1}, 'referent_id'), ...
@@ -359,7 +365,9 @@ out = mintFrom([{sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b}, ...
 refs = ofClass(out, 'relative_time_reference');
 assertEqual(testCase, numel(refs), 2, 'one reference per system');
 referents = sort(cellfun(@(r) depValueOf(r, 'referent_id'), refs, 'UniformOutput', false));
-verifyEqual(testCase, referents, {'daq_rig1', 'daq_rig2'});
+% each rig's device ([a rig's clock belongs to its device], Jess Haley 2026-11-19)
+verifyEqual(testCase, referents, sort({rigDeviceOf(out, 'daq_rig1'), rigDeviceOf(out, 'daq_rig2')}));
+verifyNotEqual(testCase, rigDeviceOf(out, 'daq_rig1'), rigDeviceOf(out, 'daq_rig2'));
 epochs = ofClass(out, 'epoch');
 verifyEqual(testCase, numel(epochs), 1, 'ONE epoch for the one recording');
 end
@@ -1706,6 +1714,18 @@ for k = 1:numel(ps)
     if isstruct(e) && isfield(e, 'variable') && isstruct(e.variable) ...
             && strcmp(char(e.variable.name), 'epochid')
         t = char(e.text); return;
+    end
+end
+end
+
+function id = rigDeviceOf(out, sysId)
+% the device entity the acquisition_system SYSID names by `device_id` (the
+% rig's device, +migrators_j/daqsystem.m); '' when none
+id = '';
+for k = 1:numel(out.migrated)
+    if strcmp(char(out.migrated{k}.get('base.id')), sysId)
+        id = depValueOf(out.migrated{k}, 'device_id');
+        return;
     end
 end
 end

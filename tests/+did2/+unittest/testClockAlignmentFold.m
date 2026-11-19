@@ -215,7 +215,12 @@ verifyFalse(testCase, isfield(r.no_inverse_by_class, 'syncrule'));
 % the rigs round-trip too: each daqsystem is rebuilt from its configuration and
 % its device entity, which the rule's ends now name ([acquisition system is a
 % device entity], [a rig's clock belongs to its device], Jess Haley 2026-11-19)
-verifyFalse(testCase, isfield(r.failures_by_class, 'daqsystem'));
+isRig = arrayfun(@(f) any(strcmp(f.source_id, {'sys_1', 'sys_2'})), r.failures);
+rigDetail = '';
+for f = reshape(r.failures(isRig), 1, [])
+    rigDetail = [rigDetail, f.source_id, ': ', strjoin([f.lost_values, f.unplaced], ' | '), '; ']; %#ok<AGROW>
+end
+verifyFalse(testCase, any(isRig), rigDetail);
 verifyFalse(testCase, isfield(r.changed_by_class, 'daqsystem'));
 end
 
