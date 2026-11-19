@@ -1115,17 +1115,13 @@ for i = 1:numel(la)
                 if converted
                     L.source_unit = P.source_unit;
                     factor = scaleOf(P);
-                    if isfield(L, 'origin') && isstruct(L.origin) ...
-                            && isfield(L, 'spacing') && isstruct(L.spacing)
-                        L.origin = struct('value', L.origin.value * factor, ...
-                            'source_value', L.origin.value);
-                        L.spacing = struct('value', L.spacing.value * factor, ...
-                            'source_value', L.spacing.value);
-                    elseif isfield(L, 'origin') && isnumeric(L.origin) && ~isempty(L.origin) ...
+                    if isfield(L, 'origin') && isnumeric(L.origin) && ~isempty(L.origin) ...
                             && isfield(L, 'spacing') && isnumeric(L.spacing) && ~isempty(L.spacing)
-                        % the new numeric shape ([one shape for measured
+                        % the numeric shape ([one shape for measured
                         % numbers], Jess Haley, 2026-11-17): flat origin and
-                        % spacing beside source_origin and source_spacing
+                        % spacing beside source_origin and source_spacing;
+                        % an old {value, source_value} block was refused by
+                        % scaleOf (did2.read.numeric)
                         L.source_origin = L.origin;
                         L.source_spacing = L.spacing;
                         L.origin = L.origin * factor;
@@ -1139,8 +1135,7 @@ for i = 1:numel(la)
             if isfield(P, 'term') && ~isempty(P.term) ...
                     && (~isfield(L, 'term') || isempty(L.term)) ...
                     && numel(labelList(P.term)) == double(la{i}.n)
-                if isfield(L, 'quantity'); L.quantity = []; end
-                % ... or the new numeric shape's number ([one shape for measured numbers])
+                % the numeric shape's number ([one shape for measured numbers])
                 if isfield(L, 'numeric'); L.numeric = []; end
                 if isfield(L, 'source_numeric'); L.source_numeric = []; end
                 L.term = P.term;
@@ -1203,9 +1198,9 @@ arguments
 end
 
 f = 1;
-% the old {value, source_value} pair or the new flat origin / spacing and
-% source_origin / source_spacing (did2.read.numeric; [one shape for measured
-% numbers], Jess Haley, 2026-11-17)
+% the flat origin / spacing and source_origin / source_spacing
+% (did2.read.numeric, which refuses the old {value, source_value} pair; [one
+% shape for measured numbers], Jess Haley, 2026-11-17)
 r = did2.read.numeric(P);
 if ~strcmp(r.form, 'origin')
     return;

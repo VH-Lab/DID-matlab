@@ -90,29 +90,31 @@ verifyEqual(testCase, c, 'blosc-zstd');
 verifyEqual(testCase, jsonencode(s), '{"cname":"zstd","clevel":5,"shuffle":1,"blocksize":0}');
 end
 
-function testTheReaderReadsANumericSettingInEitherShape(testCase)
-% a setting that is not a whole number: old `quantity.value`, new flat
-% `numeric` ([one shape for measured numbers], Jess Haley, 2026-11-17).
+function testTheReaderReadsANumericSettingAndRefusesTheOldShape(testCase)
+% a setting that is not a whole number: flat `numeric` ([one shape for
+% measured numbers], Jess Haley, 2026-11-17); the old `quantity.value` is
+% refused ([no migrated database is kept], Jess Haley, 2026-11-19).
 % Written by hand, as a stored document holds it.
 oldItem = struct('variable', struct('node', '', 'name', 'ratio'), ...
     'quantity', struct('value', 0.25));
 newItem = struct('variable', struct('node', '', 'name', 'ratio'), 'numeric', 0.25);
-items = {oldItem, newItem};
-labels = {'old shape', 'new shape'};
-for k = 1:2
-    blk = struct('term', struct('node', '', 'name', 'gzip'), 'parameters', {items(k)});
-    [c, s] = did2.build.compressionCodec(blk);
-    verifyEqual(testCase, c, 'gzip', labels{k});
-    verifyTrue(testCase, isfield(s, 'ratio'), [labels{k} ': the setting is read']);
-    if isfield(s, 'ratio')
-        verifyEqual(testCase, s.ratio, 0.25, labels{k});
-    end
+blk = struct('term', struct('node', '', 'name', 'gzip'), 'parameters', {{newItem}});
+[c, s] = did2.build.compressionCodec(blk);
+verifyEqual(testCase, c, 'gzip', 'new shape');
+verifyTrue(testCase, isfield(s, 'ratio'), 'new shape: the setting is read');
+if isfield(s, 'ratio')
+    verifyEqual(testCase, s.ratio, 0.25, 'new shape');
 end
+blk = struct('term', struct('node', '', 'name', 'gzip'), 'parameters', {{oldItem}});
+verifyError(testCase, @() did2.build.compressionCodec(blk), ...
+    'did2:read:oldNumericShapeReMigrate', 'old shape');
 end
 
-function testABuiltNumericSettingReadsBackInEitherShape(testCase)
-% what did2.build.compression writes for a number that is not whole, in each
-% numeric shape, reads back through did2.build.compressionCodec
+function testABuiltNumericSettingReadsBackInTheNewShape(testCase)
+% what did2.build.compression writes for a number that is not whole reads
+% back through did2.build.compressionCodec in the new numeric shape; in the
+% old one it is refused (did-schema did_v2_numeric_shape_plan.md section 9
+% step 4, [no migrated database is kept], Jess Haley, 2026-11-19)
 did2.unittest.helpers.compressionBlockSchema(testCase);
 prevShape = did2.build.numericShape('');
 testCase.addTeardown(@() did2.build.numericShape(prevShape));
@@ -127,6 +129,9 @@ for shape = {'old', 'new'}
     else
         verifyTrue(testCase, isfield(p, 'quantity') && ~isfield(p, 'numeric'), ...
             'the old shape writes quantity');
+        verifyError(testCase, @() did2.build.compressionCodec(c), ...
+            'did2:read:oldNumericShapeReMigrate', 'the old shape is refused');
+        continue;
     end
     [codec, s] = did2.build.compressionCodec(c);
     verifyEqual(testCase, codec, 'gzip', shape{1});

@@ -331,8 +331,8 @@ function t = readValue(ref, name)
 % a relative_time_reference's START, END or DURATION as the v1 value it was read from
 % (source_value; seconds when it states none); NaN when it has neither
 t = NaN;
-% source_value, or the new numeric shape's source_numeric ([numeric shape
-% details] (2), Jess Haley, 2026-11-17)
+% source_numeric ([numeric shape details] (2), Jess Haley, 2026-11-17;
+% cellSource refuses an old source_value)
 [v, ok] = cellSource(getIn(ref, 'relative_time_reference', 'value', name));
 if ~(ok && isnumeric(v) && isscalar(v))
     [v, ok] = getIn(ref, 'relative_time_reference', 'value', name, 'seconds');

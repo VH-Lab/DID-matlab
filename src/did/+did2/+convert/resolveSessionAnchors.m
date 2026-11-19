@@ -836,13 +836,16 @@ if isfield(x, 'seconds') && isnumeric(x.seconds) && isscalar(x.seconds) ...
     return;
 end
 % No canonical value. Derive one ONLY from a source pair that names seconds.
-% What the source wrote is source_value (old numeric shape) or source_numeric
-% (new; [numeric shape details] (2), Jess Haley, 2026-11-17).
+% What the source wrote is source_numeric ([numeric shape details] (2),
+% Jess Haley, 2026-11-17); a duration's numeric source_value is the old
+% numeric shape, refused ([no migrated database is kept], Jess Haley,
+% 2026-11-19).
+if isfield(x, 'source_value') && isnumeric(x.source_value) && ~isempty(x.source_value)
+    did2.read.refuseOldNumericShape(sprintf('A time reference''s %s', name), 'source_value');
+end
 src = [];
 if isfield(x, 'source_numeric') && ~isempty(x.source_numeric)
     src = x.source_numeric;
-elseif isfield(x, 'source_value')
-    src = x.source_value;
 end
 if ~isnumeric(src) || ~isscalar(src) || ~isfinite(src)
     status = 'blank';

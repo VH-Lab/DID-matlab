@@ -53,8 +53,8 @@ for k = 1:n
         f.channel_names = strjoin(names, ',');
         continue;
     end
-    % the old {value, source_value} blocks or the new flat origin, spacing,
-    % source_origin, source_spacing ([one shape for measured numbers])
+    % the flat origin, spacing, source_origin, source_spacing ([one shape
+    % for measured numbers]; itemRegular refuses the old blocks)
     [o, so] = itemRegular(cov, 'origin');
     [s, ss] = itemRegular(cov, 'spacing');
     o = numberOf(o); so = numberOf(so);

@@ -208,13 +208,20 @@ end
 % ===================== helpers ==============================================
 
 function verifySameReading(testCase, old, new)
-ro = did2.read.numeric(old);
+% the converted item reads; the old one is refused (did-schema
+% did_v2_numeric_shape_plan.md section 9 step 4, [no migrated database is
+% kept], Jess Haley, 2026-11-19)
+verifyError(testCase, @() did2.read.numeric(old), 'did2:read:oldNumericShapeReMigrate', ...
+    'the old item is refused');
 rn = did2.read.numeric(new);
-verifyEqual(testCase, rn.form, ro.form);
-verifyEqual(testCase, rn.numbers, ro.numbers);
-verifyEqual(testCase, rn.source_numbers, ro.source_numbers);
-verifyEqual(testCase, rn.unit, ro.unit);
-verifyEqual(testCase, rn.source_unit, ro.source_unit);
-verifyEqual(testCase, [rn.origin rn.spacing], [ro.origin ro.spacing]);
-verifyEqual(testCase, [rn.source_origin rn.source_spacing], [ro.source_origin ro.source_spacing]);
+verifyNotEmpty(testCase, rn.form, 'the converted item states a number');
+verifyEqual(testCase, rn.unit, did2.read.numeric(rmOld(old)).unit, 'the unit is the item''s');
+verifyEqual(testCase, rn.source_unit, did2.read.numeric(rmOld(old)).source_unit);
+end
+
+function s = rmOld(s)
+% the old item without its old forms: what it states beside the number
+for f = {'quantity', 'matrix', 'origin', 'spacing'}
+    if isfield(s, f{1}); s = rmfield(s, f{1}); end
+end
 end

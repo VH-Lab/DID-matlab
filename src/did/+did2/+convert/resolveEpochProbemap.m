@@ -3142,8 +3142,8 @@ for k = 1:numel(cs)
     v = cs(k).variable;
     nm = '';
     if isstruct(v) && isfield(v, 'name'); nm = char(v.name); end
-    % the old {value, source_value} origin or the new flat one
-    % (did2.read.numeric; [one shape for measured numbers], Jess Haley, 2026-11-17)
+    % the flat origin (did2.read.numeric, which refuses the old {value,
+    % source_value} block; [one shape for measured numbers], Jess Haley, 2026-11-17)
     r = did2.read.numeric(cs(k));
     if strcmpi(nm, 'time') && strcmp(r.form, 'origin') && ~isempty(r.origin)
         o = double(r.origin);

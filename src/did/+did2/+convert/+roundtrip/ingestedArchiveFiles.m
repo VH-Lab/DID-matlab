@@ -546,21 +546,26 @@ end
 end
 
 function v = covariateValues(b, pick, preferSource)
-% the numbers of the first covariate PICK accepts, in either numeric shape:
-% old `quantity.value` (`quantity.source_value`) or `count`, new `numeric`
+% the numbers of the first covariate PICK accepts: `numeric`
 % (`source_numeric`) or `count`. PREFERSOURCE reads the source value when
-% there ([scale carries the reader's unit]: the v1 scale)
+% there ([scale carries the reader's unit]: the v1 scale). A covariate in the
+% old numeric shape (`quantity`, `matrix`, origin/spacing blocks) is the
+% error 'did2:read:oldNumericShapeReMigrate' ([no migrated database is
+% kept], Jess Haley, 2026-11-19).
 if nargin < 3; preferSource = false; end
 v = [];
 for cv = asCellOf(blockField(b, 'covariates'))
     s = cv{1};
     if ~pick(s); continue; end
-    q = getPath(s, 'quantity');
+    old = did2.read.oldNumericForm(s);
+    if ~isempty(old)
+        did2.read.refuseOldNumericShape('An ingested channel group''s covariate', old);
+    end
     cands = {};
     if preferSource
-        cands = {getPath(q, 'source_value'), getPath(s, 'source_numeric')};
+        cands = {getPath(s, 'source_numeric')};
     end
-    cands = [cands, {getPath(q, 'value'), getPath(s, 'numeric'), getPath(s, 'count')}]; %#ok<AGROW>
+    cands = [cands, {getPath(s, 'numeric'), getPath(s, 'count')}]; %#ok<AGROW>
     for c = 1:numel(cands)
         x = cands{c};
         if iscell(x) && ~isempty(x)
@@ -651,9 +656,12 @@ end
 for c = asCellOf(cs)
     a = prefixOfNode(textOf(getPath(getPath(c{1}, 'variable'), 'node')));
     if ~any(strcmp(a, {'e', 'mk', 'tx'})); continue; end
+    old = did2.read.oldNumericForm(c{1});
+    if ~isempty(old)
+        did2.read.refuseOldNumericShape('An event channel''s number', old);
+    end
     n = getPath(c{1}, 'count');
     if isempty(n); n = getPath(c{1}, 'numeric'); end
-    if isempty(n); n = getPath(getPath(c{1}, 'quantity'), 'value'); end
     if isnumeric(n) && isscalar(n)
         ab = a; num = double(n);
         return;
