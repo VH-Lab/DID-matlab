@@ -44,7 +44,7 @@ end
 if isempty(d)
     return;
 end
-if strcmp(classNameOf(d), 'acquisition_system')
+if did2.convert.isAcquisitionConfiguration(classNameOf(d))
     sys = d;
     dv = edgeIds(d, 'device_id');
     if ~isempty(dv); devId = dv{1}; end
@@ -60,7 +60,7 @@ k = 0;
 found = {};
 at = [];
 for j = 1:numel(bodies)
-    if strcmp(classNameOf(bodies{j}), 'acquisition_system') ...
+    if did2.convert.isAcquisitionConfiguration(classNameOf(bodies{j})) ...
             && any(strcmp(edgeIds(bodies{j}, 'device_id'), id))
         found{end+1} = bodies{j}; %#ok<AGROW>
         at(end+1) = j; %#ok<AGROW>
@@ -69,7 +69,7 @@ end
 if isempty(found)
     for j = ctxReferrers(ctx, id)
         b = ctx.docs{j};
-        if strcmp(classNameOf(b), 'acquisition_system') && any(strcmp(edgeIds(b, 'device_id'), id))
+        if did2.convert.isAcquisitionConfiguration(classNameOf(b)) && any(strcmp(edgeIds(b, 'device_id'), id))
             found{end+1} = b; %#ok<AGROW>
             at(end+1) = 0; %#ok<AGROW>
         end
