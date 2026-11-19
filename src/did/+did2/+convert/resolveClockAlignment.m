@@ -139,6 +139,8 @@ report = struct( ...
     ... % still in the batch after pass 1 (a passthrough); read the folds
     ... % beside it.
     'acquisition_systems_indexed',          0, ...
+    'syncrule_ends_named_device',           0, ...
+    'syncrule_ends_named_acquisition_system', 0, ...
     'syncrules_seen',                       0, ...
     'syncrule_filefind_seen',               0, ...
     'syncrule_channel_rule_seen',           0, ...
@@ -346,11 +348,19 @@ n = numel(bodies);
 % claims it. A cell of ids, not one id: the count is what tells a resolved
 % name from an ambiguous one.
 systemIds = containers.Map('KeyType', 'char', 'ValueType', 'any');
+% acquisition_system id -> its `device_id`: the rig's device entity, which a
+% configuration's input_id / output_id name (Decided by Jess Haley,
+% 2026-11-19 [a rig's clock belongs to its device], did-schema
+% docs/plans/did_v2_standing_wiring_plan.md; the device is minted by
+% +migrators_j/daqsystem.m). A system with no device is named itself, as before.
+deviceOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
 for k = 1:n
     if ~strcmp(classes{k}, 'acquisition_system'); continue; end
     report.acquisition_systems_indexed = report.acquisition_systems_indexed + 1;
     nm = '';
     b = bodies{k};
+    dv = depValueOfDevice(b);
+    if ~isempty(dv) && ~isempty(docId{k}); deviceOf(docId{k}) = dv; end
     if isfield(b, 'acquisition_system') && isstruct(b.acquisition_system) ...
             && isfield(b.acquisition_system, 'name')
         nm = char(b.acquisition_system.name);
@@ -418,6 +428,9 @@ for k = 1:n
             continue;
         end
         resolved{j} = ids{1};
+        if isKey(deviceOf, ids{1})
+            resolved{j} = deviceOf(ids{1});
+        end
     end
     report.syncrule_names_missing = report.syncrule_names_missing + nMissing;
     report.syncrule_names_ambiguous = report.syncrule_names_ambiguous + nAmbiguous;
@@ -430,6 +443,16 @@ for k = 1:n
         continue;
     end
 
+    % the two ends: each rig's device (or the system, when it names none),
+    % stamped under the pass's own edge name for +migrators_j/syncrule.m
+    for j = 1:2
+        if any(strcmp(resolved{j}, deviceOf.values))
+            report.syncrule_ends_named_device = report.syncrule_ends_named_device + 1;
+        else
+            report.syncrule_ends_named_acquisition_system = ...
+                report.syncrule_ends_named_acquisition_system + 1;
+        end
+    end
     stamped = b;
     for j = 1:2
         stamped = stampEdge(stamped, 'resolved_acquisition_system_id', resolved{j});
@@ -638,5 +661,24 @@ end
 sid = did2.schema.cache.sessionIdOf(b);
 if ~isempty(sid)
     b.base.session_id = sid;
+end
+end
+
+function v = depValueOfDevice(b)
+%DEPVALUEOFDEVICE The acquisition_system's `device_id` target ('' when none),
+%   read with any key a depends_on entry spells its target with.
+v = '';
+if ~isstruct(b) || ~isfield(b, 'depends_on') || isempty(b.depends_on) || ~isstruct(b.depends_on)
+    return;
+end
+for k = 1:numel(b.depends_on)
+    d = b.depends_on(k);
+    if ~isfield(d, 'name') || ~strcmp(char(d.name), 'device_id'); continue; end
+    for key = {'document_id', 'value', 'id'}
+        if isfield(d, key{1}) && ~isempty(d.(key{1}))
+            v = char(d.(key{1}));
+            return;
+        end
+    end
 end
 end

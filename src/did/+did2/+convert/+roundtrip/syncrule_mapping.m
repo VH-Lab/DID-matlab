@@ -161,17 +161,24 @@ else
     node.epoch_session_id = char(did2.schema.cache.sessionIdOf(epoch));
 end
 
-% the acquisition system the reference is on, and its software
+% the acquisition system the reference is on, and its software. The referent
+% is the rig's device entity (Jess Haley 2026-11-19 [a rig's clock belongs to
+% its device], did-schema docs/plans/did_v2_standing_wiring_plan.md), the
+% acquisition_system naming it by `device_id`; or, in a batch migrated before,
+% the acquisition_system itself (rigSystem reads both)
 sysIds = edgeIds(ref, 'referent_id');
 sys = [];
+i = 0;
+iDev = 0;
 if ~isempty(sysIds)
-    [sys, i] = withId(bodies, sysIds{1});
+    [sys, ~, i, iDev] = rigSystem(sysIds{1}, bodies, []);
 end
-if isempty(sys) || ~strcmp(classNameOf(sys), 'acquisition_system')
+if isempty(sys) || i == 0
     why = 'its referent acquisition_system is not among the documents';
     return;
 end
 used(i) = true;
+if iDev > 0; used(iDev) = true; end
 node.objectname = fieldText(getIn(sys, 'acquisition_system'), 'name');
 if isempty(node.objectname)
     node.objectname = fieldText(sys.base, 'name');
@@ -245,7 +252,13 @@ for r = 1:numel(refIds)
     if isempty(ref); continue; end
     sysIds = edgeIds(ref, 'referent_id');
     for s = 1:numel(sysIds)
-        sys = ctxDoc(ctx, sysIds{s});
+        % the rig's device and the acquisition_system naming it, or the
+        % system itself (a batch migrated before the device; rigSystem)
+        ref0 = ctxDoc(ctx, sysIds{s});
+        sys = rigSystem(sysIds{s}, {}, ctx);
+        if ~isempty(ref0) && ~strcmp(classNameOf(ref0), 'acquisition_system')
+            [docs, seen] = addDoc(docs, seen, ref0);
+        end
         [docs, seen] = addDoc(docs, seen, sys);
         if isempty(sys); continue; end
         sw = edgeIds(sys, 'software_id');

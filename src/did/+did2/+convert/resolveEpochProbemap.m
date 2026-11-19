@@ -308,6 +308,9 @@ report = struct( ...
     'rename_quarantined',             0, ...
     'rename_skipped_rows_without_home',0, ...
     'wiring_relations_minted',        0, ...
+    'wiring_parent_device',           0, ...
+    'wiring_parent_acquisition_system', 0, ...
+    'rig_devices_indexed',            0, ...
     'rows_unwirable',                 0, ...
     'wiring_types_interleaved',       0, ...
     'wiring_several_rows_merged',     0, ...
@@ -443,6 +446,26 @@ subjectIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
 %     the live NDI query uses too (system.m:229 / syncgraph.m:404-408).
 acqSystemIdByName = containers.Map('KeyType', 'char', 'ValueType', 'char');
 rigsWithoutSystem = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+% (c') the rig's DEVICE: acquisition_system id -> its `device_id` (the device
+%     entity +migrators_j/daqsystem.m mints per rig per session). Decided by
+%     Jess Haley, 2026-11-19, did-schema docs/plans/did_v2_standing_wiring_plan.md
+%     [acquisition system is a device entity]: a probe's `connected to`
+%     wiring names the device, not the configuration. A system with no device
+%     (a batch migrated before, a rig with no name) is wired to the system as
+%     before. The devices are kept out of the subject / probe index below: a
+%     rig is not a probe-map subject or probe.
+deviceOfSystem = containers.Map('KeyType', 'char', 'ValueType', 'char');
+rigDeviceIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:n
+    if strcmp(classOf{k}, 'acquisition_system') && ~isempty(docIds{k})
+        dv = depValueOf(bodies{k}, 'device_id');
+        if ~isempty(dv)
+            deviceOfSystem(docIds{k}) = dv;
+            rigDeviceIds(dv) = true;
+        end
+    end
+end
+report.rig_devices_indexed = double(rigDeviceIds.Count);
 % (d) #30 observations keyed by the (subject_id, instrument_id, class_name)
 %     TRIPLE -- NOT instrument_id alone. jRecordingObservation stamps
 %     base.name = 'migrated_recording_observation'; but a single probe (instrument)
@@ -590,7 +613,8 @@ for k = 1:n
             % the probe itself, found by its local_identifier.
             if isfield(b, 'entity') && isstruct(b.entity) ...
                     && ~any(strcmp(classOf{k}, {'session', 'dataset', 'software', ...
-                    'operating_system', 'organization', 'person', 'protocol'}))
+                    'operating_system', 'organization', 'person', 'protocol'})) ...
+                    && ~isKey(rigDeviceIds, docIds{k})
                 lid = charField(b.entity, {'local_identifier'});
                 if ~isempty(lid) && ~isempty(docIds{k})
                     key = epochKey(sessionIds{k}, lid);
@@ -906,7 +930,17 @@ for k = 1:n
                 if isKey(acIdByKey, ak)
                     acId = acIdByKey(ak);
                 else
-                    acBody = mkWiring(instrumentId, acqSystemId, channels, ...
+                    % the parent: the rig's device ([acquisition system is a
+                    % device entity]), else the system (a batch with no device)
+                    wiringParent = acqSystemId;
+                    if isKey(deviceOfSystem, acqSystemId)
+                        wiringParent = deviceOfSystem(acqSystemId);
+                        report.wiring_parent_device = report.wiring_parent_device + 1;
+                    else
+                        report.wiring_parent_acquisition_system = ...
+                            report.wiring_parent_acquisition_system + 1;
+                    end
+                    acBody = mkWiring(instrumentId, wiringParent, channels, ...
                         anchorId, sid, datestamp);
                     acId = acBody.base.id;
                     acIdByKey(ak) = acId;
@@ -2138,7 +2172,9 @@ end
 
 function rel = mkWiring(probeId, acqSystemId, channels, anchorId, sessionId, datestamp)
 % [probe wiring is a relation] / [wiring relation term] (Jess Haley,
-% 2026-11-01): the probe `connected to` (RO:0002170) its acquisition system,
+% 2026-11-01): the probe `connected to` (RO:0002170) its acquisition system
+% (ACQSYSTEMID: the rig's device entity since [acquisition system is a device
+% entity], Jess Haley 2026-11-19; the acquisition_system for a rig with none),
 % timed by the epoch's anchor, one condition per channel type: variable the
 % channel-type term, value the matrix of that type's numbers. v1's
 % devicestring may give one type in several adjacent groups ('ai1-4;ai9');

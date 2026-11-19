@@ -216,8 +216,8 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(char(d.get('document_class.class_name')), 'directed_relation') ...
             && strcmp(depValue(d, 'child_id'), depValue(obs, 'instrument_id')) ...
-            && strcmp(depValue(d, 'parent_id'), 'acqsys_09')
-        w = d;
+            && strcmp(depValue(d, 'parent_id'), depValue(docById(out, 'acqsys_09'), 'device_id'))
+        w = d;   % the rig's device ([acquisition system is a device entity], Jess Haley 2026-11-19)
     end
 end
 verifyNotEmpty(testCase, w, 'the probe is wired to no system');

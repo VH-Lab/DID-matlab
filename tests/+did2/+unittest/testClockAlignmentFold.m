@@ -161,8 +161,15 @@ verifyNotEmpty(testCase, depValue(cfg, 'software_id'));
 verifyEmpty(testCase, depValue(cfg, 'resolved_acquisition_system_id'));
 % The rigs are ROLE-NAMED: daqsystem1 is from, daqsystem2 is to.
 [inEdge, outEdge] = did2.unittest.helpers.syncEdgeNames();   % [sync configuration edges are input and output]
-verifyEqual(testCase, depValue(cfg, inEdge), 'sys_1');
-verifyEqual(testCase, depValue(cfg, outEdge), 'sys_2');
+% Each end is the rig's DEVICE entity, which the acquisition_system names by
+% `device_id` (Jess Haley 2026-11-19 [a rig's clock belongs to its device],
+% did-schema docs/plans/did_v2_standing_wiring_plan.md).
+verifyEqual(testCase, depValue(cfg, inEdge), rigDevice(out, 'sys_1'));
+verifyEqual(testCase, depValue(cfg, outEdge), rigDevice(out, 'sys_2'));
+verifyNotEmpty(testCase, rigDevice(out, 'sys_1'));
+verifyNotEqual(testCase, rigDevice(out, 'sys_1'), rigDevice(out, 'sys_2'));
+verifyEqual(testCase, rep.syncrule_ends_named_device, 2);
+verifyEqual(testCase, rep.syncrule_ends_named_acquisition_system, 0);
 % number_fullpath_matches and syncfilename are DECLARED method.parameters.
 m = cfg.get('clock_alignment_configuration.method');
 entries = asEntries(m.parameters);
@@ -205,6 +212,20 @@ end
 verifyFalse(testCase, isfield(r.failures_by_class, 'syncrule'), detail);
 verifyFalse(testCase, isfield(r.changed_by_class, 'syncrule'));
 verifyFalse(testCase, isfield(r.no_inverse_by_class, 'syncrule'));
+% the rigs round-trip too: each daqsystem is rebuilt from its configuration and
+% its device entity, which the rule's ends now name ([acquisition system is a
+% device entity], [a rig's clock belongs to its device], Jess Haley 2026-11-19)
+% (This fixture spells the v1 edges `id`, which the round trip rebuilds as
+% `value`, so its rigs' depends_on values are reported lost whatever the
+% shape; what is checked here is that nothing the migration emitted for a rig,
+% its device included, is left without a role.)
+isRig = arrayfun(@(f) any(strcmp(f.source_id, {'sys_1', 'sys_2'})), r.failures);
+rigUnplaced = {};
+for f = reshape(r.failures(isRig), 1, [])
+    rigUnplaced = [rigUnplaced, f.unplaced]; %#ok<AGROW>
+end
+verifyEmpty(testCase, rigUnplaced, strjoin(rigUnplaced, ' | '));
+verifyFalse(testCase, isfield(r.changed_by_class, 'daqsystem'));
 end
 
 function testFilefindFoldValidatesAgainstTheSchema(testCase)
@@ -238,8 +259,8 @@ result = migrate({ ...
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
 cfg = firstOf(out, 'clock_alignment_configuration');
 assertNotEmpty(testCase, cfg);
-verifyEqual(testCase, depValue(cfg, 'input_id'), 'sys_1');
-verifyEqual(testCase, depValue(cfg, 'output_id'), 'sys_2');
+verifyEqual(testCase, depValue(cfg, 'input_id'), rigDevice(out, 'sys_1'));
+verifyEqual(testCase, depValue(cfg, 'output_id'), rigDevice(out, 'sys_2'));
 verifyEmpty(testCase, depValue(cfg, 'from_acquisition_system_id'));
 verifyEmpty(testCase, depValue(cfg, 'to_acquisition_system_id'));
 end
@@ -255,8 +276,8 @@ out = did2.convert.resolveClockAlignment(result, 'Validate', false);
 cfg = firstOf(out, 'clock_alignment_configuration');
 verifyNotEmpty(testCase, cfg);
 [inEdge, outEdge] = did2.unittest.helpers.syncEdgeNames();   % [sync configuration edges are input and output]
-verifyEqual(testCase, depValue(cfg, inEdge), 'sys_2');
-verifyEqual(testCase, depValue(cfg, outEdge), 'sys_1');
+verifyEqual(testCase, depValue(cfg, inEdge), rigDevice(out, 'sys_2'));
+verifyEqual(testCase, depValue(cfg, outEdge), rigDevice(out, 'sys_1'));
 end
 
 
@@ -404,8 +425,8 @@ verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
 cfg = firstOf(out, 'clock_alignment_configuration');
 verifyEqual(testCase, cfg.get('base.id'), 'rule_ct');
 [inEdge, outEdge] = did2.unittest.helpers.syncEdgeNames();   % [sync configuration edges are input and output]
-verifyEqual(testCase, depValue(cfg, inEdge), 'sys_1');
-verifyEqual(testCase, depValue(cfg, outEdge), 'sys_2');
+verifyEqual(testCase, depValue(cfg, inEdge), rigDevice(out, 'sys_1'));
+verifyEqual(testCase, depValue(cfg, outEdge), rigDevice(out, 'sys_2'));
 verifyEmpty(testCase, depValues(cfg, 'acquisition_channels_id'));
 entries = asEntries(cfg.get('clock_alignment_configuration.method').parameters);
 % the registry's labels for EMPTY:0000433 / EMPTY:0000434 ('input trigger
@@ -582,6 +603,19 @@ e = [];
 for k = 1:numel(entries)
     if strcmp(char(entries{k}.variable.name), name)
         e = entries{k};
+        return;
+    end
+end
+end
+
+function id = rigDevice(result, sysId)
+% the device entity the acquisition_system SYSID names by `device_id` (the
+% rig's device, +migrators_j/daqsystem.m); '' when none
+id = '';
+for k = 1:numel(result.migrated)
+    d = result.migrated{k};
+    if strcmp(char(d.get('base.id')), sysId)
+        id = depValue(d, 'device_id');
         return;
     end
 end
