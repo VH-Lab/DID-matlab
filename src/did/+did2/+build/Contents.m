@@ -97,8 +97,8 @@
 %   condition, parameter, dimension or covariate) and every value term (term.value, a
 %   chemical's substance) must be in the schema's term registry (tenet T19;
 %   strictMode 'TermRegistry', armed): did2:build:unregisteredTerm. A model
-%   fit's coefficient and constraint names are the fit's own symbols and are
-%   not checked ([unbound term fields sorted], [tuning fit coefficients named
+%   fit's variable, coefficient and constraint names are the fit's own
+%   symbols and are not checked ([unbound term fields sorted], [tuning fit coefficients named
 %   by symbol]).
 %   unregisteredTerms collects them instead, so one run can list them all.
 %

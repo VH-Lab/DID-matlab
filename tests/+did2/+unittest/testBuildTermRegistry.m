@@ -227,6 +227,70 @@ verifyFalse(testCase, any(contains({L.field}, 'constraints')));
 verifyFalse(testCase, any(contains({L.field}, 'coefficients')));
 end
 
+% ============ a fit's independent and dependent variables ===================
+% [unbound term fields sorted] (2026-11-10) item (2) opens a fit's
+% `independent_variables.variable` and `dependent_variable.variable` too (on
+% model_fit and its copies in tuning_curve and contrast_sensitivity): they
+% name the model's own symbols, a term or a label. Their `unit` is not opened.
+
+function testAFitsVariableSymbolsPassArmed(testCase)
+needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', true);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+nr = did2.convert.tuningFitModels('contrast', 'naka_rushton_RBNS');
+vars = struct('independent_variables', did2.build.list( ...
+        struct('variable', symbol('c')), struct('variable', symbol('x2'))), ...
+    'dependent_variable', struct('variable', symbol('R')));
+% a standalone model_fit
+f = did2.build.fitEntry(did2.build.term(nr.node, nr.name), ...
+    'Target', 'model_fit.value', 'Fields', vars);
+verifyEqual(testCase, f.independent_variables(2).variable.name, 'x2');
+verifyEqual(testCase, f.dependent_variable.variable.name, 'R');
+% a tuning curve's fit (an array of fits)
+g = did2.build.fitEntry(did2.build.term(nr.node, nr.name), 'Fields', vars);
+verifyEqual(testCase, g.independent_variables(1).variable.name, 'c');
+verifyEqual(testCase, g.dependent_variable.variable.name, 'R');
+end
+
+function testAFitsVariableUnitIsStillRefused(testCase)
+% control: the exemption is the variable's name, not its block. An
+% unregistered unit beside it, or 'R' as a condition's variable, is refused.
+needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', true);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+nr = did2.convert.tuningFitModels('contrast', 'naka_rushton_RBNS');
+verifyError(testCase, @() did2.build.fitEntry(did2.build.term(nr.node, nr.name), ...
+    'Target', 'model_fit.value', 'Fields', struct('independent_variables', ...
+        struct('variable', symbol('c'), 'unit', symbol('a unit nobody registered')))), ...
+    'did2:build:unregisteredTerm');
+verifyError(testCase, @() did2.build.fitEntry(did2.build.term(nr.node, nr.name), ...
+    'Target', 'model_fit.value', 'Fields', struct('dependent_variable', ...
+        struct('variable', symbol('R'), 'unit', symbol('a unit nobody registered')))), ...
+    'did2:build:unregisteredTerm');
+verifyError(testCase, @() did2.build.condition(symbol('R'), 'Value', 1), ...
+    'did2:build:unregisteredTerm');
+end
+
+function testTheCensusDoesNotListAFitsVariableSymbols(testCase)
+needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+prevC = did2.build.unregisteredTerms('-collect', true);
+testCase.addTeardown(@() did2.build.unregisteredTerms('-collect', prevC));
+did2.build.unregisteredTerms('-reset');
+testCase.addTeardown(@() did2.build.unregisteredTerms('-reset'));
+nr = did2.convert.tuningFitModels('contrast', 'naka_rushton_RBNS');
+did2.build.fitEntry(did2.build.term(nr.node, nr.name), ...
+    'Target', 'model_fit.value', 'Fields', struct( ...
+        'independent_variables', struct('variable', symbol('c'), ...
+            'unit', symbol('a unit nobody registered')), ...
+        'dependent_variable', struct('variable', symbol('R'))));
+L = did2.build.unregisteredTerms();
+verifyEqual(testCase, unique({L.name}), {'a unit nobody registered'}, ...
+    'only the unit is recorded, not c or R');
+verifyFalse(testCase, any(endsWith({L.field}, '.variable')));
+end
+
 % ===================== helpers ==============================================
 
 function ix = needRegistry(testCase)
