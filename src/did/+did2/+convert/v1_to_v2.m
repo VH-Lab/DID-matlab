@@ -178,9 +178,11 @@ end
 % [ensemble and generic_file keep their conversions], [ensemble and
 % generic_file checked as v1]).
 LATER_STEP_CLASSES = {'ensemble', 'generic_file'};
-% Superclass-only v1 templates no writer writes as a leaf. One standing alone
-% is malformed, carried whole under carry-100 (Decided by Jess Haley,
-% 2026-11-01 [last rename-pass classes]).
+% Superclass-only v1 templates. One standing alone is malformed, carried
+% whole under carry-100 (Decided by Jess Haley, 2026-11-01 [last rename-pass
+% classes]). NOT "no writer writes one as a leaf", as this comment said until
+% 2026-11-19: NDIcalc-vis-matlab +ndi/+calc/+vis/contrast_sensitivity.m writes
+% `stimulus_response_scalar_parameters` as a leaf (its mock documents).
 PARENT_ONLY_CLASSES = {'app', 'calculator', 'epochid', 'stimulus_response', ...
     'stimulus_response_scalar_parameters'};
 % v1 classes whose migrator HANDS ON a document unchanged to a later batch
@@ -641,9 +643,13 @@ for k = 1:numel(bodies)
             elseif any(strcmp(rawClass, PARENT_ONLY_CLASSES))
                 % A SUPERCLASS-ONLY CLASS STANDING ALONE (Decided by Jess
                 % Haley, 2026-11-01 [last rename-pass classes]: "a v1 document
-                % whose own class is one of those five is malformed"). No
-                % writer writes one as a leaf; carried whole, carry-100
-                % ([fields outside the template are malformed]).
+                % whose own class is one of those five is malformed"); carried
+                % whole, carry-100 ([fields outside the template are
+                % malformed]). (One writer does write one as a leaf: the mock
+                % documents of NDIcalc-vis-matlab
+                % +ndi/+calc/+vis/contrast_sensitivity.m, a
+                % `stimulus_response_scalar_parameters`; this comment said no
+                % writer did until 2026-11-19.)
                 legacy.bodies_carried_parent_only = legacy.bodies_carried_parent_only + 1;
                 className = rawClass;
                 % carry-register: carry-100
