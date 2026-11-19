@@ -430,7 +430,7 @@ function testAKeyedTimeBodyOfOneChannelIsNotASplitGroup(testCase)
 i = find(cellfun(@(d) strcmp(d.base.id, 'b_t1'), docs));
 docs{i}.data_body = rmfield(docs{i}.data_body, 'conditions');
 j = find(cellfun(@(d) strcmp(d.base.id, 'b_ax'), docs));
-R = did2.convert.roundtrip.ingestedArchiveFiles(bodies(1), docs([1:j-1, j+1:end]));
+R = did2.convert.roundtrip.ingestedArchiveFiles(bodies(2), docs([1:j-1, j+1:end]));   % the analog group alone
 verifyEmpty(testCase, R.split_time);
 verifyEqual(testCase, R.members(strcmp({R.members.body_id}, 'b_t1')).names, ...
     {'ti_group1_seg.nbf_1', 'ti_group1_seg.nbf_2'});
